@@ -1,3 +1,4 @@
+import { tabPanes } from "../../../test/panes.ts";
 import "../../../test/window-bridge.ts";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@nyte-ai/ui/tooltip";
@@ -9,7 +10,6 @@ import { useLayoutEffect, useState } from "react";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import { PaneControllerProvider } from "../../panes/pane-context.tsx";
-import { PaneController } from "../../panes/pane-controller.ts";
 import { keys, queryClient } from "../../data/query-client.ts";
 import { TranscriptContent, TranscriptProvider } from "./transcript.tsx";
 import type { RowLayout } from "./transcript-rows.ts";
@@ -167,7 +167,7 @@ export async function run(): Promise<string> {
   const container = document.createElement("div");
   container.style.cssText = `display:flex;width:760px;height:540px;color:${foreground};background:${background}`;
   document.body.append(container);
-  const controller = new PaneController({ storageKey: "transcript-frames" });
+  const controller = tabPanes();
   controller.selectSession(SESSION);
   const root = createRoot(container);
 

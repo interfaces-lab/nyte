@@ -1,3 +1,4 @@
+import { tabPanes } from "../../test/panes.ts";
 import assert from "node:assert/strict";
 import { afterAll, expect, test, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -10,7 +11,6 @@ import {
 import { asId } from "@nyte-ai/schema";
 import { shellActions, useStagePage } from "../tabs/shell-state.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
-import { PaneController } from "./pane-controller.ts";
 import {
   PaneControllerProvider,
   usePaneActions,
@@ -29,7 +29,7 @@ vi.hoisted(() => {
 test.each([560, 640])("split availability and execution agree at window width %s", (width) => {
   vi.stubGlobal("window", { innerWidth: width });
   shellActions.showWorkspace();
-  const controller = new PaneController({ storageKey: `split-action-${String(width)}` });
+  const controller = tabPanes();
 
   const router = createRouter({
     routeTree: createRootRoute(),

@@ -2,7 +2,6 @@ import { toast } from "@nyte-ai/ui/toast";
 import { Type } from "typebox";
 import type { TSchema } from "typebox";
 import { expect, onTestFinished, test, vi } from "vitest";
-import { storedPaneLayoutSchema } from "../panes/pane-layout.ts";
 import { persisted, readStored, type StorageArea } from "./storage.ts";
 
 const KEY = "nyte:test:v1";
@@ -10,17 +9,6 @@ const KEY = "nyte:test:v1";
 const width = Type.Object({ width: Type.Number() }, { additionalProperties: false });
 
 const DEFAULT_WIDTH = { width: 280 };
-
-const LEGACY_SPLIT = {
-  version: 1,
-  kind: "split",
-  direction: "right",
-  ratio: 0.5,
-  order: ["secondary", "primary"],
-  primary: { id: "primary", selection: { kind: "blank" } },
-  secondary: { id: "secondary", selection: { kind: "session", sessionId: "chat-1" } },
-  activePaneId: "secondary",
-};
 
 interface Row {
   readonly name: string;
@@ -74,13 +62,6 @@ const rows: readonly Row[] = [
     schema: Type.Enum(["steer", "queue"]),
     fallback: "steer",
     expected: "steer",
-  },
-  {
-    name: "a version 1 pane layout from an earlier build",
-    stored: JSON.stringify(LEGACY_SPLIT),
-    schema: storedPaneLayoutSchema,
-    fallback: undefined,
-    expected: LEGACY_SPLIT,
   },
 ];
 

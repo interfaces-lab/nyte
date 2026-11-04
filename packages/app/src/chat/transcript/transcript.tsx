@@ -174,7 +174,7 @@ export function TranscriptProvider({
   const viewStore = usePaneViewStateStore();
 
   const [initialPosition] = useState<ScrollViewState>(
-    () => viewStore.readSession(sessionId, paneId).scroll[paneId] ?? { kind: "end" },
+    () => viewStore.readSession(sessionId).scroll[paneId] ?? { kind: "end" },
   );
 
   const [dock, setDock] = useState<HTMLDivElement | null>(null);
@@ -534,7 +534,7 @@ export function TranscriptContent({
           ? { kind: "anchor", key: String(row[0]), offset: topIn(scroll, row[1]) }
           : { kind: "end" };
 
-      viewStore.updateSession(sessionId, paneId, (state) => ({
+      viewStore.updateSession(sessionId, (state) => ({
         ...state,
         scroll: { ...state.scroll, [paneId]: position },
       }));

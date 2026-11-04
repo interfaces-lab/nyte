@@ -1,3 +1,4 @@
+import { tabPanes } from "../../../test/panes.ts";
 import "../../../test/window-bridge.ts";
 import { TooltipProvider } from "@nyte-ai/ui/tooltip";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -9,7 +10,6 @@ import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { asId, asSeq } from "@nyte-ai/schema";
 import type { HostState } from "../../contract/nyte.ts";
 import { PaneControllerProvider } from "../../panes/pane-context.tsx";
-import { PaneController } from "../../panes/pane-controller.ts";
 import { SessionDndProvider } from "../../panes/session-dnd.tsx";
 import { keys, queryClient } from "../../data/query-client.ts";
 import { chatStore } from "../../data/chat-store.ts";
@@ -282,7 +282,7 @@ export async function run(): Promise<string> {
     history: createMemoryHistory({ initialEntries: [`/session/${SESSION}`] }),
   });
 
-  const panes = new PaneController({ storageKey: "composer-keys" });
+  const panes = tabPanes();
   panes.selectSession(SESSION);
   const stage = document.createElement("div");
   stage.style.cssText = "position:relative;display:flex;flex-direction:column;height:560px;";

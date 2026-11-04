@@ -1,3 +1,4 @@
+import { tabPanes } from "../../test/panes.ts";
 import "../../test/window-bridge.ts";
 import { TooltipProvider } from "@nyte-ai/ui/tooltip";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -9,7 +10,6 @@ import type { ModelCatalogView, SessionView } from "@nyte-ai/sdk";
 import { asId, asSeq } from "@nyte-ai/schema";
 import type { HostState } from "../contract/nyte.ts";
 import { PaneControllerProvider } from "./pane-context.tsx";
-import { PaneController } from "./pane-controller.ts";
 import { SessionDndProvider } from "./session-dnd.tsx";
 import { keys, queryClient } from "../data/query-client.ts";
 import { SessionScreen } from "./session-screen.tsx";
@@ -84,7 +84,7 @@ const host = { workspace: undefined } satisfies HostState;
 
 let renderFailure: unknown;
 
-const panes = new PaneController({ storageKey: "session-screen-render-test" });
+const panes = tabPanes();
 
 panes.selectSession(ID);
 

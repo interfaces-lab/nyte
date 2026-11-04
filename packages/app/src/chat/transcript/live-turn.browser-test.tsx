@@ -1,3 +1,4 @@
+import { tabPanes } from "../../../test/panes.ts";
 import "../../../test/window-bridge.ts";
 import { Activity } from "react";
 import { flushSync } from "react-dom";
@@ -21,7 +22,6 @@ import {
 } from "../../../test/scripted-connection.ts";
 import { USAGE } from "../../../test/view-fixtures.ts";
 import { PaneControllerProvider } from "../../panes/pane-context.tsx";
-import { PaneController } from "../../panes/pane-controller.ts";
 import { chatStore } from "../../data/chat-store.ts";
 import { LiveTurn } from "./live-turn.tsx";
 import { TranscriptProvider } from "./transcript.tsx";
@@ -159,7 +159,7 @@ installScripted(
   }),
 );
 
-const panes = new PaneController({ storageKey: "live-turn-test" });
+const panes = tabPanes();
 
 function mount(session: SessionId) {
   const box = document.createElement("div");

@@ -1,3 +1,4 @@
+import { tabPanes } from "../../../test/panes.ts";
 import "./transcript-render-counter.ts";
 import "../../../test/window-bridge.ts";
 import { TooltipProvider } from "@nyte-ai/ui/tooltip";
@@ -17,7 +18,6 @@ import { asId, asSeq } from "@nyte-ai/schema";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import type { HostState } from "../../contract/nyte.ts";
 import { PaneControllerProvider } from "../../panes/pane-context.tsx";
-import { PaneController } from "../../panes/pane-controller.ts";
 import { SessionDndProvider } from "../../panes/session-dnd.tsx";
 import { keys, queryClient } from "../../data/query-client.ts";
 import { SessionScreen } from "../../panes/session-screen.tsx";
@@ -192,7 +192,7 @@ export async function run(): Promise<string> {
   });
 
   const root = createRoot(container);
-  const panes = new PaneController({ storageKey: "transcript-streaming-test" });
+  const panes = tabPanes();
   panes.selectSession(ID);
 
   flushSync(() =>

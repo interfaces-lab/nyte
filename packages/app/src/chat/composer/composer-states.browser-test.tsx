@@ -1,3 +1,4 @@
+import { tabPanes } from "../../../test/panes.ts";
 import "../../../test/window-bridge.ts";
 import { runStatus } from "@nyte-ai/plugin/client/presentation";
 import { TooltipProvider } from "@nyte-ai/ui/tooltip";
@@ -27,7 +28,6 @@ import { asId, asSeq } from "@nyte-ai/schema";
 import type { HostState } from "../../contract/nyte.ts";
 import type { ComposerViewState } from "../../panes/session-view-state.ts";
 import { PaneControllerProvider } from "../../panes/pane-context.tsx";
-import { PaneController } from "../../panes/pane-controller.ts";
 import { SessionDndProvider } from "../../panes/session-dnd.tsx";
 import { keys, queryClient } from "../../data/query-client.ts";
 import { useSessionView } from "../../data/sessions.ts";
@@ -669,8 +669,6 @@ function LoneComposer({ state }: { readonly state: ComposerState }): ReactElemen
   );
 }
 
-let mounts = 0;
-
 function Stage({
   state,
   layer,
@@ -685,9 +683,7 @@ function Stage({
   );
 
   const [panes] = useState(() => {
-    const controller = new PaneController({
-      storageKey: `composer-states-${String((mounts += 1))}`,
-    });
+    const controller = tabPanes();
     controller.selectSession(stateSession(state));
 
     return controller;

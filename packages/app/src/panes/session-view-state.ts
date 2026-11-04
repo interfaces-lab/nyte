@@ -3,7 +3,7 @@ import type { ImageContent } from "@nyte-ai/schema/model";
 import type { ModelRef, SessionId, Thinking } from "@nyte-ai/sdk";
 import type { Static } from "typebox";
 import { Type } from "typebox";
-import type { PaneId, SplitDirection } from "./pane-layout.ts";
+import type { PaneId } from "./pane-layout.ts";
 import type { WindowDrafts } from "../chat/composer/drafts.ts";
 
 const KEPT_SESSION_VIEWS = 64;
@@ -28,17 +28,10 @@ export type ScrollViewState =
   | { readonly kind: "end" }
   | { readonly kind: "anchor"; readonly key: string; readonly offset: number };
 
-interface SplitViewState {
-  readonly direction: SplitDirection;
-  readonly ratio: number;
-}
-
 export interface SessionViewState {
   readonly composer: ComposerViewState;
   readonly scroll: Partial<Record<PaneId, ScrollViewState>>;
   readonly stepGroups: ReadonlyMap<string, boolean>;
-  readonly focusedPaneId: PaneId;
-  readonly split: SplitViewState | undefined;
 }
 
 export interface DraftChoice {
@@ -82,15 +75,11 @@ export const DEFAULT_COMPOSER_VIEW_STATE: ComposerViewState = {
   focused: false,
 };
 
-export function defaultSessionViewState(paneId: PaneId): SessionViewState {
-  return {
-    composer: DEFAULT_COMPOSER_VIEW_STATE,
-    scroll: {},
-    stepGroups: new Map(),
-    focusedPaneId: paneId,
-    split: undefined,
-  };
-}
+export const DEFAULT_SESSION_VIEW_STATE: SessionViewState = {
+  composer: DEFAULT_COMPOSER_VIEW_STATE,
+  scroll: {},
+  stepGroups: new Map(),
+};
 
 export function composerHasContent(composer: ComposerViewState): boolean {
   return composer.draft.trim() !== "" || composer.attachments.length > 0;
@@ -145,8 +134,8 @@ export class SessionViewStateStore {
 
   readonly listedDrafts = (): readonly ChatDraft[] => this.#window.listedDrafts();
 
-  readSession(sessionId: SessionId, paneId: PaneId): SessionViewState {
-    return this.#window.sessions.get(sessionId) ?? defaultSessionViewState(paneId);
+  readSession(sessionId: SessionId): SessionViewState {
+    return this.#window.sessions.get(sessionId) ?? DEFAULT_SESSION_VIEW_STATE;
   }
 
   writeSession(sessionId: SessionId, state: SessionViewState): void {
@@ -176,10 +165,9 @@ export class SessionViewStateStore {
 
   updateSession(
     sessionId: SessionId,
-    paneId: PaneId,
     update: (current: SessionViewState) => SessionViewState,
   ): SessionViewState {
-    const next = update(this.readSession(sessionId, paneId));
+    const next = update(this.readSession(sessionId));
     this.writeSession(sessionId, next);
 
     return next;

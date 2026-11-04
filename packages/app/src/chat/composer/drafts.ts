@@ -14,7 +14,7 @@ import {
   type SessionViewState,
   composerHasContent,
   contentChanged,
-  defaultSessionViewState,
+  DEFAULT_SESSION_VIEW_STATE,
   draftHasContent,
   persistableComposer,
 } from "../../panes/session-view-state.ts";
@@ -293,7 +293,7 @@ export class WindowDrafts {
       const composer = composerView(stored.record, stored.attachments);
 
       if (!composerHasContent(composer)) continue;
-      this.sessions.set(asId<"session">(id), { ...defaultSessionViewState("primary"), composer });
+      this.sessions.set(asId<"session">(id), { ...DEFAULT_SESSION_VIEW_STATE, composer });
     }
   }
 

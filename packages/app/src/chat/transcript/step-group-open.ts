@@ -11,14 +11,14 @@ export function useStepGroupOpen(
   const read = (): boolean | undefined =>
     scope === undefined || key === undefined
       ? undefined
-      : scope.viewStore.readSession(scope.sessionId, scope.paneId).stepGroups.get(key);
+      : scope.viewStore.readSession(scope.sessionId).stepGroups.get(key);
   const [open, setOpen] = useState(read);
 
   const change = (next: boolean): void => {
     setOpen(next);
 
     if (scope === undefined || key === undefined) return;
-    scope.viewStore.updateSession(scope.sessionId, scope.paneId, (current) => {
+    scope.viewStore.updateSession(scope.sessionId, (current) => {
       const groups = new Map(current.stepGroups);
       groups.delete(key);
       groups.set(key, next);
