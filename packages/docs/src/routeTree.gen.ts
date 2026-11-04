@@ -14,6 +14,7 @@ import { Route as DesignRouteRouteImport } from './routes/design/route'
 import { Route as DocsPreviewRouteImport } from './routes/docs-preview'
 import { Route as LlmsFullDottxtRouteImport } from './routes/llms-full[.]txt'
 import { Route as LlmsDottxtRouteImport } from './routes/llms[.]txt'
+import { Route as McpRouteImport } from './routes/mcp'
 import { Route as OpengraphImageDotpngRouteImport } from './routes/opengraph-image[.]png'
 import { Route as RobotsDottxtRouteImport } from './routes/robots[.]txt'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
@@ -53,6 +54,11 @@ const LlmsFullDottxtRoute = LlmsFullDottxtRouteImport.update({
 const LlmsDottxtRoute = LlmsDottxtRouteImport.update({
   id: '/llms.txt',
   path: '/llms.txt',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const McpRoute = McpRouteImport.update({
+  id: '/mcp',
+  path: '/mcp',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OpengraphImageDotpngRoute = OpengraphImageDotpngRouteImport.update({
@@ -140,6 +146,7 @@ export interface FileRoutesByFullPath {
   '/docs-preview': typeof DocsPreviewRoute
   '/llms-full.txt': typeof LlmsFullDottxtRoute
   '/llms.txt': typeof LlmsDottxtRoute
+  '/mcp': typeof McpRoute
   '/opengraph-image.png': typeof OpengraphImageDotpngRoute
   '/robots.txt': typeof RobotsDottxtRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
@@ -159,6 +166,7 @@ export interface FileRoutesByTo {
   '/docs-preview': typeof DocsPreviewRoute
   '/llms-full.txt': typeof LlmsFullDottxtRoute
   '/llms.txt': typeof LlmsDottxtRoute
+  '/mcp': typeof McpRoute
   '/opengraph-image.png': typeof OpengraphImageDotpngRoute
   '/robots.txt': typeof RobotsDottxtRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
@@ -180,6 +188,7 @@ export interface FileRoutesById {
   '/docs-preview': typeof DocsPreviewRoute
   '/llms-full.txt': typeof LlmsFullDottxtRoute
   '/llms.txt': typeof LlmsDottxtRoute
+  '/mcp': typeof McpRoute
   '/opengraph-image.png': typeof OpengraphImageDotpngRoute
   '/robots.txt': typeof RobotsDottxtRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
@@ -205,6 +214,7 @@ export interface FileRouteTypes {
     | '/docs-preview'
     | '/llms-full.txt'
     | '/llms.txt'
+    | '/mcp'
     | '/opengraph-image.png'
     | '/robots.txt'
     | '/sitemap.xml'
@@ -224,6 +234,7 @@ export interface FileRouteTypes {
     | '/docs-preview'
     | '/llms-full.txt'
     | '/llms.txt'
+    | '/mcp'
     | '/opengraph-image.png'
     | '/robots.txt'
     | '/sitemap.xml'
@@ -244,6 +255,7 @@ export interface FileRouteTypes {
     | '/docs-preview'
     | '/llms-full.txt'
     | '/llms.txt'
+    | '/mcp'
     | '/opengraph-image.png'
     | '/robots.txt'
     | '/sitemap.xml'
@@ -268,6 +280,7 @@ export interface RootRouteChildren {
   DocsPreviewRoute: typeof DocsPreviewRoute
   LlmsFullDottxtRoute: typeof LlmsFullDottxtRoute
   LlmsDottxtRoute: typeof LlmsDottxtRoute
+  McpRoute: typeof McpRoute
   OpengraphImageDotpngRoute: typeof OpengraphImageDotpngRoute
   RobotsDottxtRoute: typeof RobotsDottxtRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
@@ -312,6 +325,13 @@ declare module '@tanstack/react-router' {
       path: '/llms.txt'
       fullPath: '/llms.txt'
       preLoaderRoute: typeof LlmsDottxtRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/mcp': {
+      id: '/mcp'
+      path: '/mcp'
+      fullPath: '/mcp'
+      preLoaderRoute: typeof McpRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/opengraph-image.png': {
@@ -491,6 +511,7 @@ const rootRouteChildren: RootRouteChildren = {
   DocsPreviewRoute: DocsPreviewRoute,
   LlmsFullDottxtRoute: LlmsFullDottxtRoute,
   LlmsDottxtRoute: LlmsDottxtRoute,
+  McpRoute: McpRoute,
   OpengraphImageDotpngRoute: OpengraphImageDotpngRoute,
   RobotsDottxtRoute: RobotsDottxtRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,

@@ -19,6 +19,7 @@ const sharedPaths = [
   "/llms.txt",
   "/llms-full.txt",
   "/llms.mdx/",
+  "/mcp",
   "/robots.txt",
   "/sitemap.xml",
   "/opengraph-image.png",
@@ -80,6 +81,12 @@ export function canonicalRedirect(requestUrl: string): URL | undefined {
   if (servesDesign(url.hostname) || !hostsWithDesign.has(url.hostname)) return undefined;
   if (!inDesignRoute(url.pathname)) return undefined;
   return toPublic(url);
+}
+
+export function mainOrigin(requestUrl: string): string {
+  const url = new URL(requestUrl);
+  if (servesDesign(url.hostname)) url.hostname = mainHostname(url.hostname);
+  return url.origin;
 }
 
 /** The production URL of an internal design path: `/design/button` → `https://design.nyte.sh/button`. */

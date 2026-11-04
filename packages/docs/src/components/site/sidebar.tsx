@@ -10,6 +10,8 @@ export interface TocEntry {
   depth: number;
 }
 
+type Branch = { readonly href: string; readonly toc: readonly TocEntry[] };
+
 /**
  * The docs tree, beside the page and in the phone menu. Rows are the site
  * nav's pills: its control height, its inset, its fill for the current page.
@@ -31,6 +33,26 @@ export function DocNav({
   const matchRoute = useMatchRoute();
   const [current, setCurrent] = useState<string | null>(null);
 
+  const open =
+    toc.length === 0
+      ? undefined
+      : sections
+          .flatMap((section) => section.items)
+          .find((item) => matchRoute({ to: item.href }) !== false)?.href;
+
+  const [shown, setShown] = useState<{
+    readonly open: Branch | null;
+    readonly closing: Branch | null;
+    readonly moved: boolean;
+  }>({ open: open === undefined ? null : { href: open, toc }, closing: null, moved: false });
+
+  if ((shown.open?.href ?? undefined) !== open)
+    setShown({
+      open: open === undefined ? null : { href: open, toc },
+      closing: shown.open,
+      moved: true,
+    });
+
   return (
     <nav className={className} aria-label="Docs">
       <HeadingSpy key={toc.map((entry) => entry.url).join(" ")} toc={toc} onPass={setCurrent} />
@@ -50,20 +72,29 @@ export function DocNav({
                 >
                   {item.title}
                 </Link>
-                {toc.length > 0 && matchRoute({ to: item.href }) !== false ? (
-                  <ul className="doc-side-branches" aria-label="On this page">
-                    {toc.map((entry) => (
-                      <li key={entry.url} className="doc-side-branch">
-                        <a
-                          href={entry.url}
-                          aria-current={current === entry.url ? "location" : undefined}
-                          onClick={onNavigate}
-                        >
-                          {entry.title}
-                        </a>
-                      </li>
-                    ))}
-                  </ul>
+                {item.href === open || item.href === shown.closing?.href ? (
+                  <div
+                    className="doc-side-branches"
+                    data-state={item.href === open ? "open" : "closed"}
+                    data-animate={shown.moved ? "" : undefined}
+                    inert={item.href !== open}
+                  >
+                    <ul className="doc-side-branch-list" aria-label="On this page">
+                      {(item.href === open ? toc : (shown.closing?.toc ?? [])).map((entry) => (
+                        <li key={entry.url} className="doc-side-branch">
+                          <a
+                            href={entry.url}
+                            aria-current={
+                              item.href === open && current === entry.url ? "location" : undefined
+                            }
+                            onClick={onNavigate}
+                          >
+                            {entry.title}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 ) : null}
               </li>
             ))}
@@ -80,7 +111,11 @@ export function DocNav({
  */
 export function HeadingSpy(props: { toc: readonly TocEntry[]; onPass: (url: string) => void }) {
   useMountEffect(() => {
+    let frame = 0;
+
     const pick = () => {
+      frame = 0;
+
       const headings = props.toc.flatMap((entry) => {
         const heading = document.getElementById(entry.url.slice(1));
 
@@ -95,13 +130,18 @@ export function HeadingSpy(props: { toc: readonly TocEntry[]; onPass: (url: stri
       props.onPass(`#${(passed ?? headings[0]).id}`);
     };
 
+    const schedule = () => {
+      if (frame === 0) frame = requestAnimationFrame(pick);
+    };
+
     pick();
-    window.addEventListener("scroll", pick, { passive: true, capture: true });
-    window.addEventListener("resize", pick);
+    window.addEventListener("scroll", schedule, { passive: true, capture: true });
+    window.addEventListener("resize", schedule);
 
     return () => {
-      window.removeEventListener("scroll", pick, { capture: true });
-      window.removeEventListener("resize", pick);
+      cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", schedule, { capture: true });
+      window.removeEventListener("resize", schedule);
     };
   });
 

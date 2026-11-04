@@ -353,9 +353,52 @@
   /* ---- the current page's sections, branching under its row ---------- */
 
   .doc-side-branches {
+    display: grid;
+    grid-template-rows: 1fr;
+  }
+
+  .doc-side-branches[data-state="closed"] {
+    grid-template-rows: 0fr;
+    opacity: 0;
+  }
+
+  .doc-side-branches[data-state="closed"] > .doc-side-branch-list {
+    margin-block: 0;
+  }
+
+  .doc-side-branch-list {
+    min-height: 0;
     margin: 2px 0 6px 10px;
+    overflow: hidden;
     font-size: calc(13em / 14);
     line-height: calc(16em / 13);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .doc-side-branches[data-animate] {
+      transition:
+        grid-template-rows 240ms var(--ease-nav),
+        opacity 240ms var(--ease-nav);
+    }
+
+    .doc-side-branches[data-animate][data-state="closed"] {
+      transition-duration: 240ms, 150ms;
+    }
+
+    .doc-side-branches[data-animate] > .doc-side-branch-list {
+      transition: margin-block 240ms var(--ease-nav);
+    }
+
+    @starting-style {
+      .doc-side-branches[data-animate][data-state="open"] {
+        grid-template-rows: 0fr;
+        opacity: 0;
+      }
+
+      .doc-side-branches[data-animate][data-state="open"] > .doc-side-branch-list {
+        margin-block: 0;
+      }
+    }
   }
 
   .doc-side-branch {
