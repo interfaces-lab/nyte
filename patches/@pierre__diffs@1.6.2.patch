@@ -675,7 +675,7 @@ index 0000000000000000000000000000000000000000..1bc47c6bea24de7c3d9ba4ed70838de3
 +
 +//# sourceMappingURL=CodeViewSearch.js.map
 diff --git a/dist/components/FileDiff.js b/dist/components/FileDiff.js
-index 12f4f8949f3a1907ac9877f83937b53a966c9411..e33a5ed31920c858ce8be37fbf6a4bcbe3bf7480 100644
+index ca0342630d77667aa91a23f8adc22478d5980fd1..7f6a06a62db03ea80ced51fa4a5ab3e41519ff07 100644
 --- a/dist/components/FileDiff.js
 +++ b/dist/components/FileDiff.js
 @@ -1,6 +1,7 @@
@@ -687,7 +687,7 @@ index 12f4f8949f3a1907ac9877f83937b53a966c9411..e33a5ed31920c858ce8be37fbf6a4bcb
  import { getHighlighterIfLoaded, getSharedHighlighter } from "../highlighter/shared_highlighter.js";
  import { dequeueRender, queueRender } from "../managers/UniversalRenderingManager.js";
  import { areThemesEqual } from "../utils/areThemesEqual.js";
-@@ -724,7 +725,7 @@ var FileDiff = class {
+@@ -723,7 +724,7 @@ var FileDiff = class {
  		if (expandUnchanged) this.loadFilesIfNecessary();
  		this.hunksRenderer.setOptions(this.getHunksRendererOptions(this.options));
  		this.syncInteractionOptions();
@@ -696,7 +696,7 @@ index 12f4f8949f3a1907ac9877f83937b53a966c9411..e33a5ed31920c858ce8be37fbf6a4bcb
  		const { disableErrorHandling = false, disableFileHeader = false } = this.options;
  		if (disableFileHeader) {
  			if (this.headerElement != null) {
-@@ -740,11 +741,22 @@ var FileDiff = class {
+@@ -739,11 +740,22 @@ var FileDiff = class {
  			this.removeRenderedCode();
  			this.clearAuxiliaryNodes();
  			try {
@@ -1067,10 +1067,10 @@ index 9542849786b98a7b11f98894847a2f53a9aac113..b3ad284168b4e1ac68135291a15af488
 \ No newline at end of file
 +export { EditorSearch, EditorSearchOptions, EditorSearchQuery, EditorSearchSnapshot, MatchRange, SearchPanelMode, SearchParams };
 diff --git a/dist/editor/searchPanel.js b/dist/editor/searchPanel.js
-index df1ba637c2f7834f21f087eba7a416c802f4ac68..34433eb0f00d92ffcea61b90a87f2a24c09197e7 100644
+index 807ac9f685815f71a9fdeb3f47cdcd9c03374cf7..34433eb0f00d92ffcea61b90a87f2a24c09197e7 100644
 --- a/dist/editor/searchPanel.js
 +++ b/dist/editor/searchPanel.js
-@@ -1,323 +1,181 @@
+@@ -1,338 +1,181 @@
  import { buildSearchReplacementText } from "./pieceTable.js";
 -import { isPrimaryModifier } from "./platform.js";
 -import { resolveFindAgainShortcut } from "./command.js";
@@ -1131,7 +1131,10 @@ index df1ba637c2f7834f21f087eba7a416c802f4ac68..34433eb0f00d92ffcea61b90a87f2a24
 -				noMatches: ""
 -			},
 -			textContent: "No results"
--		});
++		this.#publish();
++		if (initialMatch !== void 0) requestAnimationFrame(() => {
++			if (!this.#closed) this.updateMatches();
+ 		});
 -		const updateMatches = (options) => {
 -			matches.all = searchParams.text !== "" ? textDocument.search(searchParams) : [];
 -			const noMatches = matches.all.length === 0;
@@ -1194,10 +1197,7 @@ index df1ba637c2f7834f21f087eba7a416c802f4ac68..34433eb0f00d92ffcea61b90a87f2a24
 -			start: matchStart,
 -			end: matchEnd,
 -			text: buildSearchReplacementText((offset) => textDocument.positionAt(offset), (position) => textDocument.offsetAt(position), (line) => textDocument.getLineText(line), searchParams, matchStart, matchEnd)
-+		this.#publish();
-+		if (initialMatch !== void 0) requestAnimationFrame(() => {
-+			if (!this.#closed) this.updateMatches();
- 		});
+-		});
 -		const replace = () => {
 -			if (searchParams.text === "" || matches.all.length === 0) return;
 -			let currentMatch = matches.current;
@@ -1384,12 +1384,26 @@ index df1ba637c2f7834f21f087eba7a416c802f4ac68..34433eb0f00d92ffcea61b90a87f2a24
 -			onClick: close,
 -			dataset: { searchClose: "" }
 -		});
+-		const replaceToggleElement = iconButton({
+-			icon: "chevron",
+-			label: "Toggle Replace",
+-			dataset: { replaceToggle: "" },
+-			onClick: () => {
+-				if (gridElement.dataset.mode === "replace") applyMode("find");
+-				else {
+-					applyMode("replace");
+-					replaceInputElement.focus();
+-				}
+-			}
+-		});
+-		replaceToggleElement.ariaExpanded = String(mode === "replace");
 -		const gridElement = h("div", {
 -			dataset: {
 -				searchGrid: "",
 -				mode
 -			},
 -			children: [
+-				replaceToggleElement,
 -				findInputBox,
 -				replaceInputBox,
 -				replaceActionsElement,
@@ -1400,6 +1414,7 @@ index df1ba637c2f7834f21f087eba7a416c802f4ac68..34433eb0f00d92ffcea61b90a87f2a24
 -		});
 -		const applyMode = (next) => {
 -			gridElement.dataset.mode = next;
+-			replaceToggleElement.ariaExpanded = String(next === "replace");
 -			this.#inputElement.focus();
 -			this.#inputElement.select();
 +		this.updateMatches();
@@ -1551,6 +1566,39 @@ index df1ba637c2f7834f21f087eba7a416c802f4ac68..34433eb0f00d92ffcea61b90a87f2a24
 -//# sourceMappingURL=searchPanel.js.map
 \ No newline at end of file
 +export { EditorSearch };
+diff --git a/dist/highlighter/themes/themeResolver.js b/dist/highlighter/themes/themeResolver.js
+index 3dfd135f54771d85c04807b474884938c105bca6..950312f969e26e7e901e75076034c3d94eb439bb 100644
+--- a/dist/highlighter/themes/themeResolver.js
++++ b/dist/highlighter/themes/themeResolver.js
+@@ -76,7 +76,7 @@ function createHighlightsTheme(name, raw) {
+ function createDiffsThemeResolver(backend) {
+ 	let resolver = resolvers.get(backend);
+ 	if (resolver != null) return resolver;
+-	resolver = createThemeResolver({
++	const options = {
+ 		fallbackLoader: async (name) => {
+ 			if (typeof __DIFFS_WORKER__ !== "undefined" ? __DIFFS_WORKER__ : isWorkerContext()) throw new Error(`Theme "${name}" cannot be resolved from a worker context. Themes must be pre-resolved on the main thread and passed to the worker via the resolvedThemes parameter.`);
+ 			const custom = customThemes.get(name);
+@@ -136,7 +136,18 @@ function createDiffsThemeResolver(backend) {
+ 			if (theme.name !== name) throw new Error(`resolvedTheme: themeName: ${name} does not match theme.name: ${theme.name}`);
+ 			return theme;
+ 		}
+-	});
++	};
++	const themeResolver = createThemeResolver();
++	const resolveTheme = (name) => {
++		themeResolver.registerThemeIfAbsent(name, async () => options.normalizeTheme(await options.fallbackLoader(name), name));
++		return themeResolver.resolveTheme(name);
++	};
++	resolver = {
++		...themeResolver,
++		resolveTheme,
++		resolveThemes: (names) => Promise.all(names.map(resolveTheme)),
++		getResolvedOrResolveTheme: (name) => themeResolver.getResolvedTheme(name) ?? resolveTheme(name)
++	};
+ 	resolvers.set(backend, resolver);
+ 	return resolver;
+ }
 diff --git a/dist/index.d.ts b/dist/index.d.ts
 index 2c16007aeaa1b98a76b94bf6a4b45988b8cd3fec..ceb741da7ad1db318416af4917e6eff662202bcb 100644
 --- a/dist/index.d.ts
@@ -1649,36 +1697,3 @@ index 4dfed6bd0af6511b7325620ae78d25a8857cfa8b..ac35a5a455bfd3228c8976e4d97eba8b
  	if (hasCustomHeader) managedOptions.renderCustomHeader = noopRender;
  	if (hasGutterRenderer) managedOptions.renderGutterUtility = noopRender;
  	if (hasCodeViewHeader) managedOptions.renderCodeViewHeader = noopRender;
-diff --git a/dist/highlighter/themes/themeResolver.js b/dist/highlighter/themes/themeResolver.js
-index 3dfd135f54771d85c04807b474884938c105bca6..950312f969e26e7e901e75076034c3d94eb439bb 100644
---- a/dist/highlighter/themes/themeResolver.js
-+++ b/dist/highlighter/themes/themeResolver.js
-@@ -76,7 +76,7 @@ function createHighlightsTheme(name, raw) {
- function createDiffsThemeResolver(backend) {
- 	let resolver = resolvers.get(backend);
- 	if (resolver != null) return resolver;
--	resolver = createThemeResolver({
-+	const options = {
- 		fallbackLoader: async (name) => {
- 			if (typeof __DIFFS_WORKER__ !== "undefined" ? __DIFFS_WORKER__ : isWorkerContext()) throw new Error(`Theme "${name}" cannot be resolved from a worker context. Themes must be pre-resolved on the main thread and passed to the worker via the resolvedThemes parameter.`);
- 			const custom = customThemes.get(name);
-@@ -136,7 +136,18 @@ function createDiffsThemeResolver(backend) {
- 			if (theme.name !== name) throw new Error(`resolvedTheme: themeName: ${name} does not match theme.name: ${theme.name}`);
- 			return theme;
- 		}
--	});
-+	};
-+	const themeResolver = createThemeResolver();
-+	const resolveTheme = (name) => {
-+		themeResolver.registerThemeIfAbsent(name, async () => options.normalizeTheme(await options.fallbackLoader(name), name));
-+		return themeResolver.resolveTheme(name);
-+	};
-+	resolver = {
-+		...themeResolver,
-+		resolveTheme,
-+		resolveThemes: (names) => Promise.all(names.map(resolveTheme)),
-+		getResolvedOrResolveTheme: (name) => themeResolver.getResolvedTheme(name) ?? resolveTheme(name)
-+	};
- 	resolvers.set(backend, resolver);
- 	return resolver;
- }

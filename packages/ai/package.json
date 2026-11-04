@@ -161,16 +161,16 @@
     "build:package": "bun ../../scripts/sdk-packages.mjs build ai"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^1.0.0",
-    "@google/genai": "^2.30.0",
+    "@anthropic-ai/sdk": "~1.2.0",
+    "@google/genai": "^2.32.0",
     "@nyte-ai/schema": "workspace:*",
-    "openai": "^7.41.0",
+    "openai": "^7.47.0",
     "partial-json": "^0.1.7",
-    "typebox": "^1.4.2"
+    "typebox": "^1.4.3"
   },
   "devDependencies": {
-    "@types/node": "^26.6.5",
-    "vitest": "^5.0.5"
+    "@types/node": "^26.6.6",
+    "vitest": "^5.1.0"
   },
   "engines": {
     "node": ">=26.4.0"

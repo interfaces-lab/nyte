@@ -26,11 +26,11 @@
     "@nyte-ai/protocol": "workspace:*",
     "@nyte-ai/schema": "workspace:*",
     "@nyte-ai/sdk": "workspace:*",
-    "typebox": "^1.4.2"
+    "typebox": "^1.4.3"
   },
   "devDependencies": {
-    "@types/node": "^26.6.5",
-    "vitest": "^5.0.5"
+    "@types/node": "^26.6.6",
+    "vitest": "^5.1.0"
   },
   "engines": {
     "node": ">=26.4.0"

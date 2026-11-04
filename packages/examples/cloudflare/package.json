@@ -15,11 +15,11 @@
     "@nyte-ai/host": "workspace:*",
     "@nyte-ai/protocol": "workspace:*",
     "@nyte-ai/schema": "workspace:*",
-    "typebox": "^1.4.2"
+    "typebox": "^1.4.3"
   },
   "devDependencies": {
-    "@types/node": "^26.6.5",
-    "vitest": "^5.0.5",
-    "wrangler": "^4.151.3"
+    "@types/node": "^26.6.6",
+    "vitest": "^5.1.0",
+    "wrangler": "^4.157.0"
   }
 }

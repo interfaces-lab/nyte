@@ -11,12 +11,12 @@
   "dependencies": {
     "@nyte-ai/plugin": "workspace:*",
     "@nyte-ai/sdk": "workspace:*",
-    "@opentui/core": "^0.6.6",
-    "@opentui/solid": "^0.6.6",
-    "solid-js": "^1.9.17"
+    "@opentui/core": "^0.8.2",
+    "@opentui/solid": "^0.8.2",
+    "solid-js": "^1.9.18"
   },
   "devDependencies": {
-    "@types/bun": "^1.4.3",
-    "@types/node": "^26.6.5"
+    "@types/bun": "^1.4.4",
+    "@types/node": "^26.6.6"
   }
 }

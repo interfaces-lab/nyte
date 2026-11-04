@@ -18,17 +18,17 @@
     "dev:desktop": "pnpm --filter @nyte-ai/desktop dev",
     "format": "oxfmt --check",
     "format:fix": "oxfmt .",
-    "lint": "oxlint . && node scripts/check-agents.mjs",
+    "lint": "oxlint . && node scripts/check-agents.mjs && node scripts/check-layers.mjs && node scripts/check-cycles.mjs",
     "lint:fix": "oxlint --fix .",
     "knip": "pnpm dlx knip@6.41.0",
     "cycles": "node scripts/check-cycles.mjs",
     "layers": "node scripts/check-layers.mjs",
     "operations": "node scripts/check-operations.ts",
     "trace": "node scripts/trace.mjs",
+    "guidance": "node scripts/guidance.mjs",
     "models:generate": "turbo models:generate --filter=@nyte-ai/ai",
     "docs:dep": "node scripts/dependency-docs.mjs",
-    "docs:dep:test": "node --test scripts/dependency-docs.test.mjs",
-    "icons:test": "node --test scripts/icons.test.mjs",
+    "test:scripts": "node --test 'scripts/**/*.test.mjs'",
     "profile:test": "node scripts/profile-test.mjs",
     "e2e": "pnpm --dir packages/app e2e",
     "e2e:desktop": "pnpm --dir packages/desktop e2e",
@@ -50,9 +50,9 @@
     "@shadcn/lint": "^0.2.3",
     "@types/node": "^26.6.5",
     "@typescript/native": "catalog:",
-    "oxfmt": "^0.74.0",
-    "oxlint": "^1.89.0",
-    "oxlint-tsgolint": "^7.0.2004",
+    "oxfmt": "^0.76.0",
+    "oxlint": "~1.89.0",
+    "oxlint-tsgolint": "^7.0.2005",
     "turbo": "^2.11.10",
     "typescript": "catalog:"
   },
@@ -73,7 +73,7 @@
       "@nyte-ai/example-vercel"
     ]
   },
-  "packageManager": "pnpm@12.14.0",
+  "packageManager": "pnpm@12.16.1",
   "intent": {
     "skills": [
       "@tanstack/*"

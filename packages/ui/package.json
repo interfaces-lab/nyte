@@ -250,9 +250,9 @@
     "@shadcn/react": "^0.3.1",
     "@stylexjs/stylex": "^0.19.1",
     "class-variance-authority": "^0.7.1",
-    "cn": "^0.5.0",
-    "lucide-react": "^1.61.0",
-    "motion": "^14.5.0",
+    "cn": "^0.5.2",
+    "lucide-react": "^1.67.0",
+    "motion": "^14.9.0",
     "simple-icons": "^16.36.0"
   },
   "devDependencies": {
@@ -268,7 +268,7 @@
     "react-dom": "^19.3.1"
   },
   "optionalDependencies": {
-    "central-icons": "npm:@central-icons-react/round-outlined-radius-2-stroke-1.5@^1.2.19",
-    "central-icons-filled": "npm:@central-icons-react/round-filled-radius-2-stroke-1.5@^1.2.19"
+    "central-icons": "npm:@central-icons-react/round-outlined-radius-2-stroke-1.5@^1.2.27",
+    "central-icons-filled": "npm:@central-icons-react/round-filled-radius-2-stroke-1.5@^1.2.27"
   }
 }
