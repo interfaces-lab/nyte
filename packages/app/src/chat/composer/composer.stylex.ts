@@ -11,7 +11,6 @@ import {
   row,
   space,
   target,
-  toast,
 } from "@nyte-ai/ui/styles/schema.stylex";
 import { conversation, pane, tray } from "../../theme/schema.stylex.ts";
 import { appearance, motion, role, shadow, type } from "@nyte-ai/ui/styles/vars.stylex";
@@ -207,8 +206,6 @@ export const composerStyles = create({
     fontSize: type.fontSm,
     lineHeight: type.leadingSm,
   },
-  /** On whatever is stacked on the composer, so toasts clear its trays too. */
-  toastAnchor: { anchorName: toast.anchor },
   frame: {
     position: "relative",
     display: "flex",

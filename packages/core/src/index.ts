@@ -13,6 +13,8 @@ export type {
   ModelsApi,
   OpenOptions,
   OperationsApi,
+  Project,
+  Projects,
   PluginDirectory,
   PluginFile,
   PluginStorage,

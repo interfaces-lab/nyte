@@ -76,7 +76,7 @@ function stackItems(patch: string, changed: number): readonly ChangesStackItem[]
       path: PATH,
       patch,
       digest,
-      files: parsePatchFiles(patch, digest).flatMap((parsed) => parsed.files),
+      files: parsePatchFiles(patch, { cacheKeyPrefix: digest }).flatMap((parsed) => parsed.files),
       stat: { kind: "text", added: changed, removed: changed },
     },
   ];

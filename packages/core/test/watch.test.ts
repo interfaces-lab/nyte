@@ -41,6 +41,7 @@ async function createMemoryKernel(): Promise<Kernel> {
       settings: [],
       views: [],
       defaultWorkspace: null,
+      projects: [],
     }),
   });
 }
@@ -363,6 +364,7 @@ describe("watch", () => {
       settings: [],
       views: [],
       defaultWorkspace: null,
+      projects: [],
       authority,
     });
 

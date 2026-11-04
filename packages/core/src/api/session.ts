@@ -10,6 +10,8 @@ import type {
   Paged,
   ParentFilter,
   PrincipalId,
+  ProjectId,
+  RefUpdate,
   RemoveSessionOutcome,
   RunId,
   SessionId,
@@ -24,8 +26,10 @@ import type { Kernel } from "../contract/kernel.ts";
 import type { Part, PartDefinition } from "../contract/parts.ts";
 import { decodeSeenRecord, decodeSessionRecord } from "../contract/records.ts";
 import type { HeadRecord, RunRecord, SessionRecord } from "../contract/records.ts";
+import type { Found } from "../store/session.ts";
 import type { Head, Session, Sessions } from "../contract/session.ts";
 import { admitDeciding } from "../engine/admission.ts";
+import { joinableProject, leadUpdate, publishProjects, requireProject } from "./projects.ts";
 import { refusalError, staticContributions } from "../engine/contributions.ts";
 import { recordAcquisition } from "../engine/durable.ts";
 import { stopRun } from "../engine/fence.ts";
@@ -208,6 +212,7 @@ async function describeSession(
     activation: kernel.sessions.activation(id),
     heads,
     ...(record.side === true ? { side: true } : {}),
+    project: record.project,
     createdAt: record.createdAt,
     lastActivityAt: record.lastActivityAt,
     ...(record.mcp === undefined ? {} : { mcp: record.mcp }),
@@ -310,6 +315,7 @@ async function start(
     ...(input.isolation === undefined ? {} : { isolation: input.isolation }),
     ...(input.contextFiles === undefined ? {} : { contextFiles: input.contextFiles }),
     ...(input.side === undefined ? {} : { side: input.side }),
+    ...(input.project === undefined ? {} : { project: input.project }),
   });
 
   const trace = (origin === null ? null : followedTrace(origin.session)) ?? receipt;
@@ -337,6 +343,14 @@ async function start(
 
       if ((await kernel.store.refs.get(workspaceRef(named))) === null)
         throw new SdkError("unknown", `Workspace ${named} is not registered on this host.`);
+
+      const joined =
+        input.project === undefined ? null : await joinableProject(kernel, input.project, named);
+
+      const project =
+        input.side === true ? undefined : (joined?.record.id ?? parent?.record.project);
+
+      const leads = joined !== null && parent === null && joined.record.lead === null;
 
       const mcp =
         context.mcp ??
@@ -377,9 +391,11 @@ async function start(
         ...(input.contextFiles === undefined ? {} : { contextFiles: input.contextFiles }),
         ...(mcp === undefined ? {} : { mcp }),
         ...(input.side === undefined ? {} : { side: input.side }),
+        ...(project === undefined ? {} : { project }),
       };
 
       const outcome = await commit(kernel, [
+        ...(leads ? [await leadUpdate(kernel, joined, id)] : []),
         {
           name: sessionRef(id),
           target: await put(kernel.store, "session", record, at),
@@ -398,18 +414,22 @@ async function start(
         })),
       ]);
 
-      return outcome.kind === "set" ? selected : STALE;
+      return outcome.kind === "set" ? { selected, leads } : STALE;
     });
 
     await releaseStart(kernel, context, id);
 
+    if (chosen?.leads === true) await publishProjects(kernel);
+
+    const selected = chosen?.selected ?? null;
+
     if (
-      chosen !== null &&
+      selected !== null &&
       context !== CORE_CONTEXT &&
       origin === null &&
       context.authority.has("owner")
     )
-      await kernel.rememberChoice(chosen, "model");
+      await kernel.rememberChoice(selected, "model");
 
     return id;
   });
@@ -473,7 +493,9 @@ async function update(
         return { outcome: { kind: "unknown-workspace" }, moved: null };
     }
 
-    const record: SessionRecord = {
+    const joining = await projectMove(kernel, found, patch.project, workspace);
+
+    const kept: SessionRecord = {
       ...found.record,
       name: patch.name === undefined ? found.record.name : patch.name,
       pinned: patch.pinned ?? found.record.pinned,
@@ -481,15 +503,19 @@ async function update(
       workspace,
     };
 
+    const record = joining === null ? kept : placeInProject(kept, joining.project);
+
     if (
       record.name === found.record.name &&
       record.pinned === found.record.pinned &&
       record.archived === found.record.archived &&
-      !moving
+      !moving &&
+      joining === null
     )
       return { outcome: { kind: "updated" }, moved: null };
 
     const written = await commit(kernel, [
+      ...(joining?.lead === undefined ? [] : [joining.lead]),
       {
         name: sessionRef(session),
         target: await put(kernel.store, "session", record),
@@ -503,6 +529,8 @@ async function update(
       : STALE;
   });
 
+  if (patch.project !== undefined) await publishProjects(kernel);
+
   if (moved !== null) {
     await kernel.environments.detach(session);
     await Promise.allSettled([kernel.plugins.reload(session)]);
@@ -510,6 +538,46 @@ async function update(
   }
 
   return outcome;
+}
+
+/** `record` in `project`, or in none with the key gone: a stored record never holds `undefined`. */
+function placeInProject(record: SessionRecord, project: ProjectId | null): SessionRecord {
+  if (project !== null) return { ...record, project };
+  const copy: Mutable<SessionRecord> = { ...record };
+  delete copy.project;
+
+  return copy;
+}
+
+type Mutable<T> = { -readonly [K in keyof T]: T[K] };
+
+/**
+ * What moving `found` to `target` writes: null when it stays where it is, else the project it
+ * ends in (null for none) and, when it becomes the lead of a project with none, that write. A
+ * project's lead can't leave it, so its record never names a lead outside it.
+ */
+async function projectMove(
+  kernel: Kernel,
+  found: Found<SessionRecord>,
+  target: ProjectId | null | undefined,
+  workspace: WorkspaceId,
+): Promise<{ readonly project: ProjectId | null; readonly lead?: RefUpdate } | null> {
+  const current = found.record.project ?? null;
+
+  if (target === undefined || target === current) return null;
+
+  if (current !== null && (await requireProject(kernel, current)).record.lead === found.record.id)
+    throw new SdkError(
+      "invalid",
+      "A project's lead chat stays in it. Archive the project instead.",
+    );
+
+  if (target === null) return { project: null };
+  const joined = await joinableProject(kernel, target, workspace);
+
+  return joined.record.lead === null && found.record.parent === null
+    ? { project: target, lead: await leadUpdate(kernel, joined, found.record.id) }
+    : { project: target };
 }
 
 async function remove(

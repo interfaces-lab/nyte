@@ -74,7 +74,7 @@
     "@nyte-ai/sdk": "workspace:*",
     "@nyte-ai/ui": "workspace:*",
     "@nyte-ai/vt": "workspace:*",
-    "@pierre/diffs": "1.6.2",
+    "@pierre/diffs": "1.6.4",
     "@pierre/highlights": "^0.4.0",
     "@pierre/trees": "^1.0.0-beta.6",
     "@stylexjs/stylex": "^0.19.1",

@@ -1,6 +1,6 @@
 ---
 title: session.update
-description: Renames, pins, archives or moves a session to another workspace.
+description: Renames, pins, archives or moves a session to another workspace or project.
 ---
 
 Changes a session's name, pinned or archived flag, or moves it to another workspace. A field left
@@ -10,6 +10,10 @@ without writing.
 Moving to another workspace answers `busy` with the live runs while any run is live, and
 `unknown-workspace` when the workspace isn't registered. After a move, the session's environment
 detaches, its plugins reload, and a worktree it ran in is released.
+
+`project` moves the session into a project, or out of one with `null`. The project must work in the
+session's folder, or the folder its worktree came from, and not be archived. A top-level chat that
+joins a project with no lead becomes its lead in the same write. A project's lead can't leave it.
 
 ## When to call it
 
@@ -83,6 +87,16 @@ Response:
         },
         "workspace": {
           "type": "string"
+        },
+        "project": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       }
     }

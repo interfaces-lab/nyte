@@ -30,6 +30,7 @@ const LAYERS = [
     "customize",
     "account",
     "panes",
+    "projects",
     "tabs",
     "window",
   ],

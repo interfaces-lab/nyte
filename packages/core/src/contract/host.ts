@@ -41,6 +41,10 @@ import type {
   Seq,
   SessionCatalogView,
   SessionEvent,
+  ProjectId,
+  ProjectInfo,
+  ProjectInput,
+  ProjectPatch,
   SessionId,
   SettingOutcome,
   ValidationIssue,
@@ -200,8 +204,12 @@ export interface Connection {
   readonly credential: CredentialSource;
   readonly sessions: Sessions;
   readonly workspaces: Workspaces;
+  /** The host's projects; `watch()` lists them. */
+  readonly projects: Projects;
 
   session(id: SessionId): Session;
+
+  project(id: ProjectId): Project;
 
   workspace(id: WorkspaceId): Workspace;
 
@@ -220,6 +228,18 @@ export interface Connection {
   close(): Promise<void>;
 
   [Symbol.asyncDispose](): Promise<void>;
+}
+
+export interface Projects {
+  /** Creates a project in a registered workspace. Its lead is the first top-level chat started in it. */
+  create(input: ProjectInput): Promise<ProjectInfo>;
+}
+
+export interface Project {
+  readonly id: ProjectId;
+
+  /** Applies `patch` by compare-and-set and returns the project as stored; an unknown project throws `SdkError("unknown")`. */
+  update(patch: ProjectPatch): Promise<ProjectInfo>;
 }
 
 export interface CatalogsApi {
@@ -389,7 +409,7 @@ export interface Listener {
 
 export type HostViewFields = Pick<
   HostView,
-  "catalog" | "plugins" | "settings" | "views" | "defaultWorkspace" | "tailnet"
+  "catalog" | "plugins" | "settings" | "views" | "defaultWorkspace" | "tailnet" | "projects"
 >;
 
 export type ViewBuild =

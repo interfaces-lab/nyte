@@ -7,7 +7,7 @@ const KIB = 1_024;
 const budgets = {
   main: 680 * KIB,
   preload: 8 * KIB,
-  renderer: 3_365 * KIB,
+  renderer: 3_380 * KIB,
   css: 290 * KIB,
 };
 

@@ -257,6 +257,12 @@ export const sidebarStyles = create({
     lineHeight: type.leadingXs,
     letterSpacing: 0.07,
   },
+  subagentCount: {
+    gap: space.s0_5,
+    color: "var(--_row-meta-color)",
+    fontSize: type.fontXs,
+    lineHeight: type.leadingXs,
+  },
   rowActionsBesideMeta: {
     positionAnchor: "--nyte-row-time",
     insetInlineEnd: `calc(anchor(start) + ${sidebar.rowGap})`,
@@ -271,6 +277,17 @@ export const sidebarStyles = create({
     opacity: 0.65,
     userSelect: "none",
     WebkitUserDrag: "none",
+  },
+  /** A project's block outlines while a chat is dragged and fills under the pointer. */
+  projectDrop: {
+    borderRadius: radius.control,
+    transitionProperty: "background-color, box-shadow",
+    transitionDuration: motion.durationFast,
+  },
+  projectDropReady: { boxShadow: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}` },
+  projectDropActive: {
+    backgroundColor: role.bgInteractivePrimaryTranslucent,
+    boxShadow: `inset 0 0 0 1px ${role.contentInteractivePrimary}`,
   },
   sessionList: {
     display: { default: "flex", "[hidden]": "none" },

@@ -17,6 +17,7 @@ import {
   PartStatusType,
   PlacementType,
   PositionType,
+  ProjectInfoType,
   PromptOverrideType,
   RunEndType,
   RunViewType,
@@ -38,6 +39,7 @@ import type {
   PartStatus,
   Placement,
   Position,
+  ProjectInfo,
   PromptOverride,
   RunEnd,
   RunView,
@@ -107,6 +109,8 @@ const SessionRecordType = record({
   mcp: Type.Optional(typed<McpCeiling>()(McpCeilingType)),
   /** `true` for a side chat of `parent` (`Sessions.start`): it never reports to its parent or counts as its background work. */
   side: Type.Optional(Type.Literal(true)),
+  /** The project the session works in; a child starts in its parent's. Absent for a session in none. */
+  project: Type.Optional(idSchema<"project">()),
 });
 
 export type SessionRecord = Static<typeof SessionRecordType>;
@@ -260,6 +264,11 @@ const WorkspaceRecordType = record({
 
 export type WorkspaceRecord = Static<typeof WorkspaceRecordType>;
 
+/** A project (`projects/<id>`), stored as clients see it. */
+const ProjectRecordType = typed<ProjectInfo>()(ProjectInfoType);
+
+export type ProjectRecord = ProjectInfo;
+
 const TrustRecordType = record({
   target: typed<WorkspaceTarget>()(WorkspaceTargetType),
   trusted: Type.Boolean(),
@@ -346,7 +355,8 @@ export type RecordKind =
   | "principals"
   | "identity"
   | "prompt"
-  | "catalog";
+  | "catalog"
+  | "project";
 
 export const STORED_RECORD_TYPES = {
   session: SessionRecordType,
@@ -366,6 +376,7 @@ export const STORED_RECORD_TYPES = {
   identity: HostIdentityType,
   prompt: PromptRecordType,
   catalog: CatalogRecordType,
+  project: ProjectRecordType,
 } satisfies Record<Exclude<RecordKind, "kv">, TSchema>;
 
 type Decode<T> = (object: Json | null) => T | null;
@@ -409,6 +420,8 @@ export const decodeProcessRecord: Decode<ProcessRecord> = decoder("process", Pro
 export const decodeJobRecord: Decode<JobRecord> = decoder("job", JobRecordType);
 
 export const decodeHostIdentity: Decode<HostIdentity> = decoder("identity", HostIdentityType);
+
+export const decodeProjectRecord: Decode<ProjectRecord> = decoder("project", ProjectRecordType);
 
 export const decodePromptRecord: Decode<PromptRecord> = decoder("prompt", PromptRecordType);
 
