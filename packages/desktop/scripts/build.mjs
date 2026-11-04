@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join, relative } from "node:path";
 import { restoreDesktopAssets } from "./assets.mjs";
@@ -26,7 +26,24 @@ const packageIndex = args.findIndex((argument) => argument === "--package");
 
 const shouldPackage = packageIndex !== -1;
 
-const builderArgs = shouldPackage ? args.slice(packageIndex + 1) : [];
+const PLATFORM_FLAGS = new Set([
+  "--mac",
+  "--macos",
+  "-m",
+  "-o",
+  "--linux",
+  "-l",
+  "--win",
+  "--windows",
+  "-w",
+]);
+
+const requestedBuilderArgs = shouldPackage ? args.slice(packageIndex + 1) : [];
+
+const builderArgs =
+  shouldPackage && !requestedBuilderArgs.some((argument) => PLATFORM_FLAGS.has(argument))
+    ? [...requestedBuilderArgs, ...hostDesktopFlags()]
+    : requestedBuilderArgs;
 
 const assetsIndex = args.findIndex((argument) => argument === "--assets");
 
@@ -114,7 +131,7 @@ for (const name of ["nyte", "nyte-tailnet"])
 
 if (shouldPackage) {
   stages.push({
-    title: `Package ${builderArgs.length > 0 ? builderArgs.join(" ") : "for this platform"}`,
+    title: `Package ${builderArgs.join(" ")}`,
     tail: true,
     run: () =>
       pnpm("exec", "electron-builder", "--config", "electron-builder.config.ts", ...builderArgs),
@@ -164,6 +181,22 @@ if (shouldPackage) {
   ]);
 
   process.stdout.write(table(rows, { align: ["left", "right"] }));
+}
+
+/** Packages for the machine it runs on unless a platform flag picks another, as a release does. */
+function hostDesktopFlags() {
+  const result = spawnSync(
+    process.execPath,
+    [join(desktopRoot, "..", "..", "scripts", "release-targets.mjs"), "desktop"],
+    { encoding: "utf8" },
+  );
+
+  if (result.status !== 0) {
+    failure(result.stderr.trim());
+    process.exit(2);
+  }
+
+  return result.stdout.trim().split(" ");
 }
 
 function node(script, ...rest) {

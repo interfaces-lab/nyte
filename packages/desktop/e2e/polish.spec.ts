@@ -26,6 +26,14 @@ const JUDGED = LABEL === "after";
 
 const RECONNECT_PROMPT = "Are you still there?";
 
+/** The window buttons and the titlebar both snap to whole points, so half a point is as close as they get. */
+const TRAFFIC_LIGHT_TOLERANCE = 0.5;
+
+/** The window buttons are 14pt tall from macOS 26 and sit in a 16pt frame before it. */
+function windowButtonHeight(macOS: string): number {
+  return Number.parseFloat(macOS) >= 26 ? 14 : 16;
+}
+
 const LONG_PROMPT = "/long 80";
 
 interface Shown {
@@ -336,6 +344,32 @@ test(`polish evidence (${LABEL}) for scenarios U and D`, async () => {
     run.notes["traffic lights"] = await desktop.application.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows().map((window) => window.getWindowButtonPosition()),
     );
+
+    const toggle = await page.getByRole("button", { name: /^(Hide|Show) sidebar$/u }).boundingBox();
+
+    const buttons = await desktop.application.evaluate(({ BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows()[0];
+
+      return {
+        position: window?.getWindowButtonPosition(),
+        zoom: window?.webContents.getZoomFactor() ?? 1,
+        macOS: process.getSystemVersion(),
+      };
+    });
+
+    const buttonHeight = windowButtonHeight(buttons.macOS);
+
+    const centers = {
+      trafficLights: (buttons.position?.y ?? Number.NaN) + buttonHeight / 2,
+      sidebarToggle: toggle === null ? Number.NaN : (toggle.y + toggle.height / 2) * buttons.zoom,
+    };
+
+    run.notes["traffic light and sidebar toggle centers"] = centers;
+
+    if (JUDGED)
+      expect(Math.abs(centers.trafficLights - centers.sidebarToggle)).toBeLessThanOrEqual(
+        TRAFFIC_LIGHT_TOLERANCE,
+      );
   });
 
   await phase(

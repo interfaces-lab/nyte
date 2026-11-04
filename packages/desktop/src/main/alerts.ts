@@ -24,9 +24,10 @@ type WindowState =
 const KEPT_NOTIFICATIONS = 100;
 
 /**
- * Posts what the host decided deserves your attention: system notifications that open their
- * chat when clicked, the Dock badge, and a Dock bounce that stops once you switch to Nyte.
- * Knows which chat each window shows, so it can stay quiet about the one you're looking at.
+ * Posts what the host decided deserves your attention: a toast in the window you're using while
+ * Nyte is in front, a system notification that opens its chat when it isn't, the Dock badge, and a
+ * Dock bounce that stops once you switch to Nyte. Knows which chat each window shows, so it can
+ * stay quiet about the one you're looking at.
  */
 export class Alerts {
   readonly #settings: () => DesktopSettings;
@@ -51,10 +52,7 @@ export class Alerts {
     )
       return;
 
-    if (delivery.notify)
-      this.#post({ title: delivery.title, body: delivery.body, silent: !delivery.sound }, () =>
-        this.#openChat(delivery.session),
-      );
+    if (delivery.notify) this.#tell(focused, delivery);
 
     if (!delivery.bounce || focused !== undefined || app.dock === undefined) return;
     this.#stopBounce();
@@ -94,6 +92,25 @@ export class Alerts {
 
   release(window: HostWindow): void {
     this.#windowStates.delete(window);
+  }
+
+  /** A window that has loaded shows it as a toast; otherwise the system says it. */
+  #tell(focused: HostWindow | undefined, delivery: AttentionDelivery): void {
+    if (focused !== undefined && this.#windowStates.get(focused)?.kind === "ready") {
+      this.#windows.send(focused, {
+        kind: "chat_alert",
+        session: delivery.session,
+        state: delivery.state,
+        title: delivery.title,
+        body: delivery.body,
+      });
+
+      return;
+    }
+
+    this.#post({ title: delivery.title, body: delivery.body, silent: !delivery.sound }, () =>
+      this.#openChat(delivery.session),
+    );
   }
 
   #viewed(window: HostWindow): string | null | undefined {

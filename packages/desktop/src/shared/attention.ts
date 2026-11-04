@@ -29,6 +29,8 @@ export type AttentionSeen = ReadonlyMap<SessionId, Tracked>;
 
 export interface AttentionDelivery {
   readonly session: SessionId;
+  /** Why it alerts: waiting on you, finished, or failed. */
+  readonly state: AlertState;
   readonly title: string;
   readonly body: string;
   readonly notify: boolean;
@@ -125,6 +127,7 @@ function deliver(
 
   return {
     session: session.id,
+    state: status.alert,
     title: session.name ?? "New chat",
     body: status.body,
     notify: reach.includes("notification"),

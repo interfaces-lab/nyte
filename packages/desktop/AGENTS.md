@@ -1,15 +1,15 @@
 # Desktop
 
-Fonts and loading indicators follow the Fonts and Loading indicators sections of
-`packages/app/AGENTS.md`.
+Fonts and loading indicators follow the Fonts and Loading indicators sections of the app
+package's AGENTS.md.
 
 - Preserve the Electron main/preload/renderer boundary. Session behavior belongs in core.
 - Ask for workspace trust once; child tasks inherit it. Extra approval checks belong
   in plugins. Keep API/IPC input validation.
 - Background agents get no ask-question tool.
 - Use Electron and Node APIs, not Bun-only APIs. Keep desktop-owned imports static.
-  Clerk is the sole opt-in renderer entry: load it only for an account command,
-  never from the workspace startup graph.
+  The `account` deferred entry (Clerk) is the desktop's only one: `loadDeferred("account")`
+  loads it for an account command, never from the workspace startup graph.
 - Use Vitest for state, host, and IPC behavior with real local fixtures where possible.
 - Tests follow the Testing section of the root `AGENTS.md`. Here, packaging, installer, IPC validation, credential and store tests are contracts: one table across channels, not one test per channel.
 - Test IPC through the raw message the renderer sends (channel and payload), not through a typed client.
