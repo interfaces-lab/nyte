@@ -1,0 +1,147 @@
+---
+title: Print mode
+description: Send one prompt with nyte -p, stream the answer to stdout, and script around its JSON output and exit codes.
+---
+
+Print mode sends one prompt, streams the answer, and exits. Use it in scripts, git hooks, CI jobs,
+or anywhere you'd pipe a command.
+
+```sh
+nyte -p "Summarize what changed in the last commit"
+```
+
+The agent works in the current folder, the same as in the [interactive client](/docs/cli). Each
+run is a saved chat, so you can open it afterwards or send it another prompt.
+
+## When print mode starts [#when]
+
+Any of these selects print mode:
+
+- `-p` (`--print`), `--json` or `-q` (`--quiet`)
+- stdin isn't a terminal, for example `git diff | nyte`
+- stdout isn't a terminal and you gave a prompt, for example `nyte "explain this repo" > notes.md`
+
+## The prompt [#prompt]
+
+The words after the flags are the prompt, joined with spaces. Without them, `nyte` reads the prompt
+from stdin and drops one trailing newline:
+
+```sh
+git diff --staged | nyte -p
+nyte -p < prompt.md
+```
+
+When you give a prompt, `nyte` doesn't read stdin. To send instructions and piped input together,
+put both on stdin. An empty prompt exits with 1 and the code `input_empty`.
+
+## Continue a chat [#continue]
+
+| Command                                   | Where the prompt goes                                   |
+| ----------------------------------------- | ------------------------------------------------------- |
+| `nyte -p "prompt"`                        | A new chat in the current folder                        |
+| `nyte -p --resume "prompt"`               | The chat with the most recent activity, from any folder |
+| `nyte -p --session <session-id> "prompt"` | That chat                                               |
+
+In print mode `--resume` takes no session id: the text after it is the prompt. Use `--session` to
+name a chat.
+
+The [flags](/docs/cli#flags) `--model`, `--provider`, `--effort`, `--trust`, `--no-trust`,
+`--no-context-files` and `--host-url` work here too. `--model` also becomes your default model for
+later chats.
+
+## Output [#output]
+
+The answer streams to stdout. stderr gets the name of each tool the agent calls, then a last line
+with the chat and how it ended, and the command that opens it:
+
+```txt
+session <session-id> · completed
+open in a terminal: nyte --session=<session-id>
+```
+
+On failure the last line is `error: <message>` instead. `--quiet` drops the tool names, so stderr
+carries only the outcome.
+
+To open the chat later and see everything the agent did, run the printed command in a terminal.
+
+## JSON output [#json]
+
+`--json` writes one JSON object per line to stdout, and nothing else:
+
+```jsonl
+{"type":"text","text":"The last commit "}
+{"type":"tool","name":"read"}
+{"type":"text","text":"renames the config loader."}
+{"type":"result","kind":"completed","code":"completed","session":"<session-id>","next":{"argv":["nyte","--session=<session-id>"],"command":"nyte --session=<session-id>"}}
+```
+
+| `type`   | Fields                                                 |
+| -------- | ------------------------------------------------------ |
+| `text`   | `text`: the next piece of the answer                   |
+| `tool`   | `name`: a tool the agent called. Absent with `--quiet` |
+| `result` | The last line. See below                               |
+
+Concatenate every `text` to get the full answer. The `result` line is always last, even when
+`nyte` fails before the chat starts:
+
+| Field     | What it holds                                                              |
+| --------- | -------------------------------------------------------------------------- |
+| `kind`    | `completed`, `aborted`, `failed`, `cancelled` or `input-required`          |
+| `code`    | A finer reason. See [result codes](#result-codes)                          |
+| `session` | The chat's id. Absent if no chat started                                   |
+| `message` | What went wrong, when `kind` is `failed`                                   |
+| `signal`  | `SIGINT`, `SIGTERM` or `SIGHUP`, when a signal cancelled the run           |
+| `next`    | The command that opens the chat, as `argv` and as a shell-quoted `command` |
+
+## Exit codes [#exit-codes]
+
+| Code  | `kind`           | Meaning                                                                         |
+| ----- | ---------------- | ------------------------------------------------------------------------------- |
+| `0`   | `completed`      | The agent finished                                                              |
+| `1`   | `failed`         | The run failed, or `nyte` couldn't start it                                     |
+| `2`   | `input-required` | The agent asked you a question. `nyte` stopped the run. Open the chat to answer |
+| `130` | `aborted`        | The run was stopped from elsewhere, for example from another client             |
+| `130` | `cancelled`      | You pressed Ctrl+C. `SIGTERM` exits with `143` and `SIGHUP` with `129`          |
+
+A signal stops the agent's run before `nyte` exits, so nothing keeps working after your script
+moves on.
+
+## Result codes [#result-codes]
+
+| `code`            | When                                                                                  |
+| ----------------- | ------------------------------------------------------------------------------------- |
+| `completed`       | The agent finished                                                                    |
+| `aborted`         | The run was stopped from elsewhere                                                    |
+| `input_required`  | The agent asked a question                                                            |
+| `local_cancelled` | A signal cancelled the run                                                            |
+| `run_failed`      | The run failed, for example because the provider returned an error                    |
+| `delivery_failed` | Streaming broke, or the answer changed after `nyte` printed part of it. Open the chat |
+| `input_empty`     | No prompt was given and stdin was empty                                               |
+| `startup_failed`  | `nyte` couldn't start: a bad flag, no usable model, an unknown session id             |
+| `cleanup_failed`  | The run ended but `nyte` couldn't shut down cleanly                                   |
+
+## Examples [#examples]
+
+Review staged changes before committing:
+
+```sh
+{ echo "Review this diff. List bugs only."; git diff --staged; } | nyte -p -q > review.md
+```
+
+Check the outcome in a script:
+
+```sh
+nyte -p --json "Run the tests and fix any failure" > run.jsonl
+status=$?
+if [ "$status" -eq 2 ]; then
+  echo "The agent has a question. Open the chat:"
+  tail -n 1 run.jsonl | jq -r '.next.command'
+fi
+```
+
+Ask a follow-up in the same chat:
+
+```sh
+nyte -p "Find why the date test is flaky"
+nyte -p --resume "Now add a regression test"
+```

@@ -1,0 +1,84 @@
+---
+title: Context files
+description: Give agents standing instructions with AGENTS.md, and replace or extend the system prompt.
+---
+
+A context file holds instructions every chat should follow: how to run the tests, which package
+manager to use, what not to touch. Write it once as `AGENTS.md` and Nyte adds it to the system
+prompt of every chat in that folder.
+
+## Where Nyte looks [#lookup]
+
+Nyte reads one context file from each of these folders, in this order:
+
+1. `~/.nyte`, for instructions you want everywhere.
+2. Each folder above the chat's folder, starting from `/`.
+3. The chat's folder.
+
+The model reads them in that order and is told that later files are more specific. A monorepo can
+keep shared rules in its root `AGENTS.md` and package rules next to each package, and a chat opened
+in a package gets both.
+
+In each folder, Nyte takes the first of these names that exists:
+
+1. `AGENTS.override.md`
+2. `AGENTS.md`
+3. `AGENTS.MD`
+4. `CLAUDE.md`
+5. `CLAUDE.MD`
+
+So a folder with both `AGENTS.md` and `CLAUDE.md` contributes only `AGENTS.md`. To use your own
+instructions in a folder without editing its shared `AGENTS.md`, write `AGENTS.override.md` next to
+it. Nyte reads it instead.
+
+A file reached twice, through a symlink or because `~/.nyte` sits above the folder, loads once. In a
+git worktree nested inside its main checkout, the main checkout's file is left out, since the
+worktree has its own copy of it.
+
+## When changes apply [#updates]
+
+Nyte reads the files again before each model request. Save an edit, and the agent's next request
+carries it, even mid-task.
+
+Context files load in every folder, [trusted](/docs/configure/trust) or not.
+
+## Start a chat without them [#turn-off]
+
+A chat can skip context files entirely: the one in `~/.nyte`, the ones above the folder, and the
+folder's own. The choice is made when the chat starts and kept for good.
+
+From the terminal, `--no-context-files` starts new chats without them:
+
+```sh
+nyte --no-context-files
+```
+
+From the SDK, pass `contextFiles: false` to `sessions.start`:
+
+```ts
+const { session } = await host.sessions.start({
+  content: "Explain this folder without house rules",
+  contextFiles: false,
+});
+```
+
+## Replace or extend the system prompt [#system-prompt]
+
+Two more files change the system prompt itself. Nyte reads each from `~/.nyte` and from the
+folder's `.nyte`, and the folder's copy wins. The folder's copies load only once you
+[trust the folder](/docs/configure/trust).
+
+| File               | What it does                                  |
+| ------------------ | --------------------------------------------- |
+| `SYSTEM.md`        | Replaces Nyte's system prompt                 |
+| `APPEND_SYSTEM.md` | Adds its text to the end of the system prompt |
+
+`SYSTEM.md` replaces all of it: Nyte's built-in instructions, the context files, the lists of
+[skills](/docs/configure/skills) and [MCP servers](/docs/configure/mcp-servers#exposure), and a
+`layer` prompt the chat started with. The agent keeps its tools, but loses the text that tells it
+about skills and MCP servers. Reach for `APPEND_SYSTEM.md` first.
+
+`contextFiles: false` doesn't turn these two off.
+
+A chat or agent started with a `prompt` of kind `"replace"` overrides both files. See the `prompt`
+input in [Send messages](/docs/sdk/guides/send-messages).

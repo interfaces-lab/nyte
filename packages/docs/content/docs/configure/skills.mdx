@@ -1,0 +1,77 @@
+---
+title: Skills
+description: Teach agents a task once, in a folder they read when the task comes up.
+---
+
+A skill is a folder with a `SKILL.md` that explains how to do one kind of task: cut a release,
+write a migration, review a design. The agent sees each skill's name and description in its system
+prompt, and reads the whole file when a task matches. A skill costs one line of context until it's
+used.
+
+## Write a skill [#write]
+
+Make a folder named after the skill, with a `SKILL.md` inside:
+
+```md title=".agents/skills/release-notes/SKILL.md"
+---
+name: release-notes
+description: Write release notes from the commits since the last tag.
+---
+
+1. Find the last tag with `git describe --tags --abbrev=0`.
+2. List the commits since then and group them by type.
+3. ...
+```
+
+| Field         | What it does                                                           |
+| ------------- | ---------------------------------------------------------------------- |
+| `name`        | The skill's name. Default, the folder's name                           |
+| `description` | When to use it. The agent decides from this line, so say when, not how |
+
+The rest of the file is yours. Files next to `SKILL.md`, such as scripts or templates, are there for
+the agent to read when the skill points to them.
+
+## Where skills live [#locations]
+
+| Folder                                        | Skills for                                                        |
+| --------------------------------------------- | ----------------------------------------------------------------- |
+| `.nyte/skills`, `.agents/skills` in a project | Chats in that project, once you [trust it](/docs/configure/trust) |
+| `~/.nyte/skills`, `~/.agents/skills`          | Every chat                                                        |
+| Paths in the `skills.paths` setting           | Every chat                                                        |
+
+Each skill is a folder directly inside one of these, holding `SKILL.md`. A symlink to a skill folder
+works too.
+
+When two skills share a name, Nyte keeps the first it finds, the project's before your own, and
+reports the other as shadowed.
+
+## Add skills from elsewhere [#paths]
+
+The `skills.paths` setting lists more places to find skills on the host's machine. An entry can
+name either of these:
+
+- A folder of skill folders, laid out like `~/.agents/skills`.
+- One Markdown file, which becomes a skill on its own. Its name defaults to the file name.
+
+Relative paths and paths starting with `~/` start from your home folder. Set it in `settings.json`
+or from the SDK; [Settings](/docs/configure/settings) shows how.
+
+```json title="~/.nyte/settings.json"
+{
+  "skills.paths": ["~/dotfiles/skills", "~/notes/deploy-checklist.md"]
+}
+```
+
+## Use a skill [#use]
+
+The agent picks a skill on its own when your request matches its description. To point it at one,
+type `/` and the skill's name in the message box. The message then tells the agent to read that
+skill and follow it.
+
+To see what a chat can use:
+
+- Desktop: **Customize > Skills** lists the project's skills and yours, with each one's file.
+- Terminal: `/skills` lists them.
+
+Nyte watches the skill folders, so a new or edited skill reaches open chats without a restart. In the
+terminal, `/reload` reloads plugins and skills on demand.

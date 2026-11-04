@@ -1,0 +1,117 @@
+---
+title: Pick a model and sign in
+description: List the models a host can use, sign in to a provider, and choose the default model.
+---
+
+Use this page to build a model picker or a sign-in screen, or to sign a fresh host in from a script.
+The host keeps the model catalog and the provider logins, so every client sees the same ones.
+
+Everything on this page except `models.list` needs owner authority. A device paired with only
+`participant` can read the catalog but can't sign in or change it.
+
+## List the models
+
+```ts
+const catalog = await connection.models.list();
+
+for (const provider of catalog.providers) {
+  console.log(
+    provider.name,
+    provider.credential,
+    provider.models.map((model) => model.ref.id),
+  );
+}
+```
+
+`catalog.default` is the model new chats use, or `null` before one is chosen. Each provider has:
+
+| Field        | What it holds                                                            |
+| ------------ | ------------------------------------------------------------------------ |
+| `id`, `name` | The provider's id, such as `openai-codex`, and its display name          |
+| `credential` | `missing`, `configured`, `verified`, `failed`, or `unknown` if unchecked |
+| `methods`    | How you can sign in: `{ kind: "oauth" }`, `{ kind: "key" }` or both      |
+| `models`     | Each model's `ref`, `name`, `thinking` levels, `contextWindow` and cost  |
+| `limits`     | Usage limits the provider reported, with `used`, `limit` and `resetsAt`  |
+
+A model is named by its `ref`, `{ provider, id }`. That's what `configure`, `setDefault` and a
+chat's `configuration` take.
+
+`list` returns what the host knows now, without waiting on the providers. To stay current, watch the
+host: its `catalog` value changes whenever the catalog does, and that's the moment to call `list`
+again.
+
+```ts
+for await (const host of connection.watch()) console.log(host.catalog);
+```
+
+## Sign in to a provider
+
+`login` starts a sign-in on the host and streams the steps your client has to show:
+
+```ts title="login.ts"
+import process from "node:process";
+import { createInterface } from "node:readline/promises";
+
+const prompt = createInterface({ input: process.stdin, output: process.stdout });
+const login = connection.models.login({ provider: "openai-codex", method: { kind: "oauth" } });
+
+for await (const step of login.steps()) {
+  if (step.kind === "open") console.log("Open", step.url, step.code ?? "");
+  if (step.kind === "paste") await login.answer(await prompt.question(`${step.message} `));
+  if (step.kind === "choose") {
+    console.log(step.options.map((option) => `${option.id}: ${option.label}`).join("\n"));
+    await login.answer(await prompt.question(`${step.message} `));
+  }
+  if (step.kind === "failed") throw new Error(step.reason);
+  if (step.kind === "done") break;
+}
+
+prompt.close();
+```
+
+| Step      | What to do                                                                   |
+| --------- | ---------------------------------------------------------------------------- |
+| `open`    | Show `url`. With a `code`, the user enters it on that page                   |
+| `paste`   | Ask for text and pass it to `answer`. Mask the input when `secret` is `true` |
+| `choose`  | Show `options` and pass the chosen option's `id` to `answer`                 |
+| `waiting` | The host is working. Show progress                                           |
+| `done`    | The login is saved on the host                                               |
+| `failed`  | Show `reason`                                                                |
+
+`method: { kind: "key" }` asks for an API key with a `paste` step instead of a browser sign-in.
+
+The browser can be on a different machine from the host, such as a phone connected to a server.
+Pass `browser: "elsewhere"` to get a device code the user enters from any browser, or
+`browser: "host"` when the browser runs on the host's machine. Without it, a provider that offers
+both asks with a `choose` step.
+
+The host saves the login, and every client of that host uses it.
+
+## Manage saved logins
+
+A provider can keep several logins. Pass `label` to `login` to name one.
+
+| Method                                    | What it does                                                |
+| ----------------------------------------- | ----------------------------------------------------------- |
+| `accounts(provider?)`                     | Lists the saved logins                                      |
+| `selectAccount(provider, account)`        | Makes one login active for later requests                   |
+| `renameAccount(provider, account, label)` | Renames a login                                             |
+| `logout(provider)`                        | Removes the active login and keeps the others               |
+| `verify(provider)`                        | Checks the credential: `verified`, `unverified` or `failed` |
+| `usage()`                                 | Reads each provider's usage against its limits              |
+
+## Choose the model
+
+```ts
+const outcome = await connection.models.setDefault({ provider: "openai-codex", id: "{{modelId}}" });
+```
+
+`setDefault` answers `set`, or `unknown-model` when the catalog has no such model. New chats start
+on the default. A chat started with a `configuration` uses that instead.
+
+To change the model of one chat, use
+[`session.configure`](/docs/sdk/guides/send-messages#change-the-model). When a person does that from a
+client, the host also makes that model the default.
+
+`setListing(refs, listing)` marks models `favorite`, `hidden` or `shown`, for a picker that puts
+favorites first and leaves hidden models out.

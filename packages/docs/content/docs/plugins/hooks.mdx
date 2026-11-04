@@ -1,0 +1,170 @@
+---
+title: Hook into a chat
+description: Run code when a chat sends a message, calls a tool or talks to the model, and change or stop what happens.
+---
+
+A hook is a function the host calls at a fixed point in a chat. Use hooks to block risky tool calls,
+add headers to model requests, rewrite tool results, or record what happened.
+
+```ts title="guard.ts"
+import type { Plugin } from "@nyte-ai/plugin/core";
+
+export default {
+  id: "guard",
+  hooks: {
+    before_tool: (call) =>
+      call.class.kind === "shell" && call.class.command.includes("git push")
+        ? { action: "reject", reason: "Pushing is off in this workspace. Ask the user to push." }
+        : { action: "continue" },
+    before_request: (request) => ({
+      ...request,
+      options: {
+        ...request.options,
+        headers: { ...request.options.headers, "x-team": "docs" },
+      },
+    }),
+    run_ended: (end, { api }) => {
+      if (end.kind === "failed")
+        api.report({ severity: "warning", path: ["run_ended"], message: end.failure.message });
+    },
+  },
+} satisfies Plugin;
+```
+
+The model gets the `reject` reason as the result of its `git push` call, so it can tell the user what
+to do instead.
+
+## Three kinds of hook [#phases]
+
+Every hook has a phase. The phase decides what your function returns.
+
+| Phase     | Returns                   | Use it to                                     |
+| --------- | ------------------------- | --------------------------------------------- |
+| Observe   | Nothing                   | React after something happens                 |
+| Transform | The value, changed or not | Change a value on its way                     |
+| Decide    | A decision                | Let something go ahead, change it, or stop it |
+
+A decision is one of:
+
+| Decision                       | Effect                                 |
+| ------------------------------ | -------------------------------------- |
+| `{ action: "continue" }`       | Go ahead unchanged                     |
+| `{ action: "modify", value }`  | Go ahead with `value` instead          |
+| `{ action: "reject", reason }` | Stop. The reason goes to whoever asked |
+| `{ action: "error", message }` | Stop because the hook itself failed    |
+
+When several plugins handle one hook, they run one after another. On the host, a transform or
+`modify` hands its value to the next handler, and the first `reject` or `error` ends the chain. In a
+client, the first decision other than `continue` ends the chain.
+
+## Core hooks [#core]
+
+Core hooks run on the host, inside a chat.
+
+| Hook                   | Phase     | Receives                                                                                                                        |
+| ---------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `session_activated`    | Observe   | `{ session }` each time the chat's plugins finish loading                                                                       |
+| `before_send`          | Decide    | The message about to join the chat: `content`, `source`, `delivery`, `replace`                                                  |
+| `run_started`          | Observe   | The run: `id`, `head`, `startedAt`, `attempt`, and `origin`, a user message or a continuation                                   |
+| `transform_transcript` | Transform | What the model will see: `messages` and `tools`                                                                                 |
+| `before_compaction`    | Transform | The compaction plan: `model`, `reason`, `instructions`, `tokensBefore`, the messages to `summarise` and to `keep`, and `result` |
+| `before_request`       | Transform | The model request: `model`, `thinking`, `step`, `attempt`, and `options` with `sampling` and `headers`                          |
+| `before_tool`          | Decide    | The tool call: `call`, `name`, `args`, `class`                                                                                  |
+| `after_tool`           | Transform | The tool's outcome: `ok` with `content`, `output` and `parts`, or `failed`, `interrupted`, `rejected`, `stopped`                |
+| `after_request`        | Observe   | `model`, `thinking`, `usage`, `durationMs` and `step` for each finished model request                                           |
+| `run_ended`            | Observe   | How the run ended: `completed` with `usage`, `stopped`, or `failed` with `failure`                                              |
+
+A few of these need more detail:
+
+- `before_send` rejecting the first message of a chat removes the new chat, and `sessions.start`
+  throws.
+- `before_tool` with `modify` changes only the call's `args`.
+- `before_compaction` can set `result` to `{ kind: "summary", text }` to write the summary itself.
+
+## Client hooks [#client]
+
+Client hooks run in a client app, through [client plugins](/docs/plugins#sides).
+
+| Hook                 | Phase   | Receives                                                                              |
+| -------------------- | ------- | ------------------------------------------------------------------------------------- |
+| `app_ready`          | Observe | `{ restored }` once the client has mounted its plugins                                |
+| `session_opened`     | Observe | `{ session }` when the user switches to a chat                                        |
+| `before_submit`      | Decide  | The draft about to be sent: `content`, `delivery`, and `session`, null for a new chat |
+| `session_closed`     | Observe | `{ session }` for the chat the user switched away from                                |
+| `run_ended_anywhere` | Observe | `{ session, run, end }` for a run that ends in any chat                               |
+| `app_closing`        | Observe | Nothing, as the app closes                                                            |
+
+```ts title="done-sound.ts"
+import type { Plugin } from "@nyte-ai/plugin/client";
+
+export default {
+  id: "done-sound",
+  hooks: {
+    run_ended_anywhere: (event, { api }) => {
+      if (event.end.kind !== "completed" || api.looking.has(event.session)) return;
+
+      api.ui.notify({ title: "Nyte", message: "A chat finished.", sound: true });
+    },
+  },
+} satisfies Plugin;
+```
+
+## What a handler gets [#context]
+
+A handler's second argument is its context:
+
+| Field     | What it is                                                     |
+| --------- | -------------------------------------------------------------- |
+| `api`     | The plugin's [API](/docs/plugins/reference#plugin-api)         |
+| `signal`  | Aborts when the handler runs out of time or the plugin unloads |
+| `session` | The chat's id, or null                                         |
+| `head`    | The branch's name, or null                                     |
+| `run`     | The run's id, or null                                          |
+
+Core decide hooks also get `wait`, `memo` and `now`, the same as a [tool call](/docs/plugins/tools#invocation).
+`wait` lets a hook wait for the user, for example for an answer to a [part](/docs/plugins/parts),
+and the wait survives a host restart. The built-in permissions plugin asks before a tool call this
+way.
+
+## Order, time limits and errors [#rules]
+
+Pass `{ order, run }` instead of a function to set the order. Lower `order` runs first, and the
+default is `0`.
+
+```ts
+hooks: {
+  before_tool: { order: -10, run: (call) => ({ action: "continue" }) },
+},
+```
+
+A core handler has 5 seconds, or 5 minutes for `before_compaction`. Waiting in a decide hook with
+`wait` doesn't count against it. A client handler's `signal` aborts after 5 seconds.
+
+When a handler throws or runs out of time:
+
+- an observe hook reports the error and the next handler runs
+- a transform hook fails the step it was changing
+- a decide hook counts as `{ action: "error" }`
+
+## Add a hook while running [#dynamic]
+
+`api.hook(name, handler)` adds a hook from `activate` and returns a function that removes it. The
+hook goes away with the plugin.
+
+```ts title="counter.ts"
+import type { Plugin } from "@nyte-ai/plugin/core";
+
+export default {
+  id: "tool-counter",
+  async activate(api) {
+    let calls = Number((await api.storage.get("calls")) ?? 0);
+
+    api.hook("after_tool", async (outcome) => {
+      calls += 1;
+      await api.storage.set("calls", calls);
+
+      return outcome;
+    });
+  },
+} satisfies Plugin;
+```

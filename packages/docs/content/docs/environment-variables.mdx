@@ -1,6 +1,6 @@
 ---
 title: Environment variables
-description: Give commands, terminals, and agents the variables your project needs, including API keys.
+description: Give commands, terminals, and agents the variables your project needs, and set the variables that change how Nyte runs.
 ---
 
 Variables you add in **Settings > Environment variables** reach every command Nyte starts in a folder: shell commands from any agent, Claude Code's included, terminals, and agents Nyte starts over ACP. They're added on top of what Nyte got from your login shell, and replace a variable of the same name.
@@ -28,3 +28,47 @@ Turn on the lock next to a value to make it secret. Names that end in `KEY`, `TO
 A command can still print a secret it receives, for example with `printenv`, and that output appears in the chat like any other.
 
 `settings.json` can't set secrets. A host that runs without a secrets key, such as a deploy without `NYTE_SECRET_KEY`, refuses them and keeps plain variables working.
+
+## Provider keys [#provider-keys]
+
+Nyte reads model provider keys from its environment. The desktop app also reads your login shell's environment, so a key exported in `~/.zshrc` works even when you open Nyte from the Dock.
+
+A credential saved with **/login** or `nyte login` takes precedence. Nyte uses the variable only for a provider with no saved credential.
+
+| Provider              | Variables                                                            |
+| --------------------- | -------------------------------------------------------------------- |
+| OpenAI                | `OPENAI_API_KEY`                                                     |
+| Anthropic             | `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_OAUTH_TOKEN`, `ANTHROPIC_API_KEY` |
+| OpenCode, OpenCode Go | `OPENCODE_API_KEY`                                                   |
+| OpenRouter            | `OPENROUTER_API_KEY`                                                 |
+| Vercel AI Gateway     | `AI_GATEWAY_API_KEY`, `VERCEL_OIDC_TOKEN`                            |
+| GitHub Copilot        | `COPILOT_GITHUB_TOKEN`                                               |
+
+## Variables Nyte reads [#variables-nyte-reads]
+
+Set these in the shell that starts `nyte`. The ones marked **Both** also apply to the desktop app when it's started from that shell.
+
+| Variable                   | Applies to | What it does                                                                                                                             |
+| -------------------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `NYTE_MODEL`               | `nyte`     | The model when you don't pass `--model`. `provider/id`, or an id alone                                                                   |
+| `NYTE_HOST_TOKEN`          | `nyte`     | The token for `--host-url`, from `~/.nyte/host.json`. See [`nyte host`](/docs/cli#nyte-host)                                             |
+| `NYTE_THEME`               | `nyte`     | `dark` or `light`, when the theme setting is `auto` and the terminal doesn't report its background                                       |
+| `NO_COLOR`                 | `nyte`     | Any value turns off color                                                                                                                |
+| `NYTE_HOME`                | `nyte`     | The folder for `settings.json` and `host.json`, instead of `~/.nyte`. It doesn't move the chat database                                  |
+| `NYTE_DB`                  | Both       | The chat database file, instead of `~/.nyte/nyte.db`                                                                                     |
+| `NYTE_SKIP_VERSION_CHECK`  | Both       | Any value turns off the check for a newer release                                                                                        |
+| `NYTE_OFFLINE`             | Both       | Any value turns off update checks, and the desktop app's updates                                                                         |
+| `NYTE_CACHE_RETENTION`     | Both       | `short` asks providers for their shorter prompt cache. By default Nyte asks for the longer one where a provider has it, such as one hour |
+| `NYTE_SHELL_INTEGRATION`   | Both       | `0` turns off the shell integration Nyte adds to the zsh and bash shells it starts                                                       |
+| `NYTE_OAUTH_CALLBACK_HOST` | Both       | The address the Anthropic and OpenAI sign-in listens on for the browser's redirect. Default `127.0.0.1`                                  |
+| `NYTE_CONNECT_ORIGIN`      | Both       | The Nyte Connect server for [Remote access](/docs/remote-access) and `nyte account`. An `https://` origin with no path                   |
+| `NYTE_MODELS_URL`          | Both       | The base URL the model list is downloaded from                                                                                           |
+
+## Installer variables [#installer-variables]
+
+| Variable              | Read by                   | What it does                                                 |
+| --------------------- | ------------------------- | ------------------------------------------------------------ |
+| `NYTE_INSTALL_DIR`    | The install script        | Where `nyte` goes. Default `~/.local/bin`                    |
+| `NYTE_VERSION`        | The install script        | The release to install. Default the latest                   |
+| `NYTE_NO_MODIFY_PATH` | The install script        | Any value leaves your shell files alone                      |
+| `NYTE_BIN_DIR`        | The `nyte-ai` npm package | Where it caches the downloaded binary. Default `~/.nyte/bin` |

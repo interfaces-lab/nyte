@@ -1,0 +1,130 @@
+---
+title: Draw a part with a view
+description: Give your part kind a React view that the desktop and web apps draw, with buttons that run its actions.
+---
+
+Without a view, the desktop app shows a plugin's part as raw state. Point the part definition at a
+TSX file and the host builds it, sends it to every client, and the desktop and web apps draw it in
+place of the raw state. A button in the view can run the part's actions.
+
+This page draws the checklist from [Show a part](/docs/plugins/parts).
+
+## Point the definition at a view [#view]
+
+Set `view` to the file's URL, relative to the definition's module:
+
+```ts title="checklist.ts"
+export const checklist = definePart({
+  kind: "checklist",
+  state,
+  actions,
+  view: new URL("./checklist.view.tsx", import.meta.url),
+  fallback: (current, { id }) =>
+    `${current.title}: ${current.items.filter((entry) => entry.done).length} of ${current.items.length} done [${id}]`,
+  onAction: (action, input, context) => handlers[action](input, context),
+});
+```
+
+## Write the view [#write]
+
+The file's default export is a React component. It gets two props:
+
+| Prop    | What it is                                                                                                   |
+| ------- | ------------------------------------------------------------------------------------------------------------ |
+| `state` | The part's current state. The view draws again each time it changes                                          |
+| `act`   | `act(action, input)` runs one of the part's actions and resolves with the [outcome](/docs/plugins/parts#act) |
+
+```tsx title="checklist.view.tsx"
+import { Checkbox, Stack, Text } from "nyte/canvas";
+import type { PartState } from "@nyte-ai/plugin/core";
+import type { checklist } from "./checklist.ts";
+
+type Props = {
+  readonly state: PartState<typeof checklist>;
+  readonly act: (action: string, input?: object) => Promise<unknown>;
+};
+
+export default function ChecklistView({ state, act }: Props) {
+  return (
+    <Stack gap={2}>
+      <Text weight="semibold">{state.title}</Text>
+      {state.items.map((item, index) => (
+        <label key={index}>
+          <Stack direction="row" gap={2} align="center">
+            <Checkbox checked={item.done} onCheckedChange={() => void act("toggle", { index })} />
+            <Text tone={item.done ? "tertiary" : "primary"}>{item.label}</Text>
+          </Stack>
+        </label>
+      ))}
+    </Stack>
+  );
+}
+```
+
+Ticking a box runs `toggle` on the host. The host updates the part's state, and every client showing
+the chat redraws the checklist.
+
+## What a view can import [#imports]
+
+A view runs in a sandboxed frame, not in Node, so it can import only:
+
+- `react`, `react/jsx-runtime` and `react-dom`
+- `nyte/canvas`, the component kit below
+- `three`, `d3-array`, `d3-scale`, `d3-shape`, `d3-hierarchy` and `d3-force`
+- its own files, by relative path, inside the view's folder
+
+Import the part definition, or anything else, with `import type` only. The host strips type imports
+before it builds the view. Any other import fails the build.
+
+Your editor won't find types for `nyte/canvas`. The host checks those imports when it builds the
+view, and a wrong name fails the build with the file and line.
+
+A view's TSX can be up to 64 KB across all its files.
+
+## The component kit [#kit]
+
+`nyte/canvas` follows the user's theme in light and dark mode. Use it instead of your own colours and
+fonts.
+
+| Component                                                               | What it is                                        |
+| ----------------------------------------------------------------------- | ------------------------------------------------- |
+| `Stack`, `Grid`, `Divider`                                              | Flex layout, equal columns, a hairline            |
+| `Heading`, `Text`, `Code`, `Kbd`                                        | Text                                              |
+| `Stat`, `Badge`, `Meter`, `Spinner`                                     | A labelled number, a tag, a filled bar, a spinner |
+| `Table`, `Card`, `Callout`                                              | Rows and columns, a bordered surface, a notice    |
+| `LineChart`, `BarChart`, `PieChart`                                     | Charts with axes and a readout                    |
+| `Sparkline`, `StackedBars`                                              | Small charts without axes                         |
+| `Button`, `Checkbox`, `Switch`, `Slider`                                | Controls                                          |
+| `Select`, `SelectTrigger`, `SelectValue`, `SelectContent`, `SelectItem` | A dropdown                                        |
+| `ToggleGroup`, `Toggle`, `Tabs`                                         | Grouped choices and tabs                          |
+| `Tooltip`, `TooltipTrigger`, `TooltipContent`, `Collapsible`            | Hints and disclosure                              |
+| `useColorScheme()`                                                      | Returns `"light"` or `"dark"`                     |
+
+## Save to redraw [#reload]
+
+When the plugin lives in `~/.nyte/plugins`, saving the view, or a file it imports, rebuilds it, and
+open chats redraw the part with the new build.
+
+If the new build fails, clients keep drawing the last one that worked. The error shows on the
+plugin's row, in the desktop app under **Customize > Plugins**, as "The checklist view did not
+compile:" followed by the file, line and message. Fix the file and save again.
+
+## Where views work [#support]
+
+The host builds views for plugins passed to `sdk.open` and plugins in `~/.nyte/plugins`. Plugins in a
+trusted folder's `.nyte/plugins` don't get views yet.
+
+When two plugins give the same part kind a view, the first plugin's view is used.
+
+| Client          | Shows                                             |
+| --------------- | ------------------------------------------------- |
+| Desktop and web | The view                                          |
+| Terminal        | The part's kind and its state as one line of text |
+| Phone           | Nothing yet                                       |
+
+A client plugin with its own [renderer](/docs/plugins/reference#client-registries) for the kind is
+drawn instead of the view.
+
+SDK code finds the published views in `HostView.views`: one entry per part kind with its `kind`, the
+`plugin` that declared it, the kit `runtime` version it was built for, and the `blob` holding the
+built module.

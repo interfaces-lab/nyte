@@ -1,0 +1,145 @@
+---
+title: Errors
+description: What each SdkError code means, which HTTP status carries it, and what to do about it.
+---
+
+Every SDK call that can't be made throws an `SdkError`. Branch on its `code`, show its `message` to
+people, and read the other fields when the code calls for them.
+
+```ts
+class SdkError extends Error {
+  readonly name: "SdkError";
+  readonly code: SdkErrorCode;
+  readonly hostId: HostId | null;
+  readonly issues: readonly ValidationIssue[];
+  readonly correlation: string | null;
+}
+```
+
+| Field         | What it holds                                                                        |
+| ------------- | ------------------------------------------------------------------------------------ |
+| `code`        | One of the seven codes below                                                         |
+| `message`     | A sentence for people, such as `models.setDefault needs owner authority.`            |
+| `hostId`      | The host that raised it, or `null` when no host answered                             |
+| `issues`      | For `invalid`, each problem with its `path` into the input, `message` and `severity` |
+| `correlation` | For `internal`, a fresh id for this failure                                          |
+
+`SdkError` comes from `@nyte-ai/sdk` and `@nyte-ai/sdk/client`.
+
+## Codes [#codes]
+
+| Code              | HTTP | It means                                                 | What to do                                                       |
+| ----------------- | ---- | -------------------------------------------------------- | ---------------------------------------------------------------- |
+| `unauthenticated` | 401  | The credential is missing, wrong or revoked              | Ask for a new token, or pair the device again                    |
+| `denied`          | 403  | The credential is valid, but this call isn't allowed     | Use a credential with more authority. Retrying won't help        |
+| `unknown`         | 404  | The id names nothing on this host                        | Forget the saved id                                              |
+| `invalid`         | 400  | The input is wrong                                       | Fix the input from `issues`. The same input fails again          |
+| `stale`           | 409  | What you based the call on has changed                   | Read again, then decide whether to repeat the call               |
+| `unavailable`     | 503  | The host, the connection or the feature can't be reached | Wait and retry, or hide the feature if this host doesn't have it |
+| `internal`        | 500  | The host hit a bug                                       | Report it with the `message` and `correlation`                   |
+
+The HTTP column is the status a listener answers with, for code that calls the
+[HTTP API](/docs/sdk/reference/connection#http-api) without the SDK. The response body is the same
+fields as JSON: `{ code, message, hostId, issues, correlation }`.
+
+### unauthenticated [#unauthenticated]
+
+The host doesn't know who is calling. The token is wrong, the device was revoked with
+`principals.revoke`, or the pairing code is unknown or has expired. A revoke also ends that
+principal's open watches with this code.
+
+### denied [#denied]
+
+The host knows who is calling and refuses the call. The message names the reason:
+
+- The principal lacks the [authority](/docs/sdk/reference/shared-concepts#authority) the operation
+  needs, such as owner authority for `models.setDefault` or maintenance authority for
+  `principals.pair`.
+- The request came from a browser origin that the listener's `origins` doesn't list.
+- The change targets something the host protects, such as a built-in part or a plugin file outside
+  the folders this host loads plugins from.
+
+### unknown [#unknown]
+
+Handles bind without checking, so `connection.session(id)` succeeds for any id and the first call on
+it throws `unknown` when the session doesn't exist. Treat it as "deleted, or never on this host".
+Some calls report a missing target as an outcome instead, such as `{ kind: "missing" }` from
+`session.revise`; those don't throw.
+
+### invalid [#invalid]
+
+The input failed validation, or the call can't apply to this input. Examples:
+
+- A field has the wrong type or shape. `issues` points at it.
+- `sessions.start` reuses an `id` with different input.
+- `head.move` would leave the main head before its first message with nothing queued.
+- `operations.describe` names an operation the host doesn't serve.
+- `host.listen` gets a token shorter than 16 characters, or an origin it can't parse.
+
+Each issue's `path` is a list of keys and indexes into the input, so `["content", 0, "text"]` points
+at the first content block's text.
+
+### stale [#stale]
+
+Something changed between your read and your write. Read again and decide. Common causes:
+
+- `heads.remove(name, { expect })` when the head moved since the revision you passed.
+- A different host answered than the one you expected, from `connect`'s `expect` or mid-connection.
+  The error's `hostId` is the host that answered.
+- The host lost a race with other writers several times in a row.
+
+Calls that take `expect` usually return a `stale` outcome instead of throwing; see
+[Revisions guard concurrent changes](/docs/sdk/reference/shared-concepts#revisions).
+
+### unavailable [#unavailable]
+
+Either the host can't be reached right now, or the thing you asked for doesn't exist here:
+
+- The network request failed, the listener is closed, or the connection was closed.
+- `sdk.open` was called in a browser or React Native bundle.
+- `connection.github` on a host that has no GitHub login to serve.
+- A workspace's MCP servers on a host without MCP.
+- `sessions.start` with `isolation: "worktree"` outside a git repository.
+
+Over `sdk.connect`, the SDK already retries the calls where a retry is safe: watches reconnect,
+waits such as `receipt.settled()` try again, and `send` resends under the same receipt id. Other
+calls throw `unavailable` to you. Retry them after a delay, or show that the host is offline.
+
+### internal [#internal]
+
+The host failed in a way it didn't expect. Over the network, the host replaces the original error
+with `The host failed to answer.` and a fresh `correlation` id. Retrying may work, but the bug
+stays.
+
+## Handle an error [#handle-an-error]
+
+Catch `SdkError` where your app talks to people, branch on the codes you can act on, and rethrow the
+rest.
+
+```ts title="rename.ts"
+import { SdkError } from "@nyte-ai/sdk";
+import type { Session } from "@nyte-ai/sdk";
+
+export async function rename(session: Session, name: string): Promise<string | null> {
+  try {
+    await session.update({ name });
+
+    return null;
+  } catch (cause) {
+    if (!(cause instanceof SdkError)) throw cause;
+
+    if (cause.code === "invalid") return cause.issues.map((issue) => issue.message).join("\n");
+
+    if (cause.code === "unknown") return "This chat was deleted.";
+
+    throw cause;
+  }
+}
+```
+
+## Errors and outcomes [#errors-and-outcomes]
+
+Expected results come back as values, not errors. `session.update` returns
+`{ kind: "busy", runs }` when a run blocks the change, and `heads.merge` returns `diverged` when
+main moved on. Their types list every case, so TypeScript makes you handle them.
+[Shared concepts](/docs/sdk/reference/shared-concepts#errors-and-outcomes) explains the split.

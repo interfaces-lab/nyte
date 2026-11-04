@@ -1,0 +1,193 @@
+---
+title: Session and Head
+description: Every member of Sessions, Session, Head, receipts, runs and parts.
+---
+
+A session is one chat. A head is one line of history in it: every session has a `main` head, and
+[branching](/docs/sdk/guides/branch-a-conversation) adds named ones. A `Session` is also its main
+head, so `session.send(...)` sends to main and `session.head(name).send(...)` sends to a branch.
+
+```ts
+import { asId } from "@nyte-ai/schema";
+
+const { session } = await connection.sessions.start({ content: "Find the flaky test" });
+
+await session.send("Then fix it");
+
+const branch = session.head(asId<"head">("try-sqlite"));
+```
+
+## Sessions [#sessions]
+
+`connection.sessions` lists the host's chats and starts new ones.
+
+| Method          | Returns                                 | What it does                                                              |
+| --------------- | --------------------------------------- | ------------------------------------------------------------------------- |
+| `start(input)`  | `Promise<{ session, receipt }>`         | Creates a chat with its first message                                     |
+| `list(input?)`  | `Promise<Paged<SessionInfo>>`           | One page of chats. Pass the returned `next` as `cursor` for the next page |
+| `watch(input?)` | `AsyncIterable<readonly SessionInfo[]>` | The chats, again each time one changes                                    |
+
+`list` and `watch` take `parents` to filter by parent chat: `{ kind: "all" }`,
+`{ kind: "roots" }`, or `{ kind: "children", session }`. Both take a `limit`.
+
+`start` takes the first message as `content`, and these optional inputs:
+
+| Input           | What it does                                                                 |
+| --------------- | ---------------------------------------------------------------------------- |
+| `id`            | Names the chat, its first message and its receipt. Minted when absent        |
+| `name`          | The title shown in session lists                                             |
+| `workspace`     | A registered workspace. Absent, the host's default workspace                 |
+| `parent`        | Makes this chat a child of another                                           |
+| `configuration` | Model, thinking level, agent and settings for the chat                       |
+| `prompt`        | Adds a layer to the system prompt, or replaces it                            |
+| `isolation`     | `"worktree"` runs the chat in a new git worktree, removed with the chat      |
+| `contextFiles`  | `false` reads no context files, such as `AGENTS.md`, for this chat, for good |
+
+[Send messages](/docs/sdk/guides/send-messages#start-a-chat-with-its-first-message) covers `start`
+in depth.
+
+## Session [#session]
+
+A `Session` has every [Head](#head) member, acting on main, plus these:
+
+| Member                            | Returns                           | What it does                                                                           |
+| --------------------------------- | --------------------------------- | -------------------------------------------------------------------------------------- |
+| `id`                              | `SessionId`                       | The chat's id                                                                          |
+| `head(name)`                      | `Head`                            | A handle to a named head, without I/O                                                  |
+| `heads.create(name, { from? })`   | `Promise<CreateHeadOutcome>`      | Creates a head from main's tip or from `from`. `created`, `exists` or `missing-source` |
+| `heads.merge(name, { expect? })`  | `Promise<MergeOutcome>`           | Merges a head into main. `merged`, `stale`, `diverged`, `is-main` or `busy`            |
+| `heads.remove(name, { expect? })` | `Promise<RemoveHeadOutcome>`      | Deletes a head. `removed`, `missing`, `is-main` or `busy`                              |
+| `run(id)`                         | `Run`                             | A handle to one run, without I/O. See [Runs](#runs)                                    |
+| `receipt(id)`                     | `Receipt<unknown>`                | A handle to a receipt you saved, without I/O                                           |
+| `part(id)`                        | `Part`                            | A handle to one part, without I/O. See [Parts](#parts)                                 |
+| `parts.create(kind, input)`       | `Promise<Part>`                   | Adds a part with its first `state` and `placement`                                     |
+| `info()`                          | `Promise<SessionInfo>`            | Name, workspace, parent, pin and archive state, heads and timestamps                   |
+| `update(patch)`                   | `Promise<UpdateOutcome>`          | Renames, pins, archives or moves the chat to another workspace                         |
+| `remove()`                        | `Promise<RemoveSessionOutcome>`   | Deletes the chat. `removed`, `busy` while runs are live, or `has-children`             |
+| `fork({ from? })`                 | `Promise<ForkOutcome>`            | Starts a new chat with this one's history through `from`, by default main's tip        |
+| `stop()`                          | `Promise<{ stopped, withdrawn }>` | Stops every live run and withdraws every queued message                                |
+| `command(name, text)`             | `Promise<CommandOutcome>`         | Runs a plugin command with the text typed after it                                     |
+| `completeCommand(name, prefix)`   | `Promise<CommandCompletion[]>`    | Suggestions for the text after a plugin command                                        |
+
+`fork` copies the history into a new top-level chat in the same folder, with the same name and model.
+The two chats share the stored history and grow apart from there. It returns `forked` with the new
+`session`, `busy` while a run behind `from` is still working, or `missing-source` when the chat has
+no such commit.
+
+`update` takes `{ name?, pinned?, archived?, workspace? }`. A `name` of `null` clears it. It returns
+`updated`, `busy` with the live `runs`, or `unknown-workspace`. Setting values that are already set
+succeeds without recording a change.
+
+`command` returns `ran` with the command's `output`, `sent` with the `receipt` of a message it sent,
+`unknown`, or `failed` with a `message`.
+
+## Head [#head]
+
+| Member                                    | Returns                         | What it does                                                                                                  |
+| ----------------------------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `sessionId`, `name`                       |                                 | The chat and the head's name                                                                                  |
+| `send(content, options?)`                 | `Promise<SendReceipt>`          | Sends a message. See [send options](#send-options)                                                            |
+| `revise(message, content, { delivery? })` | `Promise<ReviseOutcome>`        | Changes a queued message. `revised`, `sent` or `missing`                                                      |
+| `hold(message)`                           | `Promise<HoldOutcome>`          | Keeps a queued message from starting while it's edited. See [Held messages](#held-messages)                   |
+| `configure(patch)`                        | `Promise<ConfigureOutcome>`     | Changes model, thinking level, agent or settings. `configured`, `unknown-model`, `unknown-agent` or `invalid` |
+| `view({ tail? })`                         | `Promise<SessionView>`          | The transcript and state now                                                                                  |
+| `watch({ tail? })`                        | `AsyncIterable<SessionView>`    | The view, again each time it changes                                                                          |
+| `subscribe(listener)`                     | `() => void`                    | Calls `listener` on each change and returns the unsubscribe                                                   |
+| `current()`                               | `SessionView \| undefined`      | The latest view `subscribe` delivered                                                                         |
+| `history({ before, limit })`              | `Promise<HistoryPage>`          | Up to `limit` messages before `before`, with their turns                                                      |
+| `tree()`                                  | `Promise<TreeView>`             | Every message and branch behind the head                                                                      |
+| `see(commit)`                             | `Promise<void>`                 | Marks the head read up to a commit                                                                            |
+| `move(position, options?)`                | `Promise<Receipt<MoveOutcome>>` | Moves the head to `{ kind: "start" }` or `{ kind: "commit", id }`                                             |
+| `compact({ instructions? })`              | `Promise<...>`                  | Summarizes the transcript to free context. `started`, `busy` or `nothing-to-compact`                          |
+
+`tail` caps how many recent messages a view carries. The default is 200.
+`subscribe` and `current` together are the store that React's `useSyncExternalStore` reads. Keep the
+head handle rather than calling `session.head(name)` on each render.
+
+The guides cover these in use:
+[Render a session](/docs/sdk/guides/render-a-session) for `view`, `watch`, `subscribe`, `history`
+and `see`;
+[Send messages](/docs/sdk/guides/send-messages) for `send`, `revise`, `hold` and `configure`;
+[Branch a conversation](/docs/sdk/guides/branch-a-conversation) for heads, `move`, `tree` and
+`compact`.
+
+### Send options [#send-options]
+
+| Option      | What it does                                                                                                                                                        |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `delivery`  | `"steer"` (default), `"queue"` or `"attach"`: how the message meets a live run                                                                                      |
+| `id`        | The receipt id. The same id with the same input sends once                                                                                                          |
+| `replace`   | A message id. Sends this content in its place, as an edit                                                                                                           |
+| `expect`    | A revision. The edit settles `stale` if the head moved since                                                                                                        |
+| `running`   | `"stop"` (default) stops a live run before an edit lands; `"refuse"` settles `busy`                                                                                 |
+| `abandoned` | `"keep"`, or `{ summarize: { instructions? } }` to summarize the replaced messages                                                                                  |
+| `position`  | With `replace` on a queued message: `{ kind: "last" }` moves it to the end of the queue, `{ kind: "before", message }` ahead of another. Absent, it keeps its place |
+
+`move` takes `running`, `abandoned` and `expect` with the same meanings.
+
+`content` is a string, or a list of blocks: `text`, `file` (an uploaded blob), `reference` (a
+workspace file by path), `skill` and `excerpt`.
+
+## Receipts [#receipts]
+
+A receipt tracks one piece of work the host accepted. Every receipt has:
+
+| Member                 | Returns                | What it does                                                            |
+| ---------------------- | ---------------------- | ----------------------------------------------------------------------- |
+| `id`                   | `ReceiptId`            | Save it to rebuild the handle with `session.receipt(id)`                |
+| `status()`             | `Promise<...>`         | `pending`, `settled` with the `outcome`, or `missing`, right away       |
+| `settled({ signal? })` | `Promise<Outcome>`     | Waits for the outcome. Aborting the wait doesn't stop the work          |
+| `stop()`               | `Promise<StopOutcome>` | Stops the work. `requested`, `settled` with the `outcome`, or `missing` |
+
+A `SendReceipt`, from `send` and `start`, adds:
+
+| Member     | Returns        | What it does                                                         |
+| ---------- | -------------- | -------------------------------------------------------------------- |
+| `message`  | `MessageId`    | The message the send created                                         |
+| `landed()` | `Promise<...>` | Waits until the message has its place in history, or was `withdrawn` |
+
+A send settles with how its run ended: `completed` with `usage`, `stopped`, or `failed` with a
+`failure`. It can also settle `withdrawn`, or, for an edit, `stale`, `busy` or another reason the
+edit didn't land.
+
+## Runs [#runs]
+
+A run is one stretch of agent work on a head, from a message until the agent stops.
+
+| Member                 | Returns                        | What it does                                 |
+| ---------------------- | ------------------------------ | -------------------------------------------- |
+| `id`                   | `RunId`                        | The run's id                                 |
+| `settled({ signal? })` | `Promise<RunEnd>`              | Waits for `completed`, `stopped` or `failed` |
+| `stop()`               | `Promise<StopOutcome<RunEnd>>` | Stops the run                                |
+
+## Held messages [#held-messages]
+
+`hold(message)` returns `sent` or `missing` when the message can no longer be held, or a
+`HeldMessage`:
+
+| Member                    | Returns                   | What it does                                                                  |
+| ------------------------- | ------------------------- | ----------------------------------------------------------------------------- |
+| `message`                 | `MessageId`               | The held message                                                              |
+| `save(content, options?)` | `Promise<ReviseOutcome>`  | Revises the message, then releases it                                         |
+| `release()`               | `Promise<ReleaseOutcome>` | Lets it go unchanged. `released`, or `lapsing` when the host can't be reached |
+| `lost`                    | `Promise<...>`            | Resolves `sent`, `missing` or `lapsed` if the hold ends without you           |
+
+`await using` releases the hold when the block ends.
+[Hold a queued message](/docs/sdk/guides/send-messages#hold-a-queued-message-while-its-edited)
+explains the timing.
+
+## Parts [#parts]
+
+A part is a message with typed state that a plugin defines, such as a question card or a plan.
+
+| Member                       | Returns                           | What it does                                                                                                       |
+| ---------------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `id`                         | `PartId`                          | The part's id                                                                                                      |
+| `update(next, { version? })` | `Promise<...>`                    | Replaces the state, or maps it with a function. `updated`, `invalid`, `closed`, `missing` or `stale`               |
+| `act(action, input)`         | `Promise<ActOutcome>`             | Runs one of the part's actions. `ok` with `output`, `rejected`, `unknown-action`, `closed`, `no-owner` or `failed` |
+| `answer({ signal? })`        | `Promise<...>`                    | Waits for the action that answers the part and returns it, or `null`                                               |
+| `watch()`                    | `AsyncIterable<PartView \| null>` | The part's view each time it changes, `null` while the chat has no such part                                       |
+| `close()`                    | `Promise<void>`                   | Closes the part                                                                                                    |
+
+Pass `version` to `update` to change the state only if nobody else changed it since that version.
+A built-in part can't be closed from a client; that throws `SdkError("denied")`.

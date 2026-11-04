@@ -1,0 +1,268 @@
+---
+title: Workspace
+description: Every member of Workspaces and Workspace, and its files, git, GitHub, browser, jobs and MCP.
+---
+
+A workspace is where chats do their work, usually a folder on the host's machine. Through a
+`Workspace` handle you read and write its files, drive git and GitHub, open browser pages, run
+terminal jobs and manage MCP servers, the same things the agent's tools do.
+
+```ts
+import { asId } from "@nyte-ai/schema";
+
+const workspace = connection.workspace(asId<"workspace">(savedId));
+const git = await workspace.git();
+
+if (git.kind === "available") {
+  const status = await git.api.status();
+
+  if (status.kind === "repository") console.log(status.branch);
+}
+```
+
+## Workspaces [#workspaces]
+
+`connection.workspaces` manages the list of workspaces the host knows.
+
+| Method                  | Authority   | Returns                        | What it does                                                                                            |
+| ----------------------- | ----------- | ------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| `list()`                | participant | `Promise<WorkspaceInfo[]>`     | The registered workspaces                                                                               |
+| `inspect(target)`       | owner       | `Promise<WorkspaceInspection>` | Reads a folder before adding it: whether it's reachable, its project files, and its id if already added |
+| `add(target, options?)` | owner       | `Promise<AddOutcome>`          | Registers a workspace. `added` or `exists` with its id, `stale`, or `unavailable`                       |
+| `forget(id)`            | owner       | `Promise<ForgetOutcome>`       | Unregisters it. `forgotten`, `missing`, or `busy` with the sessions that still use it                   |
+| `cleanWorktrees()`      | owner       | `Promise<{ cleaned }>`         | Removes leftover chat worktrees that hold no changes                                                    |
+
+A target is `{ kind: "local", path }` for a folder on the host's machine. Other environment
+providers take `{ kind, locator }`.
+
+`add` takes two options. `projectResources: true` trusts the folder's own instructions and plugins,
+and `false` declines them; absent, the folder follows a decision saved for it or a folder above it.
+`expect: { identity }` adds the folder only if it is still the one `inspect` saw, and answers
+`stale` otherwise.
+
+## Workspace [#workspace]
+
+| Member                             | Authority   | Returns                            | What it does                                                                                       |
+| ---------------------------------- | ----------- | ---------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `id`                               |             | `WorkspaceId`                      | The workspace's id                                                                                 |
+| `info()`                           | participant | `Promise<WorkspaceInfo>`           | Its target, trust and state                                                                        |
+| `watch()`                          | participant | `AsyncIterable<WorkspaceInfo>`     | The info, again each time it changes                                                               |
+| `update({ projectResources })`     | owner       | `Promise<...>`                     | Trusts (`true`) or declines (`false`) the folder's project files, or forgets the decision (`null`) |
+| `reload()`                         | owner       | `Promise<...>`                     | Reads the project files again and reloads the plugins of live chats                                |
+| `catalog()`                        | participant | `Promise<WorkspaceCatalogView>`    | The commands and skills a new chat here would offer                                                |
+| `command(name, text)`              | participant | `Promise<WorkspaceCommandOutcome>` | Runs a command from `catalog()` without a chat                                                     |
+| `completeCommand(name, prefix)`    | participant | `Promise<CommandCompletion[]>`     | Suggestions for the text after a command                                                           |
+| `changes(source)`                  | participant | `Promise<ChangeSet>`               | The files a run or a chat changed                                                                  |
+| `patches(source, paths, options?)` | participant | `AsyncIterable<PatchSet>`          | The diffs of those files                                                                           |
+| `jobs`                             | participant | `Jobs`                             | Start and list terminal jobs. See [jobs](#jobs)                                                    |
+| `job(id)`                          | participant | `Job`                              | A handle to one job, without I/O                                                                   |
+| `mcp`                              | owner       | `McpApi`                           | The MCP servers its chats use. See [mcp](#mcp)                                                     |
+| `files()`                          | participant | `Promise<Capability<FilesApi>>`    | See [files](#files)                                                                                |
+| `git()`                            | participant | `Promise<Capability<GitApi>>`      | See [git](#git)                                                                                    |
+| `github()`                         | participant | `Promise<Capability<GitHubApi>>`   | See [github](#github)                                                                              |
+| `browser()`                        | participant | `Promise<Capability<BrowserApi>>`  | See [browser](#browser)                                                                            |
+
+`update` and `reload` answer `updated`, or `missing` when the workspace is gone. A trust decision
+belongs to the folder: every workspace there and every folder below without its own decision
+follows it, and live chats reload with the change. [Trust](/docs/configure/trust) explains what it
+loads.
+
+`command` answers `ran` with the command's `output`, `prompt` with the first message of the chat it
+asks you to start, `unknown`, or `failed` with a `message`.
+
+`source` for `changes` and `patches` is `{ kind: "run", run }` or `{ kind: "session", session }`.
+`options` is `{ ignoreWhitespace? }`.
+
+## Capabilities [#capabilities]
+
+`files()`, `git()`, `github()` and `browser()` each return a capability. Check its `kind` before
+you use it:
+
+| `kind`        | Fields            | It means                                                                   |
+| ------------- | ----------------- | -------------------------------------------------------------------------- |
+| `available`   | `api`             | Ready to use                                                               |
+| `unsupported` | `reason`          | This environment has no such thing, such as git in a chat-only host        |
+| `denied`      | `reason`          | This principal can't use it                                                |
+| `unavailable` | `reason`, `retry` | It should exist but can't be reached now. `retry` is `allowed` or `manual` |
+
+```ts
+const files = await workspace.files();
+
+if (files.kind !== "available") throw new Error(files.reason);
+
+const readme = await files.api.read("README.md");
+```
+
+## files [#files]
+
+Paths are relative to the workspace folder. A `version` identifies one state of a file; pass it as
+`expect` to write only if nobody changed the file since you read it.
+
+| Method                            | Returns                      | What it does                                                                                                      |
+| --------------------------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `read(path, { as? })`             | `Promise<FileDocument>`      | The file as `text` with `contents` and `version`, or as `image`, `pdf`, `binary` or `large`                       |
+| `bytes(path)`                     | `Promise<ByteReader>`        | The raw bytes                                                                                                     |
+| `stat(path)`                      | `Promise<... \| null>`       | `kind`, `size` and `version`, or `null` when nothing is there                                                     |
+| `write(path, contents, options?)` | `Promise<WriteOutcome>`      | Writes text or bytes. `saved` with the new `version`, `stale` with the current one, or `missing-parent`           |
+| `remove(path, { expect? })`       | `Promise<WriteOutcome>`      | Removes a file                                                                                                    |
+| `batch()`                         | `FileBatch`                  | Several writes and removes under one receipt                                                                      |
+| `format(path, contents)`          | `Promise<FormatOutcome>`     | `contents` formatted for that file, without writing it                                                            |
+| `scan({ directory?, ignored? })`  | `AsyncIterable<ScanFrame>`   | The entries under a folder, in batches, then `complete` or `incomplete`                                           |
+| `find({ query, limit? })`         | `Promise<FileEntryView[]>`   | Paths that best match `query`, best first                                                                         |
+| `search(input)`                   | `AsyncIterable<SearchFrame>` | Text matches across files. Takes `query`, `regex`, `caseSensitive`, `wholeWord`, `include`, `exclude` and `limit` |
+| `watch({ paths? })`               | `AsyncIterable<FileEvent[]>` | `created`, `modified` and `removed` events as they happen                                                         |
+| `upload(source)`                  | `Promise<BlobId>`            | Uploads bytes to use in a batch or attach to a message                                                            |
+
+`write` takes `{ expect?, parents? }`. `expect: "absent"` writes only if the file doesn't exist yet,
+and `parents: true` creates missing folders.
+
+A batch chains `put({ path, contents, expect? })` and `remove({ path, expect? })`, then `apply()`
+returns a receipt. It settles `applied`, `stale` with the paths that changed, `partial`, or
+`stopped`.
+
+```ts
+const receipt = await files.api
+  .batch()
+  .put({ path: "src/a.ts", contents: "export const a = 1;\n" })
+  .remove({ path: "src/old.ts" })
+  .apply();
+
+const outcome = await receipt.settled();
+```
+
+## git [#git]
+
+Reads need participant authority; every method that changes the repository needs owner.
+
+| Method                                                      | Returns                         | What it does                                                                                                                 |
+| ----------------------------------------------------------- | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `status()`, `watch()`                                       | `GitStatus`                     | `none` outside a repository, else `repository` with the branch, upstream, `revision` and file status. Once or on each change |
+| `changes(scope, options?)`, `watchChanges(scope, options?)` | `ChangeSet`                     | The files changed in a scope                                                                                                 |
+| `patches(scope, paths, options?)`                           | `AsyncIterable<PatchSet>`       | Their diffs                                                                                                                  |
+| `contents(path, scope)`                                     | `Promise<GitFileSides>`         | A file's contents on both sides of a scope                                                                                   |
+| `log({ head?, cursor?, limit? })`                           | `Promise<Paged<GitCommitView>>` | History from `head`, or from HEAD                                                                                            |
+| `refs()`                                                    | `Promise<GitRefsView>`          | Branches, upstreams and the current branch                                                                                   |
+| `blame(path)`                                               | `Promise<BlameView>`            | Who last changed each line                                                                                                   |
+| `stage(paths)`, `unstage(paths)`, `discard(paths)`          | `Promise<GitOutcome>`           | Stage, unstage or throw away changes                                                                                         |
+| `commit({ message, files })`                                | `Promise<GitOutcome>`           | Commits `"staged"`, `"all"`, or a list of paths                                                                              |
+| `branch({ name, checkout })`                                | `Promise<GitOutcome>`           | Creates a branch, and checks it out when `checkout` is true                                                                  |
+| `checkout({ name })`                                        | `Promise<GitOutcome>`           | Checks out a branch                                                                                                          |
+| `push({ setUpstream? })`                                    | `Promise<GitOutcome>`           | Pushes the current branch                                                                                                    |
+
+A scope is `{ kind: "worktree" }`, `"staged"`, `"unstaged"`, `{ kind: "commit", commit }` or
+`{ kind: "branch", base }`.
+
+Every write takes `{ expect? }`, a git revision from `status()`, and answers a `GitOutcome`:
+`applied` with the new revision, `unchanged`, `stale` when the repository moved since `expect`,
+`busy` with the live runs, or `rejected` with git's `reason`. Checking out answers `busy` while any
+run in the workspace is live.
+
+## github [#github]
+
+GitHub for this workspace, through the GitHub CLI (`gh`) on the host machine. The workspace's
+remotes pick the repository and its checked-out branch picks the pull request. The login itself is
+[`connection.github`](/docs/sdk/reference/connection#github).
+
+| Method                     | Authority   | Returns                             | What it does                                                  |
+| -------------------------- | ----------- | ----------------------------------- | ------------------------------------------------------------- |
+| `state()`                  | participant | `Promise<GitHubState>`              | The repository, and the branch's pull request with its checks |
+| `createPullRequest(input)` | owner       | `Promise<GitHubPullRequestOutcome>` | Opens a pull request for the pushed branch                    |
+
+`createPullRequest` answers `created` with the `url`, `exists` with the open pull request,
+`cli_missing`, `signed_out`, `no_remote`, `detached`, or `failed` with a `message`. Push the branch
+first.
+
+## browser [#browser]
+
+| Method          | Returns                     | What it does                                |
+| --------------- | --------------------------- | ------------------------------------------- |
+| `open({ url })` | `Promise<Page>`             | Opens a page                                |
+| `adopt(id)`     | `Promise<Page>`             | Takes control of a page that's already open |
+| `list()`        | `Promise<PageInfo[]>`       | The open pages                              |
+| `watch()`       | `AsyncIterable<PageInfo[]>` | The open pages, again each time they change |
+
+A `Page` has:
+
+| Method                                                              | What it does                                                                                 |
+| ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `view()`, `watch()`                                                 | URL, title and loading state, once or on each change                                         |
+| `snapshot({ ref? })`                                                | The accessibility tree, or the part under one node                                           |
+| `navigate(url)`, `back()`, `forward()`, `reload()`, `stopLoading()` | Navigation                                                                                   |
+| `click({ ref, button?, double?, expect? })`                         | Clicks a node from the snapshot                                                              |
+| `type({ ref, text, clear?, submit?, expect? })`                     | Types into a node                                                                            |
+| `press({ key, ref? })`                                              | Presses a key or chord, such as `Enter` or `Control+a`                                       |
+| `scroll({ direction, ref?, pages? })`                               | Scrolls the page or a node                                                                   |
+| `wait(condition)`                                                   | Waits for `{ kind: "loaded" }`, `{ kind: "text", text, present }` or `{ kind: "delay", ms }` |
+| `console({ limit?, clear? })`                                       | The page's console messages                                                                  |
+| `capture()`                                                         | A screenshot, as a `ByteReader`                                                              |
+| `evaluate(expression, { ref? })`                                    | Runs JavaScript. `value` with the result, or `threw` with a `message`                        |
+| `close()`                                                           | Closes the page                                                                              |
+
+Actions answer a `PageOutcome`: `applied` with a fresh snapshot, `stale` when the page changed
+since the snapshot `revision` you passed as `expect`, `refused` with a reason such as `unknown-ref` or
+`occluded`, or `closed`.
+
+## jobs [#jobs]
+
+A job is a process running in the workspace: a command, or a shell in a terminal.
+
+| Method         | Returns                    | What it does                                                                       |
+| -------------- | -------------------------- | ---------------------------------------------------------------------------------- |
+| `start(input)` | `Promise<Job>`             | Starts a job                                                                       |
+| `recover(key)` | `Promise<...>`             | Finds a job again by its `key`, or answers `ended` with how it ended, or `missing` |
+| `list()`       | `Promise<JobView[]>`       | The workspace's jobs                                                               |
+| `watch()`      | `AsyncIterable<JobView[]>` | The jobs, again each time one changes                                              |
+
+`start` takes `{ command?, session?, title?, pty?, id? }`. `pty: { columns, rows }` runs it in a
+terminal. With `pty` and no `command`, it starts the login shell. Without `pty`, `command` is
+required.
+
+A `Job` has:
+
+| Member                      | Returns                        | What it does                                                                      |
+| --------------------------- | ------------------------------ | --------------------------------------------------------------------------------- |
+| `id`, `key`                 |                                | The job's id, and the key to pass to `recover`, or `null`                         |
+| `output()`                  | `AsyncIterable<OutputFrame>`   | `bytes` frames, a `gap` where the reader fell behind, then `exit` with the `code` |
+| `write(bytes)`              | `Promise<void>`                | Sends input                                                                       |
+| `resize({ columns, rows })` | `Promise<...>`                 | Resizes its terminal. `resized`, `not-pty` or `missing`                           |
+| `idle()`                    | `Promise<boolean>`             | Whether its terminal has nothing running, such as a shell at its prompt           |
+| `settled({ signal? })`      | `Promise<JobEnd>`              | Waits for `exited` with the `code`, or `lost`                                     |
+| `stop()`                    | `Promise<StopOutcome<JobEnd>>` | Stops the process                                                                 |
+| `close()`                   | `Promise<void>`                | Stops reading its output. The process keeps running                               |
+
+```ts
+const job = await workspace.jobs.start({ command: "pnpm test" });
+
+for await (const frame of job.output()) {
+  if (frame.kind === "bytes") process.stdout.write(frame.data);
+}
+
+const end = await job.settled();
+```
+
+## mcp [#mcp]
+
+The [MCP](https://modelcontextprotocol.io) servers this workspace's chats use. Every method needs
+owner authority, and a host without MCP throws `SdkError("unavailable")`.
+
+| Method                        | Returns                  | What it does                                                                                      |
+| ----------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------- |
+| `watch()`                     | `AsyncIterable<McpView>` | The servers and their state, again on each change. Keeps their connections open while you iterate |
+| `add(server, config, scope)`  | `Promise<McpChange>`     | Adds or replaces a server in the `user` or `project` `mcp.json`                                   |
+| `remove(server, scope)`       | `Promise<McpChange>`     | Removes a server from one `mcp.json`                                                              |
+| `setEnabled(server, enabled)` | `Promise<McpChange>`     | Turns a server on or off                                                                          |
+| `reconnect(server)`           | `Promise<McpChange>`     | Connects again, for a server that failed                                                          |
+| `login(server)`               | `Login`                  | Signs in to a URL server with OAuth                                                               |
+| `logout(server)`              | `Promise<McpChange>`     | Deletes the server's stored OAuth credentials                                                     |
+
+`user` servers live in `~/.nyte/mcp.json`, and `project` servers in the trusted workspace's
+`.nyte/mcp.json`. [MCP servers](/docs/configure/mcp-servers) covers the file format. Changes answer `updated`, `missing` when no server has that name, or `invalid`
+with a `message`. `login` works like a [model login](/docs/sdk/reference/connection#models): show
+the `open` step's URL, and answer the `paste` step with the URL the browser ended on when the
+browser can't reach the host machine.
+
+```ts
+const mcp = workspace.mcp;
+
+await mcp.add("docs", { url: "https://docs.example.com/mcp" }, "user");
+```

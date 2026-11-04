@@ -1,16 +1,25 @@
 # Agent logo sources
 
-The gallery's `ascii-logos.ts` contains character samples of these SVGs, not hand-drawn substitutes. Each mark is cropped to its ink bounds, fitted to a 264 by 280 pixel frame, and sampled into 44 columns by 28 rows using ` .:-=+*#%@`. Opaque backgrounds are removed before sampling. The page renders only the resulting ASCII text.
+The SVG sources for the ASCII logos in [`ascii-logos.ts`](../../src/components/landing/hero-5/ascii-logos.ts), which the landing page renders as text. The ASCII samples come from these files and are not hand-drawn.
 
-| Asset | Source |
-| --- | --- |
-| Claude | https://raw.githubusercontent.com/pheralb/svgl/main/static/library/claude-ai-icon.svg |
-| OpenAI | https://raw.githubusercontent.com/pheralb/svgl/main/static/library/openai.svg |
-| Pi | https://pi.dev/favicon.svg |
-| Amp | https://ampcode.com/logo-light.svg |
-| Factory | https://factory.com/favicon.svg |
-| Capy | https://capy.ai/_marketing/favicon/favicon.svg |
-| Cursor | https://raw.githubusercontent.com/pheralb/svgl/main/static/library/cursor_light.svg |
-| OpenCode | https://raw.githubusercontent.com/pheralb/svgl/main/static/library/opencode.svg |
+## How the samples are made
 
-Logos identify their respective tools and remain the property of their owners.
+1. Crop each mark to its ink bounds.
+2. Fit it to a 264 by 280 pixel frame.
+3. Remove any opaque background.
+4. Sample it into 44 columns by 28 rows using the characters ` .:-=+*#%@`.
+
+## Sources
+
+| Asset | File | Source |
+| --- | --- | --- |
+| Claude | `claude.svg` | https://raw.githubusercontent.com/pheralb/svgl/main/static/library/claude-ai-icon.svg |
+| OpenAI | `codex.svg` | https://raw.githubusercontent.com/pheralb/svgl/main/static/library/openai.svg |
+| Pi | `pi.svg` | https://pi.dev/favicon.svg |
+| Amp | `amp.svg` | https://ampcode.com/logo-light.svg |
+| Factory | `factory.svg` | https://factory.com/favicon.svg |
+| Capy | `capy.svg` | https://capy.ai/_marketing/favicon/favicon.svg |
+| Cursor | `cursor.svg` | https://raw.githubusercontent.com/pheralb/svgl/main/static/library/cursor_light.svg |
+| OpenCode | `opencode.svg` | https://raw.githubusercontent.com/pheralb/svgl/main/static/library/opencode.svg |
+
+Each logo identifies its tool and remains the property of its owner.

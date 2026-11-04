@@ -1,0 +1,210 @@
+---
+title: Connection
+description: Every member of Connection and Host, and the HTTP API they call.
+---
+
+A `Connection` is your handle to one host. `sdk.connect` returns one, and `sdk.open` returns a
+`Host`, which is a `Connection` with a few more members. Everything else, from sessions to model
+logins, hangs off it.
+
+| Member          | Returns                   | What it does                                                                                        |
+| --------------- | ------------------------- | --------------------------------------------------------------------------------------------------- |
+| `hostId`        | `HostId`                  | The id of the host that answered. Save it to pass as `expect` on the next `connect`                 |
+| `principal`     | `PrincipalId`             | Who this connection acts as                                                                         |
+| `credential`    | `CredentialSource`        | The credential in use. After pairing, the device token to save                                      |
+| `sessions`      | `Sessions`                | Start, list and watch chats. See [Session](/docs/sdk/reference/session#sessions)                    |
+| `session(id)`   | `Session`                 | A handle to one chat, without I/O                                                                   |
+| `workspaces`    | `Workspaces`              | List, inspect, add and forget workspaces. See [Workspace](/docs/sdk/reference/workspace#workspaces) |
+| `workspace(id)` | `Workspace`               | A handle to one workspace, without I/O                                                              |
+| `models`        | `ModelsApi`               | The model catalog, provider logins and usage. See [models](#models)                                 |
+| `settings`      | `SettingsApi`             | Change host settings. See [settings](#settings)                                                     |
+| `plugins`       | `PluginsApi`              | Check and replace loaded plugins. See [plugins](#plugins)                                           |
+| `principals`    | `PrincipalsApi`           | Pair and revoke devices. See [principals](#principals)                                              |
+| `operations`    | `OperationsApi`           | Describe the host's HTTP operations. See [operations](#operations)                                  |
+| `github`        | `GitHubAccountApi`        | The host machine's GitHub CLI login. See [github](#github)                                          |
+| `watch()`       | `AsyncIterable<HostView>` | The host's state, again each time it changes. See [watch](#watch)                                   |
+| `blob(id)`      | `Promise<ByteReader>`     | The bytes of a stored file, such as an image attached to a message                                  |
+| `close()`       | `Promise<void>`           | Closes the connection and its watches. `await using` calls it too                                   |
+
+Getting `session(id)` or `workspace(id)` never touches the network; see
+[Handles bind without I/O](/docs/sdk/reference/shared-concepts#handles). The
+[authority](/docs/sdk/reference/shared-concepts#authority) each member needs is in the tables below.
+
+## models [#models]
+
+| Method                                    | Authority   | What it does                                                                                           |
+| ----------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------ |
+| `list()`                                  | participant | Saved models, the default model and each provider's last known login state, without checking providers |
+| `accounts(provider?)`                     | owner       | Saved logins for one provider, or for all of them                                                      |
+| `selectAccount(provider, account)`        | owner       | Makes a saved login the active one                                                                     |
+| `renameAccount(provider, account, label)` | owner       | Renames a saved login. An empty `label` is refused                                                     |
+| `usage()`                                 | owner       | Each provider's usage, refreshing entries that expired                                                 |
+| `refresh(provider?)`                      | owner       | Reloads the model list and logins for one provider, or for all of them                                 |
+| `setDefault(ref)`                         | owner       | Sets the model new chats use. Returns `set` or `unknown-model`                                         |
+| `setListing(refs, listing)`               | owner       | Marks models `shown`, `hidden` or `favorite`. Returns `set` or `unknown-model`                         |
+| `verify(provider)`                        | owner       | Checks the provider's login. Returns `verified`, `unverified` or `failed` with a `reason`              |
+| `login(input)`                            | owner       | Starts a sign-in and returns a `Login`                                                                 |
+| `logout(provider)`                        | owner       | Removes the provider's active login and keeps its other saved accounts                                 |
+
+A model is named by a `ModelRef`, `{ provider, id }`. Fresh login state arrives through
+[`watch()`](#watch) rather than `list()`.
+
+`login` takes `{ provider, method, label?, browser? }`. `method` is `{ kind: "oauth" }` or
+`{ kind: "key" }`. `browser: "host"` opens the sign-in page on the host machine, and
+`browser: "elsewhere"` uses a code you copy, for a host you reach over SSH or the network. Without
+it, the provider may ask with a `choose` step.
+
+A `Login` has two methods:
+
+- `steps()` yields what to show next: `open` with a `url` and maybe a `code`, `paste` with a
+  `message`, `choose` with `options`, `waiting`, then `done` or `failed` with a `reason`.
+- `answer(code)` sends what the user pasted or chose.
+
+[Build an agent app](/docs/build/composition) has a full login loop.
+
+## settings [#settings]
+
+| Method             | Authority | What it does                                                             |
+| ------------------ | --------- | ------------------------------------------------------------------------ |
+| `apply(id, value)` | owner     | Sets a setting. Returns `applied`, `invalid` with `issues`, or `unknown` |
+
+The settings a host offers, with their current values, schemas and choices, are in
+[`HostView.settings`](#watch). [Settings](/docs/configure/settings) lists them.
+
+```ts
+await connection.settings.apply("permissions", "ask");
+```
+
+## plugins [#plugins]
+
+| Method                     | Authority   | What it does                                                                          |
+| -------------------------- | ----------- | ------------------------------------------------------------------------------------- |
+| `check(plugins)`           | maintenance | Loads plugins and reports their problems without activating them                      |
+| `replace(plugins, scope?)` | maintenance | Replaces the loaded plugins for the whole host, or for one session with `{ session }` |
+
+Over `sdk.connect`, each entry is a plugin file, `{ path }`, on the host's machine. On a `Host`, an
+entry can also be a plugin object. Both return each plugin's outcome: `activated`, `rejected` or
+`kept-previous`, with its `issues`. `check` also lists `collisions` between plugins.
+
+## principals [#principals]
+
+A principal is one client identity: the listener token, or a paired device.
+
+| Method                        | Authority   | What it does                                                           |
+| ----------------------------- | ----------- | ---------------------------------------------------------------------- |
+| `list()`                      | maintenance | The paired principals                                                  |
+| `pair({ authority, label? })` | maintenance | A one-time code a device trades for its own token, and when it expires |
+| `revoke(id)`                  | maintenance | Revokes a principal and closes its live connections                    |
+
+[Give each device its own credential](/docs/sdk/guides/choose-an-entry-point#give-each-device-its-own-credential)
+walks through pairing.
+
+## github [#github]
+
+The GitHub CLI (`gh`) login of the machine the host runs on. Every workspace on that host shares it.
+Per-workspace GitHub calls are on [`workspace.github()`](/docs/sdk/reference/workspace#github).
+
+| Method      | Authority   | What it does                                                                    |
+| ----------- | ----------- | ------------------------------------------------------------------------------- |
+| `account()` | participant | The account `gh` is signed in as                                                |
+| `signIn()`  | owner       | Starts `gh auth login`, or joins one in progress, and returns its one-time code |
+| `signOut()` | owner       | Cancels a sign-in waiting for its code, or signs `gh` out                       |
+
+Each returns a `GitHubAccountState`: `ready` with the `account`, `signing_in` with the
+`deviceCode`, `signed_out`, `cli_missing` or `error`. A host without a GitHub login to serve throws
+`SdkError("unavailable")`.
+
+## operations [#operations]
+
+| Method             | Authority   | What it does                                                                |
+| ------------------ | ----------- | --------------------------------------------------------------------------- |
+| `describe(names?)` | participant | Every operation the host serves, or the named ones, with their JSON Schemas |
+
+Each `OperationDescription` has:
+
+| Field        | What it holds                                                            |
+| ------------ | ------------------------------------------------------------------------ |
+| `name`       | The operation and its HTTP path, such as `head.send`                     |
+| `summary`    | One sentence on what it does                                             |
+| `kind`       | `query`, `command`, `watch`, `receipt` or `stream`                       |
+| `authority`  | `participant`, `owner` or `maintenance`                                  |
+| `scope`      | `host`, `session` or `workspace`                                         |
+| `capability` | `files`, `git`, `github` or `browser` for a workspace capability's calls |
+| `input`      | A JSON Schema (draft 2020-12) of the request body                        |
+| `output`     | A JSON Schema of the answer                                              |
+
+```ts
+const [send] = await connection.operations.describe(["head.send"]);
+
+console.log(send?.summary);
+console.log(JSON.stringify(send?.input, null, 2));
+```
+
+A name the host doesn't serve throws `SdkError("invalid")`. The answer comes from the connected
+host, so it matches that host's version.
+
+## watch [#watch]
+
+`connection.watch()` yields a `HostView` right away and again each time the host changes.
+
+| Field                         | What it holds                                                                                   |
+| ----------------------------- | ----------------------------------------------------------------------------------------------- |
+| `id`                          | The host id                                                                                     |
+| `name`, `platform`, `version` | The host machine's name, its OS platform and Nyte's version                                     |
+| `link`                        | `connected`, `reconnecting` with `since` and `attempts`, or `closed` with a `reason`            |
+| `authority`                   | This connection's authority, as a `Set`                                                         |
+| `defaultWorkspace`            | The workspace a chat starts in when `sessions.start` names none, or `null`                      |
+| `catalog`                     | Changes whenever the model catalog does. Call `models.list()` when it does                      |
+| `settings`                    | Each setting with its `id`, `label`, `schema`, `choices`, `value` and where the value came from |
+| `plugins`                     | Each loaded plugin with its `id`, `source`, `path` and `issues`                                 |
+| `views`                       | The part renderers plugins ship to clients                                                      |
+| `operations`                  | A digest of the host's operations, or `null`. It changes when the HTTP API does                 |
+
+`closed` reasons are `client` after `close()`, `revoked` after `principals.revoke`, and `host-gone`.
+
+## Host [#host]
+
+`sdk.open` returns a `Host`. It has every `Connection` member, all three authorities, and these:
+
+| Member                                    | What it does                                                                                                                   |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `listen(options)`                         | Serves the host over HTTP or as a fetch handler. See [host.listen](/docs/sdk/reference/entry-points#host-listen)               |
+| `plugins.replace`, `plugins.check`        | Accept plugin objects as well as `{ path }` files                                                                              |
+| `inspect(session)`                        | Reads a session's raw storage for debugging: `events({ after })` streams its stored events and `verify()` checks its integrity |
+| `execution.cover(coverage)`               | Claims sessions for this process to run: `{ kind: "all" }`, one workspace, or a list of sessions                               |
+| `execution.advance({ session, head })`    | Runs the work a head has waiting and reports when to call again. See [execution](/docs/sdk/reference/entry-points#execution)   |
+| `execution.repair({ cursor?, limit })`    | Pages through heads that have work waiting, for a driver to advance                                                            |
+| `execution.pause()`, `execution.resume()` | Ends model requests in flight and holds new ones, as while the machine sleeps, then lets runs continue                         |
+
+## HTTP API [#http-api]
+
+Every SDK call is one HTTP operation, and you can call them without the SDK. Each operation is a
+`POST` to `<url>/<name>`, such as `POST /sessions.list`, with a JSON body that matches the
+operation's input schema and an `Authorization: Bearer <token>` header.
+
+```sh
+curl -X POST "http://127.0.0.1:8787/sessions.list" \
+  -H "Authorization: Bearer $NYTE_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+Queries and commands answer JSON. Watches answer server-sent events, one JSON value per event.
+Byte streams, such as `connection.blob`, answer the raw bytes. A failed call answers an
+[`SdkError`](/docs/sdk/reference/errors#codes) as JSON with the matching status. Bodies are limited
+to 8 MiB unless the listener sets `maxBodyBytes`.
+
+Every response carries `X-Nyte-Host` with the host id and `X-Nyte-Operations` with the digest that
+`HostView.operations` holds.
+
+To see what each operation takes and returns:
+
+- `connection.operations.describe()` asks a running host. See [operations](#operations).
+- `nyte api list` prints every operation with its summary, and `nyte api describe head.send` prints
+  one operation's authority, scope and input and output schemas. Both read the operations of the
+  installed `nyte`, so no host has to run. Add `--host-url <url>` to ask a running host instead,
+  with its token in `NYTE_HOST_TOKEN`, and `--json` for machine-readable output. See
+  [`nyte api`](/docs/cli#nyte-api).
+
+To get a host to call, run `nyte host`. It serves your chats and writes its URL and token to
+`~/.nyte/host.json`.

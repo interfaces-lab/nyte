@@ -1,0 +1,130 @@
+---
+title: Plugins
+description: Add tools, commands, settings, hooks and custom parts to Nyte with a TypeScript file.
+---
+
+A plugin is a TypeScript object with an `id`. Use one to give the agent a tool, add a `/` command,
+gate tool calls, change model requests, or show your own interactive part in the chat.
+
+```ts title="~/.nyte/plugins/hello.ts"
+import type { Plugin } from "@nyte-ai/plugin/core";
+
+export default {
+  id: "hello",
+  contribute: {
+    commands: [
+      {
+        name: "hello",
+        title: "Say hello",
+        description: "Replies with a greeting.",
+        run: (text) => `Hello ${text || "there"}!`,
+      },
+    ],
+  },
+} satisfies Plugin;
+```
+
+Save that file and type `/hello` in any chat. The import is type-only, so the file needs no
+`node_modules`.
+
+## Core and client plugins [#sides]
+
+Plugins run on one of two sides.
+
+| Side   | Type                                                        | Runs                       | Can add                                                                                         |
+| ------ | ----------------------------------------------------------- | -------------------------- | ----------------------------------------------------------------------------------------------- |
+| Core   | `Plugin` from `@nyte-ai/plugin/core` (`Plugin<"core">`)     | On the host, once per chat | Tools, prompt sections, agents, skills, search providers, parts, commands, settings, core hooks |
+| Client | `Plugin` from `@nyte-ai/plugin/client` (`Plugin<"client">`) | In a client, once per app  | Renderers, commands, settings, keybindings, client hooks                                        |
+
+The host runs the agent, so almost everything is a core plugin. The rest of this section is about
+core plugins unless a page says otherwise.
+
+The desktop app, the web app and the terminal mount their own fixed set of client plugins. To run a
+client plugin, build your own client and pass it to `mountClientPlugins` from
+`@nyte-ai/plugin/client/mount`.
+
+## Where core plugins load from [#load]
+
+| Place                    | Who it's for                       | Notes                                                                 |
+| ------------------------ | ---------------------------------- | --------------------------------------------------------------------- |
+| `sdk.open({ plugins })`  | A program that opens its own host  | Plugin objects, not files. A plugin with a built-in's id replaces it  |
+| `~/.nyte/plugins`        | You, in every chat on this machine | Loaded when the host opens                                            |
+| `<folder>/.nyte/plugins` | Everyone who opens that folder     | Loaded only once the folder is trusted. In the terminal, run `/trust` |
+
+`~/.nyte` sits under the host's home directory, which `sdk.open({ home })` can change. In the desktop
+app, **Customize > Plugins > Open Plugins Folder** opens it.
+
+A chat loads the built-in plugins first, then the host's own (those from `sdk.open`, then
+`~/.nyte/plugins`), then the trusted folder's.
+
+```ts title="open.ts"
+import { sdk } from "@nyte-ai/sdk";
+import todos from "./todos.ts";
+
+const host = await sdk.open({ plugins: [todos] });
+const { receipt } = await host.sessions.start({ content: "What's left to do in src/app.ts?" });
+
+await receipt.settled();
+await host.close();
+```
+
+## Plugin files [#files]
+
+Each entry in a plugins folder is one plugin:
+
+- a `.ts`, `.mts`, `.js` or `.mjs` file, or
+- a folder with an `index` file of one of those types.
+
+The file's default export must be the plugin. The host strips TypeScript types without checking
+them, so use erasable syntax only: no enums, namespaces or parameter properties.
+
+A plugin file's package imports resolve from the file's own location, the same way Node resolves
+them. `import type` lines are erased and need nothing installed. A file that imports a package at
+run time, such as `typebox`, needs that package in a `node_modules` it can reach. The usual way is
+a folder plugin with its own `package.json`:
+
+```txt
+~/.nyte/plugins/
+  hello.ts
+  checklist/
+    package.json
+    node_modules/
+    index.ts
+    checklist.view.tsx
+```
+
+## Changes apply on save [#reload]
+
+The host watches both plugins folders. Save a plugin file, or a local file it imports, and the host
+loads it again. Chats pick up the new version, and `~/.nyte/plugins` reloads even with no chat open.
+A file whose contents haven't changed keeps its loaded plugin.
+
+Plugins passed to `sdk.open` are objects, so they don't reload. In the terminal, `/reload` reloads
+plugins and skills by hand.
+
+## When a plugin fails [#errors]
+
+A file that doesn't load, or a plugin the host refuses, gets its own row with the error, and the other
+plugins still load. Rows appear in the desktop app under **Customize > Plugins**, in the terminal
+under `/plugins`, and in `HostView.plugins` for SDK code.
+
+The host refuses a plugin when:
+
+- another plugin has the same `id`
+- the `id` contains `/`, or is `models` or `settings`
+- one of its schemas can't be turned into JSON Schema
+
+`sdk.open` throws instead when a plugin passed to it is refused.
+
+When two plugins contribute a tool, setting or command with the same name, the later one replaces
+the earlier one and the host reports a warning. For part kinds, the first plugin to register a kind
+keeps it.
+
+## Next steps [#next]
+
+- [Give the agent a tool](/docs/plugins/tools)
+- [Add a command and a setting](/docs/plugins/commands-and-settings)
+- [Hook into a chat](/docs/plugins/hooks)
+- [Show a part](/docs/plugins/parts)
+- [Draw a part with a view](/docs/plugins/part-views)
+- [Plugin API reference](/docs/plugins/reference)

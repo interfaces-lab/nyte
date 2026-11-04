@@ -1,0 +1,262 @@
+---
+title: MCP servers
+description: Give agents the tools of any MCP server, for every folder or for one project.
+---
+
+An MCP server is a program that offers tools to agents: a docs search, a database, an issue
+tracker. Add one to Nyte and every chat can call its tools. Nyte connects to the server itself, so
+the chats in a folder share one connection, and you sign in once.
+
+## Add a server [#add]
+
+From a terminal, in any folder:
+
+```sh
+nyte mcp add docs --url https://example.com/mcp
+nyte mcp add files -- npx -y @modelcontextprotocol/server-filesystem .
+```
+
+The first adds a server Nyte reaches over HTTP. The second adds one Nyte starts as a command; put
+the command and its arguments after `--`.
+
+`nyte mcp add` writes the server to `~/.nyte/mcp.json`, so it's available in every folder. Add
+`--local` (or `-l`) to write it to the current folder's `.nyte/mcp.json` instead. That needs the
+folder to be [trusted](/docs/configure/trust).
+
+Then check that it connects:
+
+```sh
+nyte mcp list
+```
+
+`list` gives the servers up to 15 seconds to connect, then prints each one's state and tool count.
+It exits 1 when an entry is invalid or an enabled server isn't connected, so scripts can rely on it.
+`--json` prints the same as JSON.
+
+## Edit mcp.json [#mcp-json]
+
+`nyte mcp add` only edits a file you can also write by hand. Nyte watches both files and applies a
+change as soon as you save: a changed server reconnects, and the others keep their connection.
+
+```json title="~/.nyte/mcp.json"
+{
+  "mcpServers": {
+    "files": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "."]
+    },
+    "docs": {
+      "url": "https://example.com/mcp",
+      "description": "Search the product docs",
+      "exposure": "deferred"
+    },
+    "tracker": {
+      "url": "https://tracker.example.com/mcp",
+      "headers": { "Authorization": "Bearer ${TRACKER_TOKEN}" }
+    }
+  }
+}
+```
+
+A server name may hold letters, digits, `_` and `-`. Nyte treats `-` and `_` as the same, so
+`my-docs` and `my_docs` can't both exist.
+
+A server that runs a command takes these fields:
+
+| Field     | What it does                                                                                 |
+| --------- | -------------------------------------------------------------------------------------------- |
+| `command` | The program to start. `~/` expands to your home folder                                       |
+| `args`    | Its arguments. `~/` expands here too                                                         |
+| `env`     | Variables to set for it                                                                      |
+| `cwd`     | The folder it starts in. Relative paths start from the open folder. Default, the open folder |
+
+A server reached over HTTP takes these:
+
+| Field     | What it does                                                    |
+| --------- | --------------------------------------------------------------- |
+| `url`     | Its streamable HTTP address, often ending in `/mcp`             |
+| `headers` | Headers sent with every request                                 |
+| `oauth`   | Sign-in options for servers that need them. See [OAuth](#oauth) |
+
+Both kinds take these:
+
+| Field          | What it does                                                                            |
+| -------------- | --------------------------------------------------------------------------------------- |
+| `enabled`      | `false` keeps the server off without removing it. Default `true`                        |
+| `timeout`      | Seconds a request may take. A progress update from the server restarts it. Default `60` |
+| `description`  | One line the agent reads to know what the server is for                                 |
+| `exposure`     | How agents reach its tools. See [Exposure](#exposure). Default `codemode`               |
+| `toolExposure` | Exposure for single tools, by name. `*` matches any characters                          |
+
+Set `command` or `url`, not both. `type` is optional; `"stdio"`, `"http"` and `"streamable-http"`
+are accepted. Servers that only speak the older SSE transport aren't supported.
+
+An entry with a mistake doesn't stop the others. It shows up in `nyte mcp list` with the reason, and
+the rest connect.
+
+## Keep secrets out of the file [#variables]
+
+Write `${NAME}` in `env`, `headers` or `oauth.clientSecret`, and Nyte puts in the value of the
+environment variable `NAME` when it connects:
+
+```json
+"headers": { "Authorization": "Bearer ${TRACKER_TOKEN}" }
+```
+
+The value comes from the environment Nyte itself started with, so export the variable before you
+start `nyte`, or set it in the login shell the desktop app reads. Variables from **Settings >
+Environment variables** don't count here. When a variable is missing, the server fails and says
+which variable to set; restart Nyte after you set it.
+
+`nyte mcp add` writes the same thing for you:
+
+```sh
+nyte mcp add tracker --url https://tracker.example.com/mcp --bearer-token-env-var TRACKER_TOKEN
+```
+
+When Nyte writes `mcp.json`, it makes the file readable only by your user.
+
+## Project servers [#project]
+
+A folder's `.nyte/mcp.json` adds servers for chats in that folder. Nyte reads it only once you
+[trust the folder](/docs/configure/trust).
+
+A project entry with the same name as one in `~/.nyte/mcp.json` replaces it. A project entry that
+sets only `enabled`, `exposure` or `toolExposure` changes those fields on your server and keeps the
+rest:
+
+```json title=".nyte/mcp.json"
+{
+  "mcpServers": {
+    "docs": { "enabled": false }
+  }
+}
+```
+
+## Exposure [#exposure]
+
+Exposure decides how an agent reaches a server's tools. Every tool is named
+`mcp__<server>__<tool>`.
+
+| Exposure             | How the agent reaches the tools                               |
+| -------------------- | ------------------------------------------------------------- |
+| `codemode` (default) | From code mode scripts, which find them with `searchTools()`  |
+| `codemode-deferred`  | The same as `codemode`                                        |
+| `deferred`           | It loads them with `tool_search` when it needs them           |
+| `direct`             | Declared to the model with every request, like built-in tools |
+| `hidden`             | Not at all                                                    |
+
+`direct` is the simplest for a server with a few tools. Every request carries the tool descriptions,
+so a server with dozens of tools fills the model's context. The other modes keep the tools out of
+the request until the agent goes looking for them.
+
+Whatever the exposure, the agent is told about each server in one line: its name, how to reach its
+tools, and the server's `description`, or the first line of the instructions the server sends. It's
+also told which servers failed or are waiting for you to sign in.
+
+`toolExposure` sets single tools apart from the rest of their server. An exact name wins, then the
+first pattern that matches:
+
+```json
+"docs": {
+  "url": "https://example.com/mcp",
+  "exposure": "deferred",
+  "toolExposure": { "search": "direct", "admin_*": "hidden" }
+}
+```
+
+## OAuth [#oauth]
+
+Some HTTP servers ask you to sign in. They show as **needs sign-in** until you do:
+
+```sh
+nyte mcp login docs
+```
+
+Nyte opens the server's sign-in page in your browser and waits up to five minutes. Over SSH, where
+the browser can't reach this machine, paste the address the browser ends on. Without a name,
+`nyte mcp login` asks which server to sign in to. That needs an interactive terminal.
+
+Nyte keeps the sign-in with its other secrets, not in `mcp.json`, and refreshes the token before it
+expires. `nyte mcp logout docs` deletes it. `nyte mcp remove` leaves it in place.
+
+A server whose `headers` already set `Authorization` never asks to sign in.
+
+Most servers work without `oauth` options: Nyte registers itself as "Nyte" and listens on a free
+local port for the browser's answer. Set them for a server that needs more:
+
+| Option                  | When to set it                                                                              |
+| ----------------------- | ------------------------------------------------------------------------------------------- |
+| `clientId`              | The server needs a client you registered with it                                            |
+| `clientSecret`          | That client has a secret. It may use `${NAME}`                                              |
+| `callbackPort`          | The client is registered with a fixed port on `127.0.0.1`                                   |
+| `callbackUrl`           | The client is registered with a fixed `http` address on `localhost`, `127.0.0.1` or `[::1]` |
+| `clientName`            | The server accepts only known client names                                                  |
+| `scope`                 | The server doesn't say which scopes to ask for                                              |
+| `authServerMetadataUrl` | The server points at the wrong sign-in server. Must use `https` except on localhost         |
+
+`nyte mcp add` sets the common ones with `--oauth-client-id`, `--oauth-client-secret`,
+`--oauth-callback-port` and `--oauth-client-name`.
+
+## Manage servers in the apps [#apps]
+
+| Where                                | What you can do                                                              |
+| ------------------------------------ | ---------------------------------------------------------------------------- |
+| Desktop: **Customize > MCP servers** | See each server's state and tools, sign in, reconnect, and turn it on or off |
+| Terminal: `/mcp`                     | The same, plus sign out                                                      |
+| Terminal: `nyte mcp`                 | Add, remove, list, sign in and sign out from a shell                         |
+
+Turning a server off writes `"enabled": false` to the file that defines it, or to the project's
+override when there is one.
+
+## nyte mcp reference [#cli]
+
+| Command                                             | What it does                               |
+| --------------------------------------------------- | ------------------------------------------ |
+| `nyte mcp add <name> [options] --url <url>`         | Adds a server reached over HTTP            |
+| `nyte mcp add <name> [options] -- <command> [args]` | Adds a server Nyte starts as a command     |
+| `nyte mcp remove <name> [--local]`                  | Removes a server. Its sign-in stays        |
+| `nyte mcp list [--json]`                            | Connects every server and prints its state |
+| `nyte mcp login [<name>]`                           | Signs in to a server                       |
+| `nyte mcp logout <name>`                            | Deletes a server's sign-in                 |
+
+Options for `add`:
+
+| Option                           | Applies to | What it does                             |
+| -------------------------------- | ---------- | ---------------------------------------- |
+| `--local`, `-l`                  | Both       | Writes to this folder's `.nyte/mcp.json` |
+| `--description <text>`           | Both       | Sets `description`                       |
+| `--exposure <exposure>`          | Both       | Sets `exposure`                          |
+| `--env KEY=VALUE`                | Command    | Adds to `env`. Repeat for more           |
+| `--cwd <dir>`                    | Command    | Sets `cwd`                               |
+| `--header KEY=VALUE`             | URL        | Adds to `headers`. Repeat for more       |
+| `--bearer-token-env-var <NAME>`  | URL        | Sends `Authorization: Bearer ${NAME}`    |
+| `--oauth-client-id <id>`         | URL        | Sets `oauth.clientId`                    |
+| `--oauth-client-secret <secret>` | URL        | Sets `oauth.clientSecret`                |
+| `--oauth-callback-port <port>`   | URL        | Sets `oauth.callbackPort`                |
+| `--oauth-client-name <name>`     | URL        | Sets `oauth.clientName`                  |
+
+`add` replaces a server of the same name in the file it writes, and refuses a config that would be
+invalid.
+
+## From the SDK [#sdk]
+
+The same actions are on `workspace(id).mcp`. Watching keeps the workspace's connections open.
+
+```ts title="mcp.ts"
+const mcp = host.workspace(workspaceId).mcp;
+
+const outcome = await mcp.add("docs", { url: "https://example.com/mcp" }, "user");
+
+if (outcome.kind === "invalid") console.error(outcome.message);
+
+for await (const view of mcp.watch()) {
+  if (view.servers.some((server) => server.state.kind === "connecting")) continue;
+
+  for (const server of view.servers) console.log(server.name, server.state.kind);
+  break;
+}
+```
+
+`add` doesn't wait for the server to connect. `"project"` in place of `"user"` writes the folder's
+`.nyte/mcp.json`. `login` returns the sign-in steps for your own client to show.

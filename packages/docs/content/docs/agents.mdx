@@ -1,0 +1,41 @@
+---
+title: Docs for agents
+description: Let your coding agent search and read these docs through MCP, or give it the docs as Markdown.
+---
+
+## Add the MCP server [#mcp]
+
+The docs are an MCP server at `https://nyte.sh/mcp`. It needs no sign-in and only reads.
+
+In Nyte:
+
+```sh
+nyte mcp add nyte-docs --url https://nyte.sh/mcp
+```
+
+In Claude Code:
+
+```sh
+claude mcp add --transport http nyte-docs https://nyte.sh/mcp
+```
+
+Other agents take the same URL as a streamable HTTP server. See
+[MCP servers](/docs/configure/mcp-servers) for the options Nyte gives a server.
+
+## Tools [#tools]
+
+| Tool          | What it does                                                                   |
+| ------------- | ------------------------------------------------------------------------------ |
+| `search_docs` | Finds the pages that match a query, with the sections that matched and links.  |
+| `read_doc`    | Answers one page as Markdown. Takes a path such as `sdk/guides/send-messages`. |
+| `list_docs`   | Lists every page by sidebar section, with its path and description.            |
+
+## Markdown [#markdown]
+
+Without MCP, point the agent at the Markdown versions:
+
+| URL                                               | What it holds                                 |
+| ------------------------------------------------- | --------------------------------------------- |
+| `https://nyte.sh/llms.txt`                        | Every page's title, link and summary.         |
+| `https://nyte.sh/llms-full.txt`                   | Every page in full, in one file.              |
+| `https://nyte.sh/llms.mdx/docs/<path>/content.md` | One page, such as `sdk/guides/send-messages`. |

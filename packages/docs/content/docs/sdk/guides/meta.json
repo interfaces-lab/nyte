@@ -1,3 +1,10 @@
 {
-  "pages": ["choose-an-entry-point", "send-messages", "render-a-session", "branch-a-conversation"]
+  "pages": [
+    "choose-an-entry-point",
+    "send-messages",
+    "render-a-session",
+    "answer-approvals-and-questions",
+    "branch-a-conversation",
+    "models-and-sign-in"
+  ]
 }

@@ -1,0 +1,143 @@
+---
+title: Give the agent a tool
+description: Write a tool the model can call, and tell the host what the call reads, writes and may repeat.
+---
+
+A tool is a function the model can call with arguments it fills in from a schema. Add one when the
+agent needs to do something the built-in tools can't, such as query your issue tracker or read a
+file format of your own.
+
+```ts title="todos.ts"
+import type { Plugin, ToolDefinition } from "@nyte-ai/plugin/core";
+import { standard } from "@nyte-ai/schema";
+import type { Infer } from "@nyte-ai/schema";
+import { Type } from "typebox";
+
+const parameters = standard(
+  Type.Object({
+    path: Type.String({ description: "The file to search, in the workspace." }),
+  }),
+);
+
+const listTodos: ToolDefinition<Infer<typeof parameters>> = {
+  name: "list_todos",
+  description: "List the TODO comments in a file, with their line numbers.",
+  parameters,
+  class: (args) => ({ kind: "read", path: args.path }),
+  effects: "none",
+  replay: "safe",
+  async execute(args, invocation) {
+    const file = await invocation.env.files.read(args.path);
+
+    if (file.kind !== "text") throw new Error(`${args.path} is not a text file.`);
+
+    const found = file.contents
+      .split("\n")
+      .flatMap((line, index) => (line.includes("TODO") ? [`${index + 1}: ${line.trim()}`] : []));
+
+    return { content: [{ kind: "text", text: found.join("\n") || "No TODOs." }] };
+  },
+};
+
+export default { id: "todos", contribute: { tools: [listTodos] } } satisfies Plugin;
+```
+
+Put it in `~/.nyte/plugins/todos/index.ts` with `typebox` and `@nyte-ai/schema` installed beside it,
+or pass it to `sdk.open({ plugins })`. See [where plugins load from](/docs/plugins#load).
+
+## Arguments [#parameters]
+
+`parameters` is the schema the model fills in. It can be any [Standard
+Schema](https://standardschema.dev) that also produces JSON Schema. `standard()` from
+`@nyte-ai/schema` wraps a TypeBox schema that way. The host checks the model's arguments against
+it before `execute` runs, and a call with bad arguments fails without running.
+
+Write `description` and each field's `description` for the model. They are all it knows about the
+tool.
+
+## What the call returns [#result]
+
+`execute` returns a `ToolResult`:
+
+| Field     | What it holds                                                                                        |
+| --------- | ---------------------------------------------------------------------------------------------------- |
+| `content` | What the model reads: `{ kind: "text", text }` items, or files by blob id                            |
+| `output`  | Structured data for code that reads the outcome. Checked against `output` when the tool declares one |
+| `parts`   | Ids of the [parts](/docs/plugins/parts) the call created                                             |
+
+Throw to fail the call. The model sees the error's message.
+
+## How the call is shown and gated [#class]
+
+`class` labels each call. Clients show it, and the permissions plugin decides from it whether to ask
+the user first.
+
+| Class                                      | Use it for                        | Asks before running                         |
+| ------------------------------------------ | --------------------------------- | ------------------------------------------- |
+| `{ kind: "read", path }`                   | Reading a file                    | Never                                       |
+| `{ kind: "list", path }`                   | Listing a folder                  | Never                                       |
+| `{ kind: "edit", path }`                   | Changing a file                   | Depends on the permissions setting and path |
+| `{ kind: "shell", command, description? }` | Running a command                 | Unless permissions are set to full access   |
+| `{ kind: "delegate", child, role, title }` | Starting or talking to a subagent | Never                                       |
+| `{ kind: "custom", label }`                | Anything else                     | Unless permissions are set to full access   |
+
+`approval` overrides that per tool:
+
+- `"policy"` (the default) lets a permissions hook hold the call by its class.
+- `"never"` is for calls that change nothing the user guards, such as asking a question or showing a
+  part.
+- `"runtime"` is for a call another agent runtime already asked about through `api.approve`.
+
+## Files and replays [#effects]
+
+`effects` says whether a call can write the workspace:
+
+- `"workspace"` (the default): the host snapshots the files before and after the call and records
+  what changed.
+- `"none"`: the call can't write files, so the host skips the snapshot. Use it for reads, web
+  requests, questions and parts.
+
+`replay` is required. It says what happens when the host restarts in the middle of a call:
+
+- `"safe"`: the call runs again. Pick it when running twice does no harm.
+- `"never"`: the call ends as `interrupted` instead of running again. Pick it for anything that
+  sends, pays or deploys.
+
+For finer control inside `execute`, `invocation.memo(name, compute)` stores a value the first time
+and returns the stored value when the call runs again.
+
+## What a call can use [#invocation]
+
+The second argument to `execute` is the `ToolInvocation`.
+
+| Member                | What it is                                                              |
+| --------------------- | ----------------------------------------------------------------------- |
+| `env`                 | The chat's environment: `cwd`, `files` and `exec`                       |
+| `session`             | The chat, for example to create a part with `session.parts.create`      |
+| `sdk`                 | A connection to the host, the same API SDK code uses                    |
+| `workspace`           | The chat's workspace                                                    |
+| `signal`              | Aborts when the user stops the run                                      |
+| `progress(update)`    | Reports `{ text?, fraction?, detail? }` while the call runs             |
+| `tools`               | `execute` another tool, `list` the chat's tools, see which are `loaded` |
+| `foreground`          | Starts a command the user can send to the background                    |
+| `wait(target)`        | Waits for a part answer, a job, a run or a timer, across host restarts  |
+| `memo(name, compute)` | Computes a value once per call, even across restarts                    |
+| `now()`               | The time, the same on a replay                                          |
+| `run`, `call`, `head` | Ids of the run, the call and the branch it runs on                      |
+
+## Who can call the tool [#exposure]
+
+`exposure` decides how the model reaches the tool:
+
+| Exposure            | Offered to the model | Callable from scripts | Listed for scripts       |
+| ------------------- | -------------------- | --------------------- | ------------------------ |
+| `"model"` (default) | Yes                  | Yes                   | Yes                      |
+| `"model-only"`      | Yes                  | No                    | No                       |
+| `"code"`            | No                   | Yes                   | Yes                      |
+| `"deferred"`        | No                   | Yes                   | No, only search finds it |
+| `"hidden"`          | No                   | No                    | No                       |
+
+A `"code"` or `"deferred"` tool becomes available to the model once another call loads it. A tool
+loads others with `loads(output)`, which returns tool names and needs an `output` schema.
+
+The [reference](/docs/plugins/reference#tool-definition) lists every `ToolDefinition` field.

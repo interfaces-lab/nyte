@@ -3,8 +3,8 @@ title: Choose an entry point
 description: Run the host in your process with sdk.open, or reach one elsewhere with sdk.connect.
 ---
 
-The host is the process that runs the agent and stores its sessions. Pick where it runs, and the
-entry point follows.
+The host is the process that runs the agent and stores its sessions. Decide where it runs, and the
+entry point follows:
 
 | You are writing                                    | Use                                      |
 | -------------------------------------------------- | ---------------------------------------- |
@@ -12,20 +12,33 @@ entry point follows.
 | A browser or mobile app                            | `sdk.connect` from `@nyte-ai/sdk`        |
 | A Node client of a host that runs elsewhere        | `sdk.connect` from `@nyte-ai/sdk/client` |
 
-Both return the same handle tree. Starting with `sdk.open` and moving the host into its own process
-later changes how you get the `Connection`, not the code that uses it.
+`sdk.open` returns a `Host` and `sdk.connect` returns a `Connection`. A `Host` is a `Connection`
+with a few extra members, so code written against `Connection` works with both. Starting with
+`sdk.open` and moving the host into its own process later changes one line.
 
 ## Run the host in your process
 
+```ts title="host.ts"
+import { sdk } from "@nyte-ai/sdk";
+
+const host = await sdk.open({});
+const { receipt } = await host.sessions.start({ content: "Explain this repository" });
+
+await receipt.settled();
+await host.close();
+```
+
 `sdk.open` needs Node 26.4 or later. Every option has a default:
 
-| Option      | Default                                                                  |
-| ----------- | ------------------------------------------------------------------------ |
-| `store`     | SQLite at `<home>/.nyte/nyte.db`, which the host closes when it closes   |
-| `workspace` | The local folder `process.cwd()`                                         |
-| `models`    | Nyte's model catalog over credentials encrypted in the store             |
-| `plugins`   | None; the first-party plugins and `<home>/.nyte/plugins` load either way |
-| `home`      | `os.homedir()`                                                           |
+| Option      | Default                                                                |
+| ----------- | ---------------------------------------------------------------------- |
+| `store`     | SQLite at `<home>/.nyte/nyte.db`, which the host closes when it closes |
+| `workspace` | The local folder `process.cwd()`                                       |
+| `models`    | Nyte's model catalog, with credentials encrypted in the store          |
+| `plugins`   | None. The built-in plugins and `<home>/.nyte/plugins` load either way  |
+| `home`      | `os.homedir()`                                                         |
+
+[Entry points](/docs/sdk/reference/entry-points) lists the rest.
 
 Pass your own store to keep the agent's data apart from Nyte's. A store you pass stays yours, so
 close it after the host:
@@ -47,16 +60,16 @@ await store.close();
 ```
 
 In a local workspace, the agent's tools run in that folder without asking by default.
-`host.settings.apply("permissions", "ask")` asks before commands and file changes. The folder's own
-instructions and plugins wait until you
+`host.settings.apply("permissions", "ask")` makes them ask first, and
+[Answer approvals and questions](/docs/sdk/guides/answer-approvals-and-questions) shows how to
+answer. The folder's own instructions and plugins wait until you
 [trust the folder](/docs/build/composition#the-folder-it-works-in). For a host with no folder at all,
-pass `chatOnlyProvider()` from `@nyte-ai/host/providers` as in
+use `chatOnlyProvider()` from `@nyte-ai/host/providers` as in
 [Chat without a folder](/docs/sdk/examples#chat-without-a-folder).
 
 ## Serve it to other processes
 
-`host.listen` puts the same host on HTTP. It binds `127.0.0.1` unless you pass a `hostname`, and it
-refuses a token shorter than 16 characters.
+`host.listen` puts the same host on HTTP:
 
 ```ts title="host.ts"
 const listener = await host.listen({
@@ -68,9 +81,14 @@ const listener = await host.listen({
 console.log("Listening on", listener.address);
 ```
 
-`origins` lists the browser origins allowed to call it. `host.close()` closes its listeners first.
+- It binds `127.0.0.1` unless you pass a `hostname`.
+- It throws `SdkError("invalid")` for a token shorter than 16 characters.
+- `origins` lists the browser origins allowed to call it. `https://*.example.com` allows every
+  subdomain of `example.com`, but not `example.com` itself.
+- `host.close()` closes its listeners first.
+
 Behind your own sign-in, `auth: { kind: "custom", authorize }` maps each request to a principal and
-its authority.
+the authority it holds, or denies it.
 
 ## Connect from another process
 
@@ -83,17 +101,26 @@ const connection = await sdk.connect({
 });
 ```
 
-`connect` resolves after the host answers with its first view, so a bad URL or token fails here
-rather than on the first call. In a browser, import from `@nyte-ai/sdk`; the browser build is
-already free of host code.
+`connect` resolves once the host has answered, so a bad URL or token fails here rather than on the
+first call. In a browser or React Native, import from `@nyte-ai/sdk`. Its build for those platforms
+has no host code, and `sdk.open` there throws `SdkError("unavailable")`.
 
-The listener token grants full access to the host. Keep it on machines you control, and never put
-it in a `VITE_*` or `NEXT_PUBLIC_*` variable.
+The other options:
+
+| Option    | What it does                                                                                                           |
+| --------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `expect`  | Checks that the host answering is the one you expect. See below                                                        |
+| `journal` | Keeps unsent messages across restarts. See [Send messages](/docs/sdk/guides/send-messages#retries-are-already-handled) |
+| `fetch`   | Replaces the global `fetch`, for a proxy or a test                                                                     |
+
+The listener token grants full access to the host. Keep it on machines you control, and never put it
+in a `VITE_*` or `NEXT_PUBLIC_*` variable.
 
 ### Give each device its own credential
 
-Pairing mints a one-time code for one principal. The device trades it for a token of its own.
-Revoking that token leaves every other credential working.
+Pairing gives a device its own token, so you never copy the listener token onto it. The host mints a
+one-time code, and the device trades it for a token. Revoking that device later leaves every other
+credential working.
 
 ```ts tab="host.ts"
 import { sdk } from "@nyte-ai/sdk";
@@ -118,12 +145,16 @@ await writeFile("credential.json", JSON.stringify(connection.credential));
 ```
 
 Run `host.ts`, then `node device.ts <code>` on the device. After pairing, `connection.credential` is
-`{ kind: "token", token }`; pass it as `credentials` next time. `host.principals.revoke(id)` closes that principal's live connections.
+`{ kind: "token", token }`. Pass it as `credentials` next time. `pair` also returns `expiresAt`, when
+the code stops working.
+
+`host.principals.list()` lists the principals that can connect, paired devices among them.
+`host.principals.revoke(id)` revokes one and closes its live connections.
 
 ### Check which host answered
 
-Pass `expect` with a host id you saved earlier. `connect` throws `SdkError("stale")` when a
-different host answers at that URL, for example after the machine was reinstalled.
+Pass `expect` with a host id you saved earlier. `connect` throws `SdkError("stale")` when a different
+host answers at that URL, for example after the machine was reinstalled.
 
 ```ts
 import { asId } from "@nyte-ai/schema";
@@ -135,15 +166,36 @@ const connection = await sdk.connect({
 });
 ```
 
+`connection.hostId` is the id to save.
+
+### Show the connection's state
+
+The SDK reconnects on its own when the network drops. `connection.watch()` yields the host's view
+on every change, and its `link` says whether the connection is up:
+
+```ts
+for await (const host of connection.watch()) {
+  if (host.link.kind === "reconnecting")
+    console.log(`Reconnecting (attempt ${host.link.attempts})`);
+  if (host.link.kind === "closed") console.log(`Disconnected: ${host.link.reason}`);
+}
+```
+
+`link.kind` is `connected`, `reconnecting` or `closed`. A closed link's `reason` is `client` after
+`connection.close()`, `revoked` when the host stopped accepting the credential, or `host-gone` when a
+different host now answers at the URL. A closed connection doesn't reopen. Call `connect` again.
+
 ## What differs between the two
 
-A `Host` is a `Connection` with a few more members:
+A `Host` has these members that a `Connection` doesn't:
 
 - `listen` serves the host over HTTP or as a fetch handler.
-- `inspect(session)` reads a session's refs, stored objects and durable events.
-- `execution` lets a driver claim sessions, advance one head and repair owed work.
+- `inspect(session)` reads a session's stored records and events, for debugging.
+- `execution` lets you drive sessions yourself, and `pause` and `resume` model requests, for example
+  while the machine sleeps.
 - `plugins.replace` accepts plugin objects as well as plugin files.
 
-Everything else, from `sessions` to `models`, behaves the same over the network. Authority is the
-one difference you will notice: a token connection gets participant and owner authority, and a
-paired device gets what `pair` granted.
+Everything else, from `sessions` to `models`, behaves the same over the network. The difference you
+will notice is authority. A connection with the listener token gets participant and owner authority.
+A paired device gets what `pair` granted, so a device paired with `participant` can chat but can't
+sign in to models or change settings.

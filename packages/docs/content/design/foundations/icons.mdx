@@ -15,7 +15,7 @@ Central Icons are licensed per user, so they are optional dependencies that inst
 `CENTRAL_LICENSE_KEY`. Without the key, pnpm skips them and `Icon` draws the same names with
 [Lucide](https://lucide.dev) at stroke 1.5, and brand marks with
 [Simple Icons](https://simpleicons.org). `scripts/icons.mjs` picks the set on install and before
-each build; `NYTE_ICONS=central` or `NYTE_ICONS=lucide` overrides it. `pnpm icons:test` fails when
+each build; `NYTE_ICONS=central` or `NYTE_ICONS=lucide` overrides it. `pnpm test:scripts` fails when
 a name has no Lucide glyph, so add one to `packages/ui/src/glyphs/lucide.ts` with every new name.
 
 ## Usage

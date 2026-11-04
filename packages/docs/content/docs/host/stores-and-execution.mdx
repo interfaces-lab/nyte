@@ -1,0 +1,182 @@
+---
+title: Stores and execution
+description: Choose where a host keeps its sessions, and which process runs them.
+---
+
+A host keeps every session in a store, and some process has to run the agent for each message. By
+default, `sdk.open` keeps sessions in SQLite at `<home>/.nyte/nyte.db` and runs them in the same
+process. Change the store to keep the data somewhere else or to share it between machines. Change
+the execution to run sessions in a queue, a workflow engine or a separate worker.
+
+## Pick a store [#stores]
+
+| Store                                 | Import                         | Use it for                                     |
+| ------------------------------------- | ------------------------------ | ---------------------------------------------- |
+| `sqliteStore({ path })`               | `@nyte-ai/host`                | One machine                                    |
+| `sqliteStore({ memory: true })`       | `@nyte-ai/host`                | Tests and throwaway hosts. Nothing is saved    |
+| `postgresStore({ connectionString })` | `@nyte-ai/host`                | Several processes or machines sharing sessions |
+| `postgresStore({ pool })`             | `@nyte-ai/host`                | The same, over a pool you already have         |
+| `durableObjectStore(state.storage)`   | `@nyte-ai/host/durable-object` | A host inside a Cloudflare Durable Object      |
+
+```ts title="host.ts"
+import process from "node:process";
+import { postgresStore } from "@nyte-ai/host";
+import { sdk } from "@nyte-ai/sdk";
+
+const store = postgresStore({ connectionString: process.env.DATABASE_URL ?? "" });
+const host = await sdk.open({ store });
+
+// ...
+
+await host.close();
+await store.close();
+```
+
+A store you pass stays yours, so close it after the host. `postgresStore` with a
+`connectionString` creates its own pool and ends it on `close()`. With `{ pool }`, the pool stays
+open. `pool` takes anything with `connect()` and `end()` in the shape of `pg`'s `Pool`.
+
+Each store creates its tables on first open and upgrades them when a newer Nyte opens it. A store
+that a newer Nyte has already upgraded refuses to open with `SdkError("unavailable")`.
+
+Before an upgrade rewrites anything, the SQLite store copies what it changes into a `backups` folder
+next to the database file and keeps the newest three copies. The Postgres and Durable Object stores
+keep no backups, so back those databases up yourself.
+
+A Durable Object row holds at most 2 MB. A message, file or event larger than that throws
+`SdkError("invalid")` before anything is written.
+
+### Share one store between processes [#shared-store]
+
+Every process that opens the same store is the same host: same host id, same sessions, same paired
+devices. One process at a time runs any given branch of a session, and it renews its claim while it
+works. If that process dies, another process that covers the session takes the branch over after
+about 20 seconds, and the run carries on there.
+
+`sdk.open` checks for other processes' changes every half second only on its default SQLite store.
+With a store you pass, it doesn't, so a client watching one process may not see another process's
+writes promptly. The [Vercel template](/docs/host/deploy#vercel) composes its host with
+`composeHost` from `@nyte-ai/core/server` and `poll: 1000`, which re-reads the store every second.
+
+## Choose who runs sessions [#execution]
+
+`execution` decides what this process does with the messages it accepts. Sending works the same in
+every mode: `send` resolves once the message is stored, and the
+[receipt](/docs/sdk/guides/send-messages) settles when some process finishes the run.
+
+| `execution`                      | What happens                                                                      |
+| -------------------------------- | --------------------------------------------------------------------------------- |
+| `{ kind: "run", coverage }`      | This process runs the sessions in `coverage`. The default covers every session    |
+| `{ kind: "admit-only" }`         | This process stores messages and runs nothing. Another process runs them          |
+| `{ kind: "dispatch", dispatch }` | When a session has work, the host calls `dispatch` so a queue or workflow runs it |
+
+`coverage` picks the sessions:
+
+| `coverage`                                | Covers                        |
+| ----------------------------------------- | ----------------------------- |
+| `{ kind: "all" }`                         | Every session                 |
+| `{ kind: "workspace", workspace }`        | The sessions in one workspace |
+| `{ kind: "sessions", sessions: [id, …] }` | Those sessions                |
+
+### Hand work to a queue [#dispatch]
+
+With `dispatch`, the host calls your function with a session id and a branch name (`head`) each
+time that branch has work. The call should enqueue a job and return. If it throws, the host tries
+three more times with a short backoff.
+
+```ts title="web.ts"
+import process from "node:process";
+import { postgresStore } from "@nyte-ai/host";
+import { sdk } from "@nyte-ai/sdk";
+import { queue } from "./queue";
+
+const store = postgresStore({ connectionString: process.env.DATABASE_URL ?? "" });
+
+const host = await sdk.open({
+  store,
+  execution: { kind: "dispatch", dispatch: (target) => queue.push(target) },
+});
+
+await host.listen({
+  transport: { kind: "http", port: 8787 },
+  auth: { kind: "token", token: process.env.NYTE_TOKEN ?? "" },
+});
+```
+
+A worker then runs the branch step by step, as in [Run sessions yourself](#drive).
+
+### What a listener runs [#listener-execution]
+
+`host.listen` takes its own `execution`, `{ kind: "run", coverage: { kind: "all" } }` by default:
+
+- On a `run` host, the listener's coverage applies while it's open.
+- On an `admit-only` host, a `run` listener runs the sessions it covers in this process.
+- `{ kind: "admit-only" }` on the listener runs nothing. Both deploy templates pass it.
+- On a `dispatch` host, the listener runs nothing either way.
+
+## Run sessions yourself [#drive]
+
+`host.execution` lets your own code run a branch, one step at a time:
+
+| Method                       | What it does                                                                     |
+| ---------------------------- | -------------------------------------------------------------------------------- |
+| `cover(coverage)`            | Claims those sessions for this process until you close the handle it returns     |
+| `advance({ session, head })` | Runs the next step of that branch and reports what to do next                    |
+| `repair({ cursor?, limit })` | Finds a page of sessions that still owe work and wakes their branches again      |
+| `pause()`                    | Ends model streams in flight and holds new requests, as while the machine sleeps |
+| `resume()`                   | Lets paused runs make requests again                                             |
+
+`advance` returns one of these reports:
+
+| `kind`     | Meaning                                                                                                              |
+| ---------- | -------------------------------------------------------------------------------------------------------------------- |
+| `continue` | There's more to do. Advance again now                                                                                |
+| `waiting`  | The run waits. Advance again at `until`, or once it gets what it waits for when `until` is `null`, such as an answer |
+| `retry`    | The run is backing off, or its next message is held. Advance again at `until`                                        |
+| `idle`     | Nothing to run                                                                                                       |
+| `busy`     | Another process or call is advancing this branch until `until`                                                       |
+| `fenced`   | Another process took the branch. Stop                                                                                |
+
+This worker runs one branch until there's nothing left to do. It covers the session first, so the
+claim holds between steps:
+
+```ts title="worker.ts"
+import { setTimeout as sleep } from "node:timers/promises";
+import type { HeadName, SessionId } from "@nyte-ai/schema";
+import type { Host } from "@nyte-ai/sdk";
+
+export async function runBranch(host: Host, job: { session: SessionId; head: HeadName }) {
+  const coverage = await host.execution.cover({ kind: "sessions", sessions: [job.session] });
+
+  try {
+    for (;;) {
+      const report = await host.execution.advance(job);
+
+      if (report.kind === "continue") continue;
+
+      const until = report.kind === "waiting" || report.kind === "retry" ? report.until : null;
+
+      if (until === null) return;
+      await sleep(Math.max(0, until - Date.now()));
+    }
+  } finally {
+    await coverage.close();
+  }
+}
+```
+
+Open the worker's host with `execution: { kind: "admit-only" }` on the same store, so it doesn't
+also run every session on its own.
+
+A dispatch can get lost, for example when the queue is down. Call `repair` on a schedule to find
+work nobody picked up. On a `dispatch` host, every branch it wakes is dispatched again.
+
+```ts title="repair.ts"
+import type { Cursor } from "@nyte-ai/schema";
+
+let cursor: Cursor | undefined;
+
+do {
+  cursor = (await host.execution.repair({ cursor, limit: 100 })).next ?? undefined;
+} while (cursor !== undefined);
+```

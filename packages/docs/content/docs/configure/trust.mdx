@@ -1,0 +1,92 @@
+---
+title: Trust a folder
+description: Choose whether a folder's own plugins, skills, prompts and MCP servers load.
+---
+
+A project can carry its own Nyte setup: plugins, skills, MCP servers and system prompts. Plugins run
+code and MCP servers start programs, so Nyte loads none of it from a folder until you trust that
+folder.
+
+## What trust loads [#what-it-loads]
+
+| In the folder                    | What it is                                                                          |
+| -------------------------------- | ----------------------------------------------------------------------------------- |
+| `.nyte/plugins`                  | [Plugins](/docs/plugins#load) for chats in this folder                              |
+| `.nyte/skills`, `.agents/skills` | [Skills](/docs/configure/skills)                                                    |
+| `.nyte/mcp.json`                 | [MCP servers](/docs/configure/mcp-servers#project)                                  |
+| `.nyte/SYSTEM.md`                | A [system prompt](/docs/configure/context-files#system-prompt) that replaces Nyte's |
+| `.nyte/APPEND_SYSTEM.md`         | Text added to the end of the system prompt                                          |
+
+[Context files](/docs/configure/context-files) such as `AGENTS.md` load whether or not you trust the
+folder. They're plain text for the model and run nothing.
+
+Trust doesn't decide whether an agent may run commands or edit files in the folder. Nyte works in
+an untrusted folder like any other. [Permissions](/docs/configure/permissions) decide what the agent
+asks before doing.
+
+## When Nyte asks [#prompt]
+
+Nyte asks when you open a folder that has any of the files above and no answer saved for it.
+
+- The desktop app shows **Trust Folder** when you open the folder.
+- The terminal asks when `nyte` starts there: **Trust this folder**, **Don't trust**, or **Quit**
+  to decide next time.
+
+A folder without any of these files never asks.
+
+## How a decision applies [#scope]
+
+Your answer belongs to the folder, and it outlives the chats in it.
+
+- Folders inside it follow it, unless they have an answer of their own. Trusting `~/code` trusts
+  every project under it you haven't answered for.
+- Chats in a worktree follow the folder the worktree was made from.
+- Your home folder is never trusted as a project. Its `.nyte` folder already holds your own
+  settings, which Nyte always reads.
+
+Chats that are open in the folder reload with the change.
+
+## Change a decision [#change]
+
+In the terminal, run `/trust` in a chat in that folder. Besides trusting and declining, it offers
+**Forget my answer**, which hands the folder back to the folder above it, or to the **Project
+trust** setting.
+
+From a shell, `--trust` and `--no-trust` save the decision for the current folder before `nyte`
+starts:
+
+```sh
+nyte --trust
+nyte --no-trust
+```
+
+## Folders you haven't answered for [#mode]
+
+The **Project trust** setting (`workspaceTrust`) decides what happens in a folder with no answer of
+its own, or above it:
+
+| Value           | What Nyte does                                    |
+| --------------- | ------------------------------------------------- |
+| `ask` (default) | Asks before loading a new folder's project files  |
+| `always`        | Loads every folder's project files without asking |
+| `never`         | Loads project files only from folders you trusted |
+
+In the terminal, change it under `/settings`. [Settings](/docs/configure/settings) covers the other
+ways to set it.
+
+## From the SDK [#sdk]
+
+`workspace(id).update` saves a decision: `true` trusts, `false` declines, and `null` forgets it.
+
+```ts title="trust.ts"
+const seen = await host.workspaces.inspect({ kind: "local", path: "/Users/me/code/app" });
+const added = await host.workspaces.add(seen.target);
+
+if (added.kind === "added" || added.kind === "exists") {
+  await host.workspace(added.workspace).update({ projectResources: true });
+}
+```
+
+`WorkspaceInfo` reports `trusted`, the answer that applies to the folder now, and
+`projectResources`, the answer saved for this folder itself. `trusted` is `null` while Nyte would
+still ask. `projectSources` lists the files from the table above that the folder has.

@@ -1,0 +1,126 @@
+---
+title: Settings
+description: The settings a Nyte host has, and how to change them from the apps, settings.json or code.
+---
+
+A host's settings change how every chat on it behaves: what agents ask before acting, which folders
+load their own setup, where web searches go. The host keeps them, so a change from any app applies to
+every client of that host.
+
+## Change a setting [#change]
+
+| From            | How                                                                                                                   |
+| --------------- | --------------------------------------------------------------------------------------------------------------------- |
+| The desktop app | **Settings**, or **Customize > Plugins** and expand the plugin that owns the setting                                  |
+| The terminal    | `/settings` lists the settings that have a fixed set of choices. Commands such as `/permissions ask` set one directly |
+| `settings.json` | Sets a starting value when the host starts. See [below](#settings-json)                                               |
+| The SDK         | `host.settings.apply(id, value)`. See [From the SDK](#sdk)                                                            |
+
+## Host settings [#host]
+
+These ship with Nyte. Plugins you add can declare more.
+
+| Setting                  | Default  | What it does                                                                                                                                    |
+| ------------------------ | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `permissions`            | `"full"` | Which tool calls wait for you: `ask`, `auto-edit` or `full`. See [Permissions](/docs/configure/permissions)                                     |
+| `workspaceTrust`         | `"ask"`  | What folders you haven't answered for do with their project files: `ask`, `always` or `never`. See [Trust a folder](/docs/configure/trust#mode) |
+| `skills.paths`           | `[]`     | More places to find skills. See [Skills](/docs/configure/skills#paths)                                                                          |
+| `continueInterrupted`    | `true`   | When a response is cut off, keep its text and ask the model to continue it                                                                      |
+| `web_search.provider`    | `"exa"`  | Where web searches go: `exa`, `tavily`, `firecrawl`, `parallel`, or `off`                                                                       |
+| `worktrees.branchPrefix` | `""`     | Starts the name of each branch Nyte creates for a worktree chat, such as `nyte/`                                                                |
+| `worktrees.idleDays`     | `7`      | Clean a worktree once no chat has used it for this many days. `0` turns this off                                                                |
+| `worktrees.maxCount`     | `20`     | Clean the least recently used worktrees beyond this many. `0` turns this off                                                                    |
+| `telemetry.endpoint`     | `""`     | An OTLP HTTP address to send a trace of each model request to. Empty sends nothing                                                              |
+| `variables.entries`      | `{}`     | The variables from [Environment variables](/docs/environment-variables)                                                                         |
+
+Cleaning a worktree deletes its ignored dependency and build folders, such as `node_modules`. Its
+files and edits stay. Cleanup runs when the host starts and every so often after, and skips
+worktrees with a chat still running.
+
+In the desktop app, find them here:
+
+| Setting               | Where                                                                      |
+| --------------------- | -------------------------------------------------------------------------- |
+| `permissions`         | **Customize > Plugins > Permissions**                                      |
+| `web_search.provider` | **Customize > Plugins > Web**                                              |
+| `worktrees.*`         | **Settings > Source control**                                              |
+| `telemetry.endpoint`  | **Settings > Developer** with **Developer Mode** on, as **Trace endpoint** |
+| `variables.entries`   | **Settings > Environment variables**                                       |
+
+The desktop app adds settings of its own, named `desktop.*`, for notifications, sleep, its terminal
+and its browser. It shows them on its **Settings** pages.
+
+## Seed settings from settings.json [#settings-json]
+
+`~/.nyte/settings.json` gives a new host its starting values. It maps setting ids to values:
+
+```json title="~/.nyte/settings.json"
+{
+  "permissions": "auto-edit",
+  "workspaceTrust": "never",
+  "continueInterrupted": false
+}
+```
+
+The host reads the file when it starts. It applies a value only while that setting has none saved,
+so once you change the setting in an app, or the file has set it once, later edits to the file
+don't change it. Use the file to set up a new machine, then change settings in the apps.
+
+The file can seed the host settings above. It can't seed:
+
+- `variables.entries`, which holds secrets. Set those in **Settings > Environment variables**.
+- A plugin's session settings. Set those on a chat.
+- Settings of plugins you added yourself.
+
+The host reports a value it can't apply, such as an unknown id or one that fails the setting's
+check, as a problem with `settings.json` and keeps going.
+
+### Terminal settings [#terminal]
+
+The terminal keeps its own preferences in the same file:
+
+| Key                  | Default   | What it does                                                                    |
+| -------------------- | --------- | ------------------------------------------------------------------------------- |
+| `theme`              | `"auto"`  | `auto` follows the terminal's colors. Or `dark`, `light`                        |
+| `followUp`           | `"steer"` | What Enter does while the agent works: `steer` or `queue`                       |
+| `copyOnSelect`       | `true`    | Copy text when a mouse selection ends. `false` on Windows by default            |
+| `scrollAcceleration` | `false`   | Scroll faster during rapid wheel scrolling                                      |
+| `autoUpdate`         | `false`   | Install a newer release when `nyte` starts                                      |
+| `externalEditor`     | none      | The editor the terminal opens your draft in. Default, `$VISUAL`, then `$EDITOR` |
+
+`/settings` writes changes to them back to `~/.nyte/settings.json`. A project's
+`.nyte/settings.json` overrides them for that folder, except `autoUpdate` and `externalEditor`,
+which only `~/.nyte/settings.json` can set.
+
+## Session settings [#session]
+
+A plugin can declare a setting for one chat. Its value for a chat comes from the chat first, then the
+host's value, then the default. None of the settings Nyte ships is a session setting.
+
+## From the SDK [#sdk]
+
+`settings.apply` sets a host setting and checks the value first:
+
+```ts title="settings.ts"
+const outcome = await host.settings.apply("permissions", "ask");
+
+if (outcome.kind === "invalid") console.error(outcome.issues);
+```
+
+It answers `applied`, `invalid` with the problems, or `unknown` for an id no plugin declares.
+
+The host's view lists every setting with its current value and where that value comes from:
+
+```ts
+for await (const view of host.watch()) {
+  for (const setting of view.settings) console.log(setting.id, setting.value, setting.from);
+  break;
+}
+```
+
+`from` is `default` or `host`. A chat's own list, in `catalog.settings` of its view, also includes
+session settings, where `from` can be `session`. Set one on the chat:
+
+```ts
+await session.configure({ settings: { "my-plugin.verbose": true } });
+```

@@ -1,0 +1,156 @@
+---
+title: Add a command and a setting
+description: Give users a slash command, and a setting they can change in the desktop app or the terminal.
+---
+
+A command is something the user types after `/` in a chat. A setting is a value the user picks once
+and your plugin reads when it runs. This plugin adds both: `/standup` drafts a stand-up update, and a
+setting decides how long it is.
+
+```ts title="standup.ts"
+import type { Command, Plugin, SettingDefinition } from "@nyte-ai/plugin/core";
+import { standard } from "@nyte-ai/schema";
+import { Type } from "typebox";
+
+const length: SettingDefinition<"short" | "detailed"> = {
+  id: "standup.length",
+  label: "Stand-up length",
+  schema: standard(Type.Union([Type.Literal("short"), Type.Literal("detailed")])),
+  choices: [
+    { value: "short", label: "Three bullets" },
+    { value: "detailed", label: "A paragraph per task" },
+  ],
+  default: "short",
+  scope: "host",
+};
+
+const standup: Command = {
+  name: "standup",
+  title: "Write a stand-up",
+  description: "Drafts a stand-up update from this chat; text after the name adds a focus.",
+  takesText: true,
+  async run(text, { api }) {
+    const chosen = await api.contribute.settings.value(length.id);
+    const shape = chosen === "detailed" ? "one paragraph per task" : "three bullets";
+    const focus = text === "" ? "" : ` Focus on ${text}.`;
+
+    return { prompt: `Write my stand-up update from this chat as ${shape}.${focus}` };
+  },
+};
+
+export default {
+  id: "standup",
+  contribute: { commands: [standup], settings: [length] },
+} satisfies Plugin;
+```
+
+Typing `/standup the auth work` sends "Write my stand-up update from this chat as three bullets.
+Focus on the auth work." as a message in the chat.
+
+## Commands [#commands]
+
+`name` is what the user types. Use lowercase letters, digits and `-`, and make it specific: other
+plugins share the same `/` menu. The host refuses a name the clients keep for themselves:
+
+`accounts`, `cd`, `compact`, `continue`, `edit`, `help`, `login`, `logout`, `mcp`, `new`, `plugins`,
+`pr`, `quit`, `reload`, `resume`, `sessions`, `settings`, `skills`, `tasks`, `tree`, `trust`,
+`update`, `usage`.
+
+`run` gets the text typed after the name, trimmed, or `""` when there is none. What it returns
+decides what happens next:
+
+| `run` returns | Result                                                    |
+| ------------- | --------------------------------------------------------- |
+| A string      | The client shows the string to the user                   |
+| `{ prompt }`  | The host sends `prompt` to the chat as the user's message |
+| Nothing       | Nothing more                                              |
+
+If `run` throws, the client shows the error's message.
+
+The second argument holds `api`, the plugin's [API](/docs/plugins/reference#plugin-api) for this
+chat, a `signal`, and `caller`, the id of the user who ran the command.
+
+### Taking text [#takes-text]
+
+With `takesText: true`, picking the command from the menu waits for the user to type after the name.
+Without it, picking the command runs it at once.
+
+`complete(prefix)` suggests that text as the user types. Each suggestion's `value` replaces
+everything typed after the name. A command with `complete` always takes text.
+
+```ts
+const deploy: Command = {
+  name: "deploy",
+  title: "Deploy",
+  description: "Deploys to an environment.",
+  complete: (prefix) =>
+    ["staging", "production"]
+      .filter((target) => target.startsWith(prefix.trim()))
+      .map((target) => ({ value: target, label: target })),
+  run: (text) => `Deploying to ${text}.`,
+};
+```
+
+SDK code runs a command with `session.command(name, text)` and asks for suggestions with
+`session.completeCommand(name, prefix)`.
+
+## Settings [#settings]
+
+A setting has an `id`, a `label` users see, a `schema` its value must match, and a `default`.
+
+`scope` decides who shares the value:
+
+- `"host"`: one value for every chat on the host.
+- `"session"`: each chat can have its own value, and starts from the default.
+
+Where users change it:
+
+- The desktop app lists each plugin's settings under **Customize > Plugins**. A boolean setting shows
+  as a switch. Any other setting needs `choices` and shows as a menu. A per-chat setting changes only
+  the chat that's open.
+- The terminal lists settings that have `choices` under `/settings`.
+
+`choices` labels each allowed value. A choice's `badge` shows next to it.
+
+### Reading a setting [#read]
+
+In plugin code, `api.contribute.settings.value(id)` reads the current value of a setting your plugin
+declared. `watch(id)` yields the value now and again after each change.
+
+```ts
+for await (const value of api.contribute.settings.watch("standup.length")) {
+  console.log("Stand-up length is now", value);
+}
+```
+
+Both return `unknown`. Check the value before you use it.
+
+`api.contribute.settings.add(definition)` declares a setting from `activate` and returns a handle with
+`get()`, `set(value)` and `watch()`. `set` checks the value against the schema and throws when it
+doesn't match.
+
+SDK code changes a host setting with `connection.settings.apply(id, value)`, which returns `applied`,
+`invalid` with issues, or `unknown`.
+
+## Secrets [#secrets]
+
+Don't keep API keys in a setting. Store them with `api.storage.secrets`, which encrypts them with the
+host's key:
+
+```ts
+const setKey: Command = {
+  name: "tracker-key",
+  title: "Set the tracker API key",
+  description: "Saves your issue tracker's API key; with no key, removes it.",
+  takesText: true,
+  async run(text, { api }) {
+    if (text === "") await api.storage.secrets.delete("tracker");
+    else await api.storage.secrets.set("tracker", text);
+
+    return text === "" ? "Key removed." : "Key saved.";
+  },
+};
+```
+
+Read it back with `api.storage.secrets.get("tracker")`. A host without a secrets key throws when you
+store one. See [storage](/docs/plugins/reference#storage).

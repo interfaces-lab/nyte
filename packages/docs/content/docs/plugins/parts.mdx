@@ -1,0 +1,244 @@
+---
+title: Show a part
+description: Put structured, interactive content in a chat, and let the user or the agent act on it.
+---
+
+A part is one item in a chat's history, such as a message's text, a tool call, or a question. A
+plugin can define its own kind of part with a typed state and named actions. Use one when the agent
+should show something richer than text, or ask the user something and wait for the answer.
+
+This page builds a checklist the agent shows and the user ticks off.
+
+## Define the part [#define]
+
+`definePart` describes a part kind: its `state` schema, its `actions`, a text `fallback`, and what
+happens when someone acts on it.
+
+```ts title="checklist.ts"
+import { definePart } from "@nyte-ai/plugin/core";
+import type { Plugin, ToolDefinition } from "@nyte-ai/plugin/core";
+import { SdkError, standard } from "@nyte-ai/schema";
+import type { Infer } from "@nyte-ai/schema";
+import type { ActionContext, ActionOutput } from "@nyte-ai/sdk";
+import { Type } from "typebox";
+
+const state = standard(
+  Type.Object({
+    title: Type.String(),
+    items: Type.Array(Type.Object({ label: Type.String(), done: Type.Boolean() })),
+  }),
+);
+
+const actions = {
+  toggle: { input: standard(Type.Object({ index: Type.Integer({ minimum: 0 }) })) },
+};
+
+type State = Infer<typeof state>;
+type Actions = typeof actions;
+
+const handlers: {
+  readonly [A in keyof Actions]: (
+    input: Infer<Actions[A]["input"]>,
+    context: ActionContext<State, Actions>,
+  ) => Promise<ActionOutput<Actions[A]>>;
+} = {
+  async toggle(input, { part }) {
+    const outcome = await part.update((current) => {
+      if (input.index >= current.items.length)
+        throw new SdkError("invalid", `There is no item ${input.index}.`);
+
+      return {
+        ...current,
+        items: current.items.map((entry, index) =>
+          index === input.index ? { ...entry, done: !entry.done } : entry,
+        ),
+      };
+    });
+
+    if (outcome.kind !== "updated")
+      throw new Error(`The checklist didn't change: ${outcome.kind}.`);
+  },
+};
+
+export const checklist = definePart({
+  kind: "checklist",
+  state,
+  actions,
+  view: new URL("./checklist.view.tsx", import.meta.url),
+  fallback: (current, { id }) =>
+    `${current.title}: ${current.items.filter((entry) => entry.done).length} of ${current.items.length} done [${id}]`,
+  onAction: (action, input, context) => handlers[action](input, context),
+});
+```
+
+| Field      | What it does                                                                                           |
+| ---------- | ------------------------------------------------------------------------------------------------------ |
+| `kind`     | The part kind's name. The first plugin to register a kind keeps it                                     |
+| `state`    | The schema every state must match. The host checks it on create and on each update                     |
+| `actions`  | Each action's `input` schema, and an optional `output` schema                                          |
+| `fallback` | The part as text. This is what the model reads in its history                                          |
+| `onAction` | Runs an action and returns its output                                                                  |
+| `view`     | A TSX file that draws the part in the desktop and web apps. See [part views](/docs/plugins/part-views) |
+
+The `handlers` object gives each action its own typed function. Writing `onAction` as one inline
+function doesn't typecheck, because its return type depends on which action ran.
+
+The kinds `text`, `thinking`, `tool`, `compaction` and `branchSummary` are built in. A plugin can't
+define them.
+
+## Contribute it and create it from a tool [#create]
+
+Put the kind in the plugin's `contribute.parts`. That gives the model its `fallback` text, and a kind
+with `onAction` can't be created without it. Then any code with the chat can create one. Here a
+tool does it:
+
+```ts title="checklist.ts"
+const parameters = standard(
+  Type.Object({
+    title: Type.String(),
+    items: Type.Array(Type.String(), { minItems: 1 }),
+  }),
+);
+
+const showChecklist: ToolDefinition<Infer<typeof parameters>> = {
+  name: "show_checklist",
+  description: "Show the user a checklist they can tick off as they go.",
+  parameters,
+  class: (args) => ({ kind: "custom", label: args.title }),
+  effects: "none",
+  approval: "never",
+  replay: "safe",
+  async execute(args, invocation) {
+    const part = await invocation.session.parts.create(checklist, {
+      state: { title: args.title, items: args.items.map((label) => ({ label, done: false })) },
+      placement: { kind: "transcript", role: "answer" },
+    });
+
+    return {
+      content: [{ kind: "text", text: `Showed the checklist [${part.id}].` }],
+      parts: [part.id],
+    };
+  },
+};
+
+export default {
+  id: "checklist",
+  contribute: { parts: [checklist], tools: [showChecklist] },
+} satisfies Plugin;
+```
+
+Inside a tool call, the host records the part it created. If the host restarts and the call runs
+again, `create` returns the same part instead of a second one.
+
+## Placement [#placement]
+
+`placement` says where clients show the part:
+
+| Placement                                | Where it shows                                    |
+| ---------------------------------------- | ------------------------------------------------- |
+| `{ kind: "transcript", role: "answer" }` | In the chat history, as part of the answer        |
+| `{ kind: "transcript", role: "step" }`   | In the chat history, as a step of the work        |
+| `{ kind: "transcript", role: "note" }`   | In the chat history, as a side note               |
+| `{ kind: "modal" }`                      | Over the chat, as a request the user answers once |
+
+A modal part keeps the first action that succeeds as its answer. Once the part closes, `act`
+returns `closed`.
+
+## Ask and wait for the answer [#wait]
+
+A tool can create a modal part and wait for the user. The wait survives a host restart, and any
+client watching the chat can answer. This part needs no `onAction`, because the answer is all the
+tool wants:
+
+```ts title="confirm.ts"
+const choice = { input: standard(Type.Object({})) };
+
+export const confirm = definePart({
+  kind: "confirm",
+  state: standard(Type.Object({ prompt: Type.String() })),
+  actions: { yes: choice, no: choice },
+  fallback: (state, { id }) => `${state.prompt} [${id}]`,
+});
+```
+
+In the tool's `execute`:
+
+```ts
+const part = await invocation.session.parts.create(confirm, {
+  state: { prompt: "Deploy to production?" },
+  placement: { kind: "modal" },
+});
+const outcome = await invocation.wait({ kind: "part", part: part.id });
+
+if (outcome.kind !== "part" || outcome.answer?.action !== "yes")
+  return { content: [{ kind: "text", text: "The user didn't confirm." }] };
+```
+
+Outside a tool call or hook, `part.answer({ signal })` waits for the answer and resolves with
+`{ action, input }`, or null.
+
+## Act on a part [#act]
+
+The user acts on a part through its view or renderer. Code acts on it with `act`:
+
+```ts
+const outcome = await part.act("toggle", { index: 0 });
+```
+
+`act` checks `input` against the action's schema and throws `SdkError("invalid")` when it doesn't
+match. Otherwise it runs `onAction` and resolves with an outcome:
+
+| Outcome                        | When                                                                  |
+| ------------------------------ | --------------------------------------------------------------------- |
+| `{ kind: "ok", output }`       | The action ran                                                        |
+| `{ kind: "rejected", reason }` | `onAction` threw `SdkError("invalid", reason)`                        |
+| `{ kind: "failed", message }`  | `onAction` threw anything else, or returned output its schema rejects |
+| `{ kind: "unknown-action" }`   | The part has no such action                                           |
+| `{ kind: "closed" }`           | The part is a modal that already closed                               |
+| `{ kind: "no-owner" }`         | The plugin that defined the kind isn't loaded                         |
+
+An action with no `onAction` still succeeds. On a modal part, that records the answer.
+
+## Change a part [#update]
+
+`onAction` gets `part` in its context. `part.update(next)` replaces the state, or takes a function
+from the current state to the next one. It resolves with one of:
+
+- `updated` with the new `version`
+- `invalid` with the schema's issues
+- `closed`, `missing` or `stale`
+
+Pass `{ version }` to update only if nobody changed the part since that version. `part.close()` ends
+the part, and `part.watch()` yields its view each time it changes.
+
+The rest of the action context:
+
+| Field                 | What it is                                                           |
+| --------------------- | -------------------------------------------------------------------- |
+| `part`                | The part, as above                                                   |
+| `session`             | The chat's id                                                        |
+| `api`                 | The plugin's [API](/docs/plugins/reference#plugin-api) for that chat |
+| `principal`           | Who acted                                                            |
+| `authority`           | What that person may do on this host                                 |
+| `signal`              | Aborts when the action should stop                                   |
+| `wait`, `memo`, `now` | The same as a [tool call](/docs/plugins/tools#invocation)            |
+
+## Read parts from a client [#read]
+
+In a chat's view, a part is a message with `kind: "part"`. `isPart(message, checklist)` narrows a
+message to your kind and types its `state`:
+
+```ts
+import { isPart } from "@nyte-ai/plugin/core";
+
+for (const message of view.messages)
+  if (isPart(message, checklist)) console.log(message.state.title);
+```
+
+## How each client shows it [#clients]
+
+| Client          | Shows                                                                                  |
+| --------------- | -------------------------------------------------------------------------------------- |
+| Desktop and web | The part's [view](/docs/plugins/part-views), or its state as raw text when it has none |
+| Terminal        | The part's kind and its state as one line of text                                      |
+| Phone           | Nothing yet                                                                            |

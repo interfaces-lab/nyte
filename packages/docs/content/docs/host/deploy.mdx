@@ -1,0 +1,100 @@
+---
+title: Deploy a host
+description: Run a Nyte host on Cloudflare or Vercel from the templates in the repository.
+---
+
+A host on your own machine stops when the machine sleeps. To keep one online for a web app or a
+team, deploy it. A serverless function can't hold a host open between requests, so each template
+keeps sessions in a database and wakes the host when there's work.
+
+| Template                                                                                    | Store                       | Where the agent works            | What runs sessions                      |
+| ------------------------------------------------------------------------------------------- | --------------------------- | -------------------------------- | --------------------------------------- |
+| [Cloudflare](https://github.com/interfaces-lab/nyte/tree/main/packages/examples/cloudflare) | The Durable Object's SQLite | Chat only: no files, no commands | The Durable Object's alarm              |
+| [Vercel](https://github.com/interfaces-lab/nyte/tree/main/packages/examples/vercel)         | Postgres                    | A sandbox you connect            | A durable workflow for each busy branch |
+
+Both serve the same protocol as `host.listen`, so clients reach them with `sdk.connect` and the
+deploy's token:
+
+```ts title="client.ts"
+import process from "node:process";
+import { sdk } from "@nyte-ai/sdk/client";
+
+const connection = await sdk.connect({
+  url: "https://nyte-host.example.workers.dev",
+  credentials: { kind: "token", token: process.env.NYTE_TOKEN ?? "" },
+});
+```
+
+## Before you deploy [#before]
+
+The templates live in the repository and depend on the other packages with `workspace:*`. Copied
+out of the repository, replace each of those versions with the published one.
+
+Neither template registers a model provider. Each builds its model registry with `createModels`,
+which starts empty, so the host lists no models until you add the providers you use with
+`setProvider`. `nyteProviders()` from `@nyte-ai/ai` returns the providers the desktop app
+registers.
+
+Both read the same secrets:
+
+| Variable            | Required | What it is                                                                                                      |
+| ------------------- | -------- | --------------------------------------------------------------------------------------------------------------- |
+| `NYTE_TOKEN`        | Yes      | The listener token, at least 16 characters. It grants `participant` and `owner`, so keep it off browsers        |
+| `NYTE_SECRET_KEY`   | No       | A base64 32-byte key that encrypts stored secrets. Without it, model logins fail with `SdkError("unavailable")` |
+| `NYTE_IDENTITY_KEY` | No       | A base64 32-byte Ed25519 seed. Without it, the host answers no identity challenge, so `expect` can't check it   |
+
+`openssl rand -base64 32` prints a value that fits either key.
+
+## Cloudflare [#cloudflare]
+
+The Worker sends every request to one Durable Object, `NyteHost`, which is the whole host. It keeps
+sessions in the object's own SQLite storage and serves a chat-only workspace: the agent can talk and
+call tools that need no files or processes.
+
+The object runs sessions from its alarm. When a branch of a session gets work, it sets the alarm to now. Each
+alarm advances up to 32 waiting branches within 10 seconds, then sets the alarm again for the rest or
+for the next branch that's due.
+
+From the template's directory:
+
+```sh
+wrangler secret put NYTE_TOKEN
+wrangler secret put NYTE_SECRET_KEY    # optional
+wrangler secret put NYTE_IDENTITY_KEY  # optional
+wrangler deploy
+```
+
+`wrangler.jsonc` names the Worker `nyte-host` and lists `NYTE_TOKEN` as a required secret.
+
+## Vercel [#vercel]
+
+The template is a Nitro app. Every request goes to a host composed once per function instance, and
+every instance shares the same Postgres database. Functions may run for up to 300 seconds.
+
+The host hands work out instead of running it inline. When a branch of a session has work, it
+starts a durable workflow for that branch. The workflow advances the branch one step at a time and
+sleeps between steps until nothing is left. [Stores and execution](/docs/host/stores-and-execution#dispatch)
+explains the pieces.
+
+The agent's files and commands run in a sandbox that you connect. Write the `boot` function in
+`server/utils/host.ts` over your sandbox provider's SDK. Until you do, the workspace answers
+`SdkError("unavailable")`.
+
+Set these in the Vercel project, beside the [shared secrets](#before):
+
+| Variable               | Required   | What it is                                                                                  |
+| ---------------------- | ---------- | ------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`         | Yes        | The Postgres connection string                                                              |
+| `CRON_SECRET`          | For repair | Protects the repair route. Vercel sends it with each cron call                              |
+| `NYTE_SANDBOX`         | No         | The sandbox name passed to `boot`. Default `nyte`                                           |
+| `NYTE_REPAIR_SCHEDULE` | No         | The cron schedule for repair. Default every minute. Hobby plans allow only a daily schedule |
+
+Build with `nitro build --preset vercel`.
+
+A cron calls `GET /.nyte/repair` to restart any branch whose workflow never started. The route
+accepts only `Authorization: Bearer <CRON_SECRET>`. Without `CRON_SECRET`, it answers
+`SdkError("unknown")`.
+
+Each instance re-reads the database every second, so a client connected to one instance sees what
+the others write. Background commands are the exception: a client sees a command another instance
+started only through its exit report.

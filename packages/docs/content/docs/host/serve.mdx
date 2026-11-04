@@ -1,0 +1,272 @@
+---
+title: Serve a host
+description: Put a host on HTTP or behind your own server, decide who gets in, and pair devices.
+---
+
+A host you open with `sdk.open` runs only inside your process until you call `host.listen`. After
+that, other processes, browser pages and phones reach it with `sdk.connect` and get the same
+handles you have. The desktop app's [remote access](/docs/remote-access) and the `nyte host`
+command serve through the same listener.
+
+```ts title="serve.ts"
+import process from "node:process";
+import { sdk } from "@nyte-ai/sdk";
+
+const host = await sdk.open({});
+
+const listener = await host.listen({
+  transport: { kind: "http", port: 8787 },
+  auth: { kind: "token", token: process.env.NYTE_TOKEN ?? "" },
+});
+
+console.log("Listening on", listener.address);
+```
+
+A client connects with the same token:
+
+```ts title="client.ts"
+import process from "node:process";
+import { sdk } from "@nyte-ai/sdk/client";
+
+const connection = await sdk.connect({
+  url: "http://127.0.0.1:8787",
+  credentials: { kind: "token", token: process.env.NYTE_TOKEN ?? "" },
+});
+```
+
+## Listen on HTTP [#listen-on-http]
+
+The `http` transport binds `127.0.0.1` unless you pass a `hostname`. Pass `"0.0.0.0"` to accept
+connections on every network interface. Without a `port`, the system picks a free one, and
+`listener.address` tells you which, as in `http://127.0.0.1:52814`. A port that's taken makes
+`listen` throw `SdkError("unavailable")`.
+
+The listener speaks plain HTTP. To reach it from another machine, put something that serves HTTPS
+in front of it. The desktop app uses Tailscale Serve or a Cloudflare Tunnel for this.
+
+`listener.close()` stops one listener. `host.close()` closes every listener before it closes the
+host.
+
+## Decide who gets in [#auth]
+
+`auth` picks how the listener checks each request:
+
+| `auth.kind` | How a request gets in                                                                                                                   |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `token`     | It sends `Authorization: Bearer <token>`. The token needs at least 16 characters, and `listen` throws `SdkError("invalid")` if shorter. |
+| `custom`    | Your `authorize(request)` names the caller and what it may do, or turns it away.                                                        |
+
+Under either kind, a [paired device](#pair-a-device) gets in with its own token.
+
+### What a caller may do [#authority]
+
+Every caller is a principal, an id the host knows it by, with a set of authorities. Each operation
+needs one of them, and a call outside the set throws `SdkError("denied")`.
+
+| Authority     | Covers                                                                                      |
+| ------------- | ------------------------------------------------------------------------------------------- |
+| `participant` | Sessions, files, the browser, and reading git and GitHub                                    |
+| `owner`       | Model logins and accounts, settings, adding workspaces, MCP servers, writing git and GitHub |
+| `maintenance` | Replacing plugins, and listing, pairing and revoking principals                             |
+
+The `Host` that `sdk.open` returns has all three. A `token` listener grants `participant` and
+`owner` by default. Pass `authority` to change that:
+
+```ts
+await host.listen({
+  transport: { kind: "http", port: 8787 },
+  auth: {
+    kind: "token",
+    token: process.env.NYTE_TOKEN ?? "",
+    authority: new Set(["participant"]),
+  },
+});
+```
+
+Grant `maintenance` only to a token you keep for your own processes. A caller with it can pair new
+devices and revoke existing ones.
+
+### Use your own sign-in [#custom]
+
+With `custom`, the host calls `authorize` on every request. Return the principal and its authority,
+or `{ deny: "unauthorized" }` (the client gets `SdkError("unauthenticated")`) or
+`{ deny: "forbidden" }` (`SdkError("denied")`).
+
+```ts title="serve.ts"
+import { asId } from "@nyte-ai/schema";
+import { sdk } from "@nyte-ai/sdk";
+import { readUser } from "./auth";
+
+const host = await sdk.open({});
+
+await host.listen({
+  transport: { kind: "http", port: 8787 },
+  auth: {
+    kind: "custom",
+    async authorize(request) {
+      const user = await readUser(request.headers.get("Authorization"));
+
+      if (user === null) return { deny: "unauthorized" };
+
+      return {
+        principal: asId<"principal">(user.id),
+        authority: new Set(user.admin ? ["participant", "owner"] : ["participant"]),
+      };
+    },
+  },
+  origins: ["https://app.example.com"],
+});
+```
+
+The client computes its headers with a `custom` credential. `headers` runs before each request, so
+it can hand over a fresh session token every time:
+
+```ts
+const connection = await sdk.connect({
+  url: "https://agent.example.com",
+  credentials: {
+    kind: "custom",
+    headers: async () => ({ Authorization: `Bearer ${await sessionToken()}` }),
+  },
+});
+```
+
+## Pair a device [#pair-a-device]
+
+Pairing gives one device a token of its own, so you can revoke it without touching anything else.
+The host mints a one-time code, and the device trades it for a token the first time it connects.
+
+```ts title="pair.ts"
+const { code, expiresAt } = await host.principals.pair({
+  authority: new Set(["participant"]),
+  label: "Dana's phone",
+});
+
+console.log(`Code ${code}, valid until ${new Date(expiresAt).toLocaleTimeString()}`);
+```
+
+A code looks like `K7QM-4XPN`. It works once and expires after 10 minutes. The authority set must
+include `participant`, or `pair` throws `SdkError("invalid")`. Without a `label`, the device is
+listed as `Paired device`.
+
+On the device, connect with `credentials: { kind: "pairing", code }`. Once connected,
+`connection.credential` holds `{ kind: "token", token }`. Save it and pass it as `credentials`
+from then on. [Give each device its own
+credential](/docs/sdk/guides/choose-an-entry-point#give-each-device-its-own-credential) has the
+device side in full.
+
+Pairing, listing and revoking need `maintenance` authority, so they normally run in the process that
+opened the host.
+
+### List and revoke devices [#revoke]
+
+```ts
+const devices = await host.principals.list();
+
+for (const device of devices) {
+  console.log(device.label, [...device.authority], new Date(device.pairedAt));
+}
+
+const phone = devices.find((device) => device.label === "Dana's phone");
+
+if (phone !== undefined) await host.principals.revoke(phone.id);
+```
+
+`revoke` deletes the device's token and closes its open connections and streams. To shut out every
+client at once without revoking anything, call `listener.disconnectClients()`. Clients with a valid
+credential can connect again.
+
+## Allow browser pages [#origins]
+
+A browser page on another origin can call the listener only when `origins` lists that origin. A page
+served from the listener's own origin, and clients that send no `Origin` header, such as Node or a
+phone app, skip this check. Listing an origin doesn't sign anyone in. The page still needs a
+credential.
+
+| Entry                     | Allows                                                   |
+| ------------------------- | -------------------------------------------------------- |
+| `https://app.example.com` | Exactly that origin                                      |
+| `https://*.example.com`   | Every subdomain of `example.com`, but not `example.com`  |
+| `http://localhost:5173`   | A page on this machine. `127.0.0.1` and `[::1]` work too |
+
+Any other `http://` origin makes `listen` throw `SdkError("invalid")`. A page from an origin that
+isn't listed gets `SdkError("denied")`.
+
+## Serve from your own server [#fetch-handler]
+
+The `fetch` transport opens no socket. The listener answers standard `Request` objects, so you can
+mount it in a framework route, a Worker, or any server that works with `Request` and `Response`.
+
+```ts title="route.ts"
+import process from "node:process";
+import { sdk } from "@nyte-ai/sdk";
+
+const host = await sdk.open({});
+
+const listener = await host.listen({
+  transport: { kind: "fetch" },
+  auth: { kind: "token", token: process.env.NYTE_TOKEN ?? "" },
+});
+
+export function handle(request: Request): Promise<Response> {
+  return listener.fetch(request);
+}
+```
+
+`listener.address` is `null` here. The listener routes on the path from `/`: `POST /<operation>`
+for each call, plus `GET /.nyte/identity` and `GET /.nyte/describe`. Give it the root of a hostname,
+or strip your route's prefix before you pass the request on.
+
+`before(request)` runs ahead of everything else, including sign-in. Return a `Response` to answer
+the request yourself, or `undefined` to pass it to the host. The
+[Vercel template](/docs/host/deploy#vercel) answers its cron route this way.
+
+## Prove which host answered [#identity]
+
+A host from `sdk.open` answers `GET /.nyte/identity` with a signature from the key in
+`<home>/.nyte/identity.key`, and `GET /.nyte/describe` with its machine name, platform and Nyte
+version. Neither route needs a credential. A client that passes `expect: { hostId }` to
+`sdk.connect` checks the signature and throws `SdkError("stale")` when a different host answers.
+[Check which host answered](/docs/sdk/guides/choose-an-entry-point#check-which-host-answered) shows
+the client side.
+
+## Options [#options]
+
+| Option         | What it does                                                                                                           |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `transport`    | `{ kind: "http", hostname?, port? }`, or `{ kind: "fetch" }`                                                           |
+| `auth`         | `{ kind: "token", token, authority? }`, or `{ kind: "custom", authorize }`                                             |
+| `origins`      | Browser origins allowed to call it. Default: none                                                                      |
+| `execution`    | Which sessions this listener runs while it's open. See [execution](/docs/host/stores-and-execution#listener-execution) |
+| `maxBodyBytes` | The largest request body. Default 8 MiB. A larger body gets HTTP 413                                                   |
+| `before`       | Answers a request before the host sees it                                                                              |
+| `identity`     | Signs identity challenges. `sdk.open` fills it in                                                                      |
+| `describe`     | What `GET /.nyte/describe` returns. `sdk.open` fills it in                                                             |
+
+`listen` returns a `Listener`:
+
+| Member                | What it does                                                     |
+| --------------------- | ---------------------------------------------------------------- |
+| `address`             | `http://host:port` for the `http` transport, `null` for `fetch`  |
+| `fetch(request)`      | Answers one request. Works for both transports                   |
+| `disconnectClients()` | Ends every open connection and stream. Clients may connect again |
+| `close()`             | Stops the listener. Later requests get `SdkError("unavailable")` |
+
+## From the terminal [#nyte-host]
+
+`nyte host` serves your chats on `127.0.0.1` until you stop it, so other `nyte` processes can attach
+to it. It writes the URL, token and process id to `~/.nyte/host.json`, readable only by you, and
+removes the file on exit.
+
+```sh
+nyte host
+```
+
+In another terminal, attach with the token from that file:
+
+```sh
+NYTE_HOST_TOKEN=<token> nyte --host-url <url>
+```
+
+Only one `nyte host` runs at a time. A second one exits with status 1 and names the first.
+`nyte host --json` prints one line, `{"type":"listening","url","endpoint","pid"}`, for scripts.

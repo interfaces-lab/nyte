@@ -1,0 +1,282 @@
+---
+title: Plugin API
+description: Every field of a plugin, the API its code receives, its registries and its storage.
+---
+
+Import core plugin types from `@nyte-ai/plugin/core` and client plugin types from
+`@nyte-ai/plugin/client`. Both export `Plugin`, `PluginApi`, `definePart` and `isPart`.
+
+## The plugin object [#plugin]
+
+| Field         | Side | What it is                                                                                                |
+| ------------- | ---- | --------------------------------------------------------------------------------------------------------- |
+| `id`          | Both | Unique name. No `/`, and not `models` or `settings`                                                       |
+| `contribute`  | Both | Lists of items to add, keyed by [registry](#registries)                                                   |
+| `hooks`       | Both | Handlers keyed by [hook name](/docs/plugins/hooks), as functions or `{ order, run }`                      |
+| `activate`    | Both | `(api) => void`, run when the plugin starts. Add items and hooks here that depend on runtime state        |
+| `environment` | Core | An environment provider: where the agent's files and commands live                                        |
+| `approve`     | Core | Decides whether a call another agent runtime asks to run may run. Returns `allow` or `deny` with a reason |
+
+A core plugin starts once per chat, so `activate` runs once for each chat that loads it. A client
+plugin starts once per app.
+
+## Plugin API [#plugin-api]
+
+`activate`, hooks, commands and part actions receive the plugin's API as `api`.
+
+### Both sides
+
+| Member              | What it does                                                                                     |
+| ------------------- | ------------------------------------------------------------------------------------------------ |
+| `side`              | `"core"` or `"client"`                                                                           |
+| `sdk`               | A connection to the host, the same API SDK code uses                                             |
+| `contribute`        | The [registries](#registries), to add and list items                                             |
+| `storage`           | [Storage](#storage) for this plugin                                                              |
+| `signal`            | Aborts when the plugin unloads                                                                   |
+| `hook(name, entry)` | Adds a hook and returns a function that removes it                                               |
+| `report(issue)`     | Reports a `{ severity, path, message }` issue. On the host it shows on the plugin's row          |
+| `reload()`          | Runs the plugin's derive functions again. See [derived items](#derive). Does nothing in a client |
+
+### Core only
+
+| Member                  | What it does                                                                                 |
+| ----------------------- | -------------------------------------------------------------------------------------------- |
+| `session`               | The chat the plugin runs in                                                                  |
+| `env`                   | The chat's environment: `cwd`, `files` and `exec`. Throws while none is attached             |
+| `wrapEnv(wrap)`         | Wraps the chat's environment with your own. Returns a function that undoes it                |
+| `inputs`                | What the host found for the chat: user and project files, `skills`, `contextFiles`, `prompt` |
+| `request(input)`        | Sends a one-off request to a model, outside the chat's history                               |
+| `approve(call, signal)` | Asks every loaded plugin's `approve` about a call. The first denial wins                     |
+
+`request` takes `model`, `messages`, and optionally `system`, `thinking`, `maxOutput`, `signal`, and
+an `output` schema for structured output. It resolves with `ok` and the `value`, `usage` and `stop`
+reason, or with `refused` or `failed`.
+
+### Client only
+
+| Member      | What it does                                                          |
+| ----------- | --------------------------------------------------------------------- |
+| `client`    | The client's `name` and the UI `frameworks` it draws, such as `react` |
+| `session`   | The chat input goes to, or null                                       |
+| `looking`   | Ids of the chats on screen in a focused window                        |
+| `ui.notify` | Shows `{ title?, message, level?, sound? }` to the user               |
+
+## Registries [#registries]
+
+`contribute` in the plugin object and `api.contribute` share the same keys. Each registry keys its
+items by one field. When two plugins add an item with the same key, the later one replaces the
+earlier one and the host reports a warning.
+
+### Core registries [#core-registries]
+
+| Registry          | Item                                           | Keyed by                   |
+| ----------------- | ---------------------------------------------- | -------------------------- |
+| `tools`           | [`ToolDefinition`](#tool-definition)           | `name`                     |
+| `prompt`          | [`PromptSection`](#prompt-section)             | `id`                       |
+| `agents`          | [`Agent`](#agent)                              | `id`                       |
+| `modelContext`    | [`ModelContextPolicy`](#model-context)         | `model`                    |
+| `skills`          | [`Skill`](#skill)                              | `name`                     |
+| `searchProviders` | [`SearchProvider`](#search-provider)           | `id`                       |
+| `parts`           | [`PartDefinition`](/docs/plugins/parts#define) | `kind`. The first one wins |
+| `commands`        | [`Command`](#command)                          | `name`                     |
+| `settings`        | [`SettingDefinition`](#setting)                | `id`                       |
+
+### Client registries [#client-registries]
+
+| Registry      | Item                            | Keyed by                |
+| ------------- | ------------------------------- | ----------------------- |
+| `renderers`   | [`Renderer`](#renderer)         | Part kind and framework |
+| `commands`    | [`Command`](#command)           | `name`                  |
+| `settings`    | [`SettingDefinition`](#setting) | `id`                    |
+| `keybindings` | [`Keybinding`](#keybinding)     | `key`                   |
+
+### Registry methods [#registry-methods]
+
+| Method        | What it does                                               |
+| ------------- | ---------------------------------------------------------- |
+| `add(item)`   | Adds an item. Returns a function that removes it           |
+| `add(derive)` | Adds a derive function. Returns a function that removes it |
+| `list()`      | Every item in the registry now, from every plugin          |
+
+The settings registry's `add(definition)` returns a handle with `get()`, `set(value)` and `watch()`.
+It also has:
+
+| Method      | What it does                                        |
+| ----------- | --------------------------------------------------- |
+| `value(id)` | The current value of a setting this plugin declared |
+| `watch(id)` | Yields that value now and after each change         |
+
+Items added through `api.contribute` go away when the plugin unloads.
+
+### Derived items [#derive]
+
+A derive function edits the registry after every plugin's plain items are in. It gets a draft of the
+registry and the other registries:
+
+```ts title="use-pnpm.ts"
+import type { Plugin } from "@nyte-ai/plugin/core";
+
+export default {
+  id: "use-pnpm",
+  activate(api) {
+    api.contribute.tools.add((draft) =>
+      draft.wrap("bash", (bash) => ({
+        ...bash,
+        description: `${bash.description}\nThis repository uses pnpm. Never run npm or yarn.`,
+      })),
+    );
+  },
+} satisfies Plugin;
+```
+
+This changes the `bash` tool's description and keeps everything else about it.
+
+| Draft method     | What it does                                     |
+| ---------------- | ------------------------------------------------ |
+| `get(id)`        | The item with that key, or undefined             |
+| `set(id, item)`  | Adds or replaces an item                         |
+| `delete(id)`     | Removes an item                                  |
+| `wrap(id, wrap)` | Replaces an item with `wrap(item)`, if it exists |
+| `ids()`          | Every key in the draft                           |
+
+Derive functions run in the order they were added. One that throws leaves the draft as it was and is
+reported. Call `api.reload()` when something a derive function reads has changed.
+
+## Items [#items]
+
+### ToolDefinition [#tool-definition]
+
+See [Give the agent a tool](/docs/plugins/tools) for a walkthrough.
+
+| Field         | Required | What it is                                                                            |
+| ------------- | -------- | ------------------------------------------------------------------------------------- |
+| `name`        | Yes      | What the model calls                                                                  |
+| `description` | Yes      | What the model reads about the tool                                                   |
+| `parameters`  | Yes      | Schema of the arguments                                                               |
+| `class`       | Yes      | `(args, { call }) => ToolClass`: how the call is shown and gated                      |
+| `replay`      | Yes      | `"safe"` runs the call again after a host restart. `"never"` ends it as `interrupted` |
+| `execute`     | Yes      | `(args, invocation) => Promise<ToolResult>`                                           |
+| `output`      | No       | Schema of `ToolResult.output`                                                         |
+| `effects`     | No       | `"workspace"` (default) snapshots files around the call. `"none"` skips it            |
+| `approval`    | No       | `"policy"` (default), `"never"` or `"runtime"`                                        |
+| `exposure`    | No       | `"model"` (default), `"model-only"`, `"code"`, `"deferred"` or `"hidden"`             |
+| `loads`       | No       | `(output) => names`: tools the model gets from its next request on. Needs `output`    |
+| `namespace`   | No       | A group the tool belongs to: `name`, `aliases`, `description`, `instructions`         |
+| `grammar`     | No       | A Lark grammar or a regex the model's input must follow                               |
+
+### PromptSection [#prompt-section]
+
+| Field   | What it is                                                        |
+| ------- | ----------------------------------------------------------------- |
+| `id`    | Name of the section. A later section with the same id replaces it |
+| `text`  | Text added to the system prompt                                   |
+| `order` | Sort position, lowest first. Default `100`                        |
+
+A `SYSTEM.md` prompt file replaces every section.
+
+### Agent [#agent]
+
+| Field         | What it is                                                  |
+| ------------- | ----------------------------------------------------------- |
+| `id`          | Name of the agent                                           |
+| `description` | What the agent is for                                       |
+| `mode`        | `"primary"`, `"subagent"` or `"all"` (default)              |
+| `model`       | The model it uses, as `{ provider, id }`                    |
+| `prompt`      | A layer added to the system prompt, or one that replaces it |
+| `tools`       | Names of the tools it may use. Absent, it gets every tool   |
+
+### ModelContextPolicy [#model-context]
+
+| Field           | What it is                                                                       |
+| --------------- | -------------------------------------------------------------------------------- |
+| `model`         | The model, as `{ provider, id }`                                                 |
+| `contextWindow` | Its context window, in tokens                                                    |
+| `compactAt`     | The token count past which the chat compacts. Default: 80% of the context window |
+
+### Skill [#skill]
+
+| Field         | What it is                   |
+| ------------- | ---------------------------- |
+| `name`        | Name of the skill            |
+| `description` | When the agent should use it |
+| `location`    | Path to the skill's file     |
+
+### SearchProvider [#search-provider]
+
+A backend for the `web_search` tool.
+
+| Field    | What it is                                                                                                                   |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `id`     | Name the setting picks it by                                                                                                 |
+| `name`   | Name users see                                                                                                               |
+| `search` | `({ query, signal }) => Promise<results>`, each with `url` and optional `title`, `content`, `published` (ms since the epoch) |
+
+### Command [#command]
+
+See [Add a command and a setting](/docs/plugins/commands-and-settings#commands).
+
+| Field         | What it is                                                                        |
+| ------------- | --------------------------------------------------------------------------------- |
+| `name`        | What the user types after `/`: lowercase letters, digits and `-`                  |
+| `title`       | Name in menus                                                                     |
+| `description` | One line on what it does                                                          |
+| `takesText`   | Wait for text after the name instead of running at once                           |
+| `category`    | Group in menus                                                                    |
+| `keywords`    | Extra words menus match                                                           |
+| `complete`    | `(prefix, { signal, api }) => suggestions`, each `{ value, label, description? }` |
+| `run`         | `(text, { signal, api, caller }) => string \| { prompt } \| void`                 |
+
+### SettingDefinition [#setting]
+
+See [Settings](/docs/plugins/commands-and-settings#settings).
+
+| Field     | What it is                                                                                       |
+| --------- | ------------------------------------------------------------------------------------------------ |
+| `id`      | Unique name                                                                                      |
+| `label`   | Name users see                                                                                   |
+| `schema`  | Schema every value must match                                                                    |
+| `default` | Value until the user picks one                                                                   |
+| `scope`   | `"host"`: one value. `"session"`: one value per chat                                             |
+| `choices` | Allowed values, each `{ value, label, badge? }`                                                  |
+| `secret`  | `true` for a record of `{ secret, value? }` entries. The host encrypts the entries marked secret |
+
+### Renderer [#renderer]
+
+A client plugin's way to draw a part kind.
+
+| Field        | What it is                                                                        |
+| ------------ | --------------------------------------------------------------------------------- |
+| `kind`       | The part definition it draws                                                      |
+| `framework`  | The UI framework, such as `react`. A client uses renderers for its own frameworks |
+| `placements` | Placement kinds it draws                                                          |
+| `render`     | `({ state, version, placement }, act) => view`                                    |
+
+### Keybinding [#keybinding]
+
+| Field     | What it is                  |
+| --------- | --------------------------- |
+| `key`     | The key or chord            |
+| `command` | Name of the command it runs |
+| `when`    | Condition for the binding   |
+
+## Storage [#storage]
+
+`api.storage` keeps JSON values for your plugin. Other plugins can't read them.
+
+| Method            | What it does                                                |
+| ----------------- | ----------------------------------------------------------- |
+| `get(key)`        | The value, or undefined                                     |
+| `set(key, value)` | Stores a JSON value                                         |
+| `delete(key)`     | Removes the value                                           |
+| `keys()`          | Every key in this scope                                     |
+| `at(scope)`       | The same storage for `"host"`, `"workspace"` or `"session"` |
+| `secrets`         | Encrypted strings: `get`, `set`, `delete`                   |
+
+On a core plugin, `api.storage` is scoped to the chat. Use `api.storage.at("workspace")` to share
+values across a workspace's chats, or `at("host")` for every chat on the host. Keys can't contain
+`/`.
+
+`secrets` are shared by all of the plugin's chats on the host and encrypted with the host's key. A
+host without a secrets key throws `SdkError("unavailable")` when you store one.
+
+A client plugin's storage lasts only while the app runs, and it can't store secrets.

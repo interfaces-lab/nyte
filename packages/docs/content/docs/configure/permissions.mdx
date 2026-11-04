@@ -1,0 +1,53 @@
+---
+title: Permissions
+description: Choose which tool calls wait for your approval before they run.
+---
+
+By default an agent runs every tool without asking. The **Permissions** setting makes it stop and
+ask first: before any change, or only before commands and other risky calls.
+
+## Choose a level [#levels]
+
+| Level                             | Runs without asking                | Asks before                                                                               |
+| --------------------------------- | ---------------------------------- | ----------------------------------------------------------------------------------------- |
+| **Full access** (`full`, default) | Everything                         | Nothing                                                                                   |
+| **Auto-edit** (`auto-edit`)       | Reads, and edits inside the folder | Commands, edits outside the folder or under `.git`, `.nyte` or `.claude`, and other tools |
+| **Ask first** (`ask`)             | Reads                              | Commands, every edit, and other tools                                                     |
+
+"Other tools" are tools whose effects Nyte can't tell, such as a plugin's tools or an
+[MCP server's](/docs/configure/mcp-servers).
+
+Some calls never ask, at any level:
+
+- Reading files and listing folders.
+- Handing work to a subagent. The subagent's own calls ask in its chat.
+- Tools that change nothing you'd guard, such as asking you a question, drawing a canvas, searching
+  the web or reading a page.
+
+`.git`, `.nyte` and `.claude` hold the hooks, plugins and settings that run in the folder, so an
+edit there asks even under **Auto-edit**.
+
+## Change the level [#change]
+
+- Desktop: **Customize > Plugins**, expand **Permissions**, and pick a level.
+- Terminal: `/permissions`, or name the level directly, as in `/permissions ask`.
+- SDK: `host.settings.apply("permissions", "auto-edit")`.
+
+The level belongs to the host and applies to every chat. A running chat picks it up at its next tool
+call.
+
+## Answer a request [#answer]
+
+A call that asks waits in the chat until someone answers:
+
+| Answer                     | What happens                                                                                                  |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| **Allow once**             | This call runs                                                                                                |
+| **Allow for this session** | This call runs, and that tool runs without asking for the rest of the chat. Other waiting calls to it run too |
+| **Deny**                   | The call doesn't run. The agent is told you denied it and to ask you how to proceed                           |
+
+The request survives a restart of the host, and any app watching the chat can answer it. Only
+someone with owner [authority](/docs/sdk/reference/shared-concepts#authority) can allow a call;
+anyone in the chat can deny one.
+
+Agents that Nyte runs over ACP ask through the same level.
