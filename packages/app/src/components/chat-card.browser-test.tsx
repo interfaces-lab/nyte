@@ -1,4 +1,5 @@
 import "../../test/window-bridge.ts";
+import { tabPanes } from "../../test/panes.ts";
 import { QueryClientProvider } from "@tanstack/react-query";
 import type { ReactElement } from "react";
 import { flushSync } from "react-dom";
@@ -8,7 +9,7 @@ import { asId } from "@nyte-ai/schema";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import { SessionRow } from "../sidebar/sidebar-rows.tsx";
 import { PaneControllerProvider } from "../panes/pane-context.tsx";
-import { PaneController } from "../panes/pane-controller.ts";
+import type { PaneController } from "../panes/pane-controller.ts";
 import { SessionDndProvider } from "../panes/session-dnd.tsx";
 import { keys, queryClient } from "../data/query-client.ts";
 import { WindowTabStrip } from "../tabs/window-tab-strip.tsx";
@@ -190,7 +191,7 @@ export async function run(): Promise<string> {
   container.style.padding = "40px";
   document.body.append(container);
   const root = createRoot(container);
-  const panes = new PaneController({ storageKey: "chat-card-test" });
+  const panes = tabPanes();
   flushSync(() => root.render(<Stage panes={panes} />));
 
   try {

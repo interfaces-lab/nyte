@@ -2,14 +2,10 @@ import type { ProjectId } from "@nyte-ai/schema";
 import type { SessionId } from "@nyte-ai/sdk";
 import {
   activePane,
-  activeSelection,
   orderedPanes,
   paneForSession,
   paneSelection,
-  persistablePaneLayout,
   reducePaneLayout,
-  restorePaneLayout,
-  storedPaneLayoutSchema,
 } from "./pane-layout.ts";
 import type {
   DropPlacement,
@@ -18,10 +14,7 @@ import type {
   PaneLayoutAction,
   SplitDirection,
 } from "./pane-layout.ts";
-import { SessionViewStateStore } from "./session-view-state.ts";
-import { WindowDrafts } from "../chat/composer/drafts.ts";
-import type { ComposerViewState } from "./session-view-state.ts";
-import { readStored, type StorageArea, writeStored } from "../lib/storage.ts";
+import type { ComposerViewState, SessionViewStateStore } from "./session-view-state.ts";
 
 export interface PaneControllerSnapshot {
   readonly layout: PaneLayout;
@@ -30,67 +23,26 @@ export interface PaneControllerSnapshot {
 
 type LayoutRoute = (current: PaneLayout, next: PaneLayout) => PaneLayout;
 
-/** Standalone, a controller keeps its own layout and drafts; a window's tab routes both through its window. */
-type PaneControllerOptions =
-  | { readonly storage?: StorageArea; readonly storageKey: string }
-  | {
-      readonly initialLayout: PaneLayout;
-      readonly route: LayoutRoute;
-      readonly viewState: SessionViewStateStore;
-    };
-
-interface SavedLayout {
-  readonly storage: StorageArea;
-  readonly key: string;
-}
-
-function selectedSession(action: PaneLayoutAction): SessionId | undefined {
-  if (action.kind === "select" || action.kind === "select-in-pane") {
-    return action.selection.kind === "session" ? action.selection.sessionId : undefined;
-  }
-
-  return undefined;
+/** A window tab's panes: its window owns and saves the layout, and `route` hands it each change. */
+interface PaneControllerOptions {
+  readonly initialLayout: PaneLayout;
+  readonly route: LayoutRoute;
+  readonly viewState: SessionViewStateStore;
 }
 
 export class PaneController {
-  readonly #saved: SavedLayout | undefined;
   readonly #viewState: SessionViewStateStore;
   readonly #listeners = new Set<() => void>();
-  readonly #route: LayoutRoute | undefined;
+  readonly #route: LayoutRoute;
   #snapshot: PaneControllerSnapshot;
 
   constructor(options: PaneControllerOptions) {
-    if ("route" in options) {
-      this.#saved = undefined;
-      this.#route = options.route;
-      this.#viewState = options.viewState;
-    } else {
-      const storage = options.storage;
-      this.#saved = storage === undefined ? undefined : { storage, key: options.storageKey };
-      this.#route = undefined;
-
-      this.#viewState = new SessionViewStateStore(
-        new WindowDrafts(
-          storage === undefined
-            ? undefined
-            : { storage, storageKey: `${options.storageKey}:composer-drafts` },
-        ),
-        "",
-      );
-    }
-
-    const layout =
-      "route" in options
-        ? options.initialLayout
-        : restorePaneLayout(
-            readStored(this.#saved?.storage, options.storageKey, storedPaneLayoutSchema, undefined),
-          );
-
+    this.#route = options.route;
+    this.#viewState = options.viewState;
     this.#snapshot = {
-      layout,
-      focusRequest: { paneId: activePane(layout).id, revision: 0 },
+      layout: options.initialLayout,
+      focusRequest: { paneId: activePane(options.initialLayout).id, revision: 0 },
     };
-    this.#rememberLayout(layout);
   }
 
   readonly subscribe = (listener: () => void): (() => void) => {
@@ -107,32 +59,12 @@ export class PaneController {
 
   dispatch(action: PaneLayoutAction): PaneLayout {
     const current = this.#snapshot.layout;
-    this.#rememberLayout(current);
-    let layout = reducePaneLayout(current, action);
-    const restoredSessionId = selectedSession(action);
+    const reduced = reducePaneLayout(current, action);
 
-    if (layout.kind === "split" && restoredSessionId !== undefined) {
-      const restored = this.#viewState.readSession(restoredSessionId, activePane(layout).id).split;
-
-      if (
-        restored !== undefined &&
-        (layout.direction !== restored.direction || layout.ratio !== restored.ratio)
-      ) {
-        layout = { ...layout, direction: restored.direction, ratio: restored.ratio };
-      }
-    }
+    if (reduced === current) return current;
+    const layout = this.#route(current, reduced);
 
     if (layout === current) return current;
-
-    if (this.#route !== undefined) {
-      layout = this.#route(current, layout);
-
-      if (layout === current) return current;
-    }
-
-    if (this.#saved !== undefined)
-      writeStored(this.#saved.storage, this.#saved.key, persistablePaneLayout(layout));
-    this.#rememberLayout(layout);
 
     const focusRequest =
       action.kind !== "resize" && action.kind !== "remove-session"
@@ -151,7 +83,6 @@ export class PaneController {
 
   show(layout: PaneLayout): void {
     if (layout === this.#snapshot.layout) return;
-    this.#rememberLayout(layout);
     this.#snapshot = {
       layout,
       focusRequest: {
@@ -227,10 +158,8 @@ export class PaneController {
   openDraftChat(draftId: string, sessionId: SessionId, composer?: ComposerViewState): void {
     const visible = this.#paneShowingDraft(draftId);
 
-    if (composer !== undefined) {
-      const paneId = visible?.id ?? activePane(this.#snapshot.layout).id;
-      this.#viewState.updateSession(sessionId, paneId, (state) => ({ ...state, composer }));
-    }
+    if (composer !== undefined)
+      this.#viewState.updateSession(sessionId, (state) => ({ ...state, composer }));
 
     if (visible !== undefined) this.selectSessionInPane(visible.id, sessionId);
     this.#viewState.removeDraft(draftId);
@@ -304,25 +233,5 @@ export class PaneController {
     };
 
     for (const listener of this.#listeners) listener();
-  }
-
-  #rememberLayout(layout: PaneLayout): void {
-    const split =
-      layout.kind === "split" ? { direction: layout.direction, ratio: layout.ratio } : undefined;
-
-    const selected = activeSelection(layout);
-
-    for (const pane of orderedPanes(layout)) {
-      if (pane.selection.kind !== "session") continue;
-      const sessionId = pane.selection.sessionId;
-      this.#viewState.updateSession(sessionId, pane.id, (current) => ({
-        ...current,
-        focusedPaneId:
-          selected.kind === "session" && selected.sessionId === sessionId
-            ? activePane(layout).id
-            : current.focusedPaneId,
-        split,
-      }));
-    }
   }
 }

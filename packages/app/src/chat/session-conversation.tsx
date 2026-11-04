@@ -508,9 +508,9 @@ function ConversationScreen(conversation: SessionConversationProps): ReactElemen
                 pending={messages.queued}
                 unsent={messages.unsent}
                 fileDropRoot={column}
-                initialViewState={viewStore.readSession(sessionId, paneId).composer}
+                initialViewState={viewStore.readSession(sessionId).composer}
                 onViewStateChange={(composer) =>
-                  viewStore.updateSession(sessionId, paneId, (current) => ({
+                  viewStore.updateSession(sessionId, (current) => ({
                     ...current,
                     composer,
                   }))
@@ -535,9 +535,9 @@ function ConversationScreen(conversation: SessionConversationProps): ReactElemen
                 pending={messages.queued}
                 unsent={messages.unsent}
                 fileDropRoot={column}
-                initialViewState={viewStore.readSession(sessionId, paneId).composer}
+                initialViewState={viewStore.readSession(sessionId).composer}
                 onViewStateChange={(composer) =>
-                  viewStore.updateSession(sessionId, paneId, (current) => ({
+                  viewStore.updateSession(sessionId, (current) => ({
                     ...current,
                     composer,
                   }))

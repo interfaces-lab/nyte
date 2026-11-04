@@ -1,3 +1,4 @@
+import { tabPanes } from "../../../test/panes.ts";
 import "../../../test/web-bridge.ts";
 import { afterAll, expect, test, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -14,7 +15,6 @@ import { endedTurn, sessionRow, sessionView, settledTool } from "../../../test/v
 import { chatStore } from "../../data/chat-store.ts";
 import { sessionList } from "../../data/directory.ts";
 import { PaneControllerProvider } from "../../panes/pane-context.tsx";
-import { PaneController } from "../../panes/pane-controller.ts";
 
 vi.hoisted(() => {
   const query = { matches: false, addEventListener: () => {}, removeEventListener: () => {} };
@@ -66,7 +66,7 @@ const unlisted = settledTool("task-unlisted", {
 function Parent({ children }: { readonly children: ReactNode }): ReactNode {
   return (
     <QueryClientProvider client={new QueryClient()}>
-      <PaneControllerProvider controller={new PaneController({ storageKey: "subagent-call" })}>
+      <PaneControllerProvider controller={tabPanes()}>
         <TranscriptProvider paneId="primary" sessionId={parent}>
           {children}
         </TranscriptProvider>

@@ -1,3 +1,4 @@
+import { tabPanes } from "../../../test/panes.ts";
 import "../../../test/window-bridge.ts";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Activity } from "react";
@@ -13,7 +14,6 @@ import { StepGroupView } from "./step-group.tsx";
 import type { StepMessage } from "./transcript-presentation.ts";
 import { asId } from "@nyte-ai/schema";
 import { PaneControllerProvider } from "../../panes/pane-context.tsx";
-import { PaneController } from "../../panes/pane-controller.ts";
 import { queryClient } from "../../data/query-client.ts";
 import { TranscriptProvider } from "./transcript.tsx";
 
@@ -656,7 +656,7 @@ export async function run() {
       "Settling a streamed thought preserves its row",
     );
 
-    const panes = new PaneController({ storageKey: "step-group-test" });
+    const panes = tabPanes();
 
     const transcript = (node: ReactNode) =>
       flushSync(() =>

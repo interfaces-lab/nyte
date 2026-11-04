@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { asId } from "@nyte-ai/schema";
-import { PaneController } from "./pane-controller.ts";
+import { tabPanes } from "../../test/panes.ts";
 import { activeSelection, paneForSession } from "./pane-layout.ts";
 
 const first = asId<"session">("first");
@@ -9,7 +9,7 @@ const first = asId<"session">("first");
 const second = asId<"session">("second");
 
 test("Undo restores both archived panes and their original focus", () => {
-  const controller = new PaneController({ storageKey: "test" });
+  const controller = tabPanes();
   controller.selectSession(first);
   controller.split("right");
   controller.selectSession(second);
@@ -29,7 +29,7 @@ test("Undo restores both archived panes and their original focus", () => {
 });
 
 test("Undo never replaces a newer chat or a new draft", () => {
-  const controller = new PaneController({ storageKey: "test" });
+  const controller = tabPanes();
   controller.selectSession(first);
   const restore = controller.removeSessionWithUndo(first);
   controller.selectSession(second);
@@ -54,7 +54,7 @@ test("Undo never replaces a newer chat or a new draft", () => {
 });
 
 test("archiving a background pane does not move focus away from the active chat", () => {
-  const controller = new PaneController({ storageKey: "test" });
+  const controller = tabPanes();
   controller.selectSession(first);
   controller.split("right");
   controller.selectSession(second);

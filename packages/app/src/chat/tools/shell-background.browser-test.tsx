@@ -1,3 +1,4 @@
+import { tabPanes } from "../../../test/panes.ts";
 import "../../../test/window-bridge.ts";
 import { TooltipProvider } from "@nyte-ai/ui/tooltip";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -13,7 +14,6 @@ import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../../theme/tokens.stylex.ts";
 import "../../theme/global.css";
 import { PaneControllerProvider } from "../../panes/pane-context.tsx";
-import { PaneController } from "../../panes/pane-controller.ts";
 import type { ToolCallDensity } from "../../preferences/index.ts";
 import { queryClient } from "../../data/query-client.ts";
 import { installConnection } from "../../data/connection.ts";
@@ -175,7 +175,7 @@ function Stage({
   readonly density: ToolCallDensity;
   readonly viewport: HTMLElement;
 }): ReactElement {
-  const [panes] = useState(() => new PaneController({ storageKey: "shell-background" }));
+  const [panes] = useState(() => tabPanes());
   const [open, setOpen] = useState(false);
 
   return (
