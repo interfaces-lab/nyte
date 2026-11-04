@@ -47,6 +47,7 @@ import {
 import { check } from "../util/json-schema.ts";
 import type { StoreConnection } from "../contract/store.ts";
 import { scanResources } from "../extend/resources.ts";
+import { projectSections } from "./project-prompt.ts";
 import { settleSystemPrompt, systemSections } from "./prompt-sections.ts";
 import { hiddenOwners } from "../engine/surface.ts";
 import { toolSource } from "../extend/registry.ts";
@@ -266,12 +267,10 @@ async function buildContext(
     session,
     head: input.head,
     run: input.run,
-    sections: systemSections(
-      found.record.prompt,
-      input.agent,
-      resources.prompt,
-      runtime.registries.prompt.list(),
-    ),
+    sections: systemSections(found.record.prompt, input.agent, resources.prompt, [
+      ...runtime.registries.prompt.list(),
+      ...(await projectSections(kernel, found.record)),
+    ]),
     commits: input.steps.map((step) => step.commit),
     compacted: compactions.removed,
     folds: !takesSystemUpdates(model),

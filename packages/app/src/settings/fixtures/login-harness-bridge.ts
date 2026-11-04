@@ -84,6 +84,7 @@ const hostView = (): HostView => ({
   settings: [],
   views: [],
   defaultWorkspace: null,
+  projects: [],
   authority: new Set(["participant", "owner"]),
 });
 

@@ -165,6 +165,24 @@ export const operations = {
     { id: "core/theme", value: { dark: [true] } },
     { id: "core/theme" },
   ),
+  "projects.create input": operation(
+    OPERATIONS["projects.create"].input,
+    {
+      input: {
+        name: "Polish",
+        brief: "Fix small UI details.",
+        until: { kind: "goal", goal: "Ship 0.1" },
+        workspace,
+        worker: modelRef,
+      },
+    },
+    { input: { name: "", brief: "", until: { kind: "standing" }, workspace } },
+  ),
+  "project.update input": operation(
+    OPERATIONS["project.update"].input,
+    { project: asId<"project">("p1"), patch: { brief: "Read nyte-styles first.", worker: null } },
+    { project: asId<"project">("p1"), patch: { lead: session } },
+  ),
   "workspaces.list input": operation(OPERATIONS["workspaces.list"].input, {}, 1),
   "workspaces.list output": operation(
     OPERATIONS["workspaces.list"].output,
@@ -235,7 +253,16 @@ export const operations = {
   "session.info input": operation(OPERATIONS["session.info"].input, sessionInput, {}),
   "session.update input": operation(
     OPERATIONS["session.update"].input,
-    { session, patch: { name: null, pinned: true, archived: false, workspace } },
+    {
+      session,
+      patch: {
+        name: null,
+        pinned: true,
+        archived: false,
+        workspace,
+        project: asId<"project">("p1"),
+      },
+    },
     { session, patch: { pinned: "yes" } },
   ),
   "session.fork input": operation(

@@ -2,6 +2,7 @@ import { DatabaseSync } from "node:sqlite";
 import {
   decodeCallRecord,
   decodeCatalogRecord,
+  decodeProjectRecord,
   decodeCommitRecord,
   decodeHostIdentity,
   decodeInboxRecord,
@@ -59,6 +60,7 @@ const DECODERS = new Map<string, Decode>(
     identity: decodeHostIdentity,
     prompt: decodePromptRecord,
     catalog: decodeCatalogRecord,
+    project: decodeProjectRecord,
   } satisfies Record<Exclude<RecordKind, "kv">, Decode>),
 );
 

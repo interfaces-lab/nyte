@@ -314,7 +314,7 @@ describe("subagents", () => {
 
     expect(state.outcome).toEqual({
       kind: "failed",
-      message: `Session ${stranger.id} is not a subagent of this session.`,
+      message: `Session ${stranger.id} is not a subagent of this session or a chat in its project.`,
     });
   });
 
