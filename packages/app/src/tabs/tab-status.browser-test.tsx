@@ -8,7 +8,6 @@ import type { ReactElement } from "react";
 import type { Execution, HeadInfo, SessionInfo, WorkspaceInfo } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import { PaneControllerProvider } from "../panes/pane-context.tsx";
-import { activePane } from "../panes/pane-layout.ts";
 import { SessionDndProvider } from "../panes/session-dnd.tsx";
 import { queryClient } from "../data/query-client.ts";
 import { installConnection } from "../data/connection.ts";
@@ -180,11 +179,7 @@ export async function run(): Promise<string> {
   windowTabs.openChat(asId<"session">("Solo"), "permanent");
   windowTabs.openChat(asId<"session">("Left"), "permanent");
   const controller = windowTabs.controller();
-  controller.drop(
-    asId<"session">("Right"),
-    activePane(controller.getSnapshot().layout).id,
-    "right",
-  );
+  controller.drop(asId<"session">("Right"), controller.getSnapshot().focus[0], "right");
   controller.selectSession(asId<"session">("Left"));
   windowTabs.openChat(quiet.id, "permanent");
   windowTabs.dispatch({ kind: "new-tab" });

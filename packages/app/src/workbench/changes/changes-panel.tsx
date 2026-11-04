@@ -21,8 +21,8 @@ import { useSessionRow } from "../../data/session-rows.ts";
 import { conversationTurns } from "../../chat/transcript/turns.ts";
 import { chatStore } from "../../data/chat-store.ts";
 import { useWatchSelect } from "../../data/watch-store.ts";
-import { usePaneControllerSnapshot } from "../../panes/pane-context.tsx";
-import { activeSelection } from "../../panes/pane-layout.ts";
+import { usePaneLayout } from "../../panes/pane-context.tsx";
+import { activeSelection, sameSelection } from "../../panes/pane-layout.ts";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import {
@@ -615,7 +615,7 @@ function SessionChangesPanel(
 }
 
 export function ChangesPanel(props: ChangesPanelProps): ReactElement {
-  const selection = activeSelection(usePaneControllerSnapshot().layout);
+  const selection = usePaneLayout(activeSelection, sameSelection);
 
   return selection.kind !== "session" ? (
     <ChangesPanelView

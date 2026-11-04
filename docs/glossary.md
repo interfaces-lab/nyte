@@ -20,7 +20,7 @@ Each concept has one name. Code uses the term, and users see the UI word where i
 | workspace | A registered place that sessions work in. | Folder | directory, project, cwd (except a real process cwd) |
 | host | The process that runs the agent and stores sessions. | | for the selected folder or the Electron shell |
 | connection | A principal's authenticated handle on a host. | Server | link |
-| pane | One of the two chat columns in a tab, `primary` or `secondary`. | | panel |
+| pane | A box in a window tab's layout. It holds one or more pane tabs and shows the active one. | | panel |
 | blank | A pane with no session, `PaneSelection` with `kind: "blank"`. It holds one draft until sending starts a session. | New chat | new chat (in identifiers, where it names the action) |
 | panel | A workbench tool view, such as files, changes, terminal or browser. | | pane |
 | window tab / workbench tab | Always qualified. | Tab | bare `tab` |

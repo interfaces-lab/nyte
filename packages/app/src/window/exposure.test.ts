@@ -1,9 +1,9 @@
 import { expect, test } from "vitest";
 import { asId } from "@nyte-ai/schema";
 import type { Execution, HeadInfo, SessionId } from "@nyte-ai/sdk";
-import { reducePaneLayout } from "../panes/pane-layout.ts";
-import type { PaneLayoutAction } from "../panes/pane-layout.ts";
-import { activeTab, initialWindow, reduce, tabLayout } from "../tabs/model.ts";
+import { changePanes, focusFirst, showIn, splitRight } from "../../test/panes.ts";
+import type { PaneChange } from "../../test/panes.ts";
+import { initialWindow, reduce } from "../tabs/model.ts";
 import type { WindowAction, WindowState } from "../tabs/model.ts";
 import { chatsFor, COMPLETED, sessionRow } from "../../test/view-fixtures.ts";
 import { expose } from "./exposure.ts";
@@ -42,7 +42,7 @@ function nextId(): string {
   return `t${String(lastId)}`;
 }
 
-function run(actions: readonly WindowAction[], state = initialWindow("t1")): WindowState {
+function run(actions: readonly WindowAction[], state = initialWindow("t1", nextId)): WindowState {
   return actions.reduce((current, action) => reduce(current, action, nextId), state);
 }
 
@@ -50,13 +50,8 @@ function open(sessionId: SessionId): WindowAction {
   return { kind: "open", place: { kind: "session", sessionId }, target: "permanent" };
 }
 
-function pane(state: WindowState, action: PaneLayoutAction): WindowState {
-  const tab = activeTab(state);
-
-  return run(
-    [{ kind: "layout", tabId: tab.id, layout: reducePaneLayout(tabLayout(tab), action) }],
-    state,
-  );
+function pane(state: WindowState, change: PaneChange): WindowState {
+  return run([changePanes(state, change, nextId)], state);
 }
 
 function view(tabs: WindowState, change: Partial<WindowView> = {}): WindowView {
@@ -77,10 +72,7 @@ function sorted(chats: ReadonlySet<SessionId>): readonly SessionId[] {
 
 const single = run([open(behind), open(left)]);
 
-const split = pane(pane(single, { kind: "split", direction: "right" }), {
-  kind: "select",
-  selection: { kind: "session", sessionId: right },
-});
+const split = pane(pane(single, splitRight), showIn({ kind: "session", sessionId: right }));
 
 test("a single pane shows its chat and nothing in another tab", () => {
   expect(expose(view(single))).toMatchObject({ shown: new Set([left]), looking: new Set([left]) });
@@ -136,14 +128,14 @@ test("only a completed run past the read mark leaves a chat unread, whatever run
     sessionRow("seen"),
   ]);
 
-  expect(sorted(expose(view(initialWindow("t1"), { chats })).unread)).toEqual([
+  expect(sorted(expose(view(initialWindow("t1", nextId), { chats })).unread)).toEqual([
     asId<"session">("completed"),
     delegating.id,
   ]);
 });
 
 test("both panes of a split are looked at, whichever has focus", () => {
-  const exposure = expose(view(pane(split, { kind: "focus", paneId: "primary" })));
+  const exposure = expose(view(pane(split, focusFirst)));
 
   expect(sorted(exposure.shown)).toEqual([left, right]);
   expect(sorted(exposure.looking)).toEqual([left, right]);

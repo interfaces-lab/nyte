@@ -9,7 +9,7 @@ import { asId } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { PaneControllerProvider } from "../panes/pane-context.tsx";
-import { activePane } from "../panes/pane-layout.ts";
+import { activeSelection } from "../panes/pane-layout.ts";
 import { SessionDndProvider } from "../panes/session-dnd.tsx";
 import { queryClient } from "../data/query-client.ts";
 import { preferences } from "../preferences/index.ts";
@@ -271,7 +271,7 @@ async function arrowKeysMoveFocusAndFold(): Promise<void> {
   primary("Filler 8").focus();
   press(primary("Filler 8"), "ArrowLeft");
   check(document.activeElement === primary("beta"), "Left goes from the kept chat to its header");
-  const selection = activePane(panes.getSnapshot().layout).selection;
+  const selection = activeSelection(panes.getSnapshot());
 
   check(
     selection.kind === "session" && selection.sessionId === asId<"session">("Filler 8"),

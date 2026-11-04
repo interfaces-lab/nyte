@@ -16,8 +16,8 @@ import { useProjectDropTarget } from "../panes/session-dnd.tsx";
 import type { ChatDirectory } from "../chats/index.ts";
 import { useChildRows } from "../data/session-rows.ts";
 import { TaskMark } from "../components/task-mark.tsx";
-import { usePaneControllerSnapshot, usePaneViewStateStore } from "../panes/pane-context.tsx";
-import { activePane } from "../panes/pane-layout.ts";
+import { usePaneLayout, usePaneViewStateStore } from "../panes/pane-context.tsx";
+import { activeSelection } from "../panes/pane-layout.ts";
 import type { ChatDraft } from "../panes/session-view-state.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
 import { useStagePage } from "../tabs/shell-state.ts";
@@ -84,15 +84,15 @@ export function useListReveal(): ListReveal {
 export function useDrafts(): OpenDrafts {
   const store = usePaneViewStateStore();
   const drafts = useSyncExternalStore(store.subscribe, store.listedDrafts, store.listedDrafts);
-  const { layout } = usePaneControllerSnapshot();
+  const pane = usePaneLayout((layout) => layout.focus[0]);
+  const blank = usePaneLayout((layout) => activeSelection(layout).kind === "blank");
   const page = useStagePage();
-  const pane = activePane(layout);
-  const readBlankId = (): string => store.readBlank(pane.id).id;
+  const readBlankId = (): string => store.readBlank(pane).id;
   const blankId = useSyncExternalStore(store.subscribe, readBlankId, readBlankId);
 
   return {
     drafts,
-    activeDraftId: page === undefined && pane.selection.kind === "blank" ? blankId : undefined,
+    activeDraftId: page === undefined && blank ? blankId : undefined,
   };
 }
 

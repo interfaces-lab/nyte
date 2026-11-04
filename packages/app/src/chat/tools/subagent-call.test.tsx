@@ -1,4 +1,4 @@
-import { tabPanes } from "../../../test/panes.ts";
+import { tabPanes, PRIMARY } from "../../../test/panes.ts";
 import "../../../test/web-bridge.ts";
 import { afterAll, expect, test, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -67,7 +67,7 @@ function Parent({ children }: { readonly children: ReactNode }): ReactNode {
   return (
     <QueryClientProvider client={new QueryClient()}>
       <PaneControllerProvider controller={tabPanes()}>
-        <TranscriptProvider paneId="primary" sessionId={parent}>
+        <TranscriptProvider paneId={PRIMARY} sessionId={parent}>
           {children}
         </TranscriptProvider>
       </PaneControllerProvider>

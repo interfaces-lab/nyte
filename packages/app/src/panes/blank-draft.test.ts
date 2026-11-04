@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
-import { tabPanes } from "../../test/panes.ts";
+import { PRIMARY, tabPanes } from "../../test/panes.ts";
 import { onTestFinished, test, vi } from "vitest";
 import { asId } from "@nyte-ai/schema";
 import type { PaneController } from "./pane-controller.ts";
 import { activeSelection } from "./pane-layout.ts";
-import type { PaneId } from "./pane-layout.ts";
+import type { PaneId } from "./layout.ts";
 import type { ComposerImageAttachment } from "./session-view-state.ts";
 
-function writeDraft(controller: PaneController, text: string, paneId: PaneId = "primary"): void {
+function writeDraft(controller: PaneController, text: string, paneId: PaneId = PRIMARY): void {
   const draft = controller.viewState.readBlank(paneId);
   controller.viewState.writeBlank(paneId, {
     ...draft,
@@ -23,11 +23,11 @@ function writeDraft(controller: PaneController, text: string, paneId: PaneId = "
 test("new chat keeps non-empty drafts available for reopening", () => {
   const controller = tabPanes();
   writeDraft(controller, "First idea\nwith detail");
-  const firstId = controller.viewState.readBlank("primary").id;
+  const firstId = controller.viewState.readBlank(PRIMARY).id;
 
   controller.newChat();
   writeDraft(controller, "Second idea");
-  const secondId = controller.viewState.readBlank("primary").id;
+  const secondId = controller.viewState.readBlank(PRIMARY).id;
   controller.newChat();
 
   assert.deepEqual(
@@ -38,9 +38,9 @@ test("new chat keeps non-empty drafts available for reopening", () => {
     ["First idea", "Second idea"],
   );
   controller.selectDraft(firstId);
-  assert.equal(controller.viewState.readBlank("primary").composer.draft, "First idea\nwith detail");
+  assert.equal(controller.viewState.readBlank(PRIMARY).composer.draft, "First idea\nwith detail");
   controller.selectDraft(secondId);
-  assert.equal(controller.viewState.readBlank("primary").composer.draft, "Second idea");
+  assert.equal(controller.viewState.readBlank(PRIMARY).composer.draft, "Second idea");
 });
 
 test("sidebar publication is debounced while typing", () => {
@@ -68,63 +68,63 @@ test("sidebar publication is debounced while typing", () => {
 
 test("empty new chats are reused and stay out of the draft list", () => {
   const controller = tabPanes();
-  const draftId = controller.viewState.readBlank("primary").id;
+  const draftId = controller.viewState.readBlank(PRIMARY).id;
   controller.newChat();
   controller.newChat();
-  assert.equal(controller.viewState.readBlank("primary").id, draftId);
+  assert.equal(controller.viewState.readBlank(PRIMARY).id, draftId);
   assert.deepEqual(controller.viewState.drafts(), []);
 });
 
 test("deleting the open draft replaces it with an empty chat", () => {
   const controller = tabPanes();
   writeDraft(controller, "Discard me");
-  const draftId = controller.viewState.readBlank("primary").id;
+  const draftId = controller.viewState.readBlank(PRIMARY).id;
   controller.removeDraft(draftId);
-  assert.equal(controller.viewState.readBlank("primary").composer.draft, "");
-  assert.notEqual(controller.viewState.readBlank("primary").id, draftId);
+  assert.equal(controller.viewState.readBlank(PRIMARY).composer.draft, "");
+  assert.notEqual(controller.viewState.readBlank(PRIMARY).id, draftId);
 });
 
 test("active draft removal does not depend on the sidebar content index", () => {
   const controller = tabPanes();
   writeDraft(controller, "Submitted text");
-  const draftId = controller.viewState.readBlank("primary").id;
+  const draftId = controller.viewState.readBlank(PRIMARY).id;
   writeDraft(controller, "");
 
   assert.deepEqual(controller.viewState.drafts(), []);
   assert.equal(controller.viewState.removeDraft(draftId), true);
-  assert.notEqual(controller.viewState.readBlank("primary").id, draftId);
+  assert.notEqual(controller.viewState.readBlank(PRIMARY).id, draftId);
 });
 
 test("a send holds the live editor document under the draft's id and refuses a second", () => {
   const controller = tabPanes();
   writeDraft(controller, "Stale parent text");
-  const { id, composer } = controller.viewState.readBlank("primary");
+  const { id, composer } = controller.viewState.readBlank(PRIMARY);
   const text = "Pasted reference\n\nFirst request";
 
-  const status = controller.viewState.beginSend("primary", {
+  const status = controller.viewState.beginSend(PRIMARY, {
     ...composer,
     draft: text,
     selectionStart: text.length,
     selectionEnd: text.length,
   });
 
-  const held = controller.viewState.readBlank("primary");
+  const held = controller.viewState.readBlank(PRIMARY);
   assert.equal(held.id, id);
   assert.equal(held.composer.draft, text);
   assert.equal(held.status, status);
-  assert.equal(controller.viewState.beginSend("primary", held.composer), undefined);
+  assert.equal(controller.viewState.beginSend(PRIMARY, held.composer), undefined);
 
   controller.viewState.cancelSend(id);
-  assert.equal(controller.viewState.readBlank("primary").id, id);
-  assert.equal(controller.viewState.readBlank("primary").composer.draft, text);
-  assert.equal(controller.viewState.readBlank("primary").status.kind, "editing");
+  assert.equal(controller.viewState.readBlank(PRIMARY).id, id);
+  assert.equal(controller.viewState.readBlank(PRIMARY).composer.draft, text);
+  assert.equal(controller.viewState.readBlank(PRIMARY).status.kind, "editing");
 });
 
 test("a send belongs to its draft: parking keeps it, and a start under way cannot be withdrawn", () => {
   const controller = tabPanes();
   writeDraft(controller, "First request");
-  const { id, composer } = controller.viewState.readBlank("primary");
-  const waiting = controller.viewState.beginSend("primary", composer);
+  const { id, composer } = controller.viewState.readBlank(PRIMARY);
+  const waiting = controller.viewState.beginSend(PRIMARY, composer);
   assert.ok(waiting !== undefined);
 
   controller.newChat();
@@ -146,12 +146,12 @@ test("a send belongs to its draft: parking keeps it, and a start under way canno
 test("a started draft opens its chat only in the pane that shows it", () => {
   const controller = tabPanes();
   writeDraft(controller, "Started elsewhere");
-  const { id } = controller.viewState.readBlank("primary");
+  const { id } = controller.viewState.readBlank(PRIMARY);
   const other = asId<"session">("other");
   controller.selectSession(other);
 
   controller.openDraftChat(id, asId<"session">(id));
-  assert.deepEqual(activeSelection(controller.getSnapshot().layout), {
+  assert.deepEqual(activeSelection(controller.getSnapshot()), {
     kind: "session",
     sessionId: other,
   });
@@ -161,25 +161,26 @@ test("a started draft opens its chat only in the pane that shows it", () => {
 test("late removal of a parked draft preserves the pane's newer draft", () => {
   const controller = tabPanes();
   writeDraft(controller, "Already submitted");
-  const submittedId = controller.viewState.readBlank("primary").id;
+  const submittedId = controller.viewState.readBlank(PRIMARY).id;
   controller.newChat();
   writeDraft(controller, "New request");
-  const currentId = controller.viewState.readBlank("primary").id;
+  const currentId = controller.viewState.readBlank(PRIMARY).id;
 
   assert.equal(controller.viewState.removeDraft(submittedId), true);
-  assert.equal(controller.viewState.readBlank("primary").id, currentId);
-  assert.equal(controller.viewState.readBlank("primary").composer.draft, "New request");
+  assert.equal(controller.viewState.readBlank(PRIMARY).id, currentId);
+  assert.equal(controller.viewState.readBlank(PRIMARY).composer.draft, "New request");
 });
 
 test("workspaces and split panes keep independent drafts", () => {
   const firstWorkspace = tabPanes();
   const secondWorkspace = tabPanes();
+  const secondary = asId<"pane">("secondary");
   writeDraft(firstWorkspace, "Primary");
-  writeDraft(firstWorkspace, "Secondary", "secondary");
+  writeDraft(firstWorkspace, "Secondary", secondary);
 
-  assert.equal(firstWorkspace.viewState.readBlank("primary").composer.draft, "Primary");
-  assert.equal(firstWorkspace.viewState.readBlank("secondary").composer.draft, "Secondary");
-  assert.equal(secondWorkspace.viewState.readBlank("primary").composer.draft, "");
+  assert.equal(firstWorkspace.viewState.readBlank(PRIMARY).composer.draft, "Primary");
+  assert.equal(firstWorkspace.viewState.readBlank(secondary).composer.draft, "Secondary");
+  assert.equal(secondWorkspace.viewState.readBlank(PRIMARY).composer.draft, "");
 });
 
 function memoryStorage() {
@@ -203,7 +204,7 @@ test("reload restores parked drafts and follow-up text after a typing pause", ()
   });
   const storage = memoryStorage();
   const first = tabPanes({ storage, storageKey: "panes-reload" });
-  const opened = first.viewState.readBlank("primary");
+  const opened = first.viewState.readBlank(PRIMARY);
   writeDraft(first, "First idea");
   first.newChat();
   writeDraft(first, "Second idea");
@@ -221,9 +222,9 @@ test("reload restores parked drafts and follow-up text after a typing pause", ()
   vi.advanceTimersByTime(200);
 
   const reloaded = tabPanes({ storage, storageKey: "panes-reload" });
-  assert.equal(reloaded.viewState.readBlank("primary").composer.draft, "Second idea");
+  assert.equal(reloaded.viewState.readBlank(PRIMARY).composer.draft, "Second idea");
   reloaded.selectDraft(opened.id);
-  assert.equal(reloaded.viewState.readBlank("primary").composer.draft, "First idea");
+  assert.equal(reloaded.viewState.readBlank(PRIMARY).composer.draft, "First idea");
   const followUp = reloaded.viewState.readSession(chat).composer;
   assert.equal(followUp.draft, "Follow-up after reload");
   assert.equal(followUp.selectionStart, 8);
@@ -234,7 +235,7 @@ test("corrupt stored drafts are ignored", () => {
   const storage = memoryStorage();
   storage.setItem("panes-corrupt", "{not-json");
   const controller = tabPanes({ storage, storageKey: "panes-corrupt" });
-  assert.equal(controller.viewState.readBlank("primary").composer.draft, "");
+  assert.equal(controller.viewState.readBlank(PRIMARY).composer.draft, "");
   assert.deepEqual(controller.viewState.drafts(), []);
 });
 
@@ -242,25 +243,25 @@ test("a send waiting at reload comes back as an editable draft under its id", ()
   const storage = memoryStorage();
   const first = tabPanes({ storage, storageKey: "panes-send" });
   writeDraft(first, "Send me");
-  const { id, composer } = first.viewState.readBlank("primary");
-  first.viewState.beginSend("primary", composer);
+  const { id, composer } = first.viewState.readBlank(PRIMARY);
+  first.viewState.beginSend(PRIMARY, composer);
 
   const reloaded = tabPanes({ storage, storageKey: "panes-send" });
-  assert.equal(reloaded.viewState.readBlank("primary").id, id);
-  assert.equal(reloaded.viewState.readBlank("primary").composer.draft, "Send me");
-  assert.equal(reloaded.viewState.readBlank("primary").status.kind, "editing");
+  assert.equal(reloaded.viewState.readBlank(PRIMARY).id, id);
+  assert.equal(reloaded.viewState.readBlank(PRIMARY).composer.draft, "Send me");
+  assert.equal(reloaded.viewState.readBlank(PRIMARY).status.kind, "editing");
 });
 
 test("a started chat's draft is written away before the window reloads", () => {
   const storage = memoryStorage();
   const first = tabPanes({ storage, storageKey: "panes-started" });
   writeDraft(first, "Send me");
-  const { id, composer } = first.viewState.readBlank("primary");
-  first.viewState.beginSend("primary", composer);
+  const { id, composer } = first.viewState.readBlank(PRIMARY);
+  first.viewState.beginSend(PRIMARY, composer);
   first.viewState.removeDraft(id);
 
   const reloaded = tabPanes({ storage, storageKey: "panes-started" });
-  assert.equal(reloaded.viewState.readBlank("primary").composer.draft, "");
+  assert.equal(reloaded.viewState.readBlank(PRIMARY).composer.draft, "");
   assert.deepEqual(reloaded.viewState.drafts(), []);
 });
 
@@ -271,7 +272,7 @@ test("a reload keeps a draft's text and small images but not an image too large 
   });
   const storage = memoryStorage();
   const first = tabPanes({ storage, storageKey: "panes-images" });
-  const draft = first.viewState.readBlank("primary");
+  const draft = first.viewState.readBlank(PRIMARY);
 
   const image = (id: string, size: number) =>
     ({
@@ -280,7 +281,7 @@ test("a reload keeps a draft's text and small images but not an image too large 
       content: { type: "image", data: "A".repeat(size), mimeType: "image/png" },
     }) satisfies ComposerImageAttachment;
 
-  first.viewState.writeBlank("primary", {
+  first.viewState.writeBlank(PRIMARY, {
     ...draft,
     composer: {
       ...draft.composer,
@@ -291,7 +292,7 @@ test("a reload keeps a draft's text and small images but not an image too large 
   vi.advanceTimersByTime(200);
 
   const reloaded = tabPanes({ storage, storageKey: "panes-images" });
-  const composer = reloaded.viewState.readBlank("primary").composer;
+  const composer = reloaded.viewState.readBlank(PRIMARY).composer;
   assert.equal(composer.draft, "Look at these");
   assert.deepEqual(
     composer.attachments.map((attachment) => attachment.id),
@@ -318,11 +319,11 @@ test("a draft the storage refuses doesn't stop the other drafts or the index fro
 
   const first = tabPanes({ storage, storageKey: "panes-refused" });
   writeDraft(first, "Refused");
-  refused = first.viewState.readBlank("primary").id;
+  refused = first.viewState.readBlank(PRIMARY).id;
   first.newChat();
   writeDraft(first, "Kept");
   vi.advanceTimersByTime(200);
 
   const reloaded = tabPanes({ storage: values, storageKey: "panes-refused" });
-  assert.equal(reloaded.viewState.readBlank("primary").composer.draft, "Kept");
+  assert.equal(reloaded.viewState.readBlank(PRIMARY).composer.draft, "Kept");
 });

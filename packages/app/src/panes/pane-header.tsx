@@ -4,7 +4,7 @@ import type { ReactElement, ReactNode, RefObject } from "react";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Button } from "@nyte-ai/ui/button";
 import { usePaneActions, useCanSplitPane } from "./pane-context.tsx";
-import type { PaneId } from "./pane-layout.ts";
+import type { PaneId } from "./layout.ts";
 import { nyte } from "../contract/nyte.ts";
 
 import { clientActions, clientActionShortcut } from "../contract/client-actions.ts";

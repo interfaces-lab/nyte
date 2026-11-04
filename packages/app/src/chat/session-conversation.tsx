@@ -17,11 +17,11 @@ import { Input } from "@nyte-ai/ui/input";
 import { MenuItem, MenuSeparator } from "@nyte-ai/ui/menu";
 import {
   hideFromPanes,
-  usePaneControllerSnapshot,
+  usePaneFocused,
+  useSplitPanes,
   usePaneViewStateStore,
 } from "../panes/pane-context.tsx";
-import { activePane } from "../panes/pane-layout.ts";
-import type { PaneId } from "../panes/pane-layout.ts";
+import type { PaneId } from "../panes/layout.ts";
 import { useCatalog } from "../data/catalog.ts";
 import { useSessionChoice } from "../data/sessions.ts";
 import { sessionActions } from "../data/session-rows.ts";
@@ -224,6 +224,17 @@ function TranscriptColumn({
   );
 }
 
+/** Reads the pane's focus below the conversation, so focusing another pane redraws only what follows it. */
+function PaneFocus({
+  pane,
+  children,
+}: {
+  readonly pane: PaneId;
+  readonly children: (focus: { readonly focused: boolean }) => ReactNode;
+}): ReactNode {
+  return children({ focused: usePaneFocused(pane) });
+}
+
 function ActivationNotice({ activation }: { readonly activation: Activation }): null {
   useMountEffect(() => observeActivation(activation));
 
@@ -280,8 +291,7 @@ function ConversationScreen(conversation: SessionConversationProps): ReactElemen
   const { paneId, presentation, sessionId } = conversation;
   useMountEffect(() => keepChat(sessionId));
   const cwd = useChatFolder()?.path;
-  const { layout } = usePaneControllerSnapshot();
-
+  const split = useSplitPanes();
   const chat = useChat(sessionId);
   const catalog = useCatalog(sessionId);
   const [draftName, setDraftName] = useState<string | undefined>();
@@ -392,7 +402,7 @@ function ConversationScreen(conversation: SessionConversationProps): ReactElemen
       )}
       aria-busy={!ready && !failed}
     >
-      {presentation === "full" && layout.kind === "split" && (
+      {presentation === "full" && split && (
         <PaneHeader
           paneId={paneId}
           menuTriggerRef={paneMenuTrigger}
@@ -457,76 +467,80 @@ function ConversationScreen(conversation: SessionConversationProps): ReactElemen
             />
 
             {presentation === "full" && (
-              <Composer
-                sessionId={sessionId}
-                active={activePane(layout).id === paneId}
-                floatingMount={conversation.floatingMount}
-                backgroundWork={{
-                  content: (
-                    <>
-                      <ApprovalTray
-                        sessionId={sessionId}
-                        disabled={failed || navigating}
-                        viewport={scroll}
-                      />
-                      <QuestionTray disabled={failed || navigating} viewport={scroll} />
-                      <SubagentTray
-                        parentSessionId={sessionId}
-                        agents={agents}
-                        view={subagentTray}
-                        onViewChange={setTrayView}
-                        onRelease={() => composerRef.current?.focus({ preventScroll: true })}
-                        viewport={scroll}
-                        detail={
-                          subagentTray.kind === "detail" ? (
-                            <SessionConversation
-                              key={subagentTray.sessionId}
-                              presentation="tray"
-                              paneId={paneId}
-                              sessionId={subagentTray.sessionId}
-                            />
-                          ) : null
-                        }
-                      />
-                      <BackgroundWork
-                        sessionId={sessionId}
-                        terminals={terminals}
-                        open={shownTrayView.kind === "terminals"}
-                        onViewChange={setTrayView}
-                        viewport={scroll}
-                      />
-                    </>
-                  ),
-                  onEscape: () => {
-                    if (trayView.kind === "closed") return false;
-                    setTrayView({ kind: "closed" });
+              <PaneFocus pane={paneId}>
+                {(focus) => (
+                  <Composer
+                    sessionId={sessionId}
+                    active={focus.focused}
+                    floatingMount={conversation.floatingMount}
+                    backgroundWork={{
+                      content: (
+                        <>
+                          <ApprovalTray
+                            sessionId={sessionId}
+                            disabled={failed || navigating}
+                            viewport={scroll}
+                          />
+                          <QuestionTray disabled={failed || navigating} viewport={scroll} />
+                          <SubagentTray
+                            parentSessionId={sessionId}
+                            agents={agents}
+                            view={subagentTray}
+                            onViewChange={setTrayView}
+                            onRelease={() => composerRef.current?.focus({ preventScroll: true })}
+                            viewport={scroll}
+                            detail={
+                              subagentTray.kind === "detail" ? (
+                                <SessionConversation
+                                  key={subagentTray.sessionId}
+                                  presentation="tray"
+                                  paneId={paneId}
+                                  sessionId={subagentTray.sessionId}
+                                />
+                              ) : null
+                            }
+                          />
+                          <BackgroundWork
+                            sessionId={sessionId}
+                            terminals={terminals}
+                            open={shownTrayView.kind === "terminals"}
+                            onViewChange={setTrayView}
+                            viewport={scroll}
+                          />
+                        </>
+                      ),
+                      onEscape: () => {
+                        if (trayView.kind === "closed") return false;
+                        setTrayView({ kind: "closed" });
 
-                    return true;
-                  },
-                }}
-                status={status}
-                pending={messages.queued}
-                unsent={messages.unsent}
-                fileDropRoot={column}
-                initialViewState={viewStore.readSession(sessionId).composer}
-                onViewStateChange={(composer) =>
-                  viewStore.updateSession(sessionId, (current) => ({
-                    ...current,
-                    composer,
-                  }))
-                }
-                inputRef={attachComposer}
-                steer={
-                  subagentTray.kind === "detail"
-                    ? {
-                        session: subagentTray.sessionId,
-                        title:
-                          agents.find((agent) => agent.id === subagentTray.sessionId)?.title ??
-                          "this agent",
-                      }
-                    : undefined
-                }
-              />
+                        return true;
+                      },
+                    }}
+                    status={status}
+                    pending={messages.queued}
+                    unsent={messages.unsent}
+                    fileDropRoot={column}
+                    initialViewState={viewStore.readSession(sessionId).composer}
+                    onViewStateChange={(composer) =>
+                      viewStore.updateSession(sessionId, (current) => ({
+                        ...current,
+                        composer,
+                      }))
+                    }
+                    inputRef={attachComposer}
+                    steer={
+                      subagentTray.kind === "detail"
+                        ? {
+                            session: subagentTray.sessionId,
+                            title:
+                              agents.find((agent) => agent.id === subagentTray.sessionId)?.title ??
+                              "this agent",
+                          }
+                        : undefined
+                    }
+                  />
+                )}
+              </PaneFocus>
             )}
             {presentation === "side" && (
               <Composer
@@ -547,13 +561,17 @@ function ConversationScreen(conversation: SessionConversationProps): ReactElemen
             )}
           </TranscriptColumn>
           {presentation === "full" && (
-            <SideChatWindow
-              parent={sessionId}
-              paneId={paneId}
-              active={activePane(layout).id === paneId}
-              focusMain={() => composerRef.current?.focus({ preventScroll: true })}
-              conversation={SideConversation}
-            />
+            <PaneFocus pane={paneId}>
+              {(focus) => (
+                <SideChatWindow
+                  parent={sessionId}
+                  paneId={paneId}
+                  active={focus.focused}
+                  focusMain={() => composerRef.current?.focus({ preventScroll: true })}
+                  conversation={SideConversation}
+                />
+              )}
+            </PaneFocus>
           )}
         </TranscriptProvider>
       </div>

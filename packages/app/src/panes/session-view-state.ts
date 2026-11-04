@@ -3,7 +3,7 @@ import type { ImageContent } from "@nyte-ai/schema/model";
 import type { ModelRef, SessionId, Thinking } from "@nyte-ai/sdk";
 import type { Static } from "typebox";
 import { Type } from "typebox";
-import type { PaneId } from "./pane-layout.ts";
+import type { PaneId } from "./layout.ts";
 import type { WindowDrafts } from "../chat/composer/drafts.ts";
 
 const KEPT_SESSION_VIEWS = 64;

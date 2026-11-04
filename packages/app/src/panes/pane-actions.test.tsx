@@ -1,4 +1,4 @@
-import { tabPanes } from "../../test/panes.ts";
+import { PRIMARY, tabPanes } from "../../test/panes.ts";
 import assert from "node:assert/strict";
 import { afterAll, expect, test, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -15,9 +15,11 @@ import {
   PaneControllerProvider,
   usePaneActions,
   useCanSplitPane,
-  usePaneControllerSnapshot,
+  usePaneLayout,
 } from "./pane-context.tsx";
 import type { PaneActions } from "./pane-context.tsx";
+import type { PaneId } from "./layout.ts";
+import { activeSelection, chatPanes } from "./pane-layout.ts";
 
 vi.hoisted(() => {
   vi.stubGlobal("self", {});
@@ -30,6 +32,8 @@ test.each([560, 640])("split availability and execution agree at window width %s
   vi.stubGlobal("window", { innerWidth: width });
   shellActions.showWorkspace();
   const controller = tabPanes();
+  const requests: PaneId[] = [];
+  controller.store.onFocusRequest((pane) => requests.push(pane));
 
   const router = createRouter({
     routeTree: createRootRoute(),
@@ -63,13 +67,10 @@ test.each([560, 640])("split availability and execution agree at window width %s
   assert.ok(selected);
   assert.equal(selected.available, width >= 640);
   selected.actions.split("right");
-  const layout = controller.getSnapshot().layout;
-  assert.equal(layout.kind, selected.available ? "split" : "single");
+  assert.equal(chatPanes(controller.getSnapshot()).length, selected.available ? 2 : 1);
   assert.equal(selected.actions.focusNext(), selected.available);
 
-  if (layout.kind === "split") {
-    assert.equal(controller.getSnapshot().focusRequest.paneId, "primary");
-  }
+  if (selected.available) assert.equal(requests.at(-1), PRIMARY);
 });
 
 afterAll(() => vi.unstubAllGlobals());
@@ -91,11 +92,11 @@ test("new chat leaves Customize and selects the blank pane through the shared pa
   function Probe({ inspect }: { readonly inspect: (value: PaneActions) => void }) {
     inspect(usePaneActions());
     const page = useStagePage();
-    const snapshot = usePaneControllerSnapshot();
+    const panes = usePaneLayout((layout) => chatPanes(layout).length);
 
     return (
       <span>
-        {page?.kind ?? "workspace"}:{snapshot.layout.kind}
+        {page?.kind ?? "workspace"}:{panes}
       </span>
     );
   }
@@ -113,11 +114,11 @@ test("new chat leaves Customize and selects the blank pane through the shared pa
       </RouterContextProvider>,
     );
 
-  expect(render()).toBe("<span>customize:single</span>");
+  expect(render()).toBe("<span>customize:1</span>");
   assert.ok(actions);
   actions.newChat();
-  expect(render()).toBe("<span>workspace:single</span>");
-  const layout = controller.getSnapshot().layout;
-  assert.equal(layout.kind, "single");
-  expect(layout.selection).toEqual({ kind: "blank" });
+  expect(render()).toBe("<span>workspace:1</span>");
+  const layout = controller.getSnapshot();
+  assert.equal(chatPanes(layout).length, 1);
+  expect(activeSelection(layout)).toEqual({ kind: "blank" });
 });

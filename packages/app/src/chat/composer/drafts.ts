@@ -1,6 +1,6 @@
 import type { Static, TSchema } from "typebox";
 import { Type } from "typebox";
-import type { PaneId } from "../../panes/pane-layout.ts";
+import type { PaneId } from "../../panes/layout.ts";
 import {
   type ChatDraft,
   type ComposerImageAttachment,
@@ -46,8 +46,6 @@ export type LocatedDraft =
       readonly draft: ChatDraft;
     };
 
-const PANE_IDS = ["primary", "secondary"] as const;
-
 interface Persistence {
   readonly storage: StorageArea;
   readonly storageKey: string;
@@ -62,10 +60,8 @@ const ownerId = Type.String({ minLength: 1 });
 
 const paneIndexSchema = Type.Object({ active: ownerId, parked: Type.Array(ownerId) }, strict);
 
-const tabPanesSchema = Type.Object(
-  { primary: Type.Optional(paneIndexSchema), secondary: Type.Optional(paneIndexSchema) },
-  strict,
-);
+/** Keyed by pane id; the two panes of earlier builds, `primary` and `secondary`, still match. */
+const tabPanesSchema = Type.Record(Type.String({ minLength: 1 }), paneIndexSchema);
 
 const indexSchema = Type.Object(
   { tabs: Type.Record(Type.String(), tabPanesSchema), sessions: Type.Array(ownerId) },
@@ -266,10 +262,7 @@ export class WindowDrafts {
     };
 
     for (const [tabId, panes] of Object.entries(index.tabs)) {
-      for (const paneId of PANE_IDS) {
-        const stored = panes[paneId];
-
-        if (stored === undefined) continue;
+      for (const [paneId, stored] of Object.entries(panes)) {
         const parked = new Map<string, ChatDraft>();
 
         for (const id of stored.parked) {
@@ -281,7 +274,10 @@ export class WindowDrafts {
         }
 
         const restored = this.#panes.get(tabId) ?? new Map<PaneId, PaneDraftState>();
-        restored.set(paneId, { active: readDraft(stored.active) ?? this.createDraft(), parked });
+        restored.set(asId<"pane">(paneId), {
+          active: readDraft(stored.active) ?? this.createDraft(),
+          parked,
+        });
         this.#panes.set(tabId, restored);
       }
     }
@@ -319,7 +315,7 @@ export class WindowDrafts {
           kept[paneId] = { active: state.active.id, parked: [...state.parked.keys()] };
       }
 
-      if (kept.primary !== undefined || kept.secondary !== undefined) tabs[tabId] = kept;
+      if (Object.keys(kept).length > 0) tabs[tabId] = kept;
     }
 
     const sessions = [...this.sessions]

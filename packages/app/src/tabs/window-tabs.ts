@@ -1,13 +1,16 @@
 import type { ProjectId } from "@nyte-ai/schema";
 import type { SessionId } from "@nyte-ai/sdk";
-import type { Static } from "typebox";
-import { Type } from "typebox";
+import { reduceLayout } from "../panes/layout.ts";
+import type { Layout } from "../panes/layout.ts";
+import { createFocusRequests } from "../panes/layout-store.ts";
+import type { LayoutStore } from "../panes/layout-store.ts";
 import { PaneController } from "../panes/pane-controller.ts";
-import { paneLayoutSchema, paneSelection } from "../panes/pane-layout.ts";
-import type { PaneLayout } from "../panes/pane-layout.ts";
+import { paneRules } from "../panes/pane-kinds.ts";
+import type { PaneContent } from "../panes/pane-kinds.ts";
+import { chatPanes } from "../panes/pane-layout.ts";
 import { SessionViewStateStore } from "../panes/session-view-state.ts";
 import { WindowDrafts } from "../chat/composer/drafts.ts";
-import { sessionId } from "../data/schemas.ts";
+import { Type } from "typebox";
 import {
   activeTab,
   findChatTab,
@@ -16,7 +19,8 @@ import {
   tabLayout,
   withoutPreviews,
 } from "./model.ts";
-import type { LastingTab, OpenIntent, WindowAction, WindowState } from "./model.ts";
+import type { OpenIntent, WindowAction, WindowState } from "./model.ts";
+import { parseStrip, storeStrip } from "./stored-strip.ts";
 import type { DesktopWindow } from "../contract/desktop-window.ts";
 import { localArea, readStored, removeStored, writeStored } from "../lib/storage.ts";
 
@@ -30,73 +34,7 @@ const EARLIER_TAB_KEY_PREFIX = "nyte.desktop.tab.v1:";
 
 const SAVE_DELAY_MS = 250;
 
-const strict = { additionalProperties: false };
-
-const section = Type.Optional(Type.String());
-
-const viewSchema = Type.Union([
-  Type.Object(
-    {
-      kind: Type.Literal("page"),
-      page: Type.Object(
-        {
-          kind: Type.Enum(["customize", "project"]),
-          section,
-          sessionId: Type.Optional(sessionId),
-        },
-        strict,
-      ),
-    },
-    strict,
-  ),
-  Type.Object({ kind: Type.Literal("panes"), layout: paneLayoutSchema }, strict),
-]);
-
-const tabSchema = Type.Object({ id: Type.String({ minLength: 1 }), view: viewSchema }, strict);
-
-const stripSchema = Type.Object(
-  {
-    version: Type.Literal(2),
-    tabs: Type.Array(tabSchema, { minItems: 1 }),
-    activeTabId: Type.String(),
-    recent: Type.Array(Type.String()),
-    closed: Type.Array(
-      Type.Object({ tab: tabSchema, index: Type.Integer({ minimum: 0 }) }, strict),
-    ),
-  },
-  strict,
-);
-
-type StoredTab = Static<typeof tabSchema>;
-
-function storedView(view: StoredTab["view"]): LastingTab["view"] {
-  if (view.kind === "panes") return view;
-
-  return {
-    kind: "page",
-    page: { kind: view.page.kind, section: view.page.section, sessionId: view.page.sessionId },
-  };
-}
-
-function storedTab(tab: StoredTab): LastingTab {
-  return { id: tab.id, view: storedView(tab.view) };
-}
-
-function restoreStrip(stored: Static<typeof stripSchema> | undefined): WindowState | undefined {
-  if (stored === undefined) return undefined;
-  const tabs = stored.tabs.map(storedTab);
-  const open = new Set(tabs.map((tab) => tab.id));
-  const activeTabId = open.has(stored.activeTabId) ? stored.activeTabId : tabs[0]?.id;
-
-  if (activeTabId === undefined) return undefined;
-
-  return {
-    tabs,
-    activeTabId,
-    recent: stored.recent.filter((id) => id !== activeTabId && open.has(id)),
-    closed: stored.closed.map(({ tab, index }) => ({ tab: storedTab(tab), index })),
-  };
-}
+const newId = (): string => crypto.randomUUID();
 
 /** Removes what no open window owns: closed windows' tabs and drafts, and what earlier builds saved. */
 function forgetWindows(windowIds: readonly string[]): void {
@@ -119,7 +57,7 @@ function forgetWindows(windowIds: readonly string[]): void {
 class WindowTabs {
   #strip = false;
   #windowKey = `${WINDOW_KEY_PREFIX}web`;
-  #state: WindowState = initialWindow("tab");
+  #state: WindowState = initialWindow("tab", newId);
   #startupDestination = true;
   #drafts: WindowDrafts | undefined;
   readonly #controllers = new Map<string, PaneController>();
@@ -141,11 +79,12 @@ class WindowTabs {
 
     if (desktopWindow.launch !== undefined) forgetWindows(desktopWindow.launch.windowIds);
 
-    const saved = restoreStrip(
-      readStored(localArea(), `${this.#windowKey}:tabs`, stripSchema, undefined),
+    const saved = parseStrip(
+      readStored(localArea(), `${this.#windowKey}:tabs`, Type.Unknown(), undefined),
+      newId,
     );
 
-    this.#state = saved ?? initialWindow(crypto.randomUUID());
+    this.#state = saved ?? initialWindow(newId(), newId);
     this.#startupDestination = desktopWindow.launch !== undefined && saved === undefined;
     window.addEventListener("pagehide", this.#flush);
   }
@@ -163,7 +102,7 @@ class WindowTabs {
     const next =
       action.kind === "open" && !this.#strip ? { ...action, target: "here" as const } : action;
 
-    this.#apply(reduce(this.#state, next, () => crypto.randomUUID()));
+    this.#apply(reduce(this.#state, next, newId));
   }
 
   /**
@@ -190,7 +129,9 @@ class WindowTabs {
         ? this.#state.tabs.find(
             (tab) =>
               tab.id === located.tabId &&
-              paneSelection(tabLayout(tab), located.paneId)?.kind === "blank",
+              chatPanes(tabLayout(tab)).some(
+                (pane) => pane.pane === located.paneId && pane.selection.kind === "blank",
+              ),
           )
         : undefined;
 
@@ -212,14 +153,38 @@ class WindowTabs {
       this.#state.tabs.find((candidate) => candidate.id === tabId) ?? activeTab(this.#state);
 
     const controller = new PaneController({
-      initialLayout: tabLayout(tab),
-      route: (current, next) => this.#route(tab.id, current, next),
+      store: this.#layoutStore(tab.id),
       viewState: new SessionViewStateStore(this.#windowDrafts(), tab.id),
     });
 
     this.#controllers.set(tab.id, controller);
 
     return controller;
+  }
+
+  /** The tab's layout in the window's state, written through the window's reducer. */
+  #layoutStore(tabId: string): LayoutStore {
+    const focus = createFocusRequests();
+    const rules = { ...paneRules, newId };
+
+    const read = (): Layout<PaneContent> =>
+      tabLayout(
+        this.#state.tabs.find((candidate) => candidate.id === tabId) ?? activeTab(this.#state),
+      );
+
+    return {
+      subscribe: this.subscribe,
+      getSnapshot: read,
+      dispatch: (...actions) => {
+        const current = read();
+        const layout = actions.reduce((next, action) => reduceLayout(next, action, rules), current);
+
+        if (layout === current) return;
+        this.#apply(reduce(this.#state, { kind: "layout", tabId, layout }, newId), tabId);
+      },
+      onFocusRequest: focus.onFocusRequest,
+      requestFocus: focus.requestFocus,
+    };
   }
 
   #windowDrafts(): WindowDrafts {
@@ -232,39 +197,36 @@ class WindowTabs {
     return this.#drafts;
   }
 
-  #route(tabId: string, current: PaneLayout, next: PaneLayout): PaneLayout {
-    this.#apply(
-      reduce(this.#state, { kind: "layout", tabId, layout: next }, () => crypto.randomUUID()),
-      tabId,
-    );
-
-    const tab = this.#state.tabs.find((candidate) => candidate.id === tabId);
-
-    return tab === undefined ? current : tabLayout(tab);
-  }
-
-  #apply(next: WindowState, routing?: string): void {
+  /** A layout the window changed on its own, as when it opens a chat, asks its focused pane to take the keyboard. */
+  #apply(next: WindowState, writer?: string): void {
     if (next === this.#state) return;
+    const previous = this.#state;
     this.#state = next;
 
     const known = new Set(
       [...next.tabs, ...next.closed.map((closed) => closed.tab)].map((tab) => tab.id),
     );
 
-    for (const [tabId, controller] of this.#controllers) {
-      if (!known.has(tabId)) {
-        this.#controllers.delete(tabId);
-        continue;
-      }
+    for (const tabId of this.#controllers.keys())
+      if (!known.has(tabId)) this.#controllers.delete(tabId);
 
-      const tab = next.tabs.find((candidate) => candidate.id === tabId);
+    const changed = [...this.#controllers].flatMap(([tabId, controller]) => {
+      const before = previous.tabs.find((tab) => tab.id === tabId);
+      const after = next.tabs.find((tab) => tab.id === tabId);
 
-      if (tab !== undefined && tabId !== routing) controller.show(tabLayout(tab));
-    }
+      return tabId === writer ||
+        before === undefined ||
+        after === undefined ||
+        tabLayout(before) === tabLayout(after)
+        ? []
+        : [{ store: controller.store, pane: tabLayout(after).focus[0] }];
+    });
 
     this.#save();
 
     for (const listener of this.#listeners) listener();
+
+    for (const entry of changed) entry.store.requestFocus(entry.pane);
   }
 
   #save(): void {
@@ -277,7 +239,7 @@ class WindowTabs {
     this.#saveTimer = undefined;
     const lasting = withoutPreviews(this.#state, () => crypto.randomUUID());
 
-    writeStored(localArea(), `${this.#windowKey}:tabs`, { version: 2, ...lasting });
+    writeStored(localArea(), `${this.#windowKey}:tabs`, storeStrip(lasting));
   };
 }
 

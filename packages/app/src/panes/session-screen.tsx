@@ -1,69 +1,54 @@
 import { sessionScreenStyles } from "./session-screen.stylex.ts";
-import { PaneHost } from "./pane-host.tsx";
-import { fitSplitRatio, SplitSash } from "./split-sash.tsx";
 import { props } from "@stylexjs/stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
-import { useRef, useState } from "react";
-import type { CSSProperties, ReactElement } from "react";
+import { useState } from "react";
+import type { ReactElement } from "react";
 import { FileTypeIconSprite } from "../components/file-type-icon.tsx";
-import { usePaneControllerSnapshot } from "./pane-context.tsx";
-import { activePane, orderedPanes } from "./pane-layout.ts";
-import type { PaneId, PaneLayout } from "./pane-layout.ts";
+import { PaneFloatingMount } from "../chat/chat-pane-view.tsx";
+import type { Layout } from "./layout.ts";
+import { LayoutView, PANE_GAP } from "./layout-view.tsx";
+import { usePaneLayout, usePaneLayoutStore } from "./pane-context.tsx";
+import { boxStyle, layoutGeometry } from "./pane-geometry.ts";
+import type { Box, Linear } from "./pane-geometry.ts";
+import type { PaneContent } from "./pane-kinds.ts";
+import { renderPaneContent } from "./pane-views.tsx";
 import { useSessionDropTarget } from "./session-dnd.tsx";
 import type { SessionDropTarget } from "./session-dnd.tsx";
 import { useHostState } from "../data/host.ts";
 import { nyte } from "../contract/nyte.ts";
 
 import { WORKBENCH_CHAT_TAB } from "../workbench/model.ts";
-import type { WorkbenchViewKey } from "../workbench/model.ts";
 import { activeWorkbenchTab } from "../workbench/selectors.ts";
 import { useWorkbenchView } from "../workbench/store.ts";
 import { Workbench } from "../workbench/workbench.tsx";
 import { useChatWindow } from "../window/index.ts";
 import { clientCapabilities } from "../contract/client-actions.ts";
 
-function panePreviewRect(
-  layout: Extract<PaneLayout, { kind: "split" }>,
-  paneId: PaneId,
-): CSSProperties {
-  const leading = layout.leading === paneId;
-  const leadingSize = `${String(layout.ratio * 100)}%`;
-  const trailingSize = `${String((1 - layout.ratio) * 100)}%`;
+function half(value: Linear): Linear {
+  return { px: value.px / 2, fraction: value.fraction / 2, gaps: value.gaps / 2 };
+}
 
-  if (layout.direction === "right") {
-    return {
-      top: 0,
-      left: leading ? 0 : leadingSize,
-      width: leading ? leadingSize : trailingSize,
-      height: "100%",
-    };
-  }
-
+function plus(left: Linear, right: Linear): Linear {
   return {
-    top: leading ? 0 : leadingSize,
-    left: 0,
-    width: "100%",
-    height: leading ? leadingSize : trailingSize,
+    px: left.px + right.px,
+    fraction: left.fraction + right.fraction,
+    gaps: left.gaps + right.gaps,
   };
 }
 
-function dropPreviewRect(layout: PaneLayout, target: SessionDropTarget): CSSProperties {
-  const leadingSize = layout.kind === "single" ? "50%" : `${String(layout.ratio * 100)}%`;
-  const trailingSize = layout.kind === "single" ? "50%" : `${String((1 - layout.ratio) * 100)}%`;
-
+/** The target pane's box for the center, or the half of it an edge drop would take. */
+function dropPreviewBox(box: Box, target: SessionDropTarget): Box {
   switch (target.placement) {
-    case "top":
-      return { top: 0, left: 0, width: "100%", height: leadingSize };
-    case "bottom":
-      return { top: leadingSize, left: 0, width: "100%", height: trailingSize };
-    case "left":
-      return { top: 0, left: 0, width: leadingSize, height: "100%" };
-    case "right":
-      return { top: 0, left: leadingSize, width: trailingSize, height: "100%" };
     case "center":
-      return layout.kind === "single"
-        ? { top: 0, left: 0, width: "100%", height: "100%" }
-        : panePreviewRect(layout, target.paneId);
+      return box;
+    case "left":
+      return { ...box, width: half(box.width) };
+    case "right":
+      return { ...box, x: plus(box.x, half(box.width)), width: half(box.width) };
+    case "top":
+      return { ...box, height: half(box.height) };
+    case "bottom":
+      return { ...box, y: plus(box.y, half(box.height)), height: half(box.height) };
     default: {
       const _exhaustive: never = target.placement;
 
@@ -72,93 +57,27 @@ function dropPreviewRect(layout: PaneLayout, target: SessionDropTarget): CSSProp
   }
 }
 
-function DropPreview({
-  layout,
-  target,
-}: {
-  readonly layout: PaneLayout;
-  readonly target: SessionDropTarget;
-}): ReactElement {
-  return (
-    <div aria-hidden="true" {...props(sessionScreenStyles.dropPreviewLayer)}>
-      <div
-        data-nyte-drop-preview=""
-        {...props(intent.primary, sessionScreenStyles.dropPreview)}
-        style={dropPreviewRect(layout, target)}
-      />
-    </div>
+function DropPreview({ target }: { readonly target: SessionDropTarget }): ReactElement | null {
+  const box = usePaneLayout((layout: Layout<PaneContent>) =>
+    layoutGeometry(layout).panes.get(target.paneId),
   );
-}
 
-function SessionDropPreview({ layout }: { readonly layout: PaneLayout }): ReactElement | null {
-  const target = useSessionDropTarget();
-
-  return target === undefined ? null : <DropPreview layout={layout} target={target} />;
-}
-
-function SessionPanes({
-  viewKey,
-  maximized,
-  covered,
-  floatingMount,
-}: {
-  readonly viewKey: WorkbenchViewKey;
-  readonly maximized: boolean;
-  readonly covered: boolean;
-  readonly floatingMount: HTMLDivElement | null;
-}): ReactElement {
-  const [availableWidth, setAvailableWidth] = useState(Number.NaN);
-  const layout = fitSplitRatio(usePaneControllerSnapshot().layout, availableWidth);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const panes = orderedPanes(layout);
-  const leading = panes[0] ?? activePane(layout);
-  const trailing = layout.kind === "split" ? panes[1] : undefined;
+  if (box === undefined) return null;
 
   return (
     <div
-      ref={containerRef}
-      id={`${viewKey}-panel-${WORKBENCH_CHAT_TAB}`}
-      role={maximized ? "tabpanel" : undefined}
-      aria-labelledby={maximized ? `${viewKey}-tab-${WORKBENCH_CHAT_TAB}` : undefined}
-      inert={covered ? true : undefined}
-      {...props(
-        sessionScreenStyles.panes,
-        layout.kind === "split" &&
-          (layout.direction === "right"
-            ? sessionScreenStyles.splitRight
-            : sessionScreenStyles.splitDown),
-        covered && sessionScreenStyles.panesCovered,
-      )}
-    >
-      <PaneHost
-        key={leading.id}
-        pane={leading}
-        floatingMount={floatingMount}
-        position={
-          layout.kind === "single" ? { kind: "single" } : { kind: "leading", ratio: layout.ratio }
-        }
-      />
-      {layout.kind === "split" && trailing !== undefined && (
-        <SplitSash
-          key="pane-sash"
-          direction={layout.direction}
-          ratio={layout.ratio}
-          availableWidth={availableWidth}
-          onAvailableWidth={setAvailableWidth}
-          containerRef={containerRef}
-        />
-      )}
-      {layout.kind === "split" && trailing !== undefined && (
-        <PaneHost
-          key={trailing.id}
-          pane={trailing}
-          position={{ kind: "trailing" }}
-          floatingMount={floatingMount}
-        />
-      )}
-      <SessionDropPreview layout={layout} />
-    </div>
+      aria-hidden="true"
+      data-nyte-drop-preview=""
+      {...props(intent.primary, sessionScreenStyles.dropPreview)}
+      style={boxStyle(dropPreviewBox(box, target), PANE_GAP)}
+    />
   );
+}
+
+function SessionDropPreview(): ReactElement | null {
+  const target = useSessionDropTarget();
+
+  return target === undefined ? null : <DropPreview target={target} />;
 }
 
 export function SessionScreen(): ReactElement {
@@ -171,6 +90,7 @@ export function SessionScreen(): ReactElement {
   const maximized = view.expanded && view.layout.kind === "maximized";
 
   const covered = useChatWindow((snapshot) => snapshot.covered);
+  const store = usePaneLayoutStore();
 
   const paneFloatingMount =
     covered &&
@@ -181,12 +101,19 @@ export function SessionScreen(): ReactElement {
   return (
     <div {...props(sessionScreenStyles.stage)}>
       <FileTypeIconSprite />
-      <SessionPanes
-        viewKey={viewKey}
-        maximized={maximized}
-        covered={covered}
-        floatingMount={paneFloatingMount}
-      />
+      <div
+        id={`${viewKey}-panel-${WORKBENCH_CHAT_TAB}`}
+        role={maximized ? "tabpanel" : undefined}
+        aria-labelledby={maximized ? `${viewKey}-tab-${WORKBENCH_CHAT_TAB}` : undefined}
+        inert={covered ? true : undefined}
+        {...props(sessionScreenStyles.panes, covered && sessionScreenStyles.panesCovered)}
+      >
+        <PaneFloatingMount value={paneFloatingMount}>
+          <LayoutView store={store} renderTab={renderPaneContent}>
+            <SessionDropPreview />
+          </LayoutView>
+        </PaneFloatingMount>
+      </div>
       <Workbench workspacePath={workspacePath} />
       <div ref={setFloatingMount} {...props(sessionScreenStyles.floatingMount)} />
     </div>
