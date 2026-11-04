@@ -489,6 +489,8 @@ function ChangesPanelView({
         branch={branchReadout(snapshot.data)}
         sessionOption={sessionOption}
         turnOptions={turnOptions}
+        workspace={workspace}
+        liveRun={liveRun}
         viewOptions={options}
         fileTreeVisible={fileTreeVisible}
         onScopeChange={onScopeChange}

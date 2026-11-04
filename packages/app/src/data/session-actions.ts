@@ -1,12 +1,10 @@
-import { useQueryClient } from "@tanstack/react-query";
 import type { QueryClient } from "@tanstack/react-query";
 import { keyedSerial } from "@nyte-ai/schema/serial";
-import type { Connection, SessionId, SessionInfo } from "@nyte-ai/sdk";
+import type { CommitId, Connection, SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { toast } from "@nyte-ai/ui/toast";
 import { ActionToasts } from "../lib/action-toasts.ts";
-import { keys, queryClient } from "./query-client.ts";
+import { keys } from "./query-client.ts";
 import { connection } from "./connection.ts";
-import { findSessionRow } from "./session-rows.ts";
 
 type SessionChange =
   | { readonly kind: "archive"; readonly archived: boolean }
@@ -39,8 +37,31 @@ function applyChange(session: SessionInfo, change: SessionChange): SessionInfo |
   }
 }
 
+/**
+ * Starts a new chat with this chat's history through `from`, by default all of it. The new chat
+ * lands in the sidebar and the open chat stays where it is.
+ */
+export async function forkChat(sessionId: SessionId, from?: CommitId): Promise<void> {
+  const outcome = await connection()
+    .session(sessionId)
+    .fork({ from })
+    .catch(() => null);
+
+  if (outcome?.kind === "forked") return;
+
+  toast.add({
+    type: "error",
+    title:
+      outcome?.kind === "busy"
+        ? "Wait for the reply to finish, then fork the chat."
+        : "Couldn't fork this chat. Try again.",
+    id: "session-action-error-fork",
+  });
+}
+
 export class SessionActions {
   readonly #client: QueryClient;
+  readonly #findRow: (sessionId: SessionId) => SessionInfo | undefined;
   readonly #connection: () => Pick<Connection, "session">;
   readonly #toasts: ActionToasts;
   readonly #listeners = new Set<() => void>();
@@ -51,14 +72,18 @@ export class SessionActions {
 
   constructor({
     client,
+    findRow,
     sessions = connection,
     toasts = new ActionToasts(),
   }: {
     client: QueryClient;
+    /** The session's row as the sidebar lists it, with pending changes applied. */
+    findRow: (sessionId: SessionId) => SessionInfo | undefined;
     sessions?: () => Pick<Connection, "session">;
     toasts?: ActionToasts;
   }) {
     this.#client = client;
+    this.#findRow = findRow;
     this.#connection = sessions;
     this.#toasts = toasts;
   }
@@ -188,7 +213,7 @@ export class SessionActions {
     const read = this.#client.getQueryData<SessionInfo | null>(keys.session(sessionId));
 
     return (
-      findSessionRow(sessionId) ??
+      this.#findRow(sessionId) ??
       (read === undefined || read === null ? undefined : (this.projectSession(read) ?? undefined))
     );
   }
@@ -265,25 +290,4 @@ export class SessionActions {
         : (applyChange(session, change) ?? session),
     );
   }
-}
-
-const sessionActionsByClient = new WeakMap<QueryClient, SessionActions>();
-
-function actionsFor(client: QueryClient): SessionActions {
-  const existing = sessionActionsByClient.get(client);
-
-  if (existing !== undefined) return existing;
-  const actions = new SessionActions({ client });
-  sessionActionsByClient.set(client, actions);
-
-  return actions;
-}
-
-/** For readers outside React. */
-export function appSessionActions(): SessionActions {
-  return actionsFor(queryClient);
-}
-
-export function useSessionActions(): SessionActions {
-  return actionsFor(useQueryClient());
 }

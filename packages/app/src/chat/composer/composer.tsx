@@ -14,7 +14,7 @@ import { useCatalog } from "../../data/catalog.ts";
 import { useHostHealth } from "../../data/host.ts";
 import { useMentionFiles } from "../../data/files.ts";
 import { usePluginCatalog } from "../../data/plugins.ts";
-import { useSessionActions } from "../../data/session-actions.ts";
+import { sessionActions } from "../../data/session-rows.ts";
 import { useSessionActivity, useSessionChoice } from "../../data/sessions.ts";
 import { connection } from "../../data/connection.ts";
 import { chatStore } from "../../data/chat-store.ts";
@@ -165,7 +165,6 @@ export function Composer({
   const editorRef = useRef<ComposerEditorHandle | null>(null);
   const questions = useQuestionDock(sessionId);
   const pluginCatalog = usePluginCatalog(sessionId);
-  const sessionActions = useSessionActions();
   const floating = floatingMount !== null;
 
   const [portalHost] = useState(() => {

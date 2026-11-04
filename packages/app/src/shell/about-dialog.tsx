@@ -22,7 +22,7 @@ const styles = create({
   close: {
     position: "absolute",
     top: 10,
-    right: 10,
+    insetInlineEnd: 10,
     display: "grid",
     placeItems: "center",
     width: 40,

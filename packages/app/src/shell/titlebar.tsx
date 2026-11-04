@@ -3,25 +3,31 @@ import { titlebarStyles } from "./titlebar.stylex.ts";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { props } from "@stylexjs/stylex";
 import { createLink } from "@tanstack/react-router";
+import { useState } from "react";
 import type { ReactElement } from "react";
 import type { SessionId } from "@nyte-ai/sdk";
+import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { PanelToggleIcon } from "@nyte-ai/ui/icon";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Button, ButtonLink } from "@nyte-ai/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import {
+  hideFromPanes,
   useCanSplitPane,
   usePaneActions,
   usePaneControllerSnapshot,
 } from "../panes/pane-context.tsx";
 import { activePane } from "../panes/pane-layout.ts";
 import { nyte } from "../contract/nyte.ts";
-import { chatTitle, useChat } from "../chats/index.ts";
+import { chatDirectory, chatTitle, useChat } from "../chats/index.ts";
 import { useHostState } from "../data/host.ts";
+import { sessionActions } from "../data/session-rows.ts";
 import { useWorkbenchView, workbench } from "../workbench/store.ts";
-import { attachSidebarWidth, useStagePage } from "../tabs/shell-state.ts";
+import { attachSidebarWidth, shellActions, useStagePage } from "../tabs/shell-state.ts";
 import { attachActiveWorkbenchWidth } from "../workbench/width.ts";
+import { sessionIsRunning } from "../sidebar/sidebar-view.ts";
+import { chatWindow } from "../window/index.ts";
 import { useSidebar } from "../sidebar/use-sidebar.ts";
 import {
   clientActionAriaShortcut,
@@ -75,21 +81,81 @@ function SessionTitle({ sessionId }: { sessionId: SessionId }): ReactElement {
   );
 }
 
+type TabChatConfirmation =
+  | { readonly kind: "closed" }
+  | { readonly kind: "delete"; readonly sessionId: SessionId }
+  | { readonly kind: "archive-working"; readonly sessionId: SessionId };
+
 function TitlebarTabStrip({ state, mac }: { state: WindowState; mac: boolean }): ReactElement {
+  const [confirmation, setConfirmation] = useState<TabChatConfirmation>({ kind: "closed" });
+  const closeConfirmation = (): void => setConfirmation({ kind: "closed" });
+
   return (
-    <WindowTabStrip
-      tabs={useWindowTabItems(state)}
-      activeTabId={state.activeTabId}
-      mac={mac}
-      onActivate={(tabId) => windowTabs.dispatch({ kind: "activate-tab", tabId })}
-      onClose={(tabId) => windowTabs.dispatch({ kind: "close-tab", tabId })}
-      onKeep={(tabId) => windowTabs.dispatch({ kind: "keep-tab", tabId })}
-      onOpenParent={(parent) => windowTabs.openChat(parent, "permanent")}
-      onNewTab={() => windowTabs.dispatch({ kind: "new-tab" })}
-      onReorder={(tabIds, tabId) => windowTabs.dispatch({ kind: "reorder", tabIds, tabId })}
-      onCloseOthers={(tabId) => windowTabs.dispatch({ kind: "close-others", tabId })}
-      onCloseToRight={(tabId) => windowTabs.dispatch({ kind: "close-right", tabId })}
-    />
+    <>
+      <WindowTabStrip
+        tabs={useWindowTabItems(state)}
+        activeTabId={state.activeTabId}
+        mac={mac}
+        onActivate={(tabId) => windowTabs.dispatch({ kind: "activate-tab", tabId })}
+        onClose={(tabId) => windowTabs.dispatch({ kind: "close-tab", tabId })}
+        onKeep={(tabId) => windowTabs.dispatch({ kind: "keep-tab", tabId })}
+        onOpenParent={(parent) => windowTabs.openChat(parent, "permanent")}
+        onNewTab={() => windowTabs.dispatch({ kind: "new-tab" })}
+        onReorder={(tabIds, tabId) => windowTabs.dispatch({ kind: "reorder", tabIds, tabId })}
+        onCloseOthers={(tabId) => windowTabs.dispatch({ kind: "close-others", tabId })}
+        onCloseToRight={(tabId) => windowTabs.dispatch({ kind: "close-right", tabId })}
+        chat={{
+          rename: (sessionId, name) => void sessionActions.rename({ sessionId, name }),
+          pin: (session) => sessionActions.pin({ sessionId: session.id, pinned: !session.pinned }),
+          markRead: (sessionId) => chatWindow.markRead([sessionId]),
+          openBeside: (sessionId) => {
+            shellActions.showWorkspace();
+            const controller = windowTabs.controller();
+            controller.drop(sessionId, activePane(controller.getSnapshot().layout).id, "right");
+          },
+          archive: (session) => {
+            if (!session.archived && sessionIsRunning(session, chatDirectory())) {
+              setConfirmation({ kind: "archive-working", sessionId: session.id });
+
+              return;
+            }
+
+            sessionActions.archive([session.id], !session.archived, hideFromPanes);
+          },
+          remove: (sessionId) => setConfirmation({ kind: "delete", sessionId }),
+        }}
+      />
+      {confirmation.kind === "delete" && (
+        <ConfirmDialog
+          open
+          title="Delete Chat"
+          confirmLabel="Delete Chat"
+          description="The chat disappears now. Undo from the notification before it closes."
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen) closeConfirmation();
+          }}
+          onConfirm={() => {
+            closeConfirmation();
+            sessionActions.delete(confirmation.sessionId, hideFromPanes);
+          }}
+        />
+      )}
+      {confirmation.kind === "archive-working" && (
+        <ConfirmDialog
+          open
+          title="Archive Working Chat"
+          description="It keeps working in the archive. Restore it from the Archived filter."
+          confirmLabel="Archive Chat"
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen) closeConfirmation();
+          }}
+          onConfirm={() => {
+            closeConfirmation();
+            sessionActions.archive([confirmation.sessionId], true, hideFromPanes);
+          }}
+        />
+      )}
+    </>
   );
 }
 

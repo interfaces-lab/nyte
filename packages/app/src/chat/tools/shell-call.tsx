@@ -77,12 +77,12 @@ const styles = create({
     borderRadius: radius.control,
     backgroundColor: role.bgBase,
   },
-  bodyMenu: { position: "absolute", top: 6, right: 6, zIndex: 1 },
+  bodyMenu: { position: "absolute", top: 6, insetInlineEnd: 6, zIndex: 1 },
   scroll: { overflowY: "auto", overscrollBehavior: "auto" },
   scrollLine: { maxHeight: 200 },
   scrollCard: { maxHeight: "min(480px, 60vh)" },
   command: { ...MONO, display: "block", paddingBlock: space.s1_5, paddingInline: space.s2_5 },
-  commandWithMenu: { paddingRight: `calc(${space.s1} + 28px)` },
+  commandWithMenu: { paddingInlineEnd: `calc(${space.s1} + 28px)` },
   prompt: { userSelect: "none" },
   output: {
     ...MONO,
@@ -154,7 +154,7 @@ const styles = create({
   headerActions: {
     position: "absolute",
     top: "50%",
-    right: 4,
+    insetInlineEnd: 4,
     display: "flex",
     alignItems: "center",
     transform: "translateY(-50%)",

@@ -9,9 +9,7 @@ import { WorkspaceRow } from "../../sidebar/sidebar-lists.tsx";
 import { SessionRowView } from "../../sidebar/sidebar-rows.tsx";
 import { sidebarStyles } from "../../sidebar/sidebar.stylex.ts";
 import { sidebar } from "../../theme/schema.stylex.ts";
-import { PREVIEW_PATH, PREVIEW_PLACE, previewChat, previewRail } from "./fixtures.ts";
-
-const RAIL = previewRail();
+import { PREVIEW_PATH, previewChat } from "./fixtures.ts";
 
 const ASKING = "Fix flaky login test";
 
@@ -47,16 +45,20 @@ export function ActivityPreview({
           <div {...props(sidebarStyles.section)}>
             <SessionRowView
               session={previewChat("asking", ASKING, 60_000)}
-              place={PREVIEW_PLACE}
-              rail={RAIL}
+              selected={false}
+              draggable={false}
+              unreachable={false}
+              showUpdated
               mark="waiting"
               unread={false}
               ask={undefined}
             />
             <SessionRowView
               session={previewChat("notes", "Update release notes", 3 * 3_600_000)}
-              place={PREVIEW_PLACE}
-              rail={RAIL}
+              selected={false}
+              draggable={false}
+              unreachable={false}
+              showUpdated
               mark="done"
               unread={false}
               ask={undefined}

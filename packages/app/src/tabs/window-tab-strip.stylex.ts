@@ -117,6 +117,8 @@ export const stripStyles = create({
   splitMark: { display: "inline-flex", flexShrink: 0, color: role.contentTertiary },
   close: { display: "inline-flex", flexShrink: 0, opacity: "var(--_close-opacity)" },
   closeVisible: { opacity: 1 },
+  rename: { position: "absolute", inset: 0, zIndex: 1, display: "flex", alignItems: "center" },
+  renameInput: { width: "100%" },
   control: { display: "inline-flex", flexShrink: 0, WebkitAppRegion: "no-drag" },
   keys: { display: "inline-flex", gap: space.s0_5 },
 });

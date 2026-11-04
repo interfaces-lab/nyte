@@ -1,5 +1,5 @@
 import { useNowMinute } from "../lib/use-now-minute.ts";
-import type { SessionInfo } from "@nyte-ai/sdk";
+import type { SessionId, SessionInfo, WorkspaceId } from "@nyte-ai/sdk";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { Button } from "@nyte-ai/ui/button";
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "@nyte-ai/ui/context-menu";
@@ -11,13 +11,14 @@ import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { props } from "@stylexjs/stylex";
 import { useState, useSyncExternalStore } from "react";
 import type { ReactElement, ReactNode } from "react";
+import type { ChatDirectory } from "../chats/index.ts";
 import { TaskMark } from "../components/task-mark.tsx";
 import { usePaneControllerSnapshot, usePaneViewStateStore } from "../panes/pane-context.tsx";
 import { activePane } from "../panes/pane-layout.ts";
 import type { ChatDraft } from "../panes/session-view-state.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
 import { useStagePage } from "../tabs/shell-state.ts";
-import { DraftRow, SessionRow, type RailRows, type SessionPlace } from "./sidebar-rows.tsx";
+import { DraftRow, SessionRow, type SessionPlace } from "./sidebar-rows.tsx";
 import { sidebarStyles as styles } from "./sidebar.stylex.ts";
 import {
   chatMark,
@@ -44,7 +45,12 @@ export interface ListReveal {
 export interface ListContext {
   readonly view: SessionViewSettings;
   readonly showDrafts: boolean;
-  readonly rail: RailRows;
+  readonly activeSessionId: SessionId | undefined;
+  readonly openWorkspace: WorkspaceId | null;
+  readonly unavailable: ReadonlySet<WorkspaceId>;
+  readonly chats: ChatDirectory;
+  /** The window's unread answer, which leaves out chats the user is looking at. */
+  readonly unread: ReadonlySet<SessionId>;
   readonly reveal: ListReveal;
   readonly onClearFilters: () => void;
 }
@@ -151,32 +157,37 @@ function ShowMore({
 function Drafts({
   drafts,
   activeDraftId,
-  rail,
 }: {
   readonly drafts: readonly ChatDraft[];
   readonly activeDraftId: string | undefined;
-  readonly rail: RailRows;
 }): ReactElement {
   return (
     <>
       {drafts.map((draft) => (
-        <DraftRow key={draft.id} draft={draft} selected={draft.id === activeDraftId} rail={rail} />
+        <DraftRow key={draft.id} draft={draft} selected={draft.id === activeDraftId} />
       ))}
     </>
   );
 }
 
-function ListedRows({
+export function ListedRows({
   rows,
-  rail,
+  context,
 }: {
   readonly rows: readonly ListedSession[];
-  readonly rail: RailRows;
+  readonly context: ListContext;
 }): ReactElement {
   return (
     <>
       {rows.map(({ place, session }) => (
-        <SessionRow key={session.id} session={session} place={place} rail={rail} />
+        <SessionRow
+          key={session.id}
+          session={session}
+          selected={session.id === context.activeSessionId}
+          draggable={place.workspace === context.openWorkspace}
+          unreachable={session.workspace !== null && context.unavailable.has(session.workspace)}
+          showUpdated={context.view.show.includes("updated")}
+        />
       ))}
     </>
   );
@@ -193,7 +204,7 @@ export function ChatsList({
   readonly hold: ShelfHold | undefined;
   readonly context: ListContext;
 }): ReactElement | null {
-  const { view, rail, reveal } = context;
+  const { view, reveal } = context;
   const { drafts: openDrafts, activeDraftId } = useDrafts();
   const [openShelves, setOpenShelves] = useState<ReadonlySet<SessionShelf>>(() => new Set());
   const drafts = context.showDrafts ? openDrafts : [];
@@ -206,13 +217,15 @@ export function ChatsList({
       {rows.length === 0 && drafts.length === 0 && (
         <EmptyList filtered={hasSessionFilters(view)} onClearFilters={context.onClearFilters} />
       )}
-      <Drafts drafts={drafts} activeDraftId={activeDraftId} rail={rail} />
+      <Drafts drafts={drafts} activeDraftId={activeDraftId} />
     </>
   );
 
   if (view.grouping === "inbox") {
     const shelved = (shelf: SessionShelf): readonly ListedSession[] =>
-      rows.filter(({ session }) => deriveShelf(session, rail.chats, rail.unread, hold) === shelf);
+      rows.filter(
+        ({ session }) => deriveShelf(session, context.chats, context.unread, hold) === shelf,
+      );
 
     const inbox = shelved("inbox");
 
@@ -233,7 +246,7 @@ export function ChatsList({
             members.length,
             COLLAPSED_SESSION_LIMIT,
             reveal.revealed(shelf),
-            members.findIndex(({ session }) => session.id === rail.activeSessionId),
+            members.findIndex(({ session }) => session.id === context.activeSessionId),
           )
         : { visible: members.length, next: 0, revealed: 0 };
 
@@ -257,7 +270,7 @@ export function ChatsList({
             })
           }
         >
-          <ListedRows rows={visible} rail={rail} />
+          <ListedRows rows={visible} context={context} />
           {page.next > 0 && (
             <ShowMore
               listId={panelId}
@@ -272,7 +285,7 @@ export function ChatsList({
     return (
       <div id={listId} {...props(styles.section)}>
         {lead}
-        <ListedRows rows={inbox} rail={rail} />
+        <ListedRows rows={inbox} context={context} />
         {inbox.length === 0 && drafts.length === 0 && rows.length > 0 && (
           <div {...props(text.base, styles.quiet, styles.sessionQuiet)}>Nothing new</div>
         )}
@@ -283,13 +296,13 @@ export function ChatsList({
     );
   }
 
-  const live = rows.filter(({ session }) => chatMark(session, rail.chats) !== "done").length;
+  const live = rows.filter(({ session }) => chatMark(session, context.chats) !== "done").length;
 
   const page = sessionPage(
     rows.length,
     live + COLLAPSED_SESSION_LIMIT,
     reveal.revealed("chats"),
-    rows.findIndex(({ session }) => session.id === rail.activeSessionId),
+    rows.findIndex(({ session }) => session.id === context.activeSessionId),
   );
 
   const visible = rows.slice(0, page.visible);
@@ -297,7 +310,7 @@ export function ChatsList({
   return (
     <div id={listId} {...props(styles.section)}>
       {lead}
-      <ListedRows rows={visible} rail={rail} />
+      <ListedRows rows={visible} context={context} />
       {page.next > 0 && (
         <ShowMore
           listId={listId}
@@ -324,7 +337,7 @@ export function FolderList({
   readonly open: boolean;
   readonly context: ListContext;
 }): ReactElement | null {
-  const { view, rail, reveal } = context;
+  const { view, reveal } = context;
   const { drafts: openDrafts, activeDraftId } = useDrafts();
   const drafts = context.showDrafts && open ? openDrafts : [];
   const now = useNowMinute();
@@ -332,10 +345,10 @@ export function FolderList({
   if (sessions === undefined && drafts.length === 0) return null;
 
   const groups =
-    sessions === undefined ? [] : folderView(sessions, view, now, rail.chats, rail.unread);
+    sessions === undefined ? [] : folderView(sessions, view, now, context.chats, context.unread);
 
   const listed = groups.flatMap((group) => group.sessions);
-  const selected = listed.findIndex((session) => session.id === rail.activeSessionId);
+  const selected = listed.findIndex((session) => session.id === context.activeSessionId);
   const key = `local:${place.workspace ?? "home"}`;
 
   const page = sessionPage(
@@ -355,7 +368,7 @@ export function FolderList({
           {view.grouping === "status" && (
             <div {...props(text.xs, styles.sessionGroupLabel)}>Draft</div>
           )}
-          <Drafts drafts={visibleDrafts} activeDraftId={activeDraftId} rail={rail} />
+          <Drafts drafts={visibleDrafts} activeDraftId={activeDraftId} />
         </div>
       )}
       {sessions !== undefined && drafts.length + listed.length === 0 && (
@@ -366,7 +379,10 @@ export function FolderList({
           {group.label !== undefined && (
             <div {...props(text.xs, styles.sessionGroupLabel)}>{group.label}</div>
           )}
-          <ListedRows rows={group.sessions.map((session) => ({ place, session }))} rail={rail} />
+          <ListedRows
+            rows={group.sessions.map((session) => ({ place, session }))}
+            context={context}
+          />
         </div>
       ))}
       {page.next > 0 && (
@@ -382,17 +398,17 @@ export function FolderList({
 
 export function PinnedSection({
   rows,
-  rail,
+  context,
 }: {
   readonly rows: readonly ListedSession[];
-  readonly rail: RailRows;
+  readonly context: ListContext;
 }): ReactElement {
   return (
     <section aria-label="Pinned" {...props(styles.section)}>
       <div {...props(styles.sectionHeader, styles.sectionTitle)}>
         <span {...props(styles.sectionLabel)}>Pinned</span>
       </div>
-      <ListedRows rows={rows} rail={rail} />
+      <ListedRows rows={rows} context={context} />
     </section>
   );
 }

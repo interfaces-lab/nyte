@@ -1,6 +1,6 @@
 import { sessionScreenStyles } from "./session-screen.stylex.ts";
 import { keyOwner } from "../lib/focus-owner.ts";
-import { BlankConversation } from "../chat/composer/new-chat-composer.tsx";
+import { BlankConversation } from "../chat/composer/blank-conversation.tsx";
 import { SessionConversation } from "../chat/session-conversation.tsx";
 import { props } from "@stylexjs/stylex";
 import { useRef, useSyncExternalStore } from "react";

@@ -18,16 +18,11 @@ interface WaitingChild {
 
 const NONE: readonly WaitingChat[] = [];
 
-const stores = new Map<SessionId, DerivedStore<readonly WaitingChat[]>>();
-
 /**
  * The host marks a child item waiting while it or anything below it waits, so this walks down only
- * those items, and holds the views it walks open while anyone listens.
+ * those items, and holds the views it walks open while anyone listens. Each caller owns its store.
  */
 export function waitingBelow(root: SessionId): DerivedStore<readonly WaitingChat[]> {
-  const known = stores.get(root);
-
-  if (known !== undefined) return known;
   const listeners = new Set<() => void>();
   const watched = new Map<SessionId, () => void>();
   let value = NONE;
@@ -89,8 +84,6 @@ export function waitingBelow(root: SessionId): DerivedStore<readonly WaitingChat
       };
     },
   };
-
-  stores.set(root, store);
 
   return store;
 }

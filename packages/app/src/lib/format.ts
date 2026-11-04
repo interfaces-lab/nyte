@@ -44,6 +44,9 @@ export function formatPercent(fraction: number): string {
   return `${String(Math.round(fraction * 100))}%`;
 }
 
+/** One formatter for every row: `toLocaleDateString` with options builds a new one per call. */
+const MONTH_DAY = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
+
 export function formatTimeAgo(timestamp: number, now: number): string {
   const elapsed = Math.max(0, now - timestamp);
   const minutes = Math.floor(elapsed / 60_000);
@@ -58,5 +61,5 @@ export function formatTimeAgo(timestamp: number, now: number): string {
 
   if (days < 7) return `${String(days)}d`;
 
-  return new Date(timestamp).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return MONTH_DAY.format(timestamp);
 }

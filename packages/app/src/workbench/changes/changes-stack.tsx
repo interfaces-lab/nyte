@@ -88,13 +88,14 @@ const styles = create({
     minWidth: 0,
     alignSelf: "stretch",
     minHeight: 0,
-    paddingRight: 0,
+    paddingInlineEnd: 0,
     borderBottomWidth: 0,
     backgroundColor: "transparent",
   },
   path: {
     textOverflow: "ellipsis",
     direction: "rtl",
+    // oxlint-disable-next-line nyte-design/logical-properties -- direction: rtl only moves the ellipsis to the path's start; the path itself still reads from the left
     textAlign: "left",
   },
   notice: {

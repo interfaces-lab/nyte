@@ -77,6 +77,14 @@ export async function run(): Promise<string> {
       onReorder: (ids, id) => calls.push(`reorder ${ids.join(",")} moving ${id}`),
       onCloseOthers: (id) => calls.push(`close-others ${id}`),
       onCloseToRight: (id) => calls.push(`close-right ${id}`),
+      chat: {
+        rename: (id, name) => calls.push(`rename ${id} ${name}`),
+        pin: (session) => calls.push(`pin ${session.id}`),
+        markRead: (id) => calls.push(`read ${id}`),
+        openBeside: (id) => calls.push(`beside ${id}`),
+        archive: (session) => calls.push(`archive ${session.id}`),
+        remove: (id) => calls.push(`remove ${id}`),
+      },
     };
 
     flushSync(() => root.render(<WindowTabStrip {...strip} />));

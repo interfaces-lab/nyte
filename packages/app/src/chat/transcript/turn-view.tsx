@@ -13,7 +13,7 @@ import { useEffectEvent, useId, useLayoutEffect, useRef, useState } from "react"
 import type { ReactElement, ReactNode, RefObject } from "react";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { flushSync } from "react-dom";
-import type { Message as ViewMessage, SessionView, UserContent } from "@nyte-ai/sdk";
+import type { CommitId, Message as ViewMessage, SessionView, UserContent } from "@nyte-ai/sdk";
 import {
   failureNotice,
   showsAnswer,
@@ -55,6 +55,7 @@ import type { MessageFile } from "./message-content.tsx";
 import { contentDraftText } from "../../references/message-references.ts";
 import { useBlobUrl } from "../../lib/use-blob-url.ts";
 import { connection } from "../../data/connection.ts";
+import { forkChat } from "../../data/session-actions.ts";
 import { ModelPicker } from "../composer/model-picker.tsx";
 import type { ModelPickerChange } from "../composer/model-picker.tsx";
 import {
@@ -700,28 +701,41 @@ function ResponseView({
 
   const worked = row.ended && row.workedMs !== undefined ? workedFor(row.workedMs) : undefined;
 
+  const commit = row.messages
+    .flatMap((message) => (message.status.kind === "settled" ? [message.status.commit] : []))
+    .at(-1);
+
   return (
     <div {...props(replyStyles.reply, row.ended && row.latest && replyStyles.latest)}>
       {worked !== undefined && <span {...props(stepGroupStyles.status)}>{worked}</span>}
       <Prose markdown={markdown} streaming={streaming} />
-      {row.ended && <ReplyActions markdown={markdown} at={first.at} worked={worked} />}
+      {row.ended && (
+        <ReplyActions markdown={markdown} at={first.at} worked={worked} commit={commit} />
+      )}
     </div>
   );
 }
+
+/** Shared by every reply: `toLocaleString` with options builds a new formatter per call. */
+const SENT_AT = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 
 function ReplyActions({
   markdown,
   at,
   worked,
+  commit,
 }: {
   markdown: string;
   at: number;
   worked: string | undefined;
+  /** Where a fork from this reply ends: the last commit the reply settled. */
+  commit: CommitId | undefined;
 }): ReactElement {
+  const sessionId = useTranscriptScope()?.sessionId;
   const confirmation = useCopyConfirmation();
   const now = useNowMinute();
   const sent = new Date(at);
-  const full = sent.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  const full = SENT_AT.format(sent);
 
   return (
     <div {...props(text.sm, replyStyles.actions)}>
@@ -741,6 +755,23 @@ function ReplyActions({
         />
         <TooltipContent>{confirmation.copied ? "Copied" : "Copy reply"}</TooltipContent>
       </Tooltip>
+      {sessionId !== undefined && commit !== undefined && (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="xs"
+                iconOnly
+                icon="fork"
+                aria-label="Fork chat from here"
+                onClick={() => void forkChat(sessionId, commit)}
+              />
+            }
+          />
+          <TooltipContent>Fork chat from here</TooltipContent>
+        </Tooltip>
+      )}
       <Tooltip>
         <TooltipTrigger
           render={

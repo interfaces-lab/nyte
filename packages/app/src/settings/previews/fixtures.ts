@@ -1,35 +1,11 @@
-import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
+import type { SessionInfo } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
-import type { RailRows } from "../../sidebar/sidebar-rows.tsx";
 
 const PREVIEW_NOW = Date.now();
 
 const WORKSPACE = asId<"workspace">("preview");
 
 export const PREVIEW_PATH = "~/Developer/nyte";
-
-export const PREVIEW_PLACE = { workspace: WORKSPACE, path: PREVIEW_PATH };
-
-/** Sidebar rows that act on nothing: the preview slot is inert. */
-export function previewRail(activeSessionId?: SessionId): RailRows {
-  return {
-    openWorkspace: null,
-    activeSessionId,
-    unavailable: new Set(),
-    repository: undefined,
-    chats: new Map(),
-    unread: new Set(),
-    showUpdated: true,
-    open: () => undefined,
-    rename: () => undefined,
-    pin: () => undefined,
-    markRead: () => undefined,
-    archive: () => undefined,
-    remove: () => undefined,
-    openDraft: () => undefined,
-    removeDraft: () => undefined,
-  };
-}
 
 /** A chat in the preview workspace whose last activity was `age` milliseconds ago. */
 export function previewChat(id: string, name: string, age: number): SessionInfo {

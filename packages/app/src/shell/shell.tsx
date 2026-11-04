@@ -79,10 +79,7 @@ const styles = create({
   },
   migration: {
     position: "fixed",
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
+    inset: 0,
     zIndex: layer.dialogBackdrop,
     display: "flex",
     flexDirection: "column",

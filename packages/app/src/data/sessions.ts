@@ -8,7 +8,6 @@ import { useRootRows } from "./session-rows.ts";
 import { chatStore } from "./chat-store.ts";
 import { useWatch, useWatchSelect } from "./watch-store.ts";
 import { subagentActivity } from "./session-activity.ts";
-import { useSessionActions } from "./session-actions.ts";
 import { useWorkspaces } from "./workspaces.ts";
 
 export function useWorkspaceSessions() {
@@ -62,12 +61,4 @@ export function useSessionChoice(sessionId: SessionId) {
 
 export function useConfigureSession(sessionId: SessionId) {
   return useMutation(sessionConfigurationOptions({ sessionId }));
-}
-
-export function useRenameSession() {
-  const actions = useSessionActions();
-
-  return useMutation({
-    mutationFn: (input: { sessionId: SessionId; name: string }) => actions.rename(input),
-  });
 }

@@ -1,59 +1,95 @@
 # @nyte-ai/app
 
-The Nyte interface: React screens, queries, and styles shared by the desktop app and the web app. The package does not talk to the SDK directly. It reads everything through a `NyteBridge` that the host supplies. The desktop carries the bridge over Electron IPC; the web app in `src/web` carries it over `@nyte-ai/client`.
+The Nyte interface. This package holds the React screens, queries and styles that the desktop app and the web app share. The package never talks to a host directly. It reads everything through a `NyteBridge` that its embedding installs. The desktop's bridge reaches the host through Electron's main process, and the web app's bridge in `src/web` connects through `@nyte-ai/sdk`.
 
-The host calls `installBridge(bridge)` before the first import that reads the bridge. `theme/boot.ts` reads it while the module evaluates, so the call has to come first. The desktop does this in `packages/desktop/src/renderer/src/install-bridge.ts`, which is the first import of its `main.tsx`; the web app does it in `src/web/install.ts`, the first import of `src/web/entry.tsx`.
+## Usage
 
-## Layout
+Call `installBridge` from `@nyte-ai/app/contract/nyte.ts` before anything imports `@nyte-ai/app/theme/boot.ts`. That module reads the bridge while it evaluates, and a read before installation throws. The desktop's renderer entry shows the order:
 
-- `src/bridge.ts`: the bridge contract (`NyteBridge`, `HostBridge`, and the host, usage, and browser types).
-- `src/nyte.ts`: `installBridge` and the `nyte` facade. Every read goes to the installed bridge, and a read before installation throws.
-- `src/index.ts`: the entry a host mounts from (`installBridge`, `App`, `router`, `queryClient`, `startRendererStartup`, `loadLocalResources`, `connectSessionDirectory`). `App` takes the host's product mark as `appIcon`; the desktop passes its bundled `build/icon-macos.svg`.
-- `test/renderer.ts`: builds a fixture with Vite and runs it in an Electron renderer, for tests that need real layout and styles.
-- `lint/design-scale.js`: the Oxlint plugin that keeps geometry on the design scale and colors on tokens. The root `oxlint.config.ts` loads it.
+```ts
+import "@nyte-ai/app/theme/faces.ts";
+import "./install-bridge.ts"; // calls installBridge(bridge)
+import "@nyte-ai/app/theme/boot.ts";
+import "@nyte-ai/app/theme/focus-modality.ts";
+import "@nyte-ai/app/theme/global.css";
+```
 
-Other modules are imported by path through the `./*` export, for example `@nyte-ai/app/errors.ts`. Exports are TypeScript source; the host's bundler compiles them.
+The web app does the same in `src/web/install.ts`, the first import of `src/web/entry.tsx`.
 
-## Web
+Then mount `App` from `@nyte-ai/app`. It takes the embedding's product mark as `appIcon` and a router from `createAppRouter`. The desktop passes its bundled `build/icon-macos.svg`.
 
-`pnpm --dir packages/app build` writes a static SPA to `dist`. Production serves it at `https://app.nyte.sh`. The app signs in with your Nyte account and lists linked hosts: the desktop app or the `nyte` CLI on another computer. The browser is a client: its folders and edits belong to that host. Phones and browsers are never connection targets. User steps are in the [remote access guide](../docs/content/docs/remote-access.mdx).
+## Entry points
 
-Set these public build variables in Vercel, using the same Clerk instance and broker as desktop and mobile:
+- `@nyte-ai/app` exports `App`, `createAppRouter`, `queryClient`, `connectLocalHost`, `startRendererStartup` and the window and startup helpers.
+- `@nyte-ai/app/contract/*` holds the bridge contract. `bridge.ts` defines `NyteBridge` and the host, usage and browser types. `nyte.ts` exports `installBridge` and the `nyte` object that reads the installed bridge.
+- `@nyte-ai/app/vite` holds the Vite plugins an embedding's build needs, such as `deferredChunks` and `stylex`.
+- Other modules have their own subpath in `package.json`, such as `@nyte-ai/app/theme/boot.ts`.
+- `@nyte-ai/app/e2e/errors`, `@nyte-ai/app/e2e/scenario-d`, `@nyte-ai/app/e2e/scenario-u-fixture` and `@nyte-ai/app/e2e/scenario-u-trace` share helpers with the desktop's end-to-end suite.
 
-- `VITE_NYTE_CLERK_PUBLISHABLE_KEY`
-- `VITE_NYTE_CONNECT_ORIGIN`, a canonical HTTPS origin without a trailing slash
+Exports are TypeScript source. The embedding's bundler compiles them.
 
-See `.env.example`. Missing or invalid values disable account sign-in and leave the address-and-token form. Local builds can use a gitignored `.env.local`. Development uses port 5179.
+## Web app
 
-Add `https://app.nyte.sh`, `http://localhost:5179`, and `http://127.0.0.1:5179` to Clerk's allowed origins and web redirect URLs. The broker must authorize the same origins and the standard session token's audience must match its origin. See `packages/connect/README.md`. Add `app.nyte.sh` to the Vercel project and configure its DNS manually.
+Build the static single-page app into `dist`:
+
+```sh
+pnpm --dir packages/app build
+```
+
+Production serves it at `https://app.nyte.sh`. The app signs in with your Nyte account and lists your linked hosts, such as the desktop app or the `nyte` CLI on another computer. The browser is only a client. The folders it opens and the edits it makes belong to that host. Phones and browsers are never hosts you can connect to. The [remote access guide](../docs/content/docs/remote-access.mdx) has the user steps.
+
+### Configuration
+
+Set these public build variables in Vercel. Use the same Clerk instance and broker as the desktop and mobile apps.
+
+| Variable | Default | What it does |
+| --- | --- | --- |
+| `VITE_NYTE_CLERK_PUBLISHABLE_KEY` | unset | Clerk publishable key for account sign-in |
+| `VITE_NYTE_CONNECT_ORIGIN` | unset | Nyte Connect broker origin, a canonical HTTPS origin without a trailing slash |
+
+`.env.example` shows both. A missing or invalid value turns off account sign-in and leaves the address-and-token form. For local builds, put the values in a gitignored `.env.local`. The development server uses port 5179.
+
+Add `https://app.nyte.sh`, `http://localhost:5179` and `http://127.0.0.1:5179` to Clerk's allowed origins and web redirect URLs. The broker must authorize the same origins, and the standard session token's audience must match the broker's origin. [`@nyte-ai/connect`](../connect/README.md) covers the Clerk and broker setup. Add `app.nyte.sh` to the Vercel project and configure its DNS by hand.
+
+### Vercel project
+
+Use `packages/app` as the root directory, the Vite preset, `pnpm build` as the build command and `dist` as the output directory. `vercel.json` holds the single-page rewrite, the security headers, and a setting that turns off Vercel's Git deployments. Keep `vercel.json` a regular file. Git stores a symlink as its target path, and Vercel rejects that as an invalid `vercel.json`.
 
 ### Connections
 
-The account picker lists linked hosts and their broker-reported online state. Enrollment sends a random device token's digest, waits for the host's lease to accept it, and connects through the broker's relay. The token, binding, and owner-scoped client ID live only in `sessionStorage`. Reloading resumes that credential without enrollment. Each tab has its own client ID so tabs do not replace one another's devices.
+The account screen lists linked hosts, with offline hosts disabled. Connecting enrolls a device token for the tab and connects through the broker's relay. The token and the client ID live only in `sessionStorage`, so each tab is its own device and a reload resumes without enrolling again.
 
-A desktop share keeps a folder cursor on the host, and the browser moves it with `workspace.select`. A host that reports `workspaces: registry` has no cursor. The browser picks one of its registered folders and keeps the choice in `sessionStorage`, per host identity and principal. A folder that isn't trusted yet waits for an admin to trust it. The first message starts the chat through `environment.start`, recorded in IndexedDB before it is sent, so a retry or reload asks about the same request. A host that advertises an identity is pinned per route in `localStorage` on first pairing. A different key at that route is refused until Pair as New Host, and the pin outlives tokens and sign-outs.
+- **Switch Desktop** releases the device and reloads into the host list.
+- **Sign Out** asks the broker to revoke the device instead of releasing it, then ends the Clerk session.
+- Closing a tab forgets the token in the browser, but the server doesn't revoke it, and browser session restoration can bring it back.
 
-Switch Desktop weakly releases the bearer and reloads into the picker with fresh router and query state. Sign Out also asks the broker to revoke the device and ends the Clerk session. Both forget the credential even when the desktop is offline. A Clerk owner change also drops the connection and reloads, keeping the previous desktop's UI state out of the next account. Closing a tab forgets it client-side, but does not guarantee server revocation, and browser session restoration may restore it. There is no unload release: browsers cannot reliably distinguish a tab close from a reload, and releasing on both breaks resume.
+The app pins each host's identity per route in `localStorage` on first connection. It refuses a different key at that route until you choose **Pair as New Host**. The pin outlives tokens and sign-outs.
 
-Use Address and Token opens the existing manual form. Manual and `/pair#host=<address>&token=<token>` connections keep their localStorage behavior. The app opens under a bar naming the address, whose Disconnect forgets the address and token and reloads to the start screen. Pairing fragments are removed before browser-history routing mounts. From an HTTPS page, manual hosts must also use HTTPS. Self-hosted servers must allow the page origin in `browserOrigins`.
+**Use Address and Token** opens the manual form. Manual connections and pairing links of the form `/pair#host=<address>&token=<token>` keep their address and token in `localStorage`. The app removes the pairing fragment from the address bar before routing starts. A manual address must use HTTPS, except HTTP on loopback. A self-hosted server must allow the page's origin.
 
 ### Security headers
 
-`vercel.json` carries the SPA rewrite, CSP, HSTS, MIME sniffing protection, frame denial, referrer policy, and permissions restrictions. Keep it a regular file: Git stores a symlink as its target path, which Vercel rejects as an invalid `vercel.json`. Use `packages/app` as the Vercel root directory, the Vite preset, `pnpm build`, and `dist` as the output directory. Keep the Clerk Frontend API hostname in `script-src`, `img-src`, and `frame-src` aligned with the publishable key. The defaults allow Clerk development hosts and `clerk.nyte.sh`, plus `accounts.nyte.sh` for its account portal.
+`vercel.json` sets the CSP, HSTS, `nosniff`, frame denial, the referrer policy and permission restrictions. Canvas pages under `/canvas/` get their own stricter policy. Keep the Clerk Frontend API host in `script-src`, `img-src` and `frame-src` aligned with the publishable key. The defaults allow Clerk development hosts, `clerk.nyte.sh`, and `accounts.nyte.sh` for the account portal.
 
-Scripts are limited to the app, Clerk, and Clerk's Turnstile and fraud-protection hosts. Inline scripts and JavaScript eval are blocked. `'wasm-unsafe-eval'` permits Ghostty and Shiki's WebAssembly, not JavaScript eval. Workers allow first-party URLs and blobs. Fonts allow bundled files and Clerk's embedded data fonts. Styles allow `'unsafe-inline'` because Clerk injects CSS-in-JS and Nyte applies runtime theme variables and layout styles.
+What the policy allows:
 
-`connect-src` allows HTTPS and secure WebSockets to arbitrary hosts for manual connections, plus HTTP and WebSocket loopback for local development. This is broader than a broker-only policy: injected code could send a stolen credential to another HTTPS host. Restricting scripts reduces that risk but cannot eliminate XSS or token theft. HTTPS pages still enforce mixed-content restrictions. Nyte relay calls omit cookies and use bearer-authenticated fetch, including SSE; native EventSource is not used.
+- Scripts from the app, Clerk, and Clerk's Turnstile and fraud-protection hosts. Inline scripts and JavaScript eval are blocked. `'wasm-unsafe-eval'` permits WebAssembly for Ghostty and Shiki, not JavaScript eval.
+- Workers from first-party URLs and blobs.
+- Fonts from bundled files and Clerk's embedded data fonts.
+- Inline styles, because Clerk injects CSS-in-JS and Nyte applies runtime theme variables and layout styles.
+- `connect-src` to any HTTPS or secure WebSocket host for manual connections, plus HTTP and WebSocket loopback for local development.
 
-### Reference differences
+The `connect-src` rule is broader than a broker-only policy. Injected code could send a stolen credential to another HTTPS host. Restricting scripts reduces that risk but can't remove XSS or token theft. Relay calls omit cookies and use bearer-authenticated `fetch`, including for server-sent events.
 
-The Clerk provider and fresh-token callback follow t3code's hosted app. Nyte uses its existing mobile digest-enrollment and bearer contract rather than t3code's DPoP authorization, IndexedDB keys, and managed transport. The provider is imported statically to meet Nyte's import rules; clerk-js is still loaded only when account configuration is valid. Switching reloads instead of adopting t3code's multi-environment runtime. The account gate stays before the router mounts, as Nyte's web entry already does.
-
-## Checks
+## Development
 
 ```sh
-pnpm --dir packages/app typecheck
 pnpm --dir packages/app test
+pnpm --dir packages/app typecheck
 ```
 
-Electron is a devDependency only for the fixture runner in `test/renderer.ts`. The package itself does not depend on Electron at runtime.
+Some tests run in an Electron renderer for real layout and styles. `test/renderer.ts` builds their fixture with Vite and opens it there. That is the only reason Electron is a dev dependency. The package doesn't use Electron at run time. The web end-to-end suite is in [e2e/README.md](e2e/README.md).
+
+`lint/design-scale.js` is the Oxlint plugin that keeps geometry on the design scale and colors on tokens. The root `oxlint.config.ts` loads it.
+
+Read [AGENTS.md](AGENTS.md) before changing the app.

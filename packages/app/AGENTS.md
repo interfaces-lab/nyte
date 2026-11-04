@@ -1,7 +1,11 @@
 # App
 
-Load the nyte-styles skill before writing StyleX, and read `packages/ui/AGENTS.md` before changing
+Load the nyte-styles skill before writing StyleX, and read the ui package's AGENTS.md before changing
 a shared component.
+
+Each source folder owns one concept and sits in a layer; a folder never imports one above it.
+`pnpm layers` checks this; when it fails it names the doc that lists what each folder owns. Load
+the naming skill before adding a folder.
 
 ## Priorities
 
@@ -21,7 +25,7 @@ These rules hold for the app, `@nyte-ai/ui`, the canvas, and the desktop.
 - Never write a literal family in a style, an inline style, or generated SVG. The typography tokens
   name each family once.
 - Faces load in one place: the app theme's faces module, which the web and desktop entries import
-  first. The canvas document can't see the app's CSS, so its shell font sheet loads the same faces
+  at the top, before the theme boot. The canvas document can't see the app's CSS, so its shell font sheet loads the same faces
   and nothing else. Never add a face anywhere else, or a family a user can't pick.
 - Mono at semibold or heavier is for real emphasis. Labels, chrome, and metadata in the code font
   stay regular.

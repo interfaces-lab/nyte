@@ -183,8 +183,8 @@ function afterActive(state: WindowState): number {
   return state.tabs.findIndex((tab) => tab.id === state.activeTabId) + 1;
 }
 
-/** A tab showing nothing but a new chat: the next place opened from it uses it, and it isn't worth reopening. */
-function showsNewChat(tab: Tab): boolean {
+/** A tab showing nothing but a blank pane: the next place opened from it uses it, and it isn't worth reopening. */
+function showsOnlyBlank(tab: Tab): boolean {
   return (
     tab.view.kind !== "page" &&
     tab.view.layout.kind === "single" &&
@@ -244,8 +244,8 @@ function openInChatTab(
 /** A new chat goes to the tab already showing one, the active tab first, or to a new tab. */
 function openBlank(state: WindowState, createId: () => string): WindowState {
   const waiting =
-    state.tabs.find((tab) => tab.id === state.activeTabId && showsNewChat(tab)) ??
-    state.tabs.find(showsNewChat);
+    state.tabs.find((tab) => tab.id === state.activeTabId && showsOnlyBlank(tab)) ??
+    state.tabs.find(showsOnlyBlank);
 
   if (waiting !== undefined) return activate(state, waiting.id);
   const id = createId();
@@ -279,7 +279,7 @@ function open(
   if (showsPage(place) || target === "permanent") {
     const active = activeTab(state);
 
-    return showsNewChat(active)
+    return showsOnlyBlank(active)
       ? withTab(state, { ...active, view: placeView(place) })
       : openTab(state, place, true, createId);
   }
@@ -309,7 +309,7 @@ function openPreview(
 ): WindowState {
   const active = activeTab(state);
   const replaced = state.tabs.find((tab) => tab.view.kind === "preview");
-  const slot = showsNewChat(active) ? active : target === "preview" ? replaced : undefined;
+  const slot = showsOnlyBlank(active) ? active : target === "preview" ? replaced : undefined;
 
   const tab: Tab = {
     id: slot?.id ?? createId(),
@@ -333,7 +333,7 @@ function closeTabs(
   createId: () => string,
 ): WindowState {
   const leaving = state.tabs.flatMap((tab, index) =>
-    tabIds.has(tab.id) && !showsNewChat(tab) ? [{ tab: keep(tab), index }] : [],
+    tabIds.has(tab.id) && !showsOnlyBlank(tab) ? [{ tab: keep(tab), index }] : [],
   );
 
   return removeTabs(

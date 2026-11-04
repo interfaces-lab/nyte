@@ -1,4 +1,6 @@
 import { toast } from "@nyte-ai/ui/toast";
+import type { HostEvent } from "../contract/bridge.ts";
+import type { AlertState } from "../contract/desktop-settings.ts";
 import { keys, queryClient } from "../data/query-client.ts";
 import { commitHostWorkspace } from "../data/workspaces.ts";
 import { nyte } from "../contract/nyte.ts";
@@ -51,6 +53,10 @@ export function useHostEvents(): void {
           windowTabs.openChat(event.session, "permanent");
 
           return;
+        case "chat_alert":
+          showChatAlert(event);
+
+          return;
         case "remote_access_changed":
           void queryClient.invalidateQueries({ queryKey: keys.remoteAccess });
 
@@ -87,5 +93,31 @@ export function useHostEvents(): void {
     });
 
     return unsubscribe;
+  });
+}
+
+/** How each reason looks: a question waits on you, a failure carries its error. */
+const ALERT_TOAST = {
+  waiting: "warning",
+  failed: "error",
+  done: undefined,
+} as const satisfies Readonly<Record<AlertState, string | undefined>>;
+
+/** One toast per chat: a newer alert replaces the older one. Open goes to the chat and clears it. */
+function showChatAlert(alert: Extract<HostEvent, { kind: "chat_alert" }>): void {
+  const id = `chat-alert:${alert.session}`;
+
+  toast.add({
+    id,
+    type: ALERT_TOAST[alert.state],
+    title: alert.title,
+    description: alert.body,
+    actionProps: {
+      children: "Open",
+      onClick: () => {
+        toast.close(id);
+        windowTabs.openChat(alert.session, "permanent");
+      },
+    },
   });
 }

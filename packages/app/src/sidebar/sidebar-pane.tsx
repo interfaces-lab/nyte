@@ -2,7 +2,7 @@ import { create, props } from "@stylexjs/stylex";
 import { motion, useMotionValue, useReducedMotion } from "motion/react";
 import { useRef, useState } from "react";
 import type { KeyboardEvent, PointerEvent, ReactElement, ReactNode } from "react";
-import { sidebar } from "../theme/schema.stylex.ts";
+import { shell, sidebar } from "../theme/schema.stylex.ts";
 import { floatingSurfaceStyles } from "@nyte-ai/ui/styles/floating-surface.stylex";
 import { layer, media } from "@nyte-ai/ui/styles/schema.stylex";
 import { motion as motionTokens, role } from "@nyte-ai/ui/styles/vars.stylex";
@@ -106,6 +106,7 @@ const styles = create({
     },
     ":focus-visible::after": { backgroundColor: role.borderStrongTranslucent },
   },
+  handleCard: { position: "absolute", "::after": { insetBlock: `0 ${shell.cardInset}` } },
   handleEdge: { "::after": { backgroundColor: role.borderSecondaryTranslucent } },
   handleActive: { "::after": { backgroundColor: role.borderStrongTranslucent } },
 });
@@ -275,7 +276,7 @@ export function SidebarPane({ children }: { readonly children: ReactNode }): Rea
           aria-valuenow={sidebarWidth}
           {...props(
             styles.handle,
-            !windowTabs.strip && styles.handleEdge,
+            windowTabs.strip ? styles.handleCard : styles.handleEdge,
             resizing && styles.handleActive,
           )}
           onKeyDown={resizeWithKeyboard}

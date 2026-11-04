@@ -25,7 +25,7 @@ export const subagentCallStyles = create({
     flexShrink: 0,
     width: glyph.lg,
     height: type.leadingLg,
-    paddingLeft: space.s0_5,
+    paddingInlineStart: space.s0_5,
   },
   text: {
     display: "flex",

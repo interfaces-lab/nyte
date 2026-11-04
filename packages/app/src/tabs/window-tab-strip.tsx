@@ -11,12 +11,17 @@ import {
   ContextMenuTrigger,
 } from "@nyte-ai/ui/context-menu";
 import { Icon } from "@nyte-ai/ui/icon";
+import { Input } from "@nyte-ai/ui/input";
 import { Kbd } from "@nyte-ai/ui/kbd";
 import { Tabs } from "@nyte-ai/ui/tabs";
 import { PreviewCard } from "@nyte-ai/ui/preview-card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
-import type { SessionId } from "@nyte-ai/sdk";
-import { ChatCardContent, ChatCardTrigger, ChatCopyMenuItems } from "../components/chat-card.tsx";
+import { sessionTitle } from "@nyte-ai/plugin/client/presentation";
+import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
+import { ChatCardContent, ChatCardTrigger } from "../components/chat-card.tsx";
+import { ChatMenuItems } from "../components/chat-menu.tsx";
+import { useSessionRow } from "../data/session-rows.ts";
+import { useChatWindow } from "../window/index.ts";
 import {
   MOVE_SHORTCUTS,
   readMoveStep,
@@ -53,6 +58,23 @@ export interface WindowTabStripProps {
   readonly onReorder: (tabIds: readonly string[], tabId: string) => void;
   readonly onCloseOthers: (tabId: string) => void;
   readonly onCloseToRight: (tabId: string) => void;
+  /** What the focused chat's actions do; the strip only asks. */
+  readonly chat: WindowTabChatActions;
+}
+
+export interface WindowTabChatActions {
+  readonly rename: (sessionId: SessionId, name: string) => void;
+  readonly pin: (session: SessionInfo) => void;
+  readonly markRead: (sessionId: SessionId) => void;
+  readonly openBeside: (sessionId: SessionId) => void;
+  readonly archive: (session: SessionInfo) => void;
+  readonly remove: (sessionId: SessionId) => void;
+}
+
+interface TabRename {
+  readonly sessionId: SessionId;
+  readonly from: string;
+  readonly name: string;
 }
 
 interface HeldKeys {
@@ -117,9 +139,19 @@ function TabItem({
   const modifierHeld = strip.mac ? held.meta : held.ctrl;
   const parent = tab.parent;
   const focusedChat = tab.sessions.at(0);
+  const [rename, setRename] = useState<TabRename | undefined>();
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  const commitRename = (): void => {
+    if (rename === undefined) return;
+    const name = rename.name.replaceAll(/\s+/g, " ").trim();
+    setRename(undefined);
+
+    if (name !== "" && name !== rename.from) strip.chat.rename(rename.sessionId, name);
+  };
 
   return (
-    <ContextMenu>
+    <ContextMenu onOpenChangeComplete={setMenuOpen}>
       <ContextMenuTrigger
         render={
           <div
@@ -198,6 +230,27 @@ function TabItem({
             }
           />
         </PreviewCard>
+        {rename !== undefined && !menuOpen && (
+          <span {...props(stripStyles.rename)}>
+            <Input
+              aria-label={`Rename ${rename.from}`}
+              autoFocus
+              value={rename.name}
+              xstyle={stripStyles.renameInput}
+              onFocus={(event) => event.currentTarget.select()}
+              onValueChange={(name) => setRename({ ...rename, name })}
+              onBlur={commitRename}
+              onDoubleClick={(event) => event.stopPropagation()}
+              onKeyDown={(event) => {
+                event.stopPropagation();
+
+                if (event.key === "Enter") commitRename();
+
+                if (event.key === "Escape") setRename(undefined);
+              }}
+            />
+          </span>
+        )}
         {closable && (
           <span {...props(stripStyles.close, active && stripStyles.closeVisible)}>
             <Button
@@ -225,7 +278,6 @@ function TabItem({
         <ContextMenuItem icon="plus" meta={shortcut("T")} onClick={strip.onNewTab}>
           New Tab
         </ContextMenuItem>
-        {focusedChat !== undefined && <ChatCopyMenuItems sessionId={focusedChat} />}
         <ContextMenuSeparator />
         <ContextMenuItem icon="close" meta={shortcut("W")} onClick={() => strip.onClose(tab.id)}>
           Close Tab
@@ -244,8 +296,51 @@ function TabItem({
         >
           Close Tabs to the Right
         </ContextMenuItem>
+        {focusedChat !== undefined && (
+          <TabChatItems
+            sessionId={focusedChat}
+            chat={strip.chat}
+            onRename={(from) => setRename({ sessionId: focusedChat, from, name: from })}
+          />
+        )}
       </ContextMenuContent>
     </ContextMenu>
+  );
+}
+
+/** Reads the chat only while the menu is open. */
+function TabChatItems({
+  sessionId,
+  chat,
+  onRename,
+}: {
+  readonly sessionId: SessionId;
+  readonly chat: WindowTabChatActions;
+  readonly onRename: (title: string) => void;
+}): ReactElement | null {
+  const session = useSessionRow(sessionId, (row) => row);
+  const unread = useChatWindow((snapshot) => snapshot.unread.has(sessionId));
+
+  if (session === undefined || session === null) return null;
+  const title = sessionTitle(session);
+
+  return (
+    <>
+      <ContextMenuSeparator />
+      <ChatMenuItems
+        session={session}
+        title={title}
+        unread={unread}
+        handlers={{
+          onPin: () => chat.pin(session),
+          onRename: () => onRename(title),
+          onMarkRead: () => chat.markRead(sessionId),
+          onOpenBeside: () => chat.openBeside(sessionId),
+          onArchive: () => chat.archive(session),
+          onDelete: () => chat.remove(sessionId),
+        }}
+      />
+    </>
   );
 }
 

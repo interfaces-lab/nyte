@@ -1,7 +1,7 @@
 import { create, props } from "@stylexjs/stylex";
 import { useState } from "react";
 import type { ReactElement } from "react";
-import type { Cursor, GitStatus } from "@nyte-ai/sdk";
+import type { Cursor, GitStatus, RunId, WorkspaceId } from "@nyte-ai/sdk";
 import { Icon, PanelToggleIcon } from "@nyte-ai/ui/icon";
 import {
   Menu,
@@ -19,13 +19,14 @@ import {
 import type { IconName } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
 import { Toggle } from "@nyte-ai/ui/toggle";
-import { useVcsLog } from "../../data/vcs.ts";
+import { useRecordedChanges, useVcsLog } from "../../data/vcs.ts";
 import { menu, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { workbenchStyles } from "../workbench.stylex.ts";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { ChangeStats } from "./change-stats.tsx";
 import { ChangesCommitBar, readsWorkingTree } from "./changes-commit-bar.tsx";
+import { changeRows, changeTotals } from "./changes-model.ts";
 import {
   commitScopeOptions,
   turnHasChanges,
@@ -203,6 +204,38 @@ function ScopeRadioItem({ option }: { readonly option: ChangesScopeOption }): Re
   );
 }
 
+/** A turn's stats come from the run diff and totals its review reads, so the two agree. */
+function TurnScopeItem({
+  option,
+  workspace,
+  liveRun,
+}: {
+  readonly option: TurnChangeOption;
+  readonly workspace: WorkspaceId | undefined;
+  readonly liveRun: RunId | undefined;
+}): ReactElement {
+  const changed = turnHasChanges(option);
+
+  const recorded = useRecordedChanges({
+    workspace,
+    source: option.run === null ? undefined : { kind: "run", run: option.run },
+    live: option.run === liveRun,
+    enabled: changed,
+  });
+
+  const totals = changeTotals(changeRows("recorded", [], undefined, recorded.data), undefined);
+
+  return (
+    <MenuRadioItem
+      value={changesScopeValue(option.scope)}
+      icon={changed ? "git-branch" : undefined}
+      meta={totals.stats === undefined ? null : <ChangeStats {...totals.stats} />}
+    >
+      {option.label}
+    </MenuRadioItem>
+  );
+}
+
 function CommitScopeItems({
   repository,
   readByOid,
@@ -310,6 +343,8 @@ interface ChangesToolbarProps {
   readonly branch: BranchReadout | undefined;
   readonly sessionOption: ChangesScopeOption | undefined;
   readonly turnOptions: readonly TurnChangeOption[];
+  readonly workspace: WorkspaceId | undefined;
+  readonly liveRun: RunId | undefined;
   readonly viewOptions: ChangesViewOptions;
   readonly fileTreeVisible: boolean;
   readonly onScopeChange: (scope: WorkbenchChangesScope) => void;
@@ -333,6 +368,8 @@ export function ChangesToolbar({
   branch,
   sessionOption,
   turnOptions,
+  workspace,
+  liveRun,
   viewOptions,
   fileTreeVisible,
   onScopeChange,
@@ -434,14 +471,12 @@ export function ChangesToolbar({
               {(sessionOption !== undefined || visibleTurns.length > 0) && <MenuSeparator />}
               {sessionOption !== undefined && <ScopeRadioItem option={sessionOption} />}
               {visibleTurns.map((option) => (
-                <MenuRadioItem
+                <TurnScopeItem
                   key={option.scope.turnId}
-                  value={changesScopeValue(option.scope)}
-                  icon={turnHasChanges(option) ? "git-branch" : undefined}
-                  meta={<ChangeStats {...option.stats} />}
-                >
-                  {option.label}
-                </MenuRadioItem>
+                  option={option}
+                  workspace={workspace}
+                  liveRun={liveRun}
+                />
               ))}
             </MenuRadioGroup>
           </MenuContent>

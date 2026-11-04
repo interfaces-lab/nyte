@@ -6,25 +6,26 @@ import {
 } from "@nyte-ai/plugin/client/presentation";
 import type { TaskState } from "@nyte-ai/plugin/client/presentation";
 import type { SessionId, SessionInfo, WorkspaceId } from "@nyte-ai/sdk";
+import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "@nyte-ai/ui/context-menu";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Input } from "@nyte-ai/ui/input";
-import { MenuItem, MenuSeparator } from "@nyte-ai/ui/menu";
+import { MenuItem } from "@nyte-ai/ui/menu";
 import { Row } from "@nyte-ai/ui/row";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { PreviewCard } from "@nyte-ai/ui/preview-card";
 import { props } from "@stylexjs/stylex";
 import { useRef, useState } from "react";
 import type { MouseEvent, ReactElement } from "react";
-import type { GitHubRepository } from "@nyte-ai/sdk";
-import { ChatCardContent, ChatCardTrigger, ChatCopyMenuItems } from "../components/chat-card.tsx";
+import { ChatCardContent, ChatCardTrigger } from "../components/chat-card.tsx";
+import { ChatMenuItems } from "../components/chat-menu.tsx";
 import { formatTimeAgo } from "../lib/format.ts";
 import { draftPreviewText } from "../references/message-references.ts";
 import type { ChatDraft } from "../panes/session-view-state.ts";
 import { useSessionDraggable } from "../panes/session-dnd.tsx";
-import type { Chat, ChatDirectory } from "../chats/index.ts";
-import { useChat } from "../chats/index.ts";
+import type { Chat } from "../chats/index.ts";
+import { chatDirectory, useChat } from "../chats/index.ts";
 import type { OpenIntent } from "../tabs/model.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
 import { useDebouncedValue } from "../lib/use-debounced-value.ts";
@@ -32,7 +33,12 @@ import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { useNowMinute } from "../lib/use-now-minute.ts";
 import { chatStore, warmSession } from "../data/chat-store.ts";
 import { sidebarStyles as styles } from "./sidebar.stylex.ts";
-import { useChatWindow } from "../window/index.ts";
+import { chatWindow, useChatWindow } from "../window/index.ts";
+import { sessionActions } from "../data/session-rows.ts";
+import { activePane } from "../panes/pane-layout.ts";
+import { shellActions } from "../tabs/shell-state.ts";
+import { hideFromPanes } from "../panes/pane-context.tsx";
+import { sessionIsRunning } from "./sidebar-view.ts";
 import { TaskMark } from "../components/task-mark.tsx";
 
 const WARM_DELAY_MS = 50;
@@ -51,14 +57,12 @@ function openIntent(event: MouseEvent): OpenIntent {
 export function DraftRow({
   draft,
   selected,
-  rail,
 }: {
   readonly draft: ChatDraft;
   readonly selected: boolean;
-  readonly rail: RailRows;
 }): ReactElement {
-  const onOpen = (): void => rail.openDraft(draft.id);
-  const onDelete = (): void => rail.removeDraft(draft.id);
+  const onOpen = (): void => windowTabs.showDraft(draft.id);
+  const onDelete = () => windowTabs.controller().removeDraft(draft.id);
   const title = draftPreviewText(useDebouncedValue(draft.composer.draft, 100));
 
   const row = (
@@ -119,33 +123,31 @@ export interface SessionPlace {
   readonly path: string | null;
 }
 
-export interface RailRows {
-  readonly openWorkspace: WorkspaceId | null;
-  readonly activeSessionId: SessionId | undefined;
-  readonly unavailable: ReadonlySet<WorkspaceId>;
-  readonly repository: Pick<GitHubRepository, "owner" | "name"> | undefined;
-  readonly chats: ChatDirectory;
-  /** The window's unread answer, which leaves out chats the user is looking at. */
-  readonly unread: ReadonlySet<SessionId>;
-  readonly showUpdated: boolean;
-  readonly open: (sessionId: SessionId, intent: OpenIntent | "beside") => void;
-  readonly rename: (sessionId: SessionId, name: string) => void;
-  readonly pin: (session: SessionInfo) => void;
-  readonly markRead: (sessions: readonly SessionId[]) => void;
-  readonly archive: (session: SessionInfo) => void;
-  readonly remove: (sessionId: SessionId) => void;
-  readonly openDraft: (draftId: string) => void;
-  readonly removeDraft: (draftId: string) => void;
+/** Shows the chat at once; the window tabs open its folder on the host after it. */
+function showSession(sessionId: SessionId, target: OpenIntent | "beside"): void {
+  if (target !== "beside") {
+    windowTabs.openChat(sessionId, target);
+
+    return;
+  }
+
+  shellActions.showWorkspace();
+  const controller = windowTabs.controller();
+  controller.drop(sessionId, activePane(controller.getSnapshot().layout).id, "right");
 }
 
 export function SessionRow({
   session,
-  place,
-  rail,
+  selected,
+  draggable,
+  unreachable,
+  showUpdated,
 }: {
   readonly session: SessionInfo;
-  readonly place: SessionPlace;
-  readonly rail: RailRows;
+  readonly selected: boolean;
+  readonly draggable: boolean;
+  readonly unreachable: boolean;
+  readonly showUpdated: boolean;
 }): ReactElement {
   const chat = useChat(session.id);
   const shown = chat.kind === "ready" ? chat.chat : undefined;
@@ -155,8 +157,10 @@ export function SessionRow({
   return (
     <SessionRowView
       session={session}
-      place={place}
-      rail={rail}
+      selected={selected}
+      draggable={draggable}
+      unreachable={unreachable}
+      showUpdated={showUpdated}
       mark={mark}
       unread={unread}
       ask={shown === undefined ? undefined : askLine(shown, mark)}
@@ -167,32 +171,47 @@ export function SessionRow({
 /** A chat's row drawn from its mark and ask line, which a settings preview passes itself. */
 export function SessionRowView({
   session,
-  place,
-  rail,
+  selected,
+  draggable,
+  unreachable,
+  showUpdated,
   mark,
   unread,
   ask,
 }: {
   readonly session: SessionInfo;
-  readonly place: SessionPlace;
-  readonly rail: RailRows;
+  readonly selected: boolean;
+  readonly draggable: boolean;
+  readonly unreachable: boolean;
+  readonly showUpdated: boolean;
   readonly mark: TaskState;
   readonly unread: boolean;
   readonly ask: string | undefined;
 }): ReactElement {
-  const selected = session.id === rail.activeSessionId;
-  const showUpdated = rail.showUpdated;
-  const draggable = place.workspace === rail.openWorkspace;
-  const unreachable = session.workspace !== null && rail.unavailable.has(session.workspace);
-  const onOpen = (intent: OpenIntent): void => rail.open(session.id, intent);
-  const onOpenBeside = (): void => rail.open(session.id, "beside");
-  const onRename = (name: string): void => rail.rename(session.id, name);
-  const onPin = (): void => rail.pin(session);
-  const onArchive = (): void => rail.archive(session);
-  const onDelete = (): void => rail.remove(session.id);
+  const onOpen = (intent: OpenIntent): void => showSession(session.id, intent);
+  const onOpenBeside = (): void => showSession(session.id, "beside");
+
+  const onRename = (name: string): void =>
+    void sessionActions.rename({ sessionId: session.id, name });
+
+  const onPin = (): void => sessionActions.pin({ sessionId: session.id, pinned: !session.pinned });
   const title = sessionTitle(session);
 
   const [draftName, setDraftName] = useState<string | undefined>();
+  const [confirming, setConfirming] = useState<"archive" | "delete">();
+  const returnFocus = useRef<HTMLButtonElement>(null);
+
+  const onArchive = (): void => {
+    if (!session.archived && sessionIsRunning(session, chatDirectory())) setConfirming("archive");
+    else sessionActions.archive([session.id], !session.archived, hideFromPanes);
+  };
+
+  const onDelete = (): void => setConfirming("delete");
+
+  const closeOnDismiss = (open: boolean): void => {
+    if (!open) setConfirming(undefined);
+  };
+
   const warming = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const { isDragging, listeners, setNodeRef } = useSessionDraggable(session.id, title, !draggable);
@@ -245,33 +264,19 @@ export function SessionRowView({
   }
 
   const menuItems = (
-    <>
-      <MenuItem icon={session.pinned ? "unpin" : "pin"} onClick={onPin}>
-        {session.pinned ? "Unpin Chat" : "Pin Chat"}
-      </MenuItem>
-      <MenuItem icon="pencil" onClick={() => setDraftName(title)}>
-        Rename Chat…
-      </MenuItem>
-      {unread && (
-        <MenuItem icon="eye" onClick={() => rail.markRead([session.id])}>
-          Mark as Read
-        </MenuItem>
-      )}
-      <MenuItem icon="split-right" onClick={onOpenBeside}>
-        Open Chat to the Side
-      </MenuItem>
-      <MenuItem icon="copy" onClick={() => void navigator.clipboard.writeText(title)}>
-        Copy Chat Title
-      </MenuItem>
-      <ChatCopyMenuItems sessionId={session.id} />
-      <MenuItem icon={session.archived ? "unarchive" : "archive"} onClick={onArchive}>
-        {session.archived ? "Restore Chat" : "Archive Chat"}
-      </MenuItem>
-      <MenuSeparator />
-      <MenuItem icon="trash" variant="danger" onClick={onDelete}>
-        Delete Chat…
-      </MenuItem>
-    </>
+    <ChatMenuItems
+      session={session}
+      title={title}
+      unread={unread}
+      handlers={{
+        onPin,
+        onRename: () => setDraftName(title),
+        onMarkRead: () => chatWindow.markRead([session.id]),
+        onOpenBeside,
+        onArchive,
+        onDelete,
+      }}
+    />
   );
 
   const titleLine = (
@@ -361,13 +366,43 @@ export function SessionRowView({
   );
 
   return (
-    <PreviewCard>
-      <ContextMenu>
-        <ContextMenuTrigger render={<ChatCardTrigger render={row} />} />
-        <ContextMenuContent aria-label={`Options for ${title}`}>{menuItems}</ContextMenuContent>
-      </ContextMenu>
-      <ChatCardContent placement="row" label={title} sessions={[session.id]} />
-    </PreviewCard>
+    <>
+      <PreviewCard>
+        <ContextMenu>
+          <ContextMenuTrigger render={<ChatCardTrigger render={row} />} />
+          <ContextMenuContent aria-label={`Options for ${title}`}>{menuItems}</ContextMenuContent>
+        </ContextMenu>
+        <ChatCardContent placement="row" label={title} sessions={[session.id]} />
+      </PreviewCard>
+      {confirming === "delete" && (
+        <ConfirmDialog
+          open
+          title="Delete Chat"
+          confirmLabel="Delete Chat"
+          description="The chat disappears now. Undo from the notification before it closes."
+          finalFocus={returnFocus}
+          onOpenChange={closeOnDismiss}
+          onConfirm={() => {
+            setConfirming(undefined);
+            sessionActions.delete(session.id, hideFromPanes);
+          }}
+        />
+      )}
+      {confirming === "archive" && (
+        <ConfirmDialog
+          open
+          finalFocus={returnFocus}
+          title="Archive Working Chat"
+          description="It keeps working in the archive. Restore it from the Archived filter."
+          confirmLabel="Archive Chat"
+          onOpenChange={closeOnDismiss}
+          onConfirm={() => {
+            setConfirming(undefined);
+            sessionActions.archive([session.id], true, hideFromPanes);
+          }}
+        />
+      )}
+    </>
   );
 }
 

@@ -1,11 +1,11 @@
-import { useSyncExternalStore } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { useSyncExternalStoreWithSelector } from "use-sync-external-store/with-selector";
 import { asId } from "@nyte-ai/schema";
 import type { BackgroundItem, JobView, SessionId, WorkspaceInfo } from "@nyte-ai/sdk";
 import { QueryObserver } from "@tanstack/react-query";
 import type { SelectedWorkspace } from "../contract/bridge.ts";
 import { derivedStore } from "../data/derived-store.ts";
-import { keys, queryClient } from "../data/query-client.ts";
+import { keys, queryClient, queryDataReader } from "../data/query-client.ts";
 import {
   sessionRows,
   subscribeChildRows,
@@ -112,10 +112,18 @@ export function useChildTasks(parent: SessionId): readonly ChildTask[] {
   );
 }
 
+/** The component owns the walk for its session and starts a new one when the session changes. */
 export function useWaitingDescendants(session: SessionId): readonly WaitingChat[] {
-  const store = waitingBelow(session);
+  const [owned, setOwned] = useState(() => ({ session, store: waitingBelow(session) }));
+  const current = owned.session === session ? owned : { session, store: waitingBelow(session) };
 
-  return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+  if (current !== owned) setOwned(current);
+
+  return useSyncExternalStore(
+    current.store.subscribe,
+    current.store.getSnapshot,
+    current.store.getSnapshot,
+  );
 }
 
 /** Includes every child of `parent`, however many chats the host's lists carry. */
@@ -232,7 +240,7 @@ const directory = derivedStore(
   {
     rows: { read: sessionRows, subscribe: subscribeSessionRows },
     workspaces: {
-      read: () => queryClient.getQueryData<readonly WorkspaceInfo[]>(keys.workspaces),
+      read: queryDataReader<readonly WorkspaceInfo[]>(keys.workspaces),
       subscribe: (notice: () => void) =>
         new QueryObserver(queryClient, workspacesQuery).subscribe(notice),
     },

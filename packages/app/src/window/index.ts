@@ -4,7 +4,7 @@ import type { SessionId } from "@nyte-ai/sdk";
 import { toast } from "@nyte-ai/ui/toast";
 import { chatDirectory, subscribeChats } from "../chats/index.ts";
 import type { HostState } from "../contract/nyte.ts";
-import { keys, queryClient } from "../data/query-client.ts";
+import { keys, queryClient, queryDataReader } from "../data/query-client.ts";
 import { connection } from "../data/connection.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
 import { workbenchShowsChat } from "../workbench/model.ts";
@@ -49,6 +49,8 @@ function setOwn(next: Own): void {
   for (const notice of ownListeners) notice();
 }
 
+const readHost = queryDataReader<HostState>(keys.host);
+
 const sources = {
   own: {
     read: () => own,
@@ -61,7 +63,7 @@ const sources = {
   tabs: { read: windowTabs.getSnapshot, subscribe: windowTabs.subscribe },
   covered: {
     read() {
-      const host = queryClient.getQueryData<HostState>(keys.host)?.workspace?.path;
+      const host = readHost()?.workspace?.path;
       const view = workbench.getView(workbenchViewKey(host));
 
       return view.expanded && view.layout.kind === "maximized" && !workbenchShowsChat(view.layout);

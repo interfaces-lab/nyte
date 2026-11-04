@@ -50,7 +50,7 @@ export const messageScrollerStyles = create({
   button: {
     position: "absolute",
     insetBlockEnd: 0,
-    insetInlineStart: "50%",
+    left: "50%",
     translate: "-50% 0",
     opacity: { default: 0, "[data-scroll-shown='true']": 1 },
     visibility: { default: "hidden", "[data-scroll-shown='true']": "visible" },

@@ -1,4 +1,5 @@
-import { QueryClient } from "@tanstack/react-query";
+import { hashKey, QueryClient } from "@tanstack/react-query";
+import type { QueryKey } from "@tanstack/react-query";
 import type { ChangeSource, GitCommitId, GitScope, SessionId, WorkspaceId } from "@nyte-ai/sdk";
 
 export const keys = {
@@ -66,3 +67,13 @@ export const queryClient = new QueryClient({
     },
   },
 });
+
+/**
+ * For store sources, which read on every snapshot: `getQueryData` merges the defaults and hashes
+ * the key on each call, so the reader hashes it once.
+ */
+export function queryDataReader<T>(queryKey: QueryKey): () => T | undefined {
+  const queryHash = hashKey(queryKey);
+
+  return () => queryClient.getQueryCache().get<T>(queryHash)?.state.data;
+}

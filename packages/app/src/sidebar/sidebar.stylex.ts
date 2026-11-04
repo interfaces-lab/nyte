@@ -336,7 +336,7 @@ export const sidebarStyles = create({
   showMore: {
     "--_row-fill": {
       default: "transparent",
-      ":hover": { [media.hover]: role.bgHover },
+      ":hover:not(:disabled)": { [media.hover]: role.bgHover },
     },
     "--_row-padding-inline": `calc(${sidebar.rowPaddingInline} + ${sidebar.iconSlot} + ${sidebar.rowGap})`,
     borderRadius: radius.control,

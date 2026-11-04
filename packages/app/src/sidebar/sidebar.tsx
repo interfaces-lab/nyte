@@ -25,16 +25,14 @@ import { nyte } from "../contract/nyte.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
 import { useForgetWorkspace, useWorkspaces, type RailWorkspace } from "../data/workspaces.ts";
 import { useHostState, useServerState } from "../data/host.ts";
-import { useRenameSession, useWorkspaceSessions } from "../data/sessions.ts";
-import { useSessionActions } from "../data/session-actions.ts";
+import { useWorkspaceSessions } from "../data/sessions.ts";
+import { sessionActions } from "../data/session-rows.ts";
 import { localSessions } from "../data/session-list.ts";
 import { useChats } from "../chats/index.ts";
 import { chatWindow, unreadOnHost, useChatWindow } from "../window/index.ts";
 import type { SettingsSection } from "../settings/index.ts";
-import type { OpenIntent } from "../tabs/model.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
 import { SidebarFooter } from "../account/account-footer.tsx";
-import { useGitHub, useGitHubState } from "../account/github-account.ts";
 import { folderPicker } from "../panes/open-workspace.tsx";
 import { SearchPalette } from "./search-palette.tsx";
 import { shellActions, useOverlays, useStagePage } from "../tabs/shell-state.ts";
@@ -43,6 +41,7 @@ import { WorkspaceControls } from "./sidebar-filter.tsx";
 import {
   ChatsList,
   FolderList,
+  ListedRows,
   PinnedSection,
   useDrafts,
   useListReveal,
@@ -51,12 +50,11 @@ import {
   type ListedSession,
 } from "./sidebar-lists.tsx";
 import { moveSidebarFocus } from "./sidebar-navigation.ts";
-import { NeighbourWarm, SessionRow, type RailRows, type SessionPlace } from "./sidebar-rows.tsx";
+import { NeighbourWarm, type SessionPlace } from "./sidebar-rows.tsx";
 import { sidebarStyles as styles } from "./sidebar.stylex.ts";
 import {
   clearSessionFilters,
   folderView,
-  sessionIsRunning,
   sessionOrder,
   sessionsForNavigation,
   sessionsForView,
@@ -65,29 +63,6 @@ import {
 } from "./sidebar-view.ts";
 import { activateWorkspace } from "./use-show-session.ts";
 import { useNowMinute } from "../lib/use-now-minute.ts";
-
-type SidebarConfirmation =
-  | { readonly kind: "closed" }
-  | { readonly kind: "delete-session"; readonly sessionId: SessionId }
-  | { readonly kind: "archive-working"; readonly sessionId: SessionId }
-  | {
-      readonly kind: "archive-all";
-      readonly workspaceName: string;
-      readonly sessionIds: readonly SessionId[];
-    };
-
-/** Shows the chat at once; the window tabs open its folder on the host after it. */
-function showSession(sessionId: SessionId, target: OpenIntent | "beside"): void {
-  if (target !== "beside") {
-    windowTabs.openChat(sessionId, target);
-
-    return;
-  }
-
-  shellActions.showWorkspace();
-  const controller = windowTabs.controller();
-  controller.drop(sessionId, activePane(controller.getSnapshot().layout).id, "right");
-}
 
 function listedNeighbours(
   ordered: readonly SessionInfo[],
@@ -144,8 +119,6 @@ export function Sidebar(): ReactElement {
   const workspaces = useWorkspaces();
   const workspaceSessions = useWorkspaceSessions();
   const server = useServerState();
-  const sessionActions = useSessionActions();
-  const renameSession = useRenameSession();
   const forgetWorkspace = useForgetWorkspace();
   const { layout } = usePaneControllerSnapshot();
   const chats = useChats((directory) => directory);
@@ -155,11 +128,15 @@ export function Sidebar(): ReactElement {
   const paletteOpen = useOverlays().search;
   const homeVisible = useSetting(preferences.homeVisible);
   const router = useRouter();
-  const githubState = useGitHubState(useGitHub());
   const openFolder = folderPicker();
   const reveal = useListReveal();
   const confirmationReturnRef = useRef<HTMLButtonElement>(null);
-  const [confirmation, setConfirmation] = useState<SidebarConfirmation>({ kind: "closed" });
+
+  const [archivingAll, setArchivingAll] = useState<{
+    readonly workspaceName: string;
+    readonly sessionIds: readonly SessionId[];
+  }>();
+
   const [collectionExpanded, setCollectionExpanded] = useState(true);
   const [cloudCollapsed, setCloudCollapsed] = useState(false);
   const view = useSetting(preferences.sidebarView);
@@ -225,36 +202,6 @@ export function Sidebar(): ReactElement {
     panes.newChat();
   };
 
-  const rail: RailRows = {
-    openWorkspace: open?.id ?? null,
-    activeSessionId,
-    unavailable: new Set(
-      (workspaces.data ?? []).flatMap((workspace) =>
-        workspace.available === false ? [workspace.id] : [],
-      ),
-    ),
-    repository: githubState.data?.repository,
-    chats,
-    unread,
-    showUpdated: view.show.includes("updated"),
-    open: showSession,
-    rename: (sessionId, name) => renameSession.mutate({ sessionId, name }),
-    pin: (session) => sessionActions.pin({ sessionId: session.id, pinned: !session.pinned }),
-    markRead: chatWindow.markRead,
-    archive: (session) => {
-      if (!session.archived && sessionIsRunning(session, chats)) {
-        setConfirmation({ kind: "archive-working", sessionId: session.id });
-
-        return;
-      }
-
-      archive(session.id, !session.archived);
-    },
-    remove: (sessionId) => setConfirmation({ kind: "delete-session", sessionId }),
-    openDraft: (draftId) => windowTabs.showDraft(draftId),
-    removeDraft: (draftId) => windowTabs.controller().removeDraft(draftId),
-  };
-
   const showDrafts =
     !view.archived &&
     (view.statuses.length === 0 || view.statuses.includes("draft")) &&
@@ -263,7 +210,15 @@ export function Sidebar(): ReactElement {
   const context: ListContext = {
     view,
     showDrafts,
-    rail,
+    activeSessionId,
+    openWorkspace: open?.id ?? null,
+    unavailable: new Set(
+      (workspaces.data ?? []).flatMap((workspace) =>
+        workspace.available === false ? [workspace.id] : [],
+      ),
+    ),
+    chats,
+    unread,
     reveal,
     onClearFilters: () => preferences.sidebarView.set(clearSessionFilters(view)),
   };
@@ -366,8 +321,7 @@ export function Sidebar(): ReactElement {
           sessions === undefined
             ? undefined
             : () =>
-                setConfirmation({
-                  kind: "archive-all",
+                setArchivingAll({
                   workspaceName: name,
                   sessionIds: sessionsForNavigation(sessions).map((session) => session.id),
                 })
@@ -377,7 +331,7 @@ export function Sidebar(): ReactElement {
             ? () => preferences.homeVisible.set(false)
             : () => forgetWorkspace.mutate(entry.id)
         }
-        retained={kept && <SessionRow session={kept} place={place} rail={rail} />}
+        retained={kept && <ListedRows rows={[{ place, session: kept }]} context={context} />}
       >
         <FolderList
           listId={`${sessionListId}-${encodeURIComponent(`local:${place.workspace ?? "home"}`)}`}
@@ -389,11 +343,6 @@ export function Sidebar(): ReactElement {
       </WorkspaceRow>
     );
   });
-
-  const closeConfirmation = (): void => setConfirmation({ kind: "closed" });
-
-  const archive = (sessionId: SessionId, archived: boolean): void =>
-    sessionActions.archive([sessionId], archived, hideFromPanes);
 
   return (
     <aside {...props(styles.rail)}>
@@ -470,7 +419,7 @@ export function Sidebar(): ReactElement {
         </div>
 
         <div data-nyte-scrollport onKeyDown={moveSidebarFocus} {...props(styles.scroll)}>
-          {pinned.length > 0 && <PinnedSection rows={pinned} rail={rail} />}
+          {pinned.length > 0 && <PinnedSection rows={pinned} context={context} />}
           <section aria-label={flat ? "Chats" : "Workspaces"} {...props(styles.section)}>
             <Collapsible.Root
               open={collectionExpanded}
@@ -547,54 +496,22 @@ export function Sidebar(): ReactElement {
       </SidebarContent>
 
       <SidebarFooter onOpenSettings={openSettings} />
-      {confirmation.kind === "delete-session" && (
-        <ConfirmDialog
-          open
-          title="Delete Chat"
-          confirmLabel="Delete Chat"
-          description="The chat disappears now. Undo from the notification before it closes."
-          finalFocus={confirmationReturnRef}
-          onOpenChange={(nextOpen) => {
-            if (!nextOpen) closeConfirmation();
-          }}
-          onConfirm={() => {
-            closeConfirmation();
-            sessionActions.delete(confirmation.sessionId, hideFromPanes);
-          }}
-        />
-      )}
-      {confirmation.kind === "archive-working" && (
-        <ConfirmDialog
-          open
-          finalFocus={confirmationReturnRef}
-          title="Archive Working Chat"
-          description="It keeps working in the archive. Restore it from the Archived filter."
-          confirmLabel="Archive Chat"
-          onOpenChange={(nextOpen) => {
-            if (!nextOpen) closeConfirmation();
-          }}
-          onConfirm={() => {
-            closeConfirmation();
-            archive(confirmation.sessionId, true);
-          }}
-        />
-      )}
-      {confirmation.kind === "archive-all" && (
+      {archivingAll !== undefined && (
         <ConfirmDialog
           open
           pending={false}
           error={undefined}
           finalFocus={confirmationReturnRef}
-          title={`Archive All Chats in ${confirmation.workspaceName}`}
+          title={`Archive All Chats in ${archivingAll.workspaceName}`}
           description="Open chats move to the archive. You can restore any of them later."
-          confirmLabel={`Archive All Chats in ${confirmation.workspaceName}`}
+          confirmLabel={`Archive All Chats in ${archivingAll.workspaceName}`}
           pendingLabel="Archiving chats…"
           onOpenChange={(nextOpen) => {
-            if (!nextOpen) closeConfirmation();
+            if (!nextOpen) setArchivingAll(undefined);
           }}
           onConfirm={() => {
-            closeConfirmation();
-            sessionActions.archive(confirmation.sessionIds, true, hideFromPanes);
+            setArchivingAll(undefined);
+            sessionActions.archive(archivingAll.sessionIds, true, hideFromPanes);
           }}
         />
       )}

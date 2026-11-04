@@ -10,13 +10,11 @@ import { SessionRowView } from "../../sidebar/sidebar-rows.tsx";
 import { sidebarStyles } from "../../sidebar/sidebar.stylex.ts";
 import { UserMessageView } from "../../chat/transcript/turn-view.tsx";
 import { conversation, shell, sidebar } from "../../theme/schema.stylex.ts";
-import { PREVIEW_PATH, PREVIEW_PLACE, previewChat, previewRail } from "./fixtures.ts";
+import { PREVIEW_PATH, previewChat } from "./fixtures.ts";
 
 const ACTIVE = previewChat("active", "Settings density", 2 * 60_000);
 
 const OTHER = previewChat("other", "Release notes", 3 * 3_600_000);
-
-const RAIL = previewRail(ACTIVE.id);
 
 /**
  * A slice of the window as the shell composes it: the sidebar's rows on the window material, beside
@@ -55,8 +53,10 @@ export function WindowPreview(): ReactElement {
               <SessionRowView
                 key={session.id}
                 session={session}
-                place={PREVIEW_PLACE}
-                rail={RAIL}
+                selected={session.id === ACTIVE.id}
+                draggable={false}
+                unreachable={false}
+                showUpdated
                 mark="done"
                 unread={false}
                 ask={undefined}

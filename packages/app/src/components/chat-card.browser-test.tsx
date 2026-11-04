@@ -7,7 +7,6 @@ import type { GitStatus, WorkspaceInfo } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import { SessionRow } from "../sidebar/sidebar-rows.tsx";
-import type { RailRows } from "../sidebar/sidebar-rows.tsx";
 import { PaneControllerProvider } from "../panes/pane-context.tsx";
 import { PaneController } from "../panes/pane-controller.ts";
 import { SessionDndProvider } from "../panes/session-dnd.tsx";
@@ -75,31 +74,19 @@ installScripted(
   }),
 );
 
-const rail: RailRows = {
-  markRead: () => undefined,
-  openWorkspace: FOLDER,
-  activeSessionId: undefined,
-  unavailable: new Set(),
-  repository: undefined,
-  chats: new Map(),
-  unread: new Set(),
-  showUpdated: false,
-  open: () => undefined,
-  rename: () => undefined,
-  pin: () => undefined,
-  archive: () => undefined,
-  remove: () => undefined,
-  openDraft: () => undefined,
-  removeDraft: () => undefined,
-};
-
 function Stage({ panes }: { readonly panes: PaneController }): ReactElement {
   return (
     <QueryClientProvider client={queryClient}>
       <PaneControllerProvider controller={panes}>
         <SessionDndProvider>
           <div style={{ width: 240 }}>
-            <SessionRow session={chat} place={{ workspace: FOLDER, path: PATH }} rail={rail} />
+            <SessionRow
+              session={chat}
+              selected={false}
+              draggable
+              unreachable={false}
+              showUpdated={false}
+            />
           </div>
         </SessionDndProvider>
       </PaneControllerProvider>
@@ -127,6 +114,14 @@ function Stage({ panes }: { readonly panes: PaneController }): ReactElement {
           onReorder={() => undefined}
           onCloseOthers={() => undefined}
           onCloseToRight={() => undefined}
+          chat={{
+            rename: () => undefined,
+            pin: () => undefined,
+            markRead: () => undefined,
+            openBeside: () => undefined,
+            archive: () => undefined,
+            remove: () => undefined,
+          }}
         />
       </div>
     </QueryClientProvider>

@@ -71,7 +71,12 @@ function fixture(chats = [chat("one"), chat("two"), chat("three")]) {
     }),
   });
 
-  const actions = new SessionActions({ toasts, client, sessions: () => connection });
+  const actions = new SessionActions({
+    toasts,
+    client,
+    findRow: () => undefined,
+    sessions: () => connection,
+  });
   const directory = () => rows.current.flatMap((row) => actions.projectSession(row) ?? []);
 
   return { client, saved, writes, failures, actions, directory, toasts, rows };

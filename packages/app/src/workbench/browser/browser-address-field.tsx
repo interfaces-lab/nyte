@@ -1,4 +1,4 @@
-import { layer, menu, row, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { layer, media, menu, row, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { floatingSurfaceStyles } from "@nyte-ai/ui/styles/floating-surface.stylex";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Input, InputGroup } from "@nyte-ai/ui/input";
@@ -47,7 +47,7 @@ const styles = create({
     borderRadius: menu.itemRadius,
     backgroundColor: {
       default: "transparent",
-      ":hover": role.bgHover,
+      ":hover": { [media.hover]: role.bgHover },
       "[aria-selected=true]": role.bgHover,
     },
     cursor: "default",

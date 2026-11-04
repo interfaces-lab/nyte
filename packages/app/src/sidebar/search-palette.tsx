@@ -77,6 +77,37 @@ function tabLabel(tab: PaletteTab): string {
   }
 }
 
+/** Inside the popup, so a closed palette neither reads the chats nor formats a row for each one. */
+function ChatGroup({
+  heading,
+  sessions,
+  onOpen,
+}: {
+  readonly heading: string;
+  readonly sessions: readonly SessionInfo[];
+  readonly onOpen: (sessionId: SessionId) => void;
+}): ReactElement {
+  const chats = useChats((directory) => directory);
+  const unread = useChatWindow((snapshot) => snapshot.unread);
+  const now = useNowMinute();
+
+  return (
+    <Command.Group heading={heading}>
+      {sessions.map((session) => (
+        <Command.Item
+          key={session.id}
+          value={session.id}
+          leading={<TaskMark state={chatMark(session, chats)} unread={unread.has(session.id)} />}
+          meta={formatTimeAgo(session.lastActivityAt, now)}
+          onClick={() => onOpen(session.id)}
+        >
+          {sessionTitle(session)}
+        </Command.Item>
+      ))}
+    </Command.Group>
+  );
+}
+
 export function SearchPalette({
   trigger,
   open,
@@ -89,9 +120,6 @@ export function SearchPalette({
   onOpenSettings,
   onOpenCustomize,
 }: SearchPaletteProps): ReactElement {
-  const chats = useChats((directory) => directory);
-  const unread = useChatWindow((snapshot) => snapshot.unread);
-  const now = useNowMinute();
   const [query, setQuery] = useState("");
   const [tab, setTab] = useState<PaletteTab>("all");
   const [shownOpen, setShownOpen] = useState(open);
@@ -196,19 +224,11 @@ export function SearchPalette({
   };
 
   const chatGroup = sessions.length > 0 && (
-    <Command.Group heading={searchingAgents ? "Chats" : "Recent chats"}>
-      {sessions.map((session) => (
-        <Command.Item
-          key={session.id}
-          value={session.id}
-          leading={<TaskMark state={chatMark(session, chats)} unread={unread.has(session.id)} />}
-          meta={formatTimeAgo(session.lastActivityAt, now)}
-          onClick={() => run(() => onOpenSession(session.id))}
-        >
-          {sessionTitle(session)}
-        </Command.Item>
-      ))}
-    </Command.Group>
+    <ChatGroup
+      heading={searchingAgents ? "Chats" : "Recent chats"}
+      sessions={sessions}
+      onOpen={(sessionId) => run(() => onOpenSession(sessionId))}
+    />
   );
 
   const actionGroup = visibleActions.length > 0 && (

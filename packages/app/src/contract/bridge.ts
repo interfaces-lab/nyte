@@ -2,6 +2,7 @@ import type { TailnetStatus } from "@nyte-ai/schema";
 import type { CredentialSource, SessionId, Usage, WorkspaceId } from "@nyte-ai/sdk";
 import type { OpenSocket } from "@nyte-ai/sdk/client";
 import type { ConnectionProblem, HostEndpoint } from "./connection.ts";
+import type { AlertState } from "./desktop-settings.ts";
 import { clientActions } from "./client-actions.ts";
 
 type Disposer = () => void;
@@ -425,6 +426,8 @@ export type HostEvent =
   | { kind: "workspace_closed" }
   | { kind: "server_changed" }
   | { kind: "open_session"; session: SessionId }
+  /** A chat finished, failed or needs an answer while Nyte is in front, told in the app, not the system. */
+  | { kind: "chat_alert"; session: SessionId; state: AlertState; title: string; body: string }
   | { kind: "remote_access_changed" }
   | { kind: "status"; message: string }
   | { kind: "browser_changed"; surface: string; state: BrowserSurfaceState }

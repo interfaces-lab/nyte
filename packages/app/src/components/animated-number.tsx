@@ -10,7 +10,7 @@ const styles = create({
     fontVariantNumeric: "tabular-nums",
   },
   value: { opacity: 0 },
-  morph: { position: "absolute", top: 0, left: 0 },
+  morph: { position: "absolute", top: 0, insetInlineStart: 0 },
 });
 
 export function AnimatedNumber({ value }: { readonly value: number }) {

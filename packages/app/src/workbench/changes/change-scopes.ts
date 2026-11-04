@@ -45,7 +45,6 @@ export interface TurnChangeOption {
   readonly scope: TurnChangesScope;
   readonly run: RunId | null;
   readonly label: string;
-  readonly stats: { readonly added: number; readonly removed: number };
   readonly files: readonly string[];
 }
 
@@ -63,7 +62,6 @@ export function turnChangeOptions(turns: readonly TurnMessages[]): readonly Turn
         scope: { kind: "turn", turnId: turn.info.id },
         run: turn.info.run,
         label: index === turns.length - 1 ? "Latest" : `Turn ${String(index + 1)}`,
-        stats: { added: turn.info.summary.added, removed: turn.info.summary.removed },
         files: [...files],
       };
     })
@@ -84,8 +82,6 @@ export function sameTurnOptions(
         option.scope.turnId === other.scope.turnId &&
         option.run === other.run &&
         option.label === other.label &&
-        option.stats.added === other.stats.added &&
-        option.stats.removed === other.stats.removed &&
         option.files.length === other.files.length &&
         option.files.every((file, at) => other.files[at] === file)
       );
@@ -223,7 +219,7 @@ export function turnScopeOption(option: TurnChangeOption): ChangesScopeOption {
     scope: option.scope,
     label: option.label,
     detail: undefined,
-    read: { kind: "ready", stats: option.stats, fileCount: option.files.length },
+    read: { kind: "files", fileCount: option.files.length },
   };
 }
 

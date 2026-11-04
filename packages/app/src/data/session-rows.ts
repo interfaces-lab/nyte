@@ -6,8 +6,8 @@ import { QueryObserver, replaceEqualDeep, skipToken } from "@tanstack/react-quer
 import { connected } from "./connection.ts";
 import { derivedStore } from "./derived-store.ts";
 import type { StoreSource } from "./derived-store.ts";
-import { keys, queryClient } from "./query-client.ts";
-import { appSessionActions } from "./session-actions.ts";
+import { keys, queryClient, queryDataReader } from "./query-client.ts";
+import { SessionActions } from "./session-actions.ts";
 import { childList, sessionList } from "./directory.ts";
 
 export interface SessionRows {
@@ -20,6 +20,9 @@ export interface SessionRows {
   readonly listed: boolean;
   readonly missing: ReadonlySet<SessionId>;
 }
+
+/** The app's session actions. The rows store applies their pending changes, so it owns them. */
+export const sessionActions = new SessionActions({ client: queryClient, findRow: findSessionRow });
 
 export const sessionRows = (): SessionRows => store.getSnapshot();
 
@@ -245,7 +248,7 @@ const sources = {
     subscribe: (notice: () => void) => sessionList("roots").subscribeByFrame(notice),
   },
   recorded: {
-    read: () => queryClient.getQueryData<readonly SessionInfo[]>(keys.firstFrameRoots),
+    read: queryDataReader<readonly SessionInfo[]>(keys.firstFrameRoots),
     subscribe: (notice: () => void) =>
       new QueryObserver(queryClient, {
         queryKey: keys.firstFrameRoots,
@@ -255,8 +258,8 @@ const sources = {
   children,
   unlisted,
   pending: {
-    read: () => appSessionActions().getSnapshot(),
-    subscribe: (notice: () => void) => appSessionActions().subscribe(notice),
+    read: () => sessionActions.getSnapshot(),
+    subscribe: (notice: () => void) => sessionActions.subscribe(notice),
   },
 } satisfies Readonly<Record<string, StoreSource<unknown>>>;
 
@@ -278,7 +281,7 @@ const store = derivedStore(
       {
         lists: [read.all.read(), roots, read.children.read(), read.unlisted.read().rows],
         roots,
-        project: (session) => appSessionActions().projectSession(session, pending),
+        project: (session) => sessionActions.projectSession(session, pending),
       },
       previous,
     );

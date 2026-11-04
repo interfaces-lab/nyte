@@ -181,7 +181,7 @@ export const workbenchStyles = create({
       ":hover": { [media.hover]: role.borderPrimaryTranslucent },
       ":focus-visible": role.borderStrongTranslucent,
     },
-    "--_sash-delay": { default: "0s", ":hover": "300ms" },
+    "--_sash-delay": { default: "0s", ":hover": { [media.hover]: "300ms" } },
     "::after": {
       content: "''",
       position: "absolute",

@@ -24,8 +24,8 @@ import {
 import { activePane } from "../panes/pane-layout.ts";
 import type { PaneId } from "../panes/pane-layout.ts";
 import { useCatalog } from "../data/catalog.ts";
-import { useRenameSession, useSessionChoice } from "../data/sessions.ts";
-import { useSessionActions } from "../data/session-actions.ts";
+import { useSessionChoice } from "../data/sessions.ts";
+import { sessionActions } from "../data/session-rows.ts";
 import { chatStore, keepChat, loadEarlierMessages } from "../data/chat-store.ts";
 import { connection } from "../data/connection.ts";
 import { useWatchSelect } from "../data/watch-store.ts";
@@ -290,8 +290,6 @@ function ConversationScreen(conversation: SessionConversationProps): ReactElemen
 
   const chat = useChat(sessionId);
   const catalog = useCatalog(sessionId);
-  const renameSession = useRenameSession();
-  const sessionActions = useSessionActions();
   const [draftName, setDraftName] = useState<string | undefined>();
   const [deletion, setDeletion] = useState<SessionDeletionState>({ kind: "closed" });
   const [navigating, setNavigating] = useState(false);
@@ -365,7 +363,7 @@ function ConversationScreen(conversation: SessionConversationProps): ReactElemen
     const name = draftName.replaceAll(/\s+/g, " ").trim();
     setDraftName(undefined);
 
-    if (name !== "" && name !== title) renameSession.mutate({ sessionId, name });
+    if (name !== "" && name !== title) void sessionActions.rename({ sessionId, name });
   };
 
   const requestDelete = (): void => {
