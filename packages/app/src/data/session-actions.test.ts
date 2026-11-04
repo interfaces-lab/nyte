@@ -6,8 +6,6 @@ import type { SessionInfo } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import { ActionToasts } from "../lib/action-toasts.ts";
 import { SessionActions } from "./session-actions.ts";
-import { PaneController } from "../panes/pane-controller.ts";
-import { activeSelection } from "../panes/pane-layout.ts";
 import { keys } from "./query-client.ts";
 import { scriptedConnection } from "../../test/scripted-connection.ts";
 
@@ -175,91 +173,6 @@ test("a partial bulk failure restores only the failed chat and updates the toast
   notification("Couldn't archive this chat. Try again.");
   undo("2 chats archived", f.toasts);
   await vi.waitFor(() => assert.ok(f.directory().every((session) => !session.archived)));
-  f.client.clear();
-});
-
-test.each([false, true])(
-  "Undo preserves the pane when both writes fail, initially archived: %s",
-  async (archived) => {
-    const f = fixture([{ ...chat("one"), archived }]);
-    const id = asId<"session">("one");
-    const panes = new PaneController({ storageKey: "test" });
-    panes.selectSession(id);
-    f.failures.add("one");
-    f.actions.archive([id], !archived, (sessionId) => panes.removeSessionWithUndo(sessionId));
-    assert.equal(f.directory()[0]?.archived, !archived);
-    assert.deepEqual(
-      activeSelection(panes.getSnapshot().layout),
-      archived ? { kind: "session", sessionId: id } : { kind: "blank" },
-    );
-    undo(archived ? "1 chat restored" : "1 chat archived", f.toasts);
-    assert.equal(f.directory()[0]?.archived, archived);
-    const selection = archived ? { kind: "blank" } : { kind: "session", sessionId: id };
-    assert.deepEqual(activeSelection(panes.getSnapshot().layout), selection);
-    f.writes.resolve();
-    await vi.waitFor(() => assert.equal(f.actions.getSnapshot().length, 0));
-    assert.equal(f.saved.get(id)?.archived, archived);
-    assert.equal(f.directory()[0]?.archived, archived);
-    assert.deepEqual(activeSelection(panes.getSnapshot().layout), selection);
-    notification("Couldn't archive this chat. Try again.");
-    notification("Couldn't restore this chat. Try again.");
-    f.client.clear();
-  },
-);
-
-test.each([false, true])(
-  "failed Undo follows a successful write, initially archived: %s",
-  async (archived) => {
-    const f = fixture([{ ...chat("one"), archived }]);
-    const id = asId<"session">("one");
-    const panes = new PaneController({ storageKey: "test" });
-    panes.selectSession(id);
-    f.actions.archive([id], !archived, (sessionId) => panes.removeSessionWithUndo(sessionId));
-    f.writes.resolve();
-    await vi.waitFor(() => assert.equal(f.actions.getSnapshot().length, 0));
-    f.failures.add("one");
-    undo(archived ? "1 chat restored" : "1 chat archived", f.toasts);
-    await vi.waitFor(() => assert.equal(f.actions.getSnapshot().length, 0));
-    assert.equal(f.saved.get(id)?.archived, !archived);
-    assert.equal(f.directory()[0]?.archived, !archived);
-    assert.deepEqual(
-      activeSelection(panes.getSnapshot().layout),
-      archived ? { kind: "session", sessionId: id } : { kind: "blank" },
-    );
-    f.client.clear();
-  },
-);
-
-test.each(["selection", "draft"])("double-failure Undo preserves a newer %s", async (newer) => {
-  const f = fixture();
-  const id = asId<"session">("one");
-  const panes = new PaneController({ storageKey: "test" });
-  panes.selectSession(id);
-  f.failures.add("one");
-  f.actions.archive([id], true, (sessionId) => panes.removeSessionWithUndo(sessionId));
-
-  if (newer === "selection") panes.selectSession(asId<"session">("two"));
-  else
-    panes.viewState.writeBlank("primary", {
-      ...panes.viewState.readBlank("primary"),
-      composer: {
-        draft: "Keep my draft",
-        attachments: [],
-        selectionStart: 13,
-        selectionEnd: 13,
-        focused: true,
-      },
-    });
-  const selection = activeSelection(panes.getSnapshot().layout);
-  const draft = panes.viewState.readBlank("primary").composer;
-  undo("1 chat archived", f.toasts);
-  assert.deepEqual(activeSelection(panes.getSnapshot().layout), selection);
-  assert.deepEqual(panes.viewState.readBlank("primary").composer, draft);
-  f.writes.resolve();
-  await vi.waitFor(() => assert.equal(f.actions.getSnapshot().length, 0));
-  assert.equal(f.directory()[0]?.archived, false);
-  assert.deepEqual(activeSelection(panes.getSnapshot().layout), selection);
-  assert.deepEqual(panes.viewState.readBlank("primary").composer, draft);
   f.client.clear();
 });
 

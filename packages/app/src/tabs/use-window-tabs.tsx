@@ -7,7 +7,7 @@ import type { ChatDirectory } from "../chats/index.ts";
 import { activateWorkspace } from "../sidebar/use-show-session.ts";
 import { nyte } from "../contract/nyte.ts";
 import { keys, queryClient } from "../data/query-client.ts";
-import { sessionRows, subscribeSessionRow } from "../data/session-rows.ts";
+import { sessionRows, subscribeSessionRow, subscribeSessionRows } from "../data/session-rows.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 
 import { activeTab, showsPage, tabPlace, tabPlaces } from "./model.ts";
@@ -89,24 +89,28 @@ export function useWindowTabsSync(): void {
     const unsubscribeRouter = router.subscribe("onResolved", adopt);
     const unsubscribeTabs = windowTabs.subscribe(follow);
     const unsubscribeChats = subscribeChats(follow);
-    const unsubscribeClosed = forgetGoneChats();
+    const unsubscribeGone = forgetGoneChats();
 
     return () => {
       unsubscribeRouter();
       unsubscribeTabs();
       unsubscribeChats();
-      unsubscribeClosed();
+      unsubscribeGone();
     };
   });
 }
 
 /**
- * A chat the host's lists lack may only be outside its most active, so each closed tab's chat is
- * read on its own. Each read hears the rows with a notice of its own: the rows keep one per
- * listener, so a shared one would stop with the first read that ends.
+ * A chat the host's lists lack may only be outside its most active, so each tab's chat is read on
+ * its own. Each read hears the rows with a notice of its own: the rows keep one per listener, so a
+ * shared one would stop with the first read that ends.
+ *
+ * An open tab closes only when its chat becomes archived, since a chat opened from the archive
+ * stays open.
  */
 function forgetGoneChats(): () => void {
   const reads = new Map<SessionId, () => void>();
+  let known = sessionRows().hosted;
 
   const forget = (): void => {
     const { hosted, missing } = sessionRows();
@@ -115,25 +119,28 @@ function forgetGoneChats(): () => void {
       session.archived ? [session.id] : [],
     );
 
+    const archiving = archived.filter((id) => known.get(id)?.archived === false);
+    known = hosted;
+    windowTabs.dispatch({ kind: "close-chats", sessionIds: new Set([...missing, ...archiving]) });
     windowTabs.dispatch({ kind: "forget-closed", gone: new Set([...missing, ...archived]) });
   };
 
   const read = (): void => {
-    const closed = new Set(
-      windowTabs
-        .getSnapshot()
-        .closed.flatMap(({ tab }) =>
-          tabPlaces(tab).flatMap((place) => (place.kind === "session" ? [place.sessionId] : [])),
-        ),
+    const state = windowTabs.getSnapshot();
+
+    const shown = new Set(
+      [...state.tabs, ...state.closed.map(({ tab }) => tab)].flatMap((tab) =>
+        tabPlaces(tab).flatMap((place) => (place.kind === "session" ? [place.sessionId] : [])),
+      ),
     );
 
     for (const [id, leave] of reads)
-      if (!closed.has(id)) {
+      if (!shown.has(id)) {
         leave();
         reads.delete(id);
       }
 
-    for (const id of closed)
+    for (const id of shown)
       if (!reads.has(id))
         reads.set(
           id,
@@ -144,9 +151,11 @@ function forgetGoneChats(): () => void {
   read();
   forget();
   const unsubscribe = windowTabs.subscribe(read);
+  const unsubscribeRows = subscribeSessionRows(forget);
 
   return () => {
     unsubscribe();
+    unsubscribeRows();
 
     for (const leave of reads.values()) leave();
   };
