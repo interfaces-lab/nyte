@@ -17,7 +17,11 @@ export interface TerminalSurface {
   cell(): CellSize;
   /** Paints on the next frame; `full` repaints every row. */
   draw(full: boolean): void;
-  /** Sizes the canvas and the grid to `element`, once it's laid out. */
+  /**
+   * Sizes the canvas and the grid to `element`, once it's laid out, and paints at once: resizing
+   * clears the opaque canvas to black, which a paint on the next frame would show for a frame on
+   * every frame of an animated resize.
+   */
   fit(): void;
   /** Starts drawing into `element`. */
   show(): void;
@@ -153,27 +157,30 @@ export async function openTerminalSurface(
     const box = element.getBoundingClientRect();
     const width = Math.floor(box.width * ratio);
     const height = Math.floor(box.height * ratio);
+    const resized = canvas.width !== width || canvas.height !== height;
 
-    if (canvas.width !== width || canvas.height !== height) {
-      renderer.resize(width, height);
-      draw(true);
-    }
+    if (resized) renderer.resize(width, height);
 
     const cols = Math.min(1000, Math.max(2, Math.floor(width / metrics.width)));
     const rows = Math.min(1000, Math.max(1, Math.floor(height / metrics.height)));
     const size = cell();
 
-    if (
-      cols === terminal.cols &&
-      rows === terminal.rows &&
-      size.width === sizedCell.width &&
-      size.height === sizedCell.height
-    )
-      return;
-    sizedCell = size;
-    terminal.resize(cols, rows, size);
-    draw(true);
-    options.resized();
+    const regridded =
+      cols !== terminal.cols ||
+      rows !== terminal.rows ||
+      size.width !== sizedCell.width ||
+      size.height !== sizedCell.height;
+
+    if (regridded) {
+      sizedCell = size;
+      terminal.resize(cols, rows, size);
+      options.resized();
+    }
+
+    if (!resized && !regridded) return;
+    full = true;
+    cancelAnimationFrame(frame);
+    paint();
   };
 
   let fitFrame = 0;
