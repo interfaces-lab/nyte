@@ -78,6 +78,21 @@ export function useSessionRow<S>(
   );
 }
 
+/** The child sessions of `parent`, oldest first. */
+export function useChildRows(parent: SessionId): readonly SessionInfo[] {
+  return useSyncExternalStoreWithSelector(
+    (notice) => subscribeChildRows(parent, notice),
+    sessionRows,
+    sessionRows,
+    (snapshot) =>
+      [...snapshot.rows.values()]
+        .filter((row) => row.parent === parent)
+        .toSorted((left, right) => left.createdAt - right.createdAt),
+    (left, right) =>
+      left.length === right.length && left.every((row, index) => row === right[index]),
+  );
+}
+
 export function useRootRows(): readonly SessionInfo[] | undefined {
   return useSyncExternalStore(
     subscribeSessionRows,

@@ -65,6 +65,11 @@ export function DeveloperSettings(): ReactElement {
           title="Developer Mode"
           description="Show settings for development and debugging"
         />
+        <SwitchRow
+          setting={preferences.projects}
+          title="Projects"
+          description="Group chats into projects, each with a lead chat that hands work to its units"
+        />
       </SettingsSection>
       {developer && (
         <>

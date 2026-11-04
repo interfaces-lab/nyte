@@ -1,3 +1,4 @@
+import type { ProjectId } from "@nyte-ai/schema";
 import type { SessionId } from "@nyte-ai/sdk";
 import type { Static } from "typebox";
 import { Type } from "typebox";
@@ -38,7 +39,11 @@ const viewSchema = Type.Union([
     {
       kind: Type.Literal("page"),
       page: Type.Object(
-        { kind: Type.Literal("customize"), section, sessionId: Type.Optional(sessionId) },
+        {
+          kind: Type.Enum(["customize", "project"]),
+          section,
+          sessionId: Type.Optional(sessionId),
+        },
         strict,
       ),
     },
@@ -69,7 +74,7 @@ function storedView(view: StoredTab["view"]): LastingTab["view"] {
 
   return {
     kind: "page",
-    page: { kind: "customize", section: view.page.section, sessionId: view.page.sessionId },
+    page: { kind: view.page.kind, section: view.page.section, sessionId: view.page.sessionId },
   };
 }
 
@@ -170,9 +175,10 @@ class WindowTabs {
   }
 
   /** A new chat gets its own tab, or the new-chat tab already waiting; one tab replaces its view. */
-  newChat(): void {
+  /** Shows a new chat, in `project` when one is named. */
+  newChat(project?: ProjectId): void {
     this.dispatch(this.#strip ? { kind: "new-tab" } : { kind: "leave-page" });
-    this.controller().newChat();
+    this.controller().newChat(project);
   }
 
   /** Shows a draft in the tab whose new chat it is, else in the window's new-chat tab. */

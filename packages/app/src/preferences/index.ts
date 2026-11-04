@@ -157,6 +157,8 @@ export const preferences = {
     {},
   ),
   developerMode: definePreference({ key: "nyte:developer-mode:v1" }, Type.Boolean(), false),
+  /** Shows projects in the sidebar and the new-chat picker; a developer feature. */
+  projects: definePreference({ key: "nyte:projects:v1" }, Type.Boolean(), true),
 } as const;
 
 type ValueOf<P> = P extends Preference<infer T> ? T : never;

@@ -29,20 +29,20 @@ Each concept has one name. Code uses the term, and users see the UI word where i
 | warm | Hold a session's live watch before it opens, so opening it reuses that watch. | | preload, prefetch, prime |
 | hot set | The sessions kept warm or mounted, capped by count. | | cache (unqualified) |
 
-## Lane workflow
+## Project workflow
 
-No code uses these terms yet. They reserve the names for the planned lane workflow.
+Projects exist: a project record, membership on sessions and the lead's prompt. The rest of these terms reserve the names for the planned workflow.
 
 | Term | Meaning | UI word | Don't use |
 |---|---|---|---|
-| lane | The rules a stream of work follows and the work in flight under them. The rules cover each role's model and skills, commit and PR rules, the gate, triggers and limits. A lane is standing, or runs until a goal. | Lane | project, workstream, routine |
-| unit | One branch of work in a lane, with one session family, one worktree, one branch and at most one pull request. | | task (the tool), job, ticket, item |
+| project | The rules a stream of work follows and the work in flight under them: one lead chat that keeps going, a brief that is the lead's system prompt, and units. A project is standing, or runs until a goal. See `schema/src/projects.ts`. | Project | lane, stack, workstream, routine |
+| unit | One branch of work in a project, with one session family, one worktree, one branch and at most one pull request. | | task (the tool), job, ticket, item |
 | writer family | The one session family allowed to change a checkout, keyed by the checkout's root. The family is a top-level chat and the subagents that share its folder. | | owner or lock (for checkouts) |
-| trigger | A lane rule. When an event matches, an owner acts on a pinned model until a stop condition, within a budget. | Trigger | subscription, automation, routine |
-| pull request watch | The model-free poll that follows one pull request for a lane and turns what changed into dispatches. | Watching | watch (alone, which means a session's live watch), listener |
+| trigger | A project rule. When an event matches, an owner acts on a pinned model until a stop condition, within a budget. | Trigger | subscription, automation, routine |
+| pull request watch | The model-free poll that follows one pull request for a project and turns what changed into dispatches. | Watching | watch (alone, which means a session's live watch), listener |
 | dispatch | One observed event handed to exactly one owner with a decision: ignore, wake, route, remedy, ask or stop. | | delivery (how a message reaches a run), notification |
-| babysitter | The session a lane starts on the lane's babysitter model to follow one pull request until it is merged, closed or ready. | Babysitter | delegate, watcher |
-| keeper | The lane session that owns a base branch's failures and failure families, so that a failure many pull requests share gets fixed once. | | coordinator |
-| gate | The workflows whose checks must pass before a lane calls a pull request ready. | Gate | required checks (GitHub's own) |
-| remedy | A fix that a lane runs as a command, without a model, for a failure it recognises exactly. | | autofix |
+| babysitter | The session a project starts on the project's babysitter model to follow one pull request until it is merged, closed or ready. | Babysitter | delegate, watcher |
+| keeper | The project session that owns a base branch's failures and failure families, so that a failure many pull requests share gets fixed once. | | coordinator |
+| gate | The workflows whose checks must pass before a project calls a pull request ready. | Gate | required checks (GitHub's own) |
+| remedy | A fix that a project runs as a command, without a model, for a failure it recognises exactly. | | autofix |
 | restore | Write chosen paths from a kept snapshot into the writer's own checkout, after taking a fresh snapshot. | Restore | revert, rollback |

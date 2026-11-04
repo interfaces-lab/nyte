@@ -54,7 +54,15 @@ function fixture(chats = [chat("one"), chat("two"), chat("three")]) {
         };
         saved.set(id, next);
         rows.current = rows.current.map((row) =>
-          row.id === id ? { ...row, ...patch, name: next.name } : row,
+          row.id === id
+            ? {
+                ...row,
+                name: next.name,
+                pinned: next.pinned,
+                archived: next.archived,
+                workspace: patch.workspace ?? row.workspace,
+              }
+            : row,
         );
 
         return { kind: "updated" };

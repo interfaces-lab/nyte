@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import type { SessionId } from "@nyte-ai/sdk";
+import type { ProjectId } from "@nyte-ai/schema";
 import type { AppInfo } from "../contract/bridge.ts";
 import { elementVariable } from "../lib/element-variable.ts";
 import { preferences, SIDEBAR_WIDTH } from "../preferences/index.ts";
@@ -90,6 +91,14 @@ export const shellActions = Object.freeze({
       kind: "open",
       target: "permanent",
       place: { kind: "customize", section: undefined, sessionId },
+    });
+  },
+  /** Opens a project's page, or the page that creates one. */
+  openProject(project: ProjectId | "new"): void {
+    windowTabs.dispatch({
+      kind: "open",
+      target: "permanent",
+      place: { kind: "project", section: project, sessionId: undefined },
     });
   },
   showWorkspace(): void {

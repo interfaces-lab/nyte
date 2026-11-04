@@ -33,6 +33,8 @@ export type JobKey = Id<"job-key">;
 
 export type WorkspaceId = Id<"workspace">;
 
+export type ProjectId = Id<"project">;
+
 export type PageId = Id<"page">;
 
 export type HostId = Id<"host">;

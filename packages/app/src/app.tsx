@@ -3,7 +3,6 @@ import { RouterContextProvider } from "@tanstack/react-router";
 import { MotionConfig } from "motion/react";
 import type { ReactElement } from "react";
 import type { SessionId } from "@nyte-ai/sdk";
-import { Toaster } from "@nyte-ai/ui/toast";
 import { AppIcon } from "./components/app-icon.ts";
 import { nyte } from "./contract/nyte.ts";
 import { queryClient } from "./data/query-client.ts";
@@ -12,7 +11,6 @@ import type { AppRouter } from "./shell/routes.tsx";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { windowTabs } from "./tabs/window-tabs.ts";
 import { activeTab, tabPlace } from "./tabs/model.ts";
-import { preferences, useSetting } from "./preferences/index.ts";
 import { activeSelection } from "./panes/pane-layout.ts";
 import { workspacePathForView } from "./workbench/paths.ts";
 import { workbench } from "./workbench/store.ts";
@@ -83,7 +81,6 @@ export function App({ appIcon, router }: { appIcon: string; router: AppRouter })
   useClientPlugins();
   useViewedChat();
   useSavedShells();
-  const toastPosition = useSetting(preferences.toastPosition);
   useMountEffect(() => {
     const frame = requestAnimationFrame(() => {
       performance.mark("nyte:shell-ready");
@@ -100,7 +97,6 @@ export function App({ appIcon, router }: { appIcon: string; router: AppRouter })
           <AppIcon value={appIcon}>
             <Shell appIcon={appIcon} />
           </AppIcon>
-          <Toaster position={toastPosition} />
         </RouterContextProvider>
       </QueryClientProvider>
     </MotionConfig>
