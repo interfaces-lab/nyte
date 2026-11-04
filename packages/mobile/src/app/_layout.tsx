@@ -12,7 +12,7 @@ import { AccountProvider } from "../account/account-provider.tsx";
 import { ConnectScreen } from "../connection/connect-screen.tsx";
 import { HostProvider, useHostConnection, type HostSession } from "../connection/host-context.tsx";
 import { useAppliedAppearance } from "../settings/preferences.ts";
-import { useTheme, spacing, tokens, typography } from "../theme.ts";
+import { useTheme, spacing, tokens } from "../theme.ts";
 import { Toaster } from "../ui/toast.tsx";
 import { DevelopmentMenu } from "../development/development-menu.ts";
 
@@ -118,13 +118,9 @@ function Connected({ session }: { session: HostSession }) {
             headerTintColor: theme.foreground,
             headerTitleStyle: {
               color: theme.foreground,
-              fontSize: typography.title.fontSize,
-              fontWeight: "600",
             },
             headerLargeTitleStyle: {
               color: theme.foreground,
-              fontSize: typography.heading.fontSize,
-              fontWeight: "600",
             },
             headerStyle: { backgroundColor: theme.background },
             headerLargeStyle: { backgroundColor: theme.background },

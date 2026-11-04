@@ -2,8 +2,14 @@ import { isPart, text } from "@nyte-ai/plugin/client";
 import type { FileStatus, TurnInfo } from "@nyte-ai/sdk";
 import type { HeadView } from "@nyte-ai/sdk/client";
 
+/** Edits count by their call; other calls name no file, so the paths they hold are the files they changed. */
 export function changedFiles(turn: TurnInfo): boolean {
-  return turn.summary.added + turn.summary.removed > 0 || turn.summary.byClass.edit.count > 0;
+  const calls = turn.summary.byClass;
+
+  return (
+    calls.edit.count > 0 ||
+    [calls.shell, calls.delegate, calls.custom].some((entry) => entry.paths.length > 0)
+  );
 }
 
 export function latestChangedTurn(view: HeadView): TurnInfo | undefined {

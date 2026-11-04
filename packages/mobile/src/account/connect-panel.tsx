@@ -524,6 +524,7 @@ export function ConnectSheet({
       visible={page !== undefined}
       animationType="slide"
       presentationStyle="pageSheet"
+      allowSwipeDismissal
       onRequestClose={onClose}
     >
       {page === undefined ? null : (

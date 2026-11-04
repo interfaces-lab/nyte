@@ -1,8 +1,8 @@
 import type { ComponentProps } from "react";
-import { Pressable, View } from "react-native";
-import { Link, router, type Href } from "expo-router";
+import { View } from "react-native";
+import { router, type Href } from "expo-router";
 import { Host } from "@expo/ui";
-import { Button } from "@expo/ui/swift-ui";
+import { Button, Label } from "@expo/ui/swift-ui";
 import {
   accessibilityHidden,
   buttonBorderShape,
@@ -14,9 +14,7 @@ import {
   labelStyle,
   tint,
 } from "@expo/ui/swift-ui/modifiers";
-import { SymbolView } from "expo-symbols";
-import { css, html } from "react-strict-dom";
-import { controls, radii, spacing, themes, tokens, typography, useTheme } from "../theme.ts";
+import { controls, themes, useTheme } from "../theme.ts";
 
 /** Label, action, and icon keep the names and types the native control uses. */
 type Common = Required<Pick<ComponentProps<typeof Button>, "label">> &
@@ -44,17 +42,18 @@ type GlassButtonProps =
 
 export function GlassButton(props: GlassButtonProps) {
   const theme = useTheme();
+  const filling = props.fill === true;
 
-  const {
-    label,
-    systemImage,
-    disabled: isDisabled = false,
-    busy = false,
-    prominent = false,
-  } = props;
+  const iconOnly =
+    props.fill !== true && props.iconOnly === true && props.systemImage !== undefined;
+
+  const scheme = props.fill === true ? undefined : props.scheme;
+  const palette = scheme === "dark" ? themes.dark : theme;
+  const unavailable = props.disabled === true || props.busy === true;
+  const height = filling ? controls.fillHeight : controls.touchTarget;
 
   function activate() {
-    if (isDisabled || busy) return;
+    if (unavailable) return;
 
     if (props.href !== undefined) {
       router.navigate(props.href);
@@ -65,169 +64,43 @@ export function GlassButton(props: GlassButtonProps) {
     props.onPress();
   }
 
-  if (props.fill === true) {
-    const style = [
-      styles.fill,
-      prominent ? styles.prominent : styles.neutral,
-      isDisabled && styles.disabled,
-    ];
-
-    const content = (
-      <>
-        {systemImage === undefined ? null : (
-          <SymbolView
-            name={systemImage}
-            size={controls.icon}
-            tintColor={prominent ? theme.onAccentFill : theme.foreground}
-          />
-        )}
-        <html.span style={[styles.label, prominent ? styles.onAccentFill : styles.onNeutral]}>
-          {label}
-        </html.span>
-      </>
-    );
-
-    if (props.href !== undefined) {
-      return (
-        <Link
-          href={props.href}
-          asChild
-          onPress={(event) => {
-            if (isDisabled || busy) event.preventDefault();
-          }}
-        >
-          <Pressable accessibilityRole="link" accessibilityState={{ disabled: isDisabled, busy }}>
-            <html.div style={style}>{content}</html.div>
-          </Pressable>
-        </Link>
-      );
-    }
-
-    return (
-      <html.button
-        onClick={activate}
-        disabled={isDisabled}
-        aria-disabled={isDisabled}
-        aria-busy={busy}
-        style={style}
-      >
-        {content}
-      </html.button>
-    );
-  }
-
-  const { iconOnly = false, size = "regular", scheme } = props;
-  const palette = scheme === "dark" ? themes.dark : theme;
-  const height = size === "compact" ? controls.touchTarget : controls.primaryHeight;
-
-  if (iconOnly && systemImage !== undefined) {
-    const icon = (
-      <SymbolView
-        name={systemImage}
-        size={controls.icon}
-        tintColor={prominent ? palette.accent : palette.foreground}
-      />
-    );
-
-    if (props.href !== undefined) {
-      return (
-        <Link
-          href={props.href}
-          asChild
-          onPress={(event) => {
-            if (isDisabled || busy) event.preventDefault();
-          }}
-        >
-          <Pressable
-            accessibilityRole="link"
-            accessibilityLabel={label}
-            accessibilityState={{ disabled: isDisabled || busy, busy }}
-          >
-            <html.div style={[styles.icon, (isDisabled || busy) && styles.disabled]}>
-              {icon}
-            </html.div>
-          </Pressable>
-        </Link>
-      );
-    }
-
-    return (
-      <html.button
-        aria-label={label}
-        aria-busy={busy}
-        disabled={isDisabled || busy}
-        onClick={activate}
-        style={[styles.icon, (isDisabled || busy) && styles.disabled]}
-      >
-        {icon}
-      </html.button>
-    );
-  }
-
   return (
     <View
+      style={filling ? { alignSelf: "stretch" } : undefined}
       accessible
       accessibilityRole={props.href === undefined ? "button" : "link"}
-      accessibilityLabel={label}
-      accessibilityState={{ disabled: isDisabled, busy }}
+      accessibilityLabel={props.label}
+      accessibilityState={{ disabled: unavailable, busy: props.busy === true }}
       onAccessibilityTap={activate}
     >
-      <Host style={{ minHeight: height }} matchContents colorScheme={scheme} ignoreSafeArea="all">
+      <Host
+        matchContents={filling ? { vertical: true } : true}
+        colorScheme={scheme}
+        ignoreSafeArea="all"
+      >
         <Button
-          label={label}
-          systemImage={systemImage}
           onPress={activate}
           modifiers={[
             accessibilityHidden(),
+            buttonStyle(props.prominent ? "glassProminent" : "glass"),
+            controlSize(filling ? "large" : "regular"),
+            buttonBorderShape(iconOnly ? "circle" : "capsule"),
+            tint(props.prominent ? palette.accentFill : palette.foreground),
             frame({ minWidth: controls.touchTarget, minHeight: height }),
-            buttonStyle(prominent ? "glassProminent" : "glass"),
-            controlSize("regular"),
-            buttonBorderShape("capsule"),
-            tint(prominent ? palette.accentFill : palette.foreground),
-            font({ textStyle: "body", weight: "medium" }),
-            labelStyle(systemImage ? "titleAndIcon" : "titleOnly"),
-            disabled(isDisabled || busy),
+            disabled(unavailable),
           ]}
-        />
+        >
+          <Label
+            title={props.label}
+            systemImage={props.systemImage}
+            modifiers={[
+              font({ textStyle: "body", weight: "medium" }),
+              labelStyle(iconOnly ? "iconOnly" : props.systemImage ? "titleAndIcon" : "titleOnly"),
+              ...(filling ? [frame({ maxWidth: Infinity })] : []),
+            ]}
+          />
+        </Button>
       </Host>
     </View>
   );
 }
-
-const styles = css.create({
-  icon: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    width: controls.touchTarget,
-    height: controls.touchTarget,
-    borderWidth: 0,
-    backgroundColor: "transparent",
-    padding: 0,
-    opacity: { default: 1, ":active": controls.pressedOpacity },
-  },
-  fill: {
-    display: "flex",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    alignSelf: "stretch",
-    gap: spacing.sm,
-    minHeight: controls.fillHeight,
-    paddingInline: spacing.lg,
-    borderRadius: radii.pill,
-    borderWidth: 0,
-  },
-  prominent: {
-    backgroundColor: tokens.accentFill,
-    opacity: { default: 1, ":active": controls.pressedOpacity },
-  },
-  neutral: { backgroundColor: { default: tokens.fill, ":active": tokens.separator } },
-  disabled: { opacity: controls.disabledOpacity },
-  label: {
-    ...typography.button,
-    lineHeight: `${typography.button.lineHeight}px`,
-  },
-  onAccentFill: { color: tokens.onAccentFill },
-  onNeutral: { color: tokens.foreground },
-});

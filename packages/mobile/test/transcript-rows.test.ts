@@ -86,8 +86,6 @@ const ended: TurnInfo = {
     },
     failed: 0,
     stopped: 0,
-    added: 0,
-    removed: 0,
   },
 };
 

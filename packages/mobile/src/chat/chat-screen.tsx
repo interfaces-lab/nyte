@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { View, useWindowDimensions } from "react-native";
+import { useHeaderHeight } from "expo-router/react-navigation";
 import { css, html } from "react-strict-dom";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -88,7 +89,7 @@ export function ChatScreen({
   subagent,
 }: ChatScreenProps) {
   const insets = useSafeAreaInsets();
-  const headerHeight = insets.top + 44;
+  const headerHeight = useHeaderHeight();
   const window = useWindowDimensions();
   const [viewportWidth, setViewportWidth] = useState(window.width);
 

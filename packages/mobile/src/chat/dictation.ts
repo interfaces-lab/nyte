@@ -29,6 +29,8 @@ function dictationFailure(code: ExpoSpeechRecognitionErrorCode): string | undefi
       return "The microphone wasn't available. Try again.";
     case "busy":
       return "Dictation is already running.";
+    case "too-many-requests":
+      return "Too many dictation requests. Wait a moment, then try again.";
     case "language-not-supported":
       return "Dictation doesn't support this language.";
     case "bad-grammar":

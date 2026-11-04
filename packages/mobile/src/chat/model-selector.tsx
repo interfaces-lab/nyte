@@ -34,17 +34,20 @@ export function ModelPickerSheet({
       visible={open}
       animationType="slide"
       presentationStyle="pageSheet"
+      allowSwipeDismissal
       onRequestClose={onClose}
     >
-      <SheetBody
-        client={client}
-        open={open}
-        onClose={onClose}
-        selectedModel={selectedModel}
-        selectingModel={selectingModel}
-        modelError={modelError}
-        onSelect={onSelect}
-      />
+      <SafeAreaProvider>
+        <SheetBody
+          client={client}
+          open={open}
+          onClose={onClose}
+          selectedModel={selectedModel}
+          selectingModel={selectingModel}
+          modelError={modelError}
+          onSelect={onSelect}
+        />
+      </SafeAreaProvider>
     </Modal>
   );
 }
@@ -105,120 +108,113 @@ function SheetBody({
   }
 
   return (
-    <SafeAreaProvider>
-      <View
-        style={{
-          flex: 1,
-          backgroundColor: theme.background,
-          paddingBottom: insets.bottom,
-        }}
-      >
-        <html.div style={styles.sheet}>
-          <html.div style={styles.header}>
-            <html.h1 style={[textStyles.title, styles.heading]}>Choose model</html.h1>
-            <GlassButton
-              label="Close model picker"
-              systemImage="xmark"
-              onPress={onClose}
-              iconOnly
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: theme.background,
+        paddingBottom: insets.bottom,
+      }}
+    >
+      <html.div style={styles.sheet}>
+        <html.div style={styles.header}>
+          <html.h1 style={[textStyles.title, styles.heading]}>Choose model</html.h1>
+          <GlassButton label="Close model picker" systemImage="xmark" onPress={onClose} iconOnly />
+        </html.div>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Focus model search"
+          onPress={() => searchRef.current?.focus()}
+        >
+          <html.div style={styles.searchField}>
+            <SymbolView name="magnifyingglass" size={controls.iconSm} tintColor={theme.muted} />
+            <TextInput
+              ref={searchRef}
+              accessibilityLabel="Search models"
+              value={query}
+              onChangeText={setQuery}
+              placeholder="Search models or providers"
+              placeholderTextColor={theme.muted}
+              selectionColor={theme.accent}
+              autoCorrect={false}
+              autoCapitalize="none"
+              clearButtonMode="while-editing"
+              returnKeyType="search"
+              style={{
+                ...typography.body,
+                color: theme.foreground,
+                flexGrow: 1,
+                minHeight: controls.touchTarget,
+                padding: 0,
+              }}
             />
           </html.div>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Focus model search"
-            onPress={() => searchRef.current?.focus()}
-          >
-            <html.div style={styles.searchField}>
-              <SymbolView name="magnifyingglass" size={controls.iconSm} tintColor={theme.muted} />
-              <TextInput
-                ref={searchRef}
-                accessibilityLabel="Search models"
-                value={query}
-                onChangeText={setQuery}
-                placeholder="Search models or providers"
-                placeholderTextColor={theme.muted}
-                selectionColor={theme.accent}
-                autoCorrect={false}
-                autoCapitalize="none"
-                clearButtonMode="while-editing"
-                returnKeyType="search"
-                style={{
-                  ...typography.body,
-                  color: theme.foreground,
-                  flexGrow: 1,
-                  minHeight: controls.touchTarget,
-                  padding: 0,
-                }}
-              />
-            </html.div>
-          </Pressable>
-          {modelError && (
-            <html.p role="alert" style={[textStyles.error, styles.notice]}>
-              {modelError}
+        </Pressable>
+        {modelError && (
+          <html.p role="alert" style={[textStyles.error, styles.notice]}>
+            {modelError}
+          </html.p>
+        )}
+        {selectingModel && (
+          <html.div style={styles.progress} aria-live="polite">
+            <ActivityIndicator color={theme.muted} />
+            <html.span style={textStyles.caption}>Changing model…</html.span>
+          </html.div>
+        )}
+        {catalog.kind === "loading" ? (
+          <html.div style={styles.progress}>
+            <ActivityIndicator color={theme.muted} />
+            <html.span style={textStyles.caption}>Loading host models…</html.span>
+          </html.div>
+        ) : catalog.kind === "failed" ? (
+          <html.div style={styles.failure}>
+            <html.p role="alert" style={textStyles.error}>
+              {catalog.message}
             </html.p>
-          )}
-          {selectingModel && (
-            <html.div style={styles.progress} aria-live="polite">
-              <ActivityIndicator color={theme.muted} />
-              <html.span style={textStyles.caption}>Changing model…</html.span>
-            </html.div>
-          )}
-          {catalog.kind === "loading" ? (
-            <html.div style={styles.progress}>
-              <ActivityIndicator color={theme.muted} />
-              <html.span style={textStyles.caption}>Loading host models…</html.span>
-            </html.div>
-          ) : catalog.kind === "failed" ? (
-            <html.div style={styles.failure}>
-              <html.p role="alert" style={textStyles.error}>
-                {catalog.message}
-              </html.p>
-              <GlassButton label="Try Again" onPress={refresh} fill />
-            </html.div>
-          ) : (
-            <LegendList
-              data={matches}
-              keyExtractor={(model) => JSON.stringify([model.ref.provider, model.ref.id])}
-              style={{ flex: 1 }}
-              keyboardShouldPersistTaps="handled"
-              keyboardDismissMode="on-drag"
-              renderItem={({ item }) => {
-                const chosen = item === selected;
+            <GlassButton label="Try Again" onPress={refresh} fill />
+          </html.div>
+        ) : (
+          <LegendList
+            data={matches}
+            keyExtractor={(model) => JSON.stringify([model.ref.provider, model.ref.id])}
+            style={{ flex: 1 }}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            renderItem={({ item }) => {
+              const chosen = item === selected;
 
-                return (
-                  <html.button
-                    aria-label={`${item.name}, ${item.ref.provider}`}
-                    aria-pressed={chosen}
-                    disabled={selectingModel}
-                    onClick={() => void choose(item)}
-                    style={[styles.row, chosen && styles.selectedRow]}
-                  >
-                    <html.div style={styles.rowText}>
-                      <html.span style={textStyles.body}>{item.name}</html.span>
-                      <html.span style={[textStyles.caption, styles.modelName]}>
-                        {item.ref.provider} / {item.ref.id}
-                      </html.span>
-                    </html.div>
-                  </html.button>
-                );
-              }}
-              ListEmptyComponent={
-                <html.div style={styles.empty}>
-                  <EmptyState
-                    title={models.length === 0 ? "No models available" : "No matching models"}
-                    description={
-                      models.length === 0
-                        ? "Enable a model on your Mac, then refresh."
-                        : "Try another name or provider."
-                    }
-                  />
-                </html.div>
-              }
-            />
-          )}
-        </html.div>
-      </View>
-    </SafeAreaProvider>
+              return (
+                <html.button
+                  aria-label={`${item.name}, ${item.ref.provider}`}
+                  aria-pressed={chosen}
+                  disabled={selectingModel}
+                  onClick={() => void choose(item)}
+                  style={[styles.row, chosen && styles.selectedRow]}
+                >
+                  <html.div style={styles.rowText}>
+                    <html.span style={textStyles.body}>{item.name}</html.span>
+                    <html.span style={[textStyles.caption, styles.modelName]}>
+                      {item.ref.provider} / {item.ref.id}
+                    </html.span>
+                  </html.div>
+                </html.button>
+              );
+            }}
+            ListEmptyComponent={
+              <html.div style={styles.empty}>
+                <EmptyState
+                  title={models.length === 0 ? "No models available" : "No matching models"}
+                  description={
+                    models.length === 0
+                      ? "Enable a model on your Mac, then refresh."
+                      : "Try another name or provider."
+                  }
+                />
+              </html.div>
+            }
+          />
+        )}
+      </html.div>
+    </View>
   );
 }
 
