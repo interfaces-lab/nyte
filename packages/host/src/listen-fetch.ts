@@ -4,7 +4,7 @@ import type { Authority, Disposer, Owned, PrincipalId } from "@nyte-ai/schema";
 import { dev } from "@nyte-ai/core";
 import { TOKEN, TOKEN_AUTHORITY } from "@nyte-ai/core/server";
 import type { Connection, ListenOptions, Listener } from "@nyte-ai/core";
-import type { ServedHost, Verdict } from "@nyte-ai/core/server";
+import type { ServedHost, ServerHost, Verdict } from "@nyte-ai/core/server";
 import {
   HOST_HEADER,
   OPERATIONS_HEADER,
@@ -13,11 +13,11 @@ import {
   errorStatus,
   operationsDigest,
 } from "@nyte-ai/protocol";
+import type { McpOwner } from "./mcp-server/grants.ts";
 import type { McpService } from "./mcp-server/server.ts";
 import { MCP_TOKEN_PREFIX } from "./mcp-server/token.ts";
 import { allowsOrigin, createHandler } from "./serve/handler.ts";
 import type { HandlerOptions } from "./serve/handler.ts";
-import type { SocketPeer } from "./serve/socket.ts";
 import type { TailnetControl } from "./tailnet.ts";
 
 type Cached = {
@@ -39,6 +39,19 @@ type Device = {
 };
 
 type Identity = Device & { readonly headers?: Readonly<Record<string, string>> };
+
+export type SocketPeer = {
+  readonly connection: Connection;
+  readonly principal: PrincipalId;
+  readonly authority: ReadonlySet<Authority>;
+  readonly local: boolean;
+  readonly server: ServerHost;
+  readonly tailnet?: TailnetControl;
+  readonly mcpServer?: McpOwner;
+  readonly execution?: { pause(): void; resume(): void };
+  readonly signal: AbortSignal;
+  leave(): void;
+};
 
 export type SocketListener = Listener & { admit(request: Request): Promise<SocketPeer> };
 

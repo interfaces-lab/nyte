@@ -16,7 +16,7 @@ import { readErrorCode } from "./local/tree.ts";
 import type { McpService } from "./mcp-server/server.ts";
 import { sharedListeners } from "./serve/listeners.ts";
 import { serveSession } from "./serve/socket.ts";
-import type { SocketPeer } from "./serve/socket.ts";
+import type { SocketPeer } from "./listen-fetch.ts";
 import type { TailnetControl } from "./tailnet.ts";
 
 export type HostListenOptions = ListenOptions & {
