@@ -517,14 +517,16 @@ export async function run() {
   const render = (messages: readonly StepMessage[], running: boolean) =>
     flushSync(() =>
       root.render(
-        <StepGroupView
-          messages={messages}
-          cwd={undefined}
-          added={0}
-          removed={0}
-          running={running}
-          density="compact"
-        />,
+        <QueryClientProvider client={queryClient}>
+          <StepGroupView
+            messages={messages}
+            cwd={undefined}
+            added={0}
+            removed={0}
+            running={running}
+            density="compact"
+          />
+        </QueryClientProvider>,
       ),
     );
 
@@ -609,14 +611,16 @@ export async function run() {
     const settledThought = thought("thought-1", "Streaming thought", 1);
 
     const group = (messages: readonly StepMessage[], running: boolean) => (
-      <StepGroupView
-        messages={messages}
-        cwd={undefined}
-        added={0}
-        removed={0}
-        running={running}
-        density="detailed"
-      />
+      <QueryClientProvider client={queryClient}>
+        <StepGroupView
+          messages={messages}
+          cwd={undefined}
+          added={0}
+          removed={0}
+          running={running}
+          density="detailed"
+        />
+      </QueryClientProvider>
     );
 
     flushSync(() => root.render(null));
@@ -661,11 +665,13 @@ export async function run() {
     const transcript = (node: ReactNode) =>
       flushSync(() =>
         root.render(
-          <PaneControllerProvider controller={panes}>
-            <TranscriptProvider paneId={PRIMARY} sessionId={asId<"session">("step-group-test")}>
-              {node}
-            </TranscriptProvider>
-          </PaneControllerProvider>,
+          <QueryClientProvider client={queryClient}>
+            <PaneControllerProvider controller={panes}>
+              <TranscriptProvider paneId={PRIMARY} sessionId={asId<"session">("step-group-test")}>
+                {node}
+              </TranscriptProvider>
+            </PaneControllerProvider>
+          </QueryClientProvider>,
         ),
       );
 

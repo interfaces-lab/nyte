@@ -1,7 +1,7 @@
 import { props } from "@stylexjs/stylex";
 import { createContext, use, useState } from "react";
 import type { ComponentProps, ReactElement } from "react";
-import { Block, parseMarkdownIntoBlocks } from "streamdown";
+import { Block } from "streamdown";
 import type { BlockProps, ExtraProps } from "streamdown";
 import { FADE_MS, proseStyles } from "../markdown/prose.stylex.ts";
 
@@ -52,9 +52,7 @@ export const FadeEnd = createContext<((node: HastElement | undefined) => void) |
   undefined,
 );
 
-export function findStreamingTail(markdown: string): number {
-  const blocks = parseMarkdownIntoBlocks(markdown);
-
+export function findStreamingTail(markdown: string, blocks: readonly string[]): number {
   if (blocks.length === 1 && FOOTNOTE.test(markdown)) return -1;
 
   return blocks.findLastIndex((block, index) => index === 0 || !BLANK.test(block));
