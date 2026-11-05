@@ -28,6 +28,7 @@ import { APP_ORIGINS } from "../contract/origins.ts";
 import { available } from "./capability.ts";
 import { SettingsDialog } from "./dialog.tsx";
 import { SettingsRow, SettingsSection, SwitchRow, TextRow } from "./rows.tsx";
+import { settingsStyles } from "./settings.stylex.ts";
 
 const UPDATE_CHANNEL = [
   { value: "stable", label: "Stable" },
@@ -127,7 +128,7 @@ function UpdateChannelSection({
             if (next !== null) change.mutate(next);
           }}
         >
-          <SelectTrigger aria-label="Update channel">
+          <SelectTrigger aria-label="Update channel" xstyle={settingsStyles.valueField}>
             <SelectValue placeholder={channel.isError ? "Unavailable" : "Loading…"} />
           </SelectTrigger>
           <SelectContent>

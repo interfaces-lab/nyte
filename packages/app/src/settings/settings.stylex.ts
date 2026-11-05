@@ -4,6 +4,7 @@ import { settings, sidebar } from "../theme/schema.stylex.ts";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 export const settingsStyles = create({
+  valueField: { width: settings.controlMaxWidth, maxWidth: "100%" },
   section: {
     display: { default: "flex", ":not(:has([data-settings-row]))": "none" },
   },

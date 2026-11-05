@@ -1,4 +1,4 @@
-import { media, radius, row } from "./styles/schema.stylex.ts";
+import { button, media, row, space } from "./styles/schema.stylex.ts";
 import { hairline } from "./styles/hairline.stylex.ts";
 import { NumberField as NumberFieldPrimitive } from "@base-ui/react/number-field";
 import { create, props } from "@stylexjs/stylex";
@@ -12,21 +12,21 @@ const styles = create({
   group: {
     position: "relative",
     display: "grid",
-    gridTemplateColumns: `${row.heightMd} 48px ${row.heightMd}`,
+    gridTemplateColumns: `${row.heightMd} minmax(0, 1fr) ${row.heightMd}`,
     boxSizing: "border-box",
-    width: "max-content",
+    width: `calc(2 * ${row.heightMd} + 2 * ${space.s6})`,
     minHeight: row.heightMd,
     overflow: "clip",
-    borderRadius: radius.control,
-    backgroundColor: role.bgElevated,
-    "--nyte-hairline-elevation": shadow.shadowSm,
+    borderRadius: button.radiusMd,
+    backgroundColor: { default: role.bgElevated, "[data-disabled]": role.fillTertiary },
+    "--nyte-hairline-elevation": {
+      default: null,
+      ":not([data-disabled])": shadow.shadowSm,
+    },
     outlineStyle: { default: "none", ":focus-within": "solid" },
     outlineWidth: 1,
     outlineColor: appearance.focusRing,
     outlineOffset: 0,
-  },
-  split: {
-    boxShadow: `inset -1px 0 0 0 ${role.strokeQuaternary}`,
   },
   button: {
     display: "grid",
@@ -61,13 +61,14 @@ const styles = create({
     borderRadius: 0,
     outlineStyle: "none",
     backgroundColor: "transparent",
-    color: role.contentSecondary,
+    color: { default: role.contentSecondary, "[data-disabled]": role.contentDisabled },
     fontFamily: "inherit",
     fontSize: {
-      default: type.fontSm,
-      "@media (pointer: coarse)": `max(16px, ${type.fontSm})`,
+      default: type.fontBase,
+      "@media (pointer: coarse)": `max(16px, ${type.fontBase})`,
     },
-    lineHeight: type.leadingSm,
+    lineHeight: type.leadingBase,
+    fontWeight: type.weightMedium,
     fontVariantNumeric: "tabular-nums",
     textAlign: "center",
     "::selection": {
@@ -107,7 +108,7 @@ export function NumberFieldDecrement({
   return (
     <NumberFieldPrimitive.Decrement
       data-slot="number-field-decrement"
-      {...mergeStyleProps(props(styles.button, styles.split, xstyle), className, style)}
+      {...mergeStyleProps(props(styles.button, xstyle), className, style)}
       {...rest}
     >
       {children}
@@ -124,7 +125,7 @@ export function NumberFieldInput({
   return (
     <NumberFieldPrimitive.Input
       data-slot="number-field-input"
-      {...mergeStyleProps(props(styles.value, styles.split, xstyle), className, style)}
+      {...mergeStyleProps(props(styles.value, hairline.inlineStart, xstyle), className, style)}
       {...rest}
     />
   );
@@ -143,7 +144,7 @@ export function NumberFieldIncrement({
   return (
     <NumberFieldPrimitive.Increment
       data-slot="number-field-increment"
-      {...mergeStyleProps(props(styles.button, xstyle), className, style)}
+      {...mergeStyleProps(props(styles.button, hairline.inlineStart, xstyle), className, style)}
       {...rest}
     >
       {children}

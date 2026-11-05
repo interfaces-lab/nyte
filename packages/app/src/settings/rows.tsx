@@ -178,6 +178,7 @@ export function SelectRow<T extends string>(
         }}
       >
         <SelectTrigger
+          xstyle={settingsStyles.valueField}
           aria-label={input.title}
           width={input.controlWidth === "wide" ? "wide" : undefined}
         >
@@ -215,7 +216,7 @@ export function NumberRow(
           if (next !== null) input.setting.set(next);
         }}
       >
-        <NumberFieldGroup>
+        <NumberFieldGroup xstyle={settingsStyles.valueField}>
           <NumberFieldDecrement />
           <NumberFieldInput aria-label={input.title} />
           <NumberFieldIncrement />

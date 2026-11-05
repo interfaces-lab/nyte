@@ -16,6 +16,7 @@ import {
 import { useState } from "react";
 import type { ReactElement } from "react";
 import { selectedFontOption, type FontOption, type FontSelectGroup } from "./font-select-groups.ts";
+import { settingsStyles } from "./settings.stylex.ts";
 
 const FONT_SELECT_COLLISION: NonNullable<AutocompleteContentProps["collisionAvoidance"]> = {
   side: "flip",
@@ -54,7 +55,7 @@ export function FontFamilySelect<T extends string>({
       }}
       onInputValueChange={setSearch}
     >
-      <AutocompleteTrigger aria-label={label}>
+      <AutocompleteTrigger aria-label={label} xstyle={settingsStyles.valueField}>
         <span style={{ fontFamily: selected?.fontFamily }}>{selected?.label ?? value}</span>
       </AutocompleteTrigger>
       <AutocompleteContent align="end" collisionAvoidance={FONT_SELECT_COLLISION}>
