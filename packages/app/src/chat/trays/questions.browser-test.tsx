@@ -4,7 +4,10 @@ import type { Configuration, SessionId, SessionView } from "@nyte-ai/sdk";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useLayoutEffect } from "react";
 import type { ReactElement } from "react";
+import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
+import { activeTab, tabPlace } from "../../tabs/model.ts";
+import { windowTabs } from "../../tabs/window-tabs.ts";
 import "../../theme/tokens.stylex.ts";
 import "../../theme/global.css";
 import { installScripted, scriptedConnection } from "../../../test/scripted-connection.ts";
@@ -454,6 +457,108 @@ async function lastAnswer(): Promise<readonly string[]> {
   return failures;
 }
 
+async function askers(): Promise<readonly string[]> {
+  const host = document.createElement("div");
+  host.style.width = "560px";
+  document.body.append(host);
+  const root = createRoot(host);
+  const origin = { title: "Tray review", sessionId: asId<"session">("tray-review") };
+
+  const cases = [
+    { origin: undefined, late: false, attribution: "Asked by this chat", continuation: undefined },
+    {
+      origin: undefined,
+      late: true,
+      attribution: "Asked by this chat",
+      continuation: "This chat kept going. You can still answer.",
+    },
+    { origin, late: false, attribution: "Asked by Open Tray review chat", continuation: undefined },
+    {
+      origin,
+      late: true,
+      attribution: "Asked by Open Tray review chat",
+      continuation: "Tray review kept going. You can still answer.",
+    },
+  ];
+
+  const failures: string[] = [];
+  windowTabs.start({ id: "question-askers", launch: undefined });
+  windowTabs.openChat(SESSION, "permanent");
+  const parent = activeTab(windowTabs.getSnapshot());
+
+  for (const theme of ["light", "dark"] as const) {
+    applyDisplayMode(theme);
+
+    for (const entry of cases) {
+      flushSync(() =>
+        root.render(
+          <QuestionDockContext
+            value={{
+              ...dock,
+              origin: entry.origin,
+              request: { ...dock.request, late: entry.late },
+            }}
+          >
+            <QuestionTray disabled={false} viewport={null} />
+          </QuestionDockContext>,
+        ),
+      );
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+
+      const descriptions = Array.from(
+        host.querySelectorAll("[data-slot='questionnaire-description']"),
+        (element) => element.textContent,
+      );
+
+      const expected = [
+        "Question",
+        entry.attribution,
+        ...(entry.continuation ? [entry.continuation] : []),
+      ];
+
+      if (JSON.stringify(descriptions) !== JSON.stringify(expected))
+        failures.push(
+          `${theme}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(descriptions)}`,
+        );
+
+      const opener = Array.from(host.querySelectorAll("button")).find(
+        (button) => button.textContent === "Open Tray review chat",
+      );
+
+      if (entry.origin === undefined) {
+        if (opener !== undefined) failures.push(`${theme}: this chat has a subagent action`);
+        continue;
+      }
+
+      if (opener === undefined) {
+        failures.push(`${theme}: the subagent's name cannot open its chat`);
+        continue;
+      }
+
+      await click(opener);
+      const state = windowTabs.getSnapshot();
+      const child = activeTab(state);
+      const place = tabPlace(child);
+
+      if (
+        place.kind !== "session" ||
+        place.sessionId !== origin.sessionId ||
+        state.tabs.indexOf(child) !== state.tabs.indexOf(parent) + 1 ||
+        child.view.kind !== "preview" ||
+        opener.type !== "button"
+      )
+        failures.push(`${theme}: the name did not open the child's chat next to its parent`);
+
+      windowTabs.dispatch({ kind: "close-tab", tabId: child.id });
+    }
+  }
+
+  root.unmount();
+  host.remove();
+
+  return failures;
+}
+
 export async function mount(): Promise<void> {
   const host = document.createElement("div");
   host.style.width = "560px";
@@ -487,7 +592,7 @@ export async function run(): Promise<string> {
       return `${theme}: the chevron's centre ${String(chevronCentre)} is off the label's ${String(labelCentre)}`;
   }
 
-  const failures = [...(await failedReplies()), ...(await lastAnswer())];
+  const failures = [...(await failedReplies()), ...(await lastAnswer()), ...(await askers())];
 
   return failures.length === 0 ? "passed" : failures.join("\n");
 }

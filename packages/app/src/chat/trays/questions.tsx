@@ -12,7 +12,10 @@ import {
   QuestionnaireItem,
   QuestionnaireTitle,
 } from "@nyte-ai/ui/questionnaire";
+import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
+import { windowTabs } from "../../tabs/window-tabs.ts";
+import { proseStyles } from "../markdown/prose.stylex.ts";
 import { trayStyles } from "../../theme/tray.stylex.ts";
 import { Tray, trayParts, useTrayRoot } from "./tray.tsx";
 import { QuestionDockContext } from "./questions-state.ts";
@@ -57,6 +60,7 @@ function QuestionCard({
   readonly availableHeight: number;
 }): ReactElement {
   const id = useId();
+  const origin = dock.origin;
   const [collapsed, setCollapsed] = useState(false);
   const blocked = disabled || dock.pending || dock.settled;
   const multiple = dock.field.multiple === true;
@@ -150,12 +154,25 @@ function QuestionCard({
         <QuestionnaireTitle render={<h2 />} id={`${id}-title`} aria-live="polite" aria-atomic>
           {dock.field.question}
         </QuestionnaireTitle>
-        {dock.origin !== undefined && (
-          <QuestionnaireDescription>Asked by {dock.origin}</QuestionnaireDescription>
-        )}
+        <QuestionnaireDescription>
+          Asked by{" "}
+          {origin === undefined ? (
+            "this chat"
+          ) : (
+            <Button
+              variant="inline"
+              type="button"
+              onClick={() => windowTabs.openChat(origin.sessionId, "next-to-parent")}
+            >
+              <span {...props(srOnly)}>Open </span>
+              <span {...props(proseStyles.webLink)}>{origin.title}</span>
+              <span {...props(srOnly)}> chat</span>
+            </Button>
+          )}
+        </QuestionnaireDescription>
         {dock.request.late && (
           <QuestionnaireDescription>
-            The agent kept going. Your answer still reaches it.
+            {origin?.title ?? "This chat"} kept going. You can still answer.
           </QuestionnaireDescription>
         )}
         <QuestionnaireChoices
