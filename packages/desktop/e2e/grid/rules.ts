@@ -71,7 +71,8 @@ export type BoxFact =
   | "after-text"
   | "background"
   | "auto-table-column"
-  | "scrolled-overflow";
+  | "scrolled-overflow"
+  | "h-scroller";
 
 export type ElementMatch =
   | { readonly by: "selector"; readonly selector: string }
@@ -231,7 +232,7 @@ export const GRID_RULES = {
         name: "scrolled-overflow",
         match: { by: "fact", fact: "scrolled-overflow" },
         reason:
-          "A box whose end passes the clip of an overflowing horizontal scroller is scrolled content: its end isn't on screen, so it can't sit on an end rail. Start rails still apply.",
+          "Everything inside a horizontally scrolling container, its table box included, is scrolled content: the region's end rail belongs to the column, not to what scrolls inside it. Start rails still apply.",
       },
     ],
   },
@@ -524,7 +525,13 @@ export const REGIONS: readonly RegionSpec[] = [
 /** A box or line that faces another one across regions. */
 export type Pick =
   | { readonly kind: "first-row"; readonly region: RegionName }
-  | { readonly kind: "box"; readonly name: string; readonly selector: string }
+  | {
+      readonly kind: "box";
+      readonly name: string;
+      readonly selector: string;
+      /** Keep only matches in a chat pane whose bottom is on the window's bottom edge; each one is compared. */
+      readonly within?: "bottom-edge-pane";
+    }
   | { readonly kind: "rail"; readonly region: RegionName; readonly rail: string };
 
 export interface Alignment {
@@ -558,7 +565,12 @@ export const ALIGNMENTS: readonly Alignment[] = [
       name: "the sidebar footer",
       selector: 'aside:has(> nav[aria-label="Sessions and workspaces"]) > div:last-child',
     },
-    b: { kind: "box", name: "the composer footer", selector: 'form[aria-label="Message"] ~ div' },
+    b: {
+      kind: "box",
+      name: "the composer footer",
+      selector: 'form[aria-label="Message"] ~ div',
+      within: "bottom-edge-pane",
+    },
     why: "The sidebar footer and the composer footer close the window on one baseline.",
   },
 ];

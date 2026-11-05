@@ -112,7 +112,15 @@ function planFor(index: SourceIndex): Plan {
       ),
     ),
     picks: ALIGNMENTS.flatMap((alignment) => [alignment.a, alignment.b]).flatMap((pick) =>
-      pick.kind === "box" ? [{ name: pick.selector, selector: pick.selector }] : [],
+      pick.kind === "box"
+        ? [
+            {
+              name: pick.selector,
+              selector: pick.selector,
+              bottomEdgePane: pick.within === "bottom-edge-pane",
+            },
+          ]
+        : [],
     ),
     ends: TRANSCRIPT_END,
   };

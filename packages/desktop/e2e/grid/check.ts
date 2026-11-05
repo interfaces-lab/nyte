@@ -413,6 +413,13 @@ export function check(snapshot: Snapshot): CheckResult {
     });
   }
 
+  function insideScroller(box: SnapBox): boolean {
+    for (let current = box.parent; current !== null; current = boxes[current]?.parent ?? null)
+      if (boxes[current]?.facts.includes("h-scroller") === true) return true;
+
+    return false;
+  }
+
   function railEdge(box: SnapBox): boolean {
     if (box.painted && !box.svg) return true;
 
@@ -735,10 +742,13 @@ export function check(snapshot: Snapshot): CheckResult {
       const textFacts: BoxFact[] =
         candidate.text === null || candidate.text.align === "start" ? [] : [candidate.text.align];
 
+      const scrolled: BoxFact[] =
+        candidate.from === "end" && insideScroller(candidate.box) ? ["scrolled-overflow"] : [];
+
       if (
         exempt("rail", candidate.box, {
-          extra: textFacts,
-          ignore: candidate.from === "end" ? ["end-aligned"] : ["scrolled-overflow"],
+          extra: [...textFacts, ...scrolled],
+          ignore: candidate.from === "end" ? ["end-aligned"] : [],
         })
       )
         continue;
@@ -770,20 +780,24 @@ export function check(snapshot: Snapshot): CheckResult {
 
   function checkAlignments(): void {
     for (const alignment of ALIGNMENTS) {
-      const a = pickValue(alignment.a, alignment.axis);
-      const b = pickValue(alignment.b, alignment.axis);
+      const a = pickValues(alignment.a, alignment.axis)[0];
 
-      if (a === null || b === null || near(a.value, b.value) || exempt("align", a.box)) continue;
-      add({
-        rule: "align",
-        detail: alignment.name,
-        box: a.box.id,
-        property: alignment.axis === "x" ? "left" : "baseline",
-        value: px(a.value),
-        expected: `${px(b.value)}, ${alignment.name}: ${b.label}`,
-        target: { axis: alignment.axis, at: b.value },
-        cause: { kind: "none", reason: `${alignment.why} Compared with ${b.label}.` },
-      });
+      if (a === undefined || exempt("align", a.box)) continue;
+
+      for (const b of pickValues(alignment.b, alignment.axis)) {
+        if (near(a.value, b.value)) continue;
+        add({
+          rule: "align",
+          detail: alignment.name,
+          group: `align|${alignment.name}|${String(a.box.id)}|${String(b.box.id)}`,
+          box: a.box.id,
+          property: alignment.axis === "x" ? "left" : "baseline",
+          value: px(a.value),
+          expected: `${px(b.value)}, ${alignment.name}: ${b.label}`,
+          target: { axis: alignment.axis, at: b.value },
+          cause: { kind: "none", reason: `${alignment.why} Compared with ${b.label}.` },
+        });
+      }
     }
   }
 
@@ -818,16 +832,22 @@ export function check(snapshot: Snapshot): CheckResult {
     }
   }
 
-  function pickValue(
+  function pickValues(
     pick: Pick,
     axis: "x" | "y",
+  ): { value: number; box: SnapBox; label: string }[] {
+    if (pick.kind === "box")
+      return boxesByPick(pick.selector).flatMap((box) => lineValue(box, axis, pick.name) ?? []);
+
+    const value = pickValue(pick, axis);
+
+    return value === null ? [] : [value];
+  }
+
+  function pickValue(
+    pick: Exclude<Pick, { kind: "box" }>,
+    axis: "x" | "y",
   ): { value: number; box: SnapBox; label: string } | null {
-    if (pick.kind === "box") {
-      const box = boxByPick(pick.selector);
-
-      return box === undefined ? null : lineValue(box, axis, pick.name);
-    }
-
     const region = snapshot.regions.find((entry) => entry.name === pick.region);
 
     if (region === undefined) return null;
@@ -866,10 +886,10 @@ export function check(snapshot: Snapshot): CheckResult {
     return text === undefined ? null : { value: text.baseline, box, label };
   }
 
-  function boxByPick(selector: string): SnapBox | undefined {
-    const id = snapshot.picks.find((pick) => pick.name === selector)?.box;
+  function boxesByPick(selector: string): SnapBox[] {
+    const ids = snapshot.picks.find((pick) => pick.name === selector)?.boxes ?? [];
 
-    return id === undefined || id === null ? undefined : boxes[id];
+    return ids.flatMap((id) => boxes[id] ?? []);
   }
 }
 

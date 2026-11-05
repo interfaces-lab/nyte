@@ -22,7 +22,11 @@ export interface PlannedRegion {
 export interface Plan {
   readonly regions: readonly PlannedRegion[];
   readonly exceptions: readonly { readonly name: string; readonly selector: string }[];
-  readonly picks: readonly { readonly name: string; readonly selector: string }[];
+  readonly picks: readonly {
+    readonly name: string;
+    readonly selector: string;
+    readonly bottomEdgePane: boolean;
+  }[];
   readonly ends: {
     readonly pane: string;
     readonly viewport: string;
@@ -137,7 +141,7 @@ export interface Snapshot {
   readonly regions: readonly SnapRegion[];
   readonly boxes: readonly SnapBox[];
   readonly texts: readonly SnapText[];
-  readonly picks: readonly { readonly name: string; readonly box: number | null }[];
+  readonly picks: readonly { readonly name: string; readonly boxes: readonly number[] }[];
   readonly ends: readonly PaneEnd[];
 }
 
@@ -441,24 +445,6 @@ export function collect(plan: Plan): Snapshot {
     );
   };
 
-  const pastScrollClip = (node: Element, rect: DOMRect): boolean => {
-    for (let current = node.parentElement; current !== null; current = current.parentElement) {
-      const overflow = getComputedStyle(current).overflowX;
-
-      if (
-        (overflow === "auto" || overflow === "scroll") &&
-        current.scrollWidth > current.clientWidth
-      ) {
-        const clip =
-          current.getBoundingClientRect().left + current.clientLeft + current.clientWidth;
-
-        return rect.right > clip + 0.01;
-      }
-    }
-
-    return false;
-  };
-
   const visibleIn = (
     rect: {
       left: number;
@@ -663,7 +649,11 @@ export function collect(plan: Plan): Snapshot {
     )
       facts.push("auto-table-column");
 
-    if (pastScrollClip(node, rect)) facts.push("scrolled-overflow");
+    if (
+      (style.overflowX === "auto" || style.overflowX === "scroll") &&
+      node.scrollWidth > node.clientWidth
+    )
+      facts.push("h-scroller");
 
     const visible =
       visibleIn(rect, clipFor(node.parentElement)) &&
@@ -829,12 +819,30 @@ export function collect(plan: Plan): Snapshot {
     };
   });
 
+  const paneBottoms = [...document.querySelectorAll(plan.ends.pane)].flatMap((pane) =>
+    boxes[ids.get(pane) ?? -1]?.visible === true
+      ? [{ pane, bottom: pane.getBoundingClientRect().bottom }]
+      : [],
+  );
+
+  const lowest = Math.max(...paneBottoms.map((entry) => entry.bottom));
+
   const picks = plan.picks.map((pick) => {
-    const found = [...document.querySelectorAll(pick.selector)].find(
-      (element) => boxes[ids.get(element) ?? -1]?.visible === true,
+    const found = [...document.querySelectorAll(pick.selector)].filter(
+      (element) =>
+        boxes[ids.get(element) ?? -1]?.visible === true &&
+        (!pick.bottomEdgePane ||
+          paneBottoms.some(
+            (entry) => entry.bottom >= lowest - 0.5 && entry.pane.contains(element),
+          )),
     );
 
-    return { name: pick.name, box: found === undefined ? null : (ids.get(found) ?? null) };
+    return {
+      name: pick.name,
+      boxes: (pick.bottomEdgePane ? found : found.slice(0, 1)).flatMap(
+        (element) => ids.get(element) ?? [],
+      ),
+    };
   });
 
   const ends = [...document.querySelectorAll(plan.ends.pane)].flatMap((pane): PaneEnd[] => {
