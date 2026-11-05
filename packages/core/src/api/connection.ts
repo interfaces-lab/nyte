@@ -17,7 +17,7 @@ import type {
 import type { Kernel } from "../contract/kernel.ts";
 import type { GitHubAccountApi, Workspace } from "../contract/workspace.ts";
 import { advance, cover, repair } from "../drive/execution.ts";
-import { pause, resume } from "../drive/pause.ts";
+import { pause, resume } from "../engine/pause.ts";
 import { createPrincipals, gate, gated } from "../engine/principals.ts";
 import { createWorkspaces, workspaceHandle } from "../env/workspaces.ts";
 import { createProjects, projectHandle } from "./projects.ts";

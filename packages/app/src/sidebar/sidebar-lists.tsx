@@ -456,14 +456,15 @@ export function ProjectsSection({
         projects.map((project) => (
           <Row
             key={project.id}
+            interactive
             revealActions
-            selected={project.id === selected}
             xstyle={[
               styles.rowSurface,
               styles.workspaceRow,
               project.id === selected && styles.rowSelected,
             ]}
           >
+            {project.id === selected && <Row.Backdrop xstyle={styles.sessionSelection} />}
             <Row.Primary
               xstyle={styles.workspacePrimary}
               aria-current={project.id === selected ? "page" : undefined}

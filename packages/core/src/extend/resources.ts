@@ -21,6 +21,7 @@ import type {
 } from "../contract/workspace.ts";
 import { classifyFileSupport, readWorkspace } from "../env/environment.ts";
 import { projectTrust, WORKSPACE_TRUST } from "../env/trust.ts";
+import { dropScans } from "../env/workspaces.ts";
 import { kvRef } from "../store/refs.ts";
 import { readKv, requireSession } from "../store/session.ts";
 import { contextFile, contextFilter, KEEP_ALL, KEEP_NONE } from "./context-filter.ts";
@@ -100,16 +101,6 @@ export async function scanResources(kernel: Kernel, session: SessionId): Promise
   );
 
   return entry.resources;
-}
-
-/** Drops the cached scans `chosen` picks (every one by default), so their sessions scan again; the watches stay. */
-export function dropScans(
-  kernel: Kernel,
-  chosen: (session: SessionId, entry: ScanEntry) => boolean = () => true,
-): void {
-  const table = kernel.workspaceState.scans;
-
-  for (const [session, entry] of table) if (chosen(session, entry)) table.delete(session);
 }
 
 /** Drops the scans of the sessions `chosen` picks (every one by default) and takes those sessions off the watches, stopping each watch no session is left on. */

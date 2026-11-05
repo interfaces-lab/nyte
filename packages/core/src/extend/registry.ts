@@ -41,7 +41,7 @@ import { attempt, load, MAIN, put, readRefExpectation, STALE } from "../store/se
 import { callable } from "../util/callable.ts";
 import { convertJsonSchema } from "../util/json-schema.ts";
 import { stepPluginApi } from "./plugin-api.ts";
-import { settingInfos } from "./setting-layers.ts";
+import { settingInfos } from "./setting-definitions.ts";
 
 type Derive<T> = (draft: RegistryDraft<T>, siblings: Registries<"core">) => void;
 

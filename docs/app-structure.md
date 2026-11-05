@@ -1,6 +1,6 @@
 # App structure
 
-`packages/app/src` is the Nyte interface. Each folder owns one concept. A folder may import folders in its own layer or below, never above, and `pnpm layers` fails otherwise. `LAYERS` in `scripts/check-layers.mjs` sets the order, lowest first. Add a new folder there and to the table below. Tests sit beside the file they cover.
+`packages/app/src` is the Nyte interface. Each folder owns one concept. A folder may import folders in its own layer or below, never above, and `pnpm layers` fails otherwise. The app's entry in `scripts/check-layers.mjs` sets the order, lowest first. Add a new folder there and to the table below. Tests sit beside the file they cover.
 
 ## Folders
 

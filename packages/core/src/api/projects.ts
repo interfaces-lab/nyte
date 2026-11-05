@@ -8,7 +8,7 @@ import { commit } from "../fold/commit.ts";
 import { PROJECTS, projectRef, workspaceRef } from "../store/refs.ts";
 import { attempt, load, put, readSession, STALE } from "../store/session.ts";
 import type { Found } from "../store/session.ts";
-import { dropScans } from "../extend/resources.ts";
+import { dropScans } from "../env/workspaces.ts";
 
 export function createProjects(kernel: Kernel): Projects {
   return {

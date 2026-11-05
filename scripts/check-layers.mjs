@@ -1,7 +1,9 @@
 /**
- * `pnpm layers` fails when a folder of packages/app/src imports a folder in a higher layer.
- * Type-only imports count too: the layers say where a reader finds a concept, not only what
- * loads at run time. Tests and fixtures are left out so they can drive any layer.
+ * `pnpm layers` fails when a folder of a layered source tree imports a folder in a higher layer.
+ * Each entry of `ENTRIES` names a tree by its `source`, lists its `layers` and the doc that says
+ * what each folder owns. Type-only imports count too: the layers say where a reader finds a
+ * concept, not only what loads at run time. Tests and fixtures are left out so they can drive any
+ * layer.
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
@@ -12,126 +14,162 @@ import { API } from "@typescript/native/sync";
 
 const root = resolve(import.meta.dirname, "..");
 
-const source = join(root, "packages/app/src");
-
-/** Lowest first. docs/app-structure.md says what each folder owns. */
-const LAYERS = [
-  ["contract"],
-  ["lib", "data"],
-  ["theme", "preferences", "components", "chats"],
-  ["diff", "references"],
-  [
-    "chat",
-    "canvas",
-    "workbench",
-    "sidebar",
-    "settings",
-    "environments",
-    "customize",
-    "account",
-    "panes",
-    "projects",
-    "tabs",
-    "window",
-  ],
-  ["commands"],
-  ["shell"],
-  ["boot", "web", "app.tsx", "index.ts"],
+/**
+ * `layers` is lowest first; a folder may import its own layer or below. Type-only imports in a
+ * `typeReach` file may reach a higher layer; its value imports may not. `unplaced` names files
+ * and folders that belong to no layer.
+ */
+const ENTRIES = [
+  {
+    source: "packages/app/src",
+    doc: "docs/app-structure.md",
+    layers: [
+      ["contract"],
+      ["lib", "data"],
+      ["theme", "preferences", "components", "chats"],
+      ["diff", "references"],
+      [
+        "chat",
+        "canvas",
+        "workbench",
+        "sidebar",
+        "settings",
+        "environments",
+        "customize",
+        "account",
+        "panes",
+        "projects",
+        "tabs",
+        "window",
+      ],
+      ["commands"],
+      ["shell"],
+      ["boot", "web", "app.tsx", "index.ts"],
+    ],
+    typeReach: new Map([
+      [
+        "lib/deferred-entries.ts",
+        "The deferred-chunk manifest names each entry's runtime type; the entries load later by URL.",
+      ],
+    ]),
+    unplaced: new Set(["vite-env.d.ts"]),
+  },
+  {
+    source: "packages/core/src",
+    doc: "docs/core-structure.md",
+    layers: [
+      ["util"],
+      ["contract"],
+      ["store"],
+      ["fold"],
+      ["engine"],
+      ["env"],
+      ["extend"],
+      ["builtins"],
+      ["agent"],
+      ["drive"],
+      ["api"],
+      ["compose.ts", "harness.ts", "index.ts", "server.ts", "store.ts", "testing.ts"],
+    ],
+    typeReach: new Map(),
+    unplaced: new Set(),
+  },
 ];
-
-/** Type-only imports in these files may reach a higher layer; their value imports may not. */
-const TYPE_REACH = new Map([
-  [
-    "lib/deferred-entries.ts",
-    "The deferred-chunk manifest names each entry's runtime type; the entries load later by URL.",
-  ],
-]);
-
-const UNPLACED = new Set(["vite-env.d.ts"]);
 
 const TEST = /\.(?:test|browser-test)\.tsx?$|\.fixtures?\.ts$|\/fixtures\//;
 
 const report = process.argv.includes("--report");
 
-const layers = new Map(LAYERS.flatMap((names, index) => names.map((name) => [name, index])));
-
-const files = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard"], {
-  cwd: source,
-  encoding: "utf8",
-})
-  .split("\n")
-  .filter((path) => /\.tsx?$/.test(path) && !TEST.test(path) && !UNPLACED.has(path))
-  .map((path) => join(source, path))
-  .filter((path) => existsSync(path));
-
-function readFolder(file) {
-  return relative(source, file).split("/")[0];
-}
-
 const api = new API();
 
-const problems = [];
+let failed = false;
 
-for (const file of files) {
-  const folder = readFolder(file);
+for (const entry of ENTRIES) {
+  const source = join(root, entry.source);
 
-  if (!layers.has(folder)) {
-    problems.push(
-      `${relative(root, file)}: ${folder} has no layer; add it to LAYERS in scripts/check-layers.mjs`,
-    );
-    continue;
+  const layers = new Map(
+    entry.layers.flatMap((names, index) => names.map((name) => [name, index])),
+  );
+
+  const files = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard"], {
+    cwd: source,
+    encoding: "utf8",
+  })
+    .split("\n")
+    .filter((path) => /\.tsx?$/.test(path) && !TEST.test(path) && !entry.unplaced.has(path))
+    .map((path) => join(source, path))
+    .filter((path) => existsSync(path));
+
+  const readFolder = (file) => relative(source, file).split("/")[0];
+
+  const problems = [];
+
+  for (const file of files) {
+    const folder = readFolder(file);
+
+    if (!layers.has(folder)) {
+      problems.push(
+        `${relative(root, file)}: ${folder} has no layer; add it to the layers of ${entry.source} in scripts/check-layers.mjs`,
+      );
+      continue;
+    }
+
+    using retained = api.createSourceFile(file, readFileSync(file, "utf8"), {
+      scriptKind: file.endsWith("x") ? ScriptKind.TSX : ScriptKind.TS,
+    });
+
+    const parsed = retained.sourceFile;
+
+    const typesReach = entry.typeReach.has(relative(source, file));
+
+    for (const statement of parsed.statements) {
+      if (!isImportDeclaration(statement) && !isExportDeclaration(statement)) continue;
+
+      const specifier = statement.moduleSpecifier?.text;
+
+      if (specifier === undefined || !specifier.startsWith(".")) continue;
+
+      const target = resolve(dirname(file), specifier);
+
+      if (!target.startsWith(`${source}/`)) continue;
+
+      const targetFolder = readFolder(target);
+
+      if (targetFolder === folder || entry.unplaced.has(targetFolder)) continue;
+
+      const targetLayer = layers.get(targetFolder);
+
+      if (targetLayer !== undefined && targetLayer <= layers.get(folder)) continue;
+
+      const typeOnly = isImportDeclaration(statement)
+        ? statement.importClause?.phaseModifier === SyntaxKind.TypeKeyword
+        : statement.isTypeOnly;
+
+      if (typesReach && typeOnly) continue;
+
+      const line = parsed.getLineAndCharacterOfPosition(statement.getStart(parsed)).line + 1;
+
+      problems.push(
+        targetLayer === undefined
+          ? `${relative(root, file)}:${line} imports ${targetFolder}, which has no layer`
+          : `${relative(root, file)}:${line} imports ${relative(root, target)}: ${folder} (layer ${layers.get(folder)}) is below ${targetFolder} (layer ${targetLayer})`,
+      );
+    }
   }
 
-  using retained = api.createSourceFile(file, readFileSync(file, "utf8"), {
-    scriptKind: file.endsWith("x") ? ScriptKind.TSX : ScriptKind.TS,
-  });
+  for (const problem of problems.toSorted()) process.stdout.write(`${problem}\n`);
 
-  const parsed = retained.sourceFile;
+  process.stdout.write(
+    `${entry.source}: ${files.length} files, ${problems.length} layer violations.\n`,
+  );
 
-  const typesReach = TYPE_REACH.has(relative(source, file));
+  if (problems.length === 0) continue;
 
-  for (const statement of parsed.statements) {
-    if (!isImportDeclaration(statement) && !isExportDeclaration(statement)) continue;
+  process.stdout.write(`The layer rules and what each folder owns: ${entry.doc}\n`);
 
-    const specifier = statement.moduleSpecifier?.text;
-
-    if (specifier === undefined || !specifier.startsWith(".")) continue;
-
-    const target = resolve(dirname(file), specifier);
-
-    if (!target.startsWith(`${source}/`)) continue;
-
-    const targetFolder = readFolder(target);
-
-    if (targetFolder === folder || UNPLACED.has(targetFolder)) continue;
-
-    const targetLayer = layers.get(targetFolder);
-
-    if (targetLayer !== undefined && targetLayer <= layers.get(folder)) continue;
-
-    const typeOnly = isImportDeclaration(statement)
-      ? statement.importClause?.phaseModifier === SyntaxKind.TypeKeyword
-      : statement.isTypeOnly;
-
-    if (typesReach && typeOnly) continue;
-
-    const line = parsed.getLineAndCharacterOfPosition(statement.getStart(parsed)).line + 1;
-
-    problems.push(
-      targetLayer === undefined
-        ? `${relative(root, file)}:${line} imports ${targetFolder}, which has no layer`
-        : `${relative(root, file)}:${line} imports ${relative(root, target)}: ${folder} (layer ${layers.get(folder)}) is below ${targetFolder} (layer ${targetLayer})`,
-    );
-  }
+  failed = true;
 }
 
 api.close();
 
-for (const problem of problems.toSorted()) process.stdout.write(`${problem}\n`);
-
-process.stdout.write(`${files.length} files, ${problems.length} layer violations.\n`);
-
-if (problems.length > 0)
-  process.stdout.write("The layer rules and what each folder owns: docs/app-structure.md\n");
-
-process.exitCode = problems.length > 0 && !report ? 1 : 0;
+process.exitCode = failed && !report ? 1 : 0;

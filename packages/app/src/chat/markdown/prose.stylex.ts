@@ -200,6 +200,17 @@ export const proseStyles = create({
     whiteSpace: "pre",
   },
   imageLabel: { color: role.contentSecondary },
+  image: {
+    display: "block",
+    maxWidth: "100%",
+    height: "auto",
+    marginBlock: space.s2,
+    borderRadius: radius.control,
+    outlineWidth: 1,
+    outlineStyle: "solid",
+    outlineColor: role.strokeTertiary,
+    outlineOffset: -1,
+  },
   chunk: {
     animationName: { default: chunkFadeIn, "@media (prefers-reduced-motion: reduce)": "none" },
     animationDuration: `var(--sd-duration, ${FADE_MS}ms)`,
