@@ -5,6 +5,8 @@ export const shell = defineConsts({
   titlebarHeight: "var(--nyte-titlebar-height)",
   trafficLightInset: "var(--nyte-titlebar-traffic-light-inset)",
   cardInset: "var(--nyte-shell-card-inset)",
+  /** Between the titlebar and the first row of the sidebar and of the workbench rail, so they read as one line. */
+  regionPaddingBlockStart: "var(--nyte-shell-region-padding-block-start)",
   cardRadius: "var(--nyte-shell-card-radius)",
 });
 

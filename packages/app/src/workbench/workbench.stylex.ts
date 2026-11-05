@@ -1,6 +1,6 @@
 import { create } from "@stylexjs/stylex";
 import { layer, media, radius, row, space, target } from "@nyte-ai/ui/styles/schema.stylex";
-import { workbench } from "../theme/schema.stylex.ts";
+import { shell, workbench } from "../theme/schema.stylex.ts";
 import { appearance, motion, role, shadow, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 export const workbenchStyles = create({
@@ -56,7 +56,8 @@ export const workbenchStyles = create({
     gap: workbench.railGap,
     width: "100%",
     minWidth: 0,
-    paddingBlock: space.s1,
+    paddingBlockStart: shell.regionPaddingBlockStart,
+    paddingBlockEnd: space.s1,
     paddingInline: space.s2,
     color: role.contentSecondary,
   },

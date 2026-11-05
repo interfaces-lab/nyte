@@ -7,6 +7,7 @@ export const layout = defineVars({
   "--nyte-titlebar-height": "35px",
   "--nyte-titlebar-traffic-light-inset": "calc(72px / var(--nyte-window-zoom, 1))",
   "--nyte-shell-card-inset": "8px",
+  "--nyte-shell-region-padding-block-start": "6px",
   "--nyte-shell-card-radius": "6px",
   "--nyte-tab-min-width": "72px",
   "--nyte-tab-max-width": "280px",

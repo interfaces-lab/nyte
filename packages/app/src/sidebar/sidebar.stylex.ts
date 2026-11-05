@@ -1,6 +1,6 @@
 import { media, radius, space, target } from "@nyte-ai/ui/styles/schema.stylex";
 import { create } from "@stylexjs/stylex";
-import { sidebar } from "../theme/schema.stylex.ts";
+import { shell, sidebar } from "../theme/schema.stylex.ts";
 import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 export const sidebarStyles = create({
@@ -39,7 +39,7 @@ export const sidebarStyles = create({
     flexDirection: "column",
     gap: sidebar.listGap,
     paddingInline: sidebar.gutter,
-    paddingBlockStart: space.s1_5,
+    paddingBlockStart: shell.regionPaddingBlockStart,
   },
   navRow: {
     minHeight: sidebar.rowHeight,
