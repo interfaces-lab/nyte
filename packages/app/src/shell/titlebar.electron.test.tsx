@@ -116,6 +116,15 @@ async function geometry() {
   });
 }
 
+/**
+ * The window buttons are 14pt tall from macOS 26 and 16pt before. Main places them from its own
+ * copy of the titlebar height, so centring them on the header within half a point at every zoom
+ * fails when that copy and `--nyte-titlebar-height` differ.
+ */
+function windowButtonHeight(macOS: string): number {
+  return Number.parseFloat(macOS) >= 26 ? 14 : 16;
+}
+
 async function setZoom(zoom: number): Promise<void> {
   await application.evaluate(({ BrowserWindow }, factor) => {
     const window = BrowserWindow.getAllWindows()[0];
@@ -168,12 +177,17 @@ test("titlebar controls and workbench stay aligned at every zoom and on every di
 
           if (!window) throw new Error("Missing Nyte window");
 
-          return window.getWindowButtonPosition();
+          return { position: window.getWindowButtonPosition(), macOS: process.getSystemVersion() };
         });
 
-        assert.ok(native);
+        assert.ok(native.position);
         assert.ok(measured.toggle.left * zoom >= 71.9);
-        assert.ok(Math.abs(measured.header.centerY * zoom - (native.y + 7.5)) <= 1);
+        assert.ok(
+          Math.abs(
+            measured.header.centerY * zoom -
+              (native.position.y + windowButtonHeight(native.macOS) / 2),
+          ) <= 0.5,
+        );
       }
     }
   }
