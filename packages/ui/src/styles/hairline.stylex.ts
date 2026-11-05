@@ -56,6 +56,26 @@ export const hairline = create({
         "linear-gradient(CanvasText, CanvasText) 1 / 0 calc(var(--_hairline-inline-end) * max(0, var(--_hairline-dir))) var(--_hairline-block-end) calc(var(--_hairline-inline-end) * max(0, -1 * var(--_hairline-dir))) / 0 stretch",
     },
   },
+  /**
+   * An edge on all four sides, drawn on the box's `::after` above its content, for a box whose own
+   * outline is taken (a focus ring) or whose ring must sit over its content (a popup). Under forced
+   * colors the pseudo-element gets a 1px border, which takes none of the box's layout. The box must
+   * be positioned and must not use its own `::after`; the elevation draws on the box itself.
+   */
+  ringAfter: {
+    boxShadow: ELEVATION,
+    "::after": {
+      content: '""',
+      position: "absolute",
+      inset: 0,
+      borderRadius: "inherit",
+      boxShadow: `inset 0 0 0 1px ${role.strokeQuaternary}`,
+      borderWidth: { default: 0, [media.forcedColors]: 1 },
+      borderStyle: "solid",
+      borderColor: { default: "transparent", [media.forcedColors]: "CanvasText" },
+      pointerEvents: "none",
+    },
+  },
   /** An edge on all four sides, following the box's radius. */
   ring: {
     boxShadow: `${ELEVATION}, inset 0 0 0 1px ${role.strokeQuaternary}`,

@@ -1,14 +1,15 @@
 import { radius } from "./schema.stylex.ts";
 import { create } from "@stylexjs/stylex";
+import { hairline } from "./hairline.stylex.ts";
 import { appearance, role, shadow } from "./vars.stylex.ts";
 
-export const floatingSurfaceStyles = create({
+const surface = create({
   material: {
     backgroundColor: role.popupMaterial,
     backdropFilter: appearance.popupMaterialFilter,
   },
   modalPopup: {
-    boxShadow: shadow.shadowXl,
+    "--nyte-hairline-elevation": shadow.shadowXl,
   },
   popup: {
     boxSizing: "border-box",
@@ -16,14 +17,13 @@ export const floatingSurfaceStyles = create({
     borderRadius: radius.surface,
     backgroundColor: role.popupMaterial,
     backdropFilter: appearance.popupMaterialFilter,
-    boxShadow: shadow.shadowLg,
-    "::after": {
-      content: '""',
-      position: "absolute",
-      inset: 0,
-      borderRadius: "inherit",
-      boxShadow: `inset 0 0 0 1px ${role.strokeQuaternary}`,
-      pointerEvents: "none",
-    },
+    "--nyte-hairline-elevation": shadow.shadowLg,
   },
 });
+
+/** The raised surface every popup shares: material, radius, `shadowLg` and the hairline frame. */
+export const floatingSurfaceStyles = {
+  material: surface.material,
+  modalPopup: surface.modalPopup,
+  popup: [surface.popup, hairline.ringAfter],
+} as const;

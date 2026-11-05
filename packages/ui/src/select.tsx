@@ -2,6 +2,7 @@ import { Select as SelectPrimitive } from "@base-ui/react/select";
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 
+import { hairline } from "./styles/hairline.stylex.ts";
 import { layer, menu, row } from "./styles/schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
 import type { Restyle } from "./styles/contracts.ts";
@@ -35,15 +36,7 @@ const styles = create({
     outline: "none",
     backgroundColor: role.popupMaterial,
     backdropFilter: appearance.popupMaterialFilter,
-    boxShadow: shadow.shadowLg,
-    "::after": {
-      content: '""',
-      position: "absolute",
-      inset: 0,
-      borderRadius: "inherit",
-      boxShadow: `inset 0 0 0 1px ${role.strokeQuaternary}`,
-      pointerEvents: "none",
-    },
+    "--nyte-hairline-elevation": shadow.shadowLg,
     color: role.contentPrimary,
     transformOrigin: "var(--transform-origin)",
     opacity: { default: 1, "[data-starting-style]": 0, "[data-ending-style]": 0 },
@@ -158,7 +151,12 @@ export function SelectContent({
         <SelectPrimitive.Popup
           data-slot="select-content"
           {...mergeStyleProps(
-            props(tint !== undefined && surfaceTheme[tint], styles.popup, xstyle),
+            props(
+              tint !== undefined && surfaceTheme[tint],
+              styles.popup,
+              hairline.ringAfter,
+              xstyle,
+            ),
             className,
             style,
           )}
