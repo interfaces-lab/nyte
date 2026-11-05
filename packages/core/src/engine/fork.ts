@@ -15,6 +15,7 @@ import type { Kernel } from "../contract/kernel.ts";
 import type { HeadRecord, SeenRecord, SessionRecord } from "../contract/records.ts";
 import type { StoreConnection } from "../contract/store.ts";
 import { commit } from "../fold/commit.ts";
+import { walkCommitPath } from "../fold/paths.ts";
 import { headRef, partRef, promptRef, seenRef, sessionRef } from "../store/refs.ts";
 import {
   attempt,
@@ -25,7 +26,6 @@ import {
   sessionEvent,
   STALE,
   toCommitObjectId,
-  walkCommitPath,
 } from "../store/session.ts";
 
 const LOG_PAGE = 256;

@@ -42,6 +42,7 @@ import type { PartRecord } from "../contract/records.ts";
 import { resolveHeadConfiguration } from "../engine/contributions.ts";
 import { modelInfo } from "../extend/models.ts";
 import { commit } from "../fold/commit.ts";
+import { walkCommitPath } from "../fold/paths.ts";
 import { withFold } from "../fold/reads.ts";
 import { failedParts, settling } from "../store/parts.ts";
 import { headRef, partRef, runRef, sessionRef } from "../store/refs.ts";
@@ -55,7 +56,6 @@ import {
   STALE,
   START,
   toCommitObjectId,
-  walkCommitPath,
 } from "../store/session.ts";
 import type { Tip } from "../store/session.ts";
 import { dev } from "../util/dev-log.ts";

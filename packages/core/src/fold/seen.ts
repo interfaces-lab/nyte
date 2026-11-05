@@ -10,9 +10,9 @@ import {
   readPositionCommit,
   readRefExpectation,
   STALE,
-  walkCommitPath,
 } from "../store/session.ts";
 import { commit } from "./commit.ts";
+import { walkCommitPath } from "./paths.ts";
 import { withFold } from "./reads.ts";
 
 export async function advanceSeen(

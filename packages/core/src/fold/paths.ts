@@ -1,7 +1,8 @@
-import type { HeadName, Message } from "@nyte-ai/schema";
+import type { CommitId, HeadName, Message } from "@nyte-ai/schema";
 import { INDEX } from "../contract/fold.ts";
 import type { Draft, FoldState, Path, Ring, Table } from "../contract/fold.ts";
-import { readPositionCommit, walkCommitPath } from "../store/session.ts";
+import type { CommitRecord } from "../contract/records.ts";
+import { readPositionCommit } from "../store/session.ts";
 import { addUsage, ZERO_USAGE } from "../util/usage.ts";
 import {
   committed,
@@ -217,6 +218,26 @@ export function sumUsage(path: Path, from: number): void {
         : prior,
     );
   }
+}
+
+export function walkCommitPath(
+  commits: ReadonlyMap<CommitId, CommitRecord>,
+  tip: CommitId | null,
+): readonly CommitId[] {
+  const path: CommitId[] = [];
+  const seen = new Set<CommitId>();
+  let cursor = tip;
+
+  while (cursor !== null && !seen.has(cursor)) {
+    seen.add(cursor);
+    const record = commits.get(cursor);
+
+    if (record === undefined) break;
+    path.push(cursor);
+    cursor = record.parent;
+  }
+
+  return path.reverse();
 }
 
 function sharedLength(

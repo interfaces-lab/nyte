@@ -57,6 +57,7 @@
   "devDependencies": {
     "@cfworker/json-schema": "^4.1.4",
     "@types/node": "^26.6.6",
+    "typescript": "catalog:",
     "vitest": "^5.1.0"
   },
   "engines": {

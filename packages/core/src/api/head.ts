@@ -24,6 +24,7 @@ import { leaseHold, releaseHold } from "../engine/holds.ts";
 import { move } from "../engine/move.ts";
 import { configure } from "../extend/settings.ts";
 import { commit } from "../fold/commit.ts";
+import { walkCommitPath } from "../fold/paths.ts";
 import { withFold } from "../fold/reads.ts";
 import { advanceSeen } from "../fold/seen.ts";
 import { historyHead, viewHead } from "../fold/view.ts";
@@ -45,7 +46,6 @@ import {
   STALE,
   START,
   toCommitObjectId,
-  walkCommitPath,
 } from "../store/session.ts";
 import { extractUserText } from "../util/text.ts";
 import { holdMessage } from "./hold.ts";
