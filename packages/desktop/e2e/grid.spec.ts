@@ -122,6 +122,29 @@ async function windowSize(
   return { main, narrow: { width: NARROW_WIDTH, height: main.height }, workArea };
 }
 
+/**
+ * The window opens on the user's screen and a run once took their keystrokes, so it shows without
+ * focus and can't take it; Playwright's input reaches the page over CDP either way.
+ */
+async function keepUnfocused(application: ElectronApplication): Promise<void> {
+  const state = await application.evaluate(({ app, BrowserWindow }) => {
+    const window = BrowserWindow.getAllWindows()[0];
+
+    if (window === undefined) throw new Error("The desktop has no window to keep unfocused.");
+    window.setFocusable(false);
+    window.hide();
+    app.hide();
+    window.showInactive();
+
+    return { visible: window.isVisible(), focused: window.isFocused() };
+  });
+
+  expect(state, "the grid window is shown without focus").toEqual({
+    visible: true,
+    focused: false,
+  });
+}
+
 async function resize(
   desktop: { readonly application: ElectronApplication; readonly page: Page },
   size: Size,
@@ -245,6 +268,7 @@ test("the rendered layout against the spatial grid", async ({ desktop }) => {
   const plan = planFor(index);
   const results: StateResult[] = [];
   await mkdir(out, { recursive: true });
+  await keepUnfocused(desktop.application);
   const sizes = await windowSize(desktop.application);
   await page.emulateMedia({ reducedMotion: "reduce" });
   await resize(desktop, sizes.main);
