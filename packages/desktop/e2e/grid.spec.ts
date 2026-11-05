@@ -59,6 +59,9 @@ const STANDARD_SIZES: readonly Size[] = [
 
 const NARROW_WIDTH = 900;
 
+/** Earlier than any chat the fixture or the journey can create, so every relative time reads "now". */
+const HELD_CLOCK = new Date("2020-01-01T00:00:00Z");
+
 /** How many times a state is collected before its geometry is called unstable. */
 const STABLE_TRIES = 5;
 
@@ -208,6 +211,20 @@ async function settle(page: Page): Promise<void> {
     .toEqual([]);
 }
 
+/**
+ * Relative times ("2m", "1m ago") grow with the e2e seed cache's age, so the renderer's clock is held at
+ * a moment before any chat existed: every age clamps to "now". Timers keep running. The page reloads so
+ * the minute clock the sidebar reads starts from the held time.
+ */
+async function freezeClock(page: Page): Promise<void> {
+  await page.clock.setFixedTime(HELD_CLOCK);
+  await page.reload();
+  await page.locator("[data-nyte-shell]").waitFor({ state: "visible", timeout: 30_000 });
+  expect(await page.evaluate(() => Date.now()), "the renderer's clock is held").toBe(
+    HELD_CLOCK.getTime(),
+  );
+}
+
 /** Types one line into the composer the way a person does and sends it. */
 async function type(page: Page, text: string): Promise<void> {
   const field = composer(page);
@@ -268,6 +285,7 @@ test("the rendered layout against the spatial grid", async ({ desktop }) => {
   const plan = planFor(index);
   const results: StateResult[] = [];
   await mkdir(out, { recursive: true });
+  await freezeClock(page);
   await keepUnfocused(desktop.application);
   const sizes = await windowSize(desktop.application);
   await page.emulateMedia({ reducedMotion: "reduce" });
