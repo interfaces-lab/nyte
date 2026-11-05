@@ -33,8 +33,10 @@ import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 ```
 
 A hairline is a 1px edge that takes no layout space, so a box keeps its height on the grid. Each
-style draws an inset shadow in `strokeQuaternary`. Under forced colors, which drop shadows, it draws
-a border instead.
+style draws an inset shadow in `strokeQuaternary`. Forced colors drop shadows, so there
+`hairline.blockEnd` draws a border image and `hairline.ring` an inset outline, which take no space
+either. `hairline.tableRow` draws a bottom border, which takes 1px, so table rows grow 1px under forced
+colors.
 
 | Style               | Draws                                                                 |
 | ------------------- | --------------------------------------------------------------------- |
@@ -47,6 +49,7 @@ a border instead.
 ```
 
 - Draw a separator between stacked boxes, or a frame, with `hairline`, not a 1px border.
-- A box that takes a hairline sets no `border`, `borderWidth`, `borderStyle`, or `borderColor` of its
-  own. Those replace the forced-colors border.
 - A box that takes a hairline sets no `boxShadow` of its own. Its shadow replaces the hairline's.
+- A box that takes a hairline sets no property its forced-colors edge uses: `borderImage` with
+  `hairline.blockEnd`, `outline` or its longhands with `hairline.ring`, and no bottom border property
+  with `hairline.tableRow`. Those replace the forced-colors edge.

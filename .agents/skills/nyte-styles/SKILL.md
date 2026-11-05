@@ -30,6 +30,7 @@ All of it is in `packages/ui/src/styles/`, exported as `@nyte-ai/ui/styles/*`.
 | `schema.stylex.ts` | Geometry handles: `space`, `glyph`, `target`, `control`, `button`, `input`, `row`, `menu`, `dialog`, `radius`, `layer` | components |
 | `text.stylex.ts` | Whole text styles: `text.xs`, `sm`, `base`, `baseCompact`, `lg`, `xl`, `2xl`, `3xl`, `code` | compose first: `props(text.sm, styles.label)` |
 | `a11y.stylex.ts`, `floating-surface.stylex.ts` | Focus rings, `srOnly`, the raised-surface frame | components |
+| `hairline.stylex.ts` | 1px edges drawn as inset shadows: `hairline.blockEnd`, `tableRow`, `ring` | components, beside the box's own style: `props(styles.bar, hairline.blockEnd)` |
 | `base.css` | The browser baseline in `@layer base` | hosts import it once |
 | `tailwind.css` | The Tailwind bridge for docs and the demo site | Tailwind hosts |
 
@@ -77,13 +78,16 @@ rules always beat base.css; an app style passed through `xstyle` always beats th
    `nyte-design/spacing-scale`, `nyte-design/size-grid`, `nyte-design/control-size`)
    A hairline never takes layout space, so a box keeps its grid size: draw a 1px separator or frame
    with `hairline` (`@nyte-ai/ui/styles/hairline.stylex`): `blockEnd`, `tableRow` on table cells, or
-   `ring`. Each is an inset box-shadow in `strokeQuaternary` with its forced-colors border inside. No
-   1px block-start or block-end border as a separator, and no padding that makes up for one. Inline
-   dividers, such as a table's column divider, are still borders. A box that takes a hairline sets no
-   `border`, `borderWidth`, `borderStyle` or `borderColor` of its own: ui's styles sit in an earlier
-   layer, so the app's shorthand would replace the forced-colors border. It sets no `boxShadow`
-   either: StyleX merges per property, so its shadow would replace the hairline's. Add a variant to
-   `hairline` instead. (not enforced)
+   `ring`. Each is an inset box-shadow in `strokeQuaternary`. Forced colors drop shadows, so there
+   `blockEnd` draws a border image with no border width and `ring` an outline inside the box, neither
+   taking a pixel; `tableRow` draws a block-end border, which takes 1px, so table rows grow 1px under
+   forced colors. No 1px block-start or block-end border as a
+   separator, and no padding that makes up for one. Inline dividers, such as a table's column divider,
+   are still borders. A box that takes a hairline sets no `boxShadow`, and no property its
+   forced-colors edge uses: `borderImage` with `blockEnd`, `outline*` with `ring` (so not on a box that
+   draws its own focus outline), and no block-end border property with `tableRow`, shorthand or
+   longhand. StyleX merges per property and ui's styles sit in an earlier layer than the app's, so the
+   caller's value would replace the hairline's. Add a variant to `hairline` instead. (not enforced)
 5. **CSS owns what CSS can resolve.** Hover, focus-within, sibling state, container size, entry
    animation, and fallbacks are StyleX features; check the capability block in
    `packages/ui/AGENTS.md` before reaching for React state, effects, observers, or
