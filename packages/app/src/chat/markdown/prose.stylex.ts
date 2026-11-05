@@ -3,11 +3,6 @@ import { media, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { conversation } from "../../theme/schema.stylex.ts";
 import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
-const CODE_RING = `inset 0 0 0 1px ${role.strokeQuaternary}`;
-
-/** A row rule that takes no height, so each row is exactly `tableRowHeight`. */
-const ROW_RULE = `inset 0 -1px 0 ${role.strokeQuaternary}`;
-
 export const FADE_MS = 150;
 
 const chunkFadeIn = keyframes({ from: { opacity: 0 }, to: { opacity: 1 } });
@@ -168,11 +163,6 @@ export const proseStyles = create({
     overflowX: "auto",
     overflowY: "hidden",
     borderRadius: radius.control,
-    boxShadow: CODE_RING,
-    /** Forced colors drop box-shadows, so the frame and the row rules come back as borders there. */
-    borderWidth: { default: 0, [media.forcedColors]: 1 },
-    borderStyle: "solid",
-    borderColor: role.strokeQuaternary,
   },
   table: {
     width: "max-content",
@@ -185,15 +175,9 @@ export const proseStyles = create({
   cell: {
     paddingBlock: `calc((${conversation.tableRowHeight} - ${type.leadingBase}) / 2)`,
     paddingInline: space.s2_5,
-    borderWidth: 0,
     borderInlineEndWidth: { default: 1, ":last-child": 0 },
-    borderBlockEndWidth: {
-      default: 0,
-      [media.forcedColors]: { default: 1, ":is(tbody > tr:last-child > *)": 0 },
-    },
-    borderStyle: "solid",
-    borderColor: role.strokeQuaternary,
-    boxShadow: { default: ROW_RULE, ":is(tbody > tr:last-child > *)": "none" },
+    borderInlineEndStyle: "solid",
+    borderInlineEndColor: role.strokeQuaternary,
     textAlign: "start",
     verticalAlign: "top",
   },

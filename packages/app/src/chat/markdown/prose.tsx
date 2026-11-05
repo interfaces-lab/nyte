@@ -27,6 +27,7 @@ import { useChatFolder } from "../chat-folder.ts";
 import { CodeBlock } from "./code-block.tsx";
 import { MermaidDiagram } from "./mermaid-diagram.tsx";
 import { Icon } from "@nyte-ai/ui/icon";
+import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 import { FileTypeIcon } from "../../components/file-type-icon.tsx";
 import {
   fileFromUrl,
@@ -362,15 +363,15 @@ const markdownComponents = {
   hr: MarkdownRule,
   pre: MarkdownPre,
   table: ({ node: _node, className: _className, ...elementProps }) => (
-    <div data-nyte-scrollport data-prose-table {...props(proseStyles.tableWrap)}>
+    <div data-nyte-scrollport data-prose-table {...props(proseStyles.tableWrap, hairline.ring)}>
       <table {...elementProps} {...props(proseStyles.table)} />
     </div>
   ),
   th: ({ node: _node, className: _className, ...elementProps }) => (
-    <th {...elementProps} {...props(proseStyles.cell, proseStyles.headerCell)} />
+    <th {...elementProps} {...props(proseStyles.cell, hairline.tableRow, proseStyles.headerCell)} />
   ),
   td: ({ node: _node, className: _className, ...elementProps }) => (
-    <td {...elementProps} {...props(proseStyles.cell)} />
+    <td {...elementProps} {...props(proseStyles.cell, hairline.tableRow)} />
   ),
   img: MarkdownImage,
   span: FadeSpan,
