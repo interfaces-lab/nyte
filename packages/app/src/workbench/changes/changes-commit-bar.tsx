@@ -529,7 +529,7 @@ export function ChangesCommitBar({
       <Input
         type="text"
         aria-label="Commit message"
-        placeholder="Fix tab close behavior"
+        placeholder="Commit message"
         autoComplete="off"
         spellCheck
         value={message}
