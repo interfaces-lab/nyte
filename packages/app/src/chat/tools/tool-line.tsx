@@ -4,7 +4,7 @@ import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { Icon } from "@nyte-ai/ui/icon";
 import { PreviewCard, PreviewCardContent, PreviewCardTrigger } from "@nyte-ai/ui/preview-card";
-import { media, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { control, media, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { useState } from "react";
@@ -48,6 +48,7 @@ export const toolLineStyles = create({
     gap: space.s1,
     width: "100%",
     minWidth: 0,
+    minHeight: control.heightSm,
     margin: 0,
     padding: 0,
     borderStyle: "none",
