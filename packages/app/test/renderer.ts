@@ -155,6 +155,15 @@ app.whenReady().then(async () => {
     }
     await window.webContents.debugger.sendCommand("Runtime.addBinding", { name: "rendererMouseClick" });
     await window.webContents.debugger.sendCommand("Runtime.addBinding", { name: "rendererCapture" });
+    await window.webContents.debugger.sendCommand("Runtime.addBinding", { name: "rendererKey" });
+    window.webContents.debugger.on("message", async (_event, method, params) => {
+      if (method !== "Runtime.bindingCalled" || params.name !== "rendererKey") return;
+      const { key, code, keyCode, text, modifiers } = JSON.parse(params.payload);
+      const stroke = { key, code, windowsVirtualKeyCode: keyCode, modifiers };
+      await window.webContents.debugger.sendCommand("Input.dispatchKeyEvent", { ...stroke, type: text === undefined ? "rawKeyDown" : "keyDown", text });
+      await window.webContents.debugger.sendCommand("Input.dispatchKeyEvent", { ...stroke, type: "keyUp" });
+      await window.webContents.executeJavaScript('document.dispatchEvent(new Event("renderer-key-pressed"))');
+    });
     window.webContents.debugger.on("message", async (_event, method, params) => {
       if (method !== "Runtime.bindingCalled" || params.name !== "rendererCapture") return;
       if (${JSON.stringify(captures !== undefined)}) {
