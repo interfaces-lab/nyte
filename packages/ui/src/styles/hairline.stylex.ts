@@ -96,6 +96,24 @@ export const hairline = create({
     },
     ":focus-visible::after": { borderColor: "Highlight" },
   },
+  /**
+   * Marks a pressed toggle under forced colors only: a 1px `Highlight` border on its `::after`, where
+   * forced colors would otherwise erase the pressed fill. The glyph keeps its forced colors, so it reads
+   * on light and dark high-contrast themes alike. Normal colors draw nothing. The box is positioned and
+   * leaves its `::after` free.
+   */
+  pressedRing: {
+    "[data-pressed]::after": {
+      content: { default: null, [media.forcedColors]: '""' },
+      position: "absolute",
+      inset: 0,
+      borderRadius: "inherit",
+      borderWidth: 1,
+      borderStyle: "solid",
+      borderColor: "Highlight",
+      pointerEvents: "none",
+    },
+  },
   /** An edge on all four sides, following the box's radius. */
   ring: {
     boxShadow: `${ELEVATION}, inset 0 0 0 1px ${role.strokeQuaternary}`,
