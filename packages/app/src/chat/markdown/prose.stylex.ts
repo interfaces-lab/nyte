@@ -1,5 +1,5 @@
 import { create, keyframes } from "@stylexjs/stylex";
-import { media, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { control, media, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { conversation } from "../../theme/schema.stylex.ts";
 import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
@@ -69,10 +69,19 @@ export const proseStyles = create({
     marginInline: 0,
     marginBlockStart: { default: space.s2, ":is(li > ul, li > ol)": space.s1, ":first-child": 0 },
     marginBlockEnd: { default: space.s4, ":last-child": 0 },
-    paddingInlineStart: "2em",
+    paddingInlineStart: space.s6,
     listStyleType: "revert",
   },
   listItem: { whiteSpace: "normal" },
+  /** A task list's checkbox: a 16px control centred on its line, so it lands on whole pixels. */
+  taskCheckbox: {
+    boxSizing: "border-box",
+    width: control.height2xs,
+    height: control.height2xs,
+    marginBlock: `calc((1lh - ${control.height2xs}) / 2) 0`,
+    marginInline: `0 ${space.s2}`,
+    verticalAlign: "top",
+  },
   strong: {
     color: `var(--_prose-strong-color, ${role.contentPrimary})`,
     fontWeight: type.weightSemibold,

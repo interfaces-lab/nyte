@@ -407,6 +407,9 @@ const markdownComponents = {
   li: ({ node: _node, className: _className, ...elementProps }) => (
     <li {...elementProps} {...props(proseStyles.listItem)} />
   ),
+  input: ({ node: _node, className: _className, ...elementProps }) => (
+    <input {...elementProps} {...props(proseStyles.taskCheckbox)} />
+  ),
   blockquote: ({ node: _node, className: _className, ...elementProps }) => (
     <blockquote {...elementProps} {...props(proseStyles.blockquote)} />
   ),
