@@ -1,4 +1,5 @@
-import { media, radius, target } from "./styles/schema.stylex.ts";
+import { media, radius, row } from "./styles/schema.stylex.ts";
+import { hairline } from "./styles/hairline.stylex.ts";
 import { NumberField as NumberFieldPrimitive } from "@base-ui/react/number-field";
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
@@ -9,18 +10,16 @@ import { appearance, role, shadow, type } from "./styles/vars.stylex.ts";
 
 const styles = create({
   group: {
+    position: "relative",
     display: "grid",
-    gridTemplateColumns: `${target.min} 48px ${target.min}`,
+    gridTemplateColumns: `${row.heightMd} 48px ${row.heightMd}`,
     boxSizing: "border-box",
     width: "max-content",
-    minHeight: `calc(${target.min} + 2px)`,
+    minHeight: row.heightMd,
     overflow: "clip",
     borderRadius: radius.control,
-    borderWidth: 1,
-    borderStyle: "solid",
-    borderColor: role.strokePrimary,
     backgroundColor: role.bgElevated,
-    boxShadow: shadow.shadowSm,
+    "--nyte-hairline-elevation": shadow.shadowSm,
     outlineStyle: { default: "none", ":focus-within": "solid" },
     outlineWidth: 1,
     outlineColor: appearance.focusRing,
@@ -89,7 +88,7 @@ export function NumberFieldGroup({
   return (
     <NumberFieldPrimitive.Group
       data-slot="number-field-group"
-      {...mergeStyleProps(props(styles.group, xstyle), className, style)}
+      {...mergeStyleProps(props(styles.group, hairline.controlRing, xstyle), className, style)}
       {...rest}
     />
   );
