@@ -175,9 +175,6 @@ export const proseStyles = create({
   cell: {
     paddingBlock: `calc((${conversation.tableRowHeight} - ${type.leadingBase}) / 2)`,
     paddingInline: space.s2_5,
-    borderInlineEndWidth: { default: 1, ":last-child": 0 },
-    borderInlineEndStyle: "solid",
-    borderInlineEndColor: role.strokeQuaternary,
     textAlign: "start",
     verticalAlign: "top",
   },

@@ -368,10 +368,13 @@ const markdownComponents = {
     </div>
   ),
   th: ({ node: _node, className: _className, ...elementProps }) => (
-    <th {...elementProps} {...props(proseStyles.cell, hairline.tableRow, proseStyles.headerCell)} />
+    <th
+      {...elementProps}
+      {...props(proseStyles.cell, hairline.tableCell, proseStyles.headerCell)}
+    />
   ),
   td: ({ node: _node, className: _className, ...elementProps }) => (
-    <td {...elementProps} {...props(proseStyles.cell, hairline.tableRow)} />
+    <td {...elementProps} {...props(proseStyles.cell, hairline.tableCell)} />
   ),
   img: MarkdownImage,
   span: FadeSpan,

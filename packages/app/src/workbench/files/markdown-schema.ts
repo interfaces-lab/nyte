@@ -352,7 +352,7 @@ const TableHeader = Node.create({
     "th",
     {
       ...cellStyle(node.attrs["align"]),
-      class: css(props(proseStyles.cell, hairline.tableRow, proseStyles.headerCell)),
+      class: css(props(proseStyles.cell, hairline.tableCell, proseStyles.headerCell)),
     },
     0,
   ],
@@ -366,7 +366,7 @@ const TableCell = Node.create({
   parseHTML: () => [{ tag: "td" }],
   renderHTML: ({ node }) => [
     "td",
-    { ...cellStyle(node.attrs["align"]), class: css(props(proseStyles.cell, hairline.tableRow)) },
+    { ...cellStyle(node.attrs["align"]), class: css(props(proseStyles.cell, hairline.tableCell)) },
     0,
   ],
 });

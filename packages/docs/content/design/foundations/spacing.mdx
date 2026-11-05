@@ -33,23 +33,22 @@ import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 ```
 
 A hairline is a 1px edge that takes no layout space, so a box keeps its height on the grid. Each
-style draws an inset shadow in `strokeQuaternary`. Forced colors drop shadows, so there
-`hairline.blockEnd` draws a border image and `hairline.ring` an inset outline, which take no space
-either. `hairline.tableRow` draws a bottom border, which takes 1px, so table rows grow 1px under forced
-colors.
+style draws an inset shadow in `strokeQuaternary`. Forced colors drop shadows, so there the edge
+styles draw a border image and `hairline.ring` an inset outline, which take no space either.
 
-| Style               | Draws                                                                 |
-| ------------------- | --------------------------------------------------------------------- |
-| `hairline.blockEnd` | The bottom edge of a bar, a header row, or a form.                    |
-| `hairline.tableRow` | A rule under each table row but the body's last. Set it on the cells. |
-| `hairline.ring`     | All four sides, following the box's radius.                           |
+| Style                  | Draws                                                                                                                   |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `hairline.blockEnd`    | The bottom edge of a bar, a header row, or a form.                                                                      |
+| `hairline.inlineStart` | The inline-start edge of a panel, the left one in left-to-right text.                                                   |
+| `hairline.tableCell`   | A rule under each table row but the body's last, and a divider after each cell but the row's last. Set it on the cells. |
+| `hairline.ring`        | All four sides, following the box's radius.                                                                             |
 
 ```tsx
 <div {...stylex.props(styles.toolbar, hairline.blockEnd)}>…</div>
 ```
 
-- Draw a separator between stacked boxes, or a frame, with `hairline`, not a 1px border.
-- A box that takes a hairline sets no `boxShadow` of its own. Its shadow replaces the hairline's.
-- A box that takes a hairline sets no property its forced-colors edge uses: `borderImage` with
-  `hairline.blockEnd`, `outline` or its longhands with `hairline.ring`, and no bottom border property
-  with `hairline.tableRow`. Those replace the forced-colors edge.
+- Draw a separator, a divider, or a frame with `hairline`, not a 1px border.
+- A box takes one hairline style and sets no `boxShadow` of its own. A second style or its own shadow
+  replaces the hairline's.
+- A box that takes a hairline sets no `borderImage` with an edge style, and no `outline` or its
+  longhands with `hairline.ring`. Those replace the forced-colors edge.
