@@ -1,10 +1,8 @@
-import { intent } from "@nyte-ai/ui/surface-theme";
 import { props } from "@stylexjs/stylex";
 import { useId, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import type { ReactElement } from "react";
 import { showsThinking, showsTool } from "@nyte-ai/plugin/client/presentation";
-import { AnimatedNumber } from "../../components/animated-number.tsx";
 import { Button } from "@nyte-ai/ui/button";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { focus, srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
@@ -21,6 +19,7 @@ import type { StepGroupPinEvent } from "./step-group-pin.ts";
 import { useStepGroupOpen } from "./step-group-open.ts";
 import { stepGroupContent } from "./step-group-content.ts";
 import { stepGroupLine } from "./step-group-presentation.ts";
+import { ChangeStats } from "../../components/change-stats.tsx";
 
 const STEP_LIMIT = 200;
 
@@ -219,20 +218,7 @@ export function StepGroupView({
       {line.kind === "summary" && line.detail !== undefined && (
         <span {...props(stepGroupStyles.summary)}>{line.detail}</span>
       )}
-      {(added > 0 || removed > 0) && (
-        <span {...props(stepGroupStyles.stats)}>
-          {added > 0 && (
-            <span {...props(intent.success, stepGroupStyles.added)}>
-              +<AnimatedNumber value={added} />
-            </span>
-          )}
-          {removed > 0 && (
-            <span {...props(intent.danger, stepGroupStyles.removed)}>
-              -<AnimatedNumber value={removed} />
-            </span>
-          )}
-        </span>
-      )}
+      <ChangeStats added={added} removed={removed} />
     </>
   );
 

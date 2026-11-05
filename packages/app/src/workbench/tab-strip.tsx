@@ -102,7 +102,10 @@ const styles = create({
       default: "transparent",
       ":hover": { [media.hover]: role.fillTertiary },
     },
-    color: role.contentSecondary,
+    color: {
+      default: role.contentSecondary,
+      ":hover": { [media.hover]: role.contentPrimary },
+    },
   },
   active: { backgroundColor: role.fillSecondary, color: role.contentPrimary },
   chatItem: { "--_tab-content-mask": "none" },

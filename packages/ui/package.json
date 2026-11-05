@@ -204,6 +204,7 @@
       "default": "./stylex.mjs"
     },
     "./platform-colors": "./src/platform-colors.ts",
+    "./platform-ramps": "./src/platform-ramps.ts",
     "./styles/tokens.stylex": "./src/styles/tokens.stylex.ts",
     "./styles/vars.stylex": "./src/styles/vars.stylex.ts",
     "./styles/schema.stylex": "./src/styles/schema.stylex.ts",

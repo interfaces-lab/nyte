@@ -322,7 +322,10 @@ export interface Resources {
     readonly scope: "user" | "project" | "path";
     readonly description: string;
   }[];
+  /** The context files the session reads; a project's chat leaves out the ones its project turned off (`ContextFile.id`). */
   readonly contextFiles: readonly {
+    /** `context:<scope>:<name>`, with the full path for an ancestor's: the same in every worktree. */
+    readonly id: string;
     readonly path: string;
     readonly scope: "user" | "ancestor" | "project";
     readonly content: string;

@@ -19,7 +19,7 @@ import { activeSelection, sameSelection } from "../panes/pane-layout.ts";
 import { ProjectRail } from "../projects/project-rail.tsx";
 import { showsSettingsSection } from "../settings/index.ts";
 import { branchReadout, changesSummary, vcsRequestForScope } from "./changes/change-scopes.ts";
-import { ChangeStats } from "./changes/change-stats.tsx";
+import { ChangeStats } from "../components/change-stats.tsx";
 import { changeTotals, workingRows } from "./changes/changes-model.ts";
 import { useChangesViewOptions } from "./changes/changes-view-options.ts";
 import { launch, openChanges } from "./commands.ts";
@@ -337,7 +337,6 @@ export function Rail({
           {sessionId !== undefined && (
             <SessionStatusRows sessionId={sessionId} actions={collapse} />
           )}
-          {sessionId !== undefined && <ProjectRail sessionId={sessionId} />}
           {head !== undefined && (
             <BranchRow head={head} actions={sessionId === undefined ? collapse : undefined} />
           )}
@@ -346,6 +345,8 @@ export function Rail({
           )}
         </section>
       )}
+
+      {sessionId !== undefined && <ProjectRail sessionId={sessionId} />}
 
       {(rail.openTabs.length > 0 || !statusShown) && (
         <section {...props(workbenchStyles.railSection)}>

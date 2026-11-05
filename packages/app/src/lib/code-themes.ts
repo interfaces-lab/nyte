@@ -1,7 +1,7 @@
-import { platformColors } from "@nyte-ai/ui/platform-colors";
+import { platformColors, platformScopes } from "@nyte-ai/ui/platform-colors";
 import type { Theme } from "@pierre/highlights";
-import githubDark from "@pierre/highlights/themes/github-dark-default";
-import githubLight from "@pierre/highlights/themes/github-light-default";
+import pierreDark from "@pierre/highlights/themes/pierre-dark";
+import pierreLight from "@pierre/highlights/themes/pierre-light";
 
 const TEXT_FLOOR = 4.5;
 
@@ -14,30 +14,30 @@ const TERTIARY_TOKENS = new Set([
   "predictive",
 ]);
 
-type Palette = (typeof platformColors)["light" | "dark"];
-
 /**
- * GitHub's palettes with each syntax colour that misses the text floor on a code surface (bgBase,
- * bgMuted, the hover fill over either, and a diff word's fill layered on its line's) moved along its
- * own hue until it meets the floor.
+ * Pierre's palettes, each syntax colour moved along its hue until it meets the text floor on every
+ * code surface. `@pierre/diffs` tints a changed line with the git hue at 12% (light) or 20% (dark),
+ * and a changed word at 15% or 20% over it.
  */
 export const codeThemes = {
-  light: meetTextFloor(githubLight, platformColors.light),
-  dark: meetTextFloor(githubDark, platformColors.dark),
+  light: meetTextFloor(pierreLight, "light"),
+  dark: meetTextFloor(pierreDark, "dark"),
 } satisfies Record<"light" | "dark", Theme>;
 
-function meetTextFloor(theme: Theme, palette: Palette): Theme {
-  const light = theme.appearance === "light";
+function meetTextFloor(theme: Theme, mode: "light" | "dark"): Theme {
+  const light = mode === "light";
+  const palette = platformColors[mode];
+  const tint = light ? { line: 0.12, word: 0.15 } : { line: 0.2, word: 0.2 };
 
-  const surfaces = [palette.bgBase, palette.bgMuted]
-    .map(toChannels)
-    .flatMap((surface) => [
-      luminance(surface),
-      luminance(composite(palette.fillTertiary, surface)),
-      luminance(composite(palette.fillSecondary, surface)),
-      luminance(composite(palette.fillPrimary, surface)),
-      luminance(composite(palette.fillPrimary, composite(palette.fillTertiary, surface))),
-    ]);
+  const surfaces = [palette.bgBase, palette.bgMuted].map(toChannels).flatMap((surface) => [
+    luminance(surface),
+    luminance(composite(palette.fillTertiary, surface)),
+    ...[platformScopes[mode].green, platformScopes[mode].red].flatMap((scope) => {
+      const line = blend(scope.strokeAccent, tint.line, surface);
+
+      return [luminance(line), luminance(blend(scope.strokeAccent, tint.word, line))];
+    }),
+  ]);
 
   const floor = light
     ? (Math.min(...surfaces) + 0.05) / TEXT_FLOOR - 0.05
@@ -61,7 +61,7 @@ function meetTextFloor(theme: Theme, palette: Palette): Theme {
   return { ...theme, style: { ...theme.style, syntax } };
 }
 
-/** Scales linear light toward black (light) or white (dark), which keeps the hue. */
+/** Scaling linear light toward black or white keeps the hue. */
 function meetLuminance(color: string, target: number, light: boolean): string {
   const linear = toChannels(color).map(toLinear);
   const current = weigh(linear);
@@ -87,11 +87,12 @@ function toChannels(hex: string): readonly number[] {
   return [1, 3, 5].map((start) => Number.parseInt(hex.slice(start, start + 2), 16) / 255);
 }
 
-/** Lays a translucent `#rrggbbaa` fill over sRGB channels. */
 function composite(fill: string, under: readonly number[]): readonly number[] {
-  const alpha = Number.parseInt(fill.slice(7, 9), 16) / 255;
+  return blend(fill, Number.parseInt(fill.slice(7, 9), 16) / 255, under);
+}
 
-  return toChannels(fill).map((channel, index) => channel * alpha + under[index] * (1 - alpha));
+function blend(color: string, alpha: number, under: readonly number[]): readonly number[] {
+  return toChannels(color).map((channel, index) => channel * alpha + under[index] * (1 - alpha));
 }
 
 function luminance(channels: readonly number[]): number {

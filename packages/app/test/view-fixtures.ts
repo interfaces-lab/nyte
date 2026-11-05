@@ -94,7 +94,12 @@ export function chatsFor(
     { rows: new Map(), hosted: new Map(), roots: undefined },
   ).rows;
 
-  return describeChats(rows.values(), "workspaces" in sources ? sources.workspaces : [], previous);
+  return describeChats(
+    rows.values(),
+    "workspaces" in sources ? sources.workspaces : [],
+    [],
+    previous,
+  );
 }
 
 export function sessionView(change: Partial<SessionView> = {}): SessionView {

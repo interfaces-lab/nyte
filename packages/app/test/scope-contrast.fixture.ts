@@ -24,7 +24,7 @@ const styles = create({
   onControl: { color: role.contentOnControl, backgroundColor: role.bgControlSelected },
 });
 
-/** Each content stair, strongest first, with the contrast it keeps on a surface and on its hover fill. */
+/** Strongest first, each with the contrast it keeps on a surface and on its hover fill. */
 const stairs = [
   ["primary", styles.primary, 7],
   ["secondary", styles.secondary, 6],

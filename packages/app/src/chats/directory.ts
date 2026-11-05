@@ -11,6 +11,7 @@ import type {
   SessionId,
   SessionInfo,
   WorkspaceId,
+  ProjectInfo,
   WorkspaceInfo,
 } from "@nyte-ai/sdk";
 import { replaceEqualDeep } from "@tanstack/react-query";
@@ -55,13 +56,20 @@ export type ChatDirectory = ReadonlyMap<SessionId, Chat>;
 
 /**
  * A chat that comes out the same as in `previous` keeps its identity, and so does the directory
- * when no chat changed.
+ * when no chat changed. A project's coordinator is titled by its project.
  */
 export function describeChats(
   sessions: Iterable<SessionInfo>,
   workspaces: readonly WorkspaceInfo[] | undefined,
+  projects: readonly ProjectInfo[] | undefined,
   previous: ChatDirectory,
 ): ChatDirectory {
+  const coordinated = new Map(
+    (projects ?? []).flatMap((project) =>
+      project.coordinator === null ? [] : [[project.coordinator, project.name] as const],
+    ),
+  );
+
   const chats = new Map(
     [...sessions].map((session) => {
       const head = mainHead(session);
@@ -69,11 +77,11 @@ export function describeChats(
       const next: Chat = {
         id: session.id,
         parent: session.parent,
-        title: sessionTitle(session),
+        title: coordinated.get(session.id) ?? sessionTitle(session),
         location: workspaces === undefined ? LOADING : locate(session.workspace, workspaces),
         status: runStatus(head?.execution),
         background: head?.background ?? NO_BACKGROUND,
-        mark: sessionMark(session),
+        mark: coordinated.has(session.id) ? coordinatorMark(session) : sessionMark(session),
         unreadTip:
           head?.unread === true && head.tip.kind === "commit"
             ? { head: head.name, commit: head.tip.id }
@@ -121,4 +129,11 @@ function listedFolder(workspace: WorkspaceInfo): Folder | null {
   const path = workspacePath(workspace);
 
   return path === null ? null : { workspace: workspace.id, path, name: workspaceName(workspace) };
+}
+
+/** A coordinator's agents are its work, so it shows them working rather than as background. */
+function coordinatorMark(session: SessionInfo): TaskState {
+  const mark = sessionMark(session);
+
+  return mark === "background" ? "working" : mark;
 }

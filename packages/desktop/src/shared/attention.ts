@@ -8,7 +8,7 @@ import { describeRunEnd } from "@nyte-ai/plugin/client/notifications";
 import { mainHead } from "@nyte-ai/plugin/client/presentation";
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 
-/** A chat's status, read from its main head the way the sidebar marks it. */
+/** A chat's status, read from its main head the way the sidebar marks it. A coordinator isn't done while its agents work. */
 type Status = {
   /** Changes once per question, run or ending, so each one alerts once. */
   readonly key: string;
@@ -160,6 +160,13 @@ function readStatus(session: SessionInfo): Status {
       const last = execution.lastRun;
 
       if (last === null) return { key: "none", unread, alert: undefined };
+
+      if (
+        session.project !== undefined &&
+        session.parent === null &&
+        (head?.background.working ?? 0) > 0
+      )
+        return { key: `ended:${last.id}:agents`, unread, alert: undefined };
       const key = `ended:${last.id}`;
       const body = describeRunEnd(last.end);
 

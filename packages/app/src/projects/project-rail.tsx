@@ -3,42 +3,32 @@ import type { TaskState } from "@nyte-ai/plugin/client/presentation";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Row } from "@nyte-ai/ui/row";
-import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
-import { role } from "@nyte-ai/ui/styles/vars.stylex";
-import { create, props } from "@stylexjs/stylex";
+import { props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import { useChatTasks } from "../chats/index.ts";
+import type { ChildTask } from "../chats/index.ts";
 import { TaskMark } from "../components/task-mark.tsx";
 import { useProjects } from "../data/projects.ts";
 import { useSessionRow } from "../data/session-rows.ts";
+import { windowTabs } from "../tabs/window-tabs.ts";
+import { chatWindow } from "../window/index.ts";
 import { workbenchStyles } from "../workbench/workbench.stylex.ts";
-import { openProject } from "./open-project.ts";
 import { openProjectDialog } from "./project-dialog.tsx";
 
-const styles = create({
-  counts: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: space.s2,
-    marginInlineStart: "auto",
-    flexShrink: 0,
-  },
-  count: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: space.s1,
-    color: role.contentTertiary,
-    fontVariantNumeric: "tabular-nums",
-  },
-});
-
-/** Most urgent first, so what needs a look leads. */
-const SHOWN = ["waiting", "failed", "working", "done"] as const;
+/** What needs the user leads; finished agents fold into one row. */
+const RANK: Record<TaskState, number> = {
+  waiting: 0,
+  failed: 1,
+  retrying: 2,
+  working: 2,
+  background: 2,
+  done: 3,
+};
 
 /**
- * The workbench rail's project row beside a chat in a project: its name, which opens the
- * coordinator, a count of its agents per state, and its settings.
+ * The workbench rail's agents beside a chat in a project: each agent still going, by name, and
+ * one row for the finished ones, under a heading that opens the project's settings.
  */
 export function ProjectRail({ sessionId }: { readonly sessionId: SessionId }): ReactElement | null {
   const id = useSessionRow(sessionId, (session) => session.project);
@@ -46,16 +36,26 @@ export function ProjectRail({ sessionId }: { readonly sessionId: SessionId }): R
 
   if (project === undefined) return null;
 
+  return <ProjectAgents project={project} />;
+}
+
+function ProjectAgents({ project }: { readonly project: ProjectInfo }): ReactElement {
+  const coordinator = project.coordinator ?? undefined;
+
+  const agents = useChatTasks(coordinator).filter(
+    (task): task is ChildTask => task.kind === "child",
+  );
+
+  const going = agents
+    .filter((agent) => agent.state !== "done")
+    .toSorted((left, right) => RANK[left.state] - RANK[right.state]);
+
+  const done = agents.filter((agent) => agent.state === "done");
+
   return (
-    <Row xstyle={[text.base, workbenchStyles.railRow, workbenchStyles.railRowInteractive]}>
-      <Row.Primary onClick={() => void openProject(project)}>
-        <Row.Leading>
-          <Icon name="layers" size="sm" />
-        </Row.Leading>
-        <Row.Label xstyle={workbenchStyles.railLabel}>{project.name}</Row.Label>
-        <AgentCounts project={project} />
-      </Row.Primary>
-      <Row.Actions xstyle={workbenchStyles.railActions}>
+    <section aria-label={`${project.name} agents`} {...props(workbenchStyles.railSection)}>
+      <div {...props(workbenchStyles.railHeading)}>
+        <span {...props(workbenchStyles.railHeadingText)}>Agents</span>
         <Button
           size="sm"
           iconOnly
@@ -63,46 +63,56 @@ export function ProjectRail({ sessionId }: { readonly sessionId: SessionId }): R
           aria-label={`${project.name} Settings`}
           onClick={() => openProjectDialog(project.id)}
         />
-      </Row.Actions>
-    </Row>
-  );
-}
-
-function AgentCounts({ project }: { readonly project: ProjectInfo }): ReactElement | null {
-  const agents = useChatTasks(project.coordinator ?? undefined).filter(
-    (task) => task.kind === "child",
-  );
-
-  const counts = SHOWN.flatMap((state) => {
-    const count = agents.filter((agent) => shownState(agent.state) === state).length;
-
-    return count === 0 ? [] : [{ state, count }];
-  });
-
-  if (counts.length === 0) return null;
-
-  return (
-    <span {...props(styles.counts)}>
-      {counts.map((entry) => (
-        <span key={entry.state} {...props(text.sm, styles.count)}>
-          {entry.state === "done" ? (
-            <Icon name="checkmark" size="xs" label="Done" />
-          ) : (
-            <TaskMark state={entry.state} />
-          )}
-          {entry.count}
-        </span>
+      </div>
+      {going.map((agent) => (
+        <Row
+          key={agent.id}
+          interactive
+          xstyle={[text.base, workbenchStyles.railRow, workbenchStyles.railRowInteractive]}
+        >
+          <Row.Primary onClick={() => windowTabs.openChat(agent.id, "next-to-parent")}>
+            <Row.Leading>
+              <TaskMark state={agent.state} />
+            </Row.Leading>
+            <Row.Label
+              xstyle={[
+                workbenchStyles.railLabel,
+                agent.state !== "working" && workbenchStyles.railValue,
+              ]}
+            >
+              {agent.title}
+            </Row.Label>
+            {agent.state === "waiting" && (
+              <span {...props(workbenchStyles.railDetail)}>Needs you</span>
+            )}
+            {agent.state === "failed" && <span {...props(workbenchStyles.railDetail)}>Failed</span>}
+          </Row.Primary>
+        </Row>
       ))}
-    </span>
+      {done.length > 0 && coordinator !== undefined && (
+        <Row
+          interactive
+          xstyle={[text.base, workbenchStyles.railRow, workbenchStyles.railRowInteractive]}
+        >
+          <Row.Primary
+            onClick={() => {
+              windowTabs.openChat(coordinator, "permanent");
+              chatWindow.act({
+                kind: "tray",
+                parent: coordinator,
+                view: { kind: "list", openedOver: done.map((agent) => agent.id) },
+              });
+            }}
+          >
+            <Row.Leading>
+              <Icon name="checkmark" size="sm" />
+            </Row.Leading>
+            <Row.Label
+              xstyle={workbenchStyles.railLabel}
+            >{`${String(done.length)} done`}</Row.Label>
+          </Row.Primary>
+        </Row>
+      )}
+    </section>
   );
-}
-
-function shownState(state: TaskState): (typeof SHOWN)[number] {
-  switch (state) {
-    case "retrying":
-    case "background":
-      return "working";
-    default:
-      return state;
-  }
 }

@@ -24,7 +24,7 @@ import { menu, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { workbenchStyles } from "../workbench.stylex.ts";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
-import { ChangeStats } from "./change-stats.tsx";
+import { ChangeStats } from "../../components/change-stats.tsx";
 import { ChangesCommitBar, readsWorkingTree } from "./changes-commit-bar.tsx";
 import { changeRows, changeTotals } from "./changes-model.ts";
 import {

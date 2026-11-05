@@ -13,14 +13,10 @@ const glass = (light: number, dark: number) =>
 const shade = (role: string, light: number, dark: number) =>
   `light-dark(oklch(from var(--nyte-${role}) calc(l * ${light}) c h), oklch(from var(--nyte-${role}) calc(l * ${dark}) c h))`;
 
-/** The scope's hue as ink, raised in dark to a lightness every hue reads at 4.5:1 on the dark surfaces. */
-const ink = "light-dark(var(--nyte-theme-100), oklch(from var(--nyte-theme-80) max(l, 0.68) c h))";
+/** In dark, 0.74 is the lightness every hue needs for 4.5:1 on a diff gutter tinted with itself. */
+const ink = "light-dark(var(--nyte-theme-100), oklch(from var(--nyte-theme-80) max(l, 0.74) c h))";
 
-/**
- * One step of the content stairs: a ramp step, clamped to the OKLab lightness that keeps the step's
- * contrast floor on every surface and fill in every hue. Light caps how light the ink gets; dark
- * floors how dark it gets.
- */
+/** The clamp holds the step's contrast floor in every hue, whose ramps differ in lightness. */
 const stair = (light: number, lightCeiling: number, dark: number, darkFloor: number) =>
   `light-dark(oklch(from var(--nyte-theme-${light}) min(l, ${lightCeiling}) c h), oklch(from var(--nyte-theme-${dark}) max(l, ${darkFloor}) c h))`;
 
@@ -37,7 +33,6 @@ const hover = (role: string) => contrast(shade(role, 0.95, 1.05), shade(role, 0.
 const press = (role: string) => contrast(shade(role, 0.88, 1.12), shade(role, 0.5, 1.4));
 
 export const roles = defineVars({
-  /** Content stairs, strongest first. Increased contrast moves each one up a step. */
   "--nyte-content-primary": contrast(stair(130, 0.3, 20, 0.94), step(140, 0)),
   "--nyte-content-secondary": contrast(stair(110, 0.43, 50, 0.78), step(120, 30)),
   "--nyte-content-tertiary": contrast(stair(90, 0.5, 70, 0.69), step(110, 50)),
@@ -48,8 +43,7 @@ export const roles = defineVars({
   "--nyte-content-on-interactive-strong": "var(--nyte-theme-0)",
   "--nyte-content-on-control": "var(--nyte-neutral-0)",
 
-  /** Stroke stairs, strongest first: control boundary, strong, default, divider. */
-  /** Opaque gray, so a control's edge reads at 3:1 on any surface and its hover fill. */
+  /** Opaque, so a control's edge keeps 3:1 over its own hover fill. */
   "--nyte-stroke-primary": control(100, 80),
   "--nyte-stroke-secondary": contrast(glass(40, 100), glass(50, 100)),
   "--nyte-stroke-tertiary": contrast(glass(30, 120), glass(40, 110)),
@@ -66,7 +60,6 @@ export const roles = defineVars({
 
   "--nyte-bg-interactive-strong": step(130, 100),
 
-  /** Fill stairs over any surface, strongest first: active, hover on a fill, hover. */
   "--nyte-fill-primary": contrast(glass(40, 120), glass(50, 110)),
   "--nyte-fill-secondary": contrast(glass(30, 130), glass(40, 120)),
   "--nyte-fill-tertiary": contrast(glass(15, 135), glass(30, 130)),

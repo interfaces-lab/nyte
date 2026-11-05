@@ -2,24 +2,21 @@ import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
-import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
-import { AnimatedNumber } from "../../components/animated-number.tsx";
+import { role } from "@nyte-ai/ui/styles/vars.stylex";
+import { AnimatedNumber } from "./animated-number.tsx";
 
 const styles = create({
   stats: {
     display: "inline-flex",
+    alignItems: "center",
     gap: space.s1_5,
     flexShrink: 0,
-    color: role.contentSecondary,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
-    fontWeight: type.weightSemibold,
     fontVariantNumeric: "tabular-nums",
   },
-  added: { color: role.contentSecondary },
-  removed: { color: role.contentSecondary },
+  count: { color: role.contentAccent },
 });
 
+/** The hue carries the meaning, so each count takes its scope's accent ink. */
 export function ChangeStats({
   added,
   removed,
@@ -35,12 +32,12 @@ export function ChangeStats({
       {...props(styles.stats)}
     >
       {added > 0 && (
-        <span {...props(intent.success, styles.added)}>
+        <span {...props(intent.success, styles.count)}>
           +<AnimatedNumber value={added} />
         </span>
       )}
       {removed > 0 && (
-        <span {...props(intent.danger, styles.removed)}>
+        <span {...props(intent.danger, styles.count)}>
           -<AnimatedNumber value={removed} />
         </span>
       )}

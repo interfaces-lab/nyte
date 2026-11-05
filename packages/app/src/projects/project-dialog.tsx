@@ -3,6 +3,7 @@ import type {
   ProjectId,
   ProjectInfo,
   ProjectInput,
+  ContextFile,
   SharedDoc,
   WorkspaceId,
 } from "@nyte-ai/schema";
@@ -50,7 +51,7 @@ const TABS: readonly { readonly value: ProjectTab; readonly label: string }[] = 
   { value: "instructions", label: "Instructions" },
   { value: "skills", label: "Skills" },
   { value: "mcp", label: "MCP" },
-  { value: "docs", label: "Shared Context" },
+  { value: "docs", label: "Context" },
 ];
 
 /** The default model, as the model pickers' key. */
@@ -476,6 +477,13 @@ function McpTab({
   );
 }
 
+/** Where a rules file sits, as its switch describes it. */
+const RULE_SCOPES = {
+  user: () => "Yours, in ~/.nyte",
+  ancestor: (location: string) => `Above this folder, ${location}`,
+  project: () => "This folder",
+} as const satisfies Record<ContextFile["scope"], (location: string) => string>;
+
 function DocsTab({
   draft,
   onChange,
@@ -485,9 +493,21 @@ function DocsTab({
 }): ReactElement {
   const catalog = useWorkspaceCatalog(draft.workspace);
   const docs = catalog.data?.docs ?? [];
+  const rules = catalog.data?.contextFiles ?? [];
 
-  if (catalog.isPending && draft.workspace !== undefined)
-    return <Notice>Loading shared context…</Notice>;
+  if (catalog.isPending && draft.workspace !== undefined) return <Notice>Loading context…</Notice>;
+
+  const entry = (id: string, label: string, description: string | undefined): ReactNode => (
+    <SwitchField
+      key={id}
+      label={label}
+      description={description}
+      checked={!draft.disabledDocs.includes(id)}
+      onCheckedChange={(on) =>
+        onChange({ ...draft, disabledDocs: toggle(draft.disabledDocs, id, !on) })
+      }
+    />
+  );
 
   const group = (title: string, where: string, scoped: readonly SharedDoc[]): ReactNode =>
     scoped.length > 0 && (
@@ -495,25 +515,23 @@ function DocsTab({
         <span {...props(text.sm, styles.groupTitle)}>
           {title} <span {...props(styles.hint)}>{where}</span>
         </span>
-        {scoped.map((doc) => (
-          <SwitchField
-            key={doc.id}
-            label={doc.name}
-            description={doc.description === "" ? undefined : doc.description}
-            checked={!draft.disabledDocs.includes(doc.id)}
-            onCheckedChange={(on) =>
-              onChange({ ...draft, disabledDocs: toggle(draft.disabledDocs, doc.id, !on) })
-            }
-          />
-        ))}
+        {scoped.map((doc) =>
+          entry(doc.id, doc.name, doc.description === "" ? undefined : doc.description),
+        )}
       </div>
     );
 
   return (
     <div {...props(styles.switches)}>
+      {rules.length > 0 && (
+        <div {...props(styles.switches)}>
+          <span {...props(text.sm, styles.groupTitle)}>Rules</span>
+          {rules.map((rule) => entry(rule.id, rule.name, RULE_SCOPES[rule.scope](rule.location)))}
+        </div>
+      )}
+      <span {...props(text.sm, styles.groupTitle)}>Shared docs</span>
       <span {...props(text.sm, styles.hint)}>
-        Agents read these before they start and add what they learn. Turn off what this project
-        doesn't need.
+        Agents read these before they start and add what they learn.
       </span>
       {docs.length === 0 ? (
         <Notice>

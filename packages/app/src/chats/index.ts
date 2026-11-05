@@ -13,7 +13,7 @@ import {
   subscribeSessionRows,
   useSessionRow,
 } from "../data/session-rows.ts";
-import { jobsWatch } from "../data/watches.ts";
+import { hostWatch, jobsWatch } from "../data/watches.ts";
 import { chatStore } from "../data/chat-store.ts";
 import { useWatchSelect } from "../data/watch-store.ts";
 import { workspacesQuery } from "../data/workspaces.ts";
@@ -244,9 +244,18 @@ const directory = derivedStore(
       subscribe: (notice: () => void) =>
         new QueryObserver(queryClient, workspacesQuery).subscribe(notice),
     },
+    projects: {
+      read: () => hostWatch("host").getState().value?.projects,
+      subscribe: (notice: () => void) => hostWatch("host").subscribe(notice),
+    },
   },
   (read, previous: ChatDirectory) =>
-    describeChats(read.rows.read().rows.values(), read.workspaces.read(), previous),
+    describeChats(
+      read.rows.read().rows.values(),
+      read.workspaces.read(),
+      read.projects.read(),
+      previous,
+    ),
   new Map<SessionId, Chat>(),
 );
 
