@@ -32,6 +32,7 @@ import { windowTabs } from "../tabs/window-tabs.ts";
 import { SidebarFooter } from "../account/account-footer.tsx";
 import { folderPicker } from "../panes/open-workspace.tsx";
 import { SearchPalette } from "./search-palette.tsx";
+import { actionIcons, settingsActionPages } from "./action-icons.ts";
 import { shellActions, useOverlays, useStagePage } from "../tabs/shell-state.ts";
 import { SidebarContent } from "./sidebar-content.tsx";
 import { WorkspaceControls } from "./sidebar-filter.tsx";
@@ -98,7 +99,7 @@ function NewChatRow({
       onClick={() => panes.newChat()}
     >
       <Row.Leading xstyle={styles.navLeading}>
-        <Icon name="new-chat" size="sm" />
+        <Icon name={actionIcons[clientActions.newChat.id]} size="sm" />
       </Row.Leading>
       <Row.Label>New Chat</Row.Label>
       <span {...props(styles.shortcutSlot, styles.shortcutPersistent)}>
@@ -392,7 +393,7 @@ export function Sidebar(): ReactElement {
             trigger={
               <Row variant="nav" xstyle={styles.navRow}>
                 <Row.Leading xstyle={styles.navLeading}>
-                  <Icon name="search" size="sm" />
+                  <Icon name={actionIcons[clientActions.search.id]} size="sm" />
                 </Row.Leading>
                 <Row.Label>Search</Row.Label>
                 <span {...props(styles.shortcutSlot)}>
@@ -411,7 +412,7 @@ export function Sidebar(): ReactElement {
             onClick={() => shellActions.openCustomize(paneSessionId)}
           >
             <Row.Leading xstyle={styles.navLeading}>
-              <Icon name="customize" size="sm" />
+              <Icon name={actionIcons[clientActions.customize.id]} size="sm" />
             </Row.Leading>
             <Row.Label>Customize</Row.Label>
           </Row>
@@ -421,12 +422,16 @@ export function Sidebar(): ReactElement {
             data-sidebar-return
             aria-keyshortcuts={clientActionAriaShortcut(clientActions.settings, mac)}
             render={
-              <Link to="/settings/$section" params={{ section: "general" }} preload="render" />
+              <Link
+                to="/settings/$section"
+                params={{ section: settingsActionPages.settings }}
+                preload="render"
+              />
             }
             xstyle={styles.navRow}
           >
             <Row.Leading xstyle={styles.navLeading}>
-              <Icon name="settings" size="sm" />
+              <Icon name={actionIcons[clientActions.settings.id]} size="sm" />
             </Row.Leading>
             <Row.Label>Settings</Row.Label>
             <Icon name="chevron-right" size="sm" />

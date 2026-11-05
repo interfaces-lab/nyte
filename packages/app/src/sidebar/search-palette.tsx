@@ -23,6 +23,7 @@ import { searchPaletteStyles as styles } from "./search-palette.stylex.ts";
 import { settingsSectionGroups, type SettingsSection } from "../settings/index.ts";
 import { clientActionKeys, clientActions } from "../contract/client-actions.ts";
 import { nyte } from "../contract/nyte.ts";
+import { actionIcons, settingsActionPages } from "./action-icons.ts";
 
 const TABS = ["all", "agents", "actions", "settings"] as const;
 
@@ -147,9 +148,17 @@ export function SearchPalette({
   const actions: readonly PaletteAction[] = Object.values(clientActions).flatMap((action) => {
     if (!("palette" in action)) return [];
 
-    if (action.id === "model-settings" && !settingsSections.includes("providers")) return [];
+    if (
+      action.id === "model-settings" &&
+      !settingsSections.includes(settingsActionPages[action.id])
+    )
+      return [];
 
-    if (action.id === "profile-settings" && !settingsSections.includes("profile")) return [];
+    if (
+      action.id === "profile-settings" &&
+      !settingsSections.includes(settingsActionPages[action.id])
+    )
+      return [];
 
     if (action.id === "open-folder" && onOpenFolder === undefined) return [];
 
@@ -164,13 +173,10 @@ export function SearchPalette({
         case "open-home":
           return onOpenHome?.();
         case "general-settings":
-          return onOpenSettings("general");
         case "appearance-settings":
-          return onOpenSettings("appearance");
         case "model-settings":
-          return onOpenSettings("providers");
         case "profile-settings":
-          return onOpenSettings("profile");
+          return onOpenSettings(settingsActionPages[action.id]);
         case "customize-settings":
           return onOpenCustomize();
         case "reload-window":
@@ -190,6 +196,7 @@ export function SearchPalette({
         key: action.id,
         label: action.label,
         ...action.palette,
+        icon: actionIcons[action.id],
         meta: keys.length === 0 ? undefined : <Kbd keys={keys} plain />,
         run,
       },
