@@ -480,7 +480,7 @@ export const REGIONS: readonly RegionSpec[] = [
     name: "editor",
     locate: {
       by: "selector",
-      selector: 'section[aria-label="Files"] div:has(> div > [role="textbox"])',
+      selector: '[data-slot="markdown-column"]',
     },
     rails: [
       {

@@ -308,6 +308,8 @@ test("the rendered layout against the spatial grid", async ({ desktop }) => {
   await resize(desktop, sizes.main);
   await setTheme(desktop, "dark");
 
+  const located = new Set<string>();
+
   const capture = async (state: string): Promise<void> => {
     const snapshot = await stableSnapshot(page, plan, state);
     const checked = check(snapshot);
@@ -318,6 +320,8 @@ test("the rendered layout against the spatial grid", async ({ desktop }) => {
     await page.screenshot({ path: join(out, `${state}.png`) });
     await page.evaluate(clearOverlay);
     results.push(result);
+
+    for (const region of snapshot.regions) located.add(region.name);
   };
 
   await test.step("a project chat with agents, a markdown reply and the workbench rail", async () => {
@@ -492,6 +496,10 @@ test("the rendered layout against the spatial grid", async ({ desktop }) => {
     await expect(editor.getByRole("table")).toBeVisible();
     await capture("workbench-editor");
   });
+
+  const missing = REGIONS.map((region) => region.name).filter((name) => !located.has(name));
+
+  expect(missing, "declared regions that no state matched: a stale locator").toEqual([]);
 
   const head = execFileSync("git", ["rev-parse", "--short", "HEAD"], { encoding: "utf8" }).trim();
 
