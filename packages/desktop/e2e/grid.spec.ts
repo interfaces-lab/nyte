@@ -106,7 +106,10 @@ function planFor(index: SourceIndex): Plan {
         css: compileExpr(index, rail.offset),
       })),
       rows: region.rhythm?.rows ?? null,
-      pitch: region.rhythm === null ? null : compileExpr(index, region.rhythm.pitch),
+      pitch:
+        region.rhythm === null || region.rhythm.pitch === null
+          ? null
+          : compileExpr(index, region.rhythm.pitch),
       centred: region.centred,
     })),
     exceptions: Object.values(GRID_RULES).flatMap((rule) =>

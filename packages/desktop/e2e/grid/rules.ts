@@ -169,7 +169,7 @@ export const GRID_RULES = {
     ],
   },
   "control-size": {
-    says: `A control is ${spell(SCALE.controls)} tall; an icon-only control is as wide as it is tall. A control is measured at its outermost painted box: a control that paints no edge or fill of its own and fills the height inside a painted box that wraps no other control is measured as that box, as an input is as its input group. A button that fills its row's height and is the widest of the row's controls is measured as a row; a row is a box at least as tall as the row scale's first step that holds more than one control, ${spell([...SCALE.rows, ...SCALE.bars])} tall.`,
+    says: `A control is ${spell(SCALE.controls)} tall; an icon-only control is as wide as it is tall. A control is measured at its outermost painted box: a control that paints no edge or fill of its own and fills the height inside a painted box that wraps no other control is measured as that box, as an input is as its input group. A button that is a list or header row, because it carries or sits directly in role row, listitem, treeitem or option or a region's declared row, and that fills that row's height and is the widest of its controls, is measured as a row; the row is at least as tall as the row scale's first step and holds more than one control, ${spell([...SCALE.rows, ...SCALE.bars])} tall.`,
     exceptions: [
       composerEditor,
       {
@@ -290,7 +290,8 @@ export type RegionName =
   | "settings-nav"
   | "settings-page"
   | "dialog"
-  | "editor";
+  | "editor"
+  | "changes";
 
 /** Where a region's box is: a selector, or the element inside `within` whose width reads `token`. */
 export type Locate =
@@ -306,7 +307,8 @@ export interface Rail {
 
 export interface Rhythm {
   readonly rows: string;
-  readonly pitch: Expr;
+  /** Null when the rows have no fixed pitch, as file headers with diffs between them don't. */
+  readonly pitch: Expr | null;
   readonly why: string;
 }
 
@@ -502,6 +504,30 @@ export const REGIONS: readonly RegionSpec[] = [
       },
     ],
     rhythm: null,
+    centred: null,
+  },
+  {
+    name: "changes",
+    locate: { by: "selector", selector: '[data-slot="changes-panel"]' },
+    rails: [
+      {
+        name: "content",
+        from: "start",
+        offset: handle("space.s2"),
+        why: "The commit form and the panel's content start at its 8px padding.",
+      },
+      {
+        name: "content-end",
+        from: "end",
+        offset: handle("space.s2"),
+        why: "They end at the same padding.",
+      },
+    ],
+    rhythm: {
+      rows: '[data-slot="change-header"]',
+      pitch: null,
+      why: "Each changed file's header is the list's row; its diff sits between headers, so there is no fixed pitch.",
+    },
     centred: null,
   },
   {

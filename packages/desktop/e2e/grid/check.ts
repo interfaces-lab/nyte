@@ -96,9 +96,13 @@ const TYPE_SIZES: ReadonlySet<number> = new Set(
  * - An end-aligned box's start follows its width, but its end edge is still checked against the rails.
  * - An odd inline padding or margin passes when it puts the box's content or edge on one of its region's rails.
  */
+/** The roles that make a button a list or header row. */
+const ROW_ROLES = new Set(["row", "listitem", "treeitem", "option"]);
+
 export function check(snapshot: Snapshot): CheckResult {
   const tree = boxTree(snapshot);
   const boxes = snapshot.boxes;
+  const declaredRows = new Set(snapshot.regions.flatMap((region) => region.rows));
 
   const hits = new Map<string, number>();
   const findings: Finding[] = [];
@@ -301,6 +305,9 @@ export function check(snapshot: Snapshot): CheckResult {
     const row = box.parent === null ? undefined : boxes[box.parent];
 
     if (row === undefined || !(box.tag === "button" || box.role === "button")) return false;
+
+    if (![box, row].some((entry) => ROW_ROLES.has(entry.role ?? "") || declaredRows.has(entry.id)))
+      return false;
 
     const others = boxes.filter(
       (entry) =>
@@ -662,9 +669,9 @@ export function check(snapshot: Snapshot): CheckResult {
         });
       }
 
-      if (spec.rhythm === null || region.pitch === null) continue;
+      if (spec.rhythm === null) continue;
       const pitch = region.pitch;
-      const terms = termsIn(spec.rhythm.pitch);
+      const terms = spec.rhythm.pitch === null ? [] : termsIn(spec.rhythm.pitch);
 
       const rows = region.rows
         .flatMap((id) => boxes[id] ?? [])
@@ -694,7 +701,7 @@ export function check(snapshot: Snapshot): CheckResult {
 
         const previous = rows[index - 1];
 
-        if (previous === undefined) return;
+        if (previous === undefined || pitch === null) return;
         const step = row.rect.top - previous.rect.top;
 
         if (Math.abs(step - pitch) <= EPSILON || Math.abs(step - pitch) > SCALE.railNear) return;
