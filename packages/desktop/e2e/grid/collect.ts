@@ -158,6 +158,7 @@ export interface Snapshot {
  * - Rail and pitch lengths resolve on a probe inside the region, so overrides scoped to it apply. A
  *   run's line box comes from a probe of the same font, which gives where the content box and the
  *   baseline sit inside it. A placeholder is a pseudo-element, so its line is placed from the field.
+ * - A colour is transparent by its alpha: Chromium writes it last in `rgba()` and after `/` elsewhere.
  */
 export function collect(plan: Plan): Snapshot {
   const round = (value: number): number => Math.round(value * 100) / 100;
@@ -312,6 +313,8 @@ export function collect(plan: Plan): Snapshot {
     return all;
   };
 
+  const transparent = (color: string): boolean => /(?:\/|^rgba\(.*,)\s*0\)$/.test(color);
+
   const painted = (element: Element, style: CSSStyleDeclaration): boolean => {
     if (
       ["IMG", "svg", "VIDEO", "CANVAS", "INPUT", "TEXTAREA", "SELECT", "HR"].includes(
@@ -320,8 +323,7 @@ export function collect(plan: Plan): Snapshot {
     )
       return true;
 
-    if (style.backgroundColor !== "rgba(0, 0, 0, 0)" && style.backgroundColor !== "transparent")
-      return true;
+    if (!transparent(style.backgroundColor)) return true;
 
     if (style.backgroundImage !== "none" || style.boxShadow !== "none") return true;
 
@@ -634,10 +636,7 @@ export function collect(plan: Plan): Snapshot {
 
     if (style.display === "inline") facts.push("inline-run");
 
-    if (
-      (style.backgroundColor !== "rgba(0, 0, 0, 0)" && style.backgroundColor !== "transparent") ||
-      style.backgroundImage !== "none"
-    )
+    if (!transparent(style.backgroundColor) || style.backgroundImage !== "none")
       facts.push("background");
 
     if (style.display === "inline" && followsText(node)) facts.push("after-text");
