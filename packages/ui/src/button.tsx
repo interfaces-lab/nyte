@@ -1,5 +1,5 @@
 import { Button as ButtonPrimitive } from "@base-ui/react/button";
-import { create, props } from "@stylexjs/stylex";
+import { create, props, when } from "@stylexjs/stylex";
 import {
   createContext,
   use,
@@ -11,6 +11,7 @@ import {
 
 import { hairline } from "./styles/hairline.stylex.ts";
 import { focus } from "./styles/a11y.stylex.ts";
+import { joinedSolid } from "./styles/button.stylex.ts";
 import { button, control, media, radius, space, target } from "./styles/schema.stylex.ts";
 import {
   mergeStyleProps,
@@ -201,7 +202,21 @@ const buttonVariants = create({
     "--nyte-hairline-elevation": { default: null, [`:not(${disabled})`]: shadow.shadowSm },
   },
   solid: {
-    color: { default: role.contentOnInteractiveStrong, [disabled]: role.contentDisabled },
+    color: {
+      default: role.contentOnInteractiveStrong,
+      [disabled]: role.contentDisabled,
+      ":not([data-disabled])": {
+        [when.siblingBefore(`:is(${disabled})`, joinedSolid)]: {
+          "@media (forced-colors: none)": {
+            default: role.contentSecondary,
+            ":hover:not([data-disabled])": { [media.hover]: role.contentPrimary },
+            ":active": role.contentPrimary,
+            "[data-pressed]": role.contentPrimary,
+            '[aria-expanded="true"]': role.contentPrimary,
+          },
+        },
+      },
+    },
     backgroundColor: {
       default: role.buttonFill,
       ":hover:not([data-disabled])": {
@@ -209,6 +224,17 @@ const buttonVariants = create({
       },
       ":active:not([data-disabled])": role.buttonFillPressed,
       [disabled]: role.fillTertiary,
+      ":not([data-disabled])": {
+        [when.siblingBefore(`:is(${disabled})`, joinedSolid)]: {
+          "@media (forced-colors: none)": {
+            default: role.fillTertiary,
+            ":hover:not([data-disabled])": { [media.hover]: role.fillSecondary },
+            ":active": role.fillPrimary,
+            "[data-pressed]": role.fillSecondary,
+            '[aria-expanded="true"]': role.fillSecondary,
+          },
+        },
+      },
     },
     backgroundImage: "none",
   },
@@ -380,6 +406,7 @@ export function buttonStyle<State>(
       variant === "outline" && (joined ? controlStyles.joinedOutline : hairline.controlRing),
       pill && controlStyles.pill,
       joined && controlStyles.joined,
+      joined && variant === "solid" && joinedSolid,
       joined && iconOnly && controlStyles.joinedIcon,
       size === "2xs" ? focus.ringInset : focus.ring,
       xstyle,
