@@ -1,5 +1,7 @@
 import type { PartId, RunEnd, RunId, SessionId } from "@nyte-ai/schema";
+import { INDEX } from "../contract/fold.ts";
 import type { FoldState } from "../contract/fold.ts";
+import type { PartRecord } from "../contract/records.ts";
 import { LOCAL } from "../contract/host.ts";
 import type { Kernel } from "../contract/kernel.ts";
 import { readSession } from "../store/session.ts";
@@ -26,12 +28,16 @@ export function liveParts(
   run: RunId,
 ): Promise<readonly PartId[]> {
   return withFold(kernel, session, (state) =>
-    [...state.parts.values()].flatMap((part) =>
-      part.run === run && (part.status.kind === "live" || part.status.kind === "waiting")
-        ? [part.id]
-        : [],
-    ),
+    readUnsettledParts(state).flatMap((part) => (part.run === run ? [part.id] : [])),
   );
+}
+
+export function readUnsettledParts(state: FoldState): readonly PartRecord[] {
+  return [...state[INDEX].unsettled].flatMap((id) => {
+    const part = state.parts.get(id);
+
+    return part === undefined ? [] : [part];
+  });
 }
 
 export async function readRunEnd(
