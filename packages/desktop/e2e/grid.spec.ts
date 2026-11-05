@@ -474,8 +474,11 @@ test("the rendered layout against the spatial grid", async ({ desktop }) => {
     await expect(settingsNav(page)).toBeVisible();
   });
 
-  await test.step("the workbench markdown editor on a committed file", async () => {
+  await test.step("the workbench markdown editor on a committed file, beside one chat", async () => {
     await leaveSettings(page);
+    await panes(page).nth(1).getByRole("button", { name: "Pane actions" }).click();
+    await page.getByRole("menuitem", { name: "Close Pane" }).click();
+    await expect(panes(page)).toHaveCount(1);
     await page.getByRole("button", { name: "Open workbench panel" }).click();
     await page
       .getByRole("tablist", { name: "Workbench tabs" })
