@@ -238,6 +238,12 @@ export const GRID_RULES = {
         reason:
           "Everything inside a horizontally scrolling container, its table box included, is scrolled content: the region's end rail belongs to the column, not to what scrolls inside it. Start rails still apply.",
       },
+      {
+        name: "ragged-end",
+        match: { by: "fact", fact: "after-text" },
+        reason:
+          "An inline run that follows text on its line ends where the glyphs before it put it, as ragged text does, so it is exempt from the end rail. Ending past the region's end edge is overflow: that is a violation against the nearest end rail however far off it is.",
+      },
     ],
   },
   rhythm: {
@@ -269,6 +275,27 @@ export type Expr =
   | { readonly op: "sum"; readonly terms: readonly Expr[] }
   | { readonly op: "diff"; readonly left: Expr; readonly right: Expr }
   | { readonly op: "half"; readonly of: Expr };
+
+/** The handles an expression reads, which a rail's own declarations may use without being its cause. */
+export function termsIn(expr: Expr): string[] {
+  switch (expr.op) {
+    case "handle":
+      return [expr.handle];
+    case "px":
+      return [];
+    case "sum":
+      return expr.terms.flatMap(termsIn);
+    case "diff":
+      return [...termsIn(expr.left), ...termsIn(expr.right)];
+    case "half":
+      return termsIn(expr.of);
+    default: {
+      const exhaustive: never = expr;
+
+      return exhaustive;
+    }
+  }
+}
 
 export const handle = (name: string): Expr => ({ op: "handle", handle: name });
 

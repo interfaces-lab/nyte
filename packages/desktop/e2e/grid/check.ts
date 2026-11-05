@@ -1,6 +1,14 @@
 import type { Rect, SnapBox, SnapRegion, SnapText, Snapshot } from "./collect.ts";
-import { ALIGNMENTS, CHROME_BAR_TOKENS, GRID_RULES, REGIONS, SCALE, spell } from "./rules.ts";
-import type { BoxFact, Expr, Pick, RegionName, RuleId } from "./rules.ts";
+import {
+  ALIGNMENTS,
+  CHROME_BAR_TOKENS,
+  GRID_RULES,
+  REGIONS,
+  SCALE,
+  spell,
+  termsIn,
+} from "./rules.ts";
+import type { BoxFact, Pick, RegionName, RuleId } from "./rules.ts";
 import { LONGHANDS } from "./cause.ts";
 import {
   boxTree,
@@ -483,24 +491,17 @@ export function check(snapshot: Snapshot): CheckResult {
     });
   }
 
-  function insideScroller(box: SnapBox): boolean {
-    for (let current = box.parent; current !== null; current = boxes[current]?.parent ?? null)
-      if (boxes[current]?.facts.includes("h-scroller") === true) return true;
-
-    return false;
-  }
-
   function railEdge(box: SnapBox): boolean {
     if (box.painted && !box.svg) return true;
 
     if (box.control) return box.iconOnly;
 
-    return box.svg && !insideControl(box);
+    return box.svg && !hasAncestor(box, (ancestor) => ancestor.control);
   }
 
-  function insideControl(box: SnapBox): boolean {
+  function hasAncestor(box: SnapBox, test: (ancestor: SnapBox) => boolean): boolean {
     for (let current = box.parent; current !== null; current = boxes[current]?.parent ?? null)
-      if (boxes[current]?.control === true) return true;
+      if (boxes[current] !== undefined && test(boxes[current])) return true;
 
     return false;
   }
@@ -799,11 +800,16 @@ export function check(snapshot: Snapshot): CheckResult {
 
       if (own.some((rail) => near(rail.offset, candidate.offset))) continue;
 
+      const overflows =
+        candidate.from === "end" &&
+        candidate.offset < -EPSILON &&
+        candidate.box.facts.includes("after-text");
+
       const rail = own
         .flatMap((entry) => {
           const distance = Math.abs(entry.offset - candidate.offset);
 
-          return distance <= SCALE.railNear ? [{ entry, distance }] : [];
+          return distance <= SCALE.railNear || overflows ? [{ entry, distance }] : [];
         })
         .sort((a, b) => a.distance - b.distance)[0]?.entry;
 
@@ -813,12 +819,18 @@ export function check(snapshot: Snapshot): CheckResult {
         candidate.text === null || candidate.text.align === "start" ? [] : [candidate.text.align];
 
       const scrolled: BoxFact[] =
-        candidate.from === "end" && insideScroller(candidate.box) ? ["scrolled-overflow"] : [];
+        candidate.from === "end" &&
+        hasAncestor(candidate.box, (ancestor) => ancestor.facts.includes("h-scroller"))
+          ? ["scrolled-overflow"]
+          : [];
 
       if (
         exempt("rail", candidate.box, {
           extra: [...textFacts, ...scrolled],
-          ignore: candidate.from === "end" ? ["end-aligned"] : [],
+          ignore: [
+            ...(candidate.from === "end" ? (["end-aligned"] as const) : []),
+            ...(candidate.from === "start" || overflows ? (["after-text"] as const) : []),
+          ],
         })
       )
         continue;
@@ -960,27 +972,6 @@ export function check(snapshot: Snapshot): CheckResult {
     const ids = snapshot.picks.find((pick) => pick.name === selector)?.boxes ?? [];
 
     return ids.flatMap((id) => boxes[id] ?? []);
-  }
-}
-
-/** The handles an expression reads, which a rail's own declarations may use without being its cause. */
-function termsIn(expr: Expr): string[] {
-  switch (expr.op) {
-    case "handle":
-      return [expr.handle];
-    case "px":
-      return [];
-    case "sum":
-      return expr.terms.flatMap(termsIn);
-    case "diff":
-      return [...termsIn(expr.left), ...termsIn(expr.right)];
-    case "half":
-      return termsIn(expr.of);
-    default: {
-      const exhaustive: never = expr;
-
-      return exhaustive;
-    }
   }
 }
 
