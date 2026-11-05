@@ -284,15 +284,8 @@ export function check(snapshot: Snapshot): CheckResult {
 
       if (!framed(ancestor)) continue;
 
-      const inner =
-        ancestor.rect.height -
-        ["border-top-width", "border-bottom-width", "padding-top", "padding-bottom"].reduce(
-          (sum, property) => sum + (ancestor.lengths[property] ?? 0),
-          0,
-        );
-
       const other =
-        !near(control.rect.height, inner) ||
+        !near(control.rect.height, innerHeight(ancestor)) ||
         boxes.some(
           (entry) =>
             entry.control && entry.id !== control.id && descends(tree, entry.id, ancestor.id),
@@ -302,6 +295,34 @@ export function check(snapshot: Snapshot): CheckResult {
     }
 
     return control;
+  }
+
+  function rowButton(box: SnapBox): boolean {
+    const row = box.parent === null ? undefined : boxes[box.parent];
+
+    if (row === undefined || !(box.tag === "button" || box.role === "button")) return false;
+
+    const others = boxes.filter(
+      (entry) =>
+        entry.control && entry.visible && entry.id !== box.id && descends(tree, entry.id, row.id),
+    );
+
+    return (
+      row.rect.height >= Math.min(...SCALE.rows) &&
+      near(box.rect.height, innerHeight(row)) &&
+      others.length > 0 &&
+      others.every((entry) => entry.rect.width < box.rect.width)
+    );
+  }
+
+  function innerHeight(box: SnapBox): number {
+    return (
+      box.rect.height -
+      ["border-top-width", "border-bottom-width", "padding-top", "padding-bottom"].reduce(
+        (sum, property) => sum + (box.lengths[property] ?? 0),
+        0,
+      )
+    );
   }
 
   function framed(box: SnapBox): boolean {
@@ -382,7 +403,8 @@ export function check(snapshot: Snapshot): CheckResult {
 
     if (box.control && !box.font.inline) {
       const measured = paintedControl(box);
-      const tall = inSet(SCALE.controls, measured.rect.height);
+      const heights = rowButton(box) ? [...SCALE.rows, ...SCALE.bars] : SCALE.controls;
+      const tall = inSet(heights, measured.rect.height);
       const square = !box.iconOnly || near(measured.rect.width, measured.rect.height);
 
       if (
@@ -394,7 +416,7 @@ export function check(snapshot: Snapshot): CheckResult {
           box: measured.id,
           property: tall ? "width" : "height",
           value: `${px(measured.rect.width)} × ${px(measured.rect.height)}`,
-          expected: tall ? "as wide as it is tall" : `${spell(SCALE.controls)} tall`,
+          expected: tall ? "as wide as it is tall" : `${spell(heights)} tall`,
           target: null,
           cause: { kind: "property", box: measured.id, property: tall ? "width" : "height" },
         });

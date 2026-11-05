@@ -10,6 +10,9 @@ export const SCALE = {
   controls: [16, 20, 24, 28, 32, 36],
   /** Cursor's Glass bar: the titlebar and every pane header. */
   chromeBar: 40,
+  /** The row scale: the control heights at or above the 24px target. */
+  rows: [24, 28, 32, 36],
+  bars: [40, 44, 48],
   radii: [0, 4, 6, 8, 12, 14, 16, 9999],
   icons: [10, 12, 14, 16, 20],
   type: [
@@ -166,7 +169,7 @@ export const GRID_RULES = {
     ],
   },
   "control-size": {
-    says: `A control is ${spell(SCALE.controls)} tall; an icon-only control is as wide as it is tall. A control is measured at its outermost painted box: a control that paints no edge or fill of its own and fills the height inside a painted box that wraps no other control is measured as that box, as an input is as its input group.`,
+    says: `A control is ${spell(SCALE.controls)} tall; an icon-only control is as wide as it is tall. A control is measured at its outermost painted box: a control that paints no edge or fill of its own and fills the height inside a painted box that wraps no other control is measured as that box, as an input is as its input group. A button that fills its row's height and is the widest of the row's controls is measured as a row; a row is a box at least as tall as the row scale's first step that holds more than one control, ${spell([...SCALE.rows, ...SCALE.bars])} tall.`,
     exceptions: [
       composerEditor,
       {
