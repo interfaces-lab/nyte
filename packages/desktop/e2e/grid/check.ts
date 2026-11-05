@@ -94,6 +94,7 @@ const TYPE_SIZES: ReadonlySet<number> = new Set(
  *   An off-grid height that comes from content is traced to the deepest child that is off the grid.
  * - When a type pair is broken, the half declared nearer the text is the one that broke it.
  * - An end-aligned box's start follows its width, but its end edge is still checked against the rails.
+ * - An odd inline padding or margin passes when it puts the box's content or edge on one of its region's rails.
  */
 export function check(snapshot: Snapshot): CheckResult {
   const tree = boxTree(snapshot);
@@ -196,6 +197,7 @@ export function check(snapshot: Snapshot): CheckResult {
       const extra: BoxFact[] = [
         ...(centresLine(box, property) ? ["line-centring" as const] : []),
         ...(scriptSets(box, property) ? ["script-length" as const] : []),
+        ...(insetsToRail(box, property) ? ["rail-inset" as const] : []),
       ];
 
       if (exempt("spacing", box, { extra })) continue;
@@ -232,6 +234,36 @@ export function check(snapshot: Snapshot): CheckResult {
         cause: { kind: "property", box: box.id, property },
       });
     }
+  }
+
+  function insetsToRail(box: SnapBox, property: string): boolean {
+    const region = box.region === null ? undefined : snapshot.regions[box.region];
+
+    if (region === undefined) return false;
+    const right = region.rect.left + region.rect.width;
+
+    const edge =
+      property === "padding-left"
+        ? box.rect.left +
+          (box.lengths["border-left-width"] ?? 0) +
+          (box.lengths[property] ?? 0) -
+          region.rect.left
+        : property === "padding-right"
+          ? right -
+            (box.rect.left +
+              box.rect.width -
+              (box.lengths["border-right-width"] ?? 0) -
+              (box.lengths[property] ?? 0))
+          : property === "margin-left"
+            ? box.rect.left - region.rect.left
+            : property === "margin-right"
+              ? right - (box.rect.left + box.rect.width)
+              : null;
+
+    if (edge === null) return false;
+    const from = property.endsWith("left") ? "start" : "end";
+
+    return region.rails.some((rail) => rail.from === from && near(rail.offset, edge));
   }
 
   function scriptSets(box: SnapBox, property: string): boolean {
@@ -413,7 +445,7 @@ export function check(snapshot: Snapshot): CheckResult {
       if (
         !inherited &&
         exempt("half-pixel", box, {
-          ignore: axis === "y" ? ["centred", "end-aligned"] : [],
+          ignore: axis === "y" ? ["centred", "end-aligned"] : ["inline-run"],
         })
       )
         continue;

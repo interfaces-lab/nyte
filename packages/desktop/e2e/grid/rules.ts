@@ -66,7 +66,8 @@ export type BoxFact =
   | "inline-run"
   | "script-length"
   | "multi-line"
-  | "line-centring";
+  | "line-centring"
+  | "rail-inset";
 
 export type ElementMatch =
   | { readonly by: "selector"; readonly selector: string }
@@ -127,6 +128,12 @@ export const GRID_RULES = {
         match: { by: "token", token: "--nyte-titlebar-traffic-light-inset" },
         reason: "The inset clears macOS's traffic lights, a size the window sets, not the scale.",
       },
+      {
+        name: "rail-inset",
+        match: { by: "fact", fact: "rail-inset" },
+        reason:
+          "An inline padding or margin that puts content on one of its region's rails: the rail's offset minus the box's own. Cursor insets its group labels 9px this way.",
+      },
       scriptLength,
     ],
   },
@@ -156,6 +163,12 @@ export const GRID_RULES = {
     says: `A control is ${spell(SCALE.controls)} tall; an icon-only control is as wide as it is tall.`,
     exceptions: [
       composerEditor,
+      {
+        name: "switch-track",
+        match: { by: "selector", selector: '[role="switch"]' },
+        reason:
+          "A switch is a 30×18 track, as Cursor's settings switch (.solid-switch) is; it isn't sized like a button.",
+      },
       {
         name: "multi-line",
         match: { by: "fact", fact: "multi-line" },
@@ -188,7 +201,16 @@ export const GRID_RULES = {
   },
   "half-pixel": {
     says: "Painted box edges and icons sit on whole CSS pixels.",
-    exceptions: [centred, endAligned],
+    exceptions: [
+      centred,
+      endAligned,
+      {
+        name: "baseline-inline",
+        match: { by: "fact", fact: "inline-run" },
+        reason:
+          "An inline box in a line of text sits where the line's baseline puts it, on y only. In 15/24 Inter the baseline is at 17.5px, so painted inline code lands on a half pixel at every type pair and no token can move it.",
+      },
+    ],
   },
   rail: {
     says: "A painted edge, an icon or a text start within 4px of one of its region's rails sits on it.",
