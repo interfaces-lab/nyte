@@ -10,7 +10,7 @@ import { mergeStyleProps, type StyledProps } from "./style.ts";
 import type { Restyle } from "./styles/contracts.ts";
 import { intent } from "./surface-theme.ts";
 import { text } from "./styles/text.stylex.ts";
-import { appearance, motion, role, shadow, type } from "./styles/vars.stylex.ts";
+import { appearance, motion, role, shadow } from "./styles/vars.stylex.ts";
 
 const THUMB_TRAVEL = `calc(${switchControl.widthMd} - ${switchControl.knobMd} - ${switchControl.paddingMd} * 2)`;
 
@@ -34,7 +34,7 @@ const styles = create({
     cursor: appearance.cursorInteractive,
   },
   copy: { display: "flex", flexDirection: "column", gap: space.s0_5, minWidth: 0 },
-  description: { color: role.contentSecondary, fontSize: type.fontSm },
+  description: { color: role.contentSecondary },
   track: {
     "::before": {
       content: '""',
@@ -175,7 +175,7 @@ export function SwitchField({
       <span {...props(styles.copy)}>
         <span id={labelId}>{label}</span>
         {description !== undefined && (
-          <Field.Description render={<span />} {...props(styles.description)}>
+          <Field.Description render={<span />} {...props(text.sm, styles.description)}>
             {description}
           </Field.Description>
         )}

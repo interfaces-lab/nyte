@@ -10,7 +10,7 @@ import { mergeStyleProps, type StyledProps } from "./style.ts";
 import type { Restyle } from "./styles/contracts.ts";
 import { intent } from "./surface-theme.ts";
 import { text } from "./styles/text.stylex.ts";
-import { appearance, role, type } from "./styles/vars.stylex.ts";
+import { appearance, role } from "./styles/vars.stylex.ts";
 import { Icon } from "./icon.tsx";
 
 const styles = create({
@@ -32,7 +32,7 @@ const styles = create({
     cursor: appearance.cursorInteractive,
   },
   copy: { display: "flex", flexDirection: "column", gap: space.s0_5, minWidth: 0 },
-  description: { color: role.contentSecondary, fontSize: type.fontSm },
+  description: { color: role.contentSecondary },
   box: {
     position: "relative",
     width: "var(--_checkbox-size)",
@@ -192,7 +192,7 @@ export function CheckboxField({
       <span {...props(styles.copy)}>
         <span id={labelId}>{label}</span>
         {description !== undefined && (
-          <Field.Description render={<span />} {...props(styles.description)}>
+          <Field.Description render={<span />} {...props(text.sm, styles.description)}>
             {description}
           </Field.Description>
         )}
