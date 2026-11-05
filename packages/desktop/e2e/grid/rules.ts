@@ -265,7 +265,8 @@ export type RegionName =
   | "workbench-rail"
   | "settings-nav"
   | "settings-page"
-  | "dialog";
+  | "dialog"
+  | "editor";
 
 /** Where a region's box is: a selector, or the element inside `within` whose width reads `token`. */
 export type Locate =
@@ -453,6 +454,29 @@ export const REGIONS: readonly RegionSpec[] = [
     name: "settings-page",
     locate: { by: "token", within: "main", token: "--nyte-settings-content-width" },
     rails: [],
+    rhythm: null,
+    centred: null,
+  },
+  {
+    name: "editor",
+    locate: {
+      by: "selector",
+      selector: 'section[aria-label="Files"] div:has(> div > [role="textbox"])',
+    },
+    rails: [
+      {
+        name: "content",
+        from: "start",
+        offset: handle("space.s6"),
+        why: "The workbench markdown editor's text, tables and blocks start at the column's padding.",
+      },
+      {
+        name: "content-end",
+        from: "end",
+        offset: handle("space.s6"),
+        why: "Wide blocks end at the column's end padding.",
+      },
+    ],
     rhythm: null,
     centred: null,
   },

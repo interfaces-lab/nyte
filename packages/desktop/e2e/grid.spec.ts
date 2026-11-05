@@ -17,6 +17,7 @@ import { ALIGNMENTS, GRID_RULES, REGIONS, TRANSCRIPT_END } from "./grid/rules.ts
 import {
   chatPane,
   composer,
+  leaveSettings,
   messages,
   openNewChat,
   openSettings,
@@ -43,6 +44,21 @@ const PROMPT = [
   "| Sidebar | 8px | `sidebar.gutter` |",
   "| Composer | 0px | `conversation.composerInset` |",
 ];
+
+/** A markdown file for the workbench editor: inline code, inline raw HTML and a table. */
+const EDITOR_FILE = [
+  "# Editor",
+  "",
+  "Press <kbd>Enter</kbd> to send, or use `inline code` in a line.",
+  "",
+  "| Region | Inset | Token |",
+  "| --- | --- | --- |",
+  "| Sidebar | 8px | `sidebar.gutter` |",
+  "| Composer | 0px | `conversation.composerInset` |",
+  "",
+  "A closing paragraph.",
+  "",
+].join("\n");
 
 interface Size {
   readonly width: number;
@@ -319,7 +335,8 @@ test("the rendered layout against the spatial grid", async ({ desktop }) => {
 
     git("init", "-q", "-b", "main");
     await writeFile(join(desktop.home, "README.md"), "# Home\n");
-    git("add", "README.md");
+    await writeFile(join(desktop.home, "editor.md"), EDITOR_FILE);
+    git("add", "README.md", "editor.md");
     git("commit", "-q", "-m", "init");
     await writeFile(join(desktop.home, "README.md"), "# Home\n\nEdited.\n");
     await sidebar(page).getByRole("button", { name: "New Project" }).click();
@@ -455,6 +472,22 @@ test("the rendered layout against the spatial grid", async ({ desktop }) => {
     await openSettings(page, "Appearance");
     await capture("settings-appearance");
     await expect(settingsNav(page)).toBeVisible();
+  });
+
+  await test.step("the workbench markdown editor on a committed file", async () => {
+    await leaveSettings(page);
+    await page.getByRole("button", { name: "Open workbench panel" }).click();
+    await page
+      .getByRole("tablist", { name: "Workbench tabs" })
+      .getByRole("tab", { name: "Files" })
+      .click();
+    const files = workbench(page).getByRole("region", { name: "Files" });
+    await files.getByRole("button", { name: "Show Explorer" }).click();
+    await files.getByRole("treeitem", { name: /editor\.md/u }).click();
+    const editor = files.getByRole("textbox", { name: "editor.md" });
+    await expect(editor.getByRole("heading", { name: "Editor", level: 1 })).toBeVisible();
+    await expect(editor.getByRole("table")).toBeVisible();
+    await capture("workbench-editor");
   });
 
   const head = execFileSync("git", ["rev-parse", "--short", "HEAD"], { encoding: "utf8" }).trim();
