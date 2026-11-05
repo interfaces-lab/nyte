@@ -1,3 +1,4 @@
+import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { FileTree, useFileTree } from "@pierre/trees/react";
 import type { ContextMenuItem, ContextMenuOpenContext } from "@pierre/trees";
@@ -371,7 +372,7 @@ export function FilesPanel({
         }
       }}
     >
-      <div {...props(workbenchStyles.toolbar, styles.toolbar)}>
+      <div {...props(workbenchStyles.toolbar, hairline.blockEnd, styles.toolbar)}>
         <Button
           iconOnly
           icon="arrow-left"

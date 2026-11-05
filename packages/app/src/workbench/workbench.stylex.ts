@@ -23,14 +23,9 @@ export const workbenchStyles = create({
     alignItems: "center",
     gap: target.gap,
     minHeight: workbench.headerHeight,
-    /** The bottom rule takes a pixel of the bar; the same pixel on top keeps its content even. */
-    paddingBlockStart: `calc(${workbench.headerPaddingBlock} + ${space.px})`,
-    paddingBlockEnd: workbench.headerPaddingBlock,
+    paddingBlock: workbench.headerPaddingBlock,
     flexShrink: 0,
     paddingInline: space.s1_5,
-    borderBottomWidth: 1,
-    borderBottomStyle: "solid",
-    borderBottomColor: role.strokeQuaternary,
   },
   edge: {
     borderInlineStartWidth: 1,
