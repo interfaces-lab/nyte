@@ -9,6 +9,8 @@ import { formatTimeAgo } from "../lib/format.ts";
 import { useNowMinute } from "../lib/use-now-minute.ts";
 import { TaskMark } from "../components/task-mark.tsx";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
+import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { Kbd } from "@nyte-ai/ui/kbd";
 import { sessionTitle } from "@nyte-ai/plugin/client/presentation";
 import { useChats } from "../chats/index.ts";
@@ -262,16 +264,16 @@ export function SearchPalette({
           trailing={<Kbd keys={clientActionKeys(clientActions.search, mac)} plain />}
         />
         <Tabs.Root
-          variant="pill"
+          variant="plain"
           value={tab}
-          xstyle={styles.tabsBar}
+          xstyle={[styles.tabsBar, hairline.blockEnd]}
           onValueChange={(value) => {
             if (amongOptions(value, TABS)) setTab(value);
           }}
         >
           <Tabs.List aria-label="Search categories" xstyle={styles.tabs}>
             {TABS.map((option) => (
-              <Tabs.Tab key={option} value={option}>
+              <Tabs.Tab key={option} value={option} variant="bare" xstyle={[text.base, styles.tab]}>
                 {tabLabel(option)}
               </Tabs.Tab>
             ))}

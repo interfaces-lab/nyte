@@ -3,6 +3,7 @@ import type { ReactElement, ReactNode } from "react";
 import { Icon } from "@nyte-ai/ui/icon";
 import { paletteLegendStyles as styles } from "./palette-legend.stylex.ts";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
+import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 
 const BAYER4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5] as const;
 
@@ -76,7 +77,7 @@ function DitherMark(): ReactElement {
 
 export function PaletteLegend(): ReactElement {
   return (
-    <footer aria-label="Keyboard shortcuts" {...props(styles.footer)}>
+    <footer aria-label="Keyboard shortcuts" {...props(styles.footer, hairline.blockStart)}>
       <div {...props(styles.legend)}>
         <span {...props(text.sm, styles.item)}>
           <span {...props(styles.keys)}>
