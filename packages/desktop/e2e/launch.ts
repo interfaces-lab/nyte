@@ -76,18 +76,34 @@ interface LaunchedDesktop {
   close(): Promise<void>;
 }
 
-async function assertBuilt(): Promise<void> {
-  const required = [
-    [MAIN_ENTRY, "pnpm --dir packages/desktop build:e2e"],
-    [resolve(DESKTOP_ROOT, "out/renderer/index.html"), "pnpm --dir packages/desktop build"],
-    [resolve(PACKAGES_ROOT, "app/dist/index.html"), "pnpm --dir packages/app build"],
-  ] as const;
+/** The five outputs a launch reads, in the order they are built. */
+const BUILD_OUTPUTS = [
+  [resolve(PACKAGES_ROOT, "canvas/dist/shell/index.html"), "pnpm --dir packages/canvas build"],
+  [
+    resolve(PACKAGES_ROOT, "app/dist/index.html"),
+    "VITE_NYTE_CLERK_PUBLISHABLE_KEY= pnpm --dir packages/app build",
+  ],
+  [resolve(PACKAGES_ROOT, "tui/dist/nyte-tailnet"), "pnpm --dir packages/tui build"],
+  [resolve(DESKTOP_ROOT, "out/renderer/index.html"), "pnpm --dir packages/desktop build"],
+  [MAIN_ENTRY, "pnpm --dir packages/desktop build:e2e"],
+] as const;
 
-  for (const [path, command] of required) {
-    await access(path).catch(() => {
-      throw new Error(`Missing ${path}. Run ${command} first.`);
-    });
-  }
+async function assertBuilt(): Promise<void> {
+  const missing = await Promise.all(
+    BUILD_OUTPUTS.map(([path, command]) =>
+      access(path).then(
+        () => [],
+        () => [`${path}: run ${command}`],
+      ),
+    ),
+  );
+
+  const lines = missing.flat();
+
+  if (lines.length > 0)
+    throw new Error(
+      `Missing build outputs. Build them in this order from the repository root:\n${lines.join("\n")}`,
+    );
 }
 
 function launchEnvironment(options: LaunchOptions, host: E2eHost) {
