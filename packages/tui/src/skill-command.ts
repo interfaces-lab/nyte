@@ -36,7 +36,7 @@ const USAGE =
 
 const STAMP = "nyte-skill-version:";
 
-const SKILL_REVISION = 2;
+const SKILL_REVISION = 3;
 
 const HOOK_COMMAND = "nyte skill hook";
 
@@ -134,7 +134,7 @@ metadata:
 
 # Nyte
 
-\`nyte\` runs agent chats that outlive the process. Commands that need a host start their own on \`~/.nyte/nyte.db\`; \`--host-url <url>\` with \`NYTE_HOST_TOKEN\` attaches to a running \`nyte host\` instead, whose URL and token are in \`~/.nyte/host.json\`.
+\`nyte\` runs agent chats that outlive the process. Commands that need a host attach to the host serving \`~/.nyte\` and start one in the background when none serves; \`--host-url <url>\` with \`NYTE_HOST_TOKEN\` attaches to a running \`nyte host\` instead, whose URL and token are in \`~/.nyte/host.json\`.
 
 ## Discover operations
 

@@ -320,7 +320,7 @@ test("nyte host serves clients that attach with --host-url from an empty HOME, a
     stderr: "pipe",
   });
 
-  expect(await second.exited).toBe(1);
+  expect(await second.exited).toBe(75);
   expect(await new Response(second.stderr).text()).toContain(`already running at ${listening.url}`);
 
   const env = { ...client.env, NYTE_HOST_TOKEN: file.token };
