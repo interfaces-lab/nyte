@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { ElectronApplication, Locator, Page } from "@playwright/test";
 import { access, mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { release, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import process from "node:process";
 import { execFile } from "node:child_process";
@@ -347,11 +347,10 @@ test(`polish evidence (${LABEL}) for scenarios U and D`, async () => {
       return {
         position: window?.getWindowButtonPosition(),
         zoom: window?.webContents.getZoomFactor() ?? 1,
-        macOS: process.getSystemVersion(),
       };
     });
 
-    const buttonHeight = macOSWindowButtonHeight(buttons.macOS);
+    const buttonHeight = macOSWindowButtonHeight(release());
 
     const centers = {
       trafficLights: (buttons.position?.y ?? Number.NaN) + buttonHeight / 2,

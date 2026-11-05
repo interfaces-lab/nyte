@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { release, tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { _electron, expect } from "@playwright/test";
@@ -170,15 +170,14 @@ test("titlebar controls and workbench stay aligned at every zoom and on every di
 
           if (!window) throw new Error("Missing Nyte window");
 
-          return { position: window.getWindowButtonPosition(), macOS: process.getSystemVersion() };
+          return window.getWindowButtonPosition();
         });
 
-        assert.ok(native.position);
+        assert.ok(native);
         assert.ok(measured.toggle.left * zoom >= 71.9);
         assert.ok(
           Math.abs(
-            measured.header.centerY * zoom -
-              (native.position.y + macOSWindowButtonHeight(native.macOS) / 2),
+            measured.header.centerY * zoom - (native.y + macOSWindowButtonHeight(release()) / 2),
           ) <= WINDOW_BUTTON_CENTRE_TOLERANCE,
         );
       }
