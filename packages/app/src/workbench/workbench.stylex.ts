@@ -25,7 +25,7 @@ export const workbenchStyles = create({
     minHeight: workbench.headerHeight,
     paddingBlock: workbench.headerPaddingBlock,
     flexShrink: 0,
-    paddingInline: space.s1_5,
+    paddingInline: space.s2,
   },
   panelOpen: { minWidth: workbench.panelWidth },
   railHost: { width: workbench.railWidth, minWidth: workbench.railWidth },
