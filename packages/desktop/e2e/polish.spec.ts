@@ -10,6 +10,7 @@ import { press } from "@nyte-ai/app/e2e/scenario-d";
 import { HOURS_QUESTION } from "@nyte-ai/app/e2e/scenario-u-fixture";
 import { tabTo } from "@nyte-ai/app/e2e/scenario-u-trace";
 import { macOSWindowButtonHeight } from "@nyte-ai/app/contract/window-buttons.ts";
+import { WINDOW_BUTTON_CENTRE_TOLERANCE } from "@nyte-ai/app/e2e/window-buttons";
 import { CI_PROMPT, RESTAURANT_PROMPT } from "@nyte-ai/bench";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
@@ -26,9 +27,6 @@ const LABEL = process.env.NYTE_POLISH_LABEL === "before" ? "before" : "after";
 const JUDGED = LABEL === "after";
 
 const RECONNECT_PROMPT = "Are you still there?";
-
-/** The window buttons and the titlebar both snap to whole points, so half a point is as close as they get. */
-const TRAFFIC_LIGHT_TOLERANCE = 0.5;
 
 const LONG_PROMPT = "/long 80";
 
@@ -364,7 +362,7 @@ test(`polish evidence (${LABEL}) for scenarios U and D`, async () => {
 
     if (JUDGED)
       expect(Math.abs(centers.trafficLights - centers.sidebarToggle)).toBeLessThanOrEqual(
-        TRAFFIC_LIGHT_TOLERANCE,
+        WINDOW_BUTTON_CENTRE_TOLERANCE,
       );
   });
 

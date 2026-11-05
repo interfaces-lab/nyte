@@ -11,6 +11,7 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { afterAll, beforeAll, test } from "vitest";
 import { macOSWindowButtonHeight } from "../contract/window-buttons.ts";
+import { WINDOW_BUTTON_CENTRE_TOLERANCE } from "../../e2e/utils/window-buttons.ts";
 
 const desktop = fileURLToPath(new URL("../../../desktop/", import.meta.url));
 
@@ -117,12 +118,6 @@ async function geometry() {
   });
 }
 
-/**
- * Main places the window buttons from its own copy of the titlebar height, so they centre on the
- * header within half a point at every zoom only while that copy matches `--nyte-titlebar-height`.
- */
-const CENTRE_TOLERANCE = 0.5;
-
 async function setZoom(zoom: number): Promise<void> {
   await application.evaluate(({ BrowserWindow }, factor) => {
     const window = BrowserWindow.getAllWindows()[0];
@@ -184,7 +179,7 @@ test("titlebar controls and workbench stay aligned at every zoom and on every di
           Math.abs(
             measured.header.centerY * zoom -
               (native.position.y + macOSWindowButtonHeight(native.macOS) / 2),
-          ) <= CENTRE_TOLERANCE,
+          ) <= WINDOW_BUTTON_CENTRE_TOLERANCE,
         );
       }
     }
