@@ -61,7 +61,6 @@ const styles = create({
   triggerDetail: {
     display: "var(--_model-detail-display, inline)",
     flexShrink: 0,
-    color: role.contentSecondary,
     whiteSpace: "nowrap",
   },
   palette: {

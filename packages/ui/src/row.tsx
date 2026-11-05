@@ -45,21 +45,21 @@ const styles = create({
   interactive: {
     "--_row-fill": {
       default: "transparent",
-      ":hover": { [media.hover]: role.bgHover },
-      ":focus-within": role.bgHover,
+      ":hover": { [media.hover]: role.fillTertiary },
+      ":focus-within": role.fillTertiary,
     },
   },
   nav: {
     "--_row-fill": {
       default: "transparent",
-      ":hover:not(:disabled, [data-disabled])": { [media.hover]: role.bgHover },
+      ":hover:not(:disabled, [data-disabled])": { [media.hover]: role.fillTertiary },
     },
     flexShrink: 0,
     margin: 0,
     paddingBlock: 0,
     borderRadius: row.radius,
     color: {
-      default: role.contentChrome,
+      default: role.contentSecondary,
       ":hover:not(:disabled, [data-disabled])": { [media.hover]: role.contentPrimary },
       ":focus-visible": role.contentPrimary,
       ":disabled": role.contentDisabled,
@@ -75,8 +75,8 @@ const styles = create({
     },
   },
   selected: {
-    "--_row-fill": role.bgInteractiveSecondaryTranslucent,
-    boxShadow: `inset 0 0 0 1px ${role.borderPrimary}`,
+    "--_row-fill": role.fillSecondary,
+    boxShadow: `inset 0 0 0 1px ${role.strokeTertiary}`,
     color: role.contentPrimary,
   },
   primaryFocus: {

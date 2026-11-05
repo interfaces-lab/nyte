@@ -23,8 +23,8 @@ export function renderDiagram(source: string): DiagramResult {
       accent: role.contentAccent,
       muted: role.contentSecondary,
       surface: role.bgElevated,
-      border: role.borderSecondaryTranslucent,
-      line: role.borderPrimaryTranslucent,
+      border: role.strokeQuaternary,
+      line: role.strokeTertiary,
       padding: 24,
       transparent: true,
     })

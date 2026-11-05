@@ -435,7 +435,7 @@ const styles = create({
     padding: space.s2,
     borderRadius: radius.control,
     backgroundColor: role.bgBase,
-    boxShadow: `0 0 0 1px ${role.borderSecondaryTranslucent}`,
+    boxShadow: `0 0 0 1px ${role.strokeQuaternary}`,
   },
   cell: {
     position: "relative",
@@ -447,7 +447,7 @@ const styles = create({
     outlineWidth: 1,
     outlineColor: appearance.focusRing,
     outlineOffset: 1,
-    backgroundColor: { default: role.bgMuted, ":hover": { [media.hover]: role.bgHover } },
+    backgroundColor: { default: role.bgMuted, ":hover": { [media.hover]: role.fillTertiary } },
     color: role.contentOnInteractiveStrong,
     cursor: appearance.cursorInteractive,
   },
@@ -462,6 +462,6 @@ const styles = create({
     flex: "none",
     width: glyph.md,
   },
-  chevron: { display: "inline-flex", color: role.contentTertiary },
+  chevron: { display: "inline-flex", color: role.contentQuaternary },
   inline: { display: "inline-flex", alignItems: "center", gap: space.s2 },
 });

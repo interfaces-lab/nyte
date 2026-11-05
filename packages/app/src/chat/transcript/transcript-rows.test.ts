@@ -61,7 +61,7 @@ function view(
 }
 
 test("a window cut after its turn's prompt leads that turn with the prompt and a gap for its earlier steps, the gap gone and the key kept once paging reaches the prompt", () => {
-  const projector = transcriptProjector();
+  const projector = transcriptProjector({ thinking: true });
 
   const keys = (messages: readonly Message[], lead: SessionView["leadingPrompt"]) =>
     projector.rows({ value: view(messages, lead), error: undefined }).map((row) => row.key);
@@ -97,7 +97,7 @@ test("a window cut after its turn's prompt leads that turn with the prompt and a
 });
 
 test("a leading prompt that arrives beside unchanged messages redraws the turn with it", () => {
-  const projector = transcriptProjector();
+  const projector = transcriptProjector({ thinking: true });
   const bare = { value: view(body, null), error: undefined };
   const led = { value: { ...bare.value, leadingPrompt: prompt }, error: undefined };
 
@@ -269,7 +269,7 @@ test("reasoning that settles while its run waits on the next response keeps its 
     messages: [prompt, thinking],
   } satisfies SessionView;
 
-  const projector = transcriptProjector();
+  const projector = transcriptProjector({ thinking: true });
 
   expect(projector.row({ value: streaming, error: undefined }, "step:th")).toMatchObject({
     running: true,

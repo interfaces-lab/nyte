@@ -18,7 +18,7 @@ const styles = create({
     height: 96,
     borderWidth: 1,
     borderStyle: "dashed",
-    borderColor: role.borderPrimaryTranslucent,
+    borderColor: role.strokeTertiary,
     borderRadius: radius.control,
     color: role.contentSecondary,
     fontSize: type.fontBase,

@@ -1,5 +1,4 @@
 import { props } from "@stylexjs/stylex";
-import type { ReactNode } from "react";
 import {
   MenuGroup,
   MenuGroupLabel,
@@ -24,13 +23,7 @@ import { EnvironmentMenu } from "./environment-menu.tsx";
 
 const INLINE_FOLDERS = 5;
 
-export function WorkspaceContext({
-  active,
-  children,
-}: {
-  readonly active: boolean;
-  readonly children?: ReactNode;
-}) {
+export function WorkspaceContext({ active }: { readonly active: boolean }) {
   const host = useHostState();
   const workspace = host.data.workspace;
   const workspaces = useWorkspaces();
@@ -144,7 +137,6 @@ export function WorkspaceContext({
       </ContextSelector>
       {workspace !== undefined && <BranchSegment workspace={workspace.id} switchable size="md" />}
       {nyte.clientSurface === "desktop" && <EnvironmentMenu active={active} size="md" />}
-      {children}
     </div>
   );
 }

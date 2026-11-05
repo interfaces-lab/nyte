@@ -41,7 +41,7 @@ const styles = create({
       position: "absolute",
       inset: 0,
       borderRadius: "inherit",
-      boxShadow: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
+      boxShadow: `inset 0 0 0 1px ${role.strokeQuaternary}`,
       pointerEvents: "none",
     },
     color: role.contentPrimary,
@@ -82,7 +82,7 @@ const styles = create({
     outlineOffset: -1,
     backgroundColor: {
       default: "transparent",
-      "[data-highlighted]": role.bgHover,
+      "[data-highlighted]": role.fillTertiary,
     },
     color: { default: role.contentPrimary, "[data-disabled]": role.contentDisabled },
     cursor: "default",
@@ -99,7 +99,6 @@ const styles = create({
     alignItems: "center",
     justifyContent: "center",
     width: 12,
-    color: role.contentSecondary,
   },
 });
 

@@ -1,6 +1,6 @@
 ---
 title: project.update
-description: Edits a project's name, brief, goal, worker model or archived state.
+description: Edits a project's settings or archives it. Its chats read the change from their next request.
 ---
 
 Edits a project's `name`, `brief`, `until`, `worker` or `archived` flag by compare-and-set and
@@ -65,55 +65,70 @@ Response: the project as stored after the edit.
           "minLength": 1,
           "maxLength": 80
         },
-        "brief": {
+        "models": {
+          "type": "object",
+          "required": ["coordinator", "agents"],
+          "properties": {
+            "coordinator": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "required": ["provider", "id"],
+                  "properties": {
+                    "provider": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    }
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "agents": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "required": ["provider", "id"],
+                  "properties": {
+                    "provider": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    }
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        },
+        "instructions": {
           "type": "string"
         },
-        "until": {
-          "anyOf": [
-            {
-              "type": "object",
-              "required": ["kind"],
-              "properties": {
-                "kind": {
-                  "type": "string",
-                  "const": "standing"
-                }
-              }
-            },
-            {
-              "type": "object",
-              "required": ["kind", "goal"],
-              "properties": {
-                "kind": {
-                  "type": "string",
-                  "const": "goal"
-                },
-                "goal": {
-                  "type": "string",
-                  "minLength": 1
-                }
-              }
-            }
-          ]
+        "skills": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         },
-        "worker": {
-          "anyOf": [
-            {
-              "type": "object",
-              "required": ["provider", "id"],
-              "properties": {
-                "provider": {
-                  "type": "string"
-                },
-                "id": {
-                  "type": "string"
-                }
-              }
-            },
-            {
-              "type": "null"
-            }
-          ]
+        "disabledMcp": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "disabledDocs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         },
         "archived": {
           "type": "boolean"
@@ -133,11 +148,13 @@ Response: the project as stored after the edit.
   "required": [
     "id",
     "name",
-    "brief",
-    "until",
     "workspace",
-    "lead",
-    "worker",
+    "coordinator",
+    "models",
+    "instructions",
+    "skills",
+    "disabledMcp",
+    "disabledDocs",
     "archived",
     "createdAt"
   ],
@@ -150,41 +167,10 @@ Response: the project as stored after the edit.
       "minLength": 1,
       "maxLength": 80
     },
-    "brief": {
-      "type": "string"
-    },
-    "until": {
-      "anyOf": [
-        {
-          "type": "object",
-          "required": ["kind"],
-          "properties": {
-            "kind": {
-              "type": "string",
-              "const": "standing"
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": ["kind", "goal"],
-          "properties": {
-            "kind": {
-              "type": "string",
-              "const": "goal"
-            },
-            "goal": {
-              "type": "string",
-              "minLength": 1
-            }
-          }
-        }
-      ]
-    },
     "workspace": {
       "type": "string"
     },
-    "lead": {
+    "coordinator": {
       "anyOf": [
         {
           "type": "string"
@@ -194,24 +180,70 @@ Response: the project as stored after the edit.
         }
       ]
     },
-    "worker": {
-      "anyOf": [
-        {
-          "type": "object",
-          "required": ["provider", "id"],
-          "properties": {
-            "provider": {
-              "type": "string"
+    "models": {
+      "type": "object",
+      "required": ["coordinator", "agents"],
+      "properties": {
+        "coordinator": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": ["provider", "id"],
+              "properties": {
+                "provider": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                }
+              }
             },
-            "id": {
-              "type": "string"
+            {
+              "type": "null"
             }
-          }
+          ]
         },
-        {
-          "type": "null"
+        "agents": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": ["provider", "id"],
+              "properties": {
+                "provider": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
-      ]
+      }
+    },
+    "instructions": {
+      "type": "string"
+    },
+    "skills": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "disabledMcp": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "disabledDocs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
     },
     "archived": {
       "type": "boolean"

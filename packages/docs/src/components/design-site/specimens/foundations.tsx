@@ -125,7 +125,7 @@ function MotionSpecimen() {
 const tokens = [
   ["--nyte-content-primary", role.contentPrimary],
   ["--nyte-bg-interactive-strong", role.bgInteractiveStrong],
-  ["--nyte-border-primary-translucent", role.borderPrimaryTranslucent],
+  ["--nyte-stroke-tertiary", role.strokeTertiary],
   ["--nyte-focus-ring", appearance.focusRing],
 ] as const;
 
@@ -227,7 +227,7 @@ const styles = create({
     width: "100%",
     height: space.s3,
     borderRadius: radius.indicator,
-    backgroundColor: role.bgInteractiveSecondaryTranslucent,
+    backgroundColor: role.fillTertiary,
   },
   swatchName: {
     marginBlockStart: space.s1,
@@ -244,8 +244,8 @@ const styles = create({
     borderStartEndRadius: value,
     borderEndStartRadius: value,
     borderEndEndRadius: value,
-    backgroundColor: role.bgInteractiveSecondaryTranslucent,
-    boxShadow: `inset 0 0 0 1.5px ${role.contentInteractiveTertiary}`,
+    backgroundColor: role.fillTertiary,
+    boxShadow: `inset 0 0 0 1.5px ${role.contentQuaternary}`,
   }),
   steps: { display: "flex", flexDirection: "column", gap: space.s1_5, width: 160 },
   step: { display: "grid", gridTemplateColumns: "24px auto", alignItems: "center", gap: space.s2 },
@@ -315,13 +315,13 @@ const styles = create({
   curve: { width: 96, height: 72, overflow: "visible" },
   curveGuide: {
     fill: "none",
-    stroke: role.borderSecondaryTranslucent,
+    stroke: role.strokeQuaternary,
     strokeWidth: 1,
     vectorEffect: "non-scaling-stroke",
   },
   curveLine: {
     fill: "none",
-    stroke: role.contentInteractiveTertiary,
+    stroke: role.contentQuaternary,
     strokeWidth: 1.5,
     vectorEffect: "non-scaling-stroke",
   },
@@ -339,7 +339,7 @@ const styles = create({
     insetInlineStart: 0,
     width: space.s4,
     borderRadius: radius.pill,
-    backgroundColor: role.contentInteractiveTertiary,
+    backgroundColor: role.contentQuaternary,
     transform: "translateX(calc(var(--design-active, 0) * 96px))",
     transitionProperty: "transform",
     transitionDuration: { default: "700ms", "@media (prefers-reduced-motion: reduce)": "0s" },
@@ -359,7 +359,7 @@ const styles = create({
     height: space.s4,
     borderRadius: radius.indicator,
     backgroundColor: value,
-    boxShadow: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
+    boxShadow: `inset 0 0 0 1px ${role.strokeQuaternary}`,
   }),
   tokenName: {
     overflow: "hidden",
@@ -377,7 +377,7 @@ const styles = create({
     maxWidth: 280,
     borderRadius: radius.card,
     overflow: "hidden",
-    boxShadow: `0 0 0 1px ${role.borderSecondaryTranslucent}`,
+    boxShadow: `0 0 0 1px ${role.strokeQuaternary}`,
   },
   scheme: (colorScheme: "light" | "dark") => ({
     display: "flex",

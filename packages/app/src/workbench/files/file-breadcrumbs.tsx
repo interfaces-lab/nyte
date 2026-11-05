@@ -34,7 +34,7 @@ const styles = create({
   crumb: { minWidth: 0 },
   label: { overflow: "hidden", textOverflow: "ellipsis" },
   labelWidth: (width: number) => ({ maxWidth: width }),
-  separator: { display: "inline-flex", flexShrink: 0, color: role.contentTertiary },
+  separator: { display: "inline-flex", flexShrink: 0, color: role.contentQuaternary },
   menu: { maxWidth: "min(320px, var(--available-width))" },
   popup: { width: "min(320px, var(--available-width))", padding: 0 },
   tree: { display: "block", height: "min(320px, var(--available-height))", width: "100%" },

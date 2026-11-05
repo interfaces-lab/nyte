@@ -29,7 +29,6 @@ import { placeHref } from "../tabs/places.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
 import type { DesktopWindow } from "../contract/desktop-window.ts";
 import { CustomizeSurface } from "../customize/customize.tsx";
-import { Deferred } from "../lib/deferred.tsx";
 import { showsSettingsSection, rememberWorkspaceHref, SettingsSurface } from "../settings/index.ts";
 
 const styles = create({
@@ -55,13 +54,6 @@ function WorkspaceRouteStage(): ReactElement {
 
   if (page === undefined) return <SessionScreen />;
 
-  if (page.kind === "project")
-    return (
-      <Deferred entry="projects">
-        {(projects) => <projects.ProjectPage section={page.section ?? "new"} />}
-      </Deferred>
-    );
-
   return <CustomizeSurface sessionId={page.sessionId} />;
 }
 
@@ -77,7 +69,6 @@ const rootRoute = createRootRouteWithContext<{ startup: StartupContext }>()({
   notFoundComponent: RouteNotFound,
   validateSearch: (search): ShellSearch => ({
     customize: Value.Check(searchText, search.customize) ? search.customize : undefined,
-    project: Value.Check(searchText, search.project) ? search.project : undefined,
     usage: Value.Check(searchText, search.usage) ? search.usage : undefined,
     usageRange: Value.Check(searchText, search.usageRange) ? search.usageRange : undefined,
   }),
@@ -98,7 +89,7 @@ const indexRoute = createRoute({
 
     if (!windowTabs.startupDestination) return;
 
-    if (search.customize !== undefined || search.project !== undefined) return;
+    if (search.customize !== undefined) return;
 
     if (preferences.startupDestination.get() === "new-chat") return;
 

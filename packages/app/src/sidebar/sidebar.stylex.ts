@@ -105,6 +105,7 @@ export const sidebarStyles = create({
     flexShrink: 0,
   },
   sectionTitle: { paddingInlineStart: sidebar.rowPaddingInline },
+  sectionSpread: { justifyContent: "space-between" },
   sectionToggle: {
     display: "inline-flex",
     alignItems: "center",
@@ -139,7 +140,7 @@ export const sidebarStyles = create({
     gap: sidebar.rowGap,
     "--_row-padding-inline": sidebar.rowPaddingInline,
     borderRadius: radius.control,
-    color: role.contentChrome,
+    color: role.contentSecondary,
     fontSize: type.fontBase,
     lineHeight: type.leadingBase,
   },
@@ -164,8 +165,8 @@ export const sidebarStyles = create({
     "--_row-meta-color": role.contentSecondary,
     "--_row-fill": {
       default: "transparent",
-      ":hover": { [media.hover]: role.bgHover },
-      ":focus-within": role.bgHover,
+      ":hover": { [media.hover]: role.fillTertiary },
+      ":focus-within": role.fillTertiary,
     },
     cursor: appearance.cursorInteractive,
 
@@ -197,12 +198,12 @@ export const sidebarStyles = create({
   rowIconAsk: { alignSelf: "flex-start", paddingBlockStart: space.s0_5 },
   sessionAsk: { color: role.contentSecondary },
   sessionRenameRow: {
-    "--_row-fill": role.bgInteractiveSecondaryTranslucent,
+    "--_row-fill": role.fillTertiary,
   },
   sessionRenameInput: { width: "100%" },
   sessionSelection: {
-    backgroundColor: role.bgInteractiveSecondaryTranslucent,
-    boxShadow: `inset 0 0 0 1px ${role.borderPrimary}`,
+    backgroundColor: role.fillSecondary,
+    boxShadow: `inset 0 0 0 1px ${role.strokeTertiary}`,
   },
   rowSelected: {
     "--_row-fill": "transparent",
@@ -210,7 +211,7 @@ export const sidebarStyles = create({
     color: role.contentPrimary,
   },
   draftRow: { color: role.contentSecondary },
-  sessionUnreachable: { opacity: 0.5 },
+  sessionUnreachable: { color: role.contentTertiary, "--_row-meta-color": role.contentTertiary },
   rowIcon: {
     width: sidebar.iconSlot,
     height: sidebar.iconSlot,
@@ -257,12 +258,6 @@ export const sidebarStyles = create({
     lineHeight: type.leadingXs,
     letterSpacing: 0.07,
   },
-  subagentCount: {
-    gap: space.s0_5,
-    color: "var(--_row-meta-color)",
-    fontSize: type.fontXs,
-    lineHeight: type.leadingXs,
-  },
   rowActionsBesideMeta: {
     positionAnchor: "--nyte-row-time",
     insetInlineEnd: `calc(anchor(start) + ${sidebar.rowGap})`,
@@ -277,17 +272,6 @@ export const sidebarStyles = create({
     opacity: 0.65,
     userSelect: "none",
     WebkitUserDrag: "none",
-  },
-  /** A project's block outlines while a chat is dragged and fills under the pointer. */
-  projectDrop: {
-    borderRadius: radius.control,
-    transitionProperty: "background-color, box-shadow",
-    transitionDuration: motion.durationFast,
-  },
-  projectDropReady: { boxShadow: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}` },
-  projectDropActive: {
-    backgroundColor: role.bgInteractivePrimaryTranslucent,
-    boxShadow: `inset 0 0 0 1px ${role.contentInteractivePrimary}`,
   },
   sessionList: {
     display: { default: "flex", "[hidden]": "none" },
@@ -313,7 +297,7 @@ export const sidebarStyles = create({
     borderRadius: radius.control,
     backgroundColor: {
       default: "transparent",
-      ":hover": { [media.hover]: role.bgHover },
+      ":hover": { [media.hover]: role.fillTertiary },
     },
     color: role.contentSecondary,
     "--_shelf-chevron-opacity": {
@@ -353,11 +337,11 @@ export const sidebarStyles = create({
   showMore: {
     "--_row-fill": {
       default: "transparent",
-      ":hover:not(:disabled)": { [media.hover]: role.bgHover },
+      ":hover:not(:disabled)": { [media.hover]: role.fillTertiary },
     },
     "--_row-padding-inline": `calc(${sidebar.rowPaddingInline} + ${sidebar.iconSlot} + ${sidebar.rowGap})`,
     borderRadius: radius.control,
-    color: { default: role.contentInteractiveSecondary, ":disabled": role.contentDisabled },
+    color: { default: role.contentSecondary, ":disabled": role.contentDisabled },
     fontSize: type.fontBase,
     lineHeight: type.leadingBase,
   },
@@ -391,6 +375,6 @@ export const sidebarStyles = create({
     width: 6,
     height: 6,
     borderRadius: radius.pill,
-    backgroundColor: role.bgInteractivePrimary,
+    backgroundColor: role.contentAccent,
   },
 });

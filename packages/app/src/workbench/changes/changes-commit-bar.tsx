@@ -294,7 +294,7 @@ const styles = create({
     padding: space.s2,
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
-    borderBottomColor: role.borderSecondaryTranslucent,
+    borderBottomColor: role.strokeQuaternary,
   },
   actions: { display: "flex", alignItems: "center", gap: space.s2, minWidth: 0 },
   branchField: { flex: 1 },

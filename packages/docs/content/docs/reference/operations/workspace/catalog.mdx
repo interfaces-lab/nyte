@@ -64,7 +64,7 @@ Response, with each list shortened to empty:
 ```json
 {
   "type": "object",
-  "required": ["commands", "skills"],
+  "required": ["commands", "skills", "docs"],
   "properties": {
     "commands": {
       "type": "array",
@@ -121,6 +121,30 @@ Response, with each list shortened to empty:
             "type": "string"
           },
           "location": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "docs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "scope", "location", "description"],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "scope": {
+            "enum": ["user", "project"]
+          },
+          "location": {
+            "type": "string"
+          },
+          "description": {
             "type": "string"
           }
         }

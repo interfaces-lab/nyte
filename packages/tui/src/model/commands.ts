@@ -147,10 +147,12 @@ export function pluginCommands(state: State): readonly CommandInfo[] {
   return readChatCatalog(state).commands;
 }
 
-const NO_CATALOG: WorkspaceCatalogView = { commands: [], skills: [] };
+type ChatCatalog = Pick<WorkspaceCatalogView, "commands" | "skills">;
+
+const NO_CATALOG: ChatCatalog = { commands: [], skills: [] };
 
 /** The followed chat's plugin commands and skills, or those a blank chat's folder would offer it. */
-function readChatCatalog(state: State): WorkspaceCatalogView {
+function readChatCatalog(state: State): ChatCatalog {
   const { chat, folderCatalog } = state.facts;
 
   if (chat?.kind === "session") return chat.view?.catalog ?? NO_CATALOG;

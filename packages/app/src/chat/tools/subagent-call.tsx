@@ -92,8 +92,8 @@ const lineStyles = create({
     alignItems: "center",
     flexShrink: 0,
     alignSelf: "stretch",
-    color: role.contentTertiary,
     "--_chevron": { default: null, ":focus-visible": "1", "[data-panel-open]": "1" },
+    "--_chevron-color": { default: null, "[data-panel-open]": role.contentTertiary },
   },
   output: {
     boxSizing: "border-box",

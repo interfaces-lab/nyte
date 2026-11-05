@@ -3,7 +3,6 @@ import type { codeRuntime } from "../chat/markdown/code.deferred.tsx";
 import type { highlightRuntime } from "../chat/markdown/highlight.deferred.ts";
 import type { mermaidRuntime } from "../chat/markdown/mermaid.deferred.ts";
 import type { previewsRuntime } from "../settings/previews/previews.deferred.tsx";
-import type { projectsRuntime } from "../projects/project-page.deferred.tsx";
 import type { ghosttyRuntime } from "../workbench/terminal/ghostty.deferred.ts";
 import type { pdfRuntime } from "../workbench/files/pdf/pdf.deferred.ts";
 import type { workbenchRuntime } from "../workbench/panels.deferred.tsx";
@@ -41,10 +40,6 @@ export const deferredEntries = {
     module: new URL("../settings/previews/previews.deferred.tsx", import.meta.url).href,
     packages: [],
   },
-  projects: {
-    module: new URL("../projects/project-page.deferred.tsx", import.meta.url).href,
-    packages: [],
-  },
 } as const;
 
 export interface DeferredRuntimes {
@@ -56,5 +51,4 @@ export interface DeferredRuntimes {
   pdf: typeof pdfRuntime;
   charts: typeof chartsRuntime;
   previews: typeof previewsRuntime;
-  projects: typeof projectsRuntime;
 }

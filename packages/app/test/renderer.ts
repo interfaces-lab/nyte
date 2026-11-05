@@ -34,6 +34,7 @@ export async function testRenderer(
     captures,
     mouse = false,
     motion = "reduce",
+    contrast = "no-preference",
     timeout = 40_000,
   }: {
     pointer?: "fine" | "coarse";
@@ -43,6 +44,7 @@ export async function testRenderer(
     captures?: string;
     mouse?: boolean;
     motion?: "reduce" | "no-preference";
+    contrast?: "no-preference" | "more";
     timeout?: number;
   } = {},
 ): Promise<string> {
@@ -133,6 +135,7 @@ app.whenReady().then(async () => {
     await window.webContents.debugger.sendCommand("Emulation.setEmulatedMedia", {
       features: [
         { name: "prefers-reduced-motion", value: ${JSON.stringify(motion)} },
+        { name: "prefers-contrast", value: ${JSON.stringify(contrast)} },
         { name: "pointer", value: ${JSON.stringify(pointer)} },
         { name: "hover", value: ${JSON.stringify(pointer === "coarse" ? "none" : "hover")} },
       ],

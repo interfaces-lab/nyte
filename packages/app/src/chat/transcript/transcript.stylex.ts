@@ -70,12 +70,12 @@ export const dividerStyles = create({
     alignItems: "center",
     gap: space.s2,
     paddingBlock: space.s1,
-    color: role.contentInteractivePrimary,
+    color: role.contentPrimary,
   },
   rule: {
     flex: 1,
     height: space.px,
-    backgroundColor: "currentColor",
+    backgroundColor: role.strokeQuaternary,
   },
   label: { fontWeight: type.weightMedium },
 });

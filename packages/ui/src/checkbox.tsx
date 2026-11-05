@@ -58,7 +58,7 @@ const styles = create({
     borderRadius: checkbox.radius,
     borderColor: {
       default: role.bgControlSelected,
-      "[data-unchecked]": role.borderControlTranslucent,
+      "[data-unchecked]": role.strokePrimary,
     },
     backgroundColor: {
       default: role.bgControlSelected,
@@ -67,10 +67,10 @@ const styles = create({
         [media.hover]: role.bgControlSelectedHover,
       },
       ":hover:is([data-unchecked]):not([data-disabled])": {
-        [media.hover]: role.bgHover,
+        [media.hover]: role.fillTertiary,
       },
       ":active:not([data-disabled])": role.bgControlSelectedPressed,
-      ":active:is([data-unchecked]):not([data-disabled])": role.bgPressed,
+      ":active:is([data-unchecked]):not([data-disabled])": role.fillSecondary,
     },
     color: role.contentOnControl,
     opacity: { default: 1, "[data-disabled]": 0.5 },

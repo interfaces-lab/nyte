@@ -20,7 +20,7 @@ const styles = create({
     borderBlockWidth: space.px,
     borderBlockStyle: "solid",
     borderBlockColor: "transparent",
-    color: role.contentTertiary,
+    color: role.contentSecondary,
     fontSize: type.fontSm,
     lineHeight: type.leadingBase,
   },

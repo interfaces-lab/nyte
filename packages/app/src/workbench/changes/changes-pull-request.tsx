@@ -99,7 +99,7 @@ const styles = create({
     textAlign: "start",
   },
   summary: { flexGrow: 1, minWidth: 0 },
-  chevron: { color: role.contentTertiary },
+  chevron: { color: role.contentQuaternary },
   checks: {
     display: "flex",
     flexDirection: "column",

@@ -155,5 +155,5 @@ const styles = create({
   field: { display: "flex", flexDirection: "column", gap: space.s1_5 },
   label: { color: role.contentPrimary, fontWeight: type.weightMedium },
   hint: { color: role.contentTertiary, overflowWrap: "anywhere" },
-  error: { margin: 0, color: role.contentInteractivePrimary },
+  error: { margin: 0, color: role.contentAccent },
 });

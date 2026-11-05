@@ -46,7 +46,7 @@ const styles = create({
     backgroundColor: role.bgMutedTranslucent,
   },
   leading: { color: role.contentSecondary },
-  offline: { color: role.contentDisabled },
+  disabledRow: { color: role.contentDisabled },
   wrap: {
     overflow: "visible",
     overflowWrap: "anywhere",
@@ -76,7 +76,7 @@ function DesktopList({
           key={environment.id}
           size="lg"
           interactive={environment.online}
-          xstyle={!environment.online && styles.offline}
+          xstyle={!environment.online && styles.disabledRow}
         >
           <Row.Primary
             disabled={!environment.online || disabled}

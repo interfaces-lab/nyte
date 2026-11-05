@@ -16,6 +16,7 @@ import { useWatchSelect } from "../data/watch-store.ts";
 import { useVcsChanges, useVcsSnapshot } from "../data/vcs.ts";
 import { usePaneLayout } from "../panes/pane-context.tsx";
 import { activeSelection, sameSelection } from "../panes/pane-layout.ts";
+import { ProjectRail } from "../projects/project-rail.tsx";
 import { showsSettingsSection } from "../settings/index.ts";
 import { branchReadout, changesSummary, vcsRequestForScope } from "./changes/change-scopes.ts";
 import { ChangeStats } from "./changes/change-stats.tsx";
@@ -55,13 +56,11 @@ function StatusRow({
   readonly children?: ReactNode;
 }): ReactElement {
   return (
-    <Row xstyle={[text.base, workbenchStyles.railRow]}>
+    <Row xstyle={[text.base, workbenchStyles.railRow, !quiet && workbenchStyles.railValue]}>
       <Row.Leading>
         <Icon name={icon} size="sm" />
       </Row.Leading>
-      <Row.Label xstyle={[workbenchStyles.railLabel, !quiet && workbenchStyles.railValue]}>
-        {label}
-      </Row.Label>
+      <Row.Label xstyle={workbenchStyles.railLabel}>{label}</Row.Label>
       {detail !== undefined && <span {...props(workbenchStyles.railDetail)}>{detail}</span>}
       {children}
       {actions !== undefined && (
@@ -102,7 +101,15 @@ function CostRow({
 
   return (
     <Tooltip>
-      <Row interactive xstyle={[text.base, workbenchStyles.railRow]}>
+      <Row
+        interactive
+        xstyle={[
+          text.base,
+          workbenchStyles.railRow,
+          workbenchStyles.railRowInteractive,
+          workbenchStyles.railValue,
+        ]}
+      >
         <Row.Primary
           render={<TooltipTrigger />}
           onClick={
@@ -114,9 +121,7 @@ function CostRow({
           <Row.Leading>
             <Icon name="speed-low" size="sm" />
           </Row.Leading>
-          <Row.Label xstyle={[workbenchStyles.railLabel, workbenchStyles.railValue]}>
-            {label}
-          </Row.Label>
+          <Row.Label xstyle={workbenchStyles.railLabel}>{label}</Row.Label>
         </Row.Primary>
         <Row.Actions xstyle={workbenchStyles.railActions}>{actions}</Row.Actions>
       </Row>
@@ -233,16 +238,20 @@ function ChangesRow({
   const summary = changesSummary(changeTotals(rows, manifest.data));
 
   return (
-    <Row interactive xstyle={[text.base, workbenchStyles.railRow]}>
+    <Row
+      interactive
+      xstyle={[
+        text.base,
+        workbenchStyles.railRow,
+        workbenchStyles.railRowInteractive,
+        summary.changed && workbenchStyles.railValue,
+      ]}
+    >
       <Row.Primary onClick={onOpen}>
         <Row.Leading>
           <Icon name="diff" size="sm" />
         </Row.Leading>
-        <Row.Label
-          xstyle={[workbenchStyles.railLabel, summary.changed && workbenchStyles.railValue]}
-        >
-          {summary.label}
-        </Row.Label>
+        <Row.Label xstyle={workbenchStyles.railLabel}>{summary.label}</Row.Label>
         <ChangeStats added={summary.added} removed={summary.removed} />
       </Row.Primary>
     </Row>
@@ -261,7 +270,10 @@ function RailRow({
   readonly onClick: () => void;
 }): ReactElement {
   return (
-    <Row interactive xstyle={[text.base, workbenchStyles.railRow]}>
+    <Row
+      interactive
+      xstyle={[text.base, workbenchStyles.railRow, workbenchStyles.railRowInteractive]}
+    >
       <Row.Primary title={title} onClick={onClick}>
         <Row.Leading>
           <Icon name={icon} size="sm" />
@@ -325,6 +337,7 @@ export function Rail({
           {sessionId !== undefined && (
             <SessionStatusRows sessionId={sessionId} actions={collapse} />
           )}
+          {sessionId !== undefined && <ProjectRail sessionId={sessionId} />}
           {head !== undefined && (
             <BranchRow head={head} actions={sessionId === undefined ? collapse : undefined} />
           )}

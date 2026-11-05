@@ -184,6 +184,14 @@ export const settingInfo: SettingInfo = {
   from: "default",
 };
 
+export const sharedDoc = {
+  id: "project:testing.md",
+  name: "testing.md",
+  scope: "project",
+  location: ".nyte/projects/docs/testing.md",
+  description: "How to test the host.",
+} as const;
+
 export const catalog: SessionCatalogView = {
   commands: [
     {

@@ -58,7 +58,7 @@ export const usageStyles = create({
     ...figure,
     color: role.contentTertiary,
   },
-  change: { color: role.contentInteractivePrimary },
+  change: { color: role.contentAccent },
   quiet: { ...figure, color: role.contentTertiary },
 
   limitsHead: { display: "flex", alignItems: "center", justifyContent: "space-between" },
@@ -99,7 +99,7 @@ export const usageStyles = create({
   limitMeter: { minWidth: 0 },
   limitValue: { ...figure, color: role.contentPrimary, textAlign: "end" },
   limitReset: { ...figure, color: role.contentTertiary, textAlign: "end", whiteSpace: "nowrap" },
-  meterHot: { color: role.contentInteractivePrimary },
+  meterHot: { color: role.contentAccent },
 
   breakdown: { display: "flex", flexDirection: "column", gap: space.s2, minWidth: 0 },
   breakdownHead: {
@@ -126,7 +126,7 @@ export const usageStyles = create({
     paddingInline: space.s3,
     borderBottomWidth: { default: 1, ":last-child": 0 },
     borderBottomStyle: "solid",
-    borderBottomColor: role.borderSecondaryTranslucent,
+    borderBottomColor: role.strokeQuaternary,
   },
   headRow: { minHeight: 0, paddingBlock: space.s2_5 },
   head: {
@@ -142,7 +142,7 @@ export const usageStyles = create({
     borderRadius: 2,
     backgroundColor: role.bgInteractiveStrong,
   },
-  dotIdle: { backgroundColor: role.contentDisabled },
+  dotIdle: { backgroundColor: role.contentQuaternary },
   name: { display: "flex", flexDirection: "column", minWidth: 0 },
   rowLabel: {
     color: role.contentPrimary,
@@ -160,7 +160,7 @@ export const usageStyles = create({
     whiteSpace: "nowrap",
   },
   cache: { display: "flex", flexDirection: "column", alignItems: "flex-end", width: 104 },
-  cacheLow: { color: role.contentInteractivePrimary },
+  cacheLow: { color: role.contentAccent },
   trend: {
     display: { default: "flex", [NARROW]: "none" },
     justifyContent: "flex-end",
@@ -181,14 +181,14 @@ export const usageStyles = create({
     ...figure,
     color: role.contentTertiary,
   },
-  absent: { color: role.contentDisabled },
+  absent: { color: role.contentTertiary },
   shareTrack: {
     display: "flex",
     width: "100%",
     height: 2,
     overflow: "clip",
     borderRadius: 2,
-    backgroundColor: role.bgInteractiveSecondaryTranslucent,
+    backgroundColor: role.fillTertiary,
   },
   shareFill: { height: "100%", backgroundColor: role.bgInteractiveStrong },
   more: {
@@ -233,7 +233,6 @@ export const usageStyles = create({
   noticeIcon: {
     flexShrink: 0,
     marginBlockStart: space.px,
-    color: role.contentTertiary,
   },
   noticeIconAlert: { color: role.contentAccent },
   noticeCopy: { flex: 1, minWidth: 0, paddingBlockStart: space.px },
@@ -250,7 +249,7 @@ export const skeletonStyles = create({
     verticalAlign: "middle",
     flexShrink: 0,
     borderRadius: radius.indicator,
-    backgroundColor: role.bgInteractivePrimaryTranslucent,
+    backgroundColor: role.fillSecondary,
     animationName: { default: bonePulse, "@media (prefers-reduced-motion: reduce)": "none" },
     animationDuration: "1.8s",
     animationTimingFunction: "ease-in-out",

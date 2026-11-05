@@ -228,14 +228,16 @@ export const HOST_OPERATIONS = {
   },
   "projects.create": {
     ...PARTICIPANT,
-    summary: "Creates a project in a workspace, with the brief its lead chat follows.",
+    summary:
+      "Creates a project in a workspace with the models, instructions, skills, MCP servers and shared docs its chats use.",
     kind: "command",
     input: wireObject({ input: ProjectInputType }),
     output: ProjectInfoSchema,
   },
   "project.update": {
     ...PARTICIPANT,
-    summary: "Edits a project's name, brief, goal, worker model or archived state.",
+    summary:
+      "Edits a project's settings or archives it. Its chats read the change from their next request.",
     kind: "command",
     input: wireObject({ project: idSchema<"project">(), patch: ProjectPatchType }),
     output: ProjectInfoSchema,

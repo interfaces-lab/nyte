@@ -68,7 +68,7 @@ export function DeveloperSettings(): ReactElement {
         <SwitchRow
           setting={preferences.projects}
           title="Projects"
-          description="Group chats into projects, each with a lead chat that hands work to its units"
+          description="Projects in the sidebar: a coordinator chat that starts agents and shares what they learn"
         />
       </SettingsSection>
       {developer && (
@@ -330,5 +330,5 @@ const styles = create({
   },
   listEntry: { display: "flex", alignItems: "center", gap: space.s3 },
   listInput: { flex: "1 1 0", minWidth: 0 },
-  listError: { color: role.contentInteractivePrimary },
+  listError: { color: role.contentAccent },
 });

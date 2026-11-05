@@ -25,7 +25,7 @@ const styles = create({
       insetInline: settings.rowPaddingInline,
       insetBlockEnd: 0,
       height: 1,
-      backgroundColor: role.borderSecondaryTranslucent,
+      backgroundColor: role.strokeQuaternary,
       content: '""',
     },
     ":last-child::after": { display: "none" },
@@ -84,8 +84,8 @@ const styles = create({
     color: role.contentSecondary,
   },
   factGlyphOn: {
-    backgroundColor: role.bgInteractivePrimaryTranslucent,
-    color: role.contentInteractivePrimary,
+    backgroundColor: role.fillSecondary,
+    color: role.contentAccent,
   },
   factActions: {
     display: "inline-flex",

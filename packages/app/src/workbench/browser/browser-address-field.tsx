@@ -47,13 +47,13 @@ const styles = create({
     borderRadius: menu.itemRadius,
     backgroundColor: {
       default: "transparent",
-      ":hover": { [media.hover]: role.bgHover },
-      "[aria-selected=true]": role.bgHover,
+      ":hover": { [media.hover]: role.fillTertiary },
+      "[aria-selected=true]": role.fillSecondary,
     },
     cursor: "default",
     userSelect: "none",
   },
-  icon: { display: "inline-flex", flexShrink: 0, color: role.contentSecondary },
+  icon: { display: "inline-flex", flexShrink: 0 },
   label: {
     flexShrink: 1,
     minWidth: 0,

@@ -2,8 +2,6 @@ import { useRouter } from "@tanstack/react-router";
 import { useSyncExternalStore } from "react";
 import { Icon } from "@nyte-ai/ui/icon";
 import type { SessionId } from "@nyte-ai/sdk";
-import { asId } from "@nyte-ai/schema";
-import { findProject } from "../data/projects.ts";
 import { chatFolderPath, chatTitle, subscribeChats, useChats } from "../chats/index.ts";
 import type { ChatDirectory } from "../chats/index.ts";
 import { activateWorkspace } from "../sidebar/use-show-session.ts";
@@ -171,10 +169,6 @@ function placeTitle(place: Place, chats: ChatDirectory): string {
       return chatTitle(chats.get(place.sessionId));
     case "customize":
       return "Customize";
-    case "project":
-      return place.section === undefined || place.section === "new"
-        ? "New Project"
-        : (findProject(asId<"project">(place.section))?.name ?? "Project");
     default: {
       const _exhaustive: never = place;
 
@@ -197,16 +191,7 @@ export function useWindowTabItems(state: WindowState): readonly WindowTabItem[] 
 
     const glyph =
       place.kind === "session" ? undefined : (
-        <Icon
-          name={
-            place.kind === "blank"
-              ? "new-chat"
-              : place.kind === "customize"
-                ? "customize"
-                : "layers"
-          }
-          size="sm"
-        />
+        <Icon name={place.kind === "blank" ? "new-chat" : "customize"} size="sm" />
       );
 
     return {

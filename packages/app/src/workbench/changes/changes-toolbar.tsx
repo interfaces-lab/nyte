@@ -120,7 +120,7 @@ const styles = create({
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
-  scopeChevron: { display: "inline-flex", flexShrink: 0, color: role.contentInteractiveTertiary },
+  scopeChevron: { display: "inline-flex", flexShrink: 0, color: role.contentQuaternary },
   scopeMenu: {
     maxHeight: `min(${menu.maxHeight}, var(--available-height))`,
   },

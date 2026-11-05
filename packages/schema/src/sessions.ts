@@ -4,6 +4,7 @@ import { idSchema } from "./ids.ts";
 import { JsonObjectType, JsonType, withJson } from "./json.ts";
 import { PositionType, UserContentType } from "./messages.ts";
 import { ModelRefType } from "./models.ts";
+import { SharedDocType } from "./projects.ts";
 import { ExecutionType } from "./runs.ts";
 import { standard } from "./schema.ts";
 import type { Decoded, Schema } from "./schema.ts";
@@ -188,10 +189,11 @@ export const SessionCatalogViewType = Type.Object({
 
 export type SessionCatalogView = Decoded<typeof SessionCatalogViewType>;
 
-/** What a new chat in a workspace would offer before it exists: its plugin commands and skills. */
+/** What a new chat in a workspace would offer before it exists: its plugin commands, skills and shared docs. */
 export const WorkspaceCatalogViewType = Type.Object({
   commands: Type.Array(CommandInfoType),
   skills: Type.Array(SkillInfoType),
+  docs: Type.Array(SharedDocType),
 });
 
 export type WorkspaceCatalogView = Decoded<typeof WorkspaceCatalogViewType>;

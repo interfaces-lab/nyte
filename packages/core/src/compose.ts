@@ -19,7 +19,7 @@ import { createConnection, createHost } from "./api/connection.ts";
 import { createHostState } from "./api/host.ts";
 import { createServerHost } from "./api/server.ts";
 import { rerunAction } from "./api/part.ts";
-import { publishProjects } from "./api/projects.ts";
+import { publishProjects, requireProject } from "./api/projects.ts";
 import { activationSession, sessionHandle } from "./api/session.ts";
 import { environmentPlugin } from "./builtins/environment.ts";
 import { interruptionsPlugin } from "./builtins/interruptions.ts";
@@ -578,7 +578,14 @@ export function createKernel(input: KernelOptions): Kernel {
         return (builtins ??=
           hub === null
             ? (input.builtins ?? [])
-            : [...(input.builtins ?? []), mcpPlugin(hub, (id) => readMcpWorkspace(kernel, id))]);
+            : [
+                ...(input.builtins ?? []),
+                mcpPlugin(
+                  hub,
+                  (id) => readMcpWorkspace(kernel, id),
+                  async (id) => (await requireProject(kernel, id)).record,
+                ),
+              ]);
       },
       host: input.hostPlugins ?? [],
       sources: input.pluginSources ?? new Map(),

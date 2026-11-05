@@ -231,14 +231,14 @@ export interface Connection {
 }
 
 export interface Projects {
-  /** Creates a project in a registered workspace. Its lead is the first top-level chat started in it. */
+  /** Creates a project in a registered workspace. Its coordinator is the top-level chat started in it. */
   create(input: ProjectInput): Promise<ProjectInfo>;
 }
 
 export interface Project {
   readonly id: ProjectId;
 
-  /** Applies `patch` by compare-and-set and returns the project as stored; an unknown project throws `SdkError("unknown")`. */
+  /** Applies `patch` by compare-and-set and returns the project as stored; its chats read it from their next request. An unknown project throws `SdkError("unknown")`. */
   update(patch: ProjectPatch): Promise<ProjectInfo>;
 }
 

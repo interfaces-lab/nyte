@@ -39,8 +39,6 @@ const COLOR_TRANSITION = {
   transitionTimingFunction: motion.easeOut,
 } as const;
 
-const DIMMED = `color-mix(in oklab, ${role.contentSecondary} 65%, ${role.contentTertiary})`;
-
 export const toolLineStyles = create({
   root: { display: "flex", flexDirection: "column", minWidth: 0 },
   line: {
@@ -63,8 +61,9 @@ export const toolLineStyles = create({
     userSelect: "none",
     cursor: "default",
     "--_action": role.contentSecondary,
-    "--_details": role.contentSecondary,
+    "--_details": role.contentTertiary,
     "--_chevron": "0",
+    "--_chevron-color": role.contentQuaternary,
   },
   clickable: {
     cursor: appearance.cursorInteractive,
@@ -73,8 +72,8 @@ export const toolLineStyles = create({
       ":hover": { [media.hover]: role.contentPrimary },
     },
     "--_details": {
-      default: role.contentSecondary,
-      ":hover": { [media.hover]: role.contentPrimary },
+      default: role.contentTertiary,
+      ":hover": { [media.hover]: role.contentSecondary },
     },
     "--_chevron": {
       default: "0",
@@ -82,9 +81,14 @@ export const toolLineStyles = create({
       ":focus-visible": "1",
       "[data-panel-open]": "1",
     },
+    "--_chevron-color": {
+      default: role.contentQuaternary,
+      ":hover": { [media.hover]: role.contentTertiary },
+      "[data-panel-open]": role.contentTertiary,
+    },
   },
-  dimmed: { "--_action": DIMMED, "--_details": DIMMED },
-  dimmedText: { color: DIMMED },
+  dimmed: { "--_action": role.contentTertiary, "--_details": role.contentTertiary },
+  dimmedText: { color: role.contentTertiary },
   icon: {
     display: "inline-flex",
     alignItems: "center",
@@ -106,9 +110,9 @@ export const toolLineStyles = create({
   strong: { color: "var(--_action)", ...COLOR_TRANSITION },
   outcome: { flexShrink: 0, color: role.contentSecondary },
   chevron: {
-    color: role.contentTertiary,
+    color: "var(--_chevron-color)",
     opacity: "var(--_chevron)",
-    transitionProperty: "opacity, transform",
+    transitionProperty: "color, opacity, transform",
     transitionDuration: {
       default: motion.durationFast,
       "@media (prefers-reduced-motion: reduce)": "0s",

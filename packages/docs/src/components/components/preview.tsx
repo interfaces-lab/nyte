@@ -23,7 +23,7 @@ export function Preview({
 
 const styles = create({
   canvas: {
-    backgroundImage: `radial-gradient(circle at 1px 1px, ${role.borderSecondaryTranslucent} 1px, transparent 0)`,
+    backgroundImage: `radial-gradient(circle at 1px 1px, ${role.strokeQuaternary} 1px, transparent 0)`,
     backgroundSize: "20px 20px",
     backgroundColor: role.bgBase,
     fontSize: type.fontBase,

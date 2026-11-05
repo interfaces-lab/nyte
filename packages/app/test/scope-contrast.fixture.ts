@@ -1,23 +1,37 @@
-import { create, props } from "@stylexjs/stylex";
+import { create, props, type StyleXStyles } from "@stylexjs/stylex";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
 
 const styles = create({
   primary: { color: role.contentPrimary },
   secondary: { color: role.contentSecondary },
-  chrome: { color: role.contentChrome },
-  glyphPrimary: { color: role.contentInteractivePrimary },
-  glyphSecondary: { color: role.contentInteractiveSecondary },
-  glyphTertiary: { color: role.contentInteractiveTertiary },
+  tertiary: { color: role.contentTertiary },
+  quaternary: { color: role.contentQuaternary },
+  disabled: { color: role.contentDisabled },
   accent: { color: role.contentAccent },
-  borderControl: { color: role.borderControl },
+  strokePrimary: { color: role.strokePrimary },
+  strokeSecondary: { color: role.strokeSecondary },
+  strokeTertiary: { color: role.strokeTertiary },
+  strokeQuaternary: { color: role.strokeQuaternary },
+  fillPrimary: { backgroundColor: role.fillPrimary },
+  fillSecondary: { backgroundColor: role.fillSecondary },
   base: { backgroundColor: role.bgBase },
   muted: { backgroundColor: role.bgMuted },
   elevated: { backgroundColor: role.bgElevated },
   chromeSurface: { backgroundColor: role.bgChrome },
+  fillTertiary: { backgroundColor: role.fillTertiary },
   button: { color: role.contentOnInteractiveStrong, backgroundColor: role.buttonFill },
   onControl: { color: role.contentOnControl, backgroundColor: role.bgControlSelected },
 });
+
+/** Each content stair, strongest first, with the contrast it keeps on a surface and on its hover fill. */
+const stairs = [
+  ["primary", styles.primary, 7],
+  ["secondary", styles.secondary, 6],
+  ["tertiary", styles.tertiary, 4.5],
+  ["quaternary", styles.quaternary, 3],
+  ["disabled", styles.disabled, 1],
+] as const;
 
 export function run(): string {
   const canvas = document.createElement("canvas");
@@ -27,11 +41,14 @@ export function run(): string {
 
   if (!context) throw new Error("Missing canvas context");
 
-  function luminance(color: string): number {
+  function luminance(layers: readonly string[]): number {
     if (!context) throw new Error("Missing canvas context");
     context.clearRect(0, 0, 1, 1);
-    context.fillStyle = color;
-    context.fillRect(0, 0, 1, 1);
+
+    for (const layer of layers) {
+      context.fillStyle = layer;
+      context.fillRect(0, 0, 1, 1);
+    }
 
     const channels = Array.from(context.getImageData(0, 0, 1, 1).data)
       .slice(0, 3)
@@ -43,6 +60,9 @@ export function run(): string {
 
     return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
   }
+
+  const ratio = (first: number, second: number) =>
+    (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05);
 
   const results: {
     mode: string;
@@ -76,74 +96,141 @@ export function run(): string {
       host.style.setProperty("--nyte-custom-chroma-scale", String(chroma));
       document.body.append(host);
 
+      const sample = (style: StyleXStyles) => {
+        const element = document.createElement("span");
+        element.className = props(style).className ?? "";
+        host.append(element);
+        const computed = getComputedStyle(element);
+        const colors = { color: computed.color, background: computed.backgroundColor };
+        element.remove();
+
+        return colors;
+      };
+
+      const hoverFill = sample(styles.fillTertiary).background;
+
       for (const [surface, background] of [
         ["base", styles.base],
         ["muted", styles.muted],
         ["elevated", styles.elevated],
         ["chrome", styles.chromeSurface],
       ] as const) {
-        for (const [name, foreground, minimum] of [
-          ["primary", styles.primary, 4.5],
-          ["secondary", styles.secondary, 4.5],
-          ["chrome", styles.chrome, 4.5],
-          ["accent", styles.accent, 4.5],
-          ["glyphPrimary", styles.glyphPrimary, 3],
-          ["glyphSecondary", styles.glyphSecondary, 3],
-          ["glyphTertiary", styles.glyphTertiary, 3],
-          ["borderControl", styles.borderControl, 3],
+        const ground = sample(background).background;
+
+        for (const [layer, layers] of [
+          [surface, [ground]],
+          [`${surface}+hover`, [ground, hoverFill]],
         ] as const) {
-          const sample = document.createElement("span");
-          sample.className = props(background, foreground).className ?? "";
-          host.append(sample);
-          const computed = getComputedStyle(sample);
-          const first = luminance(computed.color);
-          const second = luminance(computed.backgroundColor);
+          const ink = stairs.map(([name, style, minimum]) => ({
+            name,
+            minimum,
+            ratio: ratio(luminance([...layers, sample(style).color]), luminance(layers)),
+          }));
+
+          for (const step of ink) {
+            results.push({
+              mode,
+              scope,
+              role: step.name,
+              surface: layer,
+              ratio: step.ratio,
+              minimum: step.minimum,
+            });
+          }
+
+          for (const [index, step] of ink.slice(1).entries()) {
+            results.push({
+              mode,
+              scope,
+              role: `${ink[index].name} above ${step.name}`,
+              surface: layer,
+              ratio: ink[index].ratio / step.ratio,
+              minimum: 1.1,
+            });
+          }
+
           results.push({
             mode,
             scope,
-            role: name,
-            surface,
-            ratio: (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05),
-            minimum,
+            role: "strokePrimary",
+            surface: layer,
+            ratio: ratio(
+              luminance([...layers, sample(styles.strokePrimary).color]),
+              luminance(layers),
+            ),
+            minimum: 3,
           });
-          sample.remove();
+        }
+
+        results.push({
+          mode,
+          scope,
+          role: "accent",
+          surface,
+          ratio: ratio(luminance([ground, sample(styles.accent).color]), luminance([ground])),
+          minimum: 4.5,
+        });
+
+        for (const [kind, ladder] of [
+          [
+            "stroke",
+            [
+              styles.strokePrimary,
+              styles.strokeSecondary,
+              styles.strokeTertiary,
+              styles.strokeQuaternary,
+            ].map((style) => sample(style).color),
+          ],
+          [
+            "fill",
+            [styles.fillPrimary, styles.fillSecondary, styles.fillTertiary].map(
+              (style) => sample(style).background,
+            ),
+          ],
+        ] as const) {
+          const strength = ladder.map((color) =>
+            ratio(luminance([ground, color]), luminance([ground])),
+          );
+
+          for (const [index, next] of strength.slice(1).entries()) {
+            results.push({
+              mode,
+              scope,
+              role: `${kind} ${String(index + 1)} above ${String(index + 2)}`,
+              surface,
+              ratio: strength[index] / next,
+              minimum: 1.02,
+            });
+          }
         }
       }
 
-      const control = document.createElement("span");
-      control.className = props(styles.onControl).className ?? "";
-      host.append(control);
-      const computed = getComputedStyle(control);
-      const ink = luminance(computed.color);
-      const fill = luminance(computed.backgroundColor);
+      const control = sample(styles.onControl);
       results.push({
         mode,
         scope,
         role: "onControl",
         surface: "controlSelected",
-        ratio: (Math.max(ink, fill) + 0.05) / (Math.min(ink, fill) + 0.05),
+        ratio: ratio(luminance([control.color]), luminance([control.background])),
         minimum: 3,
       });
-      control.remove();
       host.remove();
     }
 
     for (const scope of ["blue", "red"] as const) {
-      const sample = document.createElement("span");
-      sample.className = props(surfaceTheme[scope], styles.button).className ?? "";
-      document.body.append(sample);
-      const computed = getComputedStyle(sample);
-      const first = luminance(computed.color);
-      const second = luminance(computed.backgroundColor);
+      const element = document.createElement("span");
+      element.className = props(surfaceTheme[scope], styles.button).className ?? "";
+      document.body.append(element);
+      const computed = getComputedStyle(element);
       results.push({
         mode,
         scope,
         role: "buttonLabel",
         surface: "buttonFill",
-        ratio: (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05),
+        ratio: ratio(luminance([computed.color]), luminance([computed.backgroundColor])),
         minimum: 4.5,
       });
-      sample.remove();
+      element.remove();
     }
   }
 

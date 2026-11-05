@@ -316,11 +316,13 @@ Only the [errors every operation can raise](/docs/reference/operations#errors).
         "required": [
           "id",
           "name",
-          "brief",
-          "until",
           "workspace",
-          "lead",
-          "worker",
+          "coordinator",
+          "models",
+          "instructions",
+          "skills",
+          "disabledMcp",
+          "disabledDocs",
           "archived",
           "createdAt"
         ],
@@ -333,41 +335,10 @@ Only the [errors every operation can raise](/docs/reference/operations#errors).
             "minLength": 1,
             "maxLength": 80
           },
-          "brief": {
-            "type": "string"
-          },
-          "until": {
-            "anyOf": [
-              {
-                "type": "object",
-                "required": ["kind"],
-                "properties": {
-                  "kind": {
-                    "type": "string",
-                    "const": "standing"
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "required": ["kind", "goal"],
-                "properties": {
-                  "kind": {
-                    "type": "string",
-                    "const": "goal"
-                  },
-                  "goal": {
-                    "type": "string",
-                    "minLength": 1
-                  }
-                }
-              }
-            ]
-          },
           "workspace": {
             "type": "string"
           },
-          "lead": {
+          "coordinator": {
             "anyOf": [
               {
                 "type": "string"
@@ -377,24 +348,70 @@ Only the [errors every operation can raise](/docs/reference/operations#errors).
               }
             ]
           },
-          "worker": {
-            "anyOf": [
-              {
-                "type": "object",
-                "required": ["provider", "id"],
-                "properties": {
-                  "provider": {
-                    "type": "string"
+          "models": {
+            "type": "object",
+            "required": ["coordinator", "agents"],
+            "properties": {
+              "coordinator": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "required": ["provider", "id"],
+                    "properties": {
+                      "provider": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      }
+                    }
                   },
-                  "id": {
-                    "type": "string"
+                  {
+                    "type": "null"
                   }
-                }
+                ]
               },
-              {
-                "type": "null"
+              "agents": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "required": ["provider", "id"],
+                    "properties": {
+                      "provider": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               }
-            ]
+            }
+          },
+          "instructions": {
+            "type": "string"
+          },
+          "skills": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "disabledMcp": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "disabledDocs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "archived": {
             "type": "boolean"

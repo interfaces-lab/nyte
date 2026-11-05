@@ -11,11 +11,9 @@ const USER_IMAGES_GAP = 8;
 
 export const USER_MESSAGE_PREVIEW_LINES = 3.5;
 
-const USER_PENDING_OPACITY = 0.6;
-
 const userPendingIn = keyframes({
   from: { opacity: 0, transform: "translateY(4px)" },
-  to: { opacity: USER_PENDING_OPACITY, transform: "translateY(0)" },
+  to: { opacity: 1, transform: "translateY(0)" },
 });
 
 const USER_PREVIEW_BLEED_TOP = 2;
@@ -54,16 +52,16 @@ export const bubbleStyles = create({
     borderWidth: 1,
     borderStyle: "solid",
     borderColor: {
-      default: role.borderSecondaryTranslucent,
-      ":has(:focus-visible)": role.borderPrimaryTranslucent,
+      default: role.strokeQuaternary,
+      ":has(:focus-visible)": role.strokeTertiary,
       ':hover:has([data-slot="row-primary"])': {
-        [media.hover]: role.borderPrimaryTranslucent,
+        [media.hover]: role.strokeTertiary,
       },
     },
     borderRadius: radius.card,
     backgroundColor: role.bgElevated,
     boxShadow: "var(--_user-prompt-shadow, none)",
-    color: role.contentPrimary,
+    color: `var(--_user-prompt-color, ${role.contentPrimary})`,
     textAlign: "start",
     whiteSpace: "pre-wrap",
     overflowWrap: "anywhere",
@@ -97,7 +95,7 @@ export const turnStyles = create({
     },
   },
   userPending: {
-    opacity: USER_PENDING_OPACITY,
+    "--_user-prompt-color": role.contentTertiary,
     animationName: {
       default: userPendingIn,
       "@media (prefers-reduced-motion: reduce)": "none",
@@ -135,7 +133,7 @@ export const turnStyles = create({
     paddingInline: space.s3,
     borderWidth: CHANGES_BORDER,
     borderStyle: "solid",
-    borderColor: role.borderSecondaryTranslucent,
+    borderColor: role.strokeQuaternary,
     borderRadius: radius.card,
     backgroundColor: role.bgElevated,
     color: role.contentPrimary,
@@ -167,9 +165,9 @@ export const turnStyles = create({
   changesFile: {
     "--_row-fill": {
       default: "transparent",
-      ":hover": { [media.hover]: role.bgHover },
-      ":focus-within": role.bgHover,
-      ":active": role.bgPressed,
+      ":hover": { [media.hover]: role.fillTertiary },
+      ":focus-within": role.fillTertiary,
+      ":active": role.fillSecondary,
     },
     color: role.contentSecondary,
   },
@@ -213,7 +211,7 @@ export const turnStyles = create({
     paddingInlineStart: space.s3,
     borderInlineStartWidth: 1,
     borderInlineStartStyle: "solid",
-    borderInlineStartColor: role.borderPrimaryTranslucent,
+    borderInlineStartColor: role.strokeTertiary,
     color: role.contentSecondary,
   },
 });

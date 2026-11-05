@@ -395,9 +395,9 @@ const colorNames = Object.keys(roles).filter((name) => !nonColors.has(name));
  */
 const scopedColorNames = [
   "--nyte-content-secondary",
-  "--nyte-content-interactive-tertiary",
-  "--nyte-bg-interactive-primary-translucent",
-  "--nyte-bg-interactive-secondary-translucent",
+  "--nyte-content-quaternary",
+  "--nyte-fill-primary",
+  "--nyte-fill-tertiary",
   "--nyte-bg-interactive-strong",
   "--nyte-chart-series",
 ];

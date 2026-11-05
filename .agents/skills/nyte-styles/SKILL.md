@@ -35,7 +35,7 @@ All of it is in `packages/ui/src/styles/`, exported as `@nyte-ai/ui/styles/*`.
 
 Native code can't read CSS variables. `packages/ui/src/platform-colors.ts` is generated from the
 roles (`pnpm --dir packages/ui sync:tokens`) and gives mobile and the docs mobile host every role as
-hex per scheme and hue: `platformColors.light.contentInteractiveTertiary`,
+hex per scheme and hue: `platformColors.light.contentQuaternary`,
 `platformScopes.dark.red.contentSecondary`. Renaming or deleting a role breaks those readers, so run
 `pnpm --dir packages/mobile exec tsc --noEmit` after a role change.
 
@@ -101,6 +101,39 @@ rules always beat base.css; an app style passed through `xstyle` always beats th
 11. **Logical properties.** `paddingInline`, `insetInlineEnd`, `marginBlockStart`. Centring is
     the exception: `left: "50%"` with a -50% translate is symmetric, while a logical anchor flips
     without its translate. (lint: `nyte-design/logical-properties`)
+
+## Colour stairs
+
+Text, icons, fills and strokes each come in a ladder of steps called stairs, strongest first. Each
+step has one job and a contrast floor. The floor holds on every surface (`bgBase`, `bgMuted`,
+`bgElevated`, `bgChrome`), on the hover fill over each of them, in light and dark and in every hue
+scope. Pick the step for the job; never tune a colour by eye.
+
+| Stairs | Steps (strongest first) | Jobs and floors |
+| --- | --- | --- |
+| Content (text and icons) | `contentPrimary`, `contentSecondary`, `contentTertiary`, `contentQuaternary`, `contentDisabled` | body and values ≥7:1; labels, nav and tool rows ≥6:1; metadata, hints and placeholders ≥4.5:1; chevrons, separators and idle glyphs, never text, ≥3:1; disabled controls only |
+| Fill (translucent, over any surface) | `fillPrimary`, `fillSecondary`, `fillTertiary` | pressed fill or strong active; selected, open or pressed ghost; hover or a chip at rest |
+| Stroke | `strokePrimary` (opaque), `strokeSecondary`, `strokeTertiary`, `strokeQuaternary` (translucent) | control boundary, such as a framed input's edge, ≥3:1 on any surface and its hover fill; strong or hover border; default border; hairline divider |
+
+`contentAccent` and `strokeAccent` carry the scope's hue. Surfaces, materials, scrims and the
+control and button fills sit outside the stairs.
+
+1. **State moves up the stairs.** Hover is one step up, pressed or open two: `contentSecondary` →
+   `contentPrimary`, no fill → `fillTertiary` → `fillSecondary`, `strokeQuaternary` →
+   `strokeTertiary`. (not enforced)
+2. **Text never fades.** De-emphasise with a lower step, never with `opacity` or `color-mix()`; if
+   no step fits, the content is decoration. Opacity stays for whole-element fades and images.
+   (lint: `nyte-design/no-faded-ink`)
+3. **Disabled ink means disabled.** A failed or idle item that still informs uses
+   `contentTertiary`, an error `contentAccent`, an idle mark `contentQuaternary`. (lint:
+   `nyte-design/disabled-ink`)
+4. **An icon shares its label's step.** Only decoration drops to `contentQuaternary`. (not enforced)
+5. **Increased contrast moves the stairs up**; it never merges two steps. (test:
+   `pnpm --dir packages/app exec vitest --run test/tokens.test.ts`, which runs both
+   `prefers-contrast` modes and checks every floor, including `strokePrimary` over the hover fill,
+   and that each content, fill and stroke step stays above the next)
+
+Highlighted code follows the same floors: syntax colours keep 4.5:1 on the code surfaces.
 
 ## Adding or changing a token
 

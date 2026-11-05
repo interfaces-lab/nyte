@@ -103,7 +103,7 @@ const styles = create({
     padding: space.s4,
     borderRadius: shell.cardRadius,
     backgroundColor: role.surfaceMaterial,
-    boxShadow: `0 0 0 1px ${role.borderSecondaryTranslucent}`,
+    boxShadow: `0 0 0 1px ${role.strokeQuaternary}`,
   },
   actions: { display: "flex", justifyContent: "flex-end" },
 });

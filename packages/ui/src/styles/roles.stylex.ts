@@ -13,12 +13,16 @@ const glass = (light: number, dark: number) =>
 const shade = (role: string, light: number, dark: number) =>
   `light-dark(oklch(from var(--nyte-${role}) calc(l * ${light}) c h), oklch(from var(--nyte-${role}) calc(l * ${dark}) c h))`;
 
-const lift = (role: string, alpha: number) =>
-  `oklch(from var(--nyte-${role}) l c h / calc(alpha + ${alpha}))`;
-
-/** The OS "increase contrast" setting; the values follow Notion's high-contrast mode. */
 /** The scope's hue as ink, raised in dark to a lightness every hue reads at 4.5:1 on the dark surfaces. */
 const ink = "light-dark(var(--nyte-theme-100), oklch(from var(--nyte-theme-80) max(l, 0.68) c h))";
+
+/**
+ * One step of the content stairs: a ramp step, clamped to the OKLab lightness that keeps the step's
+ * contrast floor on every surface and fill in every hue. Light caps how light the ink gets; dark
+ * floors how dark it gets.
+ */
+const stair = (light: number, lightCeiling: number, dark: number, darkFloor: number) =>
+  `light-dark(oklch(from var(--nyte-theme-${light}) min(l, ${lightCeiling}) c h), oklch(from var(--nyte-theme-${dark}) max(l, ${darkFloor}) c h))`;
 
 const contrast = <Value extends string>(normal: Value, more: Value) => ({
   default: normal,
@@ -33,29 +37,24 @@ const hover = (role: string) => contrast(shade(role, 0.95, 1.05), shade(role, 0.
 const press = (role: string) => contrast(shade(role, 0.88, 1.12), shade(role, 0.5, 1.4));
 
 export const roles = defineVars({
-  "--nyte-content-primary": contrast(step(130, 30), step(140, 10)),
-  "--nyte-content-secondary": contrast(step(100, 70), step(110, 30)),
-  "--nyte-content-tertiary": contrast(step(70, 100), step(110, 30)),
-  "--nyte-content-disabled": contrast(step(40, 120), step(60, 100)),
-  "--nyte-content-chrome": contrast(step(100, 60), step(110, 30)),
-  "--nyte-content-interactive-primary": contrast(step(120, 20), step(140, 20)),
-  "--nyte-content-interactive-secondary": contrast(step(100, 50), step(100, 40)),
-  "--nyte-content-interactive-tertiary": contrast(step(80, 90), step(100, 40)),
+  /** Content stairs, strongest first. Increased contrast moves each one up a step. */
+  "--nyte-content-primary": contrast(stair(130, 0.3, 20, 0.94), step(140, 0)),
+  "--nyte-content-secondary": contrast(stair(110, 0.43, 50, 0.78), step(120, 30)),
+  "--nyte-content-tertiary": contrast(stair(90, 0.5, 70, 0.69), step(110, 50)),
+  "--nyte-content-quaternary": contrast(stair(80, 0.6, 90, 0.57), step(100, 70)),
+  "--nyte-content-disabled": contrast(step(50, 110), step(70, 100)),
   /** The scope's hue as ink: error and attention text, status dots, accent strokes. */
   "--nyte-content-accent": contrast(ink, step(100, 40)),
   "--nyte-content-on-interactive-strong": "var(--nyte-theme-0)",
   "--nyte-content-on-control": "var(--nyte-neutral-0)",
 
-  "--nyte-border-primary": step(30, 120),
-  "--nyte-border-secondary": step(20, 135),
-  "--nyte-border-strong": step(40, 100),
-  "--nyte-border-control": control(80, 80),
-  "--nyte-border-interactive-primary": "var(--nyte-theme-80)",
-  "--nyte-border-primary-translucent": glass(30, 120),
-  "--nyte-border-secondary-translucent": glass(20, 135),
-  "--nyte-border-strong-translucent": glass(40, 100),
-  "--nyte-border-control-translucent":
-    "light-dark(var(--nyte-neutral-translucent-80), var(--nyte-neutral-translucent-80))",
+  /** Stroke stairs, strongest first: control boundary, strong, default, divider. */
+  /** Opaque gray, so a control's edge reads at 3:1 on any surface and its hover fill. */
+  "--nyte-stroke-primary": control(100, 80),
+  "--nyte-stroke-secondary": contrast(glass(40, 100), glass(50, 100)),
+  "--nyte-stroke-tertiary": contrast(glass(30, 120), glass(40, 110)),
+  "--nyte-stroke-quaternary": contrast(glass(20, 135), glass(30, 120)),
+  "--nyte-stroke-accent": "var(--nyte-theme-80)",
 
   "--nyte-bg-base": step(0, 145),
   "--nyte-bg-chrome": step(5, 150),
@@ -65,16 +64,12 @@ export const roles = defineVars({
   "--nyte-bg-scrim": "light-dark(#00000026, #000000bf)",
   "--nyte-bg-scrim-translucent": glass(40, 100),
 
-  "--nyte-bg-interactive-primary": step(30, 120),
-  "--nyte-bg-interactive-primary-pressed": press("bg-interactive-primary"),
-  "--nyte-bg-interactive-secondary": step(15, 135),
-  "--nyte-bg-interactive-secondary-hover": hover("bg-interactive-secondary"),
-  "--nyte-bg-interactive-secondary-pressed": press("bg-interactive-secondary"),
   "--nyte-bg-interactive-strong": step(130, 100),
-  "--nyte-bg-interactive-primary-translucent": glass(30, 120),
-  "--nyte-bg-interactive-secondary-translucent": glass(15, 135),
-  "--nyte-bg-hover": contrast(glass(15, 135), lift("bg-interactive-secondary-translucent", 0.2)),
-  "--nyte-bg-pressed": contrast(lift("bg-hover", 0.045), lift("bg-hover", 0.1)),
+
+  /** Fill stairs over any surface, strongest first: active, hover on a fill, hover. */
+  "--nyte-fill-primary": contrast(glass(40, 120), glass(50, 110)),
+  "--nyte-fill-secondary": contrast(glass(30, 130), glass(40, 120)),
+  "--nyte-fill-tertiary": contrast(glass(15, 135), glass(30, 130)),
 
   "--nyte-bg-control": control(80, 100),
   "--nyte-bg-control-hover": hover("bg-control"),
@@ -96,22 +91,16 @@ export const roles = defineVars({
     "light-dark(color-mix(in srgb, var(--nyte-bg-base) calc(84% + 16% * var(--nyte-reduce-transparency)), transparent), color-mix(in srgb, var(--nyte-bg-base) calc(72% + 28% * var(--nyte-reduce-transparency)), transparent))",
   "--nyte-popup-material":
     "light-dark(color-mix(in srgb, var(--nyte-bg-elevated) calc(80% + 20% * var(--nyte-reduce-transparency)), transparent), color-mix(in srgb, var(--nyte-bg-elevated) calc(90% + 10% * var(--nyte-reduce-transparency)), transparent))",
-  "--nyte-layer-hover": "linear-gradient(var(--nyte-bg-hover), var(--nyte-bg-hover))",
-  "--nyte-layer-pressed": "linear-gradient(var(--nyte-bg-pressed), var(--nyte-bg-pressed))",
+  "--nyte-layer-hover": "linear-gradient(var(--nyte-fill-tertiary), var(--nyte-fill-tertiary))",
+  "--nyte-layer-pressed": "linear-gradient(var(--nyte-fill-secondary), var(--nyte-fill-secondary))",
   "--nyte-scrollbar-thumb": `color-mix(in srgb, ${step(70, 90)} 50%, transparent)`,
   "--nyte-conversation-user-shell-bg": "color-mix(in srgb, var(--nyte-bg-chrome) 60%, transparent)",
   "--nyte-shadow-md-outline":
-    "0 8px 12px light-dark(#42230308, #42230310), 0 2px 6px light-dark(#42230308, #42230310), 0 0 0 1px light-dark(var(--nyte-border-secondary-translucent), transparent), inset 0 0 0 1px light-dark(transparent, var(--nyte-border-secondary-translucent))",
+    "0 8px 12px light-dark(#42230308, #42230310), 0 2px 6px light-dark(#42230308, #42230310), 0 0 0 1px light-dark(var(--nyte-stroke-quaternary), transparent), inset 0 0 0 1px light-dark(transparent, var(--nyte-stroke-quaternary))",
 });
 
 const hued = {
-  "--nyte-content-primary": contrast(step(110, 30), step(140, 10)),
-  "--nyte-content-tertiary": contrast(step(60, 100), step(110, 30)),
-  "--nyte-content-interactive-primary": contrast(step(120, 50), step(120, 40)),
-  "--nyte-content-interactive-secondary": contrast(step(110, 70), step(100, 60)),
-  "--nyte-content-interactive-tertiary": contrast(step(100, 90), step(100, 60)),
   "--nyte-content-accent": contrast(ink, step(100, 60)),
-  "--nyte-border-primary": step(30, 110),
   "--nyte-bg-scrim-translucent": glass(40, 130),
   "--nyte-bg-interactive-strong": "var(--nyte-theme-80)",
   /** Capped so a white glyph on a light hue (yellow, teal) keeps 3:1. */

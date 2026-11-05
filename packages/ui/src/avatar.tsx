@@ -17,7 +17,7 @@ const styles = create({
     boxSizing: "border-box",
     borderWidth: 0.5,
     borderStyle: "solid",
-    borderColor: role.borderPrimaryTranslucent,
+    borderColor: role.strokeTertiary,
     fontFamily: type.fontSans,
     fontWeight: type.weightSemibold,
     userSelect: "none",
@@ -55,8 +55,8 @@ const cornerStyles = create({
 
 const toneFill = create({
   base: {
-    backgroundColor: role.bgInteractiveSecondaryTranslucent,
-    color: role.contentInteractivePrimary,
+    backgroundColor: role.fillTertiary,
+    color: role.contentPrimary,
   },
 });
 

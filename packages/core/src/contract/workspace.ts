@@ -64,6 +64,7 @@ import type {
   SearchFrame,
   SearchInput,
   SessionId,
+  SharedDoc,
   SnapshotId,
   StopOutcome,
   WorkspaceCatalogView,
@@ -326,6 +327,8 @@ export interface Resources {
     readonly scope: "user" | "ancestor" | "project";
     readonly content: string;
   }[];
+  /** The shared docs in the home's and the trusted workspace's `.nyte/projects/docs`, kept like the skills until a watched folder changes. */
+  readonly docs: readonly SharedDoc[];
   readonly prompt: {
     readonly system: string | null;
     readonly append: string | null;

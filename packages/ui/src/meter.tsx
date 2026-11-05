@@ -20,7 +20,7 @@ const styles = create({
     height: 4,
     overflow: "clip",
     borderRadius: radius.indicator,
-    backgroundColor: role.bgInteractivePrimaryTranslucent,
+    backgroundColor: role.fillSecondary,
   },
   indicator: {
     height: "100%",

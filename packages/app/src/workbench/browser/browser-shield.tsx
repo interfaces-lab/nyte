@@ -28,7 +28,7 @@ const styles = create({
     fontFamily: type.fontMono,
     fontVariantNumeric: "tabular-nums",
   },
-  off: { color: role.contentDisabled },
+  off: { color: role.contentTertiary },
   menu: { minWidth: 260 },
 });
 

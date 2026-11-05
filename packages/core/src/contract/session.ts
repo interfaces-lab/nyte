@@ -123,8 +123,6 @@ export interface Session extends Head {
     readonly pinned?: boolean;
     readonly archived?: boolean;
     readonly workspace?: WorkspaceId;
-    /** Moves the chat into a project, or out of one with null. A project in another folder, or an archived one, is refused as invalid, and so is moving a project's lead out of it. */
-    readonly project?: ProjectId | null;
   }): Promise<UpdateOutcome>;
 
   remove(): Promise<RemoveSessionOutcome>;
@@ -165,7 +163,7 @@ export interface Sessions {
     readonly contextFiles?: false;
     /** `true` starts a side chat of `parent`: a chat a person keeps beside it. It never reports to the parent or shows as the parent's background work, and `SessionInfo.side` marks it. Without `parent` it is refused as invalid. */
     readonly side?: true;
-    /** Starts the chat in a project. A child starts in its parent's project without it, and a side chat in none. The first top-level chat in a project with no lead becomes its lead, in the same commit. A project that is archived, or works in another folder, is refused as invalid. */
+    /** Starts the chat as a project's coordinator, in the same commit that names it there. A child starts in its parent's project without it, on the project's agents model unless `configuration` names one, and a side chat in none. A project that is archived, works in another folder, or already has its chat is refused as invalid. */
     readonly project?: ProjectId;
     readonly content: UserContent;
   }): Promise<{ readonly session: Session; readonly receipt: SendReceipt }>;

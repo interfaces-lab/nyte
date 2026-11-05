@@ -93,7 +93,7 @@ export const menuStyles = create({
     outlineOffset: -1,
     backgroundColor: {
       default: "transparent",
-      "[data-highlighted]:not([data-disabled])": role.bgHover,
+      "[data-highlighted]:not([data-disabled])": role.fillTertiary,
     },
     color: { default: role.contentPrimary, "[data-disabled]": role.contentDisabled },
     fontSize: type.fontBase,
@@ -139,7 +139,7 @@ export const menuStyles = create({
     height: 1,
     marginBlock: space.s1,
     marginInline: `calc(${menu.padding} * -1)`,
-    backgroundColor: role.borderSecondaryTranslucent,
+    backgroundColor: role.strokeQuaternary,
   },
   separatorInset: { marginBlock: space.s1, marginInline: space.s2 },
   groupLabel: {
@@ -156,8 +156,8 @@ export const menuStyles = create({
   submenuTriggerOpen: {
     backgroundColor: {
       default: "transparent",
-      "[data-highlighted]:not([data-disabled])": role.bgHover,
-      "[data-popup-open]": role.bgInteractiveSecondaryTranslucent,
+      "[data-highlighted]:not([data-disabled])": role.fillTertiary,
+      "[data-popup-open]": role.fillSecondary,
     },
   },
   submenuValue: {
@@ -226,8 +226,8 @@ const itemLayouts = create({
     paddingBlock: space.s0_5,
     borderRadius: radius.control,
     color: {
-      default: role.contentInteractiveSecondary,
-      "[data-highlighted]": role.contentInteractivePrimary,
+      default: role.contentSecondary,
+      "[data-highlighted]": role.contentPrimary,
     },
     fontSize: type.fontXs,
     lineHeight: type.leadingXs,

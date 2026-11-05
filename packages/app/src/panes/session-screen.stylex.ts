@@ -131,7 +131,7 @@ export const sessionScreenStyles = create({
   },
   sashRight: { cursor: "col-resize" },
   sashDown: { cursor: "row-resize" },
-  sashLine: { backgroundColor: role.borderSecondaryTranslucent, pointerEvents: "none" },
+  sashLine: { backgroundColor: role.strokeQuaternary, pointerEvents: "none" },
   sashLineRight: { width: 1, height: "100%" },
   sashLineDown: { width: "100%", height: 1 },
   dropPreview: {
@@ -140,8 +140,8 @@ export const sessionScreenStyles = create({
     borderRadius: radius.indicator,
     borderWidth: 2,
     borderStyle: "solid",
-    borderColor: role.borderInteractivePrimary,
-    backgroundColor: role.bgInteractiveSecondaryTranslucent,
+    borderColor: role.strokeAccent,
+    backgroundColor: role.fillTertiary,
     pointerEvents: "none",
   },
 });

@@ -50,7 +50,7 @@ export const customizeStyles = create({
   },
   path: { color: role.contentSecondary, fontFamily: type.fontMono, overflowWrap: "anywhere" },
   actions: { display: "flex", flexWrap: "wrap", gap: space.s1_5 },
-  failed: { color: role.contentInteractivePrimary },
+  failed: { color: role.contentAccent },
   trace: {
     margin: 0,
     padding: space.s3,

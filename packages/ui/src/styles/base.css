@@ -220,7 +220,7 @@
   }
 
   ::selection {
-    background: var(--nyte-bg-interactive-primary-translucent);
+    background: var(--nyte-fill-primary);
   }
 
   dialog::backdrop {

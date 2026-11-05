@@ -23,8 +23,7 @@ const nonColorRoles = new Set(["layerHover", "layerPressed"]);
 const schemeIndependentRoles = new Map([
   ["contentOnInteractiveStrong", "theme-0: the label on a strong fill is white in both modes"],
   ["contentOnControl", "neutral-0: a switch knob or checkbox mark is white in both modes"],
-  ["borderControl", "control(80, 80): an unchecked control's edge is one gray"],
-  ["borderInteractivePrimary", "theme-80: the accent edge is the hue's own step"],
+  ["strokeAccent", "theme-80: the accent edge is the hue's own step"],
   ["buttonFill", "theme-80 capped in lightness so a white label reads at 4.5:1"],
   ["buttonFillHover", "shade(button-fill, 0.95, 0.95)"],
   ["buttonFillPressed", "shade(button-fill, 0.88, 0.88)"],

@@ -160,10 +160,11 @@ export const layer = defineConsts({
   workbench: 20,
   chrome: 30,
   sash: 31,
+  dialogBackdrop: 50,
+  dialog: 51,
+  /** Above dialogs, so a picker opened inside one shows over it. */
   menu: 60,
   submenu: 61,
-  dialogBackdrop: 70,
-  dialog: 71,
   tooltip: 72,
   toast: 75,
   commandBackdrop: 80,

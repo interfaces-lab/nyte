@@ -24,8 +24,6 @@ import { ToolOutcome } from "./tool-line.tsx";
 
 type EditToolClass = Extract<ToolClass, { readonly kind: "edit" }>;
 
-const DIMMED = `color-mix(in oklab, ${role.contentSecondary} 65%, ${role.contentTertiary})`;
-
 const CARD_PREVIEW_ROWS = 4;
 
 const TRANSITION = {
@@ -47,10 +45,11 @@ const styles = create({
     userSelect: "none",
     "--_action": role.contentSecondary,
     "--_file": {
-      default: role.contentSecondary,
-      ":hover": { [media.hover]: role.contentPrimary },
+      default: role.contentTertiary,
+      ":hover": { [media.hover]: role.contentSecondary },
     },
     "--_chevron": "0",
+    "--_chevron-color": role.contentQuaternary,
   },
   lineToggle: {
     cursor: appearance.cursorInteractive,
@@ -64,8 +63,13 @@ const styles = create({
       ":focus-within": "1",
       "[data-panel-open]": "1",
     },
+    "--_chevron-color": {
+      default: role.contentQuaternary,
+      ":hover": { [media.hover]: role.contentTertiary },
+      "[data-panel-open]": role.contentTertiary,
+    },
   },
-  lineDimmed: { "--_action": DIMMED, "--_file": DIMMED },
+  lineDimmed: { "--_action": role.contentTertiary, "--_file": role.contentTertiary },
   action: { flexShrink: 0, color: "var(--_action)", transitionProperty: "color", ...TRANSITION },
   file: {
     flexShrink: 1,
@@ -94,7 +98,7 @@ const styles = create({
   chevron: {
     width: glyph.md,
     height: glyph.md,
-    color: role.contentTertiary,
+    color: "var(--_chevron-color)",
     opacity: "var(--_chevron)",
     transitionProperty: "color, opacity, transform",
     ...TRANSITION,
@@ -108,7 +112,7 @@ const styles = create({
     overflow: "clip",
     borderWidth: 1,
     borderStyle: "solid",
-    borderColor: role.borderSecondaryTranslucent,
+    borderColor: role.strokeQuaternary,
     borderRadius: radius.control,
     backgroundColor: role.bgBase,
     "--_expand-opacity": {
@@ -150,7 +154,7 @@ const styles = create({
   cardBody: {
     borderTopWidth: 1,
     borderTopStyle: "solid",
-    borderTopColor: role.borderSecondaryTranslucent,
+    borderTopColor: role.strokeQuaternary,
   },
   cardBodyCollapsed: {
     maxHeight: `calc(${CARD_PREVIEW_ROWS} * ${diffView.lineHeight})`,

@@ -68,7 +68,7 @@ export const settingsStyles = create({
     overflowY: "auto",
   },
   navList: { display: "flex", flexDirection: "column", gap: sidebar.listGap },
-  navItemHighlighted: { "--_row-fill": role.bgHover, color: role.contentPrimary },
+  navItemHighlighted: { "--_row-fill": role.fillTertiary, color: role.contentPrimary },
   emptyNavigation: {
     padding: `${space.s1_5} ${space.s1}`,
     color: role.contentSecondary,

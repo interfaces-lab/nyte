@@ -1,4 +1,5 @@
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
+import { registerCustomTheme } from "@pierre/diffs";
 import { WorkerPoolContext } from "@pierre/diffs/react";
 import { WorkerPoolManager } from "@pierre/diffs/worker";
 import type {
@@ -10,6 +11,7 @@ import type {
 import PierreDiffWorkerUrl from "@pierre/diffs/worker/worker-portable.js?url";
 import { useSyncExternalStore } from "react";
 import type { ReactElement, ReactNode } from "react";
+import { codeThemes } from "./code-themes.ts";
 
 const POOL_SIZE = Math.max(2, Math.min(6, Math.floor((navigator.hardwareConcurrency || 4) / 2)));
 
@@ -117,8 +119,12 @@ const poolOptions = {
   totalASTLRUCacheSize: 240,
 } satisfies WorkerPoolOptions;
 
+registerCustomTheme("nyte-light", async () => codeThemes.light, "zed");
+
+registerCustomTheme("nyte-dark", async () => codeThemes.dark, "zed");
+
 export const PIERRE_HIGHLIGHTER_OPTIONS = {
-  theme: { light: "github-light", dark: "github-dark" },
+  theme: { light: "nyte-light", dark: "nyte-dark" },
   preferredHighlighter: "highlights",
 } as const;
 
@@ -137,7 +143,7 @@ export const PIERRE_TREE_CSS = `
 }
 
 [data-type="item"][data-item-selected="true"] {
-  box-shadow: inset 0 0 0 1px ${role.borderPrimary};
+  box-shadow: inset 0 0 0 1px ${role.strokeTertiary};
 }
 `;
 

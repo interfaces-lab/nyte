@@ -4,8 +4,8 @@ import { conversation } from "../../theme/schema.stylex.ts";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
 
 const pulse = keyframes({
-  "0%, 100%": { opacity: 1 },
-  "50%": { opacity: 0.55 },
+  "0%, 100%": { color: role.contentSecondary },
+  "50%": { color: role.contentTertiary },
 });
 
 const PULSE = {

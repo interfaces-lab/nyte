@@ -74,14 +74,14 @@ const styles = create({
     backgroundColor: {
       default: role.bgMutedTranslucent,
       ":hover:not([data-disabled])": {
-        [media.hover]: role.bgHover,
+        [media.hover]: role.fillTertiary,
       },
-      "[data-checked]": role.bgInteractiveSecondaryTranslucent,
+      "[data-checked]": role.fillSecondary,
     },
     cursor: { default: appearance.cursorInteractive, "[data-disabled]": "default" },
     boxShadow: {
-      default: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
-      "[data-checked]": `inset 0 0 0 1px ${role.borderPrimary}`,
+      default: `inset 0 0 0 1px ${role.strokeQuaternary}`,
+      "[data-checked]": `inset 0 0 0 1px ${role.strokeTertiary}`,
     },
     outlineStyle: { default: "none", ":has(input:focus-visible)": "solid" },
     outlineWidth: space.s0_5,
@@ -100,7 +100,7 @@ const styles = create({
     borderWidth: 1.5,
     borderStyle: "solid",
     borderColor: {
-      default: role.borderControlTranslucent,
+      default: role.strokePrimary,
       [when.siblingBefore(":checked", choiceInput)]: role.bgControlSelected,
     },
     borderRadius: "var(--_question-control-radius)",

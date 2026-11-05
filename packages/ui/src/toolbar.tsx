@@ -22,7 +22,7 @@ const styles = create({
     height: { default: glyph.md, '[data-orientation="horizontal"]': 1 },
     marginInline: { default: space.s1, '[data-orientation="horizontal"]': 0 },
     marginBlock: { default: 0, '[data-orientation="horizontal"]': space.s1 },
-    backgroundColor: role.borderSecondaryTranslucent,
+    backgroundColor: role.strokeQuaternary,
   },
 });
 

@@ -36,6 +36,7 @@ import { objectId } from "../util/content.ts";
 import { holdSummary, summarizedMove, summaryHeld } from "./branch-summary.ts";
 import { fence, finishFence } from "./fence.ts";
 import { known, reserve, settleReceipt, typedReceipt } from "./receipts.ts";
+import { stopCut } from "./stop.ts";
 
 const EMPTY_CHAT =
   "Main can't move before its first message with nothing queued: the chat would be empty. Send a replacement for that message instead.";
@@ -44,6 +45,8 @@ interface Plan {
   readonly landing: CommitId | null;
   readonly handback: UserContent | null;
   readonly abandoned: readonly CommitId[];
+  /** When the first abandoned commit landed; null when the move abandons none. */
+  readonly since: number | null;
 }
 
 type Decided =
@@ -54,7 +57,12 @@ type Decided =
       readonly plan: Plan;
       readonly instructions: string | null;
     }
-  | { readonly kind: "moved"; readonly outcome: MoveOutcome; readonly stopped: RunId | null }
+  | {
+      readonly kind: "moved";
+      readonly outcome: MoveOutcome;
+      readonly stopped: RunId | null;
+      readonly since: number | null;
+    }
   | { readonly kind: "replayed" };
 
 export async function move(
@@ -105,6 +113,7 @@ export async function move(
         kernel.wakes.notify(session, head);
       }
 
+      if (decided.since !== null) stopCut(kernel, session, head, decided.since);
       await settleReceipt(kernel, session, id, { kind: "move", outcome: decided.outcome });
 
       return receipt;
@@ -151,6 +160,8 @@ export async function move(
             await finishFence(kernel, session, summarized.stopped);
             kernel.wakes.notify(session, head);
           }
+
+          if (decided.plan.since !== null) stopCut(kernel, session, head, decided.plan.since);
 
           return {
             kind: "moved",
@@ -252,6 +263,7 @@ async function decide(
     return {
       kind: "moved",
       stopped: fenced === null || fenced.kind === "ended" ? null : checked.run,
+      since: plan.since,
       outcome: {
         kind: "moved",
         revision:
@@ -271,11 +283,14 @@ function planHistoryMove(
 ): Plan | null {
   const plan = (landing: CommitId | null, handback: UserContent | null): Plan => {
     const kept = new Set(walkCommitPath(commits, landing));
+    const abandoned = walkCommitPath(commits, tip).filter((id) => !kept.has(id));
+    const first = abandoned[0];
 
     return {
       landing,
       handback,
-      abandoned: walkCommitPath(commits, tip).filter((id) => !kept.has(id)),
+      abandoned,
+      since: first === undefined ? null : (commits.get(first)?.at ?? null),
     };
   };
 

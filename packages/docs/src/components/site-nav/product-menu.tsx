@@ -26,8 +26,8 @@ const styles = create({
     outline: "none",
     backgroundColor: {
       default: "transparent",
-      ":hover": role.bgHover,
-      ":focus-visible": role.bgHover,
+      ":hover": role.fillTertiary,
+      ":focus-visible": role.fillTertiary,
     },
   },
   title: {

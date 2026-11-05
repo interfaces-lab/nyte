@@ -101,14 +101,14 @@ const styles = create({
     },
     ":hover::after": {
       backgroundColor: {
-        [media.hover]: role.borderPrimaryTranslucent,
+        [media.hover]: role.strokeTertiary,
       },
     },
-    ":focus-visible::after": { backgroundColor: role.borderStrongTranslucent },
+    ":focus-visible::after": { backgroundColor: role.strokeSecondary },
   },
   handleCard: { position: "absolute", "::after": { insetBlock: `0 ${shell.cardInset}` } },
-  handleEdge: { "::after": { backgroundColor: role.borderSecondaryTranslucent } },
-  handleActive: { "::after": { backgroundColor: role.borderStrongTranslucent } },
+  handleEdge: { "::after": { backgroundColor: role.strokeQuaternary } },
+  handleActive: { "::after": { backgroundColor: role.strokeSecondary } },
 });
 
 interface ResizeState {

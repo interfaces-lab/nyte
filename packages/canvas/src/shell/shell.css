@@ -18,9 +18,9 @@
   }
 
   a {
-    color: var(--nyte-content-interactive-primary);
+    color: var(--nyte-content-primary);
     text-decoration-line: underline;
-    text-decoration-color: var(--nyte-border-strong);
+    text-decoration-color: var(--nyte-stroke-secondary);
     text-underline-offset: 2px;
   }
 

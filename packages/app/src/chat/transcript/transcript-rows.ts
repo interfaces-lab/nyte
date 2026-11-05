@@ -1,5 +1,10 @@
 import type { Message, SessionView } from "@nyte-ai/sdk";
-import { showsAnswer, showsReport, showsTool } from "@nyte-ai/plugin/client/presentation";
+import {
+  showsAnswer,
+  showsReport,
+  showsThinking,
+  showsTool,
+} from "@nyte-ai/plugin/client/presentation";
 import type {
   failureNotice,
   TextMessage,
@@ -391,6 +396,8 @@ type SessionState = ReturnType<WatchStore<ProjectedView>["getState"]>;
 type ConversationMessages = ReturnType<typeof conversationMessages>;
 
 export interface TranscriptProjector {
+  /** Whether thinking parts get rows; without them the live row says the run is thinking. */
+  readonly thinking: boolean;
   readonly rows: (state: SessionState) => readonly RowLayout[];
   readonly row: (state: SessionState, key: string) => TranscriptRow | undefined;
   readonly messages: (state: SessionState) => ConversationMessages;
@@ -434,7 +441,11 @@ function sameRow(known: TranscriptRow, row: TranscriptRow): boolean {
   );
 }
 
-function project(state: SessionState, previous: Projection | undefined): Projection {
+function project(
+  state: SessionState,
+  previous: Projection | undefined,
+  thinking: boolean,
+): Projection {
   const view = state.value;
   const fresh = conversationMessages(view);
   const kept = previous?.messages;
@@ -452,7 +463,14 @@ function project(state: SessionState, previous: Projection | undefined): Project
   const rows = transcriptRows({
     loading: view === undefined && state.error === undefined,
     failed: state.error !== undefined,
-    turns: view === undefined ? [] : conversationTurns(view),
+    turns:
+      view === undefined
+        ? []
+        : conversationTurns(view).map((turn) =>
+            thinking
+              ? turn
+              : { ...turn, messages: turn.messages.filter((message) => !showsThinking(message)) },
+          ),
     changes: view?.changes ?? [],
     prompts: messages.prompts,
     running: messages.running,
@@ -624,19 +642,25 @@ function streamed(previous: Projection, state: SessionState): Projection | undef
   return { ...previous, state };
 }
 
-export function transcriptProjector(): TranscriptProjector {
+/** Projects a chat's rows; without `thinking` its thinking parts get none. */
+export function transcriptProjector({
+  thinking,
+}: {
+  readonly thinking: boolean;
+}): TranscriptProjector {
   let projection: Projection | undefined;
 
   const sync = (state: SessionState): Projection => {
     if (projection?.state === state) return projection;
     projection =
       (projection === undefined ? undefined : streamed(projection, state)) ??
-      project(state, projection);
+      project(state, projection, thinking);
 
     return projection;
   };
 
   return {
+    thinking,
     rows: (state) => sync(state).layouts,
     row: (state, key) => sync(state).rows.get(key),
     messages: (state) => sync(state).messages,

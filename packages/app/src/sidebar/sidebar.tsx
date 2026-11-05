@@ -1,5 +1,4 @@
 import type { SessionId, SessionInfo, WorkspaceId } from "@nyte-ai/sdk";
-import type { ProjectInfo } from "@nyte-ai/schema";
 import { useProjects } from "../data/projects.ts";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
@@ -56,7 +55,6 @@ import {
   folderView,
   sessionOrder,
   sessionsForNavigation,
-  partitionByProject,
   sessionsForView,
   deriveShelf,
   type ShelfHold,
@@ -197,19 +195,6 @@ export function Sidebar(): ReactElement {
     void router.navigate({ to: "/settings/$section", params: { section }, replace });
   };
 
-  const newProjectChat = async (project: ProjectInfo): Promise<void> => {
-    if (project.lead !== null) {
-      windowTabs.openChat(project.lead, "permanent");
-
-      return;
-    }
-
-    const folder = workspaces.data?.find((workspace) => workspace.id === project.workspace);
-
-    if (folder === undefined || !(await activateWorkspace(folder.path))) return;
-    windowTabs.newChat(project.id);
-  };
-
   const newWorkspaceChat = async (place: SessionPlace): Promise<void> => {
     if (!(await activateWorkspace(place.path))) return;
     setExpanded(place.workspace, true);
@@ -239,27 +224,8 @@ export function Sidebar(): ReactElement {
 
   const order = sessionOrder(view.sort, chats);
 
-  const rooted = (workspaceSessions.data ?? [])
-    .flatMap((workspaceGroup) => {
-      const place: SessionPlace = {
-        workspace: workspaceGroup.workspacePath === null ? null : workspaceGroup.workspace,
-        path: workspaceGroup.workspacePath,
-      };
-
-      return workspaceGroup.sessions
-        .filter((session) => session.parent === null && !session.archived)
-        .map((session) => ({ place, session }));
-    })
-    .toSorted((left, right) => order(left.session, right.session));
-
-  const split = partitionByProject(projectsOn ? projects : [], rooted, (row) => row.session);
-
   const inProject: ReadonlySet<SessionId> = new Set(
-    split.groups.flatMap((group) =>
-      [...(group.lead === undefined ? [] : [group.lead]), ...group.units].map(
-        (row) => row.session.id,
-      ),
-    ),
+    projectsOn ? projects.flatMap((project) => project.coordinator ?? []) : [],
   );
 
   const outsideProjects = (
@@ -470,12 +436,12 @@ export function Sidebar(): ReactElement {
         <div data-nyte-scrollport onKeyDown={moveSidebarFocus} {...props(styles.scroll)}>
           {projectsOn && (
             <ProjectsSection
-              groups={split.groups}
-              context={context}
-              selected={page?.kind === "project" ? page.section : undefined}
-              onOpen={(project) => shellActions.openProject(project.id)}
-              onNewChat={(project) => void newProjectChat(project)}
-              onNewProject={() => shellActions.openProject("new")}
+              projects={projects}
+              selected={
+                activeSessionId === undefined
+                  ? undefined
+                  : projects.find((project) => project.coordinator === activeSessionId)?.id
+              }
             />
           )}
           {pinned.length > 0 && <PinnedSection rows={pinned} context={context} />}

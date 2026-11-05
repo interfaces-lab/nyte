@@ -19,7 +19,7 @@ const pageSchema = Type.Object(
     kind: Type.Literal("page"),
     page: Type.Object(
       {
-        kind: Type.Union([Type.Literal("customize"), Type.Literal("project")]),
+        kind: Type.Literal("customize"),
         section: Type.Optional(Type.String()),
         sessionId: Type.Optional(sessionId),
       },

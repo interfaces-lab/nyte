@@ -5,6 +5,7 @@ import { useEffectEvent, useRef, useSyncExternalStore } from "react";
 import { AboutDialog } from "./about-dialog.tsx";
 import type { ReactElement } from "react";
 import { WorkspaceDialogHost } from "../panes/open-workspace.tsx";
+import { ProjectDialogHost } from "../projects/project-dialog.tsx";
 import { runWindowCommand, windowCommand } from "../commands/window-commands.ts";
 import { shellActions, useOverlays, useStagePage } from "../tabs/shell-state.ts";
 import { SidebarPane } from "../sidebar/sidebar-pane.tsx";
@@ -62,7 +63,7 @@ const styles = create({
     marginInlineEnd: shell.cardInset,
     marginBlockEnd: shell.cardInset,
     borderRadius: shell.cardRadius,
-    boxShadow: `0 0 0 1px ${role.borderSecondaryTranslucent}`,
+    boxShadow: `0 0 0 1px ${role.strokeQuaternary}`,
     transitionProperty: "margin-inline-start",
     transitionDuration: sidebar.resizeDuration,
     transitionTimingFunction: sidebar.resizeEasing,
@@ -235,6 +236,7 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
         </SessionDndProvider>
       </div>
       <WorkspaceDialogHost />
+      <ProjectDialogHost />
       <StoreMigration />
       <Toaster position={toastPosition} />
       {about !== undefined && (

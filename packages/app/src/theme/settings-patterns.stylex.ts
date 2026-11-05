@@ -52,7 +52,7 @@ export const settingsPatterns = create({
     overflow: "clip",
     borderRadius: `max(${radius.control}, calc(${radius.card} - ${space.s2}))`,
     backgroundColor: role.bgBase,
-    boxShadow: `0 0 0 1px ${role.borderSecondaryTranslucent}`,
+    boxShadow: `0 0 0 1px ${role.strokeQuaternary}`,
   },
   under: {
     display: "flex",
@@ -81,7 +81,7 @@ export const settingsPatterns = create({
       insetInline: settings.rowPaddingInline,
       insetBlockStart: 0,
       height: 1,
-      backgroundColor: role.borderSecondaryTranslucent,
+      backgroundColor: role.strokeQuaternary,
       content: '""',
     },
     ":first-child::before": { display: "none" },

@@ -55,7 +55,7 @@ const styles = create({
     minHeight: 0,
     borderInlineStartWidth: 1,
     borderInlineStartStyle: "solid",
-    borderInlineStartColor: role.borderSecondaryTranslucent,
+    borderInlineStartColor: role.strokeQuaternary,
     backgroundColor: role.bgBase,
   },
   sash: {

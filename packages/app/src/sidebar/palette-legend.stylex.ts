@@ -11,7 +11,7 @@ export const paletteLegendStyles = create({
     paddingInline: space.s3,
     borderTopWidth: 1,
     borderTopStyle: "solid",
-    borderTopColor: role.borderSecondaryTranslucent,
+    borderTopColor: role.strokeQuaternary,
   },
   legend: {
     display: "flex",
@@ -40,7 +40,7 @@ export const paletteLegendStyles = create({
     paddingInline: space.s1,
     borderRadius: radius.control,
     backgroundColor: role.bgMutedTranslucent,
-    boxShadow: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
+    boxShadow: `inset 0 0 0 1px ${role.strokeQuaternary}`,
     color: role.contentSecondary,
     fontFamily: type.fontMono,
     fontWeight: type.weightRegular,

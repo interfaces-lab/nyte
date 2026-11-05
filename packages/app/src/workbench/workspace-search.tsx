@@ -206,7 +206,7 @@ const styles = create({
     borderRadius: radius.indicator,
     backgroundColor: {
       default: "transparent",
-      ":hover": { [media.hover]: role.bgHover },
+      ":hover": { [media.hover]: role.fillTertiary },
     },
     color: role.contentSecondary,
   },
@@ -225,7 +225,7 @@ const styles = create({
     maxWidth: "65%",
     overflow: "hidden",
     textOverflow: "ellipsis",
-    backgroundColor: role.bgInteractivePrimaryTranslucent,
+    backgroundColor: role.fillSecondary,
     color: role.contentPrimary,
     borderRadius: 2,
   },
