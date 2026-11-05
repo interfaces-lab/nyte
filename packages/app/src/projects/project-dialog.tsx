@@ -606,7 +606,7 @@ function toggle(list: readonly string[], item: string, present: boolean): readon
 }
 
 const styles = create({
-  popup: { width: "min(560px, calc(100vw - 48px))", padding: space.s5, gap: space.s3 },
+  popup: { width: "min(560px, calc(100vw - 48px))", gap: space.s3 },
   form: { display: "flex", flexDirection: "column", gap: space.s4, minWidth: 0 },
   tabs: { display: "flex", flexDirection: "column", gap: space.s4, minWidth: 0 },
   tabList: { flexWrap: "wrap" },

@@ -3,12 +3,13 @@ import { create, props } from "@stylexjs/stylex";
 import type { ComponentProps, ReactElement } from "react";
 
 import { floatingSurfaceStyles } from "./styles/floating-surface.stylex.ts";
+import { hairline } from "./styles/hairline.stylex.ts";
 import { dialog, layer, space } from "./styles/schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
 import type { Restyle } from "./styles/contracts.ts";
 import { surfaceTheme, type Tint } from "./surface-theme.ts";
 import { text } from "./styles/text.stylex.ts";
-import { motion, role, shadow, type } from "./styles/vars.stylex.ts";
+import { motion, role, type } from "./styles/vars.stylex.ts";
 
 const styles = create({
   backdrop: {
@@ -36,12 +37,8 @@ const styles = create({
     maxHeight: "calc(100dvh - 48px)",
     padding: dialog.padding,
     overflowY: "auto",
-    borderWidth: 1,
-    borderStyle: "solid",
-    borderColor: role.strokeQuaternary,
     borderRadius: dialog.radius,
     outline: "none",
-    boxShadow: shadow.shadowXl,
     color: role.contentPrimary,
     transform: "translate(-50%, -50%)",
     opacity: { default: 1, "[data-starting-style]": 0, "[data-ending-style]": 0 },
@@ -109,6 +106,8 @@ function DialogPopup({
             tint !== undefined && surfaceTheme[tint],
             styles.popup,
             floatingSurfaceStyles.material,
+            floatingSurfaceStyles.modalPopup,
+            hairline.ringAfter,
             xstyle,
           ),
           className,
