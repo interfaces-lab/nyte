@@ -478,6 +478,7 @@ function StackHeader({
       open={!collapsed}
       onOpenChange={() => headers.get()?.onToggleCollapsed(path)}
       data-change-path={path}
+      data-slot="change-header"
       xstyle={[styles.headerRow, hairline.blockEnd]}
     >
       <Collapsible.Trigger
