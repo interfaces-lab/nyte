@@ -750,6 +750,7 @@
       "--nyte-pane-divider-gap",
       "--nyte-pane-sash-size",
       "--nyte-prose-paragraph-gap",
+      "--nyte-prose-table-row-height",
       "--nyte-settings-card-gap",
       "--nyte-settings-content-gutter",
       "--nyte-settings-content-width",
@@ -1031,6 +1032,7 @@
       "paragraphGap",
       "rowGap",
       "rowMinHeight",
+      "tableRowHeight",
       "turnGap"
     ],
     "app/src/theme/schema.stylex.ts diffView": ["lineHeight", "previewMaxHeight"],

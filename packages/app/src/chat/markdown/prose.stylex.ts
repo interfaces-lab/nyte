@@ -5,6 +5,9 @@ import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 const CODE_RING = `inset 0 0 0 1px ${role.strokeQuaternary}`;
 
+/** A row rule that takes no height, so each row is exactly `tableRowHeight`. */
+const ROW_RULE = `inset 0 -1px 0 ${role.strokeQuaternary}`;
+
 export const FADE_MS = 150;
 
 const chunkFadeIn = keyframes({ from: { opacity: 0 }, to: { opacity: 1 } });
@@ -170,16 +173,19 @@ export const proseStyles = create({
   table: {
     width: "max-content",
     minWidth: "100%",
-    borderCollapse: "collapse",
+    borderCollapse: "separate",
+    borderSpacing: 0,
     fontSize: type.fontBase,
     lineHeight: type.leadingBase,
   },
   cell: {
-    paddingBlock: space.s1,
+    paddingBlock: `calc((${conversation.tableRowHeight} - ${type.leadingBase}) / 2)`,
     paddingInline: space.s2_5,
-    borderWidth: 1,
+    borderWidth: 0,
+    borderInlineEndWidth: { default: 1, ":last-child": 0 },
     borderStyle: "solid",
     borderColor: role.strokeQuaternary,
+    boxShadow: { default: ROW_RULE, ":is(tbody > tr:last-child > *)": "none" },
     textAlign: "start",
     verticalAlign: "top",
   },

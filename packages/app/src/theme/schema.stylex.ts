@@ -19,6 +19,7 @@ export const tab = defineConsts({
 export const conversation = defineConsts({
   measure: "var(--nyte-conversation-measure)",
   paragraphGap: "var(--nyte-prose-paragraph-gap)",
+  tableRowHeight: "var(--nyte-prose-table-row-height)",
   gutter: "var(--nyte-conversation-gutter)",
   headerHeight: "var(--nyte-conversation-header-height)",
   turnGap: "var(--nyte-conversation-turn-gap)",
