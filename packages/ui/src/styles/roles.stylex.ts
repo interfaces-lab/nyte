@@ -37,7 +37,7 @@ export const roles = defineVars({
   "--nyte-content-secondary": contrast(stair(110, 0.43, 50, 0.78), step(120, 30)),
   "--nyte-content-tertiary": contrast(stair(90, 0.5, 70, 0.69), step(110, 50)),
   "--nyte-content-quaternary": contrast(stair(80, 0.6, 90, 0.57), step(100, 70)),
-  "--nyte-content-disabled": contrast(step(50, 110), step(70, 100)),
+  "--nyte-content-disabled": contrast(step(50, 100), step(70, 90)),
   /** The scope's hue as ink: error and attention text, status dots, accent strokes. */
   "--nyte-content-accent": contrast(ink, step(100, 40)),
   "--nyte-content-on-interactive-strong": "var(--nyte-theme-0)",
@@ -61,7 +61,7 @@ export const roles = defineVars({
   "--nyte-bg-interactive-strong": step(130, 100),
 
   "--nyte-fill-primary": contrast(glass(40, 120), glass(50, 110)),
-  "--nyte-fill-secondary": contrast(glass(30, 130), glass(40, 120)),
+  "--nyte-fill-secondary": contrast(glass(20, 130), glass(40, 120)),
   "--nyte-fill-tertiary": contrast(glass(15, 135), glass(30, 130)),
 
   "--nyte-bg-control": control(80, 100),

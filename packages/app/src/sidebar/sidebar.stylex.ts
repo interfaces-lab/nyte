@@ -203,7 +203,7 @@ export const sidebarStyles = create({
   sessionRenameInput: { width: "100%" },
   sessionSelection: {
     backgroundColor: role.fillSecondary,
-    boxShadow: `inset 0 0 0 1px ${role.strokeTertiary}`,
+    boxShadow: `inset 0 0 0 1px ${role.strokeQuaternary}`,
   },
   rowSelected: {
     "--_row-fill": "transparent",
