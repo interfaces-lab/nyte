@@ -15,6 +15,7 @@
     "test": "install-electron && vitest --run",
     "update:local": "node scripts/update-test.mjs",
     "typecheck": "tsc --noEmit && tsc --noEmit -p e2e",
+    "grid": "playwright test --config e2e/playwright.config.ts e2e/grid.spec.ts --workers=1 --retries=0 --reporter=list",
     "package": "node scripts/build.mjs --package --publish never",
     "package:dev": "node scripts/build.mjs --warn-budgets --package --publish never",
     "package:app": "node scripts/build.mjs --package --dir",
@@ -71,6 +72,7 @@
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "react-grab": "^0.2.0",
+    "typescript": "catalog:",
     "vite": "^8.3.5",
     "vitest": "^5.1.0",
     "ws": "^8.22.1"

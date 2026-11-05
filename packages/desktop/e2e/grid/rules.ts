@@ -1,0 +1,499 @@
+/**
+ * The spatial grid the rendered desktop app is checked against: the scale, every rule with its named
+ * exceptions, and each region's rails and row rhythm. Rails and pitches are expressions over StyleX
+ * handles, so they move with the tokens instead of pinning today's values.
+ */
+
+export const SCALE = {
+  spacing: [0, 1, 2, 4, 6, 8, 10, 12, 14, 16, 20, 24, 28, 32, 40, 48, 64],
+  grid: 2,
+  controls: [16, 20, 24, 28, 32, 36],
+  /** Cursor's Glass bar: the titlebar and every pane header. */
+  chromeBar: 40,
+  radii: [0, 4, 6, 8, 12, 14, 16, 9999],
+  icons: [10, 12, 14, 16, 20],
+  type: [
+    [11, 14],
+    [12, 16],
+    [13, 18],
+    [15, 24],
+    [19, 24],
+    [24, 32],
+    [28, 34],
+  ],
+  code: [[12, 18]],
+  /** An edge this far from a rail is meant to sit on it. */
+  railNear: 4,
+} as const;
+
+/** A list of steps as a sentence fragment: "10, 12 or 14px". */
+export const spell = (values: readonly (number | string)[], unit = "px"): string =>
+  values.length < 2
+    ? `${values.join("")}${unit}`
+    : `${values.slice(0, -1).join(", ")} or ${String(values.at(-1))}${unit}`;
+
+const pairs = (list: readonly (readonly [number, number])[]): string[] =>
+  list.map(([size, line]) => `${String(size)}/${String(line)}`);
+
+/** Heights that make a box a chrome bar, read from the declaration that sizes it. */
+export const CHROME_BAR_TOKENS = [
+  "--nyte-titlebar-height",
+  "--nyte-conversation-header-height",
+  "--nyte-workbench-header-height",
+] as const;
+
+export type RuleId =
+  | "spacing"
+  | "box-grid"
+  | "control-size"
+  | "bar-size"
+  | "radius"
+  | "icon-size"
+  | "type-pair"
+  | "half-pixel"
+  | "rail"
+  | "rhythm"
+  | "align"
+  | "end-in-view";
+
+/** A fact about a box, for exceptions no selector can name. */
+export type BoxFact =
+  | "centred"
+  | "end-aligned"
+  | "circle"
+  | "hairline"
+  | "window-edge"
+  | "inline-run"
+  | "script-length"
+  | "multi-line"
+  | "line-centring";
+
+export type ElementMatch =
+  | { readonly by: "selector"; readonly selector: string }
+  | { readonly by: "token"; readonly token: string }
+  | { readonly by: "fact"; readonly fact: BoxFact };
+
+export interface Exception {
+  readonly name: string;
+  readonly match: ElementMatch;
+  readonly reason: string;
+}
+
+interface RuleSpec {
+  readonly says: string;
+  readonly exceptions: readonly Exception[];
+}
+
+const COMPOSER_EDITOR = '[role="combobox"][aria-label="Message"]';
+
+const composerEditor: Exception = {
+  name: "composer-editor",
+  match: { by: "selector", selector: COMPOSER_EDITOR },
+  reason: "The message editor grows with what is typed in it.",
+};
+
+const scriptLength: Exception = {
+  name: "script-length",
+  match: { by: "fact", fact: "script-length" },
+  reason:
+    "A length a script writes into the style attribute, such as the transcript's virtual spacers, follows content.",
+};
+
+const centred: Exception = {
+  name: "centred",
+  match: { by: "fact", fact: "centred" },
+  reason:
+    "A box or text centred in its parent sits where its own width puts it; the parent's edges carry the grid.",
+};
+
+const endAligned: Exception = {
+  name: "end-aligned",
+  match: { by: "fact", fact: "end-aligned" },
+  reason:
+    "A box or text pushed to its parent's end starts where its own width puts it; its end edge is still checked.",
+};
+
+export const GRID_RULES = {
+  spacing: {
+    says: "Padding, margin, gap and inset are steps of the spacing scale; an inset may also be any even length.",
+    exceptions: [
+      {
+        name: "line-centring",
+        match: { by: "fact", fact: "line-centring" },
+        reason: "An odd block padding that centres one line in its row: (row - line) / 2.",
+      },
+      {
+        name: "traffic-lights",
+        match: { by: "token", token: "--nyte-titlebar-traffic-light-inset" },
+        reason: "The inset clears macOS's traffic lights, a size the window sets, not the scale.",
+      },
+      scriptLength,
+    ],
+  },
+  "box-grid": {
+    says: "A painted box and a box with a declared length are a whole number of 2px steps; controls and bars have their own sets.",
+    exceptions: [
+      {
+        name: "hairline",
+        match: { by: "fact", fact: "hairline" },
+        reason: "A 1px rule is a stroke, not a box.",
+      },
+      {
+        name: "window-edge",
+        match: { by: "fact", fact: "window-edge" },
+        reason: "A box that reaches the window's edge takes its size from the window.",
+      },
+      {
+        name: "inline-run",
+        match: { by: "fact", fact: "inline-run" },
+        reason: "An inline box is as tall as its font's content area, which the font sets.",
+      },
+      composerEditor,
+      scriptLength,
+    ],
+  },
+  "control-size": {
+    says: `A control is ${spell(SCALE.controls)} tall; an icon-only control is as wide as it is tall.`,
+    exceptions: [
+      composerEditor,
+      {
+        name: "multi-line",
+        match: { by: "fact", fact: "multi-line" },
+        reason:
+          "A control that holds more than one line of text is a card; its lines set its height.",
+      },
+    ],
+  },
+  "bar-size": {
+    says: `The titlebar and every pane header are the chrome bar, ${String(SCALE.chromeBar)}px.`,
+    exceptions: [],
+  },
+  radius: {
+    says: `Corner radii are ${spell(SCALE.radii)}, the last a pill.`,
+    exceptions: [
+      {
+        name: "circle",
+        match: { by: "fact", fact: "circle" },
+        reason: "A percentage radius draws a circle at any size.",
+      },
+    ],
+  },
+  "icon-size": {
+    says: `An icon is ${spell(SCALE.icons)} square.`,
+    exceptions: [],
+  },
+  "type-pair": {
+    says: `Text comes as a size and line-height pair: ${spell(pairs(SCALE.type), "")}, and code ${spell(pairs(SCALE.code), "")}.`,
+    exceptions: [],
+  },
+  "half-pixel": {
+    says: "Painted box edges and icons sit on whole CSS pixels.",
+    exceptions: [centred, endAligned],
+  },
+  rail: {
+    says: "A painted edge, an icon or a text start within 4px of one of its region's rails sits on it.",
+    exceptions: [centred, endAligned],
+  },
+  rhythm: {
+    says: "Rows in a list step by the region's pitch, and each row centres its first line box.",
+    exceptions: [],
+  },
+  align: {
+    says: "Rows that face each other across regions share a baseline, and stacked regions share an edge.",
+    exceptions: [],
+  },
+  "end-in-view": {
+    says: "Each chat pane shows its transcript's last row without scrolling: the row is rendered and ends inside the viewport, above the composer.",
+    exceptions: [],
+  },
+} satisfies Record<RuleId, RuleSpec>;
+
+/** Where a chat pane's transcript, its virtual rows and its composer are, for the end-in-view rule. */
+export const TRANSCRIPT_END = {
+  pane: 'section[aria-label="Active chat pane"], section[aria-label="chat pane"]',
+  viewport: '[role="region"][aria-label="Messages"]',
+  row: "[data-index]",
+  dock: 'form[aria-label="Message"]',
+} as const;
+
+/** A length built from StyleX handles, resolved by the renderer so it follows the tokens. */
+export type Expr =
+  | { readonly op: "handle"; readonly handle: string }
+  | { readonly op: "px"; readonly px: number }
+  | { readonly op: "sum"; readonly terms: readonly Expr[] }
+  | { readonly op: "diff"; readonly left: Expr; readonly right: Expr }
+  | { readonly op: "half"; readonly of: Expr };
+
+export const handle = (name: string): Expr => ({ op: "handle", handle: name });
+
+export const px = (value: number): Expr => ({ op: "px", px: value });
+
+export const sum = (...terms: readonly Expr[]): Expr => ({ op: "sum", terms });
+
+export const diff = (left: Expr, right: Expr): Expr => ({ op: "diff", left, right });
+
+export const half = (of: Expr): Expr => ({ op: "half", of });
+
+export type RegionName =
+  | "titlebar"
+  | "tab-strip"
+  | "sidebar"
+  | "conversation"
+  | "composer"
+  | "workbench-rail"
+  | "settings-nav"
+  | "settings-page"
+  | "dialog";
+
+/** Where a region's box is: a selector, or the element inside `within` whose width reads `token`. */
+export type Locate =
+  | { readonly by: "selector"; readonly selector: string }
+  | { readonly by: "token"; readonly within: string; readonly token: string };
+
+export interface Rail {
+  readonly name: string;
+  readonly from: "start" | "end";
+  readonly offset: Expr;
+  readonly why: string;
+}
+
+export interface Rhythm {
+  readonly rows: string;
+  readonly pitch: Expr;
+  readonly why: string;
+}
+
+export interface RegionSpec {
+  readonly name: RegionName;
+  readonly locate: Locate;
+  readonly rails: readonly Rail[];
+  readonly rhythm: Rhythm | null;
+  /** Boxes that sit centred on the region's height, such as a bar's controls. */
+  readonly centred: string | null;
+}
+
+const sidebarRowStart = sum(handle("sidebar.gutter"), handle("sidebar.rowPaddingInline"));
+
+const railRowStart = sum(handle("space.s2"), handle("workbench.rowPaddingInline"));
+
+export const REGIONS: readonly RegionSpec[] = [
+  {
+    name: "titlebar",
+    locate: { by: "selector", selector: "[data-nyte-shell] header" },
+    rails: [
+      {
+        name: "traffic-lights",
+        from: "start",
+        offset: handle("shell.trafficLightInset"),
+        why: "The first control clears the window's traffic lights.",
+      },
+    ],
+    rhythm: null,
+    centred: "button",
+  },
+  {
+    name: "tab-strip",
+    locate: { by: "selector", selector: '[role="tablist"][aria-label="Tabs"]' },
+    rails: [],
+    rhythm: null,
+    centred: '[role="tab"]',
+  },
+  {
+    name: "sidebar",
+    locate: { by: "selector", selector: 'aside:has(> nav[aria-label="Sessions and workspaces"])' },
+    rails: [
+      {
+        name: "row-edge",
+        from: "start",
+        offset: handle("sidebar.gutter"),
+        why: "Rows and section headers start at the gutter.",
+      },
+      {
+        name: "glyph",
+        from: "start",
+        offset: sum(sidebarRowStart, half(diff(handle("sidebar.iconSlot"), handle("glyph.sm")))),
+        why: "Icons sit centred in the icon slot; header text starts where the icons do.",
+      },
+      {
+        name: "label",
+        from: "start",
+        offset: sum(sidebarRowStart, handle("sidebar.iconSlot"), handle("sidebar.rowGap")),
+        why: "Row labels start after the icon slot and the row gap.",
+      },
+      {
+        name: "row-end",
+        from: "end",
+        offset: handle("sidebar.gutter"),
+        why: "Rows end at the gutter.",
+      },
+    ],
+    rhythm: {
+      rows: '[data-slot="row"]',
+      pitch: sum(handle("sidebar.rowHeight"), handle("sidebar.listGap")),
+      why: "A list steps by the row height and the list gap.",
+    },
+    centred: null,
+  },
+  {
+    name: "conversation",
+    locate: {
+      by: "token",
+      within: '[role="region"][aria-label="Messages"]',
+      token: "--nyte-conversation-measure",
+    },
+    rails: [
+      {
+        name: "content",
+        from: "start",
+        offset: handle("conversation.gutter"),
+        why: "Prose, tables and blocks start at the gutter inside the measure.",
+      },
+      {
+        name: "content-end",
+        from: "end",
+        offset: handle("conversation.gutter"),
+        why: "Wide blocks and the user's bubble end at the gutter.",
+      },
+    ],
+    rhythm: null,
+    centred: null,
+  },
+  {
+    name: "composer",
+    locate: { by: "selector", selector: 'form[aria-label="Message"]' },
+    rails: [
+      {
+        name: "controls",
+        from: "start",
+        offset: sum(px(1), handle("space.s2_5")),
+        why: "The first control sits inside the frame's border and padding.",
+      },
+      {
+        name: "controls-end",
+        from: "end",
+        offset: sum(px(1), handle("space.s2")),
+        why: "The send button sits inside the frame's border and end padding.",
+      },
+    ],
+    rhythm: null,
+    centred: null,
+  },
+  {
+    name: "workbench-rail",
+    locate: { by: "selector", selector: 'nav[aria-label="Workbench navigation"]' },
+    rails: [
+      {
+        name: "row-edge",
+        from: "start",
+        offset: handle("space.s2"),
+        why: "Rows start at the rail's inline padding.",
+      },
+      {
+        name: "glyph",
+        from: "start",
+        offset: sum(railRowStart, half(diff(handle("glyph.md"), handle("glyph.sm")))),
+        why: "Icons sit centred in the leading slot; heading text starts where the icons do.",
+      },
+      {
+        name: "label",
+        from: "start",
+        offset: sum(railRowStart, handle("glyph.md"), handle("workbench.rowGap")),
+        why: "Row labels start after the leading slot and the row gap.",
+      },
+      {
+        name: "row-end",
+        from: "end",
+        offset: handle("space.s2"),
+        why: "Rows end at the rail's inline padding.",
+      },
+      {
+        name: "actions-end",
+        from: "end",
+        offset: railRowStart,
+        why: "Row actions end at the row's inline padding.",
+      },
+    ],
+    rhythm: {
+      rows: '[data-slot="row"]',
+      pitch: sum(handle("row.heightMd"), handle("target.gap")),
+      why: "A rail section steps by the row height and the target gap.",
+    },
+    centred: null,
+  },
+  {
+    name: "settings-nav",
+    locate: { by: "selector", selector: 'nav[aria-label="Settings"]' },
+    rails: [],
+    rhythm: null,
+    centred: null,
+  },
+  {
+    name: "settings-page",
+    locate: { by: "token", within: "main", token: "--nyte-settings-content-width" },
+    rails: [],
+    rhythm: null,
+    centred: null,
+  },
+  {
+    name: "dialog",
+    locate: { by: "selector", selector: '[role="dialog"]' },
+    rails: [
+      {
+        name: "padding",
+        from: "start",
+        offset: handle("dialog.padding"),
+        why: "Dialog content starts at the dialog's padding.",
+      },
+      {
+        name: "padding-end",
+        from: "end",
+        offset: handle("dialog.padding"),
+        why: "Dialog content ends at the dialog's padding.",
+      },
+    ],
+    rhythm: null,
+    centred: null,
+  },
+];
+
+/** A box or line that faces another one across regions. */
+export type Pick =
+  | { readonly kind: "first-row"; readonly region: RegionName }
+  | { readonly kind: "box"; readonly name: string; readonly selector: string }
+  | { readonly kind: "rail"; readonly region: RegionName; readonly rail: string };
+
+export interface Alignment {
+  readonly name: string;
+  readonly axis: "x" | "y";
+  readonly a: Pick;
+  readonly b: Pick;
+  readonly why: string;
+}
+
+export const ALIGNMENTS: readonly Alignment[] = [
+  {
+    name: "first-rows",
+    axis: "y",
+    a: { kind: "first-row", region: "sidebar" },
+    b: { kind: "first-row", region: "workbench-rail" },
+    why: "The sidebar's first row and the workbench rail's first row read as one line.",
+  },
+  {
+    name: "composer-on-content",
+    axis: "x",
+    a: { kind: "box", name: "the composer frame", selector: 'form[aria-label="Message"]' },
+    b: { kind: "rail", region: "conversation", rail: "content" },
+    why: "The composer frame starts on the transcript's content edge.",
+  },
+  {
+    name: "footers",
+    axis: "y",
+    a: {
+      kind: "box",
+      name: "the sidebar footer",
+      selector: 'aside:has(> nav[aria-label="Sessions and workspaces"]) > div:last-child',
+    },
+    b: { kind: "box", name: "the composer footer", selector: 'form[aria-label="Message"] ~ div' },
+    why: "The sidebar footer and the composer footer close the window on one baseline.",
+  },
+];
