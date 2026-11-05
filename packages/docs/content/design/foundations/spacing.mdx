@@ -4,7 +4,7 @@ description: "One 4px unit, Tailwind's steps, and named structural measurements"
 ---
 
 Spacing counts 4px units the way Tailwind does: `s2` is two units, `s1_5` is one and a half.
-`space.px` is a hairline.
+`space.px` is 1px, the width of a hairline.
 
 ```ts
 import { space, target } from "@nyte-ai/ui/styles/schema.stylex";
@@ -25,3 +25,28 @@ import { space, target } from "@nyte-ai/ui/styles/schema.stylex";
 ## Targets
 
 <TargetRows />
+
+## Hairlines
+
+```ts
+import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
+```
+
+A hairline is a 1px edge that takes no layout space, so a box keeps its height on the grid. Each
+style draws an inset shadow in `strokeQuaternary`. Under forced colors, which drop shadows, it draws
+a border instead.
+
+| Style               | Draws                                                                 |
+| ------------------- | --------------------------------------------------------------------- |
+| `hairline.blockEnd` | The bottom edge of a bar, a header row, or a form.                    |
+| `hairline.tableRow` | A rule under each table row but the body's last. Set it on the cells. |
+| `hairline.ring`     | All four sides, following the box's radius.                           |
+
+```tsx
+<div {...stylex.props(styles.toolbar, hairline.blockEnd)}>…</div>
+```
+
+- Draw a separator between stacked boxes, or a frame, with `hairline`, not a 1px border.
+- A box that takes a hairline sets no `border`, `borderWidth`, `borderStyle`, or `borderColor` of its
+  own. Those replace the forced-colors border.
+- A box that takes a hairline sets no `boxShadow` of its own. Its shadow replaces the hairline's.

@@ -71,10 +71,19 @@ rules always beat base.css; an app style passed through `xstyle` always beats th
    only. Weights come from `type.weight*`. (lint: `nyte-design/no-raw-font-weight`; test:
    `pnpm --dir packages/app exec vitest --run style-cascade`; the size and line-height pairing is not enforced)
 4. **Spacing reads the scale.** Padding, margin, gap, and inset use `space.*` (Tailwind steps on a
-   4px unit, `space.px` for a hairline). A structural measurement gets a name in a schema file.
+   4px unit, `space.px` for a 1px length). A structural measurement gets a name in a schema file.
    Controls take their height from the `control` scale; rows and menu items from `row`, which
    keeps the touch target. An `Icon` takes a glyph step for `size`. (lint:
    `nyte-design/spacing-scale`, `nyte-design/size-grid`, `nyte-design/control-size`)
+   A hairline never takes layout space, so a box keeps its grid size: draw a 1px separator or frame
+   with `hairline` (`@nyte-ai/ui/styles/hairline.stylex`): `blockEnd`, `tableRow` on table cells, or
+   `ring`. Each is an inset box-shadow in `strokeQuaternary` with its forced-colors border inside. No
+   1px block-start or block-end border as a separator, and no padding that makes up for one. Inline
+   dividers, such as a table's column divider, are still borders. A box that takes a hairline sets no
+   `border`, `borderWidth`, `borderStyle` or `borderColor` of its own: ui's styles sit in an earlier
+   layer, so the app's shorthand would replace the forced-colors border. It sets no `boxShadow`
+   either: StyleX merges per property, so its shadow would replace the hairline's. Add a variant to
+   `hairline` instead. (not enforced)
 5. **CSS owns what CSS can resolve.** Hover, focus-within, sibling state, container size, entry
    animation, and fallbacks are StyleX features; check the capability block in
    `packages/ui/AGENTS.md` before reaching for React state, effects, observers, or
