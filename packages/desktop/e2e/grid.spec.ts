@@ -499,6 +499,29 @@ test("the rendered layout against the spatial grid", async ({ desktop }) => {
     await capture("workbench-editor");
   });
 
+  await test.step("the workbench Changes and Browser tabs, for their toolbars, with the test home's runtime files excluded from git; it stays the last step, since a state after it would see a different git status", async () => {
+    const open = async (kind: string): Promise<Locator> => {
+      await page.getByRole("button", { name: "New workbench tab" }).click();
+      await page
+        .getByRole("menu", { name: "New workbench tab" })
+        .getByRole("menuitem", { name: kind })
+        .click();
+
+      return workbench(page).getByRole("tabpanel", { name: kind });
+    };
+
+    await writeFile(join(desktop.home, ".git", "info", "exclude"), ".nyte/\nLibrary/\n");
+    await writeFile(join(desktop.home, "README.md"), "# Home\n\nEdited.\n");
+    const changes = (await open("Changes")).getByRole("region", { name: "Workspace changes" });
+    await expect(changes.getByText("README.md").first()).toBeVisible();
+    await expect(changes.getByText(".nyte", { exact: false })).toHaveCount(0, { timeout: 15_000 });
+    await expect(changes.getByText("Library", { exact: false })).toHaveCount(0);
+    await capture("workbench-changes");
+    const browser = (await open("Browser")).getByRole("region", { name: "Browser" });
+    await expect(browser.getByText("Type an address or a search")).toBeVisible();
+    await capture("workbench-browser");
+  });
+
   const missing = REGIONS.map((region) => region.name).filter((name) => !located.has(name));
 
   expect(missing, "declared regions that no state matched: a stale locator").toEqual([]);
