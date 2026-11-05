@@ -30,6 +30,7 @@ for (const ending of ["SIGINT", "SIGTERM", "SIGHUP"] as const)
 void serveHost({
   entry: new URL("./host-worker.js", import.meta.url),
   log: args.includes("--log"),
+  whenTaken: "wait",
   tailnet,
   signal: stop.signal,
   output: { write: (text) => void process.stdout.write(text) },

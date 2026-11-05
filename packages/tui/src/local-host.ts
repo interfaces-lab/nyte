@@ -5,7 +5,12 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { sdk } from "@nyte-ai/sdk/client";
 import type { Connection } from "@nyte-ai/sdk";
 import type { LocalEndpoint } from "@nyte-ai/service";
-import { findRunningHost, hostFilePath, hostLogPath } from "@nyte-ai/service/host-endpoint";
+import {
+  findRunningHost,
+  HOST_TAKEN_EXIT,
+  hostFilePath,
+  hostLogPath,
+} from "@nyte-ai/service/host-endpoint";
 import { selfCommand } from "./compiled.ts";
 
 export type HostSource =
@@ -56,7 +61,9 @@ async function ensureHost(): Promise<LocalEndpoint> {
   const deadline = Date.now() + HOST_START_MS;
 
   while (Date.now() < deadline) {
-    const exited = child.exitCode !== null || child.signalCode !== null;
+    const exited =
+      (child.exitCode !== null && child.exitCode !== HOST_TAKEN_EXIT) || child.signalCode !== null;
+
     await sleep(HOST_POLL_MS);
     const started = await findRunningHost(path);
 

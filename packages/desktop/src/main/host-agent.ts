@@ -72,7 +72,7 @@ function loginItemAgent(options: HostAgentOptions): HostAgent {
     },
     registration,
     pid: () => launchdPid(job.label),
-    restart: () => kickstart(job.label),
+    restart: () => replaceHost(options, job.label),
   };
 }
 
@@ -117,22 +117,37 @@ function developmentAgent(options: HostAgentOptions): HostAgent {
     pid: () => launchdPid(label),
     async restart() {
       await start();
-      await kickstart(label);
+      await replaceHost(options, label);
     },
   };
 }
 
+/** Stops whichever process serves `options.nyteHome` when it isn't job `label`, so the job, standing by on the host lock, serves within a second; kickstarts the job when it is the one serving. */
+async function replaceHost(options: HostAgentOptions, label: string): Promise<void> {
+  const serving = await servedPid(options.nyteHome);
+
+  if (serving !== null && serving !== (await launchdPid(label))) {
+    process.kill(serving, "SIGTERM");
+
+    return;
+  }
+
+  await kickstart(label);
+}
+
 const RunningHostType = Type.Object({ pid: Type.Integer() });
+
+/** The live process `host.json` in `nyteHome` names. */
+async function servedPid(nyteHome: string): Promise<number | null> {
+  const text = await readFile(join(nyteHome, "host.json"), "utf8").catch(() => null);
+  const parsed: unknown = text === null ? null : JSON.parse(text);
+
+  return Value.Check(RunningHostType, parsed) && processAlive(parsed.pid) ? parsed.pid : null;
+}
 
 function detachedHost(options: HostAgentOptions): HostAgent {
   const label = options.label ?? `${options.appId}.host`;
-
-  const pid = async (): Promise<number | null> => {
-    const text = await readFile(join(options.nyteHome, "host.json"), "utf8").catch(() => null);
-    const parsed: unknown = text === null ? null : JSON.parse(text);
-
-    return Value.Check(RunningHostType, parsed) && processAlive(parsed.pid) ? parsed.pid : null;
-  };
+  const pid = (): Promise<number | null> => servedPid(options.nyteHome);
 
   const start = async (): Promise<AgentRegistration> => {
     if (process.platform === "win32") return "not-found";
