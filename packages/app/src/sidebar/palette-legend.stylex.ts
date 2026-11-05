@@ -8,7 +8,7 @@ export const paletteLegendStyles = create({
     alignItems: "center",
     minHeight: 48,
     flexShrink: 0,
-    paddingInline: space.s3,
+    paddingInline: space.s5,
     borderTopWidth: 1,
     borderTopStyle: "solid",
     borderTopColor: role.strokeQuaternary,

@@ -259,7 +259,7 @@ export function SearchPalette({
         <Command.Input
           aria-label="Search"
           placeholder="Search chats and actions…"
-          trailing={<Kbd keys={clientActionKeys(clientActions.search, mac)} />}
+          trailing={<Kbd keys={clientActionKeys(clientActions.search, mac)} plain />}
         />
         <Tabs.Root
           variant="pill"
