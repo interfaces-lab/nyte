@@ -63,15 +63,29 @@ export function boxStyle(
 ): Required<
   Pick<CSSProperties, "insetInlineStart" | "insetBlockStart" | "inlineSize" | "blockSize">
 > {
+  const inline = snappedSpan(box.x, box.width, "100cqi", gap);
+  const block = snappedSpan(box.y, box.height, "100cqb", gap);
+
   return {
-    insetInlineStart: linearCss(box.x, "100cqi", gap),
-    insetBlockStart: linearCss(box.y, "100cqb", gap),
-    inlineSize: linearCss(box.width, "100cqi", gap),
-    blockSize: linearCss(box.height, "100cqb", gap),
+    insetInlineStart: inline.start,
+    insetBlockStart: block.start,
+    inlineSize: inline.size,
+    blockSize: block.size,
   };
 }
 
-export function linearCss(value: Linear, extent: string, gap: string): string {
+/**
+ * Both edges round to a whole pixel and the size is their difference, so boxes that share an edge
+ * share its rounding: no pane, separator or line lands on a half pixel at any container size.
+ */
+function snappedSpan(start: Linear, length: Linear, extent: string, gap: string) {
+  const from = `round(${linearCss(start, extent, gap)}, 1px)`;
+  const to = `round(${linearCss(add(start, length), extent, gap)}, 1px)`;
+
+  return { start: from, size: `calc(${to} - ${from})` };
+}
+
+function linearCss(value: Linear, extent: string, gap: string): string {
   const terms = [
     value.px === 0 ? undefined : `${format(value.px)}px`,
     value.fraction === 0 ? undefined : `${format(value.fraction)} * ${extent}`,

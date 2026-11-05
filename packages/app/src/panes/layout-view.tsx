@@ -5,7 +5,7 @@ import { sessionScreenStyles } from "./session-screen.stylex.ts";
 import { layoutPanes, reduceLayout, tabShown } from "./layout.ts";
 import type { Layout, LayoutNode, PaneId, PaneSize, PaneTabId, Split } from "./layout.ts";
 import type { LayoutStore } from "./layout-store.ts";
-import { boxStyle, layoutGeometry, linearCss } from "./pane-geometry.ts";
+import { boxStyle, layoutGeometry } from "./pane-geometry.ts";
 import type { Box, Geometry, Linear, Separator } from "./pane-geometry.ts";
 import { paneMount, paneRules } from "./pane-kinds.ts";
 import type { PaneContent } from "./pane-kinds.ts";
@@ -506,10 +506,7 @@ function resolve(value: Linear, extent: number, gap: number): number {
 }
 
 function paintBox(element: HTMLElement, box: Box): void {
-  element.style.insetInlineStart = linearCss(box.x, "100cqi", PANE_GAP);
-  element.style.insetBlockStart = linearCss(box.y, "100cqb", PANE_GAP);
-  element.style.inlineSize = linearCss(box.width, "100cqi", PANE_GAP);
-  element.style.blockSize = linearCss(box.height, "100cqb", PANE_GAP);
+  Object.assign(element.style, boxStyle(box, PANE_GAP));
 }
 
 function separatorKey(separator: Separator): string {
