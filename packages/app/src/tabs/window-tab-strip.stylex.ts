@@ -75,7 +75,6 @@ export const stripStyles = create({
       default: role.surfaceMaterial,
       ":hover": { [media.hover]: role.surfaceMaterial },
     },
-    boxShadow: `inset 0 0 0 1px ${role.strokeQuaternary}`,
     color: role.contentPrimary,
   },
   tabButton: {
