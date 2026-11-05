@@ -67,7 +67,11 @@ export type BoxFact =
   | "script-length"
   | "multi-line"
   | "line-centring"
-  | "rail-inset";
+  | "rail-inset"
+  | "after-text"
+  | "background"
+  | "auto-table-column"
+  | "scrolled-overflow";
 
 export type ElementMatch =
   | { readonly by: "selector"; readonly selector: string }
@@ -208,13 +212,28 @@ export const GRID_RULES = {
         name: "baseline-inline",
         match: { by: "fact", fact: "inline-run" },
         reason:
-          "An inline box in a line of text sits where the line's baseline puts it, on y only. In 15/24 Inter the baseline is at 17.5px, so painted inline code lands on a half pixel at every type pair and no token can move it.",
+          "An inline box in a line of text sits where the text puts it. On y the line's baseline does: in 15/24 Inter it is at 17.5px, so painted inline code lands on a half pixel at every type pair. On x, only when the run follows text on its line, glyph advances do. A run that starts its line is still checked on x.",
+      },
+      {
+        name: "auto-table-columns",
+        match: { by: "fact", fact: "auto-table-column" },
+        reason:
+          "An auto-layout table sizes its columns from their content and spreads the spare width by proportion, so cell edges land on fractional x. Tested in Electron's Chromium 156: calc-size(max-content, round(up, size, 1px)) on the cells is ignored; columns only land on whole pixels with an inline-block wrapper inside each cell and the leading columns shrunk to it, a markup change that also stops those cells wrapping. On x only.",
       },
     ],
   },
   rail: {
-    says: "A painted edge, an icon or a text start within 4px of one of its region's rails sits on it.",
-    exceptions: [centred, endAligned],
+    says: "A painted edge, an icon or a text start within 4px of one of its region's rails sits on it. Text in a box with a painted background isn't checked: the box's edge is, and the text's inset is the box's own padding.",
+    exceptions: [
+      centred,
+      endAligned,
+      {
+        name: "scrolled-overflow",
+        match: { by: "fact", fact: "scrolled-overflow" },
+        reason:
+          "A box whose end passes the clip of an overflowing horizontal scroller is scrolled content: its end isn't on screen, so it can't sit on an end rail. Start rails still apply.",
+      },
+    ],
   },
   rhythm: {
     says: "Rows in a list step by the region's pitch, and each row centres its first line box.",

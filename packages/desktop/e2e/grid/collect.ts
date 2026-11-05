@@ -420,6 +420,45 @@ export function collect(plan: Plan): Snapshot {
     return clip;
   };
 
+  const followsText = (node: Element): boolean => {
+    const first = node.getClientRects()[0];
+    let block = node.parentElement;
+
+    while (block !== null && getComputedStyle(block).display.startsWith("inline"))
+      block = block.parentElement;
+
+    if (first === undefined || block === null) return false;
+    const range = document.createRange();
+    range.setStart(block, 0);
+    range.setEndBefore(node);
+
+    return [...range.getClientRects()].some(
+      (part) =>
+        part.width > 0 &&
+        part.bottom > first.top + 1 &&
+        part.top < first.bottom - 1 &&
+        part.right <= first.left + 0.5,
+    );
+  };
+
+  const pastScrollClip = (node: Element, rect: DOMRect): boolean => {
+    for (let current = node.parentElement; current !== null; current = current.parentElement) {
+      const overflow = getComputedStyle(current).overflowX;
+
+      if (
+        (overflow === "auto" || overflow === "scroll") &&
+        current.scrollWidth > current.clientWidth
+      ) {
+        const clip =
+          current.getBoundingClientRect().left + current.clientLeft + current.clientWidth;
+
+        return rect.right > clip + 0.01;
+      }
+    }
+
+    return false;
+  };
+
   const visibleIn = (
     rect: {
       left: number;
@@ -608,6 +647,23 @@ export function collect(plan: Plan): Snapshot {
       facts.push("window-edge");
 
     if (style.display === "inline") facts.push("inline-run");
+
+    if (
+      (style.backgroundColor !== "rgba(0, 0, 0, 0)" && style.backgroundColor !== "transparent") ||
+      style.backgroundImage !== "none"
+    )
+      facts.push("background");
+
+    if (style.display === "inline" && followsText(node)) facts.push("after-text");
+
+    if (
+      (node.tagName === "TD" || node.tagName === "TH") &&
+      node.closest("table") !== null &&
+      getComputedStyle(node.closest("table") ?? node).tableLayout === "auto"
+    )
+      facts.push("auto-table-column");
+
+    if (pastScrollClip(node, rect)) facts.push("scrolled-overflow");
 
     const visible =
       visibleIn(rect, clipFor(node.parentElement)) &&

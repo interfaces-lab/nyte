@@ -445,7 +445,12 @@ export function check(snapshot: Snapshot): CheckResult {
       if (
         !inherited &&
         exempt("half-pixel", box, {
-          ignore: axis === "y" ? ["centred", "end-aligned"] : ["inline-run"],
+          ignore:
+            axis === "y"
+              ? ["centred", "end-aligned", "auto-table-column"]
+              : box.facts.includes("after-text")
+                ? []
+                : ["inline-run"],
         })
       )
         continue;
@@ -697,7 +702,7 @@ export function check(snapshot: Snapshot): CheckResult {
           .slice(0, position)
           .filter((entry) => entry.box === text.box).length;
 
-        return box === undefined || box.region !== inRegion
+        return box === undefined || box.region !== inRegion || box.facts.includes("background")
           ? []
           : [
               {
@@ -733,7 +738,7 @@ export function check(snapshot: Snapshot): CheckResult {
       if (
         exempt("rail", candidate.box, {
           extra: textFacts,
-          ignore: candidate.from === "end" ? ["end-aligned"] : [],
+          ignore: candidate.from === "end" ? ["end-aligned"] : ["scrolled-overflow"],
         })
       )
         continue;
