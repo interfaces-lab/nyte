@@ -40,6 +40,7 @@ export interface StateResult {
   readonly fonts: Snapshot["fonts"];
   readonly viewport: Snapshot["viewport"];
   readonly violations: readonly Violation[];
+  readonly masked: readonly MaskedMiss[];
   readonly exceptionHits: Readonly<Record<string, number>>;
   readonly centring: readonly number[];
 }
@@ -72,6 +73,16 @@ const ORDER: readonly RuleId[] = [
   "end-in-view",
 ];
 
+/** A miss the report doesn't count because a reported one covers it, kept so a later run can tell revealed from added. */
+export interface MaskedMiss {
+  readonly id: string;
+  readonly rule: RuleId;
+  readonly region: RegionName | "window";
+  readonly key: string;
+  readonly property: string;
+  readonly value: string;
+}
+
 /** Turns one state's findings into numbered, sorted violations with their causes. */
 export function stateResult(input: {
   readonly state: string;
@@ -79,43 +90,31 @@ export function stateResult(input: {
   readonly checked: CheckResult;
   readonly index: SourceIndex;
 }): StateResult {
+  const keyOfBox = (finding: Finding): string => input.snapshot.boxes[finding.box]?.key ?? "";
+
+  const ids = violationIds(
+    input.state,
+    [...input.checked.findings, ...input.checked.masked],
+    keyOfBox,
+  );
+
   const sorted = [...input.checked.findings].sort(compareFindings);
-  const ids = new Map<string, number>();
 
   const violations = sorted.map((finding, position): Violation => {
     const box = input.snapshot.boxes[finding.box];
 
-    const element = {
-      tag: box?.tag ?? "",
-      slot: box?.slot ?? null,
-      role: box?.role ?? null,
-      name: box?.name ?? "",
-      key: box?.key ?? "",
-    };
-
-    const base = createHash("sha1")
-      .update(
-        [
-          input.state,
-          finding.rule,
-          finding.region,
-          element.key,
-          finding.property,
-          finding.expected,
-        ].join("|"),
-      )
-      .digest("hex")
-      .slice(0, 10);
-
-    const seen = ids.get(base) ?? 0;
-    ids.set(base, seen + 1);
-
     return {
       n: position + 1,
-      id: seen === 0 ? base : `${base}-${String(seen)}`,
+      id: ids.get(finding) ?? "",
       state: input.state,
       region: finding.region,
-      element,
+      element: {
+        tag: box?.tag ?? "",
+        slot: box?.slot ?? null,
+        role: box?.role ?? null,
+        name: box?.name ?? "",
+        key: box?.key ?? "",
+      },
       rule: finding.rule,
       property: finding.property,
       value: finding.value,
@@ -126,17 +125,62 @@ export function stateResult(input: {
     };
   });
 
+  const masked = [...input.checked.masked]
+    .map((finding) => ({
+      id: ids.get(finding) ?? "",
+      rule: finding.rule,
+      region: finding.region,
+      key: keyOfBox(finding),
+      property: finding.property,
+      value: finding.value,
+    }))
+    .sort((a, b) => a.id.localeCompare(b.id));
+
   return {
     state: input.state,
     score: violations.length,
     fonts: input.snapshot.fonts,
     viewport: input.snapshot.viewport,
     violations,
+    masked,
     exceptionHits: Object.fromEntries(
       [...input.checked.exceptionHits].sort(([a], [b]) => a.localeCompare(b)),
     ),
     centring: input.checked.centring,
   };
+}
+
+/**
+ * A violation's id names what is wrong and where, never a coordinate, so a miss that only moves keeps
+ * it: state, rule, region, element key and property. Two findings that share all five get an ordinal
+ * in the order of their `detail`, which carries no coordinate either.
+ */
+function violationIds(
+  state: string,
+  findings: readonly Finding[],
+  keyOfBox: (finding: Finding) => string,
+): Map<Finding, string> {
+  const bases = new Map<string, Finding[]>();
+
+  for (const finding of findings) {
+    const base = createHash("sha1")
+      .update([state, finding.rule, finding.region, keyOfBox(finding), finding.property].join("|"))
+      .digest("hex")
+      .slice(0, 10);
+
+    bases.set(base, [...(bases.get(base) ?? []), finding]);
+  }
+
+  return new Map(
+    [...bases].flatMap(([base, shared]) =>
+      [...shared]
+        .sort((a, b) => a.detail.localeCompare(b.detail) || a.box - b.box)
+        .map(
+          (finding, ordinal) =>
+            [finding, ordinal === 0 ? base : `${base}-${String(ordinal)}`] as const,
+        ),
+    ),
+  );
 }
 
 export function overlayMarks(result: StateResult): Mark[] {

@@ -27,6 +27,8 @@ export type CauseQuery =
 export interface Finding {
   /** Findings with one group are one miss, counted once: a box and its own text, or boxes one fraction moved. */
   readonly group: string;
+  /** Tells apart two findings of one rule and property on one element, without a coordinate: a rail or alignment name, a text's index. */
+  readonly detail: string;
   readonly rule: RuleId;
   readonly region: RegionName | "window";
   readonly box: number;
@@ -40,6 +42,11 @@ export interface Finding {
 
 export interface CheckResult {
   readonly findings: readonly Finding[];
+  /**
+   * Misses not reported because a reported one covers them: later members of a group, and boxes whose
+   * half pixel is their parent's. Fixing the cover reveals them, which isn't a new miss.
+   */
+  readonly masked: readonly Finding[];
   readonly exceptionHits: ReadonlyMap<string, number>;
   /** How far each list row's first line box sits from its row's centre, in px. */
   readonly centring: readonly number[];
@@ -135,18 +142,23 @@ export function check(snapshot: Snapshot): CheckResult {
     return true;
   };
 
+  const masked: Finding[] = [];
+
   const add = (
-    finding: Omit<Finding, "region" | "rect" | "group"> & {
+    finding: Omit<Finding, "region" | "rect" | "group" | "detail"> & {
       readonly rect?: Rect;
       readonly group?: string;
+      readonly detail?: string;
     },
+    into: Finding[] = findings,
   ): void => {
     const box = boxes[finding.box];
 
     if (box === undefined) return;
-    findings.push({
+    into.push({
       ...finding,
       group: finding.group ?? `${finding.rule}|${String(finding.box)}|${finding.property}`,
+      detail: finding.detail ?? "",
       region: regionName(box),
       rect: finding.rect ?? box.rect,
     });
@@ -166,7 +178,14 @@ export function check(snapshot: Snapshot): CheckResult {
   checkAlignments();
   checkEnds();
 
-  return { findings: dedupe(findings), exceptionHits: hits, centring };
+  const grouped = dedupe(findings);
+
+  return {
+    findings: grouped.kept,
+    masked: [...grouped.dropped, ...masked],
+    exceptionHits: hits,
+    centring,
+  };
 
   function checkSpacing(box: SnapBox): void {
     for (const property of SPACING) {
@@ -388,22 +407,32 @@ export function check(snapshot: Snapshot): CheckResult {
     ] as const;
 
     for (const [axis, value, from] of edges) {
-      if (whole(value) || (from !== undefined && near(fraction(value), fraction(from)))) continue;
+      if (whole(value)) continue;
+      const inherited = from !== undefined && near(fraction(value), fraction(from));
 
-      if (exempt("half-pixel", box, { ignore: axis === "y" ? ["centred", "end-aligned"] : [] }))
+      if (
+        !inherited &&
+        exempt("half-pixel", box, {
+          ignore: axis === "y" ? ["centred", "end-aligned"] : [],
+        })
+      )
         continue;
+
       const parts = offsetParts(tree, box, axis === "x" ? "left" : "top", null);
       const origin = parts.find((part) => !whole(part.px));
-      add({
-        rule: "half-pixel",
-        group: `half-pixel|${axis}|${String(origin?.box ?? box.id)}`,
-        box: box.id,
-        property: axis,
-        value: px(value),
-        expected: "a whole pixel",
-        target: null,
-        cause: { kind: "sum", parts, grid: 1 },
-      });
+      add(
+        {
+          rule: "half-pixel",
+          group: `half-pixel|${axis}|${String(origin?.box ?? box.id)}`,
+          box: box.id,
+          property: axis,
+          value: px(value),
+          expected: "a whole pixel",
+          target: null,
+          cause: { kind: "sum", parts, grid: 1 },
+        },
+        inherited ? masked : findings,
+      );
     }
   }
 
@@ -618,6 +647,7 @@ export function check(snapshot: Snapshot): CheckResult {
             offset: box.rect.left - left,
             top: box.rect.top,
             text: null,
+            textIndex: 0,
           },
           {
             box,
@@ -625,14 +655,28 @@ export function check(snapshot: Snapshot): CheckResult {
             offset: right - (box.rect.left + box.rect.width),
             top: box.rect.top,
             text: null,
+            textIndex: 0,
           },
         ]),
-      ...snapshot.texts.flatMap((text) => {
+      ...snapshot.texts.flatMap((text, position) => {
         const box = boxes[text.box];
+
+        const textIndex = snapshot.texts
+          .slice(0, position)
+          .filter((entry) => entry.box === text.box).length;
 
         return box === undefined || box.region !== inRegion
           ? []
-          : [{ box, from: "start" as const, offset: text.left - left, top: text.top, text }];
+          : [
+              {
+                box,
+                from: "start" as const,
+                offset: text.left - left,
+                top: text.top,
+                text,
+                textIndex,
+              },
+            ];
       }),
     ];
 
@@ -664,6 +708,7 @@ export function check(snapshot: Snapshot): CheckResult {
       const at = candidate.from === "start" ? left + rail.offset : right - rail.offset;
       add({
         rule: "rail",
+        detail: `${rail.name}${candidate.text === null ? "" : `|text ${String(candidate.textIndex)}`}`,
         group: `rail|${String(inRegion)}|${rail.name}|${String(Math.round(candidate.top))}|${String(Math.round(candidate.offset * 100))}`,
         box: candidate.box.id,
         property:
@@ -694,6 +739,7 @@ export function check(snapshot: Snapshot): CheckResult {
       if (a === null || b === null || near(a.value, b.value) || exempt("align", a.box)) continue;
       add({
         rule: "align",
+        detail: alignment.name,
         box: a.box.id,
         property: alignment.axis === "x" ? "left" : "baseline",
         value: px(a.value),
@@ -811,13 +857,15 @@ function termsIn(expr: Expr): string[] {
   }
 }
 
-function dedupe(findings: readonly Finding[]): Finding[] {
+function dedupe(findings: readonly Finding[]) {
   const seen = new Set<string>();
+  const kept: Finding[] = [];
+  const dropped: Finding[] = [];
 
-  return findings.filter((finding) => {
-    if (seen.has(finding.group)) return false;
+  for (const finding of findings) {
+    (seen.has(finding.group) ? dropped : kept).push(finding);
     seen.add(finding.group);
+  }
 
-    return true;
-  });
+  return { kept, dropped };
 }
