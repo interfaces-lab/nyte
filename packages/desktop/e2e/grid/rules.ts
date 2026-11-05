@@ -76,7 +76,9 @@ export type BoxFact =
   | "shadow"
   | "auto-table-column"
   | "scrolled-overflow"
-  | "h-scroller";
+  | "h-scroller"
+  | "beside-text-width"
+  | "slider-thumb";
 
 export type ElementMatch =
   | { readonly by: "selector"; readonly selector: string }
@@ -179,6 +181,12 @@ export const GRID_RULES = {
           "A switch is a 30×18 track, as Cursor's settings switch (.solid-switch) is; it isn't sized like a button.",
       },
       {
+        name: "slider-thumb",
+        match: { by: "selector", selector: '[data-slot="slider-thumb"]' },
+        reason:
+          "A slider's thumb is a 14px knob inside the slider, not a control of its own: its hit target is the 24px target on its ::before, and the slider is the control.",
+      },
+      {
         name: "multi-line",
         match: { by: "fact", fact: "multi-line" },
         reason:
@@ -218,6 +226,18 @@ export const GRID_RULES = {
         match: { by: "fact", fact: "inline-run" },
         reason:
           "An inline box in a line of text sits where the text puts it. On y the line's baseline does: in 15/24 Inter it is at 17.5px, so painted inline code lands on a half pixel at every type pair. On x, only when the run follows text on its line, glyph advances do. A run that starts its line is still checked on x.",
+      },
+      {
+        name: "slider-position",
+        match: { by: "fact", fact: "slider-thumb" },
+        reason:
+          "A slider's thumb sits at its value's share of the track, so its x is the value, not a length a token sets. On x only.",
+      },
+      {
+        name: "text-width-row",
+        match: { by: "fact", fact: "beside-text-width" },
+        reason:
+          "An item in a flex row whose siblings take their width from their text (a dialog's Cancel beside Save, a tab after other tabs, a chip after a chip) sits where those text widths put it, and text has fractional advances. No token sizes a word. On x only.",
       },
       {
         name: "auto-table-columns",
@@ -313,6 +333,7 @@ export type RegionName =
   | "sidebar"
   | "conversation"
   | "composer"
+  | "composer-new-chat"
   | "workbench-rail"
   | "settings-nav"
   | "settings-page"
@@ -436,7 +457,7 @@ export const REGIONS: readonly RegionSpec[] = [
   },
   {
     name: "composer",
-    locate: { by: "selector", selector: 'form[aria-label="Message"]' },
+    locate: { by: "selector", selector: 'form[data-composer-frame="follow-up"]' },
     rails: [
       {
         name: "controls",
@@ -449,6 +470,26 @@ export const REGIONS: readonly RegionSpec[] = [
         from: "end",
         offset: sum(px(1), handle("space.s2")),
         why: "The send button sits inside the frame's border and end padding.",
+      },
+    ],
+    rhythm: null,
+    centred: null,
+  },
+  {
+    name: "composer-new-chat",
+    locate: { by: "selector", selector: 'form[data-composer-frame="new-chat"]' },
+    rails: [
+      {
+        name: "controls",
+        from: "start",
+        offset: sum(px(1), handle("space.s3")),
+        why: "The new chat's composer is the larger frame: its controls sit inside its border and 12px padding.",
+      },
+      {
+        name: "controls-end",
+        from: "end",
+        offset: sum(px(1), handle("space.s3")),
+        why: "The send button sits inside the frame's border and 12px end padding.",
       },
     ],
     rhythm: null,
@@ -588,6 +629,8 @@ export type Pick =
       readonly selector: string;
       /** Keep only matches in a chat pane whose bottom is on the window's bottom edge; each one is compared. */
       readonly within?: "bottom-edge-pane";
+      /** On the y axis, the box's first text baseline (the default) or its bottom edge. */
+      readonly line?: "baseline" | "end";
     }
   | { readonly kind: "rail"; readonly region: RegionName; readonly rail: string };
 
@@ -619,15 +662,17 @@ export const ALIGNMENTS: readonly Alignment[] = [
     axis: "y",
     a: {
       kind: "box",
-      name: "the sidebar footer",
-      selector: 'aside:has(> nav[aria-label="Sessions and workspaces"]) > div:last-child',
+      name: "the sidebar footer row",
+      selector: 'aside:has(> nav[aria-label="Sessions and workspaces"]) > div:last-child > div',
+      line: "end",
     },
     b: {
       kind: "box",
       name: "the composer footer",
       selector: 'form[aria-label="Message"] ~ div',
       within: "bottom-edge-pane",
+      line: "end",
     },
-    why: "The sidebar footer and the composer footer close the window on one baseline.",
+    why: "The sidebar footer row and the composer footer close the window on one line: their bottom edges meet. Their text is 13px and 12px, whose baselines can't both sit on whole pixels and match.",
   },
 ];

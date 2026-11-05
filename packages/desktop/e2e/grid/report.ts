@@ -5,7 +5,8 @@ import { resolveCause } from "./cause.ts";
 import type { Cause, SourceIndex, SourceRef } from "./cause.ts";
 import { LINE_TOLERANCE } from "./check.ts";
 import type { CheckResult, Finding } from "./check.ts";
-import type { Mark, Rect, Snapshot } from "./collect.ts";
+import type { Rect, Snapshot } from "./collect.ts";
+import type { Mark } from "./overlay.ts";
 import { GRID_RULES, SCALE } from "./rules.ts";
 import type { RegionName, RuleId } from "./rules.ts";
 

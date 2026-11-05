@@ -525,7 +525,7 @@ export function check(snapshot: Snapshot): CheckResult {
         exempt("half-pixel", box, {
           ignore:
             axis === "y"
-              ? ["centred", "end-aligned", "auto-table-column"]
+              ? ["centred", "end-aligned", "auto-table-column", "beside-text-width", "slider-thumb"]
               : box.facts.includes("after-text")
                 ? []
                 : ["inline-run"],
@@ -873,7 +873,12 @@ export function check(snapshot: Snapshot): CheckResult {
           detail: alignment.name,
           group: `align|${alignment.name}|${String(a.box.id)}|${String(b.box.id)}`,
           box: a.box.id,
-          property: alignment.axis === "x" ? "left" : "baseline",
+          property:
+            alignment.axis === "x"
+              ? "left"
+              : alignment.a.kind === "box" && alignment.a.line === "end"
+                ? "bottom"
+                : "baseline",
           value: px(a.value),
           expected: `${px(b.value)}, ${alignment.name}: ${b.label}`,
           target: { axis: alignment.axis, at: b.value },
@@ -919,7 +924,11 @@ export function check(snapshot: Snapshot): CheckResult {
     axis: "x" | "y",
   ): { value: number; box: SnapBox; label: string }[] {
     if (pick.kind === "box")
-      return boxesByPick(pick.selector).flatMap((box) => lineValue(box, axis, pick.name) ?? []);
+      return boxesByPick(pick.selector).flatMap((box) =>
+        axis === "y" && pick.line === "end"
+          ? [{ value: box.rect.top + box.rect.height, box, label: pick.name }]
+          : (lineValue(box, axis, pick.name) ?? []),
+      );
 
     const value = pickValue(pick, axis);
 
