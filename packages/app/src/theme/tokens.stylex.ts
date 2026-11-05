@@ -4,7 +4,7 @@ import "@nyte-ai/ui/styles/tokens.stylex";
 export const windowInput = defineVars({ "--nyte-window-zoom": "1" });
 
 export const layout = defineVars({
-  "--nyte-titlebar-height": "35px",
+  "--nyte-titlebar-height": "40px",
   "--nyte-titlebar-traffic-light-inset": "calc(72px / var(--nyte-window-zoom, 1))",
   "--nyte-shell-card-inset": "8px",
   "--nyte-shell-region-padding-block-start": "6px",
@@ -49,7 +49,7 @@ export const layout = defineVars({
   "--nyte-conversation-measure": "840px",
   "--nyte-prose-paragraph-gap": "16px",
   "--nyte-conversation-gutter": "16px",
-  "--nyte-conversation-header-height": "35px",
+  "--nyte-conversation-header-height": "40px",
   "--nyte-conversation-turn-gap": "14px",
   "--nyte-conversation-row-gap": "8px",
   "--nyte-conversation-row-min-height": "22px",
@@ -71,7 +71,7 @@ export const layout = defineVars({
   "--nyte-workbench-heading-height": "24px",
   "--nyte-active-workbench-width": "500px",
   "--nyte-workbench-panel-width": "300px",
-  "--nyte-workbench-header-height": "35px",
+  "--nyte-workbench-header-height": "40px",
   "--nyte-workbench-header-padding-block": { default: "0px", "@media (pointer: coarse)": "4px" },
   "--nyte-workbench-icon-rail-width": { default: "40px", "@media (pointer: coarse)": "52px" },
   "--nyte-workbench-sash-width": {

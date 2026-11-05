@@ -1,6 +1,6 @@
 import { create } from "@stylexjs/stylex";
 import { layer, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
-import { conversation } from "../theme/schema.stylex.ts";
+import { conversation, pane } from "../theme/schema.stylex.ts";
 import { appearance, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 export const sessionScreenStyles = create({
@@ -132,8 +132,19 @@ export const sessionScreenStyles = create({
   sashRight: { cursor: "col-resize" },
   sashDown: { cursor: "row-resize" },
   sashLine: { backgroundColor: role.strokeQuaternary, pointerEvents: "none" },
-  sashLineRight: { width: 1, height: "100%" },
-  sashLineDown: { width: "100%", height: 1 },
+  /** Centring a 1px line in an even sash puts it on a half pixel, so it starts at the middle instead. */
+  sashLineRight: {
+    justifySelf: "start",
+    width: 1,
+    height: "100%",
+    marginInlineStart: `calc(${pane.sashSize} / 2)`,
+  },
+  sashLineDown: {
+    alignSelf: "start",
+    width: "100%",
+    height: 1,
+    marginBlockStart: `calc(${pane.sashSize} / 2)`,
+  },
   dropPreview: {
     position: "absolute",
     zIndex: layer.dragPreview,
