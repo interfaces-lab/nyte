@@ -1,7 +1,10 @@
-import { media, radius, space, target } from "@nyte-ai/ui/styles/schema.stylex";
+import { glyph, media, radius, space, target } from "@nyte-ai/ui/styles/schema.stylex";
 import { create } from "@stylexjs/stylex";
 import { shell, sidebar } from "../theme/schema.stylex.ts";
 import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
+
+/** Section header text starts on the row icons' glyph edge, not their slot's. */
+const HEADER_INSET = `calc(${sidebar.rowPaddingInline} + (${sidebar.iconSlot} - ${glyph.sm}) / 2)`;
 
 export const sidebarStyles = create({
   rail: {
@@ -104,7 +107,7 @@ export const sidebarStyles = create({
     fontWeight: type.weightRegular,
     flexShrink: 0,
   },
-  sectionTitle: { paddingInlineStart: sidebar.rowPaddingInline },
+  sectionTitle: { paddingInlineStart: HEADER_INSET },
   sectionSpread: { justifyContent: "space-between" },
   sectionToggle: {
     display: "inline-flex",
@@ -112,7 +115,7 @@ export const sidebarStyles = create({
     gap: space.s1_5,
     minWidth: 0,
     height: "100%",
-    paddingInlineStart: sidebar.rowPaddingInline,
+    paddingInlineStart: HEADER_INSET,
     paddingInlineEnd: space.s1,
     flex: 1,
     borderRadius: radius.control,
