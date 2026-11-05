@@ -979,7 +979,7 @@
       "tooltip",
       "workbench"
     ],
-    "ui/src/styles/schema.stylex.ts media": ["hover"],
+    "ui/src/styles/schema.stylex.ts media": ["forcedColors", "hover"],
     "ui/src/styles/schema.stylex.ts menu": [
       "itemGap",
       "itemPaddingBlock",

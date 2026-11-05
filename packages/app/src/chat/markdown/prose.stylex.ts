@@ -169,6 +169,10 @@ export const proseStyles = create({
     overflowY: "hidden",
     borderRadius: radius.control,
     boxShadow: CODE_RING,
+    /** Forced colors drop box-shadows, so the frame and the row rules come back as borders there. */
+    borderWidth: { default: 0, [media.forcedColors]: 1 },
+    borderStyle: "solid",
+    borderColor: role.strokeQuaternary,
   },
   table: {
     width: "max-content",
@@ -183,6 +187,10 @@ export const proseStyles = create({
     paddingInline: space.s2_5,
     borderWidth: 0,
     borderInlineEndWidth: { default: 1, ":last-child": 0 },
+    borderBlockEndWidth: {
+      default: 0,
+      [media.forcedColors]: { default: 1, ":is(tbody > tr:last-child > *)": 0 },
+    },
     borderStyle: "solid",
     borderColor: role.strokeQuaternary,
     boxShadow: { default: ROW_RULE, ":is(tbody > tr:last-child > *)": "none" },

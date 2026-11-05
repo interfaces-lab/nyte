@@ -26,6 +26,7 @@ export const glyph = defineConsts({
 
 export const media = defineConsts({
   hover: "@media (hover: hover) and (pointer: fine)",
+  forcedColors: "@media (forced-colors: active)",
 });
 
 export const target = defineConsts({
