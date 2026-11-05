@@ -210,6 +210,7 @@
     "./styles/schema.stylex": "./src/styles/schema.stylex.ts",
     "./styles/floating-surface.stylex": "./src/styles/floating-surface.stylex.ts",
     "./styles/a11y.stylex": "./src/styles/a11y.stylex.ts",
+    "./styles/hairline.stylex": "./src/styles/hairline.stylex.ts",
     "./styles/text.stylex": "./src/styles/text.stylex.ts",
     "./styles/contracts": "./src/styles/contracts.ts",
     "./test/icon-references": "./test/icon-references.ts",
