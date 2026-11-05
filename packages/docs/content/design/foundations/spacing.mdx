@@ -34,16 +34,17 @@ import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 
 A hairline is a 1px edge that takes no layout space, so a box keeps its height on the grid. Each
 style draws an inset shadow in `strokeQuaternary`. Forced colors drop shadows, so there the edge
-styles draw a border image, `hairline.ring` an inset outline and `hairline.ringAfter` a border on its
-pseudo-element, which take no space either.
+styles draw a border image, `hairline.ring` an inset outline, and `hairline.ringAfter` and `hairline.controlRing` a border on
+their pseudo-element, which take no space either.
 
-| Style                  | Draws                                                                                                                                          |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `hairline.blockEnd`    | The bottom edge of a bar, a header row, or a form.                                                                                             |
-| `hairline.inlineStart` | The inline-start edge of a panel, the left one in left-to-right text.                                                                          |
-| `hairline.tableCell`   | A rule under each table row but the body's last, and a divider after each cell but the row's last. Set it on the cells.                        |
-| `hairline.ring`        | All four sides, following the box's radius.                                                                                                    |
-| `hairline.ringAfter`   | All four sides on the box's `::after`, above its content, for a focusable control or a popup. The box is positioned and leaves `::after` free. |
+| Style                  | Draws                                                                                                                                                                                           |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `hairline.blockEnd`    | The bottom edge of a bar, a header row, or a form.                                                                                                                                              |
+| `hairline.inlineStart` | The inline-start edge of a panel, the left one in left-to-right text.                                                                                                                           |
+| `hairline.tableCell`   | A rule under each table row but the body's last, and a divider after each cell but the row's last. Set it on the cells.                                                                         |
+| `hairline.ring`        | All four sides, following the box's radius.                                                                                                                                                     |
+| `hairline.ringAfter`   | All four sides on the box's `::after`, above its content, for a focusable control or a popup. The box is positioned and leaves `::after` free.                                                  |
+| `hairline.controlRing` | A control's boundary in `strokeTertiary`, such as an outline button. Under forced colors a border on its `::after`, `Highlight` while focused. The box is positioned and leaves `::after` free. |
 
 ```tsx
 <div {...stylex.props(styles.toolbar, hairline.blockEnd)}>…</div>

@@ -76,6 +76,26 @@ export const hairline = create({
       pointerEvents: "none",
     },
   },
+  /**
+   * A control's boundary in `strokeTertiary`: the ring is an inset shadow on the box, after its
+   * elevation, and only under forced colors a 1px `CanvasText` border on its `::after`, which takes none
+   * of its layout. A focused control's border turns `Highlight` there, so an inset focus ring, which
+   * that border covers, still shows. The box must be positioned and leave its `::after` free.
+   */
+  controlRing: {
+    boxShadow: `${ELEVATION}, inset 0 0 0 1px ${role.strokeTertiary}`,
+    "::after": {
+      content: { default: null, [media.forcedColors]: '""' },
+      position: "absolute",
+      inset: 0,
+      borderRadius: "inherit",
+      borderWidth: 1,
+      borderStyle: "solid",
+      borderColor: "CanvasText",
+      pointerEvents: "none",
+    },
+    ":focus-visible::after": { borderColor: "Highlight" },
+  },
   /** An edge on all four sides, following the box's radius. */
   ring: {
     boxShadow: `${ELEVATION}, inset 0 0 0 1px ${role.strokeQuaternary}`,

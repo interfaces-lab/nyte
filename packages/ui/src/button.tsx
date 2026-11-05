@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 
+import { hairline } from "./styles/hairline.stylex.ts";
 import { focus } from "./styles/a11y.stylex.ts";
 import { button, control, media, radius, space, target } from "./styles/schema.stylex.ts";
 import {
@@ -110,6 +111,16 @@ const controlStyles = create({
     },
   },
   joinedIcon: { width: `max(var(--_btn-height), ${target.min})` },
+  /**
+   * A joined outline button keeps its old ring: its `::before` is the hit area and its `::after` the
+   * divider, so it can't take `hairline.controlRing`'s forced-colors border. No button uses it today.
+   */
+  joinedOutline: {
+    boxShadow: {
+      default: `inset 0 0 0 1px ${role.strokeTertiary}, ${shadow.shadowSm}`,
+      [disabled]: `inset 0 0 0 1px ${role.strokeTertiary}`,
+    },
+  },
   pill: { borderRadius: radius.pill },
 });
 
@@ -183,10 +194,11 @@ const buttonVariants = create({
   ghost: { backgroundColor: ghostFill },
   outline: {
     backgroundColor: { default: role.bgElevated, [disabled]: role.fillTertiary },
-    boxShadow: {
-      default: `inset 0 0 0 1px ${role.strokeTertiary}, ${shadow.shadowSm}`,
-      [disabled]: `inset 0 0 0 1px ${role.strokeTertiary}`,
-    },
+    /**
+     * Only a condition: StyleX writes a custom property's default outside the cascade layers, where it
+     * would beat a `[disabled]` value inside them. A disabled button keeps the initial, no shadow.
+     */
+    "--nyte-hairline-elevation": { default: null, [`:not(${disabled})`]: shadow.shadowSm },
   },
   solid: {
     color: { default: role.contentOnInteractiveStrong, [disabled]: role.contentDisabled },
@@ -365,6 +377,7 @@ export function buttonStyle<State>(
       pill && pillSizes[size],
       iconOnly && controlStyles.iconOnly,
       buttonVariants[variant],
+      variant === "outline" && (joined ? controlStyles.joinedOutline : hairline.controlRing),
       pill && controlStyles.pill,
       joined && controlStyles.joined,
       joined && iconOnly && controlStyles.joinedIcon,
