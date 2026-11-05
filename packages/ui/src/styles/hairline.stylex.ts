@@ -3,6 +3,9 @@ import { create } from "@stylexjs/stylex";
 import { media } from "./schema.stylex.ts";
 import { role } from "./vars.stylex.ts";
 
+/** The box's elevation, a registered custom property that doesn't inherit (base.css); none by default. */
+const ELEVATION = "var(--nyte-hairline-elevation, 0 0 #0000)";
+
 /** Under forced colors: a 1px line along one edge, drawn by a border image with no border width. */
 const FORCED_BLOCK_END = "linear-gradient(CanvasText, CanvasText) 0 0 1 0 / 0 0 1px 0 / 0 stretch";
 
@@ -18,18 +21,19 @@ const FORCED_RIGHT = "linear-gradient(CanvasText, CanvasText) 0 1 0 0 / 0 1px 0 
  * an outline drawn inside the box, none taking a pixel. A box takes one hairline style, and sets no
  * `boxShadow` of its own nor the property its forced-colors edge uses (`borderImage` or `outline*`):
  * StyleX merges per property, and ui's styles sit in an earlier layer than the app's, so a second
- * hairline or the caller's value would replace the first.
+ * hairline or the caller's value would replace the first. A raised box sets its drop shadow as
+ * `--nyte-hairline-elevation` instead, which every style draws before its edge.
  */
 export const hairline = create({
   blockEnd: {
-    boxShadow: `inset 0 -1px 0 ${role.strokeQuaternary}`,
+    boxShadow: `${ELEVATION}, inset 0 -1px 0 ${role.strokeQuaternary}`,
     borderImage: { default: null, [media.forcedColors]: FORCED_BLOCK_END },
   },
   /** The inline-start edge, the left one in left-to-right text: a panel's divider from what is beside it. */
   inlineStart: {
     boxShadow: {
-      default: `inset 1px 0 0 ${role.strokeQuaternary}`,
-      ":dir(rtl)": `inset -1px 0 0 ${role.strokeQuaternary}`,
+      default: `${ELEVATION}, inset 1px 0 0 ${role.strokeQuaternary}`,
+      ":dir(rtl)": `${ELEVATION}, inset -1px 0 0 ${role.strokeQuaternary}`,
     },
     borderImage: {
       default: null,
@@ -45,7 +49,7 @@ export const hairline = create({
     "--_hairline-dir": { default: "1", ":dir(rtl)": "-1" },
     "--_hairline-block-end": { default: "1px", ":is(tbody > tr:last-child > *)": "0px" },
     "--_hairline-inline-end": { default: "1px", ":last-child": "0px" },
-    boxShadow: `inset 0 calc(-1 * var(--_hairline-block-end)) 0 ${role.strokeQuaternary}, inset calc(-1 * var(--_hairline-dir) * var(--_hairline-inline-end)) 0 0 ${role.strokeQuaternary}`,
+    boxShadow: `${ELEVATION}, inset 0 calc(-1 * var(--_hairline-block-end)) 0 ${role.strokeQuaternary}, inset calc(-1 * var(--_hairline-dir) * var(--_hairline-inline-end)) 0 0 ${role.strokeQuaternary}`,
     borderImage: {
       default: null,
       [media.forcedColors]:
@@ -54,7 +58,7 @@ export const hairline = create({
   },
   /** An edge on all four sides, following the box's radius. */
   ring: {
-    boxShadow: `inset 0 0 0 1px ${role.strokeQuaternary}`,
+    boxShadow: `${ELEVATION}, inset 0 0 0 1px ${role.strokeQuaternary}`,
     outlineStyle: { default: null, [media.forcedColors]: "solid" },
     outlineWidth: { default: null, [media.forcedColors]: 1 },
     outlineColor: { default: null, [media.forcedColors]: "CanvasText" },

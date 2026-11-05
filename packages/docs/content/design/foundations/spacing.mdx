@@ -49,6 +49,7 @@ styles draw a border image and `hairline.ring` an inset outline, which take no s
 
 - Draw a separator, a divider, or a frame with `hairline`, not a 1px border.
 - A box takes one hairline style and sets no `boxShadow` of its own. A second style or its own shadow
-  replaces the hairline's.
+  replaces the hairline's. A raised box sets its drop shadow as `--nyte-hairline-elevation`, which the
+  hairline draws under its edge and which doesn't pass to the boxes inside.
 - A box that takes a hairline sets no `borderImage` with an edge style, and no `outline` or its
   longhands with `hairline.ring`. Those replace the forced-colors edge.

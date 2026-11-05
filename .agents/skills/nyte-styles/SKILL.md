@@ -85,7 +85,9 @@ rules always beat base.css; an app style passed through `xstyle` always beats th
    hairline style, and sets no `boxShadow` of its own and no property its forced-colors edge uses:
    `borderImage` with the edge styles, `outline*` with `ring` (so not on a box that draws its own focus
    outline). StyleX merges per property and ui's styles sit in an earlier layer than the app's, so a
-   second hairline or the caller's value would replace the first. Add a variant to `hairline` instead.
+   second hairline or the caller's value would replace the first. A raised box sets its drop shadow as
+   `--nyte-hairline-elevation` (registered in base.css, not inherited), which every hairline style
+   draws before its edge. Add a variant to `hairline` instead.
    (not enforced)
 5. **CSS owns what CSS can resolve.** Hover, focus-within, sibling state, container size, entry
    animation, and fallbacks are StyleX features; check the capability block in
