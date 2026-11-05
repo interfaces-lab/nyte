@@ -526,9 +526,9 @@ test("the rendered layout against the spatial grid", async ({ desktop }) => {
     await writeFile(join(desktop.home, ".git", "info", "exclude"), ".nyte/\nLibrary/\n");
     await writeFile(join(desktop.home, "README.md"), "# Home\n\nEdited.\n");
     const changes = (await open("Changes")).getByRole("region", { name: "Workspace changes" });
-    await expect(changes.getByText("README.md").first()).toBeVisible();
-    await expect(changes.getByText(".nyte", { exact: false })).toHaveCount(0, { timeout: 15_000 });
-    await expect(changes.getByText("Library", { exact: false })).toHaveCount(0);
+    const files = changes.getByRole("button", { name: /^(?:Collapse|Expand) / });
+    await expect(files).toHaveCount(1, { timeout: 15_000 });
+    await expect(files).toHaveAccessibleName("Collapse README.md");
     await capture("workbench-changes");
     const browser = (await open("Browser")).getByRole("region", { name: "Browser" });
     await expect(browser.getByText("Type an address or a search")).toBeVisible();
