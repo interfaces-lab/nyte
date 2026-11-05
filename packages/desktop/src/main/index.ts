@@ -801,6 +801,13 @@ function showHostTray(): void {
     link: hostRuntime.link,
     launchState,
     checkForUpdates: () => void updates?.click(),
+    openApp: () => {
+      app.focus({ steal: true });
+      const window = currentWindow();
+
+      if (window === undefined) restoreWindows();
+      else reveal(window);
+    },
     openSettings: () => {
       app.focus({ steal: true });
       const window = currentWindow() ?? restoreWindows();
