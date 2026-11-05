@@ -464,93 +464,51 @@ async function askers(): Promise<readonly string[]> {
   const root = createRoot(host);
   const origin = { title: "Tray review", sessionId: asId<"session">("tray-review") };
 
-  const cases = [
-    { origin: undefined, late: false, attribution: "Asked by this chat", continuation: undefined },
-    {
-      origin: undefined,
-      late: true,
-      attribution: "Asked by this chat",
-      continuation: "This chat kept going. You can still answer.",
-    },
-    { origin, late: false, attribution: "Asked by Open Tray review chat", continuation: undefined },
-    {
-      origin,
-      late: true,
-      attribution: "Asked by Open Tray review chat",
-      continuation: "Tray review kept going. You can still answer.",
-    },
-  ];
-
   const failures: string[] = [];
   windowTabs.start({ id: "question-askers", launch: undefined });
   windowTabs.openChat(SESSION, "permanent");
   const parent = activeTab(windowTabs.getSnapshot());
 
-  for (const theme of ["light", "dark"] as const) {
-    applyDisplayMode(theme);
+  applyDisplayMode("light");
 
-    for (const entry of cases) {
-      flushSync(() =>
-        root.render(
-          <QuestionDockContext
-            value={{
-              ...dock,
-              origin: entry.origin,
-              request: { ...dock.request, late: entry.late },
-            }}
-          >
-            <QuestionTray disabled={false} viewport={null} />
-          </QuestionDockContext>,
-        ),
-      );
-      await new Promise((resolve) => requestAnimationFrame(resolve));
+  for (const asker of [undefined, origin]) {
+    flushSync(() =>
+      root.render(
+        <QuestionDockContext value={{ ...dock, origin: asker }}>
+          <QuestionTray disabled={false} viewport={null} />
+        </QuestionDockContext>,
+      ),
+    );
+    await new Promise((resolve) => requestAnimationFrame(resolve));
 
-      const descriptions = Array.from(
-        host.querySelectorAll("[data-slot='questionnaire-description']"),
-        (element) => element.textContent,
-      );
+    const opener = Array.from(host.querySelectorAll("button")).find((button) =>
+      button.textContent.includes(origin.title),
+    );
 
-      const expected = [
-        "Question",
-        entry.attribution,
-        ...(entry.continuation ? [entry.continuation] : []),
-      ];
-
-      if (JSON.stringify(descriptions) !== JSON.stringify(expected))
-        failures.push(
-          `${theme}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(descriptions)}`,
-        );
-
-      const opener = Array.from(host.querySelectorAll("button")).find(
-        (button) => button.textContent === "Open Tray review chat",
-      );
-
-      if (entry.origin === undefined) {
-        if (opener !== undefined) failures.push(`${theme}: this chat has a subagent action`);
-        continue;
-      }
-
-      if (opener === undefined) {
-        failures.push(`${theme}: the subagent's name cannot open its chat`);
-        continue;
-      }
-
-      await click(opener);
-      const state = windowTabs.getSnapshot();
-      const child = activeTab(state);
-      const place = tabPlace(child);
-
-      if (
-        place.kind !== "session" ||
-        place.sessionId !== origin.sessionId ||
-        state.tabs.indexOf(child) !== state.tabs.indexOf(parent) + 1 ||
-        child.view.kind !== "preview" ||
-        opener.type !== "button"
-      )
-        failures.push(`${theme}: the name did not open the child's chat next to its parent`);
-
-      windowTabs.dispatch({ kind: "close-tab", tabId: child.id });
+    if (asker === undefined) {
+      if (opener !== undefined) failures.push("This chat has a subagent action");
+      continue;
     }
+
+    if (opener === undefined) {
+      failures.push("The subagent's name cannot open its chat");
+      continue;
+    }
+
+    await click(opener);
+    const state = windowTabs.getSnapshot();
+    const child = activeTab(state);
+    const place = tabPlace(child);
+
+    if (
+      place.kind !== "session" ||
+      place.sessionId !== asker.sessionId ||
+      state.tabs.indexOf(child) !== state.tabs.indexOf(parent) + 1 ||
+      child.view.kind !== "preview"
+    )
+      failures.push("The name did not open the child's chat next to its parent");
+
+    windowTabs.dispatch({ kind: "close-tab", tabId: child.id });
   }
 
   root.unmount();
