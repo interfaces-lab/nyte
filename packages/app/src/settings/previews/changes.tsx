@@ -1,6 +1,7 @@
 import { parsePatchFiles } from "@pierre/diffs";
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
+import { FileTypeIconSprite } from "../../components/file-type-icon.tsx";
 import { preferences, useSetting } from "../../preferences/index.ts";
 import { ChangesStack } from "../../workbench/changes/changes-stack.tsx";
 import type { ChangesStackItem } from "../../workbench/changes/changes-stack-code-view.ts";
@@ -48,6 +49,7 @@ export function ChangesPreview(): ReactElement {
 
   return (
     <div {...props(styles.frame)}>
+      <FileTypeIconSprite />
       <ChangesStack
         items={ignoreWhitespace ? ITEMS_IGNORING_WHITESPACE : ITEMS}
         collapsedPaths={NO_PATHS}

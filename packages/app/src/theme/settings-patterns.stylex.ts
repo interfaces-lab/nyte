@@ -44,15 +44,17 @@ export const settingsPatterns = create({
     borderRadius: radius.card,
     backgroundColor: role.bgMutedTranslucent,
   },
-  /** Inset in the card, its corner concentric with the card's. Display only: the slot is inert. */
+  /**
+   * Inset on the rows' inline edge, so its sides meet the rows' text and rules. Display only: the
+   * slot is inert. The row after it draws no rule, since the preview's own edge closes it.
+   */
   preview: {
-    marginBlockStart: space.s2,
-    marginInline: space.s2,
-    marginBlockEnd: space.s1,
+    position: "relative",
+    marginBlockStart: settings.rowPaddingInline,
+    marginInline: settings.rowPaddingInline,
     overflow: "clip",
-    borderRadius: `max(${radius.control}, calc(${radius.card} - ${space.s2}))`,
+    borderRadius: radius.control,
     backgroundColor: role.bgBase,
-    boxShadow: `0 0 0 1px ${role.strokeQuaternary}`,
   },
   under: {
     display: "flex",
@@ -85,6 +87,7 @@ export const settingsPatterns = create({
       content: '""',
     },
     ":first-child::before": { display: "none" },
+    ":is([data-settings-preview] + *)::before": { display: "none" },
   },
   row: {
     display: "flex",

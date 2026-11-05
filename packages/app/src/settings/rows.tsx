@@ -9,6 +9,7 @@ import {
   NumberFieldIncrement,
   NumberFieldInput,
 } from "@nyte-ai/ui/number-field";
+import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 import { props } from "@stylexjs/stylex";
 import type { ReactElement, ReactNode } from "react";
 import { useSetting, type Setting } from "../preferences/index.ts";
@@ -49,7 +50,7 @@ export function SettingsSection({
       )}
       <div {...props(settingsPatterns.group)}>
         {preview !== undefined && (
-          <div inert {...props(settingsPatterns.preview)}>
+          <div inert data-settings-preview {...props(settingsPatterns.preview, hairline.ringAfter)}>
             {preview}
           </div>
         )}
