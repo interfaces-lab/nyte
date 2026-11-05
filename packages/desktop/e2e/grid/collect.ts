@@ -639,6 +639,8 @@ export function collect(plan: Plan): Snapshot {
     if (!transparent(style.backgroundColor) || style.backgroundImage !== "none")
       facts.push("background");
 
+    if (style.boxShadow !== "none") facts.push("shadow");
+
     if (style.display === "inline" && followsText(node)) facts.push("after-text");
 
     if (

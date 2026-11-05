@@ -70,6 +70,7 @@ export type BoxFact =
   | "rail-inset"
   | "after-text"
   | "background"
+  | "shadow"
   | "auto-table-column"
   | "scrolled-overflow"
   | "h-scroller";
@@ -165,7 +166,7 @@ export const GRID_RULES = {
     ],
   },
   "control-size": {
-    says: `A control is ${spell(SCALE.controls)} tall; an icon-only control is as wide as it is tall.`,
+    says: `A control is ${spell(SCALE.controls)} tall; an icon-only control is as wide as it is tall. A control is measured at its outermost painted box: a control that paints no edge or fill of its own and fills the height inside a painted box that wraps no other control is measured as that box, as an input is as its input group.`,
     exceptions: [
       composerEditor,
       {

@@ -274,6 +274,46 @@ export function check(snapshot: Snapshot): CheckResult {
     );
   }
 
+  function paintedControl(control: SnapBox): SnapBox {
+    if (framed(control)) return control;
+
+    for (let id = control.parent; id !== null; id = boxes[id]?.parent ?? null) {
+      const ancestor = boxes[id];
+
+      if (ancestor === undefined) return control;
+
+      if (!framed(ancestor)) continue;
+
+      const inner =
+        ancestor.rect.height -
+        ["border-top-width", "border-bottom-width", "padding-top", "padding-bottom"].reduce(
+          (sum, property) => sum + (ancestor.lengths[property] ?? 0),
+          0,
+        );
+
+      const other =
+        !near(control.rect.height, inner) ||
+        boxes.some(
+          (entry) =>
+            entry.control && entry.id !== control.id && descends(tree, entry.id, ancestor.id),
+        );
+
+      return other ? control : ancestor;
+    }
+
+    return control;
+  }
+
+  function framed(box: SnapBox): boolean {
+    return (
+      box.facts.includes("background") ||
+      box.facts.includes("shadow") ||
+      ["top", "right", "bottom", "left"].some(
+        (side) => (box.lengths[`border-${side}-width`] ?? 0) > 0,
+      )
+    );
+  }
+
   function multiLine(box: SnapBox): boolean {
     const tops = new Set(
       snapshot.texts
@@ -341,21 +381,22 @@ export function check(snapshot: Snapshot): CheckResult {
       });
 
     if (box.control && !box.font.inline) {
-      const tall = inSet(SCALE.controls, box.rect.height);
-      const square = !box.iconOnly || near(box.rect.width, box.rect.height);
+      const measured = paintedControl(box);
+      const tall = inSet(SCALE.controls, measured.rect.height);
+      const square = !box.iconOnly || near(measured.rect.width, measured.rect.height);
 
       if (
         !(tall && square) &&
-        !exempt("control-size", box, { extra: multiLine(box) ? ["multi-line"] : [] })
+        !exempt("control-size", measured, { extra: multiLine(measured) ? ["multi-line"] : [] })
       )
         add({
           rule: "control-size",
-          box: box.id,
+          box: measured.id,
           property: tall ? "width" : "height",
-          value: `${px(box.rect.width)} × ${px(box.rect.height)}`,
+          value: `${px(measured.rect.width)} × ${px(measured.rect.height)}`,
           expected: tall ? "as wide as it is tall" : `${spell(SCALE.controls)} tall`,
           target: null,
-          cause: { kind: "property", box: box.id, property: tall ? "width" : "height" },
+          cause: { kind: "property", box: measured.id, property: tall ? "width" : "height" },
         });
     }
 
