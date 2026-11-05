@@ -25,13 +25,16 @@ import { SessionDndProvider } from "./session-dnd.tsx";
 
 const TURNS = 30;
 
+/** The right chat fits its pane, so every row stays rendered and a resize can't bring a new one into the rendered window: any row commit is a redraw. */
+const RIGHT_TURNS = 3;
+
 const [LEFT, RIGHT] = ["layout-left", "layout-right"].map((id) => asId<"session">(id));
 
-function view(session: string): SessionView {
+function view(session: string, count: number): SessionView {
   const messages: Message[] = [];
   const turns = [];
 
-  for (let index = 1; index <= TURNS; index += 1) {
+  for (let index = 1; index <= count; index += 1) {
     const turn = asId<"turn">(`${session}-turn-${String(index)}`);
     const prompt = asId<"message">(`${session}-prompt-${String(index)}`);
     const answer = asId<"message">(`${session}-answer-${String(index)}`);
@@ -72,7 +75,11 @@ function view(session: string): SessionView {
 installScripted(
   scriptedConnection({
     sessions: viewStream<readonly SessionInfo[]>([sessionRow(LEFT), sessionRow(RIGHT)]),
-    views: new Map([LEFT, RIGHT].map((id) => [id, viewStream(view(id))] as const)),
+    views: new Map(
+      [LEFT, RIGHT].map(
+        (id) => [id, viewStream(view(id, id === LEFT ? TURNS : RIGHT_TURNS))] as const,
+      ),
+    ),
   }),
 );
 

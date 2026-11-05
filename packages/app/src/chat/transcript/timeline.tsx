@@ -147,8 +147,13 @@ const TranscriptRowView = memo(function TranscriptRowView({
       );
     case "earlier":
       return <EarlierSteps />;
-    case "changes":
-      return <ChangesFooter state={navigating ? "pending" : row.state} files={row.files} />;
+    case "changes": {
+      const state = navigating ? "pending" : row.state;
+
+      return state === "pending" || row.files.length > 0 ? (
+        <ChangesFooter state={state} files={row.files} />
+      ) : null;
+    }
 
     case "prompt": {
       const { source } = row.message;
