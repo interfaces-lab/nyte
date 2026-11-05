@@ -45,7 +45,10 @@ const PROMPT = [
   "| Composer | 0px | `conversation.composerInset` |",
 ];
 
-/** A markdown file for the workbench editor: inline code, inline raw HTML and a table. */
+/**
+ * A markdown file for the workbench editor: inline code after text and at the start of a line, inline
+ * raw HTML and a table.
+ */
 const EDITOR_FILE = [
   "# Editor",
   "",
@@ -55,6 +58,8 @@ const EDITOR_FILE = [
   "| --- | --- | --- |",
   "| Sidebar | 8px | `sidebar.gutter` |",
   "| Composer | 0px | `conversation.composerInset` |",
+  "",
+  "`code` starts this line.",
   "",
   "A closing paragraph.",
   "",
