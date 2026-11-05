@@ -127,6 +127,8 @@ export interface Index {
   readonly siblings: Map<CommitId | null, readonly CommitId[]>;
   readonly inputs: Map<MessageId, FoldInput>;
   readonly parts: Map<PartId, PartRecord>;
+  /** The parts whose status is `live` or `waiting`, which `streaming`, `progress` and `liveParts` read instead of every part. */
+  readonly unsettled: Set<PartId>;
   readonly runs: Map<RunId, FoldRun>;
   readonly calls: Map<CallId, FoldCall>;
   readonly turns: Map<TurnId, FoldTurn>;
