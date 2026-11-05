@@ -478,7 +478,7 @@ test("the rendered layout against the spatial grid", async ({ desktop }) => {
     await expect(settingsNav(page)).toBeVisible();
   });
 
-  await test.step("the workbench markdown editor on a committed file, beside one chat", async () => {
+  await test.step("the workbench markdown editor on a committed file, beside one chat, with the test home's .nyte folder collapsed so its runtime files stay out of the tree", async () => {
     await leaveSettings(page);
     await panes(page).nth(1).getByRole("button", { name: "Pane actions" }).click();
     await page.getByRole("menuitem", { name: "Close Pane" }).click();
@@ -494,6 +494,8 @@ test("the rendered layout against the spatial grid", async ({ desktop }) => {
     const editor = files.getByRole("textbox", { name: "editor.md" });
     await expect(editor.getByRole("heading", { name: "Editor", level: 1 })).toBeVisible();
     await expect(editor.getByRole("table")).toBeVisible();
+    await files.getByRole("treeitem", { name: /^\.nyte/u }).click();
+    await expect(files.getByRole("treeitem")).toHaveCount(4);
     await capture("workbench-editor");
   });
 
