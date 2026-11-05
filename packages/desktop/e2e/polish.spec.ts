@@ -9,6 +9,7 @@ import { promisify, stripVTControlCharacters } from "node:util";
 import { press } from "@nyte-ai/app/e2e/scenario-d";
 import { HOURS_QUESTION } from "@nyte-ai/app/e2e/scenario-u-fixture";
 import { tabTo } from "@nyte-ai/app/e2e/scenario-u-trace";
+import { macOSWindowButtonHeight } from "@nyte-ai/app/contract/window-buttons.ts";
 import { CI_PROMPT, RESTAURANT_PROMPT } from "@nyte-ai/bench";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
@@ -28,11 +29,6 @@ const RECONNECT_PROMPT = "Are you still there?";
 
 /** The window buttons and the titlebar both snap to whole points, so half a point is as close as they get. */
 const TRAFFIC_LIGHT_TOLERANCE = 0.5;
-
-/** The window buttons are 14pt tall from macOS 26 and sit in a 16pt frame before it. */
-function windowButtonHeight(macOS: string): number {
-  return Number.parseFloat(macOS) >= 26 ? 14 : 16;
-}
 
 const LONG_PROMPT = "/long 80";
 
@@ -357,7 +353,7 @@ test(`polish evidence (${LABEL}) for scenarios U and D`, async () => {
       };
     });
 
-    const buttonHeight = windowButtonHeight(buttons.macOS);
+    const buttonHeight = macOSWindowButtonHeight(buttons.macOS);
 
     const centers = {
       trafficLights: (buttons.position?.y ?? Number.NaN) + buttonHeight / 2,

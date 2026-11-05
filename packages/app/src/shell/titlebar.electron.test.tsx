@@ -10,6 +10,7 @@ import electronExecutable from "electron";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { afterAll, beforeAll, test } from "vitest";
+import { macOSWindowButtonHeight } from "../contract/window-buttons.ts";
 
 const desktop = fileURLToPath(new URL("../../../desktop/", import.meta.url));
 
@@ -117,13 +118,10 @@ async function geometry() {
 }
 
 /**
- * The window buttons are 14pt tall from macOS 26 and 16pt before. Main places them from its own
- * copy of the titlebar height, so centring them on the header within half a point at every zoom
- * fails when that copy and `--nyte-titlebar-height` differ.
+ * Main places the window buttons from its own copy of the titlebar height, so they centre on the
+ * header within half a point at every zoom only while that copy matches `--nyte-titlebar-height`.
  */
-function windowButtonHeight(macOS: string): number {
-  return Number.parseFloat(macOS) >= 26 ? 14 : 16;
-}
+const CENTRE_TOLERANCE = 0.5;
 
 async function setZoom(zoom: number): Promise<void> {
   await application.evaluate(({ BrowserWindow }, factor) => {
@@ -185,8 +183,8 @@ test("titlebar controls and workbench stay aligned at every zoom and on every di
         assert.ok(
           Math.abs(
             measured.header.centerY * zoom -
-              (native.position.y + windowButtonHeight(native.macOS) / 2),
-          ) <= 0.5,
+              (native.position.y + macOSWindowButtonHeight(native.macOS) / 2),
+          ) <= CENTRE_TOLERANCE,
         );
       }
     }
