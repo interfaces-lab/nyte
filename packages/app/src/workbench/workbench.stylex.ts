@@ -1,5 +1,5 @@
 import { create } from "@stylexjs/stylex";
-import { glyph, layer, media, radius, row, space, target } from "@nyte-ai/ui/styles/schema.stylex";
+import { layer, media, radius, row, space, target } from "@nyte-ai/ui/styles/schema.stylex";
 import { shell, workbench } from "../theme/schema.stylex.ts";
 import { appearance, motion, role, shadow, type } from "@nyte-ai/ui/styles/vars.stylex";
 
@@ -71,7 +71,7 @@ export const workbenchStyles = create({
     display: "flex",
     alignItems: "center",
     minHeight: workbench.headingHeight,
-    paddingInlineStart: `calc(${workbench.rowPaddingInline} + (${glyph.md} - ${glyph.sm}) / 2)`,
+    paddingInlineStart: workbench.headingInset,
     paddingInlineEnd: workbench.rowPaddingInline,
     color: role.contentTertiary,
     fontSize: type.fontSm,
