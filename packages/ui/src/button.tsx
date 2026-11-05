@@ -323,7 +323,7 @@ export function buttonGlyphSize(size: ButtonSize, iconOnly: boolean): GlyphSize 
   return glyphSizes[iconOnly ? "iconOnly" : "text"][size];
 }
 
-type ButtonStyleOptions = ButtonAppearance & {
+type ButtonStyleOptions = Omit<ButtonAppearance, "xstyle"> & {
   readonly iconOnly?: boolean;
   readonly joined?: boolean;
   readonly pill?: boolean;
@@ -444,7 +444,11 @@ export function Button({
 }
 
 const picker = create({
-  trigger: { maxWidth: 180 },
+  trigger: {
+    maxWidth: 180,
+    /** Base UI's Select reads a pressed trigger's scale as zoom and opens the popup off the trigger. */
+    scale: "1",
+  },
   value: {
     display: "block",
     flex: 1,
