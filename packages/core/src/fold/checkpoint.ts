@@ -51,7 +51,7 @@ import { decodeObject } from "../store/log.ts";
 import { STORE_VERSION } from "../store/migrations.ts";
 import { dev } from "../util/dev-log.ts";
 import { FOLD_CODE } from "./code.ts";
-import { emptyStamps } from "./draft.ts";
+import { emptyStamps, awaitsSettlement } from "./draft.ts";
 import { sumUsage } from "./paths.ts";
 
 const REPLAY_EVENTS = 1_024;
@@ -457,6 +457,9 @@ export function decodeFoldCheckpoint(
     siblings,
     inputs: new Map(body.inputs),
     parts,
+    unsettled: new Set(
+      [...parts.values()].flatMap((part) => (awaitsSettlement(part) ? [part.id] : [])),
+    ),
     runs: new Map(body.runs),
     calls: new Map(body.calls),
     turns,
