@@ -18,6 +18,12 @@ test("a line suffix and the home folder resolve to the file", () => {
   );
 });
 
+test("a line range and a #L anchor resolve to the file", () => {
+  expect(linkFilePaths("`src/app.ts:12-20` `src/app.ts#L12-L20`", "/repo")).toBe(
+    `[\`src/app.ts:12-20\`](${fileUrl("/repo/src/app.ts")}) [\`src/app.ts#L12-L20\`](${fileUrl("/repo/src/app.ts")})`,
+  );
+});
+
 test("code that isn't a file path stays as written", () => {
   const text =
     "`/studio` `server/*` `@opentui/core` `https://x.io/a.js` `node:path` `app.ts` `src/` `a b/c.ts` `process.cwd`";

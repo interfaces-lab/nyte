@@ -1,3 +1,4 @@
+import { parseCitation } from "@nyte-ai/plugin/client/presentation";
 import type { UserContent } from "@nyte-ai/sdk";
 import { ExcerptSourceType } from "@nyte-ai/schema";
 import { Type } from "typebox";
@@ -489,29 +490,20 @@ export function inlineCodeReference(
   text: string,
   files: readonly MentionFile[],
 ): MessageReference | undefined {
-  const trimmed = text.trim().replace(/^\.\//u, "");
+  const citation = parseCitation(text);
+  const path = citation.path;
 
-  const located =
-    /^(?<path>.+?)(?::(?<start>\d+)(?:-(?<end>\d+))?|#L(?<anchorStart>\d+)(?:-L(?<anchorEnd>\d+))?)$/u.exec(
-      trimmed,
-    )?.groups;
-
-  const candidate = located?.path ?? trimmed;
-
-  if (candidate === "" || /[\s*?{}[\]]/u.test(candidate)) return undefined;
+  if (path === "" || /[\s*?{}[\]]/u.test(path)) return undefined;
   const index = workspaceFileIndex(files);
 
   const file =
-    index.byPath.get(candidate) ??
-    index.byPath.get(`${candidate}/`) ??
-    (candidate.includes("/") ? undefined : index.byLabel.get(candidate));
+    index.byPath.get(path) ??
+    index.byPath.get(`${path}/`) ??
+    (path.includes("/") ? undefined : index.byLabel.get(path));
 
   if (file === undefined) return undefined;
-  const start = Number(located?.start ?? located?.anchorStart);
 
-  if (mentionsFolder(file) || !Number.isSafeInteger(start) || start < 1)
-    return { kind: "file", file };
-  const end = Number(located?.end ?? located?.anchorEnd ?? start);
+  if (mentionsFolder(file) || citation.lines === null) return { kind: "file", file };
 
-  return { kind: "file", file, lines: { start, end: Math.max(start, end) } };
+  return { kind: "file", file, lines: citation.lines };
 }

@@ -13,6 +13,8 @@ import type {
 } from "@nyte-ai/schema";
 
 export { jobTaskState } from "@nyte-ai/schema";
+export { parseCitation } from "./citation.ts";
+export type { Citation } from "./citation.ts";
 export { showsAnswer, showsReport, shownContent } from "./user-messages.ts";
 export type { AnswerMessage, ReportMessage } from "./user-messages.ts";
 
