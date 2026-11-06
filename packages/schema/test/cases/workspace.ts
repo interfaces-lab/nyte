@@ -39,6 +39,10 @@ import {
   McpChangeSchema,
   McpServerConfigSchema,
   WriteOutcomeSchema,
+  TransferOutcomeSchema,
+  TrashOutcomeSchema,
+  RestoreOutcomeSchema,
+  asId,
 } from "../../src/index.ts";
 import {
   sample,
@@ -92,6 +96,21 @@ export const workspaceCases = {
     WriteOutcomeSchema,
     { kind: "stale", current: null },
     { kind: "saved" },
+  ),
+  TransferOutcomeSchema: sample(
+    TransferOutcomeSchema,
+    { kind: "invalid", reason: "into-itself" },
+    { kind: "stale", reason: "gone" },
+  ),
+  TrashOutcomeSchema: sample(
+    TrashOutcomeSchema,
+    { kind: "trashed", token: asId<"trash">("t1") },
+    { kind: "trashed" },
+  ),
+  RestoreOutcomeSchema: sample(
+    RestoreOutcomeSchema,
+    { kind: "stale", reason: "expired" },
+    { kind: "stale", reason: "missing" },
   ),
   BatchOutcomeSchema: sample(
     BatchOutcomeSchema,

@@ -1,12 +1,16 @@
 ---
 title: files.batch
-description: Writes and removes several files together under one receipt.
+description: Writes, removes, moves and copies files and folders together under one receipt.
 ---
 
-Writes and removes several files under one receipt. The host first checks every entry's `expect`;
+Writes, removes, moves and copies files and folders under one receipt. The host first checks every entry's `expect`;
 if any is out of date, nothing is written and the batch settles `stale` with those paths. Otherwise
 it applies the entries in order. A `put` takes its contents as a string, or as a blob from
-[`files.upload`](/docs/reference/operations/files/upload).
+[`files.upload`](/docs/reference/operations/files/upload). A `move`, `copy` or `mkdir` entry does
+what [`files.move`](/docs/reference/operations/files/move),
+[`files.copy`](/docs/reference/operations/files/copy) and
+[`files.mkdir`](/docs/reference/operations/files/mkdir) do, with `path` as the source and `to` as
+the destination; any answer other than `done` stops the batch as `partial`.
 
 The outcome comes from [`receipt.settled`](/docs/reference/operations/receipt/settled) with
 `session` `null`: `applied` with a snapshot and the paths written, `stale`, `partial` with what was
@@ -135,6 +139,51 @@ Response:
                 "type": "string"
               },
               "expect": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["kind", "path", "to"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "move"
+              },
+              "path": {
+                "type": "string"
+              },
+              "to": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["kind", "path", "to"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "copy"
+              },
+              "path": {
+                "type": "string"
+              },
+              "to": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["kind", "path"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "mkdir"
+              },
+              "path": {
                 "type": "string"
               }
             }

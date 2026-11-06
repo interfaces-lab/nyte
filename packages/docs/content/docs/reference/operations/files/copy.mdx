@@ -1,0 +1,128 @@
+---
+title: files.copy
+description: Copies a file or folder with its links and modes, refusing to replace anything.
+---
+
+Copies a file or folder with its links and modes kept. It never replaces or merges into
+what is at `to`: `stale` with `reason` `exists`, or `missing` when nothing is at `from`. A copy
+that fails partway removes what it made. `invalid` refuses the workspace root, a path outside the
+workspace, or a folder copied into itself. Missing parent folders of `to` are created.
+
+## When to call it
+
+From a duplicate action in a file tree. To copy several items under one receipt, use
+`files.batch` with `copy` entries.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `files` capability.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "from": "src/date.ts",
+  "to": "src/date copy.ts"
+}
+```
+
+Response:
+
+```json
+{ "kind": "done" }
+```
+
+## Errors
+
+- `unavailable` or `denied` when the workspace doesn't offer files or can't change them.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `files`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "from", "to"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "from": {
+      "type": "string"
+    },
+    "to": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "done"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "reason"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "stale"
+        },
+        "reason": {
+          "enum": ["missing", "exists"]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "reason"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "invalid"
+        },
+        "reason": {
+          "enum": ["root", "outside", "into-itself", "cross-device", "not-a-folder"]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "busy"
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

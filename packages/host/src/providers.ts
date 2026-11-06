@@ -20,7 +20,7 @@ export type SandboxHandle = Pick<ExecutionEnv, "identity" | "cwd" | "files" | "e
 
 const CHAT_ONLY: EnvironmentIdentity = asId<"environment-identity">("chat-only");
 
-/** Returns the chat-only environment provider (`kind: "chat-only"`), node-free: a workspace with no files and no processes, for a host that only chats (a Durable Object). `inspect` answers any target with identity `"chat-only"`, `available` and no project sources; `attach` answers an `ExecutionEnv` with that identity and `cwd` `/` whose `files` see nothing — `read` answers `missing`, `stat` null, `bytes` throws `SdkError("unknown")`, `scan` and `search` answer `complete` alone, `find` no entries, `watch` yields nothing until its caller returns, `format` answers `unavailable { reason: "unsupported" }` — and refuse every change (`write`, `remove`, `upload` and a batch's `apply` throw `SdkError("unavailable")`), whose `exec` throws `SdkError("unavailable")`, and whose `close` resolves. No `git`, `snapshots`, `browser` or `destroy`. */
+/** Returns the chat-only environment provider (`kind: "chat-only"`), node-free: a workspace with no files and no processes, for a host that only chats (a Durable Object). `inspect` answers any target with identity `"chat-only"`, `available` and no project sources; `attach` answers an `ExecutionEnv` with that identity and `cwd` `/` whose `files` see nothing — `read` answers `missing`, `stat` null, `bytes` throws `SdkError("unknown")`, `scan` and `search` answer `complete` alone, `find` no entries, `watch` yields nothing until its caller returns, `format` answers `unavailable { reason: "unsupported" }` — and refuse every change (`write`, `remove`, `move`, `copy`, `mkdir`, `trash`, `restore`, `upload` and a batch's `apply` throw `SdkError("unavailable")`), whose `exec` throws `SdkError("unavailable")`, and whose `close` resolves. No `git`, `snapshots`, `browser` or `destroy`. */
 export function chatOnlyProvider(): EnvironmentProvider {
   const env: ExecutionEnv = {
     identity: CHAT_ONLY,
@@ -106,7 +106,14 @@ function chatOnlyFiles(): FilesApi {
     throw new SdkError("unavailable", "A chat-only workspace has no files to change.");
   };
 
-  const plan: FileBatch = { put: () => plan, remove: () => plan, apply: refuse };
+  const plan: FileBatch = {
+    put: () => plan,
+    remove: () => plan,
+    move: () => plan,
+    copy: () => plan,
+    mkdir: () => plan,
+    apply: refuse,
+  };
 
   return {
     read: async (path) => ({ kind: "missing", path }),
@@ -116,6 +123,11 @@ function chatOnlyFiles(): FilesApi {
     stat: async () => null,
     write: refuse,
     remove: refuse,
+    move: refuse,
+    copy: refuse,
+    mkdir: refuse,
+    trash: refuse,
+    restore: refuse,
     batch: () => plan,
     format: async () => ({ kind: "unavailable", reason: "unsupported" }),
     async *scan() {

@@ -97,6 +97,44 @@ export const WriteOutcomeType = Type.Union([
 
 export type WriteOutcome = Decoded<typeof WriteOutcomeType>;
 
+/**
+ * What a move, copy or new folder did. `stale` changed nothing because the source is gone
+ * (`missing`) or the destination is taken (`exists`). `invalid` refused before touching the disk:
+ * the workspace root, a path outside the workspace, a folder into itself, a move between disks,
+ * or a new folder where a file is. `busy` is a rename the platform kept refusing because something
+ * holds the file open.
+ */
+export const TransferOutcomeType = Type.Union([
+  Type.Object({ kind: Type.Literal("done") }),
+  Type.Object({ kind: Type.Literal("stale"), reason: Type.Enum(["missing", "exists"]) }),
+  Type.Object({
+    kind: Type.Literal("invalid"),
+    reason: Type.Enum(["root", "outside", "into-itself", "cross-device", "not-a-folder"]),
+  }),
+  Type.Object({ kind: Type.Literal("busy") }),
+]);
+
+export type TransferOutcome = Decoded<typeof TransferOutcomeType>;
+
+/** A deleted file or folder held until the host restarts, or why it couldn't be held. */
+export const TrashOutcomeType = Type.Union([
+  Type.Object({ kind: Type.Literal("trashed"), token: idSchema<"trash">() }),
+  Type.Object({ kind: Type.Literal("stale") }),
+  Type.Object({ kind: Type.Literal("invalid"), reason: Type.Enum(["root", "outside"]) }),
+  Type.Object({ kind: Type.Literal("unavailable") }),
+  Type.Object({ kind: Type.Literal("busy") }),
+]);
+
+export type TrashOutcome = Decoded<typeof TrashOutcomeType>;
+
+/** A held item back at its path, or why not: something took its place, or the hold is gone. */
+export const RestoreOutcomeType = Type.Union([
+  Type.Object({ kind: Type.Literal("restored") }),
+  Type.Object({ kind: Type.Literal("stale"), reason: Type.Enum(["exists", "expired"]) }),
+]);
+
+export type RestoreOutcome = Decoded<typeof RestoreOutcomeType>;
+
 export const BatchOutcomeType = Type.Union([
   Type.Object({
     kind: Type.Literal("applied"),
@@ -156,5 +194,11 @@ export const FormatOutcomeSchema: Schema<FormatOutcome> = standard(FormatOutcome
 export const WriteOutcomeSchema: Schema<WriteOutcome> = standard(WriteOutcomeType);
 
 export const BatchOutcomeSchema: Schema<BatchOutcome> = standard(BatchOutcomeType);
+
+export const TransferOutcomeSchema: Schema<TransferOutcome> = standard(TransferOutcomeType);
+
+export const TrashOutcomeSchema: Schema<TrashOutcome> = standard(TrashOutcomeType);
+
+export const RestoreOutcomeSchema: Schema<RestoreOutcome> = standard(RestoreOutcomeType);
 
 export const FileDocumentSchema: Schema<FileDocument> = standard(FileDocumentType);

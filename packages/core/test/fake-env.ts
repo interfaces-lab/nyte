@@ -1,6 +1,7 @@
 import { asId, writePatch } from "@nyte-ai/schema";
 import type {
   Availability,
+  TransferOutcome,
   ChangeSet,
   EndReason,
   FileStatus,
@@ -394,6 +395,28 @@ function filesAt(disk: Disk, root: string, confined: boolean): FilesApi {
     disk.directories.has(path) ||
     [...disk.files.keys()].some((file) => file.startsWith(`${path}/`));
 
+  const transfer = async (from: string, to: string, move: boolean): Promise<TransferOutcome> => {
+    await disk.wait();
+    const source = resolve(from);
+    const target = resolve(to);
+
+    if (!disk.files.has(source) && !hasDirectory(source))
+      return { kind: "stale", reason: "missing" };
+
+    if (disk.files.has(target) || hasDirectory(target)) return { kind: "stale", reason: "exists" };
+
+    if (target.startsWith(`${source}/`)) return { kind: "invalid", reason: "into-itself" };
+
+    for (const [path, file] of Array.from(disk.files)) {
+      if (path !== source && !path.startsWith(`${source}/`)) continue;
+      disk.put(`${target}${path.slice(source.length)}`, file.contents);
+
+      if (move) disk.files.delete(path);
+    }
+
+    return { kind: "done" };
+  };
+
   return {
     async read(path) {
       const resolved = resolve(path);
@@ -484,6 +507,23 @@ function filesAt(disk: Disk, root: string, confined: boolean): FilesApi {
 
       return { kind: "saved", version: current };
     },
+    async move(from, to) {
+      return transfer(from, to, true);
+    },
+    async copy(from, to) {
+      return transfer(from, to, false);
+    },
+    async mkdir(path) {
+      const target = resolve(path);
+
+      if (disk.files.has(target)) return { kind: "invalid", reason: "not-a-folder" };
+
+      for (const parent of [...listParentDirectories(target), target]) disk.directories.add(parent);
+
+      return { kind: "done" };
+    },
+    trash: async () => ({ kind: "unavailable" }),
+    restore: async () => ({ kind: "stale", reason: "expired" }),
     batch() {
       throw new Error("Core wraps batch.");
     },

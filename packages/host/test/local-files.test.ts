@@ -1,10 +1,24 @@
-import { mkdir, mkdtemp, readFile, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  readlink,
+  realpath,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { asId } from "@nyte-ai/schema";
 import type { FileEvent, ScanFrame, SearchFrame, SearchInput } from "@nyte-ai/schema";
 import { afterEach, assert, describe, expect, it } from "vitest";
 import { localFiles } from "../src/index.ts";
+import type { LocalFiles } from "../src/local/files.ts";
 import { sha256 } from "../src/hash.ts";
 import { WALK_LIMIT, walkTree } from "../src/local/tree.ts";
 
@@ -458,4 +472,152 @@ describe("localFiles", () => {
     ]);
     controller.abort();
   }, 20_000);
+});
+
+/** Every entry under `root` with its kind, and a file's contents and executable bit. */
+async function tree(root: string): Promise<readonly string[]> {
+  const entries = await readdir(root, { recursive: true, withFileTypes: true });
+
+  return Promise.all(
+    entries.map(async (entry) => {
+      const path = join(entry.parentPath, entry.name).slice(root.length + 1);
+
+      if (entry.isSymbolicLink()) return `${path} -> ${await readlink(join(root, path))}`;
+
+      if (entry.isDirectory()) return `${path}/`;
+      const mode = (await stat(join(root, path))).mode & 0o111 ? " +x" : "";
+
+      return `${path} = ${await readFile(join(root, path), "utf8")}${mode}`;
+    }),
+  ).then((listed) => listed.toSorted());
+}
+
+describe("localFiles transfers", () => {
+  const seed = async (root: string): Promise<void> => {
+    await mkdir(join(root, "app", "empty"), { recursive: true });
+    await writeFile(join(root, "app", "run.sh"), "echo");
+    await chmod(join(root, "app", "run.sh"), 0o755);
+    await writeFile(join(root, "app", ".env"), "SECRET=1");
+    await writeFile(join(root, ".gitignore"), ".env\n");
+    await symlink("run.sh", join(root, "app", "link"));
+    await writeFile(join(root, "taken.txt"), "taken");
+  };
+
+  const app = [
+    "app/",
+    "app/.env = SECRET=1",
+    "app/empty/",
+    "app/link -> run.sh",
+    "app/run.sh = echo +x",
+  ];
+  const rest = [".gitignore = .env\n", "taken.txt = taken"];
+
+  it.each([
+    {
+      name: "a folder moves whole: ignored files, empty folders, links and modes",
+      run: (files: LocalFiles) => files.move("app", "lib/app"),
+      outcome: { kind: "done" },
+      after: [...rest, "lib/", ...app.map((entry) => `lib/${entry}`)].toSorted(),
+    },
+    {
+      name: "a move never replaces what is at the destination",
+      run: (files: LocalFiles) => files.move("app", "taken.txt"),
+      outcome: { kind: "stale", reason: "exists" },
+      after: [...rest, ...app].toSorted(),
+    },
+    {
+      name: "a move from nothing changes nothing",
+      run: (files: LocalFiles) => files.move("gone", "elsewhere"),
+      outcome: { kind: "stale", reason: "missing" },
+      after: [...rest, ...app].toSorted(),
+    },
+    {
+      name: "a folder never moves into itself",
+      run: (files: LocalFiles) => files.move("app", "app/inner/app"),
+      outcome: { kind: "invalid", reason: "into-itself" },
+      after: [...rest, ...app].toSorted(),
+    },
+    {
+      name: "the workspace root never moves",
+      run: (files: LocalFiles) => files.move("", "moved"),
+      outcome: { kind: "invalid", reason: "root" },
+      after: [...rest, ...app].toSorted(),
+    },
+    {
+      name: "nothing moves outside the workspace",
+      run: (files: LocalFiles) => files.move("app", "../escaped"),
+      outcome: { kind: "invalid", reason: "outside" },
+      after: [...rest, ...app].toSorted(),
+    },
+    {
+      name: "a folder copies whole and the source stays",
+      run: (files: LocalFiles) => files.copy("app", "app copy"),
+      outcome: { kind: "done" },
+      after: [
+        ...rest,
+        ...app,
+        ...app.map((entry) => entry.replace(/^app/u, "app copy")),
+      ].toSorted(),
+    },
+    {
+      name: "a copy never merges into an existing folder",
+      run: async (files: LocalFiles) => {
+        await files.mkdir("other/empty");
+
+        return files.copy("app", "other");
+      },
+      outcome: { kind: "stale", reason: "exists" },
+      after: [...rest, ...app, "other/", "other/empty/"].toSorted(),
+    },
+    {
+      name: "a new folder lands with its parents, and again changes nothing",
+      run: async (files: LocalFiles) => {
+        await files.mkdir("a/b");
+
+        return files.mkdir("a/b");
+      },
+      outcome: { kind: "done" },
+      after: [...rest, ...app, "a/", "a/b/"].toSorted(),
+    },
+    {
+      name: "a new folder where a file is is refused",
+      run: (files: LocalFiles) => files.mkdir("taken.txt/inner"),
+      outcome: { kind: "invalid", reason: "not-a-folder" },
+      after: [...rest, ...app].toSorted(),
+    },
+    {
+      name: "trash outside a repository keeps no hold",
+      run: (files: LocalFiles) => files.trash("app"),
+      outcome: { kind: "unavailable" },
+      after: [...rest, ...app].toSorted(),
+    },
+  ])("$name", async ({ run, outcome, after }) => {
+    const root = await folder();
+    await seed(root);
+
+    expect(await run(localFiles(root))).toEqual(outcome);
+    expect(await tree(root)).toEqual(after);
+  });
+
+  it("trash holds a folder in the repository's git folder until restore puts it back", async () => {
+    const root = await folder();
+    execFileSync("git", ["init", "-q"], { cwd: root });
+    await seed(root);
+    const files = localFiles(root);
+    const worktree = async (): Promise<readonly string[]> =>
+      (await tree(root)).filter((entry) => !entry.startsWith(".git/"));
+    const before = await worktree();
+
+    const trashed = await files.trash("app");
+    assert(trashed.kind === "trashed");
+    expect(await worktree()).toEqual(before.filter((entry) => !entry.startsWith("app")));
+
+    await writeFile(join(root, "app"), "in the way");
+    expect(await files.restore(trashed.token)).toEqual({ kind: "stale", reason: "exists" });
+    await rm(join(root, "app"));
+
+    expect(await files.restore(trashed.token)).toEqual({ kind: "restored" });
+    expect(await worktree()).toEqual(before);
+    expect(await files.restore(trashed.token)).toEqual({ kind: "stale", reason: "expired" });
+  });
 });

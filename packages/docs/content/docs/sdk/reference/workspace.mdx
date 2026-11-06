@@ -104,8 +104,13 @@ Paths are relative to the workspace folder. A `version` identifies one state of 
 | `bytes(path)`                     | `Promise<ByteReader>`        | The raw bytes                                                                                                     |
 | `stat(path)`                      | `Promise<... \| null>`       | `kind`, `size` and `version`, or `null` when nothing is there                                                     |
 | `write(path, contents, options?)` | `Promise<WriteOutcome>`      | Writes text or bytes. `saved` with the new `version`, `stale` with the current one, or `missing-parent`           |
-| `remove(path, { expect? })`       | `Promise<WriteOutcome>`      | Removes a file                                                                                                    |
-| `batch()`                         | `FileBatch`                  | Several writes and removes under one receipt                                                                      |
+| `remove(path, { expect? })`       | `Promise<WriteOutcome>`      | Removes a file, or a folder with everything in it                                                                 |
+| `move(from, to)`                  | `Promise<TransferOutcome>`   | Moves or renames a file or folder in one step                                                                     |
+| `copy(from, to)`                  | `Promise<TransferOutcome>`   | Copies a file or folder with its links and modes                                                                  |
+| `mkdir(path)`                     | `Promise<TransferOutcome>`   | Creates a folder and its missing parents                                                                          |
+| `trash(path)`                     | `Promise<TrashOutcome>`      | Deletes into a hold that `restore` undoes until the host restarts                                                 |
+| `restore(token)`                  | `Promise<RestoreOutcome>`    | Puts a trashed file or folder back                                                                                |
+| `batch()`                         | `FileBatch`                  | Several writes, removes, moves and copies under one receipt                                                       |
 | `format(path, contents)`          | `Promise<FormatOutcome>`     | `contents` formatted for that file, without writing it                                                            |
 | `scan({ directory?, ignored? })`  | `AsyncIterable<ScanFrame>`   | The entries under a folder, in batches, then `complete` or `incomplete`                                           |
 | `find({ query, limit? })`         | `Promise<FileEntryView[]>`   | Paths that best match `query`, best first                                                                         |
@@ -116,9 +121,17 @@ Paths are relative to the workspace folder. A `version` identifies one state of 
 `write` takes `{ expect?, parents? }`. `expect: "absent"` writes only if the file doesn't exist yet,
 and `parents: true` creates missing folders.
 
-A batch chains `put({ path, contents, expect? })` and `remove({ path, expect? })`, then `apply()`
-returns a receipt. It settles `applied`, `stale` with the paths that changed, `partial`, or
-`stopped`.
+`move` and `copy` never replace anything. They answer `done`; `stale` with `reason` `missing` or
+`exists`; `invalid` for the workspace root, a path outside it, a folder into itself or a move to
+another disk; or `busy` when the platform keeps refusing because a file is open elsewhere. `trash`
+answers `trashed` with a `token`, or `unavailable` where the host keeps no hold, such as outside a
+git repository; delete with `remove` then. `restore` answers `restored`, or `stale` when something
+else is at the path now (`exists`) or the hold is gone (`expired`).
+
+A batch chains `put({ path, contents, expect? })`, `remove({ path, expect? })`,
+`move({ path, to })`, `copy({ path, to })` and `mkdir({ path })`, then `apply()` returns a receipt.
+It settles `applied`, `stale` with the paths that changed, `partial`, or `stopped`. Use a batch to
+move or copy from a client that may retry: the same receipt answers the retry.
 
 ```ts
 const receipt = await files.api

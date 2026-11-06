@@ -1,0 +1,131 @@
+---
+title: files.move
+description: Moves or renames a file or folder in one step, refusing to replace anything.
+---
+
+Moves or renames a file or folder in one step: a folder moves with everything in it, ignored
+files, links and modes included. It never replaces anything: `stale` with `reason` `exists` when
+something is at `to`, or `missing` when nothing is at `from`. Changing only the case of a name on a
+case-insensitive disk is allowed. `invalid` refuses before touching the disk: the workspace root,
+a path outside the workspace, a folder into itself, or a move to another disk (`cross-device`).
+`busy` means the platform kept refusing the rename because a file under it is open elsewhere.
+Missing parent folders of `to` are created.
+
+## When to call it
+
+From a rename or drag in a file tree. To move several items together under one receipt, use
+`files.batch` with `move` entries.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `files` capability.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "from": "src/utils",
+  "to": "src/lib/utils"
+}
+```
+
+Response:
+
+```json
+{ "kind": "done" }
+```
+
+## Errors
+
+- `unavailable` or `denied` when the workspace doesn't offer files or can't change them.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `files`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "from", "to"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "from": {
+      "type": "string"
+    },
+    "to": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "done"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "reason"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "stale"
+        },
+        "reason": {
+          "enum": ["missing", "exists"]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "reason"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "invalid"
+        },
+        "reason": {
+          "enum": ["root", "outside", "into-itself", "cross-device", "not-a-folder"]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "busy"
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

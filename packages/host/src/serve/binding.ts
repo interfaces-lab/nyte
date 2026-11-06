@@ -507,6 +507,11 @@ export function bindConnection(connection: Connection, options: BindingOptions):
       (await files(id)).write(path, await readBytes(body), options),
     "files.remove": async ({ workspace: id, path, options }) =>
       (await files(id)).remove(path, options),
+    "files.move": async ({ workspace: id, from, to }) => (await files(id)).move(from, to),
+    "files.copy": async ({ workspace: id, from, to }) => (await files(id)).copy(from, to),
+    "files.mkdir": async ({ workspace: id, path }) => (await files(id)).mkdir(path),
+    "files.trash": async ({ workspace: id, path }) => (await files(id)).trash(path),
+    "files.restore": async ({ workspace: id, token }) => (await files(id)).restore(token),
     "files.batch": async ({ workspace: id, entries, id: receipt }) => ({
       receipt: (await wire.batch(id, await files(id), entries, receipt)).id,
     }),
