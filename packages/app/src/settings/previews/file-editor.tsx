@@ -11,7 +11,7 @@ import {
   createEditor,
   editorViewOptions,
   styles as editorStyles,
-} from "../../workbench/files/file-editor.tsx";
+} from "../../workbench/editor/file-editor.tsx";
 
 const PATH = "src/format-bytes.ts";
 

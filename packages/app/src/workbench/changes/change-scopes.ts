@@ -1,9 +1,9 @@
 import type { GitScope, GitStatus, RunId, SessionView } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import { showsTool } from "@nyte-ai/plugin/client/presentation";
-import { worktreeFiles } from "../files/worktree-files.ts";
+import { worktreeFiles } from "../editor/worktree-files.ts";
 import type { TurnMessages } from "../../chat/transcript/turns.ts";
-import type { WorktreeFile } from "../files/worktree-files.ts";
+import type { WorktreeFile } from "../editor/worktree-files.ts";
 import { changesScopeValue } from "../model.ts";
 import type { WorkbenchChangesScope } from "../model.ts";
 

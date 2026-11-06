@@ -2,7 +2,7 @@ import { idSchema } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import type { ClientCapabilities } from "../contract/client-actions.ts";
-import { type Persisted, persisted } from "../lib/storage.ts";
+import { type Persisted, persisted, type StorageArea } from "../lib/storage.ts";
 import {
   FIRST_GROUP,
   MAXIMIZED_WORKBENCH_LAYOUT,
@@ -70,7 +70,7 @@ const persistedCanvasTab = Type.Object(
   strict,
 );
 
-const persistedFilesTab = Type.Object({ id: nonEmpty, kind: Type.Literal("files") }, strict);
+const persistedEditorTab = Type.Object({ id: nonEmpty, kind: Type.Literal("editor") }, strict);
 
 const persistedTerminalTab = Type.Object(
   {
@@ -86,7 +86,7 @@ const persistedTab = Type.Union([
   persistedChangesTab,
   persistedBrowserTab,
   persistedCanvasTab,
-  persistedFilesTab,
+  persistedEditorTab,
   persistedTerminalTab,
 ]);
 
@@ -100,7 +100,7 @@ const persistedWorkbenchView = Type.Object({
 });
 
 const persistedWorkbenchSnapshot = Type.Object(
-  { version: Type.Literal(7), views: Type.Array(persistedWorkbenchView) },
+  { version: Type.Literal(8), views: Type.Array(persistedWorkbenchView) },
   strict,
 );
 
@@ -113,7 +113,7 @@ function persistedTabFor(tab: WorkbenchTab): PersistedTab | undefined {
     case "file":
       return { id: tab.id, kind: "file", path: tab.path, preview: tab.preview };
     case "canvas":
-    case "files":
+    case "editor":
     case "changes":
       return tab;
     case "browser":
@@ -199,7 +199,7 @@ export function restoreSnapshot(
 
 export function persistable(snapshot: WorkbenchSnapshot): PersistedWorkbenchSnapshot {
   return {
-    version: 7,
+    version: 8,
     views: [...snapshot.views].map(([key, view]) => {
       const tabs = view.tabs.flatMap((tab) => {
         const persisted = persistedTabFor(tab);
@@ -221,6 +221,6 @@ export function persistable(snapshot: WorkbenchSnapshot): PersistedWorkbenchSnap
   };
 }
 
-export function workbenchPersistence(): WorkbenchPersistence {
-  return persisted("nyte:desktop:workbench:v7", persistedWorkbenchSnapshot, undefined);
+export function workbenchPersistence(area: StorageArea | undefined): WorkbenchPersistence {
+  return persisted("nyte:desktop:workbench:v7", persistedWorkbenchSnapshot, undefined, area);
 }

@@ -26,7 +26,7 @@
 | `chat/trays/` | Trays above the composer for agents, questions, terminals and approvals | `tray.tsx` |
 | `canvas/` | The canvas frame, its panel and plugin renderers | `canvas-frame.tsx` |
 | `workbench/` | The workbench beside the chats, with its rail, tab strip, kind table, view reducer, store and commands | `workbench.tsx`, `model.ts`, `commands.ts` |
-| `workbench/browser/` `changes/` `files/` `terminal/` | One folder per workbench tool | `*-panel.tsx` |
+| `workbench/browser/` `changes/` `editor/` `terminal/` | One folder per workbench tool | `*-panel.tsx` |
 | `sidebar/` | The sidebar, chat lists and search palette | `sidebar.tsx` |
 | `settings/` | Settings pages, including server, notifications, developer, models, profile and usage. `previews/` holds the live previews on the cards. | `pages.ts` |
 | `environments/` | The groups of Settings › Server: sharing this Mac, its devices, the Nyte account and a remote host | `server-settings.tsx` |
@@ -52,6 +52,7 @@ Outside `src/`, `dev/` holds the account-footer test page, served at `/dev/accou
 - In `data/`, session reads are `sessions.ts`, session actions `session-actions.ts`, a chat's rows `chat-store.ts`, the session list `directory.ts`, other live watches `watches.ts` and cache keys `query-client.ts`.
 - Git reads are `data/vcs.ts`, file reads `data/files.ts`, the model catalog `data/catalog.ts` and usage `data/usage.ts`.
 - In `workbench/`, the kind table and tab types are `model.ts`, the pure transitions `view-reducer.ts`, the store `store.ts`, selectors and the rail model `selectors.ts`, the path rule `paths.ts` and the width `width.ts`. `persistence.ts` holds what the workbench saves and the persistence helper. `commands.ts` holds the actions that touch several stores and the reference opener. The rail is `rail.tsx`.
+- The Editor panel is `workbench/editor/editor-panel.tsx`. Its file tree is `files-explorer.tsx`, and `file-store.ts` owns open documents and their drafts.
 - The Changes panel is `workbench/changes/changes-panel.tsx`, and its derivations are `workbench/changes/changes-model.ts`. The diff it draws is `diff/diff-view.tsx`.
 - The sidebar is `sidebar/sidebar.tsx`, the titlebar `shell/titlebar.tsx` and the routes `shell/routes.tsx`.
 - `shell/host-events.ts` handles host events. `commands/window-commands.ts` handles keyboard and menu commands.

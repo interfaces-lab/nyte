@@ -5,7 +5,7 @@ import { testRenderer } from "../../test/renderer.ts";
 
 const Counts = Type.Object({
   Workbench: Type.Number(),
-  FilesPanel: Type.Number(),
+  EditorPanel: Type.Number(),
   TextFileEditor: Type.Number(),
   CodeView: Type.Number(),
   ChangesPanel: Type.Number(),
@@ -33,7 +33,7 @@ test(
     expect(
       report.switches.map((counts) => [
         counts.Workbench,
-        counts.FilesPanel,
+        counts.EditorPanel,
         counts.TextFileEditor,
         counts.CodeView,
         counts.ChangesPanel,
@@ -42,7 +42,7 @@ test(
     expect(report.deltas).toBe(60);
     expect(report.streaming).toEqual({
       Workbench: 0,
-      FilesPanel: 0,
+      EditorPanel: 0,
       TextFileEditor: 0,
       CodeView: 0,
       ChangesPanel: 0,

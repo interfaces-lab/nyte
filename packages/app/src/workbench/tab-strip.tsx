@@ -52,7 +52,7 @@ import { Deferred, readDeferred } from "../lib/deferred.tsx";
 import { useCanvasEditing } from "../canvas/canvas-activity.ts";
 import { useTerminalRuntime } from "./terminal/terminal-store.ts";
 import type { ProgramRecord } from "./terminal/terminal-program-status.ts";
-import { fileActions, useFileTabs } from "./files/file-store.ts";
+import { fileActions, useFileTabs } from "./editor/file-store.ts";
 
 const TAB_CONTENT_FADE =
   "linear-gradient(to right, black calc(100% - 36px), transparent calc(100% - 12px))";

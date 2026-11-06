@@ -44,7 +44,7 @@ interface TabFields {
     readonly title: string;
     readonly pinned: number | null;
   };
-  readonly files: Readonly<Record<never, never>>;
+  readonly editor: Readonly<Record<never, never>>;
 }
 
 export type WorkbenchTabKind = keyof TabFields;
@@ -61,7 +61,7 @@ export type WorkbenchTab = { [Kind in WorkbenchTabKind]: KindTab<Kind> }[Workben
 
 export type WorkbenchScope = { readonly kind: "pathless" } | { readonly kind: "project" };
 
-export type LaunchKind = "files" | "changes" | "browser" | "terminal";
+export type LaunchKind = "editor" | "changes" | "browser" | "terminal";
 
 interface KindDescriptor<Kind extends WorkbenchTabKind> {
   readonly label: string;
@@ -80,12 +80,12 @@ const always = (): boolean => true;
 type WorkbenchKinds = { readonly [Kind in WorkbenchTabKind]: KindDescriptor<Kind> };
 
 export const WORKBENCH_KINDS: WorkbenchKinds = {
-  files: {
-    label: "Files",
+  editor: {
+    label: "Editor",
     icon: "file",
     available: projectOnly,
-    launch: { policy: "singleton", input: { kind: "files" } },
-    identity: () => "files",
+    launch: { policy: "singleton", input: { kind: "editor" } },
+    identity: () => "editor",
   },
   changes: {
     label: "Changes",
@@ -135,7 +135,7 @@ export const WORKBENCH_KINDS: WorkbenchKinds = {
 };
 
 const LAUNCH_ORDER = Object.freeze([
-  "files",
+  "editor",
   "changes",
   "browser",
   "terminal",
@@ -220,7 +220,7 @@ export const MAXIMIZED_CHAT_LAYOUT = Object.freeze({
 
 export const WORKBENCH_CHAT_TAB = "chat";
 
-export const FILES_SLOT = "files";
+export const EDITOR_SLOT = "editor";
 
 export function workbenchShowsChat(layout: WorkbenchLayout): boolean {
   return layout.kind === "maximized" && layout.showing === "chat";
@@ -266,5 +266,5 @@ export const DEFAULT_VIEW = Object.freeze({
 }) satisfies WorkbenchViewState;
 
 export function tabSlot(tab: WorkbenchTab): string {
-  return tab.kind === "file" || tab.kind === "files" ? FILES_SLOT : tab.id;
+  return tab.kind === "file" || tab.kind === "editor" ? EDITOR_SLOT : tab.id;
 }

@@ -25,10 +25,10 @@ import { useHostState } from "../../data/host.ts";
 import { useMentionFiles, useWorkspaceFile } from "../../data/files.ts";
 import { workbench } from "../../theme/schema.stylex.ts";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
-import type { WorkbenchViewKey } from "../model.ts";
+import { WORKBENCH_KINDS, type WorkbenchViewKey } from "../model.ts";
 import { FileBreadcrumbs } from "./file-breadcrumbs.tsx";
 import { opensReadOnly, WorkspaceFileEditor } from "./file-editor.tsx";
-import { FilesEmptyState } from "./files-empty-state.tsx";
+import { EditorEmptyState } from "./editor-empty-state.tsx";
 import type { FileEditorHandle } from "./file-editor.tsx";
 import { fileActions, useFileTabs } from "./file-store.ts";
 import { opensAsMarkdown } from "./markdown-parse.ts";
@@ -109,7 +109,7 @@ async function discardEdits(editor: FileEditorHandle | undefined): Promise<strin
   }
 }
 
-export function FilesPanel({
+export function EditorPanel({
   viewKey,
   visible,
   workspaceActive,
@@ -131,7 +131,7 @@ export function FilesPanel({
 
   const tabs = useFileTabs(viewKey);
   const autoSave = useSetting(preferences.fileAutoSave);
-  const sidePanel = useSetting(preferences.fileSidePanel);
+  const sidePanel = useSetting(preferences.editorSidePanel);
   const [sidebar, setSidebar] = useState<"explorer" | "search">("explorer");
   const [searchOpened, setSearchOpened] = useState(false);
   const [discardPath, setDiscardPath] = useState<string>();
@@ -210,7 +210,7 @@ export function FilesPanel({
 
   return (
     <section
-      aria-label="Files"
+      aria-label={WORKBENCH_KINDS.editor.label}
       {...props(styles.panel, treeStatusTheme)}
       onKeyDownCapture={(event) => {
         if (!(event.metaKey || event.ctrlKey)) return;
@@ -361,7 +361,9 @@ export function FilesPanel({
             ))}
             <MenuItem
               layout="plain"
-              onClick={() => preferences.fileSidePanel.set(sidePanel === "start" ? "end" : "start")}
+              onClick={() =>
+                preferences.editorSidePanel.set(sidePanel === "start" ? "end" : "start")
+              }
             >
               {sidePanel === "start" ? "Move Side Panel Right" : "Move Side Panel Left"}
             </MenuItem>
@@ -389,7 +391,7 @@ export function FilesPanel({
         <Toggle
           iconOnly
           indicator="glyph"
-          aria-label="Files Sidebar"
+          aria-label={`${WORKBENCH_KINDS.editor.label} Sidebar`}
           pressed={sidebarVisible}
           onPressedChange={onToggleSidebar}
         >
@@ -416,7 +418,7 @@ export function FilesPanel({
               focused={group.id === tabs.group}
             >
               {group.id === tabs.group && group.active === undefined && (
-                <FilesEmptyState
+                <EditorEmptyState
                   files={files.data}
                   changes={changes}
                   explorerVisible={sidebarVisible && sidebar === "explorer"}

@@ -71,7 +71,7 @@ Closing a chapter's desktop fails if any process of Electron's tree is still run
 | `chat-rendering.spec.ts` | Chat switching, native history scrolling, the latest-turn footer handoff, and message edit, cancel and save. Observes row coverage and identity through transitions and saves a video, screenshots and accessibility snapshots |
 | `subagent-load.spec.ts` | Runs only with `NYTE_PERF_DIR`. Typing while five agents stream, a child chat open, and the agents row evicted and remounted. Gates keydown-to-paint p99 at 50 ms and maximum at 100 ms, whole-run render work p99 at 16.67 ms, and no renderer task over 50 ms from the start of typing to completion. Saves the trace, frame cadence, latency, row churn and work counts |
 | `chat-switching.spec.ts` | Runs only with `NYTE_PERF_DIR`. Six seeded 120-turn chats switched in a fixed order 20 times in one launch, each switch timed from the click to the new chat's last message painted. Saves `chat-switching.json` with the median, p95, and each switch's main-thread time by kind and hottest functions, plus the CPU profile |
-| `workbench.spec.ts` | The panel, the Files, Changes, Terminal and Browser tabs, Expand, closing tabs |
+| `workbench.spec.ts` | The panel, the Editor, Changes, Terminal and Browser tabs, Expand, closing tabs |
 | `browser.spec.ts` | The integrated browser against a local HTTP server |
 | `remote-access.spec.ts` | Settings > Server reading the host's own Tailscale node |
 | `scenario-u.spec.ts` | Scenario U from the keyboard: a skill, a cold places MCP server, a canvas and its link in the browser, an approved command, quitting mid-answer, relaunching and resuming. Checks each hop's span against its budget |

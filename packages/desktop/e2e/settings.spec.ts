@@ -135,7 +135,7 @@ test("the settings journey", async ({ desktop }) => {
 
   await test.step("Editor lists file and diff defaults", async () => {
     await openSettings(page, "Editor");
-    await expect(page.getByRole("heading", { level: 2 })).toHaveText(["Files", "Changes"]);
+    await expect(page.getByRole("heading", { level: 2 })).toHaveText(["Editing", "Changes"]);
     await expect(page.getByRole("switch", { name: "Line numbers" })).toBeChecked();
     await expect(page.getByRole("switch", { name: "Git blame" })).not.toBeChecked();
     await expect(page.getByRole("combobox", { name: "Diff layout" })).toHaveText("Unified");

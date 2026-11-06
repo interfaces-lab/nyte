@@ -388,7 +388,7 @@ export function createFileTabStore(
       });
       commit(key, {
         kind: "open",
-        tab: { id: crypto.randomUUID(), kind: "files" },
+        tab: { id: crypto.randomUUID(), kind: "editor" },
         activate: true,
       });
     },

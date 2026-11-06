@@ -21,7 +21,7 @@ import {
 import {
   browserSurface,
   DEFAULT_VIEW,
-  FILES_SLOT,
+  EDITOR_SLOT,
   tabSlot,
   WORKBENCH_KINDS,
   workbenchLaunchers,
@@ -102,11 +102,11 @@ function PanelContent({
 
   switch (tab.kind) {
     case "file":
-    case "files":
+    case "editor":
       return (
         <Deferred entry="workbench">
-          {({ FilesPanel }) => (
-            <FilesPanel
+          {({ EditorPanel }) => (
+            <EditorPanel
               key={uiFontSize}
               viewKey={viewKey}
               visible={visible}
@@ -336,10 +336,10 @@ function WorkbenchViewHost({
   };
 
   const mountedTabs = visibleTabs(view, scope, capabilities);
-  const fileTab = mountedTabs.find((tab) => tabSlot(tab) === FILES_SLOT);
-  const panelTabs = mountedTabs.filter((tab) => tabSlot(tab) !== FILES_SLOT);
+  const editorTab = mountedTabs.find((tab) => tabSlot(tab) === EDITOR_SLOT);
+  const panelTabs = mountedTabs.filter((tab) => tabSlot(tab) !== EDITOR_SLOT);
   const shownTab = current ? shownWorkbenchTab(view, scope, capabilities) : null;
-  const fileVisible = shownTab !== null && tabSlot(shownTab) === FILES_SLOT;
+  const editorVisible = shownTab !== null && tabSlot(shownTab) === EDITOR_SLOT;
 
   const renderSlot = (tab: WorkbenchTab, visible: boolean): ReactElement => {
     const slot = tabSlot(tab);
@@ -419,7 +419,7 @@ function WorkbenchViewHost({
             onDoubleClick={resetWidth}
           />
         )}
-        {fileTab !== undefined && renderSlot(fileTab, fileVisible)}
+        {editorTab !== undefined && renderSlot(editorTab, editorVisible)}
         {panelTabs.map((tab) => renderSlot(tab, shownTab?.id === tab.id))}
         {panelShown && shownTab === null && (
           <div {...props(workbenchStyles.launcher)}>

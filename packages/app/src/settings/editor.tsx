@@ -12,7 +12,7 @@ export function EditorSettings(): ReactElement {
   return (
     <>
       <SettingsSection
-        title="Files"
+        title="Editing"
         preview={
           <Deferred entry="previews">{(previews) => <previews.FileEditorPreview />}</Deferred>
         }

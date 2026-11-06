@@ -26,7 +26,7 @@ function useOpenableFiles(files: readonly MentionFile[] | undefined) {
   };
 }
 
-export function FilesEmptyState({
+export function EditorEmptyState({
   files,
   changes,
   explorerVisible,

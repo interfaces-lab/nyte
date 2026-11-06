@@ -3,7 +3,7 @@ import { clientCapabilities } from "../contract/client-actions.ts";
 import { nyte } from "../contract/nyte.ts";
 import { mentionsFolder } from "../references/message-references.ts";
 import type { ReferenceOpener } from "../references/reference-opener.tsx";
-import { fileActions } from "./files/file-store.ts";
+import { fileActions } from "./editor/file-store.ts";
 import { matchingTab, WORKBENCH_KINDS } from "./model.ts";
 import type {
   KindInput,

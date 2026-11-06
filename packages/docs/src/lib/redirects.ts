@@ -7,6 +7,7 @@ const exact = new Map([
   ["/docs/build/sdk", "/docs/sdk"],
   ["/docs/build/environments", "/docs/build/composition"],
   ["/docs/desktop", "/docs"],
+  ["/docs/desktop/files", "/docs/desktop/editor"],
   ["/docs/build/desktop", "/docs"],
 ]);
 

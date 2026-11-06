@@ -79,11 +79,11 @@ test.each([
 ])("restored panel width $width with share $share resolves to $expected pixels", (row) => {
   const store = createWorkbenchStore(() => ({ browser: true }), {
     get: () => ({
-      version: 7,
+      version: 8,
       views: [
         {
           key: "/workspace",
-          tabs: [{ id: "files", kind: "files" }],
+          tabs: [{ id: "files", kind: "editor" }],
           active: "files",
           expanded: true,
           maximized: false,
@@ -97,7 +97,7 @@ test.each([
 
   expect(workbenchPanelWidth(store.getView("/workspace").width, 1400)).toBe(row.expected);
   expect(workbenchPanelWidth(store.getView("/workspace").width, 2000)).toBe(row.expected);
-  expect(store.getView("/workspace").tabs).toMatchObject([{ id: "files", kind: "files" }]);
+  expect(store.getView("/workspace").tabs).toMatchObject([{ id: "files", kind: "editor" }]);
   store.dispatch("/workspace", { kind: "set-width", pixels: 640 });
   expect(workbenchPanelWidth(store.getView("/workspace").width, 2000)).toBe(640);
 });

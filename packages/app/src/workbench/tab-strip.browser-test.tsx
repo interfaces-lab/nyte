@@ -5,7 +5,7 @@ import type { JobView } from "@nyte-ai/sdk";
 import { WorkbenchTabStrip } from "./tab-strip.tsx";
 import { workbenchViewKey } from "./paths.ts";
 import { workbench } from "./store.ts";
-import { fileActions } from "./files/file-store.ts";
+import { fileActions } from "./editor/file-store.ts";
 import { terminalActions } from "./terminal/terminal-store.ts";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../theme/tokens.stylex.ts";

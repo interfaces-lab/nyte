@@ -365,11 +365,11 @@ test("the rendered layout against the spatial grid", async ({ desktop }) => {
     await page.getByRole("button", { name: "New workbench tab" }).click();
     await page
       .getByRole("menu", { name: "New workbench tab" })
-      .getByRole("menuitem", { name: "Files" })
+      .getByRole("menuitem", { name: "Editor" })
       .click();
 
     await expect(
-      page.getByRole("tablist", { name: "Workbench tabs" }).getByRole("tab", { name: "Files" }),
+      page.getByRole("tablist", { name: "Workbench tabs" }).getByRole("tab", { name: "Editor" }),
     ).toBeVisible();
 
     await page.getByRole("button", { name: "Close workbench panel" }).click();
@@ -479,16 +479,16 @@ test("the rendered layout against the spatial grid", async ({ desktop }) => {
     await page.getByRole("button", { name: "Open workbench panel" }).click();
     await page
       .getByRole("tablist", { name: "Workbench tabs" })
-      .getByRole("tab", { name: "Files" })
+      .getByRole("tab", { name: "Editor" })
       .click();
-    const files = workbench(page).getByRole("region", { name: "Files" });
-    await files.getByRole("button", { name: "Show Explorer" }).click();
-    await files.getByRole("treeitem", { name: /editor\.md/u }).click();
-    const editor = files.getByRole("textbox", { name: "editor.md" });
+    const editorPanel = workbench(page).getByRole("region", { name: "Editor" });
+    await editorPanel.getByRole("button", { name: "Show Explorer" }).click();
+    await editorPanel.getByRole("treeitem", { name: /editor\.md/u }).click();
+    const editor = editorPanel.getByRole("textbox", { name: "editor.md" });
     await expect(editor.getByRole("heading", { name: "Editor", level: 1 })).toBeVisible();
     await expect(editor.getByRole("table")).toBeVisible();
-    await files.getByRole("treeitem", { name: /^\.nyte/u }).click();
-    await expect(files.getByRole("treeitem")).toHaveCount(4);
+    await editorPanel.getByRole("treeitem", { name: /^\.nyte/u }).click();
+    await expect(editorPanel.getByRole("treeitem")).toHaveCount(4);
     await capture("workbench-editor");
   });
 
