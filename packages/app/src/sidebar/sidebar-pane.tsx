@@ -263,7 +263,9 @@ export function SidebarPane({ children }: { readonly children: ReactNode }): Rea
         )}
         initial={false}
         style={{ x: floatX }}
-        animate={{ x: float === "out" ? -(sidebarWidth + FLOAT_CLEARANCE) : 0 }}
+        animate={{
+          x: float === "out" ? -(sidebarWidth + FLOAT_CLEARANCE) : float === "in" ? [null, 0] : 0,
+        }}
         transition={
           float === undefined
             ? { duration: 0 }
