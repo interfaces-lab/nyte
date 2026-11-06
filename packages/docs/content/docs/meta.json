@@ -6,6 +6,8 @@
     "remote-access",
     "environment-variables",
     "agents",
+    "---Desktop app---",
+    "desktop/files",
     "---Configure---",
     "configure/settings",
     "configure/permissions",
