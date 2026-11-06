@@ -119,6 +119,11 @@
       "types": "./dist/menu.d.ts",
       "default": "./dist/menu.js"
     },
+    "./morph": {
+      "nyte-source": "./src/morph.tsx",
+      "types": "./dist/morph.d.ts",
+      "default": "./dist/morph.js"
+    },
     "./number-field": {
       "nyte-source": "./src/number-field.tsx",
       "types": "./dist/number-field.d.ts",
