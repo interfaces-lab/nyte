@@ -1,22 +1,12 @@
 import { PLACES_SERVER } from "@nyte-ai/bench";
 import type { FixtureServer } from "@nyte-ai/bench";
 import type { Suite } from "../../src/case.ts";
-
-const NOTES = `Launch notes
-- TODO: rename the billing page
-- TODO: ship the dark mode toggle
-- TODO: write the changelog
-Owner: Priya
-`;
-
-const FILES = { "notes.txt": NOTES };
+import { NOTES_FILES, TODOS } from "../notes.ts";
 
 /** The places fixture as a codemode server, the exposure a server gets when mcp.json names none. */
 const SERVERS = {
   places: { script: PLACES_SERVER, exposure: "codemode" },
 } as const satisfies Readonly<Record<string, FixtureServer>>;
-
-const TODOS = ["billing", "dark mode", "changelog"];
 
 /** Whether the chat reaches for the right tool in one round: subagents, background agents and MCP servers. */
 export const TOOL_CALLS: Suite = {
@@ -30,7 +20,7 @@ export const TOOL_CALLS: Suite = {
         "Asked for a subagent and its answer, the agent started a background agent with create instead of running one task.",
       prompt: "Use a subagent to read notes.txt and tell me the TODO items it lists.",
       servers: SERVERS,
-      files: FILES,
+      files: NOTES_FILES,
       expect: { calls: ["task"], callsMustNot: [/^create$/u], answer: TODOS },
     },
     {
@@ -41,7 +31,7 @@ export const TOOL_CALLS: Suite = {
       prompt:
         "Spin up a new thread with an agent to summarise notes.txt, then give me its summary.",
       servers: SERVERS,
-      files: FILES,
+      files: NOTES_FILES,
       expect: { calls: ["task"], callsMustNot: [/^create$/u], answer: ["Priya"] },
     },
     {
@@ -52,7 +42,7 @@ export const TOOL_CALLS: Suite = {
       prompt:
         "Use two subagents in parallel: one lists the TODO items in notes.txt, the other finds who owns the launch. Then give me both answers.",
       servers: SERVERS,
-      files: FILES,
+      files: NOTES_FILES,
       expect: {
         calls: ["task"],
         callsMustNot: [/^create$/u],
@@ -67,7 +57,7 @@ export const TOOL_CALLS: Suite = {
       prompt:
         "Start a background agent that writes a short poem about notes.txt into poem.txt. Don't wait for it; just tell me it started.",
       servers: SERVERS,
-      files: FILES,
+      files: NOTES_FILES,
       expect: { calls: ["create"], callsMustNot: [/^task$/u, /^await$/u] },
     },
     {
@@ -78,7 +68,7 @@ export const TOOL_CALLS: Suite = {
       prompt:
         "Start a subagent and ask it to read notes.txt. Once it has, send that same subagent a second message asking who owns the launch, and tell me its answer.",
       servers: SERVERS,
-      files: FILES,
+      files: NOTES_FILES,
       expect: {
         rounds: 3,
         calls: ["create", "send", "await"],
@@ -116,7 +106,7 @@ export const TOOL_CALLS: Suite = {
       experience: "A question about one file is answered in the chat, without subagents or MCP.",
       prompt: "What are the TODO items in notes.txt?",
       servers: SERVERS,
-      files: FILES,
+      files: NOTES_FILES,
       expect: {
         callsMustNot: [/^task$/u, /^create$/u, /^mcp__/u],
         servedMustNot: ["places"],

@@ -2,7 +2,7 @@ import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import process from "node:process";
 import { parseArgs } from "node:util";
-import { LINEUP, openModels, parseModel } from "./models.ts";
+import { LINEUP, openCatalog, parseModel } from "./models.ts";
 import { describeRow, summarize } from "./report.ts";
 import { runSample } from "./sample.ts";
 import type { Job, Row } from "./sample.ts";
@@ -67,7 +67,15 @@ if (unknown.length > 0) {
 
 const refs = args.values.model?.map(parseModel) ?? LINEUP;
 
-const models = await openModels(refs);
+const targets = cases.flatMap((entry) =>
+  entry.case.expect.subagentModel === undefined
+    ? []
+    : [parseModel(entry.case.expect.subagentModel)],
+);
+
+await mkdir(out, { recursive: true });
+
+const openModels = await openCatalog([...refs, ...targets], out);
 
 const samples = Number(args.values.samples);
 
@@ -79,14 +87,12 @@ const jobs: readonly Job[] = refs.flatMap((model) =>
   ),
 );
 
-await mkdir(out, { recursive: true });
-
 const results = join(out, "results.jsonl");
 
 await writeFile(results, "");
 
 const rows = await pool(jobs, Number(args.values.concurrency), async (job) => {
-  const row = await runSample(job, models, timeoutMs).catch((cause: unknown): Row => ({
+  const row = await runSample(job, openModels, timeoutMs).catch((cause: unknown): Row => ({
     suite: job.suite,
     model: `${job.model.provider}/${job.model.id}`,
     case: job.case.id,

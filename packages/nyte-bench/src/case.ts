@@ -14,6 +14,8 @@ export interface Expectation {
   readonly served?: readonly string[];
   /** Fixture MCP servers that must not have served any call. */
   readonly servedMustNot?: readonly string[];
+  /** The model, as `provider/id`, every subagent runs on, and there is at least one. */
+  readonly subagentModel?: string;
   /** Text the chat's last message holds, case-insensitively. */
   readonly answer?: readonly string[];
 }
@@ -29,6 +31,8 @@ export interface BenchCase {
   readonly servers: Readonly<Record<string, FixtureServer>>;
   /** Files in the chat's workspace, by name. */
   readonly files: Readonly<Record<string, string>>;
+  /** When set, every subagent request gets this reply instead of reaching its model, so the case measures only how the chat started the subagent. */
+  readonly subagentReply?: string;
   readonly expect: Expectation;
 }
 

@@ -1,8 +1,9 @@
+import { join } from "node:path";
 import process from "node:process";
-import { nyteProviders } from "@nyte-ai/ai";
+import { FileModelsStore, nyteProviders } from "@nyte-ai/ai";
 import { defaultProviderAuthContext } from "@nyte-ai/ai/auth/context";
 import { createModels } from "@nyte-ai/ai/models";
-import type { MutableModels } from "@nyte-ai/ai/models";
+import type { MutableModels, Provider } from "@nyte-ai/ai/models";
 import type { ModelRef } from "@nyte-ai/schema";
 import { readNyteLogins } from "./login.ts";
 
@@ -29,29 +30,47 @@ export function parseModel(name: string): ModelRef {
   return known;
 }
 
-/** Models over the Nyte logins of `refs`' providers, refreshed, with every ref known and signed in. */
-export async function openModels(refs: readonly ModelRef[]): Promise<MutableModels> {
+/** Builds one sample's models, each provider passed through `wrap`. */
+export type ModelsFactory = (wrap: (provider: Provider) => Provider) => Promise<MutableModels>;
+
+/**
+ * Refreshes the catalogs of `refs`' providers once into a models store in `folder`, checks that
+ * every ref is known and signed in, and returns a factory for each sample's own models: they
+ * share the Nyte logins and restore the stored catalogs without the network.
+ */
+export async function openCatalog(
+  refs: readonly ModelRef[],
+  folder: string,
+): Promise<ModelsFactory> {
   const providers = [...new Set(refs.map((ref) => ref.provider))];
+  const credentials = await readNyteLogins(providers);
+  const modelsStore = new FileModelsStore(join(folder, "models-store.json"));
 
-  const models = createModels({
-    credentials: await readNyteLogins(providers),
-    authContext: defaultProviderAuthContext(),
-    catalog: { url: process.env.NYTE_MODELS_URL },
-  });
+  const build = async (wrap: (provider: Provider) => Provider, allowNetwork: boolean) => {
+    const models = createModels({
+      credentials,
+      modelsStore,
+      authContext: defaultProviderAuthContext(),
+      catalog: { url: process.env.NYTE_MODELS_URL },
+    });
 
-  for (const provider of nyteProviders()) models.setProvider(provider);
+    for (const provider of nyteProviders()) models.setProvider(wrap(provider));
+    await models.refresh({ providers, allowNetwork });
 
-  await models.refresh({ providers });
+    return models;
+  };
+
+  const first = await build((provider) => provider, true);
 
   for (const ref of refs) {
-    if (models.getModel(ref.provider, ref.id) === undefined)
+    if (first.getModel(ref.provider, ref.id) === undefined)
       throw new Error(`${ref.provider} has no model ${ref.id}.`);
 
-    if ((await models.checkAuth(ref.provider)) === undefined)
+    if ((await first.checkAuth(ref.provider)) === undefined)
       throw new Error(
         `${ref.provider} has no credential. Sign in to it in Nyte, or set its API key (ANTHROPIC_API_KEY for anthropic).`,
       );
   }
 
-  return models;
+  return (wrap) => build(wrap, false);
 }

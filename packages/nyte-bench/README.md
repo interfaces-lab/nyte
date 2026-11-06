@@ -9,6 +9,7 @@ Each sample opens a fresh host from this checkout with `simulate()` from `@nyte-
 | Suite | Measures |
 | --- | --- |
 | [`tool-calls`](suites/tool-calls/README.md) | Subagents, background agents and MCP tools, called right in one round |
+| [`subagent-models`](suites/subagent-models/README.md) | A subagent started on the model the user named loosely, in one round |
 
 ## Run
 
@@ -49,3 +50,5 @@ The report has:
 ## Add a suite or a case
 
 A suite is a list of cases in `suites/<id>/cases.ts`, registered in `src/suites.ts`, with a README that says what it measures. A case reproduces a real bad experience in Nyte or guards a good one: its `kind` is `bad`, `guard` or `control`, and its `experience` names what happened. Write it before the fix: it must fail on the text before and pass on the text after. Add a control next to a fix that could overcorrect. Model output varies, so compare runs on the same model with several samples, not one sample against a fixed score.
+
+A case that measures only how the chat starts a subagent sets `subagentReply`: every subagent request gets that reply instead of reaching its model, and the bench still records which model each one was sent to, for `expect.subagentModel`.

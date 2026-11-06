@@ -15,6 +15,8 @@ export interface Call {
 export interface Trace {
   readonly calls: readonly Call[];
   readonly requests: number;
+  /** The model of every subagent request, as `provider/id`. */
+  readonly subagents: readonly string[];
   readonly served: readonly string[];
   readonly answer: string;
 }
@@ -73,6 +75,20 @@ export function grade(expect: Expectation, trace: Trace): readonly Check[] {
         detail: served.join(", "),
       };
     }),
+    ...(expect.subagentModel === undefined
+      ? []
+      : [
+          {
+            name: `subagents run on ${expect.subagentModel}`,
+            pass:
+              trace.subagents.length > 0 &&
+              trace.subagents.every((model) => model === expect.subagentModel),
+            detail:
+              trace.subagents.length === 0
+                ? "no subagent"
+                : [...new Set(trace.subagents)].join(", "),
+          },
+        ]),
     ...(expect.answer ?? []).map((needle) => ({
       name: `answers ${needle}`,
       pass: answer.includes(needle.toLowerCase()),

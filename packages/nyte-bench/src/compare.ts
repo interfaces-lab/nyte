@@ -27,8 +27,11 @@ if (base === undefined || candidate === undefined) {
 }
 
 const before = await readRows(base);
+
 const after = await readRows(candidate);
+
 const models = [...new Set([...before, ...after].map((row) => row.model))];
+
 const cases = [...new Set([...before, ...after].map((row) => row.case))];
 
 const score = (rows: readonly Row[], model: string, id?: string) => {

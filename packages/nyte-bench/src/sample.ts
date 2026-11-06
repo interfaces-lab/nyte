@@ -3,13 +3,14 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import type { AssistantMessageEventStream } from "@nyte-ai/ai";
-import type { MutableModels } from "@nyte-ai/ai/models";
-import { readSpanFile, scenarioHome, simulate } from "@nyte-ai/bench";
+import type { Provider } from "@nyte-ai/ai/models";
+import { fakeModels, readSpanFile, scenarioHome, simulate } from "@nyte-ai/bench";
 import { isPart, text, tool } from "@nyte-ai/core";
 import type { Host } from "@nyte-ai/core";
 import type { ModelRef, SessionId, SessionView, ToolPartState } from "@nyte-ai/schema";
 import { getCurrentTools } from "@nyte-ai/schema/model";
 import type { TranscriptContext } from "@nyte-ai/schema/model";
+import type { ModelsFactory } from "./models.ts";
 import type { BenchCase, CaseKind } from "./case.ts";
 import { grade } from "./grade.ts";
 import type { Call, Check, Trace } from "./grade.ts";
@@ -51,11 +52,16 @@ interface Member {
  * waits for the chat and its subagents to settle and grades what they did. A chat run that
  * fails, such as on a provider error, rejects instead of grading, so it counts against no model.
  */
-export async function runSample(job: Job, models: MutableModels, timeoutMs: number): Promise<Row> {
+export async function runSample(
+  job: Job,
+  openModels: ModelsFactory,
+  timeoutMs: number,
+): Promise<Row> {
   const started = performance.now();
   await using home = await scenarioHome({ servers: job.case.servers, skills: {} });
-  const counted = countChatRequests(models, job.model.provider);
-  await using simulation = await simulate({ models: counted.models, home: home.home });
+  const counted = probeRequests(job.case.subagentReply);
+  const models = await openModels(counted.wrap);
+  await using simulation = await simulate({ models, home: home.home });
 
   for (const [name, body] of Object.entries(job.case.files))
     await writeFile(join(simulation.workspace, name), body);
@@ -85,6 +91,7 @@ export async function runSample(job: Job, models: MutableModels, timeoutMs: numb
       ),
     ),
     requests: counted.requests(),
+    subagents: counted.subagents(),
     served: spans.flatMap((span) =>
       span.name === "mcp.serve"
         ? [`${String(span.detail.server)}/${String(span.detail.tool)}`]
@@ -180,27 +187,42 @@ function commitWorkspace(folder: string): void {
 }
 
 /**
- * The models, with `provider` counting the chat's first-turn requests: those that offer `task`,
- * which only a top-level chat is given, and hold one user message, the prompt. A subagent's
- * report back to the chat arrives as another message, so its turn doesn't count. It also adds
- * up what every request through the provider cost, the chat's, its subagents' and the title's,
- * including requests of runs the bench stopped, whose usage the session view leaves out.
+ * Wraps each provider of a sample's models to watch its requests. It counts the chat's
+ * first-turn requests: those that offer `task`, which only a top-level chat is given, and hold
+ * one user message, the prompt, so a subagent's report back to the chat doesn't count. It
+ * records the model of every subagent request, one that offers tools but not `task`, and with
+ * `subagentReply` answers those requests with it instead of reaching the model. It adds up what
+ * every request that reached a model cost, including requests of runs the bench stopped, whose
+ * usage the session view leaves out.
  */
-function countChatRequests(base: MutableModels, provider: string) {
-  const inner = base.getProvider(provider);
-
-  if (inner === undefined) throw new Error(`No provider is named ${provider}.`);
+function probeRequests(subagentReply: string | undefined) {
   let requests = 0;
+  const subagents: string[] = [];
   const costs: Promise<number>[] = [];
 
-  const tally = (context: TranscriptContext): void => {
-    const chat = getCurrentTools(context.messages).some((entry) => entry.name === "task");
+  const scripted = fakeModels({
+    fallback: { content: [{ type: "text", text: subagentReply ?? "" }] },
+  }).provider;
+
+  const route = (
+    provider: string,
+    model: { readonly id: string },
+    context: TranscriptContext,
+    reach: () => AssistantMessageEventStream,
+    script: () => AssistantMessageEventStream,
+  ): AssistantMessageEventStream => {
+    const tools = getCurrentTools(context.messages);
+    const chat = tools.some((entry) => entry.name === "task");
     const users = context.messages.filter((message) => message.role === "user").length;
 
     if (chat && users === 1) requests += 1;
-  };
+    const subagent = !chat && tools.length > 0;
 
-  const priced = (stream: AssistantMessageEventStream): AssistantMessageEventStream => {
+    if (subagent) subagents.push(`${provider}/${model.id}`);
+
+    if (subagent && subagentReply !== undefined) return script();
+    const stream = reach();
+
     costs.push(
       stream.result().then(
         (message) => message.usage.cost.total,
@@ -211,21 +233,32 @@ function countChatRequests(base: MutableModels, provider: string) {
     return stream;
   };
 
+  const wrap = (inner: Provider): Provider => ({
+    ...inner,
+    stream(model, context, options) {
+      return route(
+        inner.id,
+        model,
+        context,
+        () => inner.stream(model, context, options),
+        () => scripted.streamSimple(model, context),
+      );
+    },
+    streamSimple(model, context, options) {
+      return route(
+        inner.id,
+        model,
+        context,
+        () => inner.streamSimple(model, context, options),
+        () => scripted.streamSimple(model, context, options),
+      );
+    },
+  });
+
   return {
-    models: base.withProvider({
-      ...inner,
-      stream(model, context, options) {
-        tally(context);
-
-        return priced(inner.stream(model, context, options));
-      },
-      streamSimple(model, context, options) {
-        tally(context);
-
-        return priced(inner.streamSimple(model, context, options));
-      },
-    }),
+    wrap,
     requests: () => requests,
+    subagents: () => [...subagents],
     cost: async () => (await Promise.all(costs)).reduce((sum, cost) => sum + cost, 0),
   };
 }
