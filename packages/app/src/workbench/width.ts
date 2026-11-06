@@ -1,9 +1,9 @@
 import { elementVariable } from "../lib/element-variable.ts";
 import { workbench } from "../theme/schema.stylex.ts";
 
-const WORKBENCH_WIDTH_MIN = workbench.widthMin;
+const WORKBENCH_WIDTH_MIN = Number(workbench.widthMin);
 
-export const WORKBENCH_CENTER_WIDTH_MIN = workbench.centerWidthMin;
+export const WORKBENCH_CENTER_WIDTH_MIN = Number(workbench.centerWidthMin);
 
 const activeWidth = elementVariable("--nyte-active-workbench-width", "500px");
 
@@ -15,7 +15,9 @@ export function setActiveWorkbenchWidth(width: number): void {
 
 export type WorkbenchWidth = { readonly pixels: number };
 
-export const DEFAULT_WIDTH: WorkbenchWidth = Object.freeze({ pixels: workbench.widthDefault });
+export const DEFAULT_WIDTH: WorkbenchWidth = Object.freeze({
+  pixels: Number(workbench.widthDefault),
+});
 
 type WorkbenchWidthBounds = {
   readonly narrow: boolean;

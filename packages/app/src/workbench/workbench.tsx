@@ -267,7 +267,12 @@ function WorkbenchViewHost({
     const panel = panelRef.current;
 
     if (panel !== null) {
-      panel.style.setProperty("--_workbench-width", `${String(resize.nextWidth)}px`);
+      const preview = props(workbenchStyles.panelWidth(resize.nextWidth)).style;
+
+      for (const entry of Object.entries(preview ?? {})) {
+        panel.style.setProperty(entry[0], String(entry[1]));
+      }
+
       setActiveWorkbenchWidth(resize.nextWidth);
     }
   };
