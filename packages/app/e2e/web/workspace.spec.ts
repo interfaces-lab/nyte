@@ -22,7 +22,7 @@ test("a paired browser reads, edits, blames, searches, and mentions workspace fi
 }) => {
   const errors = collectErrors(page);
   const savedLine = `Saved through workspace.save ${randomUUID()}.`;
-  const editorPanel = page.getByRole("region", { name: "Editor" });
+  const editorPanel = page.getByRole("region", { name: "Editor", exact: true });
   const readme = editorPanel.getByRole("treeitem", { name: /README\.md/u });
   await pair(page);
 

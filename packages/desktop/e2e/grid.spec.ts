@@ -481,7 +481,7 @@ test("the rendered layout against the spatial grid", async ({ desktop }) => {
       .getByRole("tablist", { name: "Workbench tabs" })
       .getByRole("tab", { name: "Editor" })
       .click();
-    const editorPanel = workbench(page).getByRole("region", { name: "Editor" });
+    const editorPanel = workbench(page).getByRole("region", { name: "Editor", exact: true });
     await editorPanel.getByRole("button", { name: "Show Explorer" }).click();
     await editorPanel.getByRole("treeitem", { name: /editor\.md/u }).click();
     const editor = editorPanel.getByRole("textbox", { name: "editor.md" });

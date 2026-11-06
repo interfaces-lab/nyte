@@ -81,14 +81,15 @@ const persistedTerminalTab = Type.Object(
   strict,
 );
 
-const persistedTab = Type.Union([
+const sharedTabs = [
   persistedFileTab,
   persistedChangesTab,
   persistedBrowserTab,
   persistedCanvasTab,
-  persistedEditorTab,
   persistedTerminalTab,
-]);
+] as const;
+
+const persistedTab = Type.Union([...sharedTabs, persistedEditorTab]);
 
 const persistedWorkbenchView = Type.Object({
   key: nonEmpty,
@@ -101,6 +102,24 @@ const persistedWorkbenchView = Type.Object({
 
 const persistedWorkbenchSnapshot = Type.Object(
   { version: Type.Literal(8), views: Type.Array(persistedWorkbenchView) },
+  strict,
+);
+
+const v7WorkbenchSnapshot = Type.Object(
+  {
+    version: Type.Literal(7),
+    views: Type.Array(
+      Type.Object({
+        ...persistedWorkbenchView.properties,
+        tabs: Type.Array(
+          Type.Union([
+            ...sharedTabs,
+            Type.Object({ id: nonEmpty, kind: Type.Literal("files") }, strict),
+          ]),
+        ),
+      }),
+    ),
+  },
   strict,
 );
 
@@ -222,5 +241,32 @@ export function persistable(snapshot: WorkbenchSnapshot): PersistedWorkbenchSnap
 }
 
 export function workbenchPersistence(area: StorageArea | undefined): WorkbenchPersistence {
-  return persisted("nyte:desktop:workbench:v7", persistedWorkbenchSnapshot, undefined, area);
+  const stored = persisted(
+    "nyte:desktop:workbench:v7",
+    Type.Union([v7WorkbenchSnapshot, persistedWorkbenchSnapshot]),
+    undefined,
+    area,
+  );
+
+  return {
+    get() {
+      const snapshot = stored.get();
+
+      if (snapshot === undefined || snapshot.version === 8) return snapshot;
+
+      const current: PersistedWorkbenchSnapshot = {
+        ...snapshot,
+        version: 8,
+        views: snapshot.views.map((view) => ({
+          ...view,
+          tabs: view.tabs.map((tab) => (tab.kind === "files" ? { ...tab, kind: "editor" } : tab)),
+        })),
+      };
+
+      stored.set(current);
+
+      return current;
+    },
+    set: stored.set,
+  };
 }
