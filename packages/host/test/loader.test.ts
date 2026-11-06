@@ -28,7 +28,6 @@ async function folder(): Promise<string> {
   return made;
 }
 
-/** Runs `script` in a plain Node process, with `createPluginLoader`, `mkdir` and `writeFile` in scope, and parses what it prints. Under Vitest a plugin's imports go through Vitest's module runner, not Node's loader and the resolve hook that reloads a plugin's helpers. */
 async function inNode(script: string): Promise<unknown> {
   const loader = new URL("../src/plugins/loader.ts", import.meta.url);
 

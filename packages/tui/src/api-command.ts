@@ -1,17 +1,13 @@
-import { describeOperations, isJson } from "@nyte-ai/schema";
-import type { Json } from "@nyte-ai/schema";
-import { asSdkError, encodeError } from "@nyte-ai/protocol";
+import { answersOnce, namesOperation } from "@nyte-ai/protocol";
 import type { HostSocket } from "@nyte-ai/protocol";
+import { describeOperations, isJson, OPERATIONS } from "@nyte-ai/schema";
+import type { Json } from "@nyte-ai/schema";
 import type { Connection, OperationDescription } from "@nyte-ai/sdk";
-import { alignedRows, ansiEnabled, bold, dim } from "./cli-style.ts";
-
-interface Output {
-  readonly write: (text: string) => void;
-  readonly error: (text: string) => void;
-}
-
-const USAGE =
-  "Usage: nyte api <list | describe <operation> | call <operation> [json-input]> [--json] [--host-url <url>]. Run `nyte api --help`.";
+import { CliError } from "./cli/errors.ts";
+import { formatRows, formatTable, printable } from "./cli/format.ts";
+import { parseCommandArgs, readAction } from "./cli/options.ts";
+import type { Output } from "./cli/output.ts";
+import { hostFailure, readHostUrl } from "./host-socket.ts";
 
 /** Without `--host-url`, `list` and `describe` read this build's own table, so they need no running host. Returns the exit code. */
 export async function apiCommand(input: {
@@ -20,111 +16,146 @@ export async function apiCommand(input: {
   readonly connect: (hostUrl: string | undefined) => Promise<HostSocket>;
   readonly stdin: () => Promise<string>;
   readonly output: Output;
+  /** Columns on stdout, for shortening summaries in a terminal. */
+  readonly width: number;
 }): Promise<number> {
   const parsed = parseApiArgs(input.args);
+  const output = input.output;
 
   if (parsed.command === "call") {
-    const text = parsed.input ?? (await input.stdin());
-    const value = readInput(text.trim() === "" ? "{}" : text);
+    const op = parsed.operation;
+
+    if (parsed.hostUrl === undefined) knownCall(op);
+
+    const value =
+      parsed.input === undefined
+        ? await readStdinInput(op, input)
+        : readJson(parsed.input, "the input argument");
+
     const socket = await input.connect(parsed.hostUrl);
 
     try {
-      return await socket.call(parsed.names[0] ?? "", value).then(
-        (output) => {
-          input.output.write(`${JSON.stringify(output, null, 2)}\n`);
+      output.json(await socket.call(op, value).catch(hostFailure(`call ${op}`)));
 
-          return 0;
-        },
-        (error: Error) => {
-          input.output.error(JSON.stringify(encodeError(asSdkError(error)), null, 2));
-
-          return 1;
-        },
-      );
+      return 0;
     } finally {
       socket.close();
     }
   }
 
+  const names = parsed.command === "describe" ? [parsed.operation] : undefined;
+
+  if (parsed.hostUrl === undefined && parsed.command === "describe")
+    knownOperation(parsed.operation);
+
   const operations =
     parsed.hostUrl === undefined
-      ? describeOperations(parsed.names)
-      : await (await input.attach(parsed.hostUrl)).operations.describe(parsed.names);
+      ? describeOperations(names)
+      : await (
+          await input.attach(parsed.hostUrl)
+        ).operations
+          .describe(names)
+          .catch(
+            hostFailure(
+              parsed.command === "describe" ? `describe ${parsed.operation}` : "list operations",
+            ),
+          );
 
   if (parsed.json) {
-    input.output.write(
-      `${JSON.stringify(parsed.command === "describe" ? operations[0] : operations, null, 2)}\n`,
-    );
+    output.json(parsed.command === "describe" ? (operations[0] ?? null) : operations);
 
     return 0;
   }
-
-  const color = ansiEnabled();
 
   if (parsed.command === "list") {
-    const rows = operations.map((operation) => ({
-      label: operation.name,
-      detail: operation.summary,
-    }));
-
-    input.output.write(`${alignedRows(rows, color).join("\n")}\n`);
+    const rows = operations.map((operation) => [operation.name, printable(operation.summary)]);
+    const lines = formatTable(["Operation", "Summary"], rows, output.mode.stdout, input.width);
+    output.result(`${lines.join("\n")}\n`);
 
     return 0;
   }
 
-  for (const operation of operations) input.output.write(`${describeLines(operation, color)}\n`);
+  for (const operation of operations) output.result(`${describeLines(operation, output)}\n`);
 
   return 0;
 }
 
 function parseApiArgs(args: readonly string[]) {
-  const command = args[0];
-  const rest = args.slice(1);
-  const positional: string[] = [];
-  let json = false;
-  let hostUrl: string | undefined;
+  const found = readAction("api", args);
+  const command = found.action;
+  const operands = { list: 0, describe: 1, call: 2 }[command];
+  const parsed = parseCommandArgs("api", found.args, operands, command);
+  const json = parsed.has("json");
+  const hostUrl = readHostUrl("api", parsed.value("host-url"));
+  const operation = parsed.positionals[0];
 
-  for (let index = 0; index < rest.length; index += 1) {
-    const arg = rest[index];
+  if (command === "list") return { command, json, hostUrl } as const;
 
-    if (arg === "--json") json = true;
-    else if (arg === "--host-url") {
-      hostUrl = rest[index + 1];
+  if (operation === undefined)
+    throw new CliError("missing_input", `Name the operation to ${command}.`, {
+      next: [{ label: "See the options", argv: ["nyte", "api", command, "--help"] }],
+    });
 
-      if (hostUrl === undefined || hostUrl.startsWith("-"))
-        throw new Error("--host-url needs the host's URL.");
-      index += 1;
-    } else if (arg.startsWith("-")) throw new Error(`Unknown option ${arg}. ${USAGE}`);
-    else positional.push(arg);
-  }
+  if (command === "describe") return { command, operation, json, hostUrl } as const;
 
-  if (command === "list" && positional.length === 0)
-    return { command, names: undefined, json, hostUrl } as const;
-
-  if (command === "describe" && positional.length === 1)
-    return { command, names: positional, json, hostUrl } as const;
-
-  if (command === "call" && (positional.length === 1 || positional.length === 2))
-    return { command, names: positional.slice(0, 1), input: positional[1], json, hostUrl } as const;
-
-  throw new Error(USAGE);
+  return { command, operation, input: parsed.positionals[1], json, hostUrl } as const;
 }
 
-function readInput(text: string): Json {
+/** This build's table, checked before any request so a typo needs no host. `--host-url` skips it: that host may serve a newer table. */
+function knownCall(op: string): void {
+  knownOperation(op);
+
+  if (namesOperation(op) && !answersOnce(op))
+    throw new CliError(
+      "invalid_arguments",
+      `Can't call ${op}: it's a ${OPERATIONS[op].kind}, and call takes one answer.`,
+      { next: [{ label: "See how it answers", argv: ["nyte", "api", "describe", op] }] },
+    );
+}
+
+function knownOperation(op: string): void {
+  if (!namesOperation(op))
+    throw new CliError("not_found", `Couldn't find operation ${op}.`, {
+      next: [{ label: "See every operation", argv: ["nyte", "api", "list"] }],
+    });
+}
+
+/** A terminal stdin is someone typing, not a payload, so the input has to come as the argument. */
+async function readStdinInput(
+  op: string,
+  input: { readonly stdin: () => Promise<string>; readonly output: Output },
+): Promise<Json> {
+  if (input.output.mode.tty.stdin)
+    throw new CliError("missing_input", `Can't call ${op} without its input.`, {
+      next: [
+        { label: "Pass the input as JSON", argv: ["nyte", "api", "call", op, "<JSON>"] },
+        { label: "See its input schema", argv: ["nyte", "api", "describe", op] },
+      ],
+    });
+
+  const text = await input.stdin();
+
+  return text.trim() === "" ? {} : readJson(text, "stdin");
+}
+
+function readJson(text: string, source: string): Json {
   let value: unknown;
 
   try {
     value = JSON.parse(text);
-  } catch {
-    throw new Error(`The input isn't JSON: ${text.slice(0, 80)}`);
+  } catch (error) {
+    throw new CliError("invalid_arguments", `Can't read ${source} as JSON.`, {
+      details: [{ label: "Parser", value: error instanceof Error ? error.message : String(error) }],
+    });
   }
 
-  if (!isJson(value)) throw new Error("The input isn't JSON.");
+  if (!isJson(value)) throw new CliError("invalid_arguments", `Can't read ${source} as JSON.`);
 
   return value;
 }
 
-function describeLines(operation: OperationDescription, color: boolean): string {
+/** The answer on stdout: the summary, the facts as rows, then both schemas. Summaries from `--host-url` are remote text. */
+function describeLines(operation: OperationDescription, output: Output): string {
   const facts = [
     { label: "Operation", value: operation.name },
     { label: "Kind", value: operation.kind },
@@ -136,14 +167,14 @@ function describeLines(operation: OperationDescription, color: boolean): string 
   ];
 
   return [
-    operation.summary,
+    printable(operation.summary),
     "",
-    ...facts.map((fact) => `${dim(`${fact.label}:`, color)} ${fact.value}`),
+    ...formatRows(facts, output.mode.stdout),
     "",
-    bold("Input schema:", color),
+    "Input schema",
     JSON.stringify(operation.input, null, 2),
     "",
-    bold("Output schema:", color),
+    "Output schema",
     JSON.stringify(operation.output, null, 2),
   ].join("\n");
 }

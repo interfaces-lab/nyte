@@ -5,7 +5,6 @@ export const shell = defineConsts({
   titlebarHeight: "var(--nyte-titlebar-height)",
   trafficLightInset: "var(--nyte-titlebar-traffic-light-inset)",
   cardInset: "var(--nyte-shell-card-inset)",
-  /** Between the titlebar and the first row of the sidebar and of the workbench rail, so they read as one line. */
   regionPaddingBlockStart: "var(--nyte-shell-region-padding-block-start)",
   cardRadius: "var(--nyte-shell-card-radius)",
 });
@@ -30,7 +29,6 @@ export const conversation = defineConsts({
   composerNewChatRadius: "var(--nyte-composer-new-chat-radius)",
   composerExpandedRadius: "var(--nyte-composer-expanded-radius)",
   composerFooterSegmentMaxWidth: "var(--nyte-composer-footer-segment-max-width)",
-  /** The anchor name a chat's composer dock takes, so what floats over the transcript can sit above it. */
   composerDock: "--nyte-composer-dock",
 });
 

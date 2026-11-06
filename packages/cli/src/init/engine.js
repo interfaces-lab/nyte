@@ -1,12 +1,4 @@
 /**
- * Runs setup steps as check, apply, check. Every step is checked first, the
- * whole plan is shown, one question covers it, then each step that isn't done
- * is applied and checked again. There is no state file: the machine is the
- * state, so a second run finds nothing to do and a failed run resumes where it
- * stopped.
- */
-
-/**
  * @typedef {{ state: "done", detail: string } | { state: "todo" | "unknown", detail?: string }} Check
  *
  * @typedef {object} Step
@@ -31,7 +23,6 @@
 
 export const EXIT = { ready: 0, failed: 1, needsPerson: 2, cancelled: 130 };
 
-/** Thrown by apply when Ctrl-C stopped the command it ran. */
 export class Interrupted extends Error {}
 
 /**
@@ -159,7 +150,6 @@ export async function runSteps({ steps, ctx, ui, yes, checkOnly, interactive, in
   return EXIT.ready;
 }
 
-/** A check that throws is a step to apply, with the error as its reason. */
 async function safeCheck(step, ctx) {
   try {
     return await step.check(ctx);

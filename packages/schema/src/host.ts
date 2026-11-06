@@ -88,7 +88,6 @@ export const TailnetStatusType = Type.Object({
 
 export type TailnetStatus = Decoded<typeof TailnetStatusType>;
 
-/** When a tool call waits for the user, the approvals plugin's `permissions` setting: `ask`, `auto-edit` or `full`, from most to least asking. */
 export const ApprovalPolicyType = Type.Union([
   Type.Literal("ask"),
   Type.Literal("auto-edit"),
@@ -103,7 +102,6 @@ export const McpAccessType = Type.Union([
 
 export type McpAccess = Decoded<typeof McpAccessType>;
 
-/** The MCP grant a session was started through, and the approval policy its runs never exceed. */
 export const McpCeilingType = Type.Object({ grant: Type.String(), ceiling: ApprovalPolicyType });
 
 export type McpCeiling = Decoded<typeof McpCeilingType>;
@@ -201,7 +199,6 @@ export const DecodedObjectViewSchema: Schema<DecodedObjectView> = standard(
 
 export const IntegrityReportSchema: Schema<IntegrityReport> = standard(IntegrityReportType);
 
-/** A paired principal as the client holds it: the wire view with its authority as a set. */
 export type PrincipalView = Omit<PrincipalViewWire, "authority"> & {
   readonly authority: ReadonlySet<Authority>;
 };

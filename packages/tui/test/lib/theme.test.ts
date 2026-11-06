@@ -77,7 +77,6 @@ describe("backdrop", () => {
   });
 });
 
-/** xterm's default 16-color palette, which a 16-color terminal maps our 24-bit colors onto. */
 const ANSI_16 = [
   "#000000",
   "#cd0000",

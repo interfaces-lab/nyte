@@ -5,10 +5,6 @@ export const stringLiteral = Type.Object({ type: Type.Literal("Literal"), value:
 
 export const numberLiteral = Type.Object({ type: Type.Literal("Literal"), value: Type.Number() });
 
-/**
- * A value reaches the rule as a string or as a template with handles spliced
- * in, and only the literal parts of the template are the author's decision.
- */
 export const styleText = (node) => {
   if (Value.Check(stringLiteral, node)) return [node.value];
 
@@ -17,15 +13,9 @@ export const styleText = (node) => {
   return [];
 };
 
-/** A key names a property unless it is a condition, pseudo-selector, or at-rule, which name a state. */
 export const namesProperty = (key) =>
   key !== "default" && !key.startsWith(":") && !key.startsWith("@") && !key.startsWith("[");
 
-/**
- * Both call forms are in use: `stylex.create` and a bare `create` from a named
- * import. Tracking the bindings keeps the rules from enforcing the scale on
- * half the renderer while the other half drifts.
- */
 const createBindings = () => {
   const namespaces = new Set();
   const creators = new Set();
@@ -78,7 +68,6 @@ export const styleBody = (node) => {
   return node.body.body.find((statement) => statement.type === "ReturnStatement")?.argument;
 };
 
-/** Collect the import bindings, then hand each create call's style bodies, and their entries, to `visit`. */
 export const eachStyleBody = (visit) => {
   const bindings = createBindings();
 
@@ -98,7 +87,6 @@ export const eachStyleBody = (visit) => {
 
 export const HOVER_QUERY = "@media (hover: hover) and (pointer: fine)";
 
-/** `[media.hover]` from the schema, or the query it stands for. */
 export const guardsHover = (member) => {
   if (!member.computed) return keyName(member.key, false) === HOVER_QUERY;
 
@@ -112,7 +100,6 @@ export const guardsHover = (member) => {
   );
 };
 
-/** Every member below a style, with its object, whether the hover query encloses it, and its key. */
 export const eachStyleMember = (node, visit, guarded = false) => {
   if (node?.type !== "ObjectExpression") return;
 

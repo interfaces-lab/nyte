@@ -17,7 +17,6 @@ type Served = {
   readonly listener: Listener;
 };
 
-/** Starts the workflow that drives a head; the host hands each wake to it. */
 type Dispatch = Extract<
   NonNullable<OpenOptions["execution"]>,
   { readonly kind: "dispatch" }
@@ -31,7 +30,6 @@ const boot: Parameters<typeof sandboxProvider>[0]["boot"] = async () => {
 
 let building: Promise<Served> | null = null;
 
-/** This process's host, composed once, handing each wake to `dispatch`. */
 export function vercelHost(dispatch: Dispatch): Promise<Served> {
   const built = (building ??= build(dispatch));
 

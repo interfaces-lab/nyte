@@ -1,7 +1,3 @@
-/**
- * The Chat Completions request body: options, token limits, tools, and each
- * server family's reasoning parameters.
- */
 import OpenAI from "openai";
 import { resolveCacheRetention } from "../prompt-cache.ts";
 import type {
@@ -36,11 +32,6 @@ export interface OpenAICompletionsOptions extends StreamOptions {
   thinkingBudgets?: ThinkingBudgets;
 }
 
-/**
- * Check if conversation messages contain tool calls or tool results.
- * This is needed because Anthropic (via proxy) requires the tools param
- * to be present when messages include tool_calls or tool role messages.
- */
 function hasToolHistory(messages: Message[]): boolean {
   for (const msg of messages) {
     if (msg.role === "toolResult") {
@@ -80,17 +71,6 @@ type CompletionsRequest = Omit<
   messages: CompletionsMessage[];
 };
 
-/**
- * The Chat Completions request body.
- *
- * - A transcript with tool history always sends `tools`, empty if need be: Anthropic behind
- *   LiteLLM-style proxies requires it whenever messages carry tool calls or results.
- * - OpenRouter normalizes reasoning across providers through a nested `reasoning` object.
- * - A top-level thinking budget field caps reasoning independently of `thinkingFormat`, since one
- *   server can serve zai, qwen or chat-template models. Reasoning and the answer share
- *   `max_tokens` there, so uncapped reasoning can consume the whole response.
- * - `samplingParams` merge last, so custom keys override the named request fields.
- */
 export function buildParams(
   model: Model<"openai-completions">,
   context: TranscriptContext,

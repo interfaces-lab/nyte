@@ -40,6 +40,7 @@ To build a custom web app, use `@nyte-ai/sdk`. `sdk.open` and `host.listen` serv
 | `connect`, `connect-broker` | Product connection services |
 | `tailnet` | The host's embedded Tailscale node, a Go binary built for each platform |
 | `bench` | Test fixtures: scripted models, cassettes, scenarios and the host simulation |
+| `nyte-bench` | Nyte Bench: real models through this checkout's harness, scored on how well they use its tools |
 | `ui` | Component library, not published |
 | `docs`, `lab`, `examples/*` | Site, experiments and examples |
 

@@ -12,7 +12,6 @@ import type { DeviceCrypto } from "./enrollment.ts";
 
 const CLIENT_KEY = "nyte.account.client";
 
-/** The name a Mac lists this device under. */
 export const CLIENT_NAME = "iPhone";
 
 /**
@@ -40,11 +39,6 @@ function parseStoredClient(text: string | null): unknown {
   }
 }
 
-/**
- * This install's id toward one account. The broker replaces an earlier device
- * with the same id, so reconnecting does not pile up devices. Another account
- * gets a new id, so the broker cannot link the two.
- */
 export async function readClientId(ownerId: string): Promise<string> {
   const stored = parseStoredClient(await getItemAsync(CLIENT_KEY));
 

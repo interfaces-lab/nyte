@@ -7,7 +7,6 @@ import { TerminalPreview } from "./terminal.tsx";
 import { TypographyPreview } from "./typography.tsx";
 import { WindowPreview } from "./window.tsx";
 
-/** The settings cards' live previews. They render the workbench's editor, diff and terminal, so they load apart from startup. */
 export const previewsRuntime = {
   ActivityPreview,
   ConversationPreview,

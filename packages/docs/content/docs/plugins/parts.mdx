@@ -147,7 +147,7 @@ returns `closed`.
 ## Ask and wait for the answer [#wait]
 
 A tool can create a modal part and wait for the user. The wait survives a host restart, and any
-client watching the chat can answer. This part needs no `onAction`, because the answer is all the
+client attached to the chat can answer. This part needs no `onAction`, because the answer is all the
 tool wants:
 
 ```ts title="confirm.ts"
@@ -209,7 +209,7 @@ from the current state to the next one. It resolves with one of:
 - `closed`, `missing` or `stale`
 
 Pass `{ version }` to update only if nobody changed the part since that version. `part.close()` ends
-the part, and `part.watch()` yields its view each time it changes.
+the part.
 
 The rest of the action context:
 
@@ -225,11 +225,18 @@ The rest of the action context:
 
 ## Read parts from a client [#read]
 
-In a chat's view, a part is a message with `kind: "part"`. `isPart(message, checklist)` narrows a
-message to your kind and types its `state`:
+A part placed in the transcript is a row of the session's `messages` table, with `kind: "part"`. A
+modal part is a row of the session's `parts` table, a `PartView`. Each update to the part's state
+reaches clients as a change event that replaces its row. A client finds both in the `SessionView`
+that `session.view()` returns, or in the `HeadView` that `headView()` builds from a head store's
+rows.
+
+`isPart(message, checklist)` narrows a message to your kind and types its `state`:
 
 ```ts
 import { isPart } from "@nyte-ai/plugin/core";
+
+const view = await session.view();
 
 for (const message of view.messages)
   if (isPart(message, checklist)) console.log(message.state.title);

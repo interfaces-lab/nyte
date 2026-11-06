@@ -24,7 +24,6 @@ import {
 } from "./workspace-start.ts";
 import { useStartSender, workspaceStorage, type RegistryFolders } from "./workspace-start.tsx";
 
-/** The draft's text, then its photos, then the notes drawn on those photos. */
 function buildContent(draft: string, images: readonly StagedImage[]): DraftPart[] {
   const text = draft.trim();
 
@@ -39,13 +38,6 @@ function buildContent(draft: string, images: readonly StagedImage[]): DraftPart[
   ];
 }
 
-/**
- * Sending what the composer holds. In a session a `/command` line runs as a command and anything else is
- * sent, steering or queued behind a running response; a new conversation records a pending start in the
- * chosen folder and sends it in the background. A message leaves the draft once its photos are uploaded
- * and the SDK's journal holds it, so text typed meanwhile survives; a refusal puts it back in front of
- * whatever was typed since. A `/command` the host doesn't know goes out as a message.
- */
 export function useComposerSubmit({
   client,
   target,

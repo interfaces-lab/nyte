@@ -4,7 +4,6 @@ export interface Serial {
   run<T>(task: () => Promise<T>): Promise<T>;
   /** Resolves, never rejects, once every task queued so far has settled. */
   settled(): Promise<void>;
-  /** Whether a queued task has not settled yet. */
   readonly busy: boolean;
 }
 
@@ -14,7 +13,6 @@ export interface KeyedSerial<K> {
   run<T>(key: K, task: () => Promise<T>): Promise<T>;
 }
 
-/** Returns an empty {@link Serial}. */
 export function serial(): Serial {
   let tail: Promise<void> = Promise.resolve();
   let pending = 0;

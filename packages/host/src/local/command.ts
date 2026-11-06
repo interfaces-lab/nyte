@@ -21,7 +21,6 @@ export async function run(
     readonly env?: Readonly<Record<string, string>>;
     readonly input?: string | Uint8Array;
     readonly limit?: number;
-    /** Kills the command after this long; it then ends with a null code. */
     readonly timeoutMs?: number;
   },
 ): Promise<Ran> {
@@ -74,7 +73,6 @@ export async function run(
   });
 }
 
-/** Spawns `file` as `spawn` does, except that on Windows a `.cmd` or `.bat` file runs through `cmd.exe` with its arguments escaped, as Node no longer starts batch files without a shell. */
 export function spawnCommand(
   file: string,
   args: readonly string[],
@@ -91,7 +89,6 @@ export function spawnCommand(
   });
 }
 
-/** Ends `child` with `signal`; on Windows, which has no signals, it ends the child's whole process tree with `taskkill /T /F`, as `kill` alone would leave what a batch file or a shell started running. */
 export function killTree(child: ChildProcess, signal: NodeJS.Signals): void {
   if (process.platform !== "win32" || child.pid === undefined) {
     child.kill(signal);

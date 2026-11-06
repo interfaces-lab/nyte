@@ -12,10 +12,6 @@ export async function createFile(path: string): Promise<WriteOutcome> {
   return (await workspaceFiles()).write(path, "", { expect: "absent", parents: true });
 }
 
-/**
- * Applies a tree change, a move, copy or new folder, as one batch under a receipt, so a retry after
- * a lost answer can't report a change that landed as failed. Answers why it stopped, or undefined.
- */
 export async function applyChange(
   change: (batch: FileBatch) => FileBatch,
 ): Promise<string | undefined> {

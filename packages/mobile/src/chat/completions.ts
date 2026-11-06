@@ -25,13 +25,11 @@ function completionTrigger(value: string, cursor: number): CompletionTrigger | u
   return { kind, start, end, query: value.slice(start + 1, caret) };
 }
 
-/** A host read the menu shows as it goes: never an empty list standing in for a failure. */
 type Loaded<T> =
   | { readonly kind: "loading" }
   | { readonly kind: "failed"; readonly message: string }
   | { readonly kind: "ready"; readonly value: T };
 
-/** Each choice carries what accepting it writes, so the writer needs no lookup. */
 export type Suggestion =
   | {
       readonly kind: "file";
@@ -48,9 +46,7 @@ export interface Completion {
 }
 
 export interface Completions {
-  /** The menu for the token under the caret, when the caret is in one. */
   readonly completion: Completion | undefined;
-  /** Commands this conversation knows, once a `/` has asked the host for them. */
   readonly commands: readonly CommandInfo[];
 }
 
@@ -62,10 +58,8 @@ export type CompletionSource =
     }
   | { readonly kind: "registered"; readonly id: WorkspaceId | undefined };
 
-/** Commands and skills come whole, so the phone caps what it lists from them. */
 const MAX_SUGGESTIONS = 30;
 
-/** Each keystroke inside an `@` token would otherwise be one host request. */
 const FILE_DEBOUNCE_MS = 180;
 
 function delay(ms: number, signal: AbortSignal): Promise<void> {
@@ -127,13 +121,6 @@ function slashChoices(
   ];
 }
 
-/**
- * The suggestion menu for the trigger at the caret: files for `@`, commands and skills for `/`. While a
- * debounced file read lands, the previous key's rows stay up, so a keystroke narrows the menu instead of
- * flashing the loading notice. The debounce needs no timer: the query reads `signal`, so the next
- * keystroke moves the observer to a new key, the old query loses its last observer, and its aborted
- * delay ends before the request fires.
- */
 export function useCompletions(
   client: Connection,
   source: CompletionSource,
@@ -203,7 +190,6 @@ export function useCompletions(
   };
 }
 
-/** What the menu says instead of rows: loading, the host's refusal, or no match. */
 export function suggestionNotice(completion: Completion): string | undefined {
   const files = completion.trigger.kind === "@";
 
@@ -226,16 +212,10 @@ export function suggestionNotice(completion: Completion): string | undefined {
   }
 }
 
-/** The sentence a skill travels as, identical to the desktop composer's. */
 function skillInstruction(name: string): string {
   return `Use the ${name} skill.`;
 }
 
-/**
- * Accepting a choice rewrites the token in place and says where the caret
- * belongs. A skill is the exception: it becomes the leading instruction the
- * host and the desktop both read as a skill, so it moves to the head.
- */
 export function acceptSuggestion(
   draft: string,
   trigger: CompletionTrigger,
@@ -260,13 +240,11 @@ export function acceptSuggestion(
   return { draft: `${before}${token}${after}`, caret: before.length + token.length };
 }
 
-/** A command the host can run, named by a whole draft. */
 export interface CommandLine {
   readonly name: string;
   readonly argument: string;
 }
 
-/** A draft that is only a command line, the way the desktop composer reads one. */
 export function parseCommandLine(
   draft: string,
   commands: readonly CommandInfo[],

@@ -1,6 +1,3 @@
-/**
- * Context size estimation. Uses the most recent applicable assistant usage block as the anchor and estimates only the messages after it, so the number tracks the provider's count instead of a chars-per-token guess over the whole history.
- */
 import type {
   Context,
   ImageContent,
@@ -15,11 +12,8 @@ import type {
 import { getSystemMessageText } from "@nyte-ai/schema/model";
 
 export interface ContextUsageEstimate {
-  /** Estimated total context tokens. */
   tokens: number;
-  /** Tokens reported by the most recent applicable assistant usage block. */
   usageTokens: number;
-  /** Estimated tokens after the most recent applicable assistant usage block. */
   trailingTokens: number;
   /** Index of the applicable message that provided usage, or null when none exists. */
   lastUsageIndex: number | null;
@@ -94,7 +88,6 @@ export function estimateMessageTokens(message: Message): number {
   return Math.ceil(chars / CHARS_PER_TOKEN);
 }
 
-/** Finds the last assistant usage that still describes the current prefix: a prefix message inserted after a response (for example, a compaction summary) invalidates its usage. */
 function getLastAssistantUsageInfo(
   messages: readonly Message[],
 ): { usage: Usage; index: number } | undefined {

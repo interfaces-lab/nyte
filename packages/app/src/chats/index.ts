@@ -24,7 +24,7 @@ import type { ChildTask, Task, TaskKey } from "./tasks.ts";
 import { waitingBelow } from "./waiting.ts";
 import type { WaitingChat } from "./waiting.ts";
 
-export type { Chat, ChatDirectory, ChatLocation, Folder, UnreadTip } from "./directory.ts";
+export type { Chat, ChatDirectory } from "./directory.ts";
 
 export type { ChildTask, JobTask, Task, TaskKey } from "./tasks.ts";
 

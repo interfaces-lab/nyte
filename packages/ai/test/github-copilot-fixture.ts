@@ -1,4 +1,3 @@
-/** Shared GitHub Copilot HTTP, OAuth, catalog, and SSE fixtures. */
 import { vi } from "vitest";
 import { GITHUB_COPILOT_HEADERS } from "../src/api/github-copilot-headers.ts";
 import { InMemoryCredentialStore } from "../src/auth/credential-store.ts";
@@ -11,7 +10,6 @@ import type { Api, JsonValue, Model } from "../src/types.ts";
 type Captured = { url: string; method: string; headers: Headers; body: string };
 type Routes = Record<string, (request: Captured) => Response | Promise<Response>>;
 
-/** Records every request and answers from a route table keyed by `METHOD url`. */
 export function fakeFetch(routes: Routes) {
   const requests: Captured[] = [];
   const fetch: typeof globalThis.fetch = async (input, init) => {
@@ -44,7 +42,6 @@ export function sse(events: readonly JsonValue[]): Response {
   });
 }
 
-/** Anthropic-style SSE: each event carries its `event:` line. */
 export function anthropicSse(events: readonly (JsonValue & { type: string })[]): Response {
   return new Response(
     events.map((event) => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`).join(""),
@@ -150,7 +147,6 @@ export function deviceCode(overrides: Record<string, unknown> = {}) {
   });
 }
 
-/** A collection with the Copilot provider over fresh in-memory stores. */
 export function copilotModels(routes: Routes) {
   const transport = fakeFetch({
     [DEVICE]: () => deviceCode(),
@@ -176,7 +172,6 @@ export function copilotModels(routes: Routes) {
   return { models, requests: transport.requests, credentials, modelsStore, fetch: transport.fetch };
 }
 
-/** Run the device sign-in, skipping the one-second poll interval with fake timers. */
 export async function signIn(models: ReturnType<typeof copilotModels>["models"]) {
   await models.refresh({ providers: ["github-copilot"], allowNetwork: false });
   vi.useFakeTimers({ toFake: ["setTimeout", "Date"] });

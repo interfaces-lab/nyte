@@ -50,7 +50,6 @@ const model: Model<Api> = {
   maxTokens: 4_096,
 };
 
-/** Fake models with one model, `test/model`; `compat` says how it reads a transcript (its system updates). */
 export function fakeModels(input?: {
   readonly into?: MutableModels;
   readonly compat?: Model<Api>["compat"];

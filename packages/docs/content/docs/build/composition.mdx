@@ -11,8 +11,8 @@ The app runs as two processes:
 
 - `server.ts` starts a host with `sdk.open`. The host signs in to the model, runs the agent and its
   tools, keeps the chats in `agent.db`, and serves all of it over HTTP.
-- The page connects to that host with `sdk.connect`, starts a chat and draws the answer as it
-  streams in.
+- The page starts a chat with `sdk.connect`, attaches to the chat's rows with `openHost` and draws
+  the answer as it streams in.
 
 You need Node 26.4 or later and pnpm. The model is OpenAI's `openai-codex` provider, which signs in
 with a ChatGPT Plus or Pro account.
@@ -88,7 +88,7 @@ pnpm add @nyte-ai/sdk @nyte-ai/host @nyte-ai/plugin @nyte-ai/schema
 
 <GroupPanel groupId="framework" value="Vite" defaultValue="Vite">
 
-`server.ts` goes at the project root and runs the agent: the model login, the sessions and the tools. `src/App.tsx` replaces the template's app with the chat, and `src/api.ts` connects it to the host and opens the chat's head store, the rows the host keeps current over a socket. `useSyncExternalStore` reads the store, so React re-renders whenever the conversation changes.
+`server.ts` goes at the project root and runs the agent: the model login, the sessions and the tools. `src/App.tsx` replaces the template's app with the chat, and `src/api.ts` connects it to the host and opens the chat's head store, which holds the chat's rows and applies each change the host sends over a socket. `useSyncExternalStore` reads the chat, so React re-renders whenever the conversation changes or the answer streams.
 
 ```ts tab="server.ts"
 import process from "node:process";
@@ -158,7 +158,6 @@ async function signIn(host: Host) {
 
 ```tsx tab="src/App.tsx"
 import { isPart, text } from "@nyte-ai/plugin/client";
-import { headView } from "@nyte-ai/sdk/client";
 import { useState, useSyncExternalStore } from "react";
 import { startChat } from "./api";
 import type { OpenChat } from "./api";
@@ -174,8 +173,7 @@ export default function App() {
 }
 
 function Chat({ chat }: { chat: OpenChat }) {
-  const snapshot = useSyncExternalStore(chat.store.subscribe, chat.store.snapshot);
-  const view = snapshot === null ? null : headView(snapshot);
+  const view = useSyncExternalStore(chat.subscribe, chat.snapshot);
 
   return (
     <main>
@@ -206,17 +204,24 @@ function Composer({ onSend }: { onSend: (content: string) => Promise<unknown> })
 ```
 
 ```ts tab="src/api.ts"
-import { openHost, sdk, ticketSocket } from "@nyte-ai/sdk/client";
-import type { HeadStore, Session } from "@nyte-ai/sdk/client";
+import {
+  headView,
+  openHost,
+  sdk,
+  streamText,
+  ticketSocket,
+  withStreamedText,
+} from "@nyte-ai/sdk/client";
+import type { HeadView, Live, Session, StreamedText } from "@nyte-ai/sdk/client";
 
 // The address `node server.ts` printed.
 const url = "http://127.0.0.1:PORT";
 // No headers: authorize in server.ts lets every request in.
 const credentials = { kind: "custom", headers: () => ({}) } as const;
 
-export interface OpenChat {
+// The chat as a store: subscribe for changes, snapshot for the view to draw.
+export interface OpenChat extends Live<HeadView | null> {
   readonly session: Session;
-  readonly store: HeadStore;
 }
 
 export async function startChat(content: string): Promise<OpenChat> {
@@ -230,15 +235,38 @@ export async function startChat(content: string): Promise<OpenChat> {
     client: { kind: "app", name: "agent-chat", version: "1.0.0" },
     socket: ticketSocket(),
   });
+  const store = live.head(session.id, session.name, { tail: 100 });
+  const listeners = new Set<() => void>();
+  const notify = () => listeners.forEach((listener) => listener());
+  // The text parts are still streaming. A part's row gets its text only when the part settles.
+  let texts: StreamedText = new Map();
 
-  return { session, store: live.head(session.id, session.name, { tail: 100 }) };
+  store.subscribe(notify);
+  live.text((update) => {
+    texts = streamText(texts, update);
+    notify();
+  });
+
+  return {
+    session,
+    subscribe(listener) {
+      listeners.add(listener);
+
+      return () => listeners.delete(listener);
+    },
+    snapshot() {
+      const snapshot = store.snapshot();
+
+      return snapshot === null ? null : withStreamedText(headView(snapshot), texts);
+    },
+  };
 }
 ```
 
 </GroupPanel>
 <GroupPanel groupId="framework" value="Next.js" defaultValue="Vite">
 
-`server.ts` goes at the project root and runs the agent: the model login, the sessions and the tools. `app/page.tsx` replaces the starter page. It's a client component because it keeps the session in state, and `app/api.ts` imports only `@nyte-ai/sdk/client`, so server rendering never loads the host. `useSyncExternalStore` reads the chat's head store and re-renders the page whenever the conversation changes.
+`server.ts` goes at the project root and runs the agent: the model login, the sessions and the tools. `app/page.tsx` replaces the starter page. It's a client component because it keeps the session in state, and `app/api.ts` imports only `@nyte-ai/sdk/client`, so server rendering never loads the host. `useSyncExternalStore` reads the chat and re-renders the page whenever the conversation changes or the answer streams.
 
 ```ts tab="server.ts"
 import process from "node:process";
@@ -310,7 +338,6 @@ async function signIn(host: Host) {
 "use client";
 
 import { isPart, text } from "@nyte-ai/plugin/client";
-import { headView } from "@nyte-ai/sdk/client";
 import { useState, useSyncExternalStore } from "react";
 import { startChat } from "./api";
 import type { OpenChat } from "./api";
@@ -326,8 +353,7 @@ export default function App() {
 }
 
 function Chat({ chat }: { chat: OpenChat }) {
-  const snapshot = useSyncExternalStore(chat.store.subscribe, chat.store.snapshot);
-  const view = snapshot === null ? null : headView(snapshot);
+  const view = useSyncExternalStore(chat.subscribe, chat.snapshot);
 
   return (
     <main>
@@ -358,17 +384,24 @@ function Composer({ onSend }: { onSend: (content: string) => Promise<unknown> })
 ```
 
 ```ts tab="app/api.ts"
-import { openHost, sdk, ticketSocket } from "@nyte-ai/sdk/client";
-import type { HeadStore, Session } from "@nyte-ai/sdk/client";
+import {
+  headView,
+  openHost,
+  sdk,
+  streamText,
+  ticketSocket,
+  withStreamedText,
+} from "@nyte-ai/sdk/client";
+import type { HeadView, Live, Session, StreamedText } from "@nyte-ai/sdk/client";
 
 // The address `node server.ts` printed.
 const url = "http://127.0.0.1:PORT";
 // No headers: authorize in server.ts lets every request in.
 const credentials = { kind: "custom", headers: () => ({}) } as const;
 
-export interface OpenChat {
+// The chat as a store: subscribe for changes, snapshot for the view to draw.
+export interface OpenChat extends Live<HeadView | null> {
   readonly session: Session;
-  readonly store: HeadStore;
 }
 
 export async function startChat(content: string): Promise<OpenChat> {
@@ -382,15 +415,38 @@ export async function startChat(content: string): Promise<OpenChat> {
     client: { kind: "app", name: "agent-chat", version: "1.0.0" },
     socket: ticketSocket(),
   });
+  const store = live.head(session.id, session.name, { tail: 100 });
+  const listeners = new Set<() => void>();
+  const notify = () => listeners.forEach((listener) => listener());
+  // The text parts are still streaming. A part's row gets its text only when the part settles.
+  let texts: StreamedText = new Map();
 
-  return { session, store: live.head(session.id, session.name, { tail: 100 }) };
+  store.subscribe(notify);
+  live.text((update) => {
+    texts = streamText(texts, update);
+    notify();
+  });
+
+  return {
+    session,
+    subscribe(listener) {
+      listeners.add(listener);
+
+      return () => listeners.delete(listener);
+    },
+    snapshot() {
+      const snapshot = store.snapshot();
+
+      return snapshot === null ? null : withStreamedText(headView(snapshot), texts);
+    },
+  };
 }
 ```
 
 </GroupPanel>
 <GroupPanel groupId="framework" value="Svelte" defaultValue="Vite">
 
-`server.ts` goes at the project root and runs the agent: the model login, the sessions and the tools. `src/App.svelte` replaces the template's component, and `src/api.ts` connects it to the host. The `$effect` subscribes to the chat's head store once a session starts and returns the unsubscribe, so Svelte cleans it up.
+`server.ts` goes at the project root and runs the agent: the model login, the sessions and the tools. `src/App.svelte` replaces the template's component, and `src/api.ts` connects it to the host. The `$effect` subscribes to the chat once a session starts and returns the unsubscribe, so Svelte cleans it up.
 
 ```ts tab="server.ts"
 import process from "node:process";
@@ -461,7 +517,6 @@ async function signIn(host: Host) {
 ```svelte tab="src/App.svelte"
 <script lang="ts">
   import { isPart, text } from "@nyte-ai/plugin/client";
-  import { headView } from "@nyte-ai/sdk/client";
   import type { HeadView } from "@nyte-ai/sdk/client";
   import { startChat } from "./api";
   import type { OpenChat } from "./api";
@@ -473,10 +528,8 @@ async function signIn(host: Host) {
   $effect(() => {
     const open = chat;
 
-    return open?.store.subscribe(() => {
-      const snapshot = open.store.snapshot();
-
-      view = snapshot === null ? undefined : headView(snapshot);
+    return open?.subscribe(() => {
+      view = open.snapshot() ?? undefined;
     });
   });
 
@@ -506,17 +559,24 @@ async function signIn(host: Host) {
 ```
 
 ```ts tab="src/api.ts"
-import { openHost, sdk, ticketSocket } from "@nyte-ai/sdk/client";
-import type { HeadStore, Session } from "@nyte-ai/sdk/client";
+import {
+  headView,
+  openHost,
+  sdk,
+  streamText,
+  ticketSocket,
+  withStreamedText,
+} from "@nyte-ai/sdk/client";
+import type { HeadView, Live, Session, StreamedText } from "@nyte-ai/sdk/client";
 
 // The address `node server.ts` printed.
 const url = "http://127.0.0.1:PORT";
 // No headers: authorize in server.ts lets every request in.
 const credentials = { kind: "custom", headers: () => ({}) } as const;
 
-export interface OpenChat {
+// The chat as a store: subscribe for changes, snapshot for the view to draw.
+export interface OpenChat extends Live<HeadView | null> {
   readonly session: Session;
-  readonly store: HeadStore;
 }
 
 export async function startChat(content: string): Promise<OpenChat> {
@@ -530,15 +590,38 @@ export async function startChat(content: string): Promise<OpenChat> {
     client: { kind: "app", name: "agent-chat", version: "1.0.0" },
     socket: ticketSocket(),
   });
+  const store = live.head(session.id, session.name, { tail: 100 });
+  const listeners = new Set<() => void>();
+  const notify = () => listeners.forEach((listener) => listener());
+  // The text parts are still streaming. A part's row gets its text only when the part settles.
+  let texts: StreamedText = new Map();
 
-  return { session, store: live.head(session.id, session.name, { tail: 100 }) };
+  store.subscribe(notify);
+  live.text((update) => {
+    texts = streamText(texts, update);
+    notify();
+  });
+
+  return {
+    session,
+    subscribe(listener) {
+      listeners.add(listener);
+
+      return () => listeners.delete(listener);
+    },
+    snapshot() {
+      const snapshot = store.snapshot();
+
+      return snapshot === null ? null : withStreamedText(headView(snapshot), texts);
+    },
+  };
 }
 ```
 
 </GroupPanel>
 <GroupPanel groupId="framework" value="Vue" defaultValue="Vite">
 
-`server.ts` goes at the project root and runs the agent: the model login, the sessions and the tools. `src/App.vue` replaces the template's component, and `src/api.ts` connects it to the host. `watchEffect` subscribes to the chat's head store once a session starts and `onCleanup` unsubscribes. The view is a `shallowRef` because each change replaces it whole.
+`server.ts` goes at the project root and runs the agent: the model login, the sessions and the tools. `src/App.vue` replaces the template's component, and `src/api.ts` connects it to the host. `watchEffect` subscribes to the chat once a session starts and `onCleanup` unsubscribes. The view is a `shallowRef` because each change replaces it whole.
 
 ```ts tab="server.ts"
 import process from "node:process";
@@ -609,7 +692,6 @@ async function signIn(host: Host) {
 ```vue tab="src/App.vue"
 <script setup lang="ts">
 import { isPart, text } from "@nyte-ai/plugin/client";
-import { headView } from "@nyte-ai/sdk/client";
 import type { HeadView } from "@nyte-ai/sdk/client";
 import { ref, shallowRef, watchEffect } from "vue";
 import { startChat } from "./api";
@@ -624,10 +706,8 @@ watchEffect((onCleanup) => {
 
   if (open)
     onCleanup(
-      open.store.subscribe(() => {
-        const snapshot = open.store.snapshot();
-
-        view.value = snapshot === null ? undefined : headView(snapshot);
+      open.subscribe(() => {
+        view.value = open.snapshot() ?? undefined;
       }),
     );
 });
@@ -658,17 +738,24 @@ async function send() {
 ```
 
 ```ts tab="src/api.ts"
-import { openHost, sdk, ticketSocket } from "@nyte-ai/sdk/client";
-import type { HeadStore, Session } from "@nyte-ai/sdk/client";
+import {
+  headView,
+  openHost,
+  sdk,
+  streamText,
+  ticketSocket,
+  withStreamedText,
+} from "@nyte-ai/sdk/client";
+import type { HeadView, Live, Session, StreamedText } from "@nyte-ai/sdk/client";
 
 // The address `node server.ts` printed.
 const url = "http://127.0.0.1:PORT";
 // No headers: authorize in server.ts lets every request in.
 const credentials = { kind: "custom", headers: () => ({}) } as const;
 
-export interface OpenChat {
+// The chat as a store: subscribe for changes, snapshot for the view to draw.
+export interface OpenChat extends Live<HeadView | null> {
   readonly session: Session;
-  readonly store: HeadStore;
 }
 
 export async function startChat(content: string): Promise<OpenChat> {
@@ -682,8 +769,31 @@ export async function startChat(content: string): Promise<OpenChat> {
     client: { kind: "app", name: "agent-chat", version: "1.0.0" },
     socket: ticketSocket(),
   });
+  const store = live.head(session.id, session.name, { tail: 100 });
+  const listeners = new Set<() => void>();
+  const notify = () => listeners.forEach((listener) => listener());
+  // The text parts are still streaming. A part's row gets its text only when the part settles.
+  let texts: StreamedText = new Map();
 
-  return { session, store: live.head(session.id, session.name, { tail: 100 }) };
+  store.subscribe(notify);
+  live.text((update) => {
+    texts = streamText(texts, update);
+    notify();
+  });
+
+  return {
+    session,
+    subscribe(listener) {
+      listeners.add(listener);
+
+      return () => listeners.delete(listener);
+    },
+    snapshot() {
+      const snapshot = store.snapshot();
+
+      return snapshot === null ? null : withStreamedText(headView(snapshot), texts);
+    },
+  };
 }
 ```
 
@@ -761,7 +871,6 @@ async function signIn(host: Host) {
 ```vue tab="app/app.vue"
 <script setup lang="ts">
 import { isPart, text } from "@nyte-ai/plugin/client";
-import { headView } from "@nyte-ai/sdk/client";
 import type { HeadView } from "@nyte-ai/sdk/client";
 import { ref, shallowRef, watchEffect } from "vue";
 import { startChat } from "./api";
@@ -776,10 +885,8 @@ watchEffect((onCleanup) => {
 
   if (open)
     onCleanup(
-      open.store.subscribe(() => {
-        const snapshot = open.store.snapshot();
-
-        view.value = snapshot === null ? undefined : headView(snapshot);
+      open.subscribe(() => {
+        view.value = open.snapshot() ?? undefined;
       }),
     );
 });
@@ -810,17 +917,24 @@ async function send() {
 ```
 
 ```ts tab="app/api.ts"
-import { openHost, sdk, ticketSocket } from "@nyte-ai/sdk/client";
-import type { HeadStore, Session } from "@nyte-ai/sdk/client";
+import {
+  headView,
+  openHost,
+  sdk,
+  streamText,
+  ticketSocket,
+  withStreamedText,
+} from "@nyte-ai/sdk/client";
+import type { HeadView, Live, Session, StreamedText } from "@nyte-ai/sdk/client";
 
 // The address `node server.ts` printed.
 const url = "http://127.0.0.1:PORT";
 // No headers: authorize in server.ts lets every request in.
 const credentials = { kind: "custom", headers: () => ({}) } as const;
 
-export interface OpenChat {
+// The chat as a store: subscribe for changes, snapshot for the view to draw.
+export interface OpenChat extends Live<HeadView | null> {
   readonly session: Session;
-  readonly store: HeadStore;
 }
 
 export async function startChat(content: string): Promise<OpenChat> {
@@ -834,15 +948,38 @@ export async function startChat(content: string): Promise<OpenChat> {
     client: { kind: "app", name: "agent-chat", version: "1.0.0" },
     socket: ticketSocket(),
   });
+  const store = live.head(session.id, session.name, { tail: 100 });
+  const listeners = new Set<() => void>();
+  const notify = () => listeners.forEach((listener) => listener());
+  // The text parts are still streaming. A part's row gets its text only when the part settles.
+  let texts: StreamedText = new Map();
 
-  return { session, store: live.head(session.id, session.name, { tail: 100 }) };
+  store.subscribe(notify);
+  live.text((update) => {
+    texts = streamText(texts, update);
+    notify();
+  });
+
+  return {
+    session,
+    subscribe(listener) {
+      listeners.add(listener);
+
+      return () => listeners.delete(listener);
+    },
+    snapshot() {
+      const snapshot = store.snapshot();
+
+      return snapshot === null ? null : withStreamedText(headView(snapshot), texts);
+    },
+  };
 }
 ```
 
 </GroupPanel>
 <GroupPanel groupId="framework" value="Solid" defaultValue="Vite">
 
-`server.ts` goes at the project root and runs the agent: the model login, the sessions and the tools. `src/App.tsx` replaces the template's app with the chat, and `src/api.ts` connects it to the host. `from` turns the chat's head store into a signal and unsubscribes when the chat unmounts.
+`server.ts` goes at the project root and runs the agent: the model login, the sessions and the tools. `src/App.tsx` replaces the template's app with the chat, and `src/api.ts` connects it to the host. `from` turns the chat into a signal and unsubscribes when the chat unmounts.
 
 ```ts tab="server.ts"
 import process from "node:process";
@@ -912,7 +1049,6 @@ async function signIn(host: Host) {
 
 ```tsx tab="src/App.tsx"
 import { isPart, text } from "@nyte-ai/plugin/client";
-import { headView } from "@nyte-ai/sdk/client";
 import type { HeadView } from "@nyte-ai/sdk/client";
 import { createSignal, For, from, Show } from "solid-js";
 import { startChat } from "./api";
@@ -933,11 +1069,7 @@ export default function App() {
 
 function Chat(props: { chat: OpenChat }) {
   const view = from<HeadView | undefined>((set) =>
-    props.chat.store.subscribe(() => {
-      const snapshot = props.chat.store.snapshot();
-
-      set(() => (snapshot === null ? undefined : headView(snapshot)));
-    }),
+    props.chat.subscribe(() => set(() => props.chat.snapshot() ?? undefined)),
   );
 
   return (
@@ -976,17 +1108,24 @@ function Composer(props: { onSend: (content: string) => Promise<unknown> }) {
 ```
 
 ```ts tab="src/api.ts"
-import { openHost, sdk, ticketSocket } from "@nyte-ai/sdk/client";
-import type { HeadStore, Session } from "@nyte-ai/sdk/client";
+import {
+  headView,
+  openHost,
+  sdk,
+  streamText,
+  ticketSocket,
+  withStreamedText,
+} from "@nyte-ai/sdk/client";
+import type { HeadView, Live, Session, StreamedText } from "@nyte-ai/sdk/client";
 
 // The address `node server.ts` printed.
 const url = "http://127.0.0.1:PORT";
 // No headers: authorize in server.ts lets every request in.
 const credentials = { kind: "custom", headers: () => ({}) } as const;
 
-export interface OpenChat {
+// The chat as a store: subscribe for changes, snapshot for the view to draw.
+export interface OpenChat extends Live<HeadView | null> {
   readonly session: Session;
-  readonly store: HeadStore;
 }
 
 export async function startChat(content: string): Promise<OpenChat> {
@@ -1000,12 +1139,46 @@ export async function startChat(content: string): Promise<OpenChat> {
     client: { kind: "app", name: "agent-chat", version: "1.0.0" },
     socket: ticketSocket(),
   });
+  const store = live.head(session.id, session.name, { tail: 100 });
+  const listeners = new Set<() => void>();
+  const notify = () => listeners.forEach((listener) => listener());
+  // The text parts are still streaming. A part's row gets its text only when the part settles.
+  let texts: StreamedText = new Map();
 
-  return { session, store: live.head(session.id, session.name, { tail: 100 }) };
+  store.subscribe(notify);
+  live.text((update) => {
+    texts = streamText(texts, update);
+    notify();
+  });
+
+  return {
+    session,
+    subscribe(listener) {
+      listeners.add(listener);
+
+      return () => listeners.delete(listener);
+    },
+    snapshot() {
+      const snapshot = store.snapshot();
+
+      return snapshot === null ? null : withStreamedText(headView(snapshot), texts);
+    },
+  };
 }
 ```
 
 </GroupPanel>
+
+In every framework, `startChat` returns the chat as a store of its own, with `subscribe` and
+`snapshot`:
+
+- `live.head` opens the head store. It reads the last 100 messages on the chat's head, then applies
+  each change event the host sends. After a dropped socket, it resumes from the last seq it applied.
+- A text part's row gets its text when the part settles. Until then, the text the model streams
+  arrives on `live.text`, and `streamText` keeps it.
+- `snapshot` builds the view from the rows with `headView`, and `withStreamedText` lays the streamed
+  text over it. Both return the same view until something changes, which `useSyncExternalStore`
+  needs.
 
 ## Run it [#run-it]
 
@@ -1062,8 +1235,8 @@ This chat draws your messages and the text answers. Tool calls and other parts a
 
 ## Or a terminal app [#terminal-app]
 
-`subscribe` and `snapshot` work outside a browser too, where the socket takes headers and the text
-a part streams arrives on `live.text`. This script asks the host one question and reprints the
+The same stores work outside a browser. There `openHost` puts the credential headers on the socket
+itself, so it needs no `ticketSocket()`. This script asks the host one question and reprints the
 latest answer each time it changes. Run it beside `server.ts`, with your question as the argument,
 and press Ctrl+C when you're done:
 

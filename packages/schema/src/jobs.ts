@@ -47,7 +47,6 @@ const JobMovedType = Type.Object({ kind: Type.Literal("job"), job: JobViewType }
 
 const JobForgottenType = Type.Object({ kind: Type.Literal("forgotten"), id: idSchema<"job">() });
 
-/** One job's move in a workspace's job list: its new view, or its removal once the list stops keeping it. */
 export const JobChangeType = Type.Union([JobMovedType, JobForgottenType]);
 
 export type JobChange = Decoded<typeof JobChangeType>;

@@ -61,7 +61,6 @@ export class LaunchStateStore {
     return this.#state.window;
   }
 
-  /** The ids of the windows to reopen: those open when the app last quit. */
   windows(): readonly string[] {
     return this.#state.windows ?? [];
   }

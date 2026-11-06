@@ -434,13 +434,19 @@ export async function selfUpdate(
         context.dispatch({ kind: "inform", tone: "info", text: `Downloading ${event.asset}…` });
       else if (event.kind === "verified")
         context.dispatch({ kind: "inform", tone: "info", text: "Checksum verified." });
+      else if (event.kind === "switched")
+        context.dispatch({
+          kind: "inform",
+          tone: "info",
+          text: `Updates now follow the ${event.channel} channel.`,
+        });
     },
   });
 
   context.dispatch({
     kind: "inform",
     tone:
-      outcome.kind === "updated" || outcome.kind === "current"
+      outcome.kind === "updated" || outcome.kind === "current" || outcome.kind === "waiting"
         ? "info"
         : outcome.kind === "unsupported"
           ? "warning"

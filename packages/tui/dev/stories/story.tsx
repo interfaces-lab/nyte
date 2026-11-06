@@ -26,7 +26,6 @@ import { Spans } from "../../src/ui/chrome/spans.tsx";
 import type { Chunk } from "../../src/ui/chrome/spans.tsx";
 import { fakeHost, fakePorts } from "../../test/fixture/ports.ts";
 
-/** Every story key, by command name. Function keys stay clear of the app's own bindings. */
 export const STORY_KEYBINDS = {
   "story.reset": "f9",
   "composer.story.run": "f1",
@@ -38,7 +37,6 @@ export const STORY_KEYBINDS = {
 
 export type StoryCommand = Exclude<keyof typeof STORY_KEYBINDS, "story.reset">;
 
-/** One state dimension: a key cycles it and the story footer shows its value. */
 export interface Control<D> {
   readonly command: StoryCommand;
   readonly label: string;
@@ -51,11 +49,8 @@ export interface StorySpec<D> {
   readonly title: string;
   readonly initial: D;
   readonly controls: readonly Control<D>[];
-  /** The fixture state a mount and a reset start from. */
   fixture(): State;
-  /** The facts that put the store in these dimensions; dispatched through the real reducer on every change. */
   facts(dimensions: D, state: State, now: number): readonly Msg[];
-  /** The production component under test. */
   view(): JSX.Element;
 }
 
@@ -73,19 +68,10 @@ export function defineStory<D>(spec: StorySpec<D>): Story {
   };
 }
 
-/**
- * Effects whose handlers reach past the ports: self-update downloads a binary, and
- * refresh-workspace reads git in the fixture's made-up folder. A story counts them and runs nothing.
- */
 const SKIPPED: ReadonlySet<Effect["kind"]> = new Set(["self-update", "refresh-workspace"]);
 
-/** Effects the composer and transcript run on themselves; everything else is a side effect the footer counts. */
 const INTERNAL: ReadonlySet<Effect["kind"]> = new Set(["composer", "scroll"]);
 
-/**
- * Runs effects over the fake ports. A send is acknowledged at once instead: the fake host
- * follows no chat, so the real handler would refuse it.
- */
 function keepLocal(
   runner: Runner,
   dispatch: (msg: Msg) => void,
@@ -150,7 +136,6 @@ function StoryApp<D>(props: {
   );
 }
 
-/** One store's lifetime: the real reducer, runner, kit and keymap over fake ports, so nothing leaves the process. */
 function Fixture<D>(props: {
   readonly spec: StorySpec<D>;
   readonly keymap: AppKeymap;
@@ -252,7 +237,6 @@ function keycap(command: keyof typeof STORY_KEYBINDS): string {
   return STORY_KEYBINDS[command].toUpperCase();
 }
 
-/** The story's own footer: each key with the dimension it cycles and its value, the reset key, and the side effects kept local. */
 function StoryFooter<D>(props: {
   readonly spec: StorySpec<D>;
   readonly dimensions: Accessor<D>;

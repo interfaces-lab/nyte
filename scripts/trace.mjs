@@ -1,13 +1,3 @@
-/**
- * `pnpm trace <package> [tsconfig]` records where the type checker spends its time.
- *
- * It runs the Go TypeScript 7 `tsc` from the root `@typescript/native` dependency
- * with `--generateTrace`, writes the trace to the system temp directory, and prints the slowest files and checks with their source positions.
- * Open `trace.json` in https://ui.perfetto.dev for the full timeline; `types_N.json`
- * holds every type each checker created.
- *
- * Usage: node scripts/trace.mjs packages/core [tsconfig.node.json]
- */
 import { execFileSync } from "node:child_process";
 import { readFileSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -43,7 +33,6 @@ try {
   process.stderr.write("tsc reported errors; the trace still covers the run.\n");
 }
 
-/** Every timed span: complete (`X`) events, and begin/end (`B`/`E`) pairs matched per thread. */
 function readSpans(file) {
   const spans = [];
   const open = new Map();
@@ -68,7 +57,6 @@ const lineStarts = new Map();
 
 const texts = new Map();
 
-/** `path:line:column` of a node, 1-based. The trace's offset includes the node's leading whitespace. */
 function locate(path, offset) {
   if (!texts.has(path)) {
     const text = readFileSync(path, "utf8");
@@ -88,7 +76,6 @@ function locate(path, offset) {
 
 const milliseconds = (event) => `${(event.dur / 1000).toFixed(0).padStart(6)} ms`;
 
-/** The ten longest spans that match, skipping any span inside one already listed. */
 function findSlowest(matches) {
   const picked = [];
 

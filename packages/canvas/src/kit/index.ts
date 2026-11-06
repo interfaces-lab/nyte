@@ -5,17 +5,18 @@ import { Kbd } from "@nyte-ai/ui/kbd";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@nyte-ai/ui/select";
 import { Slider } from "@nyte-ai/ui/slider";
 import { Spinner } from "@nyte-ai/ui/spinner";
-import { Tabs } from "@nyte-ai/ui/tabs";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { ToggleGroup } from "@nyte-ai/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { BarChart, LineChart, PieChart } from "./charts.tsx";
 import { Spark, StackedBars } from "./compact.tsx";
-import { Badge, Callout, Card, Meter, Stat, Table } from "./data.tsx";
+import { BarList, Badge, Delta, DiffStat, KeyValue, Meter, Stat, Table } from "./data.tsx";
+import { FileLink, Steps, Tabs, Tracker } from "./flow.tsx";
 import { Divider, Grid, Stack } from "./layout.tsx";
 import { useColorScheme } from "./scheme.ts";
 import { Switch } from "./switch.tsx";
-import { Code, Heading, Text } from "./text.tsx";
+import { Callout, Card, Code, Section } from "./surface.tsx";
+import { Heading, Text } from "./text.tsx";
 
 export const kit = {
   Stack,
@@ -24,12 +25,20 @@ export const kit = {
   Heading,
   Text,
   Code,
+  FileLink,
   Stat,
+  Delta,
   Badge,
   Meter,
   Table,
+  KeyValue,
+  DiffStat,
+  BarList,
+  Steps,
+  Tracker,
   Callout,
   Card,
+  Section,
   StackedBars,
   Sparkline: Spark,
   LineChart,

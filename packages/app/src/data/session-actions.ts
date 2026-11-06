@@ -37,10 +37,6 @@ function applyChange(session: SessionInfo, change: SessionChange): SessionInfo |
   }
 }
 
-/**
- * Starts a new chat with this chat's history through `from`, by default all of it. The new chat
- * lands in the sidebar and the open chat stays where it is.
- */
 export async function forkChat(sessionId: SessionId, from?: CommitId): Promise<void> {
   const outcome = await connection()
     .session(sessionId)
@@ -77,7 +73,6 @@ export class SessionActions {
     toasts = new ActionToasts(),
   }: {
     client: QueryClient;
-    /** The session's row as the sidebar lists it, with pending changes applied. */
     findRow: (sessionId: SessionId) => SessionInfo | undefined;
     sessions?: () => Pick<Connection, "session">;
     toasts?: ActionToasts;

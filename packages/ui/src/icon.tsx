@@ -33,7 +33,6 @@ const glyphSizes = create({
   lg: { width: glyph.lg, height: glyph.lg },
 });
 
-/** A step on the glyph scale: 10, 12, 14, 16 or 20 px at the default size. */
 export type GlyphSize = keyof typeof glyphSizes;
 
 const ControlGlyphContext = createContext(false);
@@ -99,7 +98,6 @@ export function Icon(iconProps: IconProps): ReactElement {
   );
 }
 
-/** An icon that cross-fades when its glyph changes, such as copy turning into a checkmark. */
 export function IconSwap(iconProps: IconProps): ReactElement {
   const reducedMotion = useReducedMotion();
 

@@ -12,14 +12,10 @@ import { fromMarkdown } from "mdast-util-from-markdown";
 import { gfmFromMarkdown } from "mdast-util-gfm";
 import { gfm } from "micromark-extension-gfm";
 
-/** Kept so unchanged parts serialize back byte for byte. */
 export interface MarkdownLayout {
-  /** Frontmatter and blank lines before the first block. */
   readonly prefix: string;
-  /** Each top-level block's source and the text up to the next block. */
   readonly blocks: readonly { readonly source: string; readonly gap: string }[];
   readonly trailing: string;
-  /** The source of each textblock's inline content, container prefixes removed. */
   readonly inlines: readonly string[];
   readonly eol: "\n" | "\r\n";
 }
@@ -31,9 +27,7 @@ export interface ParsedMarkdown {
 
 interface Context {
   readonly source: string;
-  /** Removes the enclosing containers' prefixes from a continuation line. */
   readonly strip: (line: string) => string;
-  /** The column where the enclosing container's content starts. */
   readonly column: number;
   readonly inlines: string[];
   readonly definitions: ReadonlyMap<string, string>;
@@ -439,7 +433,6 @@ function rawInline(node: Nodes, context: Context, marks: readonly Mark[]): JSONC
   };
 }
 
-/** A nested value reads as one line. */
 function frontmatterEntries(frontmatter: string): [string, string][] {
   const lines = frontmatter.split("\n");
 

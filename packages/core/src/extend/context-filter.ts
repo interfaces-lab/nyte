@@ -13,7 +13,6 @@ export const KEEP_ALL: ContextFilter = () => true;
 
 export const KEEP_NONE: ContextFilter = () => false;
 
-/** The context files a session reads: none when it started without them, else all but the ones its project turned off. */
 export async function contextFilter(kernel: Kernel, record: SessionRecord): Promise<ContextFilter> {
   if (record.contextFiles === false) return KEEP_NONE;
 
@@ -30,7 +29,6 @@ export async function contextFilter(kernel: Kernel, record: SessionRecord): Prom
   return off.size === 0 ? KEEP_ALL : (file) => !off.has(file.id);
 }
 
-/** A context file read under `name`, with the id a project turns it off by: the same in every worktree, so an ancestor's keeps its path. */
 export function contextFile(
   found: Omit<ContextFile, "id"> & { readonly name: string },
 ): ContextFile {

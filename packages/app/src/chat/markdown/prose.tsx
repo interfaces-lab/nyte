@@ -29,7 +29,7 @@ import { CodeBlock } from "./code-block.tsx";
 import { MermaidDiagram } from "./mermaid-diagram.tsx";
 import { Icon } from "@nyte-ai/ui/icon";
 import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
-import { FileTypeIcon } from "../../components/file-type-icon.tsx";
+import { FileTypeIcon } from "@nyte-ai/ui/file-type-icon";
 import {
   fileFromUrl,
   inlineCodeReference,
@@ -336,11 +336,6 @@ function MarkdownImage({
   );
 }
 
-/**
- * The app's CSP refuses file URLs, so a local path reaches the page as a blob URL read through the
- * chat folder's files. Agents rewrite screenshots in place, so a later answer naming the same path
- * rereads it.
- */
 function FileImage(input: {
   readonly workspace: WorkspaceId;
   readonly path: string;
@@ -361,7 +356,6 @@ function FileImage(input: {
   );
 }
 
-/** Any path an answer names loads on sight, so a non-image is closed before its bytes are buffered. */
 async function readImage(workspace: WorkspaceId, path: string): Promise<ByteReader> {
   const reader = await (await filesFor(workspace)).bytes(path);
 
@@ -440,12 +434,6 @@ const urlTransform: UrlTransform = (url, key, node) =>
 
 const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
 
-/**
- * Completes unfinished syntax in the last block only, where the split keeps an unclosed fence, list
- * or math block, instead of Streamdown's pass over the whole answer on every update. The tail comes
- * from the source because marked rewrites trailing whitespace in a block's text, and remend reads
- * it. The split drops `\r` before measuring blocks, so the source drops it too.
- */
 function splitMarkdown(markdown: string): string[] {
   const source = markdown.includes("\r") ? markdown.replaceAll(/\r\n?/gu, "\n") : markdown;
   const blocks = parseMarkdownIntoBlocks(source);

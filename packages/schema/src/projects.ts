@@ -34,7 +34,6 @@ export const ProjectInfoType = Type.Object({
  */
 export type ProjectInfo = Decoded<typeof ProjectInfoType>;
 
-/** The fields a person edits; `id`, `workspace`, `coordinator` and `createdAt` are the host's. */
 export const PROJECT_EDITABLE = [
   "name",
   "models",

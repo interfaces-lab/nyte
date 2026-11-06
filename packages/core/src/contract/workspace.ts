@@ -201,7 +201,6 @@ export interface JobEntry {
   } | null;
   readonly digest: string;
   readonly output: JobOutput;
-  /** Set once `stop` was asked, so the job's end sends no report. */
   readonly stopping: boolean;
 }
 
@@ -213,7 +212,6 @@ export interface JobOutput {
   gap(): void;
   end(code: number | null): void;
   tail(): string;
-  /** The whole scrollback. */
   text(): string;
 }
 
@@ -229,7 +227,6 @@ export interface JobTable {
   background(
     session: SessionId,
   ): readonly { readonly head: HeadName; readonly item: BackgroundItem }[];
-  /** Moves the running jobs `call` started to the background, clearing their `foreground`; false when it started none. */
   release(session: SessionId, call: CallId): boolean;
   markStopping(id: JobId): void;
 }
@@ -268,7 +265,6 @@ export interface SnapshotsApi {
   ): Promise<readonly PatchEntry[]>;
 }
 
-/** A git worktree that isolates one session: its folder as a target, the branch checked out there and the commit it started from. */
 export interface Worktree {
   readonly target: WorkspaceTarget;
   readonly branch: string;
@@ -281,7 +277,6 @@ export type WorktreeRemoval = {
   readonly branch: "deleted" | "kept";
 };
 
-/** Git worktrees of a provider's workspaces, which isolate a session from the workspace it started in. */
 export interface WorktreeProvider {
   /** Checks a new branch out from the HEAD of `env`'s repository in a folder of its own and copies `env`'s uncommitted changes, ignored files aside, into it. `name` keys it: a later call with the same name answers the worktree the first made. Throws `SdkError("unavailable")` outside a git repository or before its first commit. */
   create(
@@ -580,7 +575,6 @@ export interface Workspace {
 
   watch(): AsyncIterable<WorkspaceInfo>;
 
-  /** The workspace's MCP servers; see {@link McpApi}. */
   readonly mcp: McpApi;
 
   /**
@@ -613,7 +607,6 @@ export interface Workspace {
    */
   command(name: string, text: string): Promise<WorkspaceCommandOutcome>;
 
-  /** Suggests the text after command `name` of {@link Workspace.catalog} from `prefix`, as a chat's `completeCommand` does. */
   completeCommand(name: string, prefix: string): Promise<readonly CommandCompletion[]>;
 
   readonly jobs: Jobs;
@@ -623,7 +616,6 @@ export interface Workspace {
   /** The files `source` changed: a run's from its first snapshot to its last (the workspace as it is now while it runs), a session's from its first run's first snapshot to its latest run's last (now while one runs). Throws `SdkError("unavailable")` for a session no run has snapshotted. */
   changes(source: ChangeSource): Promise<ChangeSet>;
 
-  /** The patches of `paths` over the range {@link Workspace.changes} reads for `source`. */
   patches(
     source: ChangeSource,
     paths: readonly string[],
@@ -650,7 +642,6 @@ export type PatchSlot = {
 
 export type PatchCache = { readonly revision: SnapshotId; readonly slots: Map<string, PatchSlot> };
 
-/** A session's cached resource scan. */
 export type ScanEntry = {
   readonly workspace: WorkspaceId;
   readonly resources: Promise<Resources>;
@@ -670,7 +661,6 @@ export type RootWatch = {
 export interface WorkspaceState {
   readonly listeners: Set<(id: WorkspaceId) => void>;
   readonly patches: Map<string, PatchCache>;
-  /** Each session's cached scan; `dropScans` empties it, `forgetScans` also leaves the watches. */
   readonly scans: Map<SessionId, ScanEntry>;
   readonly watches: Map<string, RootWatch>;
   /** Set once the host closes its watches: no watch starts and no change is answered after. */
@@ -680,13 +670,6 @@ export interface WorkspaceState {
   readonly held: Map<ReceiptId, HeldBatch>;
 }
 
-/**
- * The workspace a hub call is about. Core builds it from the workspace record;
- * a hub reads `root` and `trusted` to decide which `mcp.json` files apply.
- *
- * @category mcp
- * @since 0.1.0
- */
 export type McpWorkspace = {
   readonly id: WorkspaceId;
   /** The workspace folder on the host's machine, or `null` when the workspace lives elsewhere: then only user-level servers apply. */
@@ -695,16 +678,6 @@ export type McpWorkspace = {
   readonly trusted: boolean;
 };
 
-/**
- * One MCP server as the model hears of it: the `description` its `mcp.json`
- * gives, the `instructions` it sent when it connected, the `exposures` its
- * tools can have (its own and each `toolExposure`'s), and `unavailable` when
- * it has no tools because it failed to connect or waits for the user to sign
- * in.
- *
- * @category mcp
- * @since 0.1.0
- */
 export interface McpServerBrief {
   readonly name: string;
   readonly description: string | null;
@@ -772,19 +745,14 @@ export interface McpHub {
    */
   briefs(workspace: McpWorkspace): readonly McpServerBrief[];
 
-  /** See {@link McpApi.reconnect}. */
   reconnect(workspace: McpWorkspace, server: string): Promise<McpChange>;
 
-  /** See {@link McpApi.setEnabled}. */
   setEnabled(workspace: McpWorkspace, server: string, enabled: boolean): Promise<McpChange>;
 
-  /** See {@link McpApi.login}. */
   login(workspace: McpWorkspace, server: string): Login;
 
-  /** See {@link McpApi.logout}. */
   logout(workspace: McpWorkspace, server: string): Promise<McpChange>;
 
-  /** See {@link McpApi.add}. */
   add(
     workspace: McpWorkspace,
     server: string,
@@ -792,7 +760,6 @@ export interface McpHub {
     scope: McpScope,
   ): Promise<McpChange>;
 
-  /** See {@link McpApi.remove}. */
   remove(workspace: McpWorkspace, server: string, scope: McpScope): Promise<McpChange>;
 
   /** Disconnects every server. Core calls it when the host closes. */
@@ -833,7 +800,6 @@ export interface McpApi {
    */
   watch(): AsyncIterable<McpView>;
 
-  /** Drops the server's connection and connects again, for one that failed or after fixing its credentials. */
   reconnect(server: string): Promise<McpChange>;
 
   /**

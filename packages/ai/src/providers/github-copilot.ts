@@ -1,4 +1,3 @@
-/** GitHub Copilot's hosted model catalog, filtered by the signed-in account's model IDs. */
 import { anthropicMessagesApi } from "../api/anthropic-messages.lazy.ts";
 import { openAICompletionsApi } from "../api/openai-completions.lazy.ts";
 import { openAIResponsesApi } from "../api/openai-responses.lazy.ts";

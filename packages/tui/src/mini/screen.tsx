@@ -28,16 +28,8 @@ import { projectMiniTranscript, withoutMark } from "./transcript.ts";
 
 const CLOCK_INTERVAL_MS = 1_000;
 
-/** Ends of the rule that always stay dashes, so a label never reads as running into the edge. */
 const RULE_END = GLYPHS.rule.repeat(2);
 
-/**
- * The footer of the minimal mode, under the terminal's own scrollback, where the transcript
- * streams. It is two rows at rest:
- *
- *   ── ⠸ read src/app.ts 4s · esc stop ─────────── model · effort · context ──
- *   draft
- */
 export function MiniScreen(): JSX.Element {
   const app = useApp();
   const renderer = useRenderer();
@@ -122,10 +114,6 @@ export function MiniScreen(): JSX.Element {
   );
 }
 
-/**
- * What the rule shows while something runs. A running tool names itself in place of the turn's
- * planning words; a question or a retry keeps the turn's own words.
- */
 type Activity =
   | {
       readonly kind: "tool";
@@ -134,7 +122,6 @@ type Activity =
     }
   | { readonly kind: "turn"; readonly status: TurnStatus };
 
-/** What the rule shows while something runs; it ticks only while mounted. */
 interface ActiveLabel {
   readonly spinner: Chunk | null;
   readonly text: readonly Chunk[];
@@ -174,7 +161,6 @@ function ActiveRule(props: { readonly activity: Activity }): JSX.Element {
   return <Rule label={label()} />;
 }
 
-/** One group of the rule; it is dropped as a whole when it does not fit. */
 interface Group {
   readonly side: "left" | "right";
   readonly order: number;
@@ -182,11 +168,6 @@ interface Group {
   readonly chunks: readonly Chunk[];
 }
 
-/**
- * The rule over the composer: `── status ───── model · effort · context ──`. Groups join in
- * priority order and the first one that does not fit stops the rest, so a narrower terminal
- * loses the least important groups and a resize never swaps one group for another.
- */
 function Rule(props: { readonly label: ActiveLabel | null }): JSX.Element {
   const app = useApp();
   const dimensions = useTerminalDimensions();
@@ -253,7 +234,6 @@ function Rule(props: { readonly label: ActiveLabel | null }): JSX.Element {
   );
 }
 
-/** The session's model, effort and context, each its own group on the right of the rule. */
 interface SessionGroups {
   readonly model: Group;
   readonly effort: Group | null;
@@ -294,10 +274,6 @@ function rightGroup(order: number, fg: string, text: string): Group {
   return { side: "right", order, lead: " · ", chunks: [{ fg, text }] };
 }
 
-/**
- * The label and the key that stops the run, which always show: the label gives up its end for
- * the key, since a control matters more than the rest of a description.
- */
 function fitLabel(label: ActiveLabel, stop: Group | null, width: number, theme: CliTheme): Group[] {
   const chunks = [
     ...(label.spinner === null ? [] : [label.spinner, { fg: theme.running, text: " " }]),
@@ -336,7 +312,6 @@ function fitGroups(
   return chosen;
 }
 
-/** The rule across `width` columns, with at least two dashes at each end and between sides. */
 function ruleChunks(
   groups: readonly Group[],
   width: number,

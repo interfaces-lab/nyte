@@ -31,7 +31,7 @@ A command can still print a secret it receives, for example with `printenv`, and
 
 ## Provider keys [#provider-keys]
 
-Nyte reads model provider keys from its environment. The desktop app also reads your login shell's environment, so a key exported in `~/.zshrc` works even when you open Nyte from the Dock.
+Nyte's host reads model provider keys from its environment when it starts. It also reads your login shell's environment, so a key exported in `~/.zshrc` works even when you open Nyte from the Dock. A host that's already running doesn't see a key you export later.
 
 A credential saved with **/login** or `nyte login` takes precedence. Nyte uses the variable only for a provider with no saved credential.
 
@@ -48,13 +48,15 @@ A credential saved with **/login** or `nyte login` takes precedence. Nyte uses t
 
 Set these in the shell that starts `nyte`. The ones marked **Both** also apply to the desktop app when it's started from that shell.
 
+`nyte` attaches to your machine's running host, and the host keeps the environment it started with. `NYTE_DB`, `NYTE_CACHE_RETENTION`, `NYTE_SHELL_INTEGRATION`, `NYTE_OAUTH_CALLBACK_HOST` and `NYTE_MODELS_URL` reach the host only when it starts from a shell where they're set.
+
 | Variable                   | Applies to | What it does                                                                                                                             |
 | -------------------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | `NYTE_MODEL`               | `nyte`     | The model when you don't pass `--model`. `provider/id`, or an id alone                                                                   |
 | `NYTE_HOST_TOKEN`          | `nyte`     | The token for `--host-url`, from `~/.nyte/host.json`. See [`nyte host`](/docs/cli#nyte-host)                                             |
 | `NYTE_THEME`               | `nyte`     | `dark` or `light`, when the theme setting is `auto` and the terminal doesn't report its background                                       |
 | `NO_COLOR`                 | `nyte`     | Any value turns off color                                                                                                                |
-| `NYTE_HOME`                | `nyte`     | The folder for `settings.json` and `host.json`, instead of `~/.nyte`. It doesn't move the chat database                                  |
+| `NYTE_HOME`                | `nyte`     | The folder for `settings.json`, `host.json` and the host's lock, socket and log, instead of `~/.nyte`. It doesn't move the chat database |
 | `NYTE_DB`                  | Both       | The chat database file, instead of `~/.nyte/nyte.db`                                                                                     |
 | `NYTE_SKIP_VERSION_CHECK`  | Both       | Any value turns off the check for a newer release                                                                                        |
 | `NYTE_OFFLINE`             | Both       | Any value turns off update checks, and the desktop app's updates                                                                         |

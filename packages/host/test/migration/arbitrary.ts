@@ -5,7 +5,6 @@ import type { TSchema } from "typebox";
 
 type JsonObject = { readonly [key: string]: Json };
 
-/** Ids drawn from a small pool, so generated records share sessions, runs, calls and parts often enough to meet each other. */
 export const ID = fc.constantFrom("a", "b", "c", "d");
 
 const STRING = fc.oneof(ID, fc.string({ maxLength: 6 }));
@@ -18,7 +17,6 @@ const NUMBER = fc.oneof(
     .filter((value) => !Object.is(value, -0)),
 );
 
-/** Reads a TypeBox schema as the JSON Schema it serializes to. */
 function jsonSchema(schema: TSchema): JsonObject {
   const value: unknown = JSON.parse(JSON.stringify(schema));
 
@@ -67,14 +65,6 @@ function strings(node: Json | undefined): readonly string[] {
     : [];
 }
 
-/**
- * Generates JSON that a TypeBox schema describes, walking the JSON Schema it
- * serializes to (`$ref`, `anyOf`, `allOf`, `const`, `enum`, objects with
- * required and optional properties, `patternProperties` records, arrays and
- * scalars); `$ref` recursion stops at `depth`, where `Json` becomes null. Every
- * value is checked against the compiled schema, so a keyword this walk does
- * not read can only discard a value, never let an invalid one through.
- */
 export function schemaArbitrary(schema: TSchema, depth = 3): fc.Arbitrary<Json> {
   const root = jsonSchema(schema);
   const defs = definitions(root);

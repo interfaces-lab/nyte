@@ -1,4 +1,3 @@
-/** The models.dev catalog: its validated shape, the model fields every provider reads, and the per-model metadata later passes apply. */
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 import type { Api, Model, ModelCost } from "../../src/types.ts";
@@ -66,7 +65,6 @@ export type ModelsDevProvider = Static<typeof ModelsDevProviderSchema>;
 
 export type ModelsDevCatalog = Static<typeof ModelsDevCatalogSchema>;
 
-/** Fetches models.dev's catalog and checks every provider and model against the fields the generator reads. */
 export async function fetchModelsDevCatalog(): Promise<ModelsDevCatalog> {
   const response = await fetch("https://models.dev/api.json");
 
@@ -80,12 +78,10 @@ export async function fetchModelsDevCatalog(): Promise<ModelsDevCatalog> {
   return data;
 }
 
-/** A model's input modalities: images when models.dev lists them, text always. */
 export function modelInput(model: ModelsDevModel): Model<Api>["input"] {
   return model.modalities?.input?.includes("image") ? ["text", "image"] : ["text"];
 }
 
-/** A models.dev price without context tiers; missing rates are zero. */
 export function flatCost(cost: ModelsDevModel["cost"]): ModelCost {
   return {
     input: cost?.input || 0,
@@ -95,7 +91,6 @@ export function flatCost(cost: ModelsDevModel["cost"]): ModelCost {
   };
 }
 
-/** A models.dev price with its context tiers; missing rates are zero. */
 export function modelsDevCost(cost: ModelsDevModel["cost"]): ModelCost {
   const tiers = cost?.tiers?.flatMap((tier) => {
     const context = tier.tier;
@@ -120,7 +115,6 @@ export function modelsDevCost(cost: ModelsDevModel["cost"]): ModelCost {
   return modelCost;
 }
 
-/** The catalog entry most providers build from a models.dev model: flat cost and 4096-token fallbacks. */
 export function modelsDevModel(
   id: string,
   model: ModelsDevModel,
@@ -142,15 +136,10 @@ export function modelsDevModel(
   };
 }
 
-/**
- * models.dev's reasoning options and fast mode for each catalog model, under `provider:id`. The loaders record
- * them from the source models they read; the thinking and compat passes read them back.
- */
 export class ModelsDevMetadata {
   readonly #reasoningOptions = new Map<string, ModelsDevReasoningOption[]>();
   readonly #modes = new Map<string, NonNullable<Model<Api>["modes"]>>();
 
-  /** Keeps a source model's reasoning options and fast mode under `provider:id`. */
   record(provider: string, id: string, sourceModel: ModelsDevModel): void {
     const key = `${provider}:${id}`;
 
@@ -161,12 +150,10 @@ export class ModelsDevMetadata {
     if (sourceModel.experimental?.modes?.fast !== undefined) this.#modes.set(key, ["fast"]);
   }
 
-  /** The reasoning options recorded under `provider:id`. */
   findReasoningOptions(key: string): ModelsDevReasoningOption[] | undefined {
     return this.#reasoningOptions.get(key);
   }
 
-  /** The modes recorded under `provider:id`. */
   findModes(key: string): NonNullable<Model<Api>["modes"]> | undefined {
     return this.#modes.get(key);
   }

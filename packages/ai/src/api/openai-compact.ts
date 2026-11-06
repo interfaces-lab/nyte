@@ -43,7 +43,6 @@ export interface OpenAICompactResult {
   readonly usage?: Usage;
 }
 
-/** Decode the JSON envelope; provider-owned item contents remain opaque. */
 export async function readOpenAICompactResponse(
   response: Response,
   model: Model<Api>,

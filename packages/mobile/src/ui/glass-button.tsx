@@ -16,27 +16,19 @@ import {
 } from "@expo/ui/swift-ui/modifiers";
 import { controls, themes, useTheme } from "../theme.ts";
 
-/** Label, action, and icon keep the names and types the native control uses. */
 type Common = Required<Pick<ComponentProps<typeof Button>, "label">> &
   Pick<ComponentProps<typeof Button>, "systemImage"> & {
     disabled?: boolean;
     busy?: boolean;
-    /** The action the screen is for: tinted with the accent rather than neutral. */
     prominent?: boolean;
   } & ({ onPress: () => void; href?: never } | { href: Href; onPress?: never });
 
-/**
- * A filling button spans its row, so the options that only make sense for a
- * self-sizing control — icon-only, compact, forced dark — are not offered with
- * it rather than being accepted and ignored.
- */
 type GlassButtonProps =
   | (Common & { fill: true })
   | (Common & {
       fill?: false;
       iconOnly?: boolean;
       size?: "regular" | "compact";
-      // Forced dark only for chrome drawn over dark content (annotate, camera).
       scheme?: "dark";
     });
 

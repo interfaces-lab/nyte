@@ -26,7 +26,6 @@ import type { CallRecord } from "../src/store.ts";
 import { kernelOver, world } from "./fake-env.ts";
 import { completed, label, livePart, main, setup, startRun, until } from "../src/harness.ts";
 
-/** The earliest time a wait on the main head is due, read from its parked calls. */
 async function nextWake(kernel: Kernel, session: SessionId): Promise<number | null> {
   const calls = await readCalls(kernel.store, session);
 

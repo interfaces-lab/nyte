@@ -92,6 +92,10 @@ export async function registerUpdates({
   };
 
   applyChannel();
+
+  const localFeed = localFeedUrl(process.env["NYTE_UPDATE_FEED_PORT"]);
+
+  if (localFeed !== undefined) autoUpdater.setFeedURL({ provider: "generic", url: localFeed });
   autoUpdater.logger = { info: () => undefined, warn: logError, error: () => undefined };
   autoUpdater.on("error", (error: Error) => logError(error.message));
 
@@ -110,7 +114,7 @@ export async function registerUpdates({
   });
 
   autoUpdater.signals.progress((info) => updates.progress(info.percent));
-  log("app-started", { version: app.getVersion() });
+  log("app-started", { version: app.getVersion(), feed: localFeed ?? "github" });
 
   const check = (): Promise<void> => operations.run(() => updates.check());
   const click = (): Promise<void> => operations.run(() => updates.click());
@@ -166,4 +170,12 @@ export async function registerUpdates({
         return channel;
       }),
   };
+}
+
+/** A loopback feed only: Squirrel.Mac still installs nothing but a build signed like this one. */
+function localFeedUrl(port: string | undefined): string | undefined {
+  if (port === undefined || !/^[1-9]\d{0,4}$/u.test(port) || Number(port) > 65_535)
+    return undefined;
+
+  return `http://127.0.0.1:${port}`;
 }

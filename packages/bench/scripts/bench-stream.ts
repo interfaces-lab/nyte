@@ -1,25 +1,3 @@
-/**
- * Host CPU per streamed text patch. A real host (`openHost`) on the memory store streams
- * scripted replies of many small chunks into K sessions at once, each with H prior messages
- * on its head, with or without one subscribed socket client per session.
- *
- * Each run is timed from the moment every session has streamed its first chunk until the first
- * one streams its last, so no run start or end falls inside the window.
- *
- * --delta-ms 0 keeps the loop busy: the model yields one macrotask per chunk instead of sleeping,
- * since without it the model pushes every chunk before the host takes the first.
- *
- * --profile writes a V8 CPU profile of the measured runs per row, and `<name>.windows.json` with
- * hrtime µs: `started` when the profile began and each run's window, so a reader can keep only
- * streaming samples. `Profiler.start` resolves up to ~1 s after the profile's own start time.
- *
- * pnpm --dir packages/bench bench:stream [--runs 20] [--warmup 3] [--chunks 400] [--delta-ms 1]
- *   [--k 1,4,8] [--h 0,200,2000] [--client both|yes|no] [--profile file.cpuprofile]
- *
- * The clients run in a child process, so the host's `process.cpuUsage()` counts only the host.
- * "proc" is the host process's CPU over the streaming window per patch, every thread; "main" is the
- * event-loop thread's (`process.threadCpuUsage()`), which bounds patches per second on one loop.
- */
 import { spawn } from "node:child_process";
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { Session as Inspector } from "node:inspector/promises";
@@ -56,7 +34,6 @@ const parsed = parseArgs({
   },
 });
 
-/** Re-runs this script with its own HOME and NYTE_HOME so nothing touches the user's host. */
 async function isolate(): Promise<void> {
   const home = await realpath(await mkdtemp(join(tmpdir(), "nyte-bench-stream-")));
 
@@ -448,7 +425,6 @@ async function openClients(
   };
 }
 
-/** The client side: one socket per session, subscribed and reading its head the way the app does. */
 async function runClients(positionals: readonly string[]): Promise<void> {
   const [address = "", token = "", ...pairs] = positionals;
   const url = new URL(SOCKET_PATH, address);

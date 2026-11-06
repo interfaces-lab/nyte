@@ -5,7 +5,6 @@ import { Image } from "react-native";
 
 export const MAX_ATTACHMENTS = 3;
 
-// Three images leave room in the server's 1 MiB JSON body for text and the envelope.
 const MAX_IMAGE_BASE64_LENGTH = 230 * 1024;
 
 export type DraftPart =
@@ -50,7 +49,6 @@ async function* decodeBase64(data: string): AsyncIterable<Uint8Array> {
   yield Uint8Array.from(atob(data), (character) => character.charCodeAt(0));
 }
 
-/** Decode locally and re-encode once. Send retries reuse these exact JPEG bytes. */
 export async function prepareImage(source: string): Promise<StagedImage> {
   const uri = source.startsWith("/") ? `file://${source}` : source;
   const { width, height } = await Image.getSize(uri);

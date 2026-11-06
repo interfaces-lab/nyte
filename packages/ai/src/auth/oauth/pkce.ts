@@ -1,11 +1,3 @@
-/**
- * PKCE utilities using the Web Crypto API, so the same code runs in Node 20+
- * and browsers.
- */
-
-/**
- * Encode bytes as base64url string.
- */
 function base64urlEncode(bytes: Uint8Array): string {
   let binary = "";
 
@@ -16,10 +8,6 @@ function base64urlEncode(bytes: Uint8Array): string {
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
 }
 
-/**
- * Generate PKCE code verifier and challenge.
- * Uses Web Crypto API for cross-platform compatibility.
- */
 export async function generatePKCE(): Promise<{ verifier: string; challenge: string }> {
   const verifierBytes = new Uint8Array(32);
   crypto.getRandomValues(verifierBytes);

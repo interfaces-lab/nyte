@@ -1,7 +1,3 @@
-/**
- * The ChatGPT Codex Responses adapter: WebSocket first when the transport allows it, zstd SSE
- * otherwise or after a WebSocket transport failure.
- */
 import { codexHeaderLimits } from "../providers/openai-codex-limits.ts";
 import type {
   AssistantMessage,
@@ -43,10 +39,6 @@ import { clampOpenAIPromptCacheKey } from "./openai-prompt-cache.ts";
 import { processResponsesStream, withPriorityTier } from "./openai-responses-stream.ts";
 import { buildBaseOptions, simpleReasoningEffort } from "./simple-options.ts";
 
-/**
- * Opens one Codex SSE response. `timeoutMs` bounds the wait for response headers; a transport
- * failure or non-2xx answer throws a {@link CodexRequestError}.
- */
 async function openCodexSse(
   model: Model<"openai-codex-responses">,
   headers: Headers,
@@ -111,10 +103,6 @@ async function openCodexSse(
   );
 }
 
-/**
- * Sends `request` over SSE with a zstd-compressed body, which the Codex backend decodes; the
- * WebSocket transport sends the uncompressed JSON frame, matching the official Codex client.
- */
 async function streamOverSse(
   request: CodexRequest,
   headers: Headers,

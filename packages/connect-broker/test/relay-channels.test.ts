@@ -1,4 +1,3 @@
-/** Channels in flight: credit-based flow control, body limits, cancellation, and revocation. See `relay-fixture.ts`. */
 import { randomBytes } from "node:crypto";
 import { BROKER_ROUTES } from "@nyte-ai/connect";
 import {

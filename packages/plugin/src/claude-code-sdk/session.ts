@@ -27,7 +27,6 @@ import { messageKey } from "./transcript.ts";
 import { emptyMessage, NYTE_SERVER, NYTE_TOOL_PREFIX, Translator } from "./translate.ts";
 
 interface Launch {
-  /** What only a new process can change: model, folder, thinking and system prompt. Effort and tools change on a running one. */
   readonly key: string;
   readonly model: string;
   readonly cwd: string;
@@ -39,11 +38,9 @@ interface Launch {
   readonly history: readonly SessionStoreEntry[];
   readonly tools: readonly Tool[];
   readonly query: StartQuery;
-  /** The installed `claude` to run; without one the Agent SDK looks for its own. */
   readonly claude: string | undefined;
 }
 
-/** Starts Claude Code: the Agent SDK's `query`, or a stand-in with the parts of its `Query` a session uses. */
 export type StartQuery = (
   params: Parameters<typeof query>[0],
 ) => AsyncIterable<SDKMessage> & Pick<Query, "applyFlagSettings" | "close">;
@@ -52,30 +49,19 @@ type ToolReply = Awaited<ReturnType<SdkMcpToolDefinition["handler"]>>;
 
 const toolUseId = Type.String({ minLength: 1 });
 
-/** Claude Code features with a Nyte counterpart, or that would act outside Nyte's sight. */
 const ISOLATION_ENV = {
   CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1",
   CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
   DISABLE_AUTO_COMPACT: "1",
   CLAUDE_CODE_ENABLE_AWAY_SUMMARY: "0",
-  // Tool search would hide every Nyte tool, since they all reach Claude through MCP.
   ENABLE_TOOL_SEARCH: "false",
   CLAUDE_CODE_DISABLE_ADVISOR_TOOL: "1",
-  // Nyte truncates tool output itself.
   MAX_MCP_OUTPUT_TOKENS: "200000",
-  // Skips the subscription login.
   CLAUDE_CODE_SIMPLE: undefined,
-  // Overrides the effort Nyte picks.
   CLAUDE_CODE_EFFORT_LEVEL: undefined,
-  // Would fail any Nyte tool call that waits on the user longer.
   MCP_TOOL_TIMEOUT: undefined,
 };
 
-/**
- * Claude Code as a bare model: only the tools and system prompt Nyte passes, none of the user's
- * Claude Code settings, hooks, MCP servers, skills or CLAUDE.md, and prompts sent as written
- * (`verbatimPrompts` needs Claude Code 2.1.248 or later).
- */
 export function isolatedOptions(claude: string | undefined, env: ProviderEnv | undefined): Options {
   return {
     pathToClaudeCodeExecutable: claude,
@@ -164,14 +150,8 @@ function memoryStore(session: string, history: readonly SessionStoreEntry[]) {
   };
 }
 
-/**
- * One running `claude` for a Nyte session. Claude's calls to Nyte's tools end the response that
- * makes them; Nyte runs them like any model's calls, and their results answer Claude's MCP
- * requests when the next response starts.
- */
 export class ClaudeCodeSession {
   readonly #key: string;
-  /** Message keys of the transcript Claude has seen, up to its last reply. */
   #known: readonly string[] = [];
 
   readonly #prompts = new Inbox<SDKUserMessage>();
@@ -241,7 +221,6 @@ export class ClaudeCodeSession {
     return this.#failure !== undefined;
   }
 
-  /** Whether this process can take the turn for `keys`: it was launched as `key` and has seen their start. */
   follows(key: string, keys: readonly string[]): boolean {
     return (
       !this.closed &&
@@ -257,14 +236,12 @@ export class ClaudeCodeSession {
     await this.#query.applyFlagSettings({ effortLevel: effort ?? null });
   }
 
-  /** Serves `tools` as the Nyte MCP server's tools from now on, telling Claude Code when they changed. */
   expose(tools: readonly Tool[]): void {
     if (JSON.stringify(tools) === JSON.stringify(this.#tools)) return;
     this.#tools = tools;
     this.#server.instance.sendToolListChanged();
   }
 
-  /** Answers Claude's waiting Nyte tool calls with the results Nyte recorded for them. */
   deliver(messages: readonly Message[]): void {
     for (const message of messages)
       if (message.role === "toolResult")
@@ -282,7 +259,6 @@ export class ClaudeCodeSession {
     });
   }
 
-  /** Streams Claude's next response to the transcript whose message keys are `keys`. */
   respond(
     model: Model<Api>,
     keys: readonly string[],
@@ -405,7 +381,6 @@ export class ClaudeCodeSession {
     return tail === "" ? "" : ` (${tail})`;
   }
 
-  /** Queues the main agent's messages for the turn. A Nyte call's reply waits from the call's start, since its result can reach Nyte before Claude Code asks for it. */
   #route(message: SDKMessage): void {
     if (message.type === "result") {
       this.#turn.push(message);

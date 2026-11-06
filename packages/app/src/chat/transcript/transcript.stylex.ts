@@ -25,7 +25,6 @@ export const messageScrollerStyles = create({
     maskImage:
       "linear-gradient(to bottom, transparent, black var(--_top-fade), black calc(100% - var(--_dock-height, 0px) - var(--_dock-fade, 0px)), transparent calc(100% - var(--_dock-height, 0px)))",
   },
-  /** Fades messages out above the composer into the surface itself, which an opaque backdrop can't match over the window's material. */
   docked: (height: number) => ({
     "--_dock-height": `${height}px`,
     "--_dock-fade": conversation.edgeFade,

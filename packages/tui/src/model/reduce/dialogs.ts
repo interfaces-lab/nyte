@@ -412,7 +412,6 @@ export function dialogCommand(state: State, input: DialogInput, now: number, red
   return all(next, result.intents, now, reduce);
 }
 
-/** Keys on the approval panel: typing does nothing, the highlight is kept per part, and closing it denies. */
 function approvalCommand(
   state: State,
   dialog: ListDialog,

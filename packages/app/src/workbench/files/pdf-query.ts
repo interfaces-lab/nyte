@@ -3,11 +3,6 @@ import type { ByteReader } from "@nyte-ai/sdk";
 import type { DeferredRuntimes } from "../../lib/deferred-entries.ts";
 import { releaseWithQuery } from "../../lib/query-release.ts";
 
-/**
- * Each version's document closes as soon as nothing shows that version. While the next version
- * opens, the previous file stays as placeholder data only to keep the viewer mounted, since its
- * document may already be closed.
- */
 export function pdfQuery(
   path: string,
   version: string,

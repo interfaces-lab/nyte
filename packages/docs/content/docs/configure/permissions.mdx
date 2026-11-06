@@ -34,7 +34,8 @@ edit there asks even under **Auto-edit**.
 - SDK: `host.settings.apply("permissions", "auto-edit")`.
 
 The level belongs to the host and applies to every chat. A running chat picks it up at its next tool
-call.
+call. A chat that an outside agent started over MCP asks under the stricter of this level and the
+ceiling its grant carries.
 
 ## Answer a request [#answer]
 
@@ -46,7 +47,7 @@ A call that asks waits in the chat until someone answers:
 | **Allow for this session** | This call runs, and that tool runs without asking for the rest of the chat. Other waiting calls to it run too |
 | **Deny**                   | The call doesn't run. The agent is told you denied it and to ask you how to proceed                           |
 
-The request survives a restart of the host, and any app watching the chat can answer it. Only
+The request survives a restart of the host, and any client attached to the chat can answer it. Only
 someone with owner [authority](/docs/sdk/reference/shared-concepts#authority) can allow a call;
 anyone in the chat can deny one.
 

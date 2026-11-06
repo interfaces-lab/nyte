@@ -51,7 +51,6 @@ export function releaseStartupReads(): void {
   });
 }
 
-/** Render once the first screen is ready: mounting it releases the startup read hold. */
 export function StartupReadsRelease(): null {
   useMountEffect(releaseStartupReads);
 

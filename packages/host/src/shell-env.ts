@@ -73,11 +73,6 @@ async function repairShellEnvironment({
   env.PATH = inheritedPath ? `${path}:${inheritedPath}` : path;
 }
 
-/**
- * Runs `shell -ilc` and reads the environment it prints between two random fences. It settles
- * at the first of exit, the timeout or 64 KiB of output, and kills the shell then without
- * waiting for descendants a startup script left holding stdout open.
- */
 function readLoginShellEnvironment({
   shell,
   env,

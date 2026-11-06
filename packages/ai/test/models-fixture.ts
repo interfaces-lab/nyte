@@ -43,7 +43,6 @@ export interface ProviderCall {
   options: StreamOptions | undefined;
 }
 
-/** Ambient auth for keyless test providers; reports "configured" with no auth values. */
 export const ambientAuth: ApiKeyAuth = {
   name: "Ambient",
   resolve: async () => ({ auth: {} }),

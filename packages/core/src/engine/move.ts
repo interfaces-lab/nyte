@@ -45,7 +45,6 @@ interface Plan {
   readonly landing: CommitId | null;
   readonly handback: UserContent | null;
   readonly abandoned: readonly CommitId[];
-  /** When the first abandoned commit landed; null when the move abandons none. */
   readonly since: number | null;
 }
 

@@ -6,7 +6,6 @@ export interface ChatFact {
   readonly kind: "repository" | "worktree" | "folder";
   readonly text: string;
   readonly detail: string | undefined;
-  /** The full value a click copies, which can differ from what the line shows. */
   readonly copy: string;
 }
 

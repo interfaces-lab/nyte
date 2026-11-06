@@ -9,14 +9,6 @@ import type {
   CanvasPreviewer,
 } from "./canvas-preview.ts";
 
-/**
- * The action an app offers to render a canvas preview in its own renderer;
- * its input is a `CanvasPreviewRequest`, its answer a
- * `CanvasPreviewAnswer`.
- *
- * @category plugins
- * @since 0.1.0
- */
 export const CANVAS_PREVIEW_ACTION = {
   name: "canvas.preview",
   summary: "Renders a canvas off-screen in this app and reports what it saw.",
@@ -25,23 +17,11 @@ export const CANVAS_PREVIEW_ACTION = {
 
 const PERFORM_MS = 30_000;
 
-/**
- * What the host sends the preview action.
- *
- * @category plugins
- * @since 0.1.0
- */
 export const CanvasPreviewCallType = Type.Object({
   module: Type.Object({ runtime: Type.Number(), code: Type.String(), title: Type.String() }),
   theme: Type.Enum(["light", "dark"]),
 });
 
-/**
- * What the preview action answers: the outcome, its PNG as base64.
- *
- * @category plugins
- * @since 0.1.0
- */
 export const CanvasPreviewAnswerType = Type.Union([
   Type.Object({
     kind: Type.Literal("rendered"),

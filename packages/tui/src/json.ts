@@ -1,4 +1,3 @@
-/** Types for parsed JSON, so a file's contents are typed before they are trusted. */
 import type { Json } from "@nyte-ai/sdk";
 
 export type JsonObject = { readonly [key: string]: Json };

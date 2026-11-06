@@ -14,7 +14,6 @@ type ComposerSubmission =
   | { readonly kind: "prompt"; readonly text: string }
   | { readonly kind: "shell"; readonly command: string; readonly retain: boolean };
 
-/** A slash command: `/`, a name of ASCII letters, digits and `-` that does not start with `-`, then optionally whitespace and its argument. */
 const SLASH_COMMAND = /^\/([A-Za-z0-9][A-Za-z0-9-]*)(?:\s(.*))?$/su;
 
 function parseSlashCommand(input: string): ParsedSlashCommand | undefined {
@@ -56,7 +55,6 @@ export interface SlashCommand {
   readonly aliases?: readonly string[];
 }
 
-/** A built-in's name and aliases come from the names the host keeps for clients, so no plugin command takes one. */
 interface BuiltinSlash extends SlashCommand {
   readonly name: ClientCommandName;
   readonly aliases?: readonly ClientCommandName[];
@@ -243,7 +241,6 @@ interface SkillToken {
   readonly skill: SkillInfo;
 }
 
-/** Each `/name` in `text` that names one of `skills`, at the start or after whitespace. */
 export function skillTokens(text: string, skills: ReadonlyMap<string, SkillInfo>): SkillToken[] {
   const tokens: SkillToken[] = [];
 

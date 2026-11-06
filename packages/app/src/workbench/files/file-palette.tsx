@@ -10,7 +10,6 @@ import type { OutlineSymbol } from "./outline.ts";
 
 const MATCH_LIMIT = 50;
 
-/** The palette's text picks what it lists: files, `:line[:column]`, or `@symbol` in the open file. */
 type Mode =
   | { readonly kind: "files"; readonly needle: string }
   | {
@@ -33,10 +32,6 @@ export interface PaletteFile {
   readonly symbols: readonly OutlineSymbol[];
 }
 
-/**
- * Quick open. It can open on a bare `:` or `@` with the caret before it, so the first key
- * typed moves the caret past the prefix.
- */
 export function FilePalette({
   query,
   files,
@@ -47,10 +42,8 @@ export function FilePalette({
   onOpenFile,
   onGoTo,
 }: {
-  /** Undefined while closed. */
   readonly query: string | undefined;
   readonly files: readonly MentionFile[] | undefined;
-  /** Open files, most recently used first, listed before anything is typed. */
   readonly recent: readonly MentionFile[];
   readonly active: PaletteFile | undefined;
   readonly onQueryChange: (query: string) => void;

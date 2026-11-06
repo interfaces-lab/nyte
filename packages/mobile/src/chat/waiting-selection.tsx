@@ -10,7 +10,6 @@ import { controls, useTheme, radii, spacing, textStyles, tokens, typography } fr
 
 type WaitingSelectionProps = {
   question: OpenQuestion;
-  /** The subagent asking, when the question isn't this conversation's own. */
   origin?: string;
   onReply: (answers: QuestionAnswers) => Promise<ActOutcome<unknown> | undefined>;
 };

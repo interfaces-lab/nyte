@@ -53,7 +53,6 @@ export const RETRY_POLICY: RetryPolicy = {
   maxAgentDelayMs: 60_000,
 };
 
-/** A response's usage as runs record it: the adapter's price, or the model's own rates when the adapter left it unpriced. */
 export function calculateUsage(message: AssistantMessage, model: Model<Api>): Usage {
   const reported = message.usage;
   const { input, output, cacheRead, cacheWrite } = reported;
@@ -199,7 +198,6 @@ export async function complete(
   };
 }
 
-/** The provider sent no answer: the request errored or was aborted. */
 function unanswered(message: AssistantMessage): boolean {
   return message.stopReason === "error" || message.stopReason === "aborted";
 }

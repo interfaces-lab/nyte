@@ -24,10 +24,8 @@ import { parseStrip, storeStrip } from "./stored-strip.ts";
 import type { DesktopWindow } from "../contract/desktop-window.ts";
 import { localArea, readStored, removeStored, writeStored } from "../lib/storage.ts";
 
-/** Each window keeps its tabs and drafts under its own id. */
 const WINDOW_KEY_PREFIX = "nyte.window.v1:";
 
-/** What earlier builds saved: one tab strip for every window, and drafts under each tab. */
 const EARLIER_STRIP_KEY = "nyte.desktop.tabs.v1";
 
 const EARLIER_TAB_KEY_PREFIX = "nyte.desktop.tab.v1:";
@@ -36,7 +34,6 @@ const SAVE_DELAY_MS = 250;
 
 const newId = (): string => crypto.randomUUID();
 
-/** Removes what no open window owns: closed windows' tabs and drafts, and what earlier builds saved. */
 function forgetWindows(windowIds: readonly string[]): void {
   const local = localArea();
 
@@ -72,7 +69,6 @@ class WindowTabs {
     return this.#startupDestination;
   }
 
-  /** Restores this window's own tabs; the first window of a launch also clears what no window owns. */
   start(desktopWindow: DesktopWindow): void {
     this.#strip = true;
     this.#windowKey = `${WINDOW_KEY_PREFIX}${desktopWindow.id}`;
@@ -97,7 +93,6 @@ class WindowTabs {
 
   readonly getSnapshot = (): WindowState => this.#state;
 
-  /** Without a strip the window has one tab, so every open replaces what it shows. */
   dispatch(action: WindowAction): void {
     const next =
       action.kind === "open" && !this.#strip ? { ...action, target: "here" as const } : action;
@@ -105,22 +100,15 @@ class WindowTabs {
     this.#apply(reduce(this.#state, next, newId));
   }
 
-  /**
-   * A pane's own opens (`openSessionInPane`, a drop on a pane edge) place chats through the pane
-   * controller instead.
-   */
   openChat(sessionId: SessionId, intent: OpenIntent): void {
     this.dispatch({ kind: "open", place: { kind: "session", sessionId }, target: intent });
   }
 
-  /** A new chat gets its own tab, or the new-chat tab already waiting; one tab replaces its view. */
-  /** Shows a new chat, in `project` when one is named. */
   newChat(project?: ProjectId): void {
     this.dispatch(this.#strip ? { kind: "new-tab" } : { kind: "leave-page" });
     this.controller().newChat(project);
   }
 
-  /** Shows a draft in the tab whose new chat it is, else in the window's new-chat tab. */
   showDraft(draftId: string): void {
     const located = this.#windowDrafts().find(draftId);
 
@@ -141,7 +129,6 @@ class WindowTabs {
     this.controller().selectDraft(draftId);
   }
 
-  /** The tab whose panes the window shows: the active tab, or under a page the chat tab used last. */
   readonly paneTabId = (): string => findChatTab(this.#state)?.id ?? this.#state.activeTabId;
 
   controller(tabId: string = this.paneTabId()): PaneController {
@@ -162,7 +149,6 @@ class WindowTabs {
     return controller;
   }
 
-  /** The tab's layout in the window's state, written through the window's reducer. */
   #layoutStore(tabId: string): LayoutStore {
     const focus = createFocusRequests();
     const rules = { ...paneRules, newId };
@@ -197,7 +183,6 @@ class WindowTabs {
     return this.#drafts;
   }
 
-  /** A layout the window changed on its own, as when it opens a chat, asks its focused pane to take the keyboard. */
   #apply(next: WindowState, writer?: string): void {
     if (next === this.#state) return;
     const previous = this.#state;

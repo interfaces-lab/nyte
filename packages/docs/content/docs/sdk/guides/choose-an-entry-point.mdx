@@ -30,13 +30,13 @@ await host.close();
 
 `sdk.open` needs Node 26.4 or later. Every option has a default:
 
-| Option      | Default                                                                |
-| ----------- | ---------------------------------------------------------------------- |
-| `store`     | SQLite at `<home>/.nyte/nyte.db`, which the host closes when it closes |
-| `workspace` | The local folder `process.cwd()`                                       |
-| `models`    | Nyte's model catalog, with credentials encrypted in the store          |
-| `plugins`   | None. The built-in plugins and `<home>/.nyte/plugins` load either way  |
-| `home`      | `os.homedir()`                                                         |
+| Option      | Default                                                                                             |
+| ----------- | --------------------------------------------------------------------------------------------------- |
+| `store`     | SQLite at `<home>/.nyte/nyte.db`, or at `NYTE_DB` when it is set. The host closes it when it closes |
+| `workspace` | The local folder `process.cwd()`                                                                    |
+| `models`    | Nyte's model catalog, with credentials encrypted in the store                                       |
+| `plugins`   | None. The built-in plugins and `<home>/.nyte/plugins` load either way                               |
+| `home`      | `os.homedir()`                                                                                      |
 
 [Entry points](/docs/sdk/reference/entry-points) lists the rest.
 
@@ -103,7 +103,8 @@ const connection = await sdk.connect({
 
 `connect` resolves once the host has answered, so a bad URL or token fails here rather than on the
 first call. In a browser or React Native, import from `@nyte-ai/sdk`. Its build for those platforms
-has no host code, and `sdk.open` there throws `SdkError("unavailable")`.
+has no host code, and `sdk.open` there throws `SdkError("unavailable")`. `openHost`, which attaches
+to a host's rows over its socket, comes from `@nyte-ai/sdk/client` on every platform.
 
 The other options:
 
@@ -185,17 +186,22 @@ for await (const host of connection.watch()) {
 `connection.close()`, `revoked` when the host stopped accepting the credential, or `host-gone` when a
 different host now answers at the URL. A closed connection doesn't reopen. Call `connect` again.
 
+The connection `openHost` returns reports its socket in `health`, a store with `subscribe` and
+`snapshot`. The snapshot's `kind` is `connecting`, `open`, `retrying` with the `attempt` and `at`,
+the time it dials again, or `blocked` with a `reason` of `auth`, `version` or `offline`. While it
+is `retrying` or `blocked`, `retry()` dials again at once.
+
 ## What differs between the two
 
 A `Host` has these members that a `Connection` doesn't:
 
-- `listen` serves the host over HTTP or as a fetch handler.
+- `listen` serves the host over HTTP, on a Unix socket, or as a fetch handler.
 - `inspect(session)` reads a session's stored records and events, for debugging.
 - `execution` lets you drive sessions yourself, and `pause` and `resume` model requests, for example
   while the machine sleeps.
 - `plugins.replace` accepts plugin objects as well as plugin files.
 
 Everything else, from `sessions` to `models`, behaves the same over the network. The difference you
-will notice is authority. A connection with the listener token gets participant and owner authority.
-A paired device gets what `pair` granted, so a device paired with `participant` can chat but can't
-sign in to models or change settings.
+will notice is authority. A connection with the listener token gets participant and owner authority,
+unless the listener's `auth.authority` says otherwise. A paired device gets what `pair` granted, so
+a device paired with `participant` can chat but can't sign in to models or change settings.

@@ -11,7 +11,6 @@ import { parseJson } from "@nyte-ai/protocol";
 import { readErrorCode } from "../local/tree.ts";
 import { MCP_TOKEN_PREFIX } from "./token.ts";
 
-/** The owner's side of MCP access, answered by the local `mcp.*` operations. */
 export interface McpOwner {
   approve(input: OperationInput<"mcp.approve">): Promise<OperationOutput<"mcp.approve">>;
   deny(input: OperationInput<"mcp.deny">): Promise<void>;
@@ -25,7 +24,6 @@ export type McpClient = {
   readonly redirectUris: readonly string[];
 };
 
-/** An authorization request that passed validation and waits for the owner. */
 export type McpSignIn = {
   readonly client: McpClient;
   readonly redirectUri: string;
@@ -125,7 +123,6 @@ type GrantFile = Static<typeof GrantFileType>;
 
 type GrantRecord = Static<typeof GrantRecordType>;
 
-/** Keeps MCP grants in `path`, each token only as its SHA-256 digest, re-read on every check so a revoke from another process holds; sign-ins waiting for the owner and authorization codes live in memory. */
 export function openMcpGrants(path: string): McpGrants {
   const pending = new Map<string, Pending>();
   const codes = new Map<string, Code>();

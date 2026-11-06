@@ -18,7 +18,6 @@ function normalized(path: string): string {
   return path.replaceAll("\\", "/").replace(/\/+$/u, "");
 }
 
-/** The deepest workspace wins. `undefined` for a file outside every workspace, which opens read-only. */
 export function workspaceFile(
   path: string,
   views: Iterable<WorkbenchViewKey>,

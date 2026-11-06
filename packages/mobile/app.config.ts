@@ -1,17 +1,6 @@
 import type { ConfigContext, ExpoConfig } from "expo/config";
 import { version } from "./package.json";
 
-/**
- * Variant overrides layered onto `app.json`, which stays the source of
- * everything the three builds share. Only what must differ per variant lives
- * here.
- *
- * The variants install side by side, so a TestFlight build and a local
- * development build can sit on one phone without replacing each other. The
- * variant comes from `APP_VARIANT`, which each EAS build profile sets; an
- * unset value means production, because that is the one a release must never
- * get wrong by omission.
- */
 type AppVariant = "development" | "preview" | "production";
 
 function resolveVariant(value: string | undefined): AppVariant {
@@ -24,43 +13,14 @@ const VARIANTS = {
   production: { name: "Nyte", scheme: "nyte", suffix: "" },
 } as const;
 
-/**
- * APNs device tokens are scoped to the environment named in the entitlement,
- * and a token minted under one is rejected by the other without an error the
- * app can see. TestFlight and the App Store both run against production, so
- * only a development build keeps the sandbox.
- *
- * `@use-voltra/ios-client` writes `development` unconditionally whenever its
- * push support is on, so `with-aps-environment` runs after it and corrects the
- * value.
- */
 function apsEnvironment(variant: AppVariant): "development" | "production" {
   return variant === "development" ? "development" : "production";
 }
 
-/**
- * Which binaries an over-the-air update is allowed to reach.
- *
- * `appVersion` matches on the version string alone, so every build sharing
- * `0.1.0` looks interchangeable. That is wrong for a distributed build: this
- * package's native side changes without the version moving, and a JavaScript
- * bundle expecting a native module the installed binary lacks crashes on
- * launch. `fingerprint` hashes native dependencies, config plugins, and
- * patches instead, so an update only reaches a binary that can run it.
- *
- * A development build keeps `appVersion` because the fingerprint would be
- * recalculated on every Metro launch for no benefit; a dev client loads local
- * bundles regardless.
- */
 function runtimeVersion(variant: AppVariant): ExpoConfig["runtimeVersion"] {
   return variant === "development" ? { policy: "appVersion" } : { policy: "fingerprint" };
 }
 
-/**
- * Release builds reach hosts over HTTPS only, so App Transport Security stays at
- * its default. A development build loads its bundle from Metro and may reach a
- * host on this Mac, both over plain HTTP.
- */
 function infoPlist(
   variant: AppVariant,
   base: NonNullable<ExpoConfig["ios"]>["infoPlist"],
@@ -70,12 +30,6 @@ function infoPlist(
     : base;
 }
 
-/**
- * The app.json plugins this config replaces per variant. Voltra's app group follows the variant's
- * bundle identifier, because a shared group would let two variants read each other's Live Activity
- * state. Its push support lets APNs update the Live Activity while the app is suspended; nothing sends
- * those pushes yet (see the README).
- */
 const VARIANT_PLUGINS = new Set<string | undefined>(["@use-voltra/ios-client", "expo-dev-client"]);
 
 export default ({ config }: ConfigContext): ExpoConfig => {
@@ -114,17 +68,6 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   };
 };
 
-/**
- * `eas init` writes the resolved config back to `app.json`, which bakes in the
- * Live Activity extension the Voltra plugin generated for whichever variant
- * happened to resolve at the time. The plugin appends rather than replaces, so
- * keeping that copy gives a non-production build two extensions: its own and a
- * stale one holding the production bundle identifier and app group. Drop the
- * generated block and let the plugin produce it again.
- *
- * `projectId` and everything else under `extra` are written by hand or by the
- * CLI for keeps, so they survive.
- */
 function withoutGeneratedExtensions(extra: ExpoConfig["extra"]): ExpoConfig["extra"] {
   if (extra === undefined) return undefined;
   const eas: unknown = extra["eas"];

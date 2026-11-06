@@ -392,7 +392,6 @@ function core(command: CoreCommand, input: TableInput): Interaction {
   return OFF;
 }
 
-/** Whether core's table answers `command`; every other command goes to {@link otherInteraction}. */
 // oxlint-disable-next-line nyte-code/no-one-off-boolean-helpers -- a guard: inlined, the miss branch cannot narrow to Exclude<ChatCommand, CoreCommand>
 function handledByCore(command: ChatCommand): command is CoreCommand {
   return CORE_COMMANDS.some((candidate) => candidate === command);

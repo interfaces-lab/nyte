@@ -78,7 +78,6 @@ const styles = create({
   },
 });
 
-/** 1 when a pointer moving left widens the panel, -1 when moving right does. */
 function widthGrowth(seat: HTMLElement | null, side: "start" | "end"): 1 | -1 {
   const rtl = seat !== null && getComputedStyle(seat).direction === "rtl";
 
@@ -92,7 +91,6 @@ interface ResizeState {
   nextWidth: number;
 }
 
-/** A resizable panel at the end of its row, or its start; its sash sits on the edge that faces the row. */
 export function SidePanel({
   side = "end",
   children,

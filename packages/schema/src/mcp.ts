@@ -68,7 +68,6 @@ export const McpServerViewType = Type.Object({
   state: McpServerStateType,
 });
 
-/** One configured server, with where it is defined and its connection now. */
 export type McpServerView = Decoded<typeof McpServerViewType>;
 
 export const McpViewType = Type.Object({
@@ -160,7 +159,6 @@ export const McpChangeType = Type.Union([
   Type.Object({ kind: Type.Literal("invalid"), message: Type.String() }),
 ]);
 
-/** What an MCP action did: `missing` names no configured server, `invalid` explains a refused change. */
 export type McpChange = Decoded<typeof McpChangeType>;
 
 export const McpViewSchema: Schema<McpView> = standard(McpViewType);

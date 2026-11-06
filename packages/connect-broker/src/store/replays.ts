@@ -1,8 +1,6 @@
-/** Link proof replays, rate limits, and the cron purge of what has expired. */
 import type { D1Database, D1PreparedStatement } from "../d1.ts";
 import { CountRow, changed, one } from "./rows.ts";
 
-/** Record a proof id. False if it was already used. */
 export async function consumeProof(
   db: D1Database,
   input: { readonly key: string; readonly expiresAt: number },
@@ -16,7 +14,6 @@ export async function consumeProof(
   );
 }
 
-/** Count a request in a fixed window; the statement answers the window's count, this one included. */
 export function hitStatement(
   db: D1Database,
   input: { readonly key: string; readonly windowMs: number; readonly now: number },
@@ -32,7 +29,6 @@ export function hitStatement(
     .bind(input.key, input.now - (input.now % input.windowMs));
 }
 
-/** The count `hitStatement` answered. */
 export function hitCount(row: unknown): number {
   return one(CountRow, row)?.count ?? Number.POSITIVE_INFINITY;
 }

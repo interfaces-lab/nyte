@@ -99,7 +99,6 @@ export function connection(): Connection {
   return installed;
 }
 
-/** Cleared when another connection replaces this one. */
 export const registries = new Set<{ clear(): void }>();
 
 export function hostChanged(cause: unknown): boolean {

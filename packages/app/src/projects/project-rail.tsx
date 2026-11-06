@@ -16,7 +16,6 @@ import { chatWindow } from "../window/index.ts";
 import { workbenchStyles } from "../workbench/workbench.stylex.ts";
 import { openProjectDialog } from "./project-dialog.tsx";
 
-/** What needs the user leads; finished agents fold into one row. */
 const RANK: Record<TaskState, number> = {
   waiting: 0,
   failed: 1,
@@ -26,10 +25,6 @@ const RANK: Record<TaskState, number> = {
   done: 3,
 };
 
-/**
- * The workbench rail's agents beside a chat in a project: each agent still going, by name, and
- * one row for the finished ones, under a heading that opens the project's settings.
- */
 export function ProjectRail({ sessionId }: { readonly sessionId: SessionId }): ReactElement | null {
   const id = useSessionRow(sessionId, (session) => session.project);
   const project = useProjects().find((entry) => entry.id === id);

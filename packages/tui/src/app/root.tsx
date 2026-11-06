@@ -47,7 +47,6 @@ function drawFallen(props: RootProps): (error: unknown, reset: () => void) => JS
   );
 }
 
-/** The error screen's theme, read from the state rather than the kit, which may be what threw. */
 function fallbackTheme(store: Store): CliTheme {
   const { settings, terminal } = store.state().facts;
 

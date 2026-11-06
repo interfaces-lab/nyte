@@ -58,7 +58,6 @@ import { submit } from "./submit.ts";
 
 export interface Runner {
   run(effect: Effect): void;
-  /** Boots once the host opens; a host that can't open fails boot. */
   boot(options: BootOptions): void;
   changed(): void;
   readonly exited: Promise<{ readonly code: number }>;
@@ -71,18 +70,12 @@ type Handler<K extends Effect["kind"], C> = (
   context: C,
 ) => Promise<void>;
 
-/** Where an effect runs: a local one at once, without the host; a host one once the host opens. */
 type Route<K extends Effect["kind"]> =
   | { readonly kind: "local"; readonly run: Handler<K, LocalHandlerContext> }
   | { readonly kind: "host"; readonly run: Handler<K, HandlerContext> };
 
 type Routes = { readonly [K in Effect["kind"]]: Route<K> };
 
-/**
- * Runs effects: local ones at once, host ones once `context.opened` settles. Host effects run
- * before it settles start in the order they came; a host that can't open drops them, and only
- * boot reports it.
- */
 export function createRunner(context: RunnerContext): Runner {
   const scope = createScope();
   const handlerContext: HandlerContext = { ...context, scope };
@@ -148,7 +141,6 @@ export function createRunner(context: RunnerContext): Runner {
   };
 }
 
-/** Resolves `true` once the host opens and `false` when the runner stops first; rejects when the host can't open. */
 function reachableHost(opened: Promise<void>, signal: AbortSignal): Promise<boolean> {
   if (signal.aborted) return Promise.resolve(false);
 
@@ -163,12 +155,10 @@ function shellsDone(scope: Scope): readonly Promise<void>[] {
   return [...scope.shells.values()].map((shell) => shell.done);
 }
 
-/** An effect that runs before the host opens: its handler gets no host or plugin port. */
 function local<K extends Effect["kind"]>(run: Handler<K, LocalHandlerContext>): Route<K> {
   return { kind: "local", run };
 }
 
-/** An effect that waits for the host to open. */
 function host<K extends Effect["kind"]>(run: Handler<K, HandlerContext>): Route<K> {
   return { kind: "host", run };
 }

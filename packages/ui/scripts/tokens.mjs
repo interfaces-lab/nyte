@@ -1,9 +1,3 @@
-/**
- * Reads token files through StyleX's own compiler, so checks and generators see
- * exactly what ships: `readGroups(path)` maps each exported `defineVars` or
- * `createTheme` to its declarations, keyed by custom property. A value with
- * at-rule variants is `{ default, "@media …": … }`.
- */
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
@@ -40,7 +34,6 @@ function declarations(body) {
   return out;
 }
 
-/** `[{ condition, className, values }]` for every rule StyleX emits from the file. */
 function rules(metadata) {
   return metadata.flatMap(([, { ltr }]) => {
     const nested = ltr.match(/^(@[^{]+)\{(.*?)\{(.*)\}\}$/s);

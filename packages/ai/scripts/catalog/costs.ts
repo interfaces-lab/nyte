@@ -1,15 +1,11 @@
-/** Prices the generator writes into catalogs where upstream metadata is missing or stale. */
 import type { Api, Model, ModelCost } from "../../src/types.ts";
 
-/** OpenAI bills input above this many tokens at the long-context tier. */
 export const OPENAI_LONG_CONTEXT_INPUT_THRESHOLD = 272000;
 
-/** Rounds a price to six decimals, the precision catalogs store. */
 export function roundCost(value: number): number {
   return Number(value.toFixed(6));
 }
 
-/** Adds OpenAI's long-context tier: double input and cache prices, 1.5x output, above the threshold. */
 export function withOpenAiLongContextPricing(cost: Model<Api>["cost"]): Model<Api>["cost"] {
   return {
     ...cost,
@@ -65,10 +61,6 @@ export const KIMI_K3_COST = {
   cacheWrite: 0,
 } as const;
 
-/**
- * Kimi Coding is subscription-backed, so models.dev reports zero cost. The
- * equivalent Moonshot API rates estimate the value of subscription usage.
- */
 export const KIMI_CODING_IMPLIED_COSTS = new Map<string, ModelCost>([
   ["k3", KIMI_K3_COST],
   ["kimi-for-coding", { input: 0.95, output: 4, cacheRead: 0.19, cacheWrite: 0 }],

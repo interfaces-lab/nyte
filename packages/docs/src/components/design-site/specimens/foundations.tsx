@@ -1,9 +1,3 @@
-/**
- * One specimen per foundation page, drawn from the live tokens: every colour,
- * corner, gap, and curve here resolves through the same StyleX variables the
- * components read, in the current scheme.
- */
-
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Kbd } from "@nyte-ai/ui/kbd";
@@ -92,7 +86,6 @@ function TypographySpecimen() {
 
 const elevations = [shadow.shadowSm, shadow.shadowMdOutline, shadow.shadowLg, shadow.shadowXl];
 
-/** Each step lifts a card off a muted floor, where the warm ink of the shadow shows. */
 function ShadowsSpecimen() {
   return (
     <div {...props(styles.elevations)}>
@@ -103,10 +96,6 @@ function ShadowsSpecimen() {
   );
 }
 
-/**
- * Pointing at the tile runs the puck along the curve it draws: the tile sets
- * `--design-active` to 1 while it is hovered or holds focus.
- */
 function MotionSpecimen() {
   return (
     <div {...props(styles.motion)}>
@@ -142,7 +131,6 @@ function TokensSpecimen() {
   );
 }
 
-/** The same two controls under each scheme: every role is a `light-dark()` pair. */
 function ThemingSpecimen() {
   return (
     <div {...props(styles.schemes)}>
@@ -174,7 +162,6 @@ function FocusSpecimen() {
   );
 }
 
-/** The glyphs drawn filled as well as outlined, each beside its twin. */
 const iconPairs = ["star", "warning", "bubble-question"] as const;
 
 function IconsSpecimen() {

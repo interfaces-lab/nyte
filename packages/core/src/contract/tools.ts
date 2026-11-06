@@ -35,18 +35,14 @@ export interface ToolInvocation extends Durable {
       options?: { readonly key?: string; readonly signal?: AbortSignal },
     ): Promise<ToolOutcome>;
     list(): readonly ToolInfo[];
-    /** Tools earlier calls on this head's history loaded (see {@link ToolDefinition.loads}). */
     loaded(): Promise<readonly string[]>;
   };
 }
 
-/** A group of related tools, such as the tools of one MCP server. */
 export interface ToolNamespace {
-  /** For example `mcp__docs`. */
   readonly name: string;
   /** Other names lookups by namespace accept, for example `docs`. */
   readonly aliases?: readonly string[];
-  /** A short summary shown once with the group in tool listings. */
   readonly description?: string;
   /** Longer guidance, such as MCP server instructions, given only on request. */
   readonly instructions?: string;

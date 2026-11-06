@@ -31,7 +31,6 @@ const REQUEST_TIMEOUT_MS = 15_000;
 
 const SIGN_IN_TIMEOUT_MS = 5 * 60 * 1000;
 
-/** A server's OAuth options with `${VAR}`s resolved. */
 export type McpOAuthSettings = {
   readonly clientId?: string;
   readonly clientSecret?: string;
@@ -68,12 +67,10 @@ const storedState = Type.Object({
   oauthState: Type.Optional(Type.String()),
 });
 
-/** The secret a server's OAuth state lives under: by name and URL, so one URL under two names signs in twice. */
 export function oauthKey(server: string, url: string): string {
   return `oauth:${server}:${createHash("sha256").update(url).digest("hex").slice(0, 16)}`;
 }
 
-/** Keeps one server's OAuth state in the host's sealed secrets. */
 export function oauthStore(secrets: PluginStorage["secrets"], key: string): McpOAuthStateStore {
   return {
     async load() {
@@ -86,13 +83,6 @@ export function oauthStore(secrets: PluginStorage["secrets"], key: string): McpO
   };
 }
 
-/**
- * Sends a connection's stored access token and refreshes it before it
- * expires or after a 401, one refresh at a time. It never opens a browser:
- * when only a new sign-in helps, including a server asking for more scope,
- * it throws `McpOAuthAuthorizationRequiredError`. `onChallenge` keeps the
- * server's `WWW-Authenticate` challenge for the sign-in.
- */
 export function createAuthProvider(input: {
   readonly serverUrl: string;
   readonly store: McpOAuthStateStore;
@@ -165,13 +155,6 @@ export function createAuthProvider(input: {
 
 type LoginStep = ReturnType<Login["steps"]> extends AsyncIterable<infer Step> ? Step : never;
 
-/**
- * Signs in to a server: refreshes stored tokens when that is enough, or
- * runs the browser authorization code flow against a loopback callback.
- * The returned login's steps are `open` (the authorization page), `paste`
- * (answer with the redirect URL when the browser cannot reach this
- * machine), then `done` or `failed`. Ending the steps cancels the sign-in.
- */
 export function signIn(input: {
   readonly server: string;
   readonly serverUrl: string;

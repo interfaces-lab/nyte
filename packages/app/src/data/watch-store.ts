@@ -39,10 +39,6 @@ function flushQueued(): void {
   for (const notice of notices) notice();
 }
 
-/**
- * One flush per frame, so React renders once however many deltas arrive. A timer flushes while a
- * hidden window pauses frames; without frames (Node) it notifies at once.
- */
 function notifyByFrame(notice: () => void): void {
   if (typeof requestAnimationFrame !== "function") {
     notice();
@@ -57,7 +53,6 @@ function notifyByFrame(notice: () => void): void {
   };
 }
 
-/** Drops a notice its store delivered sooner, and the scheduled flush once nothing is queued. */
 function withdrawNotice(notice: () => void): void {
   queued.delete(notice);
 
@@ -374,7 +369,6 @@ const unstarted = (): WatchState<never> => UNSTARTED;
 
 const noRetry = (): void => undefined;
 
-/** Reads `store` and re-renders as it moves. While `listening` is false it stops listening and keeps answering the store's last state, which a store holds for a while after its last listener leaves. */
 export function useWatch<T>(
   store: WatchStore<T> | undefined,
   listening = true,
@@ -390,10 +384,6 @@ export function useWatch<T>(
 
 export type WatchSource<T> = Pick<WatchStore<T>, "subscribeByFrame" | "getState">;
 
-/**
- * Without `isEqual` a change is a new reference, so a selection derived into a fresh object needs
- * `isEqual`.
- */
 export function useWatchSelect<T, S>(
   store: WatchSource<T> | undefined,
   select: (state: WatchState<T>) => S,

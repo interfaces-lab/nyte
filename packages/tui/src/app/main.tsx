@@ -5,6 +5,9 @@ import { asId } from "@nyte-ai/schema";
 import type { SessionId } from "@nyte-ai/sdk";
 import { CliRenderer, NativeSession } from "@opentui/core";
 import type { CliRendererConfig } from "@opentui/core";
+import { CliError } from "../cli/errors.ts";
+import { formatError } from "../cli/format.ts";
+import { resolvePresentation } from "../cli/mode.ts";
 import type { BootOptions } from "../effects/boot.ts";
 import { installProcessHooks, openCrashLog } from "../effects/crash.ts";
 import { createHandle, filesPort, settingsPort, shellPort } from "../effects/local-ports.ts";
@@ -27,7 +30,11 @@ import { holdTypeahead } from "./typeahead.ts";
 
 export async function runTui(flags: RunFlags, source: HostSource): Promise<number> {
   const connecting = connectHost(source);
-  connecting.catch(() => undefined);
+  let connectFailure: unknown = null;
+
+  connecting.catch((cause: unknown) => {
+    connectFailure = cause;
+  });
   const cwd = process.cwd();
   const home = process.env["NYTE_HOME"] ?? join(homedir(), ".nyte");
   const log = openCrashLog(home);
@@ -140,7 +147,12 @@ export async function runTui(flags: RunFlags, source: HostSource): Promise<numbe
   await cleanup("TUI", () => app.close());
   const startupError = app.startupError();
 
-  if (startupError !== null) failures.unshift(`error: ${startupError}`);
+  if (startupError !== null)
+    failures.unshift(
+      connectFailure instanceof CliError
+        ? formatError(connectFailure, resolvePresentation(process.env, process.stdout))
+        : `error: ${startupError}`,
+    );
 
   await cleanup("Host", async () => {
     const link = await host.catch(() => null);

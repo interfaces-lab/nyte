@@ -25,7 +25,6 @@ export function addToChat(excerpt: ChatExcerpt): boolean {
   return true;
 }
 
-/** An open file, or lines `start` to `end` of it, as a mention the agent reads from disk. */
 export function addFileToChat(
   file: Pick<MentionFile, "path" | "displayPath">,
   lines?: { readonly start: number; readonly end: number },

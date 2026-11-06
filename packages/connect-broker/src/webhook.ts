@@ -1,13 +1,3 @@
-/**
- * Clerk user events, verified with Clerk's webhook SDK. A ban or lock stops
- * leases and relayed requests at once and ends open relay channels, keeping
- * every link; a newer update that clears it lifts it. A deletion is terminal
- * and revokes every environment the user owned.
- *
- * D1 commits first, then every relay of the owner gets the standing D1 now
- * holds. A relay that can't be reached fails the delivery, and Clerk retries
- * it; the reconcile cron (`cron.ts`) catches what Clerk stops retrying.
- */
 import { verifyWebhook } from "@clerk/backend/webhooks";
 import type { WebhookEvent } from "@clerk/backend/webhooks";
 import { Type } from "typebox";
@@ -87,11 +77,6 @@ export async function handleWebhook(context: Context, request: Request): Promise
   return noContent();
 }
 
-/**
- * Give every relay of the owner the standing D1 holds: the active ones, or,
- * for a deleted owner, every one it ever linked. Rejects when a relay can't
- * be reached, so the delivery is retried.
- */
 export async function publishStanding(context: Context, owner: Owner): Promise<void> {
   const ids = await ownerEnvironmentIds(context.db, {
     ownerId: owner.user_id,

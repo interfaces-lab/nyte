@@ -1,7 +1,3 @@
-/**
- * auth.json is shared by every Nyte client, so these run the real file store:
- * real processes for the cross-process lock, real crash residue for recovery.
- */
 import { spawn, execFile } from "node:child_process";
 import { once } from "node:events";
 import {
@@ -36,7 +32,6 @@ afterEach(() => {
   rmSync(home, { recursive: true, force: true });
 });
 
-/** A separate process, so the lock is exercised the way two clients exercise it. */
 function modifyInChildProcess(providerId: string, holdMs: number): Promise<unknown> {
   return runNode(process.execPath, [
     "--input-type=module",

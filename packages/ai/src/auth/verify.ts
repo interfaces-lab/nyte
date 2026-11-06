@@ -2,10 +2,6 @@ import type { ProviderHeaders } from "../types.ts";
 import { providerHeadersToRecord } from "../utils/headers.ts";
 import type { ProviderAuthVerification } from "./types.ts";
 
-/**
- * GET an authenticated endpoint and read the credential verdict from its
- * status: 2xx accepts, 401/403 rejects, anything else leaves it unproven.
- */
 export async function verifyWithRequest(input: {
   provider: string;
   url: string;

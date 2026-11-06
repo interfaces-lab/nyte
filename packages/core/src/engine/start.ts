@@ -25,7 +25,6 @@ import { listSessionWaits } from "./waits.ts";
 
 const STOPPED = "The chat was stopped before its first message was decided.";
 
-/** Decides a started chat's first message through its before_send hooks, then re-admits it with the decided content, configuration and schedule. A refusal, a failing hook or a stop removes the chat and throws; the kernel closing throws and leaves the message deciding for repair. One release runs per chat in this process. */
 export function releaseStart(
   kernel: Kernel,
   context: ConnectionContext,
@@ -46,7 +45,6 @@ export function releaseStart(
   return done;
 }
 
-/** Removes a chat whose first message is still deciding, the way a refusal does; returns that message, or null when nothing on the chat is deciding. */
 export async function stopStart(kernel: Kernel, session: SessionId): Promise<MessageId | null> {
   return attempt(`Stopping the start of ${session}`, async () => {
     const found = await readSession(kernel.store, session);
@@ -61,7 +59,6 @@ export async function stopStart(kernel: Kernel, session: SessionId): Promise<Mes
   });
 }
 
-/** Releases a chat whose first message a closed kernel left deciding, as the principal that started it. The release runs on its own, so a parked hook does not hold repair. */
 export async function recoverStarts(kernel: Kernel, session: SessionId): Promise<void> {
   const deciding = await findDeciding(
     kernel,
@@ -89,7 +86,6 @@ export async function recoverStarts(kernel: Kernel, session: SessionId): Promise
   );
 }
 
-/** Deletes a session and every ref under it in one commit, then releases what this process holds for it. With `inbox`, the commit also expects the main inbox at that revision. Resolves false when a concurrent write wins. */
 export async function discardSession(
   kernel: Kernel,
   found: Found<SessionRecord>,

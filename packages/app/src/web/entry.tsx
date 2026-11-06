@@ -97,7 +97,6 @@ function mountApp(
   });
 }
 
-/** Mounts the app for an address and token under a bar whose Disconnect forgets them. */
 function mountManual(connection: Connection): (shell: ReactNode) => void {
   return (shell) =>
     root.render(

@@ -25,7 +25,6 @@ import { SessionDndProvider } from "./session-dnd.tsx";
 
 const TURNS = 30;
 
-/** The right chat fits its pane, so every row stays rendered and a resize can't bring a new one into the rendered window: any row commit is a redraw. */
 const RIGHT_TURNS = 3;
 
 const [LEFT, RIGHT] = ["layout-left", "layout-right"].map((id) => asId<"session">(id));
@@ -97,12 +96,9 @@ const COUNTED = ["render:conversation", "render:transcript-row", "render:compose
 
 interface Step {
   readonly name: string;
-  /** Every tab body and transcript is the element it was before the step. */
   readonly sameElements: boolean;
   readonly scrollTop: number;
-  /** The first transcript row in view: what a reader is looking at, which a reflow keeps. */
   readonly topRow: string | null;
-  /** Tab bodies in DOM order, by session. */
   readonly order: readonly string[];
   readonly commits: Readonly<Record<(typeof COUNTED)[number], number>>;
 }
@@ -130,10 +126,6 @@ function transcript(body: HTMLElement | null): HTMLElement | null {
   return body?.querySelector<HTMLElement>("[aria-label='Messages']") ?? null;
 }
 
-/**
- * Scrolls as a reader does: the transcript reads a scroll as the reader's only within a short
- * window after their input, so the wheel repeats until the scroll lands, however busy the frame.
- */
 async function readTo(scroller: HTMLElement, offset: number): Promise<void> {
   const wheel = (): boolean =>
     scroller.dispatchEvent(new WheelEvent("wheel", { deltaY: -offset, bubbles: true }));

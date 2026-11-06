@@ -1,4 +1,3 @@
-/** The desktop's relay socket: proving itself, being replaced, hibernating, and being revoked. See `relay-fixture.ts`. */
 import { BROKER_ROUTES, EnvironmentList } from "@nyte-ai/connect";
 import { RELAY_AUTH_TIMEOUT_MS, RELAY_CLOSE, RELAY_PING } from "@nyte-ai/connect/relay";
 import { createProof, generateMachineKey, randomId } from "@nyte-ai/connect/signing";

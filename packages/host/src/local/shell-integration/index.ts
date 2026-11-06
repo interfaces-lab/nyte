@@ -11,11 +11,9 @@ import { zshFiles } from "./zsh.ts";
 export type TerminalIntegration = ShellStream & {
   readonly args: readonly string[];
   readonly env: NodeJS.ProcessEnv;
-  /** Removes the startup files; call once the terminal's process has exited. */
   dispose(): void;
 };
 
-/** Integrates only an interactive zsh or bash login shell outside Windows, and falls back to a plain terminal when its startup files cannot be written. */
 export async function prepareShellIntegration(input: {
   readonly file: string;
   readonly args: readonly string[];

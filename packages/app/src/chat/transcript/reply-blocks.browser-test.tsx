@@ -23,7 +23,6 @@ import {
 
 const HOUR = 3_600_000;
 
-/** Past the minute the clock floors to, so the age reads a whole 4 hours. */
 const SENT = Date.now() - 4 * HOUR - 60_000;
 
 const CODE = "const answer = 42;";

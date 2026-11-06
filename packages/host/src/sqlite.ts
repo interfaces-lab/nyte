@@ -47,7 +47,6 @@ const BACKUPS_KEPT = 3;
 const PUT_BODY =
   "INSERT INTO objects (id, body) VALUES (?, ?) ON CONFLICT (id) DO UPDATE SET body = excluded.body WHERE objects.body IS NULL";
 
-/** Deletes an object a ref write moved a ref off, unless a ref still holds it, it is a commit, or it shares its row with a blob. */
 const DROP_REPLACED =
   "DELETE FROM objects WHERE id = ?1 AND bytes IS NULL AND json_extract(body, '$.kind') IS NOT 'commit' AND NOT EXISTS (SELECT 1 FROM refs WHERE target = ?1)";
 

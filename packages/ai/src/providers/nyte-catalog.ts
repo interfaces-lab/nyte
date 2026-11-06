@@ -1,8 +1,3 @@
-/**
- * The catalog every Nyte client composes: the same providers over the same
- * `~/.nyte` credential and model stores, so a login made in one client is a
- * login in all of them.
- */
 import type { ProviderId } from "@nyte-ai/schema/model";
 import { defaultProviderAuthContext } from "../auth/context.ts";
 import { FileCredentialStore } from "../auth/store.ts";
@@ -18,7 +13,6 @@ import { opencodeProvider } from "./opencode.ts";
 import { openrouterProvider } from "./openrouter.ts";
 import { vercelAiGatewayProvider } from "./vercel-ai-gateway.ts";
 
-/** In the order a client falls back through them when nothing else decides. */
 const NYTE_PROVIDERS: readonly (() => Provider)[] = [
   openaiCodexProvider,
   openaiProvider,

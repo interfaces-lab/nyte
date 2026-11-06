@@ -9,7 +9,6 @@ import type { QuestionDraft, QuestionFieldDraft, QuestionLocal, QuestionRequest 
 
 export interface QuestionModel extends QuestionRequest {
   readonly questions: readonly QuestionInfo[];
-  /** The agent stopped waiting and carried on; an answer still reaches it. */
   readonly late: boolean;
   readonly field: QuestionInfo;
   readonly index: number;
@@ -51,7 +50,6 @@ function createFieldDraft(field: QuestionInfo): QuestionFieldDraft {
     : { kind: "single", selection: { kind: "empty" }, customText: "" };
 }
 
-/** The draft of `question` while it is still being answered, or `null` once its answers are sent. */
 export function editingQuestionDraft(
   local: QuestionLocal,
   question: QuestionModel,

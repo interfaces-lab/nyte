@@ -43,7 +43,6 @@ export async function activateSession(
   settle(kernel, session, workspace, await attached);
 }
 
-/** A session's assigned plugins may be what holds it to a policy, so one that no longer loads fails the activation: the session refuses work until it loads again rather than run without it. */
 async function loadAssigned(
   kernel: Kernel,
   plugins: readonly (Plugin<"core"> | PluginFile)[],

@@ -25,11 +25,6 @@ import type { ConnectStore, StoredDevice, StoredLink } from "./store.ts";
 import { refusedCode } from "./tokens.ts";
 import type { BrokerKeyring, LinkTrust } from "./tokens.ts";
 
-/**
- * Who a relayed request is, decided here on every request. The embedding
- * turns an allowed device into its own principal; `principal` is a stable
- * name for a server that takes the decision as it is.
- */
 type DeviceDecision =
   | {
       readonly kind: "allow";
@@ -38,35 +33,25 @@ type DeviceDecision =
     }
   | { readonly kind: "deny"; readonly reason: "unauthorized" | "forbidden" };
 
-/** What the host binds for account remote access. */
 export interface ConnectListen {
   readonly authorize: (request: AuthorizingRequest) => Promise<DeviceDecision>;
   readonly handle: (request: Request) => Promise<Response | undefined>;
 }
 
 export interface ConnectListener {
-  /** The ephemeral port it bound on `127.0.0.1`. */
   readonly port: number;
-  /** Drop every open connection and keep the port bound. */
   disconnectClients(): void;
   close(): Promise<void>;
 }
 
-/** Bind the share on an ephemeral `127.0.0.1` port under the host's folder trust. */
 export type ConnectShare = (listen: ConnectListen) => Promise<ConnectListener>;
 
-/** What a serving session asks of the runtime that owns it. */
 export interface ServingOwner {
-  /** Whether `session` is still the one the runtime serves through. */
   current(session: ServingSession): boolean;
   changed(): void;
-  /** The broker answered `revoked` for the environment. */
   environmentRevoked(environmentId: string): void;
-  /** Close every stream on the live listener, after `dropDelayMs` when `defer`. */
   dropStreams(defer: boolean): void;
-  /** The store failed under a request: refuse everything and stop, after that request answers. */
   failClosed(): void;
-  /** A device asked to be forgotten through its own token. */
   release(deviceId: string): Promise<void>;
 }
 
@@ -108,12 +93,6 @@ function within(promise: Promise<void>, ms: number): Promise<void> {
   });
 }
 
-/**
- * One run of serving the linked environment: the loopback listener, the relay
- * socket, and the device lease that decides every request. The lease is
- * renewed on a heartbeat; a device the lease does not list is refused, except
- * one that just enrolled, which waits briefly for a lease that lists it.
- */
 export class ServingSession {
   readonly epoch: number;
   readonly environmentId: string;
@@ -134,29 +113,24 @@ export class ServingSession {
     this.environmentId = options.environmentId;
   }
 
-  /** Whether `halt` ran: this session refuses everything from then on. */
   get halted(): boolean {
     return this.controller.signal.aborted;
   }
 
-  /** The relay socket's state; connecting until `attach`. */
   connection(): ConnectRelay {
     return this.relay?.status() ?? { kind: "connecting" };
   }
 
-  /** End every relayed exchange and drop every local connection; the port stays bound. */
   disconnectClients(): void {
     this.relay?.dropStreams();
     this.local?.disconnectClients();
   }
 
-  /** Close the relay socket and the listener for good. */
   async close(): Promise<void> {
     this.relay?.close();
     await this.local?.close();
   }
 
-  /** What the share binds: every request is authorized, and enrollment routed, here. */
   listen(): ConnectListen {
     return {
       authorize: (request) => this.authorize(request),
@@ -168,7 +142,6 @@ export class ServingSession {
     };
   }
 
-  /** Serve the bound listener through a relay socket to `url`. Nothing dials until `start`. */
   attach(local: ConnectListener, url: string, dial: RelayDial | undefined): void {
     const { broker, store, owner, timing } = this.options;
 
@@ -194,13 +167,11 @@ export class ServingSession {
     this.relay = relay;
   }
 
-  /** Ask for the first lease and dial the relay. */
   start(): void {
     void this.beat();
     this.relay?.start();
   }
 
-  /** Refuse everything from now on and stop renewing. The listener stays until closed. */
   halt(): void {
     this.lease = undefined;
     this.controller.abort();
@@ -208,11 +179,6 @@ export class ServingSession {
     clearTimeout(this.expiryTimer);
   }
 
-  /**
-   * After sleep the held lease says nothing about now: refuse every device and
-   * close their streams until a fresh lease arrives. The relay socket is
-   * likely dead too, so it dials again now.
-   */
   resume(): void {
     this.lease = undefined;
     this.lapsed = undefined;
@@ -224,7 +190,6 @@ export class ServingSession {
     void this.beat();
   }
 
-  /** Whether the current lease lists the device. */
   listed(deviceId: string): boolean {
     const lease = this.lease;
 
@@ -355,7 +320,6 @@ export class ServingSession {
     return true;
   }
 
-  /** Forget devices the broker stopped listing once their enrollment could no longer be in flight. */
   private pruneInactive(lease: HeldLease): void {
     const { store, owner } = this.options;
     const link = store.currentLink(this.environmentId);
@@ -427,7 +391,6 @@ export class ServingSession {
       : { kind: "deny", reason: "forbidden" };
   }
 
-  /** The stored device whose bearer digest is `digest`, compared in constant time; none once refused here. */
   private deviceFor(digest: Buffer): StoredDevice | undefined {
     if (!this.live()) return undefined;
     const link = this.options.store.currentLink(this.environmentId);
@@ -444,7 +407,6 @@ export class ServingSession {
     return match === undefined || this.options.trust.denied.has(match.id) ? undefined : match;
   }
 
-  /** Whether the device may be newer than the held lease, so one more renewal could list it. */
   private awaitsLease(device: StoredDevice): boolean {
     const lease = this.lease;
     const now = Date.now();

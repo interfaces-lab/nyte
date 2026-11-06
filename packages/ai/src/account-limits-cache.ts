@@ -24,7 +24,6 @@ interface ProviderCache {
   readonly accounts: Map<string | null, Entry>;
 }
 
-/** A request's account observations cannot outlive the credential selection it started with. */
 interface AccountLimitsScope {
   observe(accountId: string | undefined, limits: AccountLimits): void;
   fetch(
@@ -78,7 +77,6 @@ function changedAccount(): Unavailable {
   return { kind: "unavailable", reason: "failed", message: "The active account changed." };
 }
 
-/** Owns account quota freshness, shared requests, and credential lifecycle invalidation. */
 export class AccountLimitsCache {
   private readonly providers = new Map<string, ProviderCache>();
 

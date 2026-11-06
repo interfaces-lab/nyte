@@ -1,4 +1,3 @@
-/** Lucide at stroke 1.5 for the iOS completion glyphs; used when Central isn't installed. */
 import { Command, File, Folder, Puzzle } from "lucide-react";
 import { createElement } from "react";
 

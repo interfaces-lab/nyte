@@ -35,7 +35,6 @@ import type { TranscriptModel } from "./transcript.ts";
 
 export interface ScreenModel {
   readonly opening: boolean;
-  /** The text of each message sent to a new chat while it waits for the host to open, oldest first. */
   readonly waiting: readonly string[];
   readonly health: HealthNotice | null;
   readonly updated: number | null;
@@ -64,7 +63,6 @@ export interface ScreenModel {
   readonly welcome: boolean;
   readonly followUp: "steer" | "queue";
   readonly selectionActive: boolean;
-  /** The folder that file paths in the transcript resolve against, or `null` when the terminal can't link them. */
   readonly fileRoot: string | null;
 }
 
@@ -264,7 +262,6 @@ function healthNotice(health: Health): HealthNotice | null {
   }
 }
 
-/** What waits on the user, even behind a menu: a sign-in step, then an approval, then a question the agent still waits on. */
 function blockedStatus(state: State, question: QuestionModel | null): ProgramState | null {
   const auth = state.local.dialogs.findLast((dialog) => dialog.kind === "auth");
 

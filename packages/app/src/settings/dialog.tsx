@@ -8,10 +8,6 @@ import { create, props } from "@stylexjs/stylex";
 import type { ReactElement, ReactNode } from "react";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
 
-/**
- * A settings dialog: a title, an optional description, its body, then Done. Rows inside it use
- * the settings rows, so a dialog reads like one more card of the page.
- */
 export function SettingsDialog({
   open,
   title,
@@ -47,7 +43,6 @@ export function SettingsDialog({
   );
 }
 
-/** A dialog around one form: Enter submits, Cancel and Escape close it, and nothing closes it while it's pending. */
 export function SettingsFormDialog({
   open,
   title,
@@ -116,7 +111,6 @@ export function SettingsFormDialog({
   );
 }
 
-/** A labelled input with its hint, or its error in place of the hint. */
 export function SettingsField({
   label,
   hint,
@@ -143,7 +137,6 @@ export function SettingsField({
   );
 }
 
-/** A card of rows inside a dialog. */
 export function SettingsDialogCard({ children }: { readonly children: ReactNode }): ReactElement {
   return <div {...props(settingsPatterns.group, styles.card)}>{children}</div>;
 }

@@ -16,12 +16,11 @@ import type { Plugin, PluginApi } from "@nyte-ai/plugin/core";
 import { createToolSearchDocument, DEFAULT_SEARCH_LIMIT, rankTools } from "./tool-search.ts";
 
 const DESCRIPTION = `Run JavaScript that calls other tools. The input is raw JavaScript (not JSON, no code fence), run as an async function body in a QuickJS sandbox: top-level \`await\` and \`return\` work. No Node, file system, network, or timers.
-- \`await tools.<name>({ ...args })\` resolves to the tool's output, or its text, and rejects with an Error on failure.
+- \`await tools.<name>({ ...args })\` resolves to the tool's output, or its text, and rejects with an Error on failure. \`tools\` is predefined; don't declare your own.
 - Optional first line: \`// @options: {"timeout_ms": 60000}\`
 - \`text(value)\`, \`console.log(...)\` and \`return\` add output; \`store(key, value)\` and \`load(key)\` keep JSON values across codemode calls in this session.
-- \`ALL_TOOLS\`, \`await searchTools(query, { limit?, namespace? })\`, \`await describeTool(name)\` and \`await describeNamespace(name)\` find unlisted tools, such as MCP tools, and their declarations.`;
+- Inside a script, \`ALL_TOOLS\`, \`await searchTools(query, { limit?, namespace? })\`, \`await describeTool(name)\` and \`await describeNamespace(name)\` find unlisted tools, such as MCP tools, and their declarations. They are script functions, not tools.`;
 
-/** Estimated tokens the listed declarations may use, shared by every namespace. */
 const LISTING_TOKENS = 3000;
 
 const parameters = standard(
@@ -63,11 +62,6 @@ type ListingGroup = {
   }[];
 };
 
-/**
- * The `code` tools' declarations, grouped by namespace, within
- * {@link LISTING_TOKENS}. `deferred` tools are never listed, so tools that
- * register late, such as MCP servers', leave the prompt alone.
- */
 function listTools(definitions: readonly ToolDefinition[]): string | null {
   const sections = definitions.flatMap((definition) => {
     if (definition.exposure !== "code") return [];
@@ -129,11 +123,6 @@ function listTools(definitions: readonly ToolDefinition[]): string | null {
   ].join("\n\n");
 }
 
-/**
- * Picks the sections that fit `budget`: each round, every group places its
- * cheapest remaining tool, and a group whose next tool does not fit drops
- * out, so every namespace shows before any is complete.
- */
 function selectListed(groups: readonly ListingGroup[], budget: number): ReadonlySet<string> {
   const queues = groups.map((group) => group.entries.toSorted((a, b) => a.cost - b.cost));
   const shown = new Set<string>();
@@ -168,7 +157,6 @@ function toJsonSchema(
   }
 }
 
-/** The `codemode` tool; `model-only`, so scripts cannot start other scripts. */
 function codemode(
   api: PluginApi,
   runtime: Pick<CodemodeSandboxOptions, "workerUrl" | "wasm">,
@@ -273,7 +261,6 @@ function codemode(
   };
 }
 
-/** A script's tool, described by its declaration so `ALL_TOOLS` entries carry it. */
 function bridge(info: ToolInfo, sample: string, invocation: ToolInvocation): CodemodeTool {
   let sequence = 0;
 
@@ -308,11 +295,6 @@ function unwrapToolOutcome(outcome: ToolOutcome): Json {
   );
 }
 
-/**
- * `searchTools()`, `describeTool()` and `describeNamespace()`: ranked search
- * and lookup over the script's tools and their namespaces, by raw name or
- * script identifier.
- */
 function discovery(
   tools: readonly ToolInfo[],
   samples: ReadonlyMap<string, string>,
@@ -388,7 +370,6 @@ function discovery(
   ];
 }
 
-/** Whether `query` is the namespace's name or an alias, as written or as the same script identifier. */
 function matchesNamespace(namespace: ToolNamespace, query: string): boolean {
   const id = toCodemodeIdentifier(query);
 
@@ -407,10 +388,4 @@ async function* once(bytes: Uint8Array): AsyncIterable<Uint8Array> {
   yield bytes;
 }
 
-/**
- * The codemode plugin over the installed sandbox runtime.
- *
- * @category plugins
- * @since 0.1.0
- */
 export default codemodePlugin({}) satisfies Plugin;

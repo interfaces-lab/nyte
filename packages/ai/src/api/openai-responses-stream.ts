@@ -1,7 +1,3 @@
-/**
- * The Responses API event stream processor, shared by the OpenAI Responses and
- * Codex adapters.
- */
 import type { ResponseCreateParamsStreaming } from "openai/resources/responses/responses.js";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
@@ -113,21 +109,6 @@ type ResponsesOutputSlot =
 
 type ToolCallOutputSlot = Extract<ResponsesOutputSlot, { type: "toolCall" }>;
 
-/**
- * Maps a Responses event stream onto `output`. Each raw event is checked against the event
- * schemas first; others are skipped.
- *
- * - A tool call whose `output_item.done` never arrived may have cut-off or mixed-up arguments,
- *   e.g. when a non-compliant server omits `output_index`: a `toolUse` stop with one fails the
- *   stream, and any other stop marks it with `argumentsError` so it is reported, not run.
- *   Finished calls drop their scratch buffers, so replay carries only parsed arguments.
- * - Azure OpenAI can omit `encrypted_content` from `output_item.done` and send it only in the
- *   terminal response's output; it is backfilled into the stored reasoning item, keeping
- *   `store: false` multi-turn replay stateless.
- * - `input_tokens` includes cached and cache-write tokens, so both are subtracted.
- * - An incomplete response keeps its specific reason in `rawStopReason`, so output truncation
- *   and content filtering stay distinct.
- */
 export async function processResponsesStream<TApi extends Api>(
   openaiStream: AsyncIterable<unknown>,
   output: AssistantMessage,

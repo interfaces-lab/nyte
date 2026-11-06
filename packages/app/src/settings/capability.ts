@@ -2,7 +2,6 @@ import { clientCapabilities } from "../contract/client-actions.ts";
 import { nyte } from "../contract/nyte.ts";
 
 export interface SettingsContext {
-  /** Runs in the desktop app, so the Mac's own notifications, Dock and sharing are here. */
   readonly desktop: boolean;
   readonly mac: boolean;
   readonly browser: boolean;

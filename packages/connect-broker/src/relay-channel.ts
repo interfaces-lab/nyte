@@ -1,11 +1,3 @@
-/**
- * One relayed HTTP exchange on the desktop's socket. The request flows out as
- * `open`, `data`, `end`, spending the credit the desktop grants; the response
- * flows back as `head`, `data`, `end`, and this side grants credit only as
- * the phone reads. Neither direction holds more than `RELAY_WINDOW_BYTES`.
- *
- * A response without `cache-control` is answered `no-store`.
- */
 import { base64Url } from "@nyte-ai/connect";
 import {
   RELAY_BODY_LIMIT_BYTES,
@@ -24,28 +16,22 @@ import type {
 
 type Head = Extract<DesktopFrame, { t: "head" }>;
 
-/** Where the response is: waiting for `head`, streaming a body, or a bodyless status awaiting `end`. */
 type ResponsePhase = "head" | "body" | "bodyless";
 
 export class RelayChannel {
   readonly id: string;
-  /** The socket session the channel belongs to. */
   readonly session: string;
-  /** The device whose bearer opened it, for a device's revocation. */
   readonly deviceId: string | undefined;
-  /** The phone's answer: a refusal, or the desktop's `head` and its body. */
   readonly response: Promise<Response>;
   readonly #send: (frame: RelayFrame) => void;
   readonly #onDone: () => void;
   #answer: (response: Response) => void = () => undefined;
   #phase: ResponsePhase = "head";
   #closed = false;
-  /** Request bytes the desktop still accepts. */
   #sendCredit = RELAY_WINDOW_BYTES;
   #creditArrived: (() => void) | undefined;
   #reader: ReadableStreamBYOBReader | undefined;
   #requestEnded = false;
-  /** Response bytes the desktop may still send. */
   #receiveCredit = RELAY_WINDOW_BYTES;
   readonly #queue: Uint8Array[] = [];
   #responseEnded = false;
@@ -69,7 +55,6 @@ export class RelayChannel {
     });
   }
 
-  /** Send `open` and start streaming the request body within the desktop's credit. */
   start(input: {
     readonly method: RelayMethod;
     readonly path: string;
@@ -86,7 +71,6 @@ export class RelayChannel {
     void this.#pump(input.body);
   }
 
-  /** False when the frame breaks the contract, which closes the socket. */
   onHead(frame: Head): boolean {
     if (this.#closed) return true;
 
@@ -156,24 +140,20 @@ export class RelayChannel {
     return true;
   }
 
-  /** The desktop ended the exchange. */
   onReset(): void {
     this.#fail("closed");
   }
 
-  /** The phone went away: tell the desktop and stop. */
   cancel(): void {
     this.reset("closed");
   }
 
-  /** End the exchange from this side: tell the desktop, then answer the phone with `code` if it has no answer yet. */
   reset(code: RelayRefusalCode): void {
     if (this.#closed) return;
     this.#send({ t: "reset", ch: this.id });
     this.#fail(code);
   }
 
-  /** End the exchange without telling the desktop, as when its socket is gone. */
   fail(code: RelayRefusalCode): void {
     this.#fail(code);
   }
@@ -188,7 +168,6 @@ export class RelayChannel {
     this.#finish();
   }
 
-  /** The phone has the whole response. A request still streaming is cut off and the desktop told. */
   #complete(): void {
     if (this.#closed) return;
 
@@ -242,11 +221,6 @@ export class RelayChannel {
     return this.#sendCredit;
   }
 
-  /**
-   * Stream the request body with BYOB reads no larger than the credit in
-   * hand, so a channel never holds more than one chunk of an upload whatever
-   * size the phone's chunks arrive in.
-   */
   async #pump(body: ReadableStream<Uint8Array> | null): Promise<void> {
     if (body !== null) {
       let total = 0;

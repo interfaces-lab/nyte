@@ -7,7 +7,6 @@ export const sessionList = liveFamily(
     directoryRows(live, { parents: { kind: parents } }),
 );
 
-/** One session's children as the host lists them: their rows without the capped list of every session. */
 export const childList = liveFamily(
   (live, parent: SessionId): AsyncIterable<readonly SessionInfo[]> =>
     directoryRows(live, { parents: { kind: "children", session: parent } }),

@@ -2,18 +2,10 @@ import type { ProjectId, ProjectInfo, WorkspaceId } from "@nyte-ai/schema";
 import type { Plugin } from "../contract/plugin.ts";
 import type { McpHub, McpServerBrief, McpWorkspace } from "../contract/workspace.ts";
 
-/** Characters of one server's summary, as Codex allows for a deferred namespace. */
 const SUMMARY_CHARS = 250;
 
-/** Characters of the whole section: summaries shrink to fit, then the last servers are counted instead. */
 const SECTION_CHARS = 4096;
 
-/**
- * Puts the hub's tools for the session's workspace in the session, tells the
- * model in one line per server how to reach its tools and which servers are
- * unavailable, and reloads the session whenever they change. A session in a
- * project gets none of the servers the project leaves out.
- */
 export function mcpPlugin(
   hub: McpHub,
   readWorkspace: (id: WorkspaceId) => Promise<McpWorkspace>,
@@ -70,11 +62,6 @@ type ServerLine = {
   readonly summary: string;
 };
 
-/**
- * One line per server: how its tools are reached and the first line of its
- * description or instructions. The full instructions stay with its tools'
- * namespace, for `describeNamespace()`.
- */
 function describeServers(briefs: readonly McpServerBrief[]): string | null {
   const servers = briefs.flatMap((brief): readonly ServerLine[] => {
     if (brief.unavailable === "failed")

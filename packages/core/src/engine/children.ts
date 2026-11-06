@@ -10,17 +10,11 @@ interface Child {
   readonly head: HeadName;
   readonly startedBy: CallId | null;
   title: string;
-  /** Null until the main head's run changes in this process or is read from the store. */
   own: BackgroundItem["state"] | null;
-  /** The table's count of heard run events when this child's last one arrived. */
   heard: number;
   item: BackgroundItem | null;
 }
 
-/**
- * A child also waits when one of its background items waits, so a question deep in a tree reaches
- * every ancestor. Being busy reaches only the parent.
- */
 export function createChildTable(
   kernel: Pick<Kernel, "bus" | "jobs" | "pages" | "children">,
 ): ChildTable {

@@ -63,7 +63,6 @@ import {
 } from "./fixtures.ts";
 import type { Case } from "./fixtures.ts";
 
-/** Files, git, browser pages, workspaces and MCP. */
 export const workspaceCases = {
   FileStatusSchema: sample(FileStatusSchema, "conflicted", "moved"),
   FileChangeSchema: sample(FileChangeSchema, fileChange, { path: "a.ts", status: "added" }),

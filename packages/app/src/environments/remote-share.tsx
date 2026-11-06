@@ -32,7 +32,6 @@ export const shareStyles = create({
   actions: { display: "inline-flex", alignItems: "center", gap: space.s1 },
 });
 
-/** Copies a value and shows a checkmark for a moment. */
 export function CopyButton({ label, value }: { label: string; value: string }): ReactElement {
   const [copied, setCopied] = useState(false);
 
@@ -66,7 +65,6 @@ export function CopyButton({ label, value }: { label: string; value: string }): 
   );
 }
 
-/** A row showing one value to hand to another device, with its actions at the end. */
 export function ValueRow({
   title,
   value,

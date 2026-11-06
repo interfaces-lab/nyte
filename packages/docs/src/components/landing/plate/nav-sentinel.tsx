@@ -1,10 +1,6 @@
 import { useRef } from "react";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 
-/**
- * Sits on the top edge of the preview. Once that edge passes under the nav,
- * the document is marked and the nav leaves the plate's white for a frosted bar.
- */
 export function NavSentinel() {
   const ref = useRef<HTMLSpanElement>(null);
 

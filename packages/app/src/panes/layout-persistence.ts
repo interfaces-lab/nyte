@@ -5,7 +5,6 @@ import { Value } from "typebox/value";
 import { layoutPanes, normalizeLayout } from "./layout.ts";
 import type { Layout, LayoutNode, Pane, PaneTab, SplitChild, TabContent } from "./layout.ts";
 
-/** A tab as stored: its kind names the module that owns `fields`. */
 export interface StoredContent {
   readonly kind: string;
   readonly fields: unknown;
@@ -43,7 +42,6 @@ const splitSchema = Type.Object(
   strict,
 );
 
-/** Nodes nest, so the root is checked one level at a time as it is restored. */
 export const storedLayoutSchema = Type.Object(
   {
     root: Type.Unknown(),
@@ -57,7 +55,6 @@ export type StoredLayout = Static<typeof storedLayoutSchema>;
 
 type StoredNode = Static<typeof paneSchema> | Static<typeof splitSchema>;
 
-/** A tab its kind doesn't keep is left out; a pane left with no tabs drops on restore. */
 export function persistLayout<Content extends TabContent>(
   layout: Layout<Content>,
   persist: (content: Content) => StoredContent | undefined,
@@ -69,10 +66,6 @@ export function persistLayout<Content extends TabContent>(
   };
 }
 
-/**
- * Restores what its kinds still accept. A tab of an unknown kind or with fields its kind rejects
- * drops alone; a pane with no tab left drops, and a split with one child left gives way to it.
- */
 export function restoreLayout<Content extends TabContent>(
   stored: StoredLayout,
   restore: (stored: StoredContent) => Content | undefined,
@@ -173,7 +166,6 @@ function restorePane<Content extends TabContent>(
   };
 }
 
-/** Two panes or tabs with one id would make every lookup ambiguous, so such a layout is corrupt. */
 function uniqueIds<Content extends TabContent>(root: LayoutNode<Content>): boolean {
   const panes = layoutPanes(root);
 

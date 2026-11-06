@@ -19,7 +19,6 @@ export interface ModelsStoreOperationOptions {
   signal?: AbortSignal;
 }
 
-/** Persistent model catalogs keyed by provider ID. */
 export interface ModelsStore {
   read(
     providerId: string,

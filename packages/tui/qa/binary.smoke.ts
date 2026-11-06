@@ -28,7 +28,15 @@ const HostFile = Type.Object({ url: Type.String(), token: Type.String(), pid: Ty
 const PrintRecord = Type.Object({
   type: Type.String(),
   text: Type.Optional(Type.String()),
-  kind: Type.Optional(Type.String()),
+  outcome: Type.Optional(Type.String()),
+});
+
+const ErrorDocument = Type.Object({
+  status: Type.String(),
+  reason: Type.String(),
+  data: Type.Optional(
+    Type.Object({ session: Type.String(), remote: Type.Optional(Type.String()) }),
+  ),
 });
 
 async function print(
@@ -52,7 +60,16 @@ async function print(
     progress?.(stdout);
   }
 
-  return { code: await child.exited, records: records(stdout) };
+  return {
+    code: await child.exited,
+    records: records(stdout),
+    stderr: await new Response(child.stderr).text(),
+  };
+}
+
+/** The one JSON error document a failed `--json` run ends stderr with. */
+function errorDocument(stderr: string) {
+  return Value.Parse(ErrorDocument, JSON.parse(stderr.trim().split("\n").at(-1) ?? ""));
 }
 
 function records(stdout: string) {
@@ -89,7 +106,7 @@ test("--help prints plain usage and exits 0", async () => {
   const child = Bun.spawn([BINARY, "--help"], { stdout: "pipe", stderr: "pipe", env: {} });
 
   expect(await child.exited).toBe(0);
-  expect(await new Response(child.stdout).text()).toContain("usage:");
+  expect(await new Response(child.stdout).text()).toContain("Usage:");
 });
 
 test("-p --json streams text while the provider still streams, then a completed result", async () => {
@@ -112,20 +129,21 @@ test("-p --json streams text while the provider still streams, then a completed 
       .map((record) => record.text)
       .join(""),
   ).toBe("Streaming from the fake provider.");
-  expect(run.records.at(-1)).toMatchObject({ type: "result", kind: "completed" });
+  expect(run.records.at(-1)).toMatchObject({ type: "result", outcome: "completed" });
 });
 
-test("a provider error exits 1 with a failed result", async () => {
+test("a provider error exits 1 with no result line and a run_failed error on stderr", async () => {
   await using service = await serveForBinary({ plugin: false });
   service.reply({ error: "The fake provider failed." });
 
   const run = await print(service, ["-p", "--json", "fail please"]);
 
   expect(run.code).toBe(1);
-  expect(run.records.at(-1)).toMatchObject({ type: "result", kind: "failed" });
+  expect(run.records.filter((record) => record.type === "result")).toEqual([]);
+  expect(errorDocument(run.stderr)).toMatchObject({ status: "error", reason: "run_failed" });
 });
 
-test("SIGTERM during a run exits 143 with a cancelled result", async () => {
+test("SIGTERM during a run exits 143, stops the run and says so on stderr", async () => {
   await using service = await serveForBinary({ plugin: false });
   service.reply({
     content: [{ type: "text", text: "Holding the stream open" }],
@@ -153,7 +171,11 @@ test("SIGTERM during a run exits 143 with a cancelled result", async () => {
   }
 
   expect(await child.exited).toBe(143);
-  expect(records(stdout).at(-1)).toMatchObject({ type: "result", kind: "cancelled" });
+  expect(records(stdout).filter((record) => record.type === "result")).toEqual([]);
+  expect(errorDocument(await new Response(child.stderr).text())).toMatchObject({
+    reason: "canceled",
+    data: { remote: "stopped" },
+  });
 });
 
 test("before its host opens, the TUI paints the recorded model and keys typed at launch, and takes Enter", async () => {
@@ -320,8 +342,10 @@ test("nyte host serves clients that attach with --host-url from an empty HOME, a
     stderr: "pipe",
   });
 
-  expect(await second.exited).toBe(75);
-  expect(await new Response(second.stderr).text()).toContain(`already running at ${listening.url}`);
+  expect(await second.exited).toBe(1);
+  expect(await new Response(second.stderr).text()).toContain(
+    `Process ${String(host.pid)} already serves this home at ${listening.url}.`,
+  );
 
   const env = { ...client.env, NYTE_HOST_TOKEN: file.token };
 
@@ -336,7 +360,7 @@ test("nyte host serves clients that attach with --host-url from an empty HOME, a
   expect(await printed.exited).toBe(0);
   expect(records(await new Response(printed.stdout).text()).at(-1)).toMatchObject({
     type: "result",
-    kind: "completed",
+    outcome: "completed",
   });
 
   await using pty = await openPty({
@@ -352,7 +376,7 @@ test("nyte host serves clients that attach with --host-url from an empty HOME, a
   await pty.waitFor((screen) => screen.text.includes("Rendered from the attached host."));
 
   host.kill("SIGTERM");
-  expect(await host.exited).toBe(0);
+  expect(await host.exited).toBe(143);
   expect(existsSync(listening.endpoint)).toBe(false);
   await pty.waitFor((screen) => screen.text.includes("Reconnecting in"));
   pty.signal("SIGTERM");

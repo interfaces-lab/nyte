@@ -164,10 +164,6 @@ function sharedDetail(reaches: readonly string[], state: RemoteAccessState | und
     : over;
 }
 
-/**
- * How other devices reach this Mac: its status, the address to pair with, Tailscale, Cloudflare
- * Tunnel and the Nyte account. Tailscale and Cloudflare Tunnel serve one at a time.
- */
 export function RemoteAccess({ active }: { readonly active: boolean }): ReactElement {
   const client = useQueryClient();
   const remote = useRemoteAccessState(active);

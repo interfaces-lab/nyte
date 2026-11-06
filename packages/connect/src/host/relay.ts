@@ -23,9 +23,7 @@ import type { DesktopFrame, RelayFrame, RelayMethod } from "../relay.ts";
 import type { ConnectRelay } from "../view.ts";
 
 export interface RelayTiming {
-  /** Ping interval; a ping still unanswered at the next one closes the socket. */
   readonly pingMs: number;
-  /** Longest wait for `ready` after dialing. */
   readonly readyMs: number;
   readonly retryMinMs: number;
   readonly retryMaxMs: number;
@@ -38,19 +36,14 @@ const DEFAULT_TIMING: RelayTiming = {
   retryMaxMs: RELAY_RETRY_MAX_MS,
 };
 
-/** Opens the socket. Production uses the global `WebSocket`; tests point it at a local relay. */
 export type RelayDial = (url: string) => WebSocket;
 
 export interface RelayConnectionOptions {
-  /** `wss://<origin>/v1/environments/<id>/relay`. */
   readonly url: string;
-  /** The account listener's loopback port. */
   readonly port: number;
-  /** A fresh `auth` proof for each dial. */
   readonly proof: () => Promise<string>;
   readonly dial?: RelayDial;
   readonly onChange: () => void;
-  /** The relay closed with `revoked`; only a lease answer may forget the link. */
   readonly onRevoked: () => void;
   readonly timing?: Partial<RelayTiming>;
 }
@@ -122,14 +115,12 @@ export class RelayConnection {
     return this.current;
   }
 
-  /** End every relayed exchange; the socket stays. */
   dropStreams(): void {
     for (const channel of this.channels.values()) this.reset(channel);
 
     for (const socket of this.sockets.values()) this.resetSocket(socket);
   }
 
-  /** After sleep the socket is likely dead: dial again now. A replaced relay stays stopped. */
   reconnect(): void {
     if (this.stopped || this.current.kind === "failed") return;
     this.detach(1000);
@@ -139,7 +130,6 @@ export class RelayConnection {
     void this.connect();
   }
 
-  /** Close the socket and every exchange for good. */
   close(): void {
     if (this.stopped) return;
     this.stopped = true;

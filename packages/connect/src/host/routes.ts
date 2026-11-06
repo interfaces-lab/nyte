@@ -11,11 +11,8 @@ export type RouteAnswer =
   | { readonly kind: "refused"; readonly status: RefusalStatus; readonly code: ErrorCode };
 
 interface ConnectRoutes {
-  /** `127.0.0.1:<port>` once the listener is bound; until then every request is refused. */
   readonly host: () => string | undefined;
-  /** Verify a broker enrollment, record the device, and answer with a signed receipt. */
   enroll(authorization: string): Promise<RouteAnswer>;
-  /** Remove the device whose token digest this is. */
   forget(digest: Buffer): Promise<RouteAnswer>;
 }
 
@@ -55,12 +52,10 @@ function respond(answer: RouteAnswer): Response {
   );
 }
 
-/** The request as device authorization reads it: the bearer header, nothing else. */
 export interface AuthorizingRequest {
   readonly headers: { get(name: string): string | null };
 }
 
-/** `Authorization: Bearer <token>`, read the way the host listener reads it. */
 export function bearerToken(request: AuthorizingRequest): string | undefined {
   const header = request.headers.get("authorization");
 

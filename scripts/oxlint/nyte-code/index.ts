@@ -9,7 +9,6 @@ import { noOfLookupNamesRule } from "./rules/no-of-lookup-names.ts";
 import { noOneOffBooleanHelpersRule } from "./rules/no-one-off-boolean-helpers.ts";
 import { requireSuppressionReasonRule } from "./rules/require-suppression-reason.ts";
 
-/** Nyte's code-shape rules from AGENTS.md. */
 const nyteCodePlugin = eslintCompatPlugin({
   meta: { name: "nyte-code" },
   rules: {

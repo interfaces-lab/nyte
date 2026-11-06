@@ -473,11 +473,8 @@ export default defineConfig({
       },
     },
     {
-      /**
-       * Not Nyte's surfaces: Design Mode's overlay paints into pages the app's tokens don't reach,
-       * and Peek's card shows Arc's measured fills.
-       */
-      files: ["packages/lab/src/design-mode/overlay.tsx", "packages/lab/src/peek/site.tsx"],
+      /** Not Nyte's surface: Design Mode's overlay paints into pages the app's tokens don't reach. */
+      files: ["packages/lab/src/design-mode/overlay.tsx"],
       rules: { "nyte-design/no-raw-colors": "off" },
     },
     ...desktopProcessFolders.map(({ folder, forbidden }) => ({

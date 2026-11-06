@@ -43,12 +43,10 @@ import { createIgnores, missing, walkTree, watchPath, watchTree } from "./tree.t
 /** Returns a byte reader that carries the version of the file it read, which the server answers as `X-Nyte-Version` (§40h, §40p). */
 export type VersionedReader = ByteReader & { readonly version: FileVersion };
 
-/** Returns the local `FilesApi`, its `bytes` typed with the version it read. */
 export type LocalFiles = Omit<FilesApi, "bytes"> & {
   bytes(path: string): Promise<VersionedReader>;
 };
 
-/** The size past which `read` answers a text file as `large`: 1 MiB. */
 export const TEXT_LIMIT = 1024 * 1024;
 
 const CHUNK = 64 * 1024;
@@ -315,7 +313,6 @@ export function localFiles(
   };
 }
 
-/** Compares real paths, so a symlink counts where it points. */
 async function findScope(root: string, path: string): Promise<"workspace" | "external"> {
   const inside = relative(await realpath(root), await realpath(path));
 
@@ -541,7 +538,6 @@ async function* search(
 
 type SearchMatch = Extract<SearchFrame, { readonly kind: "match" }>;
 
-/** The `rg` flags that read the query the way `input` asks: literal unless `regex`, smart case unless `caseSensitive` is given, whole words when `wholeWord`. */
 function matchFlags(input: SearchInput): readonly string[] {
   const casing =
     input.caseSensitive === undefined
@@ -560,7 +556,6 @@ function matchFlags(input: SearchInput): readonly string[] {
   ];
 }
 
-/** The `rg` flags that pick the files a search reads: hidden ones too, never `.git`, then `include` and `exclude` as globs. */
 function fileFlags(input: SearchInput): readonly string[] {
   return [
     "--no-config",
@@ -572,7 +567,6 @@ function fileFlags(input: SearchInput): readonly string[] {
   ];
 }
 
-/** Throws `SdkError("invalid")` with what `rg` printed when it stopped on an error, such as a bad regex or glob; `--no-messages` keeps unreadable files out of it. */
 function rejectFailure(code: number | null, stderr: string): void {
   if (code === 2 && stderr.trim() !== "") throw new SdkError("invalid", stderr.trim());
 }
@@ -639,7 +633,6 @@ async function* grep(
   }
 }
 
-/** The `match` records `rg --json` prints, the fields a search frame takes from them. */
 const RipgrepMatchSchema = Type.Object({
   type: Type.Literal("match"),
   data: Type.Object({
@@ -679,7 +672,6 @@ function ripgrepMatch(line: string): SearchMatch | null {
   };
 }
 
-/** The regex the scan without `rg` matches each line with, read as `matchFlags` reads the query for `rg`; `SdkError("invalid")` when `regex` is not one. */
 function linePattern(input: SearchInput): RegExp {
   const source = input.regex === true ? input.query : RegExp.escape(input.query);
   const sensitive = input.caseSensitive ?? input.query !== input.query.toLowerCase();
@@ -694,7 +686,6 @@ function linePattern(input: SearchInput): RegExp {
   }
 }
 
-/** Whether `path` passes the globs as `rg` reads them: one without a `/` matches a name at any depth, and an excluded directory excludes what is under it. */
 function passesFilters(path: string, input: SearchInput): boolean {
   const parts = path.split("/");
   const prefixes = parts.map((_, index) => parts.slice(0, index + 1).join("/"));

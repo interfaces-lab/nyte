@@ -42,19 +42,16 @@ import type { McpOwner } from "../mcp-server/grants.ts";
 import type { TailnetControl } from "../tailnet.ts";
 import { sharedClients } from "./clients.ts";
 
-/** Returns what a row's binding receives besides its input: the request's body (the bytes of `files.write`, `job.write` and `files.upload`) and the client's abort signal. */
 export type BindingRequest = {
   readonly body: ReadableStream<Uint8Array> | null;
   readonly signal: AbortSignal;
 };
 
-/** Returns a byte row's answer: the reader and the headers the response adds (`X-Nyte-Version` for `files.bytes`, §40p). */
 type ByteBody = {
   readonly reader: ByteReader;
   readonly headers?: Readonly<Record<string, string>>;
 };
 
-/** Returns the bindings of the rows answered once. */
 export type CallBinding = {
   readonly [N in CallName]: (
     input: OperationInput<N>,
@@ -62,7 +59,6 @@ export type CallBinding = {
   ) => Promise<OperationOutput<N>>;
 };
 
-/** Returns the bindings of the rows answered with JSON frames. */
 export type FrameBinding = {
   readonly [N in FrameName]: (
     input: OperationInput<N>,
@@ -70,7 +66,6 @@ export type FrameBinding = {
   ) => Promise<AsyncIterable<OperationOutput<N>>>;
 };
 
-/** Returns the bindings of the rows answered with bytes. */
 export type ByteBinding = {
   readonly [N in ByteName]: (
     input: OperationInput<N>,
@@ -78,7 +73,6 @@ export type ByteBinding = {
   ) => Promise<ByteBody>;
 };
 
-/** Returns the binding of `job.output`, whose frames are framed bytes and control frames (§40h). */
 type OutputBinding = {
   readonly "job.output": (
     input: OperationInput<"job.output">,
@@ -86,10 +80,8 @@ type OutputBinding = {
   ) => Promise<AsyncIterable<OutputFrame>>;
 };
 
-/** Returns the server side of the table for one connection: each row takes its decoded input and the request's body and abort signal, and answers its output, its frames, or a byte reader; setup failures (authority, capability, unknown ids) reject before any frame. */
 export type Binding = CallBinding & FrameBinding & ByteBinding & OutputBinding;
 
-/** Describes what a binding needs beyond the connection: the server port, for the rows that carry a wire-only id (§40o) and `parts.create`, the tailnet node, for the `host.tailnet.*` rows, the MCP server, for the owner's `mcp.approve`, `mcp.deny` and `mcp.grants.*` rows, and the host's execution, for `host.execution.pause` and `host.execution.resume`. */
 export type BindingOptions = {
   readonly server: ServerHost;
   readonly tailnet?: TailnetControl;
@@ -629,7 +621,6 @@ export function bindConnection(connection: Connection, options: BindingOptions):
   };
 }
 
-/** The wire form of a job list watch: the whole list first, then each job the next list moved (a new view object) or dropped, alone. */
 async function* jobChanges(lists: AsyncIterable<readonly JobView[]>): AsyncIterable<JobsChange> {
   let previous: readonly JobView[] | null = null;
 

@@ -113,7 +113,6 @@ const ConnectFileType = strict({
 
 const connectFile = Compile(ConnectFileType);
 
-/** The file before links recorded their broker origin and devices their role. */
 const connectFileV3 = Compile(
   strict({
     version: Type.Literal(3),
@@ -138,11 +137,6 @@ const connectFileV3 = Compile(
   }),
 );
 
-/**
- * A version 3 file was written by a build with one broker, so its link is
- * read as this build's broker's. Devices enrolled then get the controller
- * role, the one an enrollment without a role gets.
- */
 function parseConnectFile(text: string, origin: string | undefined): ConnectFile {
   const value: unknown = JSON.parse(text);
 

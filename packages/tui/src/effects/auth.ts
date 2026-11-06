@@ -1,6 +1,8 @@
 import { availableModels, findModel, modelId } from "../lib/catalog.ts";
 import type { Effect } from "../model/effect.ts";
 import type { Notice } from "../model/state.ts";
+import { CliError } from "../cli/errors.ts";
+import { describeLogout } from "../services/auth.ts";
 import type { LoginDriver } from "../services/auth.ts";
 import { errorMessage } from "../lib/format.ts";
 import { errorNotice, stampNotice } from "./commands.ts";
@@ -106,7 +108,7 @@ export async function login(effect: Of<"login">, context: HandlerContext): Promi
       op: "auth",
       notice: controller.signal.aborted
         ? stampNotice(context, "info", "Authentication cancelled.")
-        : errorNotice(context, error),
+        : signInErrorNotice(context, error),
     });
   } finally {
     end();
@@ -130,7 +132,7 @@ export async function mcpLogin(effect: Of<"mcp-login">, context: HandlerContext)
       op: "auth",
       notice: controller.signal.aborted
         ? stampNotice(context, "info", "Sign-in cancelled.")
-        : errorNotice(context, error),
+        : signInErrorNotice(context, error),
     });
   } finally {
     end();
@@ -193,7 +195,12 @@ export async function logout(effect: Of<"logout">, context: HandlerContext): Pro
   };
 
   try {
-    const result = await ports.host.logout(effect.provider === "" ? null : effect.provider, driver);
+    const receipt = await ports.host.logout(
+      effect.provider === "" ? null : effect.provider,
+      driver,
+    );
+
+    const described = describeLogout(receipt);
 
     dispatch({
       kind: "op-finished",
@@ -201,8 +208,10 @@ export async function logout(effect: Of<"logout">, context: HandlerContext): Pro
       notice: await afterCredentials(
         context,
         "logout",
-        result.provider,
-        `Signed out of ${result.name}.`,
+        receipt.provider.id,
+        [`${described.done}.`, ...described.left.map((row) => `${row.label}: ${row.value}.`)].join(
+          "\n",
+        ),
       ),
     });
   } catch (error) {
@@ -242,6 +251,19 @@ export async function renameAccount(
   } catch (error) {
     context.dispatch({ kind: "inform", tone: "error", text: `error: ${errorMessage(error)}` });
   }
+}
+
+/** A failed sign-in keeps the host's reason, which the shared login loop puts in a detail row. */
+function signInErrorNotice(context: HandlerContext, error: unknown): Notice {
+  if (!(error instanceof CliError)) return errorNotice(context, error);
+
+  return stampNotice(
+    context,
+    "error",
+    [`error: ${error.message}`, ...error.details.map((row) => `${row.label}: ${row.value}`)].join(
+      "\n",
+    ),
+  );
 }
 
 async function afterCredentials(

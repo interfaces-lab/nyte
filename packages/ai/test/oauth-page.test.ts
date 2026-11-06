@@ -1,8 +1,3 @@
-/**
- * Unit tests for the OAuth callback pages: the provider is named, caller
- * content is escaped, details show up when given, and the page is
- * self-contained (no scripts, no external fetches).
- */
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { oauthErrorHtml, oauthSuccessHtml } from "../src/auth/oauth/oauth-page.ts";

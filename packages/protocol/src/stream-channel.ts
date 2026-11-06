@@ -9,7 +9,6 @@ export const CHANNEL_HEADER = "X-Nyte-Channel";
 
 export const STREAM_HEADER = "X-Nyte-Stream";
 
-/** The channel-open body of a client that inflates `deflated` frames. */
 export const DEFLATE_REQUEST = { deflate: true } as const;
 
 /** A `chunk` carries a stream's bytes as base64; a `deflated` one carries them raw-deflated (RFC 1951), then base64, for a client that opened its channel with `DEFLATE_REQUEST`. */

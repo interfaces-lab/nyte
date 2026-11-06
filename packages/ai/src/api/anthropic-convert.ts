@@ -1,7 +1,3 @@
-/**
- * Conversion of the neutral transcript and tools into Anthropic Messages
- * request content.
- */
 import { IsProperties, IsRequired } from "typebox/schema";
 import type {
   BetaTool,
@@ -35,9 +31,6 @@ function convertImageBlock(image: ImageContent): BetaImageBlockParam {
   return { type: "image", source: { type: "base64", media_type: mediaType, data: image.data } };
 }
 
-/**
- * Convert content blocks to Anthropic API format
- */
 function convertContentBlocks(
   content: (TextContent | ImageContent)[],
 ): string | Array<BetaTextBlockParam | BetaImageBlockParam> {
@@ -74,11 +67,6 @@ interface ConvertedToolResult {
   siblingContent: BetaContentBlockParam[];
 }
 
-/**
- * One tool result as a `tool_result` block. Anthropic rejects tool references mixed with
- * ordinary tool-result content, so a result that loads deferred tools carries only the
- * references and its own content moves into sibling blocks.
- */
 function convertToolResult(
   msg: ToolResultMessage,
   isOAuthToken: boolean,
@@ -117,21 +105,6 @@ function convertToolResult(
   };
 }
 
-/**
- * The transcript as Anthropic messages.
- *
- * - Anthropic requires `tool_result` immediately after `tool_use`, so system updates are held
- *   until the next assistant message that is sent, or the end of the transcript. Holding past an
- *   assistant message that converts to no blocks keeps the update from landing before a user
- *   message, which Anthropic rejects.
- * - A thinking block whose signature is missing or empty, e.g. from an aborted stream, becomes
- *   plain text; models marked `allowEmptySignature` emit and accept empty signatures, so they
- *   keep the block.
- * - Consecutive tool results go into one user message, which the z.ai Anthropic endpoint needs;
- *   content displaced by tool references, and the images of error results (which Anthropic
- *   rejects inside them), follow every `tool_result` block.
- * - The last user or system message carries `cache_control`, caching the conversation history.
- */
 export function convertMessages(
   transformedMessages: Message[],
   isOAuthToken: boolean,
@@ -390,7 +363,6 @@ const rejectedByAnthropicStrictTools: UnsupportedStrictSchemaKeywordCheck = (key
   return false;
 };
 
-/** Whether the tool asks for strict sampling only where the provider can honor it. */
 export function prefersStrictSampling(tool: Tool): boolean {
   const config = tool.constrainedSampling;
 
@@ -402,7 +374,6 @@ export function prefersStrictSampling(tool: Tool): boolean {
   );
 }
 
-/** `disablePreferredStrictTools` sends `prefer` tools non-strict; `require` tools stay strict. */
 export function convertTools(
   tools: Tool[],
   isOAuthToken: boolean,

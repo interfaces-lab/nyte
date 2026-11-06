@@ -214,11 +214,6 @@ interface SurfacePlacement {
   readonly cancelFocus: () => void;
 }
 
-/**
- * Keeps the native view on the slot. When an overlay covers the slot, `createPageCover`
- * puts a still of the page under the view before hiding it, so the overlay paints over the
- * still rather than a blank slot. A still for another page or surface is never drawn.
- */
 function useSurfacePlacement(
   slot: RefObject<HTMLDivElement | null>,
   surface: string,

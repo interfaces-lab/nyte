@@ -24,18 +24,14 @@ import {
 } from "./geometry.ts";
 import type { Part } from "./geometry.ts";
 
-/** What the cause resolver looks up for a finding. */
 export type CauseQuery =
   | { readonly kind: "property"; readonly box: number; readonly property: string }
   | { readonly kind: "offset"; readonly parts: readonly Part[]; readonly terms: readonly string[] }
-  /** A length built from parts: the first part off `grid` is the cause. */
   | { readonly kind: "sum"; readonly parts: readonly Part[]; readonly grid: 1 | 2 }
   | { readonly kind: "none"; readonly reason: string };
 
 export interface Finding {
-  /** Findings with one group are one miss, counted once: a box and its own text, or boxes one fraction moved. */
   readonly group: string;
-  /** Tells apart two findings of one rule and property on one element, without a coordinate: a rail or alignment name, a text's index. */
   readonly detail: string;
   readonly rule: RuleId;
   readonly region: RegionName | "window";
@@ -50,17 +46,11 @@ export interface Finding {
 
 export interface CheckResult {
   readonly findings: readonly Finding[];
-  /**
-   * Misses not reported because a reported one covers them: later members of a group, and boxes whose
-   * half pixel is their parent's. Fixing the cover reveals them, which isn't a new miss.
-   */
   readonly masked: readonly Finding[];
   readonly exceptionHits: ReadonlyMap<string, number>;
-  /** How far each list row's first line box sits from its row's centre, in px. */
   readonly centring: readonly number[];
 }
 
-/** Measured on the tree this check landed with: every centred row's line box sat exactly at centre. */
 export const LINE_TOLERANCE = 0;
 
 const inSet = (set: readonly number[], value: number): boolean =>
@@ -94,17 +84,6 @@ const TYPE_SIZES: ReadonlySet<number> = new Set(
   [...SCALE.type, ...SCALE.code].map((pair) => pair[0]),
 );
 
-/**
- * Checks one state's snapshot against the rules, and reports each miss once, where it starts.
- *
- * - Controls and bars have their own sets, so box-grid skips them rather than count one miss twice.
- * - A half pixel is reported only where the fraction starts; a box inherits its parent's otherwise.
- *   An off-grid height that comes from content is traced to the deepest child that is off the grid.
- * - When a type pair is broken, the half declared nearer the text is the one that broke it.
- * - An end-aligned box's start follows its width, but its end edge is still checked against the rails.
- * - An odd inline padding or margin passes when it puts the box's content or edge on one of its region's rails.
- */
-/** The roles that make a button a list or header row. */
 const ROW_ROLES = new Set(["row", "listitem", "treeitem", "option"]);
 
 export function check(snapshot: Snapshot): CheckResult {

@@ -28,7 +28,6 @@ const ID = asId<"session">("new-messages");
 
 const TURNS = 40;
 
-/** Read through turn 37's answer, so 38, 39 and 40 are unread. */
 const SEEN_THROUGH = 375;
 
 const turnId = (index: number) => asId<"turn">(`turn-${String(index)}`);
@@ -131,7 +130,6 @@ const coldFrames = viewStream(coldView());
 
 const coldOpened = Promise.withResolvers<void>();
 
-/** The cold chat's view sends nothing until the test lets its first frame through. */
 let coldShown = false;
 
 const coldStream: ViewStream = {

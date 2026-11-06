@@ -25,7 +25,6 @@ export function pluginSetting<S extends TSchema>(id: string, schema: S): Setting
   };
 }
 
-/** Applies a plugin setting, settling once the host has; a refused value or failure toasts. */
 export async function applyPluginSetting(id: string, value: Json): Promise<void> {
   try {
     const outcome = await (await connected()).settings.apply(id, value);

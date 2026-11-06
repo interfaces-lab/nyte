@@ -1,9 +1,3 @@
-/**
- * Default in-memory `CredentialStore`. Apps inject persistent stores (Nyte's
- * `FileCredentialStore` in store.ts); this one backs tests and ephemeral
- * hosts. Writes run one at a time per provider, and queued work can be
- * cancelled before it runs.
- */
 import { keyedSerial } from "@nyte-ai/schema/serial";
 import { operationSignal, raceWithAbortSignal } from "../utils/abort.ts";
 import type {
@@ -22,7 +16,6 @@ export class InMemoryCredentialStore implements CredentialStore {
   private credentials = new Map<string, CredentialAccounts>();
   private readonly writes = keyedSerial<string>();
 
-  /** Runs `task` after the provider's earlier writes; a cancelled caller stops waiting, and a task cancelled before it starts never runs. */
   private enqueue<T>(
     providerId: string,
     task: () => Promise<T>,

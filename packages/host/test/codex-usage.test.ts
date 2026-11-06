@@ -49,7 +49,6 @@ async function rollout(homeDir: string, path: string, records: readonly unknown[
 
 const turnContext = { type: "turn_context", payload: { model: model.id } };
 
-/** `input_tokens` arrives inclusive of the cached and freshly written portions. */
 function usage(overrides?: Partial<Record<string, number>>) {
   return {
     input_tokens: 100,

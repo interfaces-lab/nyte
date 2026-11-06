@@ -1,6 +1,3 @@
-/**
- * Building a provider from its auth, catalog source, and API implementations.
- */
 import { ModelSchema } from "@nyte-ai/schema/model";
 import { Value } from "typebox/value";
 import { lazyStream } from "./api/lazy.ts";
@@ -18,30 +15,21 @@ import { type Provider } from "./models-types.ts";
 
 export interface CreateProviderOptions<TApi extends Api = Api> {
   id: string;
-  /** Display name. Default: `id`. */
   name?: string;
   baseUrl?: string;
   headers?: ProviderHeaders;
   promptCache?: PromptCachePolicy;
-  /** Required — every provider has auth semantics, even ambient/keyless ones. */
   auth: ProviderAuth;
   fetchAccountLimits?: Provider<TApi>["fetchAccountLimits"];
   filterModels?: (
     models: readonly Model<TApi>[],
     credential: Credential | undefined,
   ) => readonly Model<TApi>[];
-  /** Single implementation, or map keyed by `model.api` for mixed-API providers. */
   api: ProviderStreams | Partial<Record<TApi, ProviderStreams>>;
 }
 
-/** Skip the network catalog fetch when the stored one is this fresh, unless forced. */
 const CATALOG_FRESHNESS_WINDOW_MS = 4 * 60 * 60 * 1000;
 
-/**
- * Builds a provider from parts. Built-in and custom provider factories both go through this. A
- * single `api` streams all models; an `api` map dispatches on `model.api`, and a model whose api
- * has no entry is omitted from the catalog and produces a stream error if passed directly.
- */
 export function createProvider<TApi extends Api = Api>(
   input: CreateProviderOptions<TApi>,
 ): Provider<TApi> {

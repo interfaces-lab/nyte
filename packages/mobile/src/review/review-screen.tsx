@@ -42,7 +42,6 @@ function basename(path: string): string {
   return slash < 0 ? path : path.slice(slash + 1);
 }
 
-/** A finished run's review. One readiness value drives the headline, its symbol, its tint, and the detail line, so the four never describe different states. */
 export function ReviewScreen({ sessionId }: { sessionId: SessionId }) {
   const theme = useTheme();
   const { client, newerHost } = useHost();

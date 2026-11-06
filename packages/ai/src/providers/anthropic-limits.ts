@@ -1,7 +1,3 @@
-/**
- * Claude subscription windows for the Anthropic provider: read from the OAuth
- * usage endpoint and from the unified rate-limit headers on every OAuth response.
- */
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 import type {
@@ -22,7 +18,6 @@ const ClaudeUsageWindowSchema = Type.Object({
   resets_at: AccountResetSchema,
 });
 
-/** Newer Claude responses place model-specific weekly limits in a scoped array. */
 const ClaudeScopedUsageWindowSchema = Type.Object({
   kind: Type.Literal("weekly_scoped"),
   scope: Type.Object({ model: Type.Object({ display_name: Type.String() }) }),
@@ -30,7 +25,6 @@ const ClaudeScopedUsageWindowSchema = Type.Object({
   resets_at: AccountResetSchema,
 });
 
-/** A reset given in seconds, milliseconds, or as a date string, in milliseconds. */
 function resetAtMs(value: Static<typeof AccountResetSchema> | undefined): number | undefined {
   if (value === null || value === undefined) return undefined;
 
@@ -60,11 +54,6 @@ const CLAUDE_USAGE_WINDOWS = [
   { id: "seven_day_opus", label: "Opus weekly", windowMinutes: 7 * 24 * 60 },
 ] as const;
 
-/**
- * Every OAuth response carries the shared windows as
- * `anthropic-ratelimit-unified-{5h,7d}-{utilization,reset}`, so a turn that
- * just ran is also the freshest read of the account.
- */
 export function claudeHeaderLimits(
   headers: Record<string, string>,
   providerId: string,
@@ -133,7 +122,6 @@ function claudeUsageWindows(usage: Static<typeof ClaudeUsageResponseSchema>): Ac
   return windows;
 }
 
-/** Fetch Claude Code subscription windows from Anthropic's OAuth usage endpoint. */
 export async function fetchAnthropicAccountLimits(
   model: AccountLimitsTarget,
   options?: AccountLimitsFetchOptions,

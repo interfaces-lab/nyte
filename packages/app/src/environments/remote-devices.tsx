@@ -33,7 +33,6 @@ export function useRevokeDevice() {
   });
 }
 
-/** One device's pairing code, until it's claimed, removed, expires, or you close it. */
 export function PairingDialog({
   pairing,
   name,
@@ -77,7 +76,6 @@ export function PairingDialog({
   );
 }
 
-/** Names a new device, then hands its pairing code back without caching it in a mutation. */
 export function NameDeviceDialog({
   onOpenChange,
   onPaired,

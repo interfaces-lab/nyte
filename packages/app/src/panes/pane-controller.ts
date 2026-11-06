@@ -30,10 +30,6 @@ const EDGES = {
   { readonly direction: SplitDirection; readonly side: "before" | "after" }
 >;
 
-/**
- * The chat commands of one window tab's layout. Each command that changes what the panes show asks
- * the focused pane to take the keyboard, as does one that finds nothing to change.
- */
 export class PaneController {
   readonly #store: LayoutStore;
   readonly #viewState: SessionViewStateStore;
@@ -100,7 +96,6 @@ export class PaneController {
     this.#viewState.removeDraft(draftId);
   }
 
-  /** Opens a new chat in a pane after the focused one. */
   split(direction: SplitDirection): void {
     this.#show([
       {
@@ -112,7 +107,6 @@ export class PaneController {
     ]);
   }
 
-  /** The last pane stays and shows a new chat instead. */
   close(pane: PaneId): void {
     const layout = this.getSnapshot();
     const closing = layoutPanes(layout.root).find((entry) => entry.id === pane);
@@ -132,10 +126,6 @@ export class PaneController {
     this.#show([{ kind: "focus", pane }]);
   }
 
-  /**
-   * The center shows the chat in that pane, trading places with the pane already showing it; an
-   * edge opens it in a new pane there, or moves the pane already showing it there.
-   */
   drop(sessionId: SessionId, pane: PaneId, placement: DropPlacement): void {
     const layout = this.getSnapshot();
     const target = chatPanes(layout).find((entry) => entry.pane === pane);
@@ -167,7 +157,6 @@ export class PaneController {
     ]);
   }
 
-  /** Keeps the focus where it was. */
   removeSession(sessionId: SessionId): void {
     const layout = this.getSnapshot();
     const pane = paneForSession(layout, sessionId);
@@ -203,7 +192,6 @@ export class PaneController {
     };
   }
 
-  /** Shows `selection` in `pane` and focuses it, or focuses the pane already showing that chat. */
   #inPane(pane: PaneId, selection: PaneSelection): Actions {
     const layout = this.getSnapshot();
     const target = chatPanes(layout).find((entry) => entry.pane === pane);
@@ -228,7 +216,6 @@ export class PaneController {
     );
   }
 
-  /** Applies the actions; a change asks the focused pane to take the keyboard. */
   #show(actions: Actions): boolean {
     const before = this.getSnapshot();
     this.#store.dispatch(...actions);
@@ -240,7 +227,6 @@ export class PaneController {
     return true;
   }
 
-  /** As `#show`, and the focused pane takes the keyboard even when nothing changed. */
   #showOrFocus(actions: Actions): void {
     if (!this.#show(actions)) this.#store.requestFocus(this.getSnapshot().focus[0]);
   }

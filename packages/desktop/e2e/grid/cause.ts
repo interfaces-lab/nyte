@@ -18,7 +18,6 @@ export interface TokenLink {
   readonly defined: SourceRef | null;
 }
 
-/** Why a value is what it is: the token it reads and where StyleX applies it, or why that's unknown. */
 export type Cause =
   | {
       readonly kind: "token";
@@ -35,7 +34,6 @@ export type Cause =
       readonly use: SourceRef | null;
       readonly candidates: number;
     }
-  /** Every length on the way is a rail term, but this one is absent; `at` is where the innermost length is set. */
   | { readonly kind: "missing"; readonly term: string; readonly at: SourceRef | null }
   | { readonly kind: "unresolved"; readonly reason: string };
 
@@ -43,7 +41,6 @@ interface StyleUse {
   readonly property: string;
   readonly css: string;
   readonly at: SourceRef;
-  /** Every property of the same style key, with its CSS, to tell apart sites that share one value. */
   readonly block: ReadonlyMap<string, readonly string[]>;
 }
 
@@ -68,7 +65,6 @@ const UNITLESS = new Set([
   "order",
 ]);
 
-/** Whitespace-free, as both StyleX's output and the CSSOM's serialisation reduce to the same text. */
 export const normalize = (css: string): string =>
   css
     .replace(/\s+/gu, "")
@@ -182,7 +178,6 @@ export async function buildSourceIndex(): Promise<SourceIndex> {
   return { handles, tokens, uses };
 }
 
-/** The calc() a rail or pitch expression compiles to; an unknown handle fails the run. */
 export function compileExpr(index: SourceIndex, expr: Expr): string {
   const inner = (part: Expr): string => {
     switch (part.op) {
@@ -214,7 +209,6 @@ export function compileExpr(index: SourceIndex, expr: Expr): string {
   return `calc(${inner(expr)})`;
 }
 
-/** The declarations that can set a longhand, most specific first. */
 export const LONGHANDS = new Map(
   Object.entries({
     "padding-top": ["padding-top", "padding-block-start", "padding-block", "padding"],
@@ -283,7 +277,6 @@ export const LONGHANDS = new Map(
   }),
 );
 
-/** StyleX writes block-axis logical properties as physical ones, since they don't depend on direction. */
 const BLOCK_ALIASES = new Map(
   Object.entries({
     "padding-top": ["paddingBlockStart"],
@@ -300,7 +293,6 @@ const BLOCK_ALIASES = new Map(
 
 const INHERITED = new Set(["font-size", "line-height"]);
 
-/** Resolves what a finding asks about into a cause with a token and a source line. */
 export function resolveCause(index: SourceIndex, snapshot: Snapshot, query: CauseQuery): Cause {
   switch (query.kind) {
     case "none":
@@ -319,7 +311,6 @@ export function resolveCause(index: SourceIndex, snapshot: Snapshot, query: Caus
   }
 }
 
-/** Follows private variables such as --_row-padding-inline up to the rule that gives them a value. */
 function propertyCause(
   index: SourceIndex,
   snapshot: Snapshot,
@@ -373,10 +364,6 @@ function propertyCause(
   };
 }
 
-/**
- * The innermost length on the way to an edge that isn't one of the rail's own terms. A hairline
- * border is the frame, not a step, so the padding inside it is what moves the content.
- */
 function offsetCause(
   index: SourceIndex,
   snapshot: Snapshot,
@@ -432,7 +419,6 @@ function offsetCause(
   return outside?.cause ?? { kind: "unresolved", reason: "every length on the way is a rail term" };
 }
 
-/** The first part off the grid; a 1px border is made up for in the padding, so the padding is where the fix goes. */
 function sumCause(
   index: SourceIndex,
   snapshot: Snapshot,
@@ -521,11 +507,6 @@ function findCustom(
   return null;
 }
 
-/**
- * The StyleX line that wrote this declaration. A style key whose other properties the box lacks
- * can't be the one it got, and one whose values the box has likely is. A different value is weaker
- * evidence: another style may override it, or the minifier rewrote it.
- */
 function findUse(
   index: SourceIndex,
   box: SnapBox,
@@ -633,7 +614,6 @@ function defaultString(node: ts.Expression): string | null {
     : null;
 }
 
-/** Every CSS text a style value can compile to: each branch of a conditional object, with handles inlined. */
 function cssValues(
   node: ts.Expression,
   key: string,

@@ -58,13 +58,6 @@ function listDescendants(root: number): Promise<number[]> {
   });
 }
 
-/**
- * Runs a `!` command through the local shell, keeping a byte-limited output tail (cut back to the
- * first whole UTF-8 character) with one decoder per stream, so a partial character on stdout never
- * takes stderr bytes. Its process group is killed on exit without waiting for close, since
- * descendants can still hold the pipes open; a cancelled command then destroys its output streams
- * after 100 ms, since output stays open while any descendant, even one out of reach, holds them.
- */
 export function startLocalShell(options: {
   readonly command: string;
   readonly cwd: string;

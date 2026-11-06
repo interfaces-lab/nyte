@@ -12,7 +12,6 @@ const MAX_DIAGRAM_LINES = 300;
 
 const MAX_DIAGRAM_CHARS = 100_000;
 
-/** How many drawn diagrams stay cached by source. */
 const KEPT_DIAGRAMS = 64;
 
 const DiagramRequestType = Type.Object({ id: Type.Integer(), source: Type.String() });
@@ -22,29 +21,19 @@ const DiagramReplyType = Type.Union([
   Type.Object({ id: Type.Integer(), kind: Type.Literal("failed") }),
 ]);
 
-/** A mermaid source the diagram thread is asked to draw. */
 type DiagramRequest = Static<typeof DiagramRequestType>;
 
-/** The diagram thread's answer to one request. */
 export type DiagramReply = Static<typeof DiagramReplyType>;
 
-/** Checks a request on the diagram thread. */
 export const diagramRequests = Compile(DiagramRequestType);
 
 const diagramReplies = Compile(DiagramReplyType);
 
-/** Draws mermaid diagrams as text on a thread of their own, started by the first diagram. */
 interface Diagrams {
-  /** Rejects when the source or its drawing is too large, or the source does not parse. */
   draw(source: string): Promise<string>;
   dispose(): void;
 }
 
-/**
- * Mermaid layout loads elkjs, about 3 MB of JavaScript. Drawing on a worker whose entry is a
- * separate bundle keeps it out of the CLI's startup, so only a session that shows a diagram
- * pays for it, and only once.
- */
 export function createDiagrams(): Diagrams {
   let worker: Worker | null = null;
   let sequence = 0;

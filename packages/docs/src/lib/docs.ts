@@ -6,11 +6,6 @@ import type { MDXContent } from "mdx/types";
 import type { TocEntry } from "~/components/site/sidebar";
 import { designRoute, docsRoute } from "./shared";
 
-/**
- * Each site's order lives in its content folder's `meta.json` files: the root
- * one lists pages and folders, `---Label---` starts a sidebar section, and
- * `...folder` inlines a folder in the order of its own `meta.json`.
- */
 const docsContent = defineDocs({
   dir: "content/docs",
   docs: { postprocess: { includeProcessedMarkdown: true } },
@@ -23,7 +18,6 @@ const designContent = defineDocs({
 
 const docsSource = loader({ baseUrl: docsRoute, source: docsContent.toFumadocsSource() });
 
-/** Design pages are flat, so `foundations/colors` is `/design/colors`. */
 const designSource = loader({
   baseUrl: designRoute,
   source: designContent.toFumadocsSource(),
@@ -56,7 +50,6 @@ export interface DocPage {
   Body: MDXContent;
   toc: TocEntry[];
   section: string | undefined;
-  /** A folder's `index.mdx`: the page that introduces its section rather than an entry in it. */
   overview: boolean;
   previous: NavItem | undefined;
   next: NavItem | undefined;
@@ -72,7 +65,6 @@ interface Site {
   byPath: Map<string, DocPage>;
 }
 
-/** The page tree as sidebar sections: a separator starts one, and folders flatten into it. */
 function readSections(tree: PageTree.Root): { label?: string; urls: string[] }[] {
   const sections: { label?: string; urls: string[] }[] = [{ urls: [] }];
 
@@ -180,7 +172,6 @@ export function getDesignPage(splat: string | undefined): DocPage | undefined {
   return design.byPath.get(trimSlashes(splat));
 }
 
-/** A page by its public path, such as `/docs/build/composition` or `/design/button`. */
 export function findPage(path: string): DocPage | undefined {
   const [, site, ...rest] = path.split("/");
   const splat = rest.join("/");

@@ -47,12 +47,6 @@ interface RowContext {
   readonly onRetry: () => void;
 }
 
-/**
- * Pages the steps above in by itself once the reader can see this row, so the button shows only
- * for a page that failed or brought nothing. A page also comes back empty when the view moved while
- * it loaded, so an empty page is tried once more first. The button brings the spinner back, and
- * the spinner pages under the same rule.
- */
 function EarlierSteps(): ReactElement {
   const loadEarlier = useTranscriptScope()?.loadEarlier;
   const [stuck, setStuck] = useState(loadEarlier === undefined);

@@ -4,7 +4,6 @@ import type { AdvanceReport, HeadName, SessionId } from "@nyte-ai/schema";
 import { vercelHost } from "../utils/host.ts";
 import { stepFrom } from "../utils/step.ts";
 
-/** Hands a head's wake to the workflow that drives it. */
 export async function dispatchHead(target: {
   readonly session: SessionId;
   readonly head: HeadName;

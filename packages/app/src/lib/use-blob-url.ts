@@ -17,7 +17,6 @@ async function readBlobUrl(
   return url;
 }
 
-/** The object URL is revoked when the query cache drops `key`, a later read replaces it, or its read is cancelled. */
 export function blobUrlQuery(key: QueryKey, open: () => Promise<ByteReader>) {
   return queryOptions({
     queryKey: key,

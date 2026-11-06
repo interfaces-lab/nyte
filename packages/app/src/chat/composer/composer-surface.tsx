@@ -107,7 +107,6 @@ function composerLinks(): Plugin {
   });
 }
 
-/** Links in the editor open through the host; Enter on one reaches neither ProseMirror nor the composer. */
 function composerLinkHandlers(opener: ReferenceOpener | undefined) {
   const intercept = (event: MouseEvent): void => {
     const target = event.target;

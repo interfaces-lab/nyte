@@ -10,7 +10,6 @@ import { load, put, readRefExpectation, readTip } from "../store/session.ts";
 import type { Found } from "../store/session.ts";
 import { check } from "../util/json-schema.ts";
 
-/** Where a response's parts live: what `turn` passes as its context. */
 interface PartContext {
   readonly kernel: Kernel;
   readonly session: SessionId;
@@ -29,14 +28,12 @@ export interface OpenPart {
   readonly part: PartId;
   readonly kind: "text" | "thinking";
   markdown: string;
-  /** The version views show: the created version plus one per patch published, which the settled part's version must pass. */
   version: number;
   merged: number;
   textSignature: string | null;
   readonly thoughts: ThoughtSignature[];
 }
 
-/** The writes that settle a response's open parts on the head, each in its own commit; a part the stop fence already failed keeps its text. With `cut`, the parts are the text a failed attempt kept, marked so a transcript ends that response at them. */
 export async function settledParts(
   context: PartContext,
   opened: readonly OpenPart[],
@@ -164,7 +161,6 @@ export async function keepOpen(
   return kept.flat();
 }
 
-/** Writes the text a response streamed into its parts and leaves them live, for the run's next driver to adopt: patches reach only the bus. */
 export async function savedOpen(
   context: PartContext,
   opened: readonly OpenPart[],
@@ -194,7 +190,6 @@ export async function savedOpen(
   return saved.flat();
 }
 
-/** A part a previous driver of the run left live, with the text it saved. */
 export async function adopt(part: PartRecord): Promise<OpenPart> {
   const adopted = {
     part: part.id,

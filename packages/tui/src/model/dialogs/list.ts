@@ -84,7 +84,6 @@ export type ListPurpose =
       readonly path: string;
       readonly decision: boolean | null;
       readonly sources: readonly string[];
-      /** Asked before the chat it launched in opens: the whole screen, with Quit. */
       readonly gate: boolean;
     };
 
@@ -237,7 +236,6 @@ function accept(dialog: ListDialog, action: ChatCommand | null): DialogStep<List
   };
 }
 
-/** The launch trust gate's way out: closing it quits, so the folder's chat never opens undecided. */
 function quit(dialog: ListDialog): DialogStep<ListDialog> {
   return {
     dialog,

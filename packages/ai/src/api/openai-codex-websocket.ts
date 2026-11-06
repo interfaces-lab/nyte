@@ -1,7 +1,3 @@
-/**
- * The Codex WebSocket transport: per-session connection reuse, frame decoding, and continuing
- * a cached connection's last response with `previous_response_id` and only the new input.
- */
 import { Value } from "typebox/value";
 import { registerSessionResourceCleanup } from "../session-resources.ts";
 import type { AssistantMessage, ProviderEnv } from "../types.ts";
@@ -49,10 +45,8 @@ const SESSION_WEBSOCKET_CACHE_TTL_MS = 5 * 60 * 1000;
 
 const SESSION_WEBSOCKET_MAX_AGE_MS = 55 * 60 * 1000;
 
-/** The WHATWG `readyState` of an open socket. */
 const WEBSOCKET_OPEN = 1;
 
-/** Structural views of the DOM-shaped events runtimes dispatch on sockets. */
 interface WebSocketMessageEvent {
   readonly data?: unknown;
 }
@@ -75,7 +69,6 @@ type WebSocketErrorListener = (event: WebSocketErrorEvent) => void;
 type WebSocketCloseListener = (event: WebSocketCloseEvent) => void;
 
 interface WebSocketLike {
-  /** Numeric ready state per the WHATWG spec; absent on exotic runtimes. */
   readonly readyState?: number;
   close(code?: number, reason?: string): void;
   send(data: string): void;
@@ -89,7 +82,6 @@ interface WebSocketLike {
   removeEventListener(type: "close", listener: WebSocketCloseListener): void;
 }
 
-/** The connection's last request and response, which the next request may continue. */
 interface CachedWebSocketContinuationState {
   lastRequestBody: RequestBody;
   lastResponseId: string;
@@ -110,13 +102,10 @@ interface AcquiredWebSocket {
   release: (keep: boolean) => void;
 }
 
-/** Cached connections by session id, then account id. */
 const websocketSessionCache = new Map<string, Map<string, CachedWebSocketConnection>>();
 
-/** Sessions whose WebSocket failed; they stay on SSE until their resources are cleaned up. */
 const websocketSseFallbackSessions = new Set<string>();
 
-/** Closes the cached sockets of `sessionId`, or of every session, and forgets their SSE fallback. */
 export function closeOpenAICodexWebSocketSessions(sessionId?: string): void {
   const closeEntry = (entry: CachedWebSocketConnection) => {
     if (entry.idleTimer) clearTimeout(entry.idleTimer);
@@ -159,7 +148,6 @@ function codexErrorCode(cause: unknown): string | undefined {
   return cause instanceof CodexApiError ? cause.code : undefined;
 }
 
-/** A socket without `readyState` is assumed to stay open, as some runtimes omit it. */
 function socketReusable(socket: WebSocketLike): boolean {
   return socket.readyState === undefined || socket.readyState === WEBSOCKET_OPEN;
 }
@@ -197,13 +185,6 @@ function scheduleSessionWebSocketExpiry(
   entry.idleTimer.unref?.();
 }
 
-/**
- * A socket on the runtime's `WebSocket`, which browsers, Node and Bun all expose. Node and Bun
- * take an init object with `headers`, and Bun also honors an undici-style `proxy`, which carries
- * the provider's HTTP proxy. The DOM typing of the constructor admits only protocols as its second
- * argument, and which typing applies depends on the consumer's lib, so it is constructed through
- * `Reflect.construct` against the structural {@link WebSocketLike} it is used as.
- */
 function openWebSocket(
   url: string,
   headers: Record<string, string>,
@@ -307,7 +288,6 @@ async function connectWebSocket(
   });
 }
 
-/** Releasing keeps the entry cached for reuse only when asked to and the socket is still open. */
 function cachedEntryRelease(
   sessionId: string,
   accountId: string,
@@ -328,11 +308,6 @@ function cachedEntryRelease(
   };
 }
 
-/**
- * A socket for one request. Without a session it is single-use. With one, an idle open cached
- * socket younger than the age limit is reused; a busy one gets a single-use socket beside it;
- * otherwise a new socket replaces the cached entry.
- */
 async function acquireWebSocket(
   url: string,
   headers: Headers,
@@ -449,10 +424,6 @@ async function decodeWebSocketData(data: unknown): Promise<string | null> {
   return null;
 }
 
-/**
- * Socket events queue before message data is decoded: Blob decoding is asynchronous, so
- * decoding inside the message listener would let a following close overtake the terminal frame.
- */
 type QueuedWebSocketEvent = { kind: "message"; data: unknown } | { kind: "failure"; error: Error };
 
 async function* parseWebSocket(
@@ -566,10 +537,6 @@ function requestBodyWithoutInput(body: RequestBody): RequestBody {
   return rest;
 }
 
-/**
- * The input this request adds to the connection's last request and response, when everything
- * else in the body matches and the input extends that baseline.
- */
 function getCachedWebSocketInputDelta(
   body: RequestBody,
   continuation: CachedWebSocketContinuationState,
@@ -624,18 +591,12 @@ function buildCachedWebSocketRequestBody(
   };
 }
 
-/**
- * Frames that never start the assistant output: rate-limit telemetry, error frames, and a
- * failed terminal frame, which is processed only to account for usage and must not turn a
- * before-start API failure into an after-start transport failure.
- */
 const NON_STARTING_FRAMES: ReadonlySet<string> = new Set([
   "codex.rate_limits",
   "error",
   "response.failed",
 ]);
 
-/** Calls `onStart` before the first frame that produces assistant output. */
 async function* startWebSocketOutputOnFirstEvent(
   frames: AsyncIterable<CodexFrame>,
   onStart: () => void,
@@ -652,11 +613,6 @@ async function* startWebSocketOutputOnFirstEvent(
   }
 }
 
-/**
- * Sends one request on an acquired socket and streams its response into `output`. ChatGPT
- * Codex rejects `store: true`, so continuation works through the connection-scoped
- * `previous_response_id` state, which a cached-context transport records after each response.
- */
 async function processWebSocketStream(
   request: CodexRequest,
   headers: Headers,
@@ -735,13 +691,6 @@ async function processWebSocketStream(
   }
 }
 
-/**
- * Streams `request` over a Codex WebSocket into `output`, pushing `start` on the first event.
- * One retry each covers a missing continuation and a connection limit hit before any event.
- * A transport failure before any event records a diagnostic, moves the session onto SSE and
- * returns false so the caller sends the request over SSE; protocol and API failures, and any
- * failure after the first event, throw.
- */
 export async function streamOverWebSocket(
   request: CodexRequest,
   headers: Headers,

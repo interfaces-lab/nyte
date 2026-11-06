@@ -42,7 +42,6 @@ const functions = [
   "ghostty_selection_gesture_event",
 ] as const;
 
-/** Take a 64-bit `GhosttyRow` by value, which JavaScript passes as a bigint. */
 const rowReaders = ["ghostty_row_get"] as const;
 
 const procedures = [

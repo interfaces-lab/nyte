@@ -25,14 +25,9 @@ const managed: ManagedConnection = {
   },
 };
 
-/** `managed` as the Keychain holds it, with some fields replaced. */
 const stored = (fields: Record<string, string>) =>
   JSON.stringify({ ...managed.connection, ...managed.binding, ...fields });
 
-/**
- * A Keychain stand-in. `hold` delays writes, `writing` sees each write as it
- * starts, and `fail` makes the matching operations reject.
- */
 function memory(
   initial: string | null,
   options: {

@@ -39,7 +39,6 @@ export function renderDiagram(source: string): DiagramResult {
   }
 }
 
-/** Rounds the diagram's outer width and height up to even pixels, the box grid; its viewBox keeps the drawing. */
 function wholePixelSize(tag: string): string {
   return tag.replace(
     /\b(width|height)="(\d+(?:\.\d+)?)"/g,

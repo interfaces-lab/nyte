@@ -127,7 +127,6 @@ export const TrashOutcomeType = Type.Union([
 
 export type TrashOutcome = Decoded<typeof TrashOutcomeType>;
 
-/** A held item back at its path, or why not: something took its place, or the hold is gone. */
 export const RestoreOutcomeType = Type.Union([
   Type.Object({ kind: Type.Literal("restored") }),
   Type.Object({ kind: Type.Literal("stale"), reason: Type.Enum(["exists", "expired"]) }),

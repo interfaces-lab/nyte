@@ -52,7 +52,6 @@ const MASTER_LABEL = {
   notificationSounds: "Play sounds",
 } as const;
 
-/** The Dock lives on macOS; elsewhere those channels aren't offered. */
 const DOCK_CHANNELS: ReadonlySet<AlertChannel> = new Set(["badge", "bounce"]);
 
 const notifications = pluginSetting("desktop.notifications", DESKTOP_SETTING_SCHEMAS.notifications);
@@ -102,7 +101,6 @@ const STATES = [
   readonly id: AlertState;
   readonly title: string;
   readonly detail: string;
-  /** The sidebar's own mark for the state; Done is the unread mark. */
   readonly mark: TaskState;
 }[];
 
@@ -344,7 +342,6 @@ function ChannelsDialog({
   );
 }
 
-/** Stores a state's channels in the order it offers them, keeping only the ones it offers. */
 function saveChannels(state: AlertState, channels: readonly AlertChannel[]): void {
   switch (state) {
     case "waiting":
@@ -371,7 +368,6 @@ function blockerLabel(blocker: AlertBlocker): string {
   return blocker.kind === "master" ? MASTER_LABEL[blocker.setting] : CHANNEL_LABEL[blocker.channel];
 }
 
-/** The sentence under the states card: what Needs you does past the first alert, if anything. */
 function reminderNote(waiting: readonly AlertChannel[], every: number): string | undefined {
   const remind = waiting.includes("remind");
   const bounce = waiting.includes("bounce");

@@ -1,8 +1,3 @@
-/**
- * Specimens for the design site's foundation pages. Each one renders the live
- * token through StyleX and prints the value from the source that declares it.
- */
-
 import { platformColors, platformScopes } from "@nyte-ai/ui/platform-colors";
 import { platformRamps } from "@nyte-ai/ui/platform-ramps";
 import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
@@ -31,7 +26,6 @@ type RoleGroup =
   | "data"
   | "utility";
 
-/** The last group catches every other role, so a new one shows up without an edit. */
 function roleGroup(name: RoleName): RoleGroup {
   if (name.startsWith("content")) return "content";
   if (name.startsWith("fill")) return "fill";
@@ -60,7 +54,6 @@ function Value({ children }: { children: ReactNode }) {
   return <code {...props(styles.value)}>{children}</code>;
 }
 
-/** Declaration order, so a stair reads strongest first. */
 export function RoleTable({ group }: { group: RoleGroup }) {
   const rows = roleNames.filter((name) => roleGroup(name) === group);
   return (
@@ -226,7 +219,6 @@ export function ScopeTables() {
 
 const tints = Object.keys(surfaceTheme).filter((tint): tint is Tint => tint in surfaceTheme);
 
-/** Each hue scope, live: the same four roles read differently inside it. */
 export function HueScopes() {
   return (
     <div {...props(styles.scopeGrid)}>
@@ -253,7 +245,6 @@ const intents = [
   { name: "danger", hue: "red", use: "Status text, destructive menu items and alert actions" },
 ] as const;
 
-/** Intents name a hue by meaning. */
 export function IntentTable() {
   return (
     <div className="doc-table-scroll">
@@ -666,7 +657,6 @@ const easings = [
   },
 ] as const;
 
-/** Hover a row to run the curve; reduced motion skips the travel. */
 export function MotionScale() {
   return (
     <div className="doc-table-scroll">

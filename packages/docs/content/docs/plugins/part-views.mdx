@@ -61,8 +61,8 @@ export default function ChecklistView({ state, act }: Props) {
 }
 ```
 
-Ticking a box runs `toggle` on the host. The host updates the part's state, and every client showing
-the chat redraws the checklist.
+Ticking a box runs `toggle` on the host. The host writes the part's new state to its row, and every
+client attached to the chat redraws the checklist.
 
 ## What a view can import [#imports]
 

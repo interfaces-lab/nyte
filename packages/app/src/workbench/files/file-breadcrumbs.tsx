@@ -14,7 +14,6 @@ import { syncTreePaths } from "./tree-paths.ts";
 import { treeItemHeight } from "./tree-theme.ts";
 import { workbenchStyles } from "../workbench.stylex.ts";
 
-/** The separator icon's `2xs` glyph step. */
 const SEPARATOR_WIDTH = 10;
 
 const HIDDEN_LABEL = "…";
@@ -40,13 +39,11 @@ const styles = create({
   tree: { display: "block", height: "min(320px, var(--available-height))", width: "100%" },
 });
 
-/** How many leading folders collapse into the `…` menu, and the file name's label width when even the name alone overflows. */
 interface CrumbFit {
   readonly hidden: number;
   readonly nameWidth: number | undefined;
 }
 
-/** A file outside the workspace shows its whole path, with no folders to browse. */
 export function FileBreadcrumbs({
   path,
   external,
@@ -106,10 +103,6 @@ export function FileBreadcrumbs({
   );
 }
 
-/**
- * Fits the path into the bar: pretext measures every segment, including the ones collapsed out of the DOM, so
- * widening the bar can bring them back. The padding and font come from the current crumb, which always renders.
- */
 function useCrumbFit(nav: RefObject<HTMLElement | null>, path: string | undefined): CrumbFit {
   const [fit, setFit] = useState<CrumbFit>({ hidden: 0, nameWidth: undefined });
 
@@ -163,11 +156,6 @@ function useCrumbFit(nav: RefObject<HTMLElement | null>, path: string | undefine
   return fit;
 }
 
-/**
- * Keeps the file name and as many of its nearest folders as fit, collapsing the rest into a `more` crumb.
- * `crumbs` are the crumb widths, folders first and the file name last; `padding` is what a crumb adds to its label.
- * Keeping one more folder only ever widens the path, so the counts that fit run from zero up to the answer.
- */
 function fitCrumbs(
   crumbs: readonly number[],
   more: number,

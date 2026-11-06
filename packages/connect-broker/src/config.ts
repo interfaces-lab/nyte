@@ -1,7 +1,3 @@
-/**
- * Worker bindings and their parsed form. Every string is checked on each
- * request; a bad value fails the request closed and logs only its name.
- */
 import { Base64Url32, namesBrokerOrigin } from "@nyte-ai/connect";
 import { Type } from "typebox";
 import type { Static } from "typebox";
@@ -11,21 +7,14 @@ import type { EnvironmentNamespace } from "./environment-api.ts";
 
 export interface Env {
   readonly DB: D1Database;
-  /** One relay Durable Object per environment, named by the environment id. */
   readonly RELAY: EnvironmentNamespace;
-  /** The broker's own origin: proofs, Clerk `aud`, token issuer, and relay addresses. */
   readonly CONNECT_ORIGIN: string;
   readonly CONNECT_WEB_ORIGINS: string;
-  /** The exact Clerk `iss`, such as `https://clerk.example.com`. */
   readonly CLERK_ISSUER: string;
-  /** Comma-separated `azp` values a session token may carry. Native sessions carry none. */
   readonly CLERK_AUTHORIZED_PARTIES: string;
-  /** Clerk's PEM public key, for offline session verification. */
   readonly CLERK_JWT_KEY: string;
-  /** Clerk Backend API key, for owner lookups and session revocation. */
   readonly CLERK_SECRET_KEY: string;
   readonly CLERK_WEBHOOK_SIGNING_SECRET: string;
-  /** JSON array of Ed25519 private JWKs with `kid`. The first signs; all are published. */
   readonly BROKER_SIGNING_KEYS: string;
 }
 
@@ -103,7 +92,6 @@ export function parseWebOrigins(value: unknown): string[] | undefined {
   return new Set(origins).size === origins.length ? origins : undefined;
 }
 
-/** The names of the bindings that failed, or the parsed configuration. */
 export function parseConfig(env: Env): Config | { readonly invalid: readonly string[] } {
   const invalid: string[] = [];
   const check = (name: keyof Env, ok: boolean) => {

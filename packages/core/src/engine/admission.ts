@@ -65,7 +65,6 @@ interface Sending {
   readonly context: ConnectionContext;
   readonly content: UserContent;
   readonly options: SendOptions;
-  /** Aborts a before_send decision still pending, besides the kernel closing. */
   readonly stop: AbortSignal | null;
 }
 
@@ -661,7 +660,6 @@ async function editGated(
   return sendReceipt(kernel, session, id);
 }
 
-/** The updates that store a starting chat's first message on main, deciding until its before_send hooks decide it, with its pending receipt under the chat's id. The receipt keeps `principal`, the one the hooks decide for. */
 export async function admitDeciding(
   kernel: Kernel,
   session: SessionId,
@@ -710,7 +708,6 @@ export async function admitDeciding(
   ];
 }
 
-/** Decides a starting chat's first message through its before_send hooks as `context`, then admits it again in place with the decided content, configuration and schedule, under the receipt it has. Resolves the message, or null once it left the inbox; the kernel closing, `stop` or a refusal throws. */
 export async function readmitDeciding(
   kernel: Kernel,
   context: ConnectionContext,
@@ -772,7 +769,6 @@ export async function readmitDeciding(
   });
 }
 
-/** Tells this process an admitted message is in: a covered head wakes, and a wait on the user's input hears it. */
 async function announce(
   kernel: Kernel,
   session: SessionId,
@@ -799,7 +795,6 @@ async function readReplayReceipt(
   return sendReceipt(kernel, session, found.record.id);
 }
 
-/** The commit an edit of `target` lands on, and when `target` was committed: what the edit cuts started from then on. */
 async function locate(
   kernel: Kernel,
   session: SessionId,
@@ -844,7 +839,6 @@ async function gate(
   };
 }
 
-/** Decides the submission through the session's `before_send` hooks, one durable step keyed by the message; a parked hook holds the send until its wait wakes, and the kernel closing or the send's stop throws. */
 async function decideBeforeSend(
   sending: Sending,
   message: MessageId,

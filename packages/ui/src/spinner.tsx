@@ -12,7 +12,6 @@ const CELLS = 5;
 
 const PITCH = 3;
 
-/** The cells span 14 px; a 1 px margin centres them in the 16 px glyph slot. */
 const INSET = 1;
 
 const SIZE = CELLS * PITCH + INSET;

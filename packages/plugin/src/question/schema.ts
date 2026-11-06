@@ -3,7 +3,6 @@ import { idSchema, isJsonObject, standard } from "@nyte-ai/schema";
 import type { CallId, Infer, PartId, PartView, SessionView } from "@nyte-ai/schema";
 import { Type } from "typebox";
 
-/** The question tool's name, which clients match to draw its calls. */
 export const QUESTION_TOOL = "question";
 
 const infoSchema = Type.Object({
@@ -55,7 +54,6 @@ export const questionParameters = standard(Type.Object({ questions }));
 
 const actions = { answer: { input: answerInput }, skip: { input: skipInput } };
 
-/** A question, its described choices, and whether the user may select several. */
 export type QuestionInfo = Infer<typeof info>;
 
 /** One answer list per question, in request order. An empty list leaves a question unanswered. */
@@ -122,12 +120,6 @@ export function openQuestions(
   });
 }
 
-/**
- * The question part a call made, found by its `call` with one string comparison per part; the
- * caller validates only the match with {@link readQuestion}.
- *
- * @category plugins
- */
 export function findQuestionPart(parts: readonly PartView[], call: CallId): PartView | undefined {
   return parts.find(
     (part) =>

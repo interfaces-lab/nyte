@@ -30,7 +30,6 @@ import {
 } from "./store-rows.ts";
 import { sessionIndexChanges, sqlSessionIndex, stampDirectory } from "./session-index.ts";
 
-/** Returns one value Durable Object SQL binds and answers: text, a number, a blob as an `ArrayBuffer`, or null. */
 export type SqlValue = ArrayBuffer | string | number | null;
 
 /** Returns the part of a Durable Object's storage `durableObjectStore` uses, structurally, so a Worker passes `state.storage` as it is and a test passes a shim: `sql.exec` runs one statement with `?` bindings and answers its rows keyed by column name, and `transactionSync` runs a synchronous closure whose writes land all together or, when it throws, not at all (Durable Object SQL refuses `BEGIN`, so this is the only transaction). */

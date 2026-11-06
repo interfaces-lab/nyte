@@ -63,7 +63,6 @@ async function page(
   };
 }
 
-/** A manual prompt that stays open until its signal aborts. */
 function pendingPrompt(
   onPrompt?: (prompt: AuthPrompt) => void,
 ): (prompt: AuthPrompt) => Promise<string> {

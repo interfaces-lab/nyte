@@ -51,7 +51,6 @@ type TranscriptVirtualizer = Virtualizer<HTMLDivElement, HTMLDivElement>;
 
 const VIEWPORT_GUESS = 800;
 
-/** The most of the room above the composer that the end gap takes, so a short pane keeps its last rows in view. The gap rounds down to the 2px grid, so rows at the end sit on whole pixels. */
 const END_GAP_SHARE = 0.17;
 
 const MEASURED_TRANSCRIPTS = 16;
@@ -675,7 +674,6 @@ export function TranscriptContent({
   );
 }
 
-/** Mounted once the viewport exists: its height sizes the end gap, and the reader's input steers the transcript's scroll mode. */
 function ViewportInput({
   viewport,
   content,
@@ -763,7 +761,6 @@ function ViewportInput({
   return null;
 }
 
-/** Mounted while the composer dock exists: its height pads the transcript, and wheeling over it scrolls the transcript. */
 function DockInput({
   dock,
   onResize,

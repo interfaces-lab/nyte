@@ -8,16 +8,11 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import type { FirstFramePort } from "../effects/ports.ts";
 
-/** The selection the last launch's blank chat resolved to, so the next launch draws its chip before the host answers. */
 const FirstFrameType = Type.Object(
   { model: ModelRefType, effort: ThinkingType, fast: Type.Boolean() },
   { additionalProperties: false },
 );
 
-/**
- * Keeps the first frame's selection in `path`; a missing or unreadable file reads as none. Writes
- * run one at a time, in the order they came, so the newest choice is the one left on disk.
- */
 export function firstFramePort(path: string): FirstFramePort {
   const writes = serial();
 

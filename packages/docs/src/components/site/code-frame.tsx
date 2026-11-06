@@ -12,7 +12,6 @@ export type CodeFrameProps = ComponentProps<"pre"> & {
   icon?: unknown;
 };
 
-/** Framework logos from svgl.app, served from `public/frameworks`. */
 const frameworkLogos: Record<string, string> = {
   Vite: "vite",
   "Next.js": "nextjs",
@@ -22,7 +21,6 @@ const frameworkLogos: Record<string, string> = {
   Solid: "solidjs",
 };
 
-/** A tab or title's icon: a framework's logo, or a file-type icon when it names a file. */
 function LabelIcon({ label }: { label: string }) {
   const logo = frameworkLogos[label];
   if (logo) return <img src={`/frameworks/${logo}.svg`} alt="" width={14} height={14} />;
@@ -31,10 +29,8 @@ function LabelIcon({ label }: { label: string }) {
   return <FileTypeIcon path={label} />;
 }
 
-/** Set inside `CodeBlockTabs`, whose figure and tab strip already frame each file. */
 const InCodeTabs = createContext(false);
 
-/** The tab chosen in each `groupId`, so picking a framework once switches every block in the group. */
 const groupChoices = new Map<string, string>();
 
 const groupListeners = new Set<() => void>();
@@ -63,12 +59,6 @@ const styles = create({
   list: { gap: 0 },
 });
 
-/**
- * The `pre` renderer for doc pages. fumadocs-mdx hands us Shiki's output
- * plus fence meta; `title` becomes the file's tab, the way an editor shows
- * it. The copy button reads the rendered text so it never disagrees with
- * what is on screen.
- */
 export function CodeFrame({ title, icon: _icon, children, className, ...props }: CodeFrameProps) {
   const body = useRef<HTMLPreElement>(null);
   const [copied, setCopied] = useState(false);
@@ -110,12 +100,6 @@ export function CodeFrame({ title, icon: _icon, children, className, ...props }:
   );
 }
 
-/**
- * Consecutive fences that each carry `tab="file.ts"` become one block with
- * a tab per file; fumadocs' `remarkCodeTab` emits these four components.
- * Blocks sharing a `groupId` keep the same tab chosen, and `GroupPanel`
- * follows that choice.
- */
 export function CodeBlockTabs({
   defaultValue,
   groupId,
@@ -146,7 +130,6 @@ export function CodeBlockTabs({
   );
 }
 
-/** Prose and code for one tab of a `groupId`, shown only while that tab is chosen anywhere on the page. */
 export function GroupPanel({
   groupId,
   value,

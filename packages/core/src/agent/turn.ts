@@ -526,7 +526,6 @@ async function updated(
   }
 }
 
-/** Ends the thinking blocks a response left open, so each keeps its length in the part's signature. */
 function closeThoughts(state: AttemptState): void {
   for (const [index, pending] of state.parts) {
     const start = state.starts.get(index);
@@ -674,7 +673,6 @@ async function open(context: Turn, state: AttemptState, kind: OpenPart["kind"]):
   return opened;
 }
 
-/** Response-scoped call ids: the provider's id, made unique within the response, under the run and the response's request count. */
 function assignCallIds(
   run: RunId,
   requests: number,
@@ -696,13 +694,6 @@ function assignCallIds(
   );
 }
 
-/**
- * Moves the run to its next attempt. The parts the cut-off response left open, with the ones a
- * previous driver left live (`adopted`), fail; with `continueInterrupted` on, its text that
- * already streamed settles instead, and the transcript asks the model to continue from it.
- * Thinking always fails: a thought cut off has no signature to replay it with. The text kept is
- * no progress toward the restart cap, so the run's interruption mark moves past it.
- */
 async function retry(
   context: Turn,
   state: AttemptState,

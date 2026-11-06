@@ -205,7 +205,6 @@ function ScopeRadioItem({ option }: { readonly option: ChangesScopeOption }): Re
   );
 }
 
-/** A turn's stats come from the run diff and totals its review reads, so the two agree. */
 function TurnScopeItem({
   option,
   workspace,

@@ -7,7 +7,6 @@ import type { WorkbenchViewKey } from "../model.ts";
 import { fileActions } from "./file-store.ts";
 import type { FileTab } from "./file-store.ts";
 
-/** A file tab's menu. The strip owns closing: Close Others leaves files with unsaved edits open, since closing one asks first. */
 export function FileTabMenuItems({
   viewKey,
   file,

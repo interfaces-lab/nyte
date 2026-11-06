@@ -82,7 +82,6 @@ export function createWorkspaceState(): WorkspaceState {
   };
 }
 
-/** Drops the cached scans `chosen` picks (every one by default), so their sessions scan again; the watches stay. */
 export function dropScans(
   kernel: Kernel,
   chosen: (session: SessionId, entry: ScanEntry) => boolean = () => true,
@@ -413,11 +412,6 @@ async function workspaceTrust(
   return { projectResources: trust.decided(record), trusted: trust.trusted(record) };
 }
 
-/**
- * A branch switch answers `busy` while any run writes to the workspace, since it would change files
- * under that run. Every other member calls through to `git` so a provider's inherited methods keep
- * their receiver.
- */
 function guardSwitches(kernel: Kernel, workspace: WorkspaceId, git: GitApi): GitApi {
   const switching = async (run: () => Promise<GitOutcome>): Promise<GitOutcome> => {
     const runs = await readWriters(kernel.store, workspace);
@@ -624,7 +618,6 @@ function limiter(size: number): <T>(work: () => Promise<T>) => Promise<T> {
     });
 }
 
-/** A source's snapshot range and the paths its own calls were charged, the only paths it reports. */
 async function changeRange(
   kernel: Kernel,
   workspace: WorkspaceId,
@@ -663,11 +656,6 @@ async function changeRange(
   }
 }
 
-/**
- * Where a session's changes start ({@link threadStart}) and stop:
- * the workspace as it is now while a run is live, else the last snapshot of
- * the run that ended last.
- */
 async function sessionSnapshots(
   store: StoreConnection,
   session: SessionId,
@@ -706,11 +694,6 @@ async function sessionSnapshots(
   };
 }
 
-/**
- * The session that owns `run`, where its changes start (its first snapshot) and,
- * once it has ended, where they stop (its last); `to` is null while the run is live,
- * its end being the workspace as it is now. Null when no record holds its first snapshot.
- */
 async function runSnapshots(
   store: StoreConnection,
   workspace: WorkspaceId,
@@ -745,12 +728,6 @@ async function runSnapshots(
   return null;
 }
 
-/**
- * Applies a change to project trust everywhere it is read: a decision passes
- * to folders below and the `workspaceTrust` mode reaches every folder, so
- * every workspace's cached scan is dropped, its watchers hear the change,
- * and every live session reloads its plugins.
- */
 export async function trustChanged(kernel: Kernel): Promise<void> {
   dropScans(kernel);
 

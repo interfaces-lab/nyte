@@ -1,14 +1,3 @@
-/**
- * `pnpm guidance [--diff <ref>] [paths...]` lists the guidance a change should be read against:
- * every AGENTS.md in a folder above a changed file (the root one is always loaded, so it is left
- * out), and every skill whose `paths` frontmatter matches a changed file. Each is listed once,
- * with its length and the files that brought it in.
- *
- * It reads, in order: the named paths; with `--diff`, the files changed since the merge base with
- * <ref>; the staged files, which are what the next commit holds; and with nothing staged, the files
- * changed since the merge base with origin/main, uncommitted and new files included. A checkout
- * other agents also work in has their changes there too, so stage first.
- */
 import { execFileSync } from "node:child_process";
 import { readFileSync, statSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
@@ -90,7 +79,6 @@ function git(...command) {
     .filter((line) => line !== "");
 }
 
-/** Up to three paths, then a count, so a long change still fits on one line. */
 function describe(paths) {
   const shown = paths.slice(0, 3).join(", ");
 

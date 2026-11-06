@@ -1,7 +1,3 @@
-/**
- * Clerk: offline session verification, and the Backend API calls behind
- * linking, the reconcile cron, and session revocation.
- */
 import { verifyToken } from "@clerk/backend";
 import { CLOCK_TOLERANCE_SECONDS } from "@nyte-ai/connect";
 import { Type } from "typebox";
@@ -25,10 +21,6 @@ const CLERK_TIMEOUT_MS = 3_000;
 
 const CLERK_REPLY_LIMIT = 65_536;
 
-/**
- * How long a denied session stays denied after Clerk confirms its
- * revocation: far beyond any session JWT minted before it.
- */
 export const DENIAL_RETENTION_MS = 86_400_000;
 
 const MAX_RETRY_MS = 86_400_000;
@@ -37,7 +29,6 @@ const BEARER = /^Bearer ([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)$/u;
 
 const TOKEN_LIMIT = 8192;
 
-/** Clerk object ids (`user_…`, `sess_…`): safe as a URL path segment. */
 export const ClerkId = Type.String({ pattern: "^[A-Za-z0-9_]{1,128}$" });
 
 const SessionClaims = Type.Object({
@@ -70,13 +61,11 @@ type ClerkUser = Static<typeof ClerkUser>;
 
 const LABEL_LIMIT = 320;
 
-/** Users per Backend API list call, Clerk's page limit. */
 export const RECONCILE_BATCH = 100;
 
 interface Session {
   readonly userId: string;
   readonly sessionId: string;
-  /** A non-empty `email` claim, when the operator added one to the session token. */
   readonly email: string | undefined;
 }
 
@@ -86,7 +75,6 @@ function nonEmpty(value: string | null | undefined): string | undefined {
   return trimmed === undefined || trimmed === "" ? undefined : trimmed.slice(0, LABEL_LIMIT);
 }
 
-/** How Clerk would name the user: primary email, then username, then full name. */
 function userLabel(user: ClerkUser): string | undefined {
   const primary = user.email_addresses?.find(
     (address) => address.id === user.primary_email_address_id,
@@ -99,13 +87,6 @@ function userLabel(user: ClerkUser): string | undefined {
   );
 }
 
-/**
- * Verify a Clerk session JWT offline and check what `verifyToken` leaves to
- * the caller: the exact issuer, a required audience naming `CONNECT_ORIGIN`,
- * a session id, an allowed `azp` when one is present, an active session
- * status, and no impersonation. Then, in one D1 round trip, refuse a disabled
- * owner and a denied session, and count the request against `bucket`.
- */
 export async function verifySession(
   context: Context,
   request: Request,
@@ -192,7 +173,6 @@ async function clerkCall(
   return { status: response.status, body };
 }
 
-/** How Clerk's user record maps to the broker's standing: banned or locked is disabled. */
 function clerkStanding(user: { readonly banned: boolean; readonly locked: boolean }) {
   return user.banned || user.locked ? "disabled" : "active";
 }
@@ -206,11 +186,6 @@ type OwnerLookup =
   | { readonly kind: "absent" }
   | { readonly kind: "failed" };
 
-/**
- * Ask the Backend API about the owner before a link: its standing and how
- * Clerk would name it. Nothing is recorded; the webhook and the reconcile
- * cron are the only writers of an owner's standing.
- */
 async function lookupOwner(context: Context, userId: string): Promise<OwnerLookup> {
   const answer = Value.Check(ClerkId, userId)
     ? await clerkCall(context, { method: "GET", path: `/users/${userId}` })
@@ -225,11 +200,6 @@ async function lookupOwner(context: Context, userId: string): Promise<OwnerLooku
   return { kind: "failed" };
 }
 
-/**
- * Refuse a link for an owner Clerk reports banned, locked, or unknown, or
- * cannot report on now. Answers the owner label: Clerk's primary email,
- * username, or name, then the session's `email` claim, then the user id.
- */
 export async function requireLinkableOwner(context: Context, session: Session): Promise<string> {
   const lookup = await lookupOwner(context, session.userId);
 
@@ -242,11 +212,6 @@ export async function requireLinkableOwner(context: Context, session: Session): 
 
 const ClerkUserList = Type.Array(ClerkUser, { maxItems: RECONCILE_BATCH });
 
-/**
- * The standing Clerk reports for each of up to `RECONCILE_BATCH` users, keyed
- * by id. A user Clerk no longer has is absent from the map. Undefined when
- * Clerk did not answer.
- */
 export async function lookupOwners(
   context: Context,
   userIds: readonly string[],
@@ -275,13 +240,6 @@ export async function lookupOwners(
   );
 }
 
-/**
- * Ask Clerk to revoke a denied session, then either confirm the denial's
- * expiry or schedule another attempt. A session Clerk no longer has (404,
- * 410) counts as revoked; any other failure is retried. Until Clerk confirms,
- * the D1 denial never lapses; past `SESSION_REVOKE_ATTEMPTS` it is simply kept
- * for good.
- */
 export async function settleSessionRevocation(
   context: Context,
   input: { readonly sessionId: string; readonly attempts: number },

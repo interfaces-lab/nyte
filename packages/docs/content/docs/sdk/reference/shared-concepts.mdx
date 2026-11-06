@@ -11,7 +11,7 @@ These rules hold across the whole SDK, so the reference pages for
 
 Getting a handle by id never touches the network:
 
-- `connection.session(id)` and `connection.workspace(id)`
+- `connection.session(id)`, `connection.workspace(id)` and `connection.project(id)`
 - `session.head(name)`, `session.run(id)`, `session.receipt(id)` and `session.part(id)`
 - `workspace.job(id)`
 
@@ -88,10 +88,11 @@ Read again and decide. Other things use the same idea with their own version:
 
 ## The host builds the views [#views]
 
-The host turns a session's history into rows: messages, turns, parts and each head's state.
-`view()` reads them as one `SessionView`. `openHost` keeps them current over a socket, and
-`headView` turns a head store's snapshot into the same view, so a client never replays events
-itself. After a reconnect, the store resumes from the last change it applied.
+The host folds a session's log into tables of rows: messages, turns, parts, file changes and each
+head's state. `view()` reads them as one `SessionView`. A head store from `openHost` attaches to a
+head's window of rows and applies each change event by replacing rows by id. `headView` builds the
+same view from the store's snapshot, without `seq`, so a client never replays events itself. After
+a reconnect, the store resumes from the last seq it applied.
 [Render a session](/docs/sdk/guides/render-a-session) shows how to draw one.
 
 ## Capabilities are values [#capabilities]
@@ -117,7 +118,7 @@ particular authority:
 
 | Authority     | Covers                                                                                                                  |
 | ------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `participant` | Sessions, files, jobs, the browser, reading git and GitHub, listing models and workspaces                               |
+| `participant` | Sessions, projects, files, jobs, the browser, reading git and GitHub, listing models and workspaces                     |
 | `owner`       | Model logins and accounts, settings, adding and trusting workspaces, MCP, writing git, GitHub sign-in and pull requests |
 | `maintenance` | Checking and replacing plugins, and listing, pairing and revoking principals                                            |
 

@@ -27,10 +27,6 @@ const remarkModel = () => fillModel;
 export default defineConfig({
   mdxOptions: {
     remarkPlugins: (plugins) => [remarkModel, remarkMdxMermaid, ...plugins],
-    /**
-     * Dual-theme Shiki tokens (`--shiki-light` / `--shiki-dark`) plus the
-     * default notation transformers and language icons on titled blocks.
-     */
     rehypeCodeOptions: {
       ...rehypeCodeDefaultOptions,
       themes: {

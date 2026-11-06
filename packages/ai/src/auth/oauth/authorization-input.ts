@@ -1,7 +1,3 @@
-/**
- * Parse a pasted authorization code: a redirect URL, `code#state`, a
- * `code=...&state=...` query string, or a bare code. Browser-safe.
- */
 export function parseAuthorizationInput(input: string) {
   const value = input.trim();
 

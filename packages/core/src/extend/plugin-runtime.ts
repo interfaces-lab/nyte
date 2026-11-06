@@ -482,7 +482,6 @@ export function checkPlugins(plugins: readonly Plugin<"core">[]): PluginCheckRep
   };
 }
 
-/** Assigns `requested` to `scope`'s session in place of the host's plugins, or replaces the host's plugins. A host-wide replace keeps each session's assignment and reloads it from its files, so the session runs their new code; one that no longer loads fails that session's activation (`loadAssigned`), not the host's plugins. */
 export async function replacePlugins(
   kernel: Kernel,
   requested: readonly (Plugin<"core"> | PluginFile)[],

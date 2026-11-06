@@ -21,12 +21,6 @@ interface Attached {
   stop(): Promise<void>;
 }
 
-/**
- * Runs this worktree's TUI from source as a client of the installed binary's `nyte host`: the
- * one already running, else one started here and stopped when the TUI exits. The installed code
- * owns the store and the runs; this process only renders. A story (`NYTE_STORY`) needs no host,
- * so it runs from source without one.
- */
 async function live(): Promise<number> {
   if (process.env["NYTE_STORY"] !== undefined) return fromSource([], {});
 
@@ -49,7 +43,6 @@ async function live(): Promise<number> {
   }
 }
 
-/** Runs `src/index.ts` with `dev/preload.ts` like `pnpm dev:tui`, this command's arguments then `args`, and forwards the signals that end it. */
 async function fromSource(
   args: readonly string[],
   env: Readonly<Record<string, string>>,
@@ -124,7 +117,6 @@ async function startHost(path: string): Promise<Attached> {
   };
 }
 
-/** Reads `stdout` to the host's `listening` line and returns its pid, or `null` if it closes first; the rest drains in the background. */
 async function listeningPid(stdout: ReadableStream<Uint8Array>): Promise<number | null> {
   const reader = stdout.getReader();
   const decoder = new TextDecoder();
@@ -152,7 +144,6 @@ async function listeningPid(stdout: ReadableStream<Uint8Array>): Promise<number 
   }
 }
 
-/** Keeps reading `stream` so the host never blocks on a full pipe, and returns its last 4 KB once it closes. */
 async function drain(stream: ReadableStream<Uint8Array>): Promise<string> {
   const decoder = new TextDecoder();
   let tail = "";

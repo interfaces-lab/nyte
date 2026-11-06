@@ -3,7 +3,6 @@ import type { PDFPageProxy, RenderTask } from "pdfjs-dist";
 import { errorMessage } from "../../../contract/errors.ts";
 import type { PageSize, PdfFile } from "./pdfjs.ts";
 
-/** A page within half a viewport of the visible area is drawn; one within one and a half keeps the canvas it has; any other gives its canvas up. */
 const RENDER_MARGIN = "50% 0px";
 
 const RETAIN_MARGIN = "150% 0px";
@@ -12,7 +11,6 @@ const MAX_CANVAS_PIXELS = 1 << 24;
 
 const MAX_CANVAS_SIDE = 32_767;
 
-/** A canvas holds at most this many viewports' worth of device pixels, so a zoomed-in page stays within memory. */
 const VIEWPORTS_PER_CANVAS = 8;
 
 const styles = create({
@@ -35,7 +33,6 @@ interface PageState {
   task: RenderTask | undefined;
 }
 
-/** Where the view is: a page, how far past its top the view's top edge sits as a share of its height, and the horizontal scroll as a share of the scroll width. */
 export interface Anchor {
   readonly index: number;
   readonly fraction: number;
@@ -46,18 +43,11 @@ export interface Anchor {
 type Attach = (element: HTMLElement | null) => (() => void) | undefined;
 
 export interface PageEvents {
-  /** The current page, from 1, after each scroll. */
   readonly onPage: (page: number) => void;
-  /** A page's size, each time it loads to be drawn. */
   readonly onSize: (page: number, size: PageSize) => void;
-  /** A page could not be drawn; `message` is undefined once it is. */
   readonly onFailure: (page: number, message: string | undefined) => void;
 }
 
-/**
- * Attaches to the page column, whose parent is the scroll container and whose children are the
- * pages in order. `position` outlives the document, so the next one opens where this one was.
- */
 export function createPdfPages(
   file: PdfFile,
   position: { current: Anchor | undefined },
@@ -301,7 +291,6 @@ function restore(
   scroller.scrollLeft = anchor.left * scroller.scrollWidth;
 }
 
-/** Device pixels per PDF unit. */
 function rasterScale(size: PageSize, width: number, viewport: HTMLElement): number {
   const density = window.devicePixelRatio;
 

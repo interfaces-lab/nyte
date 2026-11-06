@@ -1,8 +1,3 @@
-/**
- * Default `AuthContext`: env vars from `process.env` and file existence via
- * node:fs, both loaded through `process.getBuiltinModule` so browser bundlers do
- * not try to resolve node builtins (where they simply report nothing).
- */
 import type { AuthContext } from "./types.ts";
 
 /**

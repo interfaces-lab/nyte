@@ -1,8 +1,3 @@
-/**
- * Every icon name in the repo must draw without Central Icons. Renders each
- * name from the Lucide sets of @nyte-ai/ui, the docs site and the iOS app, and
- * checks the icon switch itself. Needs no Central license.
- */
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { describe, test } from "node:test";
@@ -23,7 +18,6 @@ const { createElement } = require("react");
 
 const { renderToStaticMarkup } = require("react-dom/server");
 
-/** One row per name: where it comes from and the Lucide glyph that draws it. */
 const names = [
   ...uiNames.ICON_NAMES.map((name) => ["ui", name, uiLucide.GLYPHS[name]]),
   ...uiNames.FILLED_ICON_NAMES.map((name) => ["ui filled", name, uiLucide.FILLED_GLYPHS[name]]),

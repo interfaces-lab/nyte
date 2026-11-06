@@ -46,7 +46,6 @@ export async function missingCapabilities(
   return requires.filter((capability) => !mine.includes(capability));
 }
 
-/** What a tool answers when its chat needs capabilities only Nyte.app brings, such as the browser tools. */
 export function onlyNyteAppHas(name: string, missing: readonly string[]): string {
   return `${name} isn't available here: this chat uses ${missing.join(", ")}, which only Nyte.app has. Open Nyte.app to continue.`;
 }

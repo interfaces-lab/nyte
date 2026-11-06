@@ -1,7 +1,3 @@
-/**
- * The bundled-host adapter embeds both Node-only OAuth flows and registers
- * them before a provider asks its lazy wrapper to load one.
- */
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { anthropicOAuth } from "../src/auth/oauth/anthropic.ts";

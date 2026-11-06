@@ -12,7 +12,6 @@ export const GitHubRepositoryType = Type.Object({
 
 export type GitHubRepository = Decoded<typeof GitHubRepositoryType>;
 
-/** The account the serving machine's `gh` is signed in as on github.com. */
 export const GitHubAccountType = Type.Object({
   login: Type.String(),
   name: Type.Optional(Type.String()),
@@ -21,7 +20,6 @@ export const GitHubAccountType = Type.Object({
 
 export type GitHubAccount = Decoded<typeof GitHubAccountType>;
 
-/** One CI check on a pull request's head commit: a check run or a commit status, folded to the four states a reader acts on. */
 export const GitHubCheckType = Type.Object({
   name: Type.String(),
   state: Type.Enum(["pending", "passed", "failed", "skipped"]),
@@ -30,7 +28,6 @@ export const GitHubCheckType = Type.Object({
 
 export type GitHubCheck = Decoded<typeof GitHubCheckType>;
 
-/** The pull request for a workspace's checked-out branch, with the checks on its head commit. */
 export const GitHubPullRequestType = Type.Object({
   number: Type.Integer({ minimum: 1 }),
   title: Type.String(),
@@ -63,7 +60,6 @@ export const GitHubDeviceCodeType = Type.Object({
 
 export type GitHubDeviceCode = Decoded<typeof GitHubDeviceCodeType>;
 
-/** The serving machine's `gh` login, one for the whole machine: `cli_missing` when no `gh` is on the PATH, `signed_out` with no github.com account, `signing_in` while a sign-in waits for its code, `ready` with the account, `error` with what to do next. */
 export const GitHubAccountStateType = Type.Union([
   Type.Object({ kind: Type.Literal("cli_missing") }),
   Type.Object({ kind: Type.Literal("signed_out") }),
@@ -74,7 +70,6 @@ export const GitHubAccountStateType = Type.Union([
 
 export type GitHubAccountState = Decoded<typeof GitHubAccountStateType>;
 
-/** A workspace on GitHub: the repository its remotes name, absent where none names github.com, and the checked-out branch's pull request. */
 export const GitHubStateType = Type.Object({
   repository: Type.Optional(GitHubRepositoryType),
   pullRequest: GitHubPullRequestContextType,
@@ -91,7 +86,6 @@ export const GitHubPullRequestInputType = Type.Object({
 
 export type GitHubPullRequestInput = Decoded<typeof GitHubPullRequestInputType>;
 
-/** How opening a pull request ended: `created` with the new one, `exists` with the open one for the branch, or the precondition that stopped it. */
 export const GitHubPullRequestOutcomeType = Type.Union([
   Type.Object({ kind: Type.Literal("created"), url: Type.String() }),
   Type.Object({ kind: Type.Literal("exists"), pullRequest: GitHubPullRequestType }),

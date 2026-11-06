@@ -132,7 +132,6 @@ export interface Session extends Head {
 
   stop(): Promise<{ readonly stopped: readonly RunId[]; readonly withdrawn: readonly MessageId[] }>;
 
-  /** Runs plugin command `name` with the text typed after it (`""` for none). */
   command(name: string, text: string): Promise<CommandOutcome>;
 
   /** Suggests the text after plugin command `name` from `prefix`, what is typed there so far; none for a command that suggests nothing. */
@@ -147,7 +146,6 @@ export interface Session extends Head {
   part(id: PartId): Part<PartDefinition>;
 }
 
-/** The host's chats: list them, and start one with its first message. */
 export interface Sessions {
   /** Starts a chat with its first message. One commit creates the session and admits the message, so no session exists without one; until then a client holds a draft. A person's client's `configuration` is remembered as `Head.configure` remembers it. `id` is minted when absent and names the chat, its first message and its receipt. Pass it to key a draft or to retry: the same id and input return the same start. Other input under that id, or an id naming an existing chat, is refused as invalid. Resolves once the session's before_send hooks decided the message. A refusal, a failing hook, or a stop before the decision removes the session and throws. */
   start(input: {
@@ -198,7 +196,6 @@ export interface Head {
 
   see(commit: CommitId): Promise<void>;
 
-  /** The `limit` messages before `before`, older than the view's window, with the turns they belong to. */
   history(input: { readonly before: MessageId; readonly limit: number }): Promise<HistoryPage>;
 
   tree(): Promise<TreeView>;

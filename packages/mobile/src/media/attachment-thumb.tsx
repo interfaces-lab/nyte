@@ -3,7 +3,6 @@ import type { ComponentProps } from "react";
 import type { StagedImage } from "./attachments.ts";
 import { useAnnotation } from "./annotations.ts";
 
-/** Attachment preview that swaps to the baked capture once markup is saved. */
 export function AttachmentThumb({
   image,
   alt,

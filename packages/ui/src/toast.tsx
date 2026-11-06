@@ -30,7 +30,6 @@ const ENTER_TOP = "translateY(-150%)";
 
 const COPIED_MS = 1500;
 
-/** Where the stack sits in the window. */
 export const TOAST_POSITIONS = [
   "top-left",
   "top-center",

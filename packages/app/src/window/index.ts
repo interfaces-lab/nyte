@@ -18,16 +18,11 @@ import { reduceTrays } from "./tray.ts";
 import type { TrayAction, Trays, TrayView } from "./tray.ts";
 
 export interface WindowSnapshot {
-  /** Chats on screen, whether or not anyone can read them now; text paces only in these. */
   readonly shown: ReadonlySet<SessionId>;
-  /** Chats the user is looking at: what marks a chat read, holds its divider and silences its notices. */
   readonly looking: ReadonlySet<SessionId>;
-  /** Chats with a finished reply nobody has read, except those the user is looking at. */
   readonly unread: ReadonlySet<SessionId>;
-  /** Each chat's open tray, by parent; a chat without one shows its tray closed. */
   readonly trays: ReadonlyMap<SessionId, TrayView>;
   readonly cleared: ReadonlyMap<SessionId, ReadonlySet<string>>;
-  /** The workbench is maximized over the chats instead of showing them. */
   readonly covered: boolean;
 }
 
@@ -178,13 +173,11 @@ export function useChatWindow<S>(
   );
 }
 
-/** A chat's status as its sidebar row and its window tab both show it. */
 export interface ChatMark {
   readonly state: TaskState;
   readonly unread: boolean;
 }
 
-/** Reads a chat the host's lists don't carry on its own, so a mark never waits for another view to ask. */
 export function useChatMark(id: SessionId): ChatMark {
   const chat = useChat(id);
   const unread = useChatWindow((snapshot) => snapshot.unread.has(id));

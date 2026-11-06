@@ -1,7 +1,3 @@
-/**
- * The provider and model registry contracts: what a provider implements and
- * what `Models` offers its callers.
- */
 import { type AuthResolutionOverrides } from "./auth/resolve.ts";
 import type {
   AuthCheck,
@@ -55,16 +51,13 @@ export interface RefreshModelsContext {
    * the update runs synchronously only after the selected persistence mutation.
    */
   publish(publication: ModelsPublication): Promise<boolean>;
-  /** False during offline/cache-only initialization. */
   allowNetwork: boolean;
   /** Bypass provider freshness checks and fetch immediately when network access is allowed. */
   force?: boolean;
-  /** Hosted catalog transport shared by every provider in this collection. */
   catalog: {
     url: string;
     fetch: FetchFunction;
   };
-  /** Always present, including when the public refresh caller omits its optional signal. */
   signal: AbortSignal;
 }
 
@@ -96,22 +89,12 @@ export type ModelsDeferredFetchOptions = DeferredFetchOptions & ModelsRequestTra
 
 export type ModelsDeferredCancelOptions = DeferredCancelOptions & ModelsRequestTransforms;
 
-/**
- * A provider is the concrete runtime unit. It owns id/name/base metadata,
- * auth methods, model listing, and stream behavior.
- *
- * `TApi` lets concrete provider factories declare which APIs their models
- * use (e.g. `openaiProvider(): Provider<"openai-responses" | "openai-completions">`),
- * giving typed model lists to direct factory users. Inside a `Models`
- * collection providers are held as `Provider<Api>`.
- */
 export interface Provider<TApi extends Api = Api> {
   readonly id: string;
   readonly name: string;
 
   readonly baseUrl?: string;
   readonly headers?: ProviderHeaders;
-  /** Prompt-cache behavior published for hosts that present cache state. */
   readonly promptCache?: PromptCachePolicy;
   /** What this provider's models do around a turn; absent, what a model Nyte's own loop drives does: steers, stops a subagent alone, and leaves permissions to Nyte. */
   readonly capabilities?: ModelCapabilities;
@@ -127,7 +110,6 @@ export interface Provider<TApi extends Api = Api> {
    */
   readonly auth: ProviderAuth;
 
-  /** Fetch subscription windows without generating model output. */
   fetchAccountLimits?(input: {
     readonly auth: ModelAuth;
     readonly credential?: Credential;
@@ -158,7 +140,6 @@ export interface Provider<TApi extends Api = Api> {
     credential: Credential | undefined,
   ): readonly Model<TApi>[];
 
-  /** Stream a normalized transcript. `Models` normalizes the caller's `Context` before dispatching here. */
   stream<T extends TApi>(
     model: Model<T>,
     context: TranscriptContext,
@@ -182,11 +163,6 @@ export interface Provider<TApi extends Api = Api> {
   ): Promise<void>;
 }
 
-/**
- * Runtime collection of providers plus auth application and stream
- * convenience. Providers own stream behavior; `Models` resolves auth and
- * delegates each request to the provider that owns the model.
- */
 export interface Models {
   getProviders(): readonly Provider[];
   getProvider(id: string): Provider | undefined;
@@ -197,10 +173,6 @@ export interface Models {
    */
   getModels(provider?: string): readonly Model<Api>[];
 
-  /**
-   * Sync runtime model lookup against last-known lists. Dynamic model lists
-   * are typed as `Model<Api>`; narrow with the `hasApi()` type guard.
-   */
   getModel(provider: string, id: string): Model<Api> | undefined;
 
   /**

@@ -5,10 +5,6 @@ import { designName, designUrl } from "~/lib/shared";
 
 const card = `${designUrl}/og/design/image.png`;
 
-/**
- * design.nyte.sh is its own site: its frame instead of the Nyte navbar, and
- * its own name, summary, and card for any page that does not set them.
- */
 export const Route = createFileRoute("/design")({
   head: () => {
     const summary = getDesignPage("")?.description ?? designName;

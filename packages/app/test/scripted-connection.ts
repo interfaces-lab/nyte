@@ -24,16 +24,13 @@ import { installConnection } from "../src/data/connection.ts";
 export interface ConnectionScript {
   readonly views?: ReadonlyMap<SessionId, readonly SessionView[] | ViewStream>;
   readonly sessions?: readonly SessionInfo[] | ViewStream<readonly SessionInfo[]>;
-  /** A session left out has no children. */
   readonly children?: ReadonlyMap<SessionId, readonly SessionInfo[]>;
   readonly workspaces?: readonly WorkspaceInfo[];
   readonly session?: (id: SessionId) => Partial<Session>;
   readonly host?: ViewStream<HostView>;
   readonly models?: Partial<ModelsApi>;
   readonly github?: Partial<GitHubAccountApi>;
-  /** Shared by every workspace; members left out are refused. */
   readonly git?: Partial<GitApi>;
-  /** Shared by every workspace; members left out are refused. */
   readonly workspaceGitHub?: Partial<GitHubApi>;
 }
 
@@ -104,7 +101,6 @@ async function* refused(): AsyncIterable<never> {
   throw new SdkError("unavailable", "Not scripted.");
 }
 
-/** A session's handle also stands for its heads, so `head()` returns what the script changes on it. */
 export function scriptedConnection(script: ConnectionScript = {}): {
   readonly connection: Connection;
   readonly live: HostConnection;

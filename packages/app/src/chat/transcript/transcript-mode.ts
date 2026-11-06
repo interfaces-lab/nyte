@@ -1,9 +1,7 @@
 import type { ScrollViewState } from "../../panes/session-view-state.ts";
 
-/** How close to the end still counts as at the end: fractional offsets at non-integer zoom can leave 1–3 px. */
 export const FOLLOW_TOLERANCE = 4;
 
-/** How long the reader's input explains the scrolling that follows it. */
 const INPUT_WINDOW = 250;
 
 export interface ReaderInput {
@@ -32,10 +30,6 @@ export type TranscriptMode =
   | { readonly kind: "following"; readonly opening: boolean }
   | { readonly kind: "reading"; readonly anchor: Anchor | null };
 
-/**
- * In `scrolled`, `upward` means the view moved up on its own rather than because the content
- * shrank under it, and `reader` means the reader's input explains it.
- */
 export type TranscriptEvent =
   | {
       readonly kind: "scrolled";

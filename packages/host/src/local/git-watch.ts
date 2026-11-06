@@ -4,7 +4,6 @@ import type { Disposer, GitStatus } from "@nyte-ai/schema";
 import type { FeedSink } from "./feed.ts";
 import { createIgnores, watchTree } from "./tree.ts";
 
-/** Where `localGit` found the repository holding its workspace: the worktree root, its git directory, the common directory linked worktrees share (the git directory otherwise), and the workspace's path below the root (`""` or ending in `/`). */
 export type Repository = {
   readonly root: string;
   readonly gitDir: string;
@@ -12,7 +11,6 @@ export type Repository = {
   readonly prefix: string;
 };
 
-/** One status watch shared by `localGit`'s feeds. */
 export type GitWatcher = {
   subscribe(listener: (status: GitStatus) => void, fail: FeedSink<GitStatus>["fail"]): Disposer;
 };
@@ -21,7 +19,6 @@ const WATCH_DELAY_MS = 250;
 
 const POLL_MS = 2_000;
 
-/** The entries of a git directory whose change can move the status; objects, logs, hooks and Nyte's own snapshot refs cannot. */
 const GIT_STATE = new Set([
   "HEAD",
   "index",
@@ -34,7 +31,6 @@ const GIT_STATE = new Set([
   "rebase-apply",
 ]);
 
-/** Returns the status watch `localGit` shares among its watchers: the first subscriber starts it and the last one stops it, and each gets the status at once, then again whenever a change could move it. A recursive `fs.watch` on the workspace hears worktree paths that `.gitignore` and `.git/info/exclude` do not ignore, and, in the git directory and the common directory, only HEAD, the index, branch and remote refs, `packed-refs`, `config` and the merge, cherry-pick, revert and rebase state, so object writes, logs and Nyte's snapshot refs read nothing; the `.git` entry itself appearing or going (not a change inside it, which Windows also reports on the folder) drops the remembered repository and starts over. Only where `fs.watch` is unavailable does it poll, every 2 s. */
 export function createWatcher(
   cwd: string,
   read: () => Promise<GitStatus>,
@@ -179,7 +175,6 @@ export function createWatcher(
   };
 }
 
-/** Whether a change at `path` inside a git directory can move the status. */
 function movesStatus(path: string): boolean {
   const [top = ""] = path.split("/");
 
@@ -191,7 +186,6 @@ function movesStatus(path: string): boolean {
   );
 }
 
-/** Returns `dir` relative to `cwd` when it lies inside it, else null. */
 function pathInside(cwd: string, dir: string): string | null {
   const inside = relative(cwd, dir);
 

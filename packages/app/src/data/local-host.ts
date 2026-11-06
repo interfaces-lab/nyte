@@ -38,7 +38,6 @@ export function connectLocalHost(): Promise<Connection> {
   return connecting;
 }
 
-/** Fills the host state, the folder list and the model catalog when the web app connects. */
 export async function loadLocalResources(): Promise<void> {
   const host = hostWatch("host");
   const directory = sessionList("roots");

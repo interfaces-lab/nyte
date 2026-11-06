@@ -62,9 +62,11 @@ nyte update nightly
 nyte update stable
 ```
 
-Switching to stable installs the newest stable release, even when it's older than the
-nightly you had. To have `nyte` update itself when it starts, turn on **Auto-update** in
-`/settings`.
+Switching never installs an older release. Switching to stable installs the newest stable
+release when it's newer than the nightly you have; otherwise `nyte` stays on that nightly and
+installs the first stable release that passes it. Only a version, such as `nyte update 0.2.0`,
+goes back to an older release, and it asks first. To have `nyte` update itself when it starts, turn
+on **Auto-update** in `/settings`.
 
 <small>
   Both apps keep your sessions in the same database, and a nightly can upgrade it to a format the

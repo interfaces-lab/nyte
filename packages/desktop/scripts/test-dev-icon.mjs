@@ -1,8 +1,3 @@
-/**
- * The macOS dev bundle's icon, URL scheme and cache. The preparer is imported only in a plain Node
- * subprocess; Electron and Vite never start. `codesign --verify` proves the icon and plist were
- * written before signing, since resource verification fails on a later change.
- */
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import {

@@ -2,7 +2,6 @@ import { Link } from "@tanstack/react-router";
 import { designRoute } from "~/lib/shared";
 import { DesignMain } from "./shell";
 
-/** A design path with no page: the sheet stays, with the index one link away. */
 export function DesignNotFound() {
   return (
     <DesignMain>

@@ -67,7 +67,6 @@ export type RequestOptions = { readonly signal?: AbortSignal };
 
 export type Paged<T> = { readonly items: readonly T[]; readonly next: Cursor | null };
 
-/** A capability as the client holds it: the wire's answer, with the API itself when it is available. */
 export type Capability<T> =
   | Exclude<CapabilityWire, { readonly kind: "available" }>
   | { readonly kind: "available"; readonly api: T };

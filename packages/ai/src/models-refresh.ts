@@ -1,8 +1,3 @@
-/**
- * Per-provider catalog refreshes for `Models`: each run supersedes the provider's previous one,
- * publications apply in order and only for the current run, and the cached catalog is restored
- * before credentials are resolved or the network is used.
- */
 import { keyedSerial } from "@nyte-ai/schema/serial";
 import { ModelsError } from "./auth/resolve.ts";
 import type { Credential, CredentialAccounts } from "./auth/types.ts";
@@ -13,7 +8,6 @@ import { raceWithAbortSignal } from "./utils/abort.ts";
 export class CatalogRefreshes {
   private generations = new Map<string, number>();
   private controllers = new Map<string, AbortController>();
-  /** Settles once the running refresh for a provider has restored its cached catalog. */
   private restorations = new Map<string, Promise<void>>();
   private readonly publications = keyedSerial<string>();
   private readonly modelsStore: ModelsStore;
@@ -24,7 +18,6 @@ export class CatalogRefreshes {
     this.catalog = catalog;
   }
 
-  /** Cancels the provider's running refresh, so a replaced or removed provider never publishes. */
   supersede(providerId: string): number {
     const generation = (this.generations.get(providerId) ?? 0) + 1;
     this.generations.set(providerId, generation);
@@ -38,7 +31,6 @@ export class CatalogRefreshes {
     return generation;
   }
 
-  /** Providers with a refresh in flight. */
   running(): Iterable<string> {
     return this.controllers.keys();
   }
@@ -87,13 +79,6 @@ export class CatalogRefreshes {
     });
   }
 
-  /**
-   * Refreshes one provider and returns its failure, if any; a superseded or cancelled run fails
-   * silently. The cached catalog is restored from the stored active account's credential first.
-   * An offline refresh only restores the cache, which a running refresh restores first, so it
-   * waits for that one instead of superseding it: superseding would cancel its network phase,
-   * and nothing would retry that until the next launch.
-   */
   async run(
     provider: Provider,
     allowNetwork: boolean,

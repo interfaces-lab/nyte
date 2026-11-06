@@ -6,7 +6,6 @@ import { tab } from "../theme/schema.stylex.ts";
 const fade = (start: string, end: string): string =>
   `linear-gradient(to right, transparent, black ${start}, black calc(100% - ${end}), transparent)`;
 
-/** Driven by the strip's own scroll: an edge fades while more tabs lie past it. */
 const edgeFades = keyframes({
   "0%": { maskImage: fade("0px", tab.stripEdgeFade) },
   "1%": { maskImage: fade(tab.stripEdgeFade, tab.stripEdgeFade) },
@@ -38,7 +37,6 @@ export const stripStyles = create({
     animationTimingFunction: "linear",
     animationFillMode: "both",
   },
-  /** Tabs keep their title's width up to the cap and the strip scrolls, so no title shrinks to a few letters. */
   slot: {
     display: "flex",
     flex: "none",

@@ -27,19 +27,19 @@ const selectionParameters = {
   agent: Type.Optional(
     Type.String({
       description:
-        "A registered agent to run as. Without it, a chat that runs as an agent starts subagents of its own agent, model and thinking level; any other chat, of the default agent.",
+        "A registered agent to run as, only when the user names one. Without it, a chat that runs as an agent starts subagents of its own agent, model and thinking level; any other chat, of the default agent.",
     }),
   ),
   model: Type.Optional(
     Type.String({
       description:
-        "A model from /model, as provider/id or its id alone; a fast variant is its own id. The inherited or default model otherwise.",
+        "A model to run on, only when the user asks for one: provider/id or an id from /model. Without it, the subagent runs on the inherited or default model.",
     }),
   ),
   thinking: Type.Optional(
     Type.Enum(["off", "minimal", "low", "medium", "high", "xhigh", "max"], {
       description:
-        "A thinking level the model accepts; the inherited level or the model's default otherwise.",
+        "A thinking level, only when the user asks for one; the model must accept it. The inherited level or the model's default otherwise.",
     }),
   ),
 };
@@ -48,7 +48,7 @@ const isolationParameter = {
   isolation: Type.Optional(
     Type.Literal("worktree", {
       description:
-        "Run the subagent in a git worktree on a new branch from HEAD, with your uncommitted changes copied in, so its edits stay out of this workspace. The reply names the folder and branch. Without it, the subagent works in this workspace.",
+        "Only when the user asks for an isolated copy: runs the subagent in a git worktree on a new branch from HEAD, with your uncommitted changes copied in. The reply names the folder and branch. Without it, the subagent works in this workspace.",
     }),
   ),
 };
@@ -116,7 +116,7 @@ const stopParameters = standard(
 const task: ToolDefinition<Infer<typeof taskParameters>> = {
   name: "task",
   description:
-    "Run a subagent on a task and wait for its answer. Give it everything it needs; it does not see this conversation. Several task calls in one response run at once. A new message to you ends the wait early; the subagent keeps working and its answer reaches you when it finishes.",
+    "Run a subagent and get its answer as this call's result. Use it whenever you need the answer this turn; several task calls in one response run in parallel. Give it everything it needs; it does not see this conversation. A new message to you ends the wait early, and the answer reaches you when it finishes.",
   parameters: taskParameters,
   class: (args) => ({ kind: "delegate", child: null, role: "task", title: args.title ?? null }),
   replay: "safe",
@@ -151,7 +151,7 @@ const task: ToolDefinition<Infer<typeof taskParameters>> = {
 const create: ToolDefinition<Infer<typeof createParameters>> = {
   name: "create",
   description:
-    "Start a subagent on a first message and return its id at once. When it finishes, its last message reaches you on its own, so you can end your turn instead of waiting; await it only when you need the answer before going on. Link it in a reply as [short title](agent:<id>).",
+    "Start a subagent in the background and return its id at once, for work you won't wait on or a subagent you'll message again with send. Its answer reaches you on its own when it finishes. When you need the answer this turn, use task instead. Link it in a reply as [short title](agent:<id>).",
   parameters: createParameters,
   class: (args) => ({ kind: "delegate", child: null, role: "create", title: args.title ?? null }),
   effects: "none",
@@ -178,7 +178,7 @@ const create: ToolDefinition<Infer<typeof createParameters>> = {
 const send: ToolDefinition<Infer<typeof sendParameters>> = {
   name: "send",
   description:
-    "Send a message to a subagent; it works in the background. Use await for its answer.",
+    "Send a message to a subagent from create. A message sent while it works runs once that work ends, so there is no need to await first. Use await for its answer.",
   parameters: sendParameters,
   class: (args) => ({
     kind: "delegate",
@@ -309,14 +309,6 @@ const stop: ToolDefinition<Infer<typeof stopParameters>> = {
   },
 };
 
-/**
- * Contributes the subagent tools to top-level sessions: `task`, `create`,
- * `send`, `await`, `read_agent` and `stop`, built on child sessions and
- * durable waits.
- *
- * @category plugins
- * @since 0.1.0
- */
 export default {
   id: "subagents",
   async activate(api) {
@@ -327,11 +319,6 @@ export default {
   },
 } satisfies Plugin;
 
-/**
- * A chat that runs as a registered agent starts subagents of its own type: its agent, and its
- * model and thinking level unless the call names a model. Any other chat's subagents run on what
- * the call names and the defaults.
- */
 async function childConfiguration(
   invocation: ToolInvocation,
   args: Pick<Infer<typeof taskParameters>, "agent" | "model" | "thinking">,
@@ -388,7 +375,6 @@ async function findModel(invocation: ToolInvocation, name: string): Promise<Mode
   );
 }
 
-/** The worktree a subagent works in, as a sentence for the model, or null when it shares this workspace. */
 async function describeWorktree(
   invocation: ToolInvocation,
   child: Session,

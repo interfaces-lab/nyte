@@ -1,7 +1,6 @@
 /** The most characters of text one tool result or report puts in a model's context, its cut marker included. */
 export const CLIP_CHARS = 32_000;
 
-/** The most characters of one tool result that a conversation retold as text to another model keeps. */
 const EXCERPT_CHARS = 2_000;
 
 type Keep = "head" | "tail" | "ends";
@@ -20,7 +19,6 @@ export function clipText(
   return clip(text, keep, CLIP_CHARS, options.hint, options.cut ?? 0);
 }
 
-/** A tool result's start and end within `EXCERPT_CHARS`, for a conversation retold as text. */
 export function excerptText(text: string): string {
   return clip(text, "ends", EXCERPT_CHARS, undefined, 0);
 }

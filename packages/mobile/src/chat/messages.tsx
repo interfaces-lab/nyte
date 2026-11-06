@@ -26,9 +26,7 @@ function Row({ layout, children }: { layout: ConversationLayout; children: React
 
 type UserRow = Extract<ChatRow, { kind: "user" }>;
 
-/** What the user can still do with a message the host hasn't started on. */
 export type QueuedActions = {
-  /** Take the message back into the composer as `text`; offered only for text-only messages. */
   edit: (item: UserRow, text: string) => void;
   sendNow: (item: UserRow) => void;
   remove: (item: UserRow) => void;
@@ -36,7 +34,6 @@ export type QueuedActions = {
 
 type Choice = { name: string; label: string; run: () => void };
 
-/** Copy for every message; Edit, Send Now, and Remove while it still waits to run. */
 function messageChoices(
   item: UserRow,
   text: string,

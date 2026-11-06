@@ -12,13 +12,6 @@ export interface TocEntry {
 
 type Branch = { readonly href: string; readonly toc: readonly TocEntry[] };
 
-/**
- * The docs tree, beside the page and in the phone menu. Rows are the site
- * nav's pills: its control height, its inset, its fill for the current page.
- * The current page's sections branch beneath its row, and the one most
- * recently scrolled past the top third of the viewport is lit, so the mark
- * moves as you read.
- */
 export function DocNav({
   sections,
   toc,
@@ -105,10 +98,6 @@ export function DocNav({
   );
 }
 
-/**
- * Reports the heading most recently scrolled past the top third of the viewport.
- * Key it by the toc, so a new page's headings are picked as soon as it renders.
- */
 export function HeadingSpy(props: { toc: readonly TocEntry[]; onPass: (url: string) => void }) {
   useMountEffect(() => {
     let frame = 0;

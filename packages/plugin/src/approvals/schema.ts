@@ -12,10 +12,8 @@ const policy = standard(ApprovalPolicyType);
  */
 export type ApprovalPolicy = Infer<typeof policy>;
 
-/** The setting that holds the policy; it names the terminal's `/permissions` command. */
 export const PERMISSIONS = "permissions";
 
-/** The policy setting's schema, shared by the plugin and the clients that read it. */
 export const approvalPolicy = policy;
 
 /** Each policy with the words every client shows for it, in menu order. */
@@ -62,23 +60,19 @@ const actions = { once: { input: empty }, session: { input: empty }, deny: { inp
  */
 export type ApprovalState = Infer<typeof state>;
 
-/** What the user can answer, as part actions. */
 export type ApprovalDecision = Exclude<ApprovalState["decision"], null>;
 
-/** The three answers in the order every client offers them, with their shared labels. */
 export const APPROVAL_ACTIONS = [
   { action: "once", label: "Allow once" },
   { action: "session", label: "Allow for this session" },
   { action: "deny", label: "Deny" },
 ] as const satisfies readonly { readonly action: ApprovalDecision; readonly label: string }[];
 
-/** The question an approval asks and the command, path or label it is about. */
 export interface ApprovalPrompt {
   readonly title: string;
   readonly detail: string;
 }
 
-/** The words every client shows for an approval. */
 export function approvalPrompt(
   current: Pick<ApprovalState, "tool" | "class" | "reason">,
 ): ApprovalPrompt {
@@ -125,7 +119,6 @@ export const approval = {
   },
 } satisfies PartDefinition<ApprovalState, typeof actions>;
 
-/** An approval still waiting for the user, with the part its answer goes to. */
 export type OpenApproval = Pick<ApprovalState, "tool" | "class" | "reason"> & {
   readonly part: PartId;
 };

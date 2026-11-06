@@ -5,7 +5,6 @@ import pierreLight from "@pierre/highlights/themes/pierre-light";
 
 const TEXT_FLOOR = 4.5;
 
-/** Comments and hints read as metadata, so they meet the contentTertiary stair. */
 const TERTIARY_TOKENS = new Set([
   "comment",
   "comment.doc",
@@ -61,7 +60,6 @@ function meetTextFloor(theme: Theme, mode: "light" | "dark"): Theme {
   return { ...theme, style: { ...theme.style, syntax } };
 }
 
-/** Scaling linear light toward black or white keeps the hue. */
 function meetLuminance(color: string, target: number, light: boolean): string {
   const linear = toChannels(color).map(toLinear);
   const current = weigh(linear);

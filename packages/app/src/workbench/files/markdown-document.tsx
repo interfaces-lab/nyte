@@ -41,7 +41,6 @@ import {
 import { markdownOrigin, serializeMarkdown } from "./markdown-serialize.ts";
 import { markdownStyles } from "./markdown.stylex.ts";
 
-/** The source editor edits the same buffer. */
 interface MarkdownBuffer {
   readonly getSnapshot: () => { readonly contents: string };
   readonly subscribe: (listener: () => void) => () => void;
@@ -50,7 +49,6 @@ interface MarkdownBuffer {
 
 interface MarkdownDocumentProps {
   readonly buffer: MarkdownBuffer;
-  /** The file's absolute path, which relative links and images resolve against. */
   readonly path: string;
   readonly label: string;
   readonly readOnly: boolean;

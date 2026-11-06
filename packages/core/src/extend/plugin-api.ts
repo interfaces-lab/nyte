@@ -137,7 +137,6 @@ async function approveRuntimeCall(
   return signal.aborted ? { kind: "deny", reason: "The request was aborted." } : ALLOWED;
 }
 
-/** The plugin's secrets, sealed with the host's key under `secret/<owner>/`. */
 export function pluginSecrets(kernel: Kernel, owner: string): PluginStorage["secrets"] {
   return {
     async get(key) {

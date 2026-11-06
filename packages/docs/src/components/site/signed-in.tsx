@@ -1,14 +1,8 @@
 import { useSyncExternalStore } from "react";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 
-/** Mirrors ACCOUNT_SCHEMES in packages/desktop/src/account/scheme.ts. */
 const APPS = new Set(["nyte-desktop", "nyte-desktop-test", "nyte-desktop-dev"]);
 
-/**
- * The landing page after a desktop sign-in. It rebuilds the deep link Clerk
- * would have sent the browser to, with Clerk's parameters intact, and hands
- * it to the app once on mount; the query never changes.
- */
 export function SignedIn() {
   const search = useSyncExternalStore(
     () => () => undefined,

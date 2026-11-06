@@ -8,7 +8,6 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { defaultClientConditions, defaultServerConditions, defineConfig } from "vite";
 
-/** Pre-bundle the icon packages @nyte-ai/ui selected; scripts/icons.mjs writes the choice. */
 const uiIcons = readFileSync(
   new URL("../ui/src/glyphs/selected.generated.ts", import.meta.url),
   "utf8",
@@ -21,10 +20,6 @@ export default defineConfig({
     fumadocsMdx(),
     stylex.vite({
       useCSSLayers: true,
-      /**
-       * Older targets make lightningcss polyfill the tokens' light-dark() and
-       * relative colours with variables nothing defines.
-       */
       lightningcssOptions: { targets: { chrome: 123 << 16 } },
     }),
     tanstackStart({ srcDirectory: "src" }),
@@ -76,7 +71,6 @@ export default defineConfig({
         "cn",
       ]),
   },
-  /** StyleX compiles @nyte-ai/ui from source here, so resolve its `nyte-source` condition. */
   resolve: {
     conditions: ["nyte-source", ...defaultClientConditions],
     dedupe: ["react", "react-dom"],

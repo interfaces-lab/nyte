@@ -25,6 +25,8 @@ export interface FileDocumentSnapshot {
 }
 
 export function createFileDocument(document: TextFile, draft?: string) {
+  let path = document.path;
+
   let snapshot: FileDocumentSnapshot = {
     contents: draft ?? document.contents,
     savedContents: document.contents,
@@ -49,6 +51,9 @@ export function createFileDocument(document: TextFile, draft?: string) {
       return () => {
         listeners.delete(listener);
       };
+    },
+    move(nextPath: string): void {
+      path = nextPath;
     },
     edit(contents: string): void {
       if (contents === snapshot.contents) return;
@@ -91,7 +96,7 @@ export function createFileDocument(document: TextFile, draft?: string) {
 
       try {
         const input = {
-          path: document.path,
+          path,
           contents: captured.contents,
           version: captured.version,
         };

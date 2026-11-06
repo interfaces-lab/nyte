@@ -28,18 +28,12 @@ const MAIN = asId<"head">("main");
 
 const OPENING_TAIL = 40;
 
-/**
- * The most a reopened view asks for: the opening tail and one page of history. A view reopened at
- * the opening tail would drop the history it had loaded and show "Show Earlier Steps" until it
- * paged that history in again.
- */
 const REOPENING_TAIL = 240;
 
 const NO_TRANSCRIPTS: ReadonlySet<SessionId> = new Set();
 
 let shownTranscripts: () => ReadonlySet<SessionId> = () => NO_TRANSCRIPTS;
 
-/** Paces streamed text only in the transcripts `shown` reads as on screen; every other view publishes text as it arrives. */
 export function paceTranscripts(shown: () => ReadonlySet<SessionId>): void {
   shownTranscripts = shown;
 }

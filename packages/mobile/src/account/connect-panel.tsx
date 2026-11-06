@@ -214,11 +214,6 @@ function signOutNotice(ending: SignOutEnding): AccountCopy | undefined {
     : undefined;
 }
 
-/**
- * The owner's Macs from the broker, with connect and repair. The list is keyed by owner and dropped on
- * any account change, and holds ids and names only, never a credential. A refusal that says the list
- * was out of date (forbidden, not found, revoked) refetches it to show what the broker has now.
- */
 function MacGroup({
   account,
   ownerId,

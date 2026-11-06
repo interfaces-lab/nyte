@@ -1,6 +1,3 @@
-/**
- * First-in, first-out storage with amortized constant-time dequeue: values enter one stack and leave the other, which is refilled in reverse only when empty.
- */
 export class FifoQueue<T> {
   private incoming: T[] = [];
   private outgoing: T[] = [];

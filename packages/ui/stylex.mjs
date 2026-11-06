@@ -2,28 +2,16 @@ import unplugin from "@stylexjs/unplugin";
 
 const COMPONENT_SOURCE = /[\\/]packages[\\/]ui[\\/]src[\\/]/;
 
-/** `create` rules start here; below sit variables, themes, constants, and keyframes. */
 const ATOMIC_PRIORITY = 1000;
 
-/** Above the highest component priority bucket, a pseudo-element under an at-rule. */
 const APP_OFFSET = 10_000;
 
-/**
- * StyleX sees a `defineConsts` key only as `var(--hash)` and prices it as a
- * plain property (3000) rather than the at-rule it stands for, which also
- * lifts the rule a specificity level. Each leading `var(--hash){` wrapper is
- * repriced as `@media` (200), so `[media.hover]` sorts exactly like the
- * literal query; `assertMediaConsts` fails the build on any other condition
- * const, whose key this would misprice.
- */
 const CONST_KEY_OVERPRICE = 3000 - 200;
 
 const CONST_WRAPPERS = /^(?:var\(--[\w-]+\)\{)*/;
 
-/** A const value usable as a style key: an at-rule or a pseudo-class. */
 const CONDITION = /^[@:]/;
 
-/** Throw on a `defineConsts` condition other than `@media`, the only one the const-key repricing is right for. */
 function assertMediaConsts(rules) {
   for (const [, rule] of rules) {
     if (rule.constKey == null) continue;

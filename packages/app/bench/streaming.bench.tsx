@@ -12,7 +12,6 @@ const TICK_MS = 40;
 const styles = create({
   row: { position: "relative", display: "flex", width: 1280 },
   column: { flexGrow: 0, flexShrink: 0, flexBasis: "50%", minWidth: 0 },
-  /** As the panes under a maximized workbench: laid out, never rendered. */
   covered: {
     position: "absolute",
     insetBlockStart: 0,

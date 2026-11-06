@@ -9,7 +9,6 @@ function providerError(status: number | undefined, headers?: Record<string, stri
   });
 }
 
-/** A request that rejects `failures` times with `error`, then resolves "ok". */
 function flakyRequest(error: Error, failures: number) {
   let calls = 0;
   return vi.fn(async (): Promise<string> => {

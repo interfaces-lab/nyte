@@ -134,7 +134,6 @@ async function linkCurrent(root, binary) {
   await rename(temporary, link);
 }
 
-/** Runs the native binary with `args`, except `init`, which sets up a source checkout and needs no release. */
 export async function launch(args = process.argv.slice(2), options = {}) {
   if (args[0] === "init") {
     const { init } = await import("./init/index.js");

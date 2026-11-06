@@ -40,7 +40,6 @@ export function Page({ children }: { readonly children: ReactNode }): ReactEleme
   );
 }
 
-/** The case `bench/run.ts` wrote into the page's setup script. */
 export function readCase<T extends TSchema>(schema: T): Static<T> {
   return Value.Parse(schema, window.benchCase);
 }
@@ -49,7 +48,6 @@ export function nextFrame(): Promise<number> {
   return new Promise((resolve) => requestAnimationFrame(resolve));
 }
 
-/** One warmup run, then the measured runs. */
 export async function measure<T>(once: () => Promise<T>): Promise<T[]> {
   await once();
   const runs: T[] = [];

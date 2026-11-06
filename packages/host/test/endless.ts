@@ -1,6 +1,5 @@
 import type { ByteReader } from "@nyte-ai/schema";
 
-/** A byte reader that yields one chunk and then waits until it is closed, counting its closes. */
 export function endless(): ByteReader & { closes(): number } {
   let closes = 0;
   const closed = Promise.withResolvers<void>();

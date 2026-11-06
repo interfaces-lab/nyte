@@ -14,6 +14,7 @@
     "dev": "install-electron && node scripts/build-adblock.mjs && node scripts/dev.mjs",
     "test": "install-electron && vitest --run",
     "update:local": "node scripts/update-test.mjs",
+    "install:local": "node scripts/install-local.mjs",
     "typecheck": "tsc --noEmit && tsc --noEmit -p e2e",
     "grid": "playwright test --config e2e/playwright.config.ts e2e/grid.spec.ts --workers=1 --retries=0 --reporter=list",
     "grid:diff": "node e2e/grid/diff.ts",

@@ -137,7 +137,6 @@ export function hostPort(connect: () => Promise<PortEnd>): HostPort {
   };
 }
 
-/** A WebSocket over the window's host port. As with a WebSocket, an abnormal closure (1006, such as a dial the host refused) fires `error` first, since `openHostSocket` waits for `open` or `error` and never sees a bare `close`. */
 function portSocket(client: () => Promise<Client>, path: string): SocketLike {
   const listeners = new Map<string, Set<SocketListener>>();
   let opened: OpenedSocket | null = null;

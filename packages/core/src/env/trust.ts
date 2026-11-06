@@ -13,27 +13,11 @@ export const WORKSPACE_TRUST = "workspaceTrust";
 
 type Trusted = Pick<WorkspaceRecord, "target" | "isolation">;
 
-/**
- * Whether workspaces' project files may load, the way pi decides it: trust
- * belongs to a folder, not to a workspace registered there. A folder takes its
- * own decision, else the nearest folder above it with one, else the host's
- * `workspaceTrust` mode, where `ask` gives `null`. A worktree follows the
- * folder it was made from. The host's home folder holds the user's own files,
- * so it is never a project and never passes trust down.
- */
 export interface FolderTrust {
-  /** The decision saved for the folder `workspace` follows, or `null` when none is. */
   decided(workspace: Trusted): boolean | null;
   trusted(workspace: Trusted): boolean | null;
 }
 
-/**
- * Reads the saved decisions, the workspace records and the `workspaceTrust`
- * mode once; reuse the answer when resolving many workspaces.
- *
- * @category workspaces
- * @since 0.1.0
- */
 export async function readFolderTrust(kernel: Kernel): Promise<FolderTrust> {
   const [records, decisions, mode] = await Promise.all([
     workspaceRecords(kernel.store),
@@ -83,12 +67,6 @@ export async function readFolderTrust(kernel: Kernel): Promise<FolderTrust> {
   };
 }
 
-/**
- * Whether one workspace's project files may load; see {@link FolderTrust}.
- *
- * @category workspaces
- * @since 0.1.0
- */
 export async function projectTrust(kernel: Kernel, workspace: Trusted): Promise<boolean | null> {
   const home = kernel.home?.replace(/\/+$/u, "") ?? null;
   const target = trustTarget(workspace.target);
@@ -106,7 +84,6 @@ export async function projectTrust(kernel: Kernel, workspace: Trusted): Promise<
   return (await readFolderTrust(kernel)).trusted(workspace);
 }
 
-/** Saves the user's decision for the folder `workspace` follows: `null` forgets it. */
 export async function decideTrust(
   kernel: Kernel,
   workspace: Trusted,

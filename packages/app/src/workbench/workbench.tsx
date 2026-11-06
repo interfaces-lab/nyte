@@ -45,7 +45,6 @@ import { Deferred, loadDeferred } from "../lib/deferred.tsx";
 import { preferences, useSetting } from "../preferences/index.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 
-/** How many workspaces keep their panels mounted: the current one and the last ones visited. */
 const MOUNTED_VIEWS = 3;
 
 interface ResizeState {

@@ -36,12 +36,6 @@ export type ConnectionFormMode =
     }
   | { readonly kind: "edit"; readonly connection: Connection };
 
-/**
- * Connect to a host by address and token, or edit a saved one. Without a camera there is no scan path,
- * so the form is the only way in; the camera permission prompt belongs to the tap that opens the
- * scanner. Only the form knows its own deadline, so it reports its own timeout as a silent host. A
- * thrown error is a bug in this app, since connecting reports its endings as values.
- */
 export function ConnectionForm({
   mode,
   onCancel,
@@ -395,7 +389,6 @@ function Field({
   );
 }
 
-/** No line height: an iOS single-line field lays its own text out, and a fixed one wraps a long token instead of scrolling it. */
 function inputStyle(theme: Theme) {
   return {
     fontSize: typography.body.fontSize,
@@ -418,7 +411,6 @@ const styles = css.create({
   },
   footnote: { margin: 0, textAlign: "center", paddingInline: spacing.sm },
   lead: { color: tokens.muted, margin: 0 },
-  /** The same card the grouped rows elsewhere draw: one surface, no border or shadow restating the edge. */
   form: {
     backgroundColor: tokens.surface,
     borderRadius: radii.card,
@@ -426,7 +418,6 @@ const styles = css.create({
     paddingInline: spacing.lg,
   },
   field: { paddingBlock: spacing.xs },
-  // Inset to the labels, the way a grouped list draws its hairlines.
   separator: {
     height: controls.hairline,
     backgroundColor: tokens.separator,
@@ -437,7 +428,6 @@ const styles = css.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
-    // A token is one long word, so the row keeps its height and the field scrolls.
     minHeight: controls.touchTarget,
     overflow: "hidden",
   },
@@ -448,7 +438,6 @@ const styles = css.create({
     flexShrink: 0,
     width: controls.touchTarget,
     height: controls.touchTarget,
-    // The hit region overhangs into the card padding so the icon ends on the field's edge.
     marginInlineEnd: (controls.icon - controls.touchTarget) / 2,
     padding: 0,
     borderWidth: 0,

@@ -5,7 +5,6 @@ import type { Static } from "typebox";
 import { Value } from "typebox/value";
 import { executable, findOnPath } from "../find-on-path.ts";
 
-/** An ACP agent this machine can start without downloading anything. */
 export interface AcpAgent {
   readonly id: string;
   readonly name: string;
@@ -57,7 +56,6 @@ const packageBin = Type.Object({
 
 const PACKAGE = /^(@?[^@]+)@[^@]+$/;
 
-/** The agent entries of a registry document; anything else is no entries. */
 export function registryEntries(document: unknown): readonly unknown[] {
   return Value.Check(registry, document) ? document.agents : [];
 }
@@ -79,7 +77,6 @@ async function resolved(path: string): Promise<string | undefined> {
   }
 }
 
-/** The command a global install of package `spec` put beside `npx`, when it is that package's own bin: on Windows the `.cmd` shim that names the package, elsewhere a link that resolves into the package. A command of the same name from anywhere else is not the package. */
 async function globalBin(spec: string, path: string): Promise<string | undefined> {
   const name = PACKAGE.exec(spec)?.[1] ?? spec;
   const npx = await findOnPath("npx", path);
@@ -154,13 +151,6 @@ async function installed(agent: RegistryAgent, path: string): Promise<AcpAgent |
       };
 }
 
-/**
- * The registry agents installed on this machine, in registry order: a binary
- * agent whose command is on `path`, or an npx agent whose package is
- * installed globally beside `npx` (its own bin, not another command of the
- * same name), run with the registry's arguments. An agent only the registry
- * can download is left out, so choosing a model never downloads one.
- */
 export async function installedAgents(
   entries: readonly unknown[],
   path: string,
@@ -174,12 +164,6 @@ export async function installedAgents(
   return found.filter((agent): agent is AcpAgent => agent !== undefined);
 }
 
-/**
- * The agents the user lists in `file` (`{ "agents": [{ id, name, command,
- * args?, env?, mode? }] }`), none when there is no file. Each is listed as
- * written, installed or not, and its command runs without shell expansion.
- * The file is the host's alone, so no client or project picks what runs.
- */
 export async function userAgents(file: string): Promise<readonly AcpAgent[]> {
   const text = await readFile(file, "utf8").catch((error: unknown) => {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") return undefined;

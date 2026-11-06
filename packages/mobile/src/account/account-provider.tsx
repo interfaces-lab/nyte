@@ -30,41 +30,27 @@ type AccountStatus =
       readonly ownerId: string;
       readonly label: string;
       readonly avatarUrl: string | undefined;
-      /** Signs every call with the owner's own session, or reports `signed_out`. */
       readonly broker: BrokerClient;
     };
 
 export type SignInEnding =
   | { readonly kind: "signedIn" }
   | { readonly kind: "cancelled" }
-  /** Clerk has not loaded, usually because this phone is offline. */
   | { readonly kind: "unavailable" }
   | { readonly kind: "unregisteredApp" }
   | { readonly kind: "failed" };
 
-/** The Mac this account let go on the way out, and what it and the broker confirmed. */
 type Released = { readonly name: string; readonly report: ReleaseReport };
 
 export type SignOutEnding =
   | { readonly kind: "signedOut"; readonly released: Released | undefined }
-  /** The Mac was let go, but Clerk would not end its session. */
   | { readonly kind: "clerkFailed"; readonly released: Released | undefined }
-  /** The Keychain kept the connection, so nothing else was attempted. */
   | { readonly kind: "notRemoved" };
 
 export interface Account {
   readonly status: AccountStatus;
-  /**
-   * The root cache, above every host's own. Account queries go here even from
-   * a sheet under a connected Mac, so an account change clears them all.
-   */
   readonly queryClient: QueryClient;
   readonly signIn: () => Promise<SignInEnding>;
-  /**
-   * End this phone's Clerk session and sign in again, for a session the broker
-   * refused or a different account. The saved Mac stays unless another
-   * account ends up signed in.
-   */
   readonly renew: () => Promise<SignInEnding>;
   readonly signOut: () => Promise<SignOutEnding>;
   readonly connect: (input: {
@@ -79,15 +65,10 @@ const AccountContext = createContext<Account | undefined>(undefined);
 
 const config = readAccountConfig();
 
-/** Undefined when this build has no account configuration: address and token only. */
 export function useAccount(): Account | undefined {
   return use(AccountContext);
 }
 
-/**
- * Clerk sits above the connection gate, so switching Macs never restarts it,
- * and a build without account configuration never loads it at all.
- */
 export function AccountProvider({ children }: { children: ReactNode }) {
   if (config === undefined) return children;
 
@@ -98,7 +79,6 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   );
 }
 
-/** Runs `task` under one signal that aborts with any of `signals`. */
 async function linked<T>(
   signals: readonly AbortSignal[],
   task: (signal: AbortSignal) => Promise<T>,
@@ -118,7 +98,6 @@ async function linked<T>(
   }
 }
 
-/** Removes the signed-out owner's Mac, releasing it through the broker when it belongs to `origin`. */
 async function forgetOwnedMac({
   ownerId,
   origin,
@@ -147,24 +126,8 @@ async function forgetOwnedMac({
     : { name: removed.saved.connection.name, report: removed.released };
 }
 
-/** The account this phone acts for, and the signal that ends everything started for it. */
 type Epoch = { readonly ownerId: string | null; readonly controller: AbortController };
 
-/**
- * Bridges Clerk to the app's account contract, one epoch per owner. A new owner (or none) aborts
- * whatever the last one started and drops its cached Macs, so nothing late lands under the wrong
- * account. A signed-in owner also forgets any other account's Mac, however Clerk got there: a sign-in,
- * a switch, or a session restored at launch. The gate already refuses to serve that Mac; forgetting it
- * releases its bearer on the Mac alone, because the broker cannot be asked without that owner's
- * session. Signing out alone keeps the saved Mac, whose bearer outlives the session.
- *
- * Broker calls read the live Clerk session at call time and never send a token for anyone but their
- * owner. Sign-in is ephemeral, so Safari keeps no portal session that could sign the previous account
- * back in. Sign-out forgets the client id (a stale one is harmless: the next account checks its owner
- * and makes its own) and re-enters the owner when Clerk fails to sign out, so its work may start
- * again. `connect` enters its owner itself, since the Clerk listener may not have run yet, and ends on
- * the user's cancel or any account change, whichever comes first.
- */
 function AccountBridge({ config, children }: { config: AccountConfig; children: ReactNode }) {
   const clerk = useClerk();
   const auth = useAuth();

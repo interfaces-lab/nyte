@@ -25,7 +25,6 @@ export interface PageInfo {
   readonly keywords: readonly string[];
   readonly Page: ComponentType;
   readonly Actions?: ComponentType;
-  /** Starts the page's reads before it opens, when the pointer or focus reaches its link. */
   readonly prefetch?: () => void;
 }
 

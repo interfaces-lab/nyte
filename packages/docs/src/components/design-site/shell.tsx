@@ -13,11 +13,6 @@ import { ThemeSwitch } from "./theme-switch";
 
 const { IconMagnifyingGlass } = glyphs;
 
-/**
- * design.nyte.sh's own frame, apart from the Nyte site's navbar: a rail with
- * the index on wide screens, a bar with a menu on narrow ones, and the page.
- * Its hairlines are the page grid, drawn where nothing crosses them.
- */
 export function DesignShell({ children }: { children: ReactNode }) {
   const [searching, setSearching] = useState(false);
 
@@ -77,7 +72,6 @@ export function DesignShell({ children }: { children: ReactNode }) {
   );
 }
 
-/** The page column: the ruler that marks the grid, the page, then the footer. */
 export function DesignMain({ children }: { children: ReactNode }) {
   return (
     <main className="design-main">

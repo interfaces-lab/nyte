@@ -19,7 +19,6 @@ export type ActivityPart =
 
 type UserMessage = Extract<Message, { kind: "user" }>;
 
-/** Where a sent message is on its way: the SDK's journal holds it until the host answers, then the host schedules it. */
 export type UserDelivery =
   | { kind: "sent" }
   | { kind: "sending" }

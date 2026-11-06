@@ -70,7 +70,10 @@ The file can seed the host settings above. It can't seed:
 
 - `variables.entries`, which holds secrets. Set those in **Settings > Environment variables**.
 - A plugin's session settings. Set those on a chat.
-- Settings of plugins you added yourself.
+- Settings a plugin adds from `activate`, or that plugins in a folder's `.nyte/plugins` declare.
+
+It can seed a host setting that a plugin from `sdk.open` or `~/.nyte/plugins` declares in
+`contribute.settings`.
 
 The host reports a value it can't apply, such as an unknown id or one that fails the setting's
 check, as a problem with `settings.json` and keeps going.
@@ -109,7 +112,8 @@ if (outcome.kind === "invalid") console.error(outcome.issues);
 
 It answers `applied`, `invalid` with the problems, or `unknown` for an id no plugin declares.
 
-The host's view lists every setting with its current value and where that value comes from:
+`HostView`, which `host.watch()` yields, lists every host setting with its current value and where
+that value comes from:
 
 ```ts
 for await (const view of host.watch()) {
@@ -118,8 +122,10 @@ for await (const view of host.watch()) {
 }
 ```
 
-`from` is `default` or `host`. A chat's own list, in `catalog.settings` of its view, also includes
-session settings, where `from` can be `session`. Set one on the chat:
+`from` is `default` or `host`. A chat's own list, in `catalog.settings` of the `SessionView` that
+`session.view()` returns, also includes session settings, where `from` can be `session`. The
+session's `catalog` row holds only the catalog's id, and `host.catalogs.read(id)` returns its
+commands, settings, skills, agents and tools. Set a session setting on the chat:
 
 ```ts
 await session.configure({ settings: { "my-plugin.verbose": true } });

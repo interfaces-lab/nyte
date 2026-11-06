@@ -21,7 +21,6 @@ const HANDLERS: Handlers<Msg["kind"]> = {
   ...chooseHandlers,
 };
 
-/** Applies one message to the state: the single entry point of the TUI model. */
 export function reduce(state: State, msg: Msg, now: number): Step {
   return handle(msg.kind, msg, state, now);
 }

@@ -11,18 +11,14 @@ const HostCommandType = Type.Object({
   kind: Type.Literal("local"),
   port: PortType,
   token: Type.String(),
-  /** What `token` grants on the listener; `maintenance` only for a token this process minted for itself. */
   authority: Type.Array(AuthorityType),
   socket: Type.Optional(Type.String()),
-  /** The `nyte-tailnet` sidecar the host runs; default the one beside the process's executable. */
   tailnet: Type.Optional(Type.String()),
-  /** The folder the host registers as its default workspace; the process's working directory without one. */
   workspace: Type.Optional(Type.String()),
 });
 
 export type HostCommand = Static<typeof HostCommandType>;
 
-/** What a token grants when a process minted it for the host it runs or serves as its owner (`nyte host`, a command's own host): the trust of an in-process `sdk.open`. */
 export const OWN_TOKEN_AUTHORITY: HostCommand["authority"] = [
   "participant",
   "owner",
@@ -46,7 +42,6 @@ export const hostMessages = Compile(HostMessageType);
 
 const hostReports = Compile(HostReportType);
 
-/** The module a host thread runs: one that calls `serveHostThread` with its runtime. */
 export type HostWorkerEntry = string | URL;
 
 interface HostThread {
@@ -130,7 +125,6 @@ function launch(
   }));
 }
 
-/** Serves `command` on a worker thread running `entry`, reopening it on the same port when the host is revoked. */
 export async function startHostThread(
   entry: HostWorkerEntry,
   command: HostCommand,

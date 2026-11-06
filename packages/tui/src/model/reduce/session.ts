@@ -393,7 +393,6 @@ function released(state: State, effect: string): State {
   return kind === undefined ? state : finished(state, kind);
 }
 
-/** Ends a pending operation; an authentication also closes its dialog. */
 function finished(state: State, kind: PendingOp["kind"]): State {
   return withLocal(state, {
     pending: state.local.pending.filter((op) => op.kind !== kind),

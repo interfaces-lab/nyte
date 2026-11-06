@@ -26,11 +26,6 @@ import type { ComposerModel } from "./use-composer-model.ts";
 
 const MODEL_FONT = { textStyle: "subheadline", weight: "semibold" } as const;
 
-/**
- * The controls above the composer card: the head switcher while the composer is expanded, how a message
- * lands on a running response (steer or queue) beside the stop button, and the model and thinking
- * pickers, which give way to the waveform while dictating.
- */
 export function ComposerControls({
   target,
   expanded,

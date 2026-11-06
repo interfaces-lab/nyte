@@ -7,11 +7,6 @@ const WAVEFORM_LEVELS = 8;
 
 let recognizerOwner: symbol | undefined;
 
-/**
- * What a recognizer failure reads as. The platform's own message names its
- * internals ("Failed to initialize recognizer"), so the code chooses the
- * sentence and the message stays out of the composer.
- */
 function dictationFailure(code: ExpoSpeechRecognitionErrorCode): string | undefined {
   switch (code) {
     case "aborted":
@@ -45,7 +40,6 @@ function dictationFailure(code: ExpoSpeechRecognitionErrorCode): string | undefi
   }
 }
 
-/** Speech recognition state shared by the composer and the compose sheet; the elapsed clock runs only while recording. */
 export function useDictation(onTranscript: (transcript: string) => void) {
   const [recording, setRecording] = useState(false);
   const [elapsed, setElapsed] = useState(0);
@@ -187,7 +181,6 @@ export function formatElapsed(seconds: number): string {
   return `${String(minutes)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
-/** Normalized microphone level to a bar height. */
 export function waveHeight(level: number): number {
   return 4 + Math.min(1, Math.max(0, (level + 2) / 12)) * 24;
 }

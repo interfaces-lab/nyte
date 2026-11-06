@@ -94,6 +94,11 @@
       "types": "./dist/dialog.d.ts",
       "default": "./dist/dialog.js"
     },
+    "./file-type-icon": {
+      "nyte-source": "./src/file-type-icon.tsx",
+      "types": "./dist/file-type-icon.d.ts",
+      "default": "./dist/file-type-icon.js"
+    },
     "./icon": {
       "nyte-source": "./src/icon.tsx",
       "types": "./dist/icon.d.ts",
@@ -249,6 +254,7 @@
     "@nivo/axes": "^0.99.0",
     "@nivo/bar": "^0.99.0",
     "@nivo/line": "^0.99.0",
+    "@pierre/trees": "^1.0.0-beta.6",
     "@shadcn/react": "^0.3.1",
     "@stylexjs/stylex": "^0.19.1",
     "class-variance-authority": "^0.7.1",

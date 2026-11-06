@@ -10,10 +10,6 @@ import { PICKER_SCRIPT } from "./src/main/browser/browser-picker-page.ts";
 import packageMetadata from "./package.json" with { type: "json" };
 import { deferredChunks, shareCentralIconBase, stylex } from "@nyte-ai/app/vite";
 
-/**
- * The renderer. StyleX compiles @nyte-ai/ui from source here, so it resolves the
- * `nyte-source` condition.
- */
 const renderer = {
   plugins: [
     deferredChunks({
@@ -73,7 +69,6 @@ const HOST_ENTRIES = {
   "image-worker": resolve("src/workers/image-worker.ts"),
 };
 
-/** Main-process code: the app's main and its usage worker, or with `host` the host the app's executable runs as Node, built apart so main loads none of the host's modules. */
 const main = (mode: string, host: boolean) =>
   ({
     define: {

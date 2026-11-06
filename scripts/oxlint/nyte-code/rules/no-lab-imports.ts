@@ -2,11 +2,6 @@ import { defineRule } from "@oxlint/plugins";
 
 import type { ESTree } from "@oxlint/plugins";
 
-/**
- * Disallow importing `@nyte-ai/lab`. The lab holds prototypes that may import any package; nothing
- * imports it back, so a prototype never becomes a dependency. Move accepted work into the package
- * that owns it instead.
- */
 export const noLabImportsRule = defineRule({
   meta: {
     type: "problem",

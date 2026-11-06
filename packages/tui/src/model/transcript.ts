@@ -17,7 +17,6 @@ export interface PromptRow {
   readonly pending: boolean;
 }
 
-/** One transcript row. A row carries its content, and an unchanged row keeps its identity across frames. */
 export type Row =
   | { readonly kind: "turn"; readonly key: RowKey; readonly turn: TurnModel }
   | PromptRow
@@ -36,13 +35,11 @@ export interface TurnModel {
   readonly info: TurnInfo;
   readonly blocks: readonly Message[];
   readonly status: TurnStatus | null;
-  /** Whether steps between the turn's prompt and its next block are not loaded. */
   readonly clipped: boolean;
 }
 
 export type TurnStatus =
   | { readonly kind: "unanswered" }
-  /** Null while the run shows no progress: it is planning. */
   | { readonly kind: "working"; readonly activity: string | null; readonly startedAt: number }
   | { readonly kind: "thinking"; readonly startedAt: number }
   | { readonly kind: "waiting"; readonly question: boolean }
@@ -79,13 +76,6 @@ export function rowWeight(row: Row): number {
   return row.kind === "turn" ? Math.max(1, row.turn.blocks.length) : 1;
 }
 
-/**
- * Derives the transcript rows for one frame.
- *
- * Work is bounded by the view's message tail: only turns the tail reaches are visited, settled
- * turns and rows are reused by identity, and only a turn whose info, blocks or status changed
- * gets a new model.
- */
 export function deriveTranscript(
   view: HeadView | null,
   shells: readonly ShellJob[],

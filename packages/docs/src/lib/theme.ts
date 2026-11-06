@@ -5,10 +5,6 @@ export type ThemeChoice = "light" | "dark" | "system";
 const storageKey = "theme";
 const darkQuery = "(prefers-color-scheme: dark)";
 
-/**
- * Runs in <head> before first paint, so a stored dark choice never flashes
- * light. It mirrors `apply` below; keep the two in step.
- */
 export const themeScript = `(() => {
   try {
     const choice = localStorage.getItem(${JSON.stringify(storageKey)});
@@ -28,7 +24,6 @@ function resolve(choice: ThemeChoice): "light" | "dark" {
   return matchMedia(darkQuery).matches ? "dark" : "light";
 }
 
-/** Theme changes swap every colour at once; transitions would animate each one. */
 function apply(choice: ThemeChoice) {
   const root = document.documentElement;
   const resolved = resolve(choice);
@@ -75,7 +70,6 @@ export function setTheme(choice: ThemeChoice) {
   notify();
 }
 
-/** `setTheme` behind a cross-fade, where the browser has view transitions and motion is welcome. */
 export function switchTheme(choice: ThemeChoice) {
   if (
     !("startViewTransition" in document) ||
@@ -89,7 +83,6 @@ export function switchTheme(choice: ThemeChoice) {
   document.startViewTransition(() => setTheme(choice));
 }
 
-/** The stored choice and what it resolves to; both null until hydration reads storage. */
 export function useTheme(): { theme: ThemeChoice | null; resolvedTheme: "light" | "dark" | null } {
   const theme = useSyncExternalStore(subscribe, readChoice, () => null);
   const resolvedTheme = useSyncExternalStore(

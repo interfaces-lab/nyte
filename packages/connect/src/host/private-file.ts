@@ -2,7 +2,6 @@ import { randomBytes } from "node:crypto";
 import { mkdir, open, rename, rm } from "node:fs/promises";
 import { dirname } from "node:path";
 
-/** Write `text` to `path`, 0600, through an fsynced temporary file renamed into place. */
 export async function writePrivateFile(input: {
   readonly path: string;
   readonly text: string;
@@ -30,7 +29,6 @@ export async function writePrivateFile(input: {
   await syncDirectory(directory);
 }
 
-/** Flush a directory entry change to disk; Windows cannot fsync a directory, and NTFS journals renames. */
 export async function syncDirectory(path: string): Promise<void> {
   if (process.platform === "win32") return;
 

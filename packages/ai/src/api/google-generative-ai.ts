@@ -1,6 +1,3 @@
-/**
- * Google Generative AI adapter.
- */
 import {
   type Content,
   FinishReason,
@@ -64,12 +61,6 @@ export interface GoogleOptions extends StreamOptions {
 
 let toolCallCounter = 0;
 
-/**
- * Streams a Gemini response. Only `thought: true` marks a thought summary: a thought signature
- * preserves reasoning context, but it can appear on any part and does not make that part a thought.
- * `responseId` keeps the first non-empty one the stream sends; @google/genai documents it as an
- * output-only field that identifies the response.
- */
 export const stream: StreamFunction<"google-generative-ai", GoogleOptions> = (
   model: Model<"google-generative-ai">,
   context: TranscriptContext,
@@ -334,7 +325,6 @@ export const streamSimple: StreamFunction<"google-generative-ai", SimpleStreamOp
   } satisfies GoogleOptions);
 };
 
-/** Creates the SDK client. A model `baseUrl` already includes the version path, so the SDK appends none. */
 function createClient(
   model: Model<"google-generative-ai">,
   apiKey: string,
@@ -444,7 +434,6 @@ function usesGoogleThinkingLevel(model: Model<"google-generative-ai">): boolean 
   );
 }
 
-/** Gemini 3 and Gemma 4 cannot fully disable thinking, so they get the lowest supported level without includeThoughts, which keeps hidden thinking invisible. */
 function getDisabledThinkingConfig(model: Model<"google-generative-ai">): ThinkingConfig {
   if (!usesGoogleThinkingLevel(model)) return { thinkingBudget: 0 };
 
@@ -533,7 +522,6 @@ function resolveGoogleThinkingLevel(
   }
 }
 
-/** Preserve a signature when later streaming deltas omit it. */
 function retainThoughtSignature(
   existing: string | undefined,
   incoming: string | undefined,
@@ -543,7 +531,6 @@ function retainThoughtSignature(
 
 const base64SignaturePattern = /^[A-Za-z0-9+/]+={0,2}$/;
 
-/** Keeps a signature from the same provider and model when it is well-formed base64. */
 function resolveThoughtSignature(
   isSameProviderAndModel: boolean,
   signature: string | undefined,
@@ -563,7 +550,6 @@ function getGeminiMajorVersion(modelId: string): number | undefined {
   return match ? Number.parseInt(match[1], 10) : undefined;
 }
 
-/** Gemini 3+ requires tool call ids and supports strict tool sampling. */
 function atLeastGemini3(modelId: string): boolean {
   const majorVersion = getGeminiMajorVersion(modelId);
 
@@ -576,7 +562,6 @@ function supportsMultimodalFunctionResponse(modelId: string): boolean {
   return majorVersion === undefined || majorVersion >= 3;
 }
 
-/** Converts the transcript to Gemini contents. Gemini has no mid-conversation system messages, so the leading prompt goes out as systemInstruction instead. */
 function convertMessages(
   model: Model<"google-generative-ai">,
   context: TranscriptContext,
@@ -795,7 +780,6 @@ function mapStopReason(reason: FinishReason): StopReason {
   }
 }
 
-/** Retries a Google SDK request under the common policy. The SDK's errors carry a status without headers, so the missing field is added for the policy to classify them. */
 function retryGoogleRequest<T>(
   request: () => Promise<T>,
   options?: Pick<StreamOptions, "maxRetries" | "maxRetryDelayMs" | "signal">,

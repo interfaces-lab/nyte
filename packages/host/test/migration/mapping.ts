@@ -18,16 +18,6 @@ import { Value } from "typebox/value";
 
 type JsonObject = { readonly [key: string]: Json };
 
-/**
- * What migrating a store changes, one row per store step: `version` is the
- * stamp a store holds once the step has run, so a store stamped below it runs
- * it. Every field a row does not name is kept as it was, every object row is
- * kept (no step deletes one), and every logged event keeps
- * its session, seq and time. `covers` names the tallies a property run must
- * count at least once to have exercised the row: the store stamp just below
- * the row's version, and each field or ref the row changes (`call/*` for a
- * call of any kind).
- */
 export const MAPPING = [
   {
     version: 1,
@@ -300,25 +290,20 @@ function decisionType<T extends TSchema>(value: T) {
 
 const WORKSPACE_TARGET = compile(withJson(WorkspaceTargetType));
 
-/** A before_tool hook call's result as store version 13 decoded it: a `modify` holds the whole changed ToolCall. */
 const OLD_TOOL_DECISION = compile(withJson(decisionType(ToolCallType)));
 
-/** A before_tool hook call's result as today's store decodes it: a `modify` holds the changed args alone. */
 const TOOL_DECISION = compile(withJson(decisionType(JsonType)));
 
-/** The decision a before_tool hook call's stored result held for store version 13, or null when that decoder could not read it. */
 export function readOldToolDecision(result: Json | undefined) {
   return result !== undefined && OLD_TOOL_DECISION.Check(result)
     ? OLD_TOOL_DECISION.Decode(result)
     : null;
 }
 
-/** The decision a before_tool hook call's stored result holds today, or null when it can't be read. */
 export function readToolDecision(result: Json | undefined) {
   return result !== undefined && TOOL_DECISION.Check(result) ? TOOL_DECISION.Decode(result) : null;
 }
 
-/** Whether the step a store reaches `version` with runs on a store stamped `from`. */
 function runs(from: number, version: number): boolean {
   return from < version;
 }
@@ -485,11 +470,6 @@ function workspaceTrustAt6(from: number, body: JsonObject): JsonObject {
     : body;
 }
 
-/**
- * The `trust/` refs a store stamped `from` adds by `MAPPING`'s step 18, each
- * with the record it points at, from the store's workspace records as they
- * stood before migration.
- */
 export async function folderTrustRecords(
   from: number,
   workspaces: readonly Json[],
@@ -532,7 +512,6 @@ export async function folderTrustRecords(
   return new Map([...chosen].map(([name, { record }]) => [name, record]));
 }
 
-/** The record a stored record becomes when a store stamped `from` migrates, by `MAPPING`. */
 export function migratedRecord(from: number, record: Json): Json {
   if (!isJsonObject(record) || !isJsonObject(record.body)) return record;
   const body = migrateBody(from, record.kind, record.body);
@@ -540,7 +519,6 @@ export function migratedRecord(from: number, record: Json): Json {
   return Value.Equal(body, record.body) ? record : { ...record, body };
 }
 
-/** One session's logged events, in seq order, as a store stamped `from` holds them once it migrates, by `MAPPING`. */
 export function migratedLog(from: number, events: readonly Json[]): readonly Json[] {
   const unified = events.map((event) =>
     runs(from, 7) && isJsonObject(event) && event.kind === "call" && event.change === "settled"
@@ -698,7 +676,6 @@ function waitNames(session: string, call: CallRecord): readonly string[] {
   ];
 }
 
-/** The refs a store stamped `from` adds for the ref `name` once its record has migrated to `record`, by `MAPPING`; each points where `name` does. */
 export function derivedRefs(from: number, name: string, record: Json): readonly string[] {
   const session = parseSessionRef(name);
 
@@ -726,7 +703,6 @@ export function derivedRefs(from: number, name: string, record: Json): readonly 
   ];
 }
 
-/** The JSON paths at which two values differ, for a report that names the fields a migration changed. */
 export function changedPaths(
   before: Json | undefined,
   after: Json | undefined,

@@ -3,10 +3,8 @@ import { createContext } from "react";
 import type { ReactNode } from "react";
 import type { NavSection } from "~/lib/docs";
 
-/** The frame's sidebar sections; `DocArticle` draws them beside the page, with its headings. */
 export const DocSections = createContext<readonly NavSection[]>([]);
 
-/** The docs frame under the site nav: sidebar, then the page. */
 export function DocFrame({
   sections,
   children,

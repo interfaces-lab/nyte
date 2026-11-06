@@ -91,7 +91,6 @@ export function parseBytes(value: unknown): Uint8Array | null {
   throw new SdkError("internal", "A stored blob is malformed.");
 }
 
-/** A blob of `size` bytes whose bytes `load` reads only once `chunks()` is iterated. */
 export function storedReader(
   id: BlobId,
   size: number,

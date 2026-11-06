@@ -1,19 +1,6 @@
-/**
- * What a model supports and costs: API narrowing, pricing, and thinking levels.
- */
 import { MODEL_THINKING_LEVELS } from "@nyte-ai/schema/model";
 import type { Api, Model, ModelCostRates, ModelThinkingLevel, Usage } from "./types.ts";
 
-/**
- * Runtime-checked narrowing for dynamically looked-up models:
- *
- * ```ts
- * const model = models.getModel("anthropic", "claude-opus-4-7");
- * if (model && hasApi(model, "anthropic-messages")) {
- *   // model: Model<"anthropic-messages">, stream options fully typed
- * }
- * ```
- */
 export function hasApi<TApi extends Api>(model: Model<Api>, api: TApi): model is Model<TApi> {
   return model.api === api;
 }

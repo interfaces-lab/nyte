@@ -2,27 +2,18 @@ import type { ConnectStore } from "./store.ts";
 import type { DesktopBroker } from "./broker.ts";
 import { refusedCode } from "./tokens.ts";
 
-/** Least time between two passes over the revocations a lease reminds this host of. */
 const REVOCATION_REMINDER_MS = 60_000;
 
 interface ConnectOutboxOptions {
   readonly store: ConnectStore;
   readonly broker: DesktopBroker | undefined;
   readonly unlinkRetryMs: number;
-  /** Ends with the runtime. */
   readonly signal: AbortSignal;
   readonly closed: () => boolean;
   readonly changed: () => void;
-  /** The broker answered `revoked` for the linked environment. */
   readonly environmentRevoked: (environmentId: string) => void;
 }
 
-/**
- * What this host owes the broker after deciding it locally: device releases
- * and revocations of the current link, and the removal of environments it
- * unlinked. Each stays in the file until the broker confirms it, and is sent
- * again on a later pass or run.
- */
 export class ConnectOutbox {
   private readonly options: ConnectOutboxOptions;
   private revocationsSentAt = Number.NEGATIVE_INFINITY;
@@ -35,11 +26,6 @@ export class ConnectOutbox {
     this.options = options;
   }
 
-  /**
-   * Send the link's queued releases and revocations. `now` sends at once,
-   * joining a pass in flight with one more; otherwise it is a reminder that
-   * waits a minute after the last pass.
-   */
   sendRevocations(now: boolean): Promise<void> {
     if (!now && Date.now() < this.revocationsSentAt + REVOCATION_REMINDER_MS)
       return Promise.resolve();
@@ -64,7 +50,6 @@ export class ConnectOutbox {
     return this.revoking;
   }
 
-  /** Remove every unlinked environment the broker has not confirmed, retrying later while any is left. */
   retryUnlinks(): Promise<void> {
     this.unlinking ??= this.sendUnlinks().finally(() => {
       this.unlinking = undefined;
@@ -73,7 +58,6 @@ export class ConnectOutbox {
     return this.unlinking;
   }
 
-  /** Stop retrying and settle the sends in flight. */
   async close(): Promise<void> {
     clearTimeout(this.unlinkTimer);
     await Promise.allSettled([this.unlinking, this.revoking]);

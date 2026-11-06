@@ -30,13 +30,10 @@ const OUTPUT_LIMIT = 1_000_000;
 
 const QUERY_TIMEOUT_MS = 10_000;
 
-/** `gh pr create` writes through the API, so it outlives a read. */
 const CREATE_TIMEOUT_MS = 60_000;
 
-/** How long `gh auth login` may take to print its one-time code. */
 const SIGN_IN_CODE_TIMEOUT_MS = 30_000;
 
-/** GitHub device codes expire after 15 minutes; the sign-in ends with them. */
 const SIGN_IN_LIFETIME_MS = 15 * 60_000;
 
 const NO_PULL_REQUEST: GitHubPullRequestContext = { kind: "none" };
@@ -44,10 +41,8 @@ const NO_PULL_REQUEST: GitHubPullRequestContext = { kind: "none" };
 const PULL_REQUEST_FIELDS =
   "number,title,url,state,isDraft,headRefName,baseRefName,statusCheckRollup";
 
-/** gh orders remotes this way to choose a base repository; the state names the one it would use. */
 const REMOTE_PRIORITY = ["upstream", "github", "origin"];
 
-/** What the person reading the message can do next. `gh`'s own output never reaches a state. */
 const RECOVERY = {
   update: "Update the GitHub CLI (gh), then try again.",
   signIn: "GitHub rejected the CLI's login. Run gh auth login in a terminal, then try again.",
@@ -124,7 +119,6 @@ function parseJson<T>(validator: { Parse(value: unknown): T }, text: string): T 
   }
 }
 
-/** An https URL on one of `hostnames` (any host when absent), without credentials or a port; anything else is dropped. */
 function safeUrl(
   value: string | null | undefined,
   hostnames?: readonly string[],
@@ -146,7 +140,6 @@ function safeUrl(
 
 const REPOSITORY_PART = /^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$/u;
 
-/** Only the repository's identity is read from a remote URL: userinfo and the raw URL are discarded. */
 function parseRemote(remoteName: string, remote: string): GitHubRepository | undefined {
   const scp = /^(?:[^@\s]+@)?github\.com:([^/\s]+)\/([^/\s]+?)\/?$/iu.exec(remote);
   const url = scp === null ? URL.parse(remote) : null;
@@ -167,7 +160,6 @@ function parseRemote(remoteName: string, remote: string): GitHubRepository | und
   return { owner, name, remoteName, url: `https://github.com/${owner}/${name}` };
 }
 
-/** Folds a check run's status and conclusion, or a commit status's state, to the state a reader acts on. */
 function checkState(entry: RollupEntry): GitHubCheck["state"] {
   if (entry.__typename === "StatusContext") {
     if (entry.state === "SUCCESS") return "passed";
@@ -231,7 +223,6 @@ const USER_CODE = /one-time code\W*([A-Z0-9]{4}-[A-Z0-9]{4})\b/iu;
 
 const PRINTED_URL = /https:\/\/\S+/u;
 
-/** Sign-in output is scanned line by line; a longer line cannot hold the code. */
 const SIGN_IN_LINE_LIMIT = 4_096;
 
 type SignInStart =
@@ -240,13 +231,11 @@ type SignInStart =
   | { readonly kind: "failed" };
 
 interface SignIn {
-  /** Settles once `gh` printed its code and page, or when it ended before. */
   readonly started: Promise<SignInStart>;
   readonly expiresAt: number;
   cancel(): void;
 }
 
-/** Runs `gh auth login --web` on github.com, reading the one-time code and the page it prints; `ended` runs once the process is gone. */
 function startSignIn(file: string, cwd: string, ended: () => void): SignIn {
   const started = Promise.withResolvers<SignInStart>();
   const expiresAt = Date.now() + SIGN_IN_LIFETIME_MS;
@@ -322,7 +311,6 @@ type Gh = (
   extra?: { readonly input?: string; readonly timeoutMs?: number },
 ) => Promise<Command>;
 
-/** Runs `binary` (found on the PATH at each call) with gh's prompts and colors off. */
 function ghCommand(binary: string): Gh {
   return async (cwd, args, extra) => {
     const file = await findExecutable(binary);
@@ -355,7 +343,6 @@ function ghCommand(binary: string): Gh {
   };
 }
 
-/** gh's github.com login: `gh auth status`, the active account only. */
 async function readAuth(gh: Gh, cwd: string): Promise<Auth> {
   const result = await gh(cwd, [
     "auth",
@@ -396,7 +383,6 @@ async function readAuth(gh: Gh, cwd: string): Promise<Auth> {
   return { kind: "ready", login: active.login };
 }
 
-/** The account gh is signed in as: its login, then its profile (`gh api user`). */
 async function readAccountState(gh: Gh, cwd: string): Promise<GitHubAccountState> {
   const auth = await readAuth(gh, cwd);
 

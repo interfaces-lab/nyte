@@ -70,7 +70,6 @@ interface ComposerFrameProps {
   onDismissTray?: () => boolean;
   floating?: boolean;
   onEmptySubmit?: () => boolean;
-  /** Returns false when there is no prompt to step to. */
   onRecall?: (direction: RecallDirection) => boolean;
   model?: ReactNode;
   inputRef?: (element: ComposerEditorHandle | null) => void;

@@ -11,7 +11,7 @@ import { create, props } from "@stylexjs/stylex";
 import { useEffectEvent, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 import type { ReactElement, Ref } from "react";
 import { useSyncExternalStoreWithSelector } from "use-sync-external-store/with-selector";
-import { FileTypeIcon } from "../../components/file-type-icon";
+import { FileTypeIcon } from "@nyte-ai/ui/file-type-icon";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { Button } from "@nyte-ai/ui/button";
 import { ADD_TO_CHAT_LABEL, addToChat, addsToChat } from "../../references/add-to-chat.ts";
@@ -103,7 +103,6 @@ const styles = create({
   },
 });
 
-/** A notice is an empty file with its words above the first line; that line is not shown. */
 const NOTICE_CSS = `
 [data-code]:has([data-line-annotation="-1,-1"]) :is([data-column-number], [data-line]) {
   display: none;
@@ -126,7 +125,6 @@ interface ScrollReport {
 }
 
 export interface ChangesStackHandle {
-  /** Scrolls to `path`'s file, smoothly when it is near, and keeps it the active file until the scroll settles. */
   readonly reveal: (path: string) => void;
 }
 

@@ -1,7 +1,3 @@
-/**
- * The five-minute sweep: expire link transactions, retry Clerk session
- * revocations, reconcile owner standing with Clerk, and drop what expired.
- */
 import { RECONCILE_BATCH, lookupOwners, settleSessionRevocation } from "./clerk.ts";
 import type { Context } from "./context.ts";
 import { errorName } from "./log.ts";
@@ -37,13 +33,6 @@ export async function sweep(context: Context): Promise<void> {
   }
 }
 
-/**
- * Ask Clerk about every owner holding an active environment, a page at a
- * time, and give each owner's relays the standing D1 then holds. A missed
- * webhook is caught within one sweep. A user Clerk no longer returns is
- * disabled at the version the broker holds, never deleted: only the webhook
- * deletes. A page Clerk doesn't answer ends the run.
- */
 async function reconcileOwners(context: Context): Promise<void> {
   let after = "";
 

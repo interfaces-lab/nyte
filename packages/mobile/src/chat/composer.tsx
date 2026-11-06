@@ -46,11 +46,6 @@ const INPUT_LINE_HEIGHT = 24;
 
 const INPUT_MAX_LINES = 6;
 
-/**
- * The message composer docked above the keyboard, for a new conversation or a session follow-up. It owns
- * the draft, caret, and focus; the model, attachments, and submission each live in their own hook, and
- * the controls above the card and the action row inside it are their own components.
- */
 export function Composer({
   target,
   placeholder,
@@ -373,7 +368,6 @@ export function Composer({
   );
 }
 
-/** Opening the suggestion menu springs the attachments menu shut. */
 function ClosesOnMount(props: { close: () => void }) {
   useMountEffect(props.close);
 

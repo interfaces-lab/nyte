@@ -6,19 +6,15 @@ import { followedSession } from "./state.ts";
 import type { Draft, Facts, Local, Notice, State } from "./state.ts";
 import { CLOSED } from "./completion.ts";
 
-/** What one message does: the next state and the effects to run. */
 export interface Step {
   readonly state: State;
   readonly effects: readonly Effect[];
 }
 
-/** The message variant whose `kind` is `K`. */
 export type MsgOf<K extends Msg["kind"]> = Extract<Msg, { readonly kind: K }>;
 
-/** Applies one message to the state; a handler gets it to apply the messages its own leads to. */
 export type Reduce = (state: State, msg: Msg, now: number) => Step;
 
-/** Handles one message kind. */
 type Handler<K extends Msg["kind"]> = (
   state: State,
   msg: MsgOf<K>,
@@ -26,10 +22,8 @@ type Handler<K extends Msg["kind"]> = (
   reduce: Reduce,
 ) => Step;
 
-/** One handler per message kind in `K`. */
 export type Handlers<K extends Msg["kind"]> = { readonly [P in K]: Handler<P> };
 
-/** A domain's share of the handler table, checked against each kind it names. */
 export type SomeHandlers = { readonly [P in Msg["kind"]]?: Handler<P> };
 
 export function stay(state: State): Step {
@@ -57,7 +51,6 @@ export function refuse(
   return stay(withNotice(state, reason, tone, now));
 }
 
-/** Refuses what only a started session can do: a blank chat has none until its first send; an opening one has `opening` to say, or nothing. */
 export function refuseUnstarted(state: State, now: number, opening: string | null = null): Step {
   if (state.facts.chat?.kind === "blank")
     return refuse(state, "Send a message first.", now, "info");
@@ -65,12 +58,10 @@ export function refuseUnstarted(state: State, now: number, opening: string | nul
   return opening === null ? stay(state) : refuse(state, opening, now);
 }
 
-/** True while the followed session has a run that is not idle. */
 export function busy(state: State): boolean {
   return (followedSession(state)?.view?.execution.kind ?? "idle") !== "idle";
 }
 
-/** Follows the transcript tail again. */
 export function following(state: State): State {
   return withLocal(state, {
     transcript: { ...state.local.transcript, following: true, window: { kind: "tail" } },

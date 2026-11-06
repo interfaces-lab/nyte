@@ -3,7 +3,6 @@ import type { ByteReader, Json, OutputFrame, SdkErrorCode, SdkErrorWire } from "
 import { dev } from "@nyte-ai/core";
 import { parseJson } from "./json.ts";
 
-/** Maps each error code to the HTTP status the handler answers it with. */
 export const errorStatus = {
   invalid: 400,
   unauthenticated: 401,
@@ -16,7 +15,6 @@ export const errorStatus = {
   timeout: 504,
 } as const satisfies Record<SdkErrorCode, number> satisfies Record<SdkErrorWire["code"], number>;
 
-/** Names the request header that carries an operation's JSON input when the body carries its bytes. */
 export const INPUT_HEADER = "X-Nyte-Input";
 
 /** Names the response header carrying the id of the host that answered, `X-Nyte-Host: <hostId>`, on every response a listener sends, so a client compares it with `expect.hostId` on its first answer (§43a, §43j). */
@@ -28,7 +26,6 @@ const DATA = 0;
 
 const CONTROL = 1;
 
-/** Serialises an `SdkError` as the wire error: code, message, host, issues and correlation. */
 export function encodeError(error: SdkError): SdkErrorWire {
   return {
     code: error.code,

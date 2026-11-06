@@ -377,11 +377,13 @@ function close(state: WorkbenchViewState, id: WorkbenchTabId): WorkbenchViewStat
         null)
       : state.active;
 
+  const selected = state.active === id && active !== null ? activate(pruned, active) : pruned;
   const slot = tabSlot(closed);
 
   return {
-    ...pruned,
+    ...selected,
     active,
+    layout: state.layout,
     expanded: state.expanded && active !== null,
     sidebars: tabs.some((tab) => tabSlot(tab) === slot)
       ? state.sidebars

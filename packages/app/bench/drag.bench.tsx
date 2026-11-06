@@ -19,13 +19,8 @@ import type { DragResult } from "./gates.ts";
 import { measure, nextFrame, Page, readCase, SIMD } from "./page.tsx";
 import { quantile } from "./stats.ts";
 
-/**
- * Pointer moves per drag. A drag paints between moves, so each move starts after a frame, and each
- * move writes every pane's new box straight to its element, as the separator does.
- */
 const MOVES = 32;
 
-/** The leading pane's part of the row during the drag, swept once from one end to the other. */
 const RATIO_FROM = 0.4;
 
 const RATIO_TO = 0.6;

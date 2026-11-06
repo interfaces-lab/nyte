@@ -20,7 +20,6 @@ function attention(server: McpServerView): number {
   return server.state.kind === "failed" || server.state.kind === "needs-sign-in" ? 0 : 1;
 }
 
-/** A server's state as a short badge: the tool count when connected. */
 export function serverStatus(state: McpServerState): NonNullable<Choice["status"]> {
   switch (state.kind) {
     case "connected":
@@ -44,7 +43,6 @@ export function serverStatus(state: McpServerState): NonNullable<Choice["status"
   }
 }
 
-/** An exposure as `mcp.json` names it. */
 export function exposureName(exposure: McpExposure): McpExposureName {
   switch (exposure) {
     case "model":
@@ -62,14 +60,12 @@ export function exposureName(exposure: McpExposure): McpExposureName {
   }
 }
 
-/** Where a server runs: its url, or its command line. */
 export function target(server: McpServerView): string {
   return server.transport.kind === "http"
     ? server.transport.url
     : [server.transport.command, ...server.transport.args].join(" ");
 }
 
-/** `/mcp`'s rows: servers that need attention first, then the rest, then problems in `mcp.json`. */
 export function mcpServerChoices(view: McpView): readonly Choice[] {
   const servers = view.servers
     .toSorted((left, right) => attention(left) - attention(right))
@@ -100,7 +96,6 @@ export function mcpServerChoices(view: McpView): readonly Choice[] {
   ];
 }
 
-/** What can be done to one server, from its state. */
 export function mcpActionChoices(server: McpServerView): readonly Choice[] {
   const where = server.override ?? server.path;
   const enabled = server.state.kind !== "disabled";
@@ -125,7 +120,6 @@ export function mcpActionChoices(server: McpServerView): readonly Choice[] {
   ];
 }
 
-/** The details view of one server. */
 export function mcpDetailLines(server: McpServerView): readonly string[] {
   const { state } = server;
 

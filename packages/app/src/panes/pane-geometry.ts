@@ -1,17 +1,12 @@
 import type { CSSProperties } from "react";
 import type { Layout, LayoutNode, PaneId, SplitDirection, SplitId, TabContent } from "./layout.ts";
 
-/**
- * A length as `px + fraction × the layout's extent on its axis + gaps × the separator size`. Every
- * edge is linear in the container's size, so a container resize restyles nothing and runs no script.
- */
 export interface Linear {
   readonly px: number;
   readonly fraction: number;
   readonly gaps: number;
 }
 
-/** A box in reading order: `x` runs along the inline axis, `y` along the block axis. */
 export interface Box {
   readonly x: Linear;
   readonly y: Linear;
@@ -19,7 +14,6 @@ export interface Box {
   readonly height: Linear;
 }
 
-/** The handle between a split's child at `index` and the next child in view. */
 export interface Separator {
   readonly split: SplitId;
   readonly index: number;
@@ -46,7 +40,6 @@ const WHOLE: Box = {
   height: { px: 0, fraction: 1, gaps: 0 },
 };
 
-/** Each pane's box and each separator. A zoomed pane covers the layout; the others keep their boxes under it. */
 export function layoutGeometry<Content extends TabContent>(layout: Layout<Content>): Geometry {
   const placed = place(layout.root, WHOLE);
   const panes = new Map(placed.panes);
@@ -56,7 +49,6 @@ export function layoutGeometry<Content extends TabContent>(layout: Layout<Conten
   return { panes, separators: placed.separators };
 }
 
-/** Logical inset and size properties, so a right-to-left layout mirrors without its own geometry. */
 export function boxStyle(
   box: Box,
   gap: string,
@@ -74,10 +66,6 @@ export function boxStyle(
   };
 }
 
-/**
- * Both edges round to a whole pixel and the size is their difference, so boxes that share an edge
- * share its rounding: no pane, separator or line lands on a half pixel at any container size.
- */
 function snappedSpan(start: Linear, length: Linear, extent: string, gap: string) {
   const from = `round(${linearCss(start, extent, gap)}, 1px)`;
   const to = `round(${linearCss(add(start, length), extent, gap)}, 1px)`;

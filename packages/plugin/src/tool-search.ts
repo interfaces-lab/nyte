@@ -6,7 +6,6 @@ import type { Plugin } from "@nyte-ai/plugin/core";
 
 export const DEFAULT_SEARCH_LIMIT = 8;
 
-/** A tool as the ranker sees it: its name and the text {@link createToolSearchDocument} builds. */
 export type ToolSearchDocument = { readonly name: string; readonly text: string };
 
 const STOP_WORDS: ReadonlySet<string> = new Set([
@@ -154,7 +153,6 @@ export function tokenize(text: string): readonly string[] {
     .map(stem);
 }
 
-/** So `issues` matches `issue` and `searches` matches `search`. */
 function stem(term: string): string {
   if (term.length > 4 && term.endsWith("ies")) return `${term.slice(0, -3)}y`;
 
@@ -187,7 +185,6 @@ export function createToolSearchDocument(
   return { name: tool.name, text: parts.filter((part) => part.trim() !== "").join(" ") };
 }
 
-/** Descriptions and property names of a JSON Schema, through `items` and `anyOf`, `oneOf` and `allOf`. */
 function describeSchema(schema: Json | undefined): readonly string[] {
   if (schema === undefined || !isJsonObject(schema)) return [];
   const properties = isJsonObject(schema.properties) ? Object.entries(schema.properties) : [];

@@ -1,10 +1,3 @@
-/**
- * The core plugin that holds the release-notes session to reading: `read` and `list`, and `bash`
- * only for read-only git and gh commands and the text tools that search or trim their output.
- * `scripts/release.mjs` copies it into the host's plugin directory and loads it for that one
- * session through `plugins.replace`, so it stays free of imports: the host imports it as a file.
- */
-
 const AGENT = "release-notes";
 
 const DENIED =
@@ -28,7 +21,6 @@ const GIT_READS = [
   "status",
 ];
 
-/** Whether `refspec` writes only remote-tracking refs or tags; one without a destination writes `FETCH_HEAD` alone. */
 function fetchesSafely(refspec) {
   const destination = refspec.replace(/^\+/u, "").split(":")[1];
 
@@ -40,7 +32,6 @@ function fetchesSafely(refspec) {
   );
 }
 
-/** `git fetch` without a hook into what runs on either side or a refspec that writes local branches. */
 function allowedFetch(args) {
   if (args.some((arg) => /^(--upload-pack|--refmap|--recurse-submodules|-u)/u.test(arg)))
     return false;
@@ -73,7 +64,6 @@ function allowedGh(args) {
   );
 }
 
-/** One command per pipe segment; `sort` and `uniq` write to a file they are given, so only flags may follow them. */
 export function allowedCommand(command) {
   if (/[;&`$<>()\n\\]/u.test(command)) return false;
 

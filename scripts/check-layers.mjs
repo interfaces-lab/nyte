@@ -1,10 +1,3 @@
-/**
- * `pnpm layers` fails when a folder of a layered source tree imports a folder in a higher layer.
- * Each entry of `ENTRIES` names a tree by its `source`, lists its `layers` and the doc that says
- * what each folder owns. Type-only imports count too: the layers say where a reader finds a
- * concept, not only what loads at run time. Tests and fixtures are left out so they can drive any
- * layer.
- */
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
@@ -14,11 +7,6 @@ import { API } from "@typescript/native/sync";
 
 const root = resolve(import.meta.dirname, "..");
 
-/**
- * `layers` is lowest first; a folder may import its own layer or below. Type-only imports in a
- * `typeReach` file may reach a higher layer; its value imports may not. `unplaced` names files
- * and folders that belong to no layer.
- */
 const ENTRIES = [
   {
     source: "packages/app/src",

@@ -7,14 +7,12 @@ declare global {
   }
 }
 
-/** Counts one selection or publication under `name` while tracing is on, so a test can read `window.nyteWorkCounts` to compare how much work two builds did. */
 export function countWork(name: string): void {
   if (!tracing.enabled) return;
   const counts = (window.nyteWorkCounts ??= {});
   counts[name] = (counts[name] ?? 0) + 1;
 }
 
-/** Counts each commit of the calling component under `name`, after the commit so the React Compiler cannot memoize the count away. */
 export function useCommitCount(name: string): void {
   // oxlint-disable-next-line nyte-code/no-direct-effect -- counts commits; render-time counting would be memoized away or doubled
   useLayoutEffect(() => countWork(name));

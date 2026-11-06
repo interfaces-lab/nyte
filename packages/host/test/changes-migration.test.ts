@@ -11,7 +11,6 @@ import { chatOnly, fakeModels } from "./fixtures/fake-models.ts";
 
 const folders: string[] = [];
 
-/** How many events core replays before it checkpoints a fold. */
 const REPLAY_EVENTS = 1_024;
 
 afterEach(async () => {

@@ -28,7 +28,6 @@ const styles = create({
   shell: { flex: 1, minHeight: 0, position: "relative" },
 });
 
-/** The app under a bar naming the desktop it reaches, with the actions that leave it. */
 export function DesktopFrame({
   name,
   actions,

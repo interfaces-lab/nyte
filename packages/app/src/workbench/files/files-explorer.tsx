@@ -86,9 +86,8 @@ export function FilesExplorer({
     const root = latest.current.workspace?.path;
 
     if (root === undefined) return undefined;
-    const separator = nyte.platform === "win32" ? "\\" : "/";
 
-    return `${root.replace(/[\\/]$/u, "")}${separator}${relative.replace(/\/$/u, "")}`;
+    return `${root.replace(/\/$/u, "")}/${relative.replace(/\/$/u, "")}`;
   };
 
   const refresh = (): void => {

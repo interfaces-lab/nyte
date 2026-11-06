@@ -38,13 +38,6 @@ interface Handler<N extends HookName> {
 
 type Handlers = { [N in HookName]: Handler<N>[] };
 
-/**
- * What a client hands the plugins it mounts: its connection, the frameworks
- * it draws, the session input goes to, the sessions someone is looking at,
- * and where notices and plugin errors go.
- *
- * @category plugins
- */
 export interface MountOptions {
   readonly connection: Connection;
   readonly plugins: readonly Plugin[];
@@ -55,11 +48,6 @@ export interface MountOptions {
   readonly report: (plugin: string, message: string) => void;
 }
 
-/**
- * The mounted client plugins: their renderers and the hooks a client fires.
- *
- * @category plugins
- */
 export interface ClientPlugins {
   readonly ids: readonly string[];
   /** The view a plugin renderer draws for a part, or undefined when none draws its kind. */
@@ -71,7 +59,6 @@ export interface ClientPlugins {
   dispose(): Promise<void>;
 }
 
-/** A derive is the only function a registry takes; every item is a plain record. */
 function derives<T>(entry: T | Derive<T>): entry is Derive<T> {
   return typeof entry === "function";
 }

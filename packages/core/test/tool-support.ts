@@ -32,7 +32,6 @@ export const echo = {
   },
 } satisfies ToolDefinition<{ text: string }>;
 
-/** A plugin that contributes `definitions` as its tools. */
 export function toolPlugin(definitions: readonly ToolDefinition[]): Plugin<"core"> {
   return { id: "test", contribute: { tools: definitions } };
 }
@@ -59,7 +58,6 @@ export async function liveRun(kernel: Kernel, session: SessionId): Promise<RunId
   return run.id;
 }
 
-/** Runs a tool call on the session's plugin runtime once it has loaded the session's tools. */
 export async function call(
   kernel: Kernel,
   input: {

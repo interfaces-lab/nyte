@@ -1,18 +1,3 @@
-/**
- * Bundles the TUI for every release target from one machine.
- *
- * `compile` statically defines `process.platform`, so a bundle only resolves the
- * native modules its own target reaches. Building the host target alone
- * therefore says nothing about the others: a missing Linux native module stayed
- * invisible on macOS until the Linux runner tried to compile it. Bundling each
- * target here, with the same defines the real build uses, surfaces that without
- * a push. Resolution is the whole point, so this skips `compile` and never
- * downloads a target runtime.
- *
- * A target whose native module this machine has no reason to install is
- * reported as skipped rather than failed. On a Linux runner both libc variants
- * are installed, so the case that actually broke the release is covered.
- */
 import { join } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -68,11 +53,6 @@ for (const target of targets) {
     continue;
   }
 
-  /**
-   * pnpm installs native modules only for architectures this machine can use, so
-   * a bundle that fails solely on its own target's native module proves nothing
-   * about the source. Anything else is a real break.
-   */
   const unrelated = outcome.split("; ").filter((message) => !message.includes("@opentui/core-"));
 
   if (unrelated.length === 0) {

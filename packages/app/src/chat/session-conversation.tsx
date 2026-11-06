@@ -225,7 +225,6 @@ function TranscriptColumn({
   );
 }
 
-/** Reads the pane's focus below the conversation, so focusing another pane redraws only what follows it. */
 function PaneFocus({
   pane,
   children,
@@ -242,7 +241,6 @@ function ActivationNotice({ activation }: { readonly activation: Activation }): 
   return null;
 }
 
-/** Mounted only once the view's first frame lands, so the transcript keeps the read mark the visit opened at. */
 function MarkSeen({ sessionId }: { readonly sessionId: SessionId }): ReactElement | null {
   const tip = useChats((chats) => chats.get(sessionId)?.unreadTip?.commit);
   const looking = useChatWindow((snapshot) => snapshot.looking.has(sessionId));
@@ -258,8 +256,6 @@ function SeeTip({ sessionId }: { readonly sessionId: SessionId }): null {
   return null;
 }
 
-/** A chat inside its own folder, so a hidden or split chat never reads the folder the window has open. */
-/** A side chat inside its parent's side-chat window: its transcript and composer only. */
 function SideConversation({
   paneId,
   sessionId,

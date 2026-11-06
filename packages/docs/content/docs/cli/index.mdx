@@ -12,9 +12,9 @@ nyte login
 nyte
 ```
 
-`nyte` keeps chats in the same database as the desktop app, `~/.nyte/nyte.db`, so a chat you start
-in one shows up in the other. To get one answer without the interface, for a script or a pipe, use
-[print mode](/docs/cli/print-mode).
+`nyte` is a client of your machine's one host, the same host the desktop app uses, so a chat you
+start in one shows up in the other. The host keeps chats in `~/.nyte/nyte.db`. To get one answer
+without the interface, for a script or a pipe, use [print mode](/docs/cli/print-mode).
 
 ## Start and resume chats [#start-and-resume]
 
@@ -39,19 +39,19 @@ A message you typed but didn't send is printed as well, after `Not sent:`.
 
 These flags work with `nyte` and with [print mode](/docs/cli/print-mode).
 
-| Flag                     | What it does                                                                                                                |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
-| `--model <id>`           | Use this model. Give `provider/id`, or an `id` alone to use the first signed-in provider that offers it                     |
-| `--provider <id>`        | The provider for `--model`                                                                                                  |
-| `--effort <level>`       | Thinking level: `off`, `minimal`, `low`, `medium`, `high`, `xhigh` or `max`                                                 |
-| `--trust`, `--no-trust`  | Save whether this folder's project files load. See [trust](#trust)                                                          |
-| `--no-context-files`     | Start new chats without `AGENTS.md` or `CLAUDE.md`. Can't be combined with `--resume` or `--session`                        |
-| `--host-url <url>`       | Attach to a running [`nyte host`](#nyte-host) instead of opening the database yourself. The token goes in `NYTE_HOST_TOKEN` |
-| `--resume`, `-c`         | Continue the latest chat, or the one you name                                                                               |
-| `--session <session-id>` | Continue this chat. Can't be combined with `--resume`                                                                       |
-| `--minimal`              | Compact mode. Needs a terminal on stdin and stdout, and can't be combined with `-p`, `--json` or `--quiet`                  |
-| `--version`, `-v`        | Print the installed version                                                                                                 |
-| `--help`, `-h`           | Print help. `nyte <command> --help` prints help for one command                                                             |
+| Flag                     | What it does                                                                                                                                   |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--model <id>`           | Use this model. Give `provider/id`, or an `id` alone to use the first signed-in provider that offers it                                        |
+| `--provider <id>`        | The provider for `--model`                                                                                                                     |
+| `--effort <level>`       | Thinking level: `off`, `minimal`, `low`, `medium`, `high`, `xhigh` or `max`                                                                    |
+| `--trust`, `--no-trust`  | Save whether this folder's project files load. See [trust](#trust)                                                                             |
+| `--no-context-files`     | Start new chats without `AGENTS.md` or `CLAUDE.md`. Can't be combined with `--resume` or `--session`                                           |
+| `--host-url <url>`       | Attach to the host at this URL instead of the one [`host.json`](#nyte-host) names. It never starts a host. The token goes in `NYTE_HOST_TOKEN` |
+| `--resume`, `-c`         | Continue the latest chat, or the one you name                                                                                                  |
+| `--session <session-id>` | Continue this chat. Can't be combined with `--resume`                                                                                          |
+| `--minimal`              | Compact mode. Needs a terminal on stdin and stdout, and can't be combined with `-p`, `--json` or `--quiet`                                     |
+| `--version`, `-v`        | Print the installed version                                                                                                                    |
+| `--help`, `-h`           | Print help. `nyte <command> --help` prints help for one command                                                                                |
 
 Each flag may appear once. Setting `NYTE_MODEL` has the same effect as `--model` when you don't pass
 it.
@@ -166,13 +166,13 @@ credential takes precedence over it, and `nyte logout` leaves it alone. See
 
 ## Update [#update]
 
-| Command                         | What it does                                                                 |
-| ------------------------------- | ---------------------------------------------------------------------------- |
-| `nyte update`                   | Install the newest release on your channel                                   |
-| `nyte update stable`, `nightly` | Switch channels and install that channel's newest release, even an older one |
-| `nyte update <version>`         | Install that version, such as `0.2.0`                                        |
-| `nyte update --check`           | Say whether an update is available, without installing it                    |
-| `nyte update --models`          | Refresh the model list from every provider, without updating `nyte`          |
+| Command                         | What it does                                                           |
+| ------------------------------- | ---------------------------------------------------------------------- |
+| `nyte update`                   | Install the newest release on your channel                             |
+| `nyte update stable`, `nightly` | Switch channels; install that channel's newest release when it's newer |
+| `nyte update <version>`         | Install that version, such as `0.2.0`, even an older one, after asking |
+| `nyte update --check`           | Say whether an update is available, without installing it              |
+| `nyte update --models`          | Refresh the model list from every provider, without updating `nyte`    |
 
 `nyte update` downloads the release, verifies its checksum and replaces the binary. Restart `nyte`
 to use the new version. It exits with 1 when the update fails or can't run, for example when no
@@ -185,14 +185,14 @@ chats, as in [Remote access](/docs/remote-access). This is separate from `nyte l
 in to a model provider.
 
 The first time, `nyte account` opens an approval page in your browser and prints a code to enter
-there. Approve only a request you started. Once linked, it shares the machine until you press
-Ctrl+C. Any running `nyte` or Nyte desktop app keeps sharing it after that.
+there. Approve only a request you started. Once linked, the machine's host shares it for as long as
+the host runs, so it stays shared after you press Ctrl+C.
 
-| Command               | What it does                                              |
-| --------------------- | --------------------------------------------------------- |
-| `nyte account`        | Link this machine, or share it if it's linked             |
-| `nyte account status` | Print the link: name, account, address, relay and devices |
-| `nyte account unlink` | Remove this machine from the account                      |
+| Command               | What it does                                                            |
+| --------------------- | ----------------------------------------------------------------------- |
+| `nyte account`        | Link this machine and turn sharing on, then show the relay until Ctrl+C |
+| `nyte account status` | Print the link: name, account, address, relay and devices               |
+| `nyte account unlink` | Remove this machine from the account                                    |
 
 ## MCP servers [#mcp]
 
@@ -244,15 +244,23 @@ when it asks.
 
 ## Serve your chats: `nyte host` [#nyte-host]
 
-Each `nyte` opens the chat database itself. `nyte host` instead serves it on `127.0.0.1`, and other
-`nyte` processes attach to it with `--host-url`:
+Every chat runs on your machine's one host. `nyte` attaches to the host `~/.nyte/host.json` names.
+With none running, it starts `nyte host --log` in the background and waits up to 20 seconds for it.
+That host keeps running after `nyte` exits, so quitting leaves its runs and background commands
+going.
+
+`nyte host` serves that host in the foreground:
 
 ```sh
 nyte host
 ```
 
-It prints the URL and writes the URL, a token and its process id to `~/.nyte/host.json`, readable
-only by you. Attach from another terminal with the token from that file:
+It serves on `127.0.0.1`, and off Windows on the local socket `~/.nyte/host.sock`. It prints the URL
+on stdout and writes the URL, a token, its process id and the socket path to `~/.nyte/host.json`, readable
+only by you. It keeps its port and token across restarts, so attached clients resume.
+
+To attach to a host that `host.json` doesn't name, pass its URL and put its token in
+`NYTE_HOST_TOKEN`:
 
 ```sh
 NYTE_HOST_TOKEN=<token> nyte --host-url http://127.0.0.1:<port>
@@ -261,11 +269,16 @@ NYTE_HOST_TOKEN=<token> nyte --host-url http://127.0.0.1:<port>
 `nyte` removes `NYTE_HOST_TOKEN` from its environment once it reads it, so commands the agent runs
 don't inherit it.
 
-| Behavior      | Detail                                                                          |
-| ------------- | ------------------------------------------------------------------------------- |
-| One at a time | A second `nyte host` exits with 1 and names the one that's running              |
-| `--json`      | Prints one line: `{"type":"listening","url":...,"endpoint":...,"pid":...}`      |
-| Stopping      | Ctrl+C, `SIGTERM` or `SIGHUP` stops it with exit code 0 and removes `host.json` |
+| Behavior      | Detail                                                                                                                            |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| One at a time | `nyte host` holds `~/.nyte/host.lock`. A second one on the same home exits 1 and names the running one's pid and URL              |
+| Output        | The URL on stdout. Where it listens, and a line when it stops, on stderr                                                          |
+| `--log`       | Appends the listening line, with its time, and the error it stops on, to `~/.nyte/logs/host.log` instead of stdout                |
+| `--json`      | Prints one line: `{"type":"listening","url":...,"socket":...,"endpoint":...,"pid":...}`, where `endpoint` is the `host.json` path |
+| Stopping      | Ctrl+C, `SIGTERM` or `SIGHUP` stops it with exit code 130, 143 or 129 and removes `host.json`                                     |
+
+A running host doesn't see variables you export afterwards, such as an API key. Save keys with
+[`nyte login`](#login).
 
 ## List the host's operations: `nyte api` [#nyte-api]
 
@@ -277,9 +290,24 @@ nyte api describe head.send
 ```
 
 `describe` prints the operation's access rules and its input and output JSON Schemas. `--json`
-prints the same as JSON. Without `--host-url`, `nyte api` reads the operations this `nyte` build
-serves and starts nothing. With `--host-url` and `NYTE_HOST_TOKEN`, it asks that host, so the
+prints the same as JSON. Without `--host-url`, `list` and `describe` read the operations this `nyte`
+build serves and start nothing. With `--host-url` and `NYTE_HOST_TOKEN`, they ask that host, so the
 answer matches the host's version.
+
+`nyte api call <operation> [json]` calls one operation and prints its output as JSON. It reads the
+input from the argument, or else from stdin, and sends `{}` when both are empty. A failed call
+prints the error and exits with 1.
+
+`nyte events` subscribes to the host's events and prints each one as a JSON line until Ctrl+C. Pass
+`--scope` once per scope: `host` (the default), `session/<id>` or `client/<id>`.
+
+```sh
+nyte api call sessions.list '{}'
+nyte events --scope host --scope session/<session-id>
+```
+
+`call` and `events` reach the running host over its local socket when it has one. They don't start
+a host, so they fail when none runs.
 
 ## Files [#files]
 
@@ -290,7 +318,8 @@ answer matches the host's version.
 | `.nyte/settings.json`   | A project's settings, in its folder                      |
 | `~/.nyte/mcp.json`      | MCP servers for every folder                             |
 | `.nyte/mcp.json`        | MCP servers for one folder                               |
-| `~/.nyte/host.json`     | The URL and token of a running `nyte host`               |
+| `~/.nyte/host.json`     | The URL and token of the running host                    |
+| `~/.nyte/logs/host.log` | The log of a host that `nyte` started                    |
 
 [Environment variables](/docs/environment-variables#variables-nyte-reads) lists the variables that
 move these files or change how `nyte` runs.

@@ -43,13 +43,6 @@ export const worktreesPlugin: Plugin<"core"> = {
   contribute: { settings: [BRANCH_PREFIX, IDLE_DAYS, MAX_COUNT] },
 };
 
-/**
- * Answers the workspace that isolates `session` in a git worktree of `source`,
- * making it on the first call: the provider checks a new branch out with the
- * source's uncommitted changes, and the folder is registered with an
- * `isolation` naming the session, so it follows the source's trust. A later call for the session,
- * as a replayed start makes, answers the same workspace and makes nothing.
- */
 export async function isolateWorkspace(
   kernel: Kernel,
   principal: PrincipalId,
@@ -125,16 +118,8 @@ export async function isolateWorkspace(
   });
 }
 
-/** How old a worktree's workspace must be before a sweep releases it for having no chat, so a start still registering its chat (in another process over the same store) keeps its worktree. */
 const ORPHAN_MS = 60_000;
 
-/**
- * Removes the worktree that isolated `session` once no chat is left on it,
- * then forgets its workspace. The provider keeps a folder that holds
- * uncommitted changes and a branch with commits; a kept folder, or a removal
- * that fails, keeps its workspace too, so the folder stays listed under its
- * source and the next sweep tries again.
- */
 export async function releaseWorktree(
   kernel: Kernel,
   session: SessionId,
@@ -175,12 +160,6 @@ export async function releaseWorktree(
   changed(kernel, workspace);
 }
 
-/**
- * Releases every worktree no chat is on: one whose chat was removed before
- * its release committed, as a crash leaves it, or moved to another workspace.
- * Converges: a folder kept for its changes is tried again on the next sweep.
- * A worktree younger than a minute is left to the start registering it.
- */
 export async function sweepWorktrees(kernel: Kernel): Promise<void> {
   const now = Date.now();
 

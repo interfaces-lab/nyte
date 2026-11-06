@@ -9,7 +9,6 @@ import {
 } from "./model.ts";
 import type { LaunchKind, WorkbenchScope, WorkbenchTab, WorkbenchViewState } from "./model.ts";
 
-/** The tabs the strip and rail list: those the scope allows, with the focused editor group's files alone. */
 export function visibleTabs(
   view: WorkbenchViewState,
   scope: WorkbenchScope,
@@ -32,7 +31,6 @@ export function activeWorkbenchTab(
   return tabs.find((tab) => tab.id === view.active) ?? tabs[0] ?? null;
 }
 
-/** The tab on screen: none while the workbench is collapsed or the maximized chat covers it. */
 export function shownWorkbenchTab(
   view: WorkbenchViewState,
   scope: WorkbenchScope,
@@ -50,10 +48,8 @@ interface RailLauncher {
 }
 
 interface RailModel {
-  /** Whether the Changes row shows; it stands in for the Changes launcher. */
   readonly changes: boolean;
   readonly openTabs: readonly WorkbenchTab[];
-  /** What opens something not already listed: a singleton kind's launcher goes once its tab is open. */
   readonly launchers: readonly RailLauncher[];
 }
 

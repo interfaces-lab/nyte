@@ -13,10 +13,6 @@ import { PREVIEW_PATH, previewChat } from "./fixtures.ts";
 
 const ASKING = "Fix flaky login test";
 
-/**
- * What you see when a chat needs you: the sidebar's own rows, the app's icon in the Dock with
- * its badge, and the system notification. A channel that's off leaves the picture.
- */
 export function ActivityPreview({
   notification,
   badge,
@@ -93,7 +89,6 @@ export function ActivityPreview({
   );
 }
 
-/** macOS draws the banner, the Dock and its badge in its own font, not the app's. */
 const SYSTEM_FONT = "system-ui";
 
 const styles = create({

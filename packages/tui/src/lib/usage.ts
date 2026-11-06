@@ -30,7 +30,6 @@ function breakdownLines(total: Usage): readonly string[] {
   return cache.length === 0 ? [primary] : [primary, cache.join(" · ")];
 }
 
-/** The usage panel: every provider account, and the chat's tokens; a blank chat (`view` null) has none yet. */
 export function usageCard(view: HeadView | null, accounts: readonly ProviderUsage[]): UsageCard {
   const total = view?.usage;
 

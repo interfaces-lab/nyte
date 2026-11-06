@@ -8,11 +8,6 @@ const choices = [
   { value: "dark", label: "Dark" },
 ] as const;
 
-/**
- * The theme as three toggles from the package itself. Storage is unread on
- * the server, so nothing is pressed until hydration; pressing the current
- * choice again keeps it.
- */
 export function ThemeSwitch() {
   const theme = useTheme().theme;
 

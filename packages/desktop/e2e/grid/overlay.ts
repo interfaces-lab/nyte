@@ -7,11 +7,9 @@ import type { Rect } from "./collect.ts";
 export interface Mark {
   readonly label: string;
   readonly rect: Rect;
-  /** A line the mark should have met: a rail's x or a row's expected line top. */
   readonly target: { readonly axis: "x" | "y"; readonly at: number } | null;
 }
 
-/** Outlines each violation with its number, over the page, until `clearOverlay`. */
 export function drawOverlay(marks: readonly Mark[]): void {
   document.getElementById("__grid_overlay")?.remove();
   const ns = "http://www.w3.org/2000/svg";

@@ -15,7 +15,6 @@ export interface App {
   readonly kit: Kit;
 }
 
-/** A mermaid diagram drawn as text, with the size it takes on screen. */
 export interface Diagram {
   readonly text: string;
   readonly height: number;
@@ -29,7 +28,6 @@ export interface Kit {
   now(): number;
   report(origin: FailureReport["origin"], error: unknown): void;
   highlight(text: string, filetype: string): readonly TextChunk[] | null;
-  /** Draws a mermaid source as text; rejects when it is too large or does not parse. */
   diagram(source: string): Promise<Diagram>;
   blob(id: string): AsyncIterable<Uint8Array>;
   drawPart(message: PartMessage): Renderable | null;

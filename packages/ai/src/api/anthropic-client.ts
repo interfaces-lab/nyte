@@ -1,7 +1,3 @@
-/**
- * The Anthropic SDK client for a request: compat defaults, beta headers,
- * authentication (API key, OAuth, Copilot, OIDC federation) and header merging.
- */
 import Anthropic, { type ClientOptions } from "@anthropic-ai/sdk";
 import {
   ANTHROPIC_FEDERATION_RULE_ID_ENV,
@@ -55,11 +51,6 @@ export function getAnthropicCompat(
   };
 }
 
-/**
- * Default for `supportsToolReferences`: first-party Anthropic models except
- * Haiku (rejects client-side tool_reference blocks) and models that predate
- * tool search (Claude 3.x, Opus/Sonnet 4.0, Opus 4.1).
- */
 function defaultSupportsToolReferences(model: Model<"anthropic-messages">): boolean {
   if (model.provider !== "anthropic" || model.id.includes("haiku")) return false;
   const version = model.id.match(/^claude-(?:opus|sonnet|fable)-(\d+)(?:-(\d+))?(?:-|$)/);
@@ -71,7 +62,6 @@ function defaultSupportsToolReferences(model: Model<"anthropic-messages">): bool
   return major > 4 || (major === 4 && minor >= 5);
 }
 
-// appendAnthropicBeta accumulates flags across differently-cased beta headers, so each spelling keeps its latest value.
 export function mergeAnthropicHeaders(
   ...headerSources: (ProviderHeaders | undefined)[]
 ): ProviderHeaders {
@@ -175,10 +165,6 @@ let federationClient:
   | { key: string; fetch: typeof globalThis.fetch | undefined; client: Anthropic }
   | undefined;
 
-/**
- * The SDK client and whether it signs in as Claude Code. Adaptive thinking models have
- * interleaved thinking built in, so they skip the interleaved-thinking beta header.
- */
 export function createClient(
   model: Model<"anthropic-messages">,
   apiKey: string | undefined,

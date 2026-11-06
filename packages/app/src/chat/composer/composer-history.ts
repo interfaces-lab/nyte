@@ -7,7 +7,6 @@ const PROMPT_PAGE = 10;
 
 export type RecallDirection = "older" | "newer";
 
-/** Newest first. `before` is null once there is nothing older to read. */
 export interface PromptHistory {
   readonly prompts: readonly string[];
   readonly before: MessageId | null;
@@ -22,7 +21,6 @@ export function loadedPrompts(view: PromptPage | undefined): PromptHistory {
   );
 }
 
-/** Reads on before the prompt leading each page, so a long turn costs one read. */
 export async function readPrompts(
   head: Pick<Head, "history">,
   history: PromptHistory,
@@ -34,7 +32,6 @@ export async function readPrompts(
   return readPrompts(head, morePrompts(history, page), count);
 }
 
-/** `undefined` is the unsent draft. */
 export function recallStep(
   count: number,
   position: number | undefined,
@@ -48,7 +45,6 @@ export function recallStep(
   return position === undefined ? 0 : Math.min(position + 1, count - 1);
 }
 
-/** Only turn prompts count, since a read skips the steers inside a turn it jumps over. */
 function morePrompts(history: PromptHistory, page: PromptPage): PromptHistory {
   const leading = page.leadingPrompt;
   const turnPrompts = new Set(page.turns.map((turn) => turn.prompt));

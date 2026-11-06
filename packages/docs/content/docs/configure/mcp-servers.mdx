@@ -4,8 +4,8 @@ description: Give agents the tools of any MCP server, for every folder or for on
 ---
 
 An MCP server is a program that offers tools to agents: a docs search, a database, an issue
-tracker. Add one to Nyte and every chat can call its tools. Nyte connects to the server itself, so
-the chats in a folder share one connection, and you sign in once.
+tracker. Add one to Nyte and every chat can call its tools. The Nyte host connects to the server
+itself, so the chats in a folder share one connection, and you sign in once.
 
 ## Add a server [#add]
 
@@ -103,10 +103,11 @@ environment variable `NAME` when it connects:
 "headers": { "Authorization": "Bearer ${TRACKER_TOKEN}" }
 ```
 
-The value comes from the environment Nyte itself started with, so export the variable before you
-start `nyte`, or set it in the login shell the desktop app reads. Variables from **Settings >
-Environment variables** don't count here. When a variable is missing, the server fails and says
-which variable to set; restart Nyte after you set it.
+The value comes from the environment of the Nyte host, which connects to the server. The host keeps
+the environment it started with: the shell of the `nyte` command that started it, or the login shell
+the desktop app reads. A variable you export after the host started doesn't reach it. Variables
+from **Settings > Environment variables** don't count here. When a variable is missing, the server
+fails and says which variable to set. Set it, then restart the [host](/docs/cli#nyte-host).
 
 `nyte mcp add` writes the same thing for you:
 
@@ -150,9 +151,10 @@ Exposure decides how an agent reaches a server's tools. Every tool is named
 so a server with dozens of tools fills the model's context. The other modes keep the tools out of
 the request until the agent goes looking for them.
 
-Whatever the exposure, the agent is told about each server in one line: its name, how to reach its
-tools, and the server's `description`, or the first line of the instructions the server sends. It's
-also told which servers failed or are waiting for you to sign in.
+The agent is told about each server whose tools it can reach in one line: its name, how to reach
+its tools, and the server's `description`, or the first line of the instructions the server sends.
+It's also told which servers failed or are waiting for you to sign in. A server whose tools are all
+`hidden` gets no line.
 
 `toolExposure` sets single tools apart from the rest of their server. An exact name wins, then the
 first pattern that matches:

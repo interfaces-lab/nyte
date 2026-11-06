@@ -65,12 +65,6 @@ export const transcriptRenderers: readonly Renderer[] = [
   ),
 ];
 
-/**
- * The React renderers as a client plugin.
- *
- * @category plugins
- * @since 0.1.0
- */
 export default {
   id: "transcript",
   contribute: { renderers: transcriptRenderers },

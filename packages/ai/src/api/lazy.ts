@@ -32,11 +32,6 @@ export function lazyStream(
   return outer;
 }
 
-/**
- * Wraps a dynamically imported API implementation module as `ProviderStreams`.
- * The module loads on first stream call; the host's import cache deduplicates
- * loads. Load failures terminate the returned stream with an error event.
- */
 export interface LazyApiCapabilities {
   fetchDeferred?: boolean;
   cancelDeferred?: boolean;

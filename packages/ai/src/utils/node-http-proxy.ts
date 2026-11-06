@@ -1,6 +1,3 @@
-/**
- * Resolves the HTTP(S) proxy URL for a target from the usual proxy environment variables, honoring NO_PROXY.
- */
 import type { ProviderEnv } from "../types.ts";
 import { getProviderEnvValue } from "./provider-env.ts";
 

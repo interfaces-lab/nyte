@@ -107,7 +107,6 @@ type Plan = { readonly args: Json; readonly class: ToolClass } & (
 interface Settled {
   readonly outcome: ToolOutcome;
   readonly files: readonly FileChange[] | null;
-  /** The session's files as they now differ from its first snapshot, or null when this call changed nothing. */
   readonly thread: readonly FileChange[] | null;
 
   readonly snapshot: SnapshotId | null;
@@ -646,11 +645,6 @@ async function conclude(
   return { outcome, files, thread, snapshot: to, path, unattributed };
 }
 
-/**
- * Holds the text a tool outcome puts in the model's context to `CLIP_CHARS`,
- * whichever tool or hook made it. A tool that clips its own text to suit it
- * stays under the limit and passes through.
- */
 function clipOutcome(outcome: ToolOutcome): ToolOutcome {
   if (outcome.kind === "failed") return { ...outcome, message: clipText(outcome.message, "ends") };
 

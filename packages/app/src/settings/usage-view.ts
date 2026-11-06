@@ -131,7 +131,6 @@ export function timeLabel(at: number): string {
   return new Date(at).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 }
 
-/** How a window reads in a sentence: "last 30 days", or "all time". */
 export function windowLabel(window: UsageWindow): string {
   return window.sinceDay === null
     ? "all time"
@@ -574,7 +573,6 @@ export interface LimitMeter {
   readonly key: string;
   readonly label: string;
   readonly used: number;
-  /** Time left until the window resets, like "4h 12m"; empty when the provider gave no reset time. */
   readonly resetsIn: string;
   readonly resetsAt: string;
 }
@@ -595,7 +593,6 @@ const HOUR_MS = 60 * MINUTE_MS;
 
 const DAY_MS = 24 * HOUR_MS;
 
-/** How long until `at`, to the two largest units: "5d 3h", "4h 12m", "8m". */
 export function formatResetsIn(at: number, now: number): string {
   const left = at - now;
 
@@ -612,7 +609,6 @@ export function formatResetsIn(at: number, now: number): string {
   return `${String(minutes)}m`;
 }
 
-/** One provider account's limit windows, in the order the provider reports them, as of `now`. */
 export function deriveAccount(usage: ProviderUsage, now: number): AccountLimits | null {
   const base = {
     key: usage.provider,

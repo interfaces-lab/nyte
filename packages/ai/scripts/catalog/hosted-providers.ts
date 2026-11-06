@@ -1,4 +1,3 @@
-/** Catalog models for providers that host or route other labs' models: inference clouds, gateways, and coding assistants. */
 import {
   CLOUDFLARE_AI_GATEWAY_ANTHROPIC_BASE_URL,
   CLOUDFLARE_AI_GATEWAY_COMPAT_BASE_URL,
@@ -126,7 +125,6 @@ const OPENCODE_OPENAI_COMPLETIONS_LONG_CACHE_RETENTION_UNSUPPORTED_MODELS = new 
   "opencode-go:kimi-k2.6",
 ]);
 
-/** Cloudflare Workers AI models, which use session affinity headers. */
 export function cloudflareWorkersAiModels(
   data: ModelsDevCatalog,
   metadata: ModelsDevMetadata,
@@ -152,11 +150,6 @@ export function cloudflareWorkersAiModels(
   return models;
 }
 
-/**
- * Cloudflare AI Gateway's OpenAI, Anthropic and Workers AI passthroughs, keyed `upstream/id`
- * in models.dev. The Anthropic and Workers AI passthroughs forward session affinity headers to
- * upstreams that use them for cache and routing affinity.
- */
 export function cloudflareAiGatewayModels(
   data: ModelsDevCatalog,
   metadata: ModelsDevMetadata,
@@ -204,7 +197,6 @@ export function cloudflareAiGatewayModels(
   return models;
 }
 
-/** Hugging Face Inference Providers models, which reject the developer role. */
 export function huggingFaceModels(
   data: ModelsDevCatalog,
   metadata: ModelsDevMetadata,
@@ -314,7 +306,6 @@ export function fireworksModels(
   return models;
 }
 
-/** NVIDIA NIM text models that NIM's live list serves under models.dev's id or its normalized spelling. */
 export function nvidiaModels(
   data: ModelsDevCatalog,
   nimModelIds: ReadonlyMap<string, string>,
@@ -386,7 +377,6 @@ function getTogetherThinkingLevelMap(
   return { ...TOGETHER_TOGGLE_REASONING_LEVEL_MAP };
 }
 
-/** Together AI's current models, under whichever key models.dev lists them. */
 export function togetherModels(data: ModelsDevCatalog, metadata: ModelsDevMetadata): Model<Api>[] {
   const togetherProvider = data.together ?? data.togetherai ?? data["together-ai"];
   const models: Model<Api>[] = [];
@@ -421,7 +411,6 @@ export function togetherModels(data: ModelsDevCatalog, metadata: ModelsDevMetada
   return models;
 }
 
-/** Baseten's current models, with thinking toggles passed as a chat-template argument. */
 export function basetenModels(provider: ModelsDevProvider | undefined): Model<Api>[] {
   if (!provider?.models) return [];
 
@@ -522,18 +511,6 @@ export function basetenModels(provider: ModelsDevProvider | undefined): Model<Ap
   return models;
 }
 
-/**
- * OpenCode Zen and Go models. The API follows models.dev's `provider.npm`: @ai-sdk/openai is
- * openai-responses, @ai-sdk/anthropic is anthropic-messages (the SDK appends /v1/messages to
- * the base URL), @ai-sdk/google is google-generative-ai, and anything else, including none or
- * @ai-sdk/openai-compatible, is openai-completions. Corrections over that data:
- * - OpenCode Kimi K2.6 accepts Anthropic-style thinking objects and rejects string thinking
- *   values or combined reasoning_effort.
- * - models.dev reports OpenCode Go's MiniMax M2.7 and Qwen 3.5/3.6 Plus as @ai-sdk/anthropic,
- *   but those endpoints either don't accept Anthropic SDK auth (MiniMax M2.7) or are served
- *   through the OpenAI-compatible /v1/chat/completions path (Qwen), so they use
- *   openai-completions with Bearer auth. Qwen/DashScope reads enable_thinking at the top level.
- */
 export function opencodeModels(data: ModelsDevCatalog, metadata: ModelsDevMetadata): Model<Api>[] {
   const variants = [
     {
@@ -649,11 +626,6 @@ export function opencodeModels(data: ModelsDevCatalog, metadata: ModelsDevMetada
   return models;
 }
 
-/**
- * GitHub Copilot models. Claude 4.x and 5.x route to the Anthropic Messages API; GPT, Grok,
- * OSWE, and MAI-Code models are only served through the Copilot /responses endpoint; the rest
- * use Chat Completions.
- */
 export function githubCopilotModels(
   data: ModelsDevCatalog,
   metadata: ModelsDevMetadata,

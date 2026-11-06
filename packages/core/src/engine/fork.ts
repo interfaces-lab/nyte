@@ -30,7 +30,6 @@ import {
 
 const LOG_PAGE = 256;
 
-/** What a fork keeps of its source's log: the history's own ids, so every event about them is copied. */
 interface Kept {
   readonly path: ReadonlySet<CommitId>;
   readonly prompts: ReadonlySet<MessageId>;
@@ -47,11 +46,6 @@ type History =
     }
   | Exclude<ForkOutcome, { readonly kind: "forked" }>;
 
-/**
- * Starts a chat whose main head is `source`'s history through `from`, main's tip by default. The
- * fork copies the logged events that history folds from, keeping their times, and points its refs
- * at the objects `source` already stored, so nothing is rewritten and `source` doesn't change.
- */
 export async function forkSession(
   kernel: Kernel,
   context: ConnectionContext,
@@ -150,12 +144,6 @@ export async function forkSession(
   });
 }
 
-/**
- * The events of `log` that fold main's history through `tip`: its commits, the messages and parts
- * they landed, the calls and runs behind those parts and main's configurations, all on the fork's
- * main head. A run behind `tip` that hasn't ended refuses the fork, since the copy would
- * show it working forever.
- */
 function forkHistory(log: readonly SessionEvent[], tip: CommitId): History {
   const commits = new Map(
     log.flatMap((event) => (event.kind === "commit" ? [[event.id, event] as const] : [])),
@@ -208,7 +196,6 @@ function forkHistory(log: readonly SessionEvent[], tip: CommitId): History {
   };
 }
 
-/** `event` as the fork copies it, or null when it isn't about the history the fork keeps. A user commit drops its siblings: they are edits that stay behind in the source. */
 function keep(event: SessionEvent, kept: Kept): SessionEvent | null {
   switch (event.kind) {
     case "commit":
@@ -245,7 +232,6 @@ function keep(event: SessionEvent, kept: Kept): SessionEvent | null {
   }
 }
 
-/** A copied event on the fork's main head. `seq: undefined` keeps the source's number out of the stored copy, which the store numbers anew. */
 function onMain(event: SessionEvent): DurableEvent {
   const copy = { ...event, head: event.head === null ? null : MAIN, seq: undefined };
 

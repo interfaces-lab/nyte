@@ -6,10 +6,8 @@ import { compileCanvas, localImports } from "@nyte-ai/plugin/core/canvas-compile
 import type { CompileError } from "@nyte-ai/plugin/core/canvas-compile";
 import { sha256 } from "../hash.ts";
 
-/** Each file a build read, with its sha256; null when it couldn't be read. */
 type Read = ReadonlyMap<string, string | null>;
 
-/** An unchanged file graph answers the previous build. */
 export function createViewCompiler(): (view: URL) => Promise<ViewBuild> {
   const remembered = new Map<string, { readonly read: Read; readonly build: ViewBuild }>();
 
@@ -36,7 +34,6 @@ export function createViewCompiler(): (view: URL) => Promise<ViewBuild> {
   };
 }
 
-/** Every file must sit inside the view's folder. A file that doesn't parse adds no imports; the compiler reports it. */
 async function readGraph(entry: string): Promise<
   | {
       readonly kind: "read";
@@ -80,7 +77,6 @@ async function readGraph(entry: string): Promise<
   return { kind: "read", entry: relative(root, entry).split(sep).join("/"), sources, read };
 }
 
-/** Resolves as the compiler does: as written, then `.tsx`, `.ts` and `index`. */
 async function resolveLocal(from: string, specifier: string): Promise<string | null> {
   const path = join(from, specifier);
   const bare = path.replace(/\.jsx?$/u, "");

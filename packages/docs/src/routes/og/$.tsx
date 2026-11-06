@@ -4,7 +4,6 @@ import { findPage, type DocPage } from "~/lib/docs";
 import { appName, designRoute } from "~/lib/shared";
 import { LandingCard, PageCard, cardFonts, cardSize } from "./-design-card";
 
-/** `/og/docs/build/composition/image.png` is the social card for that page. */
 export const Route = createFileRoute("/og/$")({
   server: {
     handlers: {

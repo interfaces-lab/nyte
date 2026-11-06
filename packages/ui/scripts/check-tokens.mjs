@@ -1,9 +1,3 @@
-/**
- * Keeps the token surface deliberate. Every handle must point at a declared
- * custom property, and the set of properties and handles must match
- * `test/token-lock.json`, so adding a token is a reviewed diff. `lock:tokens` rewrites
- * the lock after an intended change.
- */
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";

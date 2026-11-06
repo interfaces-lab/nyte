@@ -1,4 +1,3 @@
-/** Thinking-level maps the generator derives for each catalog model from models.dev and known provider quirks. */
 import type { Api, Model } from "../../src/types.ts";
 import { getEffortThinkingLevelMap } from "../models-dev-reasoning-options.ts";
 import {
@@ -54,7 +53,6 @@ const OPENAI_RESPONSES_NONE_REASONING_MODELS = new Set([
   "gpt-5.6-luna",
 ]);
 
-/** Model id fragments of the Anthropic models that think adaptively. */
 const ANTHROPIC_ADAPTIVE_THINKING_ID_PARTS = [
   "opus-4-6",
   "opus-4.6",
@@ -79,7 +77,6 @@ const ANTHROPIC_ADAPTIVE_THINKING_ID_PARTS = [
  */
 const ANTHROPIC_DISABLED_THINKING_MODEL = /(?:^|[./])claude-opus-5(?:-\d{8})?$/;
 
-/** Lowercased model id fragments of the Anthropic models that reject `temperature`. */
 const ANTHROPIC_FIXED_TEMPERATURE_ID_PARTS = [
   "opus-4-7",
   "opus-4.7",
@@ -93,10 +90,6 @@ function mergeThinkingLevelMap(model: Model<Api>, map: ThinkingLevelMap): void {
   model.thinkingLevelMap = { ...model.thinkingLevelMap, ...map };
 }
 
-/**
- * Checked manually against the authenticated GitHub Copilot /models endpoint on 2026-06-15.
- * Keep this to narrow corrections over models.dev metadata instead of snapshotting Copilot's catalog.
- */
 function getGitHubCopilotThinkingLevelOverride(modelId: string): ThinkingLevelMap | undefined {
   if (
     modelId === "claude-opus-4.7" ||
@@ -138,7 +131,6 @@ function supportsDirectReasoningEffort(model: Model<Api>): boolean {
   return compat.thinkingFormat === "openai" && compat.supportsReasoningEffort;
 }
 
-/** Maps models.dev's recorded effort options onto a model, a batch model reading its base model's. */
 export function applyModelsDevReasoningOptionMetadata(
   model: Model<Api>,
   metadata: ModelsDevMetadata,
@@ -191,20 +183,6 @@ function supportsOpenAiXhigh(modelId: string): boolean {
   );
 }
 
-/**
- * Applies the thinking levels each provider's models accept, in order, later maps winning:
- * - xAI models without verified effort options (e.g. grok-build-0.1) must not send the
- *   undocumented "none"/"minimal" efforts.
- * - Kimi K2.7 Code is always-thinking. Official docs say `thinking: { type: "disabled" }`
- *   is rejected, and callers can omit the thinking parameter to use the enabled default.
- * - Mercury 2 in instant mode (reasoning_effort: "none") disables tool calling, so "off" is
- *   unsupported and the openai-completions provider omits the reasoning param instead of
- *   defaulting to {reasoning:{effort:"none"}}. low/medium/high pass through verbatim;
- *   OpenRouter normalizes to Mercury's vocabulary.
- * - OpenCode Go exposes Kimi K2.6 thinking as on/off, not distinct effort tiers.
- * - OpenCode Zen Grok Build reasons by default but rejects explicit reasoningEffort.
- * - Ant Ling Ring reasons by default. Only high/xhigh have documented explicit effort controls.
- */
 export function applyThinkingLevelMetadata(model: Model<Api>): void {
   if (
     (model.api === "openai-responses" || model.api === "azure-openai-responses") &&

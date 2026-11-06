@@ -15,7 +15,6 @@ const id = asId<"session">("chat");
 const side = asId<"head">("side");
 const RETRY = "503 Service Unavailable";
 
-/** A plugin contributing one prompt section per entry of `sections`, read again each time it activates. */
 function sectioned(sections: Map<string, { text: string; order: number }>): Plugin<"core"> {
   return {
     id: "sectioned",
@@ -27,7 +26,6 @@ function sectioned(sections: Map<string, { text: string; order: number }>): Plug
   };
 }
 
-/** Models whose one model reads system messages mid-conversation when `updates`. */
 function models(updates: boolean): FakeModels {
   return fakeModels({
     models: [
@@ -39,7 +37,6 @@ function models(updates: boolean): FakeModels {
   });
 }
 
-/** Waits for `receipt` while moving fake time on, past every retry's backoff. */
 async function finish(receipt: { settled(): Promise<unknown> }): Promise<void> {
   let done = false;
   const settled = receipt.settled().finally(() => {
@@ -50,7 +47,6 @@ async function finish(receipt: { settled(): Promise<unknown> }): Promise<void> {
   await settled;
 }
 
-/** What a provider caches of each message: its role and what it says. */
 function shape(request: Request | undefined): readonly string[] {
   return (request?.context.messages ?? []).map(
     (message: Message) =>

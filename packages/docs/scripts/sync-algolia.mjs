@@ -1,12 +1,4 @@
 #!/usr/bin/env node
-/**
- * Replaces the Algolia index with the site's pages, read from a running copy
- * of the site, after each deploy:
- *
- *   ALGOLIA_APP_ID=… ALGOLIA_WRITE_KEY=… pnpm sync:algolia https://nyte.sh
- *
- * ALGOLIA_INDEX names the index; default `docs`, matching VITE_ALGOLIA_INDEX.
- */
 import process from "node:process";
 import { algoliasearch } from "algoliasearch";
 import { sync } from "fumadocs-core/search/algolia";

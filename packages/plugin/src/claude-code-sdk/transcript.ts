@@ -9,7 +9,6 @@ export type ContentBlock = Exclude<MessageParam["content"], string>[number];
 
 const IMAGE_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"] as const;
 
-/** Anthropic takes tool use ids of letters, digits, `_` and `-`, and other providers' ids can hold more. */
 function toolUseId(id: string): string {
   return id.replaceAll(/[^a-zA-Z0-9_-]/g, "_");
 }

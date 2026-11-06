@@ -15,7 +15,7 @@ import {
 } from "../../references/message-references.ts";
 import type { MessageReference } from "../../references/message-references.ts";
 import { useReferenceOpener } from "../../references/reference-opener.tsx";
-import { FileTypeIcon } from "../../components/file-type-icon.tsx";
+import { FileTypeIcon } from "@nyte-ai/ui/file-type-icon";
 import { composerStyles } from "./composer.stylex.ts";
 
 const EXCERPT_ICONS = {

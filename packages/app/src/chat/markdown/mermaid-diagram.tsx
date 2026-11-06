@@ -54,11 +54,6 @@ const styles = create({
 
 type DiagramState = DiagramResult | { readonly kind: "pending" };
 
-/**
- * beautiful-mermaid's ELK layout runs only on the main thread: in a worker it takes itself for
- * ELK's own worker script. Each diagram waits for a task of its own, so a chat full of them
- * doesn't lay out in one long task.
- */
 async function renderMermaid(source: string): Promise<DiagramResult> {
   const runtime = await loadDeferred("mermaid");
   await new Promise<void>((resolve) => {

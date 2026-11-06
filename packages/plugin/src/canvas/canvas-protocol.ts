@@ -149,15 +149,33 @@ export const KIT = {
   Divider: "{}: a hairline",
   Heading: "{ level?: 1 | 2 | 3 = 2, children }",
   Text: '{ size?: "xs" | "sm" | "base" | "lg", tone?: "primary" | "secondary" | "tertiary", weight?: "normal" | "medium" | "semibold", mono?: boolean, truncate?: boolean, align?: "start" | "center" | "end", children }',
-  Code: "{ block?: boolean, children: string }: monospace, inline or a block",
-  Stat: '{ label: string, value: ReactNode, detail?: ReactNode, tone?: "neutral" | "success" | "warning" | "danger" }: a labelled number',
-  Badge: '{ tone?: "neutral" | "info" | "success" | "warning" | "danger", children }',
+  Code: "{ block?: boolean, title?: string, children: string }: monospace, inline or a block; `title` heads a block with the file it came from",
+  FileLink:
+    "{ path: string, line?: number, symbol?: string }: a workspace file, drawn like a file mention in the chat, that opens at `line`; `symbol` names the function there. Use it for every path instead of mono text",
+  Stat: '{ label: string, value: ReactNode, detail?: ReactNode, tone?: "neutral" | "success" | "warning" | "danger", delta?: string | number, invert?: boolean, trend?: number[] }: a labelled number; `delta` adds a change chip coloured by its sign (`invert` when down is good), `trend` a sparkline beside the value',
+  Delta:
+    "{ value: string | number, invert?: boolean }: a change chip, green when the change is good, read from the sign it is written with; a number gets its sign written for it",
+  Badge:
+    '{ tone?: "neutral" | "info" | "success" | "warning" | "danger", dot?: boolean, children }: a short status; `dot` leads it with a status mark',
   Meter:
-    '{ value: number, max?: number = 100, label?: string, tone?: "primary" | "success" | "warning" | "danger" = "primary" }: a thin filled bar with the value beside the label',
+    '{ value: number, max?: number = 100, label?: string, detail?: ReactNode, tone?: "primary" | "success" | "warning" | "danger" = "primary" }: a share of a whole with the percentage beside the label; `detail` names the units, as in "124k of 200k"',
   Table:
-    '{ columns: { key: string, label: ReactNode, align?: "start" | "end", width?: number | string }[], rows: Record<string, ReactNode>[], caption?: string }: rows are keyed by column key; a cell can hold a Sparkline or a Badge',
-  Callout: '{ tone?: "info" | "success" | "warning" | "danger", title?: string, children }',
-  Card: "{ title?: ReactNode, actions?: ReactNode, padding?: 0 | 2 | 3 | 4 = 4, children }: an elevated bordered surface",
+    '{ columns: { key: string, label: ReactNode, align?: "start" | "end", width?: number | string }[], rows: Record<string, ReactNode>[], caption?: string }: rows are keyed by column key; a cell can hold a Sparkline, Badge, Delta or DiffStat. The edge cells line up with the text around the table, and with the title inside a `padding={0}` Card',
+  KeyValue:
+    "{ items: { label: ReactNode, value: ReactNode }[] }: labelled facts, one per row with the value at the end; use it instead of a two-column Table",
+  DiffStat:
+    "{ added: number, removed: number }: lines added and removed, with five blocks split between them as GitHub draws it",
+  BarList:
+    '{ data: { label: string, value: number }[], format?: (value: number) => string, tint?: Tint = "blue" }: a ranked list, each label on a bar sized to its share of the largest value; for a top-N list instead of a horizontal BarChart',
+  Steps:
+    '{ items: { title: ReactNode, body?: ReactNode, meta?: ReactNode, status?: "done" | "current" | "todo" }[] }: an ordered walk through a process on a numbered rail, instead of a Card per step; `meta` holds a FileLink or a Badge',
+  Tracker:
+    '{ label: string, data: { tone: "success" | "warning" | "danger" | "neutral", label: string }[] }: one cell per run, check or day, coloured by how it went and named on hover',
+  Callout:
+    '{ tone?: "info" | "success" | "warning" | "danger", title?: string, children }: a note in the reading flow, a soft wash led by its tone glyph',
+  Card: '{ title?: ReactNode, description?: ReactNode, actions?: ReactNode, padding?: 0 | 2 | 3 | 4 = 4, children }: a raised surface for one idea; with `padding={0}` its content runs edge to edge under a ruled header',
+  Section:
+    "{ title: ReactNode, description?: ReactNode, actions?: ReactNode, children }: a titled group, the heading with an optional line under it and actions at the end, then the content",
   StackedBars:
     "{ label: string, series: { key: string, label: string, tint: Tint }[], buckets: { key: string, label: string, values: number[] }[], format: (value: number) => string, height?: number = 88, ticks?: number = 5 }: compact stacked bars without axes, a readout on pointer or arrow keys; the numbers live in the copy around it. Preferred beside a Stat or a heading figure",
   Sparkline:
@@ -170,7 +188,7 @@ export const KIT = {
     "{ data: { id: string, value: number, label?: string, tint?: Tint }[], height?: number = 240, donut?: boolean, valueFormat?: (value: number) => string, legend?: boolean }",
   Button:
     '{ variant?: "solid" | "outline" | "ghost", pill?: boolean, size?: "2xs" | "xs" | "sm" | "md" | "lg" | "xl", tone?: "neutral" | "primary" | "success" | "warning" | "danger", loading?: boolean, disabled?: boolean, onClick, children }',
-  Tabs: "Tabs.Root { value?, defaultValue?, onValueChange? } > Tabs.List { children: Tabs.Tab { value, children }[] } + Tabs.Panel { value, children }",
+  Tabs: "Tabs.Root { value?, defaultValue?, onValueChange? } > Tabs.List { children: Tabs.Tab { value, children }[] } + Tabs.Panel { value, children }: segmented tabs, only to compare views of one subject",
   Select:
     "Select { value?, defaultValue?, onValueChange? } > SelectTrigger { children: <SelectValue /> } + SelectContent { children: SelectItem[] }",
   SelectTrigger: "see Select",

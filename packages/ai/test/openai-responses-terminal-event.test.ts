@@ -23,7 +23,6 @@ const pricedModel = {
   cost: { input: 1_000_000, output: 2_000_000, cacheRead: 3_000_000, cacheWrite: 0 },
 } satisfies Model<"openai-responses">;
 
-/** Feed wire JSON through the real OpenAI SDK and adapter, without replacing SDK methods. Tool calls are snapshotted as emitted, so a later mutation cannot make a bad event look correct. */
 async function run(events: readonly JsonValue[], streamModel = model) {
   const source = stream(
     streamModel,

@@ -1,9 +1,3 @@
-/**
- * Desktop request proofs the Worker checks itself: those signed under a key's
- * thumbprint while it links, spent once in D1. Proofs signed under an
- * environment id are checked and spent by that environment's relay
- * (`environment-record.ts`).
- */
 import { CLOCK_TOLERANCE_SECONDS, CompactJws, PROOF_HEADER } from "@nyte-ai/connect";
 import type { ProofClaims, PublicJwk } from "@nyte-ai/connect";
 import { keyThumbprint, verifyProof } from "@nyte-ai/connect/signing";
@@ -12,7 +6,6 @@ import type { Context } from "./context.ts";
 import { Refusal } from "./http.ts";
 import { consumeProof } from "./store/replays.ts";
 
-/** The request's proof header, refused unless it is a compact JWS. */
 export function proofToken(request: Request): string {
   const token = request.headers.get(PROOF_HEADER);
 
@@ -21,7 +14,6 @@ export function proofToken(request: Request): string {
   return token;
 }
 
-/** Proof of the key being linked, issued under its thumbprint. Returns the thumbprint. */
 export async function verifyLinkProof(
   context: Context,
   input: { readonly request: Request; readonly body: string; readonly publicKey: PublicJwk },

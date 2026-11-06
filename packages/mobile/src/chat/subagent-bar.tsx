@@ -5,10 +5,6 @@ import { spacing, textStyles } from "../theme.ts";
 import { GlassButton } from "../ui/glass-button.tsx";
 import { COMPOSER } from "./composer-geometry.ts";
 
-/**
- * A subagent works for the conversation that started it, so its own conversation has no composer:
- * this bar sits where the composer would, names the parent, leads back to it, and stops the subagent.
- */
 export function SubagentBar({
   parentName,
   running,

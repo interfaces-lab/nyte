@@ -44,17 +44,14 @@ const clientRecord = compile(
   Type.Object({ name: Type.String(), redirect_uris: Type.Array(Type.String()) }),
 );
 
-/** The URL `/mcp` answers at for a request, which a token's audience must equal (RFC 8707). */
 export function mcpResource(url: URL): string {
   return `${url.origin}${MCP_PATH}`;
 }
 
-/** Where a client finds how to get a token for `/mcp` (RFC 9728). */
 export function resourceMetadataUrl(url: URL): string {
   return `${url.origin}${RESOURCE_METADATA}`;
 }
 
-/** Answers the authorization server's routes and the protected resource's metadata, or null for any other path. A client is either a Client ID Metadata Document URL, looked up in `clients`, or an id this host's deprecated dynamic registration issued. */
 export async function serveOAuth(
   request: Request,
   grants: McpGrants,

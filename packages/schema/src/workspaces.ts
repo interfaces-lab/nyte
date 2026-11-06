@@ -65,7 +65,6 @@ export const WorkspaceInspectionType = Type.Object({
 
 export type WorkspaceInspection = Decoded<typeof WorkspaceInspectionType>;
 
-/** A workspace made to isolate one session: a git worktree of `source`'s repository on its own `branch`, started from the commit `base`. */
 export const WorktreeIsolationType = Type.Object({
   kind: Type.Literal("worktree"),
   source: idSchema<"workspace">(),

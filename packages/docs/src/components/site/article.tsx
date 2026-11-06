@@ -16,10 +16,6 @@ function PagerLink({ target, dir }: { target?: NavItem; dir: "previous" | "next"
   );
 }
 
-/**
- * One doc page: the frame's sidebar with this page's sections under its row,
- * then eyebrow, title, lede, and any header actions, the prose, and the pager.
- */
 export function DocArticle({
   eyebrow,
   title,

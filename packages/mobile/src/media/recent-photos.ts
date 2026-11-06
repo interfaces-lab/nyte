@@ -1,8 +1,3 @@
-/**
- * The photos the composer offers without leaving the screen, resolved to files
- * the attachment pipeline can read. Access can be partial on iOS, so the caller
- * gets the grant alongside the photos and can offer the system picker for more.
- */
 import {
   AssetField,
   getPermissionsAsync,

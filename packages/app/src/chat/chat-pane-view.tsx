@@ -22,7 +22,6 @@ import { BlankConversation } from "./composer/blank-conversation.tsx";
 import type { ComposerEditorHandle } from "./composer/composer-editor.tsx";
 import { SessionConversation } from "./session-conversation.tsx";
 
-/** Where the focused chat's composer floats while the workbench covers the panes; `null` keeps it in its pane. */
 export const PaneFloatingMount = createContext<HTMLDivElement | null>(null);
 
 export const chatView: PaneView<ChatFields> = (input) => <ChatPane {...input} />;
@@ -84,7 +83,6 @@ function ChatPane({ pane, fields, focused }: PaneTabRender<ChatFields>): ReactEl
   );
 }
 
-/** Keyed by pane, so a chat that moves to another pane listens for that pane's requests. */
 function FocusRequests({
   store,
   pane,

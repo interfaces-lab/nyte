@@ -26,7 +26,6 @@ function fail(message) {
   process.exit(1);
 }
 
-/** The highest stable release tag, compared numerically, so v0.0.10 sorts above v0.0.9. */
 function latestStable() {
   const versions = execFileSync("git", ["tag", "--list", "v*"], { cwd: root, encoding: "utf8" })
     .split("\n")

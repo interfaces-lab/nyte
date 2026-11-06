@@ -15,7 +15,6 @@ export function loadConfig(home: string): Config {
 }
 \`\`\``;
 
-/** A message and a reply with inline code and a code block, in the fonts set on `<html>`. */
 export function TypographyPreview(): ReactElement {
   return (
     <div {...props(styles.turn)}>

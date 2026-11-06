@@ -23,7 +23,6 @@ import { controls, useTheme } from "../theme.ts";
  */
 const HAS_GLASS = isLiquidGlassAvailable() && isGlassEffectAPIAvailable();
 
-/** Reduce Transparency is one system setting, read once and followed for the app's life. */
 const transparency = { reduced: false, listeners: new Set<() => void>() };
 
 function followTransparency(reduced: boolean) {
@@ -44,13 +43,6 @@ function subscribeTransparency(listener: () => void) {
   };
 }
 
-/**
- * Liquid Glass, else the system material blur, else a solid surface when Reduce Transparency is on.
- * Glass clips itself to its `borderRadius`: never set `overflow: "hidden"` on it or an ancestor, which
- * cuts off the rim highlight and the interactive bulge; clip the content inside instead. Do not
- * animate opacity on this view or an ancestor either: that suppresses the material (expo/expo#41024).
- * Keep `isInteractive` for surfaces that act as one control.
- */
 export const GlassSurface = forwardRef<ViewInstance, GlassViewProps>(function GlassSurface(
   { style, isInteractive, glassEffectStyle, tintColor, colorScheme, children, ...rest },
   ref,

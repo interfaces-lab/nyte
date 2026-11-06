@@ -69,7 +69,6 @@ async function stillPending(promise: Promise<unknown>): Promise<boolean> {
   return !settled;
 }
 
-/** Room for a check that waits on workerd round trips while the other broker-backed files run beside this one. */
 const brokerWait = { timeout: 10_000 } as const;
 
 let workerd: WorkerdBroker;

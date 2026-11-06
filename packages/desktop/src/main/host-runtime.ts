@@ -36,7 +36,6 @@ export type HostRuntimeOptions = Pick<
   readonly nyteHome: string;
   readonly connect: ConnectRuntime;
   readonly usageWorker: URL;
-  /** The host script main's bundle carries, which the app's executable runs as Node. */
   readonly hostEntry: URL;
   readonly agent: BrowserAgent;
   readonly preview: CanvasPreviewer;

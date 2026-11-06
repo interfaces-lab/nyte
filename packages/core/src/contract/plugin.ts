@@ -179,7 +179,6 @@ export interface RuntimeCall {
   readonly class: ToolClass;
 }
 
-/** Whether a runtime call may run, with the reason its runtime reads when it may not. */
 export type RuntimeVerdict =
   | { readonly kind: "allow" }
   | { readonly kind: "deny"; readonly reason: string };

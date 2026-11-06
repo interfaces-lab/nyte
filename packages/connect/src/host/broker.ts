@@ -29,7 +29,6 @@ interface DesktopBrokerOptions {
   readonly fetch?: BrokerFetch;
 }
 
-/** A lease as the broker sent it, with the proof `jti` and the moment it was asked for. */
 export interface LeaseAnswer {
   readonly lease: string;
   readonly request: string;
@@ -92,12 +91,10 @@ export class DesktopBroker {
     this.send = options.fetch ?? ((input, init) => fetch(input, init));
   }
 
-  /** Where phones reach this environment through the relay. */
   address(environmentId: string): string {
     return relayAddress(this.origin, environmentId);
   }
 
-  /** The relay socket for this environment, on the broker's own origin. */
   relayUrl(environmentId: string): string {
     const url = new URL(BROKER_ROUTES.relay(id(environmentId)), this.origin);
     url.protocol = "wss:";
@@ -105,7 +102,6 @@ export class DesktopBroker {
     return url.href;
   }
 
-  /** The relay's `auth` frame proof: `GET` on the relay path with an empty body. */
   relayProof(input: { readonly key: PrivateJwk; readonly environmentId: string }): Promise<string> {
     return createProof({
       key: input.key,
@@ -117,10 +113,6 @@ export class DesktopBroker {
     });
   }
 
-  /**
-   * Register this Mac under the signed-in account. The proof's issuer is the
-   * key's thumbprint, so retrying with the same key resumes an unfinished link.
-   */
   async link(input: {
     readonly key: PrivateJwk;
     readonly name: string;
@@ -142,11 +134,6 @@ export class DesktopBroker {
     return this.parse(LinkResponse, answer);
   }
 
-  /**
-   * Open a link transaction for a host with no browser. The proof's issuer is
-   * the key's thumbprint; the operation id and code are the caller's, kept
-   * before this call, so a retry resumes the same transaction.
-   */
   async openLinkTransaction(input: {
     readonly key: PrivateJwk;
     readonly name: string;
@@ -182,7 +169,6 @@ export class DesktopBroker {
     return this.parse(LinkTransactionStatus, await this.transactionCall(input, "poll"));
   }
 
-  /** Claim the environment the approval allows, or learn what stopped the transaction. */
   async completeLinkTransaction(input: {
     readonly key: PrivateJwk;
     readonly transactionId: string;
@@ -191,7 +177,6 @@ export class DesktopBroker {
     return this.parse(LinkTransactionCompletion, await this.transactionCall(input, "complete"));
   }
 
-  /** Give the transaction up. The answer is what stands: `consumed` means completion won. */
   async cancelLinkTransaction(input: {
     readonly key: PrivateJwk;
     readonly transactionId: string;
@@ -281,7 +266,6 @@ export class DesktopBroker {
     );
   }
 
-  /** End a device that dropped its own token here; its Clerk session is left alone. */
   async releaseDevice(input: {
     readonly key: PrivateJwk;
     readonly environmentId: string;
@@ -300,7 +284,6 @@ export class DesktopBroker {
     );
   }
 
-  /** The broker's published signing keys, read when a token names a key this Mac does not hold. */
   async keys(input: { readonly signal: AbortSignal }): Promise<BrokerKeys> {
     const answer = await this.fetch({
       path: BROKER_ROUTES.keys,

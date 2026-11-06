@@ -18,7 +18,7 @@ class SdkError extends Error {
 
 | Field         | What it holds                                                                        |
 | ------------- | ------------------------------------------------------------------------------------ |
-| `code`        | One of the seven codes below                                                         |
+| `code`        | One of the nine codes below                                                          |
 | `message`     | A sentence for people, such as `models.setDefault needs owner authority.`            |
 | `hostId`      | The host that raised it, or `null` when no host answered                             |
 | `issues`      | For `invalid`, each problem with its `path` into the input, `message` and `severity` |
@@ -37,16 +37,20 @@ class SdkError extends Error {
 | `stale`           | 409  | What you based the call on has changed                   | Read again, then decide whether to repeat the call               |
 | `unavailable`     | 503  | The host, the connection or the feature can't be reached | Wait and retry, or hide the feature if this host doesn't have it |
 | `internal`        | 500  | The host hit a bug                                       | Report it with the `message` and `correlation`                   |
+| `not_supported`   | 501  | The client asked to act never declared the action        | Ask a client that declares it                                    |
+| `timeout`         | 504  | The client asked to act didn't answer in time            | Retry, or tell the user the other client didn't answer           |
 
 The HTTP column is the status a listener answers with, for code that calls the
 [HTTP API](/docs/sdk/reference/connection#http-api) without the SDK. The response body is the same
-fields as JSON: `{ code, message, hostId, issues, correlation }`.
+fields as JSON: `{ code, message, hostId, issues, correlation }`. On the
+[host WebSocket](/docs/sdk/reference/connection#websocket), an `error` frame carries the same
+fields.
 
 ### unauthenticated [#unauthenticated]
 
 The host doesn't know who is calling. The token is wrong, the device was revoked with
-`principals.revoke`, or the pairing code is unknown or has expired. A revoke also ends that
-principal's open watches with this code.
+`principals.revoke`, the pairing code is unknown or has expired, or a WebSocket ticket is unknown,
+used or expired. A revoke also ends that principal's open watches, streams and WebSockets.
 
 ### denied [#denied]
 
@@ -56,6 +60,8 @@ The host knows who is calling and refuses the call. The message names the reason
   needs, such as owner authority for `models.setDefault` or maintenance authority for
   `principals.pair`.
 - The request came from a browser origin that the listener's `origins` doesn't list.
+- The operation answers only on the host's local socket, such as `host.execution.pause`, and the
+  request came over the network.
 - The change targets something the host protects, such as a built-in part or a plugin file outside
   the folders this host loads plugins from.
 
@@ -75,6 +81,8 @@ The input failed validation, or the call can't apply to this input. Examples:
 - `head.move` would leave the main head before its first message with nothing queued.
 - `operations.describe` names an operation the host doesn't serve.
 - `host.listen` gets a token shorter than 16 characters, or an origin it can't parse.
+- An operation that answers only on the host WebSocket, such as `events.subscribe`, is called over
+  HTTP.
 
 Each issue's `path` is a list of keys and indexes into the input, so `["content", 0, "text"]` points
 at the first content block's text.
@@ -100,10 +108,26 @@ Either the host can't be reached right now, or the thing you asked for doesn't e
 - `connection.github` on a host that has no GitHub login to serve.
 - A workspace's MCP servers on a host without MCP.
 - `sessions.start` with `isolation: "worktree"` outside a git repository.
+- `client.perform` to a client with 16 requests waiting, or one that left before it answered.
 
 Over `sdk.connect`, the SDK already retries the calls where a retry is safe: watches reconnect,
 waits such as `receipt.settled()` try again, and `send` resends under the same receipt id. Other
 calls throw `unavailable` to you. Retry them after a delay, or show that the host is offline.
+
+Over `openHost`, the stores keep their rows, go stale, and resume once the socket is back, and
+`health` shows `retrying` with the error. `call` and `perform` wait while the connection is
+`connecting`, and reject with the error `health` holds while it is `retrying` or `blocked`.
+
+### not_supported [#not_supported]
+
+A `client.perform` named an action the target client never declared in its hello. `openHost` also
+reports it in `health` when the runtime has no `WebSocket` and you passed no `socket`.
+
+### timeout [#timeout]
+
+A `client.perform` waited longer than its `timeoutMs` for the target client's answer. The wait
+starts when the request reaches the front of the target's queue, and is 10 seconds by default and
+30 at most. The host doesn't tell the target, which may still act.
 
 ### internal [#internal]
 

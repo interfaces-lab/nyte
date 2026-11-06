@@ -77,12 +77,10 @@ colorSchemeQuery.addEventListener("change", refresh);
 
 subscribeSystemTransparency(refresh);
 
-// The desktop preload marks the platform at DOMContentLoaded, after this module runs.
 const platformPending = document.readyState === "loading";
 
 if (platformPending) window.addEventListener("DOMContentLoaded", refresh, { once: true });
 
-/** The window's appearance, rebuilt once each time a preference, the system scheme or the platform changes. */
 export const appearance = {
   get: (): Appearance => current,
   subscribe: (listener: () => void): (() => void) => {

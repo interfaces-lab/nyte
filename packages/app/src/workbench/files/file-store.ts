@@ -531,12 +531,13 @@ export function createFileTabStore(
       for (const tab of fileTabs(key)) {
         const path = target(tab.path);
 
-        if (path !== undefined)
-          store.dispatch(key, {
-            kind: "patch",
-            id: tab.id,
-            change: { kind: "file", patch: { path } },
-          });
+        if (path === undefined) continue;
+        buffers.get(fileKey(key, path))?.move(path);
+        store.dispatch(key, {
+          kind: "patch",
+          id: tab.id,
+          change: { kind: "file", patch: { path } },
+        });
       }
 
       commit(key);

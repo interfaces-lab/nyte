@@ -170,7 +170,6 @@ test("/tree opens under the composer, Enter on the latest message says it is alr
   );
 });
 
-/** The tree's visible rows, from the pointer column, between its filter line and its `(n/total)` footer. */
 function treeWindow(frame: string): string[] {
   const lines = frame.split("\n").map((line) => line.trimEnd());
   const title = lines.find((line) => line.trim() === "Chat Tree") ?? "";

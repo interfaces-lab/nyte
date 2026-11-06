@@ -5,7 +5,6 @@ import { TUI_RENDERER_CONFIG } from "../../src/services/rendering.ts";
 import { registerSyntaxParsers } from "../../src/services/syntax-parsers.ts";
 import { findStory, STORIES } from "./index.ts";
 
-/** Runs one story full screen until it quits; an unknown id lists the stories and fails. */
 export async function runStory(id: string): Promise<number> {
   const story = findStory(id);
 

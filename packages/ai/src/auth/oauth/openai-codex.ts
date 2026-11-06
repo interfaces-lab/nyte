@@ -1,10 +1,3 @@
-/**
- * OpenAI Codex (ChatGPT OAuth) flow: browser login races a localhost callback
- * server on port 1455 against a manual paste prompt; device-code login covers
- * headless boxes via the shared RFC 8628 poller. Node-only (node:crypto,
- * node:http) and loaded lazily so browser builds never pull those in.
- */
-
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { getProviderEnvValue } from "../../utils/provider-env.ts";
@@ -90,7 +83,6 @@ type DeviceTokenSuccess = {
   codeVerifier: string;
 };
 
-/** Node builtins load through `process.getBuiltinModule` so browser builds never resolve them. */
 function assertNodeRuntime(): void {
   if (typeof process === "undefined" || !(process.versions?.node || process.versions?.bun)) {
     throw new Error("OpenAI Codex OAuth is only available in Node.js environments");
@@ -200,7 +192,6 @@ async function refreshAccessToken(refreshToken: string, signal: AbortSignal): Pr
   return readTokenResponse(response, "refresh");
 }
 
-/** Starts a device-code login. `interval` converts with Number(), which trims whitespace, so numeric strings and numbers convert alike. */
 async function startOpenAICodexDeviceAuth(signal: AbortSignal): Promise<DeviceAuthInfo> {
   const response = await fetchWithLoginCancellation(DEVICE_USER_CODE_URL, {
     method: "POST",
@@ -554,9 +545,6 @@ async function loginOpenAICodex(interaction: ProviderAuthInteraction): Promise<O
   }
 }
 
-/**
- * Refresh OpenAI Codex OAuth token
- */
 async function refreshOpenAICodexToken(
   refreshToken: string,
   signal: AbortSignal,

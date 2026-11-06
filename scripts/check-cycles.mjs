@@ -1,20 +1,3 @@
-/**
- * `pnpm cycles` fails when the runtime import graph of the workspace has a cycle.
- *
- * It parses every tracked or new source file of every workspace package with the
- * TypeScript compiler and keeps the imports that load a module when the file runs:
- * value imports, side-effect imports, and value re-exports. `import type` and
- * `export type` are erased, so they add no edge; an import whose specifiers are all
- * inline `type` still loads its module under verbatimModuleSyntax, so it does.
- * Dynamic `import()` loads later, after both modules have evaluated, so it adds no
- * edge either. Relative specifiers, tsconfig `paths`, and workspace package names
- * (through their `exports`) resolve to source files, so a cycle that crosses two
- * packages counts too. Each strongly connected component of more than one file, or
- * a file that imports itself, is printed with one cycle through it, and the
- * command exits 1.
- *
- * Usage: node scripts/check-cycles.mjs [--json]
- */
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
@@ -42,10 +25,8 @@ const CONDITIONS = ["nyte-source", "import", "default"];
 
 const json = process.argv.includes("--json");
 
-/** Orders paths and names by code unit, the same on every machine. */
 const byText = (left, right) => (left < right ? -1 : left > right ? 1 : 0);
 
-/** The workspace packages: every package.json the pnpm workspace globs reach. */
 function readWorkspaces() {
   const listed = execFileSync("pnpm", ["ls", "-r", "--depth", "-1", "--json"], {
     cwd: root,
@@ -62,7 +43,6 @@ function readWorkspaces() {
     }));
 }
 
-/** A package's tsconfig `paths`, as [prefix, suffix, target directory prefix, target suffix] rows. */
 function readPaths(directory) {
   const file = join(directory, "tsconfig.json");
 
@@ -85,7 +65,6 @@ function readPaths(directory) {
   });
 }
 
-/** Tracked and new, not ignored, source files under a package, without nested packages' files. */
 function listSources(workspace, nested) {
   const listed = execFileSync(
     "git",
@@ -100,7 +79,6 @@ function listSources(workspace, nested) {
     .filter((path) => !nested.some((directory) => path.startsWith(`${directory}/`)));
 }
 
-/** The file a path names: itself, with a source extension, as `.ts` for a `.js` name, or its directory index. */
 function resolveFile(path) {
   if (existsSync(path) && statSync(path).isFile()) return path;
 
@@ -123,7 +101,6 @@ function resolveFile(path) {
   return undefined;
 }
 
-/** The source target of one `exports` value, preferring the source condition. */
 function pickTarget(value) {
   if (String(value) === value) return value;
 
@@ -136,7 +113,6 @@ function pickTarget(value) {
   return undefined;
 }
 
-/** The file a workspace package specifier names through the package's `exports`. */
 function resolvePackage(workspace, subpath) {
   const exports = workspace.manifest.exports;
 
@@ -166,7 +142,6 @@ function resolvePackage(workspace, subpath) {
   return undefined;
 }
 
-/** The source file an import specifier names from a file, or undefined for an external module. */
 function resolveSpecifier(specifier, from, owner, byName) {
   if (specifier.startsWith(".")) return resolveFile(resolve(dirname(from), specifier));
 
@@ -196,11 +171,6 @@ function resolveSpecifier(specifier, from, owner, byName) {
   return resolvePackage(workspace, rest === "" ? "." : `.${rest}`);
 }
 
-/**
- * The specifiers of a file's imports that load their module when the file evaluates. A listed
- * file can be missing: git lists a deleted tracked file, and a running Vite deletes its
- * timestamped config copy after the listing. A missing file has no imports.
- */
 function readRuntimeImports(file) {
   if (!existsSync(file)) return [];
 
@@ -244,7 +214,6 @@ function readRuntimeImports(file) {
   }));
 }
 
-/** The strongly connected components of a graph (Tarjan), each as a list of nodes. */
 function findComponents(graph) {
   const order = new Map();
   const low = new Map();
@@ -309,7 +278,6 @@ function findComponents(graph) {
   return components;
 }
 
-/** One cycle through a component's first file: a shortest path back to it inside the component. */
 function traceCycle(graph, component) {
   const members = new Set(component);
   const [start] = component.toSorted(byText);

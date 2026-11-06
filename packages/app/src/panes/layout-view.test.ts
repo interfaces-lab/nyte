@@ -16,12 +16,6 @@ const Step = Type.Object({
   }),
 });
 
-/**
- * A resize reflows the text, so the transcript keeps its top row rather than its pixel offset. A
- * move keeps every element, but React reinserts the moved chat's node, which resets the browser's
- * scroll offset, as moving a pane does today. Keeping it is deferred until drag and drop between
- * panes lands, so the move step doesn't check scroll.
- */
 const KEPT_IN_PLACE = ["focus", "resize", "zoom", "unzoom"];
 
 const Report = Type.Object({

@@ -34,7 +34,6 @@ interface RequestDraft {
   readonly fields: readonly FieldDraft[];
 }
 
-/** Sends the user's answers, or skips the request when `answers` is null. */
 export async function answerQuestion(
   sessionId: SessionId,
   question: OpenQuestion,

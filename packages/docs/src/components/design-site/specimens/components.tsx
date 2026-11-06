@@ -1,9 +1,3 @@
-/**
- * One specimen per component page: the component itself, live, sized to a
- * catalogue tile. Parts that ship without a look of their own render in
- * x-ray, outlined and labelled with the name a reader imports.
- */
-
 import {
   Attachment,
   AttachmentContent,
@@ -490,7 +484,6 @@ function SliderSpecimen() {
   );
 }
 
-/** At its size, then four times over, where its dithered phases read cell by cell. */
 function SpinnerSpecimen() {
   return (
     <>
@@ -526,7 +519,6 @@ function TextareaSpecimen() {
   );
 }
 
-/** Raises toasts on the page's one `Toaster`, which the landing and the toast page each mount. */
 function ToastSpecimen() {
   return (
     <div {...props(styles.row)}>

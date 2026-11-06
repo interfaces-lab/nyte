@@ -20,7 +20,6 @@ const USER_PREVIEW_BLEED_TOP = 2;
 
 const USER_PREVIEW_FADE = `calc(${type.leadingLg} * ${(USER_MESSAGE_PREVIEW_LINES % 1) + 1} + ${USER_PROMPT_PADDING_BLOCK}px)`;
 
-/** The changes card's box, read by both its styles and the height the turn's summary row reserves for it. */
 const CHANGES_BORDER = 1;
 
 const CHANGES_PADDING_BLOCK = space.s2;
@@ -31,7 +30,6 @@ const CHANGES_LEADING = type.leadingBase;
 
 const CHANGES_REVIEW_BLEED = space.s0_5;
 
-/** The height of the Messages view the reservation leaves to the conversation. */
 const CHANGES_RESERVE_FLOOR = 320;
 
 export const messageStyles = create({
@@ -144,7 +142,6 @@ export const turnStyles = create({
     lineHeight: CHANGES_LEADING,
     letterSpacing: type.letterBase,
   },
-  /** Reads the Messages view's height from its size container, so a short pane keeps its last rows in view. */
   changesFooter: (files: number) => ({
     minHeight: `clamp(0px, 100cqb - ${String(CHANGES_RESERVE_FLOOR)}px, calc(2 * ${String(CHANGES_BORDER)}px + 2 * ${CHANGES_PADDING_BLOCK} + max(${CHANGES_LEADING}, ${control.heightSm} - 2 * ${CHANGES_REVIEW_BLEED}) + ${String(files)} * (${CHANGES_GAP} + ${row.heightMd})))`,
   }),

@@ -58,6 +58,16 @@ This writes the DMG, ZIP, blockmaps and `latest-mac.yml` to `dist/`. macOS build
 
 Before you announce a release, install the previous version and update it. Check the download, the installation and the automatic relaunch, then confirm another check says Nyte is up to date.
 
+## Install a local build
+
+```sh
+pnpm install:desktop
+```
+
+This replaces `/Applications/Nyte.app` with a build of the checkout through the app's own updater, the way a nightly arrives. It builds a signed nightly ZIP, versioned like a nightly with the time of day as its run, and serves it on a loopback port. Then it quits Nyte and reopens it with `NYTE_UPDATE_FEED_PORT` set to that port. A packaged app with that variable checks `http://127.0.0.1:<port>` instead of GitHub. Once `updates.log` reports the download, the script quits Nyte so the update installs on quit, and opens the new version. Squirrel.Mac still checks the Developer ID, so the build must be signed with yours.
+
+The installed app has to be on the nightly channel, and it has to be a build that reads `NYTE_UPDATE_FEED_PORT`. Replace an older build by hand once. A local build carries today's date, so a nightly from GitHub replaces it from the next day on.
+
 ## Local update test
 
 ```sh

@@ -113,7 +113,6 @@ function settledSummary(messages: readonly StepMessage[], durationMs: number) {
   return { verb: LEAD_VERBS[lead].past, detail: workDetail(work, lead) };
 }
 
-/** Edits outrank exploring, which outranks running, so the verb only climbs as calls arrive. */
 function leadingWork(calls: readonly ToolMessage[]): Lead {
   const kinds = new Set(calls.map((call) => call.state.class.kind));
 

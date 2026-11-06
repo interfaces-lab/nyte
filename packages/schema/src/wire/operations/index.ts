@@ -17,7 +17,6 @@ export const API_REVISION = 16;
 
 export const API_MIN_REVISION = 13;
 
-/** The operations table, keyed by Connection path: every served operation's wire schemas, kind, authority, scope, capability, recovery, wait, locality and MCP access, in the order the host lists them. */
 export const OPERATIONS = {
   ...HOST_OPERATIONS,
   ...EVENT_OPERATIONS,
@@ -61,7 +60,6 @@ export function describeOperations(names?: readonly string[]): readonly Operatio
   });
 }
 
-/** The encoded side, as `operationsDigest` hashes it. */
 function wireJsonSchema(schema: Schema<unknown>): Json {
   const json = schema["~standard"].jsonSchema.input({ target: "draft-2020-12" });
 
@@ -70,7 +68,6 @@ function wireJsonSchema(schema: Schema<unknown>): Json {
   return unwrapRoot(json);
 }
 
-/** Drops the `{ $defs: { Json, Root }, $ref: "Root" }` wrapper `withJson` adds, keeping `Json` only where Root uses it. A self-referring Root stays wrapped. The definitions carry their `$id`, so `$ref: "Json"` still resolves. */
 function unwrapRoot(json: Json): Json {
   if (!isJsonObject(json) || json.$ref !== "Root" || !isJsonObject(json.$defs)) return json;
   const root = json.$defs.Root;

@@ -186,7 +186,6 @@ export async function liveRuns(
   return runs.flatMap((run) => (run === null ? [] : [run]));
 }
 
-/** The live runs of the sessions on `workspace`, found from the store's index of live runs, so only their sessions' records are read. */
 export async function liveRunsOn(
   store: StoreConnection,
   workspace: WorkspaceId,
@@ -221,7 +220,6 @@ export async function liveRunsOn(
   return runs.flat();
 }
 
-/** The snapshot a session's changes count from: the first snapshot of its earliest run that took one, or null before any did. */
 export async function threadStart(
   store: StoreConnection,
   session: SessionId,
@@ -284,7 +282,6 @@ export async function put(
   return id;
 }
 
-/** Runs a compare-and-set write until it lands, backing off with jitter after each lost race; a write that keeps losing fails `stale` rather than spinning. */
 export async function attempt<T>(what: string, write: () => Promise<T | typeof STALE>): Promise<T> {
   for (let tries = 1; ; tries += 1) {
     const result = await write();
@@ -336,7 +333,6 @@ export async function readCalls(
   return calls.flatMap((call) => (call === null ? [] : [call.record]));
 }
 
-/** Whether `coverage` includes the session `record`, directly, by its workspace, or through an ancestor. */
 export async function covers(
   store: StoreConnection,
   coverage: ExecutionCoverage,
@@ -356,7 +352,6 @@ export async function covers(
   return false;
 }
 
-/** Every session record `parents` selects, most recently active first. Paged, not a snapshot: a session that becomes active mid-scan sorts ahead of the cursor and can be missed. */
 export async function listSessionRecords(
   store: StoreConnection,
   parents: ParentFilter = { kind: "all" },
@@ -409,7 +404,6 @@ export async function coveredHere(kernel: Kernel, session: SessionId): Promise<b
   return coversRecord(kernel, (await readSession(kernel.store, session))?.record ?? null);
 }
 
-/** Whether this process executes the session `record`, which need not be stored yet. */
 export async function coversRecord(kernel: Kernel, record: SessionRecord | null): Promise<boolean> {
   if (kernel.execution.kind === "dispatch") return true;
 

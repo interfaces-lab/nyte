@@ -13,17 +13,11 @@ import { workspaceGit } from "../../data/vcs.ts";
 import { changeBarCss, lineChanges } from "./line-changes.ts";
 import type { LineChange } from "./line-changes.ts";
 
-/**
- * The open file's changes against its committed version, compared once typing pauses: the
- * gutter bars that mark them, and the one a click or ⌥F3 peeks at.
- */
 export function useLineChanges(input: {
   readonly path: string;
-  /** The path inside the workspace, which is how git names it. */
   readonly relative: string;
   readonly contents: string;
   readonly enabled: boolean;
-  /** The caret's line, where stepping starts while nothing is peeked. */
   readonly line: number;
   readonly reveal: (line: number) => void;
 }) {
@@ -79,7 +73,6 @@ export function useLineChanges(input: {
   };
 }
 
-/** A change against the committed file, with what it replaced, and a way to put it back. */
 export function ChangePeek({
   change,
   index,

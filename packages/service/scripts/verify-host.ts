@@ -22,7 +22,7 @@ import {
 import type { HostSocket, SocketLike } from "@nyte-ai/protocol";
 import { sdk } from "@nyte-ai/sdk/client";
 import type { Connection } from "@nyte-ai/sdk/client";
-import { HOST_TAKEN_EXIT, hostFilePath, hostSocketPath } from "../src/host-endpoint.ts";
+import { hostFilePath, hostSocketPath } from "../src/host-endpoint.ts";
 
 const TUI_ENTRY = fileURLToPath(new URL("../../tui/src/binary.ts", import.meta.url));
 
@@ -305,10 +305,8 @@ async function servedChecks(
 
     if (ended === null) throw new Error("a second host listened on the same home");
 
-    if (ended.code !== HOST_TAKEN_EXIT)
-      throw new Error(
-        `exited ${describeExit(ended)}, want ${String(HOST_TAKEN_EXIT)}: ${second.stderr()}`,
-      );
+    if (ended.code !== 1)
+      throw new Error(`exited ${describeExit(ended)}, want 1: ${second.stderr()}`);
 
     return `exited ${String(ended.code)}`;
   });

@@ -1,17 +1,11 @@
 import type { Row, RowKey } from "./transcript.ts";
 
-/**
- * Mount-window budgets, in row weight (a turn weighs its block count). `tail` is mounted while
- * following; `span` bounds the window while browsing history, so layout and re-wrap on resize
- * stay proportional to the viewport; `step` is how far one reveal moves the window.
- */
 export const WINDOW = { tail: 40, span: 60, step: 30 } as const;
 
 export type WindowStart =
   | { readonly kind: "tail" }
   | { readonly kind: "from"; readonly key: RowKey; readonly index: number };
 
-/** The mounted rows: `rows.slice(start, end)`. */
 export interface MountWindow {
   readonly start: number;
   readonly end: number;

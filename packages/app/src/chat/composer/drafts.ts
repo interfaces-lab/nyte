@@ -24,7 +24,6 @@ import { readStored, removeStored, type StorageArea, writeStored } from "../../l
 
 const FLUSH_DEBOUNCE_MS = 200;
 
-/** One pasted screenshot can fill the storage quota, so a larger image is kept in memory only. */
 const STORED_IMAGE_LIMIT = 256 * 1024;
 
 interface PaneDraftState {
@@ -60,7 +59,6 @@ const ownerId = Type.String({ minLength: 1 });
 
 const paneIndexSchema = Type.Object({ active: ownerId, parked: Type.Array(ownerId) }, strict);
 
-/** Keyed by pane id; the two panes of earlier builds, `primary` and `secondary`, still match. */
 const tabPanesSchema = Type.Record(Type.String({ minLength: 1 }), paneIndexSchema);
 
 const indexSchema = Type.Object(
@@ -114,7 +112,6 @@ function readOwner<Schema extends TSchema>(
   };
 }
 
-/** Drafts are kept by draft and session id, not by tab, so closing or replacing a tab never strands one. */
 export class WindowDrafts {
   readonly sessions = new Map<SessionId, SessionViewState>();
   readonly #panes = new Map<string, Map<PaneId, PaneDraftState>>();

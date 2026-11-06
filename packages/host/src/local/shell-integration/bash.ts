@@ -3,12 +3,10 @@
 export const HEADER = `# Adapted from VS Code, Copyright (c) Microsoft Corporation, MIT License.
 `;
 
-/** Reads the nonce from the startup folder and reports `$1`, the same in bash and zsh. */
 export const REPORT = `IFS= builtin read -r __nyte_nonce 2>/dev/null <"$__nyte_dir/nonce"
 builtin printf '\\033]633;Nyte;1;%s;%s\\007' "$__nyte_nonce" "$1"
 `;
 
-/** The init file of `bash --init-file <it> -i`, which reads the nonce from its folder at each report so no variable, function or environment holds it, unindented to fit the host's startup budget; with extdebug a failing DEBUG trap skips the command, so `__nyte_preexec` returns 0 unless a user's trap follows, and the traps are set at the top level since bash 3.2 neither shows a function the DEBUG trap nor keeps one it sets there. */
 export const bashScript = `${HEADER}__nyte_dir=\${BASH_SOURCE[0]%/*}
 if [ -r /etc/profile ]; then . /etc/profile; fi
 if [ -r ~/.bash_profile ]; then . ~/.bash_profile

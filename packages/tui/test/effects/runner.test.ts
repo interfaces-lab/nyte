@@ -742,13 +742,22 @@ test("a sign-in keeps its line when the catalog refresh after it fails, and says
   });
 });
 
-test("a sign-out that leaves the model in place confirms in the ok tone; a failure says error:", async () => {
+test("a sign-out that leaves the model in place says what it removed and what still signs in; a failure says error:", async () => {
   const app = harness(buildState(followed(LANDED)));
-  app.ports.host.logout = async () => ({ provider: "other", name: "Other" });
+
+  app.ports.host.logout = async () => ({
+    provider: { id: "other", name: "Other" },
+    removed: "work",
+    left: { kind: "external" },
+  });
+
   app.runner.run({ kind: "logout", provider: "other" });
 
   expect(await app.received("op-finished")).toMatchObject({
-    notice: { tone: "ok", text: "Signed out of Other." },
+    notice: {
+      tone: "ok",
+      text: 'Removed Other\'s saved login "work".\nStill active: A credential from outside Nyte, such as an environment variable.',
+    },
   });
 
   const failing = harness(buildState(followed(LANDED)));

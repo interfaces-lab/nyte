@@ -14,21 +14,14 @@ import type { PaneTabInput } from "./pane-views.tsx";
 
 export const PANE_GAP = "var(--nyte-pane-sash-size)";
 
-/** One keyboard step moves a separator by this share of its split. */
 const KEY_STEP = 0.02;
 
-/** The layout root's size and the separator size, in pixels. */
 interface Frame {
   readonly width: number;
   readonly height: number;
   readonly gap: number;
 }
 
-/**
- * Draws a window tab's layout as two flat lists under one root, so moving a tab between panes or
- * resizing a pane keeps every tab's element: the tabs, keyed by tab id in reading order, and the
- * separators between them.
- */
 export function LayoutView({
   store,
   renderTab,
@@ -36,7 +29,6 @@ export function LayoutView({
 }: {
   readonly store: LayoutStore;
   readonly renderTab: (input: PaneTabInput) => ReactNode;
-  /** Drawn over the panes, in the layout's coordinates. */
   readonly children?: ReactNode;
 }): ReactElement {
   const layout = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
@@ -140,11 +132,6 @@ function LayoutTab({
   );
 }
 
-/**
- * Arrows step the separator by 2% of its split, Home and End take it to its limits, and a
- * double-click shares the split evenly. A drag writes the boxes straight to the elements and
- * resizes the layout once, on release.
- */
 function LayoutSeparator({
   store,
   layout,
@@ -312,7 +299,6 @@ interface Span {
   readonly length: number;
 }
 
-/** A split's children in view, each with where it starts and how long it is along the split. */
 interface Measured {
   readonly split: Split<PaneContent>;
   readonly spans: ReadonlyMap<number, Span>;
@@ -320,10 +306,6 @@ interface Measured {
   readonly after: number;
 }
 
-/**
- * The split's sizes with the child before `separator` resized to `length` of what the two children
- * beside it share, each kept at least `MIN_PANE_SIZE`; the other children keep their lengths.
- */
 function sizesAt(
   layout: Layout<PaneContent>,
   separator: Separator,
@@ -402,14 +384,12 @@ function measure(
   return after === undefined ? undefined : { split, spans, before: separator.index, after };
 }
 
-/** Percentages of the length a split's children share, as `aria-valuenow`, `-min` and `-max`. */
 interface SeparatorValue {
   readonly now: number;
   readonly min: number;
   readonly max: number;
 }
 
-/** Where the separator sits, in percent of the length its split's children share. */
 function separatorValue(
   layout: Layout<PaneContent>,
   separator: Separator,

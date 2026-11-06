@@ -1,9 +1,3 @@
-/**
- * API-key discovery from environment variables, per provider. Reports which
- * variables are set (`findEnvKeys`) and resolves the key a request may use
- * (`getEnvApiKey`); ANTHROPIC_AUTH_TOKEN is reported but never returned as an
- * API key because requests must send it as a bearer token.
- */
 import type { KnownProvider, ProviderEnv } from "./types.ts";
 import { getProviderEnvValue } from "./utils/provider-env.ts";
 
@@ -29,7 +23,6 @@ export const ANTHROPIC_ENV_KEYS = [
   ANTHROPIC_API_KEY_ENV,
 ] as const;
 
-/** ANTHROPIC_AUTH_TOKEN participates in env discovery and status, but getEnvApiKey() skips it because requests must pass it as Authorization: Bearer. */
 function getApiKeyEnvVars(provider: string): readonly string[] | undefined {
   if (provider === "anthropic") {
     return ANTHROPIC_ENV_KEYS;

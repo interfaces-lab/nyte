@@ -21,13 +21,11 @@ export type Page = {
 
 export type Place = PaneSelection | Page;
 
-/** A preview's layout is one pane showing one chat. */
 export type View =
   | { readonly kind: "page"; readonly page: Page }
   | { readonly kind: "panes"; readonly layout: Layout<PaneContent> }
   | { readonly kind: "preview"; readonly layout: Layout<PaneContent> };
 
-/** A tab shows one place: a chat, a new chat, or a page. Opening a place that has a tab switches to it. */
 export interface Tab {
   readonly id: string;
   readonly view: View;
@@ -45,28 +43,18 @@ export interface ClosedTab {
 export interface WindowState {
   readonly tabs: readonly Tab[];
   readonly activeTabId: string;
-  /** Previously active tabs, most recent first. Closing the active tab goes to the first. */
   readonly recent: readonly string[];
   readonly closed: readonly ClosedTab[];
 }
 
-/**
- * Why a place opens, which decides where its tab goes. A place that has a tab is shown there.
- * - preview: the window's one preview tab, which the next preview replaces.
- * - permanent: a lasting tab, shown.
- * - background: a lasting tab after the active one, not shown.
- * - next-to-parent: a child chat's preview, opened from its parent in the active tab, which it keeps.
- */
 export type OpenIntent = "preview" | "permanent" | "background" | "next-to-parent";
 
 export type WindowAction =
   | {
       readonly kind: "open";
       readonly place: Place;
-      /** "here" is a window without a strip: its chats share one tab and each page has its own. */
       readonly target: OpenIntent | "here";
     }
-  /** A tab's panes changed; a background tab's change lands too, as when its draft starts a chat. */
   | { readonly kind: "layout"; readonly tabId: string; readonly layout: Layout<PaneContent> }
   | { readonly kind: "page-section"; readonly section: string }
   | { readonly kind: "leave-page" }
@@ -79,16 +67,12 @@ export type WindowAction =
   | { readonly kind: "activate-tab"; readonly tabId: string }
   | { readonly kind: "activate-index"; readonly index: number }
   | { readonly kind: "cycle-tab"; readonly step: 1 | -1 }
-  /** Moving a preview keeps it. */
   | { readonly kind: "reorder"; readonly tabIds: readonly string[]; readonly tabId: string }
-  /** Closed tabs showing a chat in `gone`, known deleted or archived, don't reopen. */
   | { readonly kind: "forget-closed"; readonly gone: ReadonlySet<SessionId> }
-  /** Open tabs drop chats just archived or deleted: a split keeps its other pane, and any other tab showing one closes. */
   | { readonly kind: "close-chats"; readonly sessionIds: ReadonlySet<SessionId> };
 
 const BLANK: PaneSelection = { kind: "blank" };
 
-/** What a page tab hands a pane reader: one new chat, never shown or stored. */
 const PAGE_LAYOUT = createLayout(chatContent(BLANK), { newId: () => "page" });
 
 const CLOSED_LIMIT = 25;
@@ -111,7 +95,6 @@ export function tabPlace(tab: Tab): Place {
   return tab.view.kind === "page" ? tab.view.page : activeSelection(tab.view.layout);
 }
 
-/** The tab a window shows chats in: the active tab, or under a page the chat tab used last. */
 export function findChatTab(state: WindowState): Tab | undefined {
   const id = [state.activeTabId, ...state.recent].find((candidate) =>
     state.tabs.some((tab) => tab.id === candidate && tab.view.kind !== "page"),
@@ -124,7 +107,6 @@ export function tabLayout(tab: Tab): Layout<PaneContent> {
   return tab.view.kind === "page" ? PAGE_LAYOUT : tab.view.layout;
 }
 
-/** The focused pane's place first, then the other panes' in reading order. */
 export function tabPlaces(tab: Tab): readonly Place[] {
   if (tab.view.kind === "page") return [tab.view.page];
   const focused = tab.view.layout.focus[0];
@@ -144,7 +126,6 @@ function placeView(place: Place, createId: () => string): View {
     : { kind: "panes", layout: chatLayout(place, createId) };
 }
 
-/** `createId` names the new chat's pane and tab. */
 export function initialWindow(id: string, createId: () => string): WindowState {
   return {
     tabs: [{ id, view: placeView(BLANK, createId) }],
@@ -194,12 +175,10 @@ function afterActive(state: WindowState): number {
   return state.tabs.findIndex((tab) => tab.id === state.activeTabId) + 1;
 }
 
-/** One pane showing one tab, a chat: the shape of a preview and of a tab with nothing split. */
 function showsOneChat(layout: Layout<PaneContent>): boolean {
   return layout.root.kind === "pane" && layout.root.tabs.length === 1;
 }
 
-/** A tab showing nothing but a blank pane: the next place opened from it uses it, and it isn't worth reopening. */
 function showsOnlyBlank(tab: Tab): boolean {
   return (
     tab.view.kind !== "page" &&
@@ -208,14 +187,12 @@ function showsOnlyBlank(tab: Tab): boolean {
   );
 }
 
-/** A session can sit in any pane of a tab; a page is one per window. */
 function showing(tab: Tab, place: Place): boolean {
   if (tab.view.kind === "page") return showsPage(place) && tab.view.page.kind === place.kind;
 
   return place.kind === "session" && findSessionTab(tab.view.layout, place.sessionId) !== undefined;
 }
 
-/** Brings the place forward inside the tab already showing it. */
 function reveal(tab: Tab, place: Place): Tab {
   if (tab.view.kind === "page") {
     if (!showsPage(place)) return tab;
@@ -259,7 +236,6 @@ function openInChatTab(
   return activate(withTab(state, { ...tab, view: { kind: "panes", layout } }), tab.id);
 }
 
-/** A new chat goes to the tab already showing one, the active tab first, or to a new tab. */
 function openBlank(state: WindowState, createId: () => string): WindowState {
   const waiting =
     state.tabs.find((tab) => tab.id === state.activeTabId && showsOnlyBlank(tab)) ??
@@ -365,7 +341,6 @@ function closeTabs(
   );
 }
 
-/** Previews last only while the window is open. */
 export function withoutPreviews(state: WindowState, createId: () => string): WindowState {
   const previews = state.tabs.filter((tab) => tab.view.kind === "preview").map((tab) => tab.id);
 
@@ -408,7 +383,6 @@ function removeTabs(
   return { ...remaining, tabs: [fresh], activeTabId: fresh.id };
 }
 
-/** A preview stays one while its pane shows the same chat; splitting it or showing another chat keeps it. */
 function changeLayout(state: WindowState, tabId: string, layout: Layout<PaneContent>): WindowState {
   const tab = state.tabs.find((candidate) => candidate.id === tabId);
 
@@ -432,7 +406,6 @@ function forgetClosed(state: WindowState, gone: ReadonlySet<SessionId>): WindowS
   return closed.length === state.closed.length ? state : { ...state, closed };
 }
 
-/** A gone chat's tab isn't worth reopening, so it closes without joining `closed`. */
 function closeChats(
   state: WindowState,
   sessionIds: ReadonlySet<SessionId>,
@@ -475,7 +448,6 @@ function closeChats(
   );
 }
 
-/** Shows panes again: the chat tab used last, or a new chat. */
 function leavePage(state: WindowState, createId: () => string): WindowState {
   const tab = findChatTab(state);
 

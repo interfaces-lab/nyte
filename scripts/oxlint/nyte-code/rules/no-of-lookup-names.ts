@@ -10,7 +10,6 @@ import type { ESTree } from "@oxlint/plugins";
 
 const OF_LOOKUP_NAME = /^[a-z][A-Za-z0-9]*[a-z0-9]Of$/;
 
-/** Disallow `…Of` lookup names on functions, function-typed parameters, and function-valued members. */
 export const noOfLookupNamesRule = defineRule({
   meta: {
     type: "problem",

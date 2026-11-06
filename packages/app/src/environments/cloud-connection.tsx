@@ -45,7 +45,6 @@ const styles = create({
 
 const TITLE = "Remote host";
 
-/** An https URL with a host. Anything after the host is kept, minus a trailing slash. */
 function hostAddress(value: string): string | undefined {
   if (!URL.canParse(value)) return undefined;
   const url = new URL(value);
@@ -150,7 +149,6 @@ function hostDetail(state: Exclude<ServerState, { kind: "none" }>, checking: boo
   );
 }
 
-/** The Remote host group: list another host's chats here, or stop. */
 export function RemoteHost(): ReactElement {
   const client = useQueryClient();
   const server = useServerState();

@@ -43,7 +43,7 @@ import type { DraftInsert } from "../model/draft.ts";
 import type { ComposerPort, ScrollPort } from "../model/native.ts";
 import type { Selection } from "../model/state.ts";
 import type { McpAction } from "../model/effect.ts";
-import type { LoginDriver } from "../services/auth.ts";
+import type { LoginDriver, LogoutReceipt } from "../services/auth.ts";
 import type { SettingsRead } from "../services/settings.ts";
 
 export interface Ports {
@@ -86,10 +86,7 @@ export interface HostPort {
     provider: string | null,
     driver: LoginDriver,
   ): Promise<{ readonly provider: string; readonly name: string }>;
-  logout(
-    provider: string | null,
-    driver: LoginDriver,
-  ): Promise<{ readonly provider: string; readonly name: string }>;
+  logout(provider: string | null, driver: LoginDriver): Promise<LogoutReceipt>;
   hostPlugins(): Promise<HostView["plugins"]>;
   github(
     workspace: WorkspaceId,

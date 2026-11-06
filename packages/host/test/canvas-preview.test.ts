@@ -15,7 +15,6 @@ const canvasPackage = fileURLToPath(new URL("../../canvas/", import.meta.url));
 
 const galaxy = join(canvasPackage, "test/fixtures/repo-galaxy");
 
-/** Reads packages/canvas/dist/shell-files.js without importing it, so the test can skip before a build. */
 async function readShell(): Promise<CanvasShellFiles | undefined> {
   const text = await readFile(join(canvasPackage, "dist", "shell-files.js"), "utf8").catch(
     () => undefined,

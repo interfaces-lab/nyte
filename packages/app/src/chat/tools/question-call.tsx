@@ -52,11 +52,6 @@ const styles = create({
   note: { color: role.contentTertiary },
 });
 
-/**
- * A question call where it was asked: each question over its answer, read from the request part
- * the call made. A request the agent stopped waiting on stays marked as waiting until the answer
- * arrives, then shows it as answered late; a run that ended first leaves it not answered.
- */
 export function QuestionCallView({
   message,
   toolClass,

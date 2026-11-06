@@ -11,14 +11,12 @@ export type PaneSelection =
   | { readonly kind: "blank" }
   | { readonly kind: "session"; readonly sessionId: SessionId };
 
-/** The chat a pane shows: its active tab, when that tab is a chat. */
 export interface ChatPane {
   readonly pane: PaneId;
   readonly tab: PaneTabId;
   readonly selection: PaneSelection;
 }
 
-/** No pane is drawn or resized smaller than this along either axis. */
 export const MIN_PANE_SIZE = 320;
 
 const BLANK: PaneSelection = { kind: "blank" };
@@ -43,7 +41,6 @@ export function shownChat(pane: Pane<PaneContent>): ChatPane | undefined {
     : undefined;
 }
 
-/** The chat each pane shows, in reading order. */
 export function chatPanes(layout: Layout<PaneContent>): readonly ChatPane[] {
   return layoutPanes(layout.root).flatMap((pane) => shownChat(pane) ?? []);
 }
@@ -52,12 +49,10 @@ export function focusedChat(layout: Layout<PaneContent>): ChatPane | undefined {
   return shownChat(focusedPane(layout));
 }
 
-/** What the focused pane shows; a pane showing something other than a chat counts as a new chat. */
 export function activeSelection(layout: Layout<PaneContent>): PaneSelection {
   return focusedChat(layout)?.selection ?? BLANK;
 }
 
-/** The chat tab showing `id`, active in its pane or not. */
 export function findSessionTab(
   layout: Layout<PaneContent>,
   id: SessionId,
@@ -78,7 +73,6 @@ export function paneForSession(layout: Layout<PaneContent>, id: SessionId): Pane
   return findSessionTab(layout, id)?.pane;
 }
 
-/** Shows `selection` in the focused pane; a chat already open in another pane gets the focus instead. */
 export function showChat(
   layout: Layout<PaneContent>,
   selection: PaneSelection,
@@ -95,7 +89,6 @@ export function showChat(
       ];
 }
 
-/** Room for one more chat pane at its minimum width. */
 export function canSplitPane(layout: Layout<PaneContent>, windowWidth: number): boolean {
   return (
     layoutPanes(layout.root).length < MAX_PANES &&

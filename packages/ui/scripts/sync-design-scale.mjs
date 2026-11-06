@@ -1,4 +1,3 @@
-/** Writes the design-scale lint's tables from the tokens, so the lint never suggests a step the tokens don't declare. */
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";

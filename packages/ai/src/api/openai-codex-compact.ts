@@ -1,7 +1,3 @@
-/**
- * Codex remote compaction (V2): the ordinary Responses stream with a `compaction_trigger` input,
- * returning the retained user inputs and the one encrypted compaction checkpoint.
- */
 import type {
   ResponseCompactionItemParam,
   ResponseInputItem,
@@ -47,10 +43,8 @@ export type OpenAICodexCompactResult = OpenAICompactResult;
 
 const DEFAULT_COMPACT_IDLE_TIMEOUT_MS = 300_000;
 
-/** Compaction retries a failed HTTP open on these statuses only, never on provider error prose. */
 const RETRYABLE_COMPACTION_STATUSES: ReadonlySet<number> = new Set([408, 429, 500, 502, 503, 504]);
 
-/** Terminal error codes after which another compaction attempt can succeed. */
 const RETRYABLE_COMPACTION_CODES: ReadonlySet<unknown> = new Set([
   "server_error",
   "rate_limit_exceeded",
@@ -105,7 +99,6 @@ const compactServiceTier = Type.Union([
   Type.Literal("priority"),
 ]);
 
-/** A completed compaction response. Codex may omit the status, but never contradicts it. */
 const codexCompactCompleted = Type.Object({
   id: Type.String({ minLength: 1 }),
   status: Type.Optional(Type.Literal("completed")),
@@ -115,7 +108,6 @@ const codexCompactCompleted = Type.Object({
   service_tier: Type.Optional(compactServiceTier),
 });
 
-/** Retained user inputs. Nyte emits auto-detail images; original-detail estimation is unused. */
 const codexRetainedMessages = Type.Array(
   Type.Object({
     role: Type.Literal("user"),
@@ -139,7 +131,6 @@ type RetainedMessages = Static<typeof codexRetainedMessages>;
 
 type RetainedPart = Extract<RetainedMessages[number]["content"], readonly unknown[]>[number];
 
-/** A step of one attempt that failed with a sanitized reason. */
 class CompactionStepError extends Error {
   readonly retryable: boolean;
 
@@ -149,7 +140,6 @@ class CompactionStepError extends Error {
   }
 }
 
-/** `total` plus `next`, counts and cost alike. */
 function addUsage(total: Usage | undefined, next: Usage): Usage {
   if (total === undefined) return next;
 
@@ -170,7 +160,6 @@ function addUsage(total: Usage | undefined, next: Usage): Usage {
   };
 }
 
-/** The priced usage of a terminal response; absent usage is unknown, never zero. */
 function terminalUsage(
   terminal: Record<string, unknown> | undefined,
   model: Model<"openai-codex-responses">,
@@ -209,11 +198,6 @@ function terminalUsage(
   return usage;
 }
 
-/**
- * Folds one `output_item.done` item into the attempt's output. Malformed output is kept reading
- * so terminal usage is still accounted for, but never committed; a checkpoint keeps only
- * protocol fields, never arbitrary server metadata.
- */
 function readOutputItem(item: unknown, output: CodexCompactionOutput): CodexCompactionOutput {
   if (!Value.Check(CodexFrameJson, item)) return { kind: "invalid", reason: "Invalid output item" };
 
@@ -237,15 +221,6 @@ function readOutputItem(item: unknown, output: CodexCompactionOutput): CodexComp
   return { kind: "checkpoint", item: checkpoint };
 }
 
-/**
- * Codex V2 uses the ordinary Responses stream, not /responses/compact.
- * History retention follows openai/codex@121f91fd5d9dc66017866ce9bdc49f1e182721df,
- * core/src/compact_remote_v2.rs and compact_remote_v2_images.rs.
- * timeoutMs bounds header wait and stream idleness, not total duration.
- * It defaults to five minutes; zero disables it. A failure throws an
- * {@link OpenAICodexCompactionError} without a cause, response body, or raw SSE payload,
- * since those may echo prompts or credentials.
- */
 export async function compactOpenAICodexContext(
   model: Model<"openai-codex-responses">,
   context: Context,
@@ -452,13 +427,8 @@ export async function compactOpenAICodexContext(
   }
 }
 
-/** Official auto-detail estimate is ceil(7373 / 4), independent of base64 size. */
 const IMAGE_TOKENS = 1844;
 
-/**
- * Cuts text to `remaining` tokens by keeping both ends around a truncation marker, slicing only
- * at UTF-8 character boundaries as Codex's truncation helper does.
- */
 function truncateMiddle(text: string, remaining: number, encoder: TextEncoder): RetainedPart {
   const bytes = encoder.encode(text);
   const budget = remaining * 4;
@@ -476,11 +446,6 @@ function truncateMiddle(text: string, remaining: number, encoder: TextEncoder): 
   };
 }
 
-/**
- * The newest user inputs within a 64k-token budget. At the boundary message, text-only content
- * keeps its earlier parts and image content keeps its later parts; older messages are never
- * backfilled once a boundary does not fit.
- */
 function retainCodexUserInputs(messages: RetainedMessages): JsonValue[] {
   let remaining = 64_000;
   const retained: JsonValue[] = [];

@@ -34,7 +34,6 @@ const RENDER_P99_BUDGET_MS = 16.67;
 
 const MIN_RENDER_SAMPLES = 100;
 
-/** Each streaming agent's view publishes every delta (25 ms), so one typing phase sees far more than this per agent. */
 const STREAMING_PUBLICATIONS = 10;
 
 const MARKS = { start: "nyte:typing:start", end: "nyte:typing:end" } as const;

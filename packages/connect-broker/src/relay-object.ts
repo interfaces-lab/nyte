@@ -1,19 +1,3 @@
-/**
- * The relay Durable Object: one per environment, named by its id. It holds
- * the environment itself (`environment-record.ts`, in the object's SQLite),
- * the desktop's hibernatable WebSocket, and a channel on it for each phone
- * request the Worker forwards (see `@nyte-ai/connect/relay`). The Worker asks
- * it about the environment by RPC (`environment-api.ts`).
- *
- * Hibernation-safe: a socket's state lives in its attachment (a session id
- * and an auth deadline, never a credential), and pings are answered by the
- * runtime's auto-response. One alarm serves the pending-auth deadlines and
- * the D1 writes the record still owes. Channels live only in memory, and only
- * while their exchange is in flight.
- *
- * Imported by the Worker entry alone; the broker and its Node tests never load
- * the Workers runtime module.
- */
 import { DurableObject } from "cloudflare:workers";
 import { RandomId, Uuid } from "@nyte-ai/connect";
 import type { EnrollRequest, EnrollResponse, LeaseResponse } from "@nyte-ai/connect";
@@ -68,7 +52,6 @@ import { SocketChannel } from "./socket-channel.ts";
 
 const Attachment = Type.Union([
   Type.Object({ state: Type.Literal("pending"), session: RandomId, deadline: Type.Integer() }),
-  /** `deadline` stays as the socket's arrival order: the latest proven socket wins. */
   Type.Object({ state: Type.Literal("ready"), session: RandomId, deadline: Type.Integer() }),
 ]);
 
@@ -83,10 +66,8 @@ interface Socket {
 
 const OPEN = 1;
 
-/** The standard close code for a server that cannot go on, such as a broken configuration. */
 const INTERNAL_ERROR = 1011;
 
-/** A close code this side may send: the peer's own when it is one, else a normal close. */
 function sendableCode(code: number): number {
   return (code >= 1000 && code <= 1003) ||
     (code >= 1007 && code <= 1014) ||
@@ -101,14 +82,12 @@ function readAttachment(socket: WebSocket): Attachment | undefined {
   return Value.Check(Attachment, value) ? value : undefined;
 }
 
-/** Send `frame` unless the socket is closing; its close handler ends what is left. */
 function send(socket: WebSocket, frame: RelayFrame): void {
   try {
     socket.send(JSON.stringify(frame));
   } catch {}
 }
 
-/** Close `socket`, which either side may already have closed. */
 function closeSocket(socket: WebSocket, code: number, reason: string): void {
   try {
     socket.close(code, reason);
@@ -118,9 +97,7 @@ function closeSocket(socket: WebSocket, code: number, reason: string): void {
 export class EnvironmentRelay extends DurableObject<Env> implements EnvironmentApi {
   readonly #record: EnvironmentRecord | undefined;
   readonly #channels = new Map<string, RelayChannel | SocketChannel>();
-  /** Sessions whose `auth` frame is being checked. */
   readonly #verifying = new Set<string>();
-  /** Channels whose `forward` is being admitted; a reset meanwhile removes the id. */
   readonly #admitting = new Set<string>();
 
   constructor(ctx: DurableObjectState, env: Env) {
@@ -234,7 +211,6 @@ export class EnvironmentRelay extends DurableObject<Env> implements EnvironmentA
     else this.#receive(socket, attachment, frame);
   }
 
-  /** Finish the closing handshake the desktop started, then end what the socket carried. */
   override async webSocketClose(socket: WebSocket, code: number, reason: string): Promise<void> {
     closeSocket(socket, sendableCode(code), reason.slice(0, 120));
     this.#end(socket);
@@ -244,7 +220,6 @@ export class EnvironmentRelay extends DurableObject<Env> implements EnvironmentA
     this.#end(socket);
   }
 
-  /** Run one record operation, apply its socket effects, and keep the alarm on what the outbox owes. */
   async #run<T>(
     operation: (record: EnvironmentRecord) => Promise<Outcome<T>> | Outcome<T>,
   ): Promise<Answer<T>> {
@@ -287,7 +262,6 @@ export class EnvironmentRelay extends DurableObject<Env> implements EnvironmentA
     }
   }
 
-  /** Set the alarm to the earliest pending-auth deadline or outbox retry. */
   async #schedule(): Promise<void> {
     const deadlines = this.#sockets().flatMap(({ attachment }) =>
       attachment.state === "pending" ? [attachment.deadline] : [],
@@ -385,10 +359,6 @@ export class EnvironmentRelay extends DurableObject<Env> implements EnvironmentA
     this.#attach(socket, attachment);
   }
 
-  /**
-   * Make this socket the environment's one authenticated socket. The socket
-   * that arrived last wins, whichever proof finished verifying first.
-   */
   #attach(socket: WebSocket, attachment: Extract<Attachment, { state: "pending" }>): void {
     const others = this.#sockets().filter(
       (other) => other.socket !== socket && other.attachment.state === "ready",
@@ -476,7 +446,6 @@ export class EnvironmentRelay extends DurableObject<Env> implements EnvironmentA
     if (!kept) this.#close(socket, "invalid");
   }
 
-  /** A phone's HTTP exchange: admit its bearer here, then open a channel on the desktop's socket. */
   async #forward(request: Request): Promise<Response> {
     const path = request.headers.get(RELAY_HEADERS.path);
     const id = request.headers.get(RELAY_HEADERS.channel);
@@ -519,7 +488,6 @@ export class EnvironmentRelay extends DurableObject<Env> implements EnvironmentA
     return opened.response;
   }
 
-  /** The record's way to the desktop: one exchange on a channel only the broker opens. */
   #exchange: DesktopExchange = async (request) => {
     const opened = this.#open({
       id: randomId(),
@@ -540,7 +508,6 @@ export class EnvironmentRelay extends DurableObject<Env> implements EnvironmentA
     return opened.response;
   };
 
-  /** Open a channel on the desktop's socket, or say why none opens. */
   #open(input: {
     readonly id: string;
     readonly method: RelayMethod;
@@ -641,13 +608,11 @@ export class EnvironmentRelay extends DurableObject<Env> implements EnvironmentA
     return new Response(null, { status: 101, webSocket: pair[0] });
   }
 
-  /** Close a socket with a contract code and end everything it carried. */
   #close(socket: WebSocket, reason: CloseReason): void {
     closeSocket(socket, RELAY_CLOSE[reason], reason);
     this.#end(socket);
   }
 
-  /** End a socket's channels. */
   #end(socket: WebSocket): void {
     const attachment = readAttachment(socket);
 

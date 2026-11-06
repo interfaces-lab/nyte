@@ -90,7 +90,6 @@ function useMessageScroller() {
   return scroller;
 }
 
-/** The transcript list. Until a sent row arrives, an anchor index past the end keeps the previous space. */
 export function MessageScroller<T extends MessageScrollerItem>(
   props: { data: readonly T[] } & Pick<
     ComponentProps<typeof KeyboardAwareLegendList<T>>,

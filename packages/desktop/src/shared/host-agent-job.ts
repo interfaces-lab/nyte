@@ -13,7 +13,6 @@ export interface HostAgentJob {
   readonly log: string | null;
 }
 
-/** The packaged app's host: its own executable as Node (`ELECTRON_RUN_AS_NODE`) on the `nyte-host.js` its asar bundles, found from the executable's resources and placed in `argv` as a script's path would be, since a bundled plist holds no absolute path, logging with `--log`. */
 export function bundledHostAgentJob(input: {
   readonly appId: string;
   readonly executable: string;
@@ -39,7 +38,6 @@ const DEVELOPMENT_HOST_VARIABLES = [
   "NYTE_SKIP_VERSION_CHECK",
 ] as const;
 
-/** An unpackaged build's host: `executable` as Node on the app's `entry`, with the `nyte-tailnet` at `tailnet`, for this HOME and NYTE_HOME, logging to the host log, with the app's own model catalog, trace and dev-log variables. */
 export function developmentHostAgentJob(input: {
   readonly label: string;
   readonly executable: string;

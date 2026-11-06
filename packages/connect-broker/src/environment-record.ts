@@ -1,15 +1,3 @@
-/**
- * One environment as its relay Durable Object holds it, in the object's own
- * SQLite: the identity it copies from D1 once, its devices, the proofs its
- * key signed, when its desktop last leased, and the D1 writes it still owes.
- * Every rule about those lives here, so leases, phone requests, and socket
- * auth answer without a D1 round trip. Node-safe: the relay object supplies
- * `ctx.storage` and a channel to its desktop; Node tests supply `node:sqlite`
- * and a fake desktop.
- *
- * Methods answer an `Outcome`: the RPC answer, and the socket effects the
- * relay applies (ending a device's channels, every channel, or every socket).
- */
 import {
   BROKER_ROUTES,
   CLOCK_TOLERANCE_SECONDS,
@@ -60,15 +48,8 @@ import { loadEnvironment, retireEnvironment } from "./store/environments.ts";
 import { denySession, sessionDenied } from "./store/owners.ts";
 import { IdRow, OwnerStatus, many, one } from "./store/rows.ts";
 
-/** One value Durable Object SQL binds and answers. */
 export type SqlValue = ArrayBuffer | string | number | null;
 
-/**
- * The part of `ctx.storage` the record uses, structurally: `sql.exec` runs
- * one statement and answers its rows, and `transactionSync` runs a
- * synchronous closure whose writes land together or not at all (Durable
- * Object SQL refuses `BEGIN`).
- */
 export interface DurableObjectSql {
   readonly sql: {
     exec(query: string, ...bindings: SqlValue[]): { toArray(): Record<string, SqlValue>[] };
@@ -76,7 +57,6 @@ export interface DurableObjectSql {
   transactionSync<T>(closure: () => T): T;
 }
 
-/** One request to the desktop over its relay socket. Rejects when no desktop is attached. */
 export type DesktopExchange = (request: {
   readonly path: string;
   readonly body: string;
@@ -84,11 +64,8 @@ export type DesktopExchange = (request: {
 }) => Promise<Response>;
 
 export type Effect =
-  /** End the device's open channels; the socket stays. */
   | { readonly kind: "end-device"; readonly deviceId: string }
-  /** End every open channel; the socket stays, as for an owner who was disabled. */
   | { readonly kind: "end-channels" }
-  /** Close every socket with `RELAY_CLOSE.revoked`. */
   | { readonly kind: "close" };
 
 export interface Outcome<T> {
@@ -96,32 +73,21 @@ export interface Outcome<T> {
   readonly effects: readonly Effect[];
 }
 
-/** What the relay decided about a phone request's bearer. */
 type Admitted =
   | { readonly ok: true; readonly deviceId: string | undefined }
   | { readonly ok: false; readonly code: RelayRefusalCode };
 
-/**
- * Only revocation ever changed an environment's generation, and a revoked
- * environment issues nothing, so every lease and grant names this one.
- */
 const GENERATION = 1;
 
-/** The window spent proofs are counted in, and kept for at least. */
 const PROOF_WINDOW_MS = 60_000;
 
-/** Proofs this environment's key may sign per window, by what they are for. */
 const PROOF_LIMITS = {
-  /** Three heartbeats a minute, plus readiness refreshes after enrollments. */
   lease: 20,
-  /** Releases and removals the desktop signs. */
   revoke: 30,
 } as const;
 
-/** Relayed phone requests to this environment in one window, after the bearer is checked. */
 const RELAY_LIMIT = { windowMs: 60_000, limit: 1200 };
 
-/** How long the broker waits for the desktop to record an enrollment. */
 const ENROLL_TIMEOUT_MS = 10_000;
 
 const RECEIPT_LIMIT = 16_384;
@@ -233,7 +199,6 @@ export class EnvironmentRecord {
   readonly #config: Config;
   readonly #log: Logger;
   readonly #exchange: DesktopExchange;
-  /** The one D1 read that copies the identity, shared by every call that arrives while it runs. */
   #loading: Promise<void> | undefined;
   #relayWindow = { start: 0, count: 0 };
 
@@ -309,13 +274,6 @@ export class EnvironmentRecord {
     });
   }
 
-  /**
-   * Reserve the device, have the desktop record its digest, verify the
-   * desktop's signed receipt, then activate. Activation reads D1 for a denial
-   * of the enrolling session and, with no await after that read, checks
-   * everything again: a denial committed before the read refuses the device,
-   * one committed after it is ordered after this enrollment.
-   */
   async enroll(input: {
     readonly ownerId: string;
     readonly sessionId: string;
@@ -380,7 +338,6 @@ export class EnvironmentRecord {
     return ok({ environmentId: this.#id, deviceId: grant.deviceId });
   }
 
-  /** The weak end, signed by the desktop after the device's own bearer asked for it. Body exactly `{}`. */
   async release(input: {
     readonly proof: Proven;
     readonly deviceId: string;
@@ -418,12 +375,6 @@ export class EnvironmentRecord {
     return ok(null, [{ kind: "end-device", deviceId: input.deviceId }]);
   }
 
-  /**
-   * The strong end: the device stops and the Clerk session that enrolled it
-   * is denied. It applies whatever ended the device before, upgrading the
-   * reason, so a weaker end never stands in for it. Answers only once the
-   * denial is in D1; until then the outbox owes it and the alarm retries.
-   */
   async revokeDevice(input: {
     readonly actor: Actor;
     readonly deviceId: string;
@@ -473,7 +424,6 @@ export class EnvironmentRecord {
     return ok({ sessionId: device.session_id }, effects);
   }
 
-  /** Revoke the environment and every device. Answers success when it is already revoked. */
   async revoke(actor: Actor): Promise<Outcome<null>> {
     const served = await this.#load();
 
@@ -492,12 +442,6 @@ export class EnvironmentRecord {
     return ok(null, ended ? [{ kind: "close" }] : []);
   }
 
-  /**
-   * Apply the owner standing D1 holds. A relay that never loaded its row
-   * ignores it, since loading reads D1's current standing. An older version
-   * is ignored; an equal one applies, as a Clerk lookup's does in D1. Deleted
-   * is final and revokes.
-   */
   setOwner(standing: OwnerStanding): Outcome<null> {
     const served = this.#served();
 
@@ -535,7 +479,6 @@ export class EnvironmentRecord {
     );
   }
 
-  /** Presence for the owner's list. `connected`: the relay holds an authenticated socket. */
   status(ownerId: string, connected: boolean): Presence | null {
     if (!this.#loaded()) return { online: false, lastSeenAt: null };
     const served = this.#served();
@@ -550,11 +493,6 @@ export class EnvironmentRecord {
     return { online: connected && recent, lastSeenAt: served.last_seen_at };
   }
 
-  /**
-   * Admit a phone request whose bearer must belong to a device of this
-   * environment (`admission`), or to none. A relay that never loaded refuses
-   * a bearer without reading D1: its desktop never connected.
-   */
   async admit(input: {
     readonly bearer: string | undefined;
     readonly admission: RelayAdmission;
@@ -589,7 +527,6 @@ export class EnvironmentRecord {
     return this.#counted(device.id);
   }
 
-  /** Check a relay socket's `auth` frame: a proof for `GET` on this environment's relay route, spent once. */
   async authenticate(token: string): Promise<"ready" | "revoked" | "unauthorized"> {
     const served = await this.#load();
 
@@ -609,7 +546,6 @@ export class EnvironmentRecord {
     return current.owner_status === "active" ? "ready" : "unauthorized";
   }
 
-  /** Write what the outbox owes D1. A failed write waits with backoff; the relay's alarm tries again. */
   async drain(): Promise<void> {
     if (!this.#loaded()) return;
 
@@ -647,7 +583,6 @@ export class EnvironmentRecord {
     }
   }
 
-  /** When the outbox next owes D1 a write, for the relay's alarm. */
   nextDue(): number | undefined {
     if (!this.#loaded()) return undefined;
 
@@ -658,7 +593,6 @@ export class EnvironmentRecord {
     return this.#storage.sql.exec(query, ...bindings).toArray();
   }
 
-  /** Whether this relay copied its environment; until then it holds no tables at all. */
   #loaded(): boolean {
     return (
       this.#exec("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'environment'")
@@ -689,12 +623,6 @@ export class EnvironmentRecord {
     return this.#served();
   }
 
-  /**
-   * Copy the identity and the owner's standing from D1. An id D1 doesn't know
-   * creates nothing. `policy` starts from the clock, above every counter the
-   * D1 store ever reached, because the desktop refuses a lease whose policy
-   * is lower than one it accepted.
-   */
   async #copy(): Promise<void> {
     const found = await loadEnvironment(this.#directory, this.#id);
 
@@ -715,7 +643,6 @@ export class EnvironmentRecord {
     });
   }
 
-  /** Verify a proof this environment's key signed, and spend its `jti`. */
   async #spend(
     served: Served,
     proof: Proven,
@@ -758,7 +685,6 @@ export class EnvironmentRecord {
     return spent.length === 1 ? claims : undefined;
   }
 
-  /** Whether the proofs of `kind` spent in the current window, this one included, are within its limit. */
   #within(kind: keyof typeof PROOF_LIMITS): boolean {
     const count =
       one(
@@ -773,7 +699,6 @@ export class EnvironmentRecord {
     return count <= PROOF_LIMITS[kind];
   }
 
-  /** Who may remove something: the owner of this environment, or its key within the revoke window. */
   async #authorize(
     served: Served,
     actor: Actor,
@@ -797,7 +722,6 @@ export class EnvironmentRecord {
     );
   }
 
-  /** Revoke the environment and its devices, and owe D1 the retired slot. False when it already was. Call inside a transaction. */
   #end(now: number): boolean {
     const ended = this.#exec(
       "UPDATE environment SET state = 'revoked', policy = policy + 1 WHERE state = 'active' RETURNING owner_id",
@@ -821,11 +745,6 @@ export class EnvironmentRecord {
     return true;
   }
 
-  /**
-   * Reserve a device before the desktop records it: lapsed reservations end
-   * first, then the environment's `DEVICE_LIMIT` counts reservations and every
-   * active device but the one this client replaces.
-   */
   #reserve(
     grant: EnrollmentClaims,
     input: { readonly sessionId: string; readonly now: number },
@@ -868,7 +787,6 @@ export class EnvironmentRecord {
     });
   }
 
-  /** Give up a reservation the desktop never confirmed or that lost its activation. */
   #unreserve(deviceId: string): void {
     this.#exec(
       `UPDATE devices SET state = 'revoked', revoke_reason = 'unconfirmed', revoked_at = ?2
@@ -878,12 +796,6 @@ export class EnvironmentRecord {
     );
   }
 
-  /**
-   * Compare-and-set the reservation to active, replacing the client's earlier
-   * device, only while the reservation is unexpired and unrevoked, the
-   * environment and its owner are active, and neither D1 nor a strong revoke
-   * here denies the session.
-   */
   #activate(
     grant: EnrollmentClaims,
     input: { readonly sessionId: string; readonly denied: boolean },
@@ -919,7 +831,6 @@ export class EnvironmentRecord {
     });
   }
 
-  /** Relay the grant to the desktop's enrollment route and read its receipt, bounded in time and size. */
   async #forwardEnrollment(authorization: string): Promise<string | undefined> {
     const envelope: EnrollEnvelope = { authorization };
     let response: Response;
@@ -976,7 +887,6 @@ export class EnvironmentRecord {
     }
   }
 
-  /** Count an admitted request in this environment's relay window, held in memory: a flood keeps the object awake. */
   #counted(deviceId: string | undefined): Admitted {
     const now = Date.now();
     const start = now - (now % RELAY_LIMIT.windowMs);

@@ -6,7 +6,6 @@ const WORKBENCH_WIDTH_MIN = 384;
 
 export const WORKBENCH_CENTER_WIDTH_MIN = 424;
 
-/** The open panel's width, which the title bar's workbench slot follows. */
 const activeWidth = elementVariable("--nyte-active-workbench-width", "500px");
 
 export const attachActiveWorkbenchWidth = activeWidth.attach;
@@ -15,7 +14,6 @@ export function setActiveWorkbenchWidth(width: number): void {
   activeWidth.set(`${String(width)}px`);
 }
 
-/** A panel's width: a share of the stage, or the pixels stored before shares until the next resize. */
 export type WorkbenchWidth = ShareWidth | { readonly kind: "pixels"; readonly pixels: number };
 
 type ShareWidth = { readonly kind: "share"; readonly share: number };

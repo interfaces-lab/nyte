@@ -49,7 +49,6 @@ export function statusMark(state: TaskState): StatusMark {
   }
 }
 
-/** A stopped or interrupted call is dimmed, not done. */
 export function toneMark(tone: ToolTone): StatusMark {
   switch (tone) {
     case "running":
@@ -74,7 +73,6 @@ function agentExecution(task: Extract<Task, { kind: "agent" }>): Execution | und
   return task.view?.execution ?? task.info.heads.find((head) => head.name === "main")?.execution;
 }
 
-/** Matches the child's chat row in every client. */
 export function taskStatus(task: Task): TaskState {
   return task.kind === "agent" ? sessionMark(task.info) : jobTaskState(task.job.state);
 }

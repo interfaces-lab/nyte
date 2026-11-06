@@ -1,11 +1,3 @@
-/**
- * The smallest Nyte chat in a terminal: one new session in this folder, its
- * messages above, an input below. The first Enter starts the session with that
- * message and later ones send to it. Esc stops the run, Ctrl+C quits.
- * Sign in first with `nyte login`; this example reuses that login. Run it with
- * `pnpm --dir packages/examples/tui-chat start` (Bun reads the Solid preload
- * from this package's bunfig.toml).
- */
 import { isPart, text, tool } from "@nyte-ai/plugin/client";
 import { sdk } from "@nyte-ai/sdk";
 import type { Message, Session } from "@nyte-ai/sdk";
@@ -17,7 +9,6 @@ import { render, useKeyboard } from "@opentui/solid";
 import { createSignal, Index, Show } from "solid-js";
 import type { Accessor } from "solid-js";
 
-/** OpenTUI paints unset text white, so every color is set from the terminal's own scheme. */
 const PALETTES = {
   dark: { foreground: "#fafafa", dim: "#737373", accent: "#009fff", error: "#ff2e3f" },
   light: { foreground: "#0a0a0a", dim: "#737373", accent: "#1a85d4", error: "#d52c36" },
@@ -59,7 +50,6 @@ const [view, setView] = createSignal<HeadView | null>(null);
 
 const [error, setError] = createSignal<string | null>(null);
 
-/** Starts the session with its first message, then follows its view. */
 async function start(content: string): Promise<void> {
   setStarting(true);
 
@@ -89,7 +79,6 @@ interface Line {
   readonly tone: "foreground" | "dim";
 }
 
-/** What one message shows: the user's text, the model's prose, a tool's name; nothing else. */
 function toLine(message: Message): Line | null {
   if (message.kind === "user") {
     const { content } = message;

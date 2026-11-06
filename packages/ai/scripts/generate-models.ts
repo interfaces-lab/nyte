@@ -1,10 +1,5 @@
 #!/usr/bin/env node
 
-/**
- * Generates the per-provider model catalogs in `packages/ai/catalog` from models.dev,
- * OpenRouter, Vercel AI Gateway and the hand-kept models in `catalog/curated-models.ts`.
- * models.dev takes priority: a later source never replaces a model an earlier one listed.
- */
 import { mkdirSync, rmSync, writeFileSync } from "fs";
 import { dirname, join, relative } from "path";
 import { fileURLToPath } from "url";
@@ -72,10 +67,6 @@ import { verifyNyteCatalogs } from "./verify-catalogs.ts";
 
 const packageRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-/**
- * Every provider's models from models.dev, in a fixed order, and the metadata the loaders recorded from their
- * source models; OpenRouter's and Vercel's entries only record metadata.
- */
 async function loadModelsDevData(): Promise<{
   readonly models: Model<Api>[];
   readonly metadata: ModelsDevMetadata;
@@ -128,7 +119,6 @@ async function loadModelsDevData(): Promise<{
   return { models, metadata };
 }
 
-/** Derives each model's compatibility, thinking and cache metadata, in the order later passes depend on. */
 function applyMetadata(models: readonly Model<Api>[], metadata: ModelsDevMetadata): void {
   for (const model of models) {
     applyModelsDevModeMetadata(model, metadata);
@@ -148,7 +138,6 @@ function applyMetadata(models: readonly Model<Api>[], metadata: ModelsDevMetadat
   applyAnthropicAllowedFallbackModelMetadata(models.filter(inAnthropicFallbackChain));
 }
 
-/** Groups models by provider, keeping the first model each provider lists under an id. */
 function groupByProvider(
   models: readonly Model<Api>[],
 ): Record<string, Record<string, Model<Api>>> {

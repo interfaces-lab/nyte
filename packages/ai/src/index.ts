@@ -1,12 +1,7 @@
-/**
- * @nyte-ai/ai: the provider layer. Side-effect free: provider factories and API
- * implementations are exported explicitly below; nothing registers globally.
- */
 export type { Static, TSchema } from "typebox";
 
 export { Type } from "typebox";
 
-// Provider clients load on first use; only types and deferred calls are exported here.
 export type {
   AnthropicEffort,
   AnthropicOptions,

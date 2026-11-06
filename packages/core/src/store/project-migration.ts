@@ -1,7 +1,6 @@
 import { isJsonObject } from "@nyte-ai/schema";
 import type { RewriteStep } from "./migrations.ts";
 
-/** A project became one coordinator chat with the settings its chats read: its lead is its coordinator, its brief its instructions, a goal their last line, and its worker its agents' model. */
 export const projectCoordinators: RewriteStep = {
   kind: "rewrite",
   name: "2026-11-04-project-coordinators",

@@ -30,7 +30,6 @@ export interface LoaderProps {
   readonly xstyle?: Restyle<"Loader">;
 }
 
-/** Loading that isn't AI work, such as a page or a download. AI work shows `Spinner`. */
 export function Loader({ className, style, xstyle }: LoaderProps = {}): ReactElement {
   return (
     <svg

@@ -65,19 +65,16 @@ const BYTE_ROWS = {
   "page.capture": true,
 } as const satisfies { readonly [N in ByteName]: true };
 
-/** Whether `name` names a row of the operations table. */
 export function namesOperation(name: string): name is OperationName {
   return Object.hasOwn(OPERATIONS, name);
 }
 
-/** Whether a row is answered once with JSON: a query, command or receipt. */
 export function answersOnce(name: OperationName): name is CallName {
   const { kind } = OPERATIONS[name];
 
   return kind === "query" || kind === "command" || kind === "receipt";
 }
 
-/** Whether a row is a stream of bytes, answered as a raw octet stream. */
 export function answersBytes(name: OperationName): name is ByteName {
   return Object.hasOwn(BYTE_ROWS, name);
 }
@@ -105,7 +102,6 @@ export function decodeInput<N extends OperationName>(name: N, value: unknown): O
   return input;
 }
 
-/** Encodes an operation's input as the JSON the wire carries. */
 export function encodeInput<N extends OperationName>(_name: N, input: OperationInput<N>): Json {
   return toJson(input) ?? null;
 }
@@ -257,7 +253,6 @@ function compilePlan(start: Node, scope: Definitions, memo: Map<Node, Plan>): Pl
 
 type Unknown = { readonly path: Path; readonly takes: readonly string[] };
 
-/** Names what the object takes only when every unknown field sits in it; otherwise each issue does. */
 function sharedTakes(unknown: readonly Unknown[]): string {
   const parents = new Set(unknown.map((field) => pointer(field.path.slice(0, -1))));
   const first = unknown[0];

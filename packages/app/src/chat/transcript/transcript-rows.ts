@@ -58,7 +58,6 @@ type ResponseRow = { readonly kind: "response"; readonly messages: readonly Text
     }
 );
 
-/** Marks the steps of a turn between its prompt and its first loaded message as not loaded. */
 type EarlierRow = RowLayout & { readonly kind: "earlier" };
 
 export type PromptRow = RowLayout & {
@@ -82,10 +81,8 @@ export type TranscriptRow =
       readonly files: SessionView["changes"];
     });
 
-/** A `grouped` live row says nothing until planning runs slow, because the turn's active step group already shows the run working. */
 export type LiveRowState = "idle" | "planning" | "grouped";
 
-/** Belongs to the reader's visit, not the view, so the transcript inserts it into the projected rows. */
 export type DividerRow = RowLayout & { readonly kind: "divider" };
 
 const NO_USERS: readonly never[] = [];
@@ -129,12 +126,10 @@ export function conversationMessages(view: ProjectedView | undefined) {
   };
 }
 
-/** A user's prompt is drawn sticky from the moment it is sent, so its row keeps one DOM shape when it joins its turn; only inside a turn does it stick. */
 function sticksToTop(message: Message): boolean {
   return message.kind === "user" && !showsReport(message) && !showsAnswer(message);
 }
 
-/** A prompt joining a running run lands in that run's turn, so only a prompt that opens its own turn takes the footer. */
 function opensTurn(message: UserMessage): boolean {
   const { status } = message;
 
@@ -144,7 +139,6 @@ function opensTurn(message: UserMessage): boolean {
   );
 }
 
-/** The last step group stays active through the gap before its run's next step. A waiting or retrying run keeps it active only for a call still in flight, such as one awaiting approval. */
 function turnRows(
   turn: TurnMessages,
   place: {
@@ -253,7 +247,6 @@ function turnRows(
   return rows;
 }
 
-/** A group counts only its own calls' changes; the turn's summary also holds the turn's earlier groups. */
 function stepChanges(messages: readonly StepMessage[]) {
   const changes = messages.flatMap((message) =>
     showsTool(message) && message.state.phase === "settled" && message.state.changes !== null
@@ -277,7 +270,6 @@ function displayMessages(item: TranscriptDisplayPart): readonly Message[] {
   return item.message.kind === "user" ? [] : [item.message];
 }
 
-/** A clipped turn's earlier work isn't loaded but did happen, so this counts from the turn's start. */
 function workedMs(
   turn: TurnMessages,
   work: readonly Message[],
@@ -396,7 +388,6 @@ type SessionState = ReturnType<WatchStore<ProjectedView>["getState"]>;
 type ConversationMessages = ReturnType<typeof conversationMessages>;
 
 export interface TranscriptProjector {
-  /** Whether thinking parts get rows; without them the live row says the run is thinking. */
   readonly thinking: boolean;
   readonly rows: (state: SessionState) => readonly RowLayout[];
   readonly row: (state: SessionState, key: string) => TranscriptRow | undefined;
@@ -426,7 +417,6 @@ function rowMessages(row: TranscriptRow): readonly Message[] {
   }
 }
 
-/** A row whose fields and messages are the ones its previous projection carried keeps that row, so its view skips rendering. */
 function sameRow(known: TranscriptRow, row: TranscriptRow): boolean {
   const fields = new Map<string, unknown>(Object.entries(known));
   const entries: readonly [string, unknown][] = Object.entries(row);
@@ -585,7 +575,6 @@ function withMessage(row: TranscriptRow, slot: TranscriptSlot): TranscriptRow | 
   }
 }
 
-/** A status change reprojects, since a step row's `running` reads it. */
 function streamed(previous: Projection, state: SessionState): Projection | undefined {
   const before = previous.state.value;
   const after = state.value;
@@ -642,7 +631,6 @@ function streamed(previous: Projection, state: SessionState): Projection | undef
   return { ...previous, state };
 }
 
-/** Projects a chat's rows; without `thinking` its thinking parts get none. */
 export function transcriptProjector({
   thinking,
 }: {

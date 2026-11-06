@@ -15,7 +15,6 @@ import {
 import { workspaceFile } from "./paths.ts";
 import { DEFAULT_WIDTH, type WorkbenchWidth, shareWidth } from "./width.ts";
 
-/** What every panel was stored with before panels stored a share: the old default, not a width anyone chose. */
 const LEGACY_DEFAULT_PIXELS = 400;
 
 export type WorkbenchPersistence = Pick<
@@ -100,7 +99,6 @@ const persistedWorkbenchView = Type.Object(
     active: Type.Union([nonEmpty, Type.Null()]),
     expanded: Type.Boolean(),
     maximized: Type.Boolean(),
-    /** Pixels, stored before panels stored a share. */
     width: Type.Optional(Type.Number()),
     share: Type.Optional(Type.Number()),
   },
@@ -138,7 +136,6 @@ function persistedTabFor(tab: WorkbenchTab): PersistedTab | undefined {
   }
 }
 
-/** Editor groups aren't stored: every restored file tab opens in the first group. */
 function restoreTab(tab: PersistedTab): WorkbenchTab {
   if (tab.kind === "browser") return { ...tab, surface: null };
 
@@ -153,7 +150,6 @@ function restoreWidth(stored: Static<typeof persistedWorkbenchView>): WorkbenchW
     : { kind: "pixels", pixels: stored.width };
 }
 
-/** A file tab goes to the view whose workspace holds it. */
 export function restoreSnapshot(
   persisted: PersistedWorkbenchSnapshot | undefined,
   capabilities: () => ClientCapabilities,

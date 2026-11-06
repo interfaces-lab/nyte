@@ -93,11 +93,6 @@ const EDIT_ENDED_NOTICES = {
   lapsed: "Couldn't keep the message on hold.",
 } satisfies Record<Awaited<HeldMessage["lost"]>["kind"], string>;
 
-/**
- * A queued message held on the host while it is edited. `held` stays unset until the host grants
- * the hold; the object's identity marks the current attempt. Hiding the session (Activity) or
- * closing it lets the hold go, and showing it again takes it back.
- */
 interface EditHold {
   held: HeldMessage | undefined;
 }
@@ -129,9 +124,7 @@ export function Composer({
     readonly onEscape: () => boolean;
   };
   floatingMount?: HTMLDivElement | null;
-  /** Whether this composer's pane is the active one, so the footer's menus take their shortcuts. */
   active?: boolean;
-  /** The thread a message goes to instead of this chat, while the agents tray previews it. */
   steer?: { readonly session: SessionId; readonly title: string };
 }): ReactElement {
   useCommitCount("render:composer");
@@ -889,7 +882,6 @@ export function Composer({
   );
 }
 
-/** The drop root wraps the composer, so it never changes while this is mounted. */
 function FileDrop({
   element,
   onFiles,

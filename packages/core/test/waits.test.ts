@@ -26,7 +26,6 @@ import { put } from "../src/store/session.ts";
 import { main, setup, startRun, until } from "../src/harness.ts";
 import { toolPlugin } from "./tool-support.ts";
 
-/** The earliest time a wait on the main head is due, read from its parked calls. */
 async function nextWake(kernel: Kernel, session: SessionId): Promise<number | null> {
   const calls = await readCalls(kernel.store, session);
 

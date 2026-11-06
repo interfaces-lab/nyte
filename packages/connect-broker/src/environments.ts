@@ -1,8 +1,3 @@
-/**
- * Environment routes: list and link with a Clerk session, lease with a
- * machine-key proof, and removal with either. Past its D1 index row, an
- * environment is its relay's to decide about.
- */
 import { LinkRequest, PROOF_HEADER } from "@nyte-ai/connect";
 import type { EnvironmentList, ErrorCode, LinkResponse } from "@nyte-ai/connect";
 import { publicKeySet } from "@nyte-ai/connect/signing";
@@ -14,7 +9,6 @@ import { proofToken, verifyLinkProof } from "./proof.ts";
 import { claimEnvironment, listActiveEnvironments } from "./store/environments.ts";
 import type { ClaimOutcome } from "./store/environments.ts";
 
-/** The owner's active environments; each relay says whether its desktop is online. */
 export async function listEnvironments(context: Context, request: Request): Promise<Response> {
   const session = await verifySession(context, request, "list");
   const environments = await listActiveEnvironments(context.db, session.userId);
@@ -43,11 +37,6 @@ export async function listEnvironments(context: Context, request: Request): Prom
   return json(200, body);
 }
 
-/**
- * Link a desktop to the caller's account, or resume the link with the same
- * key. The owner is looked up in Clerk first: a banned, locked, or unknown
- * user links nothing, and neither does any user while Clerk can't answer.
- */
 export async function linkEnvironment(context: Context, request: Request): Promise<Response> {
   const session = await verifySession(context, request, "link");
   const text = await requestText(request);
@@ -102,10 +91,6 @@ export function claimRefusal(outcome: Exclude<ClaimOutcome, { kind: "linked" }>)
   }
 }
 
-/**
- * Who asks to remove something: the desktop, when the request carries a
- * proof, else the owner's Clerk session. The relay checks either.
- */
 export async function requestActor(context: Context, request: Request): Promise<Actor> {
   if (request.headers.has(PROOF_HEADER))
     return {
@@ -117,7 +102,6 @@ export async function requestActor(context: Context, request: Request): Promise<
   return { kind: "owner", ownerId: session.userId };
 }
 
-/** Revoke the environment; its relay closes the desktop's socket. */
 export async function removeEnvironment(
   context: Context,
   request: Request,
@@ -130,7 +114,6 @@ export async function removeEnvironment(
   return noContent();
 }
 
-/** The signed allowlist a serving desktop renews every heartbeat, answered by its relay. */
 export async function issueLease(
   context: Context,
   request: Request,

@@ -1,16 +1,8 @@
-/**
- * The spatial grid the rendered desktop app is checked against: the scale, every rule with its named
- * exceptions, and each region's rails and row rhythm. Rails and pitches are expressions over StyleX
- * handles, so they move with the tokens instead of pinning today's values.
- */
-
 export const SCALE = {
   spacing: [0, 1, 2, 4, 6, 8, 10, 12, 14, 16, 20, 24, 28, 32, 40, 48, 64],
   grid: 2,
   controls: [16, 20, 24, 28, 32, 36],
-  /** Cursor's Glass bar: the titlebar and every pane header. */
   chromeBar: 40,
-  /** The row scale: the control heights at or above the 24px target. */
   rows: [24, 28, 32, 36],
   bars: [40, 44, 48],
   radii: [0, 4, 6, 8, 12, 14, 16, 9999],
@@ -25,11 +17,9 @@ export const SCALE = {
     [28, 34],
   ],
   code: [[12, 18]],
-  /** An edge this far from a rail is meant to sit on it. */
   railNear: 4,
 } as const;
 
-/** A list of steps as a sentence fragment: "10, 12 or 14px". */
 export const spell = (values: readonly (number | string)[], unit = "px"): string =>
   values.length < 2
     ? `${values.join("")}${unit}`
@@ -38,7 +28,6 @@ export const spell = (values: readonly (number | string)[], unit = "px"): string
 const pairs = (list: readonly (readonly [number, number])[]): string[] =>
   list.map(([size, line]) => `${String(size)}/${String(line)}`);
 
-/** Heights that make a box a chrome bar, read from the declaration that sizes it. */
 export const CHROME_BAR_TOKENS = [
   "--nyte-titlebar-height",
   "--nyte-conversation-header-height",
@@ -59,7 +48,6 @@ export type RuleId =
   | "align"
   | "end-in-view";
 
-/** A fact about a box, for exceptions no selector can name. */
 export type BoxFact =
   | "centred"
   | "end-aligned"
@@ -280,7 +268,6 @@ export const GRID_RULES = {
   },
 } satisfies Record<RuleId, RuleSpec>;
 
-/** Where a chat pane's transcript, its virtual rows and its composer are, for the end-in-view rule. */
 export const TRANSCRIPT_END = {
   pane: 'section[aria-label="Active chat pane"], section[aria-label="chat pane"]',
   viewport: '[role="region"][aria-label="Messages"]',
@@ -288,7 +275,6 @@ export const TRANSCRIPT_END = {
   dock: 'form[aria-label="Message"]',
 } as const;
 
-/** A length built from StyleX handles, resolved by the renderer so it follows the tokens. */
 export type Expr =
   | { readonly op: "handle"; readonly handle: string }
   | { readonly op: "px"; readonly px: number }
@@ -296,7 +282,6 @@ export type Expr =
   | { readonly op: "diff"; readonly left: Expr; readonly right: Expr }
   | { readonly op: "half"; readonly of: Expr };
 
-/** The handles an expression reads, which a rail's own declarations may use without being its cause. */
 export function termsIn(expr: Expr): string[] {
   switch (expr.op) {
     case "handle":
@@ -341,7 +326,6 @@ export type RegionName =
   | "editor"
   | "changes";
 
-/** Where a region's box is: a selector, or the element inside `within` whose width reads `token`. */
 export type Locate =
   | { readonly by: "selector"; readonly selector: string }
   | { readonly by: "token"; readonly within: string; readonly token: string };
@@ -355,7 +339,6 @@ export interface Rail {
 
 export interface Rhythm {
   readonly rows: string;
-  /** Null when the rows have no fixed pitch, as file headers with diffs between them don't. */
   readonly pitch: Expr | null;
   readonly why: string;
 }
@@ -365,7 +348,6 @@ export interface RegionSpec {
   readonly locate: Locate;
   readonly rails: readonly Rail[];
   readonly rhythm: Rhythm | null;
-  /** Boxes that sit centred on the region's height, such as a bar's controls. */
   readonly centred: string | null;
 }
 
@@ -620,16 +602,13 @@ export const REGIONS: readonly RegionSpec[] = [
   },
 ];
 
-/** A box or line that faces another one across regions. */
 export type Pick =
   | { readonly kind: "first-row"; readonly region: RegionName }
   | {
       readonly kind: "box";
       readonly name: string;
       readonly selector: string;
-      /** Keep only matches in a chat pane whose bottom is on the window's bottom edge; each one is compared. */
       readonly within?: "bottom-edge-pane";
-      /** On the y axis, the box's first text baseline (the default) or its bottom edge. */
       readonly line?: "baseline" | "end";
     }
   | { readonly kind: "rail"; readonly region: RegionName; readonly rail: string };

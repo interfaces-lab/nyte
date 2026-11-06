@@ -67,7 +67,6 @@ export async function stopRun(
   return { kind: "requested" };
 }
 
-/** Stops each run of this session's children that `run` is parked waiting on: the work it waited for is part of what the user stopped. */
 async function stopAwaitedChildRuns(kernel: Kernel, session: SessionId, run: RunId): Promise<void> {
   const found = await load(
     kernel.store,
@@ -138,7 +137,6 @@ export async function fence(kernel: Kernel, session: SessionId, run: RunId): Pro
   };
 }
 
-/** Whether the run's stop fence is set in the store, the one record of a stop; a run whose record is gone has ended and is not stopping. */
 export async function stopRequested(
   store: StoreConnection,
   session: SessionId,
@@ -149,7 +147,6 @@ export async function stopRequested(
   return found?.record.stopping === true;
 }
 
-/** Stops this process's work on a run whose stop fence is set, and fails what the run opened between the fence's read and its write: with the live ref gone nothing opens under the run any more, so this pass sees the last of them. */
 export async function finishFence(kernel: Kernel, session: SessionId, run: RunId): Promise<void> {
   kernel.runs.abort(run);
 

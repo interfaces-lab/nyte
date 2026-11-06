@@ -19,10 +19,6 @@ import { settingsStyles } from "./settings.stylex.ts";
 
 const ROW_MARK = { "data-settings-row": "" } as const;
 
-/**
- * A bold title over one card of rows. The card can open with a live `preview` of what its rows
- * change; a `note` and `actions` sit under the card, for what the whole group needs said or done.
- */
 export function SettingsSection({
   title,
   description,

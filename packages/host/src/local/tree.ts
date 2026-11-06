@@ -173,7 +173,6 @@ export async function* walkTree(
   yield denied ? { kind: "incomplete", reason: "permission" } : { kind: "complete" };
 }
 
-/** Calls `changed` with the paths below `root` that moved, coalesced over `delay`, from a recursive `fs.watch`; where that is unavailable it walks the tree every `poll` ms when one is given, and calls `unwatched` once either way. */
 export function watchTree(
   root: string,
   options: {
@@ -265,20 +264,6 @@ export function watchTree(
   };
 }
 
-/**
- * Calls `changed` when what is at the absolute `target` moves, coalesced over
- * `delay`: with `""` for the target itself (created, removed, replaced or, for
- * a file, written) and the path below it for a change inside a directory,
- * which is watched recursively. A file is watched itself and re-watched when
- * it is replaced, a directory beside a watch on its parent for its own name;
- * while the target is missing, the nearest directory above it that exists is
- * watched for the next missing name, and the watch moves down as they appear;
- * a name that appears before its listener starts is found by checking once
- * more after it does. After the target moves, `changed` waits until the new
- * watch listens, so a caller that reads what appeared also sees anything
- * written meanwhile.
- * Nothing polls.
- */
 export function watchPath(
   target: string,
   options: { readonly delay: number },
@@ -392,7 +377,6 @@ export function watchPath(
   };
 }
 
-/** Null for a path that isn't there; any other failure goes on. */
 export function missing(error: unknown): null {
   const code = readErrorCode(error);
 

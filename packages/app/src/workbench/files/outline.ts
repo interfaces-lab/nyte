@@ -5,9 +5,7 @@ export type SymbolKind = "function" | "class" | "type" | "variable" | "heading";
 export interface OutlineSymbol {
   readonly name: string;
   readonly kind: SymbolKind;
-  /** One-based. */
   readonly line: number;
-  /** Nesting by indentation, or a heading's level less one. */
   readonly depth: number;
 }
 
@@ -48,11 +46,6 @@ const PATTERNS = new Map<string, readonly Pattern[]>([
   ],
 ]);
 
-/**
- * The declarations a file's lines start, found by pattern rather than parsed: headings in
- * Markdown, top-level and indented declarations in the languages {@link PATTERNS} lists. Other
- * languages have no outline.
- */
 export function findSymbols(path: string, contents: string): readonly OutlineSymbol[] {
   const language = getFiletypeFromFileName(path);
   const lines = contents.split(/\r?\n/u);

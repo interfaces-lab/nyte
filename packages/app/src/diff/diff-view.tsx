@@ -237,7 +237,6 @@ function adaptDiffExpanders(node: HTMLElement): void {
   }
 }
 
-/** A diff renderer that skips this shows Pierre's own colours. */
 export function adaptDiffRender(node: HTMLElement): void {
   applyDiffScopes(node);
   adaptDiffExpanders(node);

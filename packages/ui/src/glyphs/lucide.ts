@@ -1,9 +1,3 @@
-/**
- * The open icon set: Lucide at stroke 1.5 to match Central's weight, with
- * brand marks from Simple Icons. A brand Simple Icons doesn't carry gets a
- * generic glyph for its kind instead. Used when Central Icons aren't
- * installed; scripts/icons.mjs decides.
- */
 import {
   Activity,
   AppWindow,
@@ -142,7 +136,6 @@ import {
 
 import type { FilledIconName, Glyph, GlyphProps, IconName } from "../icon-names.ts";
 
-/** Central draws at stroke 1.5 on a 24 px grid; Lucide defaults to 2. */
 export const LUCIDE_STROKE_WIDTH = 1.5;
 
 function lucide(icon: LucideIcon, filled = false): Glyph {
@@ -159,10 +152,6 @@ function lucide(icon: LucideIcon, filled = false): Glyph {
   return glyph;
 }
 
-/**
- * Simple Icons marks run edge to edge on their 24 px grid; the padding keeps
- * them the optical size of a stroked glyph beside them.
- */
 function brand(icon: SimpleIcon): Glyph {
   const glyph = ({ size }: GlyphProps) =>
     createElement(
@@ -183,7 +172,6 @@ function brand(icon: SimpleIcon): Glyph {
   return glyph;
 }
 
-/** Brands Simple Icons doesn't carry. */
 const genericAgent = lucide(Bot);
 
 const genericModel = lucide(BrainCircuit);

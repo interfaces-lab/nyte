@@ -168,11 +168,6 @@ function composerFacts(d: Dimensions, state: State, now: number): readonly Msg[]
   ];
 }
 
-/**
- * The bottom of the chat screen: queue rows, background tasks line, composer, powerline and
- * hints. It reads the most state of any component: run, queue, follow-up, blocked and tasks
- * each change its rows, placeholder and hints.
- */
 export const composerStory = defineStory<Dimensions>({
   id: "composer",
   title: "Composer with queue, run, follow-up, blocked and background-task states",

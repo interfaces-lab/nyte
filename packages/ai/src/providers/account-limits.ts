@@ -1,12 +1,7 @@
-/**
- * What every provider's subscription-window reader shares: the normalized window and the
- * account usage request.
- */
 import type { Static, TSchema } from "typebox";
 import { Value } from "typebox/value";
 import type { AccountLimitWindow, AccountLimitsFetchOptions } from "../types.ts";
 
-/** One window with its percent clamped to 0..100; absent reset and length stay absent. */
 export function limitWindow(
   id: string,
   label: string,
@@ -27,10 +22,6 @@ export function limitWindow(
   return window;
 }
 
-/**
- * GETs a provider's account usage endpoint and decodes the body against `schema`. `label` names
- * the provider in errors; a positive `timeoutMs` bounds the whole request.
- */
 export async function fetchAccountUsage<T extends TSchema>(
   url: string,
   headers: Headers,

@@ -621,7 +621,6 @@ function openingFrame(): OpeningFrame {
 
 const FIRST_FRAME_LIMIT_MS = 4_000;
 
-/** Each window keeps a lasting id, so its tabs and drafts reopen in it after a quit. */
 function createWindow(windowId: string = randomUUID()): NyteWindow {
   const frame = openingFrame();
   const kept = launchState.windows();
@@ -780,10 +779,6 @@ function createWindow(windowId: string = randomUUID()): NyteWindow {
   return entry;
 }
 
-/**
- * Reopens the windows open when the app last quit, or one new window. Closing a window while
- * others stay forgets it; quitting, or closing the last one, keeps every window open then.
- */
 function restoreWindows(): NyteWindow {
   const saved = launchState.windows();
   const first = createWindow(saved[0]);

@@ -6,7 +6,6 @@ import { base64Bytes } from "../base64.ts";
 import { idSchema } from "../../ids.ts";
 import { withJson } from "../../json.ts";
 
-/** Returns a group of operation rows, each a declaration of its schemas, kind and access. */
 export type OperationRows = { readonly [name: string]: Declaration<unknown, unknown> };
 
 export function wireSchema<T extends TSchema>(type: T) {

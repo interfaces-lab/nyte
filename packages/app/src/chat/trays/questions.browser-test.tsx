@@ -310,7 +310,6 @@ function radio(host: Element, label: string): HTMLInputElement {
   return input;
 }
 
-/** Answers the first of two questions with Four and Next, then runs `step` on the second. */
 async function secondQuestion(step: (host: HTMLElement) => Promise<void>) {
   sent.length = 0;
   const host = document.createElement("div");
@@ -357,7 +356,6 @@ const BOTH = JSON.stringify([{ answers: [["Four"], ["No"]] }]);
 
 const DISMISSED = JSON.stringify([{}]);
 
-/** Choosing an answer only selects it, Enter on a chosen answer goes to the next question, and only Submit or Cmd+Enter sends. */
 async function lastAnswer(): Promise<readonly string[]> {
   const chooseNo = (host: HTMLElement) => click(within(host, CHOICE, "No"));
 

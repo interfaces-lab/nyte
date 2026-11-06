@@ -9,7 +9,6 @@ import { dev } from "../util/dev-log.ts";
 import { stopRun } from "./fence.ts";
 import { withdraw } from "./receipts.ts";
 
-/** Stops `session`'s live runs and withdraws its queued messages; a start not yet run is the caller's. */
 export async function stopRuns(
   kernel: Kernel,
   session: SessionId,
@@ -37,11 +36,6 @@ export async function stopRuns(
   return { stopped, withdrawn };
 }
 
-/**
- * Stops the children `head` started from `since` on, and everything under them: moving the head
- * back to before `since` cut the calls that started them, so nothing in the chat follows them.
- * It runs beside the move, which has landed; a failure leaves them running and is logged.
- */
 export function stopCut(kernel: Kernel, session: SessionId, head: HeadName, since: number): void {
   void stopCutChildren(kernel, session, head, since).catch((error: unknown) =>
     dev("stop", "cut children", { session, head, error: String(error) }),
@@ -68,7 +62,6 @@ async function stopTree(kernel: Kernel, session: SessionId): Promise<void> {
   await Promise.all(children.map((child) => stopTree(kernel, child.id)));
 }
 
-/** A session's background children; its side chats never run for it. */
 async function listChildren(kernel: Kernel, parent: SessionId): Promise<readonly SessionRecord[]> {
   const children: SessionRecord[] = [];
   let after: { readonly at: number; readonly id: SessionId } | undefined;

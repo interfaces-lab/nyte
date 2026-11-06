@@ -6,15 +6,9 @@ export type ThemeChoice = "auto" | ThemeMode;
 
 export const THEME_CHOICES = ["auto", "dark", "light"] as const satisfies readonly ThemeChoice[];
 
-/**
- * TUI colors for one terminal mode. Every text color reads at WCAG AA (4.5:1) on `background`
- * and `codeBackground`, and the diff colors on their diff backgrounds; `muted` is for separators
- * and shading only, never text.
- */
 export interface CliTheme {
   readonly mode: ThemeMode;
   readonly transparent: "transparent";
-  /** What fills the screen: `background`, or `transparent` where the terminal's own shows through. */
   readonly backdrop: string;
   readonly terminal: string;
   readonly background: string;
@@ -170,7 +164,6 @@ function gray(hex: string): string {
   return `#${channel}${channel}${channel}`;
 }
 
-/** The theme with every color replaced by the gray of equal luminance, so contrast is unchanged. */
 function monochrome(theme: CliTheme): CliTheme {
   return Object.freeze({
     mode: theme.mode,
@@ -270,17 +263,12 @@ function resolveThemeMode(
   );
 }
 
-/** The theme for a terminal mode; NO_COLOR swaps in its monochrome form. */
 export function themeForMode(mode: ThemeMode, env: NodeJS.ProcessEnv = process.env): CliTheme {
   const noColor = env["NO_COLOR"];
 
   return noColor === undefined || noColor === "" ? THEMES[mode].color : THEMES[mode].plain;
 }
 
-/**
- * The theme for a setting and the mode the terminal reported (`null` when it didn't). A theme in
- * the terminal's own mode leaves the terminal's background showing; any other paints its own.
- */
 export function themeFor(
   choice: ThemeChoice,
   reported: ThemeMode | null,

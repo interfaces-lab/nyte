@@ -38,13 +38,10 @@ type FileSection = {
   lineCount: number;
 };
 
-/** Long patches render their head first; the rest waits for a tap. */
 const LINE_LIMIT = 400;
 
-/** How much of one file is on screen. The header toggles, the footer promotes. */
 type FileView = "collapsed" | "head" | "whole";
 
-/** A file's hunks → display lines with new-side (or old-side) line numbers. */
 function displayLines(hunks: readonly Hunk[], limit: number): Line[] {
   const out: Line[] = [];
 
@@ -104,7 +101,6 @@ async function textPatches(stream: AsyncIterable<PatchSet>): Promise<TextPatch[]
   );
 }
 
-/** One section per agent edit, numbered when a run touched the same file more than once. */
 function agentSections(perRun: readonly TextPatch[][]): FileSection[] {
   const edits = new Map<string, TextPatch[]>();
 
@@ -120,10 +116,6 @@ function agentSections(perRun: readonly TextPatch[][]): FileSection[] {
   );
 }
 
-/**
- * A session's changes, from the agent's record or the Mac's working tree. Past three files, only the
- * file the user arrived on starts open; a tap moves one file between collapsed, head, and full views.
- */
 export function ChangesScreen({
   client,
   sessionId,

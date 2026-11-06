@@ -14,10 +14,6 @@ const sectionNotes = new Map([
   ],
 ]);
 
-/**
- * design.nyte.sh/: the name and what the package is, then each section of the
- * catalogue as a sheet of numbered, working specimens.
- */
 export function DesignLanding({ page }: { page: DocPage }) {
   const counts = catalog.map(
     (section) => `${section.entries.length} ${section.label.toLowerCase()}`,

@@ -40,12 +40,9 @@ export interface WindowTabItem {
   readonly id: string;
   readonly title: string;
   readonly tooltip: string;
-  /** The chats in the tab's panes, the focused pane's first. */
   readonly sessions: readonly SessionId[];
   readonly parent?: SessionId;
-  /** The focused pane's chat, whose mark the tab shows as the chat's sidebar row does. */
   readonly chat: SessionId | undefined;
-  /** The icon of a tab whose focused pane shows no chat. */
   readonly glyph: ReactNode;
   readonly preview: boolean;
   readonly split: WindowTabSplit | undefined;
@@ -63,7 +60,6 @@ export interface WindowTabStripProps {
   readonly onReorder: (tabIds: readonly string[], tabId: string) => void;
   readonly onCloseOthers: (tabId: string) => void;
   readonly onCloseToRight: (tabId: string) => void;
-  /** What the focused chat's actions do; the strip only asks. */
   readonly chat: WindowTabChatActions;
 }
 
@@ -335,7 +331,6 @@ function TabView({
   );
 }
 
-/** Reads the chat only while the menu is open. */
 function TabChatItems({
   sessionId,
   chat,
@@ -371,7 +366,6 @@ function TabChatItems({
   );
 }
 
-/** Mounted again for each selected tab, since the strip scrolls rather than shrinking its tabs. */
 function RevealSelected({ list }: { readonly list: RefObject<HTMLDivElement | null> }): null {
   useMountEffect(() => {
     list.current

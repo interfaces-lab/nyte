@@ -54,19 +54,16 @@ const TABS: readonly { readonly value: ProjectTab; readonly label: string }[] = 
   { value: "docs", label: "Context" },
 ];
 
-/** The default model, as the model pickers' key. */
 const DEFAULT_MODEL = "";
 
 type Draft = Omit<ProjectInput, "workspace"> & { readonly workspace: WorkspaceId | undefined };
 
-/** The dialog the window shows: a new project's, or an existing one's. */
 type Opened = { readonly project: ProjectId | null };
 
 let opened: Opened | undefined;
 
 const listeners = new Set<() => void>();
 
-/** Opens the dialog that creates a project, or edits `project`. */
 export function openProjectDialog(project: ProjectId | null): void {
   opened = { project };
 
@@ -477,7 +474,6 @@ function McpTab({
   );
 }
 
-/** Where a rules file sits, as its switch describes it. */
 const RULE_SCOPES = {
   user: () => "Yours, in ~/.nyte",
   ancestor: (location: string) => `Above this folder, ${location}`,
@@ -598,7 +594,6 @@ function readDraft(project: ProjectInfo | null): Draft {
   };
 }
 
-/** `list` with `item` in it when `present`, and without it otherwise. */
 function toggle(list: readonly string[], item: string, present: boolean): readonly string[] {
   const rest = list.filter((entry) => entry !== item);
 

@@ -5,7 +5,6 @@ import { appName, siteDescription, siteTitle, siteUrl } from "~/lib/shared";
 import { themeScript } from "~/lib/theme";
 import globalCss from "~/styles/global.css?url";
 
-/** In dev the StyleX plugin serves its sheet separately; a build appends it to global.css. */
 const devStylex = import.meta.env.DEV
   ? {
       links: [{ rel: "stylesheet", href: "/virtual:stylex.css" }],
@@ -13,11 +12,6 @@ const devStylex = import.meta.env.DEV
     }
   : { links: [], scripts: [] };
 
-/**
- * The document shell. global.css declares the cascade layer order, so it loads
- * before StyleX; the theme script sets the class and colour scheme before
- * React hydrates.
- */
 export const Route = createRootRoute({
   head: () => ({
     meta: [

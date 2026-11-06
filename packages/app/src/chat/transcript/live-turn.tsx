@@ -28,7 +28,6 @@ export const liveTurnStyles = create({
   waiting: { visibility: "hidden" },
 });
 
-/** Without `thinking` rows, the line also stands in for the run's thinking, by its latest heading. */
 export function LiveTurn({
   state,
   thinking,

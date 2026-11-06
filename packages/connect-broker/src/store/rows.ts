@@ -1,7 +1,3 @@
-/**
- * The D1 row schemas every table module reads through, the helpers that check
- * rows on the way out, and the statement more than one table module runs.
- */
 import { Type } from "typebox";
 import type { Static, TSchema } from "typebox";
 import { Value } from "typebox/value";
@@ -17,7 +13,6 @@ export const OwnerStatus = Type.Union([
 
 export type OwnerStatus = Static<typeof OwnerStatus>;
 
-/** An environment as D1 indexes it: who owns it, its key, its name, and whether it holds a slot. */
 export const EnvironmentRow = Type.Object({
   id: Type.String(),
   owner_id: Type.String(),
@@ -106,6 +101,5 @@ export async function changed(statement: D1PreparedStatement): Promise<boolean> 
   return (await statement.run()).meta.changes > 0;
 }
 
-/** Retire matching index rows: the slot frees and the key stays a tombstone. Append the row filter. */
 export const RETIRE_ENVIRONMENTS = `UPDATE environments SET state = 'revoked', revoked_at = ?2
   WHERE state != 'revoked' AND `;

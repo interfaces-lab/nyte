@@ -59,7 +59,6 @@ interface Group {
   readonly commit: CommitId;
   readonly run: RunId | null;
   readonly attempt: string | null;
-  /** Whether it holds text a failed attempt kept (a `cut` part commit), so the next attempt's text or calls start a response of their own. */
   cut: boolean;
   readonly model: ModelRef | null;
   readonly at: number;
@@ -85,11 +84,6 @@ const SUMMARISED =
 const ABANDONED =
   "The conversation moved back to an earlier point, abandoning a path. What that path did:";
 
-/**
- * Follows a response a retry cut off and kept: it ends with no calls, and the run's next attempt
- * goes on from it, so the model is asked to continue, between the two and before the request that
- * continues it.
- */
 const CONTINUE =
   "The previous response was interrupted. Continue from where you left off without repeating completed content.";
 
@@ -161,7 +155,6 @@ export async function requestBody(
   };
 }
 
-/** Tools earlier calls on the head's history loaded, compacted ones included. */
 export async function loadedTools(
   kernel: Kernel,
   source: ToolSource,
@@ -175,7 +168,6 @@ export async function loadedTools(
   return [...new Set([...loads.values()].flat())];
 }
 
-/** The tools each settled call's output loads (`ToolDefinition.loads`), by the call's commit. */
 async function readLoads(
   steps: readonly Step[],
   source: ToolSource,
@@ -205,7 +197,6 @@ async function readLoads(
   return new Map(loads.flat());
 }
 
-/** Marks a tool result with the declared tools its call loaded, so providers that load tools from results keep their cached prefix. */
 function markLoads(
   message: Message,
   loads: ReadonlyMap<CommitId, readonly string[]>,
@@ -301,7 +292,6 @@ async function buildContext(
   return prompt.head === null ? messages : [prompt.head, ...messages];
 }
 
-/** The head's path, then the run's settled parts that are not on it yet. */
 function readSteps(
   kernel: Kernel,
   session: SessionId,
@@ -347,7 +337,6 @@ function readSteps(
   });
 }
 
-/** The commits the steps' compactions replaced, and each compaction by the first commit it replaced, where its summary goes. */
 function readCompactions(steps: readonly Step[]): {
   readonly removed: ReadonlySet<CommitId>;
   readonly anchors: ReadonlyMap<CommitId, readonly Step[]>;
@@ -371,13 +360,6 @@ function readCompactions(steps: readonly Step[]): {
   return { removed, anchors };
 }
 
-/**
- * The steps as model messages. A system prompt update goes right after the messages of the
- * commit it followed: after that commit's own message, or, for a commit inside an assistant turn,
- * after the turn's tool results; an update after a commit that gives no message goes before the
- * next step's. Every later request rebuilds it at that same place. The open turn is read through
- * `openGroup`: only closures assign `group`, so TypeScript would keep it at its first `null`.
- */
 async function conversation(
   kernel: Kernel,
   models: Models,
@@ -941,7 +923,6 @@ function escapeAttribute(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;");
 }
 
-/** The attempt a text or thinking part of `run` streamed in, from its id `<run>:a<attempt>:<index>`. */
 function parseAttempt(part: string, run: RunId | null): string | null {
   if (run === null || !part.startsWith(`${run}:`)) return null;
 
@@ -962,7 +943,6 @@ function providerCallId(call: string, run: RunId | null): string {
   return counted === null ? rest : rest.slice(counted[0].length);
 }
 
-/** Whether `model` reads a system message sent mid-conversation where it stands, rather than folded into its leading prompt. */
 function takesSystemUpdates(model: ReturnType<Models["getModel"]>): boolean {
   const compat = model?.compat;
 

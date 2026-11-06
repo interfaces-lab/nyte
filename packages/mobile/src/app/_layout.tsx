@@ -18,7 +18,6 @@ import { DevelopmentMenu } from "../development/development-menu.ts";
 
 export const unstable_settings = { anchor: "index" };
 
-/** Queries refetch on window focus; on a phone that means the app coming forward. */
 function listenForAppFocus(handleFocus: (focused: boolean) => void) {
   const subscription = AppState.addEventListener("change", (state) =>
     handleFocus(state === "active"),
@@ -161,7 +160,6 @@ const layoutRoot = StyleSheet.create({
 });
 
 const styles = css.create({
-  /** The screen's own box: its parent is the native root, not a flex container, so it fills by size. */
   root: {
     display: "flex",
     flexDirection: "column",

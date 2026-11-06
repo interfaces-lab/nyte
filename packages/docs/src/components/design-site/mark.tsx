@@ -1,8 +1,3 @@
-/**
- * The moon from the Nyte app icon, cell for cell: lit cells solid, the dither
- * across its dark side faint. Twelve cells across, so it stays crisp at
- * multiples of 12px.
- */
 export const moon = [
   "    ###.    ",
   "  ####.#..  ",
@@ -47,7 +42,6 @@ export function DesignMark({ size = 24 }: { size?: number }) {
   );
 }
 
-/** The site's name, set in the pixel face the Nyte landing uses for its headline. */
 export function DesignWordmark() {
   return (
     <span className="design-wordmark">

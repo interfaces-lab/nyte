@@ -16,7 +16,6 @@ const styles = create({
     minWidth: 0,
     paddingBlock: space.s0_5,
     paddingInline: space.s1,
-    // A 1 px transparent border on each edge leaves 3 px around the 20 px segments.
     borderBlockWidth: space.px,
     borderBlockStyle: "solid",
     borderBlockColor: "transparent",

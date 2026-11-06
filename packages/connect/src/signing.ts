@@ -1,12 +1,3 @@
-/**
- * Compact JWS over Ed25519 (RFC 7515, RFC 8037) for the broker and the desktop,
- * built on `jose`. The phone never imports this entry: it neither signs nor
- * verifies, and its React Native runtime has no WebCrypto signing.
- *
- * Every verification pins `alg` to EdDSA, the protected-header `typ` to one
- * token kind, the issuer and audience to exact values, and the lifetime to
- * the contract's bound, then checks the claims against their schema.
- */
 import {
   SignJWT,
   calculateJwkThumbprint,
@@ -30,7 +21,6 @@ import {
 } from "./schemas.ts";
 import type { BrokerJwk, BrokerKeys } from "./schemas.ts";
 
-/** An Ed25519 private key. Kept in the desktop's private store and as a secret in the broker. */
 export const PrivateJwk = Type.Object({
   kty: Type.Literal("OKP"),
   crv: Type.Literal("Ed25519"),
@@ -43,7 +33,6 @@ export type PrivateJwk = Static<typeof PrivateJwk>;
 
 export type TokenType = (typeof TOKEN_TYPES)[keyof typeof TOKEN_TYPES];
 
-/** A token that failed verification. The reason is for logs and tests, never for a client. */
 class VerificationFailed extends Error {
   constructor(reason: string) {
     super(reason);
@@ -55,7 +44,6 @@ export function toPublicJwk(key: PrivateJwk): PublicJwk {
   return { kty: "OKP", crv: "Ed25519", x: key.x };
 }
 
-/** The broker's published key set: public halves only. */
 export function publicKeySet(keys: readonly PrivateJwk[]): BrokerKeys {
   const published: BrokerJwk[] = keys.map((key) => {
     if (key.kid === undefined) throw new VerificationFailed("A broker signing key needs a kid");
@@ -66,7 +54,6 @@ export function publicKeySet(keys: readonly PrivateJwk[]): BrokerKeys {
   return { keys: published };
 }
 
-/** A fresh machine key. The private half is extractable so the desktop can seal it. */
 export async function generateMachineKey(): Promise<PrivateJwk> {
   const pair = await generateKeyPair("EdDSA", { crv: "Ed25519", extractable: true });
   const exported: unknown = await exportJWK(pair.privateKey);
@@ -76,19 +63,16 @@ export async function generateMachineKey(): Promise<PrivateJwk> {
   return { kty: "OKP", crv: "Ed25519", x: exported.x, d: exported.d };
 }
 
-/** RFC 7638 SHA-256 thumbprint: the key's issuer name while it links. */
 export function keyThumbprint(key: PublicJwk): Promise<string> {
   return calculateJwkThumbprint({ kty: key.kty, crv: key.crv, x: key.x }, "sha256");
 }
 
-/** base64url SHA-256 of a string's UTF-8 bytes. Device token digests use this. */
 export async function sha256(text: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
 
   return base64Url(new Uint8Array(digest));
 }
 
-/** 128 random bits, base64url: a `jti` or `nonce`. */
 export function randomId(): string {
   return base64Url(crypto.getRandomValues(new Uint8Array(16)));
 }
@@ -110,7 +94,6 @@ export async function signClaims(input: {
   return new SignJWT(input.claims).setProtectedHeader(header).sign(input.key);
 }
 
-/** The `kid` a token names, read before its signature is checked so the key can be chosen. */
 function tokenKeyId(token: string): string | undefined {
   try {
     const header = decodeProtectedHeader(token);
@@ -128,7 +111,6 @@ export async function verifyClaims<S extends TSchema>(input: {
   readonly issuer: string;
   readonly audience: string;
   readonly schema: S;
-  /** Longest `exp - iat` accepted, in seconds. */
   readonly lifetime: number;
   readonly now?: number;
 }): Promise<Static<S>> {
@@ -162,10 +144,6 @@ export async function verifyClaims<S extends TSchema>(input: {
   return payload;
 }
 
-/**
- * A request proof for `method path` with `body`, signed by the machine key.
- * `issuer` is the environment id, or the key thumbprint while linking.
- */
 export async function createProof(input: {
   readonly key: PrivateJwk;
   readonly issuer: string;
@@ -190,10 +168,6 @@ export async function createProof(input: {
   return signClaims({ key: input.key, typ: TOKEN_TYPES.proof, claims });
 }
 
-/**
- * Check a proof's signature, issuer, audience, lifetime, method, path, and
- * body hash. The caller still records `jti` to refuse a replay.
- */
 export async function verifyProof(input: {
   readonly token: string;
   readonly key: PublicJwk;
@@ -224,7 +198,6 @@ export async function verifyProof(input: {
   return claims;
 }
 
-/** Pick the published broker key a token names. Unknown or missing `kid` is undefined. */
 export function brokerKey(keys: BrokerKeys, token: string): PublicJwk | undefined {
   const kid = tokenKeyId(token);
   const key = keys.keys.find((entry) => entry.kid === kid);

@@ -6,18 +6,14 @@ export interface Reply {
   readonly row: string;
 }
 
-/** Never stored: the next visit starts again from the read mark the host keeps. */
 export interface UnreadVisit {
-  /** Replies that started after this time are unread. Null while it follows the latest reply, so replies the reader watches arrive get no divider. */
   readonly boundary: number | null;
 }
 
-/** Takes the read mark as the host kept it, before this visit advances it. */
 export function openVisit(seenThrough: number | null): UnreadVisit {
   return { boundary: seenThrough };
 }
 
-/** `active` is whether the reader is looking at the chat now. */
 export function observeVisit(
   visit: UnreadVisit,
   active: boolean,

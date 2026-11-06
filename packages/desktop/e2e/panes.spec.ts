@@ -12,7 +12,6 @@ interface Point {
 
 type Region = "center" | "left" | "right" | "top" | "bottom";
 
-/** Panes in reading order: the leading pane first. */
 function panes(page: Page): Locator {
   return page.getByRole("region", { name: /^(Active )?chat pane$/u });
 }
@@ -59,7 +58,6 @@ async function pointIn(locator: Locator, region: Region): Promise<Point> {
   }
 }
 
-/** Presses at `from` and moves to `to` in steps, so every listener sees the pointer travel. */
 async function press(page: Page, from: Point, to: Point): Promise<void> {
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();
@@ -71,7 +69,6 @@ async function drag(page: Page, from: Point, to: Point): Promise<void> {
   await page.mouse.up();
 }
 
-/** Tags an element so a later check can tell the same node from a remounted copy. */
 async function tag(locator: Locator, name: string): Promise<void> {
   await locator.evaluate((element, value) => element.setAttribute("data-e2e-tag", value), name);
 }
@@ -87,7 +84,6 @@ async function leadingShare(page: Page): Promise<number> {
   return leading.width / (leading.width + trailing.width);
 }
 
-/** Each pane's floor in the app's pane layout. */
 const PANE_WIDTH_MIN = 320;
 
 test("the panes journey", async ({ desktop }) => {

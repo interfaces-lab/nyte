@@ -46,13 +46,9 @@ interface Scene {
 }
 
 interface Observed {
-  /** Host threads opened so far, at each checkpoint. */
   readonly starts: number[];
-  /** Which host `host.json` names, at each checkpoint. */
   readonly named: string[];
-  /** The `type` of each line each host wrote to its output, in start order. */
   readonly lines: string[][];
-  /** What each `serveHost` returned, in start order. */
   readonly served: string[];
 }
 

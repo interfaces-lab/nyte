@@ -6,7 +6,6 @@ export interface FakeUser {
   username?: string;
 }
 
-/** The Clerk Backend API as the broker calls it: user lookups, user lists, and session revocation, in memory. */
 export class FakeClerkApi {
   readonly users = new Map<string, FakeUser>();
   readonly revoked: string[] = [];

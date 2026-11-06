@@ -18,7 +18,6 @@ async function tempFolder(): Promise<string> {
   return made;
 }
 
-/** A plugin directory holding `helped/index.mjs`, whose id comes from `helped/id.mjs`. */
 async function pluginDirectory(): Promise<string> {
   const dir = await tempFolder();
   await mkdir(join(dir, "helped"));

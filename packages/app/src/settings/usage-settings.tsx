@@ -80,7 +80,6 @@ function shareWidth(share: number): string {
   return `${String(Math.min(Math.max(share, 0), 1) * 100)}%`;
 }
 
-/** Reads the default range ahead of opening Usage, so the page usually opens on data. */
 export function prefetchUsage(): void {
   void queryClient.prefetchQuery(usageReportOptions(usageWindow(RANGE_OPTIONS[0], Date.now())));
 }

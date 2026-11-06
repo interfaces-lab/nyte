@@ -1,4 +1,3 @@
-// A toast is a dialog that declares itself non-modal, so typing on one goes to the composer.
 const KEY_OWNERS =
   'input, textarea, select, [contenteditable], [role="textbox"], [role="menu"], [role="listbox"], [role="dialog"]:not([aria-modal="false"]), [role="alertdialog"]:not([aria-modal="false"])';
 

@@ -1,4 +1,3 @@
-/** A Durable Object's SQL storage over an in-memory `node:sqlite` database, for the relay's record in Node. */
 import { DatabaseSync } from "node:sqlite";
 import type { DurableObjectSql, SqlValue } from "../src/environment-record.ts";
 

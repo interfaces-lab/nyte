@@ -13,11 +13,6 @@ export type OpenCodeApi =
   | "openai-completions"
   | "openai-responses";
 
-/**
- * OpenCode models route to several upstream APIs whose long-retention windows differ
- * (1h on Anthropic, 24h on OpenAI), and some catalog entries do not support long
- * retention at all, so the providers publish only the floor every route guarantees.
- */
 export const OPENCODE_PROMPT_CACHE = {
   minimumRetentionMs: { short: 5 * 60_000, long: 5 * 60_000 },
 };

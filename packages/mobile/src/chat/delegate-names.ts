@@ -6,7 +6,6 @@ export function indexDelegateNames(
   return new Map(children.map((child) => [child.id, child.name ?? "Subagent"]));
 }
 
-/** The name a delegate call's agent goes by: its session's name, else the call's title. */
 export function delegateName(
   toolClass: Extract<ToolClass, { readonly kind: "delegate" }>,
   names: ReadonlyMap<SessionId, string>,

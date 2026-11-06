@@ -24,9 +24,7 @@ import type { HostCommand, HostReport } from "./host-thread.ts";
 import { portConflict, probePort } from "./port.ts";
 import { Sharing } from "./sharing.ts";
 
-/** What differs between the runtimes a host thread runs on: where its codemode and image workers and their wasm live, and how it imports plugins (default the host's own importer). */
 export interface HostWorkerRuntime {
-  /** The dev-log source of the host's lines. */
   readonly source: string;
   readonly codemode: Pick<CodemodeSandboxOptions, "workerUrl" | "wasm">;
   readonly images: NodeImagesOptions;
@@ -38,7 +36,6 @@ interface Opened {
   close(): Promise<void>;
 }
 
-/** Runs this worker thread as the host `startHostThread` asked for: it opens the host on each command, reports `listening` or `failed`, closes it on `stop` and reports `revoked` once the store revokes it. With a socket, the host serves desktop settings, offers the browser tools and canvas previews of a connected Nyte.app, follows `desktop.terminalShell` and completes the login shell's environment. */
 export function serveHostThread(runtime: HostWorkerRuntime): void {
   const port = parentPort;
 
@@ -160,7 +157,6 @@ async function open(
   }
 }
 
-/** Opens the host this thread serves. With a socket, the browser tools and canvas previews are the ones a connected Nyte.app offers, and previews fall back to Chromium while none does. */
 function openLocalHost(
   command: HostCommand,
   runtime: HostWorkerRuntime,

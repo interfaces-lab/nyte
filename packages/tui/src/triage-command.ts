@@ -3,11 +3,22 @@ import { existsSync } from "node:fs";
 import { mkdir, readdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
+import { createInterface } from "node:readline";
 import process from "node:process";
-import { createInterface } from "node:readline/promises";
-import { alignedRows, ansiEnabled, bold, dim } from "./cli-style.ts";
+import type { Json } from "@nyte-ai/sdk";
+import { Type } from "typebox";
+import type { Static } from "typebox";
+import { Compile } from "typebox/compile";
+import { CliError } from "./cli/errors.ts";
+import { printable } from "./cli/format.ts";
+import type { Invocation } from "./cli/invocation.ts";
+import type { Output } from "./cli/output.ts";
+import { confirm } from "./cli/prompt.ts";
 import { compiled, selfCommand } from "./compiled.ts";
-import { nyteHome, runDoctor, type DoctorReport } from "./doctor-command.ts";
+import { nyteHome, runDoctor } from "./doctor-command.ts";
+import type { DoctorReport } from "./doctor-command.ts";
+import { toJson } from "./json.ts";
+import { exitStatus } from "./lifecycle.ts";
 import { redact } from "./redact.ts";
 import { NEVER_READ, readShareable } from "./secrets.ts";
 import { TRIAGE_PLAYBOOK } from "./triage-playbook.ts";
@@ -19,26 +30,103 @@ const NEW_ISSUE_URL = `https://github.com/${REPOSITORY}/issues/new?template=bug_
 
 const LOG_LINES = 400;
 
+/** Declining the confirmation the run needs, or Ctrl+C at a prompt, exits as Ctrl+C would. */
+const CANCELED_EXIT = exitStatus("SIGINT");
+
 export type TriageAgent = "nyte" | "claude" | "codex";
 
 const AGENTS: readonly TriageAgent[] = ["nyte", "claude", "codex"];
 
-export const TRIAGE_USAGE = [
-  "Usage: nyte triage [--agent nyte|claude|codex] [<what went wrong>]",
-  "Collects nyte doctor's report and redacted logs into ~/.nyte/triage/<time>/, then starts an agent",
-  "there with a playbook to find the cause. Nyte is the agent when a provider has a credential;",
-  "otherwise Claude Code, then Codex. If the agent writes an issue, triage prints all of it and",
-  "creates it with gh only after you answer y. Never reads auth.json, identity.key, connect.json",
-  "or other key files. Needs an interactive terminal.",
-  'Example: nyte triage "the desktop app shows a blank window after updating"',
-].join("\n");
+/** The last line `nyte -p --json` prints on stdout when the run completed. */
+const resultLines = Compile(Type.Object({ type: Type.Literal("result"), session: Type.String() }));
 
-export function parseTriageArgs(args: readonly string[]): {
-  readonly agent?: TriageAgent;
-  readonly problem: string;
-} {
+/** The line `nyte -p --json` prints on stdout when the agent starts a tool. */
+const toolLines = Compile(Type.Object({ type: Type.Literal("tool"), name: Type.String() }));
+
+const ErrorDocumentType = Type.Object({
+  message: Type.String(),
+  data: Type.Optional(Type.Object({ session: Type.Optional(Type.String()) })),
+  next: Type.Optional(
+    Type.Array(Type.Object({ when: Type.String(), argv: Type.Array(Type.String()) })),
+  ),
+});
+
+/** The one document `nyte -p --json` prints on stderr when it fails; `data.session` once a session exists. */
+type ErrorDocument = Static<typeof ErrorDocumentType>;
+
+const errorDocuments = Compile(ErrorDocumentType);
+
+/** One file of the bundle: shown in the preview, written only after the person agrees. */
+interface BundleFile {
+  readonly name: string;
+  readonly detail: string;
+  readonly text: () => Promise<string>;
+}
+
+/**
+ * Previews the bundle and the agent, asks once, then writes the bundle and starts the agent in it.
+ * Nothing is written before the person answers y. Returns the agent's exit code, gh's when the
+ * person posts the issue, or 130 when they decline or press Ctrl+C at a prompt.
+ */
+export async function triageCommand(
+  args: readonly string[],
+  context: { readonly output: Output; readonly invocation: Invocation },
+): Promise<number> {
+  const options = parseTriageArgs(args);
+  const output = context.output;
+
+  if (!output.mode.interactive || !output.mode.tty.stdout)
+    throw new CliError("missing_input", "Can't run triage without an interactive terminal.", {
+      next: [{ label: "Print the doctor report for a script", argv: ["nyte", "doctor", "--json"] }],
+    });
+
+  const report = await runDoctor(output.mode);
+  const agent = pickAgent(report, options.agent);
+
+  if (agent === undefined)
+    throw new CliError(
+      "missing_input",
+      "Can't start triage. No provider has a credential, and neither claude nor codex is on PATH.",
+      { next: [{ label: "Sign in so nyte can run it", argv: ["nyte", "login"] }] },
+    );
+
+  const folder = join(nyteHome(), "triage", stamp());
+  const bundle = await planBundle(report, options.problem);
+
+  output.rows([
+    { label: "Agent", value: agentLabel(agent, report) },
+    { label: "Folder", value: tilde(folder) },
+    ...bundle.map((file) => ({ label: file.name, value: file.detail })),
+    { label: "Never read", value: NEVER_READ.join(", ") },
+  ]);
+
+  if (options.agent === undefined)
+    output.say("  Choose another agent with --agent nyte, --agent claude or --agent codex.");
+  output.say("");
+
+  const consented = await confirm(
+    output,
+    `Write these files and start ${agent} in that folder?`,
+    context.invocation.signal,
+  );
+
+  if (!consented) {
+    output.say("Canceled. Nothing was written.");
+
+    return CANCELED_EXIT;
+  }
+
+  await writeBundle(folder, bundle);
+  context.invocation.handoff();
+  const code = await ownInterrupts(() => startAgent(agent, folder, options.problem, output));
+
+  return ownInterrupts((interrupted) => offerIssue(folder, code, output, interrupted));
+}
+
+export function parseTriageArgs(args: readonly string[]) {
   let agent: TriageAgent | undefined;
   const words: string[] = [];
+  const help = { next: [{ label: "See the options", argv: ["nyte", "triage", "--help"] }] };
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index] ?? "";
@@ -50,16 +138,16 @@ export function parseTriageArgs(args: readonly string[]): {
       const known = AGENTS.find((name) => name === value);
 
       if (known === undefined)
-        throw new Error(`--agent takes nyte, claude or codex.\n${TRIAGE_USAGE}`);
+        throw new CliError("invalid_arguments", "--agent takes nyte, claude or codex.", help);
       agent = known;
     } else if (arg.startsWith("-")) {
-      throw new Error(`Unknown option ${arg}.\n${TRIAGE_USAGE}`);
+      throw new CliError("unknown_option", `Unknown option ${arg} for nyte triage.`, help);
     } else {
       words.push(arg);
     }
   }
 
-  return { ...(agent === undefined ? {} : { agent }), problem: words.join(" ").trim() };
+  return { agent, problem: words.join(" ").trim() };
 }
 
 /** The issue draft: the first non-empty line is the title, the rest is the body. */
@@ -78,8 +166,35 @@ export function parseIssue(markdown: string): { readonly title: string; readonly
   };
 }
 
+/** Claude Code settings that deny reading secret files and posting issues. */
+export function claudeSettings(home: string = homedir()): string {
+  const nyte = nyteHome().replace(home, "~");
+
+  const reads = [
+    "auth.json",
+    "mcp-auth.json",
+    "identity.key",
+    "connect.json",
+    "host.json",
+    "*.key",
+    "*.sealed",
+  ].map((name) => `Read(${nyte}/${name})`);
+
+  return JSON.stringify({
+    permissions: { deny: [...reads, "Read(**/*.key)", "Bash(gh issue:*)", "Bash(gh api:*)"] },
+  });
+}
+
 function tail(text: string, count: number): string {
   return text.split("\n").slice(-count).join("\n");
+}
+
+function tilde(path: string): string {
+  return path.replace(homedir(), "~");
+}
+
+function stamp(): string {
+  return new Date().toISOString().replace(/[-:]/gu, "").replace(/\..*$/u, "");
 }
 
 function onPath(name: string): boolean {
@@ -111,37 +226,11 @@ function systemText(): string {
   ].join("\n");
 }
 
-interface Collected {
-  readonly folder: string;
-  readonly rows: readonly { readonly label: string; readonly detail: string }[];
-}
-
-/** Writes the bundle. Reads only the allowlisted logs, each through readShareable, and redacts them. */
-async function collect(report: DoctorReport, problem: string): Promise<Collected> {
-  const home = nyteHome();
-  const stamp = new Date().toISOString().replace(/[-:]/gu, "").replace(/\..*$/u, "");
-  const folder = join(home, "triage", stamp);
-  await mkdir(folder, { recursive: true, mode: 0o700 });
-  const rows: { label: string; detail: string }[] = [];
-
-  const write = (name: string, text: string) =>
-    writeFile(join(folder, name), redact(text), { mode: 0o600 });
-
-  const problems = report.summary.fail;
-
-  await write("doctor.json", `${JSON.stringify(report, null, 2)}\n`);
-  rows.push({
-    label: "doctor.json",
-    detail: `${report.checks.length} checks, ${problems} problem${problems === 1 ? "" : "s"}`,
-  });
-
-  const logs = join(home, "logs");
+/** What the bundle will hold. Reads only the allowlisted logs, each through readShareable, and only when written. */
+async function planBundle(report: DoctorReport, problem: string): Promise<readonly BundleFile[]> {
+  const logs = join(nyteHome(), "logs");
   const tuiLog = join(logs, "tui.log");
-
-  if (existsSync(tuiLog)) {
-    await write("tui.log", tail(await readShareable(tuiLog), LOG_LINES));
-    rows.push({ label: "tui.log", detail: `last ${LOG_LINES} lines` });
-  }
+  const problems = report.summary.fail;
 
   const initLogs = existsSync(logs)
     ? (await readdir(logs)).filter((name) => /^init-.*\.log$/u.test(name)).toSorted()
@@ -149,49 +238,77 @@ async function collect(report: DoctorReport, problem: string): Promise<Collected
 
   const latestInit = initLogs.at(-1);
 
-  if (latestInit !== undefined) {
-    await write("init.log", tail(await readShareable(join(logs, latestInit)), LOG_LINES));
-    rows.push({
-      label: "init.log",
-      detail: `the last npx nyte-ai init run, ${latestInit.slice(5, 13)}`,
-    });
-  }
-
-  await write("system.txt", `${systemText()}\n`);
-  rows.push({ label: "system.txt", detail: "OS, arch, terminal, shell and versions" });
-
-  if (problem !== "") {
-    await write("problem.txt", `${problem}\n`);
-    rows.push({ label: "problem.txt", detail: "your description" });
-  }
-
-  return { folder, rows };
+  return [
+    {
+      name: "doctor.json",
+      detail: `${report.checks.length} checks, ${problems === 0 ? "no" : String(problems)} problem${problems === 1 ? "" : "s"}`,
+      text: async () => `${JSON.stringify(report, null, 2)}\n`,
+    },
+    ...(existsSync(tuiLog)
+      ? [
+          {
+            name: "tui.log",
+            detail: `last ${LOG_LINES} lines, redacted`,
+            text: async () => tail(await readShareable(tuiLog), LOG_LINES),
+          },
+        ]
+      : []),
+    ...(latestInit === undefined
+      ? []
+      : [
+          {
+            name: "init.log",
+            detail: `the last npx nyte-ai init run, ${latestInit.slice(5, 13)}, redacted`,
+            text: async () => tail(await readShareable(join(logs, latestInit)), LOG_LINES),
+          },
+        ]),
+    {
+      name: "system.txt",
+      detail: "OS, arch, terminal, shell and versions",
+      text: async () => `${systemText()}\n`,
+    },
+    ...(problem === ""
+      ? []
+      : [{ name: "problem.txt", detail: "your description", text: async () => `${problem}\n` }]),
+  ];
 }
 
+async function writeBundle(folder: string, bundle: readonly BundleFile[]): Promise<void> {
+  await mkdir(folder, { recursive: true, mode: 0o700 });
+
+  for (const file of bundle)
+    await writeFile(join(folder, file.name), redact(await file.text()), { mode: 0o600 });
+}
+
+/** Nyte when a provider has a credential, else Claude Code, else Codex. With no host running the credentials are unknown, so Nyte goes last instead of not at all. */
 function pickAgent(
   report: DoctorReport,
   requested: TriageAgent | undefined,
 ): TriageAgent | undefined {
   if (requested !== undefined) return requested;
+  const providers = report.checks.find((check) => check.id === "providers")?.status;
 
-  if (report.checks.some((check) => check.id === "providers" && check.status === "ok"))
-    return "nyte";
+  if (providers === "ok") return "nyte";
 
   if (onPath("claude")) return "claude";
 
   if (onPath("codex")) return "codex";
 
-  return undefined;
+  return providers === "skip" ? "nyte" : undefined;
 }
 
 function agentLabel(agent: TriageAgent, report: DoctorReport): string {
   switch (agent) {
-    case "nyte":
-      return `nyte, ${report.checks.find((check) => check.id === "providers")?.detail ?? ""}`;
+    case "nyte": {
+      const providers = report.checks.find((check) => check.id === "providers");
+
+      return providers?.status === "ok" ? `nyte with ${providers.detail}` : "nyte";
+    }
+
     case "claude":
-      return `claude (${firstLine("claude", ["--version"]) || "Claude Code"})`;
+      return `claude (${printable(firstLine("claude", ["--version"])) || "Claude Code"})`;
     case "codex":
-      return `codex (${firstLine("codex", ["--version"]) || "Codex"})`;
+      return `codex (${printable(firstLine("codex", ["--version"])) || "Codex"})`;
     default: {
       const _exhaustive: never = agent;
 
@@ -200,16 +317,20 @@ function agentLabel(agent: TriageAgent, report: DoctorReport): string {
   }
 }
 
-function ignoreSignal(): void {}
-
-/** Ctrl-C belongs to the agent while it runs; triage stays alive to offer the issue after. */
-async function whileAgentRuns<T>(work: () => Promise<T>): Promise<T> {
-  process.on("SIGINT", ignoreSignal);
+/**
+ * After the handoff, Ctrl+C is triage's to handle. The agent gets its own from the terminal, so
+ * triage ignores it and stays alive to offer the issue; at the issue question it cancels. Each
+ * call listens afresh, so a Ctrl+C meant for the agent doesn't answer the question.
+ */
+async function ownInterrupts<T>(work: (interrupted: AbortSignal) => Promise<T>): Promise<T> {
+  const controller = new AbortController();
+  const interrupt = (): void => controller.abort();
+  process.on("SIGINT", interrupt);
 
   try {
-    return await work();
+    return await work(controller.signal);
   } finally {
-    process.off("SIGINT", ignoreSignal);
+    process.off("SIGINT", interrupt);
   }
 }
 
@@ -221,53 +342,77 @@ function run(command: string, args: readonly string[], cwd: string): Promise<num
   });
 }
 
-/** Sends the playbook as the first turn in print mode, then opens that session in the TUI. */
-async function runNyte(folder: string, message: string): Promise<number> {
-  const [command, ...prefix] = selfCommand();
+/**
+ * Sends the playbook as the first turn with `nyte -p --json`, naming each tool the agent runs as
+ * its line arrives, then opens that session in the TUI. The session comes from the `result` line on
+ * stdout, or from the error document's `data.session` on stderr when the run didn't complete; a run
+ * that never started a session fails here.
+ */
+async function runNyte(folder: string, message: string, output: Output): Promise<number> {
+  const command = selfCommand();
+  output.progress("Sending the playbook to nyte…");
 
-  const first = spawn(command, [...prefix, "-p", "--no-context-files", message], {
-    cwd: folder,
-    stdio: ["inherit", "inherit", "pipe"],
-  });
+  const first = spawn(
+    command[0],
+    [...command.slice(1), "-p", "--json", "--no-context-files", message],
+    { cwd: folder, stdio: ["ignore", "pipe", "pipe"] },
+  );
 
-  let stderr = "";
-  first.stderr.on("data", (chunk: Buffer) => {
-    stderr += chunk.toString();
-    process.stderr.write(chunk);
-  });
-  await new Promise((resolve) => first.once("exit", resolve));
-  const session = stderr.match(/session (\S+) ·/u)?.[1];
+  const stderr = new Response(first.stderr).text();
+  const closed = new Promise((resolve) => first.once("close", resolve));
+  let completed: string | undefined;
 
-  if (session === undefined) return 1;
+  for await (const text of createInterface({ input: first.stdout, crlfDelay: Infinity })) {
+    const line = jsonLine(text);
 
-  return run(command, [...prefix, "--session", session], folder);
+    if (toolLines.Check(line)) output.progress(`Running ${printable(line.name)}…`);
+
+    if (resultLines.Check(line)) completed = line.session;
+  }
+
+  const failure = (await stderr)
+    .split("\n")
+    .map(jsonLine)
+    .findLast((line) => errorDocuments.Check(line));
+
+  await closed;
+  const session = completed ?? failure?.data?.session;
+
+  if (session === undefined) throw childFailure(failure);
+  output.status("none", "Opening the triage chat…");
+
+  return run(command[0], [...command.slice(1), "--session", session], folder);
 }
 
-/** Claude Code settings that deny reading secret files and posting issues. */
-export function claudeSettings(home: string = homedir()): string {
-  const nyte = nyteHome().replace(home, "~");
+/** One line of the child's output as JSON, or `undefined` for a line that isn't. */
+function jsonLine(line: string): Json | undefined {
+  try {
+    return toJson(JSON.parse(line));
+  } catch {
+    return undefined;
+  }
+}
 
-  const reads = [
-    "auth.json",
-    "mcp-auth.json",
-    "identity.key",
-    "connect.json",
-    "host.json",
-    "*.key",
-    "*.sealed",
-  ].map((name) => `Read(${nyte}/${name})`);
-
-  return JSON.stringify({
-    permissions: { deny: [...reads, "Read(**/*.key)", "Bash(gh issue:*)", "Bash(gh api:*)"] },
+/** nyte's own error document, retold as triage's failure with the same recovery commands. */
+function childFailure(document: ErrorDocument | undefined): CliError {
+  return new CliError("failed", "Couldn't start the triage chat in nyte.", {
+    details:
+      document === undefined ? [] : [{ label: "Reason", value: printable(document.message) }],
+    next: (document?.next ?? []).map((step) => ({ label: step.when, argv: step.argv })),
   });
 }
 
-async function startAgent(agent: TriageAgent, folder: string, problem: string): Promise<number> {
+async function startAgent(
+  agent: TriageAgent,
+  folder: string,
+  problem: string,
+  output: Output,
+): Promise<number> {
   const request = problem === "" ? "Start triage." : `Start triage. The person says: ${problem}`;
 
   switch (agent) {
     case "nyte":
-      return runNyte(folder, `${TRIAGE_PLAYBOOK}\n\n${request}`);
+      return runNyte(folder, `${TRIAGE_PLAYBOOK}\n\n${request}`, output);
     case "claude":
       return run(
         "claude",
@@ -288,73 +433,60 @@ async function startAgent(agent: TriageAgent, folder: string, problem: string): 
   }
 }
 
-async function ask(question: string): Promise<string> {
-  const prompt = createInterface({ input: process.stdin, output: process.stdout });
-
-  try {
-    return (await prompt.question(question)).trim().toLowerCase();
-  } finally {
-    prompt.close();
-  }
-}
-
-/** Prints the whole issue, asks, and creates it with gh only after y. */
-async function offerIssue(folder: string, color: boolean): Promise<number> {
+/** Prints the whole issue, asks, and creates it with gh only after y. Declining keeps the agent's exit code; Ctrl+C (`signal`) exits 130. */
+async function offerIssue(
+  folder: string,
+  agentCode: number,
+  output: Output,
+  signal: AbortSignal,
+): Promise<number> {
   const draft = join(folder, "issue.md");
+  output.say("");
 
   if (!existsSync(draft)) {
-    console.log(
-      `\nThe agent didn't write an issue. The folder stays at ${folder.replace(homedir(), "~")}.`,
-    );
+    output.say(`The agent didn't write an issue. The files stay in ${tilde(folder)}.`);
 
-    return 0;
+    return agentCode;
   }
 
-  const { title, body } = parseIssue(redact(await readShareable(draft)));
-  const rule = dim("─".repeat(Math.min(process.stdout.columns ?? 72, 72) - 2), color);
-  console.log(
-    [
-      "",
-      bold("nyte triage", color),
-      "",
-      "  The agent wrote an issue. This is all of it:",
-      "",
-      ...alignedRows(
-        [
-          { label: "repo", detail: REPOSITORY },
-          { label: "label", detail: "bug" },
-          { label: "title", detail: title },
-        ],
-        color,
-      ),
-      `  ${rule}`,
-      ...body.split("\n").map((line) => `  ${line}`),
-      `  ${rule}`,
-      "",
-    ].join("\n"),
-  );
+  const issue = parseIssue(redact(await readShareable(draft)));
+  output.say("The agent wrote an issue. This is everything gh would post:");
+  output.say("");
+  output.rows([
+    { label: "Repository", value: REPOSITORY },
+    { label: "Label", value: "bug" },
+    { label: "Title", value: printable(issue.title) },
+  ]);
+  output.say("");
+
+  for (const line of issue.body.split("\n")) output.say(`  ${printable(line)}`);
+  output.say("");
 
   const redacted = join(folder, "issue.redacted.md");
-  await writeFile(redacted, `${body}\n`, { mode: 0o600 });
+  await writeFile(redacted, `${issue.body}\n`, { mode: 0o600 });
 
   if (!onPath("gh") || spawnSync("gh", ["auth", "status"], { stdio: "ignore" }).status !== 0) {
-    console.log(
-      `gh isn't installed or logged in. Open ${NEW_ISSUE_URL}\nand paste ${redacted.replace(homedir(), "~")}.`,
-    );
+    output.say("gh isn't installed or signed in. Open the issue form and paste the draft:");
+    output.rows([
+      { label: "Form", value: NEW_ISSUE_URL },
+      { label: "Draft", value: tilde(redacted) },
+    ]);
 
-    return 0;
+    return agentCode;
   }
 
-  const login = firstLine("gh", ["api", "user", "--jq", ".login"]);
+  const login = printable(firstLine("gh", ["api", "user", "--jq", ".login"]));
 
-  const answer = await ask(
-    `Create this issue on ${REPOSITORY}${login === "" ? "" : ` as ${login}`}? [y/N] `,
+  const posting = await confirm(
+    output,
+    `Create this issue on ${REPOSITORY}${login === "" ? "" : ` as ${login}`}?`,
+    signal,
   );
 
-  if (answer !== "y" && answer !== "yes") {
-    console.log(`Not posted. The draft is at ${redacted.replace(homedir(), "~")}.`);
+  if (!posting) {
+    output.say(`Not posted. The draft is at ${tilde(redacted)}.`);
 
-    return 0;
+    return signal.aborted ? CANCELED_EXIT : agentCode;
   }
 
   return run(
@@ -365,7 +497,7 @@ async function offerIssue(folder: string, color: boolean): Promise<number> {
       "--repo",
       REPOSITORY,
       "--title",
-      title,
+      issue.title,
       "--body-file",
       redacted,
       "--label",
@@ -373,73 +505,4 @@ async function offerIssue(folder: string, color: boolean): Promise<number> {
     ],
     folder,
   );
-}
-
-export async function triageCommand(args: readonly string[]): Promise<number> {
-  const { agent: requested, problem } = parseTriageArgs(args);
-
-  if (!process.stdin.isTTY || !process.stdout.isTTY) {
-    throw new Error(
-      "nyte triage needs an interactive terminal. For a report to script against, run nyte doctor --json.",
-    );
-  }
-
-  const color = ansiEnabled();
-  const report = await runDoctor();
-  const { folder, rows } = await collect(report, problem);
-  const agent = pickAgent(report, requested);
-  const where = folder.replace(homedir(), "~");
-
-  console.log(
-    [
-      `${bold("nyte triage", color)}  ${dim(`${VERSION} · ${report.target}`, color)}`,
-      "",
-      `  collected into ${where}/ (redacted)`,
-      ...alignedRows(rows, color, 12),
-      "",
-      ...alignedRows([{ label: "not read", detail: NEVER_READ.join(", ") }], color, 12),
-      "",
-      ...alignedRows(
-        [
-          {
-            label: "agent",
-            detail:
-              agent === undefined
-                ? "none: no Nyte provider, no claude, no codex on PATH"
-                : agentLabel(agent, report),
-          },
-        ],
-        color,
-        12,
-      ),
-    ].join("\n"),
-  );
-
-  if (agent === undefined) {
-    console.log(
-      `\nNothing to start. Read the folder, then open an issue with it:\n  ${where}/\n  ${NEW_ISSUE_URL}`,
-    );
-
-    return 1;
-  }
-
-  if (requested === undefined && agent !== "nyte") {
-    console.log(
-      dim("  Nyte has no provider with a credential. Run nyte login to use Nyte.", color),
-    );
-  } else if (requested === undefined) {
-    console.log(dim("  Pick another with --agent claude or --agent codex.", color));
-  }
-
-  const answer = await ask("\nStart the agent in that folder? [Y/n] ");
-
-  if (answer !== "" && answer !== "y" && answer !== "yes") {
-    console.log(`Not started. The folder stays at ${where}/.`);
-
-    return 0;
-  }
-
-  await whileAgentRuns(() => startAgent(agent, folder, problem));
-
-  return offerIssue(folder, color);
 }

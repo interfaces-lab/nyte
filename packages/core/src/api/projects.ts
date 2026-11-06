@@ -82,7 +82,6 @@ export function projectHandle(kernel: Kernel, id: ProjectId): Project {
   };
 }
 
-/** Every project on the host, oldest first. */
 export async function readProjects(kernel: Kernel): Promise<readonly ProjectRecord[]> {
   const found = await Promise.all(
     (await kernel.store.refs.list(PROJECTS)).map((ref) =>
@@ -111,11 +110,6 @@ export async function requireProject(kernel: Kernel, id: ProjectId): Promise<Fou
   return found;
 }
 
-/**
- * The project a session starts in, read once so the caller can write its coordinator in the same
- * commit. A project accepts a session working in its folder or in a worktree of it, and never
- * once archived.
- */
 export async function joinableProject(
   kernel: Kernel,
   id: ProjectId,
@@ -143,7 +137,6 @@ export async function joinableProject(
   return found;
 }
 
-/** The write that makes `session` the coordinator of a project that has none, expecting the revision read. */
 export async function coordinatorUpdate(
   kernel: Kernel,
   found: Found<ProjectRecord>,
@@ -156,7 +149,6 @@ export async function coordinatorUpdate(
   };
 }
 
-/** Rescans and reloads the project's running chats, so the MCP servers and context files it leaves out leave their prompt and tools. */
 async function reloadProjectSessions(kernel: Kernel, id: ProjectId): Promise<void> {
   const sessions = [...kernel.plugins.runtimes().keys()];
   const records = await Promise.all(sessions.map((session) => readSession(kernel.store, session)));
@@ -169,7 +161,6 @@ async function reloadProjectSessions(kernel: Kernel, id: ProjectId): Promise<voi
   await Promise.all([...chosen].map((session) => kernel.plugins.reload(session)));
 }
 
-/** `record` with the fields `patch` sets, or `record` itself when it sets none to a new value. */
 function applyPatch<T extends object, K extends keyof T>(
   record: T,
   patch: { readonly [P in K]?: T[P] },

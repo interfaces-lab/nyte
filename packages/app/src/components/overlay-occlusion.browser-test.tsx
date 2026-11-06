@@ -12,7 +12,6 @@ import "../theme/tokens.stylex.ts";
 const URL_UNDER_TEST = "https://example.com/";
 
 interface RecordedBounds extends BrowserBoundsMessage {
-  /** Whether the still had loaded in the slot when the panel sent these bounds. */
   readonly still: boolean;
 }
 

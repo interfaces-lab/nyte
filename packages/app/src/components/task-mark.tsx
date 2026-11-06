@@ -65,7 +65,6 @@ function statusMarkStyle(state: TaskState) {
   }
 }
 
-/** A job is a process, not AI work, so it runs with a `Loader`, not a `Spinner`. */
 export function TaskMark({
   state,
   unread = false,

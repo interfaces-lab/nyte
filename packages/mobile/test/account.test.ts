@@ -29,7 +29,6 @@ const MAC: EnvironmentSummary = {
 
 const MAC_URL = `${ORIGIN}/r/${MAC.id}`;
 
-/** Broker and relay share one origin; only the path tells them apart. */
 const toBroker = (request: Seen) => request.url.startsWith(`${ORIGIN}/v1/`);
 
 const PAGE = { items: [], next: null };
@@ -51,10 +50,6 @@ type Seen = {
   readonly body: string | undefined;
 };
 
-/**
- * The broker and the relayed Mac behind one fetch. Each route answers from
- * the scenario, and every request is recorded as it went on the wire.
- */
 function network(scenario: {
   readonly enroll?: (body: unknown) => Response | Promise<Response>;
   readonly list?: (attempt: number) => Response;

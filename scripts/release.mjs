@@ -42,7 +42,6 @@ const AGENT = "release-notes";
 
 const BINARY = process.env["NYTE_BINARY"] ?? join(homedir(), ".nyte", "bin", "nyte");
 
-/** The host's user plugin directory is `<home>/.nyte/plugins`, whatever NYTE_HOME says. */
 const GUARD = join(homedir(), ".nyte", "plugins", AGENT, "guard.mjs");
 
 const HOST_START_MS = 30_000;
@@ -163,7 +162,6 @@ execFileSync(
 
 process.stdout.write(`Started the v${version} release. Watch it with: gh run watch\n`);
 
-/** The host to run the session on: the `nyte host` named in host.json, else one started from the installed binary and stopped once the notes are written. */
 async function attachHost() {
   const path = hostFilePath();
   const running = await findRunningHost(path);
@@ -210,7 +208,6 @@ async function attachHost() {
   );
 }
 
-/** Copies the guard into the host's user plugin directory, where `plugins.replace` may load it. A folder without an `index` file isn't loaded for every session, so the guard applies only where it is assigned. */
 function placeGuard() {
   const source = readFileSync(join(root, "scripts", "release-guard.mjs"), "utf8");
 
@@ -219,13 +216,6 @@ function placeGuard() {
   writeFileSync(GUARD, source);
 }
 
-/**
- * Runs the release-notes session on the attached host and returns its reply. `sessions.start`
- * runs its first message at once, before a plugin can be assigned to the session, so the first
- * message only asks for a one-word reply; the guard is assigned before that turn settles and the
- * real prompt goes second. Selecting the guard's agent fails unless the guard loaded. A call the
- * guard lets through may still wait on the host's permissions policy, so approvals are answered here.
- */
 async function writeReview(from, to) {
   placeGuard();
   const attached = await attachHost();

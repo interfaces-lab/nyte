@@ -74,7 +74,6 @@ const turns = PROMPTS.map((text, index) => {
   return { prompt, reply, info: endedTurn([], { id: turn, prompt: id, steps: 1 }).info };
 });
 
-/** Opened cold in the middle of the second turn: its prompt only leads the loaded messages, and the first turn is only in the host's history. */
 const leading = turns[1]?.prompt ?? null;
 
 const view: SessionView = {
@@ -146,10 +145,6 @@ function blur(): void {
   if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
 }
 
-/**
- * Recall reads the history before prompts only once it walks past them, while the transcript
- * pages in before its first message, a reply.
- */
 async function recallPrompts(editor: HTMLElement): Promise<void> {
   const reads = (text: string) =>
     until(() => (editor.innerText === text ? true : null), `the composer to read "${text}"`);
@@ -176,7 +171,6 @@ async function recallPrompts(editor: HTMLElement): Promise<void> {
     throw new Error(`recall read the history before ${recallReads || "nothing"}`);
 }
 
-/** Editing a recalled prompt ends the walk, so stepping newer keeps the edit. */
 async function editRecalledPrompt(editor: HTMLElement): Promise<void> {
   press(editor, "ArrowUp", { ctrlKey: true, altKey: true });
   await until(
@@ -196,7 +190,6 @@ async function editRecalledPrompt(editor: HTMLElement): Promise<void> {
   await until(() => (editor.innerText === DRAFT ? true : null), "the draft to come back");
 }
 
-/** Text typed while an earlier-prompts read is in flight outlives the read. */
 async function typeWhileRecalling(editor: HTMLElement): Promise<void> {
   const gate = Promise.withResolvers<void>();
   historyGate = gate.promise;

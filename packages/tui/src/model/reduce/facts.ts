@@ -186,7 +186,6 @@ function entered(next: State): State {
   });
 }
 
-/** A run that started and ended between two views is still watched, so its end shows. */
 function viewArrived(state: State, session: FollowedSession, view: HeadView, now: number): Step {
   const before = session.view;
   let next = withFacts(state, { chat: { ...session, view } });

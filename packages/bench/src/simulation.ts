@@ -86,7 +86,6 @@ export function readCommand(
   return { kind: "invalid", reason: `${error?.instancePath ?? ""} ${error?.message ?? ""}`.trim() };
 }
 
-/** Opens a real host whose tool calls run unasked (`full`); a test of approvals applies its own policy. */
 export async function simulate(input: {
   readonly models: Models;
   readonly plugins?: readonly Plugin<"core">[];

@@ -1,8 +1,3 @@
-/**
- * The Worker: route, authenticate per route, and answer every failure with
- * the contract's error body. Phone requests under `/r/` go to the public
- * relay, which answers in the Nyte server's envelope instead.
- */
 import { BROKER_ROUTES, RELAY_PREFIX, UUID_PATTERN } from "@nyte-ai/connect";
 import { PUBLIC_RELAY_METHODS, publicRelayTarget, relayRefusal } from "@nyte-ai/connect/relay";
 import { publicKeySet } from "@nyte-ai/connect/signing";

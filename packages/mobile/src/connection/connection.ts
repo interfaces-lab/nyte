@@ -14,11 +14,6 @@ const ConnectionSchema = Type.Object(connectionProperties, { additionalPropertie
 
 export type Connection = Static<typeof ConnectionSchema>;
 
-/**
- * A connection the phone enrolled through a Nyte account. It keeps the broker
- * that enrolled it and the account that owns it, so signing out or switching
- * accounts can find and remove exactly this credential.
- */
 const ManagedConnectionSchema = Type.Object(
   {
     ...connectionProperties,
@@ -38,21 +33,10 @@ export type SavedConnection =
 
 export type ManagedConnection = Extract<SavedConnection, { kind: "managed" }>;
 
-/** The broker this build trusts, which a restored account connection must match. */
 export interface ManagedPolicy {
   readonly origin: string;
 }
 
-/**
- * Decode a connection saved as JSON, then apply the same checks as a typed
- * one. A manual connection keeps the shape it has always been saved in.
- *
- * An account connection is held to `policy` again: its broker must be this
- * build's broker and its address exactly that broker's relay for its own Mac.
- * HTTPS alone proves nothing about which host it is. A build without account
- * configuration, or one pointed at another broker, cannot vouch for it and
- * refuses it, so the user picks the Mac again.
- */
 export function parseStoredConnection(
   text: string,
   policy: ManagedPolicy | undefined,
@@ -119,16 +103,10 @@ export function parseConnection(value: Connection): Connection {
   return { name, url: url.href.replace(/\/$/, ""), token };
 }
 
-/** Host address without scheme or path, safe to show next to the host name. */
 export function displayAddress(connection: Connection): string {
   return new URL(connection.url).host;
 }
 
-/**
- * The pairing payload a desktop QR code carries, and the same string the user
- * can paste: `nyte://connect?name=…&url=…&token=…`. It is untrusted text until
- * `parseConnection` has checked the address policy.
- */
 export function parseConnectionPayload(text: string): Connection {
   const trimmed = text.trim();
   let link: URL;
@@ -153,11 +131,6 @@ export function parseConnectionPayload(text: string): Connection {
   return parseConnection({ name: link.searchParams.get("name") ?? "My Mac", url, token });
 }
 
-/**
- * What a failed host call means for the person holding the phone. An `invalid` answer from a host
- * running a newer Nyte (`newerHost`) most likely means this app can't read what the host sends, or
- * sends what the host no longer takes, so it asks for an update.
- */
 export function describeHostError(cause: unknown, newerHost: boolean): string {
   if (!(cause instanceof SdkError)) return "Couldn't reach the host. Check that Nyte is running.";
 

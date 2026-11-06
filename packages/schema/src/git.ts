@@ -93,7 +93,6 @@ export const GitScopeType = Type.Union([
 
 export type GitScope = Decoded<typeof GitScopeType>;
 
-/** What a workspace diff covers: one run's changes, or a session's since its first run started. */
 export const ChangeSourceType = Type.Union([
   Type.Object({ kind: Type.Literal("run"), run: idSchema<"run">() }),
   Type.Object({ kind: Type.Literal("session"), session: idSchema<"session">() }),
@@ -199,7 +198,6 @@ export const GitWriteSchema: Schema<GitWrite> = standard(GitWriteType);
 
 export const GitOutcomeSchema: Schema<GitOutcome> = standard(GitOutcomeType);
 
-/** A patch set as the client holds it: the wire entries keyed in a map. */
 export type PatchSet = Omit<PatchSetWire, "entries"> & {
   readonly entries: ReadonlyMap<string, PatchSetWire["entries"][string]>;
 };

@@ -1,7 +1,6 @@
 import type { SnapBox, SnapText, Snapshot } from "./collect.ts";
 import { SCALE } from "./rules.ts";
 
-/** One length that moves an edge or makes a size, from the region's edge inwards to the element. */
 export type Part =
   | {
       readonly kind: "declared";
@@ -9,11 +8,9 @@ export type Part =
       readonly property: string;
       readonly px: number;
     }
-  /** A size no rule sets: text, or children. */
   | { readonly kind: "content"; readonly box: number; readonly px: number }
   | { readonly kind: "layout"; readonly box: number; readonly px: number };
 
-/** A snapshot's boxes with each one's children, for walking the layout up and down. */
 export interface Tree {
   readonly boxes: readonly SnapBox[];
   readonly texts: readonly SnapText[];

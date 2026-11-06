@@ -69,7 +69,6 @@ interface BlankConversationProps {
   readonly inputRef: (element: ComposerEditorHandle | null) => void;
 }
 
-/** A new chat starts in the folder the window has open, so that is the folder it reads. */
 export function BlankConversation(conversation: BlankConversationProps): ReactElement {
   return (
     <ChatScope folder={useHostState().data.workspace}>

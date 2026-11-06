@@ -31,7 +31,6 @@ type Driver = {
 
 const OUTPUT_LIMIT = 1024 * 1024;
 
-/** How far the slowest reader may fall behind a pty before it pauses, and how close it must come again before the pty resumes. */
 const PAUSE_BYTES = 256 * 1024;
 
 const RESUME_BYTES = 64 * 1024;
@@ -260,14 +259,12 @@ async function pipe(
   };
 }
 
-/** The environment a pty starts with: the process's, as a terminal emulator announces itself, without the variables that would make a child Node or Electron run as the host does. */
 function terminalEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const { ELECTRON_RUN_AS_NODE: _electron, NODE_OPTIONS: _node, ...rest } = env;
 
   return { ...rest, TERM: "xterm-256color", COLORTERM: "truecolor", TERM_PROGRAM: "Nyte" };
 }
 
-/** The shell's reports only tighten the process check, since `exec` or removed hooks silence them while it reports a command running. */
 async function terminal(
   command: string | readonly string[],
   options: {
@@ -424,7 +421,6 @@ function ptyUnavailable(reason: string): SdkError {
   );
 }
 
-/** Whether a required module exports `spawn`, as `@lydell/node-pty` does. */
 // oxlint-disable-next-line nyte-code/no-one-off-boolean-helpers -- a guard: inlined, the check narrows `spawn` to Function, not to the module's typed signature
 function fitsPtyModule(value: unknown): value is PtyModule {
   return (
@@ -456,11 +452,9 @@ type OutputLog = {
   push(bytes: Uint8Array, stream?: "stderr"): void;
   end(code: number | null): void;
   reader(): { next(): Promise<IteratorResult<OutputFrame>>; close(): void };
-  /** Pauses the source while the slowest reader is `PAUSE_BYTES` behind, until it is back within `RESUME_BYTES`. */
   throttle(source: { pause(): void; resume(): void }): void;
 };
 
-/** `log`, timing its output as the `pty.output` span of `trace` from the first byte to the exit while tracing is on. */
 function tracedOutput(log: OutputLog, trace: string | null): OutputLog {
   if (!tracing.enabled) return log;
   let ended: EndSpan | null = null;
@@ -480,7 +474,6 @@ function tracedOutput(log: OutputLog, trace: string | null): OutputLog {
   };
 }
 
-/** A process's output kept for its readers: the last `limit` bytes, a reader that falls further behind skipping to a gap. */
 function createOutputLog(limit: number): OutputLog {
   const state: {
     readonly chunks: Extract<OutputFrame, { readonly kind: "bytes" }>[];

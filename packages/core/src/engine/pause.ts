@@ -1,10 +1,5 @@
 import type { Kernel } from "../contract/kernel.ts";
 
-/**
- * Holds back this host's model requests, as while the machine sleeps: the streams in flight end
- * and the turns driving them wait in `unpaused` without failing, leases or tools untouched.
- * Pausing again while paused does nothing.
- */
 export function pause(kernel: Kernel): void {
   const state = kernel.executionState;
 
@@ -13,7 +8,6 @@ export function pause(kernel: Kernel): void {
   state.streams.abort();
 }
 
-/** Lets the paused turns request again; does nothing while not paused. */
 export function resume(kernel: Kernel): void {
   const state = kernel.executionState;
   const paused = state.paused;
@@ -24,7 +18,6 @@ export function resume(kernel: Kernel): void {
   paused.resolve();
 }
 
-/** Resolves at once while not paused, else when the pause ends or `signal` aborts. */
 export async function unpaused(kernel: Kernel, signal: AbortSignal): Promise<void> {
   const paused = kernel.executionState.paused;
 

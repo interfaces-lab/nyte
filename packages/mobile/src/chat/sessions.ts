@@ -45,10 +45,6 @@ export function hasFailed(session: SessionInfo): boolean {
   return sessionMark(session) === "failed";
 }
 
-/**
- * The status word a row prints. Rows say "Finished" and "New" where the mark
- * says "Ready", so labels and speech read the same text.
- */
 export function rowStatus(session: SessionInfo): string {
   const mark = sessionMark(session);
 
@@ -57,7 +53,6 @@ export function rowStatus(session: SessionInfo): string {
   return hasRun(session) ? "Finished" : "New";
 }
 
-/** One relative clock for list rows: Now, minutes, hours, days, then a date. */
 export function formatActivity(at: number, now: number): string {
   const minutes = Math.round((now - at) / 60_000);
 
@@ -74,7 +69,6 @@ export function formatActivity(at: number, now: number): string {
   return new Date(at).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-/** The color and fill pair a session mark paints with. */
 export function markTone(mark: TaskState, theme: Theme) {
   switch (mark) {
     case "working":

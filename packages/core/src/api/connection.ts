@@ -44,7 +44,6 @@ function unavailableGitHub(): never {
   throw new SdkError("unavailable", "This host has no GitHub CLI login to serve.");
 }
 
-/** Returns the connection a caller holds under `context`, each api gated by its authority; `models` is the host's models api, built once over its providers. */
 export function createConnection(
   kernel: Kernel,
   models: ModelsApi,
@@ -221,7 +220,6 @@ export function createHost(
   };
 }
 
-/** Replaces plugins with files a client names: through the loader even with none, which a host without one refuses, and by path alone, so a client's object with an `id` can't pass for an inline plugin. */
 async function replaceFiles(
   kernel: Kernel,
   files: readonly PluginFile[],

@@ -42,7 +42,6 @@ export function splitPanes(controller: PaneController, direction: SplitDirection
   return true;
 }
 
-/** Focuses the next chat pane in reading order, wrapping to the first. */
 export function focusNextPane(controller: PaneController): boolean {
   const layout = controller.getSnapshot();
   const panes = chatPanes(layout);
@@ -69,7 +68,6 @@ export function usePaneLayoutStore(): LayoutStore {
   return useController().store;
 }
 
-/** Re-renders only when `select` returns something new. */
 export function usePaneLayout<T>(
   select: (layout: Layout<PaneContent>) => T,
   equal?: (left: T, right: T) => boolean,
@@ -81,7 +79,6 @@ export function usePaneFocused(pane: PaneId): boolean {
   return usePaneLayout((layout) => layout.focus[0] === pane);
 }
 
-/** More than one chat pane, so each shows its own header. */
 export function useSplitPanes(): boolean {
   return usePaneLayout((layout) => chatPanes(layout).length > 1);
 }

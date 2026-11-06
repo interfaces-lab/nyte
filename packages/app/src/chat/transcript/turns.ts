@@ -4,11 +4,9 @@ import type { HeadView } from "@nyte-ai/sdk/client";
 export interface TurnMessages {
   readonly info: TurnInfo;
   readonly messages: readonly Message[];
-  /** Whether messages between the turn's prompt and its first message here are not loaded yet. */
   readonly clipped: boolean;
 }
 
-/** Each of `view`'s turns with its messages; the turn `leadingPrompt` leads starts with it and is clipped. */
 export function conversationTurns(view: HeadView): readonly TurnMessages[] {
   const byTurn = new Map<string, Message[]>();
   const lead = view.leadingPrompt;

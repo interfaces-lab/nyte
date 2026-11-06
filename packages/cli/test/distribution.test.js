@@ -21,10 +21,6 @@ const repo = fileURLToPath(new URL("../../../", import.meta.url));
 const cli = join(repo, "packages/cli");
 const releaseTest = platformTarget() === undefined ? test.skip : test;
 
-/**
- * Writes a `curl` into `bin` that serves release files from `$FIXTURE_RELEASE` and returns `bin`.
- * Only the download transport is fake: the installer still checks the real checksum and extracts tar.
- */
 async function fakeCurl(bin) {
   await mkdir(bin);
   await writeFile(

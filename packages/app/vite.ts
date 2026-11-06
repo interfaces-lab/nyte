@@ -41,11 +41,8 @@ export function shareCentralIconBase(): Plugin {
   };
 }
 
-/** A module the interface loads on first use, as an entry chunk of its own. */
 interface DeferredEntry {
-  /** File URL of the module that publishes the entry's runtime with `publishDeferred`. */
   readonly module: string;
-  /** Paths under `node_modules/` that may load only through this entry. */
   readonly packages: readonly string[];
 }
 
@@ -53,13 +50,6 @@ const DEFERRED_URLS = normalizePath(
   fileURLToPath(new URL("./src/lib/deferred-urls.ts", import.meta.url)),
 );
 
-/**
- * Builds each entry as a chunk of its own and fills `src/lib/deferred-urls.ts`
- * with their URLs, which `loadDeferred` injects as module scripts. The build
- * fails if a listed package reaches the startup chunks, so a static import
- * cannot quietly pull a deferred surface back into startup.
-
- */
 export function deferredChunks(entries: Readonly<Record<string, DeferredEntry>>): Plugin {
   const modules = Object.entries(entries).map(
     ([name, entry]) => [name, normalizePath(fileURLToPath(entry.module))] as const,
@@ -140,11 +130,6 @@ const SHELL_TYPES = new Map([
   [".map", "application/json"],
 ]);
 
-/**
- * Serves the canvas shell under `/canvas` in development and copies it into
- * the build. The sandboxed frame's origin is opaque, so its module script,
- * stylesheet and fonts are CORS requests.
- */
 export function canvasShell(): Plugin {
   let outDir = "dist";
 

@@ -8,9 +8,7 @@ import { describeRunEnd } from "@nyte-ai/plugin/client/notifications";
 import { mainHead } from "@nyte-ai/plugin/client/presentation";
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 
-/** A chat's status, read from its main head the way the sidebar marks it. A coordinator isn't done while its agents work. */
 type Status = {
-  /** Changes once per question, run or ending, so each one alerts once. */
   readonly key: string;
   readonly unread: boolean;
 } & Alerting;
@@ -21,7 +19,6 @@ type Alerting =
 
 interface Tracked {
   readonly key: string;
-  /** Whether this status began after Nyte started; only those alert or remind. */
   readonly fresh: boolean;
 }
 
@@ -29,7 +26,6 @@ export type AttentionSeen = ReadonlyMap<SessionId, Tracked>;
 
 export interface AttentionDelivery {
   readonly session: SessionId;
-  /** Why it alerts: waiting on you, finished, or failed. */
   readonly state: AlertState;
   readonly title: string;
   readonly body: string;
@@ -39,7 +35,6 @@ export interface AttentionDelivery {
 }
 
 export interface AttentionReminder {
-  /** The chat and the question it waits on; a new question is a new reminder. */
   readonly id: string;
   readonly delivery: AttentionDelivery;
 }
@@ -53,12 +48,6 @@ export interface AttentionPlan {
 
 export type AttentionSettings = AlertSettings & Pick<DesktopSettings, "notifySubagents">;
 
-/**
- * Compares the rows with what the host saw last: each chat whose status moved alerts once, on
- * the channels its state reaches you on. Without `previous` the rows are the baseline and nothing
- * alerts; a chat first seen later alerts only if it was created after `since`. The badge counts
- * the chats that still need you: waiting ones, and failed or done ones not yet read.
- */
 export function planAttention(input: {
   readonly previous: AttentionSeen | undefined;
   readonly rows: readonly SessionInfo[];

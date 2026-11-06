@@ -57,7 +57,6 @@ export const clipboardPreview = defineConsts({
   maxHeight: "var(--nyte-clipboard-preview-max-height)",
 });
 
-/** The control-height scale. A row or menu item reads `row`, which keeps the touch target. */
 export const control = defineConsts({
   height2xs: "var(--nyte-control-height-2xs)",
   heightXs: "var(--nyte-control-height-xs)",
@@ -167,7 +166,6 @@ export const layer = defineConsts({
   sash: 31,
   dialogBackdrop: 50,
   dialog: 51,
-  /** Above dialogs, so a picker opened inside one shows over it. */
   menu: 60,
   submenu: 61,
   tooltip: 72,

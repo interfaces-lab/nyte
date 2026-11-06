@@ -7,7 +7,6 @@ export interface ChatFields {
   readonly selection: PaneSelection;
 }
 
-/** A pane shows one chat: opening another chat in it replaces it. */
 export const chatKind: PaneKind<ChatFields> = {
   identity: (fields) =>
     fields.selection.kind === "session" ? fields.selection.sessionId : undefined,

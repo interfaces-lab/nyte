@@ -18,7 +18,6 @@ const sidebarWidth = elementVariable(
   `${String(preferences.sidebarWidth.get())}px`,
 );
 
-/** A ref for each element that reads the sidebar width. */
 export const attachSidebarWidth = sidebarWidth.attach;
 
 export function applySidebarWidth(width: number): void {

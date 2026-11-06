@@ -1,7 +1,3 @@
-/**
- * The bounded exponential-backoff retry loop for assistant calls. What counts as
- * transient is decided by the failure class in `failure.ts`.
- */
 import type { AssistantMessage } from "@nyte-ai/schema/model";
 import { sleep } from "./abort.ts";
 import { classifyAssistantFailure, retryCanHelp } from "./failure.ts";
@@ -21,7 +17,6 @@ export interface RetryPolicy {
 
 export const DEFAULT_MAX_AGENT_RETRY_DELAY_MS = 60_000;
 
-/** Optional callbacks emitted by {@link retryAssistantCall} around each retry. */
 export interface RetryCallbacks {
   /** Emitted before the backoff sleep of each retry attempt (1-indexed). */
   onRetryScheduled?: (
@@ -163,11 +158,6 @@ export async function retryAssistantCall(
   }
 }
 
-/**
- * Whether a failed assistant message looks like a transient provider or
- * transport error, as a function of its failure class. Callers handle context
- * overflow first and own their retry budget, backoff, and reporting.
- */
 export function failedTransiently(message: AssistantMessage): boolean {
   return message.stopReason === "error" && retryCanHelp(classifyAssistantFailure(message).class);
 }

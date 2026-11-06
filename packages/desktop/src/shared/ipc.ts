@@ -173,8 +173,6 @@ export type CallReplyFor<P extends CallPath> =
   | { readonly path: P; readonly ok: true; readonly value: CallOutput<P> }
   | { readonly ok: false; readonly error: IpcFailure };
 
-export type CallReply = { readonly [P in CallPath]: CallReplyFor<P> }[CallPath];
-
 export type CallHandler<P extends CallPath> = (
   window: number,
   input: CallInput<P>,

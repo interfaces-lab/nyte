@@ -8,7 +8,6 @@ const MAX_LAG_FRAMES = 8;
 
 const BARRIER_MAX_WAIT_MS = 250;
 
-// Under a 60 Hz frame so jitter can't skip one; over a 120 Hz frame so it reveals every other.
 const MIN_FRAME_FLUSH_INTERVAL_MS = 12;
 
 const SEGMENT_LOOKAHEAD = 32;

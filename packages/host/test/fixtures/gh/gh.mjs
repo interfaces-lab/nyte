@@ -1,9 +1,3 @@
-/**
- * A stand-in for the GitHub CLI that the host's GitHub tests put on the PATH.
- * It reads its scenario from the JSON file `NYTE_FAKE_GH` names, writes
- * every invocation (arguments and stdin) to `<file>.log`, and keeps what a
- * command changes (sign-in, sign-out, a created pull request) in the file.
- */
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 
 const file = process.env.NYTE_FAKE_GH ?? "";

@@ -1,7 +1,3 @@
-/**
- * Conversion of the neutral transcript and tools into Chat Completions
- * messages, the catalog compat they follow, and Anthropic-style cache control.
- */
 import OpenAI from "openai";
 import { Value } from "typebox/value";
 import type {
@@ -63,7 +59,6 @@ export type ResolvedOpenAICompletionsCompat = Omit<
   supportsMidConvoToolAdditions?: OpenAICompletionsCompat["supportsMidConvoToolAdditions"];
 };
 
-/** What an OpenAI-compatible server supports when its catalog entry says nothing else. */
 const DEFAULT_COMPAT: ResolvedOpenAICompletionsCompat = {
   supportsStore: true,
   supportsDeveloperRole: true,
@@ -88,10 +83,6 @@ const DEFAULT_COMPAT: ResolvedOpenAICompletionsCompat = {
   supportsLongCacheRetention: true,
 };
 
-/**
- * The model's compat over the defaults. The catalog generator stamps every provider quirk onto
- * `model.compat`, so nothing here sniffs the provider name or base URL.
- */
 export function resolveCompat(model: Model<"openai-completions">): ResolvedOpenAICompletionsCompat {
   return { ...DEFAULT_COMPAT, ...model.compat };
 }
@@ -254,13 +245,6 @@ function addCacheControlToTextContent(
   return true;
 }
 
-/**
- * A tool call id Chat Completions accepts. Responses-style ids are `{call_id}|{item_id}`,
- * where the item id can be 400+ characters with `+`, `/` and `=` (github-copilot,
- * openai-codex, opencode). Calls in one turn can share a call id and differ by item id, and
- * Chat Completions requires distinct ids, so both parts are kept, sanitized, and hashed down to
- * OpenAI's 40-character limit when too long.
- */
 function normalizeToolCallId(id: string, provider: string): string {
   if (id.includes("|")) {
     const [rawCallId, ...itemParts] = id.split("|");
@@ -283,23 +267,6 @@ function normalizeToolCallId(id: string, provider: string): string {
   return id;
 }
 
-/**
- * The transcript as Chat Completions messages, shaped by the model's compat.
- *
- * - Tool results load request-list tools through `addedToolNames` only in Kimi mode; anchored
- *   additions are not in the request list, so neither path declares a tool twice.
- * - Some providers reject a user message right after tool results, so a synthetic assistant
- *   message bridges the gap; some reject null assistant content, so it is an empty string.
- * - Copilot accepts reasoning text only alongside its opaque state; text without the state is
- *   dropped rather than replayed as a bare field.
- * - Thinking replayed as text carries no tags, so the model does not mimic them.
- * - `reasoning_details` is the structured alternative to a raw reasoning field; without it the
- *   first thinking block's signature names the field (llama.cpp server with gpt-oss).
- * - Assistant messages with neither content nor tool calls are skipped: providers require one
- *   of them, and aborted responses can have neither.
- * - Every tool result carries text, a placeholder when it has only images, and its tool name
- *   for providers that require it.
- */
 export function convertMessages(
   model: Model<"openai-completions">,
   context: TranscriptContext,
@@ -616,9 +583,6 @@ export function convertMessages(
   return params;
 }
 
-/**
- * Only include strict if provider supports it. Some reject unknown fields.
- */
 export function convertTools(
   tools: Tool[],
   compat: ResolvedOpenAICompletionsCompat,

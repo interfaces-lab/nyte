@@ -1,7 +1,3 @@
-/**
- * Instructions for the agent `nyte triage` starts. Ships in the binary, so
- * every agent (Nyte, Claude Code, Codex) gets the same rules.
- */
 export const TRIAGE_PLAYBOOK = `You are helping someone whose Nyte install misbehaves. You run in a folder nyte triage prepared:
 
 - doctor.json: the output of \`nyte doctor --json\` from just now.

@@ -10,7 +10,6 @@ import { AccountCancelled } from "./account.ts";
 import type { DesktopBroker } from "./broker.ts";
 import type { ConnectStore, StoredLink } from "./store.ts";
 
-/** A broker link transaction ended in `state` before this host linked. */
 export class LinkStopped extends Error {
   readonly state: "pending" | "approved" | "denied" | "expired" | "cancelled";
 
@@ -21,7 +20,6 @@ export class LinkStopped extends Error {
   }
 }
 
-/** The broker's refusal code, when `cause` is one. */
 export function refusedCode(cause: unknown): string | undefined {
   return cause instanceof BrokerError && cause.failure.kind === "refused"
     ? cause.failure.code
@@ -30,7 +28,6 @@ export function refusedCode(cause: unknown): string | undefined {
 
 const SessionClaims = Type.Object({ sub: Type.String({ minLength: 1, maxLength: 128 }) });
 
-/** The owner a session JWT names, read without verifying it: only the broker verifies it. */
 export function sessionSubject(token: string): string | null {
   try {
     const payload: unknown = JSON.parse(
@@ -43,7 +40,6 @@ export function sessionSubject(token: string): string | null {
   }
 }
 
-/** How a link attempt that threw `cause` is shown. */
 export function linkFailure(cause: unknown, signal: AbortSignal): ConnectLinkFailure {
   if (signal.aborted || cause instanceof AccountCancelled) return "cancelled";
 
@@ -87,23 +83,16 @@ interface HighWater {
   readonly iat: number;
 }
 
-/**
- * What this host learned about its current link: the devices it refused here
- * ahead of the broker, and the newest lease it accepted, below which no lease
- * or enrollment is taken. Unlinking or linking again forgets both.
- */
 export class LinkTrust {
   readonly denied = new Set<string>();
   private highWater: HighWater | undefined;
 
-  /** Whether `generation` is older than the newest lease accepted for the environment. */
   behindGeneration(environmentId: string, generation: number): boolean {
     const high = this.highWater;
 
     return high?.environmentId === environmentId && generation < high.generation;
   }
 
-  /** Whether a lease is older than the newest accepted one: a lower generation or policy, or the same policy issued earlier. */
   behindLease(environmentId: string, claims: LeaseClaims): boolean {
     const high = this.highWater;
 
@@ -130,11 +119,6 @@ export class LinkTrust {
   }
 }
 
-/**
- * Verifies the tokens the broker signs for this host: a lease or an
- * enrollment for the linked environment. A key the stored set
- * lacks sends this host to the broker's key set, at most once per `keysMs`.
- */
 export class BrokerKeyring {
   private readonly broker: DesktopBroker;
   private readonly store: ConnectStore;
@@ -149,7 +133,6 @@ export class BrokerKeyring {
     this.signal = signal;
   }
 
-  /** The claims of a `typ` token for `link`'s environment, or undefined when it does not verify. */
   async verify<S extends TSchema>(
     link: StoredLink,
     token: string,
