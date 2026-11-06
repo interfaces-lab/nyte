@@ -1,7 +1,7 @@
 import { Dialog } from "@base-ui/react/dialog";
 import { create, props } from "@stylexjs/stylex";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { createContext, useContext, useId, useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
+import { createContext, useContext, useId, useState, useSyncExternalStore } from "react";
 import type { ReactElement } from "react";
 import { mergeStyleProps } from "./style.ts";
 import type { StyledProps } from "./style.ts";
@@ -50,13 +50,24 @@ function useMorph() {
 
 function MorphRoot(input: Dialog.Root.Props & { readonly open: boolean }): ReactElement {
   const id = useId();
-  const reduced = useReducedMotion() === true;
+  const reduced = useSyncExternalStore(subscribeReducedMotion, readReducedMotion, () => false);
 
   return (
     <MorphContext value={{ open: input.open, layoutId: id, reduced }}>
       <Dialog.Root {...input} />
     </MorphContext>
   );
+}
+
+function readReducedMotion() {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+function subscribeReducedMotion(notify: () => void) {
+  const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+  query.addEventListener("change", notify);
+
+  return () => query.removeEventListener("change", notify);
 }
 
 function MorphTrigger({
