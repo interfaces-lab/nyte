@@ -217,6 +217,43 @@ export function run(): string {
       host.remove();
     }
 
+    for (const scope of ["green", "red"] as const) {
+      const host = document.createElement("div");
+      const fill = document.createElement("span");
+      const label = document.createElement("span");
+      label.className = props(surfaceTheme[scope], styles.accent).className ?? "";
+      fill.append(label);
+      host.append(fill);
+      document.body.append(host);
+
+      for (const [surface, background] of [
+        ["base", styles.base],
+        ["chrome", styles.chromeSurface],
+      ] as const) {
+        host.className = props(background).className ?? "";
+        const ground = getComputedStyle(host).backgroundColor;
+
+        for (const [state, style] of [
+          ["hover", styles.fillTertiary],
+          ["selected", styles.fillSecondary],
+          ["pressed", styles.fillPrimary],
+        ] as const) {
+          fill.className = props(style).className ?? "";
+          const layers = [ground, getComputedStyle(fill).backgroundColor];
+          results.push({
+            mode,
+            scope: `${scope}-on-neutral`,
+            role: "accent",
+            surface: `${surface}+${state}`,
+            ratio: ratio(luminance([...layers, getComputedStyle(label).color]), luminance(layers)),
+            minimum: 4.5,
+          });
+        }
+      }
+
+      host.remove();
+    }
+
     for (const scope of ["blue", "red"] as const) {
       const element = document.createElement("span");
       element.className = props(surfaceTheme[scope], styles.button).className ?? "";

@@ -8,11 +8,11 @@ import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { Icon } from "@nyte-ai/ui/icon";
 import { control, glyph, media, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
-import { intent } from "@nyte-ai/ui/surface-theme";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { useState } from "react";
 import type { ReactElement } from "react";
+import { ChangeStats } from "../../components/change-stats.tsx";
 import { FileTypeIcon } from "../../components/file-type-icon.tsx";
 import { Deferred } from "../../lib/deferred.tsx";
 import type { ToolCallDensity } from "../../preferences/index.ts";
@@ -87,14 +87,7 @@ const styles = create({
       ":hover": { [media.hover]: "underline" },
     },
   },
-  stats: {
-    display: "inline-flex",
-    flexShrink: 0,
-    gap: space.s1,
-    fontVariantNumeric: "tabular-nums",
-  },
-  statsLine: { marginInlineStart: space.s2 },
-  stat: { color: role.contentSecondary },
+  statsLine: { display: "inline-flex", flexShrink: 0, marginInlineStart: space.s2 },
   chevron: {
     width: glyph.md,
     height: glyph.md,
@@ -207,15 +200,11 @@ function Stats({
 }): ReactElement | null {
   if (added === 0 && removed === 0) return null;
 
-  return (
-    <span
-      aria-label={`${String(added)} added, ${String(removed)} removed`}
-      {...props(styles.stats, line && styles.statsLine)}
-    >
-      {added > 0 && <span {...props(intent.success, styles.stat)}>+{added}</span>}
-      {removed > 0 && <span {...props(intent.danger, styles.stat)}>-{removed}</span>}
-    </span>
-  );
+  const stats = <ChangeStats added={added} removed={removed} />;
+
+  if (!line) return stats;
+
+  return <span {...props(styles.statsLine)}>{stats}</span>;
 }
 
 export function EditCallView({

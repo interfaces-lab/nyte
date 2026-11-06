@@ -13,8 +13,9 @@ const glass = (light: number, dark: number) =>
 const shade = (role: string, light: number, dark: number) =>
   `light-dark(oklch(from var(--nyte-${role}) calc(l * ${light}) c h), oklch(from var(--nyte-${role}) calc(l * ${dark}) c h))`;
 
-/** In dark, 0.74 is the lightness every hue needs for 4.5:1 on a diff gutter tinted with itself. */
-const ink = "light-dark(var(--nyte-theme-100), oklch(from var(--nyte-theme-80) max(l, 0.74) c h))";
+/** Accent text also sits on neutral pressed fills, outside its own hue's surfaces. */
+const ink =
+  "light-dark(oklch(from var(--nyte-theme-100) min(l, 0.45) c h), oklch(from var(--nyte-theme-80) max(l, 0.85) c h))";
 
 /** The clamp holds the step's contrast floor in every hue, whose ramps differ in lightness. */
 const stair = (light: number, lightCeiling: number, dark: number, darkFloor: number) =>
@@ -39,7 +40,7 @@ export const roles = defineVars({
   "--nyte-content-quaternary": contrast(stair(80, 0.6, 90, 0.57), step(100, 70)),
   "--nyte-content-disabled": contrast(step(50, 100), step(70, 90)),
   /** The scope's hue as ink: error and attention text, status dots, accent strokes. */
-  "--nyte-content-accent": contrast(ink, step(100, 40)),
+  "--nyte-content-accent": contrast(ink, stair(100, 0.38, 40, 0.85)),
   "--nyte-content-on-interactive-strong": "var(--nyte-theme-0)",
   "--nyte-content-on-control": "var(--nyte-neutral-0)",
 
@@ -93,7 +94,7 @@ export const roles = defineVars({
 });
 
 const hued = {
-  "--nyte-content-accent": contrast(ink, step(100, 60)),
+  "--nyte-content-accent": contrast(ink, stair(100, 0.38, 60, 0.85)),
   "--nyte-bg-scrim-translucent": glass(40, 130),
   "--nyte-bg-interactive-strong": "var(--nyte-theme-80)",
   /** Capped so a white glyph on a light hue (yellow, teal) keeps 3:1. */
