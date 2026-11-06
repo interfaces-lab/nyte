@@ -39,10 +39,12 @@ export async function run(): Promise<string> {
   const composer = createRef<ComposerEditorHandle>();
   const images: File[] = [];
 
-  const stop = receiveChatExcerpts(({ reference, image }) => {
-    composer.current?.insertReference(reference);
+  const stop = receiveChatExcerpts((excerpt) => {
+    if ("reference" in excerpt) composer.current?.insertReference(excerpt.reference);
 
-    if (image !== undefined) images.push(image);
+    if (excerpt.image !== undefined) images.push(excerpt.image);
+
+    return composer.current?.readElement() ?? false;
   });
 
   flushSync(() =>

@@ -99,6 +99,16 @@ export const pane = defineConsts({
   dividerGap: "var(--nyte-pane-divider-gap)",
 });
 
+export const imageViewer = defineConsts({
+  thumbnailSize: "var(--nyte-image-thumbnail-size)",
+  thumbnailCompactSize: "var(--nyte-image-thumbnail-compact-size)",
+  width: "var(--nyte-image-viewer-width)",
+  headerHeight: "var(--nyte-image-viewer-header-height)",
+  footerHeight: "var(--nyte-image-viewer-footer-height)",
+  compactFooterHeight: "var(--nyte-image-viewer-compact-footer-height)",
+  modeWidth: "var(--nyte-image-viewer-mode-width)",
+});
+
 export const diffView = defineConsts({
   lineHeight: "var(--nyte-diff-line-height)",
   previewMaxHeight: "var(--nyte-diff-preview-max-height)",

@@ -43,7 +43,7 @@ export interface ComposerEditorHandle {
   replaceText(start: number, end: number, text: string): void;
   insertReference(reference: MessageReference, start?: number, end?: number): void;
   dropReferences(references: readonly MessageReference[], clientX: number, clientY: number): void;
-  attachFiles(files: readonly File[]): void;
+  attachFiles(files: readonly File[], signal?: AbortSignal): Promise<void>;
 }
 
 export interface ComposerComboboxState {
@@ -69,7 +69,10 @@ interface ComposerEditorProps {
   readonly combobox?: ComposerComboboxState;
   readonly onKeyDown: (event: KeyboardEvent) => void;
   readonly onFocusChange?: (focused: boolean) => void;
-  readonly onFilesSelected?: (files: readonly File[]) => void;
+  readonly onFilesSelected?: (
+    files: readonly File[],
+    signal?: AbortSignal,
+  ) => void | Promise<string | undefined>;
 }
 
 interface CaretBox {
@@ -229,8 +232,19 @@ export function ComposerEditor({
       for (const reference of references) insertComposerReference(tr, reference);
       view.dispatch(closeHistory(tr).scrollIntoView());
     },
-    attachFiles(files) {
-      onFilesSelectedRef.current?.(files);
+    async attachFiles(files, signal) {
+      signal?.throwIfAborted();
+      const pending = onFilesSelectedRef.current?.(files, signal);
+
+      if (pending === undefined)
+        throw new Error(
+          "The composer cannot accept images right now. Finish the question, then try again.",
+        );
+
+      const error = await pending;
+      signal?.throwIfAborted();
+
+      if (error !== undefined) throw new Error(error);
     },
   }));
 
@@ -274,7 +288,7 @@ export function ComposerEditor({
             const pasted = Array.from(event.clipboardData?.files ?? []);
 
             if (pasted.length > 0 && onFilesSelected !== undefined) {
-              onFilesSelected(pasted);
+              void onFilesSelected(pasted);
 
               return true;
             }

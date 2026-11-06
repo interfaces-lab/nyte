@@ -254,16 +254,22 @@ export function UserMessageView({
     setEdit((current) => (current === undefined ? current : patch(current)));
   };
 
-  const addFiles = async (files: readonly File[]): Promise<void> => {
+  const addFiles = async (
+    files: readonly File[],
+    signal?: AbortSignal,
+  ): Promise<string | undefined> => {
     patchEdit((current) => ({ ...current, attachmentReads: current.attachmentReads + 1 }));
 
     return attachComposerFiles({ files, editor: editorRef.current })
       .then((result) => {
+        signal?.throwIfAborted();
         patchEdit((current) => ({
           ...current,
           attachments: [...current.attachments, ...result.attachments],
           attachmentError: result.error,
         }));
+
+        return result.error;
       })
       .finally(() =>
         patchEdit((current) => ({ ...current, attachmentReads: current.attachmentReads - 1 })),
@@ -409,7 +415,7 @@ export function UserMessageView({
               attachments={edit.attachments}
               attachmentBusy={edit.attachmentReads !== 0}
               attachmentError={edit.attachmentError}
-              onFilesSelected={(files) => void addFiles(files)}
+              onFilesSelected={addFiles}
               onAttachmentRemove={(id) =>
                 patchEdit((current) => ({
                   ...current,

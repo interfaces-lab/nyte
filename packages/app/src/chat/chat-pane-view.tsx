@@ -156,10 +156,17 @@ function ReceiveExcerpts({
   readonly input: RefObject<ComposerEditorHandle | null>;
 }): null {
   useMountEffect(() =>
-    receiveChatExcerpts(({ reference, image }) => {
-      input.current?.insertReference(reference);
+    receiveChatExcerpts((excerpt) => {
+      const composer = input.current;
+      const element = composer?.readElement();
 
-      if (image !== undefined) input.current?.attachFiles([image]);
+      if (composer === null || element === null || element === undefined) return false;
+
+      if ("reference" in excerpt) composer.insertReference(excerpt.reference);
+
+      if (excerpt.image === undefined) return element;
+
+      return composer.attachFiles([excerpt.image], excerpt.signal).then(() => element);
     }),
   );
 

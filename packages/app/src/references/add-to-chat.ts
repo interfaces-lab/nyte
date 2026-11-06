@@ -1,12 +1,11 @@
 import type { MentionFile } from "../data/files.ts";
 import type { MessageReference } from "./message-references.ts";
 
-export interface ChatExcerpt {
-  readonly reference: MessageReference;
-  readonly image?: File;
-}
+export type ChatExcerpt =
+  | { readonly reference: MessageReference; readonly image?: File; readonly signal?: AbortSignal }
+  | { readonly image: File; readonly signal?: AbortSignal };
 
-type ChatExcerptReceiver = (excerpt: ChatExcerpt) => void;
+type ChatExcerptReceiver = (excerpt: ChatExcerpt) => HTMLElement | false | Promise<HTMLElement>;
 
 let receiver: ChatExcerptReceiver | undefined;
 
@@ -18,11 +17,22 @@ export function receiveChatExcerpts(receive: ChatExcerptReceiver): () => void {
   };
 }
 
-export function addToChat(excerpt: ChatExcerpt): boolean {
-  if (receiver === undefined) return false;
-  receiver(excerpt);
+export function addToChat(excerpt: {
+  readonly image: File;
+  readonly signal?: AbortSignal;
+}): Promise<HTMLElement>;
+export function addToChat(excerpt: { readonly reference: MessageReference }): boolean;
+export function addToChat(excerpt: ChatExcerpt): boolean | Promise<HTMLElement>;
+export function addToChat(excerpt: ChatExcerpt): boolean | Promise<HTMLElement> {
+  const result = receiver?.(excerpt) ?? false;
 
-  return true;
+  if (excerpt.image === undefined) return result !== false;
+
+  return Promise.resolve(result).then((target) => {
+    if (target === false) throw new Error("Open a chat, then try Add to Chat again.");
+
+    return target;
+  });
 }
 
 export function addFileToChat(

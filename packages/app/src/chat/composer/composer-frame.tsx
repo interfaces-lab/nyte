@@ -81,7 +81,10 @@ interface ComposerFrameProps {
   attachments?: readonly ComposerImageAttachment[];
   attachmentBusy?: boolean;
   attachmentError?: string;
-  onFilesSelected?: (files: readonly File[]) => void;
+  onFilesSelected?: (
+    files: readonly File[],
+    signal?: AbortSignal,
+  ) => void | Promise<string | undefined>;
   onAttachmentRemove?: (id: string) => void;
   editing?: ComposerEditing;
   runningMessagePreference?: RunningMessagePreference;
@@ -394,7 +397,7 @@ export function ComposerFrame({
         if (disabled) return;
 
         if (canAttach && carriesFiles(event)) {
-          onFilesSelected(Array.from(event.dataTransfer.files));
+          void onFilesSelected(Array.from(event.dataTransfer.files));
 
           return;
         }
@@ -433,7 +436,7 @@ export function ComposerFrame({
             const picked = Array.from(event.currentTarget.files ?? []);
             event.currentTarget.value = "";
 
-            if (picked.length > 0) onFilesSelected(picked);
+            if (picked.length > 0) void onFilesSelected(picked);
           }}
         />
       )}

@@ -1,5 +1,6 @@
 import type { chartsRuntime } from "../settings/usage-charts.deferred.ts";
 import type { codeRuntime } from "../chat/markdown/code.deferred.tsx";
+import type { imageViewerRuntime } from "../chat/images/image-viewer.deferred.tsx";
 import type { highlightRuntime } from "../chat/markdown/highlight.deferred.ts";
 import type { mermaidRuntime } from "../chat/markdown/mermaid.deferred.ts";
 import type { previewsRuntime } from "../settings/previews/previews.deferred.tsx";
@@ -8,6 +9,10 @@ import type { pdfRuntime } from "../workbench/files/pdf/pdf.deferred.ts";
 import type { workbenchRuntime } from "../workbench/panels.deferred.tsx";
 
 export const deferredEntries = {
+  images: {
+    module: new URL("../chat/images/image-viewer.deferred.tsx", import.meta.url).href,
+    packages: [],
+  },
   code: {
     module: new URL("../chat/markdown/code.deferred.tsx", import.meta.url).href,
     packages: ["@pierre/diffs/", "shiki/"],
@@ -43,6 +48,7 @@ export const deferredEntries = {
 } as const;
 
 export interface DeferredRuntimes {
+  images: typeof imageViewerRuntime;
   code: typeof codeRuntime;
   highlight: typeof highlightRuntime;
   mermaid: typeof mermaidRuntime;

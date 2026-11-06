@@ -208,11 +208,11 @@ export const proseStyles = create({
     whiteSpace: "pre",
   },
   imageLabel: { color: role.contentSecondary },
+  imageSpacing: { display: "inline-flex", maxWidth: "100%", marginBlock: space.s2 },
   image: {
     display: "block",
     maxWidth: "100%",
     height: "auto",
-    marginBlock: space.s2,
     borderRadius: radius.control,
     outlineWidth: 1,
     outlineStyle: "solid",

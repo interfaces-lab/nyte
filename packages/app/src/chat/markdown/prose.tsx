@@ -42,6 +42,7 @@ import { asId } from "@nyte-ai/schema";
 import type { ByteReader, WorkspaceId } from "@nyte-ai/sdk";
 import { useReferenceOpener } from "../../references/reference-opener.tsx";
 import { proseStyles } from "./prose.stylex.ts";
+import { ImageViewer } from "../images/image-viewer.tsx";
 import { SubagentCitation } from "../tools/subagent-call.tsx";
 import {
   FadeEnd,
@@ -195,7 +196,7 @@ function safeDecode(text: string): string {
 }
 
 function MarkdownLink({
-  node: _node,
+  node,
   className: _className,
   onClick: _onClick,
   title: _title,
@@ -216,12 +217,15 @@ function MarkdownLink({
     );
   }
 
+  const linkedImage =
+    node?.children.some((child) => child.type === "element" && child.tagName === "img") === true;
+
   const reference =
     opener === undefined || href === undefined ? undefined : linkReference(href, files);
 
   const open = reference === undefined ? undefined : opener?.(reference);
 
-  if (reference?.kind === "file" && open !== undefined) {
+  if (!linkedImage && reference?.kind === "file" && open !== undefined) {
     return (
       <FileCitation
         {...elementProps}
@@ -236,25 +240,28 @@ function MarkdownLink({
   }
 
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <a
-            {...elementProps}
-            href={href}
-            {...props(intent.primary, proseStyles.link, proseStyles.webLink)}
-            onClick={(event) => {
-              if (href === undefined) return;
-              event.preventDefault();
-              openConversationLink(href, opener);
-            }}
-          >
-            <InsideLink value>{children}</InsideLink>
-          </a>
-        }
-      />
-      <TooltipContent>{href}</TooltipContent>
-    </Tooltip>
+    <>
+      {linkedImage && children}
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <a
+              {...elementProps}
+              href={href}
+              {...props(intent.primary, proseStyles.link, proseStyles.webLink)}
+              onClick={(event) => {
+                if (href === undefined) return;
+                event.preventDefault();
+                openConversationLink(href, opener);
+              }}
+            >
+              <InsideLink value>{linkedImage ? "Open linked page" : children}</InsideLink>
+            </a>
+          }
+        />
+        <TooltipContent>{href}</TooltipContent>
+      </Tooltip>
+    </>
   );
 }
 
@@ -352,7 +359,11 @@ function FileImage(input: {
   return url === undefined ? (
     input.label
   ) : (
-    <img src={url} alt={input.label} {...props(proseStyles.image)} />
+    <span {...props(proseStyles.imageSpacing)}>
+      <ImageViewer src={url} name={input.path.split("/").at(-1) ?? input.label}>
+        <img src={url} alt={input.label} {...props(proseStyles.image)} />
+      </ImageViewer>
+    </span>
   );
 }
 

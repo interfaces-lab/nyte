@@ -375,12 +375,17 @@ export function Composer({
     inputRef?.(handle);
   };
 
-  const addFiles = async (files: readonly File[]): Promise<void> => {
-    if (savingEdit) return;
+  const addFiles = async (
+    files: readonly File[],
+    signal?: AbortSignal,
+  ): Promise<string | undefined> => {
+    if (savingEdit) return "Finish editing the message, then attach the image again.";
     setAttachmentReads((count) => count + 1);
 
     return attachComposerFiles({ files, editor: editorRef.current })
       .then((result) => {
+        signal?.throwIfAborted();
+
         if (result.attachments.length > 0) {
           updateViewState((current) => ({
             ...current,
@@ -389,6 +394,8 @@ export function Composer({
         }
 
         setAttachmentError(result.error);
+
+        return result.error;
       })
       .finally(() => setAttachmentReads((count) => count - 1));
   };
@@ -836,7 +843,7 @@ export function Composer({
             attachments={questions === undefined ? attachments : []}
             attachmentBusy={questions === undefined && attachmentReads !== 0}
             attachmentError={questions === undefined ? attachmentError : undefined}
-            onFilesSelected={questions === undefined ? (files) => void addFiles(files) : undefined}
+            onFilesSelected={questions === undefined ? addFiles : undefined}
             onAttachmentRemove={(id) => {
               updateViewState((current) => ({
                 ...current,

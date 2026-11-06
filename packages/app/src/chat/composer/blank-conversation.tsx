@@ -138,11 +138,16 @@ function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement
     return startDraft(viewStore, actions, draft.id, waiting, plan);
   };
 
-  const addFiles = async (files: readonly File[]): Promise<void> => {
+  const addFiles = async (
+    files: readonly File[],
+    signal?: AbortSignal,
+  ): Promise<string | undefined> => {
     setAttachmentReads((count) => count + 1);
 
     return attachComposerFiles({ files, editor: editorRef.current })
       .then((result) => {
+        signal?.throwIfAborted();
+
         if (result.attachments.length > 0) {
           updateViewState((state) => ({
             ...state,
@@ -154,6 +159,8 @@ function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement
         }
 
         setAttachmentError(result.error);
+
+        return result.error;
       })
       .finally(() => setAttachmentReads((count) => count - 1));
   };
@@ -221,7 +228,7 @@ function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement
             attachments={attachments}
             attachmentBusy={attachmentReads !== 0}
             attachmentError={attachmentError}
-            onFilesSelected={(files) => void addFiles(files)}
+            onFilesSelected={addFiles}
             onAttachmentRemove={(id) => {
               updateViewState((state) => ({
                 ...state,
