@@ -1,10 +1,10 @@
 import { Type } from "typebox";
 import { asId, standard } from "@nyte-ai/schema";
 import type {
-  Configuration,
   ConfigurationPatch,
   Infer,
   Message,
+  ModelInfo,
   ModelRef,
   RunEnd,
   RunId,
@@ -319,15 +319,36 @@ export default {
   },
 } satisfies Plugin;
 
+/**
+ * A chat that runs as a registered agent starts subagents of its own type: its agent, and its
+ * model and thinking level unless the call names a model. Any other chat's subagents run on what
+ * the call names and the defaults. An agent no plugin registers is read as the model it names,
+ * alone or with `model`, as a model asked for loosely ("astra", or "sol" with "6.1") often is.
+ */
 async function childConfiguration(
   invocation: ToolInvocation,
   args: Pick<Infer<typeof taskParameters>, "agent" | "model" | "thinking">,
 ): Promise<ConfigurationPatch | undefined> {
-  const parent = args.agent === undefined ? await agentConfiguration(invocation) : null;
-  const named = args.model === undefined ? undefined : await findModel(invocation, args.model);
+  const view = await invocation.session.head(invocation.head).view({ tail: 0 });
+
+  const unregistered =
+    args.agent !== undefined && !view.catalog.agents.some((agent) => agent.id === args.agent)
+      ? args.agent
+      : undefined;
+
+  const agent = unregistered === undefined ? args.agent : undefined;
+  const effective = view.configuration.effective;
+  const parent = agent === undefined && effective?.agent !== null ? effective : null;
+
+  const named =
+    unregistered === undefined
+      ? args.model === undefined
+        ? undefined
+        : await findModel(invocation, args.model)
+      : await findAgentModel(invocation, unregistered, args.model);
 
   const patch = {
-    agent: args.agent ?? parent?.agent,
+    agent: agent ?? parent?.agent,
     model: named ?? parent?.model,
     thinking: args.thinking ?? (named === undefined ? parent?.thinking : undefined),
   };
@@ -335,25 +356,9 @@ async function childConfiguration(
   return Object.values(patch).every((value) => value === undefined) ? undefined : patch;
 }
 
-async function agentConfiguration(invocation: ToolInvocation): Promise<Configuration | null> {
-  const effective = (await invocation.session.head(invocation.head).view({ tail: 0 })).configuration
-    .effective;
-
-  return effective === null || effective.agent === null ? null : effective;
-}
-
 async function findModel(invocation: ToolInvocation, name: string): Promise<ModelRef> {
-  const models = (await invocation.sdk.models.list()).providers.flatMap((provider) =>
-    provider.credential === "unknown" ||
-    provider.credential === "configured" ||
-    provider.credential === "verified"
-      ? provider.models
-      : [],
-  );
-
-  const refs = models.flatMap((info) => (info.fast === null ? [info.ref] : [info.ref, info.fast]));
-  const exact = refs.filter((ref) => `${ref.provider}/${ref.id}` === name);
-  const matches = exact.length > 0 ? exact : refs.filter((ref) => ref.id === name);
+  const models = await listModels(invocation);
+  const matches = matchModels(models, name);
   const [only, ...others] = matches;
 
   if (only !== undefined && others.length === 0) return only;
@@ -373,6 +378,78 @@ async function findModel(invocation: ToolInvocation, name: string): Promise<Mode
       )
       .join("\n")}`,
   );
+}
+
+/** The one model `agent`, which no plugin registers, names with `model`, with `model` alone or by itself. */
+async function findAgentModel(
+  invocation: ToolInvocation,
+  agent: string,
+  model: string | undefined,
+): Promise<ModelRef> {
+  const models = await listModels(invocation);
+  const names = model === undefined ? [agent] : [model, `${agent} ${model}`, agent];
+
+  const [found] = names.flatMap((name) => {
+    const matches = matchModels(models, name);
+
+    return matches.length === 1 ? matches : [];
+  });
+
+  if (found === undefined) throw new Error(`No agent is registered as ${agent}.`);
+
+  return found;
+}
+
+async function listModels(invocation: ToolInvocation): Promise<readonly ModelInfo[]> {
+  return (await invocation.sdk.models.list()).providers.flatMap((provider) =>
+    provider.credential === "unknown" ||
+    provider.credential === "configured" ||
+    provider.credential === "verified"
+      ? provider.models
+      : [],
+  );
+}
+
+/** The refs `name` means: its exact `provider/id`, else its exact id, else the closest loose match. */
+function matchModels(models: readonly ModelInfo[], name: string): readonly ModelRef[] {
+  const refs = models.flatMap((info) => (info.fast === null ? [info.ref] : [info.ref, info.fast]));
+  const exact = refs.filter((ref) => `${ref.provider}/${ref.id}` === name);
+
+  if (exact.length > 0) return exact;
+  const ids = refs.filter((ref) => ref.id === name);
+
+  return ids.length > 0 ? ids : closestModels(refs, name);
+}
+
+/**
+ * The refs a loosely written name means: those whose `provider/id` holds every word of `name`,
+ * letters and numbers apart, with the fewest other words in the id. "sol 6.1" finds gpt-6.1-sol
+ * and "astra" gpt-6-astra over its fast variant. A name with no letters means none.
+ */
+function closestModels(refs: readonly ModelRef[], name: string): readonly ModelRef[] {
+  const wanted = modelWords(name);
+
+  if (!wanted.some((word) => /[a-z]/u.test(word))) return [];
+
+  const held = refs.flatMap((ref) => {
+    const words = modelWords(`${ref.provider}/${ref.id}`);
+
+    return wanted.every((word) => countWord(words, word) >= countWord(wanted, word))
+      ? [{ ref, extra: modelWords(ref.id).length }]
+      : [];
+  });
+
+  const fewest = Math.min(...held.map((entry) => entry.extra));
+
+  return held.flatMap((entry) => (entry.extra === fewest ? [entry.ref] : []));
+}
+
+function modelWords(source: string): readonly string[] {
+  return source.toLowerCase().match(/[a-z]+|\d+/gu) ?? [];
+}
+
+function countWord(words: readonly string[], word: string): number {
+  return words.filter((entry) => entry === word).length;
 }
 
 async function describeWorktree(
