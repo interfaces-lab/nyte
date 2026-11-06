@@ -1,4 +1,4 @@
-import { FileTypeIconSprite } from "@nyte-ai/app/components/file-type-icon.tsx";
+import { FileTypeIconSprite } from "@nyte-ai/ui/file-type-icon";
 import { createContext } from "react";
 import type { ReactNode } from "react";
 import type { NavSection } from "~/lib/docs";

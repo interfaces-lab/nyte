@@ -1,4 +1,4 @@
-import { FileTypeIcon } from "@nyte-ai/app/components/file-type-icon.tsx";
+import { FileTypeIcon } from "@nyte-ai/ui/file-type-icon";
 import { Tabs } from "@nyte-ai/ui/tabs";
 import { create } from "@stylexjs/stylex";
 import { glyphs } from "~/lib/glyphs";

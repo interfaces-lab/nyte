@@ -86,19 +86,22 @@ A view's TSX can be up to 64 KB across all its files.
 `nyte/canvas` follows the user's theme in light and dark mode. Use it instead of your own colours and
 fonts.
 
-| Component                                                               | What it is                                        |
-| ----------------------------------------------------------------------- | ------------------------------------------------- |
-| `Stack`, `Grid`, `Divider`                                              | Flex layout, equal columns, a hairline            |
-| `Heading`, `Text`, `Code`, `Kbd`                                        | Text                                              |
-| `Stat`, `Badge`, `Meter`, `Spinner`                                     | A labelled number, a tag, a filled bar, a spinner |
-| `Table`, `Card`, `Callout`                                              | Rows and columns, a bordered surface, a notice    |
-| `LineChart`, `BarChart`, `PieChart`                                     | Charts with axes and a readout                    |
-| `Sparkline`, `StackedBars`                                              | Small charts without axes                         |
-| `Button`, `Checkbox`, `Switch`, `Slider`                                | Controls                                          |
-| `Select`, `SelectTrigger`, `SelectValue`, `SelectContent`, `SelectItem` | A dropdown                                        |
-| `ToggleGroup`, `Toggle`, `Tabs`                                         | Grouped choices and tabs                          |
-| `Tooltip`, `TooltipTrigger`, `TooltipContent`, `Collapsible`            | Hints and disclosure                              |
-| `useColorScheme()`                                                      | Returns `"light"` or `"dark"`                     |
+| Component                                                               | What it is                                                  |
+| ----------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `Stack`, `Grid`, `Divider`                                              | Flex layout, equal columns, a hairline                      |
+| `Section`, `Card`, `Callout`                                            | A titled group, a raised surface, a notice                  |
+| `Heading`, `Text`, `Code`, `Kbd`                                        | Text                                                        |
+| `FileLink`                                                              | A workspace file that opens at a line                       |
+| `Stat`, `Delta`, `Badge`, `Meter`, `Spinner`                            | A labelled number, a change, a tag, a filled bar, a spinner |
+| `Table`, `KeyValue`, `DiffStat`                                         | Rows and columns, labelled facts, lines added and removed   |
+| `BarList`, `Steps`, `Tracker`                                           | A ranked list, an ordered walk, one cell per run            |
+| `LineChart`, `BarChart`, `PieChart`                                     | Charts with axes and a readout                              |
+| `Sparkline`, `StackedBars`                                              | Small charts without axes                                   |
+| `Button`, `Checkbox`, `Switch`, `Slider`                                | Controls                                                    |
+| `Select`, `SelectTrigger`, `SelectValue`, `SelectContent`, `SelectItem` | A dropdown                                                  |
+| `ToggleGroup`, `Toggle`, `Tabs`                                         | Grouped choices and tabs                                    |
+| `Tooltip`, `TooltipTrigger`, `TooltipContent`, `Collapsible`            | Hints and disclosure                                        |
+| `useColorScheme()`                                                      | Returns `"light"` or `"dark"`                               |
 
 ## Save to redraw [#reload]
 

@@ -173,7 +173,7 @@ export const KIT = {
     '{ label: string, data: { tone: "success" | "warning" | "danger" | "neutral", label: string }[] }: one cell per run, check or day, coloured by how it went and named on hover',
   Callout:
     '{ tone?: "info" | "success" | "warning" | "danger", title?: string, children }: a note in the reading flow, a soft wash led by its tone glyph',
-  Card: '{ title?: ReactNode, description?: ReactNode, actions?: ReactNode, padding?: 0 | 2 | 3 | 4 = 4, children }: a raised surface for one idea; with `padding={0}` its content runs edge to edge under a ruled header',
+  Card: "{ title?: ReactNode, description?: ReactNode, actions?: ReactNode, padding?: 0 | 2 | 3 | 4 = 4, children }: a raised surface for one idea; with `padding={0}` its content runs edge to edge under a ruled header",
   Section:
     "{ title: ReactNode, description?: ReactNode, actions?: ReactNode, children }: a titled group, the heading with an optional line under it and actions at the end, then the content",
   StackedBars:

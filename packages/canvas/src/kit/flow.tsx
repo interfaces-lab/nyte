@@ -129,7 +129,10 @@ const tracker = create({
     height: space.s6,
     borderRadius: space.px,
     backgroundColor: role.chartSeries,
-    ":first-child": { borderStartStartRadius: radius.indicator, borderEndStartRadius: radius.indicator },
+    ":first-child": {
+      borderStartStartRadius: radius.indicator,
+      borderEndStartRadius: radius.indicator,
+    },
     ":last-child": { borderStartEndRadius: radius.indicator, borderEndEndRadius: radius.indicator },
     opacity: { default: 1, ":hover": { [media.hover]: 0.72 } },
     transitionProperty: "opacity",

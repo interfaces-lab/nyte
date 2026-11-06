@@ -1,4 +1,4 @@
-import { FileTypeIconSprite } from "@nyte-ai/app/components/file-type-icon.tsx";
+import { FileTypeIconSprite } from "@nyte-ai/ui/file-type-icon";
 import { Kbd } from "@nyte-ai/ui/kbd";
 import { Link } from "@tanstack/react-router";
 import { glyphs } from "~/lib/glyphs";

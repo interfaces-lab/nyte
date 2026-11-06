@@ -91,7 +91,9 @@ export function Delta({
   const shown = typeof value === "number" && value > 0 ? `+${String(value)}` : String(value);
 
   return (
-    <span {...props(way === "flat" ? null : TONES[good ? "success" : "danger"], text.sm, chip.root)}>
+    <span
+      {...props(way === "flat" ? null : TONES[good ? "success" : "danger"], text.sm, chip.root)}
+    >
       {way === "flat" ? null : <Icon name={way === "up" ? "arrow-up" : "arrow-down"} size="2xs" />}
       {shown}
     </span>
@@ -405,11 +407,7 @@ export function KeyValue({
       {items.map((item, index) => (
         <div
           key={index}
-          {...props(
-            list.row,
-            inset && list.inset,
-            index !== items.length - 1 && hairline.blockEnd,
-          )}
+          {...props(list.row, inset && list.inset, index !== items.length - 1 && hairline.blockEnd)}
         >
           <dt {...props(list.key)}>{item.label}</dt>
           <dd {...props(list.value)}>{item.value}</dd>
@@ -444,7 +442,8 @@ export function DiffStat({
 }): ReactElement {
   const total = added + removed;
   const green = total === 0 ? 0 : Math.round((added / total) * DIFF_BLOCKS);
-  const red = total === 0 ? 0 : Math.min(DIFF_BLOCKS - green, Math.round((removed / total) * DIFF_BLOCKS));
+  const red =
+    total === 0 ? 0 : Math.min(DIFF_BLOCKS - green, Math.round((removed / total) * DIFF_BLOCKS));
 
   return (
     <span
