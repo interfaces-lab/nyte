@@ -10,7 +10,7 @@ import { runWindowCommand, windowCommand } from "../commands/window-commands.ts"
 import { shellActions, useOverlays, useStagePage } from "../tabs/shell-state.ts";
 import { SidebarPane } from "../sidebar/sidebar-pane.tsx";
 import { useSidebar } from "../sidebar/use-sidebar.ts";
-import { sidebarPush, useSidebarSwipe } from "../sidebar/sidebar-swipe.ts";
+import { useSidebarSwipe } from "../sidebar/sidebar-swipe.ts";
 import { Sidebar } from "../sidebar/sidebar.tsx";
 import { Button } from "@nyte-ai/ui/button";
 import { Loader } from "@nyte-ai/ui/loader";
@@ -159,7 +159,7 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
   const page = useStagePage();
   const { about } = useOverlays();
   const root = useRef<HTMLDivElement | null>(null);
-  const pushing = useSidebarSwipe(root);
+  useSidebarSwipe(root);
   const sidebarCollapsed = useSidebar().state === "collapsed";
   const mac = nyte.platform === "darwin";
   const strip = windowTabs.strip;
@@ -215,7 +215,7 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
   );
 
   return (
-    <div ref={root} data-nyte-shell {...props(styles.shell, pushing && sidebarPush)}>
+    <div ref={root} data-nyte-shell {...props(styles.shell)}>
       <Titlebar />
       <div {...props(styles.stage)}>
         <SessionDndProvider>

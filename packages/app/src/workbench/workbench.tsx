@@ -13,7 +13,7 @@ import { useHostState } from "../data/host.ts";
 import {
   clampWorkbenchWidthToBounds,
   WORKBENCH_CENTER_WIDTH_MIN,
-  WORKBENCH_SHARE_DEFAULT,
+  DEFAULT_WIDTH,
   setActiveWorkbenchWidth,
   workbenchPanelWidth,
   workbenchWidthBounds,
@@ -238,10 +238,10 @@ function WorkbenchViewHost({
   const panelWidth = maximized ? stageWidth : workbenchPanelWidth(view.width, stageWidth);
 
   const setWidth = (width: number): void =>
-    workbench.dispatch(viewKey, { kind: "set-share", share: width / stageWidth });
+    workbench.dispatch(viewKey, { kind: "set-width", pixels: width });
 
   const resetWidth = () =>
-    workbench.dispatch(viewKey, { kind: "set-share", share: WORKBENCH_SHARE_DEFAULT });
+    workbench.dispatch(viewKey, { kind: "set-width", pixels: DEFAULT_WIDTH.pixels });
 
   const beginResize = (event: PointerEvent<HTMLDivElement>): void => {
     if (event.button !== 0) return;
@@ -267,7 +267,7 @@ function WorkbenchViewHost({
     const panel = panelRef.current;
 
     if (panel !== null) {
-      panel.style.width = `${String(resize.nextWidth)}px`;
+      panel.style.setProperty("--_workbench-width", `${String(resize.nextWidth)}px`);
       setActiveWorkbenchWidth(resize.nextWidth);
     }
   };
@@ -371,12 +371,11 @@ function WorkbenchViewHost({
       {...props(
         workbenchStyles.panel,
         panelVisible && hairline.inlineStart,
-        panelVisible && workbenchStyles.panelOpen,
+        panelVisible && [workbenchStyles.panelOpen, workbenchStyles.panelWidth(view.width.pixels)],
         !panelVisible && (compact ? workbenchStyles.railHostCompact : workbenchStyles.railHost),
-        panelVisible && (maximized || bounds.kind === "overlay") && workbenchStyles.panelOverlay,
+        panelVisible && maximized && workbenchStyles.panelOverlay,
         panelHidden && workbenchStyles.panelHidden,
       )}
-      style={panelVisible ? { width: panelWidth } : undefined}
     >
       {!panelVisible &&
         current &&

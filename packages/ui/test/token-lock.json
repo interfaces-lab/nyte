@@ -1109,6 +1109,7 @@
     ],
     "app/src/theme/schema.stylex.ts workbench": [
       "activeWidth",
+      "centerWidthMin",
       "fileListWidth",
       "headerHeight",
       "headerPaddingBlock",
@@ -1121,7 +1122,9 @@
       "railWidth",
       "rowGap",
       "rowPaddingInline",
-      "sashWidth"
+      "sashWidth",
+      "widthDefault",
+      "widthMin"
     ]
   }
 }

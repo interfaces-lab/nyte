@@ -1,10 +1,9 @@
 import { elementVariable } from "../lib/element-variable.ts";
+import { workbench } from "../theme/schema.stylex.ts";
 
-export const WORKBENCH_SHARE_DEFAULT = 0.5;
+const WORKBENCH_WIDTH_MIN = workbench.widthMin;
 
-const WORKBENCH_WIDTH_MIN = 384;
-
-export const WORKBENCH_CENTER_WIDTH_MIN = 424;
+export const WORKBENCH_CENTER_WIDTH_MIN = workbench.centerWidthMin;
 
 const activeWidth = elementVariable("--nyte-active-workbench-width", "500px");
 
@@ -14,30 +13,16 @@ export function setActiveWorkbenchWidth(width: number): void {
   activeWidth.set(`${String(width)}px`);
 }
 
-export type WorkbenchWidth = ShareWidth | { readonly kind: "pixels"; readonly pixels: number };
+export type WorkbenchWidth = { readonly pixels: number };
 
-type ShareWidth = { readonly kind: "share"; readonly share: number };
-
-export const DEFAULT_WIDTH: ShareWidth = Object.freeze({
-  kind: "share",
-  share: WORKBENCH_SHARE_DEFAULT,
-});
+export const DEFAULT_WIDTH: WorkbenchWidth = Object.freeze({ pixels: workbench.widthDefault });
 
 type WorkbenchWidthBounds =
   | { readonly kind: "docked"; readonly min: number; readonly max: number }
   | { readonly kind: "overlay"; readonly min: number; readonly max: number };
 
-export function shareWidth(share: number): ShareWidth {
-  return Number.isFinite(share) && share > 0
-    ? { kind: "share", share: Math.min(1, share) }
-    : DEFAULT_WIDTH;
-}
-
 export function workbenchPanelWidth(width: WorkbenchWidth, stageWidth: number): number {
-  return clampWorkbenchWidthToBounds(
-    width.kind === "share" ? width.share * stageWidth : width.pixels,
-    workbenchWidthBounds(stageWidth),
-  );
+  return clampWorkbenchWidthToBounds(width.pixels, workbenchWidthBounds(stageWidth));
 }
 
 export function workbenchWidthBounds(availableWidth: number): WorkbenchWidthBounds {

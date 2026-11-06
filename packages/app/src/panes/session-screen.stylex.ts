@@ -6,6 +6,8 @@ import { appearance, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 export const sessionScreenStyles = create({
   stage: {
     position: "relative",
+    containerType: "inline-size",
+    containerName: "workbench-stage",
     display: "flex",
     flex: 1,
     minWidth: 0,

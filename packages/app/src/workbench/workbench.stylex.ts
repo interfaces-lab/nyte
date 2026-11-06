@@ -3,6 +3,8 @@ import { layer, media, radius, row, space, target } from "@nyte-ai/ui/styles/sch
 import { shell, workbench } from "../theme/schema.stylex.ts";
 import { appearance, motion, role, shadow, type } from "@nyte-ai/ui/styles/vars.stylex";
 
+const overlay = `@container workbench-stage (width < ${workbench.widthMin + workbench.centerWidthMin}px)`;
+
 export const workbenchStyles = create({
   root: {
     position: "relative",
@@ -27,7 +29,20 @@ export const workbenchStyles = create({
     flexShrink: 0,
     paddingInline: space.s2,
   },
-  panelOpen: { minWidth: workbench.panelWidth },
+  panelOpen: {
+    minWidth: 0,
+    width: {
+      default: `clamp(${workbench.widthMin}px, var(--_workbench-width), max(${workbench.widthMin}px, calc(100cqi - ${workbench.centerWidthMin}px)))`,
+      [overlay]: `clamp(min(${workbench.widthMin}px, 100cqi), var(--_workbench-width), 100cqi)`,
+    },
+    position: { default: "relative", [overlay]: "absolute" },
+    zIndex: { default: null, [overlay]: layer.workbench },
+    insetBlock: { default: null, [overlay]: 0 },
+    insetInlineEnd: { default: null, [overlay]: 0 },
+    backgroundColor: { default: null, [overlay]: role.bgBase },
+    "--nyte-hairline-elevation": { default: null, [overlay]: shadow.shadowWorkbench },
+  },
+  panelWidth: (pixels: number) => ({ "--_workbench-width": `${pixels}px` }),
   railHost: { width: workbench.railWidth, minWidth: workbench.railWidth },
   railHostCompact: { width: workbench.iconRailWidth, minWidth: workbench.iconRailWidth },
   panelOverlay: {
@@ -36,7 +51,8 @@ export const workbenchStyles = create({
     insetBlock: 0,
     insetInlineEnd: 0,
     minWidth: 0,
-    maxWidth: "100vw",
+    width: "100cqi",
+    maxWidth: "100cqi",
     backgroundColor: role.bgBase,
     "--nyte-hairline-elevation": shadow.shadowWorkbench,
   },

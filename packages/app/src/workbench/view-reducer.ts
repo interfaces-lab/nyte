@@ -16,7 +16,6 @@ import type {
   WorkbenchTabId,
   WorkbenchViewState,
 } from "./model.ts";
-import { shareWidth } from "./width.ts";
 
 type ChangesTab = KindTab<"changes">;
 
@@ -66,7 +65,7 @@ export type WorkbenchViewAction =
   | { readonly kind: "toggle-collapsed" }
   | { readonly kind: "toggle-maximized" }
   | { readonly kind: "show-chat" }
-  | { readonly kind: "set-share"; readonly share: number }
+  | { readonly kind: "set-width"; readonly pixels: number }
   | { readonly kind: "toggle-sidebar"; readonly slot: string }
   /** Opens `tab` in a new group, `group`, beside the focused one. */
   | {
@@ -190,12 +189,10 @@ export function reduceView(
       return state.layout.kind === "maximized" && !workbenchShowsChat(state.layout)
         ? { ...state, layout: MAXIMIZED_CHAT_LAYOUT }
         : state;
-    case "set-share": {
-      const width = shareWidth(action.share);
+    case "set-width": {
+      const pixels = Math.round(action.pixels);
 
-      return state.width.kind === "share" && state.width.share === width.share
-        ? state
-        : { ...state, width };
+      return state.width.pixels === pixels ? state : { ...state, width: { pixels } };
     }
 
     case "split":
