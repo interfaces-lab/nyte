@@ -17,9 +17,11 @@ export type WorkbenchWidth = { readonly pixels: number };
 
 export const DEFAULT_WIDTH: WorkbenchWidth = Object.freeze({ pixels: workbench.widthDefault });
 
-type WorkbenchWidthBounds =
-  | { readonly kind: "docked"; readonly min: number; readonly max: number }
-  | { readonly kind: "overlay"; readonly min: number; readonly max: number };
+type WorkbenchWidthBounds = {
+  readonly narrow: boolean;
+  readonly min: number;
+  readonly max: number;
+};
 
 export function workbenchPanelWidth(width: WorkbenchWidth, stageWidth: number): number {
   return clampWorkbenchWidthToBounds(width.pixels, workbenchWidthBounds(stageWidth));
@@ -28,18 +30,10 @@ export function workbenchPanelWidth(width: WorkbenchWidth, stageWidth: number): 
 export function workbenchWidthBounds(availableWidth: number): WorkbenchWidthBounds {
   const width = Math.max(0, Math.floor(availableWidth));
 
-  if (width < WORKBENCH_WIDTH_MIN + WORKBENCH_CENTER_WIDTH_MIN) {
-    return Object.freeze({
-      kind: "overlay",
-      min: Math.min(WORKBENCH_WIDTH_MIN, width),
-      max: width,
-    });
-  }
-
   return Object.freeze({
-    kind: "docked",
+    narrow: width < WORKBENCH_WIDTH_MIN + WORKBENCH_CENTER_WIDTH_MIN,
     min: WORKBENCH_WIDTH_MIN,
-    max: width - WORKBENCH_CENTER_WIDTH_MIN,
+    max: Math.max(WORKBENCH_WIDTH_MIN, width - WORKBENCH_CENTER_WIDTH_MIN),
   });
 }
 

@@ -57,7 +57,7 @@ test("the panel keeps its preferred pixel width as the stage changes", () => {
   expect(workbenchPanelWidth(store.getView(view).width, 1176)).toBe(588);
   expect(workbenchPanelWidth(store.getView(view).width, 1424)).toBe(588);
   expect(workbenchPanelWidth(store.getView(view).width, 944)).toBe(520);
-  expect(workbenchPanelWidth(store.getView(view).width, 696)).toBe(588);
+  expect(workbenchPanelWidth(store.getView(view).width, 696)).toBe(384);
 
   store.dispatch(view, { kind: "set-width", pixels: 700 });
   expect(workbenchPanelWidth(store.getView(view).width, 944)).toBe(520);

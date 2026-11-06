@@ -232,7 +232,7 @@ function WorkbenchViewHost({
   const panelRef = useRef<HTMLElement | null>(null);
   const resizeRef = useRef<ResizeState | undefined>(undefined);
   const bounds = workbenchWidthBounds(stageWidth);
-  const compact = view.collapsed === "compact" || bounds.kind === "overlay";
+  const compact = view.collapsed === "compact" || bounds.narrow;
   const maximized = view.layout.kind === "maximized";
   const chatShowing = workbenchShowsChat(view.layout);
   const panelWidth = maximized ? stageWidth : workbenchPanelWidth(view.width, stageWidth);
