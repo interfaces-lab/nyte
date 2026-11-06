@@ -1,5 +1,5 @@
 import type { SessionId, SessionInfo, WorkspaceId } from "@nyte-ai/sdk";
-import { useProjects } from "../data/projects.ts";
+import { coordinatedProject, findProject, useProjects } from "../data/projects.ts";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { Icon } from "@nyte-ai/ui/icon";
@@ -225,14 +225,16 @@ export function Sidebar(): ReactElement {
 
   const order = sessionOrder(view.sort, chats);
 
-  const inProject: ReadonlySet<SessionId> = new Set(
-    projectsOn ? projects.flatMap((project) => project.coordinator ?? []) : [],
-  );
-
   const outsideProjects = (
     sessions: readonly SessionInfo[] | undefined,
   ): readonly SessionInfo[] | undefined =>
-    inProject.size === 0 ? sessions : sessions?.filter((session) => !inProject.has(session.id));
+    projectsOn
+      ? sessions?.filter((session) => {
+          const project = coordinatedProject(session);
+
+          return project === undefined || findProject(project)?.archived === true;
+        })
+      : sessions;
 
   const listed: readonly ListedSession[] | undefined = workspaceSessions.data
     ?.flatMap((workspaceGroup) => {
@@ -443,9 +445,9 @@ export function Sidebar(): ReactElement {
             <ProjectsSection
               projects={projects}
               selected={
-                activeSessionId === undefined
+                activeSessionId === undefined || paneSession === undefined
                   ? undefined
-                  : projects.find((project) => project.coordinator === activeSessionId)?.id
+                  : coordinatedProject(paneSession)
               }
             />
           )}

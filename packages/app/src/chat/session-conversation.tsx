@@ -23,9 +23,9 @@ import {
 } from "../panes/pane-context.tsx";
 import type { PaneId } from "../panes/layout.ts";
 import { useCatalog } from "../data/catalog.ts";
-import { useProjects } from "../data/projects.ts";
+import { coordinatedProject } from "../data/projects.ts";
 import { useSessionChoice } from "../data/sessions.ts";
-import { sessionActions } from "../data/session-rows.ts";
+import { sessionActions, useSessionRow } from "../data/session-rows.ts";
 import { chatStore, keepChat, loadEarlierMessages } from "../data/chat-store.ts";
 import { connection } from "../data/connection.ts";
 import { useWatchSelect } from "../data/watch-store.ts";
@@ -328,7 +328,10 @@ function ConversationScreen(conversation: SessionConversationProps): ReactElemen
   };
 
   const store = chatStore(sessionId);
-  const coordinates = useProjects().some((project) => project.coordinator === sessionId);
+
+  const coordinates =
+    useSessionRow(sessionId, (session) => coordinatedProject(session) !== undefined) === true;
+
   const [projectors] = useState(() => ({
     full: transcriptProjector({ thinking: true }),
     quiet: transcriptProjector({ thinking: false }),

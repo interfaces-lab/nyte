@@ -15,6 +15,7 @@ import type {
   WorkspaceInfo,
 } from "@nyte-ai/sdk";
 import { replaceEqualDeep } from "@tanstack/react-query";
+import { coordinatedProject } from "../data/projects.ts";
 import { workspaceName, workspacePath } from "../data/workspaces.ts";
 
 export interface Folder {
@@ -56,24 +57,21 @@ export function describeChats(
   projects: readonly ProjectInfo[] | undefined,
   previous: ChatDirectory,
 ): ChatDirectory {
-  const coordinated = new Map(
-    (projects ?? []).flatMap((project) =>
-      project.coordinator === null ? [] : [[project.coordinator, project.name] as const],
-    ),
-  );
+  const names = new Map((projects ?? []).map((project) => [project.id, project.name] as const));
 
   const chats = new Map(
     [...sessions].map((session) => {
       const head = mainHead(session);
+      const project = coordinatedProject(session);
 
       const next: Chat = {
         id: session.id,
         parent: session.parent,
-        title: coordinated.get(session.id) ?? sessionTitle(session),
+        title: (project === undefined ? undefined : names.get(project)) ?? sessionTitle(session),
         location: workspaces === undefined ? LOADING : locate(session.workspace, workspaces),
         status: runStatus(head?.execution),
         background: head?.background ?? NO_BACKGROUND,
-        mark: coordinated.has(session.id) ? coordinatorMark(session) : sessionMark(session),
+        mark: project === undefined ? sessionMark(session) : coordinatorMark(session),
         unreadTip:
           head?.unread === true && head.tip.kind === "commit"
             ? { head: head.name, commit: head.tip.id }

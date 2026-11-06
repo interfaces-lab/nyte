@@ -1,4 +1,10 @@
-import type { ProjectId, ProjectInfo, ProjectInput, ProjectPatch } from "@nyte-ai/schema";
+import type {
+  ProjectId,
+  ProjectInfo,
+  ProjectInput,
+  ProjectPatch,
+  SessionInfo,
+} from "@nyte-ai/schema";
 import { connected } from "./connection.ts";
 import { useWatchSelect } from "./watch-store.ts";
 import { hostWatch } from "./watches.ts";
@@ -11,6 +17,10 @@ export function useProjects(): readonly ProjectInfo[] {
       (project) => !project.archived,
     ) ?? NONE
   );
+}
+
+export function coordinatedProject(session: SessionInfo): ProjectId | undefined {
+  return session.parent === null ? session.project : undefined;
 }
 
 export function findProject(id: ProjectId): ProjectInfo | undefined {
