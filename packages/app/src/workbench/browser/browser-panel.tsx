@@ -368,7 +368,7 @@ function FocusAddressNextFrame({
   return null;
 }
 
-function addElementToChat(picked: BrowserElementPick): void {
+async function addElementToChat(picked: BrowserElementPick): Promise<void> {
   const image =
     picked.image?.startsWith(PNG_DATA_URL) === true
       ? new File([Uint8Array.fromBase64(picked.image.slice(PNG_DATA_URL.length))], "element.png", {
@@ -376,7 +376,7 @@ function addElementToChat(picked: BrowserElementPick): void {
         })
       : undefined;
 
-  addToChat({
+  await addToChat({
     reference: {
       kind: "excerpt",
       source: { kind: "browser", url: picked.url, selector: picked.selector },
@@ -513,8 +513,8 @@ export function BrowserPanel({
     setPicking(true);
     void browserBridge()
       .pickElement({ surface })
-      .then((picked) => {
-        if (picked !== undefined) addElementToChat(picked);
+      .then(async (picked) => {
+        if (picked !== undefined) await addElementToChat(picked);
       })
       .catch((cause: unknown) => setFailure(errorMessage(cause)))
       .finally(() => setPicking(false));

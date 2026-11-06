@@ -47,7 +47,7 @@ window.nyte = new Proxy(
         pickElement: () => {
           window.__nytePicks += 1;
           return Promise.resolve(
-            window.__nytePicks === 1
+            window.__nytePicks === 1 || window.__nytePicks === 3
               ? {
                   url: "https://example.com/",
                   selector: "main > button.primary",
@@ -72,7 +72,7 @@ window.nyte = new Proxy(
 );
 `;
 
-test("an element picked on a page goes to the chat as its HTML, selector and crop", async () => {
+test("a picked element sends its HTML, selector and crop, or reports an image intake error", async () => {
   expect(
     await testRenderer(
       new URL("./add-to-chat-browser.browser-test.tsx", import.meta.url),
