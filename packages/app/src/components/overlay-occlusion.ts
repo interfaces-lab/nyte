@@ -15,6 +15,8 @@ const OVERLAY_SELECTOR = [
   "popover-backdrop",
   "dialog-popup",
   "dialog-backdrop",
+  "morph-popup",
+  "morph-backdrop",
   "toast",
 ]
   .map((slot) => `[data-slot="${slot}"]`)
