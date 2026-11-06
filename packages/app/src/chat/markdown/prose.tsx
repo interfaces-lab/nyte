@@ -252,6 +252,7 @@ function MarkdownLink({
               onClick={(event) => {
                 if (href === undefined) return;
                 event.preventDefault();
+
                 if (open !== undefined) return open();
                 openConversationLink(href, opener);
               }}

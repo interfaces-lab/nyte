@@ -72,7 +72,7 @@ interface ComposerEditorProps {
   readonly onFilesSelected?: (
     files: readonly File[],
     signal?: AbortSignal,
-  ) => void | Promise<string | undefined>;
+  ) => Promise<string | undefined>;
 }
 
 interface CaretBox {

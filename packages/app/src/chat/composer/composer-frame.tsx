@@ -81,10 +81,7 @@ interface ComposerFrameProps {
   attachments?: readonly ComposerImageAttachment[];
   attachmentBusy?: boolean;
   attachmentError?: string;
-  onFilesSelected?: (
-    files: readonly File[],
-    signal?: AbortSignal,
-  ) => void | Promise<string | undefined>;
+  onFilesSelected?: (files: readonly File[], signal?: AbortSignal) => Promise<string | undefined>;
   onAttachmentRemove?: (id: string) => void;
   editing?: ComposerEditing;
   runningMessagePreference?: RunningMessagePreference;
