@@ -1,9 +1,7 @@
 import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
-import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
-import { FileTree, useFileTree } from "@pierre/trees/react";
-import type { ContextMenuItem, ContextMenuOpenContext } from "@pierre/trees";
+import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import type { ReactElement } from "react";
 import { worktreeFiles } from "./worktree-files.ts";
 import { errorMessage } from "../../contract/errors.ts";
@@ -16,16 +14,13 @@ import {
   MenuSwitchItem,
   MenuTrigger,
 } from "@nyte-ai/ui/menu";
-import type { HostBridge } from "../../contract/bridge.ts";
-import { revealLabel, showContextMenu } from "../../components/context-menu.ts";
+import { revealLabel } from "../../components/context-menu.ts";
 import { PanelToggleIcon } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
-import { selectionWithin } from "@nyte-ai/ui/selection";
 import { Toggle } from "@nyte-ai/ui/toggle";
-import { setTreeDrag } from "../../references/composer-file-drop.ts";
 import { nyte } from "../../contract/nyte.ts";
 import { preferences, useSetting, type Preference } from "../../preferences/index.ts";
-import { refreshVcs, useVcsSnapshot } from "../../data/vcs.ts";
+import { useVcsSnapshot } from "../../data/vcs.ts";
 import { useHostState } from "../../data/host.ts";
 import { useMentionFiles, useWorkspaceFile } from "../../data/files.ts";
 import { workbench } from "../../theme/schema.stylex.ts";
@@ -38,10 +33,12 @@ import type { FileEditorHandle } from "./file-editor.tsx";
 import { fileActions, useFileTabs } from "./file-store.ts";
 import { opensAsMarkdown } from "./markdown-parse.ts";
 import { WorkspaceSearch } from "../workspace-search.tsx";
-import { PIERRE_TREE_CSS } from "../../lib/pierre-worker-provider.tsx";
-import { syncTreePaths } from "./tree-paths.ts";
-import { treeItemHeight, treeStatus, useTreeStatusTheme } from "./tree-theme.ts";
+import { useTreeStatusTheme } from "./tree-theme.ts";
 import { workbenchStyles } from "../workbench.stylex.ts";
+import { FilePalette } from "./file-palette.tsx";
+import { FilesExplorer } from "./files-explorer.tsx";
+import { findSymbols } from "./outline.ts";
+import { EditorGroupView } from "./editor-groups.tsx";
 import { SidePanel } from "../side-panel.tsx";
 
 const styles = create({
@@ -53,16 +50,6 @@ const styles = create({
     minHeight: 0,
   },
   toolbar: { gap: space.s2, height: "auto", minHeight: workbench.headerHeight },
-  explorerHeader: {
-    display: "flex",
-    alignItems: "center",
-    height: workbench.headerHeight,
-    flexShrink: 0,
-    paddingInline: space.s2_5,
-    color: role.contentSecondary,
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
-  },
   dirty: {
     flexShrink: 0,
     color: role.contentSecondary,
@@ -70,7 +57,7 @@ const styles = create({
     lineHeight: type.leadingXs,
   },
   body: { display: "flex", flex: 1, minWidth: 0, minHeight: 0 },
-  editors: { position: "relative", display: "flex", flex: 1, minWidth: 0, minHeight: 0 },
+  editors: { display: "flex", flex: 1, minWidth: 0, minHeight: 0 },
   explorer: { display: "flex", flexDirection: "column", flex: 1, minWidth: 0, minHeight: 0 },
   sidebarBody: { display: "flex", flexDirection: "column", flex: 1, minWidth: 0, minHeight: 0 },
   hidden: { display: "none" },
@@ -83,18 +70,6 @@ const styles = create({
   menu: {
     minWidth: "min(220px, var(--available-width))",
     maxWidth: "min(420px, var(--available-width))",
-  },
-  tree: {
-    display: "block",
-    flex: 1,
-    width: "100%",
-    minHeight: 0,
-    "--trees-border-radius-override": radius.indicator,
-    "--trees-item-margin-x-override": "0px",
-    "--trees-item-padding-x-override": "5px",
-    "--trees-item-row-gap-override": "4px",
-    "--trees-level-gap-override": "5px",
-    "--trees-padding-inline-override": "6px",
   },
 });
 
@@ -151,31 +126,22 @@ export function FilesPanel({
   const shown = workspaceActive && visible;
   const host = useHostState();
   const files = useMentionFiles(host.data.workspace, shown);
-  const fileEntries = useRef(files.data);
-  // oxlint-disable-next-line nyte-code/no-direct-effect -- latest file list for tree callbacks, which run outside render
-  useLayoutEffect(() => {
-    fileEntries.current = files.data;
-  }, [files.data]);
   const vcs = useVcsSnapshot(shown);
-
-  const changes = vcs.data?.kind === "repository" ? worktreeFiles(vcs.data) : undefined;
+  const changes = vcs.data?.kind === "repository" ? worktreeFiles(vcs.data) : [];
 
   const tabs = useFileTabs(viewKey);
   const autoSave = useSetting(preferences.fileAutoSave);
+  const sidePanel = useSetting(preferences.fileSidePanel);
   const [sidebar, setSidebar] = useState<"explorer" | "search">("explorer");
   const [searchOpened, setSearchOpened] = useState(false);
   const [discardPath, setDiscardPath] = useState<string>();
   const [discarding, setDiscarding] = useState(false);
   const [discardError, setDiscardError] = useState<string>();
   const [copyError, setCopyError] = useState<string>();
+  const [palette, setPalette] = useState<string>();
   const menuRef = useRef<HTMLButtonElement>(null);
   const searchRef = useRef<HTMLDivElement>(null);
   const editors = useRef(new Map<string, FileEditorHandle>());
-  const hostState = useRef(host.data);
-  // oxlint-disable-next-line nyte-code/no-direct-effect -- latest host state for tree callbacks, which run outside render
-  useLayoutEffect(() => {
-    hostState.current = host.data;
-  }, [host.data]);
   const activeFile = tabs.active;
   const activeDocument = useWorkspaceFile(activeFile?.path).data;
   const readOnly = activeDocument !== undefined && opensReadOnly(activeDocument);
@@ -200,146 +166,36 @@ export function FilesPanel({
       .catch((cause: unknown) => setCopyError(errorMessage(cause)));
   };
 
-  const contextMenu = nyte.host.contextMenu;
   const revealPath = nyte.host.revealPath;
-
-  const openRowMenu = (
-    menu: NonNullable<HostBridge["contextMenu"]>,
-    item: ContextMenuItem,
-    context: ContextMenuOpenContext,
-  ): void => {
-    context.close({ restoreFocus: false });
-    const file = fileEntries.current?.find((entry) => entry.displayPath === item.path);
-    const root = hostState.current?.workspace?.path;
-    const separator = nyte.platform === "win32" ? "\\" : "/";
-    const relative = item.path.replace(/\/$/, "");
-
-    const absolutePath =
-      file?.path ?? (root === undefined ? undefined : `${root}${separator}${relative}`);
-
-    void showContextMenu(
-      menu,
-      { clientX: context.anchorRect.left, clientY: context.anchorRect.bottom },
-      [
-        file !== undefined && {
-          kind: "item",
-          label: "Open File",
-          run: () => fileActions.open(viewKey, file),
-        },
-        absolutePath !== undefined &&
-          revealPath !== undefined && {
-            kind: "item",
-            label: revealLabel(nyte.platform),
-            run: () => void revealPath({ path: absolutePath }),
-          },
-        { kind: "separator" },
-        { kind: "item", label: "Search Files", run: showSearch },
-        { kind: "separator" },
-        absolutePath !== undefined && {
-          kind: "item",
-          label: "Copy Path",
-          run: () => copyPath(absolutePath),
-        },
-        { kind: "item", label: "Copy Relative Path", run: () => copyPath(relative) },
-        { kind: "separator" },
-        { kind: "item", label: "Refresh Explorer", run: refreshVcs },
-      ],
-    );
-  };
-
-  const [itemHeight] = useState(treeItemHeight);
-
-  const { model } = useFileTree({
-    paths: [],
-    density: "compact",
-    itemHeight,
-    unsafeCSS: PIERRE_TREE_CSS,
-    flattenEmptyDirectories: true,
-    initialExpansion: 1,
-    search: false,
-    dragAndDrop: {
-      canDrag: (paths) => {
-        const dragged = new Set(paths);
-        const files = (fileEntries.current ?? []).filter((file) => dragged.has(file.displayPath));
-        setTreeDrag(files);
-
-        return files.length > 0;
-      },
-      canDrop: () => false,
-    },
-    composition: {
-      contextMenu:
-        contextMenu === undefined
-          ? undefined
-          : {
-              triggerMode: "both",
-              buttonVisibility: "always",
-              render: () => null,
-              onOpen: (item, context) => openRowMenu(contextMenu, item, context),
-            },
-    },
-  });
-
-  const openFromTree = (event: Event, preview: boolean): void => {
-    if (
-      event
-        .composedPath()
-        .some(
-          (target) =>
-            target instanceof HTMLElement &&
-            (target.dataset.type === "context-menu-trigger" ||
-              target.dataset.type === "context-menu-anchor"),
-        )
-    )
-      return;
-
-    const row = event
-      .composedPath()
-      .find((target) => target instanceof HTMLElement && target.dataset.type === "item");
-
-    if (!(row instanceof HTMLElement) || row.dataset.itemType !== "file") return;
-
-    if (selectionWithin(row)) return;
-    const file = files.data?.find((candidate) => candidate.displayPath === row.dataset.itemPath);
-
-    if (file !== undefined) fileActions.open(viewKey, { ...file, preview });
-  };
-
-  const paths = (files.data ?? []).map((file) => file.displayPath);
 
   const drafts = tabs.tabs.flatMap((file) =>
     file.draft === undefined ? [] : [{ path: file.path, contents: file.draft.contents }],
   );
 
-  const revealed = useRef(0);
-  const shownPaths = useRef<ReadonlySet<string>>(new Set());
-  // oxlint-disable-next-line nyte-code/no-direct-effect -- pushes path changes into the imperative Pierre tree
-  useLayoutEffect(() => {
-    shownPaths.current = syncTreePaths(model, shownPaths.current, paths);
-  }, [model, paths]);
-  // oxlint-disable-next-line nyte-code/no-direct-effect -- reveals the requested path once the Pierre tree has it
-  useLayoutEffect(() => {
-    if (tabs.revealPath === undefined || revealed.current === tabs.revealRevision) return;
-    const item = model.getItem(tabs.revealPath);
+  const activeContents =
+    activeFile?.draft?.contents ??
+    (activeDocument?.kind === "text" ? activeDocument.contents : undefined);
 
-    if (item === null) return;
-    revealed.current = tabs.revealRevision;
+  const symbols =
+    activeFile === undefined || activeContents === undefined
+      ? []
+      : findSymbols(activeFile.path, activeContents);
 
-    if ("expand" in item) item.expand();
-    item.select();
-    model.scrollToPath(tabs.revealPath, { offset: "nearest" });
-  }, [model, paths, tabs.revealPath, tabs.revealRevision]);
-  // oxlint-disable-next-line nyte-code/no-direct-effect -- pushes worktree statuses into the imperative Pierre tree
-  useLayoutEffect(() => {
-    model.setGitStatus(
-      changes?.map((file) => ({ path: file.path, status: treeStatus(file.kind) })),
-    );
-  }, [model, changes]);
+  const openFiles = tabs.tabs.flatMap((tab) => {
+    const file = files.data?.find((entry) => entry.path === tab.path);
+
+    return file === undefined ? [] : [file];
+  });
 
   const discard = async (): Promise<void> => {
     if (discardPath === undefined) return;
     setDiscarding(true);
-    const failure = await discardEdits(editors.current.get(discardPath));
+    const holder = tabs.tabs.find((tab) => tab.path === discardPath);
+
+    const failure = await discardEdits(
+      holder === undefined ? undefined : editors.current.get(holder.id),
+    );
+
     setDiscarding(false);
 
     if (failure !== undefined) {
@@ -363,13 +219,35 @@ export function FilesPanel({
         if (key === "s") {
           event.preventDefault();
 
-          if (activeFile !== undefined) void editors.current.get(activeFile.path)?.save();
+          if (activeFile !== undefined) void editors.current.get(activeFile.id)?.save();
         }
 
         if (key === "f") {
           event.preventDefault();
           showSearch();
         }
+
+        const primary = nyte.platform === "darwin" ? event.metaKey : event.ctrlKey;
+
+        if (primary && event.key === "\\") {
+          event.preventDefault();
+          fileActions.split(viewKey, "after");
+
+          return;
+        }
+
+        const query =
+          primary && !event.shiftKey && key === "p"
+            ? ""
+            : primary && event.shiftKey && key === "o"
+              ? "@"
+              : event.ctrlKey && !event.metaKey && !event.shiftKey && key === "g"
+                ? ":"
+                : undefined;
+
+        if (query === undefined) return;
+        event.preventDefault();
+        setPalette(query);
       }}
     >
       <div {...props(workbenchStyles.toolbar, hairline.blockEnd, styles.toolbar)}>
@@ -398,6 +276,14 @@ export function FilesPanel({
             ●
           </span>
         )}
+        <Button
+          iconOnly
+          icon="split-right"
+          aria-label="Split Editor Right"
+          title={`Split Editor Right (${nyte.platform === "darwin" ? "⌘\\" : "Ctrl+\\"})`}
+          disabled={activeFile === undefined}
+          onClick={() => fileActions.split(viewKey, "after")}
+        />
         <Menu>
           <MenuTrigger
             render={
@@ -425,7 +311,7 @@ export function FilesPanel({
               meta={nyte.platform === "darwin" ? "⌘S" : "Ctrl+S"}
               disabled={!unsaved}
               onClick={() => {
-                if (activeFile !== undefined) void editors.current.get(activeFile.path)?.save();
+                if (activeFile !== undefined) void editors.current.get(activeFile.id)?.save();
               }}
             >
               Save File
@@ -434,7 +320,7 @@ export function FilesPanel({
               layout="plain"
               disabled={activeDocument?.kind !== "text" || readOnly}
               onClick={() => {
-                if (activeFile !== undefined) void editors.current.get(activeFile.path)?.format();
+                if (activeFile !== undefined) void editors.current.get(activeFile.id)?.format();
               }}
             >
               Format Document
@@ -473,6 +359,12 @@ export function FilesPanel({
             {FILE_TOGGLES.map(([label, setting]) => (
               <FilePreferenceItem key={label} label={label} setting={setting} />
             ))}
+            <MenuItem
+              layout="plain"
+              onClick={() => preferences.fileSidePanel.set(sidePanel === "start" ? "end" : "start")}
+            >
+              {sidePanel === "start" ? "Move Side Panel Right" : "Move Side Panel Left"}
+            </MenuItem>
             <MenuSeparator inset />
             <MenuItem
               layout="plain"
@@ -501,7 +393,10 @@ export function FilesPanel({
           pressed={sidebarVisible}
           onPressedChange={onToggleSidebar}
         >
-          <PanelToggleIcon side="right" visible={sidebarVisible} />
+          <PanelToggleIcon
+            side={sidePanel === "start" ? "left" : "right"}
+            visible={sidebarVisible}
+          />
         </Toggle>
       </div>
       {copyError !== undefined && (
@@ -511,66 +406,66 @@ export function FilesPanel({
       )}
       <div {...props(styles.body)}>
         <div {...props(styles.editors)}>
-          {activeFile === undefined && (
-            <FilesEmptyState
-              files={files.data}
-              changes={changes ?? []}
-              explorerVisible={sidebarVisible && sidebar === "explorer"}
-              onOpen={(file) => fileActions.open(viewKey, { ...file, preview: true })}
-              onShowExplorer={() => {
-                setSidebar("explorer");
-                showSidebar();
-              }}
-              onSearch={showSearch}
-            />
-          )}
-          {tabs.tabs.map((file) => (
-            <WorkspaceFileEditor
-              key={file.path}
-              ref={(editor) => {
-                if (editor === null) editors.current.delete(file.path);
-                else editors.current.set(file.path, editor);
-              }}
+          {tabs.groups.map((group, index) => (
+            <EditorGroupView
+              key={group.id}
               viewKey={viewKey}
-              file={file}
-              active={shown && file.id === activeFile?.id}
-              autoSave={
-                autoSave &&
-                workspaceActive &&
-                tabs.pendingClose?.id !== file.id &&
-                discardPath !== file.path
-              }
-            />
+              group={group}
+              index={index}
+              many={tabs.groups.length > 1}
+              focused={group.id === tabs.group}
+            >
+              {group.id === tabs.group && group.active === undefined && (
+                <FilesEmptyState
+                  files={files.data}
+                  changes={changes}
+                  explorerVisible={sidebarVisible && sidebar === "explorer"}
+                  onOpen={(file) => fileActions.open(viewKey, { ...file, preview: true })}
+                  onShowExplorer={() => {
+                    setSidebar("explorer");
+                    showSidebar();
+                  }}
+                  onSearch={showSearch}
+                />
+              )}
+              {group.tabs.map((file) => (
+                <WorkspaceFileEditor
+                  key={file.id}
+                  ref={(editor) => {
+                    if (editor === null) editors.current.delete(file.id);
+                    else editors.current.set(file.id, editor);
+                  }}
+                  viewKey={viewKey}
+                  file={file}
+                  active={shown && file.id === group.active?.id}
+                  autoSave={
+                    autoSave &&
+                    workspaceActive &&
+                    tabs.tabs.find((tab) => tab.path === file.path)?.id === file.id &&
+                    tabs.pendingClose?.id !== file.id &&
+                    discardPath !== file.path
+                  }
+                  onGoToLine={() => setPalette(":")}
+                />
+              ))}
+            </EditorGroupView>
           ))}
         </div>
         {sidebarVisible && (
-          <SidePanel>
+          <SidePanel side={sidePanel}>
             <aside
               aria-label={sidebar === "search" ? "Workspace search" : "Explorer"}
               {...props(styles.explorer)}
             >
               <div {...props(styles.sidebarBody, sidebar !== "explorer" && styles.hidden)}>
-                <div {...props(styles.explorerHeader)}>
-                  {host.data.workspace?.name ?? "Workspace"}
-                </div>
-                {files.isError && (
-                  <div role="alert" {...props(styles.empty)}>
-                    Could not load files. {files.error.message}
-                  </div>
-                )}
-                <FileTree
-                  model={model}
-                  onDragEnd={() => setTreeDrag([])}
-                  onClick={(event) => {
-                    if (!(event.metaKey || event.ctrlKey || event.shiftKey)) {
-                      openFromTree(event.nativeEvent, true);
-                    }
-                  }}
-                  onDoubleClick={(event) => openFromTree(event.nativeEvent, false)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") openFromTree(event.nativeEvent, true);
-                  }}
-                  {...props(workbenchStyles.treeTheme, styles.tree)}
+                <FilesExplorer
+                  viewKey={viewKey}
+                  workspace={host.data.workspace}
+                  files={files}
+                  changes={changes}
+                  outline={{ path: activeFile?.path, symbols }}
+                  onSearch={showSearch}
+                  onCopyPath={copyPath}
                 />
               </div>
               <div
@@ -589,6 +484,23 @@ export function FilesPanel({
           </SidePanel>
         )}
       </div>
+      <FilePalette
+        query={palette}
+        files={files.data}
+        recent={openFiles}
+        active={
+          activeFile === undefined || activeContents === undefined
+            ? undefined
+            : { path: activeFile.path, lines: activeContents.split("\n").length, symbols }
+        }
+        onQueryChange={setPalette}
+        onClose={() => setPalette(undefined)}
+        onOpenFile={(file) => fileActions.open(viewKey, file)}
+        onGoTo={(line, column) => {
+          if (activeFile !== undefined)
+            fileActions.open(viewKey, { path: activeFile.path, line, column });
+        }}
+      />
       <ConfirmDialog
         open={discardPath !== undefined}
         pending={discarding}

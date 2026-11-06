@@ -1,6 +1,6 @@
 import { DEFAULT_CODE_VIEW_LAYOUT } from "@pierre/diffs";
 import { Editor } from "@pierre/diffs/edit";
-import type { EditorOptions, EditorSearch, EditorType } from "@pierre/diffs/edit";
+import type { EditorOptions, EditorSearch, EditorSelection, EditorType } from "@pierre/diffs/edit";
 import { CodeView, EditProvider } from "@pierre/diffs/react";
 import type { CodeViewHandle, CodeViewItem } from "@pierre/diffs/react";
 import { create, props } from "@stylexjs/stylex";
@@ -21,6 +21,10 @@ import type { ThemePreference } from "../../contract/bridge.ts";
 import { diffStyles } from "../../diff/diff.stylex.ts";
 import { revealLabel, showContextMenu } from "../../components/context-menu.ts";
 import { nyte } from "../../contract/nyte.ts";
+import { addFileToChat, addsToChat } from "../../references/add-to-chat.ts";
+import { SELECTION_ACTION_CSS, selectedLines, selectionAction } from "./editor-selection.ts";
+import { ChangePeek, useLineChanges } from "./change-peek.tsx";
+import { revertChange } from "./line-changes.ts";
 import {
   PIERRE_HIGHLIGHTER_OPTIONS,
   PIERRE_TOKEN_CSS,
@@ -54,6 +58,14 @@ type TextFile = Extract<FileDocument, { readonly kind: "text" }>;
 
 type SizedFile = Extract<FileDocument, { readonly size: number }>;
 
+/** Where the caret was last seen, one-based, until the next navigation moves it. */
+interface Caret {
+  readonly revision: number;
+  readonly line?: number;
+  readonly column?: number;
+  readonly lines?: { readonly start: number; readonly end: number };
+}
+
 const diskEvents = watchFamily((_connection, path: string): AsyncIterable<readonly FileEvent[]> =>
   (async function* () {
     yield* (await workspaceFiles()).watch({ paths: [path] });
@@ -72,6 +84,7 @@ interface FileEditorProps {
   readonly file: FileTab;
   readonly active: boolean;
   readonly autoSave: boolean;
+  readonly onGoToLine: () => void;
 }
 
 const EDITOR_CSS = `
@@ -80,13 +93,7 @@ ${PIERRE_TOKEN_CSS}
   color-scheme: inherit;
   --diffs-bg: ${role.bgBase};
 }
-[data-column-number] {
-  padding-left: 1ch;
-}
-[data-column-number][data-editor-active-line] {
-  --diffs-computed-editor-active-line-bg: var(--diffs-computed-selected-line-bg);
-  color: var(--diffs-fg-number);
-}
+${SELECTION_ACTION_CSS}
 `;
 
 const EDITOR_LAYOUT = { ...DEFAULT_CODE_VIEW_LAYOUT, paddingTop: 0 };
@@ -170,6 +177,7 @@ export const styles = create({
   },
   error: { color: role.contentSecondary },
   saveText: { flex: "0 1 auto" },
+  position: { flexShrink: 0, marginInlineStart: "auto", color: role.contentSecondary },
   statusText: {
     flex: 1,
     minWidth: 0,
@@ -466,6 +474,7 @@ export function TextFileEditor({
   file,
   active,
   autoSave,
+  onGoToLine,
   document,
   readOnly,
   reload,
@@ -477,21 +486,15 @@ export function TextFileEditor({
   const { navigationRevision } = file;
 
   const [buffer] = useState(() =>
-    createFileDocument(
-      file.draft === undefined
-        ? document
-        : {
-            ...document,
-            contents: file.draft.savedContents,
-            version: file.draft.version,
-          },
-      file.draft?.contents,
-    ),
+    readOnly
+      ? createFileDocument(document)
+      : fileActions.buffer(viewKey, file.path, () => createFileDocument(document)),
   );
 
   const snapshot = useSyncExternalStore(buffer.subscribe, buffer.getSnapshot, buffer.getSnapshot);
   const viewer = useRef<CodeViewHandle<undefined, undefined>>(null);
   const [search, setSearch] = useState<EditorSearch>();
+  const mac = nyte.platform === "darwin";
 
   const navigation = useRef({
     active,
@@ -503,14 +506,31 @@ export function TextFileEditor({
 
   const appliedNavigation = useRef(-1);
 
-  const [clicked, setClicked] = useState<{
-    readonly line: number | undefined;
-    readonly revision: number;
-  }>({ line: undefined, revision: navigationRevision });
+  const [caret, setCaret] = useState<Caret>({ revision: navigationRevision });
 
-  if (clicked.revision !== navigationRevision)
-    setClicked({ line: undefined, revision: navigationRevision });
-  const line = clicked.line ?? file.line ?? 1;
+  if (caret.revision !== navigationRevision) setCaret({ revision: navigationRevision });
+  const line = caret.line ?? file.line ?? 1;
+  const column = caret.column ?? file.column ?? 1;
+
+  const readCaret = (): void => {
+    const selection = viewer.current?.getEditor(file.path)?.getViewState().selections?.[0];
+
+    if (selection === undefined) return;
+    const focus = selection.direction === -1 ? selection.start : selection.end;
+
+    setCaret({
+      revision: navigationRevision,
+      line: focus.line + 1,
+      column: focus.character + 1,
+      lines: selectedLines(selection),
+    });
+  };
+
+  const addSelection = (selection: EditorSelection | undefined): boolean => {
+    const lines = selectedLines(selection);
+
+    return lines !== undefined && addFileToChat(file, lines);
+  };
 
   const theme = useSetting(preferences.theme);
   const codeFont = useSetting(preferences.codeFont);
@@ -523,10 +543,23 @@ export function TextFileEditor({
   const saveFile = useSaveWorkspaceFile();
   const dirty = snapshot.contents !== snapshot.savedContents;
 
+  const changeTracking = useLineChanges({
+    path: file.path,
+    relative: file.displayPath,
+    contents: snapshot.contents,
+    enabled: active && !readOnly && !documentView,
+    line,
+    reveal: (lineNumber) =>
+      viewer.current?.scrollTo({ type: "line", id: file.path, lineNumber, align: "center" }),
+  });
+
   const viewOptions = {
     ...editorViewOptions({ theme, lineNumbers, wordWrap }),
+    unsafeCSS: `${EDITOR_CSS}\n${changeTracking.css}`,
     onLineClick: (event: { readonly lineNumber: number }) =>
-      setClicked((current) => ({ ...current, line: event.lineNumber })),
+      setCaret((current) => ({ ...current, line: event.lineNumber })),
+    onLineNumberClick: (event: { readonly lineNumber: number }) =>
+      changeTracking.peekAt(event.lineNumber),
   };
 
   const blame = useQuery({
@@ -724,6 +757,18 @@ export function TextFileEditor({
             !readOnly && { kind: "role", role: "paste", label: "Paste" },
             { kind: "role", role: "selectAll", label: "Select All" },
             { kind: "separator" },
+            caret.lines !== undefined && {
+              kind: "item",
+              label: "Add Selection to Chat",
+              accelerator: "CmdOrCtrl+Shift+L",
+              run: () => {
+                const lines = caret.lines;
+
+                if (lines !== undefined) addFileToChat(file, lines);
+              },
+            },
+            { kind: "item", label: "Add File to Chat", run: () => addFileToChat(file) },
+            { kind: "separator" },
             !readOnly && { kind: "item", label: "Format Document", run: () => void format() },
             !readOnly && {
               kind: "item",
@@ -773,13 +818,34 @@ export function TextFileEditor({
         ? snapshot.status.message
         : "";
 
-  const statusVisible = gitBlame || readOnly || saveText !== "" || errorText !== "";
+  const statusVisible =
+    !documentView || gitBlame || readOnly || saveText !== "" || errorText !== "";
+
+  const position =
+    caret.lines === undefined || caret.lines.start === caret.lines.end
+      ? `Ln ${String(line)}, Col ${String(column)}`
+      : `${String(caret.lines.end - caret.lines.start + 1)} lines selected`;
 
   return (
     <div
       aria-hidden={!active}
       inert={!active}
       onContextMenu={openContextMenu}
+      onKeyUp={readCaret}
+      onPointerUp={readCaret}
+      onKeyDown={(event) => {
+        if (event.key === "F3" && event.altKey && !documentView) {
+          event.preventDefault();
+          changeTracking.step(event.shiftKey ? -1 : 1);
+
+          return;
+        }
+
+        if (event.defaultPrevented || !addsToChat(event.nativeEvent, mac)) return;
+
+        if (addSelection(viewer.current?.getEditor(file.path)?.getViewState().selections?.[0]))
+          event.preventDefault();
+      }}
       {...props(styles.root, !active && styles.hidden)}
     >
       {documentView ? (
@@ -802,6 +868,11 @@ export function TextFileEditor({
                   ownsVerticalViewport: true,
                   onAttach: attachEditor,
                   onSearchChange: setSearch,
+                  enabledSelectionAction: true,
+                  renderSelectionAction: (context) =>
+                    selectionAction(mac, () => {
+                      if (addSelection(context.selection)) context.close();
+                    }),
                 }}
                 options={viewOptions}
                 className={props(diffStyles.patch, styles.code).className}
@@ -809,6 +880,20 @@ export function TextFileEditor({
               />
             </EditProvider>
           </PierreWorkerProvider>
+          {changeTracking.peek !== undefined && (
+            <ChangePeek
+              {...changeTracking.peek}
+              onStep={changeTracking.step}
+              onRevert={() => {
+                const change = changeTracking.peek?.change;
+
+                if (change !== undefined)
+                  buffer.edit(revertChange(buffer.getSnapshot().contents, change));
+                changeTracking.close();
+              }}
+              onClose={changeTracking.close}
+            />
+          )}
           {search !== undefined && (
             <EditorFind
               search={search}
@@ -824,12 +909,7 @@ export function TextFileEditor({
         {...props(statusVisible ? styles.status : srOnly)}
         title={gitBlame ? blameText : undefined}
       >
-        {gitBlame && (
-          <>
-            <span>Line {line}</span>
-            <span {...props(styles.statusText)}>{blameText}</span>
-          </>
-        )}
+        {gitBlame && <span {...props(styles.statusText)}>{blameText}</span>}
         {readOnly && <span {...props(styles.statusText)}>Read-only: outside the workspace</span>}
         <span role="status" {...props(styles.statusText, styles.saveText)}>
           {saveText}
@@ -842,6 +922,18 @@ export function TextFileEditor({
         </span>
         {snapshot.status.kind === "error" && (
           <Button onClick={() => void save()}>Retry Save</Button>
+        )}
+        {!documentView && (
+          <span {...props(styles.position)}>
+            <Button
+              size="2xs"
+              variant="plain"
+              title={`Go to Line (${mac ? "⌃G" : "Ctrl+G"})`}
+              onClick={onGoToLine}
+            >
+              {position}
+            </Button>
+          </span>
         )}
       </div>
     </div>

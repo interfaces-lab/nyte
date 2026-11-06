@@ -1,7 +1,8 @@
-import type { ExcerptReference } from "./message-references.ts";
+import type { MentionFile } from "../data/files.ts";
+import type { MessageReference } from "./message-references.ts";
 
 export interface ChatExcerpt {
-  readonly reference: ExcerptReference;
+  readonly reference: MessageReference;
   readonly image?: File;
 }
 
@@ -22,6 +23,28 @@ export function addToChat(excerpt: ChatExcerpt): boolean {
   receiver(excerpt);
 
   return true;
+}
+
+/** An open file, or lines `start` to `end` of it, as a mention the agent reads from disk. */
+export function addFileToChat(
+  file: Pick<MentionFile, "path" | "displayPath">,
+  lines?: { readonly start: number; readonly end: number },
+): boolean {
+  const url = new URL("file:///");
+  url.pathname = file.path;
+
+  return addToChat({
+    reference: {
+      kind: "file",
+      file: {
+        path: file.path,
+        url: url.href,
+        displayPath: file.displayPath,
+        label: file.displayPath.split("/").at(-1) ?? file.displayPath,
+      },
+      lines,
+    },
+  });
 }
 
 export const ADD_TO_CHAT_LABEL = "Add to Chat";

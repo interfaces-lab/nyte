@@ -9,12 +9,17 @@ import {
 } from "./model.ts";
 import type { LaunchKind, WorkbenchScope, WorkbenchTab, WorkbenchViewState } from "./model.ts";
 
+/** The tabs the strip and rail list: those the scope allows, with the focused editor group's files alone. */
 export function visibleTabs(
   view: WorkbenchViewState,
   scope: WorkbenchScope,
   capabilities: ClientCapabilities,
 ): readonly WorkbenchTab[] {
-  return view.tabs.filter((tab) => workbenchTabAvailable(scope, tab.kind, capabilities));
+  return view.tabs.filter(
+    (tab) =>
+      workbenchTabAvailable(scope, tab.kind, capabilities) &&
+      (tab.kind !== "file" || tab.group === view.group),
+  );
 }
 
 export function activeWorkbenchTab(

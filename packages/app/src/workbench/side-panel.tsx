@@ -64,7 +64,26 @@ const styles = create({
     width: sidebar.handleWidth,
     "::after": { insetInlineEnd: "auto", insetInlineStart: 0 },
   },
+  seatStart: {
+    order: -1,
+    borderInlineStartWidth: 0,
+    borderInlineEndWidth: 1,
+    borderInlineEndStyle: "solid",
+    borderInlineEndColor: role.strokeQuaternary,
+  },
+  sashStart: {
+    insetInlineStart: "auto",
+    insetInlineEnd: 0,
+    "::after": { insetInlineStart: "auto", insetInlineEnd: 0 },
+  },
 });
+
+/** 1 when a pointer moving left widens the panel, -1 when moving right does. */
+function widthGrowth(seat: HTMLElement | null, side: "start" | "end"): 1 | -1 {
+  const rtl = seat !== null && getComputedStyle(seat).direction === "rtl";
+
+  return (side === "end") !== rtl ? 1 : -1;
+}
 
 interface ResizeState {
   readonly pointerId: number;
@@ -73,7 +92,14 @@ interface ResizeState {
   nextWidth: number;
 }
 
-export function SidePanel({ children }: { readonly children: ReactNode }): ReactElement {
+/** A resizable panel at the end of its row, or its start; its sash sits on the edge that faces the row. */
+export function SidePanel({
+  side = "end",
+  children,
+}: {
+  readonly side?: "start" | "end";
+  readonly children: ReactNode;
+}): ReactElement {
   const current = useSyncExternalStore(storedWidth.subscribe, storedWidth.get);
   const seatRef = useRef<HTMLDivElement>(null);
   const [max, setMax] = useState(WIDTH_MAX);
@@ -96,6 +122,8 @@ export function SidePanel({ children }: { readonly children: ReactNode }): React
     return () => observer.disconnect();
   }, []);
 
+  const growth = (): 1 | -1 => widthGrowth(seatRef.current, side);
+
   const beginResize = (event: PointerEvent<HTMLDivElement>): void => {
     if (event.button !== 0) return;
     event.preventDefault();
@@ -113,7 +141,10 @@ export function SidePanel({ children }: { readonly children: ReactNode }): React
     const resize = resizeRef.current;
 
     if (resize === undefined || resize.pointerId !== event.pointerId) return;
-    resize.nextWidth = clampWidth(resize.startWidth + resize.startX - event.clientX, max);
+    resize.nextWidth = clampWidth(
+      resize.startWidth + (resize.startX - event.clientX) * growth(),
+      max,
+    );
     seatRef.current?.style.setProperty("width", `${String(resize.nextWidth)}px`);
   };
 
@@ -143,7 +174,7 @@ export function SidePanel({ children }: { readonly children: ReactNode }): React
 
   const resizeWithKeyboard = (event: KeyboardEvent<HTMLDivElement>): void => {
     let next: number | undefined;
-    const step = event.shiftKey ? WIDTH_STEP * 4 : WIDTH_STEP;
+    const step = (event.shiftKey ? WIDTH_STEP * 4 : WIDTH_STEP) * growth();
 
     if (event.key === "ArrowLeft") next = current + step;
     else if (event.key === "ArrowRight") next = current - step;
@@ -156,7 +187,7 @@ export function SidePanel({ children }: { readonly children: ReactNode }): React
   };
 
   return (
-    <div ref={seatRef} {...props(styles.seat)}>
+    <div ref={seatRef} {...props(styles.seat, side === "start" && styles.seatStart)}>
       <div
         role="separator"
         tabIndex={0}
@@ -165,7 +196,12 @@ export function SidePanel({ children }: { readonly children: ReactNode }): React
         aria-valuemin={WIDTH_MIN}
         aria-valuemax={max}
         aria-valuenow={current}
-        {...props(workbenchStyles.sash, styles.sash, resizing && workbenchStyles.sashActive)}
+        {...props(
+          workbenchStyles.sash,
+          styles.sash,
+          side === "start" && styles.sashStart,
+          resizing && workbenchStyles.sashActive,
+        )}
         onKeyDown={resizeWithKeyboard}
         onPointerDown={beginResize}
         onPointerMove={moveResize}

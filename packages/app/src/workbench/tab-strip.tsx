@@ -48,7 +48,7 @@ import type {
 import { activeWorkbenchTab, tabPresentation, visibleTabs } from "./selectors.ts";
 import { workbench } from "./store.ts";
 import { closeTab, endTerminal, launch } from "./commands.ts";
-import { readDeferred } from "../lib/deferred.tsx";
+import { Deferred, readDeferred } from "../lib/deferred.tsx";
 import { useCanvasEditing } from "../canvas/canvas-activity.ts";
 import { useTerminalRuntime } from "./terminal/terminal-store.ts";
 import type { ProgramRecord } from "./terminal/terminal-program-status.ts";
@@ -263,7 +263,9 @@ export function WorkbenchTabStrip({
   const terminalCloseRef = useRef<HTMLButtonElement>(null);
   const fileCloseRef = useRef<HTMLButtonElement>(null);
   const [terminalClose, setTerminalClose] = useState<TerminalCloseState>({ kind: "closed" });
+
   const tabs = visibleTabs(view, scope, capabilities);
+
   const chatShowing = workbenchShowsChat(view.layout);
 
   const activeValue = chatShowing
@@ -300,6 +302,14 @@ export function WorkbenchTabStrip({
       (cause: unknown) =>
         setTerminalClose({ kind: "confirming", id: tab.id, error: errorMessage(cause) }),
     );
+  };
+
+  const closeOtherFiles = (id: WorkbenchTabId): void => {
+    const group = files.tabs.find((tab) => tab.id === id)?.group;
+
+    for (const other of files.tabs)
+      if (other.id !== id && other.group === group && !other.dirty && !other.saving)
+        void closeTab(viewKey, other.id);
   };
 
   return (
@@ -409,7 +419,7 @@ export function WorkbenchTabStrip({
                         : `${file.displayPath}${file.dirty ? ", unsaved changes" : ""}`
                     }
                     onDoubleClick={() => {
-                      if (tab.kind === "file") fileActions.pin(viewKey, tab.path);
+                      if (tab.kind === "file") fileActions.pin(viewKey, tab.id);
                     }}
                     aria-controls={`${viewKey}-panel-${tabSlot(tab)}`}
                     xstyle={styles.tab}
@@ -505,7 +515,23 @@ export function WorkbenchTabStrip({
 
               return (
                 <SortableItem key={tab.id} id={tab.id} xstyle={styles.slot}>
-                  {terminal === undefined ? (
+                  {file !== undefined ? (
+                    <ContextMenu>
+                      <ContextMenuTrigger render={trigger} />
+                      <ContextMenuContent aria-label={`${label} actions`}>
+                        <Deferred entry="workbench">
+                          {({ FileTabMenuItems }) => (
+                            <FileTabMenuItems
+                              viewKey={viewKey}
+                              file={file}
+                              onClose={() => close(tab)}
+                              onCloseOthers={() => closeOtherFiles(tab.id)}
+                            />
+                          )}
+                        </Deferred>
+                      </ContextMenuContent>
+                    </ContextMenu>
+                  ) : terminal === undefined ? (
                     trigger
                   ) : (
                     <ContextMenu>

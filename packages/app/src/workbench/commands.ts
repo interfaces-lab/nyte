@@ -75,7 +75,7 @@ export async function closeTab(view: WorkbenchViewKey, id: WorkbenchTabId): Prom
   const tab = workbench.getView(view).tabs.find((candidate) => candidate.id === id);
 
   if (tab?.kind === "file")
-    return fileActions.close(view, tab.path)
+    return fileActions.close(view, tab.id)
       ? { kind: "closed" }
       : { kind: "confirm", reason: "dirty" };
 
