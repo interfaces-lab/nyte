@@ -160,7 +160,7 @@ describe("subagents", () => {
 
     expect(fake.requests[3].context.messages.at(-1)).toMatchObject({
       role: "user",
-      content: `Child ${child.id} completed:\n\nHalfway.`,
+      content: `Subagent ${child.id} completed:\n\nHalfway.`,
     });
   });
 

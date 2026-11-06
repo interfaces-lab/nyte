@@ -775,7 +775,7 @@ async function toolResult(
 
 function reportContent(source: MessageSource, content: UserContent): UserContent {
   if (source.kind !== "child") return content;
-  const title = `Child ${source.session} ${source.end}:`;
+  const title = `Subagent ${source.session} ${source.end}:`;
 
   if (typeof content !== "string") return [{ kind: "text", text: title }, ...content];
 

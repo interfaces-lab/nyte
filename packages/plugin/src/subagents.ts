@@ -56,7 +56,8 @@ const isolationParameter = {
 const taskParameters = standard(
   Type.Object({
     prompt: Type.String({
-      description: "The task for the subagent, with everything it needs to know.",
+      description:
+        "The task for the subagent, with everything it needs to know. Only its last message comes back, so say what that message should report.",
     }),
     title: Type.Optional(Type.String({ description: "A short name for the subagent's session." })),
     ...selectionParameters,
@@ -67,7 +68,8 @@ const taskParameters = standard(
 const createParameters = standard(
   Type.Object({
     prompt: Type.String({
-      description: "The subagent's first message; it starts working on it at once.",
+      description:
+        "The subagent's first message; it starts working on it at once. Only its last message comes back, so say what that message should report.",
     }),
     title: Type.Optional(Type.String({ description: "A short name for the subagent's session." })),
     ...selectionParameters,
@@ -114,7 +116,7 @@ const stopParameters = standard(
 const task: ToolDefinition<Infer<typeof taskParameters>> = {
   name: "task",
   description:
-    "Run a subagent on a task and wait for its answer. Give it everything it needs; it does not see this conversation.",
+    "Run a subagent on a task and wait for its answer. Give it everything it needs; it does not see this conversation. Several task calls in one response run at once. A new message to you ends the wait early; the subagent keeps working and its answer reaches you when it finishes.",
   parameters: taskParameters,
   class: (args) => ({ kind: "delegate", child: null, role: "task", title: args.title ?? null }),
   replay: "safe",
@@ -149,7 +151,7 @@ const task: ToolDefinition<Infer<typeof taskParameters>> = {
 const create: ToolDefinition<Infer<typeof createParameters>> = {
   name: "create",
   description:
-    "Start a subagent on a first message and return its id, to send it more messages and await it later.",
+    "Start a subagent on a first message and return its id at once. When it finishes, its last message reaches you on its own, so you can end your turn instead of waiting; await it only when you need the answer before going on. Link it in a reply as [short title](agent:<id>).",
   parameters: createParameters,
   class: (args) => ({ kind: "delegate", child: null, role: "create", title: args.title ?? null }),
   effects: "none",
@@ -200,7 +202,8 @@ const send: ToolDefinition<Infer<typeof sendParameters>> = {
 
 const awaitChild: ToolDefinition<Infer<typeof awaitParameters>> = {
   name: "await",
-  description: "Wait for a subagent to finish its current work and return its answer.",
+  description:
+    "Wait for a subagent to finish its current work and return its answer. A new message to you ends the wait early, with the subagent still working.",
   parameters: awaitParameters,
   class: (args) => ({
     kind: "delegate",
