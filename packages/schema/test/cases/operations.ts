@@ -25,6 +25,7 @@ import {
   sessionInfo,
   userContent,
   catalog,
+  sharedDoc,
   sendOptions,
   userMessage,
   partMessage,
@@ -170,18 +171,20 @@ export const operations = {
     {
       input: {
         name: "Polish",
-        brief: "Fix small UI details.",
-        until: { kind: "goal", goal: "Ship 0.1" },
         workspace,
-        worker: modelRef,
+        models: { coordinator: modelRef, agents: null },
+        instructions: "Read nyte-styles first.",
+        skills: ["nyte-styles"],
+        disabledMcp: ["linear"],
+        disabledDocs: ["project:payments.md"],
       },
     },
-    { input: { name: "", brief: "", until: { kind: "standing" }, workspace } },
+    { input: { name: "Polish", workspace, instructions: "" } },
   ),
   "project.update input": operation(
     OPERATIONS["project.update"].input,
-    { project: asId<"project">("p1"), patch: { brief: "Read nyte-styles first.", worker: null } },
-    { project: asId<"project">("p1"), patch: { lead: session } },
+    { project: asId<"project">("p1"), patch: { instructions: "Read nyte-styles first." } },
+    { project: asId<"project">("p1"), patch: { coordinator: session } },
   ),
   "workspaces.list input": operation(OPERATIONS["workspaces.list"].input, {}, 1),
   "workspaces.list output": operation(
@@ -260,7 +263,6 @@ export const operations = {
         pinned: true,
         archived: false,
         workspace,
-        project: asId<"project">("p1"),
       },
     },
     { session, patch: { pinned: "yes" } },
@@ -532,7 +534,7 @@ export const operations = {
   "workspace.info input": operation(OPERATIONS["workspace.info"].input, workspaceInput, {}),
   "workspace.catalog output": operation(
     OPERATIONS["workspace.catalog"].output,
-    { commands: catalog.commands, skills: catalog.skills },
+    { commands: catalog.commands, skills: catalog.skills, docs: [sharedDoc] },
     { commands: catalog.commands },
   ),
   "workspace.command input": operation(

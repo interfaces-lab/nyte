@@ -64,7 +64,7 @@ export const DIFF_SEPARATOR_CSS = `
   }
 
   [data-expand-index] [data-separator-wrapper]:hover > * {
-    --diffs-bg-separator: ${role.bgHover};
+    --diffs-bg-separator: ${role.fillTertiary};
   }
 }
 
@@ -173,16 +173,16 @@ function applyDiffScopes(node: HTMLElement): void {
     {
       scope: surfaceTheme.green,
       properties: [
-        ["--diffs-bg-addition-override", role.bgInteractiveSecondaryTranslucent],
-        ["--diffs-bg-addition-emphasis-override", role.bgInteractivePrimaryTranslucent],
+        ["--diffs-bg-addition-override", role.fillTertiary],
+        ["--diffs-bg-addition-emphasis-override", role.fillSecondary],
         ["--diffs-addition-color-override", role.contentSecondary],
       ],
     },
     {
       scope: surfaceTheme.red,
       properties: [
-        ["--diffs-bg-deletion-override", role.bgInteractiveSecondaryTranslucent],
-        ["--diffs-bg-deletion-emphasis-override", role.bgInteractivePrimaryTranslucent],
+        ["--diffs-bg-deletion-override", role.fillTertiary],
+        ["--diffs-bg-deletion-emphasis-override", role.fillSecondary],
         ["--diffs-deletion-color-override", role.contentSecondary],
       ],
     },

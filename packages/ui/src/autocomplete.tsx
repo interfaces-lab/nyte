@@ -65,7 +65,7 @@ const styles = create({
     borderStyle: "none",
     borderRadius: 0,
     backgroundColor: "transparent",
-    boxShadow: `inset 0 -1px 0 0 ${role.borderSecondaryTranslucent}`,
+    boxShadow: `inset 0 -1px 0 0 ${role.strokeQuaternary}`,
     color: role.contentPrimary,
     fontFamily: type.fontSans,
     fontSize: {
@@ -73,7 +73,7 @@ const styles = create({
       "@media (pointer: coarse)": `max(16px, ${type.fontBase})`,
     },
     lineHeight: type.leadingBase,
-    "::placeholder": { color: role.contentSecondary },
+    "::placeholder": { color: role.contentTertiary },
   },
   list: {
     display: "flex",
@@ -98,7 +98,7 @@ const styles = create({
     outlineWidth: 1,
     outlineColor: appearance.focusRing,
     outlineOffset: -1,
-    backgroundColor: { default: "transparent", "[data-highlighted]": role.bgHover },
+    backgroundColor: { default: "transparent", "[data-highlighted]": role.fillTertiary },
     color: { default: role.contentPrimary, "[data-disabled]": role.contentDisabled },
     cursor: "default",
     userSelect: "none",
@@ -114,7 +114,6 @@ const styles = create({
     alignItems: "center",
     justifyContent: "center",
     width: 12,
-    color: role.contentSecondary,
   },
   groupLabel: {
     paddingBlockStart: space.s1_5,
@@ -126,7 +125,7 @@ const styles = create({
     flexShrink: 0,
     height: 1,
     marginBlock: space.s1,
-    backgroundColor: role.borderSecondaryTranslucent,
+    backgroundColor: role.strokeQuaternary,
   },
   empty: {
     flexShrink: 0,

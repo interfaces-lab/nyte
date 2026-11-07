@@ -354,6 +354,18 @@ export default defineConfig({
       rules: { "nyte-design/no-light-dark-outside-tokens": "error" },
     },
     {
+      // The content stairs live in the role layer; components pick one rather than fading or mixing.
+      files: [
+        "packages/app/src/**/*.{ts,tsx}",
+        "packages/desktop/src/renderer/**/*.{ts,tsx}",
+        "packages/ui/src/**/*.{ts,tsx}",
+        "packages/canvas/src/**/*.{ts,tsx}",
+        "packages/lab/src/**/*.{ts,tsx}",
+      ],
+      excludeFiles: ["packages/ui/src/styles/**"],
+      rules: { "nyte-design/no-faded-ink": "error", "nyte-design/disabled-ink": "error" },
+    },
+    {
       files: ["packages/app/src/**/*.{ts,tsx}", "packages/ui/src/**/*.{ts,tsx}"],
       rules: {
         "nyte-interactions/no-clickable-non-control": "error",

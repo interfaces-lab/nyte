@@ -6,7 +6,7 @@ import { decodeProjectRecord, decodeWorkspaceRecord } from "../contract/records.
 import type { ProjectRecord } from "../contract/records.ts";
 import { commit } from "../fold/commit.ts";
 import { PROJECTS, projectRef, workspaceRef } from "../store/refs.ts";
-import { attempt, load, put, STALE } from "../store/session.ts";
+import { attempt, load, put, readSession, STALE } from "../store/session.ts";
 import type { Found } from "../store/session.ts";
 
 export function createProjects(kernel: Kernel): Projects {
@@ -22,11 +22,13 @@ export function createProjects(kernel: Kernel): Projects {
       const project: ProjectRecord = {
         id: asId<"project">(crypto.randomUUID()),
         name: input.name,
-        brief: input.brief,
-        until: input.until,
         workspace: input.workspace,
-        lead: null,
-        worker: input.worker ?? null,
+        coordinator: null,
+        models: input.models,
+        instructions: input.instructions,
+        skills: input.skills,
+        disabledMcp: input.disabledMcp,
+        disabledDocs: input.disabledDocs,
         archived: false,
         createdAt: at,
       };
@@ -49,11 +51,11 @@ export function projectHandle(kernel: Kernel, id: ProjectId): Project {
   return {
     id,
     async update(patch) {
-      const updated = await attempt(`Updating project ${id}`, async () => {
+      const { before, updated } = await attempt(`Updating project ${id}`, async () => {
         const found = await requireProject(kernel, id);
         const next = applyPatch(found.record, patch, PROJECT_EDITABLE);
 
-        if (next === found.record) return next;
+        if (next === found.record) return { before: found.record, updated: next };
 
         const outcome = await commit(kernel, [
           {
@@ -63,10 +65,13 @@ export function projectHandle(kernel: Kernel, id: ProjectId): Project {
           },
         ]);
 
-        return outcome.kind === "set" ? next : STALE;
+        return outcome.kind === "set" ? { before: found.record, updated: next } : STALE;
       });
 
       await publishProjects(kernel);
+
+      if (JSON.stringify(before.disabledMcp) !== JSON.stringify(updated.disabledMcp))
+        await reloadProjectSessions(kernel, id);
 
       return updated;
     },
@@ -103,8 +108,9 @@ export async function requireProject(kernel: Kernel, id: ProjectId): Promise<Fou
 }
 
 /**
- * The project a session joins, read once so the caller can write its lead in the same commit. A
- * project accepts a session working in its folder or in a worktree of it, and never once archived.
+ * The project a session starts in, read once so the caller can write its coordinator in the same
+ * commit. A project accepts a session working in its folder or in a worktree of it, and never
+ * once archived.
  */
 export async function joinableProject(
   kernel: Kernel,
@@ -133,17 +139,29 @@ export async function joinableProject(
   return found;
 }
 
-/** The write that makes `session` the lead of a project that has none, expecting the revision read. */
-export async function leadUpdate(
+/** The write that makes `session` the coordinator of a project that has none, expecting the revision read. */
+export async function coordinatorUpdate(
   kernel: Kernel,
   found: Found<ProjectRecord>,
   session: SessionId,
 ): Promise<RefUpdate> {
   return {
     name: projectRef(found.record.id),
-    target: await put(kernel.store, "project", { ...found.record, lead: session }),
+    target: await put(kernel.store, "project", { ...found.record, coordinator: session }),
     expect: found.ref.revision,
   };
+}
+
+/** Reloads the plugins of the project's running chats, so the MCP servers it leaves out leave their tools. */
+async function reloadProjectSessions(kernel: Kernel, id: ProjectId): Promise<void> {
+  const sessions = [...kernel.plugins.runtimes().keys()];
+  const records = await Promise.all(sessions.map((session) => readSession(kernel.store, session)));
+
+  await Promise.all(
+    records.flatMap((found) =>
+      found?.record.project === id ? [kernel.plugins.reload(found.record.id)] : [],
+    ),
+  );
 }
 
 /** `record` with the fields `patch` sets, or `record` itself when it sets none to a new value. */

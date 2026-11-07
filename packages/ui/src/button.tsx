@@ -105,7 +105,7 @@ const controlStyles = create({
       insetBlock: space.s1,
       insetInlineStart: 0,
       width: 1,
-      backgroundColor: role.borderPrimary,
+      backgroundColor: role.strokeTertiary,
       pointerEvents: "none",
     },
   },
@@ -175,17 +175,17 @@ const pillSizes = create({
 
 const ghostFill = {
   default: "transparent",
-  "[data-pressed]": role.bgInteractiveSecondaryTranslucent,
-  '[aria-expanded="true"]': role.bgInteractiveSecondaryTranslucent,
+  "[data-pressed]": role.fillSecondary,
+  '[aria-expanded="true"]': role.fillSecondary,
 } as const;
 
 const buttonVariants = create({
   ghost: { backgroundColor: ghostFill },
   outline: {
-    backgroundColor: { default: role.bgElevated, [disabled]: role.bgInteractiveSecondary },
+    backgroundColor: { default: role.bgElevated, [disabled]: role.fillTertiary },
     boxShadow: {
-      default: `inset 0 0 0 1px ${role.borderPrimary}, ${shadow.shadowSm}`,
-      [disabled]: `inset 0 0 0 1px ${role.borderPrimary}`,
+      default: `inset 0 0 0 1px ${role.strokeTertiary}, ${shadow.shadowSm}`,
+      [disabled]: `inset 0 0 0 1px ${role.strokeTertiary}`,
     },
   },
   solid: {
@@ -196,7 +196,7 @@ const buttonVariants = create({
         [media.hover]: role.buttonFillHover,
       },
       ":active:not([data-disabled])": role.buttonFillPressed,
-      [disabled]: role.bgInteractiveSecondary,
+      [disabled]: role.fillTertiary,
     },
     backgroundImage: "none",
   },
@@ -205,7 +205,7 @@ const buttonVariants = create({
     backgroundImage: "none",
     backgroundColor: {
       default: "transparent",
-      '[aria-expanded="true"]': role.bgInteractiveSecondaryTranslucent,
+      '[aria-expanded="true"]': role.fillSecondary,
     },
   },
   quiet: {
@@ -214,14 +214,7 @@ const buttonVariants = create({
     backgroundImage: "none",
     backgroundColor: {
       default: "transparent",
-      '[aria-expanded="true"]': role.bgInteractiveSecondaryTranslucent,
-    },
-    color: {
-      default: role.contentTertiary,
-      ":hover:not([data-disabled])": { [media.hover]: role.contentPrimary },
-      ":active:not([data-disabled])": role.contentPrimary,
-      '[aria-expanded="true"]:not([data-disabled])': role.contentPrimary,
-      [disabled]: role.contentDisabled,
+      '[aria-expanded="true"]': role.fillSecondary,
     },
   },
   text: {
@@ -240,7 +233,7 @@ const buttonVariants = create({
     "--_btn-inline-hover": {
       default: "transparent",
       ":hover:not([data-disabled])": {
-        [media.hover]: role.bgInteractiveSecondaryTranslucent,
+        [media.hover]: role.fillTertiary,
       },
     },
     zIndex: 0,
@@ -330,7 +323,7 @@ export function buttonGlyphSize(size: ButtonSize, iconOnly: boolean): GlyphSize 
   return glyphSizes[iconOnly ? "iconOnly" : "text"][size];
 }
 
-type ButtonStyleOptions = ButtonAppearance & {
+type ButtonStyleOptions = Omit<ButtonAppearance, "xstyle"> & {
   readonly iconOnly?: boolean;
   readonly joined?: boolean;
   readonly pill?: boolean;
@@ -451,7 +444,11 @@ export function Button({
 }
 
 const picker = create({
-  trigger: { maxWidth: 180 },
+  trigger: {
+    maxWidth: 180,
+    /** Base UI's Select reads a pressed trigger's scale as zoom and opens the popup off the trigger. */
+    scale: "1",
+  },
   value: {
     display: "block",
     flex: 1,

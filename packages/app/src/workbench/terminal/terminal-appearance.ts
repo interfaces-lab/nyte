@@ -85,7 +85,7 @@ export function terminalAppearance(): TerminalAppearance {
           white,
         ],
       },
-      selection: color(role.bgInteractivePrimaryTranslucent),
+      selection: color(role.fillPrimary),
       font: { family: font.fontFamily, size: Number.parseFloat(font.fontSize) },
     };
   } finally {

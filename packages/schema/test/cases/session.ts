@@ -99,11 +99,13 @@ import type { Case } from "./fixtures.ts";
 const project = {
   id: asId<"project">("p1"),
   name: "Polish",
-  brief: "Fix small UI details.",
-  until: { kind: "standing" },
   workspace,
-  lead: session,
-  worker: modelRef,
+  coordinator: session,
+  models: { coordinator: modelRef, agents: null },
+  instructions: "Fix small UI details.",
+  skills: ["nyte-styles"],
+  disabledMcp: [],
+  disabledDocs: ["project:payments.md"],
   archived: false,
   createdAt: 1,
 } as const;
@@ -308,10 +310,7 @@ export const sessionCases = {
     { ok: false, issues: [{ ref: "heads/main", object: null, message: "Missing." }] },
     { ok: "no" },
   ),
-  ProjectInfoSchema: sample(ProjectInfoSchema, project, {
-    ...project,
-    until: { kind: "goal", goal: "" },
-  }),
+  ProjectInfoSchema: sample(ProjectInfoSchema, project, { ...project, name: "" }),
   HostViewWireSchema: sample(
     HostViewWireSchema,
     {

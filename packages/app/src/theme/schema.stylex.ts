@@ -5,6 +5,8 @@ export const shell = defineConsts({
   titlebarHeight: "var(--nyte-titlebar-height)",
   trafficLightInset: "var(--nyte-titlebar-traffic-light-inset)",
   cardInset: "var(--nyte-shell-card-inset)",
+  /** Between the titlebar and the first row of the sidebar and of the workbench rail, so they read as one line. */
+  regionPaddingBlockStart: "var(--nyte-shell-region-padding-block-start)",
   cardRadius: "var(--nyte-shell-card-radius)",
 });
 
@@ -17,6 +19,7 @@ export const tab = defineConsts({
 export const conversation = defineConsts({
   measure: "var(--nyte-conversation-measure)",
   paragraphGap: "var(--nyte-prose-paragraph-gap)",
+  tableRowHeight: "var(--nyte-prose-table-row-height)",
   gutter: "var(--nyte-conversation-gutter)",
   headerHeight: "var(--nyte-conversation-header-height)",
   turnGap: "var(--nyte-conversation-turn-gap)",
@@ -59,6 +62,7 @@ export const sidebar = defineConsts({
   sectionGap: "var(--nyte-sidebar-section-gap)",
   listGap: "var(--nyte-sidebar-list-gap)",
   iconSlot: "var(--nyte-sidebar-icon-slot)",
+  headerInset: "var(--nyte-sidebar-header-inset)",
   actionSize: "var(--nyte-sidebar-action-size)",
   trailingWidth: "var(--nyte-sidebar-trailing-width)",
   metaWidth: "var(--nyte-sidebar-meta-width)",
@@ -81,6 +85,7 @@ export const workbench = defineConsts({
   railGap: "var(--nyte-workbench-rail-gap)",
   rowGap: "var(--nyte-workbench-row-gap)",
   rowPaddingInline: "var(--nyte-workbench-row-padding-inline)",
+  headingInset: "var(--nyte-workbench-heading-inset)",
   headingHeight: "var(--nyte-workbench-heading-height)",
   panelWidth: "var(--nyte-workbench-panel-width)",
   headerHeight: "var(--nyte-workbench-header-height)",

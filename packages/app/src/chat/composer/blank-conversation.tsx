@@ -16,7 +16,6 @@ import type { ComposerEditorHandle } from "./composer-editor.tsx";
 import { composerSendPlan } from "./composer-send.ts";
 import { startDraft } from "./draft-start.ts";
 import { ModelPicker } from "./model-picker.tsx";
-import { ProjectMenu } from "../../projects/project-menu.tsx";
 import { WorkspaceContext } from "../../panes/workspace-context.tsx";
 import {
   usePaneActions,
@@ -111,7 +110,7 @@ function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement
 
   const selected = selectedModelOption(
     catalog.data?.models ?? [],
-    choice?.model ?? catalog.data?.defaults?.model,
+    choice?.model ?? project?.models.coordinator ?? catalog.data?.defaults?.model,
   );
 
   const current = selected?.option;
@@ -183,18 +182,10 @@ function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement
         }}
       >
         <div {...props(sessionScreenStyles.blankColumn)}>
-          <WorkspaceContext active={focused}>
-            <ProjectMenu
-              folder={workspace?.id}
-              value={viewState.project}
-              onChange={(project) => updateViewState((state) => ({ ...state, project }))}
-            />
-          </WorkspaceContext>
+          <WorkspaceContext active={focused} />
           {project !== undefined && (
             <div {...props(sessionScreenStyles.blankHint)}>
-              {project.lead === null
-                ? "Starts the project’s lead. It hands each change to a unit."
-                : "Starts a unit you work with here. The lead gets its reports."}
+              {`${project.name}: tell the coordinator what to work on.`}
             </div>
           )}
           <ComposerFrame

@@ -221,7 +221,7 @@ const styles = create({
     appearance: "none",
     borderStyle: "none",
     borderRadius: button.radiusSm,
-    backgroundColor: role.bgInteractiveSecondaryTranslucent,
+    backgroundColor: role.fillTertiary,
     backgroundImage: {
       default: "none",
       ":hover": { [media.hover]: role.layerHover },

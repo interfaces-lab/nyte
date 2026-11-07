@@ -34,7 +34,7 @@ const styles = create({
     borderRadius: radius.indicator,
     fontFamily: type.fontSans,
   },
-  held: { backgroundColor: role.bgInteractivePrimaryTranslucent, color: role.contentPrimary },
+  held: { backgroundColor: role.fillPrimary, color: role.contentPrimary },
 });
 
 export type KbdProps = Omit<StyledProps<ComponentProps<"kbd">, Restyle<"Kbd">>, "children"> & {

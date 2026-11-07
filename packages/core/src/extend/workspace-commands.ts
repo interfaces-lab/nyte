@@ -8,6 +8,7 @@ import type {
 } from "@nyte-ai/schema";
 import type { ConnectionContext } from "../contract/host.ts";
 import type { Kernel, PluginRuntime } from "../contract/kernel.ts";
+import type { Resources } from "../contract/workspace.ts";
 import { readWorkspace } from "../env/environment.ts";
 import { newChatPlugins } from "./plugin-folders.ts";
 import { createHookDispatch } from "./hooks.ts";
@@ -22,14 +23,15 @@ import {
 import { scanWorkspaceResources } from "./resources.ts";
 import { settingHandle } from "./settings.ts";
 
-/** The commands and skills a new chat in `workspace` would offer, read before the chat exists. */
+/** The commands, skills and shared docs a new chat in `workspace` would offer, read before the chat exists. */
 export function readWorkspaceCatalog(
   kernel: Kernel,
   workspace: WorkspaceId,
 ): Promise<WorkspaceCatalogView> {
-  return withNewChatPlugins(kernel, workspace, async ({ registries }) => ({
+  return withNewChatPlugins(kernel, workspace, async ({ registries, inputs }) => ({
     commands: commandInfos(registries),
     skills: skillInfos(registries),
+    docs: inputs.docs,
   }));
 }
 
@@ -78,7 +80,10 @@ async function withNewChatPlugins<T>(
   kernel: Kernel,
   workspace: WorkspaceId,
   work: (
-    plugins: Pick<PluginRuntime, "registries" | "api"> & { readonly session: SessionId },
+    plugins: Pick<PluginRuntime, "registries" | "api"> & {
+      readonly session: SessionId;
+      readonly inputs: Resources;
+    },
   ) => Promise<T>,
 ): Promise<T> {
   if ((await readWorkspace(kernel.store, workspace)) === null)
@@ -104,7 +109,7 @@ async function withNewChatPlugins<T>(
   try {
     await registries.materialize();
 
-    return await work({ session, registries, api: activated.api });
+    return await work({ session, registries, api: activated.api, inputs });
   } finally {
     activated.dispose();
     ended.abort();

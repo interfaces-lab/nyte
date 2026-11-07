@@ -79,7 +79,7 @@ export const SESSION_OPERATIONS = {
   },
   "session.update": {
     ...PARTICIPANT,
-    summary: "Renames, pins, archives or moves a session to another workspace or project.",
+    summary: "Renames, pins, archives or moves a session to another workspace.",
     kind: "command",
     input: wireObject({
       ...SESSION,
@@ -88,7 +88,6 @@ export const SESSION_OPERATIONS = {
         pinned: Type.Optional(Type.Boolean()),
         archived: Type.Optional(Type.Boolean()),
         workspace: Type.Optional(idSchema<"workspace">()),
-        project: Type.Optional(nullable(idSchema<"project">())),
       }),
     }),
     output: UpdateOutcomeSchema,

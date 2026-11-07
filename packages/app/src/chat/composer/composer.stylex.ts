@@ -23,9 +23,9 @@ const caretBlink = keyframes({
   "50%, 100%": { opacity: 0 },
 });
 
-const CODE_RING = `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`;
+const CODE_RING = `inset 0 0 0 1px ${role.strokeQuaternary}`;
 
-const COMPOSER_RING_DROP = `0 0 0 2px ${role.borderInteractivePrimary}`;
+const COMPOSER_RING_DROP = `0 0 0 2px ${role.strokeAccent}`;
 
 const COMPOSER_COMPACT_HEIGHT = 40;
 
@@ -50,7 +50,7 @@ export const composerStyles = create({
     paddingInline: button.pillPaddingInlineSm,
     borderRadius: radius.pill,
     backgroundColor: role.bgElevated,
-    boxShadow: `inset 0 0 0 1px ${role.borderPrimary}, ${shadow.shadowSm}`,
+    boxShadow: `inset 0 0 0 1px ${role.strokeTertiary}, ${shadow.shadowSm}`,
     color: role.contentSecondary,
     pointerEvents: "auto",
   },
@@ -139,13 +139,13 @@ export const composerStyles = create({
     borderRadius: radius.control,
     backgroundColor: {
       default: "transparent",
-      ":hover": { [media.hover]: role.bgHover },
-      ":focus-within": role.bgHover,
-      "[data-editing='true']": role.bgInteractiveSecondaryTranslucent,
+      ":hover": { [media.hover]: role.fillTertiary },
+      ":focus-within": role.fillTertiary,
+      "[data-editing='true']": role.fillSecondary,
     },
     boxShadow: {
       default: "none",
-      "[data-editing='true']": `inset 0 0 0 1px ${role.borderPrimaryTranslucent}`,
+      "[data-editing='true']": `inset 0 0 0 1px ${role.strokeTertiary}`,
     },
     color: role.contentSecondary,
     fontSize: type.fontBase,
@@ -213,9 +213,9 @@ export const composerStyles = create({
     borderWidth: 1,
     borderStyle: "solid",
     borderColor: {
-      default: role.borderSecondaryTranslucent,
-      ":hover": { [media.hover]: role.borderPrimaryTranslucent },
-      ":focus-within": role.borderPrimaryTranslucent,
+      default: role.strokeQuaternary,
+      ":hover": { [media.hover]: role.strokeTertiary },
+      ":focus-within": role.strokeTertiary,
     },
     backgroundColor: role.bgElevated,
     boxShadow: "none",
@@ -240,7 +240,7 @@ export const composerStyles = create({
   frameFollowUpExpanded: { borderRadius: conversation.composerExpandedRadius },
   frameMessageEdit: { borderRadius: radius.card },
   frameDragging: {
-    borderColor: role.borderPrimaryTranslucent,
+    borderColor: role.strokeTertiary,
     boxShadow: COMPOSER_RING_DROP,
   },
   dropGuard: {
@@ -575,7 +575,7 @@ export const composerStyles = create({
     userSelect: "none",
   },
   suggestionItemHighlighted: {
-    backgroundColor: role.bgHover,
+    backgroundColor: role.fillTertiary,
     color: role.contentPrimary,
   },
   suggestionIcon: {
@@ -615,7 +615,7 @@ export const composerStyles = create({
       insetInline: 0,
       top: -3,
       height: 1,
-      backgroundColor: role.borderSecondaryTranslucent,
+      backgroundColor: role.strokeQuaternary,
       pointerEvents: "none",
     },
   },
@@ -659,7 +659,6 @@ export const composerStyles = create({
     justifyContent: "center",
     width: glyph.sm,
     height: glyph.sm,
-    color: role.contentTertiary,
   },
   suggestionPreviewDescription: {
     marginBlockStart: space.s2,
@@ -688,7 +687,6 @@ export const composerStyles = create({
     flexShrink: 0,
     width: glyph.md,
     height: glyph.md,
-    color: role.contentTertiary,
   },
   suggestionPreviewPathIndent: (depth: number) => ({ paddingInlineStart: depth * 12 }),
   suggestionPreviewPathLeaf: { color: role.contentPrimary },

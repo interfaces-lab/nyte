@@ -61,8 +61,8 @@ export const titlebarStyles = create({
     paddingInlineStart: space.s1_5,
     borderInlineStartWidth: 1,
     borderInlineStartStyle: "solid",
-    borderInlineStartColor: role.borderSecondaryTranslucent,
-    boxShadow: `inset 0 -1px ${role.borderSecondaryTranslucent}`,
+    borderInlineStartColor: role.strokeQuaternary,
+    boxShadow: `inset 0 -1px ${role.strokeQuaternary}`,
   },
   workbenchSlotOpenTabbed: {
     width: `calc(${workbench.activeWidth} + ${shell.cardInset})`,

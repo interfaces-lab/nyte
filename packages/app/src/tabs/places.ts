@@ -7,7 +7,7 @@ import { showsPage } from "./model.ts";
 import type { Page, Place } from "./model.ts";
 
 export function pageSection(page: Page): string {
-  return page.section ?? (page.kind === "customize" ? "plugins" : "new");
+  return page.section ?? "plugins";
 }
 
 export function placeHref(place: Place): string {
@@ -18,8 +18,6 @@ export function placeHref(place: Place): string {
       return `/session/${encodeURIComponent(place.sessionId)}`;
     case "customize":
       return `/?customize=${encodeURIComponent(pageSection(place))}`;
-    case "project":
-      return `/?project=${encodeURIComponent(pageSection(place))}`;
     default: {
       const _exhaustive: never = place;
 
@@ -32,7 +30,6 @@ type AppRouter = ReturnType<typeof useRouter>;
 
 const pageSearch = Type.Object({
   customize: Type.Optional(Type.String()),
-  project: Type.Optional(Type.String()),
 });
 
 export function locationPlace(router: AppRouter): Place | undefined {
@@ -40,12 +37,10 @@ export function locationPlace(router: AppRouter): Place | undefined {
 
   if (pathname.startsWith("/settings/")) return undefined;
   const params: unknown = router.options.parseSearch(search);
-  const { customize, project } = Value.Check(pageSearch, params) ? params : {};
+  const { customize } = Value.Check(pageSearch, params) ? params : {};
 
   if (customize !== undefined)
     return { kind: "customize", section: customize, sessionId: undefined };
-
-  if (project !== undefined) return { kind: "project", section: project, sessionId: undefined };
 
   const segment = /^\/session\/([^/]+)$/.exec(pathname)?.[1];
 
@@ -86,10 +81,6 @@ export function navigateTo(router: AppRouter, place: Place): void {
       return;
     case "customize":
       void router.navigate({ to: "/", search: { customize: pageSection(place) } });
-
-      return;
-    case "project":
-      void router.navigate({ to: "/", search: { project: pageSection(place) } });
 
       return;
     default: {

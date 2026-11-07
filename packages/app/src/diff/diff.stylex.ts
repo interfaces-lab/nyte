@@ -3,7 +3,7 @@ import { glyph, media, row, radius, space } from "@nyte-ai/ui/styles/schema.styl
 import { diffView } from "../theme/schema.stylex.ts";
 import { appearance, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
-const CODE_RING = `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`;
+const CODE_RING = `inset 0 0 0 1px ${role.strokeQuaternary}`;
 
 export const diffStyles = create({
   surface: {
@@ -18,7 +18,7 @@ export const diffStyles = create({
     marginBottom: space.s0_5,
     borderWidth: 1,
     borderStyle: "solid",
-    borderColor: role.borderSecondaryTranslucent,
+    borderColor: role.strokeQuaternary,
     backgroundColor: role.bgBase,
   },
   card: { borderRadius: 0, backgroundColor: role.bgBase },
@@ -64,7 +64,7 @@ export const diffStyles = create({
     borderWidth: 0,
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
-    borderBottomColor: role.borderSecondaryTranslucent,
+    borderBottomColor: role.strokeQuaternary,
     backgroundColor: role.bgBase,
     color: "inherit",
     font: "inherit",
@@ -112,7 +112,7 @@ export const diffStyles = create({
     paddingInline: space.s3,
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
-    borderBottomColor: role.borderSecondaryTranslucent,
+    borderBottomColor: role.strokeQuaternary,
     flexShrink: 0,
   },
   path: {
@@ -154,7 +154,7 @@ export const diffStyles = create({
     "--diffs-bg-context-gutter-override": role.bgBase,
     "--diffs-bg-separator-override": role.bgMutedTranslucent,
     "--diffs-fg-number-override": role.contentTertiary,
-    "--diffs-bg-selection-override": role.bgInteractiveSecondaryTranslucent,
+    "--diffs-bg-selection-override": role.fillSecondary,
     "--diffs-gap-style": "none",
     "--diffs-gap-block": "0px",
     "--diffs-min-number-column-width": "calc(4ch + 8px)",

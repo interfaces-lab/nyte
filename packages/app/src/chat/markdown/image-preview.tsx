@@ -31,7 +31,7 @@ const styles = create({
     borderRadius: radius.control,
     outlineWidth: 1,
     outlineStyle: "solid",
-    outlineColor: role.borderPrimaryTranslucent,
+    outlineColor: role.strokeTertiary,
     outlineOffset: -1,
   },
   compact: { width: 64, height: 64 },
@@ -76,7 +76,7 @@ const styles = create({
     borderRadius: radius.control,
     backgroundColor: {
       default: "transparent",
-      ":hover": { [media.hover]: role.bgHover },
+      ":hover": { [media.hover]: role.fillTertiary },
     },
     color: {
       default: role.contentSecondary,

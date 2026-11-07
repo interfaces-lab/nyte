@@ -1,6 +1,6 @@
 ---
 title: Colors
-description: "Colour roles, hue scopes, and intents"
+description: "Colour stairs, surfaces, hue scopes, and intents"
 ---
 
 Colour comes in three layers. Ramps hold twenty steps per hue. A theme maps one hue onto the
@@ -12,37 +12,106 @@ import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
 ```
 
+Content, fills, and strokes each come as a stair, strongest first. Each step has one job. A
+floor is the lowest contrast a role reaches on the base, muted, elevated, and chrome
+surfaces, and on `fillTertiary` over each, in light and dark, in every hue scope, at normal and
+increased contrast. Each content step also keeps at least 1.1 times the contrast of the step below
+it, and each fill and stroke step stays stronger than the one below it.
+
 ## Rules
+
+1. Hover goes up one stair. Pressed and open go up two. Text moves from `contentSecondary` to
+   `contentPrimary`. A fill moves from none to `fillTertiary`, `fillSecondary`, then
+   `fillPrimary`. A stroke moves from `strokeQuaternary` to `strokeTertiary`, then
+   `strokeSecondary`.
+2. Never de-emphasise text with `opacity` or `color-mix()`. Pick a lower stair. Text that fits no
+   stair is decoration and takes `contentQuaternary`. Opacity stays fine for fading a whole element
+   in or out, and for images.
+3. `contentDisabled` is for disabled controls only. A failed, cancelled, or idle item that still
+   informs takes `contentTertiary`, or `contentAccent` for an error. A decorative idle dot takes
+   `contentQuaternary`.
+4. An icon takes its label's stair. Only decoration drops to `contentQuaternary`, such as a
+   chevron, a separator, or an idle mark.
 
 - Components read a role. They never write a hex, `rgb()`, `oklch()`, or `light-dark()`.
 - A new colour need is a new role in `roles.stylex.ts` with a handle in `vars.stylex.ts`.
-- Readable text uses `contentPrimary` or `contentSecondary`. `contentTertiary` is for
-  placeholders, disabled hints, and decoration.
-- Glyphs use `contentInteractiveTertiary` or a stronger role. Interactive primary, secondary,
-  and tertiary stay three distinct levels in every scope.
-- `contentAccent` is the scope's hue as ink: error and attention text, status dots, and accent
-  strokes. It is not a text level.
-- Meaning picks a hue through an intent; a category picks one through a scope. Both reuse the
+- Meaning picks a hue through an intent. A category picks one through a scope. Both reuse the
   same role names.
-- Nothing paints a page background in the desktop app; the window's material shows through.
+- Nothing paints a page background in the desktop app. The window's material shows through.
 
 ## Content
 
+Text and icons.
+
+| Role                         | Job                                                     | Floor                      |
+| ---------------------------- | ------------------------------------------------------- | -------------------------- |
+| `contentPrimary`             | Body text, titles, values, a hovered label              | 7:1                        |
+| `contentSecondary`           | Labels, navigation and tool rows, pickers, idle buttons | 6:1                        |
+| `contentTertiary`            | Metadata, hints, placeholders, details, timestamps      | 4.5:1                      |
+| `contentQuaternary`          | Chevrons, separators, idle and decorative glyphs, rules | 3:1                        |
+| `contentDisabled`            | Disabled controls                                       | None                       |
+| `contentAccent`              | The scope's hue as ink, for error and attention text    | 4.5:1 on a surface         |
+| `contentOnInteractiveStrong` | The label on `buttonFill`                               | 4.5:1 on `buttonFill`      |
+| `contentOnControl`           | The check, knob, or thumb on a selected control         | 3:1 on `bgControlSelected` |
+
+`contentQuaternary` is never text. `contentAccent` also colours status dots. Under
+`intent.danger` it is the error colour. Under a category scope it is that hue.
+
 <RoleTable group="content" />
 
-## Border
+## Fill
 
-<RoleTable group="border" />
+Fills are translucent, so each one works on any surface.
+
+| Role            | Job                                                                                        |
+| --------------- | ------------------------------------------------------------------------------------------ |
+| `fillPrimary`   | A pressed filled chip, a strong active state, text selection                               |
+| `fillSecondary` | A pressed ghost, hover on a filled chip, and the selected, open, expanded, or current item |
+| `fillTertiary`  | Hover on a ghost row or button, and the rest fill of a chip or secondary control           |
+
+`layerHover` and `layerPressed` paint `fillTertiary` and `fillSecondary` as a `background-image`,
+so they stack over an element's own background.
+
+<RoleTable group="fill" />
+
+## Stroke
+
+Borders, dividers, and rings. `strokePrimary` and `strokeAccent` are opaque. The other strokes are
+translucent.
+
+| Role               | Job                                                                              | Floor |
+| ------------------ | -------------------------------------------------------------------------------- | ----- |
+| `strokePrimary`    | A control boundary, such as a checkbox, a slider thumb, or a raised input's edge | 3:1   |
+| `strokeSecondary`  | A strong border, and the hover, focus, or active border                          | None  |
+| `strokeTertiary`   | The default border                                                               | None  |
+| `strokeQuaternary` | A subtle divider, hairline, or card edge                                         | None  |
+| `strokeAccent`     | The scope's hue as a stroke                                                      | None  |
+
+<RoleTable group="stroke" />
 
 ## Surface
 
+The grounds a stair sits on, and the scrims behind a dialog or the command palette.
+
 <RoleTable group="surface" />
 
-## Interactive
+## Material
 
-<RoleTable group="interactive" />
+Materials let the window show through, and turn opaque when the system reduces transparency.
+
+<RoleTable group="material" />
+
+## Filled action
+
+`buttonFill` fills a solid button. `bgInteractiveStrong` fills a strong indicator, such as a
+meter.
+
+<RoleTable group="action" />
 
 ## Control
+
+Switches, checkboxes, and sliders. `bgControl` is the unchecked track, `bgControlSelected` the
+checked state or the slider's filled part.
 
 <RoleTable group="control" />
 
@@ -68,6 +137,7 @@ The focus ring ignores scopes. It reads `appearance.focusRing`, a fixed blue.
 
 ## High contrast
 
-When the OS asks for more contrast (`prefers-contrast: more`), text steps toward the ends of
-the ramp and hover and press states darken or lighten further. Surfaces and borders keep their
-steps.
+When the OS asks for more contrast (`prefers-contrast: more`), the content steps move toward the
+end of the ramp and keep their order. Fills and every stroke but `strokePrimary` get stronger, and
+control hover and press states darken or lighten further. `strokePrimary` and the surfaces keep
+their steps.

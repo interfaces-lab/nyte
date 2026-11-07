@@ -110,7 +110,7 @@ const styles = create({
     flexShrink: 0,
     padding: sidebar.gutter,
     backgroundImage: `linear-gradient(${role.sidebarMaterial}, ${role.sidebarMaterial})`,
-    boxShadow: `1px 0 0 ${role.borderSecondaryTranslucent}`,
+    boxShadow: `1px 0 0 ${role.strokeQuaternary}`,
   },
   desktop: {
     position: "relative",
@@ -139,7 +139,7 @@ const styles = create({
     borderRadius: radius.surface,
     backgroundColor: role.popupMaterial,
     backdropFilter: appearance.popupMaterialFilter,
-    boxShadow: `${shadow.shadowLg}, inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
+    boxShadow: `${shadow.shadowLg}, inset 0 0 0 1px ${role.strokeQuaternary}`,
     color: role.contentPrimary,
   },
   bannerIcon: { width: 40, height: 40, flexShrink: 0 },
@@ -154,7 +154,7 @@ const styles = create({
     borderRadius: radius.surface,
     backgroundColor: role.popupMaterial,
     backdropFilter: appearance.popupMaterialFilter,
-    boxShadow: `${shadow.shadowSm}, inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
+    boxShadow: `${shadow.shadowSm}, inset 0 0 0 1px ${role.strokeQuaternary}`,
   },
   dockItem: {
     position: "relative",

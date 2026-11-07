@@ -293,7 +293,7 @@ export type {
   ProjectInfo,
   ProjectInput,
   ProjectPatch,
-  ProjectRole,
+  SharedDoc,
   WorkspaceInspection,
   WorkspaceTarget,
   WriteOutcome,

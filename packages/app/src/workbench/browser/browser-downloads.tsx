@@ -18,7 +18,7 @@ const styles = create({
     flexShrink: 0,
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
-    borderBottomColor: role.borderSecondaryTranslucent,
+    borderBottomColor: role.strokeQuaternary,
     backgroundColor: role.bgBase,
   },
   item: {
@@ -44,7 +44,7 @@ const styles = create({
     flexShrink: 0,
     fontVariantNumeric: "tabular-nums",
   },
-  failed: { color: role.contentDisabled },
+  failed: { color: role.contentTertiary },
 });
 
 function detail(download: BrowserDownload): string {

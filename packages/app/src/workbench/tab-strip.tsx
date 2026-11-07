@@ -100,11 +100,11 @@ const styles = create({
     borderRadius: radius.control,
     backgroundColor: {
       default: "transparent",
-      ":hover": { [media.hover]: role.bgHover },
+      ":hover": { [media.hover]: role.fillTertiary },
     },
-    color: role.contentInteractiveSecondary,
+    color: role.contentSecondary,
   },
-  active: { backgroundColor: role.bgInteractiveSecondaryTranslucent, color: role.contentPrimary },
+  active: { backgroundColor: role.fillSecondary, color: role.contentPrimary },
   chatItem: { "--_tab-content-mask": "none" },
   tab: {
     display: "inline-flex",

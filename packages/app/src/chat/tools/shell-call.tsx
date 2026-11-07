@@ -73,7 +73,7 @@ const styles = create({
     overflow: "clip",
     borderWidth: 1,
     borderStyle: "solid",
-    borderColor: role.borderSecondaryTranslucent,
+    borderColor: role.strokeQuaternary,
     borderRadius: radius.control,
     backgroundColor: role.bgBase,
   },
@@ -112,7 +112,7 @@ const styles = create({
     overflow: "clip",
     borderWidth: 1,
     borderStyle: "solid",
-    borderColor: role.borderSecondaryTranslucent,
+    borderColor: role.strokeQuaternary,
     borderRadius: radius.control,
     backgroundColor: role.bgBase,
     "--_icon-default": {
@@ -147,9 +147,9 @@ const styles = create({
   headerRoom: (actions: number) => ({
     paddingInlineEnd: `calc(${space.s8} + ${String(actions)} * ${space.s6})`,
   }),
-  iconSwap: { display: "inline-flex", flexShrink: 0, color: role.contentTertiary },
+  iconSwap: { display: "inline-flex", flexShrink: 0 },
   iconDefault: { display: "var(--_icon-default)" },
-  iconHover: { display: "var(--_icon-hover)" },
+  iconHover: { display: "var(--_icon-hover)", color: role.contentTertiary },
   description: { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" },
   headerActions: {
     position: "absolute",
@@ -168,7 +168,7 @@ const styles = create({
   cardBody: {
     borderTopWidth: 1,
     borderTopStyle: "solid",
-    borderTopColor: role.borderSecondaryTranslucent,
+    borderTopColor: role.strokeQuaternary,
   },
   preview: {
     display: "flex",

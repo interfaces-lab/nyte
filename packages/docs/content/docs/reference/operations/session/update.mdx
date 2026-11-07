@@ -1,6 +1,6 @@
 ---
 title: session.update
-description: Renames, pins, archives or moves a session to another workspace or project.
+description: Renames, pins, archives or moves a session to another workspace.
 ---
 
 Changes a session's name, pinned or archived flag, or moves it to another workspace. A field left
@@ -87,16 +87,6 @@ Response:
         },
         "workspace": {
           "type": "string"
-        },
-        "project": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
         }
       }
     }

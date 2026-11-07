@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { release, tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { _electron, expect } from "@playwright/test";
@@ -10,6 +10,8 @@ import electronExecutable from "electron";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { afterAll, beforeAll, test } from "vitest";
+import { macOSWindowButtonHeight } from "../contract/window-buttons.ts";
+import { WINDOW_BUTTON_CENTRE_TOLERANCE } from "../../e2e/utils/window-buttons.ts";
 
 const desktop = fileURLToPath(new URL("../../../desktop/", import.meta.url));
 
@@ -173,7 +175,11 @@ test("titlebar controls and workbench stay aligned at every zoom and on every di
 
         assert.ok(native);
         assert.ok(measured.toggle.left * zoom >= 71.9);
-        assert.ok(Math.abs(measured.header.centerY * zoom - (native.y + 7.5)) <= 1);
+        assert.ok(
+          Math.abs(
+            measured.header.centerY * zoom - (native.y + macOSWindowButtonHeight(release()) / 2),
+          ) <= WINDOW_BUTTON_CENTRE_TOLERANCE,
+        );
       }
     }
   }

@@ -114,7 +114,7 @@ const divider = create({
     height: 1,
     margin: 0,
     alignSelf: "stretch",
-    backgroundColor: role.borderPrimary,
+    backgroundColor: role.strokeTertiary,
   },
 });
 

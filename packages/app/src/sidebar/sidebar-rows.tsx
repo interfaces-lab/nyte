@@ -13,7 +13,6 @@ import { Icon } from "@nyte-ai/ui/icon";
 import { Input } from "@nyte-ai/ui/input";
 import { MenuItem } from "@nyte-ai/ui/menu";
 import { Row } from "@nyte-ai/ui/row";
-import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { PreviewCard } from "@nyte-ai/ui/preview-card";
 import { props } from "@stylexjs/stylex";
@@ -142,14 +141,12 @@ export function SessionRow({
   draggable,
   unreachable,
   showUpdated,
-  subagents,
 }: {
   readonly session: SessionInfo;
   readonly selected: boolean;
   readonly draggable: boolean;
   readonly unreachable: boolean;
   readonly showUpdated: boolean;
-  readonly subagents?: number;
 }): ReactElement {
   const chat = useChat(session.id);
   const shown = chat.kind === "ready" ? chat.chat : undefined;
@@ -162,7 +159,6 @@ export function SessionRow({
       draggable={draggable}
       unreachable={unreachable}
       showUpdated={showUpdated}
-      subagents={subagents}
       mark={mark.state}
       unread={mark.unread}
       ask={shown === undefined ? undefined : askLine(shown, mark.state)}
@@ -177,7 +173,6 @@ export function SessionRowView({
   draggable,
   unreachable,
   showUpdated,
-  subagents,
   mark,
   unread,
   ask,
@@ -187,8 +182,6 @@ export function SessionRowView({
   readonly draggable: boolean;
   readonly unreachable: boolean;
   readonly showUpdated: boolean;
-  /** Subagents the chat started, counted on its row instead of listed under it. */
-  readonly subagents?: number;
   readonly mark: TaskState;
   readonly unread: boolean;
   readonly ask: string | undefined;
@@ -284,18 +277,9 @@ export function SessionRowView({
     />
   );
 
-  const subagentsLabel = `${String(subagents)} ${subagents === 1 ? "subagent" : "subagents"}`;
-
   const titleLine = (
     <>
       <Row.Label xstyle={[styles.sessionLabel, unread && styles.unreadLabel]}>{title}</Row.Label>
-      {subagents !== undefined && subagents > 0 && (
-        <Row.Meta xstyle={styles.subagentCount} title={subagentsLabel}>
-          <Icon name="agent" size="xs" />
-          <span aria-hidden="true">{subagents}</span>
-          <span {...props(srOnly)}>{subagentsLabel}</span>
-        </Row.Meta>
-      )}
       {showUpdated && (
         <Row.Meta xstyle={styles.rowMeta}>
           <TimeAgo timestamp={session.lastActivityAt} />

@@ -1,6 +1,5 @@
 import { codeToTokens, isSupportedLanguage } from "@pierre/highlights";
-import githubDark from "@pierre/highlights/themes/github-dark";
-import githubLight from "@pierre/highlights/themes/github-light";
+import { codeThemes } from "../../lib/code-themes.ts";
 
 const HTML_ESCAPES = new Map([
   ["&", "&amp;"],
@@ -27,7 +26,7 @@ export function highlightTokens(
 
   const { tokens } = codeToTokens(code, {
     lang: language,
-    themes: { light: githubLight, dark: githubDark },
+    themes: codeThemes,
     defaultColor: false,
     cssVariablePrefix: "--diffs-token-",
     tokenizeMaxLineLength: 1_000,

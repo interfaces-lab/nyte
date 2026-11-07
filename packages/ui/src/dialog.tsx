@@ -38,7 +38,7 @@ const styles = create({
     overflowY: "auto",
     borderWidth: 1,
     borderStyle: "solid",
-    borderColor: role.borderSecondaryTranslucent,
+    borderColor: role.strokeQuaternary,
     borderRadius: dialog.radius,
     outline: "none",
     boxShadow: shadow.shadowXl,

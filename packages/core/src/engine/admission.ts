@@ -55,6 +55,7 @@ import { fence, finishFence } from "./fence.ts";
 import { freezeMentions } from "./mentions.ts";
 import { known, reserve, sendReceipt, settleReceipt } from "./receipts.ts";
 import { chooseSendSchedule, landed } from "./send-schedule.ts";
+import { stopCut } from "./stop.ts";
 import { followedTrace, followTrace, traced } from "../util/trace.ts";
 
 interface Sending {
@@ -528,23 +529,26 @@ async function editGated(
         readonly kind: "summarize";
         readonly tip: Tip;
         readonly parent: CommitId | null;
+        readonly since: number;
         readonly instructions: string | null;
       }
-    | { readonly kind: "edited"; readonly stopped: RunId | null }
+    | { readonly kind: "edited"; readonly stopped: RunId | null; readonly since: number }
     | { readonly kind: "replayed"; readonly receipt: SendReceipt }
   >(`Editing ${target}`, async () => {
     const checked = await guard(kernel.store, session, head, options.expect, running);
 
     if ("kind" in checked) return { kind: "failed", outcome: checked };
-    const parent = await locate(kernel, session, checked.tip, target);
+    const located = await locate(kernel, session, checked.tip, target);
 
-    if (parent === undefined) return { kind: "failed", outcome: { kind: "missing-target" } };
+    if (located === undefined) return { kind: "failed", outcome: { kind: "missing-target" } };
+    const { parent, since } = located;
 
     if (typeof abandoned === "object")
       return {
         kind: "summarize",
         tip: checked.tip,
         parent,
+        since,
         instructions: abandoned.summarize.instructions ?? null,
       };
     const fenced = checked.run === null ? null : await fence(kernel, session, checked.run);
@@ -572,7 +576,7 @@ async function editGated(
 
     dev("admission", "edit", { session, head, target, outcome: outcome.kind });
 
-    if (outcome.kind === "set") return { kind: "edited", stopped };
+    if (outcome.kind === "set") return { kind: "edited", stopped, since };
 
     const replayed =
       outcome.name === receiptRef(session, id)
@@ -632,6 +636,7 @@ async function editGated(
 
           if (summarized.stopped !== null) await finishFence(kernel, session, summarized.stopped);
           wake(summarized.stopped);
+          stopCut(kernel, session, head, edited.since);
         })
         .catch(async (error: unknown) =>
           settleReceipt(kernel, session, id, {
@@ -650,6 +655,7 @@ async function editGated(
     case "edited":
       if (edited.stopped !== null) await finishFence(kernel, session, edited.stopped);
       wake(edited.stopped);
+      stopCut(kernel, session, head, edited.since);
   }
 
   return sendReceipt(kernel, session, id);
@@ -793,12 +799,13 @@ async function readReplayReceipt(
   return sendReceipt(kernel, session, found.record.id);
 }
 
+/** The commit an edit of `target` lands on, and when `target` was committed: what the edit cuts started from then on. */
 async function locate(
   kernel: Kernel,
   session: SessionId,
   tip: Tip,
   target: MessageId,
-): Promise<CommitId | null | undefined> {
+): Promise<{ readonly parent: CommitId | null; readonly since: number } | undefined> {
   return withFold(kernel, session, (state) => {
     const path = walkCommitPath(state.commits, tip.id);
 
@@ -808,7 +815,10 @@ async function locate(
       return body?.kind === "user" && body.message === target;
     });
 
-    return index < 0 ? undefined : (path[index - 1] ?? null);
+    const found = path[index];
+    const record = found === undefined ? undefined : state.commits.get(found);
+
+    return record === undefined ? undefined : { parent: path[index - 1] ?? null, since: record.at };
   });
 }
 

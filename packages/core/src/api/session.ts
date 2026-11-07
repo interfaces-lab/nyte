@@ -10,8 +10,6 @@ import type {
   Paged,
   ParentFilter,
   PrincipalId,
-  ProjectId,
-  RefUpdate,
   RemoveSessionOutcome,
   RunId,
   SessionId,
@@ -26,16 +24,15 @@ import type { Kernel } from "../contract/kernel.ts";
 import type { Part, PartDefinition } from "../contract/parts.ts";
 import { decodeSeenRecord, decodeSessionRecord } from "../contract/records.ts";
 import type { HeadRecord, RunRecord, SessionRecord } from "../contract/records.ts";
-import type { Found } from "../store/session.ts";
 import type { Head, Session, Sessions } from "../contract/session.ts";
 import { admitDeciding } from "../engine/admission.ts";
-import { joinableProject, leadUpdate, publishProjects, requireProject } from "./projects.ts";
+import { coordinatorUpdate, joinableProject, publishProjects, requireProject } from "./projects.ts";
 import { refusalError, staticContributions } from "../engine/contributions.ts";
 import { recordAcquisition } from "../engine/durable.ts";
-import { stopRun } from "../engine/fence.ts";
-import { receiptHandle, sendReceipt, withdraw } from "../engine/receipts.ts";
+import { receiptHandle, sendReceipt } from "../engine/receipts.ts";
 import { runHandle } from "../engine/runs.ts";
 import { discardSession, releaseStart, stopStart } from "../engine/start.ts";
+import { stopRuns } from "../engine/stop.ts";
 import { forkSession } from "../engine/fork.ts";
 import { completeSessionCommand, runCommand } from "../extend/registry.ts";
 import { configure } from "../extend/settings.ts";
@@ -50,7 +47,6 @@ import {
   load,
   MAIN,
   put,
-  readInbox,
   readReceipt,
   readSession,
   requireSession,
@@ -350,7 +346,20 @@ async function start(
       const project =
         input.side === true ? undefined : (joined?.record.id ?? parent?.record.project);
 
-      const leads = joined !== null && parent === null && joined.record.lead === null;
+      const coordinates = joined !== null && parent === null;
+
+      if (coordinates && joined.record.coordinator !== null)
+        throw new SdkError("invalid", `Project ${joined.record.name} already has its chat.`);
+
+      const models =
+        project === undefined
+          ? null
+          : (joined ?? (await requireProject(kernel, project))).record.models;
+
+      const model =
+        input.configuration?.model ??
+        (coordinates ? models?.coordinator : models?.agents) ??
+        undefined;
 
       const mcp =
         context.mcp ??
@@ -358,7 +367,11 @@ async function start(
         (origin === null
           ? undefined
           : (await readSession(kernel.store, origin.session))?.record.mcp);
-      const selected = await resolveInitialConfiguration(kernel, id, input.configuration);
+      const selected = await resolveInitialConfiguration(
+        kernel,
+        id,
+        model === undefined ? input.configuration : { ...input.configuration, model },
+      );
       const effective = selected ?? (await defaults(kernel, id));
 
       if (effective.kind !== "exact") throw refusalError(effective);
@@ -395,7 +408,7 @@ async function start(
       };
 
       const outcome = await commit(kernel, [
-        ...(leads ? [await leadUpdate(kernel, joined, id)] : []),
+        ...(coordinates ? [await coordinatorUpdate(kernel, joined, id)] : []),
         {
           name: sessionRef(id),
           target: await put(kernel.store, "session", record, at),
@@ -414,12 +427,12 @@ async function start(
         })),
       ]);
 
-      return outcome.kind === "set" ? { selected, leads } : STALE;
+      return outcome.kind === "set" ? { selected, coordinates } : STALE;
     });
 
     await releaseStart(kernel, context, id);
 
-    if (chosen?.leads === true) await publishProjects(kernel);
+    if (chosen?.coordinates === true) await publishProjects(kernel);
 
     const selected = chosen?.selected ?? null;
 
@@ -493,9 +506,7 @@ async function update(
         return { outcome: { kind: "unknown-workspace" }, moved: null };
     }
 
-    const joining = await projectMove(kernel, found, patch.project, workspace);
-
-    const kept: SessionRecord = {
+    const record: SessionRecord = {
       ...found.record,
       name: patch.name === undefined ? found.record.name : patch.name,
       pinned: patch.pinned ?? found.record.pinned,
@@ -503,19 +514,15 @@ async function update(
       workspace,
     };
 
-    const record = joining === null ? kept : placeInProject(kept, joining.project);
-
     if (
       record.name === found.record.name &&
       record.pinned === found.record.pinned &&
       record.archived === found.record.archived &&
-      !moving &&
-      joining === null
+      !moving
     )
       return { outcome: { kind: "updated" }, moved: null };
 
     const written = await commit(kernel, [
-      ...(joining?.lead === undefined ? [] : [joining.lead]),
       {
         name: sessionRef(session),
         target: await put(kernel.store, "session", record),
@@ -529,8 +536,6 @@ async function update(
       : STALE;
   });
 
-  if (patch.project !== undefined) await publishProjects(kernel);
-
   if (moved !== null) {
     await kernel.environments.detach(session);
     await Promise.allSettled([kernel.plugins.reload(session)]);
@@ -538,46 +543,6 @@ async function update(
   }
 
   return outcome;
-}
-
-/** `record` in `project`, or in none with the key gone: a stored record never holds `undefined`. */
-function placeInProject(record: SessionRecord, project: ProjectId | null): SessionRecord {
-  if (project !== null) return { ...record, project };
-  const copy: Mutable<SessionRecord> = { ...record };
-  delete copy.project;
-
-  return copy;
-}
-
-type Mutable<T> = { -readonly [K in keyof T]: T[K] };
-
-/**
- * What moving `found` to `target` writes: null when it stays where it is, else the project it
- * ends in (null for none) and, when it becomes the lead of a project with none, that write. A
- * project's lead can't leave it, so its record never names a lead outside it.
- */
-async function projectMove(
-  kernel: Kernel,
-  found: Found<SessionRecord>,
-  target: ProjectId | null | undefined,
-  workspace: WorkspaceId,
-): Promise<{ readonly project: ProjectId | null; readonly lead?: RefUpdate } | null> {
-  const current = found.record.project ?? null;
-
-  if (target === undefined || target === current) return null;
-
-  if (current !== null && (await requireProject(kernel, current)).record.lead === found.record.id)
-    throw new SdkError(
-      "invalid",
-      "A project's lead chat stays in it. Archive the project instead.",
-    );
-
-  if (target === null) return { project: null };
-  const joined = await joinableProject(kernel, target, workspace);
-
-  return joined.record.lead === null && found.record.parent === null
-    ? { project: target, lead: await leadUpdate(kernel, joined, found.record.id) }
-    : { project: target };
 }
 
 async function remove(
@@ -598,34 +563,15 @@ async function remove(
   });
 }
 
+/** Discards a start that hasn't run, else stops the runs. */
 async function stop(
   kernel: Kernel,
   session: SessionId,
 ): Promise<{ readonly stopped: readonly RunId[]; readonly withdrawn: readonly MessageId[] }> {
-  const found = await requireSession(kernel.store, session);
+  await requireSession(kernel.store, session);
   const discarded = await stopStart(kernel, session);
 
-  if (discarded !== null) return { stopped: [], withdrawn: [discarded] };
-  const stopped: RunId[] = [];
-  const withdrawn: MessageId[] = [];
-
-  for (const run of await liveRuns(kernel.store, session)) {
-    const id = run.record.view.id;
-
-    if ((await stopRun(kernel, session, id)).kind === "requested") stopped.push(id);
-  }
-
-  const prefix = `${sessionRef(session)}/inbox/`;
-
-  for (const ref of await kernel.store.refs.list(prefix)) {
-    const head = asId<"head">(ref.name.slice(prefix.length));
-    const inbox = await readInbox(kernel.store, session, head);
-    withdrawn.push(...(await withdraw(kernel, session, head, inbox.messages)));
-  }
-
-  for (const head of found.record.heads) kernel.wakes.notify(session, head.name);
-
-  return { stopped, withdrawn };
+  return discarded === null ? stopRuns(kernel, session) : { stopped: [], withdrawn: [discarded] };
 }
 
 async function listChildSessionIds(

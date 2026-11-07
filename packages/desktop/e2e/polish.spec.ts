@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { ElectronApplication, Locator, Page } from "@playwright/test";
 import { access, mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { release, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import process from "node:process";
 import { execFile } from "node:child_process";
@@ -9,6 +9,8 @@ import { promisify, stripVTControlCharacters } from "node:util";
 import { press } from "@nyte-ai/app/e2e/scenario-d";
 import { HOURS_QUESTION } from "@nyte-ai/app/e2e/scenario-u-fixture";
 import { tabTo } from "@nyte-ai/app/e2e/scenario-u-trace";
+import { macOSWindowButtonHeight } from "@nyte-ai/app/contract/window-buttons.ts";
+import { WINDOW_BUTTON_CENTRE_TOLERANCE } from "@nyte-ai/app/e2e/window-buttons";
 import { CI_PROMPT, RESTAURANT_PROMPT } from "@nyte-ai/bench";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
@@ -25,14 +27,6 @@ const LABEL = process.env.NYTE_POLISH_LABEL === "before" ? "before" : "after";
 const JUDGED = LABEL === "after";
 
 const RECONNECT_PROMPT = "Are you still there?";
-
-/** The window buttons and the titlebar both snap to whole points, so half a point is as close as they get. */
-const TRAFFIC_LIGHT_TOLERANCE = 0.5;
-
-/** The window buttons are 14pt tall from macOS 26 and sit in a 16pt frame before it. */
-function windowButtonHeight(macOS: string): number {
-  return Number.parseFloat(macOS) >= 26 ? 14 : 16;
-}
 
 const LONG_PROMPT = "/long 80";
 
@@ -353,11 +347,10 @@ test(`polish evidence (${LABEL}) for scenarios U and D`, async () => {
       return {
         position: window?.getWindowButtonPosition(),
         zoom: window?.webContents.getZoomFactor() ?? 1,
-        macOS: process.getSystemVersion(),
       };
     });
 
-    const buttonHeight = windowButtonHeight(buttons.macOS);
+    const buttonHeight = macOSWindowButtonHeight(release());
 
     const centers = {
       trafficLights: (buttons.position?.y ?? Number.NaN) + buttonHeight / 2,
@@ -368,7 +361,7 @@ test(`polish evidence (${LABEL}) for scenarios U and D`, async () => {
 
     if (JUDGED)
       expect(Math.abs(centers.trafficLights - centers.sidebarToggle)).toBeLessThanOrEqual(
-        TRAFFIC_LIGHT_TOLERANCE,
+        WINDOW_BUTTON_CENTRE_TOLERANCE,
       );
   });
 

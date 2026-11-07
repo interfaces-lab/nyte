@@ -18,7 +18,7 @@ const styles = create({
     borderRadius: radius.control,
     borderWidth: 1,
     borderStyle: "solid",
-    borderColor: role.borderPrimary,
+    borderColor: role.strokePrimary,
     backgroundColor: role.bgElevated,
     boxShadow: shadow.shadowSm,
     outlineStyle: { default: "none", ":focus-within": "solid" },
@@ -27,7 +27,7 @@ const styles = create({
     outlineOffset: 0,
   },
   split: {
-    boxShadow: `inset -1px 0 0 0 ${role.borderSecondaryTranslucent}`,
+    boxShadow: `inset -1px 0 0 0 ${role.strokeQuaternary}`,
   },
   button: {
     display: "grid",
@@ -72,7 +72,7 @@ const styles = create({
     fontVariantNumeric: "tabular-nums",
     textAlign: "center",
     "::selection": {
-      backgroundColor: role.bgInteractiveSecondaryTranslucent,
+      backgroundColor: role.fillPrimary,
       color: role.contentSecondary,
     },
   },

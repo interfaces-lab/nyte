@@ -78,7 +78,7 @@ const styles = create({
     paddingInlineEnd: space.s2,
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
-    borderBottomColor: role.borderSecondaryTranslucent,
+    borderBottomColor: role.strokeQuaternary,
     backgroundColor: role.bgBase,
   },
   headerButton: {

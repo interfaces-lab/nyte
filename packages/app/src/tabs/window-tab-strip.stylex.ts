@@ -61,7 +61,7 @@ export const stripStyles = create({
     borderRadius: button.radiusMd,
     backgroundColor: {
       default: "transparent",
-      ":hover": { [media.hover]: role.bgHover },
+      ":hover": { [media.hover]: role.fillTertiary },
     },
     color: {
       default: role.contentSecondary,
@@ -75,7 +75,7 @@ export const stripStyles = create({
       default: role.surfaceMaterial,
       ":hover": { [media.hover]: role.surfaceMaterial },
     },
-    boxShadow: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
+    boxShadow: `inset 0 0 0 1px ${role.strokeQuaternary}`,
     color: role.contentPrimary,
   },
   tabButton: {
@@ -114,7 +114,7 @@ export const stripStyles = create({
     whiteSpace: "nowrap",
   },
   labelUnread: { fontWeight: type.weightMedium, color: role.contentPrimary },
-  splitMark: { display: "inline-flex", flexShrink: 0, color: role.contentTertiary },
+  splitMark: { display: "inline-flex", flexShrink: 0, color: role.contentQuaternary },
   close: { display: "inline-flex", flexShrink: 0, opacity: "var(--_close-opacity)" },
   closeVisible: { opacity: 1 },
   rename: { position: "absolute", inset: 0, zIndex: 1, display: "flex", alignItems: "center" },

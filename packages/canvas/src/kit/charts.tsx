@@ -76,7 +76,7 @@ const styles = create({
     paddingBlockStart: space.s0_5,
     borderTopWidth: 1,
     borderTopStyle: "solid",
-    borderTopColor: role.borderSecondary,
+    borderTopColor: role.strokeQuaternary,
     fontWeight: type.weightMedium,
   },
 });
@@ -107,8 +107,8 @@ const theme = {
     outlineWidth: 0,
   },
   axis: { ticks: { line: { strokeWidth: 0 } }, domain: { line: { strokeWidth: 0 } } },
-  grid: { line: { stroke: role.borderPrimary, strokeWidth: 1 } },
-  crosshair: { line: { stroke: role.borderStrong, strokeWidth: 1, strokeOpacity: 1 } },
+  grid: { line: { stroke: role.strokeTertiary, strokeWidth: 1 } },
+  crosshair: { line: { stroke: role.strokeSecondary, strokeWidth: 1, strokeOpacity: 1 } },
 };
 
 const MARGIN = { top: 10, right: 12, bottom: 28, left: 48 };
@@ -429,7 +429,7 @@ export function LineChart({
                     {
                       axis: "y",
                       value: 0,
-                      lineStyle: { stroke: role.borderStrong, strokeWidth: 1 },
+                      lineStyle: { stroke: role.strokeSecondary, strokeWidth: 1 },
                     },
                   ]
                 : []
@@ -575,7 +575,7 @@ export function BarChart({
               {
                 axis: horizontal ? "x" : "y",
                 value: 0,
-                lineStyle: { stroke: role.borderStrong, strokeWidth: 1 },
+                lineStyle: { stroke: role.strokeSecondary, strokeWidth: 1 },
               },
             ]}
             layers={["grid", "markers", "axes", "bars", "legends", "annotations"]}

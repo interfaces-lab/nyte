@@ -22,10 +22,8 @@ import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Value } from "typebox/value";
 import type { ReactElement, ReactNode } from "react";
-import type { SessionId } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
-import type { ProjectId } from "@nyte-ai/schema";
-import { joinProject } from "../projects/join.ts";
+import type { SessionId } from "@nyte-ai/sdk";
 import { sessionId as sessionIdSchema } from "../data/schemas.ts";
 import { role, shadow } from "@nyte-ai/ui/styles/vars.stylex";
 import { usePaneActions, usePaneLayout } from "./pane-context.tsx";
@@ -59,11 +57,6 @@ const sessionDropDataSchema = Type.Object({
 });
 
 type SessionDropData = Static<typeof sessionDropDataSchema>;
-
-const projectDropDataSchema = Type.Object({
-  kind: Type.Literal("project"),
-  project: Type.String({ minLength: 1 }),
-});
 
 const styles = create({
   surface: { display: "contents" },
@@ -128,22 +121,6 @@ function collisionDetector(layout: Layout<PaneContent>): CollisionDetection {
 
     if (dragged === undefined) return [];
     const point = pointForCollision(pointerCoordinates, collisionRect);
-
-    const project = droppableContainers.find((container) => {
-      const rect = droppableRects.get(container.id);
-
-      return (
-        Value.Check(projectDropDataSchema, container.data.current) &&
-        rect !== undefined &&
-        point.x >= rect.left &&
-        point.x <= rect.right &&
-        point.y >= rect.top &&
-        point.y <= rect.bottom
-      );
-    });
-
-    if (project !== undefined)
-      return [{ id: project.id, data: { droppableContainer: project, value: 0 } }];
 
     const panes = chatPanes(layout);
 
@@ -230,18 +207,9 @@ export function SessionDndProvider({ children }: { readonly children: ReactNode 
 
   const handleDragEnd = (event: DragEndEvent): void => {
     const dragged = parseSessionDragData(event.active.data.current);
-    const project = event.over?.data.current;
-
-    if (dragged === undefined) return;
-
-    if (Value.Check(projectDropDataSchema, project)) {
-      void joinProject(dragged.sessionId, asId<"project">(project.project));
-
-      return;
-    }
     const target = dropTargetFromEvent(event);
 
-    if (target === undefined) return;
+    if (dragged === undefined || target === undefined) return;
     panes.drop(dragged.sessionId, target.paneId, target.placement);
   };
 
@@ -262,14 +230,6 @@ export function useSessionDraggable(sessionId: SessionId, title: string, disable
     id: `session:${sessionId}`,
     disabled,
     data: { kind: "session", sessionId, title } satisfies SessionDragData,
-  });
-}
-
-/** A project's row in the sidebar, which a dragged chat joins. */
-export function useProjectDropTarget(project: ProjectId) {
-  return useDroppable({
-    id: `session-project:${project}`,
-    data: { kind: "project", project } satisfies Static<typeof projectDropDataSchema>,
   });
 }
 

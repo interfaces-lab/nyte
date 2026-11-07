@@ -75,7 +75,7 @@ const styles = create({
     paddingInline: space.s5,
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
-    borderBottomColor: role.borderSecondaryTranslucent,
+    borderBottomColor: role.strokeQuaternary,
     outlineStyle: { default: "none", ":focus-within": "solid" },
     outlineWidth: 1,
     outlineColor: appearance.focusRing,
@@ -104,7 +104,7 @@ const styles = create({
       "@media (pointer: coarse)": `max(16px, ${type.fontBase})`,
     },
     lineHeight: type.leadingBase,
-    "::placeholder": { color: role.contentSecondary },
+    "::placeholder": { color: role.contentTertiary },
   },
   list: {
     minHeight: 0,
@@ -136,7 +136,7 @@ const styles = create({
     outlineWidth: 1,
     outlineColor: appearance.focusRing,
     outlineOffset: -1,
-    backgroundColor: { default: "transparent", "[data-highlighted]": role.bgHover },
+    backgroundColor: { default: "transparent", "[data-highlighted]": role.fillTertiary },
     color: { default: role.contentPrimary, "[data-disabled]": role.contentDisabled },
     scrollMarginBlock: 8,
     cursor: "default",
@@ -148,7 +148,6 @@ const styles = create({
     justifyContent: "center",
     width: glyph.md,
     height: glyph.md,
-    color: role.contentSecondary,
   },
   itemLabel: {
     minWidth: 0,
@@ -169,7 +168,7 @@ const styles = create({
     height: 1,
     marginBlock: space.s1,
     marginInline: space.s3,
-    backgroundColor: role.borderSecondaryTranslucent,
+    backgroundColor: role.strokeQuaternary,
   },
   empty: {
     display: "grid",

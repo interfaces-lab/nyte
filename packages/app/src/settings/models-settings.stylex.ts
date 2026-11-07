@@ -8,7 +8,7 @@ export const modelsSettingsStyles = create({
   providerList: {
     borderWidth: 1,
     borderStyle: "solid",
-    borderColor: role.borderSecondaryTranslucent,
+    borderColor: role.strokeQuaternary,
   },
   providerTitle: {
     display: "flex",
@@ -24,7 +24,7 @@ export const modelsSettingsStyles = create({
     paddingInline: space.s1_5,
     borderWidth: 1,
     borderStyle: "solid",
-    borderColor: role.borderSecondaryTranslucent,
+    borderColor: role.strokeQuaternary,
     borderRadius: radius.indicator,
     backgroundColor: role.bgMutedTranslucent,
     color: role.contentSecondary,
@@ -37,7 +37,7 @@ export const modelsSettingsStyles = create({
     borderRadius: radius.card,
     borderWidth: 1,
     borderStyle: "solid",
-    borderColor: role.borderSecondaryTranslucent,
+    borderColor: role.strokeQuaternary,
     backgroundColor: role.bgBase,
   },
   modelPanelHeader: {
@@ -51,7 +51,7 @@ export const modelsSettingsStyles = create({
     color: role.contentSecondary,
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
-    borderBottomColor: role.borderSecondaryTranslucent,
+    borderBottomColor: role.strokeQuaternary,
   },
   modelList: { maxHeight: 360, overflowY: "auto" },
   modelRow: {
@@ -90,7 +90,7 @@ export const modelsSettingsStyles = create({
     borderRadius: radius.card,
     borderWidth: 1,
     borderStyle: "solid",
-    borderColor: role.borderSecondaryTranslucent,
+    borderColor: role.strokeQuaternary,
     backgroundColor: role.bgBase,
   },
   deviceCode: {

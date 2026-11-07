@@ -1,5 +1,11 @@
 import { SdkError, standard } from "@nyte-ai/schema";
-import type { FileEntryView, SessionId, ValidationIssue, WorkspaceId } from "@nyte-ai/schema";
+import type {
+  FileEntryView,
+  SessionId,
+  SharedDoc,
+  ValidationIssue,
+  WorkspaceId,
+} from "@nyte-ai/schema";
 import { serial } from "@nyte-ai/schema/serial";
 import { Type } from "typebox";
 import { isMap, isScalar, parseDocument } from "yaml";
@@ -46,6 +52,9 @@ type FoundContext = ContextFile & {
 };
 
 const SKILL_DIRECTORIES = [".nyte/skills", ".agents/skills"];
+
+/** Where a project's shared docs live, under the home and under the workspace. */
+export const SHARED_DOCS = ".nyte/projects/docs";
 
 /** The home's key in `WorkspaceState.watches`; a workspace's is its id. */
 const HOME = "home";
@@ -267,11 +276,13 @@ async function scan(
   const user = found.homeEnv?.files ?? null;
   const home = kernel.home;
 
-  const [inputs, projectSkills, userSkills, pathSkills] = await Promise.all([
+  const [inputs, projectSkills, userSkills, pathSkills, projectDocs, userDocs] = await Promise.all([
     readPromptInputs(kernel, found, withContext),
     found.project === null ? [] : skillsIn(found.project, SKILL_DIRECTORIES, "project", found.root),
     user === null ? [] : skillsIn(user, SKILL_DIRECTORIES, "user", home),
     user === null ? [] : skillsAt(user, await skillPaths(kernel.store), home),
+    found.project === null ? [] : docsIn(found.project, "project", null),
+    user === null ? [] : docsIn(user, "user", home),
   ]);
 
   const { kept: skills, dropped } = byName([
@@ -290,7 +301,13 @@ async function scan(
     source: { plugin: "resources" },
   }));
 
-  const resources: Resources = { user, project: found.project, skills, ...inputs };
+  const resources: Resources = {
+    user,
+    project: found.project,
+    skills,
+    docs: [...projectDocs, ...userDocs],
+    ...inputs,
+  };
 
   scanIssues.set(resources, issues);
 
@@ -384,12 +401,21 @@ async function follow(kernel: Kernel, session: SessionId, workspace: WorkspaceId
   const env = await kernel.environments.attach(session).catch(() => null);
 
   if (env !== null)
-    watchRoot(kernel, workspace, env.files, session, [...SKILL_DIRECTORIES, PLUGIN_FOLDER]);
+    watchRoot(kernel, workspace, env.files, session, [
+      ...SKILL_DIRECTORIES,
+      SHARED_DOCS,
+      PLUGIN_FOLDER,
+    ]);
 }
 
-/** The folders the home's watch covers: `.nyte/plugins`, the skill folders and the skill paths. */
+/** The folders the home's watch covers: `.nyte/plugins`, the skill folders, the shared docs and the skill paths. */
 async function homePaths(kernel: Kernel): Promise<readonly string[]> {
-  return [...SKILL_DIRECTORIES, PLUGIN_FOLDER, ...userSkillPaths(await skillPaths(kernel.store))];
+  return [
+    ...SKILL_DIRECTORIES,
+    SHARED_DOCS,
+    PLUGIN_FOLDER,
+    ...userSkillPaths(await skillPaths(kernel.store)),
+  ];
 }
 
 /** Adds `session` (none for the host's own) to the watch on `key`'s `paths`, starting the watch, or restarting it when its paths changed. */
@@ -667,6 +693,30 @@ async function skillsAt(
   return found.flat();
 }
 
+/** The files directly in `SHARED_DOCS` under `files`, each with the `description` its Markdown frontmatter gives, located under `base` when it is known (the home), else relative to the folder. */
+async function docsIn(
+  files: FilesApi,
+  scope: SharedDoc["scope"],
+  base: string | null,
+): Promise<readonly SharedDoc[]> {
+  const entries = await listDirectChildren(files, SHARED_DOCS, ["file", "symlink"]);
+
+  return Promise.all(
+    entries.map(async ({ name }): Promise<SharedDoc> => {
+      const path = join(SHARED_DOCS, name);
+      const content = name.endsWith(".md") ? await readText(files, path) : null;
+
+      return {
+        id: `${scope}:${name}`,
+        name,
+        scope,
+        location: base === null ? path : join(base, path),
+        description: content === null ? "" : (frontmatter(content).get("description") ?? ""),
+      };
+    }),
+  );
+}
+
 function parseSkillMetadata(
   content: string,
   fallback: string,
@@ -857,7 +907,8 @@ async function listDirectChildren(
     .sort((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0));
 }
 
-async function readText(files: FilesApi, path: string): Promise<string | null> {
+/** The text file at `path`, or null where none is or it is not text. */
+export async function readText(files: FilesApi, path: string): Promise<string | null> {
   const document = await files.read(path).catch((error: unknown) => {
     if (error instanceof SdkError && error.code === "invalid") return null;
 

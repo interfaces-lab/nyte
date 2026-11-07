@@ -118,7 +118,7 @@ const code = create({
     borderRadius: radius.card,
     borderWidth: 1,
     borderStyle: "solid",
-    borderColor: role.borderSecondary,
+    borderColor: role.strokeQuaternary,
     backgroundColor: role.bgMuted,
     color: role.contentPrimary,
     fontFamily: type.fontMono,

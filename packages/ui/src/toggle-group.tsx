@@ -16,7 +16,7 @@ const styles = create({
     padding: space.s0_5,
     borderRadius: radius.control,
     backgroundColor: role.bgMutedTranslucent,
-    boxShadow: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
+    boxShadow: `inset 0 0 0 1px ${role.strokeQuaternary}`,
   },
 });
 

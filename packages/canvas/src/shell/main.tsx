@@ -60,7 +60,7 @@ const styles = create({
     borderRadius: radius.card,
     borderWidth: 1,
     borderStyle: "solid",
-    borderColor: role.borderPrimary,
+    borderColor: role.strokeTertiary,
     backgroundColor: role.bgMuted,
     color: role.contentSecondary,
     fontSize: type.fontSm,

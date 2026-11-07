@@ -273,6 +273,20 @@ export const MAPPING = [
     change: "creates catalogs",
     covers: ["from 27"],
   },
+  {
+    version: 29,
+    step: "2026-11-04-project-coordinators",
+    target: "project records",
+    change:
+      "a project without `models` becomes `{ id, name, workspace, coordinator: lead, models: { coordinator: null, agents: worker }, instructions, skills: [], disabledMcp: [], disabledDocs: [], archived, createdAt }`, where `instructions` is the trimmed brief and `Goal: <goal>` for a goal, the non-empty ones joined by a blank line; `brief`, `until`, `lead` and `worker` go",
+    covers: [
+      "from 28",
+      "field project /body/lead",
+      "field project /body/coordinator",
+      "field project /body/models",
+      "field project /body/instructions",
+    ],
+  },
 ] as const;
 
 function decisionType<T extends TSchema>(value: T) {
@@ -414,6 +428,8 @@ function migrateBody(from: number, kind: Json | undefined, body: JsonObject): Js
         : body;
     case "principals":
       return runs(from, 2) ? migratePrincipals(body) : body;
+    case "project":
+      return runs(from, 29) && !("models" in body) ? coordinatedProject(body) : body;
     case "workspace": {
       const trusted = workspaceTrustAt6(from, body);
       const isolated = runs(from, 16) ? withDefaults(trusted, { isolation: null }) : trusted;
@@ -437,6 +453,30 @@ function migrateBody(from: number, kind: Json | undefined, body: JsonObject): Js
     default:
       return body;
   }
+}
+
+function coordinatedProject(body: JsonObject): JsonObject {
+  return {
+    id: body.id ?? null,
+    name: body.name ?? null,
+    workspace: body.workspace ?? null,
+    coordinator: body.lead ?? null,
+    models: { coordinator: null, agents: body.worker ?? null },
+    instructions: projectInstructions(body),
+    skills: [],
+    disabledMcp: [],
+    disabledDocs: [],
+    archived: body.archived ?? false,
+    createdAt: body.createdAt ?? 0,
+  };
+}
+
+function projectInstructions(body: JsonObject): string {
+  const brief = typeof body.brief === "string" ? body.brief.trim() : "";
+  const goal = isJsonObject(body.until) ? body.until.goal : undefined;
+  const lines = [brief, typeof goal === "string" ? `Goal: ${goal}` : ""];
+
+  return lines.filter((line) => line !== "").join("\n\n");
 }
 
 function workspaceTrustAt6(from: number, body: JsonObject): JsonObject {

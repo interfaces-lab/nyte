@@ -31,7 +31,7 @@ const styles = create({
     paddingInline: space.s2,
     borderWidth: 1,
     borderStyle: "solid",
-    borderColor: role.borderSecondaryTranslucent,
+    borderColor: role.strokeQuaternary,
     borderRadius: radius.control,
     backgroundColor: role.bgBase,
     color: role.contentPrimary,

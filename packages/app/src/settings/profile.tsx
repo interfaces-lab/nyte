@@ -47,7 +47,7 @@ const styles = create({
       insetInline: settings.rowPaddingInline,
       insetBlockStart: 0,
       height: 1,
-      backgroundColor: role.borderSecondaryTranslucent,
+      backgroundColor: role.strokeQuaternary,
       content: '""',
     },
     ":first-child::before": { display: "none" },

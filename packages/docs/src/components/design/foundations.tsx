@@ -19,12 +19,15 @@ const roleNames = Object.keys(platformColors.light).filter(
   (name): name is RoleName => name in platformColors.light,
 );
 
+/** Each group keeps the declaration order of the roles, so a stair reads strongest first. */
 const roleGroups = {
   content: (name: RoleName) => name.startsWith("content"),
-  border: (name: RoleName) => name.startsWith("border"),
+  fill: (name: RoleName) => name.startsWith("fill"),
+  stroke: (name: RoleName) => name.startsWith("stroke"),
   surface: (name: RoleName) =>
-    name.startsWith("bg") && !name.startsWith("bgInteractive") && !name.startsWith("bgControl"),
-  interactive: (name: RoleName) => name.startsWith("bgInteractive") || name.startsWith("button"),
+    name.startsWith("bg") && name !== "bgInteractiveStrong" && !name.startsWith("bgControl"),
+  material: (name: RoleName) => name.endsWith("Material") || name === "windowWash",
+  action: (name: RoleName) => name === "bgInteractiveStrong" || name.startsWith("button"),
   control: (name: RoleName) => name.startsWith("bgControl"),
 } as const;
 
@@ -605,7 +608,7 @@ const styles = create({
     padding: space.s1,
     borderRadius: radius.control,
     backgroundColor: backdrop,
-    boxShadow: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
+    boxShadow: `inset 0 0 0 1px ${role.strokeQuaternary}`,
   }),
   chip: (color: string) => ({
     display: "block",
@@ -642,8 +645,8 @@ const styles = create({
   scopePill: {
     paddingInline: space.s2,
     borderRadius: radius.pill,
-    backgroundColor: role.bgInteractiveSecondaryTranslucent,
-    color: role.contentInteractivePrimary,
+    backgroundColor: role.fillTertiary,
+    color: role.contentPrimary,
     fontSize: type.fontSm,
     lineHeight: type.leadingBase,
   },
@@ -689,8 +692,8 @@ const styles = create({
     borderStartEndRadius: value,
     borderEndStartRadius: value,
     borderEndEndRadius: value,
-    backgroundColor: role.bgInteractiveSecondaryTranslucent,
-    boxShadow: `inset 0 0 0 1px ${role.borderPrimaryTranslucent}`,
+    backgroundColor: role.fillTertiary,
+    boxShadow: `inset 0 0 0 1px ${role.strokeTertiary}`,
   }),
   shadowBox: (value: string) => ({
     height: 96,
@@ -718,7 +721,7 @@ const styles = create({
     paddingBlock: space.s3,
     borderBlockEndWidth: 1,
     borderBlockEndStyle: "solid",
-    borderBlockEndColor: role.borderSecondaryTranslucent,
+    borderBlockEndColor: role.strokeQuaternary,
   },
   typeSample: {
     margin: 0,

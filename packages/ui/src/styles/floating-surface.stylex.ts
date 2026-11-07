@@ -22,7 +22,7 @@ export const floatingSurfaceStyles = create({
       position: "absolute",
       inset: 0,
       borderRadius: "inherit",
-      boxShadow: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
+      boxShadow: `inset 0 0 0 1px ${role.strokeQuaternary}`,
       pointerEvents: "none",
     },
   },

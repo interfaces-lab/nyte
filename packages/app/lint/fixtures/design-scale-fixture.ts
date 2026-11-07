@@ -79,6 +79,69 @@ export const bareStyles = create({
   },
 });
 
+const role = {
+  contentPrimary: "var(--nyte-content-primary)",
+  contentSecondary: "var(--nyte-content-secondary)",
+  contentTertiary: "var(--nyte-content-tertiary)",
+  contentAccent: "var(--nyte-content-accent)",
+  contentDisabled: "var(--nyte-content-disabled)",
+} as const;
+
+const when = { ancestor: (selector: string) => `:where(${selector}) &` };
+
+// Button's disabled state, read through its constant.
+const disabledState = "[data-disabled]:not([aria-busy='true'])";
+
+// The tool line's dimmed ink before the stairs, mixed outside create().
+const DIMMED = `color-mix(in oklab, ${role.contentSecondary} 65%, ${role.contentTertiary})`;
+
+export const inkStyles = create({
+  // The step group's thinking text before the stairs.
+  thinking: { minWidth: 0, color: role.contentSecondary, opacity: 0.5 },
+  fadedPseudo: { "::after": { color: role.contentTertiary, opacity: { default: "60%" } } },
+  fadedText: { color: `color-mix(in srgb, ${role.contentPrimary} 60%, transparent)` },
+  rawMix: { color: "color-mix(in srgb, var(--nyte-content-primary) 70%, var(--nyte-bg-base))" },
+  dimmed: { "--_action": DIMMED },
+  fadeOut: { color: role.contentPrimary, opacity: { default: 1, "[data-ending-style]": 0 } },
+  fadedImage: { opacity: 0.5 },
+  fadedVariable: { color: role.contentSecondary, opacity: "var(--_fade, 1)" },
+  // A disabled control fades whole; the contrast floors exempt it.
+  fadedDisabled: { color: role.contentPrimary, opacity: { default: 1, "[data-disabled]": 0.5 } },
+  tabDisabled: { color: role.contentSecondary, opacity: 0.5 },
+  fadedHover: { color: role.contentPrimary, ":hover": { [media.hover]: { opacity: 0.5 } } },
+  fadedAroundInk: { opacity: 0.5, "::after": { color: role.contentPrimary } },
+  fadedWhileEnabled: { ":not(:disabled)": { color: role.contentPrimary, opacity: 0.5 } },
+  offBlock: { ":disabled": { color: role.contentPrimary, opacity: 0.5 } },
+  inkWhenOff: { opacity: 0.5, ":disabled": { color: role.contentPrimary } },
+  accentWash: { backgroundColor: `color-mix(in oklab, ${role.contentAccent} 10%, transparent)` },
+  // The download filename that failed, before the stairs.
+  failed: { color: role.contentDisabled },
+  idleRing: { boxShadow: `inset 0 0 0 1px ${role.contentDisabled}` },
+  control: {
+    color: {
+      default: role.contentPrimary,
+      ":disabled": role.contentDisabled,
+      "[data-disabled]": role.contentDisabled,
+      '[aria-disabled="true"]': role.contentDisabled,
+      [when.ancestor("[data-disabled]")]: role.contentDisabled,
+      [disabledState]: role.contentDisabled,
+    },
+  },
+  enabledOnly: {
+    color: { default: role.contentPrimary, ":not([data-disabled])": role.contentDisabled },
+  },
+  bothBranches: (disabled: boolean) => ({
+    color: disabled ? role.contentDisabled : role.contentDisabled,
+  }),
+  inverted: (disabled: boolean) => ({
+    color: !disabled ? role.contentPrimary : role.contentDisabled,
+  }),
+  rowDisabled: { color: role.contentDisabled },
+  toggled: (disabled: boolean) => ({
+    color: disabled ? role.contentDisabled : role.contentPrimary,
+  }),
+});
+
 /**
  * Known holes, asserted as silent so a future fix is a visible test change:
  * a value the compiler resolves rather than the linter, and a plain object.

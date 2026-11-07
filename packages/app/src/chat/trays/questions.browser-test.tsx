@@ -1,6 +1,6 @@
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import { asId, asSeq } from "@nyte-ai/schema";
-import type { Configuration, SessionView } from "@nyte-ai/sdk";
+import type { Configuration, SessionId, SessionView } from "@nyte-ai/sdk";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useLayoutEffect } from "react";
 import type { ReactElement } from "react";
@@ -43,6 +43,19 @@ const dock: QuestionDock = {
 };
 
 const SESSION = asId<"session">("questions");
+
+const TWO_QUESTIONS = asId<"session">("two-questions");
+
+const party = {
+  question: "How many people are coming?",
+  header: "Party size",
+  options: [
+    { label: "Two", description: "" },
+    { label: "Four", description: "" },
+  ],
+};
+
+const sent: unknown[] = [];
 
 const REFUSED = "Pick one of the listed options.";
 
@@ -89,14 +102,38 @@ const asked: SessionView = {
   catalog: { commands: [], settings: [], skills: [], agents: [], tools: [] },
 };
 
+const askedTwice: SessionView = {
+  ...asked,
+  parts: [
+    {
+      id: asId<"part">("part-questions"),
+      partKind: "ask/question",
+      placement: { kind: "modal" },
+      state: { call: "call-questions", questions: [party, field], phase: { kind: "asking" } },
+      version: 1,
+      status: { kind: "live", run: asId<"run">("run") },
+      owner: "question",
+    },
+  ],
+};
+
 installScripted(
   scriptedConnection({
-    views: new Map([[SESSION, [asked]]]),
-    session: () => ({
+    views: new Map([
+      [SESSION, [asked]],
+      [TWO_QUESTIONS, [askedTwice]],
+    ]),
+    session: (id) => ({
       part: (part) => ({
         id: part,
         update: async () => ({ kind: "missing" }),
-        act: async (action) => {
+        act: async (action, input) => {
+          if (id === TWO_QUESTIONS) {
+            sent.push(input);
+
+            return { kind: "ok", output: undefined };
+          }
+
           if (action === "skip") throw new Error(UNREACHABLE);
 
           return { kind: "rejected", reason: REFUSED };
@@ -114,11 +151,13 @@ installScripted(
 let shown: QuestionDock | undefined;
 
 function AskedTray({
+  sessionId,
   onAsk,
 }: {
+  readonly sessionId: SessionId;
   readonly onAsk: (asking: QuestionDock | undefined) => void;
 }): ReactElement {
-  const asking = useQuestionDock(SESSION);
+  const asking = useQuestionDock(sessionId);
 
   useLayoutEffect(() => onAsk(asking));
 
@@ -150,6 +189,7 @@ async function failedReplies(): Promise<readonly string[]> {
   root.render(
     <QueryClientProvider client={new QueryClient()}>
       <AskedTray
+        sessionId={SESSION}
         onAsk={(asking) => {
           shown = asking;
         }}
@@ -212,6 +252,208 @@ function measure() {
   };
 }
 
+declare global {
+  interface Window {
+    readonly rendererMouseClick: (payload: string) => void;
+    readonly rendererKey: (payload: string) => void;
+  }
+}
+
+const KEYS = {
+  enter: { key: "Enter", code: "Enter", keyCode: 13, text: "\r" },
+  space: { key: " ", code: "Space", keyCode: 32, text: " " },
+  two: { key: "2", code: "Digit2", keyCode: 50, text: "2" },
+  down: { key: "ArrowDown", code: "ArrowDown", keyCode: 40 },
+  escape: { key: "Escape", code: "Escape", keyCode: 27 },
+};
+
+const META = 4;
+
+async function press(stroke: (typeof KEYS)[keyof typeof KEYS], modifiers = 0): Promise<void> {
+  await new Promise<void>((resolve) => {
+    document.addEventListener("renderer-key-pressed", () => resolve(), { once: true });
+    window.rendererKey(JSON.stringify({ ...stroke, modifiers }));
+  });
+}
+
+async function click(element: Element): Promise<void> {
+  const box = element.getBoundingClientRect();
+
+  await new Promise<void>((resolve) => {
+    document.addEventListener("renderer-mouse-clicked", () => resolve(), { once: true });
+    window.rendererMouseClick(
+      JSON.stringify({ x: box.left + box.width / 2, y: box.top + box.height / 2, shift: false }),
+    );
+  });
+}
+
+const CHOICE = "[data-slot='questionnaire-choice']";
+
+function within(host: Element, selector: string, label: string): HTMLElement {
+  const element = Array.from(host.querySelectorAll<HTMLElement>(selector)).find((candidate) =>
+    candidate.textContent.includes(label),
+  );
+
+  if (element === undefined) throw new Error(`Missing ${selector} "${label}"`);
+
+  return element;
+}
+
+function radio(host: Element, label: string): HTMLInputElement {
+  const input = within(host, CHOICE, label).querySelector("input");
+
+  if (input === null) throw new Error(`Missing the input of "${label}"`);
+
+  return input;
+}
+
+/** Answers the first of two questions with Four and Next, then runs `step` on the second. */
+async function secondQuestion(step: (host: HTMLElement) => Promise<void>) {
+  sent.length = 0;
+  const host = document.createElement("div");
+  host.style.width = "560px";
+  document.body.append(host);
+  const root = createRoot(host);
+  let asking: QuestionDock | undefined;
+  root.render(
+    <QueryClientProvider client={new QueryClient()}>
+      <AskedTray
+        sessionId={TWO_QUESTIONS}
+        onAsk={(next) => {
+          asking = next;
+        }}
+      />
+    </QueryClientProvider>,
+  );
+
+  await until(() => asking, "the two questions");
+  await click(within(host, CHOICE, "Four"));
+  await click(within(host, "button", "Next"));
+  await until(() => (asking?.current === 1 ? true : null), "the second question");
+  await step(host);
+  await new Promise((resolve) => setTimeout(resolve, 150));
+
+  const outcome = {
+    sent: JSON.stringify(sent),
+    question: asking?.current,
+    chosen: asking?.field.options
+      .filter((option) => asking?.isSelected(option.label) === true)
+      .map((option) => option.label)
+      .join(", "),
+  };
+
+  root.unmount();
+  host.remove();
+
+  return outcome;
+}
+
+const NOTHING = JSON.stringify([]);
+
+const BOTH = JSON.stringify([{ answers: [["Four"], ["No"]] }]);
+
+const DISMISSED = JSON.stringify([{}]);
+
+/** Choosing an answer only selects it, Enter on a chosen answer goes to the next question, and only Submit or Cmd+Enter sends. */
+async function lastAnswer(): Promise<readonly string[]> {
+  const chooseNo = (host: HTMLElement) => click(within(host, CHOICE, "No"));
+
+  const pressOn =
+    (label: string, key: (typeof KEYS)[keyof typeof KEYS], modifiers = 0) =>
+    async (host: HTMLElement) => {
+      radio(host, label).focus();
+      await press(key, modifiers);
+    };
+
+  const journeys: readonly {
+    readonly name: string;
+    readonly step: (host: HTMLElement) => Promise<void>;
+    readonly sends: string;
+    readonly question: number;
+    readonly chosen: string;
+  }[] = [
+    { name: "a click on No", step: chooseNo, sends: NOTHING, question: 1, chosen: "No" },
+    {
+      name: "the 2 key",
+      step: pressOn("Yes, check", KEYS.two),
+      sends: NOTHING,
+      question: 1,
+      chosen: "No",
+    },
+    {
+      name: "ArrowDown",
+      step: pressOn("Yes, check", KEYS.down),
+      sends: NOTHING,
+      question: 1,
+      chosen: "No",
+    },
+    { name: "Space", step: pressOn("No", KEYS.space), sends: NOTHING, question: 1, chosen: "No" },
+    {
+      name: "Enter on the chosen No",
+      step: async (host) => {
+        await chooseNo(host);
+        await pressOn("No", KEYS.enter)(host);
+      },
+      sends: NOTHING,
+      question: 1,
+      chosen: "No",
+    },
+    {
+      name: "Back, then Enter on the chosen Four",
+      step: async (host) => {
+        await click(within(host, "button", "Back"));
+        await pressOn("Four", KEYS.enter)(host);
+      },
+      sends: NOTHING,
+      question: 1,
+      chosen: "",
+    },
+    {
+      name: "Submit",
+      step: async (host) => {
+        await chooseNo(host);
+        await click(within(host, "button", "Submit"));
+      },
+      sends: BOTH,
+      question: 1,
+      chosen: "No",
+    },
+    {
+      name: "Cmd+Enter",
+      step: async (host) => {
+        await chooseNo(host);
+        await pressOn("No", KEYS.enter, META)(host);
+      },
+      sends: BOTH,
+      question: 1,
+      chosen: "No",
+    },
+    {
+      name: "Escape",
+      step: pressOn("No", KEYS.escape),
+      sends: DISMISSED,
+      question: 1,
+      chosen: "",
+    },
+  ];
+
+  const failures: string[] = [];
+
+  for (const journey of journeys) {
+    const outcome = await secondQuestion(journey.step);
+
+    if (outcome.sent !== journey.sends)
+      failures.push(`${journey.name} sent ${outcome.sent}, expected ${journey.sends}`);
+
+    if (outcome.question !== journey.question || outcome.chosen !== journey.chosen)
+      failures.push(
+        `${journey.name} showed question ${String(outcome.question)} with "${outcome.chosen ?? ""}" chosen, expected question ${String(journey.question)} with "${journey.chosen}"`,
+      );
+  }
+
+  return failures;
+}
+
 export async function mount(): Promise<void> {
   const host = document.createElement("div");
   host.style.width = "560px";
@@ -245,7 +487,7 @@ export async function run(): Promise<string> {
       return `${theme}: the chevron's centre ${String(chevronCentre)} is off the label's ${String(labelCentre)}`;
   }
 
-  const failures = await failedReplies();
+  const failures = [...(await failedReplies()), ...(await lastAnswer())];
 
   return failures.length === 0 ? "passed" : failures.join("\n");
 }

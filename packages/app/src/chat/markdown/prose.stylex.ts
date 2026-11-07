@@ -3,7 +3,10 @@ import { media, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { conversation } from "../../theme/schema.stylex.ts";
 import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
-const CODE_RING = `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`;
+const CODE_RING = `inset 0 0 0 1px ${role.strokeQuaternary}`;
+
+/** A row rule that takes no height, so each row is exactly `tableRowHeight`. */
+const ROW_RULE = `inset 0 -1px 0 ${role.strokeQuaternary}`;
 
 export const FADE_MS = 150;
 
@@ -86,9 +89,9 @@ export const proseStyles = create({
     backgroundColor: { default: role.bgMutedTranslucent, ":is(a code)": "transparent" },
     color: "inherit",
     fontFamily: type.fontMono,
-    fontSize: "0.9em",
+    fontSize: type.fontSm,
     letterSpacing: "normal",
-    lineHeight: "inherit",
+    lineHeight: type.leadingSm,
     whiteSpace: "break-spaces",
     overflowWrap: "break-word",
     wordBreak: "normal",
@@ -99,7 +102,7 @@ export const proseStyles = create({
     backgroundColor: {
       default: "transparent",
       ":hover": {
-        [media.hover]: role.bgInteractiveSecondaryTranslucent,
+        [media.hover]: role.fillTertiary,
       },
     },
     display: "inline",
@@ -121,7 +124,7 @@ export const proseStyles = create({
   webLink: {
     textDecorationLine: "underline",
     textDecorationColor: {
-      default: role.borderStrong,
+      default: role.strokeSecondary,
       ":hover": { [media.hover]: "currentColor" },
     },
     textDecorationThickness: "from-font",
@@ -147,7 +150,7 @@ export const proseStyles = create({
     paddingInlineStart: space.s3,
     borderInlineStartWidth: 2,
     borderInlineStartStyle: "solid",
-    borderInlineStartColor: role.borderPrimaryTranslucent,
+    borderInlineStartColor: role.strokeTertiary,
     color: role.contentSecondary,
   },
   rule: {
@@ -155,7 +158,7 @@ export const proseStyles = create({
     height: 1,
     marginBlock: space.s2,
     borderStyle: "none",
-    backgroundColor: role.borderSecondaryTranslucent,
+    backgroundColor: role.strokeQuaternary,
   },
   tableWrap: {
     marginBlockStart: { default: space.s3, ":first-child": 0 },
@@ -166,20 +169,31 @@ export const proseStyles = create({
     overflowY: "hidden",
     borderRadius: radius.control,
     boxShadow: CODE_RING,
+    /** Forced colors drop box-shadows, so the frame and the row rules come back as borders there. */
+    borderWidth: { default: 0, [media.forcedColors]: 1 },
+    borderStyle: "solid",
+    borderColor: role.strokeQuaternary,
   },
   table: {
     width: "max-content",
     minWidth: "100%",
-    borderCollapse: "collapse",
+    borderCollapse: "separate",
+    borderSpacing: 0,
     fontSize: type.fontBase,
     lineHeight: type.leadingBase,
   },
   cell: {
-    paddingBlock: space.s1,
+    paddingBlock: `calc((${conversation.tableRowHeight} - ${type.leadingBase}) / 2)`,
     paddingInline: space.s2_5,
-    borderWidth: 1,
+    borderWidth: 0,
+    borderInlineEndWidth: { default: 1, ":last-child": 0 },
+    borderBlockEndWidth: {
+      default: 0,
+      [media.forcedColors]: { default: 1, ":is(tbody > tr:last-child > *)": 0 },
+    },
     borderStyle: "solid",
-    borderColor: role.borderSecondaryTranslucent,
+    borderColor: role.strokeQuaternary,
+    boxShadow: { default: ROW_RULE, ":is(tbody > tr:last-child > *)": "none" },
     textAlign: "start",
     verticalAlign: "top",
   },
@@ -195,7 +209,7 @@ export const proseStyles = create({
     overflowY: "hidden",
     borderWidth: 1,
     borderStyle: "solid",
-    borderColor: role.borderSecondaryTranslucent,
+    borderColor: role.strokeQuaternary,
     borderRadius: radius.card,
     backgroundColor: role.bgBase,
     color: role.contentPrimary,
@@ -222,7 +236,7 @@ export const codeBlockStyles = create({
     overflow: "clip",
     borderWidth: 1,
     borderStyle: "solid",
-    borderColor: role.borderSecondaryTranslucent,
+    borderColor: role.strokeQuaternary,
     borderRadius: radius.card,
     backgroundColor: role.bgBase,
     "--_code-copy-opacity": {

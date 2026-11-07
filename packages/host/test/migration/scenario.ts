@@ -94,6 +94,26 @@ function records(from: number): fc.Arbitrary<Entry> {
     fc
       .tuple(ID, body("session"), at)
       .map(([session, value, time]) => entry("session", `sessions/${session}`, value, time)),
+    fc.tuple(ID, body("project"), at, fc.boolean()).map(([id, value, time, goal]) =>
+      entry(
+        "project",
+        `projects/${id}`,
+        older(from, 29) && isJsonObject(value.models)
+          ? {
+              id: value.id ?? null,
+              name: value.name ?? null,
+              brief: value.instructions ?? "",
+              until: goal ? { kind: "goal", goal: "Ship it" } : { kind: "standing" },
+              workspace: value.workspace ?? null,
+              lead: value.coordinator ?? null,
+              worker: value.models.agents ?? null,
+              archived: value.archived ?? false,
+              createdAt: value.createdAt ?? 0,
+            }
+          : value,
+        time,
+      ),
+    ),
     fc
       .tuple(
         ID,

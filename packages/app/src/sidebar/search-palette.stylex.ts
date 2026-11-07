@@ -6,7 +6,7 @@ export const searchPaletteStyles = create({
   tabsBar: {
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
-    borderBottomColor: role.borderSecondaryTranslucent,
+    borderBottomColor: role.strokeQuaternary,
   },
   tabs: {
     flexShrink: 0,

@@ -24,9 +24,9 @@ export const appearanceStyles = create({
     height: glyph.lg,
     borderWidth: 1,
     borderStyle: "solid",
-    borderColor: role.borderPrimaryTranslucent,
+    borderColor: role.strokeTertiary,
     borderRadius: radius.pill,
-    backgroundColor: role.bgInteractivePrimaryTranslucent,
+    backgroundColor: role.fillSecondary,
   },
   tintSwatchActive: {
     backgroundColor: role.bgInteractiveStrong,

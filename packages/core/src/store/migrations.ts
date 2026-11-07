@@ -29,6 +29,7 @@ import {
 import { headBackground } from "./head-background.ts";
 import { orderedSessionIndex, sessionIndex, sessionSeqs } from "./session-index-steps.ts";
 import { waitIndex, wokenIndex } from "./wait-index.ts";
+import { projectCoordinators } from "./project-migration.ts";
 
 type StoreDialect = "sqlite" | "postgres";
 
@@ -803,6 +804,7 @@ const STORE_STEPS: readonly StoreStep[] = [
   escapedWaitIndex,
   sessionSeqs,
   sessionCatalogs,
+  projectCoordinators,
 ];
 
 export const STORE_VERSION: number = STORE_STEPS.length;

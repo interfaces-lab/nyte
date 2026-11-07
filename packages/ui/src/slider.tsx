@@ -46,7 +46,7 @@ const styles = create({
     height: slider.thumb,
     borderWidth: 1,
     borderStyle: "solid",
-    borderColor: role.borderControl,
+    borderColor: role.strokePrimary,
     borderRadius: radius.pill,
     backgroundColor: role.contentOnControl,
     boxShadow: shadow.shadowSm,

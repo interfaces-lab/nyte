@@ -1,4 +1,4 @@
-import type { WorkspaceId } from "@nyte-ai/schema";
+import type { ProjectId, ProjectInfo, WorkspaceId } from "@nyte-ai/schema";
 import type { Plugin } from "../contract/plugin.ts";
 import type { McpHub, McpServerBrief, McpWorkspace } from "../contract/workspace.ts";
 
@@ -11,25 +11,35 @@ const SECTION_CHARS = 4096;
 /**
  * Puts the hub's tools for the session's workspace in the session, tells the
  * model in one line per server how to reach its tools and which servers are
- * unavailable, and reloads the session whenever they change.
+ * unavailable, and reloads the session whenever they change. A session in a
+ * project gets none of the servers the project leaves out.
  */
 export function mcpPlugin(
   hub: McpHub,
   readWorkspace: (id: WorkspaceId) => Promise<McpWorkspace>,
+  readProject: (id: ProjectId) => Promise<Pick<ProjectInfo, "disabledMcp">>,
 ): Plugin<"core"> {
   return {
     id: "mcp",
     async activate(api) {
-      const workspace = await readWorkspace((await api.session.info()).workspace);
+      const info = await api.session.info();
+      const workspace = await readWorkspace(info.workspace);
+
+      const disabled = new Set(
+        info.project === undefined ? [] : (await readProject(info.project)).disabledMcp,
+      );
 
       if (api.signal.aborted) return;
 
       api.contribute.tools.add((draft) => {
-        for (const tool of hub.tools(workspace)) draft.set(tool.name, tool);
+        for (const tool of hub.tools(workspace))
+          if (!disabled.has(tool.name.split("__")[1] ?? "")) draft.set(tool.name, tool);
       });
 
       api.contribute.prompt.add((draft) => {
-        const text = describeServers(hub.briefs(workspace));
+        const text = describeServers(
+          hub.briefs(workspace).filter((brief) => !disabled.has(brief.name)),
+        );
 
         if (text !== null) draft.set("mcp", { id: "mcp", order: 95, text });
       });

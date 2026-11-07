@@ -56,7 +56,7 @@ const styles = create({
   divided: {
     borderInlineStartWidth: 1,
     borderInlineStartStyle: "solid",
-    borderInlineStartColor: role.borderSecondaryTranslucent,
+    borderInlineStartColor: role.strokeQuaternary,
   },
   heading: { margin: 0, paddingBlockStart: space.s2, color: role.contentSecondary },
   message: { margin: 0, padding: space.s4, color: role.contentSecondary },

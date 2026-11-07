@@ -105,7 +105,7 @@ const styles = create({
     height: "100%",
     borderWidth: 1,
     borderStyle: "dashed",
-    borderColor: role.borderSecondaryTranslucent,
+    borderColor: role.strokeQuaternary,
     borderRadius: radius.card,
     color: role.contentSecondary,
   },

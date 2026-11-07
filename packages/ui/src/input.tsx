@@ -22,7 +22,7 @@ const field = create({
     },
     lineHeight: type.leadingBase,
     letterSpacing: type.letterBase,
-    "::placeholder": { color: role.contentSecondary },
+    "::placeholder": { color: role.contentTertiary },
   },
   framed: {
     borderWidth: 1,
@@ -45,28 +45,28 @@ const field = create({
 const variants = create({
   raised: {
     borderColor: {
-      default: role.borderPrimaryTranslucent,
+      default: role.strokePrimary,
       ":focus": appearance.focusColor,
       ":user-invalid": danger.border,
-      "[aria-invalid=true]": role.borderInteractivePrimary,
+      "[aria-invalid=true]": role.strokeAccent,
     },
     backgroundColor: role.bgElevated,
   },
   quiet: {
     borderColor: {
-      default: role.borderSecondaryTranslucent,
+      default: role.strokeQuaternary,
       ":focus": appearance.focusColor,
       ":user-invalid": danger.border,
-      "[aria-invalid=true]": role.borderInteractivePrimary,
+      "[aria-invalid=true]": role.strokeAccent,
     },
     backgroundColor: role.bgMutedTranslucent,
   },
   code: {
     borderColor: {
-      default: role.borderSecondaryTranslucent,
+      default: role.strokeQuaternary,
       ":focus": appearance.focusColor,
       ":user-invalid": danger.border,
-      "[aria-invalid=true]": role.borderInteractivePrimary,
+      "[aria-invalid=true]": role.strokeAccent,
     },
     backgroundColor: role.bgBase,
     fontFamily: type.fontMono,
@@ -77,14 +77,14 @@ const variants = create({
 const groupVariants = create({
   raised: {
     borderColor: {
-      default: role.borderPrimaryTranslucent,
+      default: role.strokePrimary,
       ":focus-within": appearance.focusColor,
     },
     backgroundColor: role.bgElevated,
   },
   quiet: {
     borderColor: {
-      default: role.borderSecondaryTranslucent,
+      default: role.strokeQuaternary,
       ":focus-within": appearance.focusColor,
     },
     backgroundColor: role.bgMutedTranslucent,

@@ -177,7 +177,12 @@ const TranscriptRowView = memo(function TranscriptRowView({
         </StatusMarker>
       );
     case "live":
-      return <LiveTurn state={navigating && row.state === "idle" ? "planning" : row.state} />;
+      return (
+        <LiveTurn
+          state={navigating && row.state === "idle" ? "planning" : row.state}
+          thinking={projector.thinking}
+        />
+      );
     default: {
       const _exhaustive: never = row;
 

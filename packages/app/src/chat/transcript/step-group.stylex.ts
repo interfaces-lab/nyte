@@ -37,9 +37,9 @@ export const stepGroupStyles = create({
     color: role.contentSecondary,
     userSelect: "none",
     "--_group-chevron-color": {
-      default: role.contentTertiary,
-      ":hover": { [media.hover]: role.contentSecondary },
-      "[data-panel-open]": role.contentSecondary,
+      default: role.contentQuaternary,
+      ":hover": { [media.hover]: role.contentTertiary },
+      "[data-panel-open]": role.contentTertiary,
     },
     "--_group-chevron-opacity": { default: null, "[data-panel-open]": 1 },
   },
@@ -91,8 +91,7 @@ export const stepGroupStyles = create({
   },
   thinking: {
     minWidth: 0,
-    color: role.contentSecondary,
-    opacity: 0.5,
+    color: role.contentTertiary,
     "--_prose-strong-color": "currentcolor",
   },
 });

@@ -39,6 +39,8 @@ const pluginOnlyConfig = {
     "nyte-design/no-light-dark-outside-tokens": "error",
     "nyte-design/guarded-hover": "error",
     "nyte-design/logical-properties": "error",
+    "nyte-design/no-faded-ink": "error",
+    "nyte-design/disabled-ink": "error",
   },
 };
 
@@ -105,7 +107,7 @@ const PARTLY_EXCLUDED_HOVER = '":hover:not([data-disabled])": { [media.hover]: i
 const message = (needle: string): string =>
   violations.find((entry) => entry.line === findLine(needle))?.message ?? "";
 
-test("reports every raw spacing length, off-grid size, raw weight, light-dark(), unguarded hover, and physical side", () => {
+test("reports every raw spacing length, off-grid size, raw weight, light-dark(), unguarded hover, physical side, and faded or disabled ink", () => {
   expect(new Set(violations.map((entry) => entry.line))).toEqual(
     new Set([
       findLine("onScale:"),
@@ -134,6 +136,18 @@ test("reports every raw spacing length, off-grid size, raw weight, light-dark(),
       findLine("physicalAlign:"),
       findLine("leftWithoutTranslate:"),
       findLine("logicalCentred:"),
+      findLine("const DIMMED ="),
+      findLine("thinking:"),
+      findLine("fadedPseudo:"),
+      findLine("fadedText:"),
+      findLine("rawMix:"),
+      findLine("failed:"),
+      findLine("idleRing:"),
+      findLine("fadedHover:"),
+      findLine("fadedAroundInk:"),
+      findLine("fadedWhileEnabled:"),
+      findLine('":not([data-disabled])": role.contentDisabled'),
+      findLine("disabled ? role.contentDisabled : role.contentDisabled"),
     ]),
   );
 });
@@ -198,6 +212,38 @@ test("sends each hover to media.hover and past every disabled state its style na
     const reported = violations.filter((entry) => entry.line === findLine(needle));
     expect(reported.map((entry) => entry.rule)).toEqual(["nyte-design(guarded-hover)"]);
     expect(reported[0]?.message).toContain(fix);
+  }
+});
+
+test("sends faded and disabled ink to a lower content stair", () => {
+  for (const [needle, rule, fix] of [
+    [
+      "const DIMMED =",
+      "no-faded-ink",
+      "Mixing content roles makes an off-stair colour; pick a stair.",
+    ],
+    ["thinking:", "no-faded-ink", "Pick a lower content stair (role.contentTertiary"],
+    ["fadedPseudo:", "no-faded-ink", '"opacity: 0.6" fades text set to role.contentTertiary'],
+    ["fadedText:", "no-faded-ink", "blends role.contentPrimary with another colour"],
+    ["rawMix:", "no-faded-ink", "blends var(--nyte-content-primary)"],
+    ["failed:", "disabled-ink", "Use role.contentTertiary for information"],
+    ["idleRing:", "disabled-ink", "role.contentQuaternary for decoration"],
+    ["fadedHover:", "no-faded-ink", '"opacity: 0.5" fades text set to role.contentPrimary'],
+    ["fadedAroundInk:", "no-faded-ink", '"opacity: 0.5" fades text set to role.contentPrimary'],
+    ["fadedWhileEnabled:", "no-faded-ink", "Pick a lower content stair"],
+    [
+      '":not([data-disabled])": role.contentDisabled',
+      "disabled-ink",
+      "contentDisabled is for disabled controls",
+    ],
+    [
+      "disabled ? role.contentDisabled : role.contentDisabled",
+      "disabled-ink",
+      "contentDisabled is for disabled controls",
+    ],
+  ] as const) {
+    expect(rulesOn(needle)).toEqual([`nyte-design(${rule})`]);
+    expect(message(needle)).toContain(fix);
   }
 });
 

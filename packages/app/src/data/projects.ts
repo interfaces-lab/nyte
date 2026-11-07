@@ -14,11 +14,6 @@ export function useProjects(): readonly ProjectInfo[] {
   );
 }
 
-/** Every project the host knows, archived ones included, for the page that restores them. */
-export function useAllProjects(): readonly ProjectInfo[] {
-  return useWatchSelect(hostWatch("host"), (state) => state.value?.projects, sameProjects) ?? NONE;
-}
-
 /** The project a host view lists under `id`, read outside React. */
 export function findProject(id: ProjectId): ProjectInfo | undefined {
   return hostWatch("host")

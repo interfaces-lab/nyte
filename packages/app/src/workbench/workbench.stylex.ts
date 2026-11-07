@@ -1,6 +1,6 @@
 import { create } from "@stylexjs/stylex";
 import { layer, media, radius, row, space, target } from "@nyte-ai/ui/styles/schema.stylex";
-import { workbench } from "../theme/schema.stylex.ts";
+import { shell, workbench } from "../theme/schema.stylex.ts";
 import { appearance, motion, role, shadow, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 export const workbenchStyles = create({
@@ -23,17 +23,19 @@ export const workbenchStyles = create({
     alignItems: "center",
     gap: target.gap,
     minHeight: workbench.headerHeight,
-    paddingBlock: workbench.headerPaddingBlock,
+    /** The bottom rule takes a pixel of the bar; the same pixel on top keeps its content even. */
+    paddingBlockStart: `calc(${workbench.headerPaddingBlock} + ${space.px})`,
+    paddingBlockEnd: workbench.headerPaddingBlock,
     flexShrink: 0,
     paddingInline: space.s1_5,
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
-    borderBottomColor: role.borderSecondaryTranslucent,
+    borderBottomColor: role.strokeQuaternary,
   },
   edge: {
     borderInlineStartWidth: 1,
     borderInlineStartStyle: "solid",
-    borderInlineStartColor: role.borderSecondaryTranslucent,
+    borderInlineStartColor: role.strokeQuaternary,
   },
   panelOpen: { minWidth: workbench.panelWidth },
   railHost: { width: workbench.railWidth, minWidth: workbench.railWidth },
@@ -56,7 +58,8 @@ export const workbenchStyles = create({
     gap: workbench.railGap,
     width: "100%",
     minWidth: 0,
-    paddingBlock: space.s1,
+    paddingBlockStart: shell.regionPaddingBlockStart,
+    paddingBlockEnd: space.s1,
     paddingInline: space.s2,
     color: role.contentSecondary,
   },
@@ -70,8 +73,9 @@ export const workbenchStyles = create({
     display: "flex",
     alignItems: "center",
     minHeight: workbench.headingHeight,
-    paddingInline: workbench.rowPaddingInline,
-    color: role.contentSecondary,
+    paddingInlineStart: workbench.headingInset,
+    paddingInlineEnd: workbench.rowPaddingInline,
+    color: role.contentTertiary,
     fontSize: type.fontSm,
     lineHeight: type.leadingSm,
   },
@@ -92,6 +96,13 @@ export const workbenchStyles = create({
     "--_row-padding-inline": workbench.rowPaddingInline,
     paddingBlock: space.s0_5,
     color: role.contentSecondary,
+  },
+  railRowInteractive: {
+    color: {
+      default: role.contentSecondary,
+      ":hover": { [media.hover]: role.contentPrimary },
+      ":focus-within": role.contentPrimary,
+    },
   },
   railLabel: { flex: "0 1 auto" },
   railValue: { color: role.contentPrimary, fontVariantNumeric: "tabular-nums" },
@@ -117,7 +128,7 @@ export const workbenchStyles = create({
     alignSelf: "stretch",
     height: 1,
     marginInline: space.s1_5,
-    backgroundColor: role.borderSecondaryTranslucent,
+    backgroundColor: role.strokeQuaternary,
   },
   panelSlot: {
     display: "flex",
@@ -141,15 +152,15 @@ export const workbenchStyles = create({
     display: "flex",
     borderWidth: 1,
     borderStyle: "solid",
-    borderColor: role.borderSecondaryTranslucent,
+    borderColor: role.strokeQuaternary,
     borderRadius: radius.card,
     overflow: "clip",
   },
   launcherCard: {
     "--_row-fill": {
       default: "transparent",
-      ":hover": { [media.hover]: role.bgHover },
-      ":active": role.bgPressed,
+      ":hover": { [media.hover]: role.fillTertiary },
+      ":active": role.fillSecondary,
     },
     flexDirection: "column",
     justifyContent: "center",
@@ -178,8 +189,8 @@ export const workbenchStyles = create({
     backgroundColor: "transparent",
     "--_sash-rule": {
       default: "transparent",
-      ":hover": { [media.hover]: role.borderPrimaryTranslucent },
-      ":focus-visible": role.borderStrongTranslucent,
+      ":hover": { [media.hover]: role.strokeTertiary },
+      ":focus-visible": role.strokeSecondary,
     },
     "--_sash-delay": { default: "0s", ":hover": { [media.hover]: "300ms" } },
     "::after": {
@@ -200,16 +211,16 @@ export const workbenchStyles = create({
     touchAction: "none",
     WebkitAppRegion: "no-drag",
   },
-  sashActive: { "--_sash-rule": role.borderStrongTranslucent, "--_sash-delay": "0s" },
+  sashActive: { "--_sash-rule": role.strokeSecondary, "--_sash-delay": "0s" },
   treeTheme: {
     "--trees-bg-override": role.bgBase,
-    "--trees-bg-muted-override": role.bgHover,
+    "--trees-bg-muted-override": role.fillTertiary,
     "--trees-fg-override": role.contentSecondary,
     "--trees-fg-muted-override": role.contentTertiary,
     "--trees-accent-override": role.contentAccent,
-    "--trees-border-color-override": role.borderSecondaryTranslucent,
-    "--trees-indent-guide-bg-override": role.borderSecondaryTranslucent,
-    "--trees-selected-bg-override": role.bgInteractiveSecondaryTranslucent,
+    "--trees-border-color-override": role.strokeQuaternary,
+    "--trees-indent-guide-bg-override": role.strokeQuaternary,
+    "--trees-selected-bg-override": role.fillSecondary,
     "--trees-selected-fg-override": role.contentPrimary,
     "--trees-focus-ring-color-override": appearance.focusRing,
     "--trees-input-bg-override": role.bgElevated,
@@ -218,7 +229,7 @@ export const workbenchStyles = create({
     "--trees-scrollbar-thumb-override": role.scrollbarThumb,
     "--trees-font-family-override": type.fontSans,
     "--trees-font-size-override": type.fontSm,
-    "--trees-status-ignored-override": role.contentDisabled,
+    "--trees-status-ignored-override": role.contentTertiary,
     fontVariantNumeric: "tabular-nums",
   },
   treeStatus: (added: string, modified: string, deleted: string) => ({

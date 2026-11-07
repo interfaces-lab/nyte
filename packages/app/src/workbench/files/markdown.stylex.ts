@@ -31,6 +31,7 @@ export const markdownStyles = create({
     backgroundColor: role.bgMutedTranslucent,
     color: role.contentSecondary,
     fontFamily: type.fontMono,
-    fontSize: "0.9em",
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
   },
 });

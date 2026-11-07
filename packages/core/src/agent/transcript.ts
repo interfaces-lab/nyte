@@ -269,7 +269,7 @@ async function buildContext(
     run: input.run,
     sections: systemSections(found.record.prompt, input.agent, resources.prompt, [
       ...runtime.registries.prompt.list(),
-      ...(await projectSections(kernel, found.record)),
+      ...(await projectSections(kernel, found.record, resources)),
     ]),
     commits: input.steps.map((step) => step.commit),
     compacted: compactions.removed,

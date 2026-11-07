@@ -62,10 +62,10 @@ test.each([
     expected: {
       panes: {
         A: {
-          insetInlineStart: "0px",
-          insetBlockStart: "0px",
-          inlineSize: "calc(1 * 100cqi)",
-          blockSize: "calc(1 * 100cqb)",
+          insetInlineStart: "round(0px, 1px)",
+          insetBlockStart: "round(0px, 1px)",
+          inlineSize: "calc(round(calc(1 * 100cqi), 1px) - round(0px, 1px))",
+          blockSize: "calc(round(calc(1 * 100cqb), 1px) - round(0px, 1px))",
         },
       },
       separators: [],
@@ -77,19 +77,20 @@ test.each([
     expected: {
       panes: {
         A: {
-          insetInlineStart: "0px",
-          insetBlockStart: "0px",
-          inlineSize: "calc(0.5 * 100cqi + -0.5 * var(--gap))",
-          blockSize: "calc(1 * 100cqb)",
+          insetInlineStart: "round(0px, 1px)",
+          insetBlockStart: "round(0px, 1px)",
+          inlineSize: "calc(round(calc(0.5 * 100cqi + -0.5 * var(--gap)), 1px) - round(0px, 1px))",
+          blockSize: "calc(round(calc(1 * 100cqb), 1px) - round(0px, 1px))",
         },
         B: {
-          insetInlineStart: "calc(0.5 * 100cqi + 0.5 * var(--gap))",
-          insetBlockStart: "0px",
-          inlineSize: "calc(0.5 * 100cqi + -0.5 * var(--gap))",
-          blockSize: "calc(1 * 100cqb)",
+          insetInlineStart: "round(calc(0.5 * 100cqi + 0.5 * var(--gap)), 1px)",
+          insetBlockStart: "round(0px, 1px)",
+          inlineSize:
+            "calc(round(calc(1 * 100cqi), 1px) - round(calc(0.5 * 100cqi + 0.5 * var(--gap)), 1px))",
+          blockSize: "calc(round(calc(1 * 100cqb), 1px) - round(0px, 1px))",
         },
       },
-      separators: ["right-split:0 calc(0.5 * 100cqi + -0.5 * var(--gap))"],
+      separators: ["right-split:0 round(calc(0.5 * 100cqi + -0.5 * var(--gap)), 1px)"],
     },
   },
   {
@@ -98,19 +99,20 @@ test.each([
     expected: {
       panes: {
         E: {
-          insetInlineStart: "0px",
-          insetBlockStart: "0px",
-          inlineSize: "200px",
-          blockSize: "calc(1 * 100cqb)",
+          insetInlineStart: "round(0px, 1px)",
+          insetBlockStart: "round(0px, 1px)",
+          inlineSize: "calc(round(200px, 1px) - round(0px, 1px))",
+          blockSize: "calc(round(calc(1 * 100cqb), 1px) - round(0px, 1px))",
         },
         A: {
-          insetInlineStart: "calc(200px + 1 * var(--gap))",
-          insetBlockStart: "0px",
-          inlineSize: "calc(-200px + 1 * 100cqi + -1 * var(--gap))",
-          blockSize: "calc(1 * 100cqb)",
+          insetInlineStart: "round(calc(200px + 1 * var(--gap)), 1px)",
+          insetBlockStart: "round(0px, 1px)",
+          inlineSize:
+            "calc(round(calc(1 * 100cqi), 1px) - round(calc(200px + 1 * var(--gap)), 1px))",
+          blockSize: "calc(round(calc(1 * 100cqb), 1px) - round(0px, 1px))",
         },
       },
-      separators: ["right-split:0 200px"],
+      separators: ["right-split:0 round(200px, 1px)"],
     },
   },
   {
@@ -119,16 +121,16 @@ test.each([
     expected: {
       panes: {
         E: {
-          insetInlineStart: "0px",
-          insetBlockStart: "0px",
-          inlineSize: "0px",
-          blockSize: "calc(1 * 100cqb)",
+          insetInlineStart: "round(0px, 1px)",
+          insetBlockStart: "round(0px, 1px)",
+          inlineSize: "calc(round(0px, 1px) - round(0px, 1px))",
+          blockSize: "calc(round(calc(1 * 100cqb), 1px) - round(0px, 1px))",
         },
         A: {
-          insetInlineStart: "0px",
-          insetBlockStart: "0px",
-          inlineSize: "calc(1 * 100cqi)",
-          blockSize: "calc(1 * 100cqb)",
+          insetInlineStart: "round(0px, 1px)",
+          insetBlockStart: "round(0px, 1px)",
+          inlineSize: "calc(round(calc(1 * 100cqi), 1px) - round(0px, 1px))",
+          blockSize: "calc(round(calc(1 * 100cqb), 1px) - round(0px, 1px))",
         },
       },
       separators: [],
@@ -144,27 +146,30 @@ test.each([
     expected: {
       panes: {
         A: {
-          insetInlineStart: "0px",
-          insetBlockStart: "0px",
-          inlineSize: "calc(0.5 * 100cqi + -0.5 * var(--gap))",
-          blockSize: "calc(1 * 100cqb)",
+          insetInlineStart: "round(0px, 1px)",
+          insetBlockStart: "round(0px, 1px)",
+          inlineSize: "calc(round(calc(0.5 * 100cqi + -0.5 * var(--gap)), 1px) - round(0px, 1px))",
+          blockSize: "calc(round(calc(1 * 100cqb), 1px) - round(0px, 1px))",
         },
         B: {
-          insetInlineStart: "calc(0.5 * 100cqi + 0.5 * var(--gap))",
-          insetBlockStart: "0px",
-          inlineSize: "calc(0.5 * 100cqi + -0.5 * var(--gap))",
-          blockSize: "calc(0.25 * 100cqb + -0.25 * var(--gap))",
+          insetInlineStart: "round(calc(0.5 * 100cqi + 0.5 * var(--gap)), 1px)",
+          insetBlockStart: "round(0px, 1px)",
+          inlineSize:
+            "calc(round(calc(1 * 100cqi), 1px) - round(calc(0.5 * 100cqi + 0.5 * var(--gap)), 1px))",
+          blockSize: "calc(round(calc(0.25 * 100cqb + -0.25 * var(--gap)), 1px) - round(0px, 1px))",
         },
         C: {
-          insetInlineStart: "calc(0.5 * 100cqi + 0.5 * var(--gap))",
-          insetBlockStart: "calc(0.25 * 100cqb + 0.75 * var(--gap))",
-          inlineSize: "calc(0.5 * 100cqi + -0.5 * var(--gap))",
-          blockSize: "calc(0.75 * 100cqb + -0.75 * var(--gap))",
+          insetInlineStart: "round(calc(0.5 * 100cqi + 0.5 * var(--gap)), 1px)",
+          insetBlockStart: "round(calc(0.25 * 100cqb + 0.75 * var(--gap)), 1px)",
+          inlineSize:
+            "calc(round(calc(1 * 100cqi), 1px) - round(calc(0.5 * 100cqi + 0.5 * var(--gap)), 1px))",
+          blockSize:
+            "calc(round(calc(1 * 100cqb), 1px) - round(calc(0.25 * 100cqb + 0.75 * var(--gap)), 1px))",
         },
       },
       separators: [
-        "right-split:0 calc(0.5 * 100cqi + -0.5 * var(--gap))",
-        "down-split:0 calc(0.5 * 100cqi + 0.5 * var(--gap))",
+        "right-split:0 round(calc(0.5 * 100cqi + -0.5 * var(--gap)), 1px)",
+        "down-split:0 round(calc(0.5 * 100cqi + 0.5 * var(--gap)), 1px)",
       ],
     },
   },
@@ -178,16 +183,16 @@ test("a zoomed pane covers the layout and the others keep their boxes", () => {
 
   expect(zoomed.panes).toEqual({
     A: {
-      insetInlineStart: "0px",
-      insetBlockStart: "0px",
-      inlineSize: "calc(0.5 * 100cqi + -0.5 * var(--gap))",
-      blockSize: "calc(1 * 100cqb)",
+      insetInlineStart: "round(0px, 1px)",
+      insetBlockStart: "round(0px, 1px)",
+      inlineSize: "calc(round(calc(0.5 * 100cqi + -0.5 * var(--gap)), 1px) - round(0px, 1px))",
+      blockSize: "calc(round(calc(1 * 100cqb), 1px) - round(0px, 1px))",
     },
     B: {
-      insetInlineStart: "0px",
-      insetBlockStart: "0px",
-      inlineSize: "calc(1 * 100cqi)",
-      blockSize: "calc(1 * 100cqb)",
+      insetInlineStart: "round(0px, 1px)",
+      insetBlockStart: "round(0px, 1px)",
+      inlineSize: "calc(round(calc(1 * 100cqi), 1px) - round(0px, 1px))",
+      blockSize: "calc(round(calc(1 * 100cqb), 1px) - round(0px, 1px))",
     },
   });
 });

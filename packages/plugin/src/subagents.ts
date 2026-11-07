@@ -402,20 +402,11 @@ function reply(content: string): ToolResult<unknown> {
   return { content: [{ kind: "text", text: content }] };
 }
 
-/**
- * A session this one may follow: its own subagent, or, for a top-level chat in a project, any
- * other chat in that project, such as one the user moved in.
- */
 async function requireChildSession(invocation: ToolInvocation, id: string): Promise<Session> {
   const child = invocation.sdk.session(asId<"session">(id));
-  const [theirs, own] = await Promise.all([child.info(), invocation.session.info()]);
 
-  const reachable =
-    theirs.parent === own.id ||
-    (own.parent === null && own.project !== undefined && theirs.project === own.project);
-
-  if (!reachable || theirs.id === own.id)
-    throw new Error(`Session ${id} is not a subagent of this session or a chat in its project.`);
+  if ((await child.info()).parent !== invocation.session.id)
+    throw new Error(`Session ${id} is not a subagent of this session.`);
 
   return child;
 }

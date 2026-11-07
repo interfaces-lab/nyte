@@ -67,7 +67,7 @@ const styles = create({
     paddingInline: space.s1,
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
-    borderBottomColor: role.borderSecondaryTranslucent,
+    borderBottomColor: role.strokeQuaternary,
   },
   field: { flex: 1 },
   filterMenu: { minWidth: 0 },

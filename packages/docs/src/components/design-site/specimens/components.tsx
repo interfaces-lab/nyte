@@ -103,7 +103,7 @@ const styles = create({
     padding: space.s1,
     borderRadius: radius.control,
     backgroundColor: role.sidebarMaterial,
-    boxShadow: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
+    boxShadow: `inset 0 0 0 1px ${role.strokeQuaternary}`,
     color: role.contentSecondary,
     fontSize: type.fontBase,
     lineHeight: type.leadingBase,

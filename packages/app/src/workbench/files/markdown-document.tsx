@@ -119,7 +119,7 @@ export function MarkdownDocument(input: MarkdownDocumentProps): ReactElement {
 
   return (
     <div data-nyte-scrollport {...props(styles.scroll)}>
-      <div {...props(text.base, styles.column)}>
+      <div data-slot="markdown-column" {...props(text.base, styles.column)}>
         {frontmatter !== undefined && frontmatter.length > 0 && (
           <dl aria-label="Properties" {...props(text.sm, styles.properties)}>
             {frontmatter.map(([key, value]) => (
