@@ -1,4 +1,4 @@
-import { cp, readFile, stat } from "node:fs/promises";
+import { cp, readFile, readdir, stat } from "node:fs/promises";
 import { createWriteStream, mkdirSync } from "node:fs";
 import type { ServerResponse } from "node:http";
 import { extname, join, normalize, resolve, sep } from "node:path";
@@ -109,6 +109,30 @@ export function deferredChunks(entries: Readonly<Record<string, DeferredEntry>>)
         }
 
         startup.push(...chunk.imports);
+      }
+    },
+  };
+}
+
+export function fileStructureLicenses(): Plugin {
+  const directory = new URL("./src/workbench/editor/grammars/", import.meta.url);
+
+  return {
+    name: "nyte:file-structure-licenses",
+    apply: "build",
+    async generateBundle() {
+      const files = [
+        "NOTICE.txt",
+        "manifest.json",
+        ...(await readdir(new URL("licenses/", directory))).map((file) => `licenses/${file}`),
+      ];
+
+      for (const file of files) {
+        this.emitFile({
+          type: "asset",
+          fileName: `assets/file-structure/${file}`,
+          source: await readFile(new URL(file, directory)),
+        });
       }
     },
   };

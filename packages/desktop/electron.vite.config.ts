@@ -8,7 +8,12 @@ import { build, defaultClientConditions, type Plugin } from "vite";
 import { deferredEntries } from "@nyte-ai/app/lib/deferred-entries.ts";
 import { PICKER_SCRIPT } from "./src/main/browser/browser-picker-page.ts";
 import packageMetadata from "./package.json" with { type: "json" };
-import { deferredChunks, shareCentralIconBase, stylex } from "@nyte-ai/app/vite";
+import {
+  deferredChunks,
+  fileStructureLicenses,
+  shareCentralIconBase,
+  stylex,
+} from "@nyte-ai/app/vite";
 
 const renderer = {
   plugins: [
@@ -20,6 +25,7 @@ const renderer = {
       },
     }),
     shareCentralIconBase(),
+    fileStructureLicenses(),
     stylex.vite({
       useCSSLayers: true,
       lightningcssOptions: { targets: { chrome: 152 << 16 } },

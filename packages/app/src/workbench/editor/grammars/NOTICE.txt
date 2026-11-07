@@ -1,0 +1,44 @@
+File structure parser and grammars
+
+web-tree-sitter@0.25.10 (MIT): licenses/web-tree-sitter-LICENSE.txt
+javascript: tree-sitter-javascript@0.25.0 (MIT)
+  https://registry.npmjs.org/tree-sitter-javascript/-/tree-sitter-javascript-0.25.0.tgz
+  licenses/tree-sitter-javascript.txt
+typescript: tree-sitter-typescript@0.23.2 (MIT)
+  https://registry.npmjs.org/tree-sitter-typescript/-/tree-sitter-typescript-0.23.2.tgz
+  licenses/tree-sitter-typescript.txt
+tsx: tree-sitter-typescript@0.23.2 (MIT)
+  https://registry.npmjs.org/tree-sitter-typescript/-/tree-sitter-typescript-0.23.2.tgz
+  licenses/tree-sitter-typescript.txt
+python: tree-sitter-python@0.25.0 (MIT)
+  https://registry.npmjs.org/tree-sitter-python/-/tree-sitter-python-0.25.0.tgz
+  licenses/tree-sitter-python.txt
+go: tree-sitter-go@0.25.0 (MIT)
+  https://registry.npmjs.org/tree-sitter-go/-/tree-sitter-go-0.25.0.tgz
+  licenses/tree-sitter-go.txt
+rust: tree-sitter-rust@0.24.0 (MIT)
+  https://registry.npmjs.org/tree-sitter-rust/-/tree-sitter-rust-0.24.0.tgz
+  licenses/tree-sitter-rust.txt
+json: tree-sitter-json@0.24.8 (MIT)
+  https://registry.npmjs.org/tree-sitter-json/-/tree-sitter-json-0.24.8.tgz
+  licenses/tree-sitter-json.txt
+css: tree-sitter-css@0.25.0 (MIT)
+  https://registry.npmjs.org/tree-sitter-css/-/tree-sitter-css-0.25.0.tgz
+  licenses/tree-sitter-css.txt
+html: tree-sitter-html@0.23.2 (MIT)
+  https://registry.npmjs.org/tree-sitter-html/-/tree-sitter-html-0.23.2.tgz
+  licenses/tree-sitter-html.txt
+markdown: @opentui/core@0.8.2 (MIT)
+  https://registry.npmjs.org/@opentui/core/-/core-0.8.2.tgz
+  licenses/opentui.txt
+yaml: @tree-sitter-grammars/tree-sitter-yaml@0.7.1 (MIT)
+  https://registry.npmjs.org/@tree-sitter-grammars/tree-sitter-yaml/-/tree-sitter-yaml-0.7.1.tgz
+  licenses/@tree-sitter-grammars--tree-sitter-yaml.txt
+bash: tree-sitter-bash@0.25.1 (MIT)
+  https://registry.npmjs.org/tree-sitter-bash/-/tree-sitter-bash-0.25.1.tgz
+  licenses/tree-sitter-bash.txt
+
+Markdown grammar upstream: tree-sitter-markdown v0.5.1
+https://github.com/tree-sitter-grammars/tree-sitter-markdown/releases/download/v0.5.1/tree-sitter-markdown.wasm
+Distributed by @opentui/core@0.8.2, git b7d9797f72a00afd4149175aa25f94475075a350
+Upstream MIT license: licenses/tree-sitter-markdown-v0.5.1.txt
