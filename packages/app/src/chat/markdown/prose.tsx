@@ -218,7 +218,9 @@ function MarkdownLink({
   }
 
   const linkedImage =
-    node?.children.some((child) => child.type === "element" && child.tagName === "img") === true;
+    node?.children.some(function image(child): boolean {
+      return child.type === "element" && (child.tagName === "img" || child.children.some(image));
+    }) === true;
 
   const reference =
     opener === undefined || href === undefined ? undefined : linkReference(href, files);
