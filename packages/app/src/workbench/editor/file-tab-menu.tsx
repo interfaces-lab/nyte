@@ -113,6 +113,12 @@ export function FileTabMenuItems({
       <ContextMenuItem onClick={() => void navigator.clipboard.writeText(file.displayPath)}>
         Copy Relative Path
       </ContextMenuItem>
+      <ContextMenuItem
+        disabled={file.external}
+        onClick={() => fileActions.reveal(viewKey, file.displayPath)}
+      >
+        Reveal in Explorer
+      </ContextMenuItem>
       {revealPath !== undefined && (
         <ContextMenuItem onClick={() => void revealPath({ path: file.path })}>
           {revealLabel(nyte.platform)}

@@ -424,11 +424,18 @@ export function createFileTabStore(
         revealPath: displayPath,
         revealRevision: current.revealRevision + 1,
       });
-      commit(key, {
-        kind: "open",
-        tab: { id: crypto.randomUUID(), kind: "editor" },
-        activate: true,
-      });
+      const active = getView(key).active;
+
+      commit(
+        key,
+        active === undefined
+          ? {
+              kind: "open",
+              tab: { id: crypto.randomUUID(), kind: "editor" },
+              activate: true,
+            }
+          : { kind: "activate", id: active.id },
+      );
     },
     close(key: WorkbenchViewKey, id: WorkbenchTabId): boolean {
       const tab = fileTabs(key).find((candidate) => candidate.id === id);

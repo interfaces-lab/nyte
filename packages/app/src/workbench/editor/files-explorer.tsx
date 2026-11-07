@@ -1,11 +1,18 @@
 import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { FileTree, useFileTree } from "@pierre/trees/react";
-import type { ContextMenuItem, ContextMenuOpenContext, FileTreeRenameEvent } from "@pierre/trees";
+import type {
+  ContextMenuItem,
+  ContextMenuOpenContext,
+  FileTreeRenameEvent,
+  FileTree as FileTreeModel,
+} from "@pierre/trees";
 import { create, props } from "@stylexjs/stylex";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLayoutEffect, useRef, useState } from "react";
 import type { ReactElement } from "react";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
+import { Button } from "@nyte-ai/ui/button";
+import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Input, InputGroup } from "@nyte-ai/ui/input";
 import { selectionWithin } from "@nyte-ai/ui/selection";
@@ -71,8 +78,20 @@ export function FilesExplorer({
 }): ReactElement {
   const queryClient = useQueryClient();
   const tabs = useFileTabs(viewKey);
-  const [scope, setScope] = useState<Scope>("all");
-  const [filter, setFilter] = useState("");
+
+  const [selection, setSelection] = useState<{
+    readonly revision: number;
+    readonly scope: Scope;
+    readonly filter: string;
+  }>({ revision: tabs.revealRevision, scope: "all", filter: "" });
+
+  const listing =
+    selection.revision === tabs.revealRevision
+      ? selection
+      : { revision: tabs.revealRevision, scope: "all" as const, filter: "" };
+
+  const scope = listing.scope;
+  const filter = listing.filter;
   const [naming, setNaming] = useState<Naming>();
   const [confirming, setConfirming] = useState<{ readonly path: string; readonly name: string }>();
   const [itemHeight] = useState(treeItemHeight);
@@ -404,6 +423,16 @@ export function FilesExplorer({
   };
 
   const shownPaths = useRef<ReadonlySet<string>>(new Set());
+  const expandedFilter = useRef({ scope, filter });
+
+  const collapseFolders = (): void => {
+    for (const path of [...shownPaths.current].sort((left, right) => right.length - left.length)) {
+      const item = path.endsWith("/") ? model.getItem(path) : null;
+
+      if (item !== null && "collapse" in item) item.collapse();
+    }
+  };
+
   // oxlint-disable-next-line nyte-code/no-direct-effect -- pushes path changes into the imperative Pierre tree
   useLayoutEffect(() => {
     shownPaths.current = syncTreePaths(
@@ -411,6 +440,11 @@ export function FilesExplorer({
       shownPaths.current,
       treePaths(files.data, changes, scope, filter),
     );
+
+    if (files.data === undefined) return;
+
+    if (expandedFilter.current.scope === scope && expandedFilter.current.filter === filter) return;
+    expandedFilter.current = { scope, filter };
 
     if (scope !== "changed" && filter === "") return;
 
@@ -425,15 +459,28 @@ export function FilesExplorer({
   // oxlint-disable-next-line nyte-code/no-direct-effect -- reveals the requested path once the Pierre tree has it
   useLayoutEffect(() => {
     if (tabs.revealPath === undefined || revealed.current === tabs.revealRevision) return;
-    const item = model.getItem(tabs.revealPath);
 
-    if (item === null) return;
+    if (!shownPaths.current.has(tabs.revealPath)) return;
     revealed.current = tabs.revealRevision;
+    expandAncestors(model, tabs.revealPath);
 
-    if ("expand" in item) item.expand();
-    item.select();
-    model.scrollToPath(tabs.revealPath, { offset: "nearest" });
-  }, [model, files.data, tabs.revealPath, tabs.revealRevision]);
+    for (const path of model.getSelectedPaths()) model.getItem(path)?.deselect();
+
+    model.getItem(tabs.revealPath)?.select();
+    model.scrollToPath(tabs.revealPath, { offset: "nearest", focus: true });
+  }, [model, files.data, scope, filter, tabs.revealPath, tabs.revealRevision]);
+
+  const activePath = tabs.active?.external === false ? tabs.active.displayPath : undefined;
+  const followed = useRef<string | undefined>(undefined);
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- follows file activation without moving keyboard focus out of the editor
+  useLayoutEffect(() => {
+    if (files.data === undefined || followed.current === activePath) return;
+    followed.current = activePath;
+
+    if (activePath === undefined || !shownPaths.current.has(activePath)) return;
+    expandAncestors(model, activePath);
+    model.scrollToPath(activePath, { offset: "nearest", focus: false });
+  }, [model, files.data, activePath, scope, filter]);
   // oxlint-disable-next-line nyte-code/no-direct-effect -- pushes worktree statuses into the imperative Pierre tree
   useLayoutEffect(() => {
     model.setGitStatus(
@@ -455,7 +502,7 @@ export function FilesExplorer({
           onValueChange={(value) => {
             const next = value[0];
 
-            if (next === "all" || next === "changed") setScope(next);
+            if (next === "all" || next === "changed") setSelection({ ...listing, scope: next });
           }}
         >
           <Toggle value="all" size="2xs">
@@ -465,6 +512,26 @@ export function FilesExplorer({
             Changed {changes.length}
           </Toggle>
         </ToggleGroup>
+        <Menu>
+          <MenuTrigger
+            render={<Button iconOnly icon="more-horizontal" aria-label="Explorer Options" />}
+          />
+          <MenuContent align="end">
+            <MenuItem layout="plain" onClick={() => startNaming("file", "")}>
+              New File…
+            </MenuItem>
+            <MenuItem layout="plain" onClick={() => startNaming("folder", "")}>
+              New Folder…
+            </MenuItem>
+            <MenuSeparator />
+            <MenuItem layout="plain" onClick={refresh}>
+              Refresh Explorer
+            </MenuItem>
+            <MenuItem layout="plain" onClick={collapseFolders}>
+              Collapse Folders
+            </MenuItem>
+          </MenuContent>
+        </Menu>
       </div>
       <div {...props(styles.filter)}>
         <InputGroup>
@@ -473,11 +540,11 @@ export function FilesExplorer({
             aria-label="Filter files"
             placeholder="Filter files"
             value={filter}
-            onChange={(event) => setFilter(event.target.value)}
+            onChange={(event) => setSelection({ ...listing, filter: event.target.value })}
             onKeyDown={(event) => {
               if (event.key === "Escape" && filter !== "") {
                 event.stopPropagation();
-                setFilter("");
+                setSelection({ ...listing, filter: "" });
               }
 
               if (event.key === "ArrowDown") {
@@ -567,6 +634,14 @@ function treePaths(
           (!path.endsWith("/") &&
             fuzzyScore(path.slice(path.lastIndexOf("/") + 1), needle) !== undefined)),
     );
+}
+
+function expandAncestors(model: FileTreeModel, path: string): void {
+  for (let slash = path.indexOf("/"); slash >= 0; slash = path.indexOf("/", slash + 1)) {
+    const item = model.getItem(path.slice(0, slash + 1));
+
+    if (item !== null && "expand" in item) item.expand();
+  }
 }
 
 /** A tree path without the slash that marks a folder: how the files API names it. */

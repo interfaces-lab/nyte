@@ -137,7 +137,15 @@ export function EditorPanel({
   const tabs = useFileTabs(viewKey);
   const autoSave = useSetting(preferences.fileAutoSave);
   const sidePanel = useSetting(preferences.editorSidePanel);
-  const [sidebar, setSidebar] = useState<"explorer" | "search">("explorer");
+
+  const [sidebarSelection, setSidebarSelection] = useState<{
+    readonly revision: number;
+    readonly tab: "explorer" | "search";
+  }>({ revision: tabs.revealRevision, tab: "explorer" });
+
+  const sidebar =
+    sidebarSelection.revision === tabs.revealRevision ? sidebarSelection.tab : "explorer";
+
   const [searchOpened, setSearchOpened] = useState(false);
   const [discardPath, setDiscardPath] = useState<string>();
   const [discarding, setDiscarding] = useState(false);
@@ -187,10 +195,19 @@ export function EditorPanel({
     if (!sidebarVisible) onToggleSidebar();
   };
 
+  const revealed = useRef(0);
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- consumes an explicit Explorer reveal request from the file store
+  useEffect(() => {
+    if (!shown || tabs.revealRevision === revealed.current) return;
+    revealed.current = tabs.revealRevision;
+
+    if (!sidebarVisible) onToggleSidebar();
+  }, [shown, tabs.revealRevision, sidebarVisible, onToggleSidebar]);
+
   const showSearch = (): void => {
     showSidebar();
     setSearchOpened(true);
-    setSidebar("search");
+    setSidebarSelection({ revision: tabs.revealRevision, tab: "search" });
     requestAnimationFrame(() => searchRef.current?.querySelector("input")?.focus());
   };
 
@@ -439,7 +456,11 @@ export function EditorPanel({
               icon="search"
               aria-label="Search Files"
               pressed={sidebarVisible && sidebar === "search"}
-              onPressedChange={(pressed) => (pressed ? showSearch() : setSidebar("explorer"))}
+              onPressedChange={(pressed) =>
+                pressed
+                  ? showSearch()
+                  : setSidebarSelection({ revision: tabs.revealRevision, tab: "explorer" })
+              }
             />
             <Toggle
               iconOnly
@@ -476,7 +497,7 @@ export function EditorPanel({
                     explorerVisible={sidebarVisible && sidebar === "explorer"}
                     onOpen={(file) => fileActions.open(viewKey, { ...file, preview: true })}
                     onShowExplorer={() => {
-                      setSidebar("explorer");
+                      setSidebarSelection({ revision: tabs.revealRevision, tab: "explorer" });
                       showSidebar();
                     }}
                     onSearch={showSearch}
