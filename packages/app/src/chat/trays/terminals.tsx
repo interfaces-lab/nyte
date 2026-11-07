@@ -224,9 +224,11 @@ export function BackgroundWork({
               });
             }}
           >
-            <span aria-hidden="true" {...props(trayParts.pillIndicator)}>
-              <TaskMark state={pillState(terminals)} job />
-            </span>
+            {pillState(terminals) !== "done" && (
+              <span aria-hidden="true" {...props(trayParts.pillIndicator)}>
+                <TaskMark state={pillState(terminals)} job />
+              </span>
+            )}
             <span aria-hidden="true" {...props(trayParts.pillCount)}>
               {count}
             </span>

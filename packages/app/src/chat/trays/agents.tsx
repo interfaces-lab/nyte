@@ -154,9 +154,11 @@ export function SubagentTray({
             onViewChange({ kind: "list", openedOver: agents.map((agent) => agent.id) })
           }
         >
-          <span aria-hidden="true" {...props(trayParts.pillIndicator)}>
-            <TaskMark state={pillState(agents)} />
-          </span>
+          {pillState(agents) !== "done" && (
+            <span aria-hidden="true" {...props(trayParts.pillIndicator)}>
+              <TaskMark state={pillState(agents)} />
+            </span>
+          )}
           <span>Agents</span>
           <span aria-hidden="true" {...props(trayParts.pillCount)}>
             {String(agents.length)}

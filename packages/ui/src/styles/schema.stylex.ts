@@ -135,6 +135,10 @@ export const row = defineConsts({
   radius: "var(--nyte-row-radius)",
 });
 
+export const command = defineConsts({
+  barHeight: "var(--nyte-command-bar-height)",
+});
+
 export const menu = defineConsts({
   metaMinWidth: "var(--nyte-menu-meta-min-width)",
   padding: "var(--nyte-menu-padding)",

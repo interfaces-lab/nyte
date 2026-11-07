@@ -5,7 +5,17 @@ import type { ReactElement, ReactNode } from "react";
 
 import { srOnly } from "./styles/a11y.stylex.ts";
 import { floatingSurfaceStyles } from "./styles/floating-surface.stylex.ts";
-import { glyph, layer, radius, space, target } from "./styles/schema.stylex.ts";
+import { hairline } from "./styles/hairline.stylex.ts";
+import {
+  command,
+  glyph,
+  layer,
+  media,
+  radius,
+  row,
+  space,
+  target,
+} from "./styles/schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
 import type { Restyle } from "./styles/contracts.ts";
 import { surfaceTheme, type Tint } from "./surface-theme.ts";
@@ -44,7 +54,7 @@ const styles = create({
     display: "flex",
     flexDirection: "column",
     width: "min(560px, 100%)",
-    maxHeight: "min(430px, 100%)",
+    maxHeight: "min(432px, 100%)",
     borderStyle: "none",
     borderRadius: `calc(${radius.card} + 8px)`,
     outline: "none",
@@ -71,11 +81,8 @@ const styles = create({
     alignItems: "center",
     gap: space.s2_5,
     flexShrink: 0,
-    minHeight: 56,
+    minHeight: `max(${command.barHeight}, calc(${target.min} + ${space.s4}))`,
     paddingInline: space.s5,
-    borderBottomWidth: 1,
-    borderBottomStyle: "solid",
-    borderBottomColor: role.strokeQuaternary,
     outlineStyle: { default: "none", ":focus-within": "solid" },
     outlineWidth: 1,
     outlineColor: appearance.focusRing,
@@ -91,7 +98,7 @@ const styles = create({
   input: {
     boxSizing: "border-box",
     width: "100%",
-    height: `max(40px, ${target.min})`,
+    height: row.heightLg,
     margin: 0,
     padding: 0,
     borderStyle: "none",
@@ -117,8 +124,7 @@ const styles = create({
   },
   groupLabel: {
     paddingInline: space.s3,
-    paddingBlockStart: space.s3,
-    paddingBlockEnd: space.s1_5,
+    paddingBlock: space.s2,
     color: role.contentSecondary,
     userSelect: "none",
   },
@@ -128,13 +134,16 @@ const styles = create({
     gridTemplateColumns: `${glyph.md} minmax(0, 1fr) auto`,
     alignItems: "center",
     columnGap: space.s2_5,
-    minHeight: `max(40px, ${target.min})`,
-    paddingBlock: space.s2,
+    minHeight: row.heightLg,
+    paddingBlock: space.s1_5,
     paddingInline: space.s3,
-    borderRadius: radius.card,
+    borderRadius: row.radius,
     outlineStyle: { default: "none", "[data-highlighted]": "solid" },
     outlineWidth: 1,
-    outlineColor: appearance.focusRing,
+    outlineColor: {
+      default: appearance.focusRing,
+      "[data-highlighted]": { [media.forcedColors]: "Highlight" },
+    },
     outlineOffset: -1,
     backgroundColor: { default: "transparent", "[data-highlighted]": role.fillTertiary },
     color: { default: role.contentPrimary, "[data-disabled]": role.contentDisabled },
@@ -287,7 +296,10 @@ function CommandInput({
   readonly trailing?: ReactNode;
 }): ReactElement {
   return (
-    <Autocomplete.InputGroup data-slot="command-input-group" {...props(styles.inputGroup)}>
+    <Autocomplete.InputGroup
+      data-slot="command-input-group"
+      {...props(styles.inputGroup, hairline.blockEnd)}
+    >
       <span aria-hidden="true" {...props(styles.inputIcon)}>
         <Icon name="search" size="md" />
       </span>

@@ -96,7 +96,7 @@ export type QuestionOutcome =
 export interface QuestionDock {
   readonly request: OpenQuestion;
   readonly field: QuestionInfo;
-  readonly origin: string | undefined;
+  readonly origin: { readonly title: string; readonly sessionId: SessionId } | undefined;
   readonly current: number;
   readonly total: number;
   readonly last: boolean;
@@ -145,7 +145,7 @@ export function useQuestionDock(sessionId: SessionId): QuestionDock | undefined 
       openQuestions(entry.view).map((request) => ({
         sessionId: entry.id,
         request,
-        origin: entry.title,
+        origin: { title: entry.title, sessionId: entry.id },
       })),
     ),
   ];

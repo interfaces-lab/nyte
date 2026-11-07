@@ -617,6 +617,7 @@
       "--nyte-checkbox-size-md",
       "--nyte-clipboard-preview-max-height",
       "--nyte-clipboard-preview-max-width",
+      "--nyte-command-bar-height",
       "--nyte-dialog-gap",
       "--nyte-dialog-padding",
       "--nyte-dialog-radius",
@@ -939,6 +940,7 @@
     ],
     "ui/src/styles/schema.stylex.ts checkbox": ["radius", "sizeLg", "sizeMd"],
     "ui/src/styles/schema.stylex.ts clipboardPreview": ["maxHeight", "maxWidth"],
+    "ui/src/styles/schema.stylex.ts command": ["barHeight"],
     "ui/src/styles/schema.stylex.ts control": [
       "height2xs",
       "heightLg",

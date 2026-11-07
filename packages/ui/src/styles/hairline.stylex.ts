@@ -7,6 +7,9 @@ import { role } from "./vars.stylex.ts";
 const ELEVATION = "var(--nyte-hairline-elevation, 0 0 #0000)";
 
 /** Under forced colors: a 1px line along one edge, drawn by a border image with no border width. */
+const FORCED_BLOCK_START =
+  "linear-gradient(CanvasText, CanvasText) 1 0 0 0 / 1px 0 0 0 / 0 stretch";
+
 const FORCED_BLOCK_END = "linear-gradient(CanvasText, CanvasText) 0 0 1 0 / 0 0 1px 0 / 0 stretch";
 
 /** Physical sides for the inline edges, picked by `:dir()`. */
@@ -17,7 +20,7 @@ const FORCED_RIGHT = "linear-gradient(CanvasText, CanvasText) 0 1 0 0 / 0 1px 0 
 /**
  * A hairline edge that takes no layout space, so the box keeps its grid size: an inset box-shadow in
  * `role.strokeQuaternary`, the stroke stairs' hairline divider. Forced colors drop box-shadows, so
- * there `blockEnd`, `inlineStart` and `tableCell` are a border image with no border width and `ring`
+ * there `blockStart`, `blockEnd`, `inlineStart` and `tableCell` are a border image with no border width and `ring`
  * an outline drawn inside the box, none taking a pixel. A box takes one hairline style, and sets no
  * `boxShadow` of its own nor the property its forced-colors edge uses (`borderImage` or `outline*`):
  * StyleX merges per property, and ui's styles sit in an earlier layer than the app's, so a second
@@ -25,6 +28,10 @@ const FORCED_RIGHT = "linear-gradient(CanvasText, CanvasText) 0 1 0 0 / 0 1px 0 
  * `--nyte-hairline-elevation` instead, which every style draws before its edge.
  */
 export const hairline = create({
+  blockStart: {
+    boxShadow: `${ELEVATION}, inset 0 1px 0 ${role.strokeQuaternary}`,
+    borderImage: { default: null, [media.forcedColors]: FORCED_BLOCK_START },
+  },
   blockEnd: {
     boxShadow: `${ELEVATION}, inset 0 -1px 0 ${role.strokeQuaternary}`,
     borderImage: { default: null, [media.forcedColors]: FORCED_BLOCK_END },

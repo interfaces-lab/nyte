@@ -266,6 +266,7 @@ export const components = defineVars({
   "--nyte-avatar-md": "28px",
   "--nyte-avatar-lg": "36px",
   "--nyte-slider-thumb": { default: "14px", "@media (pointer: coarse)": "22px" },
+  "--nyte-command-bar-height": "48px",
   "--nyte-menu-meta-min-width": "32px",
   "--nyte-menu-padding": "6px",
   "--nyte-menu-radius": "14px",

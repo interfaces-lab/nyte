@@ -9,6 +9,8 @@ import { formatTimeAgo } from "../lib/format.ts";
 import { useNowMinute } from "../lib/use-now-minute.ts";
 import { TaskMark } from "../components/task-mark.tsx";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
+import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { Kbd } from "@nyte-ai/ui/kbd";
 import { sessionTitle } from "@nyte-ai/plugin/client/presentation";
 import { useChats } from "../chats/index.ts";
@@ -21,6 +23,7 @@ import { searchPaletteStyles as styles } from "./search-palette.stylex.ts";
 import { settingsSectionGroups, type SettingsSection } from "../settings/index.ts";
 import { clientActionKeys, clientActions } from "../contract/client-actions.ts";
 import { nyte } from "../contract/nyte.ts";
+import { actionIcons, settingsActionPages } from "./action-icons.ts";
 
 const TABS = ["all", "agents", "actions", "settings"] as const;
 
@@ -145,9 +148,17 @@ export function SearchPalette({
   const actions: readonly PaletteAction[] = Object.values(clientActions).flatMap((action) => {
     if (!("palette" in action)) return [];
 
-    if (action.id === "model-settings" && !settingsSections.includes("providers")) return [];
+    if (
+      action.id === "model-settings" &&
+      !settingsSections.includes(settingsActionPages[action.id])
+    )
+      return [];
 
-    if (action.id === "profile-settings" && !settingsSections.includes("profile")) return [];
+    if (
+      action.id === "profile-settings" &&
+      !settingsSections.includes(settingsActionPages[action.id])
+    )
+      return [];
 
     if (action.id === "open-folder" && onOpenFolder === undefined) return [];
 
@@ -162,13 +173,10 @@ export function SearchPalette({
         case "open-home":
           return onOpenHome?.();
         case "general-settings":
-          return onOpenSettings("general");
         case "appearance-settings":
-          return onOpenSettings("appearance");
         case "model-settings":
-          return onOpenSettings("providers");
         case "profile-settings":
-          return onOpenSettings("profile");
+          return onOpenSettings(settingsActionPages[action.id]);
         case "customize-settings":
           return onOpenCustomize();
         case "reload-window":
@@ -188,6 +196,7 @@ export function SearchPalette({
         key: action.id,
         label: action.label,
         ...action.palette,
+        icon: actionIcons[action.id],
         meta: keys.length === 0 ? undefined : <Kbd keys={keys} plain />,
         run,
       },
@@ -259,19 +268,19 @@ export function SearchPalette({
         <Command.Input
           aria-label="Search"
           placeholder="Search chats and actions…"
-          trailing={<Kbd keys={clientActionKeys(clientActions.search, mac)} />}
+          trailing={<Kbd keys={clientActionKeys(clientActions.search, mac)} plain />}
         />
         <Tabs.Root
-          variant="pill"
+          variant="plain"
           value={tab}
-          xstyle={styles.tabsBar}
+          xstyle={[styles.tabsBar, hairline.blockEnd]}
           onValueChange={(value) => {
             if (amongOptions(value, TABS)) setTab(value);
           }}
         >
           <Tabs.List aria-label="Search categories" xstyle={styles.tabs}>
             {TABS.map((option) => (
-              <Tabs.Tab key={option} value={option}>
+              <Tabs.Tab key={option} value={option} variant="bare" xstyle={[text.base, styles.tab]}>
                 {tabLabel(option)}
               </Tabs.Tab>
             ))}

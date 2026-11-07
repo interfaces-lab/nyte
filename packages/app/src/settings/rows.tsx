@@ -9,6 +9,7 @@ import {
   NumberFieldIncrement,
   NumberFieldInput,
 } from "@nyte-ai/ui/number-field";
+import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 import { props } from "@stylexjs/stylex";
 import type { ReactElement, ReactNode } from "react";
 import { useSetting, type Setting } from "../preferences/index.ts";
@@ -49,7 +50,7 @@ export function SettingsSection({
       )}
       <div {...props(settingsPatterns.group)}>
         {preview !== undefined && (
-          <div inert {...props(settingsPatterns.preview)}>
+          <div inert data-settings-preview {...props(settingsPatterns.preview, hairline.ringAfter)}>
             {preview}
           </div>
         )}
@@ -177,6 +178,7 @@ export function SelectRow<T extends string>(
         }}
       >
         <SelectTrigger
+          xstyle={settingsStyles.valueField}
           aria-label={input.title}
           width={input.controlWidth === "wide" ? "wide" : undefined}
         >
@@ -214,7 +216,7 @@ export function NumberRow(
           if (next !== null) input.setting.set(next);
         }}
       >
-        <NumberFieldGroup>
+        <NumberFieldGroup xstyle={settingsStyles.valueField}>
           <NumberFieldDecrement />
           <NumberFieldInput aria-label={input.title} />
           <NumberFieldIncrement />

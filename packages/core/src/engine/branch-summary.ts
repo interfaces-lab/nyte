@@ -13,6 +13,7 @@ import type {
 import type { Kernel } from "../contract/kernel.ts";
 import type { CommitRecord, PartRecord, ReceiptRecord } from "../contract/records.ts";
 import { commit } from "../fold/commit.ts";
+import { walkCommitPath } from "../fold/paths.ts";
 import { withFold } from "../fold/reads.ts";
 import { headRef, partRef } from "../store/refs.ts";
 import {
@@ -25,7 +26,6 @@ import {
   STALE,
   staleHead,
   toCommitObjectId,
-  walkCommitPath,
 } from "../store/session.ts";
 import type { Found, Inbox, MoveFailure, Tip } from "../store/session.ts";
 import { fence } from "./fence.ts";

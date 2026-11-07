@@ -299,26 +299,6 @@ export async function attempt<T>(what: string, write: () => Promise<T | typeof S
   }
 }
 
-export function walkCommitPath(
-  commits: ReadonlyMap<CommitId, CommitRecord>,
-  tip: CommitId | null,
-): readonly CommitId[] {
-  const path: CommitId[] = [];
-  const seen = new Set<CommitId>();
-  let cursor = tip;
-
-  while (cursor !== null && !seen.has(cursor)) {
-    seen.add(cursor);
-    const record = commits.get(cursor);
-
-    if (record === undefined) break;
-    path.push(cursor);
-    cursor = record.parent;
-  }
-
-  return path.reverse();
-}
-
 export function readPositionCommit(position: Position): CommitId | null {
   return position.kind === "commit" ? position.id : null;
 }

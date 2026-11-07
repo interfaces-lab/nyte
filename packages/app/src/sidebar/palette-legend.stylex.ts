@@ -1,4 +1,4 @@
-import { glyph, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { command, glyph, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { create } from "@stylexjs/stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
@@ -6,12 +6,9 @@ export const paletteLegendStyles = create({
   footer: {
     display: "flex",
     alignItems: "center",
-    minHeight: 48,
+    minHeight: command.barHeight,
     flexShrink: 0,
-    paddingInline: space.s3,
-    borderTopWidth: 1,
-    borderTopStyle: "solid",
-    borderTopColor: role.strokeQuaternary,
+    paddingInline: space.s5,
   },
   legend: {
     display: "flex",

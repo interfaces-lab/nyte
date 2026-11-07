@@ -39,6 +39,7 @@ import { modelsSettingsStyles as styles } from "./models-settings.stylex.ts";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { SettingsRow } from "./rows.tsx";
+import { settingsStyles } from "./settings.stylex.ts";
 import { BrowserSignInPanel, DeviceCodePanel } from "../account/sign-in-panels.tsx";
 import { formatTokens } from "../lib/format.ts";
 
@@ -229,7 +230,7 @@ export function NewChatsSection({
               setPreference.mutate({ provider: option.provider, id: option.id });
             }}
           >
-            <SelectTrigger aria-label="Default model" width="wide">
+            <SelectTrigger aria-label="Default model" xstyle={settingsStyles.valueField}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

@@ -124,7 +124,7 @@ function RootChat(): ReactElement {
   return (
     <output>
       {[
-        `asks: ${dock === undefined ? "nothing" : `${String(dock.origin)}: ${dock.field.question}`}`,
+        `asks: ${dock === undefined ? "nothing" : `${dock.origin?.title}: ${dock.field.question}`}`,
         `tasks: ${tasks.map(line).join(", ")}`,
         `nested: ${nested.map(line).join(", ")}`,
       ].join("\n")}

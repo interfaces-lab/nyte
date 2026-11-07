@@ -833,7 +833,10 @@ function applyPatch(draft: Draft, event: PatchEvent): boolean {
   return true;
 }
 
+/** Changes the named head, or every head for null. Session events decide which heads exist, so an event for a head the fold doesn't hold changes nothing. */
 function eachHead(draft: Draft, name: HeadName | null, change: (head: FoldHead) => FoldHead): void {
+  if (name !== null && !draft.heads.has(name)) return;
+
   for (const head of name === null ? draft.heads.keys() : [name]) updateHead(draft, head, change);
 }
 

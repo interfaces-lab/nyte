@@ -4,7 +4,10 @@ import type { Configuration, SessionId, SessionView } from "@nyte-ai/sdk";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useLayoutEffect } from "react";
 import type { ReactElement } from "react";
+import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
+import { activeTab, tabPlace } from "../../tabs/model.ts";
+import { windowTabs } from "../../tabs/window-tabs.ts";
 import "../../theme/tokens.stylex.ts";
 import "../../theme/global.css";
 import { installScripted, scriptedConnection } from "../../../test/scripted-connection.ts";
@@ -454,6 +457,66 @@ async function lastAnswer(): Promise<readonly string[]> {
   return failures;
 }
 
+async function askers(): Promise<readonly string[]> {
+  const host = document.createElement("div");
+  host.style.width = "560px";
+  document.body.append(host);
+  const root = createRoot(host);
+  const origin = { title: "Tray review", sessionId: asId<"session">("tray-review") };
+
+  const failures: string[] = [];
+  windowTabs.start({ id: "question-askers", launch: undefined });
+  windowTabs.openChat(SESSION, "permanent");
+  const parent = activeTab(windowTabs.getSnapshot());
+
+  applyDisplayMode("light");
+
+  for (const asker of [undefined, origin]) {
+    flushSync(() =>
+      root.render(
+        <QuestionDockContext value={{ ...dock, origin: asker }}>
+          <QuestionTray disabled={false} viewport={null} />
+        </QuestionDockContext>,
+      ),
+    );
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+
+    const opener = Array.from(host.querySelectorAll("button")).find((button) =>
+      button.textContent.includes(origin.title),
+    );
+
+    if (asker === undefined) {
+      if (opener !== undefined) failures.push("This chat has a subagent action");
+      continue;
+    }
+
+    if (opener === undefined) {
+      failures.push("The subagent's name cannot open its chat");
+      continue;
+    }
+
+    await click(opener);
+    const state = windowTabs.getSnapshot();
+    const child = activeTab(state);
+    const place = tabPlace(child);
+
+    if (
+      place.kind !== "session" ||
+      place.sessionId !== asker.sessionId ||
+      state.tabs.indexOf(child) !== state.tabs.indexOf(parent) + 1 ||
+      child.view.kind !== "preview"
+    )
+      failures.push("The name did not open the child's chat next to its parent");
+
+    windowTabs.dispatch({ kind: "close-tab", tabId: child.id });
+  }
+
+  root.unmount();
+  host.remove();
+
+  return failures;
+}
+
 export async function mount(): Promise<void> {
   const host = document.createElement("div");
   host.style.width = "560px";
@@ -487,7 +550,7 @@ export async function run(): Promise<string> {
       return `${theme}: the chevron's centre ${String(chevronCentre)} is off the label's ${String(labelCentre)}`;
   }
 
-  const failures = [...(await failedReplies()), ...(await lastAnswer())];
+  const failures = [...(await failedReplies()), ...(await lastAnswer()), ...(await askers())];
 
   return failures.length === 0 ? "passed" : failures.join("\n");
 }

@@ -23,7 +23,6 @@ interface ActionDetails {
   readonly capability?: keyof ClientCapabilities;
   readonly palette?: {
     readonly keywords: string;
-    readonly icon: string;
     readonly group: "actions" | "settings";
   };
 }
@@ -41,7 +40,7 @@ export const clientActions = {
     key: "n",
     chord: "primary",
     scope: "window",
-    palette: { keywords: "start create conversation session", icon: "plus", group: "actions" },
+    palette: { keywords: "start create conversation session", group: "actions" },
   },
   newTab: {
     id: "new-tab",
@@ -93,7 +92,6 @@ export const clientActions = {
     scope: "window",
     palette: {
       keywords: "workspace project directory choose",
-      icon: "folder-open",
       group: "actions",
     },
   },
@@ -101,19 +99,19 @@ export const clientActions = {
     id: "open-home",
     label: "Open Home",
     scope: "window",
-    palette: { keywords: "workspace projectless activate", icon: "folder", group: "actions" },
+    palette: { keywords: "workspace projectless activate", group: "actions" },
   },
   generalSettings: {
     id: "general-settings",
     label: "General Settings",
     scope: "window",
-    palette: { keywords: "preferences configuration", icon: "settings", group: "settings" },
+    palette: { keywords: "preferences configuration", group: "settings" },
   },
   appearanceSettings: {
     id: "appearance-settings",
     label: "Appearance",
     scope: "window",
-    palette: { keywords: "theme color interface", icon: "sparkle", group: "settings" },
+    palette: { keywords: "theme color interface", group: "settings" },
   },
   modelSettings: {
     id: "model-settings",
@@ -121,7 +119,6 @@ export const clientActions = {
     scope: "window",
     palette: {
       keywords: "providers api key sign in anthropic openai default reasoning",
-      icon: "layers",
       group: "settings",
     },
   },
@@ -131,7 +128,6 @@ export const clientActions = {
     scope: "window",
     palette: {
       keywords: "account github nyte email login sign in remote access",
-      icon: "user",
       group: "settings",
     },
   },
@@ -139,7 +135,7 @@ export const clientActions = {
     id: "customize-settings",
     label: "Customize",
     scope: "window",
-    palette: { keywords: "agents skills rules mcp", icon: "customize", group: "settings" },
+    palette: { keywords: "agents skills rules mcp", group: "settings" },
   },
   reloadWindow: {
     id: "reload-window",
@@ -147,7 +143,7 @@ export const clientActions = {
     key: "r",
     chord: "primary-shift",
     scope: "window",
-    palette: { keywords: "refresh restart", icon: "refresh", group: "actions" },
+    palette: { keywords: "refresh restart", group: "actions" },
   },
   search: { id: "search", label: "Search", key: "k", chord: "primary", scope: "window" },
   settings: {

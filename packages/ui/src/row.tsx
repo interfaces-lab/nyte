@@ -76,7 +76,7 @@ const styles = create({
   },
   selected: {
     "--_row-fill": role.fillSecondary,
-    boxShadow: `inset 0 0 0 1px ${role.strokeTertiary}`,
+    boxShadow: `inset 0 0 0 1px ${role.strokeQuaternary}`,
     color: role.contentPrimary,
   },
   primaryFocus: {

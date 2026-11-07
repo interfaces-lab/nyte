@@ -8,6 +8,7 @@ import { nyte } from "../contract/nyte.ts";
 import { keys, queryClient } from "../data/query-client.ts";
 import { closeSettings } from "../settings/return.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
+import { settingsActionPages } from "../sidebar/action-icons.ts";
 import { launch } from "../workbench/commands.ts";
 import { workbenchShowsChat } from "../workbench/model.ts";
 import { workbenchScope, workbenchViewKey } from "../workbench/paths.ts";
@@ -100,7 +101,10 @@ export function runWindowCommand(router: RegisteredRouter, command: AppMenuActio
       return true;
     case "settings":
       if (!settingsOpen(router))
-        void router.navigate({ to: "/settings/$section", params: { section: "general" } });
+        void router.navigate({
+          to: "/settings/$section",
+          params: { section: settingsActionPages.settings },
+        });
 
       return true;
     case "search":

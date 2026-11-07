@@ -6,7 +6,7 @@ import { attachSession } from "../src/api/attach.ts";
 import { runStep } from "../src/engine/durable.ts";
 import { pollStore } from "../src/fold/watch.ts";
 import { main, setup, until } from "../src/harness.ts";
-import { definePart } from "../src/index.ts";
+import { ALL_AUTHORITY, definePart } from "../src/index.ts";
 import { memoryStore } from "../src/store.ts";
 import type { Kernel, StepOutcome } from "../src/contract/kernel.ts";
 import type { StoreConnection } from "../src/contract/store.ts";
@@ -116,6 +116,53 @@ describe("child background items", () => {
     expect(await childState(child, grandchild.id, "waiting")).toBe("waiting");
     expect(await childState(root, child.id, "waiting")).toBe("waiting");
     expect((await root.info()).heads[0]?.background).toEqual({ working: 0, waiting: 1 });
+  });
+
+  it("folds no head its parent lacks when a child started from another session's head is linked from the store", async () => {
+    const connection = await memoryStore().open();
+    const before = await setup({ store: connection });
+    const { session: origin } = await before.host.sessions.start({ content: "Delegate." });
+    const { session: parent } = await before.host.sessions.start({ content: "Hold it." });
+    await origin.heads.create(side);
+    await origin.head(side).send("Start a child.");
+    const step = before.host.execution.advance({ session: origin.id, head: side });
+    const turn = await before.script.started(1);
+
+    const tool = before.kernel.handles.connection({
+      principal: before.host.principal,
+      authority: ALL_AUTHORITY,
+      credential: { kind: "token", token: "x" },
+      origin: {
+        session: origin.id,
+        run: turn.input.run.id,
+        head: side,
+        call: null,
+        sequence: { next: () => 0 },
+      },
+    });
+
+    const { session: child } = await tool.sessions.start({ parent: parent.id, content: "Go." });
+    turn.finish();
+    await step;
+    const working = before.host.execution.advance({ session: child.id, head: main });
+    (await before.script.started(2)).finish();
+    await working;
+
+    const after = await setup({ store: connection });
+    const hold = after.kernel.folds.acquire(parent.id, after.host.principal);
+
+    try {
+      await hold.ready();
+
+      expect(after.kernel.children.background(parent.id)).toMatchObject([
+        { head: side, item: { id: child.id, state: "done" } },
+      ]);
+      expect([...hold.state().heads.keys()]).toEqual(
+        (await after.host.session(parent.id).info()).heads.map((head) => head.name),
+      );
+    } finally {
+      hold.release();
+    }
   });
 
   it("links a child from the store after a restart, so its parked question reaches the parent", async () => {

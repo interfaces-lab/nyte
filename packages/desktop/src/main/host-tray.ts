@@ -24,6 +24,12 @@ const STATUS_COLORS = {
   stopped: [255, 59, 48],
 } as const satisfies { readonly [S in HostStatus]: readonly [number, number, number] };
 
+const MAC_VERSION = process.getSystemVersion().split(".").map(Number);
+
+/** Menu item sublabels draw from macOS 14.4; before it, the status joins the label. */
+const SUBLABELS =
+  (MAC_VERSION[0] ?? 0) > 14 || ((MAC_VERSION[0] ?? 0) === 14 && (MAC_VERSION[1] ?? 0) >= 4);
+
 const ISSUE_LABELS = {
   approval: "Approve Nyte Host in System Settings > Login Items",
   unreachable: "Nyte can't connect to the host",
@@ -34,6 +40,7 @@ export interface HostTrayOptions {
   readonly link: HostLink;
   readonly launchState: Pick<LaunchStateStore, "menuBarOnly" | "setMenuBarOnly">;
   checkForUpdates(): void;
+  openApp(): void;
   openSettings(): void;
 }
 
@@ -133,7 +140,12 @@ function items(
   const versions = `Nyte ${app.getVersion()} · Host ${host}`;
 
   return [
-    { label: STATUS_LABELS[reading.status], icon: dot, enabled: false },
+    {
+      label: SUBLABELS ? "Nyte Host" : `Nyte Host: ${STATUS_LABELS[reading.status]}`,
+      sublabel: SUBLABELS ? STATUS_LABELS[reading.status] : undefined,
+      icon: dot,
+      click: () => options.openApp(),
+    },
     ...reading.issues.map((issue): MenuItemConstructorOptions =>
       issue === "approval"
         ? {
@@ -146,9 +158,11 @@ function items(
         : { label: ISSUE_LABELS.unreachable, enabled: false },
     ),
     { type: "separator" },
-    { label: `Nyte ${app.getVersion()}`, enabled: false },
-    { label: `Host ${host}`, enabled: false },
-    { label: "Copy Versions", click: () => clipboard.writeText(versions) },
+    {
+      label: SUBLABELS ? "Copy Versions" : `Copy ${versions}`,
+      sublabel: SUBLABELS ? versions : undefined,
+      click: () => clipboard.writeText(versions),
+    },
     { type: "separator" },
     { label: "Check for Updates…", click: () => options.checkForUpdates() },
     { label: "Settings…", click: () => options.openSettings() },

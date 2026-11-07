@@ -34,16 +34,11 @@ import type { Kernel, PluginRuntime, ToolSource } from "../contract/kernel.ts";
 import { branchSummary, compaction, text, thinking, tool } from "../contract/parts.ts";
 import { decodeRunRecord } from "../contract/records.ts";
 import type { CommitRecord, PartRecord } from "../contract/records.ts";
+import { walkCommitPath } from "../fold/paths.ts";
 import { withFold } from "../fold/reads.ts";
 import { modelImage } from "./images.ts";
 import { runRef } from "../store/refs.ts";
-import {
-  load,
-  readPositionCommit,
-  requireSession,
-  START,
-  walkCommitPath,
-} from "../store/session.ts";
+import { load, readPositionCommit, requireSession, START } from "../store/session.ts";
 import { check } from "../util/json-schema.ts";
 import type { StoreConnection } from "../contract/store.ts";
 import { scanResources } from "../extend/resources.ts";
