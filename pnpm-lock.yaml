@@ -356,6 +356,9 @@ importers:
       use-sync-external-store:
         specifier: ^1.7.0
         version: 1.7.0(react@19.3.1)
+      web-tree-sitter:
+        specifier: 0.25.10
+        version: 0.25.10
     devDependencies:
       '@nyte-ai/ai':
         specifier: workspace:*
