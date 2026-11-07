@@ -1,4 +1,4 @@
-import { parseDiffFromFile } from "@pierre/diffs";
+import type { FileDiffMetadata } from "@pierre/diffs";
 
 export interface LineChange {
   readonly kind: "added" | "modified" | "deleted";
@@ -7,13 +7,7 @@ export interface LineChange {
   readonly added: readonly string[];
 }
 
-export function lineChanges(
-  name: string,
-  committed: string,
-  current: string,
-): readonly LineChange[] {
-  const diff = parseDiffFromFile({ name, contents: committed }, { name, contents: current });
-
+export function lineChanges(diff: FileDiffMetadata): readonly LineChange[] {
   return diff.hunks.flatMap((hunk) => {
     let line = hunk.additionStart;
 
