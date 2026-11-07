@@ -1,11 +1,9 @@
-/** Catalogs fetched from provider APIs rather than models.dev: NVIDIA NIM's live ids, OpenRouter, and Vercel AI Gateway. */
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import type { Api, Model } from "../../src/types.ts";
 import { done, seconds } from "../terminal.ts";
 import { roundCost } from "./costs.ts";
 
-/** Pads source labels in the progress lines to the widest one, "Vercel AI Gateway". */
 export const SOURCE_WIDTH = "Vercel AI Gateway".length;
 
 export const NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1";
@@ -65,12 +63,10 @@ const AiGatewayModelSchema = Type.Object({
 
 const AiGatewayModelListSchema = Type.Object({ data: Type.Optional(Type.Array(Type.Unknown())) });
 
-/** Lowercases an NVIDIA model id and turns underscores into dots, as models.dev spells them. */
 export function normalizeNvidiaModelId(modelId: string): string {
   return modelId.toLowerCase().replaceAll("_", ".");
 }
 
-/** NVIDIA NIM's live model ids, keyed by themselves and by their normalized spelling. */
 export async function fetchNvidiaNimModelIds(): Promise<Map<string, string>> {
   const startedAt = performance.now();
   const response = await fetch(`${NVIDIA_BASE_URL}/models`);
@@ -94,7 +90,6 @@ export async function fetchNvidiaNimModelIds(): Promise<Map<string, string>> {
   return modelIds;
 }
 
-/** OpenRouter's tool-capable models. OpenRouter prices per token; catalogs store dollars per million tokens. */
 export async function fetchOpenRouterModels(): Promise<Model<Api>[]> {
   const startedAt = performance.now();
   const response = await fetch("https://openrouter.ai/api/v1/models");
@@ -154,7 +149,6 @@ export async function fetchOpenRouterModels(): Promise<Model<Api>[]> {
   return models;
 }
 
-/** Vercel AI Gateway's tool-capable models, served over its Anthropic Messages endpoint. */
 export async function fetchAiGatewayModels(): Promise<Model<Api>[]> {
   const startedAt = performance.now();
   const response = await fetch(`${AI_GATEWAY_MODELS_URL}/models`);

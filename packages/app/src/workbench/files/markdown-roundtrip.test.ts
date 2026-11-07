@@ -9,10 +9,6 @@ import { parseMarkdown } from "./markdown-parse.ts";
 import { markdownExtensions } from "./markdown-schema.ts";
 import { markdownOrigin, serializeMarkdown } from "./markdown-serialize.ts";
 
-/**
- * The corpus: copies of the repository's markdown that together use every construct it does. The
- * `test:markdown-sweep` script sets NYTE_MARKDOWN_CORPUS=repository to sweep the checkout instead.
- */
 const sweep = process.env.NYTE_MARKDOWN_CORPUS === "repository";
 
 const root = sweep
@@ -34,7 +30,6 @@ function serialize(content: JSONContent, text: string): string {
   return serializeMarkdown(doc, markdownOrigin(doc, parsed.layout));
 }
 
-/** The document without the links to its source, as an edit to every block would leave it. */
 function detached(content: JSONContent): JSONContent {
   const attrs = Object.fromEntries(
     Object.entries(content.attrs ?? {}).filter(

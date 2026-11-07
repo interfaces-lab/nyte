@@ -19,10 +19,6 @@ import { shellCard, toolCard } from "../lib/tool-card.ts";
 import type { HeadingChunk } from "../lib/tool-card.ts";
 import type { TranscriptModel, TurnStatus } from "../model/transcript.ts";
 
-/**
- * One block of the minimal transcript. Tools and notes are styled lines; tools sit together
- * without a blank row between them, every other pair of blocks has one.
- */
 export type MiniEntry =
   | { readonly key: string; readonly kind: "answer"; readonly markdown: string }
   | { readonly key: string; readonly kind: "user"; readonly mark: string; readonly text: string }
@@ -32,10 +28,8 @@ export type MiniEntry =
       readonly chunks: readonly HeadingChunk[];
     };
 
-/** A turn that took less than this ends without a "Worked for" line; one that failed always says so. */
 const WORKED_NOTE_MIN_MS = 60_000;
 
-/** Whether a blank row separates an entry from the one drawn before it. */
 export function gapBefore(previous: MiniEntry | null, entry: MiniEntry): boolean {
   if (previous === null) return false;
 
@@ -50,10 +44,6 @@ export function noteEntry(
   return { key, kind: "note", chunks: [{ text, role }] };
 }
 
-/**
- * `ready` is what can be committed to scrollback. `held` starts at the first entry that has not
- * settled: an answer there streams into scrollback; a tool there is what the run is doing now.
- */
 export interface MiniPlan {
   readonly ready: readonly MiniEntry[];
   readonly held: readonly MiniEntry[];
@@ -61,17 +51,12 @@ export interface MiniPlan {
   readonly status: TurnStatus | null;
 }
 
-/** A tool heading without the status mark that every heading starts with. */
 export function withoutMark(heading: readonly HeadingChunk[]): readonly HeadingChunk[] {
   return heading
     .slice(1)
     .map((chunk, index) => (index === 0 ? { ...chunk, text: chunk.text.trimStart() } : chunk));
 }
 
-/**
- * A finished tool's heading without its check mark, in the tool's own quiet color: only what
- * did not simply succeed is marked.
- */
 function quietHeading(heading: readonly HeadingChunk[]): readonly HeadingChunk[] {
   if (heading[0]?.role !== "ok") return heading;
 
@@ -80,10 +65,6 @@ function quietHeading(heading: readonly HeadingChunk[]): readonly HeadingChunk[]
   );
 }
 
-/**
- * A tool's heading is taken expanded, which leaves out the expand hint: once the line is
- * scrollback, the hint no longer refers to anything on screen.
- */
 function messageEntry(message: Message, tasks: readonly Task[]): MiniEntry | null {
   if (message.kind === "user") {
     const text = userText(shownContent(message));

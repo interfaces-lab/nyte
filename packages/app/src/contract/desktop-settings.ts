@@ -24,7 +24,6 @@ export type AlertSettings = Pick<
   "notifications" | "dockBadge" | "notificationSounds" | (typeof ALERT_SETTING)[AlertState]
 >;
 
-/** A switch that must be on before a channel can reach you: a page-wide one, or the state's notification. */
 export type AlertBlocker =
   | {
       readonly kind: "master";
@@ -32,7 +31,6 @@ export type AlertBlocker =
     }
   | { readonly kind: "channel"; readonly channel: "notification" };
 
-/** The channels a state reaches you on: those chosen for it with every switch they need on. */
 export function effectiveChannels(
   state: AlertState,
   settings: AlertSettings,
@@ -44,10 +42,6 @@ export function effectiveChannels(
   );
 }
 
-/**
- * What keeps a channel from reaching you, if anything. Sound and reminders repeat the
- * notification, so they need it; the Dock bounce follows the Dock badge switch.
- */
 export function findAlertBlocker(
   channel: AlertChannel,
   state: AlertState,
@@ -79,7 +73,6 @@ export function findAlertBlocker(
   }
 }
 
-/** The channels chosen for a state, whether or not they can reach you. */
 export function chosenChannels(
   state: AlertState,
   settings: AlertSettings,

@@ -24,7 +24,6 @@ export type TerminalsTrayView = Extract<TrayView, { readonly kind: "closed" | "t
 
 export type TerminalTask = JobTask & { readonly job: JobView };
 
-/** A job its call still holds shows in that call's row instead. */
 export function listTerminals(
   tasks: readonly Task[],
   cleared: ReadonlySet<string>,

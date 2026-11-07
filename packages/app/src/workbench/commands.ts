@@ -67,10 +67,6 @@ type CloseOutcome =
   | { readonly kind: "closed" }
   | { readonly kind: "confirm"; readonly reason: "dirty" | "running" };
 
-/**
- * A confirmed shell closes with {@link endTerminal}; a dirty file waits in the file store's pending
- * close. A failed idle check rejects, and the caller asks before ending the shell.
- */
 export async function closeTab(view: WorkbenchViewKey, id: WorkbenchTabId): Promise<CloseOutcome> {
   const tab = workbench.getView(view).tabs.find((candidate) => candidate.id === id);
 

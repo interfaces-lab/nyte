@@ -18,7 +18,6 @@ const AUTH_REQUIRED = -32_000;
 
 const STDERR_TAIL = 4_096;
 
-/** The agent's stdout as the byte stream its JSON-RPC runs over, its stderr to `stderr`; a `gap` (output the job dropped) fails the stream, since a lost frame would corrupt the protocol. */
 function protocolStream(job: Job, stderr: (bytes: Uint8Array) => void): ReadableStream<Uint8Array> {
   return new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -42,13 +41,6 @@ function protocolStream(job: Job, stderr: (bytes: Uint8Array) => void): Readable
   });
 }
 
-/**
- * One agent process, started in a session's environment so the host's
- * environment, sandbox and login-shell gate apply to it, and the ACP
- * connection over its stdio. Each `open` starts an ACP session on it. A
- * failed `initialize` closes it: an agent that refuses it (fx before
- * `fx login`) stays up and keeps refusing, so the next turn needs a new one.
- */
 export class AcpProcess {
   readonly agent: AcpAgent;
   readonly #job: Job;
@@ -99,7 +91,6 @@ export class AcpProcess {
     );
   }
 
-  /** Starts `agent` through `env.exec` with its stdio kept whole for the protocol, after the process environment is whole. */
   static async start(env: ExecutionEnv, agent: AcpAgent): Promise<AcpProcess> {
     await processEnvironment();
     const job = await env.exec([agent.command, ...agent.args], {
@@ -114,12 +105,10 @@ export class AcpProcess {
     return this.#failure !== undefined;
   }
 
-  /** Whether the agent reads image blocks in a prompt. */
   async images(): Promise<boolean> {
     return (await this.#initialized()).agentCapabilities?.promptCapabilities?.image === true;
   }
 
-  /** Starts an ACP session in `cwd` whose permission asks go to `approve`; an agent that wants a sign-in first fails with how to give it one. */
   async open(cwd: string, approve: AcpApprove): Promise<AcpThread> {
     await this.#initialized();
 
@@ -163,7 +152,6 @@ export class AcpProcess {
     return thread;
   }
 
-  /** Drops a thread Nyte no longer follows, cancelling its turn. */
   forget(thread: AcpThread): void {
     for (const [id, known] of this.#threads)
       if (known === thread) {

@@ -1,13 +1,9 @@
-/**
- * Splits the current tool list into the definitions sent up front and those the transcript loaded later (marked by `addedToolNames` on a tool result), for providers with native deferred tool loading.
- */
 import type { Context, Tool } from "@nyte-ai/schema/model";
 
 type ToolNameNormalizer = (name: string) => string;
 
 const identityToolName: ToolNameNormalizer = (name) => name;
 
-/** Split current tools into prefix and transcript-loaded definitions. */
 export function splitDeferredTools(
   context: Context,
   enabled: boolean,

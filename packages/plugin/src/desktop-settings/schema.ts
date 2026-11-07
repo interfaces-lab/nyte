@@ -2,12 +2,10 @@ import { ORIGIN_PATTERN } from "@nyte-ai/schema/origin";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 
-/** How a chat's state can reach you past its sidebar mark, which always shows. */
 export const ALERT_CHANNELS = ["notification", "badge", "sound", "bounce", "remind"] as const;
 
 export type AlertChannel = (typeof ALERT_CHANNELS)[number];
 
-/** The states that alert, each with the channels it offers. Working only marks the sidebar. */
 export const ALERT_OFFERS = {
   waiting: ALERT_CHANNELS,
   failed: ["notification", "badge", "sound", "bounce"],
@@ -16,7 +14,6 @@ export const ALERT_OFFERS = {
 
 export type AlertState = keyof typeof ALERT_OFFERS;
 
-/** The desktop setting holding each state's chosen channels. */
 export const ALERT_SETTING = {
   waiting: "alertsWaiting",
   failed: "alertsFailed",

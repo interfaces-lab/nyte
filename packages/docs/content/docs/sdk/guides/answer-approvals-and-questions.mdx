@@ -10,8 +10,8 @@ requests in your client and send the answers back.
 Both kinds arrive the same way: as a part in `view.parts` with a modal placement, so they never
 appear in `view.messages`. An approval holds the run until someone answers or the run is stopped. A
 question holds it for up to a minute; after that the agent carries on and the question stays open,
-so an answer can still come later. Any client watching the session can answer, and the request
-survives a restart of the host.
+so an answer can still come later. Any client of the host can answer, and the request survives a
+restart of the host.
 
 ## Turn on approvals
 
@@ -34,9 +34,9 @@ session from its next tool call, including runs already going. Changing it needs
 ## Answer an approval
 
 `openApprovals` from `@nyte-ai/plugin/approvals/schema` returns the approvals nobody has answered
-yet, oldest first. `approvalPrompt` gives the words to show for one. Follow the session's head
-store, opened on `live` as [Render a session](/docs/sdk/guides/render-a-session) shows, and ask
-about each request once:
+yet, oldest first. `approvalPrompt` gives the words to show for one. Build the view from the
+session's head store, opened on `live` as [Render a session](/docs/sdk/guides/render-a-session)
+shows, and ask about each request once:
 
 ```ts
 import { approvalPrompt, openApprovals } from "@nyte-ai/plugin/approvals/schema";
@@ -138,7 +138,7 @@ const part = findQuestionPart(view.parts, message.state.call);
 const asked = part === undefined ? null : readQuestion(part);
 ```
 
-`asked.phase` is one of:
+`asked.phase.kind` is one of:
 
 | `kind`     | Meaning                                                                        |
 | ---------- | ------------------------------------------------------------------------------ |

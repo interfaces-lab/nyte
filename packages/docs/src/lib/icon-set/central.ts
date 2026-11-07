@@ -1,7 +1,3 @@
-/**
- * The Central Icons set for the docs site. Selected by scripts/icons.mjs when
- * Central is installed; tsconfig excludes this file otherwise.
- */
 import {
   IconAgent,
   IconArrowDown,

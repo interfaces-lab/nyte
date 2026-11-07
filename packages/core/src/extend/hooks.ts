@@ -60,7 +60,6 @@ const NEVER = new AbortController().signal;
 
 const submissions = compile(withJson(decisionType(SubmissionType)));
 
-/** A before_tool decision as its hook call stores it: a `modify` keeps the changed args alone, since the call's part holds the rest of the tool call. */
 const toolDecisions = compile(withJson(decisionType(JsonType)));
 
 type Observers = {

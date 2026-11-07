@@ -6,6 +6,8 @@ import { appearance, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 export const sessionScreenStyles = create({
   stage: {
     position: "relative",
+    containerType: "inline-size",
+    containerName: "workbench-stage",
     display: "flex",
     flex: 1,
     minWidth: 0,
@@ -29,9 +31,7 @@ export const sessionScreenStyles = create({
     minHeight: 0,
     overflow: "clip",
   },
-  /** Under the maximized workbench: skips their rendering and keeps their layout and scroll. */
   panesCovered: { contentVisibility: "hidden" },
-  /** Boxes in the layout are fractions of this container's size, so resizing it runs no script. */
   layout: {
     position: "relative",
     flex: 1,
@@ -41,7 +41,6 @@ export const sessionScreenStyles = create({
     containerType: "size",
   },
   layoutTab: { position: "absolute", display: "flex", minWidth: 0, minHeight: 0, overflow: "clip" },
-  /** Under a zoomed pane: skips its rendering and keeps its layout and scroll. */
   layoutTabHidden: { contentVisibility: "hidden" },
   layoutTabZoomed: { zIndex: 1 },
   pane: {
@@ -132,7 +131,6 @@ export const sessionScreenStyles = create({
   sashRight: { cursor: "col-resize" },
   sashDown: { cursor: "row-resize" },
   sashLine: { backgroundColor: role.strokeQuaternary, pointerEvents: "none" },
-  /** Centring a 1px line in an even sash puts it on a half pixel, so it starts at the middle instead. */
   sashLineRight: {
     justifySelf: "start",
     width: 1,

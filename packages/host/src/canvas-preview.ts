@@ -1,14 +1,3 @@
-/**
- * The canvas previewer for a host without Electron: a headless Chromium
- * already on this machine, driven over the DevTools protocol on a pipe, so
- * nothing new is installed and no debugging port is opened. Each preview
- * starts its own browser with a throwaway profile and stops it after. The
- * page loads the shell directory the chat serves, from a made-up https
- * origin the previewer answers itself under the chat's shell policy and
- * frame sandbox; every other request is refused, no host name resolves,
- * WebRTC may only go through a proxy that leads nowhere, and permission
- * prompts are denied, so the canvas stays as sealed as in the chat.
- */
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
@@ -41,7 +30,6 @@ const ORIGIN = "https://canvas.preview/";
  */
 export type CanvasShellFiles = Readonly<Record<string, string>>;
 
-/** The policy the chat's clients serve the shell's page under, plus the sandbox its frame adds there, so the top-level page gets the frame's opaque origin. */
 const SHELL_POLICY =
   "default-src 'none'; script-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src data: blob:; font-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'; sandbox allow-scripts";
 
@@ -52,7 +40,6 @@ const SHELL_TYPES = new Map([
   ["woff2", "font/woff2"],
 ]);
 
-/** The newest browser of `prefix` in Playwright's download cache, which the canvas package's own checks install. */
 function playwrightBrowser(prefix: string, executables: readonly string[]): string | undefined {
   const cache =
     process.env["PLAYWRIGHT_BROWSERS_PATH"] ??
@@ -140,7 +127,6 @@ function read<S extends TSchema>(schema: S, value: unknown, what: string) {
   return value;
 }
 
-/** One DevTools connection over Chromium's pipe: NUL-terminated JSON both ways. */
 class Pipe {
   readonly #write: Writable;
   readonly #waiting = new Map<
@@ -202,7 +188,6 @@ class Pipe {
   }
 }
 
-/** Answers the page's requests: the shell's files from memory, nothing else at all. */
 function serve(pipe: Pipe, shell: CanvasShellFiles, sessionId: string): void {
   pipe.listen((method, params) => {
     if (method !== "Fetch.requestPaused" || !Value.Check(Paused, params)) return;

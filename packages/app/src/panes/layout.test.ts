@@ -71,7 +71,6 @@ function layout(
   };
 }
 
-/** `right(A[one*,two] 1, ~B[three*] 200px) focus A,B zoom A`: `*` marks the active tab, `~` a hidden pane. */
 function describe(state: Layout<Note>): string {
   const node = (entry: Node): string => {
     if (entry.kind === "pane") {
@@ -110,7 +109,6 @@ test.each<{
   readonly start?: Layout<Note>;
   readonly action: LayoutAction<Note>;
   readonly expected: string;
-  /** Tabs whose objects must survive the action unchanged, so their content doesn't render again. */
   readonly kept: readonly PaneTab<Note>[];
 }>([
   {

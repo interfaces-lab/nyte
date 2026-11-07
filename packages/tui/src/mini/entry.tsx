@@ -3,13 +3,8 @@ import { For } from "solid-js";
 import type { CliTheme } from "../lib/theme.ts";
 import type { MiniEntry } from "./transcript.ts";
 
-/** Columns every minimal entry keeps on each side; marks and answers start on the same column. */
 export const ENTRY_INSET = 2;
 
-/**
- * A user message, tool or note, as committed to scrollback. It renders outside the app, so it
- * takes its theme as a prop rather than from `useApp`.
- */
 export function EntryView(props: {
   readonly entry: Exclude<MiniEntry, { readonly kind: "answer" }>;
   readonly gap: boolean;

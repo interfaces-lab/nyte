@@ -1,9 +1,3 @@
-/**
- * Provider auth resolution: explicit overrides first, then the stored
- * credential (OAuth refreshed under the store lock with double-checked
- * expiry), then ambient sources. Storage and refresh failures surface as
- * `ModelsError` with a code the caller can branch on.
- */
 import type { ProviderEnv } from "../types.ts";
 import { operationSignal, raceWithAbortSignal } from "../utils/abort.ts";
 import { formatThrownValue } from "../utils/diagnostics.ts";
@@ -45,7 +39,6 @@ export class ModelsError extends Error {
   }
 }
 
-/** Callers surface `error.message` only, so keep the underlying reason in it. */
 function withCauseDetail(message: string, cause: unknown): string {
   if (cause === undefined || cause === null) return message;
   const detail = formatThrownValue(cause).trim();
@@ -75,7 +68,6 @@ export function resolveProviderAuth(
   );
 }
 
-/** Resolves auth from overrides, then stored accounts, then ambient sources (env vars, AWS profiles, ADC files). */
 async function resolveProviderAuthWithSignal(
   provider: { id: string; auth: ProviderAuth },
   credentials: CredentialStore,
@@ -155,21 +147,8 @@ function overlayEnvAuthContext(base: AuthContext, env: ProviderEnv): AuthContext
 
 const DEFAULT_OAUTH_MINIMUM_VALIDITY_MS = 5 * 60 * 1000;
 
-/**
- * Cap on one token refresh. Every refresh runs inside `CredentialStore.modify`,
- * so this is also how long a refresh can hold the credential lock other clients
- * are waiting on.
- */
 export const DEFAULT_OAUTH_REFRESH_TIMEOUT_MS = 15_000;
 
-/**
- * OAuth resolution with double-checked locking: tokens with less than five
- * minutes remaining lock, re-check expiry under the lock, refresh once
- * globally, and persist the rotated credential before release. The normal
- * five-minute window triggers a refresh but does not impose a provider contract;
- * an explicit `minOAuthValidityMs` (such as bearer-token export) must still hold
- * after the refresh.
- */
 async function resolveStoredOAuth(
   credentials: CredentialStore,
   providerId: string,

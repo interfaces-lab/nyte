@@ -1,4 +1,3 @@
-/** The hops one user submit crosses, in the order a turn reaches them: client, host, the host's MCP and process children, and back to the client's paint. */
 export const SPAN_NAMES = [
   "composer.submit",
   "sdk.send",
@@ -19,7 +18,6 @@ export const SPAN_NAMES = [
 
 export type SpanName = (typeof SPAN_NAMES)[number];
 
-/** Scalar facts a span carries beside its trace id. */
 export type SpanDetail = Readonly<Record<string, string | number | boolean | null>>;
 
 /** One timed hop, its start in epoch milliseconds so spans from different processes line up. */
@@ -31,7 +29,6 @@ export interface Span {
   readonly detail: SpanDetail;
 }
 
-/** Ends a span, adding `detail` to what it started with. */
 export type EndSpan = (detail?: SpanDetail) => void;
 
 const NAMES: ReadonlySet<string> = new Set(SPAN_NAMES);
@@ -126,7 +123,6 @@ export function readSpans(trace?: string): readonly Span[] {
     .toSorted((a, b) => a.start - b.start);
 }
 
-/** Forgets the spans this process recorded and the traces it followed. */
 export function clearSpans(): void {
   for (const name of SPAN_NAMES) performance.clearMeasures(name);
   followed.clear();
@@ -178,7 +174,6 @@ function readSpan(entry: PerformanceEntry): Span | null {
   };
 }
 
-/** `NYTE_TRACE` from the environment where there is one (Node's own `localStorage` warns when read), else from localStorage. */
 function readSetting(): string | null {
   if (typeof process !== "undefined" && typeof process.env === "object") {
     const value = process.env.NYTE_TRACE;

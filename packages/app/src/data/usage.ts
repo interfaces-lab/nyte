@@ -5,7 +5,6 @@ import { nyte } from "../contract/nyte.ts";
 import { connected } from "./connection.ts";
 import { useCatalogGeneration } from "./catalog.ts";
 
-/** A host read of local history, kept with the window it answers. */
 export interface UsageRead {
   readonly window: UsageWindow;
   readonly report: UsageSnapshot;
@@ -30,7 +29,6 @@ export function usageReportOptions(window: UsageWindow) {
 
 interface UsageQueryView {
   readonly read: UsageRead | undefined;
-  /** Whether `read` answers an earlier window while the requested one is read. */
   readonly superseded: boolean;
   readonly error: Error | null;
   readonly isFetching: boolean;

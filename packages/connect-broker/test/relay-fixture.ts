@@ -1,8 +1,3 @@
-/**
- * The relay in real workerd: the Worker, the relay Durable Object with
- * hibernatable sockets, D1, and real WebSockets and HTTP from this process.
- * Each `relay-*.test.ts` file calls `withWorkerdRelay` for a broker of its own.
- */
 import { BROKER_ROUTES, EnrollResponse } from "@nyte-ai/connect";
 import { RELAY_REFUSALS, RELAY_RESPONSE_HEADER_NAMES, encodeChunks } from "@nyte-ai/connect/relay";
 import type { RelayRefusalCode } from "@nyte-ai/connect/relay";
@@ -13,12 +8,10 @@ import { afterAll, beforeAll, beforeEach, expect } from "vitest";
 import { RelayDesktop, enrollmentHandler, startWorkerdBroker } from "./workerd.ts";
 import type { RelayHandler, WorkerdBroker } from "./workerd.ts";
 
-/** The file's broker, live once `withWorkerdRelay` has started it. */
 export let broker: WorkerdBroker;
 
 const open: RelayDesktop[] = [];
 
-/** Start one broker for the calling test file, and before each test close its sockets and empty its state. */
 export function withWorkerdRelay(): void {
   beforeAll(async () => {
     broker = await startWorkerdBroker();
@@ -62,7 +55,6 @@ export async function attached(input: {
   return desktop;
 }
 
-/** A raw socket on the environment's relay that has not proven anything. */
 export async function socket(environmentId: string): Promise<RelayDesktop> {
   const desktop = new RelayDesktop(
     broker.localUrl(`${broker.origin}${BROKER_ROUTES.relay(environmentId)}`),
@@ -85,7 +77,6 @@ export function relayProof(input: { environmentId: string; key: PrivateJwk; path
   });
 }
 
-/** A desktop on its relay with one enrolled phone, answering with `handler`. */
 export async function enrolled(
   handler: RelayHandler = echo,
   userId = "user_alice",
@@ -166,28 +157,12 @@ export const refused = (status: number, refusal: RelayRefusalCode) => ({
 
 export const settle = (ms = 300) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/**
- * When the relay closes a socket that never sent a frame, local workerd sends
- * the close frame and receives the client's reply, but the Node client is
- * left in CLOSING and never fires `close`. A socket that has sent anything
- * closes normally. So a never-used socket's close is observed as leaving OPEN.
- */
 export async function leftOpen(desktop: RelayDesktop): Promise<void> {
   while (desktop.socket.readyState === WebSocket.OPEN) await settle(50);
 }
 
-/**
- * On Windows, aborting a dispatch before its response head leaves the
- * harness's connection to local workerd open, so the Worker never sees the
- * client leave; the mid-stream abort tests cover the same reset there.
- */
 export const abortBeforeHeadKeepsSocket = process.platform === "win32";
 
-/**
- * Local workerd notices that an HTTP client went away only when it next
- * writes to it on Linux and Windows (macOS reports the peer's FIN at once), so
- * the desktop keeps answering each channel until the relay resets it.
- */
 export async function answerUntilReset(
   desktop: RelayDesktop,
   channels: readonly string[],

@@ -13,7 +13,6 @@ interface Note {
 
 const noteFields = Type.Object({ text: Type.String() }, { additionalProperties: false });
 
-/** Notes keep their text; scratch tabs are never saved; any other kind is one this build doesn't know. */
 function persist(content: Note): StoredContent | undefined {
   return content.kind === "scratch" ? undefined : { kind: "note", fields: { text: content.text } };
 }

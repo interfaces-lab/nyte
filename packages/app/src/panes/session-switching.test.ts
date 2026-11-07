@@ -3,7 +3,6 @@ import { Value } from "typebox/value";
 import { expect, test } from "vitest";
 import { testRenderer } from "../../test/renderer.ts";
 
-/** `switched` is every round trip the switches cost; their times depend on the machine drawing them, so they are reported, not asserted. */
 const Report = Type.Object({
   opening: Type.Number(),
   gapShown: Type.Boolean(),

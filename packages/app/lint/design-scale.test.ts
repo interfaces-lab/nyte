@@ -6,12 +6,6 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { afterAll, beforeAll, expect, test } from "vitest";
 
-/**
- * The rules only constrain anything if they still fire. This runs oxlint over a
- * fixture of deliberate values and asserts which rule reports which line, so a
- * visitor that stops descending into conditions, or a call form it no longer
- * recognises, fails here rather than going quiet.
- */
 const run = promisify(execFile);
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -28,7 +22,6 @@ type Violation = { file: string; line: number; rule: string; message: string };
 
 let violations: Array<Violation> = [];
 
-/** Only the plugin runs: an unrelated warning in the fixture must not read as a design-scale violation. */
 const pluginOnlyConfig = {
   categories: {},
   jsPlugins: [join(here, "design-scale.js")],

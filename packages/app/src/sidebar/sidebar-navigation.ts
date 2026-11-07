@@ -2,7 +2,6 @@ import type { KeyboardEvent } from "react";
 
 const STOPS = "button:not(:disabled), a[href]";
 
-/** Moving focus never opens a chat, and hover actions stay out of the order. */
 export function moveSidebarFocus(event: KeyboardEvent<HTMLElement>): void {
   const current = event.target;
 

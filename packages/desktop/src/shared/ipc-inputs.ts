@@ -298,12 +298,10 @@ export function decodeBrowserKey(input: BrowserKey): BrowserKey {
 
 export const themePreference = Compile(themeSource);
 
-/** The chat a window reports it shows, or null. */
 export const viewedChat = Compile(
   Type.Union([Type.String({ minLength: 1, maxLength: 256 }), Type.Null()]),
 );
 
-/** A notification a program in a window's terminal asked for. */
 export const terminalNotice = Compile(
   strict({
     title: Type.String({ maxLength: TERMINAL_NOTICE_LIMITS.title }),

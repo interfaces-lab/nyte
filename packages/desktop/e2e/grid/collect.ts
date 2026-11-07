@@ -35,15 +35,11 @@ export interface Plan {
   };
 }
 
-/** A chat pane's transcript end: the view it has, and where the conversation's last line of text is. */
 export interface PaneEnd {
   readonly pane: number;
-  /** The transcript's content box, which the finding is reported on. */
   readonly content: number;
   readonly viewTop: number;
-  /** The viewport's bottom, or the composer's top when it sits over the viewport. */
   readonly viewBottom: number;
-  /** The last line of the last row that has text, wherever it is, on screen or not. */
   readonly lastLine: { readonly index: number; readonly rect: Rect; readonly row: Rect } | null;
 }
 
@@ -54,7 +50,6 @@ interface Edges {
   readonly bottom: number;
 }
 
-/** Where a run's content box and baseline sit inside its line box, for one font and line height. */
 interface LineMetrics {
   readonly content: number;
   readonly baseline: number;
@@ -89,11 +84,9 @@ export interface SnapBox {
   readonly control: boolean;
   readonly iconOnly: boolean;
   readonly svg: boolean;
-  /** An svg the Icon component drew, as opposed to a diagram or an illustration. */
   readonly icon: boolean;
   readonly flow: "row" | "column" | "grid" | "block" | "inline";
   readonly outOfFlow: boolean;
-  /** Computed lengths in px, by longhand; keywords and percentages are left out. */
   readonly lengths: Readonly<Record<string, number>>;
   readonly font: {
     readonly size: number;
@@ -108,7 +101,6 @@ export interface SnapBox {
 
 export interface SnapText {
   readonly box: number;
-  /** Where text-align puts the run: centred and end-aligned runs start where their width puts them. */
   readonly align: "start" | "centred" | "end-aligned";
   readonly text: string;
   readonly left: number;
@@ -145,21 +137,6 @@ export interface Snapshot {
   readonly ends: readonly PaneEnd[];
 }
 
-/**
- * Reads every laid-out box and text run on the page, with the facts the checker needs.
- *
- * - Rules come from the CSSOM in cascade order: the base layer, StyleX's priority layers, then unlayered
- *   rules, so the last declaration of a property on a box is the one that won.
- * - A box's name is its accessible label or its first text run; later runs are metadata, such as a
- *   relative time, that changes between runs. Occurrence numbers count only visible boxes, so content
- *   scrolled out of view can't renumber what is on screen.
- * - A child whose start follows its own width, centred or pushed to the end of its parent's content
- *   box, says so in its facts.
- * - Rail and pitch lengths resolve on a probe inside the region, so overrides scoped to it apply. A
- *   run's line box comes from a probe of the same font, which gives where the content box and the
- *   baseline sit inside it. A placeholder is a pseudo-element, so its line is placed from the field.
- * - A colour is transparent by its alpha: Chromium writes it last in `rgba()` and after `/` elsewhere.
- */
 export function collect(plan: Plan): Snapshot {
   const round = (value: number): number => Math.round(value * 100) / 100;
 

@@ -1,7 +1,3 @@
-/**
- * The Codex Responses protocol both transports and compaction share: request options and body,
- * error types, frame decoding and the mapping of Codex frames onto Responses stream events.
- */
 import type { ResponseCreateParamsStreaming } from "openai/resources/responses/responses.js";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
@@ -68,17 +64,13 @@ export interface RequestBody {
   prompt_cache_key?: string;
 }
 
-/** One Codex request as both transports send it. */
 export interface CodexRequest {
   readonly model: Model<"openai-codex-responses">;
   readonly body: RequestBody;
   readonly accountId: string;
-  /** The caller's session id, unless prompt caching is off; it keys the WebSocket cache. */
   readonly cacheSessionId: string | undefined;
   readonly grammarToolInputProperties: ReadonlyMap<string, string>;
-  /** Bounds the SSE header wait and WebSocket idleness, from `options.timeoutMs`. */
   readonly timeoutMs: number | undefined;
-  /** Bounds the WebSocket open handshake, from `options.websocketConnectTimeoutMs`. */
   readonly connectTimeoutMs: number | undefined;
   readonly options: OpenAICodexResponsesOptions | undefined;
 }
@@ -88,7 +80,6 @@ interface CodexEventError {
   message?: string;
 }
 
-/** A Codex terminal response status. */
 const CodexResponseStatusSchema = Type.Union([
   Type.Literal("completed"),
   Type.Literal("incomplete"),
@@ -100,10 +91,6 @@ const CodexResponseStatusSchema = Type.Union([
 
 export const DEFAULT_MAX_RETRIES = 0;
 
-/**
- * The Codex backend accepts zstd-compressed request bodies on the SSE responses endpoint, the
- * endpoint the official Codex client compresses against.
- */
 const REQUEST_COMPRESSION_ZSTD_LEVEL = 3;
 
 export const CODEX_TOOL_CALL_PROVIDERS: ReadonlySet<string> = new Set([
@@ -112,7 +99,6 @@ export const CODEX_TOOL_CALL_PROVIDERS: ReadonlySet<string> = new Set([
   "opencode",
 ]);
 
-/** `bodyJson` as zstd, or null outside Node and Bun, where `node:zlib` is unavailable. */
 export function compressRequestBodyZstd(bodyJson: string): Uint8Array<ArrayBuffer> | null {
   if (typeof process === "undefined" || !(process.versions?.node || process.versions?.bun)) {
     return null;
@@ -130,11 +116,6 @@ export function compressRequestBodyZstd(bodyJson: string): Uint8Array<ArrayBuffe
   }
 }
 
-/**
- * The Codex request body. Later system messages anchor their own tool additions, and
- * `addedToolNames` on a tool result only loads request-list tools the transcript did not anchor,
- * so nothing is declared twice.
- */
 export function buildRequestBody(
   model: Model<"openai-codex-responses">,
   context: TranscriptContext,
@@ -227,7 +208,6 @@ export function buildRequestBody(
   return body;
 }
 
-/** Codex answers `default` for a flex or priority request it served at that tier. */
 export function resolveCodexServiceTier(
   responseServiceTier: ResponsesServiceTier | undefined,
   requestServiceTier: ResponseCreateParamsStreaming["service_tier"] | undefined,
@@ -242,7 +222,6 @@ export function resolveCodexServiceTier(
   return responseServiceTier ?? requestServiceTier;
 }
 
-/** How the shared Responses stream processor reads a Codex response. */
 export function codexStreamOptions(request: CodexRequest): OpenAIResponsesStreamOptions {
   return {
     serviceTier: request.options?.serviceTier,
@@ -253,11 +232,6 @@ export function codexStreamOptions(request: CodexRequest): OpenAIResponsesStream
   };
 }
 
-/**
- * A failed Codex request attempt, carrying `status` and `headers` so the shared provider retry
- * policy applies; `retryable` vetoes a retry the policy would allow, such as a 429 that is quota
- * exhaustion, which waiting does not lift.
- */
 export class CodexRequestError extends Error {
   readonly status: number | undefined;
   readonly headers: Headers | undefined;
@@ -278,12 +252,10 @@ export class CodexRequestError extends Error {
   }
 }
 
-/** The retry veto for Codex attempts: only a {@link CodexRequestError} marked retryable runs again. */
 export function retryableCodexRequest(error: unknown): boolean {
   return error instanceof CodexRequestError && error.retryable;
 }
 
-/** An error the Codex API reported in a frame, with its machine-readable code. */
 export class CodexApiError extends Error {
   readonly code?: string;
   readonly payload?: unknown;
@@ -296,7 +268,6 @@ export class CodexApiError extends Error {
   }
 }
 
-/** A frame that is not valid Codex protocol JSON. */
 export class CodexProtocolError extends Error {
   readonly payload?: unknown;
 
@@ -307,7 +278,6 @@ export class CodexProtocolError extends Error {
   }
 }
 
-/** The code and message of an `error` frame, flat or nested under `error`. */
 export function extractCodexEventError(event: CodexFrame): CodexEventError {
   const nested = readRecord(event.error);
 
@@ -327,13 +297,6 @@ async function reportFrameLimits(
   if (limits !== undefined) await onAccountLimits(limits);
 }
 
-/**
- * Maps Codex frames onto Responses stream events. `codex.rate_limits` frames go to
- * `onAccountLimits`, whose failures never fail the assistant stream. Every terminal frame
- * becomes `response.completed` carrying its status, so the shared finalizer accounts for usage
- * before a `response.failed` frame throws a {@link CodexApiError} that keeps the Codex error
- * code, which tells API failures from retryable transport failures.
- */
 export async function* mapCodexEvents(
   events: AsyncIterable<CodexFrame>,
   output: AssistantMessage,
@@ -396,7 +359,6 @@ export async function* mapCodexEvents(
   }
 }
 
-/** Codex frames from an SSE response body; `[DONE]` and empty data are skipped. */
 export async function* parseSSE(
   response: Response,
   signal?: AbortSignal,
@@ -429,10 +391,6 @@ function parseJsonObject(raw: string): Record<string, unknown> | undefined {
   }
 }
 
-/**
- * The message of a failed Codex HTTP response, and a usage-limit explanation for a 429 or a
- * usage-limit error code, with the plan and reset time when the body gives them.
- */
 export function parseErrorResponse(
   raw: string,
   response: Response,

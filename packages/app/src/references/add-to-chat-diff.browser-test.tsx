@@ -88,7 +88,11 @@ export async function run(): Promise<string> {
   const composer = createRef<ComposerEditorHandle>();
   const digest = patchDigest(PATCH);
 
-  const stop = receiveChatExcerpts(({ reference }) => composer.current?.insertReference(reference));
+  const stop = receiveChatExcerpts((excerpt) => {
+    if ("reference" in excerpt) composer.current?.insertReference(excerpt.reference);
+
+    return composer.current?.readElement() ?? false;
+  });
 
   flushSync(() =>
     root.render(

@@ -6,13 +6,10 @@ import { DESKTOP_ROUTES, DEVICE_TOKEN_BYTES, ENROLLMENT_READINESS_SECONDS } from
 type Fetch = (...args: Parameters<typeof fetch>) => ReturnType<typeof fetch>;
 
 export interface DeviceCrypto {
-  /** Bytes from the platform CSPRNG, never a `Math.random` fallback. */
   readonly randomBytes: (count: number) => Promise<Uint8Array>;
-  /** SHA-256 of the text's UTF-8 bytes, as padded standard base64. */
   readonly sha256Base64: (text: string) => Promise<string>;
 }
 
-/** A fresh device bearer and the digest the broker sees in its place. */
 export async function createDeviceSecret(
   crypto: DeviceCrypto,
 ): Promise<{ readonly token: string; readonly digest: string }> {
@@ -41,12 +38,6 @@ function pause(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
-/**
- * `sessions.list` with the new bearer until the Mac accepts it. The desktop
- * may refuse a just-enrolled device while its lease catches up, so a refusal
- * here is retried with the same bearer for a bounded window. Nothing here
- * enrolls again.
- */
 export async function awaitAcceptance(input: {
   readonly connection: { readonly url: string; readonly token: string };
   readonly fetch: Fetch;
@@ -100,15 +91,6 @@ export const RELEASE_TIMEOUT_MS = 5_000;
 
 export type Release = "removed" | "unconfirmed";
 
-/**
- * Release this device on its Mac: `DELETE /_nyte/connect/device` through its
- * relay address, with the device's own bearer and no cookies. The Mac refuses
- * the bearer at once and queues the broker's weak release itself, which frees
- * the device's place under the limit; the phone's Clerk session is untouched.
- * 204 is the release; 401 or 403 means the relay or the Mac already refuses
- * that bearer, which is the goal. Any other answer, another 2xx or the relay's
- * 503 for an offline Mac included, is not a confirmation.
- */
 export async function releaseOnHost(input: {
   readonly connection: { readonly url: string; readonly token: string };
   readonly fetch: Fetch;

@@ -65,7 +65,6 @@ type LinkState =
   | { readonly kind: "needs-sign-in" }
   | { readonly kind: "failed"; readonly message: string; readonly stderr: string | null };
 
-/** A server's last successful listing, kept while it reconnects so its sessions' tools and prompt do not change. */
 type Listing = { readonly tools: readonly Tool[]; readonly instructions: string | null };
 
 type Link = {
@@ -73,10 +72,8 @@ type Link = {
   entry: McpServerEntry;
   readonly state: () => LinkState;
   readonly brief: () => McpServerBrief;
-  /** The server's last OAuth challenge, which a sign-in follows for its scope and metadata. */
   readonly challenge: () => OAuthChallenge | null;
   readonly tools: () => readonly ToolDefinition[];
-  /** The first connection attempt while it runs, or null once it has connected, failed or asked for sign-in, or the link closed. */
   readonly attempting: () => Promise<void> | null;
   close(): Promise<void>;
 };
@@ -87,7 +84,6 @@ type Pool = {
   readonly files: readonly Omit<McpFile, "contents">[];
   config: McpConfig;
   readonly loaded: Promise<void>;
-  /** True until `mcp.json` has been read and the links reconciled. */
   loading: boolean;
   readonly links: Map<string, Link>;
   readonly listeners: Set<() => void>;

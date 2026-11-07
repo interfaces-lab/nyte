@@ -183,7 +183,6 @@ if (shouldPackage) {
   process.stdout.write(table(rows, { align: ["left", "right"] }));
 }
 
-/** Packages for the machine it runs on unless a platform flag picks another, as a release does. */
 function hostDesktopFlags() {
   const result = spawnSync(
     process.execPath,

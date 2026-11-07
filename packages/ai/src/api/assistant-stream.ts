@@ -1,22 +1,15 @@
-/**
- * The envelope every adapter's `stream` shares: the empty output message, the async run behind
- * the returned stream, and the success and failure endings of the event protocol.
- */
 import type { Api, AssistantMessage, Model, Usage } from "../types.ts";
 import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
 
-/** A cost of zero, for `calculateCost` to fill. */
 export function emptyCost(): Usage["cost"] {
   return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
 }
 
-/** Usage with every count and cost at zero. */
 function emptyUsage(): Usage {
   return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: emptyCost() };
 }
 
-/** The assistant message `model` starts from before any provider event arrives. */
 export function emptyAssistantOutput(model: Model<Api>): AssistantMessage {
   return {
     role: "assistant",
@@ -30,10 +23,6 @@ export function emptyAssistantOutput(model: Model<Api>): AssistantMessage {
   };
 }
 
-/**
- * Strips the scratch fields adapters keep on tool-call blocks while arguments are still
- * arriving. They are parsing state, never conversation content.
- */
 export function stripStreamingScratchState(content: AssistantMessage["content"]): void {
   for (const block of content) {
     if ("partialJson" in block) delete block.partialJson;
@@ -50,13 +39,6 @@ function formatStreamError(error: unknown): string {
   return formatProviderError(normalizeProviderError(error));
 }
 
-/**
- * Runs `body` behind the returned stream. `body` fills `output` and pushes `start` and content
- * events; this ends the stream with `done` when `output` settled on a successful stop, and with
- * `error` (`aborted` once `signal` fired) when `body` threw, the stream ended without a stop
- * reason, or the provider stopped with an error. `label` names the provider in the missing-stop
- * message and `formatError` turns the thrown value into `errorMessage`.
- */
 export function runAssistantStream(
   model: Model<Api>,
   signal: AbortSignal | undefined,

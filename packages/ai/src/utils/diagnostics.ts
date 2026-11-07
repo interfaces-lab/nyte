@@ -1,6 +1,3 @@
-/**
- * Redacted diagnostics attached to an AssistantMessage for failures and recoveries (retries, transport errors).
- */
 import type { AssistantMessageDiagnostic, DiagnosticErrorInfo } from "@nyte-ai/schema/model";
 
 export type { AssistantMessageDiagnostic, DiagnosticErrorInfo };

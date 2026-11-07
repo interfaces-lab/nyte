@@ -12,7 +12,6 @@ export interface ChildTask {
   readonly title: string;
   readonly state: TaskState;
   readonly startedBy: CallId | null;
-  /** Its own run is going, so a stop has something to stop. */
   readonly live: boolean;
 }
 
@@ -22,7 +21,6 @@ export interface JobTask {
   readonly title: string;
   readonly state: TaskState;
   readonly startedBy: CallId | null;
-  /** The job as its workspace lists it: undefined while the list loads, null once the host no longer keeps the job or its output. */
   readonly job: JobView | null | undefined;
   readonly live: boolean;
 }
@@ -90,10 +88,6 @@ export function describeTask(
   }
 }
 
-/**
- * How it stands and which call started it come from its background item, not its chat, so every
- * row of the parent agrees while the child's chat lags.
- */
 export function childTask(
   id: SessionId,
   chat: Chat | undefined,

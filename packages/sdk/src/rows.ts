@@ -65,7 +65,6 @@ export interface Rows {
     options?: RequestOptions,
   ): Promise<ByteReader>;
   frames<N extends FrameName>(name: N, input: OperationInput<N>): AsyncIterable<OperationOutput<N>>;
-  /** Frames that resume across link losses; `opened` is a stream of this watch already open, read before any is opened. */
   watch<N extends FrameName>(
     name: N,
     input: OperationInput<N>,

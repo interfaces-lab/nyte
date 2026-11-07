@@ -16,7 +16,6 @@ const browserCalls = compile(BrowserCallType);
 
 const previewCalls = compile(CanvasPreviewCallType);
 
-/** Opens the app's client of the host on its local socket: the socket's peer is the host's owner, so it sends no credential. */
 export function openAppClient(input: {
   readonly socket: string;
   readonly version: string;
@@ -32,7 +31,6 @@ export function openAppClient(input: {
   });
 }
 
-/** Offers the host what only the app can do: drive each chat's page in its browser, and render canvas previews off-screen. */
 export function offerAppActions(
   connection: Pick<HostConnection, "offer">,
   app: { readonly agent: BrowserAgent; readonly preview: CanvasPreviewer; signal(): AbortSignal },

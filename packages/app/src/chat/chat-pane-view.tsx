@@ -22,7 +22,6 @@ import { BlankConversation } from "./composer/blank-conversation.tsx";
 import type { ComposerEditorHandle } from "./composer/composer-editor.tsx";
 import { SessionConversation } from "./session-conversation.tsx";
 
-/** Where the focused chat's composer floats while the workbench covers the panes; `null` keeps it in its pane. */
 export const PaneFloatingMount = createContext<HTMLDivElement | null>(null);
 
 export const chatView: PaneView<ChatFields> = (input) => <ChatPane {...input} />;
@@ -84,7 +83,6 @@ function ChatPane({ pane, fields, focused }: PaneTabRender<ChatFields>): ReactEl
   );
 }
 
-/** Keyed by pane, so a chat that moves to another pane listens for that pane's requests. */
 function FocusRequests({
   store,
   pane,
@@ -158,10 +156,17 @@ function ReceiveExcerpts({
   readonly input: RefObject<ComposerEditorHandle | null>;
 }): null {
   useMountEffect(() =>
-    receiveChatExcerpts(({ reference, image }) => {
-      input.current?.insertReference(reference);
+    receiveChatExcerpts((excerpt) => {
+      const composer = input.current;
+      const element = composer?.readElement();
 
-      if (image !== undefined) input.current?.attachFiles([image]);
+      if (composer === null || element === null || element === undefined) return false;
+
+      if ("reference" in excerpt) composer.insertReference(excerpt.reference);
+
+      if (excerpt.image === undefined) return element;
+
+      return composer.attachFiles([excerpt.image], excerpt.signal).then(() => element);
     }),
   );
 

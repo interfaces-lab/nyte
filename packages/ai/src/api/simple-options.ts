@@ -28,7 +28,6 @@ export function clampMaxTokensToContext(
   return Math.min(maxTokens, Math.max(MIN_MAX_TOKENS, available));
 }
 
-/** The request options every API's `streamSimple` forwards unchanged to its `stream`. */
 export function buildBaseOptions(
   model: Model<Api>,
   context: TranscriptContext,
@@ -64,7 +63,6 @@ export function buildBaseOptions(
   };
 }
 
-/** The simple reasoning level clamped to what `model` supports, or undefined for no reasoning. */
 export function simpleReasoningEffort(
   model: Model<Api>,
   reasoning: ThinkingLevel | undefined,
@@ -74,7 +72,6 @@ export function simpleReasoningEffort(
   return clamped === "off" ? undefined : clamped;
 }
 
-/** Tokens always left for the answer when a thinking budget shares the response ceiling. */
 const MIN_ANSWER_TOKENS = 1024;
 
 const DEFAULT_THINKING_BUDGETS: ThinkingBudgets = {
@@ -100,15 +97,10 @@ export function thinkingBudgetForLevel(
   return budgets[level]!;
 }
 
-/** Cap a thinking budget so at least MIN_ANSWER_TOKENS remain under a shared response ceiling. */
 export function clampThinkingBudgetToAnswerRoom(thinkingBudget: number, ceiling: number): number {
   return Math.min(thinkingBudget, Math.max(0, ceiling - MIN_ANSWER_TOKENS));
 }
 
-/**
- * The output cap and thinking budget for a budget-based thinking request. An undefined
- * `baseMaxTokens` means the caller set no cap: the model cap is used and thinking fits inside it.
- */
 export function adjustMaxTokensForThinking(
   baseMaxTokens: number | undefined,
   modelMaxTokens: number,

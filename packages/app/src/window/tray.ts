@@ -1,6 +1,5 @@
 import type { JobId, SessionId } from "@nyte-ai/sdk";
 
-/** A list or terminals view keeps what it was opened over, the tasks it listed then. */
 export type TrayView =
   | { readonly kind: "closed" }
   | { readonly kind: "list"; readonly openedOver: readonly SessionId[] }
@@ -34,10 +33,6 @@ export function reduceTrays(trays: Trays, action: TrayAction): Trays {
   return { ...trays, views };
 }
 
-/**
- * A list or terminals view stays open only while something it was opened over is still listed,
- * so it doesn't reopen by itself when new work starts.
- */
 export function showTray(
   view: TrayView,
   listed: { readonly agents: readonly SessionId[]; readonly terminals: readonly JobId[] },

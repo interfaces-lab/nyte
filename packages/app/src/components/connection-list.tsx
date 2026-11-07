@@ -163,7 +163,6 @@ export function ConnectionMenu({
   );
 }
 
-/** A settings row for one fact: a round glyph, a title over its detail, and actions at the end. */
 export function FactRow({
   icon,
   tone = "neutral",

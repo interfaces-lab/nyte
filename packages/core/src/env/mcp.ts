@@ -8,14 +8,6 @@ import { forwarded } from "../util/iterable.ts";
 import { readWorkspace } from "./environment.ts";
 import { projectTrust } from "./trust.ts";
 
-/**
- * Reads what a hub needs to know about a registered workspace: its local
- * folder and whether its project resources are trusted. Throws `unknown` for
- * a workspace the host does not have.
- *
- * @category mcp
- * @since 0.1.0
- */
 export async function readMcpWorkspace(kernel: Kernel, id: WorkspaceId): Promise<McpWorkspace> {
   const record = await readWorkspace(kernel.store, id);
 
@@ -31,12 +23,6 @@ export async function readMcpWorkspace(kernel: Kernel, id: WorkspaceId): Promise
 
 const READY_MS = 5000;
 
-/**
- * Waits, at most five seconds and never past `signal`, for the session's MCP
- * servers that are still on their first connection attempt, then, when it
- * waited, re-derives the session's tools so the request built next carries
- * theirs. A server that failed, or is retrying, is not waited for.
- */
 export async function awaitMcpServers(
   kernel: Kernel,
   runtime: PluginRuntime,
@@ -50,7 +36,6 @@ export async function awaitMcpServers(
     await runtime.registries.materialize();
 }
 
-/** The `workspace(id).mcp` of a workspace on this kernel, over its hub. */
 export function mcpApi(kernel: Kernel, id: WorkspaceId): McpApi {
   const hub = (): McpHub => {
     if (kernel.mcp === null) throw new SdkError("unavailable", "This host has no MCP servers.");

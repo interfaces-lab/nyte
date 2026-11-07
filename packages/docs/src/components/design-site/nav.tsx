@@ -4,11 +4,6 @@ import { HeadingSpy } from "~/components/site/sidebar";
 import { catalog } from "~/lib/design-catalog";
 import { designNav, findPage } from "~/lib/docs";
 
-/**
- * The design site's index, in the rail and the phone menu: each section with
- * its count, every page, and under the current page its numbered sections,
- * the one being read lit as the page scrolls.
- */
 export function DesignNav({ onNavigate }: { onNavigate?: () => void }) {
   const matchRoute = useMatchRoute();
   const pathname = useLocation({ select: (location) => location.pathname });

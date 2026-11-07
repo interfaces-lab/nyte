@@ -25,10 +25,8 @@ import {
 } from "./translate.ts";
 import type { MirrorArguments } from "./translate.ts";
 
-/** Where Nyte is with one of the agent's calls: recording it (its mirror runs), or done with it without running it. */
 type Recording = "recording" | "skipped";
 
-/** Decides a call the agent asks permission for, under the session's policy. */
 export type AcpApprove = (call: RuntimeCall, signal: AbortSignal) => Promise<RuntimeVerdict>;
 
 type ThreadEvent =
@@ -48,13 +46,11 @@ interface ToolState {
   rawOutput: unknown;
 }
 
-/** What one of the agent's tool calls reported once it finished, or as far as it got when the turn ended. */
 export interface AcpToolOutput {
   readonly text: string;
   readonly failed: boolean;
 }
 
-/** How a thread reaches its agent: one prompt turn, the cancel notification for it, the folder its session runs in, and how a permission it asks for is decided. */
 export interface AcpChannel {
   readonly cwd: string;
   prompt(blocks: readonly ContentBlock[]): Promise<PromptResponse>;
@@ -93,7 +89,6 @@ class Inbox<T> {
 
 const input = Type.Record(Type.String(), Type.Unknown());
 
-/** The agent's option for a choice: allow only ever once, so one "Allow once" never becomes a standing grant inside the agent; reject once, else always. */
 function answer(
   choice: "allow" | "reject" | "cancelled",
   options: readonly PermissionOption[],
@@ -112,7 +107,6 @@ function answer(
     : { outcome: { outcome: "selected", optionId: option.optionId } };
 }
 
-/** The paths a call touches, those outside `cwd` first, so its class (which reads the first) names the one a policy guards. */
 function guardedFirst(cwd: string, paths: readonly string[]): string[] {
   const root = posix.resolve(cwd);
 
@@ -141,14 +135,6 @@ function stopReason(
   }
 }
 
-/**
- * One ACP session on an agent: the prompt turns Nyte sends it, the updates
- * it streams back as assistant messages, and its tool calls, which Nyte
- * records as mirror calls whose ids start with `prefix`. A permission the
- * agent asks for waits until Nyte records that call, then goes to the
- * channel's `approve` under the call's ACP kind; a call Nyte skips is
- * refused.
- */
 export class AcpThread {
   readonly prefix: string;
   readonly #channel: AcpChannel;
@@ -170,7 +156,6 @@ export class AcpThread {
     return this.#failure !== undefined;
   }
 
-  /** Sends a prompt turn, or queues it behind the turn the agent is running, since ACP takes no message mid-turn. */
   send(blocks: readonly ContentBlock[]): void {
     if (this.#running) this.#queue.push(blocks);
     else this.#start(blocks);
@@ -232,17 +217,14 @@ export class AcpThread {
     }
   }
 
-  /** Lets the agent's permission ask for `id`, now or later, go on to its approval: Nyte is recording the call. */
   recording(id: string): void {
     this.#recording(id).resolve("recording");
   }
 
-  /** Refuses `id` when the agent asks, now or later: Nyte settled it without running it. A call this thread never saw is left alone. */
   skip(id: string): void {
     if (this.#tools.has(id)) this.#recording(id).resolve("skipped");
   }
 
-  /** Streams the turn as one assistant message, ending at the agent's next new tool call or at the turn's end; with `tools` false, its tool calls are refused and skipped. */
   respond(
     model: Model<Api>,
     signal: AbortSignal | undefined,
@@ -307,7 +289,6 @@ export class AcpThread {
     return stream;
   }
 
-  /** Waits for the agent to finish tool call `id`: until it completes or fails, the turn ends, or the agent waits on another call's permission. */
   async result(id: string, signal: AbortSignal): Promise<AcpToolOutput> {
     const settled = () => {
       const status = this.#tools.get(id)?.status;
@@ -345,7 +326,6 @@ export class AcpThread {
     return { text: toolText(tool.content, tool.rawOutput), failed: tool.status === "failed" };
   }
 
-  /** Stops the running turn: tells the agent, and answers its waiting permissions as cancelled. */
   cancel(): void {
     this.#queue.length = 0;
 

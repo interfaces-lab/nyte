@@ -1,12 +1,6 @@
-/**
- * The Responses stream events the shared processor acts on, as TypeBox schemas. Both the
- * OpenAI SDK stream and Codex's raw frames are checked against them once, at the processor's
- * ingress; events of other types, or missing the fields read, are skipped.
- */
 import { type Static, Type } from "typebox";
 import { Compile } from "typebox/compile";
 
-/** llama.cpp omits `output_index` from every event, so it is optional. */
 const OutputIndex = Type.Optional(Type.Number());
 
 const ItemId = Type.Optional(Type.String());
@@ -64,14 +58,12 @@ const OutputItemSchema = Type.Union([
 
 export type ResponsesOutputItem = Static<typeof OutputItemSchema>;
 
-/** A reasoning item in a terminal response's output, for backfilling its encrypted content. */
 export const TerminalReasoningItemSchema = Type.Object({
   type: Type.Literal("reasoning"),
   id: Type.String(),
   encrypted_content: Type.Optional(Type.Union([Type.String(), Type.Null()])),
 });
 
-/** A stored reasoning item: what the processor serialized into a thinking signature. */
 export const StoredReasoningItemSchema = Type.Object({
   type: Type.Literal("reasoning"),
   encrypted_content: Type.Optional(Type.Union([Type.String(), Type.Null()])),
@@ -88,7 +80,6 @@ const ResponseStatusSchema = Type.Union([
 
 export type ResponsesStatus = Static<typeof ResponseStatusSchema>;
 
-/** A service tier as the Responses API reports it; GPT-6 reports Fast mode as `fast`. */
 export const ServiceTierSchema = Type.Union([
   Type.Literal("auto"),
   Type.Literal("default"),
@@ -102,11 +93,6 @@ export const ServiceTierSchema = Type.Union([
 
 export type ResponsesServiceTier = Static<typeof ServiceTierSchema>;
 
-/**
- * The terminal response metadata the processor reads. Usage and service tier stay unknown
- * here: the finalizer validates usage itself so an invalid count fails as a usage error, and an
- * unrecognized tier is ignored rather than dropping the terminal event.
- */
 const TerminalResponseSchema = Type.Object({
   id: Type.Optional(Type.String()),
   status: Type.Optional(ResponseStatusSchema),
@@ -181,5 +167,4 @@ const ResponsesStreamEventSchema = Type.Union([
   }),
 ]);
 
-/** Checks a raw event; compiled once because it runs for every streamed delta. */
 export const ResponsesStreamEventCheck = Compile(ResponsesStreamEventSchema);

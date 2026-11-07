@@ -6,7 +6,7 @@ import { Tabs } from "@nyte-ai/ui/tabs";
 import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 import { control, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
-import { FileTypeIcon } from "../../components/file-type-icon.tsx";
+import { FileTypeIcon } from "@nyte-ai/ui/file-type-icon";
 import { droppedTreeFiles } from "../../references/composer-file-drop.ts";
 import type { MentionFile } from "../../data/files.ts";
 import { closeTab } from "../commands.ts";
@@ -58,7 +58,9 @@ export function EditorGroupView({
             onValueChange={(id) => {
               const file = group.tabs.find((tab) => tab.id === id);
 
-              if (file !== undefined) fileActions.open(viewKey, { path: file.path });
+              if (file === undefined) return;
+              fileActions.focusGroup(viewKey, group.id);
+              fileActions.open(viewKey, { path: file.path });
             }}
           >
             <Tabs.List aria-label="Open files" xstyle={styles.tabs}>

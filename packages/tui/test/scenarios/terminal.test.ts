@@ -9,7 +9,6 @@ import { themeForMode } from "../../src/lib/theme.ts";
 import { startTui } from "../harness/tui.ts";
 import { hex, SAMPLE_ANSWER, saveFrame, saveProof } from "./scenario.ts";
 
-/** What each terminal advertises; OpenTUI picks its color encoding from these. */
 const DEPTHS = {
   truecolor: { TERM: "xterm-256color", COLORTERM: "truecolor" },
   ansi256: { TERM: "xterm-256color", COLORTERM: "" },
@@ -20,7 +19,6 @@ type Depth = keyof typeof DEPTHS;
 
 type Rgb = readonly [number, number, number];
 
-/** The 16 system colors as OpenTUI's encoder assumes them when it picks a 256-color index. */
 const OPENTUI_SYSTEM: readonly Rgb[] = [
   [0, 0, 0],
   [128, 0, 0],
@@ -40,7 +38,6 @@ const OPENTUI_SYSTEM: readonly Rgb[] = [
   [255, 255, 255],
 ];
 
-/** xterm's default 16-color palette, which a 16-color terminal maps 24-bit colors onto. */
 const XTERM_16: readonly Rgb[] = [
   [0, 0, 0],
   [205, 0, 0],
@@ -118,7 +115,6 @@ function hexRgb(color: string): Rgb {
   return [red, green, blue];
 }
 
-/** `color` over `under` by its alpha, as the terminal cell ends up. */
 function over(color: RGBA, under: Rgb): Rgb {
   const [red, green, blue, alpha] = color.toInts();
   const share = alpha / 255;
@@ -130,7 +126,6 @@ function over(color: RGBA, under: Rgb): Rgb {
   ];
 }
 
-/** The color a terminal of `depth` shows for a 24-bit `color`. */
 function shown(depth: Depth, color: Rgb): Rgb {
   if (depth === "ansi256") return PALETTE_256[nearest(PALETTE_256, color)] ?? color;
 
@@ -139,20 +134,16 @@ function shown(depth: Depth, color: Rgb): Rgb {
   return color;
 }
 
-/** Separator dots, box drawing, block elements and braille spinners are drawn shapes, not text to read; the theme keeps `muted` for them. */
 const DECORATION = /^[\s\u00B7\u2500-\u259F\u2800-\u28FF]*$/u;
 
-/** The least contrast a text cell may have: AA in 24-bit color, 3:1 once a palette has rounded it. */
 const FLOOR: Readonly<Record<Depth, number>> = { truecolor: 4.5, ansi256: 3, ansi16: 3 };
 
-/** A select-graphic-rendition sequence, its parameters captured. */
 const SGR = new RegExp(`${String.fromCodePoint(27)}\\[([0-9;:]*)m`, "gu");
 
 const OUTPUT = mkdtempSync(join(tmpdir(), "nyte-tui-terminal-"));
 
 afterAll(() => rmSync(OUTPUT, { recursive: true, force: true }));
 
-/** A terminal stdout of `columns` × `rows` whose bytes land in a file instead of a screen. */
 class RecordingStdout extends WriteStream {
   readonly #path: string;
 

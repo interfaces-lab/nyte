@@ -1,7 +1,3 @@
-/**
- * ChatGPT subscription windows for the Codex provider: read from `wham/usage`, from the
- * `x-codex-*` headers on every SSE response, and from `codex.rate_limits` WebSocket frames.
- */
 import { type Static, Type } from "typebox";
 import { Value } from "typebox/value";
 import {
@@ -40,7 +36,6 @@ const CodexUsageResponseSchema = Type.Object({
 
 const CodexPlanSchema = Type.Object({ plan_type: Type.String() });
 
-/** The `codex.rate_limits` WebSocket frame: windows in minutes, the plan beside them. */
 const CodexRateLimitsFrameSchema = Type.Object({
   type: Type.Literal("codex.rate_limits"),
   plan_type: Type.Optional(Type.Union([Type.String(), Type.Null()])),
@@ -75,7 +70,6 @@ function durationLabel(seconds: number): string {
   return `${String(Math.round(seconds / 60))}-minute`;
 }
 
-/** A Codex window named by its length; reset times arrive in seconds. */
 function codexLimitWindow(
   fallbackId: "primary" | "secondary",
   usedPercent: number,
@@ -104,7 +98,6 @@ function codexLimitWindow(
   );
 }
 
-/** A minutes-based window; one the plan does not have arrives as zero minutes and is dropped. */
 function minutesWindow(
   fallbackId: "primary" | "secondary",
   window: Static<typeof CodexRateLimitWindowSchema>,
@@ -132,7 +125,6 @@ function accountLimits(
   return limits;
 }
 
-/** Windows from a `codex.rate_limits` frame, or undefined for any other frame. */
 export function codexFrameLimits(frame: CodexFrame, providerId: string): AccountLimits | undefined {
   if (!Value.Check(CodexRateLimitsFrameSchema, frame)) return undefined;
   const windows: AccountLimitWindow[] = [];
@@ -149,7 +141,6 @@ export function codexFrameLimits(frame: CodexFrame, providerId: string): Account
   return accountLimits(providerId, windows, frame.plan_type);
 }
 
-/** Every SSE response carries the same windows as `x-codex-{primary,secondary}-*` headers. */
 export function codexHeaderLimits(
   headers: Record<string, string>,
   providerId: string,
@@ -174,7 +165,6 @@ export function codexHeaderLimits(
   return accountLimits(providerId, windows, headers["x-codex-plan-type"]);
 }
 
-/** Fetch current ChatGPT subscription windows from `wham/usage`. */
 export async function fetchOpenAICodexAccountLimits(
   model: AccountLimitsTarget,
   options?: AccountLimitsFetchOptions,

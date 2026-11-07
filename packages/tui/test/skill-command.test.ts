@@ -4,6 +4,9 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { Json } from "@nyte-ai/schema";
+import { formatRows, formatStatus } from "../src/cli/format.ts";
+import { resolveMode } from "../src/cli/mode.ts";
+import type { Output } from "../src/cli/output.ts";
 import { skillCommand } from "../src/skill-command.ts";
 
 const OURS = { hooks: [{ type: "command", command: "nyte skill hook", timeout: 5 }] };
@@ -28,9 +31,9 @@ const ONLY_OURS = pretty({ hooks: { SessionStart: [OURS] } });
 
 const OLD_SKILL = '---\nname: nyte\nmetadata:\n  nyte-skill-version: "0.0.1"\n---\n';
 
-const SET_UP = { installed: true, skill: "current", hook: "present" };
+const SET_UP = { config: "found", skill: "current", hook: "present" };
 
-const BARE = { installed: true, skill: "missing", hook: "missing" };
+const BARE = { config: "found", skill: "missing", hook: "missing" };
 
 interface Case {
   readonly name: string;
@@ -46,7 +49,7 @@ const CASES: readonly Case[] = [
     name: "setup on empty config adds the skill and the hook to both agents",
     files: { ".claude/.keep": "", ".codex/.keep": "" },
     steps: [["setup"]],
-    said: ["created", "added", "created", "added"],
+    said: ["Created", "Created", "Created", "Created"],
     settings: { claude: ONLY_OURS, codex: ONLY_OURS },
     status: { claude: SET_UP, codex: SET_UP },
   },
@@ -54,7 +57,7 @@ const CASES: readonly Case[] = [
     name: "setup keeps every other key and hook",
     files: { ".claude/settings.json": UNRELATED, ".codex/.keep": "" },
     steps: [["setup", "--agent", "claude"]],
-    said: ["created", "added"],
+    said: ["Created", "Changed"],
     settings: {
       claude: MERGED,
       codex: null,
@@ -65,7 +68,7 @@ const CASES: readonly Case[] = [
     name: "setup twice changes nothing the second time",
     files: { ".claude/settings.json": UNRELATED, ".codex/.keep": "" },
     steps: [["setup"], ["setup"]],
-    said: ["unchanged", "unchanged", "unchanged", "unchanged"],
+    said: ["Unchanged", "Unchanged", "Unchanged", "Unchanged"],
     settings: {
       claude: MERGED,
       codex: ONLY_OURS,
@@ -76,7 +79,7 @@ const CASES: readonly Case[] = [
     name: "remove deletes only what setup added",
     files: { ".claude/settings.json": UNRELATED, ".codex/.keep": "" },
     steps: [["setup"], ["remove"]],
-    said: ["removed", "removed", "removed", "removed"],
+    said: ["Deleted", "Changed", "Deleted", "Deleted"],
     settings: { claude: UNRELATED, codex: null },
     status: { claude: BARE, codex: BARE },
   },
@@ -84,9 +87,9 @@ const CASES: readonly Case[] = [
     name: "setup without --agent skips an agent that isn't installed",
     files: { ".claude/.keep": "" },
     steps: [["setup"]],
-    said: ["created", "added"],
+    said: ["Created", "Created"],
     settings: { claude: ONLY_OURS, codex: null },
-    status: { claude: SET_UP, codex: { installed: false, skill: "missing", hook: "missing" } },
+    status: { claude: SET_UP, codex: { config: "missing", skill: "missing", hook: "missing" } },
   },
   {
     name: "status calls an older skill outdated and a broken settings file unreadable",
@@ -95,8 +98,8 @@ const CASES: readonly Case[] = [
     said: [],
     settings: { claude: null, codex: "{ not json" },
     status: {
-      claude: { installed: true, skill: "outdated", hook: "missing" },
-      codex: { installed: true, skill: "missing", hook: "unreadable" },
+      claude: { config: "found", skill: "outdated", hook: "missing" },
+      codex: { config: "found", skill: "missing", hook: "unreadable" },
     },
   },
 ];
@@ -113,18 +116,14 @@ test.each(CASES)("$name", async (entry) => {
     let said = "";
 
     for (const args of entry.steps) {
-      said = "";
-
-      const code = await skillCommand({
-        args,
-        env: { HOME: home },
-        output: { write: (text) => void (said += text) },
-      });
+      const run = capture();
+      const code = await skillCommand({ args, env: { HOME: home }, output: run.output });
 
       expect(code).toBe(0);
+      said = run.streams.stderr;
     }
 
-    expect([...said.matchAll(/^ {2}\S+\s+(\S+)/gmu)].map((match) => match[1])).toEqual([
+    expect([...said.matchAll(/^ {2}(\w+) +\/\S+$/gmu)].map((match) => match[1])).toEqual([
       ...entry.said,
     ]);
     expect({
@@ -132,19 +131,35 @@ test.each(CASES)("$name", async (entry) => {
       codex: await textIn(join(home, ".codex", "hooks.json")),
     }).toEqual(entry.settings);
 
-    let report = "";
+    const report = capture();
 
-    await skillCommand({
-      args: ["status", "--json"],
-      env: { HOME: home },
-      output: { write: (text) => void (report += text) },
-    });
+    await skillCommand({ args: ["status", "--json"], env: { HOME: home }, output: report.output });
 
-    expect(JSON.parse(report)).toMatchObject(entry.status);
+    expect(JSON.parse(report.streams.stdout)).toMatchObject(entry.status);
   } finally {
     await rm(home, { recursive: true, force: true });
   }
 });
+
+/** A plain, non-interactive run: both streams are pipes. */
+function capture() {
+  const streams = { stdout: "", stderr: "" };
+  const mode = resolveMode({ env: {}, stdin: {}, stdout: {}, stderr: {} }, false);
+
+  const output: Output = {
+    mode,
+    closed: new AbortController().signal,
+    result: (text) => void (streams.stdout += text),
+    json: (value) => void (streams.stdout += `${JSON.stringify(value)}\n`),
+    say: (text) => void (streams.stderr += `${text}\n`),
+    rows: (rows) => void (streams.stderr += formatRows(rows, mode.stderr).join("\n") + "\n"),
+    status: (gutter, text) =>
+      void (streams.stderr += `${formatStatus(gutter, text, mode.stderr)}\n`),
+    progress: (phase) => void (streams.stderr += `${phase}\n`),
+  };
+
+  return { output, streams };
+}
 
 function textIn(path: string): Promise<string | null> {
   return existsSync(path) ? readFile(path, "utf8") : Promise.resolve(null);

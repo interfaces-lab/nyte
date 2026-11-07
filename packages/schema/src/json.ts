@@ -44,7 +44,6 @@ export const JsonValueSchema: Schema<Json> = standard(withJson(JsonType));
 
 export const JsonObjectSchema: Schema<JsonSchema> = standard(withJson(JsonObjectType));
 
-/** Walked by hand: under a renderer's CSP a cyclic TypeBox check runs interpreted, tens of milliseconds over a long chat's view frame. */
 // oxlint-disable-next-line nyte-code/no-is-helper-names -- the public guard every package narrows untyped input with
 export function isJson(value: unknown): value is Json {
   if (Guard.IsArray(value)) return value.every(isJson);

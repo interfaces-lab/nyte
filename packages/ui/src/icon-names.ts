@@ -164,9 +164,3 @@ export interface GlyphProps {
 }
 
 export type Glyph = ComponentType<GlyphProps>;
-
-/** The shape both icon sets export. */
-export interface IconSetModule {
-  readonly GLYPHS: Readonly<Record<IconName, Glyph>>;
-  readonly FILLED_GLYPHS: Readonly<Record<FilledIconName, Glyph>>;
-}

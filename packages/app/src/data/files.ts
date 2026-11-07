@@ -10,12 +10,10 @@ import { selectedWorkspaceId } from "./workspaces.ts";
 
 const NO_FOLDER_FILES = "Open a workspace to read its files";
 
-/** The files of the folder the window has open, for the workbench that shows it. */
 export function workspaceFiles(): Promise<FilesApi> {
   return filesFor(selectedWorkspaceId());
 }
 
-/** The files of `workspace`; without one it throws. */
 export async function filesFor(workspace: WorkspaceId | undefined): Promise<FilesApi> {
   if (workspace === undefined) throw new Error(NO_FOLDER_FILES);
   const capability = await (await connected()).workspace(workspace).files();
@@ -39,7 +37,6 @@ async function scanFiles(folder: SelectedWorkspace | undefined): Promise<readonl
   return entries;
 }
 
-/** Every file and folder in `folder`, for mentions and citations. */
 export function mentionFilesOptions(folder: SelectedWorkspace | undefined, enabled: boolean) {
   return {
     queryKey: keys.mentionFiles(folder?.id),

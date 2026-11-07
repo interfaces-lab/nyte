@@ -68,7 +68,6 @@ function divider(page: Page): Locator {
   return messages(page).getByText("New messages below", { exact: true });
 }
 
-/** The prompt's bubble pins to the top edge over its own turn, divider included, so place its row. */
 function promptRow(page: Page, text: string): Locator {
   return messages(page)
     .locator("[data-row-key^='prompt:']")

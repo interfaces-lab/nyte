@@ -2,12 +2,6 @@ import { Link } from "@tanstack/react-router";
 import { pageSlug, type CatalogEntry } from "~/lib/design-catalog";
 import { Specimen } from "./specimens";
 
-/**
- * One catalogue cell: the page's name, number and summary, under its live
- * specimen. The caption comes first so the link leads the tab order; a
- * backdrop link fills the canvas around the specimen, whose own controls
- * stay usable.
- */
 export function SpecimenTile({ entry }: { entry: CatalogEntry }) {
   const slug = pageSlug(entry.page);
 

@@ -1,15 +1,12 @@
 import { accessSync, constants, existsSync, readFileSync } from "node:fs";
 import { basename, delimiter, join } from "node:path";
 
-/** The repository init sets up, and the org whose members clone instead of fork. */
 export const UPSTREAM = { owner: "interfaces-lab", repo: "nyte", branch: "main" };
 
-/** Shortens a path under home to `~/…` for display. */
 export function tilde(path, home) {
   return path === home || path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;
 }
 
-/** The first executable named `name` on `path`, or undefined. */
 export function findExecutable(name, path) {
   for (const directory of (path ?? "").split(delimiter)) {
     if (directory === "") continue;
@@ -41,7 +38,6 @@ function readOsRelease() {
   }
 }
 
-/** The rc file mise activation goes in, and the syntax it takes. */
 export function detectShell(env, home) {
   const name = basename(env.SHELL ?? "");
 
@@ -52,7 +48,6 @@ export function detectShell(env, home) {
   return { name: "bash", rc: join(home, ".bashrc") };
 }
 
-/** True when `directory` is a git checkout whose package.json is the nyte workspace root. */
 export function holdsNyteCheckout(directory) {
   if (!existsSync(join(directory, ".git"))) return false;
 
@@ -63,18 +58,6 @@ export function holdsNyteCheckout(directory) {
   }
 }
 
-/**
- * Everything the steps read about this machine. Child processes get
- * ~/.local/bin first on PATH, so a tool installed earlier in the run is
- * found by the next step.
- *
- * `binDirOnPath` says whether the user's own shell already finds
- * ~/.local/bin. `checkoutAtStart` is decided once, so the plan and the apply
- * loop agree on whether a GitHub login is needed. `sudo` is "root",
- * "passwordless", "password" or "missing"; init fills it in on Linux.
- * `shellChanged` is set by the shell step when it edits an rc file, so the
- * next commands say to reload the shell.
- */
 export function createContext({ env, cwd, home, platform, arch, interactive }) {
   const binDir = join(home, ".local", "bin");
   const originalPath = env.PATH ?? "";

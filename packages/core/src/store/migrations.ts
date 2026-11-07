@@ -33,7 +33,6 @@ import { projectCoordinators } from "./project-migration.ts";
 
 type StoreDialect = "sqlite" | "postgres";
 
-/** Adds structure or rebuilds tables derived from refs and objects; a change to stored records is a `RewriteStep`. */
 export interface SchemaStep {
   readonly kind: "schema";
   readonly name: string;
@@ -41,7 +40,6 @@ export interface SchemaStep {
   readonly indexed?: { readonly [D in StoreDialect]: readonly string[] };
 }
 
-/** Rewrites stored records (`rewrite`, one record or null to keep it), logged events (`rewriteLog`, one session's events in seq order, each rewritten or null to keep it), or derives new refs from a record (`adds`, the names of refs to create at the record the ref `name` holds, after every step's rewrite; one that exists is kept). */
 export interface RewriteStep {
   readonly kind: "rewrite";
   readonly name: string;
@@ -50,7 +48,6 @@ export interface RewriteStep {
   adds?(name: string, record: Json): readonly string[];
 }
 
-/** Finds refs to add (`recover`, the refs to create from every ref and the record it holds as the store stood before this migration, every session's log and the objects of a record kind); one that exists is kept. */
 interface RecoverStep {
   readonly kind: "recover";
   readonly name: string;
@@ -83,7 +80,6 @@ interface Repoint {
   readonly body: string;
 }
 
-/** An object as the store keeps it: its id and its JSON body. */
 export interface StoredObject {
   readonly id: ObjectId;
   readonly body: string;
@@ -96,7 +92,6 @@ interface Creation {
   readonly body: string;
 }
 
-/** One logged event as the store keeps it. */
 export interface LoggedRow {
   readonly seq: number;
   readonly event: string;
@@ -255,7 +250,6 @@ const LEGACY_PATCH = compile(
   }),
 );
 
-/** An edit tool's output from before patches were text: its hunks become the unified diff they stand for. */
 function unifiedOutput(output: Json | undefined): Json | null {
   if (!isJsonObject(output) || !LEGACY_PATCH.Check(output)) return null;
   const { hunks, ...entry } = output;
@@ -318,12 +312,6 @@ const patchText: RewriteStep = {
     }),
 };
 
-/**
- * A call's `intent` event repeated the name, args and class its part's
- * `created` event, logged in the same write, already holds. The intent keeps
- * only its ids; where an old intent's fields differ from its part's, the
- * part's state takes the intent's, as the fold showed it.
- */
 const callIntentOnce: RewriteStep = {
   kind: "rewrite",
   name: "2026-10-16-call-intent-once",
@@ -361,7 +349,6 @@ const callIntentOnce: RewriteStep = {
   },
 };
 
-/** A run's live ref, the fence its run-scoped writes land under, for each run an older Nyte started and has not stopped: only a run's start wrote one. */
 const liveRefs: RewriteStep = {
   kind: "rewrite",
   name: "2026-10-16-live-refs",
@@ -376,14 +363,12 @@ const liveRefs: RewriteStep = {
   },
 };
 
-/** The `waits/` index of each call an older Nyte parked: only a park writes it, and every wake reads it. */
 const parkedWaitIndex: RewriteStep = {
   kind: "rewrite",
   name: "2026-10-16-wait-index",
   adds: indexParkedCall,
 };
 
-/** The index of each parked call whose id the index now escapes (`/` or `%`): an older Nyte wrote its refs unescaped, which no wake reads back. */
 const escapedWaitIndex: RewriteStep = {
   kind: "rewrite",
   name: "2026-10-30-escaped-wait-index",
@@ -406,12 +391,6 @@ function indexParkedCall(name: string, record: Json): readonly string[] {
   return waitIndex(session, call);
 }
 
-/**
- * A `tool` call's intent repeated the name and args of its part, written in
- * the same step. The intent keeps its caller (principal, arguments error); a
- * recovering host reads the name and args from the part. A before_tool gate
- * that changed the args kept the model's call in its hook call's intent.
- */
 const toolArgsInPart: RewriteStep = {
   kind: "rewrite",
   name: "2026-10-16-tool-args-in-part",
@@ -434,7 +413,6 @@ const toolArgsInPart: RewriteStep = {
   },
 };
 
-/** An unopened tool call's intent records its position among its response's calls, the order a recovering host runs them in; an older Nyte's has none, and keeps the call-id order it ran in, from position 0. */
 const intentPosition: RewriteStep = {
   kind: "rewrite",
   name: "2026-10-16-intent-position",
@@ -449,7 +427,6 @@ const intentPosition: RewriteStep = {
   },
 };
 
-/** The `woken/` index of each call an older Nyte woke and had not stepped since: only a wake writes it, and a poll for other processes' wakes reads only it. */
 const wokenCalls: RewriteStep = {
   kind: "rewrite",
   name: "2026-10-16-woken-index",
@@ -476,10 +453,8 @@ const BeforeToolHookType = Type.Object({
   id: Type.String({ pattern: "^hook:before_tool:" }),
 });
 
-/** The changed call a `modify` result held before the hook-tool-args step, as the before_tool decoder then read it. */
 const ToolCalls = compile(withJson(ToolCallType));
 
-/** A before_tool hook call's intent repeated the tool call its part holds, and a gate's `modify` result the whole changed call. The intent keeps its principal, and a result whose changed call the old decoder read keeps that call's args alone; one it could not read is kept as it was. */
 const hookToolArgs: RewriteStep = {
   kind: "rewrite",
   name: "2026-10-16-hook-tool-args",
@@ -502,15 +477,6 @@ const hookToolArgs: RewriteStep = {
   },
 };
 
-/**
- * A run's record went with its ref when the run ended, until endRun kept the
- * last one under `sessions/<s>/ended/<run>` for the turn's changes. Objects a
- * ref moved off were kept until `refTargetIndex`, and every store migrates
- * before its first ref write, so each run that one session's log ended gets
- * that ref at its latest record holding a snapshot (by `at`, then id), unless
- * the run is still live, its session is gone, or that record predates today's
- * run record (no `lastSnapshot`, so no end to compare with).
- */
 const endedRunRecords: RecoverStep = {
   kind: "recover",
   name: "2026-10-16-ended-run-records",
@@ -571,7 +537,6 @@ const endedRunRecords: RecoverStep = {
   },
 };
 
-/** A workspace record names the session it isolates in a git worktree, or `null` for a folder the user added. */
 const workspaceIsolation: RewriteStep = {
   kind: "rewrite",
   name: "2026-10-16-workspace-isolation",
@@ -582,7 +547,6 @@ const workspaceIsolation: RewriteStep = {
   },
 };
 
-/** One fold checkpoint per session, a cache over the log that core rewrites when a fold settles and ignores when it cannot decode one. Postgres keeps none. */
 const foldCheckpoints: SchemaStep = {
   kind: "schema",
   name: "2026-10-16-fold-checkpoints",
@@ -596,13 +560,6 @@ const foldCheckpoints: SchemaStep = {
 
 const WORKSPACE_TARGET = compile(withJson(WorkspaceTargetType));
 
-/**
- * Trust belongs to a folder: each added workspace's own `projectResources`
- * decision becomes its folder's decision at `trust/<folder key>`. A
- * worktree's is dropped, since it follows the folder it was made from. Where
- * several workspaces of one folder decided, the latest written wins, and a
- * decline wins over a grant written at the same time.
- */
 const folderTrust: RecoverStep = {
   kind: "recover",
   name: "2026-10-17-folder-trust",
@@ -651,7 +608,6 @@ const folderTrust: RecoverStep = {
   },
 };
 
-/** A workspace record no longer holds its folder's trust; `folderTrust` moved it. */
 const workspaceTrustMoved: RewriteStep = {
   kind: "rewrite",
   name: "2026-10-17-workspace-trust-moved",
@@ -667,14 +623,12 @@ const workspaceTrustMoved: RewriteStep = {
   },
 };
 
-/** Holds version 20, which an unreleased build spent adding `snapshot` to session records before that field was dropped: a store it ran on keeps a `snapshot` nothing reads, and any other store gains nothing. */
 const sessionSnapshotDropped: SchemaStep = {
   kind: "schema",
   name: "2026-10-18-session-snapshot-dropped",
   sql: { sqlite: [], postgres: [] },
 };
 
-/** A `changes` event holds the session's whole list of changed files; 0.0.18 logged each call's own files and merged them as it folded. Each event becomes the list that merge reached there, a path already listed keeping its place, so the fold that takes the latest event shows what 0.0.18 showed. */
 const changesAsWholeList: RewriteStep = {
   kind: "rewrite",
   name: "2026-10-20-changes-as-whole-list",
@@ -700,7 +654,6 @@ const changesAsWholeList: RewriteStep = {
   },
 };
 
-/** Fold checkpoints are a cache over the log, and `changesAsWholeList` rewrote the events they folded. Core folds a session from its log again when it has none. */
 const foldCheckpointsCleared: SchemaStep = {
   kind: "schema",
   name: "2026-10-20-fold-checkpoints-cleared",
@@ -756,7 +709,6 @@ const modelsPerRequest: RewriteStep = {
   },
 };
 
-/** A ref write deletes each object it moves a ref off that no ref holds anymore; this index answers whether one does. Every store migrates before its first ref write, so `endedRunRecords` read every object a ref ever held. */
 const refTargetIndex: SchemaStep = {
   kind: "schema",
   name: "2026-10-26-ref-target-index",
@@ -878,7 +830,6 @@ export async function migrateStore(target: MigrationTarget): Promise<void> {
   );
 }
 
-/** Runs each recover step over the records as the rewrite steps before it leave them. */
 async function recoverRefs(
   steps: readonly StoreStep[],
   target: MigrationTarget,

@@ -13,7 +13,6 @@ import { occludes } from "../../components/overlay-occlusion.ts";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 
-// Mirrors motion.durationNormal and motion.easeOutQuint; motion can't read CSS variables.
 const TRAY_TRANSITION = { duration: 0.15, ease: [0.16, 1, 0.3, 1] } as const;
 
 export const trayParts = create({

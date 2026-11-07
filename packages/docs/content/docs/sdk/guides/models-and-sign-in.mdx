@@ -36,9 +36,9 @@ for (const provider of catalog.providers) {
 A model is named by its `ref`, `{ provider, id }`. That's what `configure`, `setDefault` and a
 chat's `configuration` take.
 
-`list` returns what the host knows now, without waiting on the providers. To stay current, watch the
-host: its `catalog` value changes whenever the catalog does, and that's the moment to call `list`
-again.
+`list` returns what the host knows now, without waiting on the providers. To stay current, iterate
+`connection.watch()`. The `catalog` of each `HostView` it yields changes whenever the catalog does,
+and that's the moment to call `list` again.
 
 ```ts
 for await (const host of connection.watch()) console.log(host.catalog);

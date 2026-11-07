@@ -1,7 +1,7 @@
 import { parsePatchFiles } from "@pierre/diffs";
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
-import { FileTypeIconSprite } from "../../components/file-type-icon.tsx";
+import { FileTypeIconSprite } from "@nyte-ai/ui/file-type-icon";
 import { preferences, useSetting } from "../../preferences/index.ts";
 import { ChangesStack } from "../../workbench/changes/changes-stack.tsx";
 import type { ChangesStackItem } from "../../workbench/changes/changes-stack-code-view.ts";
@@ -38,10 +38,6 @@ const ITEMS_IGNORING_WHITESPACE = stackItems(PATCH_IGNORING_WHITESPACE, 1);
 
 const NO_PATHS: readonly string[] = [];
 
-/**
- * The Changes panel's stack with one file. Ignore whitespace swaps in the patch `git diff -w`
- * returns, the way the panel refetches with the option.
- */
 export function ChangesPreview(): ReactElement {
   const layout = useSetting(preferences.changesLayout);
   const ignoreWhitespace = useSetting(preferences.changesIgnoreWhitespace);

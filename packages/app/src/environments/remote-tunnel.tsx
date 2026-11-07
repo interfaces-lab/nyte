@@ -177,7 +177,6 @@ interface ShownPairing {
   readonly listed: boolean;
 }
 
-/** Pairs one more device over the tunnel, and shows its code until the device claims it. */
 export function TunnelPairButton({ tunnel }: { readonly tunnel: ConfiguredTunnel }): ReactElement {
   const client = useQueryClient();
   const [naming, setNaming] = useState(false);
@@ -231,7 +230,6 @@ export function TunnelPairButton({ tunnel }: { readonly tunnel: ConfiguredTunnel
   );
 }
 
-/** Cloudflare Tunnel: set it up, serve over it, and manage the devices paired through it. */
 export function CloudflareSection({
   tunnel,
   serving,

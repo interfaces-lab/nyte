@@ -64,7 +64,6 @@ export type SdkErrorWire = Decoded<typeof SdkErrorWireType>;
 
 export type SdkErrorCode = SdkErrorWire["code"];
 
-/** The error every Nyte API throws: a `code` a client branches on, a message for people, the host it came from, the issues behind an `invalid`, and a correlation id the host logged it under. On the wire it is an `SdkErrorWire`. */
 export class SdkError extends Error {
   override readonly name = "SdkError";
 

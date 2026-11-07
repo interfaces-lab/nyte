@@ -93,7 +93,6 @@ function decodeThinking(object: Json | null): Thinking | undefined {
   return Value.Check(ThinkingType, value) ? value : undefined;
 }
 
-/** Reads the saved model without checking a provider. */
 export async function readModelSelection(store: StoreConnection): Promise<ModelRef | null> {
   const held = await readHeld(store, await store.refs.get(MODEL_PREFERENCE));
   const value = held === null ? undefined : decodeKvValue(held.object);

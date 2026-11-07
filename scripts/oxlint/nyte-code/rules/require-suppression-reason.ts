@@ -1,6 +1,5 @@
 import { defineRule } from "@oxlint/plugins";
 
-/** Require every lint suppression to end in `-- <why>`. */
 export const requireSuppressionReasonRule = defineRule({
   meta: {
     type: "problem",

@@ -1,4 +1,3 @@
-/** Account availability, separate from the hosted model catalog. */
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { GITHUB_COPILOT_DEFAULT_ORIGIN } from "../api/github-copilot-headers.ts";
@@ -16,7 +15,6 @@ const CatalogModel = Type.Object({
   ),
 });
 
-/** Parses Copilot's model list into the models the account may pick. Only Individual accounts fall back to explicit enabled policies when picker flags fail. */
 export function parseGitHubCopilotCatalog(
   value: unknown,
   origin: string,

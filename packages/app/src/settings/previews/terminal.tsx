@@ -18,7 +18,6 @@ export function TerminalPreview(): ReactElement {
   );
 }
 
-/** A display-only terminal drawn like the app's, showing a prompt for the configured shell. It stays blank if the engine can't load, which a terminal tab reports. */
 function mountTerminalPreview(host: HTMLDivElement | null): (() => void) | undefined {
   if (host === null) return undefined;
   const unmounted = new AbortController();
@@ -61,7 +60,6 @@ function mountTerminalPreview(host: HTMLDivElement | null): (() => void) | undef
   return () => unmounted.abort();
 }
 
-/** Each shell's default prompt. Without a configured shell it's the login shell, zsh on macOS. */
 function shellPrompt(shell: string | null | undefined): string {
   const name = shell?.split("/").at(-1) ?? (nyte.platform === "darwin" ? "zsh" : "bash");
 

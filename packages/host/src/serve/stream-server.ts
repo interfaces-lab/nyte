@@ -8,7 +8,6 @@ const encoder = new TextEncoder();
 
 const CHUNK_BYTES = 48 * 1024;
 
-/** Smaller chunks compress under ~4x and save too few bytes to pay for deflating and inflating them. */
 const DEFLATE_MIN_BYTES = 16 * 1024;
 
 export function createStreamChannels() {

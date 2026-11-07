@@ -3,7 +3,7 @@ import { props } from "@stylexjs/stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { useState } from "react";
 import type { ReactElement } from "react";
-import { FileTypeIconSprite } from "../components/file-type-icon.tsx";
+import { FileTypeIconSprite } from "@nyte-ai/ui/file-type-icon";
 import { PaneFloatingMount } from "../chat/chat-pane-view.tsx";
 import type { Layout } from "./layout.ts";
 import { LayoutView, PANE_GAP } from "./layout-view.tsx";
@@ -36,7 +36,6 @@ function plus(left: Linear, right: Linear): Linear {
   };
 }
 
-/** The target pane's box for the center, or the half of it an edge drop would take. */
 function dropPreviewBox(box: Box, target: SessionDropTarget): Box {
   switch (target.placement) {
     case "center":

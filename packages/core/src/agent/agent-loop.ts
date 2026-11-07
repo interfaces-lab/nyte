@@ -61,7 +61,6 @@ export interface LoopInput {
 export interface LoopConfig<P extends PreparedRequest = PreparedRequest> {
   readonly attempt: number;
   readonly retry: RetryPolicy;
-  /** Resolves once a request may start: at once, or when a pause ends or `signal` aborts. */
   ready(signal: AbortSignal): Promise<void>;
   prepareRequest(request: LoopRequest, signal: AbortSignal): Promise<Prepared<P>>;
   stream(prepared: P, signal: AbortSignal): Promise<LoopResponse>;
@@ -69,7 +68,6 @@ export interface LoopConfig<P extends PreparedRequest = PreparedRequest> {
     execute(call: ModelToolCall, signal: AbortSignal): Promise<ToolResult>;
   };
 
-  /** Settles a finished response in one write: its parts, its charge, and every call it asked for. */
   settleResponse(
     response: {
       readonly message: AssistantMessage;
@@ -158,7 +156,6 @@ const UNFINISHED: Failure = {
   message: "The response ended without a result.",
 };
 
-/** A stream that ended aborted without the loop's signal: a pause, not a stop or a provider failure, so retrying it spends no retry. */
 export const INTERRUPTED: Failure = {
   class: "runner",
   message: "The response was interrupted before it finished.",
@@ -368,7 +365,6 @@ async function* respond<P extends PreparedRequest>(
   };
 }
 
-/** A response cut off at the output cap may end inside a call's arguments, so none of its calls runs: each fails with a reason the model can act on. */
 function failCutOffCalls(message: AssistantMessage): AssistantMessage {
   return {
     ...message,

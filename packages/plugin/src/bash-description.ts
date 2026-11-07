@@ -13,15 +13,6 @@ const parameters = standard(
   }),
 );
 
-/**
- * Makes the model say what each `bash` call does. A derive wraps the
- * environment's `bash` tool, keeping its identity, execute and class, and
- * requires `description` in its parameters; the tool's class already carries
- * it as `ToolClass.shell.description`, so a client heads the call with it.
- *
- * @category plugins
- * @since 0.1.0
- */
 export default {
   id: "bash-description",
   activate(api) {

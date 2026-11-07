@@ -1,4 +1,3 @@
-/** Models and corrections the generator keeps by hand: entries no upstream catalog lists, and fixes for metadata it gets wrong. */
 import type { Api, Model, OpenAICompletionsCompat } from "../../src/types.ts";
 import { OPENAI_DAYBREAK_BLUE_MODEL_ID } from "./compat-metadata.ts";
 import {
@@ -19,10 +18,6 @@ const XAI_BUILTIN_EXCLUDED_MODEL_IDS = new Set([
   "grok-code-fast-1",
 ]);
 
-/**
- * GitHub's "Models with extended capabilities" table lists these Copilot models as supporting
- * the extended 1 million token context window.
- */
 const GITHUB_COPILOT_EXTENDED_CONTEXT_MODELS = new Set([
   "claude-fable-5",
   "claude-opus-4.6",
@@ -70,7 +65,6 @@ const MINIMAX_DIRECT_SUPPORTED_IDS = new Set([
   "MiniMax-M3",
 ]);
 
-/** Azure Foundry deploys these with larger context windows than OpenAI's own short-tier defaults; see models-sold-directly-by-azure docs. */
 const AZURE_LARGE_CONTEXT_MODEL_IDS = new Set([
   "gpt-5.4",
   "gpt-5.5",
@@ -80,7 +74,6 @@ const AZURE_LARGE_CONTEXT_MODEL_IDS = new Set([
   "gpt-6-astra",
 ]);
 
-/** Direct OpenAI models added when models.dev does not list them. */
 const MISSING_OPENAI_MODELS: Model<"openai-responses">[] = [
   {
     id: "gpt-6-astra",
@@ -268,11 +261,6 @@ const CODEX_SPARK_CONTEXT = 128000;
 
 const CODEX_MAX_TOKENS = 128000;
 
-/**
- * OpenAI Codex (ChatGPT OAuth) models. models.dev does not list them; this small, explicit
- * list avoids aliases. Older model limits are based on observed server behavior; GPT-5.6
- * follows Codex's 272k catalog limit (formerly 372k).
- */
 const CODEX_MODELS: Model<"openai-codex-responses">[] = [
   {
     id: "gpt-5.3-codex-spark",
@@ -412,7 +400,6 @@ const CODEX_MODELS: Model<"openai-codex-responses">[] = [
   },
 ];
 
-/** Mistral Medium 3.5, added until models.dev includes it; its 256k-token window is also its output cap. */
 const MISTRAL_MEDIUM_35: Model<"mistral-conversations"> = {
   id: "mistral-medium-3.5",
   name: "Mistral Medium 3.5",
@@ -431,7 +418,6 @@ const MISTRAL_MEDIUM_35: Model<"mistral-conversations"> = {
   maxTokens: 262144,
 };
 
-/** The openrouter/auto alias. Its cost is unknown: OpenRouter routes to different models and charges for the one used. */
 const OPENROUTER_AUTO: Model<"openai-completions"> = {
   id: "auto",
   name: "Auto",
@@ -450,12 +436,6 @@ const OPENROUTER_AUTO: Model<"openai-completions"> = {
   maxTokens: 30000,
 };
 
-/**
- * The openrouter/fusion alias. OpenRouter exposes Fusion as a router alias/plugin entry
- * point; its model metadata does not advertise tools, but the alias resolves to a concrete
- * model that can invoke caller tools and has the openrouter:fusion server tool auto-injected.
- * Its cost is unknown: Fusion routes to multiple models and charges for the ones used.
- */
 const OPENROUTER_FUSION: Model<"openai-completions"> = {
   id: "openrouter/fusion",
   name: "OpenRouter: Fusion",
@@ -474,7 +454,6 @@ const OPENROUTER_FUSION: Model<"openai-completions"> = {
   maxTokens: 30000,
 };
 
-/** Drops the xAI models Nyte does not ship and OpenCode's Codex Spark, which only Codex serves. */
 export function withoutUnservedModels(models: readonly Model<Api>[]): Model<Api>[] {
   return models.filter(
     (model) =>
@@ -486,18 +465,6 @@ export function withoutUnservedModels(models: readonly Model<Api>[]): Model<Api>
   );
 }
 
-/**
- * Corrects upstream metadata until it is fixed at the source:
- * - OpenCode variants list Claude Sonnet 4/4.5 with 1M context; the actual limit is 200K.
- * - Direct OpenAI requests stay in the short-context pricing tier by default. Users can opt
- *   into the larger context through model overrides, so the capped models keep long-context
- *   cost metadata.
- * - Cloudflare AI Gateway passes OpenAI usage through at OpenAI list prices.
- * - models.dev reports gpt-5-pro output as 272000 (a duplicate of the input sub-limit); the
- *   actual max output is 128000. This also reaches the derived Azure clone.
- * - Kimi K3 keeps its output limit when gateway metadata is missing or incorrect.
- * - Selected OpenRouter model metadata stays stable until upstream settles.
- */
 export function applyUpstreamCorrections(models: readonly Model<Api>[]): void {
   for (const candidate of models) {
     if (
@@ -596,12 +563,6 @@ function addUnlisted(models: Model<Api>[], model: Model<Api>): void {
   }
 }
 
-/**
- * Adds the hand-kept models in catalog order, gives every DeepSeek V4 Chat Completions model
- * outside the Qwen token plans DeepSeek's reasoning replay (OpenRouter and OpenCode keep their
- * native reasoning effort), drops the MiniMax models the direct API does not serve, and clones
- * each direct OpenAI Responses model for Azure.
- */
 export function addCuratedModels(models: Model<Api>[]): void {
   for (const model of MISSING_OPENAI_MODELS) addUnlisted(models, model);
 

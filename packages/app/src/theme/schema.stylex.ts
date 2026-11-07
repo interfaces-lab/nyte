@@ -5,7 +5,6 @@ export const shell = defineConsts({
   titlebarHeight: "var(--nyte-titlebar-height)",
   trafficLightInset: "var(--nyte-titlebar-traffic-light-inset)",
   cardInset: "var(--nyte-shell-card-inset)",
-  /** Between the titlebar and the first row of the sidebar and of the workbench rail, so they read as one line. */
   regionPaddingBlockStart: "var(--nyte-shell-region-padding-block-start)",
   cardRadius: "var(--nyte-shell-card-radius)",
 });
@@ -30,7 +29,6 @@ export const conversation = defineConsts({
   composerNewChatRadius: "var(--nyte-composer-new-chat-radius)",
   composerExpandedRadius: "var(--nyte-composer-expanded-radius)",
   composerFooterSegmentMaxWidth: "var(--nyte-composer-footer-segment-max-width)",
-  /** The anchor name a chat's composer dock takes, so what floats over the transcript can sit above it. */
   composerDock: "--nyte-composer-dock",
 });
 
@@ -80,6 +78,9 @@ export const settings = defineConsts({
 });
 
 export const workbench = defineConsts({
+  widthMin: 384,
+  centerWidthMin: 424,
+  widthDefault: 588,
   activeWidth: "var(--nyte-active-workbench-width)",
   railWidth: "var(--nyte-workbench-rail-width)",
   railGap: "var(--nyte-workbench-rail-gap)",
@@ -99,6 +100,16 @@ export const workbench = defineConsts({
 export const pane = defineConsts({
   sashSize: "var(--nyte-pane-sash-size)",
   dividerGap: "var(--nyte-pane-divider-gap)",
+});
+
+export const imageViewer = defineConsts({
+  thumbnailSize: "var(--nyte-image-thumbnail-size)",
+  thumbnailCompactSize: "var(--nyte-image-thumbnail-compact-size)",
+  width: "var(--nyte-image-viewer-width)",
+  headerHeight: "var(--nyte-image-viewer-header-height)",
+  footerHeight: "var(--nyte-image-viewer-footer-height)",
+  compactFooterHeight: "var(--nyte-image-viewer-compact-footer-height)",
+  modeWidth: "var(--nyte-image-viewer-mode-width)",
 });
 
 export const diffView = defineConsts({

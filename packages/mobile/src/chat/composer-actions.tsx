@@ -4,11 +4,6 @@ import { SymbolView } from "expo-symbols";
 import { css, html } from "react-strict-dom";
 import { controls, radii, spacing, tokens, useTheme } from "../theme.ts";
 
-/**
- * The row along the composer card's bottom edge: the attachments toggle on the left and one primary
- * button on the right, which stops dictation while recording, sends once there is something to send,
- * and starts dictation otherwise.
- */
 export function ComposerActions({
   attachOpen,
   attachDisabled,

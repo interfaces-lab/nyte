@@ -12,9 +12,9 @@ Each has a default. The examples below change one of them or use one more handle
 
 ## Stream the answer [#stream-the-answer]
 
-The host serves its rows on a local listener, and `openHost` follows them: a head store for the
-chat's rows and `live.text` for the text a part streams. `print` writes the new end of each text
-part from this message's run, and stops when that run ends.
+`openHost` attaches to a host over its socket, so the host listens on a local port first. A head
+store holds the chat's rows, and `live.text` carries the text a part streams. `print` writes the
+new end of each text part from this message's run, and stops when that run ends.
 
 ```ts tab="stream.ts"
 import process from "node:process";
@@ -165,7 +165,7 @@ crash. [Plugins](/docs/plugins) covers the rest of what a plugin can add.
 ## Ask before tool calls [#ask-before-tool-calls]
 
 With the `permissions` setting on `ask`, the agent waits for an answer before it runs a command or
-changes a file. Each request shows up in the chat's view, here followed through a head store as in
+changes a file. Each request shows up in the chat's view, here built from a head store's rows as in
 [Stream the answer](#stream-the-answer). `openApprovals` lists the ones nobody has answered, and
 `act` answers one.
 
@@ -407,7 +407,8 @@ sessions.subscribe(() => {
 ## Serve it and connect from anywhere [#serve-it]
 
 Every example above works over the network. Put the host on HTTP, then swap `sdk.open` for
-`sdk.connect` in the client.
+`sdk.connect` in the client, and pass the host's URL to `openHost` in place of the local listener's
+address.
 
 ```ts tab="serve.ts"
 import process from "node:process";

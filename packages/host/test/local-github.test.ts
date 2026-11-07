@@ -78,7 +78,6 @@ async function calls(): Promise<
     .map((line) => JSON.parse(line));
 }
 
-/** A repository on `feature` with one commit and the given remotes. */
 async function repository(remotes: Readonly<Record<string, string>>): Promise<string> {
   const root = await folder();
   sh(root, "init", "-q", "-b", "feature");

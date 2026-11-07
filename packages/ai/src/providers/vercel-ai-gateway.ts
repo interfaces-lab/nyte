@@ -1,6 +1,3 @@
-/**
- * Vercel AI Gateway provider.
- */
 import { anthropicMessagesApi } from "../api/anthropic-messages.lazy.ts";
 import { envApiKeyAuth } from "../auth/helpers.ts";
 import { verifyWithRequest } from "../auth/verify.ts";

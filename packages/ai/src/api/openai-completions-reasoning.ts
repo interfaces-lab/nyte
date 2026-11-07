@@ -1,8 +1,3 @@
-/**
- * Reasoning replay data on OpenAI-compatible Chat Completions: OpenRouter
- * `reasoning_details`, the raw reasoning fields servers stream, and Copilot's
- * `reasoning_opaque` state.
- */
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 
@@ -116,10 +111,6 @@ export type OpenAICompletionsReasoningField = (typeof OPENAI_COMPLETIONS_REASONI
 
 export const OpenAICompletionsReasoningFieldSchema = Type.Enum(OPENAI_COMPLETIONS_REASONING_FIELDS);
 
-/**
- * Copilot continues a model's reasoning across turns only when the assistant
- * message replays `reasoning_opaque`; it rides in the thinking signature.
- */
 export const CopilotReasoningOpaqueSchema = Type.Object({
   reasoning_opaque: Type.String({ minLength: 1 }),
 });

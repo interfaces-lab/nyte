@@ -69,7 +69,6 @@ it("gives an older store's unstopped runs their live ref and its parked calls th
   expect(created.toSorted()).toEqual([live, ...index].toSorted());
 });
 
-/** Every record under `sessions/` as the migration reads it. */
 async function storedRecords(kernel: Kernel): Promise<StoredRecord[]> {
   const records: StoredRecord[] = [];
 
@@ -85,7 +84,6 @@ async function storedRecords(kernel: Kernel): Promise<StoredRecord[]> {
   return records;
 }
 
-/** Lands a migration's repoints in the kernel's store, as a store's own commit does. */
 async function landChange(kernel: Kernel, change: StoreChange): Promise<"committed"> {
   for (const repoint of change.repoints) {
     const id = await kernel.store.objects.put(JSON.parse(repoint.body));

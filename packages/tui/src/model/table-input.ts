@@ -13,7 +13,6 @@ import type { QuestionModel } from "./question.ts";
 import { awaitingTrust, followedSession } from "./state.ts";
 import type { Draft, FollowedSession, ShellJob, State, Submission } from "./state.ts";
 
-/** What the interaction table decides each command from. */
 export interface TableInput {
   readonly run: RunModel;
   readonly question: QuestionModel | null;
@@ -24,9 +23,7 @@ export interface TableInput {
   readonly completion: CompletionModel | null;
   readonly dialog: Dialog | null;
   readonly blocked: Blocked | null;
-  /** A blank chat's first message waits for the host to open. */
   readonly waiting: boolean;
-  /** The host's model catalog has arrived, so model and thinking choices can be offered. */
   readonly models: boolean;
   readonly queue: readonly QueueRow[];
   readonly followUp: "steer" | "queue";
@@ -111,7 +108,6 @@ export function blockedBy(state: State): Blocked | null {
   return null;
 }
 
-/** How a message sent while a run works is delivered: the follow-up setting, or `queue` when the chat's model cannot take a message mid-turn. */
 export function followUpDelivery(state: State): "steer" | "queue" {
   const { chat } = state.facts;
   const { catalog } = state.facts.catalog;
@@ -170,7 +166,6 @@ export function tableInputFor(state: State, dialog: Dialog | null): TableInput {
   };
 }
 
-/** The messages sent to the blank chat on screen while they wait for the host to open or for the folder's trust, oldest first. */
 export function waitingMessages(state: State): readonly Submission[] {
   const { chat } = state.facts;
 

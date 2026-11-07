@@ -1,9 +1,3 @@
-/**
- * Anthropic OAuth flow (Claude Pro/Max): PKCE against claude.ai with browser
- * callback or copy-code login, and token refresh against platform.claude.com.
- * Node-only (node:http); the callback server is for CLI use, not browsers.
- */
-
 import { createServer, type Server } from "node:http";
 import { Value } from "typebox/value";
 import { getProviderEnvValue } from "../../utils/provider-env.ts";
@@ -341,9 +335,6 @@ async function loginAnthropic(
   }
 }
 
-/**
- * Refresh Anthropic OAuth token
- */
 async function refreshAnthropicToken(
   refreshToken: string,
   signal: AbortSignal,

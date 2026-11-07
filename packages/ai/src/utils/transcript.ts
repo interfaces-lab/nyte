@@ -1,7 +1,3 @@
-/**
- * Transcript replay helpers live in @nyte-ai/schema so clients share one
- * reading of system messages; re-exported here for the ai layout.
- */
 export {
   collapseSystemMessages,
   createInitialSystemMessage,

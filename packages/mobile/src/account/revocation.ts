@@ -9,18 +9,10 @@ import type { ManagedConnection, SavedConnection } from "../connection/connectio
 type Fetch = (...args: Parameters<typeof fetch>) => ReturnType<typeof fetch>;
 
 export interface ReleaseReport {
-  /** The Mac, asked with the device's own bearer. */
   readonly host: Release;
-  /** The broker's revocation; `skipped` without a session for the owning account. */
   readonly broker: Release | "skipped";
 }
 
-/**
- * Release the account connection a save replaced, so switching to another Mac,
- * or to an address, leaves no live bearer behind. Reconnecting the same Mac
- * replaces a bearer too: the broker already ended that device, so the Mac
- * answers 401 and nothing else changes.
- */
 export function releaseReplaced(input: {
   readonly replaced: SavedConnection | undefined;
   readonly next: SavedConnection;
@@ -37,12 +29,6 @@ export function releaseReplaced(input: {
   });
 }
 
-/**
- * Remove this device for good, for Sign Out and for Disconnect while signed in
- * as its owner. The broker's revocation comes first: it also ends the Clerk
- * session that enrolled the device, so that session cannot enroll again. The
- * Mac is then asked with the device's own bearer, whatever the broker said.
- */
 export async function releaseDevice(input: {
   readonly saved: ManagedConnection;
   readonly broker: BrokerClient | undefined;

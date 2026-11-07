@@ -24,7 +24,6 @@ function steer(id: string, prompt: UserMessage): UserMessage {
   return { ...userMessage(id), turn: prompt.turn, delivery: "steer" };
 }
 
-/** The turns the messages lead; a steer joins its prompt's turn instead. */
 function turnsFor(messages: readonly UserMessage[]) {
   return messages.flatMap((message) =>
     message.delivery === "steer"

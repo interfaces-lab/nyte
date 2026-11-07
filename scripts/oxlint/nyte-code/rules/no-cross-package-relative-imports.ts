@@ -7,7 +7,6 @@ import type { ESTree } from "@oxlint/plugins";
 
 const packageRoots = new Map<string, string | null>();
 
-/** Find the directory of the nearest package.json at or above `path`; null outside every package. */
 function findPackageRoot(path: string): string | null {
   const known = packageRoots.get(path);
 
@@ -24,11 +23,6 @@ function findPackageRoot(path: string): string | null {
   return root;
 }
 
-/**
- * Disallow a relative import that lands in another package, such as `../../core/src/fold.ts`. A package is
- * reached through its name and `exports`, so its files can move without breaking callers and the import
- * graph matches the dependency graph in package.json.
- */
 export const noCrossPackageRelativeImportsRule = defineRule({
   meta: {
     type: "problem",

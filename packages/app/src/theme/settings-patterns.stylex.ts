@@ -44,10 +44,6 @@ export const settingsPatterns = create({
     borderRadius: radius.card,
     backgroundColor: role.bgMutedTranslucent,
   },
-  /**
-   * Inset on the rows' inline edge, so its sides meet the rows' text and rules. Display only: the
-   * slot is inert. The row after it draws no rule, since the preview's own edge closes it.
-   */
   preview: {
     position: "relative",
     marginBlockStart: settings.rowPaddingInline,

@@ -39,27 +39,20 @@ type PromptInputs = Pick<Resources, "contextFiles" | "prompt">;
 
 const CONTEXT_NAMES = ["AGENTS.override.md", "AGENTS.md", "AGENTS.MD", "CLAUDE.md", "CLAUDE.MD"];
 
-/** Resolves an absolute path to its real one on the machine some files are on, null where nothing resolves (`EnvironmentProvider.realpath`). */
 type RealPath = (path: string) => Promise<string | null>;
 
-/** Files on one machine, and its real paths where its provider resolves them. */
 type Reader = { readonly files: FilesApi; readonly real: RealPath | null };
 
 type FoundContext = Omit<ContextFile, "id"> & {
-  /** The name in `CONTEXT_NAMES` it was read under. */
   readonly name: string;
-  /** Its real path, which names the file however it was reached; the path it was read at where the machine resolves none. */
   readonly real: string;
-  /** Its folder's real path joined with `name`, what `findShadowedContext` answers for a shadowed file. */
   readonly entry: string;
 };
 
 const SKILL_DIRECTORIES = [".nyte/skills", ".agents/skills"];
 
-/** Where a project's shared docs live, under the home and under the workspace. */
 export const SHARED_DOCS = ".nyte/projects/docs";
 
-/** The home's key in `WorkspaceState.watches`; a workspace's is its id. */
 const HOME = "home";
 
 const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/;
@@ -72,7 +65,6 @@ export const SKILL_PATHS = "skills.paths";
 
 const scanIssues = new WeakMap<Resources, readonly ValidationIssue[]>();
 
-/** Returns the session's resources, scanned once and kept until a folder they load from changes. Before the scan reads them, the session joins the watches on those folders (`refresh` answers a change), so a change during the scan still counts. */
 export async function scanResources(kernel: Kernel, session: SessionId): Promise<Resources> {
   const record = (await requireSession(kernel.store, session)).record;
   const workspace = record.workspace;
@@ -103,7 +95,6 @@ export async function scanResources(kernel: Kernel, session: SessionId): Promise
   return entry.resources;
 }
 
-/** Drops the scans of the sessions `chosen` picks (every one by default) and takes those sessions off the watches, stopping each watch no session is left on. */
 export function forgetScans(
   kernel: Kernel,
   chosen: (session: SessionId) => boolean = () => true,
@@ -120,7 +111,6 @@ export function forgetScans(
   }
 }
 
-/** Starts the home's watch for the host's lifetime, so a change under `<home>/.nyte/plugins` reloads the host's own plugins with no chat open. */
 export async function watchHome(kernel: Kernel): Promise<void> {
   const home = await attachHome(kernel).catch(() => null);
 
@@ -128,7 +118,6 @@ export async function watchHome(kernel: Kernel): Promise<void> {
   watchRoot(kernel, HOME, home.files, null, await homePaths(kernel), true);
 }
 
-/** Closes the watches as the host closes: no watch starts and no change is answered after, every scan is dropped, every watch (the home's too) stops, and the changes already being answered finish first, so none reloads a plugin on a closing host. */
 export async function closeWatches(kernel: Kernel): Promise<void> {
   const state = kernel.workspaceState;
   state.closed = true;
@@ -140,7 +129,6 @@ export async function closeWatches(kernel: Kernel): Promise<void> {
   await Promise.all(stopped.map((watch) => watch.settled()));
 }
 
-/** Scans the resources a new chat in `workspace` would read, before the chat exists, over the workspace's own attachment. */
 export function scanWorkspaceResources(kernel: Kernel, workspace: WorkspaceId): Promise<Resources> {
   return scan(kernel, workspace, () => kernel.environments.attachWorkspace(workspace), KEEP_ALL);
 }
@@ -149,12 +137,6 @@ export function resourceIssues(resources: Resources): readonly ValidationIssue[]
   return scanIssues.get(resources) ?? [];
 }
 
-/**
- * Reads the session's prompt files again before a request and, when they differ from its cached
- * scan, drops the scan and reloads the session's plugins, so the request about to be built and its
- * plugins' `inputs` carry them. Prompt files are read rather than watched: they sit in every
- * folder above the workspace and in `<home>/.nyte`, where a watch costs more than a read.
- */
 export async function refreshPromptFiles(kernel: Kernel, session: SessionId): Promise<void> {
   const cached = kernel.workspaceState.scans.get(session);
 
@@ -307,7 +289,6 @@ async function scan(
   return resources;
 }
 
-/** The prompt files `found` reads: the context files `keeps` keeps (the user's in `<home>/.nyte`, each ancestor's, then the folder's own), and `.nyte/SYSTEM.md` and `.nyte/APPEND_SYSTEM.md`, a trusted folder's before the user's. */
 async function readPromptInputs(
   kernel: Kernel,
   found: Awaited<ReturnType<typeof readers>>,
@@ -356,7 +337,6 @@ async function readPromptInputs(
   };
 }
 
-/** What a workspace's files are read through: the home's environment, the workspace's (null where its provider serves no files or, untrusted, it does not attach), the workspace's files again as `project` once it is trusted, and its root as an absolute path. */
 async function readers(
   kernel: Kernel,
   workspace: WorkspaceId,
@@ -380,7 +360,6 @@ async function readers(
   };
 }
 
-/** Puts `session` on the watches of the folders its resources load from: the home's (`homePaths`) and, once the workspace is trusted, the workspace's (`.nyte/plugins` and the skill folders), which watches through the files of the first session on it. */
 async function follow(kernel: Kernel, session: SessionId, workspace: WorkspaceId): Promise<void> {
   const home = await attachHome(kernel).catch(() => null);
 
@@ -401,7 +380,6 @@ async function follow(kernel: Kernel, session: SessionId, workspace: WorkspaceId
     ]);
 }
 
-/** The folders the home's watch covers: `.nyte/plugins`, the skill folders, the shared docs and the skill paths. */
 async function homePaths(kernel: Kernel): Promise<readonly string[]> {
   return [
     ...SKILL_DIRECTORIES,
@@ -411,7 +389,6 @@ async function homePaths(kernel: Kernel): Promise<readonly string[]> {
   ];
 }
 
-/** Adds `session` (none for the host's own) to the watch on `key`'s `paths`, starting the watch, or restarting it when its paths changed. */
 function watchRoot(
   kernel: Kernel,
   key: string,
@@ -448,7 +425,6 @@ function watchRoot(
   void drain(kernel, key, watch, events, changes);
 }
 
-/** Answers a watch's changes one batch at a time, folding the changes that arrive while a batch waits into it, until the watch ends. A watch that ends unasked (its files closed with the session that lent them) leaves its key and refreshes its sessions, which watch again through files of their own. */
 async function drain(
   kernel: Kernel,
   key: string,
@@ -495,7 +471,6 @@ async function drain(
   }
 }
 
-/** Answers changes under a root: under the home's `.nyte/plugins` the host's own plugins reload; any other change refreshes the sessions on the watch. */
 async function refreshRoot(
   kernel: Kernel,
   key: string,
@@ -518,7 +493,6 @@ async function refreshRoot(
   for (const session of watch.sessions) await refresh(kernel, session);
 }
 
-/** Scans `session`'s resources again and reloads its plugins when what they read, or the plugins it would load now (its assigned files loaded again, or a new chat's in its workspace), differ from what it runs. Nothing reloads once the host closes its watches. */
 async function refresh(kernel: Kernel, session: SessionId): Promise<void> {
   const before = kernel.workspaceState.scans.get(session);
   dropScans(kernel, (key) => key === session);
@@ -545,7 +519,6 @@ async function refresh(kernel: Kernel, session: SessionId): Promise<void> {
   await kernel.plugins.reload(session);
 }
 
-/** Whether two scans read the same skills and prompt files. */
 function sameInputs(left: Resources, right: Resources): boolean {
   const read = (resources: Resources) =>
     JSON.stringify([resources.skills, resources.contextFiles, resources.prompt]);
@@ -583,7 +556,6 @@ async function skillPaths(store: StoreConnection): Promise<readonly string[]> {
     : [];
 }
 
-/** Reads `<directory>/<name>/SKILL.md` for each directory or link to one directly under `directories`, never walking into a link. Entries that resolve to the same directory load once: a real directory before a link to it, otherwise the first in `directories` order. */
 async function skillsIn(
   files: FilesApi,
   directories: readonly string[],
@@ -627,7 +599,6 @@ async function skillsIn(
   return read.flat();
 }
 
-/** Follows the link at `path` through `files` to the directory it names, or null when it is broken, names a file, or takes more than `LINK_HOPS` links (a cycle). */
 async function linkedDirectory(
   files: FilesApi,
   path: string,
@@ -648,7 +619,6 @@ async function linkedDirectory(
   return null;
 }
 
-/** Normalizes `path` against `root`: relative to it when inside it, else absolute (or relative when `root` is unknown). */
 function resolvePath(root: string | null, path: string): string {
   const full = root === null || ABSOLUTE.test(path) ? path : join(root, path);
   const absolute = full.startsWith("/");
@@ -686,7 +656,6 @@ async function skillsAt(
   return found.flat();
 }
 
-/** The files directly in `SHARED_DOCS` under `files`, each with the `description` its Markdown frontmatter gives, located under `base` when it is known (the home), else relative to the folder. */
 async function docsIn(
   files: FilesApi,
   scope: SharedDoc["scope"],
@@ -726,7 +695,6 @@ function parseSkillMetadata(
   };
 }
 
-/** The context files a session reads, in order: the user's in `<home>/.nyte`, each ancestor's from the root down, then the folder's own, each folder's first of `CONTEXT_NAMES`. A file met again by another path (`~/.nyte` above a worktree in `~/.nyte/worktrees`, a symlink) keeps its first place and scope, and the main repository's file that a linked worktree nested in it shadows is left out. */
 async function findContextFiles(
   user: (Reader & { readonly home: string }) | null,
   folder: (Reader & { readonly root: string | null }) | null,
@@ -750,7 +718,6 @@ async function findContextFiles(
   });
 }
 
-/** The ancestors' context files, root first; none where reading above the folder fails, as in a sandbox confined to its root. */
 async function ancestorContexts(reader: Reader, root: string): Promise<readonly FoundContext[]> {
   try {
     const found = await Promise.all(
@@ -763,7 +730,6 @@ async function ancestorContexts(reader: Reader, root: string): Promise<readonly 
   }
 }
 
-/** The first of `CONTEXT_NAMES` that reads as text in `directory` (null: the files' root, read by relative path). Its path keeps `directory` as given and spells the name as the disk does: a case-insensitive disk reads `AGENTS.md` from an `AGENTS.MD`, whose real path has the name that exists. A link keeps its own name. */
 async function findContext(
   reader: Reader,
   directory: string | null,
@@ -801,17 +767,6 @@ async function findContext(
   };
 }
 
-/**
- * pi's `findShadowedContextFile`: the main repository's context file that a linked worktree
- * nested inside it shadows with its own, both covering one repository, or null. Nothing is
- * shadowed for an ordinary repository, where the worktree and the main repository are one folder;
- * a sibling worktree (`git worktree add ../feat`), whose main repository is no ancestor; a bare
- * layout (`proj/.bare` + `proj/main`), where the common git directory's parent is the folder
- * holding `.bare`, which checks nothing out; a submodule, whose git directory has no `commondir`
- * and sits under `.git/modules`; or a machine without real paths. Compared as real paths: git
- * writes `gitdir:` in that form while the folder may be reached through a symlink (macOS `/tmp` is
- * `/private/tmp`).
- */
 async function findShadowedContext(reader: Reader, root: string): Promise<string | null> {
   const real = reader.real;
 
@@ -832,7 +787,6 @@ async function findShadowedContext(reader: Reader, root: string): Promise<string
   return own === null ? null : join(main, own.name);
 }
 
-/** pi's `findGitPaths` through `files`: the nearest folder at or above `root` holding a `.git`, with its common git directory: a `.git` folder itself, or the `gitdir:` a `.git` file names, through that directory's `commondir` when it has one (a linked worktree's). Null when that git directory has no `HEAD`. */
 async function findGitPaths(
   files: FilesApi,
   root: string,
@@ -900,7 +854,6 @@ async function listDirectChildren(
     .sort((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0));
 }
 
-/** The text file at `path`, or null where none is or it is not text. */
 export async function readText(files: FilesApi, path: string): Promise<string | null> {
   const document = await files.read(path).catch((error: unknown) => {
     if (error instanceof SdkError && error.code === "invalid") return null;
@@ -911,7 +864,6 @@ export async function readText(files: FilesApi, path: string): Promise<string | 
   return document?.kind === "text" ? document.contents : null;
 }
 
-/** Reads the frontmatter's scalar fields as YAML, or line by line (`key: value`, outer quotes dropped) when it is not valid YAML. */
 function frontmatter(content: string): ReadonlyMap<string, string> {
   const block = FRONTMATTER.exec(content)?.[1];
 

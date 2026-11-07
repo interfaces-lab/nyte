@@ -12,8 +12,8 @@ keeps sessions in a database and wakes the host when there's work.
 | [Cloudflare](https://github.com/interfaces-lab/nyte/tree/main/packages/examples/cloudflare) | The Durable Object's SQLite | Chat only: no files, no commands | The Durable Object's alarm              |
 | [Vercel](https://github.com/interfaces-lab/nyte/tree/main/packages/examples/vercel)         | Postgres                    | A sandbox you connect            | A durable workflow for each busy branch |
 
-Both serve the same protocol as `host.listen`, so clients reach them with `sdk.connect` and the
-deploy's token:
+Both serve the host through a `fetch` listener, the same HTTP routes as `host.listen`, so clients
+reach them with `sdk.connect` and the deploy's token:
 
 ```ts title="client.ts"
 import process from "node:process";
@@ -24,6 +24,10 @@ const connection = await sdk.connect({
   credentials: { kind: "token", token: process.env.NYTE_TOKEN ?? "" },
 });
 ```
+
+A `fetch` listener doesn't serve the WebSocket at `/.nyte/ws`, so `openHost` from
+`@nyte-ai/sdk/client` can't attach to either template.
+[Serve from your own server](/docs/host/serve#fetch-handler) lists the routes they answer.
 
 ## Before you deploy [#before]
 

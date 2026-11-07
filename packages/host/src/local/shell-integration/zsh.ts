@@ -2,7 +2,6 @@
 
 import { HEADER, REPORT } from "./bash.ts";
 
-/** Runs at the top level so the user's declarations stay global, keeping any ZDOTDIR the file sets, and never Nyte's own file. */
 const delegate = (
   name: string,
 ): string => `if [[ $__nyte_user_dir != "$__nyte_dir" && -f $__nyte_user_dir/${name} ]]; then
@@ -13,7 +12,6 @@ ZDOTDIR=$__nyte_dir
 fi
 `;
 
-/** The nonce is read from the folder at each report so no variable, function or environment holds it; `.zlogin` hands ZDOTDIR back only after the user's last startup file, since zsh reads each from ZDOTDIR; `__nyte_precmd` comes first in the hooks so a slow prompt helper never reads as a command, and zsh runs a bare precmd or preexec before its hook array, so an existing one is wrapped instead; unindented to fit the host's startup budget. */
 export const zshFiles = {
   ".zshenv": `${HEADER}typeset __nyte_dir=$ZDOTDIR
 typeset __nyte_user_dir=\${NYTE_USER_ZDOTDIR:-$HOME}

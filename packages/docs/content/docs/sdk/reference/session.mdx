@@ -21,27 +21,35 @@ const branch = session.head(asId<"head">("try-sqlite"));
 
 `connection.sessions` lists the host's chats and starts new ones.
 
-| Method          | Returns                                 | What it does                                                              |
-| --------------- | --------------------------------------- | ------------------------------------------------------------------------- |
-| `start(input)`  | `Promise<{ session, receipt }>`         | Creates a chat with its first message                                     |
-| `list(input?)`  | `Promise<Paged<SessionInfo>>`           | One page of chats. Pass the returned `next` as `cursor` for the next page |
-| `watch(input?)` | `AsyncIterable<readonly SessionInfo[]>` | The chats, again each time one changes                                    |
+| Method         | Returns                         | What it does                                                              |
+| -------------- | ------------------------------- | ------------------------------------------------------------------------- |
+| `start(input)` | `Promise<{ session, receipt }>` | Creates a chat with its first message                                     |
+| `list(input?)` | `Promise<Paged<SessionInfo>>`   | One page of chats. Pass the returned `next` as `cursor` for the next page |
+| `read(input?)` | `Promise<SessionsRead>`         | The `sessions` table at a seq: the `ids` a window selects and their rows  |
 
-`list` and `watch` take `parents` to filter by parent chat: `{ kind: "all" }`,
-`{ kind: "roots" }`, or `{ kind: "children", session }`. Both take a `limit`.
+`list` and `read` take `parents` to filter by parent chat: `{ kind: "all" }`,
+`{ kind: "roots" }`, or `{ kind: "children", session }`. Both take a `limit`, and both list the
+chat with the latest activity first.
+
+`read` answers `{ seq, ids, rows }`. With `resume: { seq }`, `rows` holds only the selected rows
+that changed after `seq`. To keep a list current, use a session store from
+[`openHost`](/docs/sdk/reference/entry-points#open-host), which subscribes, reads and resumes for
+you.
 
 `start` takes the first message as `content`, and these optional inputs:
 
-| Input           | What it does                                                                 |
-| --------------- | ---------------------------------------------------------------------------- |
-| `id`            | Names the chat, its first message and its receipt. Minted when absent        |
-| `name`          | The title shown in session lists                                             |
-| `workspace`     | A registered workspace. Absent, the host's default workspace                 |
-| `parent`        | Makes this chat a child of another                                           |
-| `configuration` | Model, thinking level, agent and settings for the chat                       |
-| `prompt`        | Adds a layer to the system prompt, or replaces it                            |
-| `isolation`     | `"worktree"` runs the chat in a new git worktree, removed with the chat      |
-| `contextFiles`  | `false` reads no context files, such as `AGENTS.md`, for this chat, for good |
+| Input           | What it does                                                                                                                                |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`            | Names the chat, its first message and its receipt. Minted when absent                                                                       |
+| `name`          | The title shown in session lists                                                                                                            |
+| `workspace`     | A registered workspace. Absent, the host's default workspace                                                                                |
+| `parent`        | Makes this chat a child of another                                                                                                          |
+| `configuration` | Model, thinking level, agent and settings for the chat                                                                                      |
+| `prompt`        | Adds a layer to the system prompt, or replaces it                                                                                           |
+| `isolation`     | `"worktree"` runs the chat in a new git worktree, removed with the chat                                                                     |
+| `contextFiles`  | `false` reads no context files, such as `AGENTS.md`, for this chat, for good                                                                |
+| `side`          | `true` starts a side chat of `parent`, which never reports to it                                                                            |
+| `project`       | Starts the chat as the [project](/docs/sdk/reference/connection#projects)'s coordinator. A child chat is in its parent's project without it |
 
 [Send messages](/docs/sdk/guides/send-messages#start-a-chat-with-its-first-message) covers `start`
 in depth.
@@ -91,22 +99,19 @@ succeeds without recording a change.
 | `hold(message)`                           | `Promise<HoldOutcome>`          | Keeps a queued message from starting while it's edited. See [Held messages](#held-messages)                   |
 | `configure(patch)`                        | `Promise<ConfigureOutcome>`     | Changes model, thinking level, agent or settings. `configured`, `unknown-model`, `unknown-agent` or `invalid` |
 | `view({ tail? })`                         | `Promise<SessionView>`          | The transcript and state now                                                                                  |
-| `watch({ tail? })`                        | `AsyncIterable<SessionView>`    | The view, again each time it changes                                                                          |
-| `subscribe(listener)`                     | `() => void`                    | Calls `listener` on each change and returns the unsubscribe                                                   |
-| `current()`                               | `SessionView \| undefined`      | The latest view `subscribe` delivered                                                                         |
 | `history({ before, limit })`              | `Promise<HistoryPage>`          | Up to `limit` messages before `before`, with their turns                                                      |
 | `tree()`                                  | `Promise<TreeView>`             | Every message and branch behind the head                                                                      |
 | `see(commit)`                             | `Promise<void>`                 | Marks the head read up to a commit                                                                            |
 | `move(position, options?)`                | `Promise<Receipt<MoveOutcome>>` | Moves the head to `{ kind: "start" }` or `{ kind: "commit", id }`                                             |
 | `compact({ instructions? })`              | `Promise<...>`                  | Summarizes the transcript to free context. `started`, `busy` or `nothing-to-compact`                          |
 
-`tail` caps how many recent messages a view carries. The default is 200.
-`subscribe` and `current` together are the store that React's `useSyncExternalStore` reads. Keep the
-head handle rather than calling `session.head(name)` on each render.
+`tail` caps how many recent messages a view carries. The default is 200. `view` reads once. To
+follow a head as it changes, attach a head store with
+[`openHost`](/docs/sdk/reference/entry-points#open-host), and build a view from its rows with
+`headView`.
 
 The guides cover these in use:
-[Render a session](/docs/sdk/guides/render-a-session) for `view`, `watch`, `subscribe`, `history`
-and `see`;
+[Render a session](/docs/sdk/guides/render-a-session) for `view`, head stores, `history` and `see`;
 [Send messages](/docs/sdk/guides/send-messages) for `send`, `revise`, `hold` and `configure`;
 [Branch a conversation](/docs/sdk/guides/branch-a-conversation) for heads, `move`, `tree` and
 `compact`.
@@ -180,14 +185,15 @@ explains the timing.
 
 A part is a message with typed state that a plugin defines, such as a question card or a plan.
 
-| Member                       | Returns                           | What it does                                                                                                       |
-| ---------------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `id`                         | `PartId`                          | The part's id                                                                                                      |
-| `update(next, { version? })` | `Promise<...>`                    | Replaces the state, or maps it with a function. `updated`, `invalid`, `closed`, `missing` or `stale`               |
-| `act(action, input)`         | `Promise<ActOutcome>`             | Runs one of the part's actions. `ok` with `output`, `rejected`, `unknown-action`, `closed`, `no-owner` or `failed` |
-| `answer({ signal? })`        | `Promise<...>`                    | Waits for the action that answers the part and returns it, or `null`                                               |
-| `watch()`                    | `AsyncIterable<PartView \| null>` | The part's view each time it changes, `null` while the chat has no such part                                       |
-| `close()`                    | `Promise<void>`                   | Closes the part                                                                                                    |
+| Member                       | Returns               | What it does                                                                                                       |
+| ---------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `id`                         | `PartId`              | The part's id                                                                                                      |
+| `update(next, { version? })` | `Promise<...>`        | Replaces the state, or maps it with a function. `updated`, `invalid`, `closed`, `missing` or `stale`               |
+| `act(action, input)`         | `Promise<ActOutcome>` | Runs one of the part's actions. `ok` with `output`, `rejected`, `unknown-action`, `closed`, `no-owner` or `failed` |
+| `answer({ signal? })`        | `Promise<...>`        | Waits for the action that answers the part and returns it, or `null`                                               |
+| `close()`                    | `Promise<void>`       | Closes the part                                                                                                    |
 
-Pass `version` to `update` to change the state only if nobody else changed it since that version.
+A part's current state is a row of its session's `parts` table, so a view or a head store carries
+it. Pass `version` to `update` to change the state only if nobody else changed it since that
+version.
 A built-in part can't be closed from a client; that throws `SdkError("denied")`.

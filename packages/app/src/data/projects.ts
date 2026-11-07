@@ -1,11 +1,16 @@
-import type { ProjectId, ProjectInfo, ProjectInput, ProjectPatch } from "@nyte-ai/schema";
+import type {
+  ProjectId,
+  ProjectInfo,
+  ProjectInput,
+  ProjectPatch,
+  SessionInfo,
+} from "@nyte-ai/schema";
 import { connected } from "./connection.ts";
 import { useWatchSelect } from "./watch-store.ts";
 import { hostWatch } from "./watches.ts";
 
 const NONE: readonly ProjectInfo[] = [];
 
-/** The host's projects that aren't archived, oldest first; none until the host view arrives. */
 export function useProjects(): readonly ProjectInfo[] {
   return (
     useWatchSelect(hostWatch("host"), (state) => state.value?.projects, sameProjects)?.filter(
@@ -14,7 +19,10 @@ export function useProjects(): readonly ProjectInfo[] {
   );
 }
 
-/** The project a host view lists under `id`, read outside React. */
+export function coordinatedProject(session: SessionInfo): ProjectId | undefined {
+  return session.parent === null ? session.project : undefined;
+}
+
 export function findProject(id: ProjectId): ProjectInfo | undefined {
   return hostWatch("host")
     .getState()

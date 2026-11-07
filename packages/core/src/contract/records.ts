@@ -67,7 +67,6 @@ const HeadRecordType = record({
 
 export type HeadRecord = Static<typeof HeadRecordType>;
 
-/** The system prompt a head's requests sent (`prompts/<head>` under its session): the sections its first request sent, in order, and each change a later request sent after the commits it followed, so every request rebuilds the same history and a provider's cache of it holds. */
 const PromptRecordType = record({
   sections: list(record({ id: Type.String(), text: Type.String() })),
   updates: list(
@@ -264,7 +263,6 @@ const WorkspaceRecordType = record({
 
 export type WorkspaceRecord = Static<typeof WorkspaceRecordType>;
 
-/** A project (`projects/<id>`), stored as clients see it. */
 const ProjectRecordType = typed<ProjectInfo>()(ProjectInfoType);
 
 export type ProjectRecord = ProjectInfo;

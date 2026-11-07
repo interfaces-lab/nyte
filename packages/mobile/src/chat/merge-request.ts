@@ -1,6 +1,5 @@
 import { Alert } from "react-native";
 
-// Nyte has no PR or merge operation; merge means asking the agent to run git.
 export const MERGE_PROMPT =
   "Squash these changes into one commit and merge the branch into its base. If this work isn't on a branch, ask me first. Report the result.";
 

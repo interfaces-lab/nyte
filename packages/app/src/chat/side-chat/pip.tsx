@@ -16,7 +16,6 @@ export interface Size {
   readonly height: number;
 }
 
-/** Spread on what drags the window: its header, or the whole pill. */
 export const GRIP = { "data-pip-grip": "" } as const;
 
 interface Point {
@@ -24,12 +23,6 @@ interface Point {
   readonly y: number;
 }
 
-/**
- * One drag, allocated when it starts and written in place on every move, so a move allocates
- * nothing. `low` and `high` are the offsets at which the window meets the area's edges; `followed`
- * is where the pointer alone would have put it at the last move. `samples` is a ring of the last
- * `SAMPLES` pointer positions as x, y and time, `count` how many were ever written.
- */
 interface Drag {
   readonly pointer: number;
   readonly origin: Point;
@@ -43,12 +36,10 @@ interface Drag {
 
 const SAMPLES = 5;
 
-/** How far ahead a release's velocity throws the window when it picks a corner. */
 const THROW_MS = 180;
 
 const MOVE_SLOP = 4;
 
-/** How much of a drag past the area's edge the window follows. */
 const RESISTANCE = 0.3;
 
 const SPRING: Transition = { type: "spring", stiffness: 420, damping: 34, mass: 1 };
@@ -59,11 +50,9 @@ const FADE: Transition = { duration: 0.14, ease: "easeOut" };
 
 const FOLD: Transition = { duration: 0.1, ease: "easeOut" };
 
-/** The window's face comes back once the card has mostly grown, so its text never reflows in view. */
 const UNFOLD: Transition = { duration: 0.16, delay: 0.14, ease: "easeOut" };
 
 const styles = create({
-  /** Ends where the chat's composer dock starts, so the window never covers the composer. */
   layer: {
     position: "absolute",
     insetInline: 0,
@@ -82,7 +71,6 @@ const styles = create({
     pointerEvents: "auto",
   },
   face: { position: "absolute", display: "flex", flexDirection: "column" },
-  /** The open size, capped as the card is. */
   faceSize: (width: number, height: number) => ({
     width: `min(${String(width)}px, calc(100cqw - ${space.s6}))`,
     height: `min(${String(height)}px, calc(100cqh - ${space.s6}))`,
@@ -94,7 +82,6 @@ const styles = create({
   "bottom-end": { insetBlockEnd: space.s3, insetInlineEnd: space.s3 },
 });
 
-/** Pins the window's face to the card's corner, so folding clips it from the far side. */
 const pinned = create({
   "top-start": { insetBlockStart: 0, insetInlineStart: 0 },
   "top-end": { insetBlockStart: 0, insetInlineEnd: 0 },
@@ -102,7 +89,6 @@ const pinned = create({
   "bottom-end": { insetBlockEnd: 0, insetInlineEnd: 0 },
 });
 
-/** Sets the pill in the card's corner, where it lands, so it never drifts while the card shrinks. */
 const settled = create({
   "top-start": { alignItems: "flex-start", justifyContent: "flex-start" },
   "top-end": { alignItems: "flex-start", justifyContent: "flex-end" },
@@ -110,19 +96,6 @@ const settled = create({
   "bottom-end": { alignItems: "flex-end", justifyContent: "flex-end" },
 });
 
-/**
- * A picture-in-picture window over its positioned parent, kept `bottom` pixels above the parent's
- * foot. It sits in a corner, anchored there by insets, so a change of size keeps the corner. Drag
- * it by an element marked `GRIP` and let go, and it flies to the corner its velocity points at;
- * past the area's edge it follows at a third of the pointer. Arrow keys on a focused grip move it
- * to the next corner the same way. A move re-anchors the window in its new corner at the offset it
- * already shows, so it never jumps, then springs it home. Folded, the same card shrinks into its corner around `pill`,
- * so window and pill read as one object, and the face not in use is inert.
- *
- * The grip captures the pointer, so a grip that is a button still clicks, and pressing a grip
- * leaves focus where it was. On a move the inset is read off the window, so it follows the
- * spacing unit; inline start is taken as the physical left, as the app lays out left to right.
- */
 export function Pip({
   label,
   size,
@@ -314,10 +287,6 @@ export function Pip({
   );
 }
 
-/**
- * The window's next offset on one axis after the pointer moved `delta`: free between the offsets
- * `low` and `high` where it meets the area's edges, and at a fraction of the pointer past them.
- */
 function resist(delta: number, offset: number, low: number, high: number): number {
   const next = offset + delta;
   const outside = next < low || next > high;
@@ -325,7 +294,6 @@ function resist(delta: number, offset: number, low: number, high: number): numbe
   return outside ? offset + delta * RESISTANCE : next;
 }
 
-/** The corner an arrow `key` moves the window to from `corner`, or null for any other key. */
 function cornerToward(corner: Corner, key: string): Corner | null {
   const block = corner.startsWith("top") ? "top" : "bottom";
   const inline = corner.endsWith("start") ? "start" : "end";
@@ -344,7 +312,6 @@ function cornerToward(corner: Corner, key: string): Corner | null {
   }
 }
 
-/** Writes the pointer's position and time into the drag's sample ring, over its oldest sample. */
 function record(drag: Drag, event: PointerEvent<HTMLElement>): void {
   const at = (drag.count % SAMPLES) * 3;
 
@@ -354,10 +321,6 @@ function record(drag: Drag, event: PointerEvent<HTMLElement>): void {
   drag.count += 1;
 }
 
-/**
- * Pixels per millisecond between the newest sample and the oldest one within 100 ms of it, read
- * from the ring newest first; still when the pointer paused before letting go.
- */
 function throwVelocity(drag: Drag): Point {
   const kept = Math.min(drag.count, SAMPLES);
   const newest = ((drag.count - 1) % SAMPLES) * 3;

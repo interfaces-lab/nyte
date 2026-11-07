@@ -100,14 +100,6 @@ export function useWindowTabsSync(): void {
   });
 }
 
-/**
- * A chat the host's lists lack may only be outside its most active, so each tab's chat is read on
- * its own. Each read hears the rows with a notice of its own: the rows keep one per listener, so a
- * shared one would stop with the first read that ends.
- *
- * An open tab closes only when its chat becomes archived, since a chat opened from the archive
- * stays open.
- */
 function forgetGoneChats(): () => void {
   const reads = new Map<SessionId, () => void>();
   let known = sessionRows().hosted;

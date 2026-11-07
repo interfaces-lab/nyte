@@ -8,7 +8,6 @@ export interface FileClass {
   readonly mime: string;
 }
 
-/** A bitmap needs the four reserved zero bytes after its size, which a text file starting with "BM" lacks. */
 export function classifyFile(path: string, head: Buffer): FileClass {
   const signature = head.toString("latin1", 0, 12);
 
@@ -39,7 +38,6 @@ export function classifyFile(path: string, head: Buffer): FileClass {
     : { kind: "binary", mime: "application/octet-stream" };
 }
 
-/** The head can end inside a character, so the check stops before the last one that starts in its final four bytes. */
 function looksLikeText(head: Buffer): boolean {
   const last = head.findLastIndex(
     (byte, index) => index >= head.length - 4 && (byte & 0xc0) !== 0x80,

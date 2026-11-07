@@ -1,16 +1,6 @@
-/**
- * The platforms Nyte ships. A release builds each on its own Blacksmith runner; `pnpm package`
- * builds the one this machine runs. Windows ships no release until it is polished; installs of an
- * older Windows build keep running the version they have.
- *
- *   node scripts/release-targets.mjs host               the CLI target this machine builds
- *   node scripts/release-targets.mjs desktop            the electron-builder flags for this machine
- *   node scripts/release-targets.mjs matrix <platform>  the release matrices, for `all` or one platform
- */
 import { spawnSync } from "node:child_process";
 import process from "node:process";
 
-/** `cli` builds the `nyte` binary; `desktop` holds the electron-builder flags for the desktop app. */
 const RELEASE_TARGETS = [
   {
     name: "darwin-arm64",
@@ -38,11 +28,6 @@ const RELEASE_TARGETS = [
   },
 ];
 
-/**
- * The target this process builds. Fails on a platform Nyte doesn't ship, such as an Intel Mac. Under
- * Rosetta, `process.arch` reports x64 on Apple silicon and Bun would compile x64 code, so a
- * translated process fails too.
- */
 function hostTarget() {
   if (process.platform === "darwin" && translatedByRosetta()) {
     throw new Error(

@@ -1,8 +1,3 @@
-/**
- * Owners as Clerk last reported them through the webhook or the reconcile
- * cron, and the Clerk sessions the broker denies. A deleted owner stays
- * deleted.
- */
 import { Type } from "typebox";
 import type { D1Database, D1PreparedStatement } from "../d1.ts";
 import { OwnerRow, PendingSessionRow, RETIRE_ENVIRONMENTS, many, one } from "./rows.ts";
@@ -16,13 +11,6 @@ export function ownerStatement(db: D1Database, userId: string): D1PreparedStatem
   return db.prepare("SELECT user_id, status, version FROM owners WHERE user_id = ?1").bind(userId);
 }
 
-/**
- * Apply a standing Clerk reported and answer the standing D1 holds afterwards,
- * which is what every relay of the owner should hold too. A webhook `event`
- * applies only when it is newer than what the broker holds; a `lookup` asked
- * Clerk now, so it wins over anything not newer. A deleted owner stays
- * deleted.
- */
 export async function applyOwnerStatus(
   db: D1Database,
   input: {
@@ -51,7 +39,6 @@ export async function applyOwnerStatus(
   return owner;
 }
 
-/** A deleted Clerk user: terminal, whatever arrives later, and every index row is retired. */
 export async function deleteOwner(
   db: D1Database,
   input: { readonly userId: string; readonly version: number; readonly now: number },
@@ -67,7 +54,6 @@ export async function deleteOwner(
   ]);
 }
 
-/** Owners holding an active environment, after `after` in id order, with the version D1 holds for each. */
 export async function ownersToReconcile(
   db: D1Database,
   input: { readonly after: string; readonly limit: number },
@@ -107,7 +93,6 @@ export async function sessionDenied(
   return row !== null && row !== undefined;
 }
 
-/** Deny a Clerk session that enrolled a revoked device. An existing denial is kept as it is. */
 export async function denySession(
   db: D1Database,
   input: { readonly sessionId: string; readonly userId: string; readonly at: number },
@@ -121,7 +106,6 @@ export async function denySession(
     .run();
 }
 
-/** The denied session's Clerk revocation, if it is still owed. */
 export async function pendingSessionRevocation(
   db: D1Database,
   sessionId: string,
@@ -140,7 +124,6 @@ export async function pendingSessionRevocation(
   return row === undefined ? undefined : { sessionId: row.session_id, attempts: row.attempts };
 }
 
-/** Clerk revocation attempts per denied session. Past this the denial is permanent. */
 const SESSION_REVOKE_ATTEMPTS = 30;
 
 export async function pendingSessionRevocations(
@@ -162,7 +145,6 @@ export async function pendingSessionRevocations(
   }));
 }
 
-/** Clerk confirmed the session is revoked; keep denying it until `expiresAt`. */
 export async function confirmSessionRevoked(
   db: D1Database,
   input: { readonly sessionId: string; readonly now: number; readonly expiresAt: number },

@@ -8,7 +8,6 @@ import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { preferences, useSetting } from "../../preferences/index.ts";
 import type { OutlineSymbol } from "./outline.ts";
 
-/** The open file's symbols under the tree. */
 export function FileOutline({
   symbols,
   empty,

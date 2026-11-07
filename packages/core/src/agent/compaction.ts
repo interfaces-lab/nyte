@@ -85,7 +85,6 @@ interface Opened {
   readonly head: HeadName;
   readonly run: RunId | null;
   readonly part: PartId;
-  /** The head's tip when the compaction opened: what its summary read. */
   readonly tip: CommitId | null;
   readonly info: ModelInfo;
   readonly plan: CompactionPlan;
@@ -181,7 +180,6 @@ export function createCompactor(kernel: Kernel, models: Models): Compactor {
   };
 }
 
-/** Compacts a run's transcript before its next request, through the same live part a manual compaction shows. */
 export async function compact(
   kernel: Kernel,
   models: Models,
@@ -274,7 +272,6 @@ export function createSummarizer(kernel: Kernel, models: Models): Summarizer {
   };
 }
 
-/** Opens the compaction's live part, so every client shows it while the summary is written; `stopped` when the run it compacts for was stopped. */
 async function openCompaction(
   kernel: Kernel,
   input: {
@@ -357,7 +354,6 @@ async function openCompaction(
   };
 }
 
-/** Writes the summary of an opened compaction and lands it on the head, or fails its part with the reason. */
 async function finishCompaction(
   kernel: Kernel,
   models: Models,
@@ -413,7 +409,6 @@ async function finishCompaction(
   return { kind: "failed", failure };
 }
 
-/** Fails compaction parts no process is writing: a run's own, left live by a host that stopped, and manual ones this process did not start. */
 export async function failLeftoverCompactions(
   kernel: Kernel,
   session: SessionId,
@@ -443,7 +438,6 @@ export async function failLeftoverCompactions(
   });
 }
 
-/** Lands a written compaction: its part settles and its commit replaces what it summarised. When the part was stopped or the head left the summarised history, the part fails instead; the summary's request is charged either way. */
 async function writeCompaction(
   kernel: Kernel,
   input: Opened & {
@@ -709,7 +703,6 @@ function splitTranscriptForCompaction(
   return { summarise, keep: body.slice(start) };
 }
 
-/** The commits a compaction replaces on the head's current path, or null once the head no longer holds a summarised commit it held when the compaction opened. */
 async function findReplacedCommits(
   kernel: Kernel,
   session: SessionId,

@@ -80,7 +80,6 @@ function tabLabel(tab: PaletteTab): string {
   }
 }
 
-/** Inside the popup, so a closed palette neither reads the chats nor formats a row for each one. */
 function ChatGroup({
   heading,
   sessions,

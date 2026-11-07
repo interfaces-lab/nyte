@@ -4,7 +4,6 @@ import type { FileStatus, LineStat, PatchEntry } from "@nyte-ai/schema";
 import { sha256 } from "../hash.ts";
 import type { Ran } from "./command.ts";
 
-/** One file's section of `git diff` output: its paths, whether git called it binary, whether it has a hunk, its line counts and its text. */
 type DiffSection = {
   readonly oldPath: string | null;
   readonly newPath: string | null;
@@ -114,7 +113,6 @@ function sectionEntry(path: string, status: FileStatus, section: DiffSection): P
   };
 }
 
-/** The entry for two texts diffed on the host: a text entry's digest is its patch's, so it moves with the whitespace mode; an empty one digests both sides and the mode. */
 export function textEntry(
   path: string,
   status: FileStatus,

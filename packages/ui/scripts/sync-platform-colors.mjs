@@ -28,16 +28,10 @@ const transparency = (await readGroups(join(tokenDirectory, "tokens.stylex.ts"))
 const defaults = (group) =>
   Object.entries(group).map(([name, value]) => [name, value.default ?? value]);
 
-/** Every declaration a colour can reach, outside any scope and with the appearance inputs at their defaults. */
 const neutralDeclarations = Object.fromEntries([theme, roles, transparency].flatMap(defaults));
 
 let declared = neutralDeclarations;
 
-/**
- * Role-group and unscoped entries that are not a colour: the hover and press
- * layers are images, the outlined shadow is a shadow, and the swatch follows
- * the workspace tint, which a native app does not have.
- */
 const nonColors = new Set([
   "--nyte-layer-hover",
   "--nyte-layer-pressed",
@@ -52,7 +46,6 @@ const colorKey = (name) =>
     .map((part, index) => (index === 0 ? part : part[0].toUpperCase() + part.slice(1)))
     .join("");
 
-/** Splits `a, color-mix(b, c)` on its top-level commas only. */
 const splitArguments = (source) => {
   const parts = [];
   let depth = 0;
@@ -80,7 +73,6 @@ const callArguments = (value, name) => {
   return splitArguments(value.slice(name.length + 1, -1));
 };
 
-/** Colours travel as linear-light sRGB channels in 0–1 plus alpha, so mixing and conversion stay exact until the final 8-bit rounding. */
 const toLinear = (channel) =>
   channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
 
@@ -104,7 +96,6 @@ const parseHex = (value) => {
   };
 };
 
-/** CIE Lab (D50), as the ramps write it, to linear sRGB through a Bradford adaptation. */
 const parseLab = (value) => {
   const match = value.match(
     /^lab\(\s*([\d.-]+)%\s+([\d.e-]+)\s+([\d.e-]+)\s*(?:\/\s*([\d.]+)\s*)?\)$/,
@@ -169,7 +160,6 @@ const fromOklch = ({ l, c, h, alpha }) => {
   };
 };
 
-/** `calc()` over numbers, percentages, and `var()`, as the roles write it. */
 const evaluate = (expression, trail) => {
   const tokens = expression
     .replace(/var\((--[a-z0-9-]+)\)/g, (_, name) => {
@@ -224,7 +214,6 @@ const numeric = (text, trail) => {
   return inner === undefined ? Number.parseFloat(text) : evaluate(inner[0], trail);
 };
 
-/** `oklch(from X calc(l * n) c h)`, `min(l, n)` or `max(l, n)` for l, and `oklch(from X l c h / calc(alpha + n))`. */
 const relativeOklch = (value, mode, trail) => {
   if (!value.startsWith("oklch(from ") || !value.endsWith(")")) return undefined;
   const words = [];
@@ -264,7 +253,6 @@ const relativeOklch = (value, mode, trail) => {
   return fromOklch({ ...origin, l: lightness, alpha });
 };
 
-/** CSS mixes in premultiplied alpha, which is why mixing a color with `transparent` keeps the color and only drops its alpha. */
 const mixColors = (first, firstWeight, second, secondWeight) => {
   const total = firstWeight + secondWeight;
   const [share, rest] = [firstWeight / total, secondWeight / total];
@@ -286,7 +274,6 @@ const mixColors = (first, firstWeight, second, secondWeight) => {
   return { red: channel("red"), green: channel("green"), blue: channel("blue"), alpha };
 };
 
-/** A `color-mix()` operand: a color with an optional percentage after it. */
 const parseOperand = (operand, trail) => {
   const match = operand.match(/^(.*?)\s+((?:calc\(.*\))|[\d.]+%)$/);
 
@@ -295,7 +282,6 @@ const parseOperand = (operand, trail) => {
   return { color: match[1], weight: numeric(match[2].replace(/%$/, ""), trail) };
 };
 
-/** `oklch(L% C H)` or `oklch(L% C H / A)`, with H in degrees, as the anchored ramps write it. */
 const parseOklch = (value) => {
   const match = value.match(/^oklch\(([\d.]+)% ([\d.]+) ([\d.]+)(?: \/ ([\d.]+))?\)$/);
 
@@ -309,12 +295,6 @@ const parseOklch = (value) => {
   });
 };
 
-/**
- * Reduces a token expression to one colour for an appearance. `color-mix()` is
- * sRGB only: a token that mixes in another space fails the run instead of
- * shipping a colour this resolver cannot reproduce. As in CSS, an omitted mix
- * percentage is the remainder of the other.
- */
 const resolve = (expression, mode, trail) => {
   const value = expression.trim();
 
@@ -383,18 +363,8 @@ const formatHex = (color) => {
   return color.alpha >= 1 ? opaque : `${opaque}${byte(color.alpha)}`;
 };
 
-/**
- * React Native cannot evaluate `light-dark()`, `color-mix()`, `lab()`, or
- * `var()`, so every colour reduces here to one concrete value per appearance,
- * outside any scope. A colour that fails to reduce has no value to ship and
- * fails the run.
- */
 const colorNames = Object.keys(roles).filter((name) => !nonColors.has(name));
 
-/**
- * The roles a native or static consumer reads inside a hue scope: every stair, the accents, the
- * strong and control fills, the button fill and chart marks.
- */
 const scopedColorNames = colorNames.filter(
   (name) =>
     /^--nyte-(content|fill|stroke)-/.test(name) ||

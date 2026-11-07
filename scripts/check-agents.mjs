@@ -1,13 +1,3 @@
-/**
- * `pnpm lint` runs this. It fails when agent guidance points at something that is not there:
- *
- * - an AGENTS.md names a source location. Files move, and a path in agent guidance then sends the
- *   next agent to a file that is gone; AGENTS.md names the symbol or concept instead.
- * - a skill names a repository path or glob that matches no file, or a `pnpm` script its
- *   package.json lacks. Skills may name paths, so these must stay true.
- * - a skill's `paths` frontmatter glob matches no file.
- * - a relative Markdown link resolves to no file or folder.
- */
 import { readFileSync } from "node:fs";
 import { dirname, matchesGlob, posix } from "node:path";
 import { listFiles, listSkillFiles, listSkills } from "./skills.mjs";
@@ -16,17 +6,14 @@ const ALLOWED = new Set(["AGENTS.md", "README.md", "RELEASING.md", "mise.toml"])
 
 const EXTENSION = /\.(?:[cm]?[jt]sx?|json|css|ya?ml|toml|md|sh|html)$/u;
 
-/** Lint rule IDs (`nyte-code/declarative-comments`) look like paths; AGENTS.md may name configured ones. */
 const RULES = new Set(
   [...readFileSync("oxlint.config.ts", "utf8").matchAll(/"([\w-]+\/[\w-]+)":/gu)].map(
     (match) => match[1],
   ),
 );
 
-/** A word in a skill's code is checked as a path only when it starts with one of these. */
 const PATH_ROOTS = ["packages/", "scripts/", "docs/", ".github/", ".agents/", ".nyte/"];
 
-/** pnpm's own commands. Any other first word names a package script. */
 const PNPM_COMMANDS = new Set([
   "add",
   "audit",
@@ -55,7 +42,6 @@ const PNPM_COMMANDS = new Set([
   "why",
 ]);
 
-/** Generated, vendored or test material, and the docs site's routed MDX content. */
 const UNCHECKED_MARKDOWN =
   /(?:^|\/)(?:node_modules|fixtures?|__fixtures__|test-?data|markdown-corpus)\/|(?:^|\/)CHANGELOG[^/]*$|^packages\/docs\/content\//iu;
 
@@ -146,7 +132,6 @@ function names(code) {
   return EXTENSION.test(word) || /^\.?[\w-]+\/[\w./-]*$/u.test(word);
 }
 
-/** Each line of a Markdown file, marked when it sits inside a fenced code block. */
 function readLines(file) {
   let open = false;
 
@@ -162,7 +147,6 @@ function readLines(file) {
     });
 }
 
-/** Inline code spans, and whole lines of fenced blocks. */
 function readCode(file) {
   return readLines(file).flatMap((line) =>
     line.fenced
@@ -220,7 +204,6 @@ function findMissingScripts(code) {
     });
 }
 
-/** The package and script a pnpm command line runs, or undefined when it runs no single script. */
 function readPnpm(words, target) {
   const flag = words[0] ?? "";
   const option = /^(--dir|-C|--filter|-F)(?:=(.*))?$/u.exec(flag);
@@ -248,7 +231,6 @@ function readPnpm(words, target) {
   };
 }
 
-/** Undefined when the command names its package by a placeholder or pattern this cannot follow. */
 function findPackage(command) {
   const name = (command.dir ?? command.filter ?? ".")
     .replace(/^["']|["']$/gu, "")

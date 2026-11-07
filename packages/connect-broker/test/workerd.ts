@@ -1,18 +1,3 @@
-/**
- * The whole Worker in local workerd, for tests that need the real relay: the
- * broker, the relay Durable Object with hibernatable sockets, and D1, started
- * with `createTestHarness` from the installed wrangler. Only Clerk's Backend
- * API is fake; session JWTs are signed with a key generated per run.
- *
- * While a broker runs, `globalThis.fetch` in this process is patched: the
- * Worker's own outbound calls to `api.clerk.com` reach `clerk`, requests to
- * `origin` reach the local Worker, loopback passes through, and anything else
- * throws. `close()` restores it. WebSockets cannot be patched, so connect them
- * to `localUrl(...)`.
- *
- * The relay tests and the host link test share it. It reads no `.dev.vars`
- * or `.env` file and no live secret.
- */
 import { fileURLToPath } from "node:url";
 import {
   BROKER_ROUTES,
@@ -67,7 +52,6 @@ const random = (bytes = 24) =>
 
 export type OpenFrame = Extract<RelayFrame, { t: "open" }>;
 
-/** A relayed request as the desktop sees it once the relay sent `end`. */
 export interface RelayedRequest {
   readonly ch: string;
   readonly method: OpenFrame["method"];
@@ -92,12 +76,6 @@ interface ServedChannel {
   reset: boolean;
 }
 
-/**
- * A desktop's relay socket over a real WebSocket. With `handler` set, it
- * answers every channel itself, granting credit as it reads and sending
- * within the credit it holds; frames it handles are not queued for `next`.
- * `received` keeps every frame.
- */
 export class RelayDesktop {
   readonly socket: WebSocket;
   readonly closed: Promise<{ readonly code: number; readonly reason: string }>;
@@ -135,7 +113,6 @@ export class RelayDesktop {
     });
   }
 
-  /** The first unread frame that matches, waiting for it if none has arrived. */
   async next<T extends RelayFrame["t"]>(
     t: T,
     match: (frame: Extract<RelayFrame, { t: T }>) => boolean = () => true,
@@ -152,7 +129,6 @@ export class RelayDesktop {
     }
   }
 
-  /** Unread frames of one type, without waiting. */
   pending<T extends RelayFrame["t"]>(t: T): Extract<RelayFrame, { t: T }>[] {
     return this.unread.filter((frame) => taggedAs(frame, t));
   }
@@ -165,7 +141,6 @@ export class RelayDesktop {
     this.socket.close();
   }
 
-  /** True when the handler took the frame: a channel it opened or serves. */
   private serve(frame: RelayFrame): boolean {
     const handler = this.handler;
 
@@ -264,18 +239,12 @@ function taggedAs<T extends RelayFrame["t"]>(
   return frame.t === t;
 }
 
-/**
- * A handler for `POST /_nyte/connect/enroll` as a desktop answers it: verify
- * the broker's grant, record nothing, sign the receipt. Other paths go to
- * `fallback`.
- */
 export function enrollmentHandler(input: {
   readonly key: PrivateJwk;
   readonly environmentId: string;
   readonly origin: string;
   readonly brokerKeys: BrokerKeys;
   readonly fallback?: RelayHandler;
-  /** Every grant the desktop accepted, in order. */
   readonly grants?: EnrollmentClaims[];
 }): RelayHandler {
   return async (request) => {
@@ -323,45 +292,25 @@ export function enrollmentHandler(input: {
 }
 
 export interface WorkerdBroker {
-  /** `CONNECT_ORIGIN`: proofs' and Clerk's `aud`, and the base of relay addresses. */
   readonly origin: string;
-  /** Where the Worker listens, `http://127.0.0.1:<port>/`. */
   readonly local: URL;
   readonly brokerKeys: BrokerKeys;
   readonly clerk: FakeClerkApi;
-  /** An `origin` URL on the local Worker: `https:` becomes `http:`, `wss:` becomes `ws:`. */
   localUrl(url: string | URL): URL;
-  /**
-   * The unpatched fetch. A request for `origin` is dispatched straight to the
-   * Worker, as the edge would, not through wrangler's dev proxy: that proxy
-   * never passes a caller's disconnect on, so `request.signal` would not fire.
-   * A Blob or FormData body is the runtime Request's to encode, not the
-   * dispatcher's undici, and the Worker's response stream is piped into this
-   * runtime's own so cancel and abort cross the pipe.
-   */
   fetch(input: string | URL | Request, init?: RequestInit): Promise<Response>;
-  /** A Clerk session JWT the broker accepts. */
   sessionToken(input: {
     readonly userId: string;
     readonly sessionId?: string;
     readonly claims?: Record<string, unknown>;
     readonly lifetimeSeconds?: number;
   }): Promise<string>;
-  /** Rows from the Worker's D1, for assertions and setup. */
   query(sql: string, ...bindings: D1Value[]): Promise<unknown[]>;
-  /** Rows from one environment's relay SQLite (its devices, proofs, outbox), for assertions and setup. */
   relayQuery(environmentId: string, sql: string, ...bindings: D1Value[]): Promise<unknown[]>;
-  /**
-   * Evict the environment's relay from memory. `hibernate` (the default)
-   * keeps its sockets open; `close` drops them, as a deploy or crash would.
-   */
   evictRelay(
     environmentId: string,
     options?: { readonly webSockets?: "hibernate" | "close" },
   ): Promise<void>;
-  /** The Worker's and relay's runtime log lines since start or `reset()`, for diagnostics. */
   logs(): ReturnType<TestHarness["getLogs"]>;
-  /** Link a desktop key through the real route, as a Clerk user Clerk knows. */
   link(input: {
     readonly userId: string;
     readonly key?: PrivateJwk;
@@ -371,12 +320,10 @@ export interface WorkerdBroker {
     readonly key: PrivateJwk;
     readonly link: LinkResponse;
   }>;
-  /** Open the environment's relay socket and prove its key; resolves on `ready`. */
   attach(input: {
     readonly environmentId: string;
     readonly key: PrivateJwk;
   }): Promise<RelayDesktop>;
-  /** Empty every D1 table, the Clerk fake, and the logs. Relay objects keep their sockets. */
   reset(): Promise<void>;
   close(): Promise<void>;
 }

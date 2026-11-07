@@ -1,6 +1,5 @@
 import { Outlet, createFileRoute } from "@tanstack/react-router";
 
-/** The landing surface shares the site navbar and adds nothing above the content. */
 export const Route = createFileRoute("/_site/_landing")({
   component: LandingLayout,
 });

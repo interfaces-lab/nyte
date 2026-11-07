@@ -6,7 +6,7 @@ import type { SessionId } from "@nyte-ai/sdk";
 import type { ClientCapabilities } from "../contract/client-actions.ts";
 import { errorMessage } from "../contract/errors.ts";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
-import { FileTypeIcon } from "../components/file-type-icon.tsx";
+import { FileTypeIcon } from "@nyte-ai/ui/file-type-icon";
 import { TaskMark } from "../components/task-mark.tsx";
 import {
   MOVE_SHORTCUTS,
@@ -182,7 +182,6 @@ type TerminalCloseState =
     }
   | { readonly kind: "closing"; readonly id: WorkbenchTabId };
 
-/** A canvas tab's icon and title, tinted with a spinner while the agent rewrites the canvas. */
 function CanvasTabContent({
   tab,
 }: {
@@ -213,7 +212,6 @@ function ChatTabLabel({ sessionId }: { readonly sessionId: SessionId }): ReactEl
   return <>{chatTitle(chat.kind === "ready" ? chat.chat : undefined)}</>;
 }
 
-/** The record a tab shows: the most urgent state, the newest within it. */
 const PROGRAM_URGENCY = ["blocked", "error", "working", "done"] as const;
 
 const PROGRAM_LABELS = {

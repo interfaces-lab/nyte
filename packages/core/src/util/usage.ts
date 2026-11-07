@@ -10,7 +10,6 @@ export const ZERO_USAGE: Usage = {
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 };
 
-/** Sums two usages field by field; reasoning stays null only when both are. */
 export function addUsage(left: Usage, right: Usage): Usage {
   return {
     input: left.input + right.input,

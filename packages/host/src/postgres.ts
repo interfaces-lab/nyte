@@ -61,7 +61,6 @@ export type PostgresClient = {
   release(): void;
 };
 
-/** Returns the pool `postgresStore` queries through, structurally, so `pg.Pool` and a pglite adapter both fit (§41c). */
 export type PostgresPool = {
   connect(): Promise<PostgresClient>;
   end(): Promise<void>;
@@ -383,7 +382,6 @@ function connect(pool: PostgresPool): StoreConnection {
   };
 }
 
-/** Locks every object the batch points a ref at or moves one off, in id order, before reading them: a batch deleting one of them commits before this reads it, or waits for this commit and its delete, a later statement, then sees the ref that holds it. */
 async function publish(
   client: PostgresClient,
   updates: readonly RefUpdate[],

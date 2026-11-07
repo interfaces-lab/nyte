@@ -20,7 +20,6 @@ afterEach(async () => {
     await rm(folder, { recursive: true, force: true, maxRetries: 10 });
 });
 
-/** A temporary folder as the OS names it, not its real path: on macOS `/var/folders/…`, really `/private/var/folders/…`. */
 async function folder(): Promise<string> {
   const made = await mkdtemp(join(tmpdir(), "nyte-context-"));
   folders.push(made);
@@ -48,7 +47,6 @@ async function repository(root: string, files: Readonly<Record<string, string>>)
   git(root, "commit", "-q", "-m", "first");
 }
 
-/** The context files a session started in `path` reads, as `[scope, path, content]`, seen by a plugin through `api.inputs`. */
 async function contextFiles(
   home: string,
   path: string,

@@ -7,7 +7,6 @@ const WORKSPACE = asId<"workspace">("preview");
 
 export const PREVIEW_PATH = "~/Developer/nyte";
 
-/** A chat in the preview workspace whose last activity was `age` milliseconds ago. */
 export function previewChat(id: string, name: string, age: number): SessionInfo {
   return {
     id: asId<"session">(id),

@@ -1,16 +1,8 @@
 import type { SessionId, UserContent } from "@nyte-ai/schema";
 import type { Kernel } from "../contract/kernel.ts";
 
-/** The longest mentioned file the host keeps; a longer one stays a bare mention the model reads itself. */
 const MENTION_CHARS = 100_000;
 
-/**
- * Reads each file a message mentions once, as it is at send, and keeps its
- * text as the reference's `blob`, so every later request shows the model the
- * same text and the conversation's prefix stays cacheable. A folder, a file
- * the session cannot read, or one past `MENTION_CHARS` stays a bare mention;
- * a `blob` the client sent is replaced.
- */
 export async function freezeMentions(
   kernel: Kernel,
   session: SessionId,

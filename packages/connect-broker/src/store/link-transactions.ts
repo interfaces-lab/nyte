@@ -1,4 +1,3 @@
-/** Headless link transactions: open, approve or deny, cancel, and expire. */
 import type { D1Database } from "../d1.ts";
 import { LinkTransactionRow, changed, one } from "./rows.ts";
 import type { LinkTransaction } from "./rows.ts";

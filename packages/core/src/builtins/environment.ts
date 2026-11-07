@@ -11,10 +11,8 @@ import { lineDiff } from "../util/line-diff.ts";
 
 const READ_LINES = 2000;
 
-/** Leaves room under `CLIP_CHARS` for the note on where to continue. */
 const READ_CHARS = CLIP_CHARS - 100;
 
-/** Long enough for the job tool to take in a job's scrollback, which is in memory. */
 const SCROLLBACK_MS = 100;
 
 const LIST_LIMIT = 500;
@@ -84,7 +82,6 @@ const listParameters = standard(
   }),
 );
 
-/** The `bash` tool's parameters, for a plugin that rebuilds its schema (`bash-description` requires `description`). */
 export const bashProperties = {
   command: Type.String({ description: "The shell command to run." }),
   description: Type.Optional(
@@ -409,11 +406,6 @@ function describeJobState(state: JobView["state"]): string {
     : `ended (${state.reason}) with code ${state.code ?? "none"}`;
 }
 
-/**
- * Keeps the last `CLIP_CHARS` bytes of output, at least `CLIP_CHARS` characters'
- * worth, and counts the characters it drops. A gap drops what came before it,
- * since the frames it skipped leave a hole the model can't see.
- */
 function createShellOutput(progress: (tail: string) => void) {
   const chunks: Uint8Array[] = [];
   const decoder = new TextDecoder();

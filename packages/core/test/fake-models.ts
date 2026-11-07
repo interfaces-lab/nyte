@@ -212,10 +212,8 @@ export const chatOnly: Plugin<"core"> = {
   },
 };
 
-/** A composed host with the kernel under it, for tests that read kernel state. */
 export type Composed = ServedHost & { readonly kernel: Kernel };
 
-/** Composes a host as `composeHost` does, with its kernel beside it. */
 export async function composed(options: ComposeOptions): Promise<Composed> {
   const { host, kernel } = await composeServer(options);
 

@@ -23,7 +23,6 @@ import {
 import { scanWorkspaceResources } from "./resources.ts";
 import { settingHandle } from "./settings.ts";
 
-/** The commands, skills, shared docs and context files a new chat in `workspace` would offer, read before the chat exists. */
 export function readWorkspaceCatalog(
   kernel: Kernel,
   workspace: WorkspaceId,
@@ -41,7 +40,6 @@ export function readWorkspaceCatalog(
   }));
 }
 
-/** Runs command `name` as a new chat in `workspace` would offer it, without the chat: a prompt it answers with comes back for the chat it starts. */
 export function runWorkspaceCommand(
   kernel: Kernel,
   context: ConnectionContext,
@@ -63,7 +61,6 @@ export function runWorkspaceCommand(
   });
 }
 
-/** Asks command `name` what may follow `prefix` as a new chat in `workspace` would offer it, without the chat. */
 export function completeWorkspaceCommand(
   kernel: Kernel,
   context: ConnectionContext,
@@ -76,12 +73,6 @@ export function completeWorkspaceCommand(
   );
 }
 
-/**
- * Activates the plugins a new chat in `workspace` would load under a stand-in chat id no chat
- * has, over the resources that chat would read, hands them to `work`, then disposes them. A
- * plugin whose activation needs the chat fails here and contributes nothing; its issues stay with
- * the chats that load it.
- */
 async function withNewChatPlugins<T>(
   kernel: Kernel,
   workspace: WorkspaceId,

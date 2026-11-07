@@ -31,7 +31,6 @@ async function connectedWhileWaiting(
   }
 }
 
-/** Starts the draft as a chat, as its project's chat when the draft names one in this folder. */
 export async function startDraft(
   store: SessionViewStateStore,
   actions: Pick<PaneActions, "openDraftChat">,

@@ -1,6 +1,3 @@
-/**
- * Lazy OpenAI-compatible Chat Completions adapter.
- */
 import type { ProviderStreams } from "../types.ts";
 import { lazyApi } from "./lazy.ts";
 

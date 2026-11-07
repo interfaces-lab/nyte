@@ -24,10 +24,6 @@ const searchOutput = Type.Object({
 
 type SearchOutput = Static<typeof searchOutput>;
 
-/**
- * The `web_search` tool: asks the registered provider the setting `setting` names,
- * falling back to Exa and then to the first one registered.
- */
 export function webSearch(
   api: PluginApi,
   setting: string,
@@ -88,7 +84,6 @@ export function webSearch(
   };
 }
 
-/** Keeps the fields a provider actually filled, so the result is plain JSON. */
 function clean(hit: SearchResult): SearchOutput["results"][number] {
   const kept: SearchOutput["results"][number] = { url: hit.url };
 

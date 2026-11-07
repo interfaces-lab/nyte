@@ -17,12 +17,10 @@ import { selectedWorkspaceId } from "./workspaces.ts";
 import { useHostState } from "./host.ts";
 import { queryClient } from "./query-client.ts";
 
-/** The repository of the folder the window has open, for the workbench that shows it. */
 export function workspaceGit(): Promise<GitApi> {
   return gitFor(selectedWorkspaceId());
 }
 
-/** The repository of `workspace`; without one it throws. */
 export async function gitFor(workspace: WorkspaceId | undefined): Promise<GitApi> {
   if (workspace === undefined) throw new Error("Open a workspace to read its repository");
   const capability = await (await connected()).workspace(workspace).git();
@@ -62,7 +60,6 @@ export function useVcsChanges(
   });
 }
 
-/** Keyed by HEAD and pinned to it, so a checkout, commit or reset anywhere reads it anew. */
 export function useVcsLog(
   input: { readonly limit: number; readonly cursor?: Cursor | undefined },
   enabled: boolean,
@@ -158,7 +155,6 @@ export async function refreshVcs(): Promise<void> {
   ]);
 }
 
-/** The workspace's git status; while `enabled` is false it keeps the last status it heard. */
 export function useVcsSnapshot(enabled: boolean) {
   const host = useHostState();
   const workspace = host.data.workspace?.id;

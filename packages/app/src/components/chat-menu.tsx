@@ -13,10 +13,6 @@ export interface ChatMenuHandlers {
   readonly onDelete: () => void;
 }
 
-/**
- * One chat's actions, the same wherever the chat shows. A subagent chat lives under its parent, so
- * the actions that file a chat in the sidebar stay disabled and say why.
- */
 export function ChatMenuItems({
   session,
   title,

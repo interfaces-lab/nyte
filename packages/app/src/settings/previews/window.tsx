@@ -16,11 +16,6 @@ const ACTIVE = previewChat("active", "Settings density", 2 * 60_000);
 
 const OTHER = previewChat("other", "Release notes", 3 * 3_600_000);
 
-/**
- * A slice of the window as the shell composes it: the sidebar's rows on the window material, beside
- * the content card holding a message and a primary button. The tint and transparency on `<html>`
- * reach it the same way.
- */
 export function WindowPreview(): ReactElement {
   return (
     <div {...props(styles.window)}>

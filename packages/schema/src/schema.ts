@@ -18,7 +18,6 @@ type Frozen<T> = [Json] extends [T]
     ? T
     : { readonly [K in keyof T]: Frozen<T[K]> };
 
-/** The value a TypeBox schema decodes to, read-only all the way down: every concept's TypeScript type is this of its schema. */
 export type Decoded<S extends TSchema> = Frozen<StaticDecode<S>>;
 
 /**

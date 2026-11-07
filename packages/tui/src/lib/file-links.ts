@@ -9,12 +9,6 @@ const NOT_A_PATH = /[\s*?()[\]{}<>|"'`$#\\]/u;
 
 const SCHEME = /^[a-z][\w+.-]*:/iu;
 
-/**
- * Rewrites each inline-code file path in `markdown`, such as `src/app.ts:42`,
- * as a link to that file under `root`. A terminal then opens the file the
- * session means; scanning the screen itself, it resolves relative paths against
- * the folder the TUI launched in and keeps a sentence's closing period.
- */
 export function linkFilePaths(markdown: string, root: string): string {
   if (!markdown.includes("`")) return markdown;
 
@@ -23,7 +17,6 @@ export function linkFilePaths(markdown: string, root: string): string {
     .join("");
 }
 
-/** The file URL a code span names, or `null` when it doesn't read as a file path. */
 function readFileTarget(code: string, root: string): string | null {
   const path = parseCitation(code).path;
   const name = path.slice(path.lastIndexOf("/") + 1);
@@ -69,10 +62,6 @@ function linkBlock(block: Token, root: string): string {
   return output + raw.slice(cursor);
 }
 
-/**
- * The block's code spans in document order, with the links and code blocks
- * between them, which are passed over whole so a span inside one stays as written.
- */
 function readMarks(block: Token, root: string): readonly Mark[] {
   if (block.type === "code" || block.type === "html") return [];
   const marks: Mark[] = [];
@@ -100,11 +89,6 @@ function readMarks(block: Token, root: string): readonly Mark[] {
   return marks;
 }
 
-/**
- * Where `raw` sits in `source` from `from`. A token nested in a list item or
- * quote holds its text without the container's indent or `>`, so only its first
- * and last lines are looked for.
- */
 function findSpan(source: string, raw: string, from: number): readonly [number, number] | null {
   const lines = raw.trimEnd().split("\n");
   const first = lines[0] ?? "";

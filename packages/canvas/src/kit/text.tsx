@@ -1,6 +1,5 @@
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement, ReactNode } from "react";
-import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 const heading = create({
@@ -96,52 +95,5 @@ export function Text({
     >
       {children}
     </p>
-  );
-}
-
-const code = create({
-  inline: {
-    paddingBlock: space.px,
-    paddingInline: space.s1,
-    borderRadius: radius.indicator,
-    backgroundColor: role.bgMutedTranslucent,
-    color: role.contentPrimary,
-    fontFamily: type.fontMono,
-    fontSize: type.fontCode,
-    lineHeight: type.leadingCode,
-    fontVariantLigatures: "none",
-  },
-  block: {
-    margin: 0,
-    paddingBlock: space.s2,
-    paddingInline: space.s2_5,
-    borderRadius: radius.card,
-    borderWidth: 1,
-    borderStyle: "solid",
-    borderColor: role.strokeQuaternary,
-    backgroundColor: role.bgMuted,
-    color: role.contentPrimary,
-    fontFamily: type.fontMono,
-    fontSize: type.fontCode,
-    lineHeight: type.leadingCode,
-    fontVariantLigatures: "none",
-    overflowX: "auto",
-    whiteSpace: "pre",
-  },
-});
-
-export function Code({
-  block = false,
-  children,
-}: {
-  readonly block?: boolean;
-  readonly children: string;
-}): ReactElement {
-  return block ? (
-    <pre {...props(code.block)}>
-      <code>{children}</code>
-    </pre>
-  ) : (
-    <code {...props(code.inline)}>{children}</code>
   );
 }

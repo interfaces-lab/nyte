@@ -42,7 +42,6 @@ export interface DraftChoice {
 export interface BlankViewState {
   readonly composer: ComposerViewState;
   readonly choice: DraftChoice | undefined;
-  /** The project the chat starts in; absent for none. */
   readonly project?: ProjectId;
 }
 
@@ -120,7 +119,6 @@ function storedChanged(left: ComposerViewState, right: ComposerViewState): boole
   );
 }
 
-/** One tab's view of its window's drafts: pane ids name that tab's panes. */
 export class SessionViewStateStore {
   readonly #window: WindowDrafts;
   readonly #tabId: string;
@@ -201,7 +199,6 @@ export class SessionViewStateStore {
     return this.#window.drafts();
   }
 
-  /** Shows a new chat in `paneId` that starts in `project`, parking the draft there when it has content. */
   startNewDraft(paneId: PaneId, project?: ProjectId): void {
     const drafts = this.#window.pane(this.#tabId, paneId);
     const current = drafts.active;

@@ -15,6 +15,7 @@ import type {
   WorkspaceInfo,
 } from "@nyte-ai/sdk";
 import { replaceEqualDeep } from "@tanstack/react-query";
+import { coordinatedProject } from "../data/projects.ts";
 import { workspaceName, workspacePath } from "../data/workspaces.ts";
 
 export interface Folder {
@@ -23,15 +24,12 @@ export interface Folder {
   readonly name: string;
 }
 
-/** Until the folder list loads the location is unknown, which is not the same as having no folder. */
 export type ChatLocation =
   | { readonly kind: "loading" }
-  /** The chat's workspace isn't a local folder in the list; the host opens Home for it. */
   | { readonly kind: "unlisted" }
   | (Folder & {
       readonly kind: "folder";
       readonly available: boolean;
-      /** `source` is the folder the worktree was made from, null when it isn't listed. */
       readonly worktree: { readonly branch: string; readonly source: Folder | null } | null;
     });
 
@@ -40,7 +38,6 @@ export interface Chat {
   readonly parent: SessionId | null;
   readonly title: string;
   readonly location: ChatLocation;
-  /** The chat's own run; work it started in the background never changes it. */
   readonly status: RunStatus;
   readonly background: BackgroundWork;
   readonly mark: TaskState;
@@ -54,34 +51,27 @@ export interface UnreadTip {
 
 export type ChatDirectory = ReadonlyMap<SessionId, Chat>;
 
-/**
- * A chat that comes out the same as in `previous` keeps its identity, and so does the directory
- * when no chat changed. A project's coordinator is titled by its project.
- */
 export function describeChats(
   sessions: Iterable<SessionInfo>,
   workspaces: readonly WorkspaceInfo[] | undefined,
   projects: readonly ProjectInfo[] | undefined,
   previous: ChatDirectory,
 ): ChatDirectory {
-  const coordinated = new Map(
-    (projects ?? []).flatMap((project) =>
-      project.coordinator === null ? [] : [[project.coordinator, project.name] as const],
-    ),
-  );
+  const names = new Map((projects ?? []).map((project) => [project.id, project.name] as const));
 
   const chats = new Map(
     [...sessions].map((session) => {
       const head = mainHead(session);
+      const project = coordinatedProject(session);
 
       const next: Chat = {
         id: session.id,
         parent: session.parent,
-        title: coordinated.get(session.id) ?? sessionTitle(session),
+        title: (project === undefined ? undefined : names.get(project)) ?? sessionTitle(session),
         location: workspaces === undefined ? LOADING : locate(session.workspace, workspaces),
         status: runStatus(head?.execution),
         background: head?.background ?? NO_BACKGROUND,
-        mark: coordinated.has(session.id) ? coordinatorMark(session) : sessionMark(session),
+        mark: project === undefined ? sessionMark(session) : coordinatorMark(session),
         unreadTip:
           head?.unread === true && head.tip.kind === "commit"
             ? { head: head.name, commit: head.tip.id }
@@ -131,7 +121,6 @@ function listedFolder(workspace: WorkspaceInfo): Folder | null {
   return path === null ? null : { workspace: workspace.id, path, name: workspaceName(workspace) };
 }
 
-/** A coordinator's agents are its work, so it shows them working rather than as background. */
 function coordinatorMark(session: SessionInfo): TaskState {
   const mark = sessionMark(session);
 

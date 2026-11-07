@@ -116,7 +116,6 @@ function DesktopList({
 
 interface AccountScreenProps {
   readonly config: AccountConfig;
-  /** Mounts the app for `connection`, through `mount` or else in place of this screen. */
   readonly onConnected: (connection: Connection, mount?: (shell: ReactNode) => void) => void;
 }
 

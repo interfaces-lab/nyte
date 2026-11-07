@@ -3,9 +3,11 @@ title: Render a session
 description: Read a session's view once or live, draw its messages, and page in older history.
 ---
 
-Use this page to show a chat on screen. The host turns a session's history into a `SessionView`:
-the messages in order, what is running now, what is queued, and the files that changed. Your client
-draws the view as it is. It never replays events or stitches streamed text together itself.
+Use this page to show a chat on screen. A `SessionView` holds a head's messages in order, what is
+running now, what is queued, and the files that changed. `session.view()` reads one from the host,
+and `headView` builds one from a head store's rows. Your client draws the view as it is. The store
+applies the host's change events, and `withStreamedText` lays streamed text over the view, so your
+code never replays events or joins text itself.
 
 ## Read it once, or follow its rows
 
@@ -13,11 +15,12 @@ draws the view as it is. It never replays events or stitches streamed text toget
 const view = await session.view({ tail: 100 });
 ```
 
-`view` returns one snapshot. `tail` limits how many recent messages it carries, and the view always
+`view` reads the view once. `tail` limits how many recent messages it carries, and the view always
 includes the turns those messages belong to.
 
-To redraw on every change, open the host's rows with `openHost` from `@nyte-ai/sdk/client`. It
-holds one socket per host address, and each `head` store on it follows one head's rows:
+To redraw on every change, attach to the host's rows with `openHost` from `@nyte-ai/sdk/client`.
+It holds one socket per host, and each `head` store on it holds one head's window of rows and
+applies the change events that move them:
 
 ```ts
 import { headView, openHost, streamText, withStreamedText } from "@nyte-ai/sdk/client";
@@ -56,17 +59,20 @@ Solid read. [Build an agent app](/docs/build/composition#build-the-chat) shows e
 - Keep the store you subscribe to. Each `live.head(...)` call opens a new one.
 
 A send still in the connection's journal is not a row yet. `session.view()` shows it as `unsent`;
-over a store, `unsentSends(connection, session.id, session.name)` does the same: `lay(view, seq)`
-adds it to the view, with `seq` from `store.freshness()` while the store is fresh, and `subscribe`
-calls you when the journal changes.
+over a store, `unsentSends(connection, session.id, session.name)`, with the `Connection` from
+`sdk.connect` that you send through, does the same. `lay(view, seq)` adds it to the view, with
+`seq` from `store.freshness()` while the store is fresh, and `subscribe` calls you when the journal
+changes.
 
-When the socket drops, the store marks itself stale (`store.freshness()`) and resumes from the last
-change it applied once the socket is back, so nothing is missed or repeated. Call `store.close()`
-when the chat leaves the screen, and `live.release()` when you are done with the host. In a browser,
-pass `socket: ticketSocket()`, since a page can't put headers on a WebSocket.
+When the socket drops, the store marks itself stale (`store.freshness()`) and keeps its rows. Once
+the socket is back, it resumes from the seq of the last change it applied, so nothing is missed or
+repeated. Call `store.close()` when the chat leaves the screen, and `live.release()` when you are
+done with the host. In a browser, pass `socket: ticketSocket()`, since a page can't put headers on
+a WebSocket.
 
-`live.directory({ parents: { kind: "roots" } })` is the same kind of store for a session list: its
-snapshot holds the listed `ids` in order and each one's `SessionInfo` in `rows`.
+`live.directory({ parents: { kind: "roots" } })` is the same kind of store for the `sessions`
+table: its snapshot holds the listed `ids` in order, each one's `SessionInfo` in `rows`, and each
+session's live `Activation` in `activations`.
 
 ## Draw the messages
 
@@ -212,7 +218,8 @@ For a scrolling transcript, `pagedViews` does the bookkeeping. It takes a source
 ```ts
 import { pagedViews } from "@nyte-ai/sdk";
 
-// `views` is an AsyncIterable of the head's views, such as the head store's views above.
+// `views` is an AsyncIterable of the head's views. Over a head store, yield
+// `headView(store.snapshot())` each time `subscribe` calls you.
 const paged = pagedViews({ watch: () => views, history: (query) => session.history(query) });
 
 for await (const view of paged) draw(view);
@@ -228,8 +235,9 @@ the pages are dropped.
 ## Mark a chat read
 
 Each entry in `SessionInfo.heads`, from `session.info()` or a directory row, has `unread`, which
-stays `true` until the connection's principal has read up to that head's tip. Reading or following
-a head never marks it read, so a preloaded preview or a background store leaves the chat unread.
+stays `true` until the connection's principal has read up to that head's tip. Reading a head's view
+or holding its rows never marks it read, so a preloaded preview or a background store leaves the
+chat unread.
 
 Mark it while the chat is on screen in a window that has focus, with the tip of the head you drew:
 

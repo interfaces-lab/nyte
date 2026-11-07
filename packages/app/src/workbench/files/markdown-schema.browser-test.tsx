@@ -17,7 +17,6 @@ function markdownEditor(source: string) {
   return { editor, save: () => serializeMarkdown(editor.state.doc, origin) };
 }
 
-/** Select All starts at the document itself, with no list item around it to split. */
 function selectAllThenEnter(): void {
   const source = "- [ ] one\n- [x] two\n\nAfter.\n";
   const markdown = markdownEditor(source);

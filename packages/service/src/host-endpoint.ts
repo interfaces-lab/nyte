@@ -28,9 +28,6 @@ export type Published =
   | { readonly kind: "published" }
   | { readonly kind: "taken"; readonly by: RunningHost };
 
-/** The exit status of a `nyte host` that found another host serving this home (EX_TEMPFAIL). */
-export const HOST_TAKEN_EXIT = 75;
-
 export function hostFilePath(env: Readonly<Record<string, string | undefined>> = process.env) {
   return join(hostStateDirectory(env), "host.json");
 }

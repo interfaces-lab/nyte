@@ -1,9 +1,3 @@
-/**
- * Device routes. The environment's relay reserves, enrolls through the
- * desktop's socket, and activates; it also ends devices and owes D1 the
- * session denial a strong revocation makes. The Worker authenticates the
- * caller, and after a strong revocation asks Clerk to revoke the session.
- */
 import { EnrollRequest, PROOF_HEADER } from "@nyte-ai/connect";
 import { settleSessionRevocation, verifySession } from "./clerk.ts";
 import type { Context } from "./context.ts";
@@ -30,12 +24,6 @@ export async function enrollDevice(
   );
 }
 
-/**
- * The strong revocation, by the owner's Clerk session or the environment's
- * machine key. The relay has denied the enrolling Clerk session in D1 before
- * it answers; Clerk revokes it now or the cron retries. Repeating it is
- * harmless.
- */
 export async function removeDevice(
   context: Context,
   request: Request,
@@ -56,11 +44,6 @@ export async function removeDevice(
   return noContent();
 }
 
-/**
- * The weak end, relayed by the desktop after the device's own token asked
- * for it: the device stops like a revoked one, but its Clerk session is
- * neither denied nor revoked. Environment proof only, body exactly `{}`.
- */
 export async function releaseDevice(
   context: Context,
   request: Request,

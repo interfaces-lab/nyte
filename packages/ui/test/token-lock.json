@@ -748,6 +748,13 @@
       "--nyte-conversation-turn-gap",
       "--nyte-diff-line-height",
       "--nyte-diff-preview-max-height",
+      "--nyte-image-thumbnail-compact-size",
+      "--nyte-image-thumbnail-size",
+      "--nyte-image-viewer-compact-footer-height",
+      "--nyte-image-viewer-footer-height",
+      "--nyte-image-viewer-header-height",
+      "--nyte-image-viewer-mode-width",
+      "--nyte-image-viewer-width",
       "--nyte-pane-divider-gap",
       "--nyte-pane-sash-size",
       "--nyte-prose-paragraph-gap",
@@ -1040,6 +1047,15 @@
       "turnGap"
     ],
     "app/src/theme/schema.stylex.ts diffView": ["lineHeight", "previewMaxHeight"],
+    "app/src/theme/schema.stylex.ts imageViewer": [
+      "compactFooterHeight",
+      "footerHeight",
+      "headerHeight",
+      "modeWidth",
+      "thumbnailCompactSize",
+      "thumbnailSize",
+      "width"
+    ],
     "app/src/theme/schema.stylex.ts pane": ["dividerGap", "sashSize"],
     "app/src/theme/schema.stylex.ts settings": [
       "cardGap",
@@ -1093,6 +1109,7 @@
     ],
     "app/src/theme/schema.stylex.ts workbench": [
       "activeWidth",
+      "centerWidthMin",
       "fileListWidth",
       "headerHeight",
       "headerPaddingBlock",
@@ -1105,7 +1122,9 @@
       "railWidth",
       "rowGap",
       "rowPaddingInline",
-      "sashWidth"
+      "sashWidth",
+      "widthDefault",
+      "widthMin"
     ]
   }
 }

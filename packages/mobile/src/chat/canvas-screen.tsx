@@ -12,11 +12,6 @@ import { CanvasWebView } from "./canvas-frame.tsx";
 
 const FILL = { kind: "fill" } as const;
 
-/**
- * One canvas filling the screen under its title. It reads the part from the session's parts, which
- * hold every part rather than the chat's window, so it finds a canvas past the messages the chat
- * holds and redraws when the agent replaces it.
- */
 export function CanvasScreen({ sessionId, part }: { sessionId: SessionId; part: PartId }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();

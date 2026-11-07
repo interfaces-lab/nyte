@@ -14,6 +14,10 @@ pnpm install:nyte
 Other builds leave the installed binary alone. Packaging runs this installer. Put `~/.nyte/bin`
 first on your `PATH` so another installation doesn't shadow it.
 
+`pnpm install:desktop` updates the installed desktop app to a build of the checkout through its
+own updater. [Desktop updates](../packages/desktop/UPDATES.md#install-a-local-build) explains
+how.
+
 ## Package the terminal client
 
 ```sh

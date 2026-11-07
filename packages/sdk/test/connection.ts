@@ -10,7 +10,6 @@ import type { Served } from "./served.ts";
 
 export const cleanups: (() => Promise<void>)[] = [];
 
-/** Runs, newest first, the cleanup of every host and connection a test opened; register it with `afterEach`. */
 export async function closeOpened(): Promise<void> {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 }
@@ -35,7 +34,6 @@ export async function client(host: Served, journal = createSendJournal()): Promi
   return connection;
 }
 
-/** Starts a chat whose first exchange, `Hi.` answered `Ready.`, has settled, so a test begins from an idle chat. */
 export async function settledChat(host: Served, connection: Connection): Promise<Session> {
   host.fake.reply(text("Ready."));
   const { session, receipt } = await connection.sessions.start({ content: "Hi." });

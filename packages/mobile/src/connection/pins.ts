@@ -37,7 +37,6 @@ export interface PinStore {
 
 const PinSchema = Type.Object({ hostId: Type.String({ minLength: 1 }) });
 
-/** The Keychain key for a route's pin, hashed because Keychain keys allow only letters, digits, `.`, `-` and `_`. */
 async function pinKey(crypto: DeviceCrypto, route: PinRoute): Promise<string> {
   const parts =
     route.kind === "address"

@@ -28,13 +28,6 @@ export interface ClientActions {
   perform(action: string, input: Json, timeoutMs: number): Promise<Json>;
 }
 
-/**
- * The action an app offers to drive the page each chat's agent holds in its
- * browser; its input is a `BrowserCall`.
- *
- * @category plugins
- * @since 0.1.0
- */
 export const BROWSER_ACTION = {
   name: "browser",
   summary: "Drives the page a chat's agent holds in this app's browser.",
@@ -59,13 +52,6 @@ const WaitType = Type.Union([
   Type.Object({ until: Type.Literal("time"), seconds: Type.Number() }),
 ]);
 
-/**
- * What the host asks the browser action to do: one `BrowserAgent` method of
- * the desktop and its input.
- *
- * @category plugins
- * @since 0.1.0
- */
 export const BrowserCallType = Type.Union([
   Type.Object({
     method: Type.Literal("open"),
@@ -200,12 +186,6 @@ export function sanitizeLine(text: string): string {
   return text.replace(CONTROL_CHARACTERS, "").replace(UNICODE_FORGERY, "");
 }
 
-/**
- * Returns the id of the page a session's agent holds in an app's browser.
- *
- * @category plugins
- * @since 0.1.0
- */
 export function sessionSurfaceId(sessionId: SessionId): string {
   return `stage:session:${encodeURIComponent(sessionId)}`;
 }

@@ -1,11 +1,5 @@
 import type { FileTree, FileTreeBatchOperation } from "@pierre/trees";
 
-/**
- * Moves `model` from showing `shown` to showing `paths` and returns what it shows now: the
- * paths and their folders. The first fill resets the tree, so its initial expansion applies;
- * later fills remove and add only what changed, so the folders a reader opened stay open. A
- * later fill checks each path against the tree, which an inline rename moves on its own.
- */
 export function syncTreePaths(
   model: FileTree,
   shown: ReadonlySet<string>,

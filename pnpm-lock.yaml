@@ -1316,6 +1316,31 @@ importers:
         specifier: npm:@central-icons-react/round-outlined-radius-2-stroke-1.5@^1.2.27
         version: '@central-icons-react/round-outlined-radius-2-stroke-1.5@1.2.27(react@19.3.0)'
 
+  packages/nyte-bench:
+    dependencies:
+      '@nyte-ai/ai':
+        specifier: workspace:*
+        version: link:../ai
+      '@nyte-ai/bench':
+        specifier: workspace:*
+        version: link:../bench
+      '@nyte-ai/core':
+        specifier: workspace:*
+        version: link:../core
+      '@nyte-ai/host':
+        specifier: workspace:*
+        version: link:../host
+      '@nyte-ai/schema':
+        specifier: workspace:*
+        version: link:../schema
+      typebox:
+        specifier: ^1.4.2
+        version: 1.4.3
+    devDependencies:
+      '@types/node':
+        specifier: ^26.6.5
+        version: 26.6.6
+
   packages/plugin:
     dependencies:
       '@agentclientprotocol/sdk':
@@ -1605,6 +1630,9 @@ importers:
       '@nivo/line':
         specifier: ^0.99.0
         version: 0.99.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@pierre/trees':
+        specifier: ^1.0.0-beta.6
+        version: 1.0.0-beta.6(patch_hash=e64fcd26f78cf9addbb742d7d2f450941e91efbf4fd2c3a2702b15c6b4429e33)(@pierre/theme@2.0.0)(@shikijs/themes@4.5.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(shiki@4.5.0)
       '@shadcn/react':
         specifier: ^0.3.1
         version: 0.3.1(@types/react@19.3.0)(react@19.3.1)

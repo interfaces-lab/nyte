@@ -7,7 +7,6 @@ import { useLayoutEffect, useState } from "react";
 import type { FileStatus } from "@nyte-ai/sdk";
 import { workbenchStyles } from "../workbench.stylex.ts";
 
-/** A git status is read by its hue, so it takes the accent ink, as diff counts do. */
 const styles = create({ status: { color: role.contentAccent } });
 
 export function treeItemHeight(): number {

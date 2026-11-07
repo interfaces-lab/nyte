@@ -1,74 +1,236 @@
 import process from "node:process";
-import type { Connection, LoginMethod } from "@nyte-ai/sdk";
+import type { Connection } from "@nyte-ai/sdk";
 import { accountCommand } from "./account-command.ts";
 import { apiCommand } from "./api-command.ts";
+import { COMMANDS } from "./cli/commands.ts";
+import type { CommandName } from "./cli/commands.ts";
+import { CliError, shellCommand, suggest } from "./cli/errors.ts";
+import { renderHelp } from "./cli/help.ts";
+import { createInvocation } from "./cli/invocation.ts";
+import type { CommandEnd, Invocation } from "./cli/invocation.ts";
+import { resolveMode } from "./cli/mode.ts";
+import { createOutput } from "./cli/output.ts";
+import type { Output } from "./cli/output.ts";
+import { route } from "./cli/route.ts";
+import type { Route } from "./cli/route.ts";
 import { eventsCommand } from "./events-command.ts";
 import { connectHostSocket } from "./host-socket.ts";
 import { doctorCommand } from "./doctor-command.ts";
 import { mcpCommand } from "./mcp-command.ts";
 import { skillCommand } from "./skill-command.ts";
-import { TRIAGE_USAGE, triageCommand } from "./triage-command.ts";
-import { loginProvider, logoutProvider } from "./services/auth.ts";
+import { triageCommand } from "./triage-command.ts";
+import { trustCommand, untrustCommand } from "./trust-command.ts";
 import { availableModels } from "./lib/catalog.ts";
-import {
-  alignedRows,
-  ansiEnabled,
-  bold,
-  dim,
-  renderHelp,
-  renderCommandHelp,
-  statusGlyph,
-  updateSeverity,
-} from "./cli-style.ts";
-import { parseFlags, parseUpdateArgs, readStdin, resolveTuiResume, wantsPrint } from "./flags.ts";
+import { misplacedCommand, parseFlags, readPrompt, readStdin, resolveTuiResume } from "./flags.ts";
 import type { RunFlags } from "./flags.ts";
-import { cliLoginDriver } from "./interaction.ts";
-import type { UpdateProgress } from "./update.ts";
-import { VERSION, checkForUpdate } from "./version.ts";
-import { describeUpdateOutcome, latestReleaseText, selfUpdate } from "./update.ts";
+import { loginCommand, logoutCommand } from "./login-command.ts";
+import { statusCommand } from "./status-command.ts";
+import { updateCommand } from "./update-command.ts";
+import { VERSION } from "./version.ts";
 import { addFolder, flagConfiguration, targetSession, trustFolder } from "./run.ts";
 import { hostCommand } from "./host-command.ts";
 import { connectHost } from "./local-host.ts";
 import { openLiveHost } from "./live-host.ts";
 import type { HostSource } from "./local-host.ts";
-import { onEnding } from "./lifecycle.ts";
 import { printRun } from "./print.ts";
-import type { PrintOutcome } from "./print.ts";
-import { PrintInvocation } from "./print-invocation.ts";
 import { runTui } from "./app/main.tsx";
 
-const invocationArgs = process.argv.slice(2);
-
-const separator = invocationArgs.findIndex((arg) => arg === "--");
-
-const json = (separator < 0 ? invocationArgs : invocationArgs.slice(0, separator)).includes(
-  "--json",
-);
-
-const output = {
-  write: (text: string): void => void process.stdout.write(text),
-  error: (text: string): void => void process.stderr.write(`${text}\n`),
-};
-
-const invocation = new PrintInvocation({ json, output });
-
-const signal = invocation.controller.signal;
-
-function untilInterrupted(): AbortSignal {
-  invocation.handoff();
-  const interrupted = new AbortController();
-
-  const stop = onEnding(() => {
-    stop();
-    interrupted.abort();
-  });
-
-  return interrupted.signal;
+interface Context {
+  readonly output: Output;
+  readonly invocation: Invocation;
 }
 
-async function openHost(source: HostSource = { kind: "local" }): Promise<Connection> {
-  const host = await connectHost(source);
-  invocation.defer(() => host.close());
+type Handler = (args: readonly string[], context: Context) => Promise<CommandEnd>;
+
+const HANDLERS: Record<CommandName, Handler> = {
+  trust: async (args, context) => {
+    await trustCommand({
+      args,
+      output: context.output,
+      signal: context.invocation.signal,
+      connection: () => openHost(context),
+    });
+
+    return { kind: "exit", code: 0 };
+  },
+  untrust: async (args, context) => {
+    await untrustCommand({
+      args,
+      output: context.output,
+      signal: context.invocation.signal,
+      connection: () => openHost(context),
+    });
+
+    return { kind: "exit", code: 0 };
+  },
+  login: async (args, context) => {
+    await loginCommand({
+      args,
+      output: context.output,
+      signal: context.invocation.signal,
+      connection: () => openHost(context),
+    });
+
+    return { kind: "exit", code: 0 };
+  },
+  logout: async (args, context) => {
+    await logoutCommand({
+      args,
+      output: context.output,
+      signal: context.invocation.signal,
+      connection: () => openHost(context),
+    });
+
+    return { kind: "exit", code: 0 };
+  },
+  status: async (args, context) => {
+    await statusCommand({
+      args,
+      output: context.output,
+      signal: context.invocation.signal,
+      attach: (endpoint) => openHost(context, { kind: "attached", endpoint }),
+    });
+
+    return { kind: "exit", code: 0 };
+  },
+  update: async (args, context) => {
+    await updateCommand({
+      args,
+      output: context.output,
+      signal: context.invocation.signal,
+      connection: () => openHost(context),
+    });
+
+    return { kind: "exit", code: 0 };
+  },
+  account: async (args, context) => ({
+    kind: "exit",
+    code: await accountCommand(args, {
+      output: context.output,
+      signal: context.invocation.signal,
+    }),
+  }),
+  mcp: async (args, context) => ({
+    kind: "exit",
+    code: await mcpCommand({
+      args,
+      connect: (source) => openHost(context, source),
+      signal: context.invocation.signal,
+      output: context.output,
+    }),
+  }),
+  api: async (args, context) => ({
+    kind: "exit",
+    code: await apiCommand({
+      args,
+      attach: (url) => openHost(context, attachedSource(url)),
+      connect: (hostUrl) =>
+        connectHostSocket({
+          source: hostUrl === undefined ? { kind: "local" } : attachedSource(hostUrl),
+          name: "nyte api",
+        }),
+      stdin: () => readStdin(context.output.mode.tty.stdin, context.invocation.signal),
+      output: context.output,
+      width: process.stdout.columns ?? 80,
+    }),
+  }),
+  skill: async (args, context) => ({
+    kind: "exit",
+    code: await skillCommand({ args, env: process.env, output: context.output }),
+  }),
+  host: async (args, context) => ({
+    kind: "exit",
+    code: await hostCommand(args, context.invocation.signal, context.output),
+  }),
+  events: async (args, context) => ({
+    kind: "exit",
+    code: await eventsCommand({
+      args,
+      dialer: (hostUrl) => {
+        const source: HostSource =
+          hostUrl === undefined ? { kind: "local" } : attachedSource(hostUrl);
+
+        return () => connectHostSocket({ source, name: "nyte events" });
+      },
+      signal: context.invocation.signal,
+      output: context.output,
+    }),
+  }),
+  doctor: async (args, context) => ({
+    kind: "exit",
+    code: await doctorCommand(args, context.output),
+  }),
+  triage: async (args, context) => ({ kind: "exit", code: await triageCommand(args, context) }),
+};
+
+const argv = process.argv.slice(2);
+
+const where = route(argv);
+
+const json =
+  where.kind === "command" || where.kind === "chat" || where.kind === "version"
+    ? where.json
+    : false;
+
+const mode = resolveMode(process, json);
+
+const output = createOutput(mode, process);
+
+const invocation = createInvocation(output);
+
+const end = await run(where, { output, invocation }).catch((error: unknown): CommandEnd => ({
+  kind: "error",
+  error,
+}));
+
+process.exitCode = await invocation.finish(end, json);
+
+async function run(target: Route, context: Context): Promise<CommandEnd> {
+  switch (target.kind) {
+    case "help":
+      context.output.result(
+        `${renderHelp(target.path, context.output.mode.stdout, process.stdout.columns ?? 80)}\n`,
+      );
+
+      return { kind: "exit", code: 0 };
+    case "version":
+      if (target.json) context.output.json({ version: VERSION });
+      else context.output.result(`${VERSION}\n`);
+
+      return { kind: "exit", code: 0 };
+    case "unknown":
+      throw unknownCommand(target.word);
+    case "chat":
+      return chat(target.args, context);
+    case "command":
+      return HANDLERS[target.name](target.args, context);
+    default: {
+      const _exhaustive: never = target;
+
+      return _exhaustive;
+    }
+  }
+}
+
+function unknownCommand(word: string): CliError {
+  const near = suggest(
+    word,
+    COMMANDS.map((command) => command.name),
+  );
+
+  return new CliError(
+    "unknown_command",
+    `Unknown command ${word} for nyte.${near === undefined ? "" : ` Did you mean ${near}?`}`,
+    { next: [{ label: "See all commands", argv: ["nyte", "--help"] }] },
+  );
+}
+
+async function openHost(
+  context: Context,
+  source: HostSource = { kind: "local" },
+): Promise<Connection> {
+  const host = await connectHost(source, (phase) => context.output.progress(phase));
+  context.invocation.defer(() => host.close());
 
   return host.connection;
 }
@@ -83,495 +245,153 @@ function attachedSource(url: string): HostSource {
   delete process.env["NYTE_HOST_TOKEN"];
 
   if (token === undefined || token === "")
-    throw new Error(
-      "--host-url needs the host's token in NYTE_HOST_TOKEN; `nyte host` writes both to ~/.nyte/host.json.",
-    );
+    throw new CliError("missing_input", "Can't attach to --host-url without NYTE_HOST_TOKEN set.", {
+      details: [{ label: "Token", value: "nyte host writes it to ~/.nyte/host.json" }],
+    });
 
   return { kind: "attached", endpoint: { url, token } };
 }
 
-function parseAuthArgs(command: "login" | "logout", args: readonly string[]) {
-  let providerId: string | undefined;
-  let method: LoginMethod["kind"] | undefined;
-
-  for (let index = 0; index < args.length; index++) {
-    const arg = args[index];
-
-    if (command === "login" && (arg === "--method" || arg.startsWith("--method="))) {
-      if (method !== undefined) throw new Error("Provide --method only once.");
-      const value = arg === "--method" ? args[++index] : arg.slice("--method=".length);
-
-      if (value !== "oauth" && value !== "api_key") {
-        throw new Error("--method must be oauth or api_key. Run `nyte login --help`.");
-      }
-
-      method = value === "oauth" ? "oauth" : "key";
-      continue;
-    }
-
-    if (arg.startsWith("-")) {
-      throw new Error(`Unknown ${command} option: ${arg}. Run \`nyte ${command} --help\`.`);
-    }
-
-    if (providerId !== undefined || arg.trim() === "") {
-      throw new Error(`Provide one provider argument. Run \`nyte ${command} --help\`.`);
-    }
-
-    providerId = arg;
-  }
-
-  if (providerId === undefined && (!process.stdin.isTTY || !process.stderr.isTTY)) {
-    throw new Error(
-      `A provider argument is required without an interactive terminal. Run \`nyte ${command} <provider>\`.`,
-    );
-  }
-
-  return { providerId, method };
-}
-
-async function authenticate(command: "login" | "logout", args: readonly string[]): Promise<void> {
-  const options = parseAuthArgs(command, args);
-
-  if (command === "login" && (!process.stdin.isTTY || !process.stderr.isTTY)) {
-    const argv = [
-      "nyte",
-      "login",
-      ...(options.providerId === undefined ? [] : [options.providerId]),
-      ...(options.method === undefined
-        ? []
-        : ["--method", options.method === "key" ? "api_key" : "oauth"]),
-    ];
-
-    const commandLine = argv.map((arg) => `'${arg.replaceAll("'", "'\\''")}'`).join(" ");
-    throw new Error(
-      `Login requires an interactive terminal on stdin and stderr. Run ${commandLine} in a terminal.`,
-    );
-  }
-
-  signal.throwIfAborted();
-  const host = await openHost();
-
-  const driver = cliLoginDriver(signal, () => {
-    process.emit("SIGINT");
-  });
-
-  if (command === "logout") {
-    const result = await logoutProvider({
-      connection: host,
-      driver,
-      providerId: options.providerId,
-    });
-
-    console.log(`${statusGlyph("ok", ansiEnabled())} ${result.message}`);
-
-    return;
-  }
-
-  const provider = await loginProvider({
-    connection: host,
-    driver,
-    providerId: options.providerId,
-    method: options.method,
-  });
-
-  console.log(`${statusGlyph("ok", ansiEnabled())} Logged in to ${provider.name}.`);
-
-  try {
-    await host.models.refresh(provider.id);
-  } catch {
-    signal.throwIfAborted();
-    console.error("Login is saved, but the model catalog failed to reload.");
-  }
-
-  console.log("  run `nyte` to start");
-}
-
-async function update(args: readonly string[]): Promise<void> {
-  const options = parseUpdateArgs(args);
-
-  if (options.kind === "models") {
-    const host = await openHost();
-    await host.models.refresh();
-    signal.throwIfAborted();
-    const color = ansiEnabled();
-
-    for (const provider of (await host.models.list()).providers) {
-      console.log(
-        provider.credential === "failed"
-          ? `${statusGlyph("fail", color)} ${provider.id}  credential failed`
-          : `${statusGlyph("ok", color)} ${provider.id}  ${String(provider.models.length)} models`,
-      );
-    }
-
-    return;
-  }
-
-  const tty = ansiEnabled(process.stderr);
-
-  if (options.kind === "check") {
-    const notice = await checkForUpdate();
-    console.log(
-      notice === undefined
-        ? latestReleaseText(VERSION)
-        : `Update available: ${notice.version}. Run: nyte update`,
-    );
-
-    return;
-  }
-
-  const target = options.target;
-  console.error(`${bold("nyte", tty)} ${dim(`${VERSION} → ${target ?? "latest"}`, tty)}`);
-
-  let progressOpen = false;
-
-  const endProgress = (): void => {
-    if (!progressOpen) return;
-    process.stderr.write("\n");
-    progressOpen = false;
-  };
-
-  const report = (event: UpdateProgress): void => {
-    switch (event.kind) {
-      case "downloading":
-        console.error(dim(`downloading ${event.asset}`, tty));
-
-        return;
-      case "percent": {
-        const row = `  ${String(event.percent)}%`;
-
-        if (!tty) {
-          console.error(row);
-
-          return;
-        }
-
-        process.stderr.write(`\r\x1b[K${row}`);
-        progressOpen = true;
-
-        return;
-      }
-
-      case "verified":
-        endProgress();
-        console.error(`${statusGlyph("ok", tty)} ${dim("checksum verified", tty)}`);
-
-        return;
-      default: {
-        const _exhaustive: never = event;
-
-        return _exhaustive;
-      }
-    }
-  };
-
-  const outcome = await selfUpdate(target === undefined ? { report } : { target, report });
-  endProgress();
-
-  const severity = updateSeverity(outcome);
-  console.log(`${statusGlyph(severity, ansiEnabled())} ${describeUpdateOutcome(outcome)}`);
-
-  if (severity !== "ok") process.exitCode = 1;
-}
-
-async function status(): Promise<void> {
-  const host = await openHost();
-
-  const stored = (await host.models.list()).providers.filter(
-    (provider) => provider.credential !== "missing",
+/** The TUI, or one prompt with `-p`. Every argv mistake fails here, before any host work. */
+async function chat(args: readonly string[], context: Context): Promise<CommandEnd> {
+  const misplaced = misplacedCommand(
+    args,
+    COMMANDS.map((command) => command.name),
   );
 
-  if (json) {
-    output.write(
-      `${JSON.stringify({
-        type: "status",
-        credentials: stored.map((provider) => ({
-          provider: provider.id,
-          credential: provider.credential,
-        })),
-      })}\n`,
+  if (misplaced !== undefined)
+    throw new CliError(
+      "invalid_arguments",
+      `Put ${misplaced[0] ?? ""} first: ${shellCommand(["nyte", ...misplaced])}`,
     );
 
-    return;
-  }
+  const flags = parseFlags(args);
+  const stdinTerminal = context.output.mode.tty.stdin;
+  const stdoutTerminal = context.output.mode.tty.stdout;
+  const tui = !flags.print && !flags.json && !flags.quiet && stdinTerminal;
+  const resumeId = flags.resume.kind === "latest" && flags.rest.length === 1;
 
-  if (stored.length === 0) {
-    console.log(dim("no stored credentials"));
+  if (!flags.print && flags.rest.length > 0 && !(tui && resumeId))
+    throw unknownCommand(flags.rest[0] ?? "");
+  const source = hostSource(flags);
 
-    return;
-  }
+  if (flags.minimal && (!stdinTerminal || !stdoutTerminal))
+    throw new CliError(
+      "missing_input",
+      "Can't open --minimal without a terminal on stdin and stdout.",
+      {
+        next: [
+          { label: "Run it in a terminal without pipes or redirects", argv: ["nyte", "--minimal"] },
+        ],
+      },
+    );
 
-  const rows = stored.map((provider) => ({ label: provider.id, detail: provider.credential }));
+  if (!tui)
+    return print(
+      flags,
+      await readPrompt(flags.rest, stdinTerminal, context.invocation.signal),
+      source,
+      context,
+    );
 
-  for (const row of alignedRows(rows, ansiEnabled())) console.log(row);
+  if (!stdoutTerminal)
+    throw new CliError(
+      "missing_input",
+      "Can't open the full-screen app without a terminal on stdout.",
+      {
+        next: [{ label: "Send one prompt and print the answer", argv: ["nyte", "-p", "<PROMPT>"] }],
+      },
+    );
+
+  context.invocation.signal.throwIfAborted();
+  context.invocation.handoff();
+
+  return process.exit(await runTui(resolveTuiResume(flags), source));
 }
 
-async function print(flags: RunFlags, source: HostSource): Promise<PrintOutcome> {
-  signal.throwIfAborted();
-  const local = await connectHost(source);
-  invocation.defer(() => local.close());
+/** One prompt. Everything the flags name is checked before the first change: trust, model settings or the send. */
+async function print(
+  flags: RunFlags,
+  prompt: string,
+  source: HostSource,
+  context: Context,
+): Promise<CommandEnd> {
+  const signal = context.invocation.signal;
+  const out = context.output;
+
+  const stopIfCanceled = (): void => {
+    if (signal.aborted) throw new CliError("canceled", "Canceled.");
+  };
+
+  stopIfCanceled();
+  const local = await connectHost(source, (phase) => out.progress(phase));
+  context.invocation.defer(() => local.close());
   const host = local.connection;
   const live = openLiveHost(local.endpoint, "cli");
-  invocation.defer(() => live.release());
-  signal.throwIfAborted();
+  context.invocation.defer(() => live.release());
+  stopIfCanceled();
+  const catalog = await host.models.list();
 
-  if (availableModels(await host.models.list()).length === 0)
-    throw new Error("Couldn't find a stored credential. Run `nyte login`.");
-  const configuration = await flagConfiguration(host, flags);
+  if (availableModels(catalog).length === 0)
+    throw new CliError("missing_input", "Can't send a prompt without a stored credential.", {
+      next: [{ label: "Sign in to a provider", argv: ["nyte", "login"] }],
+    });
+  const configuration = flagConfiguration(catalog, flags);
+  const resumed = await targetSession(host, flags.resume);
 
-  if (configuration?.model !== undefined) {
-    const set = await host.models.setDefault(configuration.model);
-
-    if (set.kind === "unknown-model")
-      throw new Error(
-        `Unavailable model: ${configuration.model.provider}/${configuration.model.id}`,
-      );
-  }
+  if (flags.resume.kind === "latest" && resumed === null)
+    throw new CliError("not_found", "Can't continue the latest chat. There are no chats yet.", {
+      next: [{ label: "Start a chat", argv: ["nyte", "-p", "<PROMPT>"] }],
+    });
 
   if (flags.trust !== undefined) await trustFolder(host, flags.resume, process.cwd(), flags.trust);
-  const resumed = await targetSession(host, flags.resume);
-  signal.throwIfAborted();
-  const content = flags.rest.join(" ");
+
+  if (resumed !== null && flags.resume.kind === "latest" && !flags.json) {
+    const workspace = await host.workspace((await resumed.info()).workspace).info();
+
+    out.rows([
+      { label: "Continuing", value: resumed.id },
+      {
+        label: "Folder",
+        value: "path" in workspace.target ? workspace.target.path : workspace.id,
+      },
+    ]);
+    out.say("");
+  }
+
+  stopIfCanceled();
 
   if (resumed !== null && configuration !== undefined) {
     const configured = await resumed.configure(configuration);
 
     if (configured.kind !== "configured")
-      throw new Error(`Couldn't apply the model settings: ${configured.kind}`);
+      throw new CliError("failed", "Couldn't apply --model or --effort to the chat.", {
+        details: [
+          { label: "Session", value: resumed.id },
+          { label: "Outcome", value: configured.kind },
+        ],
+      });
   }
 
-  const { session, receipt } =
+  const started =
     resumed === null
       ? await host.sessions.start({
           workspace: await addFolder(host, process.cwd()),
-          content,
+          content: prompt,
           contextFiles: flags.contextFiles,
           configuration,
         })
-      : { session: resumed, receipt: await resumed.send(content) };
+      : { session: resumed, receipt: await resumed.send(prompt) };
 
-  invocation.sessionId = session.id;
-
-  return printRun({
-    session,
+  await printRun({
+    session: started.session,
     live,
-    receipt,
+    receipt: started.receipt,
     json: flags.json,
     quiet: flags.quiet,
-    output,
+    output: out,
     signal,
   });
+
+  return { kind: "exit", code: 0 };
 }
-
-async function main(): Promise<PrintOutcome | undefined> {
-  signal.throwIfAborted();
-  const command = invocationArgs[0];
-
-  if (command === "--version" || command === "-v") {
-    if (invocationArgs.length !== 1) throw new Error("Usage: nyte --version");
-    process.stdout.write(`${VERSION}\n`);
-
-    return undefined;
-  }
-
-  if (command === "--help" || command === "-h" || command === "help") {
-    if (invocationArgs.length !== 1) throw new Error("Usage: nyte --help");
-    console.log(renderHelp());
-
-    return undefined;
-  }
-
-  if (
-    command === "login" ||
-    command === "logout" ||
-    command === "status" ||
-    command === "update" ||
-    command === "account" ||
-    command === "mcp" ||
-    command === "host" ||
-    command === "api" ||
-    command === "events" ||
-    command === "skill"
-  ) {
-    const serverCommandStart = invocationArgs.indexOf("--");
-
-    if (
-      invocationArgs
-        .slice(1, serverCommandStart < 0 ? undefined : serverCommandStart)
-        .some((arg) => arg === "--help" || arg === "-h")
-    ) {
-      console.log(renderCommandHelp(command));
-
-      return undefined;
-    }
-  }
-
-  if (command === "login" || command === "logout") {
-    await authenticate(command, invocationArgs.slice(1));
-
-    return undefined;
-  }
-
-  if (command === "status") {
-    if (invocationArgs.slice(1).some((arg) => arg !== "--json") || invocationArgs.length > 2) {
-      throw new Error("Usage: nyte status [--json]");
-    }
-
-    await status();
-
-    return json ? { kind: "completed" } : undefined;
-  }
-
-  if (command === "update") {
-    await update(invocationArgs.slice(1));
-
-    return undefined;
-  }
-
-  if (command === "account") {
-    await accountCommand(
-      invocationArgs.slice(1),
-      invocationArgs.length === 1 ? untilInterrupted() : signal,
-      output,
-    );
-
-    return undefined;
-  }
-
-  if (command === "mcp") {
-    process.exitCode = await mcpCommand({
-      args: invocationArgs.slice(1),
-      connection: openHost,
-      signal,
-      output,
-    });
-
-    return undefined;
-  }
-
-  if (command === "api") {
-    process.exitCode = await apiCommand({
-      args: invocationArgs.slice(1),
-      attach: (url) => openHost(attachedSource(url)),
-      connect: (hostUrl) => connectHostSocket({ hostUrl, name: "nyte api" }),
-      stdin: () => readStdin(signal),
-      output,
-    });
-
-    return undefined;
-  }
-
-  if (command === "events") {
-    process.exitCode = await eventsCommand({
-      args: invocationArgs.slice(1),
-      connect: (hostUrl) => connectHostSocket({ hostUrl, name: "nyte events" }),
-      signal: untilInterrupted(),
-      output,
-    });
-
-    return undefined;
-  }
-
-  if (command === "skill") {
-    process.exitCode = await skillCommand({
-      args: invocationArgs.slice(1),
-      env: process.env,
-      output,
-    });
-
-    return undefined;
-  }
-
-  if (command === "host") {
-    process.exitCode = await hostCommand(invocationArgs.slice(1), untilInterrupted(), output);
-
-    return undefined;
-  }
-
-  if (command === "doctor") {
-    if (invocationArgs.slice(1).some((arg) => arg === "--help" || arg === "-h")) {
-      console.log(renderCommandHelp("doctor"));
-
-      return undefined;
-    }
-
-    process.exitCode = await doctorCommand(invocationArgs.slice(1));
-
-    return undefined;
-  }
-
-  if (command === "triage") {
-    if (invocationArgs.slice(1).some((arg) => arg === "--help" || arg === "-h")) {
-      console.log(TRIAGE_USAGE);
-
-      return undefined;
-    }
-
-    invocation.handoff();
-    process.exitCode = await triageCommand(invocationArgs.slice(1));
-
-    return undefined;
-  }
-
-  if (command === "service") {
-    output.error(
-      "The Nyte service is gone: nyte and Nyte.app attach to this machine's host, and nyte starts `nyte host` when none runs, so there is nothing to start or stop.\n",
-    );
-
-    return undefined;
-  }
-
-  let flags = parseFlags(invocationArgs);
-  const source = hostSource(flags);
-
-  if (flags.minimal && (!process.stdin.isTTY || !process.stdout.isTTY)) {
-    throw new Error(
-      "--minimal requires an interactive terminal on stdin and stdout. Run `nyte --minimal` in a terminal without pipes or redirects.",
-    );
-  }
-
-  if (wantsPrint(flags, Boolean(process.stdout.isTTY), Boolean(process.stdin.isTTY))) {
-    if (flags.rest.length === 0) {
-      const stdin = await readStdin(signal);
-
-      if (stdin === "") {
-        return {
-          kind: "failed",
-          code: "input_empty",
-          message: "Provide a prompt or non-empty stdin. Run `nyte --help`.",
-        };
-      }
-
-      flags = { ...flags, rest: [stdin] };
-    }
-
-    return print(flags, source);
-  }
-
-  if (!process.stdout.isTTY) {
-    console.error(renderHelp(false));
-    process.exitCode = 1;
-
-    return undefined;
-  }
-
-  signal.throwIfAborted();
-  invocation.handoff();
-
-  return process.exit(await runTui(resolveTuiResume(flags), source));
-}
-
-let outcome: PrintOutcome | undefined;
-
-try {
-  outcome = await main();
-} catch (cause) {
-  outcome = {
-    kind: "failed",
-    code: "startup_failed",
-    message: cause instanceof Error ? cause.message : String(cause),
-  };
-}
-
-const exitCode = await invocation.finish(outcome);
-
-if (exitCode !== undefined) process.exitCode = exitCode;

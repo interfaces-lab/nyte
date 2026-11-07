@@ -103,10 +103,4 @@ export function webPlugin(fetch: Fetch): Plugin {
   };
 }
 
-/**
- * The web plugin over the global `fetch`.
- *
- * @category plugins
- * @since 0.1.0
- */
 export default webPlugin((input, init) => globalThis.fetch(input, init));

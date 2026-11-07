@@ -1,6 +1,3 @@
-/**
- * Time-ordered UUIDv7 generator with a monotonic sequence, used for message and session ids.
- */
 const MAX_UUID_V7_TIMESTAMP = 0xffffffffffff;
 
 const MAX_SEQUENCE = (1n << 41n) - 1n;

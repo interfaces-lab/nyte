@@ -1,48 +1,92 @@
 import process from "node:process";
-import { asId } from "@nyte-ai/schema";
 import notificationsPlugin from "@nyte-ai/plugin/client/notifications";
 import tuiRenderersPlugin from "@nyte-ai/plugin/client/transcript-tui";
 import questionsPlugin from "@nyte-ai/plugin/client/questions-tui";
 import type { Plugin } from "@nyte-ai/plugin/client";
+import { asId, SdkError } from "@nyte-ai/schema";
 import type {
   ConfigurationPatch,
   Connection,
   Cursor,
+  ModelCatalogView,
+  ModelRef,
   Session,
   SessionInfo,
   WorkspaceId,
 } from "@nyte-ai/sdk";
-import { availableModels } from "./lib/catalog.ts";
+import { CliError } from "./cli/errors.ts";
+import { availableModels, findModel, modelId } from "./lib/catalog.ts";
 import type { ResumeTarget, RunFlags } from "./flags.ts";
 
 export function tuiPlugins(): readonly Plugin[] {
   return [notificationsPlugin, tuiRenderersPlugin, questionsPlugin];
 }
 
-export async function flagConfiguration(
-  connection: Connection,
+/**
+ * The model and effort the flags ask for, checked against the catalog. They configure this run's
+ * chat only; the saved default model stays. An unknown or unusable model fails before any change.
+ */
+export function flagConfiguration(
+  catalog: ModelCatalogView,
   flags: Pick<RunFlags, "provider" | "model" | "effort">,
-): Promise<ConfigurationPatch | undefined> {
+): ConfigurationPatch | undefined {
   const requested = flags.model ?? process.env["NYTE_MODEL"];
-  const effort = flags.effort;
+  const thinking = flags.effort === undefined ? {} : { thinking: flags.effort };
 
-  if (requested === undefined && effort === undefined) return undefined;
-  const configuration: ConfigurationPatch = effort === undefined ? {} : { thinking: effort };
+  if (requested === undefined && flags.provider !== undefined)
+    throw new CliError("invalid_arguments", "Can't use --provider without --model.", {
+      next: [
+        {
+          label: "Name the model too",
+          argv: ["nyte", "-p", "--provider", flags.provider, "--model", "<MODEL>", "<PROMPT>"],
+        },
+      ],
+    });
 
-  if (requested === undefined) return configuration;
-  const [named, ...rest] = requested.split("/");
-  const provider = flags.provider ?? (rest.length === 0 ? undefined : named);
-  const id = rest.length === 0 || flags.provider !== undefined ? requested : rest.join("/");
+  if (requested === undefined) return flags.effort === undefined ? undefined : thinking;
 
-  if (provider !== undefined) return { ...configuration, model: { provider, id } };
+  return { ...thinking, model: resolveModel(catalog, requested, flags) };
+}
 
-  const found = availableModels(await connection.models.list()).find(
-    (model) => model.ref.id === id,
-  );
+function resolveModel(
+  catalog: ModelCatalogView,
+  requested: string,
+  flags: Pick<RunFlags, "provider" | "model">,
+): ModelRef {
+  const slash = requested.indexOf("/");
 
-  if (found === undefined) throw new Error(`Unavailable model: ${id}`);
+  const wanted =
+    flags.provider !== undefined
+      ? { provider: flags.provider, id: requested }
+      : slash > 0
+        ? { provider: requested.slice(0, slash), id: requested.slice(slash + 1) }
+        : undefined;
 
-  return { ...configuration, model: found.ref };
+  const usable = availableModels(catalog);
+  const every = catalog.providers.flatMap((provider) => provider.models);
+
+  const found =
+    wanted === undefined
+      ? (usable.find((model) => model.ref.id === requested) ??
+        every.find((model) => model.ref.id === requested))
+      : findModel(every, wanted);
+
+  const name = wanted === undefined ? requested : modelId(wanted);
+  const source = flags.model === undefined ? " from NYTE_MODEL" : "";
+
+  if (found === undefined)
+    throw new CliError("not_found", `Couldn't find model ${name}${source}.`, {
+      next: [{ label: "See the models", argv: ["nyte", "api", "call", "models.list", "{}"] }],
+    });
+
+  if (!usable.includes(found))
+    throw new CliError(
+      "missing_input",
+      `Can't use model ${name} without signing in to ${found.ref.provider}.`,
+      { next: [{ label: "Sign in", argv: ["nyte", "login", found.ref.provider] }] },
+    );
+
+  return wanted ?? found.ref;
 }
 
 export async function* rootSessions(connection: {
@@ -108,7 +152,16 @@ export async function targetSession(
 
     case "session": {
       const session = connection.session(asId(target.id));
-      await session.info();
+
+      await session.info().catch((error: unknown) => {
+        if (!(error instanceof SdkError) || error.code !== "unknown") throw error;
+
+        throw new CliError("not_found", `Couldn't find session ${target.id}.`, {
+          next: [
+            { label: "List your chats", argv: ["nyte", "api", "call", "sessions.list", "{}"] },
+          ],
+        });
+      });
 
       return session;
     }

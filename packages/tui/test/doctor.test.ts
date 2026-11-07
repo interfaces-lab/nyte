@@ -83,18 +83,18 @@ describe("doctor", () => {
         },
         { id: "update", status: "warn", detail: "0.0.24 is available", fix: "nyte update" },
       ],
-      summary: { ok: 1, warn: 1, fail: 1 },
+      summary: { ok: 1, warn: 1, fail: 1, skip: 0 },
     };
 
-    expect(renderDoctor(report, false).split("\n").slice(0, 8)).toEqual([
-      "nyte doctor  0.0.22 · linux-x64",
+    expect(renderDoctor(report, { rich: true, color: false })).toEqual([
+      "  Version         0.0.22, linux-x64",
+      "  Binary          ~/.nyte/bin/0.0.22/nyte",
+      "✗ Secrets         auth.json is 0644 (not opened)",
+      "                  Run: chmod 600 ~/.nyte/auth.json",
+      "! Update          0.0.24 is available",
+      "                  Run: nyte update",
       "",
-      "  ✓ binary   ~/.nyte/bin/0.0.22/nyte",
-      "  ✗ secrets  auth.json is 0644 (not opened)",
-      "             run: chmod 600 ~/.nyte/auth.json",
-      "  ● update   0.0.24 is available",
-      "             run: nyte update",
-      "",
+      "1 problem, 1 warning.",
     ]);
   });
 });

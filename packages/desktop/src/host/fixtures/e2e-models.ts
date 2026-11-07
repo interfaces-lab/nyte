@@ -152,7 +152,6 @@ function renderReply(request: Request): Reply | undefined {
   };
 }
 
-/** A `/swarm` agent: each round streams its notes and reads a file, so it commits every round as a working agent does; then it answers. */
 function surveyReply(request: Request): Reply | undefined {
   const prompt = request.context.messages
     .flatMap((message) => (message.role === "user" ? [contentText(message.content, "")] : []))
@@ -228,7 +227,6 @@ export interface E2eAnswerOptions {
   readonly log: (line: string) => void;
 }
 
-/** The scripted catalog's answers, served to the host behind a model endpoint. */
 export function e2eAnswers(input: E2eAnswerOptions): (request: Request) => Reply {
   const ci = ciAnswer(input);
 

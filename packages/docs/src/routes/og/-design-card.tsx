@@ -1,10 +1,3 @@
-/**
- * design.nyte.sh's social cards, drawn as the site draws itself: a ruled
- * sheet with ticks on its column edges, the pixel wordmark, and numbered
- * cells. The landing gets the sheet with a row of specimens; every other page
- * gets its number in a cell beside its name.
- */
-
 // oxlint-disable-next-line import/default -- Vite's ?inline query makes the file a data URL.
 import pixelFace from "~/fonts/GeistPixel-Square.woff2?inline";
 // oxlint-disable-next-line import/default -- Vite's ?inline query makes the file a data URL.
@@ -36,7 +29,6 @@ function fontBytes(dataUrl: string): Buffer {
   return Buffer.from(dataUrl.slice(dataUrl.indexOf(",") + 1), "base64");
 }
 
-/** Geist is built into the renderer; the pixel and mono faces ship with the site. */
 export function cardFonts() {
   return [
     { name: pixel, data: fontBytes(pixelFace), weight: 500 },
@@ -46,7 +38,6 @@ export function cardFonts() {
 
 const frame = { left: 56, right: 1144 };
 
-/** The sheet: paper, the frame's two lines, and ticks on the given column edges. */
 function Sheet({ ticks, children }: { ticks: readonly number[]; children: ReactNode }) {
   return (
     <div
@@ -137,7 +128,6 @@ function Masthead({ trail }: { trail: string }) {
   );
 }
 
-/** Small drawn stand-ins for six components, each in a numbered cell. */
 const specimens: readonly { slug: string; draw: () => ReactNode }[] = [
   {
     slug: "button",

@@ -284,7 +284,6 @@ export async function compactSession(
   }
 }
 
-/** Opens a side chat of `parent`, refusing one inside a side chat: side chats don't nest. */
 async function openSideChatFrom(parent: SessionId, question: string): Promise<DeliveryOutcome> {
   const info = await (await connected()).session(parent).info();
 

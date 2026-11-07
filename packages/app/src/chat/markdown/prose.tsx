@@ -29,7 +29,7 @@ import { CodeBlock } from "./code-block.tsx";
 import { MermaidDiagram } from "./mermaid-diagram.tsx";
 import { Icon } from "@nyte-ai/ui/icon";
 import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
-import { FileTypeIcon } from "../../components/file-type-icon.tsx";
+import { FileTypeIcon } from "@nyte-ai/ui/file-type-icon";
 import {
   fileFromUrl,
   inlineCodeReference,
@@ -42,6 +42,7 @@ import { asId } from "@nyte-ai/schema";
 import type { ByteReader, WorkspaceId } from "@nyte-ai/sdk";
 import { useReferenceOpener } from "../../references/reference-opener.tsx";
 import { proseStyles } from "./prose.stylex.ts";
+import { ImageViewer } from "../images/image-viewer.tsx";
 import { SubagentCitation } from "../tools/subagent-call.tsx";
 import {
   FadeEnd,
@@ -195,7 +196,7 @@ function safeDecode(text: string): string {
 }
 
 function MarkdownLink({
-  node: _node,
+  node,
   className: _className,
   onClick: _onClick,
   title: _title,
@@ -216,12 +217,15 @@ function MarkdownLink({
     );
   }
 
+  const linkedImage =
+    node?.children.some((child) => child.type === "element" && child.tagName === "img") === true;
+
   const reference =
     opener === undefined || href === undefined ? undefined : linkReference(href, files);
 
   const open = reference === undefined ? undefined : opener?.(reference);
 
-  if (reference?.kind === "file" && open !== undefined) {
+  if (!linkedImage && reference?.kind === "file" && open !== undefined) {
     return (
       <FileCitation
         {...elementProps}
@@ -236,25 +240,30 @@ function MarkdownLink({
   }
 
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <a
-            {...elementProps}
-            href={href}
-            {...props(intent.primary, proseStyles.link, proseStyles.webLink)}
-            onClick={(event) => {
-              if (href === undefined) return;
-              event.preventDefault();
-              openConversationLink(href, opener);
-            }}
-          >
-            <InsideLink value>{children}</InsideLink>
-          </a>
-        }
-      />
-      <TooltipContent>{href}</TooltipContent>
-    </Tooltip>
+    <>
+      {linkedImage && children}
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <a
+              {...elementProps}
+              href={href}
+              {...props(intent.primary, proseStyles.link, proseStyles.webLink)}
+              onClick={(event) => {
+                if (href === undefined) return;
+                event.preventDefault();
+
+                if (open !== undefined) return open();
+                openConversationLink(href, opener);
+              }}
+            >
+              <InsideLink value>{linkedImage ? "Open linked page" : children}</InsideLink>
+            </a>
+          }
+        />
+        <TooltipContent>{href}</TooltipContent>
+      </Tooltip>
+    </>
   );
 }
 
@@ -336,11 +345,6 @@ function MarkdownImage({
   );
 }
 
-/**
- * The app's CSP refuses file URLs, so a local path reaches the page as a blob URL read through the
- * chat folder's files. Agents rewrite screenshots in place, so a later answer naming the same path
- * rereads it.
- */
 function FileImage(input: {
   readonly workspace: WorkspaceId;
   readonly path: string;
@@ -357,11 +361,14 @@ function FileImage(input: {
   return url === undefined ? (
     input.label
   ) : (
-    <img src={url} alt={input.label} {...props(proseStyles.image)} />
+    <span {...props(proseStyles.imageSpacing)}>
+      <ImageViewer src={url} name={input.path.split("/").at(-1) ?? input.label}>
+        <img src={url} alt={input.label} {...props(proseStyles.image)} />
+      </ImageViewer>
+    </span>
   );
 }
 
-/** Any path an answer names loads on sight, so a non-image is closed before its bytes are buffered. */
 async function readImage(workspace: WorkspaceId, path: string): Promise<ByteReader> {
   const reader = await (await filesFor(workspace)).bytes(path);
 
@@ -440,12 +447,6 @@ const urlTransform: UrlTransform = (url, key, node) =>
 
 const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
 
-/**
- * Completes unfinished syntax in the last block only, where the split keeps an unclosed fence, list
- * or math block, instead of Streamdown's pass over the whole answer on every update. The tail comes
- * from the source because marked rewrites trailing whitespace in a block's text, and remend reads
- * it. The split drops `\r` before measuring blocks, so the source drops it too.
- */
 function splitMarkdown(markdown: string): string[] {
   const source = markdown.includes("\r") ? markdown.replaceAll(/\r\n?/gu, "\n") : markdown;
   const blocks = parseMarkdownIntoBlocks(source);

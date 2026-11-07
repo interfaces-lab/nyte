@@ -103,7 +103,6 @@ function NyteGroup({
   );
 }
 
-/** The menu's account groups and the separator after them, mounted only while the menu is open, so the Nyte account is read only then. */
 function AccountGroups({
   account,
   github,
@@ -137,10 +136,6 @@ function AccountGroups({
   );
 }
 
-/**
- * The sidebar's footer: the account menu and the Settings toggle. It shows from the first frame;
- * the GitHub login fills in when `gh` answers and never decides whether the footer exists.
- */
 export function SidebarFooter({
   onOpenSettings,
 }: {
@@ -178,7 +173,6 @@ export function SidebarFooter({
   );
 }
 
-/** `account` is the machine's GitHub login, undefined while `gh` answers or where the host serves none. */
 export function AccountFooterMenu({
   account,
   connect,

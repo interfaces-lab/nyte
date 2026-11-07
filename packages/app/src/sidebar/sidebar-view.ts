@@ -23,7 +23,6 @@ export interface SessionViewGroup {
   readonly sessions: readonly SessionInfo[];
 }
 
-/** Days back through which each Updated bucket reaches, counted in local calendar days. */
 const UPDATED_BUCKETS = [
   ["today", "Today", 0],
   ["yesterday", "Yesterday", 1],
@@ -257,7 +256,6 @@ export function sessionsForView(
   return groupSessions(ordered, settings.grouping, environment, now, chats, unread);
 }
 
-/** Pinned chats leave it for the Pinned section above. */
 export function folderView(
   sessions: readonly SessionInfo[],
   settings: SessionViewSettings,
@@ -278,14 +276,9 @@ export function folderView(
 export interface SessionPage {
   readonly visible: number;
   readonly next: number;
-  /** What the list's revealed count becomes when "Show More" is pressed. */
   readonly revealed: number;
 }
 
-/**
- * `selected` is the open chat's index or -1; an open chat past the fold raises the page to include
- * it. A single leftover row is shown rather than hidden behind "Show 1 More".
- */
 export function sessionPage(
   total: number,
   base: number,

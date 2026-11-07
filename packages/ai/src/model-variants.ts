@@ -7,7 +7,6 @@ export function fastModelId(base: string): string {
   return `${base}${FAST_MODEL_SUFFIX}`;
 }
 
-/** Advertises fast mode on an API whose premium is known. */
 export function supportsFastMode(model: Model<Api>): boolean {
   return (
     model.variant === undefined &&

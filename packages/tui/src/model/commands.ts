@@ -151,7 +151,6 @@ type ChatCatalog = Pick<WorkspaceCatalogView, "commands" | "skills">;
 
 const NO_CATALOG: ChatCatalog = { commands: [], skills: [] };
 
-/** The followed chat's plugin commands and skills, or those a blank chat's folder would offer it. */
 function readChatCatalog(state: State): ChatCatalog {
   const { chat, folderCatalog } = state.facts;
 
@@ -219,7 +218,6 @@ export function commandRegistry(state: State): readonly CommandEntry[] {
   });
 }
 
-/** The plugin commands `/` reaches here that suggest the text after their name. */
 export function completingCommands(state: State): ReadonlySet<string> {
   const reached = new Set(
     commandRegistry(state).flatMap((entry) => (entry.source === "plugin" ? [entry.name] : [])),

@@ -32,7 +32,6 @@ export type ConnectEnding =
       >;
     }
   | { readonly kind: "notSaved" }
-  /** Something this app does not recognize stopped it. */
   | { readonly kind: "unexpected"; readonly detail: string }
   | { readonly kind: "cancelled" };
 

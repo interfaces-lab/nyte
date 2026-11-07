@@ -11,7 +11,6 @@ import { STEPS, miseTools, nextCommands, ubuntuPackages } from "../src/init/step
 import { checksumFor } from "../src/init/system.js";
 import { planLines, question } from "../src/init/ui.js";
 
-/** A machine of named flags, and steps that check and set them. */
 function machine(initial = {}) {
   const state = { ...initial };
   const applied = [];

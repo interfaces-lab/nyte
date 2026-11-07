@@ -1,6 +1,3 @@
-/**
- * OpenRouter provider.
- */
 import { openAICompletionsApi } from "../api/openai-completions.lazy.ts";
 import { envApiKeyAuth } from "../auth/helpers.ts";
 import { verifyWithRequest } from "../auth/verify.ts";

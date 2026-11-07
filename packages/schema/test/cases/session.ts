@@ -110,7 +110,6 @@ const project = {
   createdAt: 1,
 } as const;
 
-/** Sessions, views, heads, the host, connections, hooks, events and the ref store. */
 export const sessionCases = {
   HeadInfoSchema: sample(HeadInfoSchema, headInfo, { ...headInfo, tip: null }),
   SessionInfoSchema: sample(SessionInfoSchema, sessionInfo, { ...sessionInfo, heads: [{}] }),

@@ -8,7 +8,6 @@ import { Type, type TSchema } from "typebox";
 
 export interface HistoryLine {
   readonly text: string;
-  /** False for a last line without its newline: its writer may still be appending it. */
   readonly terminated: boolean;
 }
 
@@ -17,7 +16,6 @@ export interface HistoryFold<Scan> {
   scan(): Scan;
 }
 
-/** Folds a history file's lines into a scan. `scan()` returns a copy, so folding goes on without changing it. */
 export type HistoryParser<Scan> = (from: Scan | undefined) => HistoryFold<Scan>;
 
 export interface FileScan<Scan> {
@@ -25,7 +23,6 @@ export interface FileScan<Scan> {
   readonly mtimeMs: number;
   /** The byte after the last newline, where a grown file resumes. */
   readonly position: number;
-  /** The scan of every line up to `position`. */
   readonly committed: Scan;
 }
 
@@ -65,7 +62,6 @@ export class UsageScanCache<Scan> {
     this.#changed = true;
   }
 
-  /** Forgets every file a read did not reach. */
   keepOnly(seen: ReadonlySet<string>): void {
     for (const path of this.#files.keys()) {
       if (seen.has(path)) continue;
@@ -74,7 +70,6 @@ export class UsageScanCache<Scan> {
     }
   }
 
-  /** Whether a scan was added or forgotten since the last {@link markSaved}. */
   get changed(): boolean {
     return this.#changed;
   }
@@ -84,12 +79,6 @@ export class UsageScanCache<Scan> {
   }
 }
 
-/**
- * Reads a history file through `cache`. An unchanged file answers from the cache without being
- * opened, and a file that only grew is read from its last newline on; any other change rereads it.
- * A last line without its newline is folded into the answer but not the cache, since its writer may
- * still be appending it: the next read starts from that line again.
- */
 export async function readHistory<Scan>(
   path: string,
   info: Stats,
@@ -130,7 +119,6 @@ export async function readHistory<Scan>(
   return fold.scan();
 }
 
-/** Yields a history file's lines from byte `start` up to the size it had when opened, though its writer may keep appending. */
 async function* historyLines(path: string, start: number, signal: AbortSignal | undefined) {
   const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
 
@@ -183,7 +171,6 @@ async function* historyLines(path: string, start: number, signal: AbortSignal | 
   }
 }
 
-/** Reads a cache document written by {@link writeCacheDocument}; a missing, torn or outdated one reads as `undefined`. */
 export async function readCacheDocument<Document>(
   path: string,
   validator: { Check(value: unknown): value is Document },
@@ -197,7 +184,6 @@ export async function readCacheDocument<Document>(
   }
 }
 
-/** Replaces the cache document whole, so a reader never sees half of one. Resolves whether the write landed. */
 export async function writeCacheDocument<Document>(
   path: string,
   document: Document,

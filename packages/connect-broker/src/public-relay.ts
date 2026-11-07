@@ -1,9 +1,3 @@
-/**
- * Phone requests under `/r/`. The Worker checks what needs no data (the
- * route, the method, a browser `Origin`, the declared size, and the bearer's
- * shape) and hands the rest to the environment's relay, which checks the
- * bearer against its own devices before it opens a channel.
- */
 import { DeviceToken } from "@nyte-ai/connect";
 import {
   PUBLIC_RELAY_BEARER,
@@ -80,11 +74,6 @@ function admit(context: Context, request: Request): Admission {
   };
 }
 
-/**
- * The relay's answer, passed through a stream this Worker owns, so that the
- * phone going away, before or after the head, resets the channel through the
- * relay's own stub rather than relying on cancellation crossing into it.
- */
 function passThrough(response: Response, input: { readonly onCancel: () => void }): Response {
   if (response.body === null) return response;
   const reader = response.body.getReader();
@@ -112,7 +101,6 @@ function passThrough(response: Response, input: { readonly onCancel: () => void 
   return new Response(body, { status: response.status, headers: response.headers });
 }
 
-/** A phone request: handed to the environment's relay, or refused here. */
 export async function relayPublic(context: Context, request: Request): Promise<Response> {
   const admission = admit(context, request);
 
@@ -162,10 +150,6 @@ export async function relayPublic(context: Context, request: Request): Promise<R
   }
 }
 
-/**
- * The desktop's relay socket. No credential rides the upgrade; the relay
- * checks the first frame's proof itself.
- */
 export async function connectRelay(
   context: Context,
   request: Request,

@@ -5,7 +5,6 @@ import {
   type SavedConnection,
 } from "./connection.ts";
 
-/** Where the one saved connection lives: the Keychain in the app, memory in tests. */
 export interface ConnectionStorage {
   readonly read: () => Promise<string | null>;
   readonly write: (text: string) => Promise<void>;
@@ -15,51 +14,25 @@ export interface ConnectionStorage {
 type ConnectionSnapshot =
   | { readonly kind: "loading" }
   | { readonly kind: "none" }
-  /**
-   * What the Keychain holds is not known: it held something this build cannot
-   * read, refused the read, or kept a cancelled write that could not be undone.
-   * Nothing is served from it.
-   */
   | { readonly kind: "unknown" }
   | { readonly kind: "saved"; readonly saved: SavedConnection };
 
 export type SaveResult =
-  /** `replaced` is the connection this one took the place of, whose bearer the caller may release. */
   | { readonly kind: "saved"; readonly replaced: SavedConnection | undefined }
-  /** Nothing changed on disk: the abort came first, or the write was undone. */
   | { readonly kind: "cancelled" }
-  /** The write failed, or a cancelled write could not be undone. `next` may still be on disk. */
   | { readonly kind: "failed" };
 
 export interface ConnectionStore {
   readonly getSnapshot: () => ConnectionSnapshot;
   readonly subscribe: (listener: () => void) => () => void;
   readonly load: () => Promise<void>;
-  /**
-   * Replace the saved connection unless `signal` aborts first. An abort that
-   * lands during the write puts the previous connection back. When that undo
-   * fails too, the store serves nothing and reports `failed`, never
-   * `cancelled`, so no caller promises a rollback that did not happen.
-   */
   readonly save: (next: SavedConnection, signal: AbortSignal) => Promise<SaveResult>;
-  /**
-   * Remove the saved connection when `match` accepts it, after `release` has
-   * run. Resolves to what was removed, or undefined when nothing matched.
-   */
   readonly remove: <S extends SavedConnection, T>(input: {
     readonly match: (saved: SavedConnection) => saved is S;
     readonly release: (saved: S) => Promise<T>;
   }) => Promise<{ readonly saved: S; readonly released: T } | undefined>;
 }
 
-/**
- * The saved connection as an external store. Every change runs in one queue,
- * so a write that started earlier cannot land after a removal that started
- * later, and every queued change reads the Keychain first, whoever asked first.
- * The bearer stays here and in the Keychain, never in a query cache. A save
- * cancelled after its write restores the previous value; if that fails too, it
- * still tries not to keep the cancelled bearer, then reports the disk unknown.
- */
 export function createConnectionStore(
   storage: ConnectionStorage,
   policy: ManagedPolicy | undefined,

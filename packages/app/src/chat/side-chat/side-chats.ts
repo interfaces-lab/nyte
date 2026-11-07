@@ -118,10 +118,6 @@ export function foldSideChat(parent: SessionId, folded: boolean): void {
   if (current.kind === "open") set(parent, { ...current, folded });
 }
 
-export function closeSideChat(parent: SessionId): void {
-  set(parent, CLOSED);
-}
-
 /**
  * Starts a side chat of `parent` with `question` as its first message, on `parent`'s model, and
  * shows it. The window shows the question while the host starts the chat, and the question again

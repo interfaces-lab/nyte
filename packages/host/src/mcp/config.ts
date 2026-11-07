@@ -72,7 +72,6 @@ export type McpServerEntry = {
   readonly timeoutMs: number;
   readonly description: string | null;
   readonly exposure: McpExposure;
-  /** Patterns in file order; `*` matches any characters. */
   readonly toolExposure: readonly (readonly [pattern: string, exposure: McpExposure])[];
 };
 
@@ -92,7 +91,6 @@ export type McpConfig = {
   readonly issues: readonly ValidationIssue[];
 };
 
-/** Reads one `mcp.json`; a file that cannot be read is `unreadable`, not missing. */
 export async function readMcpFile(path: string): Promise<McpFileContents> {
   try {
     return { kind: "text", text: await readFile(path, "utf8") };
@@ -104,12 +102,6 @@ export async function readMcpFile(path: string): Promise<McpFileContents> {
   }
 }
 
-/**
- * Merges the user file and then the project file into one server list. A
- * project entry replaces the user entry of the same name; one with only
- * `enabled`, `exposure` or `toolExposure` overrides those fields instead.
- * An invalid entry becomes an issue and is left out.
- */
 export function parseMcpConfig(files: readonly McpFile[]): McpConfig {
   const servers = new Map<string, McpServerEntry>();
   const canonical = new Map<string, string>();
@@ -278,12 +270,6 @@ function settings(
   };
 }
 
-/**
- * Plans a change to the `mcpServers` of one `mcp.json`, keeping the rest of
- * the file: `change` returns the new servers, or `null` when it has nothing
- * to change. A missing file starts empty; one that is not a JSON object is
- * refused. Nothing is written; pass the text to {@link writeMcpFile}.
- */
 export async function planMcpEdit(
   path: string,
   change: (servers: { readonly [name: string]: Json }) => { readonly [name: string]: Json } | null,
@@ -317,10 +303,6 @@ export async function planMcpEdit(
   return { kind: "planned", text: `${JSON.stringify({ ...parsed, mcpServers: next }, null, 2)}\n` };
 }
 
-/**
- * Replaces one `mcp.json` whole, readable only by the user as it may hold
- * secrets. A symlinked file is written through the link.
- */
 export async function writeMcpFile(path: string, text: string): Promise<void> {
   const target = await realpath(path).catch(() => path);
   const temporary = `${target}.${randomUUID()}.tmp`;

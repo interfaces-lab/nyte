@@ -99,7 +99,6 @@ function LinkedConnection({
   );
 }
 
-/** The Nyte account group: link this Mac, turn remote access on, and manage its devices. */
 export function NyteConnection({
   connect,
 }: {

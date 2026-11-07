@@ -29,21 +29,12 @@ export function defaultAuthPath(): string {
   return join(defaultNyteHome(), "auth.json");
 }
 
-/** Longer than a healthy credential write, including the OAuth refresh `modify` runs. */
 const LOCK_TIMEOUT_MS = 30_000;
 
 const LOCK_RETRY_MS = 25;
 
-/**
- * Age at which a lock is reclaimed even though a live process still claims it:
- * pids get reused, and a refresh that hangs without a timeout of its own would
- * otherwise lock every client out permanently. Longer than `LOCK_TIMEOUT_MS`,
- * so reclaiming lands on a later command instead of cutting short a waiter,
- * and a holder that loses its lock this way finds out before it writes.
- */
 const LOCK_ABANDONED_MS = 2 * LOCK_TIMEOUT_MS;
 
-/** Age at which a recovery that never finished counts as crash residue instead of a live one. */
 const RECOVERY_STALE_MS = 1_000;
 
 const CredentialFileSchema = Type.Record(Type.String(), Type.Unknown());
@@ -54,11 +45,6 @@ function errorCode(cause: unknown): string | undefined {
   return Value.Check(SystemErrorSchema, cause) ? cause.code : undefined;
 }
 
-/**
- * `${pid} ${host} ${token}`: the host name keeps a shared home directory from
- * judging another machine's pid, and the token makes every acquisition
- * distinct, including two from the same process.
- */
 function lockOwner(): string {
   return `${process.pid} ${hostname()} ${randomUUID()}`;
 }
@@ -81,7 +67,6 @@ function localOwnerPid(owner: string | undefined): number | undefined {
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
-/** A signal-0 probe; EPERM means the process exists but belongs to another user. */
 function processAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
@@ -92,7 +77,6 @@ function processAlive(pid: number): boolean {
   }
 }
 
-/** Undefined when the path is gone while being inspected; the next create attempt decides. */
 function ageMs(path: string): number | undefined {
   try {
     return Date.now() - statSync(path).mtimeMs;
@@ -101,7 +85,6 @@ function ageMs(path: string): number | undefined {
   }
 }
 
-/** Abandoned when the owning process is gone, and unconditionally once the lock ages out. */
 function lockAbandoned(lockPath: string): boolean {
   const pid = localOwnerPid(readOwner(lockPath));
 
@@ -111,12 +94,6 @@ function lockAbandoned(lockPath: string): boolean {
   return age !== undefined && age > LOCK_ABANDONED_MS;
 }
 
-/**
- * A lock can change hands while its holder is still working: an aged-out hold
- * is reclaimed on purpose, and a crashed recovery can be taken over. `held` is
- * the backstop for both. The holder that lost its lock fails instead of
- * publishing over the client that owns it now.
- */
 interface CredentialLock {
   held(): boolean;
   release(): void;
@@ -141,14 +118,6 @@ function createLock(lockPath: string, owner: string): boolean {
   return true;
 }
 
-/**
- * Reclaiming is check-then-remove, so it runs under its own lock: a client that
- * judged the lock abandoned before another client replaced it re-checks here
- * under exclusion and finds a live lock instead of deleting it. Without that,
- * two clients recovering from one crash both remove and create, and both end up
- * inside the critical section. Reclaiming is two syscalls, so an aged recovery
- * lock is residue from a crash and is removed.
- */
 function reclaimAbandonedLock(lockPath: string, owner: string): void {
   const recoveryPath = `${lockPath}.recovery`;
 
@@ -167,12 +136,6 @@ function reclaimAbandonedLock(lockPath: string, owner: string): void {
   }
 }
 
-/**
- * Takes the credential lock, reclaiming an abandoned one, until the timeout. Release keeps a
- * lock that now names another process and drops an unreadable one, since leaking it blocks
- * every client until it ages out. A failed release must not mask a completed write; the age
- * cap recovers it.
- */
 async function acquireLock(
   lockPath: string,
   signal: AbortSignal | undefined,
@@ -210,10 +173,6 @@ async function acquireLock(
   }
 }
 
-/**
- * Windows refuses to replace a file another process has open, so a reader holding the
- * credentials for a moment makes the rename fail with EPERM, EACCES or EBUSY until it closes.
- */
 async function publish(staging: string, path: string): Promise<void> {
   const deadline = Date.now() + LOCK_TIMEOUT_MS;
 
@@ -251,7 +210,6 @@ export class FileCredentialStore implements CredentialStore {
     this.lockPath = `${path}.lock`;
   }
 
-  /** Entries stay `unknown` so an unreadable credential survives another provider's write. */
   private load(): Record<string, unknown> {
     if (!existsSync(this.path)) return {};
     const text = readFileSync(this.path, "utf8");
@@ -273,11 +231,6 @@ export class FileCredentialStore implements CredentialStore {
     return parsed;
   }
 
-  /**
-   * Publish by rename so a concurrent reader never observes a half-written file. An advisory
-   * lock cannot make the held check and the rename one step; the check keeps a holder that
-   * already lost its lock from overwriting the current owner.
-   */
   private async save(lock: CredentialLock, entries: Record<string, unknown>): Promise<void> {
     if (!lock.held()) {
       throw new Error(`Another process took over ${this.lockPath}; nothing was written`);

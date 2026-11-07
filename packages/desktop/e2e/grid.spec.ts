@@ -34,7 +34,6 @@ const OUT = process.env.NYTE_GRID_OUT;
 
 const PROJECT = "Bug Fix and Polish";
 
-/** The parent wakes once or twice for the two agents' reports, so a long reply pushes that part above the fold. */
 const ABOVE_THE_FOLD = "/long 12";
 
 const PROMPT = [
@@ -46,10 +45,6 @@ const PROMPT = [
   "| Composer | 0px | `conversation.composerInset` |",
 ];
 
-/**
- * A markdown file for the workbench editor: inline code after text and at the start of a line, inline
- * raw HTML and a table.
- */
 const EDITOR_FILE = [
   "# Editor",
   "",
@@ -71,7 +66,6 @@ interface Size {
   readonly height: number;
 }
 
-/** The main window size: the first of these that fits the display's work area. */
 const STANDARD_SIZES: readonly Size[] = [
   { width: 1440, height: 900 },
   { width: 1366, height: 768 },
@@ -81,10 +75,8 @@ const STANDARD_SIZES: readonly Size[] = [
 
 const NARROW_WIDTH = 900;
 
-/** Earlier than any chat the fixture or the journey can create, so every relative time reads "now". */
 const HELD_CLOCK = new Date("2020-01-01T00:00:00Z");
 
-/** How many times a state is collected before its geometry is called unstable. */
 const STABLE_TRIES = 5;
 
 const panes = (page: Page): Locator => page.getByRole("region", { name: /^(Active )?chat pane$/u });
@@ -135,10 +127,6 @@ function planFor(index: SourceIndex): Plan {
   };
 }
 
-/**
- * The real window's size, never an emulated viewport: emulating past the work area lays the page
- * out at a size the window can't show, so dialogs measure centred in a viewport nobody sees.
- */
 async function windowSize(
   application: ElectronApplication,
 ): Promise<{ main: Size; narrow: Size; workArea: Size }> {
@@ -158,10 +146,6 @@ async function windowSize(
   return { main, narrow: { width: NARROW_WIDTH, height: main.height }, workArea };
 }
 
-/**
- * The window opens on the user's screen and a run once took their keystrokes, so it shows without
- * focus and can't take it; Playwright's input reaches the page over CDP either way.
- */
 async function keepUnfocused(application: ElectronApplication): Promise<void> {
   const state = await application.evaluate(({ app, BrowserWindow }) => {
     const window = BrowserWindow.getAllWindows()[0];
@@ -198,7 +182,6 @@ async function resize(
     .toEqual([size.width, size.height]);
 }
 
-/** Pointer parked bottom right, away from the sidebar's reveal edge, on nothing a hover would change. */
 async function settle(page: Page): Promise<void> {
   const park = await page.evaluate(() => ({ x: innerWidth - 2, y: innerHeight - 2 }));
   await page.mouse.move(park.x, park.y);
@@ -244,11 +227,6 @@ async function settle(page: Page): Promise<void> {
     .toEqual([]);
 }
 
-/**
- * Relative times ("2m", "1m ago") grow with the e2e seed cache's age, so the renderer's clock is held at
- * a moment before any chat existed: every age clamps to "now". Timers keep running. The page reloads so
- * the minute clock the sidebar reads starts from the held time.
- */
 async function freezeClock(page: Page): Promise<void> {
   await page.clock.setFixedTime(HELD_CLOCK);
   await page.reload();
@@ -258,7 +236,6 @@ async function freezeClock(page: Page): Promise<void> {
   );
 }
 
-/** Types one line into the composer the way a person does and sends it. */
 async function type(page: Page, text: string): Promise<void> {
   const field = composer(page);
   await field.click();
@@ -269,7 +246,6 @@ async function type(page: Page, text: string): Promise<void> {
   await expect(messages(page).getByText(text, { exact: true }).first()).toBeVisible();
 }
 
-/** Waits until no reply is streaming and the transcript has stayed the same for two seconds. */
 async function quiet(page: Page): Promise<void> {
   const read = (): Promise<string> =>
     page.evaluate(

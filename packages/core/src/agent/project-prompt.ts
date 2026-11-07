@@ -7,14 +7,8 @@ import { readText, SHARED_DOCS } from "../extend/resources.ts";
 import { projectRef } from "../store/refs.ts";
 import { load } from "../store/session.ts";
 
-/** Before the context files (order 10 is theirs), so a folder's own rules still have the last word. */
 const ORDER = 5;
 
-/**
- * The system prompt section a session in a project reads: its role, the project's instructions,
- * its shared docs and its preloaded skills. The project is read on every request, so an edit
- * reaches the next one. A session in none, or in a project since removed, reads none.
- */
 export async function projectSections(
   kernel: Kernel,
   record: SessionRecord,
@@ -95,7 +89,6 @@ function sharedContext(project: ProjectRecord, resources: Resources, home: strin
   ].join("\n");
 }
 
-/** The files of the skills the project preloads, read from the folder each was found in. */
 async function preloadedSkills(project: ProjectRecord, resources: Resources): Promise<string> {
   const read = await Promise.all(
     resources.skills

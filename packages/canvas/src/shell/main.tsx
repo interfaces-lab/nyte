@@ -7,6 +7,7 @@ import { createPortal, flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import { create, props } from "@stylexjs/stylex";
 import { applyDisplayMode, applyTint } from "@nyte-ai/ui/appearance";
+import { FileTypeIconSprite } from "@nyte-ai/ui/file-type-icon";
 import { TooltipProvider } from "@nyte-ai/ui/tooltip";
 import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
@@ -231,6 +232,7 @@ function Shell({ scheme, loaded, failure, part }: State): ReactElement {
     <StrictMode>
       <SchemeContext.Provider value={scheme}>
         <TooltipProvider>
+          <FileTypeIconSprite />
           {failure !== null ? <FailureNote failure={failure} /> : null}
           {loaded !== null && failure === null ? (
             <Boundary

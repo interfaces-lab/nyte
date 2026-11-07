@@ -103,7 +103,6 @@ export const CLIENT_COMMAND_NAMES = [
 
 export type ClientCommandName = (typeof CLIENT_COMMAND_NAMES)[number];
 
-/** A name a user can type after `/` in every client: lowercase ASCII letters, digits and `-`, not starting with `-`. */
 export const COMMAND_NAME = /^[a-z0-9][a-z0-9-]*$/u;
 
 export const CommandInfoType = Type.Object({
@@ -189,7 +188,6 @@ export const SessionCatalogViewType = Type.Object({
 
 export type SessionCatalogView = Decoded<typeof SessionCatalogViewType>;
 
-/** What a new chat in a workspace would offer before it exists: its plugin commands, skills, shared docs and context files. */
 export const WorkspaceCatalogViewType = Type.Object({
   commands: Type.Array(CommandInfoType),
   skills: Type.Array(SkillInfoType),

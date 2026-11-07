@@ -4,9 +4,10 @@ description: Choose where a host keeps its sessions, and which process runs them
 ---
 
 A host keeps every session in a store, and some process has to run the agent for each message. By
-default, `sdk.open` keeps sessions in SQLite at `<home>/.nyte/nyte.db` and runs them in the same
-process. Change the store to keep the data somewhere else or to share it between machines. Change
-the execution to run sessions in a queue, a workflow engine or a separate worker.
+default, `sdk.open` keeps sessions in SQLite at `<home>/.nyte/nyte.db`, or the file `NYTE_DB`
+names, and runs them in the same process. Change the store to keep the data somewhere else or to
+share it between machines. Change the execution to run sessions in a queue, a workflow engine or a
+separate worker.
 
 ## Pick a store [#stores]
 
@@ -54,8 +55,8 @@ works. If that process dies, another process that covers the session takes the b
 about 20 seconds, and the run carries on there.
 
 `sdk.open` checks for other processes' changes every half second only on its default SQLite store.
-With a store you pass, it doesn't, so a client watching one process may not see another process's
-writes promptly. The [Vercel template](/docs/host/deploy#vercel) composes its host with
+With a store you pass, it doesn't, so a client attached to one process may not see another
+process's writes promptly. The [Vercel template](/docs/host/deploy#vercel) composes its host with
 `composeHost` from `@nyte-ai/core/server` and `poll: 1000`, which re-reads the store every second.
 
 ## Choose who runs sessions [#execution]

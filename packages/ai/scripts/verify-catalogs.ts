@@ -1,15 +1,9 @@
-/**
- * Checks generated catalogs against the runtime: every model a Nyte provider's catalog lists
- * must survive that provider's own offline refresh, which drops models that fail `ModelSchema`,
- * name another provider, or use an API the provider does not implement.
- */
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { createModels } from "../src/models.ts";
 import { InMemoryModelsStore } from "../src/models-store.ts";
 import { nyteProviders } from "../src/providers/nyte-catalog.ts";
 
-/** Throws naming each Nyte provider whose catalog in `catalogDir` loses models at runtime. */
 export async function verifyNyteCatalogs(catalogDir: string): Promise<void> {
   const failures: string[] = [];
 

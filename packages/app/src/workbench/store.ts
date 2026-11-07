@@ -86,7 +86,6 @@ export function useWorkbenchView(workspacePath: string | undefined) {
   };
 }
 
-/** The workbench tab drawing this canvas while it is on screen beside the chat. */
 export function useVisibleCanvasTab(
   workspacePath: string | undefined,
   canvas: { readonly sessionId: SessionId; readonly part: PartId } | undefined,

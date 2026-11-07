@@ -1,11 +1,6 @@
 import type { MessageSource, UserContent } from "@nyte-ai/schema";
 import type { UserMessage } from "./presentation.ts";
 
-/**
- * A user message a child session or background job delivered as its report.
- *
- * @category presentation
- */
 export type ReportMessage = UserMessage & {
   readonly source: Extract<MessageSource, { readonly kind: "child" | "job" }>;
 };
@@ -20,11 +15,6 @@ export type AnswerMessage = UserMessage & {
   readonly source: Extract<MessageSource, { readonly kind: "answer" }>;
 };
 
-/**
- * Narrows to the report a child or job delivered; a person or an action sent the rest.
- *
- * @category presentation
- */
 export function showsReport(message: UserMessage): message is ReportMessage {
   return message.source.kind === "child" || message.source.kind === "job";
 }

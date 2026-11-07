@@ -1,6 +1,3 @@
-/**
- * OpenAI-compatible Chat Completions adapter.
- */
 import OpenAI from "openai";
 import type { Stream } from "openai/streaming";
 import { Type, type Static } from "typebox";
@@ -69,29 +66,10 @@ const ChoiceUsageSchema = Type.Object({
   }),
 });
 
-/** OpenRouter forwards the upstream provider's raw error in `error.metadata.raw`. */
 const OpenRouterErrorMetadataSchema = Type.Object({
   error: Type.Object({ metadata: Type.Object({ raw: Type.Unknown() }) }),
 });
 
-/**
- * Streams a Chat Completions response.
- *
- * - The chunk id is the completion id: OpenAI documents it as unique per completion and every
- *   chunk of a stream carries the same one.
- * - Usage comes from `chunk.usage`, or from `choice.usage` where providers such as Moonshot put it.
- * - Reasoning text arrives in `reasoning_content` (llama.cpp), `reasoning`, or `reasoning_text`;
- *   only the first non-empty field counts, since some servers (chutes.ai) send the same text twice.
- * - `reasoning_details` are replay metadata, not display deltas. OpenRouter streams them as
- *   deltas: consecutive text and summary entries merge, encrypted entries stay opaque and
- *   discrete. They stay in memory and serialize into the thinking signature once at the end.
- * - Copilot's `reasoning_opaque` arrives with the first text delta or after all reasoning text and
- *   is never a display delta. It lives in the thinking signature, which later reasoning text
- *   never rewrites; one response carries one state, as in OpenCode's Copilot adapter.
- * - Finished tool calls drop their scratch buffers, so replay carries only parsed arguments.
- * - The SDK rejects a present-but-undefined timeout instead of using its default, so it is set
- *   only when given.
- */
 export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptions> = (
   model: Model<"openai-completions">,
   context: TranscriptContext,
@@ -547,10 +525,6 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
   );
 };
 
-/**
- * OpenRouter forwards the upstream provider's raw error in `error.metadata.raw`. The normalized
- * message already carries the parsed body, so the raw metadata is appended only when it adds text.
- */
 function formatCompletionsError(error: unknown): string {
   const message = formatProviderError(normalizeProviderError(error));
   const rawMetadata = Value.Check(OpenRouterErrorMetadataSchema, error)

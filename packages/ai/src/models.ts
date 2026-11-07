@@ -155,7 +155,6 @@ class ModelsImpl implements MutableModels {
     return this.providers.get(id);
   }
 
-  /** Best-effort: a provider whose `getModels` throws contributes no models. */
   getModels(provider?: string): readonly Model<Api>[] {
     if (provider !== undefined) {
       const entry = this.providers.get(provider);
@@ -222,11 +221,6 @@ class ModelsImpl implements MutableModels {
     return { aborted: callerSignal.aborted, errors: new Map(errors) };
   }
 
-  /**
-   * The credential a catalog refresh uses. An expired OAuth credential refreshes under the
-   * credential lock, with the request path's timeout cap, since a hung request there would
-   * block every other client.
-   */
   private async resolveRefreshCredential(
     provider: Provider,
     stored: CredentialAccounts | undefined,
@@ -661,7 +655,6 @@ class ModelsImpl implements MutableModels {
     };
   }
 
-  /** Logs in and stores the credential; a catalog refresh started for the previous one is superseded so it cannot publish over the new one. */
   async login(
     providerId: string,
     type: AuthType,
@@ -788,7 +781,6 @@ class ModelsImpl implements MutableModels {
     return provider;
   }
 
-  /** Request auth for a model: explicit request options win per field, and the Models-only transform runs last. */
   private async applyAuth<
     TModel extends Model<Api>,
     TOptions extends ProviderRequestOptions & ModelsRequestTransforms,

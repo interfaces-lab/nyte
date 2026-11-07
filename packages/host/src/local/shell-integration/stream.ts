@@ -1,13 +1,10 @@
-/** Only a marker carrying the terminal's nonce changes the state, and `X` turns it back to `inactive`. */
 export type ShellState =
   | { readonly kind: "inactive" }
   | { readonly kind: "prompt"; readonly jobs: number }
   | { readonly kind: "running" };
 
 export type ShellStream = {
-  /** Holds back a sequence split across chunks until it completes. */
   read(text: string): string;
-  /** Drops a partial OSC 633 envelope. */
   end(): string;
   state(): ShellState;
 };
@@ -20,19 +17,16 @@ const CAN = "\x18";
 
 const SUB = "\x1a";
 
-/** A 633 payload longer than this is discarded through its terminator. */
 const MARKER_LIMIT = 16 * 1024;
 
 const MARKER = /^Nyte;1;([0-9a-f]{64});(?:A;(0|[1-9][0-9]{0,5})|(C)|X)$/;
 
-/** BEL, CAN, SUB and ESC each end or interrupt a terminal string. */
 const STOP = new RegExp(`[${BEL}${CAN}${SUB}${ESC}]`, "g");
 
 type Mode =
   | { readonly kind: "text" }
   | { readonly kind: "escape" }
   | { readonly kind: "number"; readonly digits: string }
-  /** `payload` is undefined for a string that is shown, and null for a marker past `MARKER_LIMIT`. */
   | {
       readonly kind: "string";
       readonly bell: boolean;
@@ -42,7 +36,6 @@ type Mode =
 
 const TEXT: Mode = { kind: "text" };
 
-/** Every OSC 633 is removed, but other OSC, DCS, SOS, PM and APC strings pass through unsearched so a marker inside one is never trusted. */
 export function createShellStream(nonce: string | null): ShellStream {
   let state: ShellState = { kind: "inactive" };
   let mode: Mode = TEXT;

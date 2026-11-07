@@ -12,7 +12,6 @@ import {
 } from "./stylex-styles.js";
 import { disabledInk, noFadedInk } from "./ink.js";
 
-/** Generated from the tokens by the ui package's `sync:tokens`; its typecheck fails when stale. */
 const SPACE_STEPS = new Map(tokenScale.space);
 
 const BOX_HANDLES = tokenScale.boxes;
@@ -63,7 +62,6 @@ const SIZE_PROPERTIES = new Set([
   "blockSize",
 ]);
 
-/** A rule, a hairline, and a text caret are strokes rather than boxes. */
 const HAIRLINE_SIZES = new Set([1, 1.5]);
 
 const SCHEMA_PATH = "packages/ui/src/styles/schema.stylex.ts";
@@ -114,14 +112,8 @@ const touchHandles = (property) => {
   return ["target.min", "control.heightMd", "row.heightMd"];
 };
 
-/**
- * A mask's stops are an opacity ramp written in colour syntax: the black and
- * the transparent pick how much of the layer survives, not what anything
- * looks like. Theming them would change coverage, not colour.
- */
 const MASK_PROPERTIES = new Set(["mask", "maskImage", "WebkitMaskImage"]);
 
-/** The CSS named colours. `transparent` and `currentColor` are not here. */
 const NAMED_COLORS = new Set(
   (
     "aliceblue antiquewhite aqua aquamarine azure beige bisque black blanchedalmond blue " +
@@ -145,21 +137,10 @@ const NAMED_COLORS = new Set(
   ).split(" "),
 );
 
-/**
- * `color()` and `color-mix()` share a prefix, and only the second one is
- * allowed, so the boundary after the name has to be part of the match.
- */
 const COLOR_FUNCTION = /\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\([^)]*\)?/i;
 
 const HEX_COLOR = /#(?:[\da-f]{3,4}|[\da-f]{6}|[\da-f]{8})\b/i;
 
-/**
- * The literal colour inside a value, or null. Words are matched whole so a
- * font family or an animation name cannot read as `tan` or `linen`.
- *
- * `color-mix()` is left to compose: every colour it takes is a handle, a
- * keyword, or another mix, and each of those is judged on its own below.
- */
 const literalColor = (text) => {
   const hex = HEX_COLOR.exec(text);
 
@@ -195,7 +176,6 @@ const stringLengths = (text) => {
   return lengths;
 };
 
-/** `gap: 6`, `marginTop: -4`, `padding: "5px 10px"`, and `{ default: 6 }`. */
 const lengthValues = (node) => {
   if (Value.Check(numberLiteral, node)) return [node.value];
 
@@ -251,13 +231,6 @@ const spacingMessage = (property, value) => {
   );
 };
 
-/**
- * Walks one style object and hands every leaf to `visit` with the property
- * that governs it. Conditions and pseudo-selectors nest below their property,
- * so the governing name is the deepest ancestor key `governs` accepts. The
- * style names directly under `create` are not properties, which is why the
- * caller starts a level down: a style called `gap` must not govern anything.
- */
 const eachStyleValue = (node, visit, property, governs) => {
   if (node.type === "ArrowFunctionExpression") {
     const body =
@@ -290,13 +263,11 @@ const eachStyleValue = (node, visit, property, governs) => {
   }
 };
 
-/** Read the style objects of each create call. */
 const eachCreatedStyle = (governs, visit) =>
   eachStyleBody((style) => {
     if (style) eachStyleValue(style, visit, undefined, governs);
   });
 
-/** A length rule: every leaf that reads as px, against its governing property. */
 const styleValueRule = (description, report) => ({
   meta: { docs: { description } },
   create(context) {
@@ -340,11 +311,6 @@ const sizeGrid = styleValueRule(
   },
 );
 
-/**
- * Every colour in the renderer is themed, so a literal one is unreachable from
- * an appearance or a scope. The value has to come from a handle in
- * `vars.stylex.ts`, which is where the tokens surface.
- */
 const noRawColors = {
   meta: { docs: { description: "Keep literal colors out of StyleX styles." } },
   create(context) {
@@ -404,11 +370,6 @@ const controlSize = styleValueRule(
   },
 );
 
-/**
- * Touch sizes are a token decision: `target.min`, `target.gap`, and every
- * component token already grow under a coarse pointer. A call site that adds
- * its own coarse branch forks that policy.
- */
 const touchInTokens = {
   meta: { docs: { description: "Keep coarse-pointer sizes in the tokens." } },
   create(context) {
@@ -488,12 +449,10 @@ const noLightDarkOutsideTokens = {
   },
 };
 
-/** `:hover` on the styled element; `:is(th:hover *)` and `when.ancestor` hover something else. */
 const SELF_HOVER = /^:hover(?![-\w])/;
 
 const DISABLED_STATES = [":disabled", "[data-disabled]", '[aria-disabled="true"]'];
 
-/** A `null` leaf sets nothing, so it needs no guard. */
 const everyLeafGuarded = (node) => {
   if (node.type === "Literal" && node.value === null) return true;
 
@@ -505,7 +464,6 @@ const everyLeafGuarded = (node) => {
   );
 };
 
-/** A pseudo-element has to end the selector, so the exclusion goes before it. */
 const withExclusion = (key, states) => {
   if (states.length === 0) return key;
   const exclusion = `:not(${states.join(", ")})`;
@@ -528,12 +486,6 @@ const hoverProblem = (unguarded, missing) => {
   return unguarded ? `${touch}, and ${disabled}` : disabled;
 };
 
-/**
- * Hover is an enhancement for a fine pointer, and it must not light up a
- * control that refuses the press. A style that names a disabled state is a
- * control that can be disabled, so its own `:hover` keys have to exclude each
- * state it names; a style that names none is left to judgement.
- */
 const guardedHover = {
   meta: {
     docs: { description: "Guard StyleX :hover with media.hover and skip disabled controls." },
@@ -612,7 +564,6 @@ const PHYSICAL_VALUES = new Map([
 
 const INLINE_ANCHORS = new Set(["insetInlineStart", "insetInlineEnd"]);
 
-/** Every string a value can resolve to, through its conditions. */
 const leafStrings = (node) => {
   if (node.type !== "ObjectExpression") return styleText(node);
 
@@ -631,22 +582,15 @@ const siblingText = (object, name) => {
 
 const shifts = (length) => length !== undefined && !/^[-+]?0(?:\.0+)?[a-z%]*$/i.test(length);
 
-/** A sibling `translate` or translating `transform` that moves the element along x. */
 const translatesInline = (object) =>
   shifts(siblingText(object, "translate").trim().split(/\s+/)[0] || undefined) ||
   shifts(/\btranslate(?:X|3d)?\(\s*([^,)\s]+)/i.exec(siblingText(object, "transform"))?.[1]);
 
-/** A 50% anchor that a translate pulls back by half the element's own width. */
 const centres = (member, object) =>
   Value.Check(stringLiteral, member.value) &&
   member.value.value === "50%" &&
   translatesInline(object);
 
-/**
- * A physical side does not mirror in a right-to-left layout. Centring is the
- * exception: `left: 50%` with a translate is the same in both directions,
- * while a logical anchor flips and leaves its translate behind.
- */
 const logicalProperties = {
   meta: { docs: { description: "Write StyleX sides with logical properties and values." } },
   create(context) {

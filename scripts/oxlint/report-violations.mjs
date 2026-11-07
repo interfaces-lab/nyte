@@ -1,10 +1,3 @@
-/**
- * Aggregate oxlint diagnostics into Markdown tables: per package and per rule, source and test files apart.
- *
- * `node scripts/oxlint/report-violations.mjs` lints the repository with `oxlint -f json`;
- * `--input <report.json>` reads a saved report instead. `--rules a,b` picks the rule columns
- * (default: the code-shape rules); `--all` adds a table of every rule that fired.
- */
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";

@@ -22,6 +22,7 @@
 | `chat/transcript/` | The transcript, with its rows, turns, thinking groups and scroll | `timeline.tsx`, `transcript.tsx`, `turn-view.tsx` |
 | `chat/tools/` | Tool call rows, such as shell, edit and subagent | `tool-call.tsx` |
 | `chat/markdown/` | Prose, code blocks, highlighting and Mermaid | `prose.tsx` |
+| `chat/images/` | The shared chat image viewer, image-pixel marks and PNG flattening | `image-viewer.tsx`, `markup.ts` |
 | `chat/trays/` | Trays above the composer for agents, questions, terminals and approvals | `tray.tsx` |
 | `canvas/` | The canvas frame, its panel and plugin renderers | `canvas-frame.tsx` |
 | `workbench/` | The workbench beside the chats, with its rail, tab strip, kind table, view reducer, store and commands | `workbench.tsx`, `model.ts`, `commands.ts` |

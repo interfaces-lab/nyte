@@ -127,7 +127,6 @@ export interface Index {
   readonly siblings: Map<CommitId | null, readonly CommitId[]>;
   readonly inputs: Map<MessageId, FoldInput>;
   readonly parts: Map<PartId, PartRecord>;
-  /** The parts whose status is `live` or `waiting`, which `streaming`, `progress` and `liveParts` read instead of every part. */
   readonly unsettled: Set<PartId>;
   readonly runs: Map<RunId, FoldRun>;
   readonly calls: Map<CallId, FoldCall>;
@@ -223,7 +222,6 @@ export interface FeedItem {
   readonly head: HeadPair | null;
 }
 
-/** A logged event with its head's ref pair when it moves a head. */
 export interface LoggedItem {
   readonly event: SessionEvent;
   readonly head: HeadPair | null;
@@ -253,9 +251,7 @@ export interface SessionBus {
     listener: (event: SessionEvent | PatchEvent, head: HeadPair | null) => void,
   ): Disposer;
   subscribeAll(listener: (session: SessionId, event: SessionEvent | PatchEvent) => void): Disposer;
-  /** Whether any listener is subscribed to the session. */
   watched(session: SessionId): boolean;
-  /** Calls `listener` each time a session's last listener unsubscribes. */
   onUnwatched(listener: (session: SessionId) => void): Disposer;
 }
 
@@ -271,7 +267,6 @@ export interface FoldCache {
     release(): void;
   };
 
-  /** Whether a fold of the session is held or lingering. */
   folding(session: SessionId): boolean;
 
   /** Reads each fold's log past it and publishes what it finds on the bus: what another process logged since. */

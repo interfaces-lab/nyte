@@ -22,7 +22,6 @@ function fakeAppState(initial: AppStateStatus) {
   return appState;
 }
 
-/** expo-router's useFocusEffect: the effect runs on focus; its cleanup runs on blur or unmount. */
 function focusInbox(appState: ReturnType<typeof fakeAppState>, ticks: number[]) {
   return tickWhileForeground({ appState, tick: () => ticks.push(Date.now()) });
 }

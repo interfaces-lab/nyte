@@ -1,20 +1,3 @@
-/**
- * Restyle contracts for oxlint's JS plugin runtime.
- *
- * A component from `@nyte-ai/ui` owns its padding, colours, height, corners,
- * and type; `xstyle` places it. The contract for each component lives in
- * `packages/ui/src/styles/contracts.ts`, which also types its `xstyle`. The
- * type error names a property; this rule says what to use instead.
- *
- * Only styles this file defines are read: `create` objects, their members,
- * arrays and conditionals of them, and the shared `text.*` and `srOnly`. A
- * style imported from another file is left to the type. Custom properties are
- * the caller's own unless the component declares them, like `--_btn-height`.
- *
- * `className` and `style` would bypass the contract, so StyleX hosts may not
- * pass them to a component. Tailwind hosts such as docs are not in scope.
- */
-
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -27,11 +10,6 @@ const UI_MODULE = "@nyte-ai/ui/";
 
 const TEXT_STYLE = ["fontSize", "lineHeight", "letterSpacing"];
 
-/**
- * Shared styles this rule cannot read from the file that uses them, by module
- * and export: `text` in `packages/ui/src/styles/text.stylex.ts` and `srOnly`
- * in `packages/ui/src/styles/a11y.stylex.ts`.
- */
 const SHARED_STYLES = new Map([
   [
     "@nyte-ai/ui/styles/text.stylex",
@@ -77,7 +55,6 @@ const classifyConcern = (property) =>
 
 const privateProperties = new Map();
 
-/** The custom properties a component declares for itself, such as `--_btn-height`. */
 const readPrivateProperties = (file) => {
   if (!privateProperties.has(file)) {
     const source = readFileSync(join(repoRoot, file), "utf8");
@@ -101,7 +78,6 @@ const keyName = (key) => {
   return null;
 };
 
-/** The style object a `create` entry defines, or the object its function returns. */
 const styleObject = (node) => {
   if (node.type === "ArrowFunctionExpression") {
     const body =

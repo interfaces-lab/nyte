@@ -30,9 +30,7 @@ export interface HostAgentOptions {
   readonly nyteHome: string;
   readonly packaged: boolean;
   readonly appPath: string;
-  /** The app's executable, which runs the host as Node. */
   readonly executable: string;
-  /** The host script the app bundles beside its main. */
   readonly entry: string;
   readonly label: string | undefined;
 }
@@ -122,7 +120,6 @@ function developmentAgent(options: HostAgentOptions): HostAgent {
   };
 }
 
-/** Stops whichever process serves `options.nyteHome` when it isn't job `label`, so the job, standing by on the host lock, serves within a second; kickstarts the job when it is the one serving. */
 async function replaceHost(options: HostAgentOptions, label: string): Promise<void> {
   const serving = await servedPid(options.nyteHome);
 
@@ -137,7 +134,6 @@ async function replaceHost(options: HostAgentOptions, label: string): Promise<vo
 
 const RunningHostType = Type.Object({ pid: Type.Integer() });
 
-/** The live process `host.json` in `nyteHome` names. */
 async function servedPid(nyteHome: string): Promise<number | null> {
   const text = await readFile(join(nyteHome, "host.json"), "utf8").catch(() => null);
   const parsed: unknown = text === null ? null : JSON.parse(text);

@@ -1,6 +1,3 @@
-/**
- * Constrained sampling helpers for provider tool schemas.
- */
 import { Type } from "typebox";
 import {
   IsAdditionalProperties,
@@ -20,7 +17,6 @@ import type { Tool, ToolCall } from "../types.ts";
 
 class UnsupportedStrictJsonSchemaError extends Error {}
 
-/** Returns true when a provider's strict mode rejects this schema keyword with this value. */
 export type UnsupportedStrictSchemaKeywordCheck = (key: string, value: unknown) => boolean;
 
 const UNSUPPORTED_STRICT_SCHEMA_KEYS = [
@@ -164,7 +160,6 @@ function makeJsonSchemaNodeStrict(
   Object.assign(schema, { required: propertyNames, additionalProperties: false });
 }
 
-/** Convert a tool schema to the strict subset expected by provider constrained sampling. */
 function makeStrictJsonSchema(
   schema: Tool["parameters"],
   isUnsupportedKeyword?: UnsupportedStrictSchemaKeywordCheck,
@@ -280,10 +275,6 @@ function inferGrammarInputProperty(tool: Tool): string {
   return inputProperty;
 }
 
-/**
- * Decide whether a JSON-schema tool is sent in strict mode. `isUnsupportedKeyword` lets a provider
- * reject extra keywords its strict mode does not accept, so "prefer" tools fall back to non-strict.
- */
 export function resolveJsonSchemaStrictSampling(
   tool: Tool,
   supportsStrictMode: boolean,

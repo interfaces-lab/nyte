@@ -25,7 +25,6 @@ async function closeMenus(page: Page): Promise<void> {
   }).toPass();
 }
 
-/** Rows move with a layout animation, so hover until the row's action shows. */
 async function hoverAction(row: Locator, action: Locator): Promise<Locator> {
   await expect(async () => {
     await row.hover();
@@ -35,7 +34,6 @@ async function hoverAction(row: Locator, action: Locator): Promise<Locator> {
   return action;
 }
 
-/** Clicks a hover action; a click that times out never landed, so retrying it is safe. */
 async function clickAction(row: Locator, action: Locator): Promise<void> {
   await expect(async () => {
     await row.hover();

@@ -62,7 +62,6 @@ export const usageStyles = create({
   quiet: { ...figure, color: role.contentTertiary },
 
   limitsHead: { display: "flex", alignItems: "center", justifyContent: "space-between" },
-  /** One grid for every account, so labels, bars, percents and resets line up across them. */
   limitGrid: {
     display: "grid",
     gridTemplateColumns: "minmax(3.5rem, max-content) minmax(32px, 1fr) auto auto",
@@ -70,7 +69,6 @@ export const usageStyles = create({
     columnGap: space.s2_5,
     rowGap: space.s2,
   },
-  /** An account or a skeleton row; its children sit in the grid's columns. */
   limitRow: { display: "contents" },
   limitSpan: { gridColumn: "1 / -1", margin: 0 },
   accountHead: {

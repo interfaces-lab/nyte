@@ -44,7 +44,6 @@ function parseResults(value: unknown): Result[] {
 
 const { VITE_ALGOLIA_APP_ID: appId, VITE_ALGOLIA_SEARCH_KEY: searchKey } = import.meta.env;
 
-/** Algolia once its keys are set; `pnpm sync:algolia` fills the index after a deploy. */
 const algolia =
   appId && searchKey
     ? algoliaClient({
@@ -81,7 +80,6 @@ function Highlighted({ content }: { content: string }) {
   );
 }
 
-/** The site nav's triggers for the search dialog. */
 export function SiteSearch() {
   const [open, setOpen] = useState(false);
 
@@ -110,7 +108,6 @@ export function SiteSearch() {
   );
 }
 
-/** ⌘K or Ctrl+K anywhere on the page opens the dialog, and closes it again. */
 export function useSearchShortcut(setOpen: Dispatch<SetStateAction<boolean>>) {
   useMountEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -124,12 +121,6 @@ export function useSearchShortcut(setOpen: Dispatch<SetStateAction<boolean>>) {
   });
 }
 
-/**
- * Algolia, or the shared /api/search index without its keys, drawn with the shared Dialog and
- * Input. Results outside the current section are kept: an agent searching
- * "subagent" should find the core docs too. A result on the other host (docs
- * from design.nyte.sh, or back) navigates with a full document load.
- */
 export function SearchDialog({
   open,
   onOpenChange,

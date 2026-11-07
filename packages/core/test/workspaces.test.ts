@@ -31,7 +31,6 @@ function connectionAs(kernel: Kernel, authority: readonly Authority[]) {
   });
 }
 
-/** A world with a chat whose run's one call writes `files`, so that run's changes own their paths. */
 async function writingRun(before: Readonly<Record<string, string>> = {}) {
   const disk = createDisk();
 

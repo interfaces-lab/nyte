@@ -25,13 +25,11 @@ const LICENSE = /\b(?:copyright|license|spdx-license-identifier)\b/i;
 
 const WHITESPACE = /\s/;
 
-/** Read whether a comment is a tool directive: lint suppression, compiler pragma, bundler hint, or triple-slash reference. */
 function readsAsDirective(comment: Comment): boolean {
   if (comment.type === "Line" && TRIPLE_SLASH.test(comment.value)) return true;
   return DIRECTIVE.test(comment.value.trim());
 }
 
-/** Read whether only spaces and tabs sit between the start of the line and `offset`. */
 function startsOwnLine(text: string, offset: number): boolean {
   let cursor = offset - 1;
 
@@ -39,7 +37,6 @@ function startsOwnLine(text: string, offset: number): boolean {
   return cursor < 0 || text[cursor] === "\n";
 }
 
-/** Skip whitespace and comments from `from` to the next code character, noting whether a blank line was crossed. */
 function scanToCode(text: string, from: number, commentsByStart: Map<number, Comment>): CodeScan {
   let offset = from;
   let newlines = 0;
@@ -69,7 +66,6 @@ function scanToCode(text: string, from: number, commentsByStart: Map<number, Com
   return { offset, blankLine };
 }
 
-/** Group comments into units: one block comment, or a run of `//` lines each on its own consecutive line. */
 function groupUnits(text: string, comments: readonly Comment[]): Comment[][] {
   const units: Comment[][] = [];
   let run: Comment[] | null = null;
@@ -95,15 +91,6 @@ function groupUnits(text: string, comments: readonly Comment[]): Comment[][] {
   return units;
 }
 
-/**
- * Allow only declarative comments. A comment unit (one block comment, or a run of `//` lines on consecutive
- * lines) is allowed when it is a tool directive; a file header before the first code that is JSDoc (the
- * module's documentation) or names a license; or sits on its own line outside every function body,
- * directly above a declaration with no blank line between, as either a JSDoc block or exactly one `//` line.
- * Declarations are statements and members that introduce a name (variables, functions, classes, types,
- * interfaces, enums, namespaces, exports, class, interface and enum members, object properties) plus the
- * members of a union type or an array literal. Task markers (`TASK_MARKER`) are never allowed.
- */
 export const declarativeCommentsRule = defineRule({
   meta: {
     type: "suggestion",

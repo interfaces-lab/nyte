@@ -6,13 +6,11 @@ import type { SessionRecord } from "../contract/records.ts";
 import type { StoreConnection } from "../contract/store.ts";
 import { liveRun, load, MAIN, SESSION_PAGE } from "./session.ts";
 
-/** A stored child as its last read found it: its session's version, and its activity time to page past it. */
 export interface StoredChild {
   readonly version: Revision;
   readonly at: number;
 }
 
-/** Links each stored child of `parent` whose session moved since `seen` recorded it, so its background also lists children whose runs ended before this process started. */
 export async function linkStoredChildren(
   kernel: Pick<Kernel, "store" | "children">,
   parent: SessionId,

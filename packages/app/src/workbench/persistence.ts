@@ -13,10 +13,7 @@ import {
   workbenchTabAvailable,
 } from "./model.ts";
 import { workspaceFile } from "./paths.ts";
-import { DEFAULT_WIDTH, type WorkbenchWidth, shareWidth } from "./width.ts";
-
-/** What every panel was stored with before panels stored a share: the old default, not a width anyone chose. */
-const LEGACY_DEFAULT_PIXELS = 400;
+import { DEFAULT_WIDTH } from "./width.ts";
 
 export type WorkbenchPersistence = Pick<
   Persisted<PersistedWorkbenchSnapshot | undefined>,
@@ -93,19 +90,14 @@ const persistedTab = Type.Union([
   persistedTerminalTab,
 ]);
 
-const persistedWorkbenchView = Type.Object(
-  {
-    key: nonEmpty,
-    tabs: Type.Array(persistedTab),
-    active: Type.Union([nonEmpty, Type.Null()]),
-    expanded: Type.Boolean(),
-    maximized: Type.Boolean(),
-    /** Pixels, stored before panels stored a share. */
-    width: Type.Optional(Type.Number()),
-    share: Type.Optional(Type.Number()),
-  },
-  strict,
-);
+const persistedWorkbenchView = Type.Object({
+  key: nonEmpty,
+  tabs: Type.Array(persistedTab),
+  active: Type.Union([nonEmpty, Type.Null()]),
+  expanded: Type.Boolean(),
+  maximized: Type.Boolean(),
+  width: Type.Optional(Type.Number()),
+});
 
 const persistedWorkbenchSnapshot = Type.Object(
   { version: Type.Literal(7), views: Type.Array(persistedWorkbenchView) },
@@ -138,22 +130,12 @@ function persistedTabFor(tab: WorkbenchTab): PersistedTab | undefined {
   }
 }
 
-/** Editor groups aren't stored: every restored file tab opens in the first group. */
 function restoreTab(tab: PersistedTab): WorkbenchTab {
   if (tab.kind === "browser") return { ...tab, surface: null };
 
   return tab.kind === "file" ? { ...tab, group: FIRST_GROUP } : tab;
 }
 
-function restoreWidth(stored: Static<typeof persistedWorkbenchView>): WorkbenchWidth {
-  if (stored.share !== undefined) return shareWidth(stored.share);
-
-  return stored.width === undefined || stored.width === LEGACY_DEFAULT_PIXELS
-    ? DEFAULT_WIDTH
-    : { kind: "pixels", pixels: stored.width };
-}
-
-/** A file tab goes to the view whose workspace holds it. */
 export function restoreSnapshot(
   persisted: PersistedWorkbenchSnapshot | undefined,
   capabilities: () => ClientCapabilities,
@@ -206,7 +188,7 @@ export function restoreSnapshot(
             expanded: stored.expanded,
             collapsed: "floating",
             layout: stored.maximized ? MAXIMIZED_WORKBENCH_LAYOUT : SPLIT_LAYOUT,
-            width: restoreWidth(stored),
+            width: stored.width === undefined ? DEFAULT_WIDTH : { pixels: stored.width },
             sidebars: [],
           }),
         ];
@@ -233,9 +215,7 @@ export function persistable(snapshot: WorkbenchSnapshot): PersistedWorkbenchSnap
         active,
         expanded: view.expanded,
         maximized: view.layout.kind === "maximized",
-        ...(view.width.kind === "share"
-          ? { share: view.width.share }
-          : { width: view.width.pixels }),
+        width: view.width.pixels,
       };
     }),
   };

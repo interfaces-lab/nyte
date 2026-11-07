@@ -46,10 +46,6 @@ const styles = create({
   actions: { display: "flex", alignItems: "center", gap: space.s2 },
 });
 
-/**
- * The questionnaire submits its form on Enter over a chosen answer. A submit moves to the next
- * question and never sends; only Submit and Cmd+Enter send the answers.
- */
 function QuestionCard({
   dock,
   disabled,

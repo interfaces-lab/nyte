@@ -43,7 +43,6 @@ export const SIDECHAT_COMMAND = {
   completes: false,
 } satisfies CommandInfo;
 
-/** The commands Nyte's app runs itself, offered beside the chat's plugin commands. */
 export const CLIENT_COMMANDS: readonly CommandInfo[] = [COMPACT_COMMAND, SIDECHAT_COMMAND];
 
 export function usePluginCatalog(sessionId?: SessionId) {

@@ -21,11 +21,6 @@ export function parkedFailure(record: RunRecord): Failure {
   };
 }
 
-/**
- * Counts an interruption of the head's live run into the claim that takes it over: the previous
- * holder's lease was still there (`foreign`), or a response it streamed was cut off, as when this
- * host lost its own lease mid-stream.
- */
 export async function interruption(
   kernel: Kernel,
   session: SessionId,
@@ -51,7 +46,6 @@ export async function interruption(
   ];
 }
 
-/** Whether a response of the run was cut off: a text or thinking part is still live with no one driving the run, the parts `resumed` in turn.ts retries. */
 function responseCut(kernel: Kernel, session: SessionId, run: RunId): Promise<boolean> {
   return withFold(kernel, session, (state) =>
     [...state.parts.values()].some(
@@ -63,7 +57,6 @@ function responseCut(kernel: Kernel, session: SessionId, run: RunId): Promise<bo
   );
 }
 
-/** Where the head and the run's calls stand: an interruption at the same mark as the last made no progress in between. */
 export async function progressMark(
   store: StoreConnection,
   session: SessionId,

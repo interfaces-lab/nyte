@@ -1,6 +1,3 @@
-/**
- * Async event queue with a promise for the terminal result. AssistantMessageEventStream is the stream every adapter returns: events are pushed as they arrive, and `result()` resolves with the final AssistantMessage once `done` or `error` is pushed.
- */
 import type { AssistantMessage, AssistantMessageEvent } from "@nyte-ai/schema/model";
 import { FifoQueue } from "./fifo-queue.ts";
 
@@ -91,7 +88,6 @@ export class AssistantMessageEventStream extends EventStream<
   }
 }
 
-/** Factory function for AssistantMessageEventStream (for use in extensions) */
 export function createAssistantMessageEventStream(): AssistantMessageEventStream {
   return new AssistantMessageEventStream();
 }

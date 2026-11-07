@@ -1,12 +1,10 @@
 import { elementVariable } from "../lib/element-variable.ts";
+import { workbench } from "../theme/schema.stylex.ts";
 
-export const WORKBENCH_SHARE_DEFAULT = 0.5;
+const WORKBENCH_WIDTH_MIN = Number(workbench.widthMin);
 
-const WORKBENCH_WIDTH_MIN = 384;
+export const WORKBENCH_CENTER_WIDTH_MIN = Number(workbench.centerWidthMin);
 
-export const WORKBENCH_CENTER_WIDTH_MIN = 424;
-
-/** The open panel's width, which the title bar's workbench slot follows. */
 const activeWidth = elementVariable("--nyte-active-workbench-width", "500px");
 
 export const attachActiveWorkbenchWidth = activeWidth.attach;
@@ -15,48 +13,29 @@ export function setActiveWorkbenchWidth(width: number): void {
   activeWidth.set(`${String(width)}px`);
 }
 
-/** A panel's width: a share of the stage, or the pixels stored before shares until the next resize. */
-export type WorkbenchWidth = ShareWidth | { readonly kind: "pixels"; readonly pixels: number };
+export type WorkbenchWidth = { readonly pixels: number };
 
-type ShareWidth = { readonly kind: "share"; readonly share: number };
-
-export const DEFAULT_WIDTH: ShareWidth = Object.freeze({
-  kind: "share",
-  share: WORKBENCH_SHARE_DEFAULT,
+export const DEFAULT_WIDTH: WorkbenchWidth = Object.freeze({
+  pixels: Number(workbench.widthDefault),
 });
 
-type WorkbenchWidthBounds =
-  | { readonly kind: "docked"; readonly min: number; readonly max: number }
-  | { readonly kind: "overlay"; readonly min: number; readonly max: number };
-
-export function shareWidth(share: number): ShareWidth {
-  return Number.isFinite(share) && share > 0
-    ? { kind: "share", share: Math.min(1, share) }
-    : DEFAULT_WIDTH;
-}
+type WorkbenchWidthBounds = {
+  readonly narrow: boolean;
+  readonly min: number;
+  readonly max: number;
+};
 
 export function workbenchPanelWidth(width: WorkbenchWidth, stageWidth: number): number {
-  return clampWorkbenchWidthToBounds(
-    width.kind === "share" ? width.share * stageWidth : width.pixels,
-    workbenchWidthBounds(stageWidth),
-  );
+  return clampWorkbenchWidthToBounds(width.pixels, workbenchWidthBounds(stageWidth));
 }
 
 export function workbenchWidthBounds(availableWidth: number): WorkbenchWidthBounds {
   const width = Math.max(0, Math.floor(availableWidth));
 
-  if (width < WORKBENCH_WIDTH_MIN + WORKBENCH_CENTER_WIDTH_MIN) {
-    return Object.freeze({
-      kind: "overlay",
-      min: Math.min(WORKBENCH_WIDTH_MIN, width),
-      max: width,
-    });
-  }
-
   return Object.freeze({
-    kind: "docked",
+    narrow: width < WORKBENCH_WIDTH_MIN + WORKBENCH_CENTER_WIDTH_MIN,
     min: WORKBENCH_WIDTH_MIN,
-    max: width - WORKBENCH_CENTER_WIDTH_MIN,
+    max: Math.max(WORKBENCH_WIDTH_MIN, width - WORKBENCH_CENTER_WIDTH_MIN),
   });
 }
 

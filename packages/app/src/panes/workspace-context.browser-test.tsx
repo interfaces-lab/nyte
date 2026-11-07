@@ -393,7 +393,6 @@ async function checkBranches(): Promise<string> {
   }
 }
 
-/** The host's HEAD already reads topic while the status watch still reports main. */
 async function checkPinnedHistory(): Promise<string> {
   queryClient.clear();
   queryClient.setQueryData(keys.host, {

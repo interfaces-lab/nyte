@@ -1,10 +1,3 @@
-/**
- * One deployment serves two hosts. `design.nyte.sh/button` is the internal
- * route `/design/button`; `nyte.sh/design/button` redirects there. Locally,
- * `design.localhost` plays the subdomain. Hosts without a design subdomain,
- * such as Vercel previews, keep `/design` as a plain path.
- */
-
 import type { LocationRewrite } from "@tanstack/react-router";
 import { designRoute, designUrl } from "./shared";
 
@@ -12,7 +5,6 @@ const designPrefix = "design.";
 
 const hostsWithDesign = new Set(["nyte.sh", "localhost"]);
 
-/** Server routes every host answers at the same path. */
 const sharedPaths = [
   "/api/",
   "/og/",
@@ -25,7 +17,6 @@ const sharedPaths = [
   "/opengraph-image.png",
 ];
 
-/** Whether a hostname is the design subdomain of a host that has one. */
 function servesDesign(hostname: string): boolean {
   return hostname.startsWith(designPrefix) && hostsWithDesign.has(mainHostname(hostname));
 }
@@ -46,14 +37,12 @@ function stripDesignRoute(pathname: string): string {
   return pathname.slice(designRoute.length) || "/";
 }
 
-/** The router's view of a design-host URL: `/button` becomes `/design/button`. */
 function toInternal(url: URL): URL {
   if (!servesDesign(url.hostname) || servedOnEveryHost(url.pathname)) return url;
   url.pathname = url.pathname === "/" ? designRoute : `${designRoute}${url.pathname}`;
   return url;
 }
 
-/** The public URL for an internal path, which may sit on the other host. */
 function toPublic(url: URL): URL {
   if (servesDesign(url.hostname)) {
     if (inDesignRoute(url.pathname)) url.pathname = stripDesignRoute(url.pathname);
@@ -72,10 +61,6 @@ export const hostRewrite: LocationRewrite = {
   output: ({ url }) => toPublic(url),
 };
 
-/**
- * Where a request belongs when it arrived on the wrong host: `/design/*` on the
- * main host moves to the design subdomain. Undefined when it is already home.
- */
 export function canonicalRedirect(requestUrl: string): URL | undefined {
   const url = new URL(requestUrl);
   if (servesDesign(url.hostname) || !hostsWithDesign.has(url.hostname)) return undefined;
@@ -89,7 +74,6 @@ export function mainOrigin(requestUrl: string): string {
   return url.origin;
 }
 
-/** The production URL of an internal design path: `/design/button` → `https://design.nyte.sh/button`. */
 export function designPublicUrl(pathname: string): string {
   return `${designUrl}${stripDesignRoute(pathname)}`;
 }

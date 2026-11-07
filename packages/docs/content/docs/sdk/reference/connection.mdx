@@ -12,10 +12,13 @@ logins, hangs off it.
 | `hostId`        | `HostId`                  | The id of the host that answered. Save it to pass as `expect` on the next `connect`                 |
 | `principal`     | `PrincipalId`             | Who this connection acts as                                                                         |
 | `credential`    | `CredentialSource`        | The credential in use. After pairing, the device token to save                                      |
-| `sessions`      | `Sessions`                | Start, list and watch chats. See [Session](/docs/sdk/reference/session#sessions)                    |
+| `sessions`      | `Sessions`                | Start, list and read chats. See [Session](/docs/sdk/reference/session#sessions)                     |
 | `session(id)`   | `Session`                 | A handle to one chat, without I/O                                                                   |
 | `workspaces`    | `Workspaces`              | List, inspect, add and forget workspaces. See [Workspace](/docs/sdk/reference/workspace#workspaces) |
 | `workspace(id)` | `Workspace`               | A handle to one workspace, without I/O                                                              |
+| `projects`      | `Projects`                | Create projects. See [projects](#projects)                                                          |
+| `project(id)`   | `Project`                 | A handle to one project, without I/O                                                                |
+| `catalogs`      | `CatalogsApi`             | Read a chat's catalog by id. See [catalogs](#catalogs)                                              |
 | `models`        | `ModelsApi`               | The model catalog, provider logins and usage. See [models](#models)                                 |
 | `settings`      | `SettingsApi`             | Change host settings. See [settings](#settings)                                                     |
 | `plugins`       | `PluginsApi`              | Check and replace loaded plugins. See [plugins](#plugins)                                           |
@@ -26,7 +29,7 @@ logins, hangs off it.
 | `blob(id)`      | `Promise<ByteReader>`     | The bytes of a stored file, such as an image attached to a message                                  |
 | `close()`       | `Promise<void>`           | Closes the connection and its watches. `await using` calls it too                                   |
 
-Getting `session(id)` or `workspace(id)` never touches the network; see
+Getting `session(id)`, `workspace(id)` or `project(id)` never touches the network; see
 [Handles bind without I/O](/docs/sdk/reference/shared-concepts#handles). The
 [authority](/docs/sdk/reference/shared-concepts#authority) each member needs is in the tables below.
 
@@ -46,8 +49,9 @@ Getting `session(id)` or `workspace(id)` never touches the network; see
 | `login(input)`                            | owner       | Starts a sign-in and returns a `Login`                                                                 |
 | `logout(provider)`                        | owner       | Removes the provider's active login and keeps its other saved accounts                                 |
 
-A model is named by a `ModelRef`, `{ provider, id }`. Fresh login state arrives through
-[`watch()`](#watch) rather than `list()`.
+A model is named by a `ModelRef`, `{ provider, id }`. `list()` doesn't wait for providers to be
+checked. When a check, a login or a listing changes the catalog, `catalog` in
+[`watch()`](#watch) changes, and you call `list()` again.
 
 `login` takes `{ provider, method, label?, browser? }`. `method` is `{ kind: "oauth" }` or
 `{ kind: "key" }`. `browser: "host"` opens the sign-in page on the host machine, and
@@ -99,6 +103,35 @@ A principal is one client identity: the listener token, or a paired device.
 [Give each device its own credential](/docs/sdk/guides/choose-an-entry-point#give-each-device-its-own-credential)
 walks through pairing.
 
+## projects [#projects]
+
+A project is one coordinator chat in a workspace folder, and the settings every chat in it reads
+on each request.
+
+| Method                      | Authority   | What it does                                                                   |
+| --------------------------- | ----------- | ------------------------------------------------------------------------------ |
+| `projects.create(input)`    | participant | Creates a project in a registered workspace and returns its `ProjectInfo`      |
+| `project(id).update(patch)` | participant | Changes a project's settings or archives it, and returns the project as stored |
+
+`create` takes `name`, `workspace`, `models`, `instructions`, `skills`, `disabledMcp` and
+`disabledDocs`. `models` is `{ coordinator, agents }`, each a `ModelRef` or `null` for the host's
+default model. `update` takes any of those except `workspace`, plus `archived`. The project's chats
+read a change from their next request.
+
+The coordinator is the chat you start with `sessions.start({ project })`. An unregistered workspace
+or an unknown project throws `SdkError("unknown")`. [`HostView.projects`](#watch) lists every
+project.
+
+## catalogs [#catalogs]
+
+| Method     | Authority   | What it does                                                                |
+| ---------- | ----------- | --------------------------------------------------------------------------- |
+| `read(id)` | participant | The commands, settings, skills, agents and tools of a chat's catalog, by id |
+
+A session's `catalog` row carries only the catalog's id. A catalog never changes under its id, so
+keep what you read. An id the host doesn't have throws `SdkError("unknown")`. A head store from
+[`openHost`](/docs/sdk/reference/entry-points#open-host) reads catalogs for you.
+
 ## github [#github]
 
 The GitHub CLI (`gh`) login of the machine the host runs on. Every workspace on that host shares it.
@@ -130,6 +163,7 @@ Each `OperationDescription` has:
 | `authority`  | `participant`, `owner` or `maintenance`                                  |
 | `scope`      | `host`, `session` or `workspace`                                         |
 | `capability` | `files`, `git`, `github` or `browser` for a workspace capability's calls |
+| `local`      | `true` when the host answers it only on its local socket                 |
 | `input`      | A JSON Schema (draft 2020-12) of the request body                        |
 | `output`     | A JSON Schema of the answer                                              |
 
@@ -154,11 +188,13 @@ host, so it matches that host's version.
 | `link`                        | `connected`, `reconnecting` with `since` and `attempts`, or `closed` with a `reason`            |
 | `authority`                   | This connection's authority, as a `Set`                                                         |
 | `defaultWorkspace`            | The workspace a chat starts in when `sessions.start` names none, or `null`                      |
+| `projects`                    | Every project on the host, archived ones included, oldest first                                 |
 | `catalog`                     | Changes whenever the model catalog does. Call `models.list()` when it does                      |
 | `settings`                    | Each setting with its `id`, `label`, `schema`, `choices`, `value` and where the value came from |
 | `plugins`                     | Each loaded plugin with its `id`, `source`, `path` and `issues`                                 |
 | `views`                       | The part renderers plugins ship to clients                                                      |
 | `operations`                  | A digest of the host's operations, or `null`. It changes when the HTTP API does                 |
+| `tailnet`                     | The status of the host's tailnet node. Absent without owner authority or without a node         |
 
 `closed` reasons are `client` after `close()`, `revoked` after `principals.revoke`, and `host-gone`.
 
@@ -166,21 +202,21 @@ host, so it matches that host's version.
 
 `sdk.open` returns a `Host`. It has every `Connection` member, all three authorities, and these:
 
-| Member                                    | What it does                                                                                                                   |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `listen(options)`                         | Serves the host over HTTP or as a fetch handler. See [host.listen](/docs/sdk/reference/entry-points#host-listen)               |
-| `plugins.replace`, `plugins.check`        | Accept plugin objects as well as `{ path }` files                                                                              |
-| `inspect(session)`                        | Reads a session's raw storage for debugging: `events({ after })` streams its stored events and `verify()` checks its integrity |
-| `execution.cover(coverage)`               | Claims sessions for this process to run: `{ kind: "all" }`, one workspace, or a list of sessions                               |
-| `execution.advance({ session, head })`    | Runs the work a head has waiting and reports when to call again. See [execution](/docs/sdk/reference/entry-points#execution)   |
-| `execution.repair({ cursor?, limit })`    | Pages through heads that have work waiting, for a driver to advance                                                            |
-| `execution.pause()`, `execution.resume()` | Ends model requests in flight and holds new ones, as while the machine sleeps, then lets runs continue                         |
+| Member                                    | What it does                                                                                                                                                                   |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `listen(options)`                         | Serves the host over HTTP or as a fetch handler. See [host.listen](/docs/sdk/reference/entry-points#host-listen)                                                               |
+| `plugins.replace`, `plugins.check`        | Accept plugin objects as well as `{ path }` files                                                                                                                              |
+| `inspect(session)`                        | Reads a session's raw storage for debugging: its `refs()`, a page of stored `objects({ cursor? })`, its stored `events({ after })`, and `verify()`, which checks its integrity |
+| `execution.cover(coverage)`               | Claims sessions for this process to run: `{ kind: "all" }`, one workspace, or a list of sessions                                                                               |
+| `execution.advance({ session, head })`    | Runs the work a head has waiting and reports when to call again. See [execution](/docs/sdk/reference/entry-points#execution)                                                   |
+| `execution.repair({ cursor?, limit })`    | Pages through heads that have work waiting, for a driver to advance                                                                                                            |
+| `execution.pause()`, `execution.resume()` | Ends model requests in flight and holds new ones, as while the machine sleeps, then lets runs continue                                                                         |
 
 ## HTTP API [#http-api]
 
-Every SDK call is one HTTP operation, and you can call them without the SDK. Each operation is a
-`POST` to `<url>/<name>`, such as `POST /sessions.list`, with a JSON body that matches the
-operation's input schema and an `Authorization: Bearer <token>` header.
+Every `Connection` call is one HTTP operation, and you can call them without the SDK. Each
+operation is a `POST` to `<url>/<name>`, such as `POST /sessions.list`, with a JSON body that
+matches the operation's input schema and an `Authorization: Bearer <token>` header.
 
 ```sh
 curl -X POST "http://127.0.0.1:8787/sessions.list" \
@@ -189,10 +225,10 @@ curl -X POST "http://127.0.0.1:8787/sessions.list" \
   -d '{}'
 ```
 
-Queries and commands answer JSON. Watches answer server-sent events, one JSON value per event.
-Byte streams, such as `connection.blob`, answer the raw bytes. A failed call answers an
-[`SdkError`](/docs/sdk/reference/errors#codes) as JSON with the matching status. Bodies are limited
-to 8 MiB unless the listener sets `maxBodyBytes`.
+Queries, commands and receipts answer JSON. Watches and JSON streams answer server-sent events, one
+JSON value per event. Byte streams, such as `connection.blob`, answer the raw bytes. A failed call
+answers an [`SdkError`](/docs/sdk/reference/errors#codes) as JSON with the matching status. Bodies
+are limited to 8 MiB unless the listener sets `maxBodyBytes`.
 
 Every response carries `X-Nyte-Host` with the host id and `X-Nyte-Operations` with the digest that
 `HostView.operations` holds.
@@ -207,4 +243,24 @@ To see what each operation takes and returns:
   [`nyte api`](/docs/cli#nyte-api).
 
 To get a host to call, run `nyte host`. It serves your chats and writes its URL and token to
-`~/.nyte/host.json`.
+`~/.nyte/host.json`. One host serves each home. The other `nyte` commands that need a host attach
+to it, and start one in the background when none is running.
+
+### The host WebSocket [#websocket]
+
+A host's rows reach clients over one WebSocket per connection, at `/.nyte/ws`. It is what
+[`openHost`](/docs/sdk/reference/entry-points#open-host) opens. The client subscribes to a scope
+with [`events.subscribe`](/docs/reference/operations/events/subscribe), reads rows with
+[`head.read`](/docs/reference/operations/head/read) or
+[`sessions.read`](/docs/reference/operations/sessions/read), and applies each change event by
+replacing rows by id. After a reconnect it subscribes again and resumes from its last seq. Streamed
+text comes on a separate text channel that [`text.open`](/docs/reference/operations/text/open)
+opens.
+
+A Node or Bun client sends its credential on the upgrade request. A browser can't set headers
+there, so it trades its credential for a one-use ticket with `POST /.nyte/ws/ticket` first;
+`ticketSocket()` does that for you. [Host operations](/docs/reference/operations#websocket)
+describes the frames.
+
+From a terminal, `nyte api call <operation> [json]` calls one operation over the WebSocket, and
+`nyte events --scope <scope>` prints a scope's events as they arrive, the `host` scope by default.

@@ -1,4 +1,3 @@
-/** Central Icons for the iOS completion glyphs; selected by scripts/icons.mjs when installed. */
 import { createElement } from "react";
 import { IconBuildingBlocks } from "central-icons/IconBuildingBlocks";
 import { IconChanges } from "central-icons/IconChanges";

@@ -51,7 +51,6 @@ export type ComposerSituation =
   | { readonly kind: "editing-message" };
 
 interface EnterBehavior {
-  /** The alternate chord delivers the other way. */
   readonly delivery: Delivery;
   readonly label: string;
   readonly title: string;

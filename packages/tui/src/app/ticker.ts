@@ -15,7 +15,6 @@ interface Shared {
   stop: (() => void) | null;
 }
 
-/** Shared interval signals on the renderer's clock: one timer per period, stopped by its last reader. */
 export function createTickers(clock: Clock): Tickers {
   const shared = new Map<number, Shared>();
 

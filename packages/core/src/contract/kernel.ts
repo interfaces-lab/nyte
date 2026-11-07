@@ -157,10 +157,6 @@ export interface Kernel {
 
   readonly secrets: NonNullable<OpenOptions["secrets"]> | null;
 
-  /**
-   * The AES-GCM key `sealText` and `openText` use, imported from `secrets` on first read and kept,
-   * a failed import too. Null when the host has no `secrets`.
-   */
   readonly secretKey: Promise<CryptoKey> | null;
 
   readonly mcp: McpHub | null;
@@ -183,7 +179,6 @@ export interface PluginHost {
 
   host: readonly Plugin<"core">[];
 
-  /** The file each host plugin from `<home>/.nyte/plugins` came from; core writes it as it loads that folder. */
   readonly sources: Map<Plugin<"core">, { readonly source: "user"; readonly path: string }>;
 
   readonly state: PluginState;
@@ -233,7 +228,6 @@ interface Handles {
 export interface ChildTable {
   /** Follows `record` when it has a parent and takes `own`, read from the store after the {@link ChildTable.heard} count `since`, unless a run event for the child arrived on the bus after `since`: then it returns false and takes nothing. A `since` of 0 takes `own` only while this process has heard no run event for the child. */
   link(record: SessionRecord, own: BackgroundItem["state"] | null, since: number): boolean;
-  /** How many run events of children this process has heard on the bus. */
   heard(): number;
   forget(session: SessionId): void;
   background(
@@ -414,11 +408,9 @@ export interface PluginState {
     readonly refused: readonly PluginFailure[];
     readonly failing: readonly string[];
   };
-  /** So the next publish can withdraw the issues of views that now compile. */
   viewFailures: readonly string[];
 }
 
-/** A file of a plugin folder that failed to load or that the host refused, with why. */
 export type PluginFailure = {
   readonly path: string;
   readonly issues: HostView["plugins"][number]["issues"];

@@ -33,7 +33,6 @@ export const layout = defineVars({
   "--nyte-sidebar-section-gap": "8px",
   "--nyte-sidebar-list-gap": "2px",
   "--nyte-sidebar-icon-slot": "20px",
-  /** Header text on the row icons' glyph edge: row padding + (icon slot − glyph.sm) / 2. */
   "--nyte-sidebar-header-inset":
     "calc(var(--nyte-sidebar-row-padding-inline) + (var(--nyte-sidebar-icon-slot) - var(--nyte-glyph-sm)) / 2)",
   "--nyte-sidebar-action-size": "var(--nyte-control-height-sm)",
@@ -72,7 +71,6 @@ export const layout = defineVars({
   "--nyte-workbench-rail-gap": "16px",
   "--nyte-workbench-row-gap": "var(--nyte-row-gap)",
   "--nyte-workbench-row-padding-inline": "6px",
-  /** Heading text on the row icons' glyph edge: row padding + (leading slot glyph.md − glyph.sm) / 2. */
   "--nyte-workbench-heading-inset":
     "calc(var(--nyte-workbench-row-padding-inline) + (var(--nyte-glyph-md) - var(--nyte-glyph-sm)) / 2)",
   "--nyte-workbench-heading-height": "24px",
@@ -89,6 +87,16 @@ export const layout = defineVars({
   "--nyte-workbench-launcher-card-size": "112px",
   "--nyte-pane-sash-size": { default: "24px", "@media (pointer: coarse)": "44px" },
   "--nyte-pane-divider-gap": "5px",
+  "--nyte-image-thumbnail-size": "80px",
+  "--nyte-image-thumbnail-compact-size": "64px",
+  "--nyte-image-viewer-width": "960px",
+  "--nyte-image-viewer-header-height":
+    "calc(var(--nyte-control-height-lg) + var(--nyte-space-unit) * 4)",
+  "--nyte-image-viewer-footer-height":
+    "calc(var(--nyte-control-height-lg) + var(--nyte-space-unit) * 6)",
+  "--nyte-image-viewer-compact-footer-height":
+    "calc(var(--nyte-control-height-lg) * 2 + var(--nyte-space-unit) * 8)",
+  "--nyte-image-viewer-mode-width": "100px",
   "--nyte-diff-line-height": "round(up, calc(var(--nyte-font-size-code) * 20 / 12), 1px)",
   "--nyte-diff-preview-max-height": "min(480px, 60vh)",
 });

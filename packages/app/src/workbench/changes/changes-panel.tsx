@@ -3,7 +3,7 @@ import { useMutation } from "@tanstack/react-query";
 import { useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { ReactElement } from "react";
 import type { ChangeSet, RunId, SessionId, SessionView, WorkspaceId } from "@nyte-ai/sdk";
-import { FileTypeIconSprite } from "../../components/file-type-icon";
+import { FileTypeIconSprite } from "@nyte-ai/ui/file-type-icon";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { asId } from "@nyte-ai/schema";
 import { createDiffFilesLoader } from "../../diff/diff-expansion.ts";
@@ -123,7 +123,6 @@ function usePatchLoader(
   return patches;
 }
 
-/** Kept while their inputs hold: a recorded scope's patch key follows the list's identity. */
 function useChangeRows(
   source: ChangeRow["source"],
   working: readonly VcsChangeRow[],

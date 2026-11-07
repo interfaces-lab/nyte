@@ -17,7 +17,6 @@ import manifest from "./package.json" with { type: "json" };
 
 Settings.Set({ useAcceleration: false });
 
-/** Returns the parts of a Durable Object's `state` `NyteHost` uses, structurally: the storage `durableObjectStore` reads with the object's one alarm, and `blockConcurrencyWhile` to hold requests until the host is composed. */
 export type WorkerState = {
   readonly storage: DurableObjectSql & {
     getAlarm(): Promise<number | null>;
@@ -27,7 +26,6 @@ export type WorkerState = {
   blockConcurrencyWhile<T>(callback: () => Promise<T>): Promise<T>;
 };
 
-/** Returns the Worker's bindings: the `NyteHost` namespace `wrangler.jsonc` binds, the listener token it requires as a secret (`secrets.required`, set with `wrangler secret put NYTE_TOKEN`, at least 16 characters; §42l), the optional base64 secrets key (decision 10; absent, see `secretsFrom`), and the optional base64 identity seed (§50a; absent, the host answers no identity challenge). */
 export type WorkerEnv = {
   readonly NYTE_HOST: { getByName(name: string): { fetch(request: Request): Promise<Response> } };
   readonly NYTE_TOKEN: string;
@@ -110,7 +108,6 @@ export async function pass(
   return schedule.earliest();
 }
 
-/** The Durable Object that is one Nyte host, importing only the node-free subpaths (§41j): composed once per object over its own SQLite storage with a chat-only workspace, served through `listenFetch`, and driven by its alarm. */
 export class NyteHost {
   readonly #state: WorkerState;
   readonly #env: WorkerEnv;
@@ -127,7 +124,6 @@ export class NyteHost {
     });
   }
 
-  /** Answers one request through the listener once the host is composed; an object whose composition failed answers its encoded `SdkError` (`unavailable`, 503) and composes again on the next request. */
   async fetch(request: Request): Promise<Response> {
     let served: Served;
 
@@ -169,7 +165,6 @@ export class NyteHost {
   }
 }
 
-/** The Worker: routes every request to the one `NyteHost` object, `env.NYTE_HOST.getByName("host")`. */
 export default {
   async fetch(request: Request, env: WorkerEnv): Promise<Response> {
     return env.NYTE_HOST.getByName("host").fetch(request);

@@ -1,6 +1,5 @@
 export type Fetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
-/** Reads a response body, throwing once its declared or streamed size passes `limit` bytes. */
 export async function readCapped(response: Response, limit: number): Promise<Uint8Array> {
   const declared = Number(response.headers.get("content-length") ?? Number.NaN);
 

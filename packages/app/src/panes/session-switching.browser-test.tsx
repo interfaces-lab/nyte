@@ -205,7 +205,6 @@ function leadingPrompt(view: SessionView, start: number): SessionView["leadingPr
   return prompt?.kind === "user" ? prompt : null;
 }
 
-/** Each round trip a chat cost, as `<chat>:<call>`, in the order they started. */
 const fetches: string[] = [];
 
 installScripted(

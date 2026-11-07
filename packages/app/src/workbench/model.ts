@@ -5,7 +5,6 @@ import { DEFAULT_WIDTH, type WorkbenchWidth } from "./width.ts";
 
 export type WorkbenchTabId = string;
 
-/** An editor group in Files: its file tabs side by side with other groups'. */
 export type EditorGroupId = string;
 
 export type WorkbenchViewKey = string;
@@ -37,14 +36,12 @@ interface TabFields {
   };
   readonly browser: {
     readonly url: string;
-    /** The agent's page this tab shows; `null` while the tab shows a page of its own. */
     readonly surface: string | null;
   };
   readonly canvas: {
     readonly sessionId: SessionId;
     readonly part: PartId;
     readonly title: string;
-    /** The revision held in view while newer ones land; `null` follows the latest. */
     readonly pinned: number | null;
   };
   readonly files: Readonly<Record<never, never>>;
@@ -70,11 +67,9 @@ interface KindDescriptor<Kind extends WorkbenchTabKind> {
   readonly label: string;
   readonly icon: IconName;
   readonly available: (scope: WorkbenchScope, capabilities: ClientCapabilities) => boolean;
-  /** `singleton` focuses the kind's one tab when it is open; `new` opens a new tab every time. */
   readonly launch: Kind extends LaunchKind
     ? { readonly policy: "singleton" | "new"; readonly input: KindInput<Kind> }
     : undefined;
-  /** Opening a tab whose identity matches an open tab's focuses that tab; `undefined` never matches. */
   readonly identity: (tab: KindInput<Kind>) => string | undefined;
 }
 
@@ -225,7 +220,6 @@ export const MAXIMIZED_CHAT_LAYOUT = Object.freeze({
 
 export const WORKBENCH_CHAT_TAB = "chat";
 
-/** The panel slot every file and the Files tab share. */
 export const FILES_SLOT = "files";
 
 export function workbenchShowsChat(layout: WorkbenchLayout): boolean {
@@ -236,27 +230,22 @@ export function revealWorkbench(layout: WorkbenchLayout): WorkbenchLayout {
   return workbenchShowsChat(layout) ? MAXIMIZED_WORKBENCH_LAYOUT : layout;
 }
 
-/** A group's file on screen; the strip's own selection decides it for the focused group. */
 export interface EditorGroup {
   readonly id: EditorGroupId;
   readonly active: WorkbenchTabId | null;
 }
 
-/** The group every view starts with and every restored file tab lands in. */
 export const FIRST_GROUP: EditorGroupId = "first";
 
 export interface WorkbenchViewState {
   readonly tabs: readonly WorkbenchTab[];
   readonly active: WorkbenchTabId | null;
-  /** Files' editor groups in reading order; never empty. */
   readonly groups: readonly EditorGroup[];
-  /** The focused group: the one the strip lists files of and new files open in. */
   readonly group: EditorGroupId;
   readonly expanded: boolean;
   readonly collapsed: "floating" | "compact";
   readonly layout: WorkbenchLayout;
   readonly width: WorkbenchWidth;
-  /** The panel slots, a tab's id or {@link FILES_SLOT}, whose sidebar is showing. */
   readonly sidebars: readonly string[];
 }
 

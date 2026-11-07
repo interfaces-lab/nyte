@@ -5,8 +5,9 @@ description: Put a host on HTTP or behind your own server, decide who gets in, a
 
 A host you open with `sdk.open` runs only inside your process until you call `host.listen`. After
 that, other processes, browser pages and phones reach it with `sdk.connect` and get the same
-handles you have. The desktop app's [remote access](/docs/remote-access) and the `nyte host`
-command serve through the same listener.
+handles you have, or attach to its rows with
+[`openHost`](/docs/sdk/reference/entry-points#open-host). The desktop app's
+[remote access](/docs/remote-access) and the `nyte host` command serve through the same listener.
 
 ```ts title="serve.ts"
 import process from "node:process";
@@ -41,11 +42,23 @@ connections on every network interface. Without a `port`, the system picks a fre
 `listener.address` tells you which, as in `http://127.0.0.1:52814`. A port that's taken makes
 `listen` throw `SdkError("unavailable")`.
 
-The listener speaks plain HTTP. To reach it from another machine, put something that serves HTTPS
-in front of it. The desktop app uses Tailscale Serve or a Cloudflare Tunnel for this.
+The listener speaks plain HTTP. It answers each operation at `POST /<operation>` and serves the
+WebSocket at `/.nyte/ws` that `openHost` attaches to. To reach it from another machine, put
+something that serves HTTPS in front of it. The desktop app uses Tailscale Serve or a Cloudflare
+Tunnel for this.
 
 `listener.close()` stops one listener. `host.close()` closes every listener before it closes the
 host.
+
+## Listen on a local socket [#socket]
+
+The `socket` transport, `{ kind: "socket", path }`, binds a Unix socket at `path` that only you can
+read or write. It replaces a stale socket file left at `path`, and `listener.address` is the path.
+It serves the same routes as `http`.
+
+Some operations are marked `local` in the operations table: the tailnet controls, pausing and
+resuming execution, and MCP approvals and grants. They answer only on a `socket` listener. Any
+other listener refuses them with `SdkError("denied")`, whatever the caller's authority.
 
 ## Decide who gets in [#auth]
 
@@ -63,11 +76,11 @@ Under either kind, a [paired device](#pair-a-device) gets in with its own token.
 Every caller is a principal, an id the host knows it by, with a set of authorities. Each operation
 needs one of them, and a call outside the set throws `SdkError("denied")`.
 
-| Authority     | Covers                                                                                      |
-| ------------- | ------------------------------------------------------------------------------------------- |
-| `participant` | Sessions, files, the browser, and reading git and GitHub                                    |
-| `owner`       | Model logins and accounts, settings, adding workspaces, MCP servers, writing git and GitHub |
-| `maintenance` | Replacing plugins, and listing, pairing and revoking principals                             |
+| Authority     | Covers                                                                                                                |
+| ------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `participant` | Sessions, files, the browser, and reading git and GitHub                                                              |
+| `owner`       | Model logins and accounts, settings, adding and changing workspaces, MCP servers, the tailnet, writing git and GitHub |
+| `maintenance` | Replacing plugins, and listing, pairing and revoking principals                                                       |
 
 The `Host` that `sdk.open` returns has all three. A `token` listener grants `participant` and
 `owner` by default. Pass `authority` to change that:
@@ -192,6 +205,10 @@ credential.
 Any other `http://` origin makes `listen` throw `SdkError("invalid")`. A page from an origin that
 isn't listed gets `SdkError("denied")`.
 
+A browser can't set headers on a WebSocket. In a page, pass `socket: ticketSocket()` from
+`@nyte-ai/sdk/client` to `openHost`. It trades the page's credential for a one-time ticket at
+`POST /.nyte/ws/ticket`, then opens `/.nyte/ws?ticket=<ticket>`.
+
 ## Serve from your own server [#fetch-handler]
 
 The `fetch` transport opens no socket. The listener answers standard `Request` objects, so you can
@@ -213,13 +230,25 @@ export function handle(request: Request): Promise<Response> {
 }
 ```
 
-`listener.address` is `null` here. The listener routes on the path from `/`: `POST /<operation>`
-for each call, plus `GET /.nyte/identity` and `GET /.nyte/describe`. Give it the root of a hostname,
-or strip your route's prefix before you pass the request on.
+`listener.address` is `null` here. The listener routes on the path from `/`:
 
-`before(request)` runs ahead of everything else, including sign-in. Return a `Response` to answer
-the request yourself, or `undefined` to pass it to the host. The
-[Vercel template](/docs/host/deploy#vercel) answers its cron route this way.
+| Route                   | What answers                                                                          |
+| ----------------------- | ------------------------------------------------------------------------------------- |
+| `POST /<operation>`     | One call to an operation in the operations table                                      |
+| `POST /.nyte/ws/ticket` | A one-time ticket for the WebSocket, valid for 30 seconds                             |
+| `GET /.nyte/identity`   | The host's signed answer to a challenge. See [identity](#identity)                    |
+| `GET /.nyte/describe`   | The host's name, platform and version                                                 |
+| `/mcp`                  | On a host from `sdk.open`, the MCP endpoint for outside agents, with its OAuth routes |
+
+Give it the root of a hostname, or strip your route's prefix before you pass the request on.
+
+A `Request` can't become a WebSocket, so the `fetch` transport doesn't serve `/.nyte/ws`. Clients
+reach a `fetch` listener with `sdk.connect`, which works over plain HTTP. `openHost` needs an
+`http` or `socket` listener.
+
+`before(request)` runs ahead of every HTTP request, including sign-in. Return a `Response` to
+answer the request yourself, or `undefined` to pass it to the host. The WebSocket upgrade skips it.
+The [Vercel template](/docs/host/deploy#vercel) answers its cron route this way.
 
 ## Prove which host answered [#identity]
 
@@ -234,7 +263,7 @@ the client side.
 
 | Option         | What it does                                                                                                           |
 | -------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `transport`    | `{ kind: "http", hostname?, port? }`, or `{ kind: "fetch" }`                                                           |
+| `transport`    | `{ kind: "http", hostname?, port? }`, `{ kind: "socket", path }`, or `{ kind: "fetch" }`. See [socket](#socket)        |
 | `auth`         | `{ kind: "token", token, authority? }`, or `{ kind: "custom", authorize }`                                             |
 | `origins`      | Browser origins allowed to call it. Default: none                                                                      |
 | `execution`    | Which sessions this listener runs while it's open. See [execution](/docs/host/stores-and-execution#listener-execution) |
@@ -245,28 +274,59 @@ the client side.
 
 `listen` returns a `Listener`:
 
-| Member                | What it does                                                     |
-| --------------------- | ---------------------------------------------------------------- |
-| `address`             | `http://host:port` for the `http` transport, `null` for `fetch`  |
-| `fetch(request)`      | Answers one request. Works for both transports                   |
-| `disconnectClients()` | Ends every open connection and stream. Clients may connect again |
-| `close()`             | Stops the listener. Later requests get `SdkError("unavailable")` |
+| Member                | What it does                                                             |
+| --------------------- | ------------------------------------------------------------------------ |
+| `address`             | `http://host:port` for `http`, the path for `socket`, `null` for `fetch` |
+| `fetch(request)`      | Answers one HTTP request. Works for every transport                      |
+| `disconnectClients()` | Ends every open connection and stream. Clients may connect again         |
+| `close()`             | Stops the listener. Later requests get `SdkError("unavailable")`         |
 
 ## From the terminal [#nyte-host]
 
-`nyte host` serves your chats on `127.0.0.1` until you stop it, so other `nyte` processes can attach
-to it. It writes the URL, token and process id to `~/.nyte/host.json`, readable only by you, and
-removes the file on exit.
+`nyte host` serves your chats on `127.0.0.1` until you stop it. Off Windows it also serves the
+local socket `~/.nyte/host.sock`. It writes the URL, token, process id and socket path to
+`~/.nyte/host.json`, readable only by you, and removes the file on exit. The token grants
+`participant`, `owner` and `maintenance`. The socket takes no token, and it's where
+[`local` operations](#socket) answer.
 
 ```sh
 nyte host
 ```
 
-In another terminal, attach with the token from that file:
+You rarely start it yourself. `nyte`, print mode and commands such as `nyte login` attach to the
+host `host.json` names. With none running, they start `nyte host --log` in the background and wait
+up to 20 seconds for it. That host keeps running after the command exits. `nyte host` keeps its
+port and token across restarts, so attached clients resume. If another process holds the port, it
+listens on a new one and says so on stderr.
+
+To attach to a host that `host.json` doesn't name, pass its URL and put its token in
+`NYTE_HOST_TOKEN`:
 
 ```sh
 NYTE_HOST_TOKEN=<token> nyte --host-url <url>
 ```
 
-Only one `nyte host` runs at a time. A second one exits with status 1 and names the first.
-`nyte host --json` prints one line, `{"type":"listening","url","endpoint","pid"}`, for scripts.
+One home has one served host. `nyte host` takes `~/.nyte/host.lock` before it opens the store. A
+second `nyte host` on the same home exits 1 and names the first:
+
+```txt
+✗ Can't start a host. Process <pid> already serves this home at <url>.
+
+  Attach to it:
+    nyte
+
+  Stop it:
+    kill <pid>
+```
+
+While the first is still starting, the message says another one `is starting in this home` and
+names `host.lock` instead. With `--json`, the same error is one JSON document on stderr with
+`"reason":"conflict"`. Commands that start a host in the background wait while `host.lock` is held,
+so two that start at once attach to the same host.
+
+Ctrl+C, `SIGTERM` and `SIGHUP` stop `nyte host` with exit code 130, 143 or 129, and it removes
+`host.json`.
+
+The desktop app's host doesn't exit. It waits for the lock and serves once the other host stops.
+`nyte host --json` prints one line, `{"type":"listening","url","socket","endpoint","pid"}`, for
+scripts. `endpoint` is the path of `host.json`.

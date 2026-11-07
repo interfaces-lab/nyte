@@ -30,7 +30,6 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
-/** A piped process as the local provider runs one: stdin fed by `write`, and with `protocol` stderr tagged apart from stdout, else the two interleaved. */
 function pipeJob(
   command: readonly string[],
   extra: Readonly<Record<string, string>>,

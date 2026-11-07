@@ -33,10 +33,6 @@ export function chatTab(page: Page, name: string): Locator {
     .getByRole("tab", { name: new RegExp(`^${name}(, preview)?$`, "u") });
 }
 
-/**
- * Goes through the stored preference as Settings does. Setting only the native theme and the media
- * query lets the app hand the window "system" again, leaving a light page on a dark window.
- */
 export async function setTheme(
   desktop: { readonly application: ElectronApplication; readonly page: Page },
   theme: "light" | "dark",

@@ -1,9 +1,3 @@
-/**
- * File-backed `ModelsStore` (models-store.json, one entry per provider id).
- * Separate from models-store.ts the way auth/store.ts is separate from
- * auth/credential-store.ts: node:fs stays out of modules a browser bundle can
- * reach through models.ts.
- */
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { Type } from "typebox";
@@ -14,11 +8,6 @@ import { defaultNyteHome } from "./utils/nyte-home.ts";
 
 const StoredEntriesSchema = Type.Record(Type.String(), Type.Unknown());
 
-/**
- * Raw catalogs live under their own top-level key. Clients through 0.0.10
- * read and write pre-filtered entries keyed by provider id, ignore this key,
- * and preserve it when they save.
- */
 const RAW_CATALOGS_KEY = "rawCatalogs";
 
 const StoredEntrySchema = Type.Object(

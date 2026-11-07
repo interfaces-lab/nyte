@@ -1,8 +1,3 @@
-/**
- * The Central Icons set. Selected by scripts/icons.mjs when Central is
- * installed; tsconfig excludes this file so a checkout without the license
- * typechecks against the Lucide set alone.
- */
 import {
   CentralIconBase,
   Icon3dBoxTop,

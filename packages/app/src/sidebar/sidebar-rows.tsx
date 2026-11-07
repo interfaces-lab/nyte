@@ -42,7 +42,6 @@ import { TaskMark } from "../components/task-mark.tsx";
 
 const WARM_DELAY_MS = 50;
 
-/** Reads the minute clock itself so only the label re-renders each minute. */
 function TimeAgo({ timestamp }: { readonly timestamp: number }): string {
   return formatTimeAgo(timestamp, useNowMinute());
 }
@@ -122,7 +121,6 @@ export interface SessionPlace {
   readonly path: string | null;
 }
 
-/** Shows the chat at once; the window tabs open its folder on the host after it. */
 function showSession(sessionId: SessionId, target: OpenIntent | "beside"): void {
   if (target !== "beside") {
     windowTabs.openChat(sessionId, target);
@@ -166,7 +164,6 @@ export function SessionRow({
   );
 }
 
-/** A chat's row drawn from its mark and ask line, which a settings preview passes itself. */
 export function SessionRowView({
   session,
   selected,

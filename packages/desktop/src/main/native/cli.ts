@@ -68,7 +68,6 @@ export async function stageCli(options: {
   return staged;
 }
 
-/** Checks the CLI in `resources` the way packaging does: present, native to this machine, running at Nyte's version, and on macOS validly signed. */
 export async function inspectBundledCli(options: {
   readonly resources: string;
   readonly packaged: boolean;
@@ -156,7 +155,6 @@ async function codeSignature(path: string): Promise<string | Error> {
   return lines.includes("Signature=adhoc") ? "Ad hoc" : "Signed";
 }
 
-/** Node words a failed command as `Command failed: <command>` and its stderr; the stderr says why. */
 function failure(cause: unknown): string {
   const message = cause instanceof Error ? cause.message : String(cause);
   const stderr = message.split("\n").slice(1).join(" ").trim();

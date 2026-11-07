@@ -5,7 +5,6 @@ import { useApp } from "../../app/context.tsx";
 import { GLYPHS } from "../../lib/constants.ts";
 import { useTranscript } from "./scope.tsx";
 
-/** Where a late answer reached the agent: one quiet line, since the part it answers shows the answer. */
 export function AnswerBlock(props: { readonly message: AnswerMessage }): JSX.Element {
   const app = useApp();
   const scope = useTranscript();

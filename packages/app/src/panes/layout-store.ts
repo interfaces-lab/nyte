@@ -4,18 +4,14 @@ import type { Layout, LayoutAction, PaneId } from "./layout.ts";
 import { paneRules } from "./pane-kinds.ts";
 import type { PaneContent } from "./pane-kinds.ts";
 
-/** One window tab's layout and its one writer. */
 export interface LayoutStore {
   readonly subscribe: (listener: () => void) => () => void;
   readonly getSnapshot: () => Layout<PaneContent>;
-  /** Applies the actions in order, then writes and notifies once. */
   readonly dispatch: (...actions: readonly LayoutAction<PaneContent>[]) => void;
-  /** Asks a pane's content to take the keyboard; an event, never layout state. */
   readonly onFocusRequest: (listener: (pane: PaneId) => void) => () => void;
   readonly requestFocus: (pane: PaneId) => void;
 }
 
-/** A layout with no window around it, for tests and benchmarks. */
 export function createLayoutStore(initial: Layout<PaneContent>): LayoutStore {
   let layout = initial;
   const listeners = new Set<() => void>();

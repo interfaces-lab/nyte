@@ -65,10 +65,6 @@ export type Density = "compact" | "balanced" | "detailed"; // Compact previews t
 
 Running the tests now.`;
 
-/**
- * The app's step groups and reply at the chosen tool call density. A finished group looks the same
- * in Compact and Balanced, so a running one follows the reply to show where they differ.
- */
 export function ConversationPreview(): ReactElement {
   const density = useSetting(preferences.toolCalls);
 

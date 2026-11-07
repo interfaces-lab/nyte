@@ -48,11 +48,6 @@ const ACCEPT = {
   html: "text/html;q=1.0, application/xhtml+xml;q=0.9, text/plain;q=0.8, text/markdown;q=0.7, */*;q=0.1",
 } satisfies { readonly [F in Format]: string };
 
-/**
- * The `web_fetch` tool: GETs an http(s) URL through `fetch`, following at most ten
- * redirects that stay on http(s), and returns HTML as markdown, text or itself, other
- * text as is, and an image as a file. Bodies stop at 5 MiB; text shown inline at 50 KiB.
- */
 export function webFetch(fetch: Fetch): ToolDefinition<Static<typeof fetchParameters>> {
   return {
     name: "web_fetch",
@@ -142,7 +137,6 @@ export function webFetch(fetch: Fetch): ToolDefinition<Static<typeof fetchParame
   };
 }
 
-/** GETs `start`, following redirects by hand so every hop stays on http(s), and returns the final 2xx response. */
 async function follow(
   fetch: Fetch,
   start: URL,
@@ -174,7 +168,6 @@ async function follow(
   throw new Error(`${start.href} redirects more than ${MAX_REDIRECTS} times.`);
 }
 
-/** One GET, sent again as plain `nyte` when Cloudflare answers with a browser challenge. */
 async function get(fetch: Fetch, url: URL, format: Format, signal: AbortSignal): Promise<Response> {
   const send = (agent: string) =>
     fetch(url, {

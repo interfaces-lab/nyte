@@ -4,7 +4,6 @@ import type { HeadView } from "@nyte-ai/sdk/client";
 import { Chip } from "../ui/chip.tsx";
 import { spacing, tokens } from "../theme.ts";
 
-/** The review actions that float above the composer once work finished. */
 export function ReviewStrip({
   changes,
   sessionId,

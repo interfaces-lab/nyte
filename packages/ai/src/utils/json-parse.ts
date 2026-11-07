@@ -1,6 +1,3 @@
-/**
- * JSON parsing for tool-call arguments: repairs malformed string literals, parses partial JSON during streaming so clients can render arguments before the call is complete, and parses a finished call strictly so a truncated call is reported instead of run.
- */
 import type { ToolCall } from "@nyte-ai/schema/model";
 import { parse as partialParse } from "partial-json";
 import { Type, type Static } from "typebox";
@@ -8,7 +5,6 @@ import { Value } from "typebox/value";
 
 const ToolArgumentsSchema = Type.Record(Type.String(), Type.Unknown());
 
-/** `\u` is valid only before four hex digits, which `repairJson` checks on its own. */
 const VALID_JSON_ESCAPES = new Set(['"', "\\", "/", "b", "f", "n", "r", "t"]);
 
 function escapeControlCharacter(char: string): string {
@@ -28,11 +24,6 @@ function escapeControlCharacter(char: string): string {
   }
 }
 
-/**
- * Repairs malformed JSON string literals by:
- * - escaping raw control characters inside strings
- * - doubling backslashes before invalid escape characters
- */
 export function repairJson(json: string): string {
   let repaired = "";
   let inString = false;
@@ -158,7 +149,6 @@ export function parseToolCallArguments(
     : unparsedToolCallArguments("Tool arguments must be a JSON object", json);
 }
 
-/** The arguments of a tool call whose response ended before the call finished. */
 export function unfinishedToolCallArguments(
   json: string,
 ): Pick<ToolCall, "arguments" | "argumentsError"> {

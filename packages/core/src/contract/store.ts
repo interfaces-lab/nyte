@@ -31,7 +31,6 @@ export interface StoreConnection {
   readonly checkpoints?: FoldCheckpoints;
 }
 
-/** A session's fold through `seq`, as core encoded it. */
 export interface FoldCheckpoint {
   readonly seq: Seq;
   readonly body: string;
@@ -39,7 +38,6 @@ export interface FoldCheckpoint {
 
 /** One fold checkpoint per session, a cache over the log: core ignores a checkpoint it cannot decode and folds that session's log from the start. */
 export interface FoldCheckpoints {
-  /** The session's checkpoint, or null when it has none. */
   read(session: SessionId): Promise<FoldCheckpoint | null>;
   /** Keeps `checkpoint` as the session's, unless the one kept is at a later seq. */
   write(session: SessionId, checkpoint: FoldCheckpoint): Promise<void>;

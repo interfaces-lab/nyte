@@ -29,10 +29,6 @@ const HOST_INFO = {
   version: Constants.expoConfig?.version ?? "0.0.0",
 } as const;
 
-/**
- * Every navigation reaches onShouldStartLoadWithRequest, which keeps only the shell's own document; a
- * narrower whitelist would hand anything else to the system opener instead.
- */
 const EVERY_ORIGIN = ["*"];
 
 const STOPPED = "This canvas stopped responding.";
@@ -43,20 +39,10 @@ function inject(view: WebView<unknown> | null, message: ShellBound): void {
 
 type Frame = { readonly height: number; readonly scrolls: boolean };
 
-/**
- * `fit` sizes the view to the canvas up to the height cap and scrolls only past it; `fill` takes its
- * parent's height and always scrolls.
- */
 type CanvasSize =
   | (Frame & { readonly kind: "fit"; readonly onResize: (frame: Frame) => void })
   | { readonly kind: "fill" };
 
-/**
- * A canvas in the transcript: a card whose height follows the canvas, and until it reports one, the
- * height a preview measured at the card's width (the window's before layout). While the card's own full
- * screen is open, its WebView is torn down so the phone runs one copy of the canvas, and the card
- * keeps its height so the transcript doesn't move; it loads again when the chat is back in front.
- */
 export function CanvasFrame({
   item,
   onReport,
@@ -114,11 +100,6 @@ export function CanvasFrame({
   );
 }
 
-/**
- * The canvas runtime shell in a WebView, speaking its protocol: the card in the transcript and the
- * full-screen screen both draw a canvas through it. A content process that dies is restarted once;
- * a second death is shown instead.
- */
 export function CanvasWebView({
   canvas,
   size,
@@ -283,7 +264,6 @@ const styles = css.create({
     paddingInline: 14,
   },
   title: { flexGrow: 1, flexShrink: 1, lineClamp: 1 },
-  // The 44pt target reaches the card's edge so its glyph lines up with the header's inset.
   expand: {
     display: "flex",
     alignItems: "center",

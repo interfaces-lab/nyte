@@ -9,20 +9,10 @@ import { Value } from "typebox/value";
 
 const MIGRATION = "host/migrations/legacy-folder-trust-v1";
 
-/** `~/.nyte/workspaces.json` from before the store: a folder the user trusted has `trusted: true`; `false` only means it was opened. */
 const WorkspacesFile = Type.Record(Type.String(), Type.Object({ trusted: Type.Boolean() }));
 
-/** `trust.json` from uji and early Nyte: every folder in it was trusted. */
 const TrustFile = Type.Record(Type.String(), Type.Literal(true));
 
-/**
- * Carries the folders an older Nyte, or uji before it, was told to trust into
- * the store, once per store: the grants in `~/.nyte/workspaces.json`,
- * `~/.nyte/trust.json` and `~/.uji/trust.json` become folder trust decisions
- * where the store saved none. A folder that is gone, the home folder and the
- * folders above it are skipped: home holds the user's own files, and a grant
- * there trusted every project under it. The files are left as they are.
- */
 export async function importLegacyTrust(connection: StoreConnection, home: string): Promise<void> {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     if ((await connection.refs.get(MIGRATION)) !== null) return;

@@ -71,7 +71,6 @@ export class Translator {
     this.#stream = stream;
   }
 
-  /** Applies one stream event. Returns the raw stop reason at a message's end, and `"tool_use"` as soon as a Nyte tool call's input is complete: Claude Code waits for Nyte to run it before it runs the message's later calls. */
   apply(event: StreamEvent): string | undefined {
     switch (event.type) {
       case "message_start":

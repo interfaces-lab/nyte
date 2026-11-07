@@ -58,7 +58,6 @@ type TextFile = Extract<FileDocument, { readonly kind: "text" }>;
 
 type SizedFile = Extract<FileDocument, { readonly size: number }>;
 
-/** Where the caret was last seen, one-based, until the next navigation moves it. */
 interface Caret {
   readonly revision: number;
   readonly line?: number;
@@ -98,7 +97,6 @@ ${SELECTION_ACTION_CSS}
 
 const EDITOR_LAYOUT = { ...DEFAULT_CODE_VIEW_LAYOUT, paddingTop: 0 };
 
-/** The `CodeView` options an open file renders with. */
 export function editorViewOptions(input: {
   readonly theme: ThemePreference;
   readonly lineNumbers: boolean;
@@ -467,7 +465,6 @@ function PdfDocument(input: {
   );
 }
 
-/** The status strip hides while empty, but its live regions stay mounted so the next save or error is announced. */
 export function TextFileEditor({
   ref,
   viewKey,

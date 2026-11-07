@@ -9,7 +9,6 @@ import { run } from "./command.ts";
 
 const ENV: Readonly<Record<string, string>> = { GIT_TERMINAL_PROMPT: "0", LC_ALL: "C" };
 
-/** The branch config key (`branch.<name>.nyte-session`) naming the session a worktree's branch was made for; `git branch -D` drops it with the branch. */
 const SESSION_KEY = "nyte-session";
 
 const STOPWORDS = new Set([
@@ -73,10 +72,8 @@ const REGENERABLE = new Set([
   "__pycache__",
 ]);
 
-/** How many names `create` tries before giving up: `<words>`, then `<two words>-2` up to this. */
 const MAX_ATTEMPTS = 100;
 
-/** One checkout of a repository: its folder and the branch it has out, null when HEAD is detached. */
 export interface ListedWorktree {
   readonly path: string;
   readonly branch: string | null;
@@ -104,7 +101,6 @@ function gitCommand(binary = "git"): Git {
   };
 }
 
-/** Lists every worktree of the repository holding `cwd` (`git worktree list --porcelain -z`), the main checkout first. */
 export async function listWorktrees(
   cwd: string,
   options?: { readonly git?: string },
@@ -120,7 +116,6 @@ export async function listWorktrees(
   });
 }
 
-/** Checks `branch` out in a new worktree at `path` (`git worktree add`), creating the branch at `from` when given. */
 export async function addWorktree(
   cwd: string,
   input: { readonly path: string; readonly branch: string; readonly from?: string },
@@ -134,7 +129,6 @@ export async function addWorktree(
   );
 }
 
-/** Whether `name` is a local branch of the repository holding `cwd`. */
 export async function hasBranch(
   cwd: string,
   name: string,
@@ -396,13 +390,6 @@ async function readRepository(git: Git, cwd: string): Promise<Repository | null>
     : { root: resolve(root), gitDir: resolve(gitDir), prefix };
 }
 
-/**
- * Names a worktree's branch from its title: lowercase ASCII words, stopwords
- * dropped, and type words such as `fix` or `add` too while two words are left
- * without them; three words on the first attempt, then two and `-<attempt>`,
- * so a name never has more than three hyphenated parts. `worktree` stands in
- * for a title with no words.
- */
 function branchName(title: string | null, attempt: number): string {
   const words = (title ?? "")
     .normalize("NFKD")

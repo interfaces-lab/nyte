@@ -4,7 +4,6 @@ const STICKY_EPSILON = 2;
 
 export const TRANSCRIPT_PADDING_END = 114;
 
-/** How far from the end the view may sit before it offers a way back. */
 export const NEAR_END = 60;
 
 function setDataState(element: HTMLElement, name: string, active: boolean): void {

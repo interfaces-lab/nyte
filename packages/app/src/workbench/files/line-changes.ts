@@ -1,9 +1,5 @@
 import { parseDiffFromFile } from "@pierre/diffs";
 
-/**
- * One block of lines that differs from the committed file. `start` is the first line it covers
- * in the file as it is now, one-based; a deletion covers no lines and sits before `start`.
- */
 export interface LineChange {
   readonly kind: "added" | "modified" | "deleted";
   readonly start: number;
@@ -51,7 +47,6 @@ export function lineChanges(
   });
 }
 
-/** `contents` with `change` put back as it was committed. */
 export function revertChange(contents: string, change: LineChange): string {
   const carriage = contents.includes("\r\n") ? "\r" : "";
   const lines = contents.split("\n");
@@ -65,7 +60,6 @@ export function revertChange(contents: string, change: LineChange): string {
   return lines.join("\n");
 }
 
-/** Gutter bars for the editor's shadow root: one rule per kind, listing the line numbers it marks. */
 export function changeBarCss(changes: readonly LineChange[]): string {
   const rule = (kind: LineChange["kind"], color: string, shadow: string): string => {
     const selectors = changes

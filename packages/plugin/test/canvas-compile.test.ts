@@ -25,7 +25,6 @@ export default function View(): ReactElement {
 
 const loaded: string[] = [];
 
-/** Imports a compiled module as the shell does, over a global whose kit and libraries are stand-ins. */
 async function evaluate(code: string): Promise<unknown> {
   Object.assign(globalThis, {
     [CANVAS_GLOBAL]: {

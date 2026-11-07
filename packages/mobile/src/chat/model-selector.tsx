@@ -11,7 +11,6 @@ import { GlassButton } from "../ui/glass-button.tsx";
 import { useModelCatalog } from "./remote-models.ts";
 import { controls, radii, spacing, textStyles, tokens, typography, useTheme } from "../theme.ts";
 
-/** The model picker sheet, opened from the chat's overflow menu. */
 export function ModelPickerSheet({
   client,
   open,
@@ -52,13 +51,6 @@ export function ModelPickerSheet({
   );
 }
 
-/**
- * Stays mounted so the Modal's dismissal carries the content down with it; the
- * catalog fetch is gated on `open`, and reopening refetches since nothing here
- * is ever fresh. Each open starts a clean search, reset from the prop rather
- * than an effect. Re-choosing the session's explicit model just closes, since
- * configuring it again would queue a no-op.
- */
 function SheetBody({
   client,
   open,

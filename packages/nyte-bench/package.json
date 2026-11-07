@@ -1,0 +1,27 @@
+{
+  "name": "@nyte-ai/nyte-bench",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Nyte Bench: runs real models through this checkout's harness and measures whether Nyte gets the most out of the tools it gives them.",
+  "type": "module",
+  "scripts": {
+    "bench": "node src/cli.ts",
+    "clean": "rm -rf node_modules .turbo",
+    "compare": "node src/compare.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@nyte-ai/ai": "workspace:*",
+    "@nyte-ai/bench": "workspace:*",
+    "@nyte-ai/core": "workspace:*",
+    "@nyte-ai/host": "workspace:*",
+    "@nyte-ai/schema": "workspace:*",
+    "typebox": "^1.4.2"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5"
+  },
+  "engines": {
+    "node": ">=26.4.0"
+  }
+}

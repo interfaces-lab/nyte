@@ -3,14 +3,15 @@ title: Entry points
 description: Options for sdk.open, host.listen, sdk.connect and openHost, and the helpers the SDK exports beside them.
 ---
 
-Three calls get you a host to talk to. `sdk.open` runs one in your Node process, `host.listen`
-serves it over HTTP, and `sdk.connect` reaches one from another process.
+`sdk.open` runs a host in your Node process, and `host.listen` serves it to other processes. From
+another process, `sdk.connect` reaches it over HTTP, and `openHost` attaches to its rows over the
+host WebSocket.
 [Choose an entry point](/docs/sdk/guides/choose-an-entry-point) helps you pick.
 
-| Import                | Has                                                                                                       |
-| --------------------- | --------------------------------------------------------------------------------------------------------- |
-| `@nyte-ai/sdk`        | `sdk.open`, `sdk.connect`, `createSendJournal`, `pagedViews`, `SdkError` and the SDK's types              |
-| `@nyte-ai/sdk/client` | The same without `sdk.open`, plus [`openHost`](#open-host) and its row stores, so it never loads the host |
+| Import                | Has                                                                                                                               |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `@nyte-ai/sdk`        | `sdk.open`, `sdk.connect`, `createSendJournal`, `pagedViews`, `SdkError` and the SDK's types                                      |
+| `@nyte-ai/sdk/client` | The same without `sdk.open`, plus [`openHost`](#open-host), its stores and the helpers that read them, so it never loads the host |
 
 In a browser or React Native bundle, `@nyte-ai/sdk` resolves to a build without the host, and its
 `sdk.open` rejects with `SdkError("unavailable")`.
@@ -87,20 +88,20 @@ the store if the host opened it. `await using host = await sdk.open({})` calls i
 host.listen(options: ListenOptions): Promise<Listener>
 ```
 
-Serves the host to other processes. Clients reach it with `sdk.connect`, or through the
-[HTTP API](/docs/sdk/reference/connection#http-api). [Serve a host](/docs/host/serve) walks through
-auth, pairing and origins.
+Serves the host to other processes. Clients reach it with `sdk.connect` or
+[`openHost`](#open-host), or through the [HTTP API](/docs/sdk/reference/connection#http-api).
+[Serve a host](/docs/host/serve) walks through auth, pairing and origins.
 
-| Option         | What it does                                                                                                                                                                           |
-| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `transport`    | `{ kind: "http", hostname?, port? }` binds a socket, by default on `127.0.0.1` and a free port. `{ kind: "fetch" }` binds nothing; call `listener.fetch(request)` from your own server |
-| `auth`         | `{ kind: "token", token, authority? }` or `{ kind: "custom", authorize(request) }`                                                                                                     |
-| `origins`      | Browser origins allowed to call it, such as `https://app.example.com` or `https://*.example.com`                                                                                       |
-| `execution`    | `{ kind: "run", coverage }` (default: all sessions) or `{ kind: "admit-only" }`                                                                                                        |
-| `maxBodyBytes` | The largest request body. Default 8 MiB                                                                                                                                                |
-| `identity`     | `{ id, sign(nonce) }`, the signed answer that lets `connect({ expect })` check it's this host. `sdk.open` supplies one                                                                 |
-| `describe`     | `() => { name, platform, version }`, served at `GET /.nyte/describe`. `sdk.open` supplies one                                                                                          |
-| `before`       | `(request) => Response \| undefined`. Runs first; return a response to answer the request yourself                                                                                     |
+| Option         | What it does                                                                                                                                                                                                                                                                   |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `transport`    | `{ kind: "http", hostname?, port? }` binds a TCP port, by default on `127.0.0.1` and a free port. `{ kind: "socket", path }` binds a Unix socket at `path` with owner-only permissions. `{ kind: "fetch" }` binds nothing; call `listener.fetch(request)` from your own server |
+| `auth`         | `{ kind: "token", token, authority? }` or `{ kind: "custom", authorize(request) }`                                                                                                                                                                                             |
+| `origins`      | Browser origins allowed to call it, such as `https://app.example.com` or `https://*.example.com`                                                                                                                                                                               |
+| `execution`    | `{ kind: "run", coverage }` (default: all sessions) or `{ kind: "admit-only" }`                                                                                                                                                                                                |
+| `maxBodyBytes` | The largest request body. Default 8 MiB                                                                                                                                                                                                                                        |
+| `identity`     | `{ id, sign(nonce) }`, the signed answer that lets `connect({ expect })` check it's this host. `sdk.open` supplies one                                                                                                                                                         |
+| `describe`     | `() => { name, platform, version }`, served at `GET /.nyte/describe`. `sdk.open` supplies one                                                                                                                                                                                  |
+| `before`       | `(request) => Response \| undefined`. Runs first; return a response to answer the request yourself                                                                                                                                                                             |
 
 A `token` must be at least 16 characters. It grants participant and owner authority unless you pass
 `authority`. Grant `maintenance` only to a token your own processes use, never one you hand to
@@ -111,14 +112,19 @@ someone else.
 
 `https://*.example.com` allows every subdomain of `example.com`, but not `example.com` itself.
 
+The `http` and `socket` transports also serve the
+[host WebSocket](/docs/sdk/reference/connection#websocket) at `/.nyte/ws`, which `openHost` opens.
+`fetch` serves HTTP only. Operations marked `local`, such as `host.execution.pause`, answer only on
+the `socket` transport.
+
 The `Listener` it returns has:
 
-| Member                | What it does                                                |
-| --------------------- | ----------------------------------------------------------- |
-| `address`             | The URL it listens on, or `null` with the `fetch` transport |
-| `fetch(request)`      | Answers one request                                         |
-| `disconnectClients()` | Drops every open request and watch. Clients reconnect       |
-| `close()`             | Disconnects clients and stops listening                     |
+| Member                | What it does                                                                   |
+| --------------------- | ------------------------------------------------------------------------------ |
+| `address`             | The URL it listens on, the socket's path, or `null` with the `fetch` transport |
+| `fetch(request)`      | Answers one HTTP request                                                       |
+| `disconnectClients()` | Drops every open request, stream and WebSocket. Clients reconnect              |
+| `close()`             | Disconnects clients and stops listening                                        |
 
 ## sdk.connect [#sdk-connect]
 
@@ -166,8 +172,9 @@ interface RequestJournal {
 }
 ```
 
-`connect` calls `load` once and resends what it returns. `send` calls `put` before the request and
-`remove` once the host has answered. A `JournalEntry` is plain JSON, so any key-value store works.
+`connect` calls `load` once and resends what it returns. `send` calls `put` before the request. It
+calls `remove` once a view of the head shows the message, or when the send fails with an error it
+doesn't retry. A `JournalEntry` is plain JSON, so any key-value store works.
 
 ## pagedViews [#paged-views]
 
@@ -179,7 +186,9 @@ pagedViews<V>(
 ```
 
 Reads the views the `watch` you pass yields and keeps the older messages you load at the front of
-each one. `PagedViews` is an `AsyncIterable<V>` with one more method:
+each one. A `Head` has no `watch`, so pass a function that returns your own views, such as views
+built from a [head store](#open-host), with the head's `history`. `PagedViews` is an
+`AsyncIterable<V>` with one more method:
 
 - `earlier(limit)` loads up to `limit` messages before the oldest one shown through `head.history`,
   and resolves with how many came: `0` once the chat's first message is shown. A call while one is
@@ -194,29 +203,59 @@ If the head moves past the loaded pages, the next view drops them. Iterate it on
 openHost(address: string, options: HostOptions): HostConnection
 ```
 
-From `@nyte-ai/sdk/client`. Opens the host's socket at `address` and keeps its rows current, the
-way Nyte's own clients read a host. Every caller with the same address shares one connection;
+From `@nyte-ai/sdk/client`. Opens the [host WebSocket](/docs/sdk/reference/connection#websocket)
+at `address` and keeps the rows you attach to current, the way Nyte's own clients read a host.
+Every caller with the same address shares one connection, and a later caller's options are ignored.
 `release()` lets go of it, and the last release closes the socket.
 
-- `credentials`: a `token` or `custom` headers, as for `sdk.connect`. A pairing code goes through
-  `sdk.connect` first.
-- `client`: the `kind`, `name` and `version` other clients see for this one.
-- `socket`: how to open the WebSocket. The default passes the credentials as headers, which Node
-  and Bun take; in a browser pass `ticketSocket()`, which trades them for a one-use ticket first.
+| Option        | What it sets                                                                                                                           |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `credentials` | `{ kind: "token", token }` or `{ kind: "custom", headers() }`, as for `sdk.connect`. A pairing code goes through `sdk.connect` first   |
+| `client`      | `{ kind, name, version }`, what other clients see for this one. `kind` is `app`, `tui`, `cli`, `agent` or `other`                      |
+| `socket`      | How to open the WebSocket. The default sends the credentials as headers, which Node and Bun accept. In a browser pass `ticketSocket()` |
+| `fetch`       | Used instead of the global `fetch` to tell a refused credential from a host that is down                                               |
+| `online`      | `() => boolean`, asked before each dial. `false` skips the dial and leaves `health` `blocked` with reason `offline`                    |
+
+`ticketSocket({ fetch? })` trades the credentials for a one-use ticket at `POST /.nyte/ws/ticket`,
+then opens the socket with `?ticket=`.
 
 A `HostConnection` has:
 
-- `head(session, head, { tail })`, a store of one head's last `tail` messages and the rows they
-  need. `snapshot()` is `null` before the first read; `headView(snapshot)` turns one into a view.
-- `directory(window?)`, a store of the session list `sessions.read` takes `window` for. Its
-  snapshot holds the listed `ids` in order and each one's `SessionInfo` in `rows`.
-- `text(listener)`, the text streaming parts append; `streamText` keeps it and `withStreamedText`
-  lays it over a view.
-- `health`, whether the socket is `connecting`, `open`, `retrying` or `blocked`, and `call(name,
-input)` for any other operation.
+| Member                                     | What it does                                                                                                                                                       |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `head(session, head, { tail })`            | A store of one head's last `tail` messages and the rows they need                                                                                                  |
+| `directory(window?)`                       | A store of the `sessions` table. `window` is `{ parents?, limit? }`, as for `sessions.read`                                                                        |
+| `clients()`                                | A store of the connected clients, a `Map` of `ClientRow` by client id                                                                                              |
+| `text(listener)`                           | Opens the text channel and calls `listener` with each `TextUpdate`. Returns the unsubscribe                                                                        |
+| `call(name, input)`                        | Calls any query, command or receipt operation over the socket                                                                                                      |
+| `perform(client, action, input, options?)` | Asks another client to perform an action it declared, with `client.perform`. `options` is `{ timeoutMs? }`                                                         |
+| `offer(action, handler)`                   | Declares `{ name, summary, input }` in this client's hello, reconnecting to do so, and answers each request with `handler(input, requester)`. Returns the disposer |
+| `health`                                   | A store of `connecting`, `open`, `retrying` with the next attempt's time, or `blocked` with reason `auth`, `version` or `offline`                                  |
+| `retry()`, `wake()`                        | Dials again now, with the backoff reset, when the connection is `retrying` or `blocked`                                                                            |
+| `hostId`                                   | The host's id once its welcome arrived, else `null`                                                                                                                |
+| `release()`                                | Lets go of the connection                                                                                                                                          |
 
-Each store has `subscribe(listener)`, which returns the unsubscribe, `snapshot()`, `freshness()`,
-`stale` while the socket is down or a read failed, and `close()`.
+Each store has `subscribe(listener)`, which returns the unsubscribe, `snapshot()` and `close()`.
+The head and session stores also have `freshness()`: `fresh` with the `seq` their rows are current
+through, or `stale` while the socket is down or a read failed. A stale store keeps its rows and
+resumes from its seq once the socket is back.
+
+- A head or session store's `snapshot()` is `null` before the first read.
+- A head store's snapshot holds the head's `order`, `leadingPrompt`, `activation`, `catalog`, and
+  `rows`, a `Map` per table keyed by row id.
+- A session store's snapshot holds the listed `ids` in order, each one's `SessionInfo` in `rows`,
+  and every session's `activation` by id in `activations`.
+
+These helpers come with it:
+
+| Helper                                   | What it does                                                                                   |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `headView(snapshot)`                     | Builds a `HeadView`, a `SessionView` without `seq`, from a head store's snapshot               |
+| `streamText(texts, update)`              | Keeps the latest streamed text and tool progress of each part in a `StreamedText` map          |
+| `withStreamedText(view, texts)`          | Lays the streamed text over a `HeadView`                                                       |
+| `unsentSends(connection, session, head)` | The sends still in an `sdk.connect` connection's journal. `lay(view, seq)` adds them to a view |
+
+[Render a session](/docs/sdk/guides/render-a-session) shows a head store in use.
 
 ## SdkError [#sdk-error]
 

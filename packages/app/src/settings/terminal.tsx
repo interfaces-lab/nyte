@@ -5,7 +5,6 @@ import { preferences } from "../preferences/index.ts";
 import { pluginSetting } from "../preferences/plugin.ts";
 import { NumberRow, SelectRow, SettingsSection, SwitchRow, TextRow } from "./rows.tsx";
 
-/** The shell new terminals start, a desktop setting the host reads when it spawns one. */
 export const terminalShell = pluginSetting(
   "desktop.terminalShell",
   DESKTOP_SETTING_SCHEMAS.terminalShell,

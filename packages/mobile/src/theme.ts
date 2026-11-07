@@ -3,7 +3,6 @@ import { StyleSheet, useColorScheme } from "react-native";
 import type { MarkdownStyle } from "react-native-enriched-markdown";
 import { platformColors, platformScopes } from "@nyte-ai/ui/platform-colors";
 
-/** Raw colors serve native controls outside RSD; RSD gets the same values through prefers-color-scheme conditionals on the tokens below. */
 const schemes = {
   light: {
     background: "#F7F7F8",
@@ -73,7 +72,6 @@ export type Theme = Record<keyof (typeof schemes)["light"], string>;
 
 export const themes = schemes;
 
-/** Raw colors for the active appearance — re-renders when the scheme flips. */
 export function useTheme(): Theme {
   return useColorScheme() === "dark" ? schemes.dark : schemes.light;
 }
@@ -126,11 +124,9 @@ export const radii = {
   pill: 999,
 };
 
-// The measured iphone-01 list rhythm: 20pt gutter, hairlines inset to the text.
 export const list = {
   gutter: 20,
   leading: 14,
-  // The system spinner draws at 20pt; this brings it down to the glyph column.
   spinnerScale: 0.7,
   leadingGap: 12,
   rowPaddingBlock: 16,
@@ -138,7 +134,6 @@ export const list = {
   sectionGap: 28,
   headerGap: 8,
   tile: 28,
-  // Flat rows lead with a hairline ring instead of the filled tile.
   ring: 24,
 };
 
@@ -148,14 +143,11 @@ export const controls = {
   statusDot: 8,
   touchTarget: 44,
   metaTarget: 28,
-  // The photo X sits over a corner of the thumbnail; its box reaches past it.
   photoRemoveTarget: 36,
   primaryHeight: 44,
-  // A screen's own action, taller than the toolbar controls beside it.
   fillHeight: 50,
   chipHeight: 36,
   composerHeight: 52,
-  // Resting morphing pill plus a little air; screens add the home-indicator inset.
   composerBar: 64,
   iconXs: 12,
   iconSm: 15,
@@ -190,10 +182,6 @@ export const media = {
   scanReticle: 240,
 } as const;
 
-/**
- * Chrome drawn over a camera preview or a photo. These do not follow the
- * appearance: what sits behind them is never the app's surface.
- */
 export const overCamera = {
   backdrop: "#000",
   foreground: "#fff",
@@ -264,14 +252,12 @@ export const textStyles = css.create({
   },
 });
 
-/** The face the transcript's prose is set in. */
 export type TranscriptFont = "system" | "monospaced";
 
 const AGENT_LINK = "^agent:.";
 
 export const FILE_LINK = "^(file:|(?![a-zA-Z][a-zA-Z\\d+.-]*:|#))";
 
-/** The transcript's markdown style. A monospaced transcript borrows the code blocks' face, so a reply reads as one font rather than two. */
 export function markdownStyle(
   theme: Theme,
   transcriptFont: TranscriptFont,

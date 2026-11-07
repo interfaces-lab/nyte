@@ -1,8 +1,3 @@
-/**
- * Fetches EasyList and EasyPrivacy and writes them as one serialized engine to
- * resources/adblock.generated.bin. The app never fetches lists itself; this script is the
- * only place a network request happens, and it runs at build time.
- */
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { ENGINE_VERSION, FiltersEngine } from "@ghostery/adblocker";

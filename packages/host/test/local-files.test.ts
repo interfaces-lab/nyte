@@ -474,7 +474,6 @@ describe("localFiles", () => {
   }, 20_000);
 });
 
-/** Every entry under `root` with its kind, and a file's contents and executable bit. */
 async function tree(root: string): Promise<readonly string[]> {
   const entries = await readdir(root, { recursive: true, withFileTypes: true });
 

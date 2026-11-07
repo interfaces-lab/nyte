@@ -12,7 +12,6 @@ interface Child {
 interface TaskIndexOptions {
   readonly children: AsyncIterable<readonly SessionInfo[]>;
   readonly views: (child: SessionId) => AsyncIterable<HeadView>;
-  /** The session's workspace's job list after each change. */
   readonly jobs: AsyncIterable<readonly JobView[]>;
   readonly onChange: () => void;
   readonly onError: (error: unknown) => void;

@@ -3,10 +3,6 @@ import type { Kernel } from "../contract/kernel.ts";
 
 type View = HostView["views"][number];
 
-/**
- * The first plugin to declare a kind wins. A view that fails keeps its last good build and is
- * reported on its plugin's row, so a typo mid-edit leaves parts drawn.
- */
 export async function publishViews(kernel: Kernel): Promise<void> {
   const compile = kernel.plugins.compileView;
 

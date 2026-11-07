@@ -50,7 +50,6 @@ export function writePatch(path: string, status: FileStatus, hunks: readonly Hun
   return `${lines.join("\n")}\n`;
 }
 
-/** Reads the hunks of one file's unified diff, the text a `PatchEntry` of kind `text` carries as `patch`. */
 export function readHunks(patch: string): readonly Hunk[] {
   const lines = patch.split("\n");
 

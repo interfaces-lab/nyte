@@ -51,12 +51,6 @@ export const transcriptRenderers: readonly Renderer[] = [
   ),
 ];
 
-/**
- * The terminal renderers as a client plugin.
- *
- * @category plugins
- * @since 0.1.0
- */
 export default {
   id: "transcript-tui",
   contribute: { renderers: transcriptRenderers },

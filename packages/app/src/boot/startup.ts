@@ -12,7 +12,6 @@ interface RendererStartupOptions {
   readonly router: Pick<AppRouter, "load">;
   readonly mountShell: () => void;
   readonly connect: () => Promise<void>;
-  /** Settles once the local store starts migrating or opens without a migration. */
   readonly storeOpening?: () => Promise<StoreOpening>;
   readonly showError: (retry: () => void) => void;
 }

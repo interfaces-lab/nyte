@@ -16,7 +16,6 @@ const LOADERS = new Map<string, Bun.JavaScriptLoader>([
 
 const LOCAL_SPECIFIER = /^(?:\.\.?(?:\/|$)|\/|file:)/;
 
-/** Bun's `PluginImport`, for the host the terminal opens (Bun's `node:module` has no `registerHooks`, so the host's default importer would reload only the entry). It walks the entry's local import graph: it reads each file, records the sha256 of those bytes, and follows the file's relative or absolute imports (`./`, `../`, `/`, `file:`, from `Bun.Transpiler` `scanImports`, which sees literal dynamic imports too) that `Bun.resolveSync` resolves to an absolute path outside `node_modules`; bare and `#` specifiers are never followed, so packages, linked ones included, keep the host's cached copies. It deletes every file of the graph from Bun's module cache (`import.meta.require.cache`, which holds ES modules too), which makes Bun evaluate those modules again, and imports the entry. `files` is the graph, entry first, with the hashes of the bytes read before the import: the import reads those bytes or newer ones, so a later check against them sees any newer save. A file that does not read is left out, and an import that does not resolve is not followed. */
 export function bunPluginImport(): PluginImport {
   return async (path) => {
     const files = await localGraph(path);
@@ -54,7 +53,6 @@ async function localGraph(entry: string): Promise<ReadonlyMap<string, string>> {
   return files;
 }
 
-/** The local files `file`, read as `bytes`, imports; none when it has no script extension or does not parse. */
 function localImports(file: string, bytes: Uint8Array): readonly string[] {
   const loader = LOADERS.get(extname(file));
 
@@ -66,7 +64,6 @@ function localImports(file: string, bytes: Uint8Array): readonly string[] {
     .filter((resolved) => resolved !== null);
 }
 
-/** The file `specifier` resolves to from `dir`, or null when it does not resolve or resolves to a builtin or a `node_modules` file. */
 function resolveLocal(specifier: string, dir: string): string | null {
   const resolved = resolveOrNull(specifier, dir);
 

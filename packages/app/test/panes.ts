@@ -13,10 +13,8 @@ import { SessionViewStateStore } from "../src/panes/session-view-state.ts";
 import { activeTab, tabLayout } from "../src/tabs/model.ts";
 import type { WindowAction, WindowState } from "../src/tabs/model.ts";
 
-/** The pane a new `tabPanes()` starts with. */
 export const PRIMARY = asId<"pane">("primary");
 
-/** One pane showing a new chat. */
 export function blankLayout(): Layout<PaneContent> {
   const tab = { id: asId<"pane-tab">("primary-chat"), content: chatContent({ kind: "blank" }) };
 
@@ -27,7 +25,6 @@ export function blankLayout(): Layout<PaneContent> {
   };
 }
 
-/** One window tab's panes with no window around them. */
 export function tabPanes(drafts?: {
   readonly storage: StorageArea;
   readonly storageKey: string;
@@ -40,7 +37,6 @@ export function tabPanes(drafts?: {
 
 export type PaneChange = (layout: Layout<PaneContent>) => readonly LayoutAction<PaneContent>[];
 
-/** The window action that applies `change` to the active tab's layout, naming new panes with `createId`. */
 export function changePanes(
   state: WindowState,
   change: PaneChange,
@@ -57,7 +53,6 @@ export function changePanes(
   return { kind: "layout", tabId: tab.id, layout };
 }
 
-/** A new chat in a pane after the focused one, as Split Right opens it. */
 export const splitRight: PaneChange = (layout) => [
   {
     kind: "open",

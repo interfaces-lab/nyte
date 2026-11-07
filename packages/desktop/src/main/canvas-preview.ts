@@ -126,7 +126,6 @@ function painted(window: BrowserWindow): Promise<void> {
   });
 }
 
-/** Viz fails a copy of a surface it has no frame for yet with `UnknownVizError`; a later frame copies. */
 async function capture(window: BrowserWindow): Promise<Uint8Array> {
   for (let attempt = 1; ; attempt += 1) {
     await painted(window);

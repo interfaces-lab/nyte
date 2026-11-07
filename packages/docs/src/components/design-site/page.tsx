@@ -5,11 +5,6 @@ import type { DocPage, NavItem } from "~/lib/docs";
 import { DesignMain } from "./shell";
 import { Specimen, hasSpecimen } from "./specimens";
 
-/**
- * One design page, read top to bottom: its number, name, and summary beside
- * the live specimen, then the page's sections, each labelled in the gutter
- * with its number, then the neighbouring pages.
- */
 export function DesignPageView({ page }: { page: DocPage }) {
   const entry = findEntry(page.url);
   const slug = pageSlug(page);

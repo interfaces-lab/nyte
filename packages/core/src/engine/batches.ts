@@ -168,7 +168,6 @@ async function execute(
   };
 }
 
-/** Applies one entry; the reason it didn't, or undefined once it did. */
 async function applyEntry(
   kernel: Kernel,
   files: FilesApi,

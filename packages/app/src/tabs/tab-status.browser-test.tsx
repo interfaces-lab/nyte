@@ -80,7 +80,6 @@ interface Listed {
 
 let states: Listed = { Solo: "read", Left: "read", Right: "read" };
 
-/** Outside the host's capped lists, so only its own read finds it, and no sidebar row asks for it. */
 const quiet = chat("Quiet", "waiting");
 
 const list = () => Object.entries(states).map(([name, state]) => chat(name, state));
@@ -114,7 +113,6 @@ function markLabel(holder: Element | null | undefined): string {
   return holder?.querySelector('[role="img"]')?.getAttribute("aria-label") ?? "none";
 }
 
-/** The mark on the chat's sidebar row, and whether the row's title reads as unread. */
 function sidebarMark(name: string): string {
   const label = [...document.querySelectorAll('[data-slot="row-label"]')].find(
     (element) => element.textContent === name,
@@ -125,7 +123,6 @@ function sidebarMark(name: string): string {
   return markLabel(label.closest('[data-slot="row-primary"]'));
 }
 
-/** The mark on the tab, and ", unread" when the tab's name says so. */
 function tabMark(tooltip: string): string {
   const tab = [...document.querySelectorAll('[role="tab"]')].find((element) =>
     element.getAttribute("aria-label")?.startsWith(tooltip),
@@ -172,7 +169,6 @@ function Strip(): ReactElement {
   );
 }
 
-/** A blank tab stays in front, so no chat counts as read by being looked at. */
 export async function run(): Promise<string> {
   queryClient.clear();
   windowTabs.start({ id: "tab-status", launch: undefined });

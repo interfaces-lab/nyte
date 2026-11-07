@@ -3,7 +3,6 @@ import type { LayoutRules } from "./layout.ts";
 import type { StoredContent } from "./layout-persistence.ts";
 import type { PaneKind } from "./pane-kind.ts";
 
-/** The app's one list of pane tab kinds. */
 const PANE_KINDS = { chat: chatKind };
 
 type Kinds = typeof PANE_KINDS;
@@ -42,7 +41,6 @@ export function persistPaneContent<K extends PaneKindName>(
   return fields === undefined ? undefined : { kind: content.kind, fields };
 }
 
-/** An unknown kind or fields its kind rejects drop the tab, not the layout. */
 export function restorePaneContent(stored: StoredContent): PaneContent | undefined {
   const kind = Object.keys(registry).find(
     (name): name is PaneKindName => Object.hasOwn(registry, name) && name === stored.kind,

@@ -23,10 +23,6 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const upstreamSlug = `${UPSTREAM.owner}/${UPSTREAM.repo}`;
 
-/**
- * Ubuntu packages: git and download tools, and the libraries Electron loads.
- * 24.04 renamed several libraries for the 64-bit time_t transition.
- */
 export function ubuntuPackages(version) {
   const t64 = Number.parseFloat(version) >= 24.04 ? "t64" : "";
 
@@ -71,12 +67,10 @@ async function missingPackages(ctx) {
   return packages.filter((name) => !installed.has(name));
 }
 
-/** A command and its arguments, run through sudo unless init already runs as root. */
 function asRoot(ctx, command, args) {
   return ctx.sudo === "root" ? [command, args] : ["sudo", [command, ...args]];
 }
 
-/** Downloads a GitHub release asset, checks it against the release's checksum file. */
 async function fetchRelease(ctx, repository, pick) {
   const release = await latestRelease(repository, ctx.fetch);
   const version = release.tag.replace(/^v/u, "");
@@ -109,7 +103,6 @@ function mise(ctx) {
   return ctx.which("mise") ?? join(ctx.binDir, "mise");
 }
 
-/** Runs a command with the checkout's toolchain from mise. */
 function inCheckout(ctx, io, command, args) {
   return ctx.exec.run(mise(ctx), ["exec", "--", command, ...args], {
     cwd: ctx.target,
@@ -121,7 +114,6 @@ async function git(ctx, args) {
   return ctx.exec.capture("git", ["-C", ctx.target, ...args]);
 }
 
-/** The remote that points at interfaces-lab/nyte: upstream in a fork, origin in a clone. */
 async function upstreamRemote(ctx) {
   const { code, stdout } = await git(ctx, ["remote", "-v"]);
 
@@ -136,7 +128,6 @@ async function upstreamRemote(ctx) {
   return remotes.find((remote) => remote.name === "upstream") ?? remotes[0];
 }
 
-/** Why the checkout is left alone, or undefined when main is checked out and clean. */
 async function leaveAlone(ctx) {
   const branch = (await git(ctx, ["symbolic-ref", "--short", "-q", "HEAD"])).stdout.trim();
   const head = (await git(ctx, ["rev-parse", "--short", "HEAD"])).stdout.trim();
@@ -245,7 +236,6 @@ async function applyCode(ctx, io) {
   return `Forked to ${login}/${UPSTREAM.repo}, cloned into ${label} on main`;
 }
 
-/** Tools mise.toml asks for, from its [tools] table. */
 export function miseTools(toml) {
   const table = toml.split(/^\[tools\]\s*$/mu)[1]?.split(/^\[/mu)[0] ?? "";
 
@@ -276,7 +266,6 @@ async function checkToolchain(ctx) {
   return done(versions.join(", "));
 }
 
-/** The files pnpm compares against its last install to decide it is up to date. */
 function manifests(target) {
   const files = ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml"].map((file) =>
     join(target, file),
@@ -318,7 +307,6 @@ async function checkDependencies(ctx) {
     : todo(`${stale.slice(ctx.target.length + 1)} changed since the last install`);
 }
 
-/** Which icon set the build will use, from the module scripts/icons.mjs wrote. */
 function iconSet(ctx) {
   try {
     const selected = readFileSync(join(ctx.target, "packages/ui/src/glyphs/selected.ts"), "utf8");
@@ -372,10 +360,6 @@ function activationLines(ctx) {
 
 const USERNS_SYSCTL = "/proc/sys/kernel/apparmor_restrict_unprivileged_userns";
 
-/**
- * One AppArmor profile per checkout, so a second checkout doesn't replace the
- * first's. Ubuntu's own profiles for Chrome and other Electron apps take this shape.
- */
 function sandboxProfile(ctx) {
   const id = createHash("sha256").update(ctx.target).digest("hex").slice(0, 8);
   const electron = `${ctx.target}/node_modules/.pnpm/electron@*/node_modules/electron/dist/electron`;
@@ -587,7 +571,6 @@ export const STEPS = [
     title: "GitHub login",
     group: "setup",
     after: ["gh"],
-    // Only getting the code needs GitHub; an existing checkout doesn't.
     applies: (ctx) => !ctx.checkoutAtStart,
     plan: () => "gh auth login, in a browser",
     person: () => "log in to GitHub",
@@ -654,7 +637,6 @@ export const STEPS = [
     title: "Electron sandbox",
     group: "setup",
     after: ["code"],
-    // Ubuntu 23.10 and later stop unprivileged user namespaces, which Electron's sandbox needs.
     applies: (ctx) => ctx.platform === "linux" && existsSync(USERNS_SYSCTL),
     plan: () => "an AppArmor profile that lets the checkout's Electron sandbox itself",
     person: (ctx) => (ctx.sudo === "password" ? "type your sudo password" : undefined),
@@ -710,7 +692,6 @@ export const STEPS = [
   },
 ];
 
-/** The commands that start Nyte from the checkout. */
 export function nextCommands(ctx) {
   return [
     ...(ctx.shellChanged ? [`exec ${ctx.shell.name}`] : []),

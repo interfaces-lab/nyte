@@ -37,7 +37,6 @@ import {
 import type { ByteName, CallName, FrameName, OperationName } from "@nyte-ai/protocol";
 import { createStreamChannels } from "./stream-server.ts";
 
-/** Describes the handler: how a request authenticates to a connection (with the headers its answer carries, such as a pairing's `X-Nyte-Credential`, §40j), what the binding needs, the body limit and the allowed origins. */
 export type HandlerOptions = BindingOptions & {
   connection(request: Request): Promise<{
     readonly connection: Connection;
@@ -65,7 +64,6 @@ const tooLarge = new WeakSet<SdkError>();
 
 const cancellations = compile(Type.Object({ channel: Type.String(), stream: Type.String() }));
 
-/** Returns the whole protocol as one fetch handler: `POST /<name>` per row (anything else `unknown`), CORS for `origins`, a `local` row refused off the local socket before authentication, the row's authority over the connection the request authenticates to, and the body limit (413). Calls answer JSON, watches and JSON streams server-sent events, byte rows an octet stream and `job.output` framed octets (§40h, §40w); the request's abort ends every stream. An error answers its encoded `SdkError` at the status `errorStatus` gives its code. */
 export function createHandler(options: HandlerOptions): (request: Request) => Promise<Response> {
   const limit = options.maxBodyBytes ?? MAX_BODY_BYTES;
   const bindings = new WeakMap<Connection, Binding>();
@@ -189,7 +187,6 @@ async function serve(
   return answer(binding, name, await readBody(request, limit), request, request.signal);
 }
 
-/** Answers `name` with its input `value`, already read from `request`: a shared stream's exchange ends with its 202, after which the request's body can no longer be read. */
 async function answer(
   binding: Binding,
   name: OperationName,
@@ -337,7 +334,6 @@ function corsHeaders(
   };
 }
 
-/** Whether `origins` lists `origin`, or holds an `https://*.example.com` entry for one of that domain's subdomains. The domain itself needs its own entry. */
 export function allowsOrigin(origins: readonly string[] | undefined, origin: string): boolean {
   return (origins ?? []).some((allowed) => {
     if (!allowed.startsWith("https://*.")) return allowed === origin;

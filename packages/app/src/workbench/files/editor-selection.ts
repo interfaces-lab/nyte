@@ -2,7 +2,6 @@ import type { EditorSelection } from "@pierre/diffs/edit";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { ADD_TO_CHAT_LABEL, addToChatShortcut } from "../../references/add-to-chat.ts";
 
-/** The popover's look, for the editor's shadow root, which the app's styles don't reach. */
 export const SELECTION_ACTION_CSS = `
 [data-add-selection] {
   appearance: none;
@@ -30,7 +29,6 @@ export const SELECTION_ACTION_CSS = `
 }
 `;
 
-/** The lines a selection covers, one-based; a selection that ends at the start of a line leaves that line out. */
 export function selectedLines(
   selection: EditorSelection | undefined,
 ): { readonly start: number; readonly end: number } | undefined {
@@ -43,7 +41,6 @@ export function selectedLines(
   return { start: start.line + 1, end: last + 1 };
 }
 
-/** The popover a fresh selection opens, offering to add its lines to the chat. */
 export function selectionAction(mac: boolean, add: () => void): HTMLElement {
   const button = document.createElement("button");
   button.type = "button";

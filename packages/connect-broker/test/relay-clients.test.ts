@@ -1,4 +1,3 @@
-/** Browser and phone requests through the relay: CORS, enrollment, forwarding, refusals, and the channel limit. See `relay-fixture.ts`. */
 import { BROKER_ROUTES, EnvironmentList } from "@nyte-ai/connect";
 import {
   RELAY_BODY_LIMIT_BYTES,

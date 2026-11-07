@@ -17,7 +17,6 @@ const PACKAGES_ROOT = resolve(DESKTOP_ROOT, "..");
 
 const MAIN_ENTRY = resolve(DESKTOP_ROOT, "out-e2e/main/index.js");
 
-/** How long Electron has after `close()` to reap its helpers. */
 const REAP_MS = 5_000;
 
 const KEPT_VARIABLES = new Set([
@@ -48,20 +47,11 @@ interface LaunchOptions {
   readonly home: string;
   readonly parentDirectory: string;
   readonly downloadsDirectory?: string;
-  /** The app-data folder to keep across launches, as a relaunch reuses its profile; default a new one removed on close. */
   readonly appData?: string;
-  /** Variables set over the kept ones, such as `NYTE_TRACE`, for the app and its host. */
   readonly environment?: Readonly<Record<string, string>>;
-  /** The places server the scripted restaurant answers link to. */
   readonly places?: string;
-  /** Hold the host this long after the app starts. */
   readonly hostDelayMs?: number;
-  /** A host already running for `home`, left running on close, as a quit leaves it; by default the launch starts one and stops it on close. */
   readonly host?: E2eHost;
-  /**
-   * Typed into the focused element by main the moment the renderer reports its first frame,
-   * long before Playwright could reach the window.
-   */
   readonly typeAtFirstFrame?: string;
 }
 
@@ -70,13 +60,10 @@ interface LaunchedDesktop {
   readonly page: Page;
   readonly home: string;
   readonly host: E2eHost;
-  /** The app's output, then its host's log and the scripted catalog's lines as they come. */
   readonly output: readonly string[];
-  /** Quits the app, throws if any process of its tree outlives it, then stops its host. */
   close(): Promise<void>;
 }
 
-/** The five outputs a launch reads, in the order they are built. */
 const BUILD_OUTPUTS = [
   [resolve(PACKAGES_ROOT, "canvas/dist/shell/index.html"), "pnpm --dir packages/canvas build"],
   [

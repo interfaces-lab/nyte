@@ -16,7 +16,6 @@ import { SPRING } from "./composer-geometry.ts";
 
 const PHOTO_PAGE = 24;
 
-/** Spring the attachments menu shut, then unmount it once the spring settles. */
 function springShut(
   progress: SharedValue<number>,
   extend: SharedValue<number>,
@@ -35,12 +34,6 @@ function springShut(
   );
 }
 
-/**
- * The photos staged on the composer and the attachments menu that adds them. `blocked` is true while
- * another step holds the composer (sending, choosing a model); staging photos holds it too, and
- * `onStaging` reports that to the screen. A sent photo is withdrawn from the strip at once but keeps
- * its marks until `release`, so a refused message can be restored whole.
- */
 export function useComposerAttachments({
   blocked,
   geometry,

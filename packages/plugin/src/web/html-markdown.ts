@@ -64,11 +64,6 @@ const CONTENT_BYTES = MAX_MARKDOWN_BYTES - 64 * 1024;
 
 const encoder = new TextEncoder();
 
-/**
- * Converts HTML to Markdown in one streaming pass: drops scripts, styles, the head and
- * hidden elements; keeps headings, lists, GFM tables, fenced code, links and images;
- * stops nesting past 10,000 levels and caps the result at `MAX_MARKDOWN_BYTES`.
- */
 export function htmlToMarkdown(html: string): string {
   const output: Chunk[] = [];
   const stack: Frame[] = [];
@@ -858,7 +853,6 @@ export function htmlToMarkdown(html: string): string {
   return sliceBytes(normalized.join("").trim(), MAX_MARKDOWN_BYTES);
 }
 
-/** Returns an HTML document's text outside scripts, styles and embeds, trimmed. */
 export function htmlToText(html: string): string {
   let text = "";
   let skipDepth = 0;

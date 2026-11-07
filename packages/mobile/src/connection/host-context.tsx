@@ -49,7 +49,6 @@ export type HostSession = {
   readonly disconnect: () => Promise<void>;
 };
 
-/** A session as screens see it, with whether the host runs a newer Nyte than this app. */
 export type ConnectedHost = HostSession & { readonly newerHost: boolean };
 
 const HostContext = createContext<ConnectedHost | undefined>(undefined);
@@ -62,7 +61,6 @@ export function useHost(): ConnectedHost {
   return host;
 }
 
-/** Reads the host's Nyte version each time its connection opens, since the Mac updating restarts it, and wakes the connection when the app comes forward. */
 export function HostProvider({ session, children }: { session: HostSession; children: ReactNode }) {
   const health = useHealth(session.live);
   useMountEffect(() => {
@@ -88,7 +86,6 @@ export function HostProvider({ session, children }: { session: HostSession; chil
   return <HostContext.Provider value={{ ...session, newerHost }}>{children}</HostContext.Provider>;
 }
 
-/** The saved connection and its host check. The Keychain read is the app's only boot fetch; the store, not a query cache, holds it because it carries the bearer. */
 export function useHostConnection() {
   const snapshot = useSyncExternalStore(connectionStore.subscribe, connectionStore.getSnapshot);
   const check = useSyncExternalStore(hostVerifier.subscribe, hostVerifier.getSnapshot);

@@ -18,7 +18,6 @@ const PULSE_HIGH = 0.85;
 
 const PULSE_MS = 850;
 
-/** Placeholder block pulsing over the fill tint, like UIKit skeletons. The pulse follows the reduced-motion setting, which can change while mounted. */
 function Skeleton({
   width,
   height,
@@ -60,7 +59,6 @@ function Skeleton({
   );
 }
 
-/** Mirrors SessionRow: status dot, title bar, meta bar, hairline under the text. */
 export function SessionRowsSkeleton({ rows = 7 }: { rows?: number }) {
   const theme = useTheme();
 
@@ -111,7 +109,6 @@ const rowStyles = {
   },
 } as const;
 
-/** Stands in for a transcript being read: a user bubble plus assistant lines. */
 export function TranscriptSkeleton() {
   return (
     <View style={transcriptStyles.root}>

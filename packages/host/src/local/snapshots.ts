@@ -44,7 +44,6 @@ type Manifest = Readonly<Record<string, string>>;
 
 type Tree = { readonly files: Manifest; readonly incomplete: boolean };
 
-/** The root tree of `refs/nyte/kept`: its entries, and the newest generation, the only one a rewrite adds to. */
 type Kept = {
   readonly id: string;
   readonly root: readonly { readonly tree: string; readonly name: string }[];
@@ -83,7 +82,6 @@ const KEPT_REF = "refs/nyte/kept";
 
 const LEGACY_REFS = "refs/nyte/snapshots/";
 
-/** Snapshot trees per generation tree under `refs/nyte/kept`; a full generation is never rewritten. */
 const GENERATION = 1_000;
 
 const KEEP_TRIES = 3;

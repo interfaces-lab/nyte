@@ -13,7 +13,7 @@ import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { useState } from "react";
 import type { ReactElement } from "react";
 import { ChangeStats } from "../../components/change-stats.tsx";
-import { FileTypeIcon } from "../../components/file-type-icon.tsx";
+import { FileTypeIcon } from "@nyte-ai/ui/file-type-icon";
 import { Deferred } from "../../lib/deferred.tsx";
 import type { ToolCallDensity } from "../../preferences/index.ts";
 import { diffView } from "../../theme/schema.stylex.ts";

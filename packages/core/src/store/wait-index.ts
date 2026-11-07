@@ -6,13 +6,10 @@ export const WAITS = "waits/";
 
 export const TIME = `${WAITS}time/`;
 
-/** The index of woken calls: a wake that completes a call's wait writes `woken/<session>/<call>`, and the call's next park or its settle drops it, so a process polling for other processes' wakes lists these rather than every unsettled call. */
 export const WOKEN = `${WAITS}woken/`;
 
-/** Digits a time key is padded to, so the index lists times in order. */
 export const TIME_DIGITS = 16;
 
-/** One entry of the store-side wait index: the index ref (null for a wait found from the call record itself; a wake counts it only while the call's wait still writes that name, since a ref an older Nyte wrote unescaped can decode to another call's id), the parked call it points at, which wait of the call (its count of earlier waits), and which of the wait's targets, null for a deadline or input stop, which ends the whole wait. */
 export interface Indexed {
   readonly name: string | null;
   readonly session: SessionId;
@@ -21,7 +18,6 @@ export interface Indexed {
   readonly target: number | null;
 }
 
-/** The index refs a parked call's current wait needs: one per target it still waits on, its earliest deadline, and its input stop. A call id can hold `/` (a Responses item id is base64), so it is escaped to stay one segment for `readIndexed`. */
 export function waitIndex(
   session: SessionId,
   record: Pick<CallRecord, "id" | "head" | "waiting" | "partial" | "waits">,
@@ -62,7 +58,6 @@ export function wokenIndex(session: SessionId, call: CallId): string {
   return `${WOKEN}${session}/${call}`;
 }
 
-/** The session and call a `woken/` index ref names. */
 export function readWoken(
   name: string,
 ): { readonly session: SessionId; readonly call: CallId } | null {

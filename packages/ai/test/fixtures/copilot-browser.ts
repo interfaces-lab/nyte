@@ -3,7 +3,6 @@ import type { AuthInteraction } from "@nyte-ai/ai/auth/types";
 import { createModels } from "@nyte-ai/ai/models";
 import { githubCopilotProvider } from "@nyte-ai/ai/providers/github-copilot";
 
-/** A browser host supplies its own event bridge; no Node globals are present in the test realm. */
 declare const postMessage: (value: unknown) => void;
 
 async function login(): Promise<void> {

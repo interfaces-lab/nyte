@@ -20,7 +20,6 @@ const DIRECTORY_EVENTS: ReadonlySet<string> = new Set([
 
 const DIRECTORY_REFS: ReadonlySet<string> = new Set(["heads", "runs", "seen"]);
 
-/** The current ref names that contribute a directory row or outstanding work. */
 export function sessionIndexRef(name: string): {
   readonly session: SessionId;
   readonly kind: "session" | "run" | "inbox" | "receipt" | "call";
@@ -47,7 +46,6 @@ export function sessionIndexRef(name: string): {
   }
 }
 
-/** The derived row for one currently referenced record; null removes its prior index entry. */
 export type SessionIndexEntry =
   | {
       readonly kind: "session";
@@ -60,7 +58,6 @@ export type SessionIndexEntry =
       readonly session: SessionId;
     };
 
-/** Projects a current ref into the session index. */
 export function projectSessionIndex(name: string, object: Json | null): SessionIndexEntry | null {
   const ref = sessionIndexRef(name);
 

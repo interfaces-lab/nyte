@@ -1,17 +1,8 @@
-/**
- * Provider auth contract: request auth, stored credentials, the app-owned
- * credential store, the injectable auth context, and the login interaction
- * surface shared by api-key and OAuth flows.
- */
 import { typed } from "@nyte-ai/schema/model";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import type { ProviderEnv, ProviderHeaders } from "../types.ts";
 
-/**
- * Request auth for a single model request. If a value cannot be expressed as
- * `apiKey`, `headers`, or `baseUrl`, it is provider config, not auth.
- */
 export interface ModelAuth {
   apiKey?: string;
   headers?: ProviderHeaders;
@@ -28,7 +19,6 @@ export interface ApiKeyCredential {
   env?: ProviderEnv;
 }
 
-/** Stored OAuth credential. */
 export interface OAuthCredential {
   type: "oauth";
   refresh: string;
@@ -37,7 +27,6 @@ export interface OAuthCredential {
   [key: string]: unknown;
 }
 
-/** An OAuth token endpoint's answer to a code exchange or a refresh. */
 export interface OAuthTokenResponse {
   access_token: string;
   refresh_token: string;
@@ -52,7 +41,6 @@ export const OAuthTokenResponseSchema = typed<OAuthTokenResponse>()(
   }),
 );
 
-/** One type-tagged credential for a stored account. */
 export type Credential = ApiKeyCredential | OAuthCredential;
 
 /** A named provider account. Its local id stays stable across token refreshes. */
@@ -62,13 +50,11 @@ export interface CredentialAccount {
   readonly credential: Credential;
 }
 
-/** A provider's accounts and explicit selection, mutated together under the store lock. */
 export interface CredentialAccounts {
   readonly active: string | null;
   readonly accounts: readonly CredentialAccount[];
 }
 
-/** Non-secret credential metadata for account/status enumeration. */
 export interface CredentialInfo {
   providerId: string;
   id: string;
@@ -102,7 +88,6 @@ const CredentialAccountsSchema = Type.Object({
   ),
 });
 
-/** Parse persisted accounts and migrate a previous single credential at the storage boundary. */
 export function readCredentialAccounts(value: unknown): CredentialAccounts | undefined {
   if (Value.Check(CredentialSchema, value))
     return {
@@ -119,7 +104,6 @@ export function readCredentialAccounts(value: unknown): CredentialAccounts | und
   return value;
 }
 
-/** Optional cancellation for public auth and credential operations. */
 export interface AuthOperationOptions {
   signal?: AbortSignal;
 }
@@ -171,19 +155,16 @@ export interface CredentialStore {
   delete(providerId: string, options?: AuthOperationOptions): Promise<void>;
 }
 
-/** Environment access for auth resolution. Injectable for tests and browsers. */
 export interface AuthContext {
   env(name: string): Promise<string | undefined>;
   /** Check whether a file exists. Supports a leading `~`. Always false in browsers. */
   fileExists(path: string): Promise<boolean>;
 }
 
-/** Result of resolving auth for a model. */
 export interface AuthResult {
   auth: ModelAuth;
   /** Local stored-account id captured for this request; absent for ambient or explicit auth. */
   accountId?: string;
-  /** Provider-scoped environment/config values resolved from credentials and ambient context. */
   env?: ProviderEnv;
   /** Human-readable label for status UI: "ANTHROPIC_API_KEY", "OAuth", "~/.aws/credentials". */
   source?: string;
@@ -247,15 +228,9 @@ export interface AuthInteraction {
   notify(event: AuthEvent): void;
 }
 
-/** Normalized interaction passed to provider login implementations. */
 export type ProviderAuthInteraction = AuthInteraction & { signal: AbortSignal };
 
-/**
- * Api-key auth: stored key/provider env plus ambient sources (env vars, AWS
- * profiles, ADC files). Ambient-only providers omit `login`.
- */
 export interface ApiKeyAuth {
-  /** Display name, e.g. "Anthropic API key". */
   name: string;
 
   /** Interactive setup (prompt for key/provider env). Absent = ambient-only. */
@@ -285,19 +260,11 @@ export interface ApiKeyAuth {
   }): Promise<AuthResult | undefined>;
 }
 
-/**
- * OAuth auth. The `refresh`/`toAuth` split lets `Models` own the locked
- * refresh pattern: `refresh` produces a credential, `toAuth` derives request
- * auth from whatever credential ends up stored.
- */
 export interface OAuthAuth {
-  /** Display name, e.g. "Anthropic (Claude Pro/Max)". */
   name: string;
 
-  /** Whether access through this auth method is backed by a provider subscription. */
   isSubscription?: boolean;
 
-  /** Selector label for the OAuth login option, e.g. "Sign in with SuperGrok or X Premium". */
   loginLabel?: string;
 
   /** Availability of externally managed OAuth, without refreshing or importing its credentials. */
@@ -354,7 +321,6 @@ export type AuthVerification =
       readonly message: string;
     };
 
-/** A provider's verdict; `Models.verifyAuth()` adds the credential source. */
 export type ProviderAuthVerification =
   | { readonly ok: true; readonly verified?: false; readonly detail?: string }
   | Extract<AuthVerification, { ok: false }>;

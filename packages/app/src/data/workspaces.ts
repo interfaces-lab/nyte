@@ -4,9 +4,7 @@ import type { MutationState } from "@tanstack/react-query";
 import { toast } from "@nyte-ai/ui/toast";
 import { keys, queryClient } from "./query-client.ts";
 import type { HostState, SelectedWorkspace } from "../contract/bridge.ts";
-import { jobsWatch } from "./watches.ts";
 import { connected } from "./connection.ts";
-import { useWatch } from "./watch-store.ts";
 
 export const workspacesQuery = {
   queryKey: keys.workspaces,
@@ -82,10 +80,6 @@ export function useForgetWorkspace() {
       }),
     onSettled: () => client.invalidateQueries({ queryKey: keys.workspaces }),
   });
-}
-
-export function useWorkspaceJobs(workspace: WorkspaceId | undefined) {
-  return useWatch(workspace === undefined ? undefined : jobsWatch(workspace)).value;
 }
 
 export function commitHostWorkspace(workspace: SelectedWorkspace | undefined): void {

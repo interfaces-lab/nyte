@@ -12,7 +12,7 @@ import type { MentionFile } from "../../data/files.ts";
 import type { CommandCompletion, CommandInfo } from "@nyte-ai/sdk";
 import type { SessionCatalogView, SkillInfo } from "@nyte-ai/sdk";
 import { Icon } from "@nyte-ai/ui/icon";
-import { FileTypeIcon } from "../../components/file-type-icon.tsx";
+import { FileTypeIcon } from "@nyte-ai/ui/file-type-icon";
 import type { ComposerCompletion, ComposerDocumentState } from "./composer-document.ts";
 import type { ComposerComboboxState, ComposerEditorHandle } from "./composer-editor.tsx";
 import { createMentionSuggestionRanking } from "./composer-suggestion-ranking.ts";

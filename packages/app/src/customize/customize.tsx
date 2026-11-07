@@ -57,7 +57,6 @@ interface Presentation {
   readonly icon: IconName;
 }
 
-/** The plugins Nyte ships that people use directly; the others are internal and stay hidden unless they fail to load. */
 const SHIPPED = new Map<string, Presentation>([
   ["web", { name: "Web", description: "Search the web and read pages", icon: "globe" }],
   [

@@ -18,7 +18,6 @@ export const ACP_API = "acp";
 
 export const MIRROR_TOOL = "acp";
 
-/** A mirror call's arguments: the ACP session it ran in, the agent's own call id, title, kind, input and the paths it touches. */
 export const mirrorArguments = Type.Object({
   thread: Type.String(),
   id: Type.String(),
@@ -32,7 +31,6 @@ export type MirrorArguments = Static<typeof mirrorArguments>;
 
 const count = Type.Optional(Type.Union([Type.Number(), Type.Null()]));
 
-/** A turn's usage as ACP defines it. An agent's report missing a required count (fx sends no `totalTokens`) is not usage. */
 export const agentUsage = Type.Object({
   inputTokens: Type.Number(),
   outputTokens: Type.Number(),
@@ -66,7 +64,6 @@ export function emptyMessage(model: Model<Api>): AssistantMessage {
   };
 }
 
-/** The class Nyte shows and gates an agent's tool call by, from the ACP kind, its paths and its input. */
 export function mirrorClass(args: MirrorArguments): ToolClass {
   const path = args.paths[0];
   const shell = args.input.command;
@@ -105,7 +102,6 @@ function blockText(block: ContentBlock): string {
   }
 }
 
-/** What a finished agent tool call reports, as the text its mirror call returns. */
 export function toolText(content: readonly ToolCallContent[], rawOutput: unknown): string {
   const lines = content.map((item) => {
     switch (item.type) {
@@ -130,7 +126,6 @@ export function toolText(content: readonly ToolCallContent[], rawOutput: unknown
   );
 }
 
-/** Builds one assistant message from an agent's streamed text, thoughts and tool calls. */
 export class Translator {
   readonly #model: Model<Api>;
   readonly #output: AssistantMessage;

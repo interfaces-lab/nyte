@@ -19,14 +19,6 @@ const productSection: NavSection = {
 
 const designSite: NavSection = { items: [{ title: "Design", href: designRoute }] };
 
-/**
- * One bar, one position: sticky, dropped from the top so its pills sit
- * concentric with the plate's corner on pages that open with a plate. The
- * bar is a frosted pill. Over a plate the pill is transparent and the text
- * is white; once the plate scrolls away (NavSentinel) the pill returns.
- * Stays under the dialog layer (70) so a dialog scrim covers the bar too.
- * The design site draws its own frame, so this bar only ever shows the docs.
- */
 export function SiteNav() {
   return (
     <header className="sticky top-0 z-30 w-full min-w-0 shrink-0 pt-(--site-nav-top)">

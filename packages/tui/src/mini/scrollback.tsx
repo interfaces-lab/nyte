@@ -12,7 +12,6 @@ import type { MiniEntry } from "./transcript.ts";
 
 type Answer = Extract<MiniEntry, { readonly kind: "answer" }>;
 
-/** An answer drawn into scrollback a block at a time, on one surface kept for its whole stream. */
 interface Streaming {
   readonly key: string;
   readonly surface: ScrollbackSurface;
@@ -21,12 +20,6 @@ interface Streaming {
   committed: number;
 }
 
-/**
- * Writes the minimal transcript into the terminal's scrollback as it settles. An answer streams
- * in as its markdown blocks stop changing; every other entry is written once, whole. Writes go
- * through one queue so they land in transcript order, and the variables above the queue track
- * what has been asked for so far, ahead of what the queue has done.
- */
 export function installMiniScrollback(options: {
   readonly renderer: CliRenderer;
   readonly store: Pick<Store, "state" | "screen">;
@@ -231,11 +224,6 @@ export function installMiniScrollback(options: {
   };
 }
 
-/**
- * The rows down to the bottom of the last markdown block that will not change as more streams
- * in. OpenTUI exposes block layout only through these underscored fields; OpenCode's mini mode
- * reads them the same way.
- */
 function settledRows(body: MarkdownRenderable): number {
   // oxlint-disable-next-line no-underscore-dangle -- the only view of the parsed blocks
   const blocks = body._blockStates;

@@ -30,7 +30,6 @@ import { SessionDndProvider } from "./session-dnd.tsx";
 
 const TURNS = 12;
 
-/** The 620px desktop window's split-down pane, about 176px above its composer. */
 const LAYOUT = { width: 780, height: 580 };
 
 const RUN: RunView = {
@@ -138,7 +137,6 @@ function transcripts(container: HTMLElement): HTMLElement[] {
   return Array.from(container.querySelectorAll<HTMLElement>("[aria-label='Messages']"));
 }
 
-/** How far the pane sits from its end, and how much of the room above its composer the conversation fills. */
 function readEnd(scroller: HTMLElement) {
   const top = scroller.getBoundingClientRect().top;
   const floor = scroller.closest("section")?.querySelector("[data-composer-frame]");

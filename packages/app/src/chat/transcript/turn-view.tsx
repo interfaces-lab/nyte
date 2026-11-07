@@ -26,7 +26,7 @@ import { useTranscriptControls, useTranscriptScope } from "./transcript.tsx";
 import type { ModelThinkingLevel } from "@nyte-ai/schema/model";
 import { isPart, branchSummary, compaction } from "@nyte-ai/plugin/client";
 import { CHANGES_VISIBLE_FILES, filesChangedLabel } from "../../diff/change-tree.ts";
-import { FileTypeIcon } from "../../components/file-type-icon.tsx";
+import { FileTypeIcon } from "@nyte-ai/ui/file-type-icon";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
@@ -254,16 +254,22 @@ export function UserMessageView({
     setEdit((current) => (current === undefined ? current : patch(current)));
   };
 
-  const addFiles = async (files: readonly File[]): Promise<void> => {
+  const addFiles = async (
+    files: readonly File[],
+    signal?: AbortSignal,
+  ): Promise<string | undefined> => {
     patchEdit((current) => ({ ...current, attachmentReads: current.attachmentReads + 1 }));
 
     return attachComposerFiles({ files, editor: editorRef.current })
       .then((result) => {
+        signal?.throwIfAborted();
         patchEdit((current) => ({
           ...current,
           attachments: [...current.attachments, ...result.attachments],
           attachmentError: result.error,
         }));
+
+        return result.error;
       })
       .finally(() =>
         patchEdit((current) => ({ ...current, attachmentReads: current.attachmentReads - 1 })),
@@ -409,7 +415,7 @@ export function UserMessageView({
               attachments={edit.attachments}
               attachmentBusy={edit.attachmentReads !== 0}
               attachmentError={edit.attachmentError}
-              onFilesSelected={(files) => void addFiles(files)}
+              onFilesSelected={addFiles}
               onAttachmentRemove={(id) =>
                 patchEdit((current) => ({
                   ...current,
@@ -430,7 +436,6 @@ export function UserMessageView({
   );
 }
 
-/** Mounted while the edit is unchanged: a primary click outside the row ends it. */
 function DismissOnOutsideClick({
   rowRef,
   onDismiss,
@@ -703,7 +708,6 @@ function ResponseView({
   );
 }
 
-/** Shared by every reply: `toLocaleString` with options builds a new formatter per call. */
 const SENT_AT = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 
 function ReplyActions({
@@ -715,7 +719,6 @@ function ReplyActions({
   markdown: string;
   at: number;
   worked: string | undefined;
-  /** Where a fork from this reply ends: the last commit the reply settled. */
   commit: CommitId | undefined;
 }): ReactElement {
   const sessionId = useTranscriptScope()?.sessionId;

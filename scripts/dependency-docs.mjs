@@ -19,7 +19,6 @@ function parsePackageName(value) {
   return value;
 }
 
-/** Parse a package manifest, collecting declared type targets across every export condition without choosing a runtime branch. */
 function parseManifest(text) {
   const manifest = JSON.parse(text);
 
@@ -68,10 +67,6 @@ function parseManifest(text) {
   return { name, version, declarations };
 }
 
-/**
- * Check each existing prefix before descending, including when the leaf is absent.
- * A dangling symlink is broken filesystem state, not an absent optional candidate.
- */
 async function containedPath(root, candidate) {
   if (
     !candidate ||
@@ -111,19 +106,6 @@ async function containedPath(root, candidate) {
   return { path, info: await stat(path) };
 }
 
-/**
- * discoverDependencyDocs(packageName, workspaceDirectory) -> Promise<report>
- * Both arguments are required strings. The workspace must be an existing directory.
- * report: { requestedName, name, version, packageRoot, workspace, documents, types, limitations }
- * documents: { kind, path, trust: "untrusted-reference" }[], existing physical paths only.
- * types: { declaredPath, status: "found", path } | { declaredPath, status: "missing" }
- *        | { declaredPath, status: "wildcard-not-expanded" } records, sorted by declaration.
- * Reads metadata only. Dependency AGENTS files never carry instruction authority.
- * The package is found through Node's search directories alone, probed with a non-builtin name so
- * packages named like Node builtins can still be inspected; no entry or exports is resolved.
- * Wildcard type declarations are checked for containment but not expanded.
- * Errors reject; absent optional docs are omitted. Broken or escaping paths reject.
- */
 export async function discoverDependencyDocs(packageName, workspaceDirectory) {
   parsePackageName(packageName);
 

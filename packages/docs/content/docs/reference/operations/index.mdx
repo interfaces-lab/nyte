@@ -1,6 +1,6 @@
 ---
 title: Host operations
-description: Every operation a Nyte host serves, how to call it over HTTP, and what its declaration means.
+description: Every operation a Nyte host serves, how to call it over HTTP and the host WebSocket, and what its declaration means.
 ---
 
 A host serves one table of operations. The SDK calls them for you; these pages are for clients that
@@ -35,38 +35,99 @@ as base64url in the `X-Nyte-Input` header.
 A stream that fails ends with an `event: error` frame carrying the error. Closing the request ends
 any watch or stream and stops waiting on any wait.
 
+There are no watch operations for heads, sessions or parts. A client reads those as rows over the
+host WebSocket.
+
+## The host WebSocket [#websocket]
+
+A host also serves one WebSocket per connection at `/.nyte/ws`. It carries an event channel and a
+text channel, and every message on it is a JSON text frame: `{ "c": "e", ... }` on the event
+channel and `{ "c": "t", ... }` on the text channel.
+
+A Node or Bun client sends its credential on the upgrade request. A browser can't set headers there,
+so it sends `POST /.nyte/ws/ticket` with its credential first. The answer is
+`{ ticket, expiresAt }`, and the browser opens `/.nyte/ws?ticket=<ticket>`. A ticket works once, for
+30 seconds.
+
+The client's first frame is its hello, at most 4 KB:
+
+```json
+{
+  "c": "e",
+  "type": "hello",
+  "api_min_revision": 13,
+  "api_revision": 15,
+  "client": { "kind": "other", "name": "my-client", "version": "1.0.0", "actions": [] }
+}
+```
+
+`api_min_revision` is the oldest API revision the client can use, and the optional `api_revision`
+the newest it speaks. The host answers with a welcome that carries `api_revision`, the newest
+revision both sides speak, `api_min_revision`, `api_server_revision`, `host_id`, `client_id` and
+the `limits` it holds the connection to. When the two share no revision, the host closes the socket
+with a reason that starts `Update the host` or `Update the client`.
+
+After the hello, the client sends only calls: `{ c: "e", type: "call", id, op, input }`.
+The host answers each with a `result` frame carrying `output`, or an `error` frame carrying the
+error, under the same `id`. Every query, command and receipt answers there, except the byte uploads
+above. Watches and streams answer only over HTTP.
+
+These operations carry the protocol. The first five answer only on the WebSocket, and over HTTP
+they fail with `invalid`:
+
+| Operation                                                             | What it does                                                                             |
+| --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| [`events.subscribe`](/docs/reference/operations/events/subscribe)     | Sends the connection the events of `host`, `session/<id>` or its own `client/<id>` scope |
+| [`events.unsubscribe`](/docs/reference/operations/events/unsubscribe) | Stops sending them                                                                       |
+| [`text.open`](/docs/reference/operations/text/open)                   | Opens the text channel for the parts streaming in the subscribed sessions                |
+| [`client.perform`](/docs/reference/operations/client/perform)         | Asks another connected client to perform an action it declared                           |
+| [`client.reply`](/docs/reference/operations/client/reply)             | Answers such a request                                                                   |
+| [`head.read`](/docs/reference/operations/head/read)                   | Reads a head's window of rows at a seq, or what changed since a seq you resume from      |
+| [`sessions.read`](/docs/reference/operations/sessions/read)           | Reads the `sessions` table the same way                                                  |
+| [`clients.read`](/docs/reference/operations/clients/read)             | Lists the connected clients                                                              |
+
+A client attaches to a scope by subscribing first and reading second, so no change falls between the
+two. Each change then arrives as an event with the scope's seq, carrying whole rows that the client
+replaces by id. Live facts, such as which clients are connected and each session's activation,
+arrive whole with a null seq. After a reconnect, the client subscribes again and passes its last seq
+to `head.read` or `sessions.read` as `resume`.
+
 ## The declaration
 
-| Field      | Meaning                                                                                                                                                  |
-| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Kind       | How the host answers, as above                                                                                                                           |
-| Authority  | What the caller's principal needs: `participant`, `owner` or `maintenance`                                                                               |
-| Scope      | What the input names: the host as a whole, one `session`, or one `workspace`                                                                             |
-| Capability | The workspace capability it needs, `files`, `git`, `github` or `browser`, or none                                                                        |
-| Recovery   | `replay`: resending the same input with the same id returns the first result. `never`: don't resend after a lost answer, since it may already have acted |
-| Wait       | Yes when the call blocks until something happens, and is safe to call again after a lost connection                                                      |
+| Field      | Meaning                                                                                                                                                                                       |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Kind       | How the host answers, as above                                                                                                                                                                |
+| Authority  | What the caller's principal needs: `participant`, `owner` or `maintenance`                                                                                                                    |
+| Scope      | What the input names: the host as a whole, one `session`, or one `workspace`                                                                                                                  |
+| Capability | The workspace capability it needs, `files`, `git`, `github` or `browser`, or none                                                                                                             |
+| Recovery   | `replay`: resending the same input with the same id returns the first result. `never`: don't resend after a lost answer, since it may already have acted. None: the row makes neither promise |
+| Wait       | Yes when the call blocks until something happens, and is safe to call again after a lost connection                                                                                           |
 
 [Shared concepts](/docs/sdk/reference/shared-concepts#authority) lists what each authority covers.
 A workspace operation that needs a capability fails with `denied` or `unavailable` when the
 workspace doesn't offer it; check first with `workspace.files`, `workspace.git`,
 `workspace.github` or `workspace.browser`.
 
+Some operations, such as `host.execution.pause` and `host.tailnet.status`, answer only on the
+host's local socket. Over the network they fail with `denied`.
+
 ## Errors
 
 An error answers a JSON body `{ code, message, hostId, issues, correlation }` at the HTTP status of
-its code. Every operation can fail these ways:
+its code. On the WebSocket, an `error` frame carries the same body. Every operation can fail these
+ways:
 
-| Code              | Status | When                                                                                                     |
-| ----------------- | ------ | -------------------------------------------------------------------------------------------------------- |
-| `unauthenticated` | 401    | The credential is missing, wrong, revoked, or a pairing code is unknown or expired                       |
-| `denied`          | 403    | The principal lacks the operation's authority, or the origin may not call the host                       |
-| `unknown`         | 404    | No operation has that name, or an id in the input names nothing                                          |
-| `invalid`         | 400    | The input fails the schema. `issues` lists each problem with its path. A body over the limit answers 413 |
-| `stale`           | 409    | A write lost to concurrent writes, or a revision the call expected has moved                             |
-| `unavailable`     | 503    | The host, a provider or a capability can't serve the call now                                            |
-| `internal`        | 500    | The host failed. `correlation` names its log entry                                                       |
-| `not_supported`   | 501    | The client asked to act never declared the action                                                        |
-| `timeout`         | 504    | The client asked to act didn't answer in time                                                            |
+| Code              | Status | When                                                                                                                        |
+| ----------------- | ------ | --------------------------------------------------------------------------------------------------------------------------- |
+| `unauthenticated` | 401    | The credential is missing, wrong, revoked, or a pairing code or ticket is unknown or expired                                |
+| `denied`          | 403    | The principal lacks the operation's authority, the origin may not call the host, or a local operation came over the network |
+| `unknown`         | 404    | No operation has that name, or an id in the input names nothing                                                             |
+| `invalid`         | 400    | The input fails the schema. `issues` lists each problem with its path. A body over the limit answers 413                    |
+| `stale`           | 409    | A write lost to concurrent writes, or a revision the call expected has moved                                                |
+| `unavailable`     | 503    | The host, a provider or a capability can't serve the call now                                                               |
+| `internal`        | 500    | The host failed. `correlation` is a fresh id for this failure                                                               |
+| `not_supported`   | 501    | The client asked to act never declared the action                                                                           |
+| `timeout`         | 504    | The client asked to act didn't answer in time                                                                               |
 
 Each page lists the errors particular to its operation. Many operations answer an expected result
 as an outcome with a `kind` instead of failing, such as `busy` or `stale`; those are part of the

@@ -15,7 +15,6 @@ interface DeviceEntry {
   readonly detail: string;
 }
 
-/** A settings card's device rows, each with one action. */
 export function DeviceRows({
   label,
   devices,

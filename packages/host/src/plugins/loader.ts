@@ -283,7 +283,6 @@ function exportedPlugin(imported: unknown): Outcome {
     : { reason: "Its default export is not a core plugin (an object with a string id)." };
 }
 
-/** Whether every recorded file still reads to the bytes its hash was taken of; a file that no longer reads has changed. */
 async function unchanged(files: ReadonlyMap<string, string>): Promise<boolean> {
   const recorded = [...files];
 
@@ -294,7 +293,6 @@ async function unchanged(files: ReadonlyMap<string, string>): Promise<boolean> {
   return recorded.every((entry, index) => current[index] === entry[1]);
 }
 
-/** The bytes a `load` hook hands Node for the file at `path`; Node gives no `source` for CommonJS it reads itself, so then the file as it reads now. */
 function evaluatedBytes(
   source: nodeModule.LoadFnOutput["source"] | null,
   path: string,
@@ -307,7 +305,6 @@ function evaluatedBytes(
   return source instanceof ArrayBuffer ? new Uint8Array(source) : source;
 }
 
-/** What the symlink at `path` points to, `"file"` or `"directory"`, when its real path lies inside `dir`'s; null when it points outside, nowhere, or at anything else. */
 async function linkedKind(dir: string, path: string): Promise<"file" | "directory" | null> {
   const root = await realpath(dir).catch(() => null);
   const real = await realpath(path).catch(() => null);

@@ -2,10 +2,6 @@ import { HStack, Host, Image, Menu, Text, Button } from "@expo/ui/swift-ui";
 import { buttonStyle, frame, font, foregroundStyle } from "@expo/ui/swift-ui/modifiers";
 import { controls, typography, useTheme } from "../theme.ts";
 
-/**
- * The head this send lands on, when the session has more than one. A single
- * head (almost always `main`) is not a choice, so it stays off the composer.
- */
 export function ContextRow({
   head,
   heads,

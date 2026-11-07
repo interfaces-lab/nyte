@@ -1,36 +1,3 @@
-/**
- * The one place that reads provider error text. An assistant message that
- * stopped with `error` or `aborted` is classified here, once, into a closed
- * `FailureClass`; everything downstream switches on the class.
- *
- * Context-window examples by provider:
- *
- * - Anthropic: "prompt is too long: 213462 tokens > 200000 maximum"
- * - Anthropic: "413 {\"error\":{\"type\":\"request_too_large\",\"message\":\"Request exceeds the maximum size\"}}"
- * - OpenAI: "Your input exceeds the context window of this model"
- * - OpenAI/LiteLLM: "Requested token count exceeds the model's maximum context length of 131072 tokens"
- * - OpenAI-compatible: "Input length (265330) exceeds model's maximum context length (262144)."
- * - Google: "The input token count (1196265) exceeds the maximum number of tokens allowed (1048575)"
- * - xAI: "This model's maximum prompt length is 131072 but the request contains 537812 tokens"
- * - Groq: "Please reduce the length of the messages or completion"
- * - OpenRouter: "This endpoint's maximum context length is X tokens. However, you requested about Y tokens"
- * - OpenRouter/Poolside: "Input length X exceeds the maximum allowed input length of Y tokens."
- * - Together AI: "The input (X tokens) is longer than the model's context length (Y tokens)."
- * - llama.cpp: "the request exceeds the available context size, try increasing it"
- * - LM Studio: "tokens to keep from the initial prompt is greater than the context length"
- * - GitHub Copilot: "prompt token count of X exceeds the limit of Y"
- * - MiniMax: "invalid params, context window exceeds limit"
- * - Kimi For Coding: "Your request exceeded model token limit: X (requested: Y)"
- * - DS4: "Prompt has X tokens, but the configured context size is Y tokens"
- * - Cerebras: "400/413 status code (no body)", only from the cerebras provider
- * - Mistral: "Prompt contains X tokens ... too large for model with Y maximum context length"
- * - z.ai: "Prompt too long", "Prompt exceeds max length" (CN endpoint), or silent
- *   overflow detected via usage.input > contextWindow
- * - Xiaomi MiMo: truncates input to fill contextWindow, then returns finish_reason "length"
- *   with output=0; detected via stopReason "length" + zero output + input filling the window.
- * - DashScope/Qwen: "Range of input length should be [1, X]"
- * - Ollama: "prompt too long; exceeded max context length by X tokens"
- */
 import type { Failure, FailureClass } from "@nyte-ai/schema";
 import type { Api, AssistantMessage, Model } from "@nyte-ai/schema/model";
 
@@ -64,10 +31,6 @@ const CONTEXT_WINDOW_PATTERNS = [
 
 const CEREBRAS_BODYLESS_CONTEXT_WINDOW_PATTERN = /^4(?:00|13)\s*(?:status code)?\s*\(no body\)/i;
 
-/**
- * Bedrock formats throttling as "ThrottlingException: Too many tokens, please
- * wait before trying again", which would read as overflow without this.
- */
 const NOT_CONTEXT_WINDOW_PATTERN =
   /^(Throttling error|Service unavailable):|rate limit|too many requests/i;
 
@@ -87,11 +50,6 @@ const QUOTA_PATTERN = pattern([
   "billing",
 ]);
 
-/**
- * Whether provider error text reports spent quota or credit, which waiting does not lift. It
- * outranks a 429 status: providers answer exhausted credit with 429, e.g. Anthropic's
- * `extra_usage_out_of_credits`.
- */
 export function reportsQuotaExhaustion(text: string): boolean {
   return QUOTA_PATTERN.test(text);
 }
@@ -145,7 +103,6 @@ const NETWORK_PATTERN = pattern([
   "upstream_stream_read_error",
   "stream was interrupted",
   "http/?2 stream failed",
-  // node-fetch system errors, whose reason is often empty.
   "request to \\S+ failed, reason:",
   "reset before headers",
   "socket hang up",
@@ -158,9 +115,7 @@ const NETWORK_PATTERN = pattern([
   "stream ended before message_stop",
   "stream ended before a terminal response event",
   "http2 request did not get a response",
-  // Codex CLI mid-stream disconnect, relayed by proxies that wrap the CLI.
   "stream disconnected before completion",
-  // Node ERR_HTTP2_STREAM_CANCEL: the HTTP/2 session died before the request was sent.
   "pending stream has been canceled",
 ]);
 
@@ -247,7 +202,6 @@ function retryAfterMs(message: AssistantMessage): number | undefined {
   return Number.isFinite(maximum) && maximum > 0 && seconds > maximum ? undefined : seconds * 1_000;
 }
 
-/** Input tokens fill the window: z.ai accepts overflow silently, Xiaomi truncates and stops on `length` with nothing produced. */
 function silentOverflow(message: AssistantMessage, contextWindow: number | undefined): boolean {
   if (contextWindow === undefined || contextWindow === 0) return false;
   const inputTokens = message.usage.input + message.usage.cacheRead;
@@ -293,7 +247,6 @@ export function classifyAssistantFailure(
   return delay === undefined ? failure : { ...failure, retryAfterMs: delay };
 }
 
-/** Whether another attempt can change the answer: load, limits that lift, and transport. */
 export function retryCanHelp(failureClass: FailureClass): boolean {
   switch (failureClass) {
     case "rate_limit":

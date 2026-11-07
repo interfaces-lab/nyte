@@ -45,7 +45,6 @@ function normalizeAnswers(
   });
 }
 
-/** The answers for the model, one question a line, or as a one-line label under their headers. */
 function formatAnswers(
   items: readonly QuestionInfo[],
   answers: QuestionAnswers,
@@ -59,11 +58,6 @@ function formatAnswers(
     .join(form === "prompt" ? "\n" : " · ");
 }
 
-/**
- * A late answer goes to its head as an attached answer, under a receipt fixed by the part: it
- * rides into a live run at its next boundary or continues an idle head, never opening a turn as a
- * prompt, and a retried or repeated submission replays it instead of landing twice.
- */
 const handlers: Handlers = {
   async answer(input, context) {
     let answered:
@@ -203,10 +197,6 @@ const ask: ToolDefinition<Infer<typeof questionParameters>> = {
   },
 };
 
-/**
- * Stops waiting on a request the user hasn't touched, so a later answer goes to `head` as a
- * message, and returns where the request stands. A replay finds it already open and keeps it so.
- */
 async function stopWaiting(part: Part<typeof question>, head: HeadName): Promise<QuestionPhase> {
   let phase: QuestionPhase = { kind: "open", head };
 

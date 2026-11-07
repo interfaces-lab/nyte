@@ -119,7 +119,6 @@ import {
 } from "./fixtures.ts";
 import type { Case } from "./fixtures.ts";
 
-/** Ids, JSON, models, messages, tools, jobs, runs and parts. */
 export const basicCases = {
   PromptOverrideSchema: sample(
     PromptOverrideSchema,

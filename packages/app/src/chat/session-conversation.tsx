@@ -23,9 +23,9 @@ import {
 } from "../panes/pane-context.tsx";
 import type { PaneId } from "../panes/layout.ts";
 import { useCatalog } from "../data/catalog.ts";
-import { useProjects } from "../data/projects.ts";
+import { coordinatedProject } from "../data/projects.ts";
 import { useSessionChoice } from "../data/sessions.ts";
-import { sessionActions } from "../data/session-rows.ts";
+import { sessionActions, useSessionRow } from "../data/session-rows.ts";
 import { chatStore, keepChat, loadEarlierMessages } from "../data/chat-store.ts";
 import { connection } from "../data/connection.ts";
 import { useWatchSelect } from "../data/watch-store.ts";
@@ -225,7 +225,6 @@ function TranscriptColumn({
   );
 }
 
-/** Reads the pane's focus below the conversation, so focusing another pane redraws only what follows it. */
 function PaneFocus({
   pane,
   children,
@@ -242,7 +241,6 @@ function ActivationNotice({ activation }: { readonly activation: Activation }): 
   return null;
 }
 
-/** Mounted only once the view's first frame lands, so the transcript keeps the read mark the visit opened at. */
 function MarkSeen({ sessionId }: { readonly sessionId: SessionId }): ReactElement | null {
   const tip = useChats((chats) => chats.get(sessionId)?.unreadTip?.commit);
   const looking = useChatWindow((snapshot) => snapshot.looking.has(sessionId));
@@ -258,8 +256,6 @@ function SeeTip({ sessionId }: { readonly sessionId: SessionId }): null {
   return null;
 }
 
-/** A chat inside its own folder, so a hidden or split chat never reads the folder the window has open. */
-/** A side chat inside its parent's side-chat window: its transcript and composer only. */
 function SideConversation({
   paneId,
   sessionId,
@@ -332,7 +328,10 @@ function ConversationScreen(conversation: SessionConversationProps): ReactElemen
   };
 
   const store = chatStore(sessionId);
-  const coordinates = useProjects().some((project) => project.coordinator === sessionId);
+
+  const coordinates =
+    useSessionRow(sessionId, (session) => coordinatedProject(session) !== undefined) === true;
+
   const [projectors] = useState(() => ({
     full: transcriptProjector({ thinking: true }),
     quiet: transcriptProjector({ thinking: false }),

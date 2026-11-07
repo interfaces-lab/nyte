@@ -242,7 +242,6 @@ export function pendingHint(hidden: number): string {
   return hidden > 0 ? `+${String(hidden)} more · ${open}` : open;
 }
 
-/** The terminal's way to take each recovery step a failure notice names. */
 export const RECOVERY_STEPS: Readonly<Record<Recovery, string>> = {
   compact: "Run /compact to summarize it.",
   "sign-in": "Run /login to sign in again.",

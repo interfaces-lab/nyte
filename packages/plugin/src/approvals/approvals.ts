@@ -30,7 +30,6 @@ type Handlers = {
   ) => Awaitable<ActionOutput<Actions[A]>>;
 };
 
-/** A tool call as the policy sees it: its tool's name, its class, and whether its tool lets a policy hold it. */
 export interface ApprovalTool extends RuntimeCall {
   readonly approval?: ToolDefinition["approval"];
 }
@@ -57,7 +56,6 @@ export const permissions: SettingDefinition<ApprovalPolicy> = {
   scope: "host",
 };
 
-/** Folders inside a workspace whose files configure the agents, hooks and tools that run there, so an edit to one asks even under `auto-edit`. */
 const GUARDED = new Set([".claude", ".git", ".nyte"]);
 
 function grantKey(tool: string): string {
@@ -108,7 +106,6 @@ export function approvalReason(
   return "tool";
 }
 
-/** The host's policy, or the session's MCP ceiling where that asks more. */
 async function readPolicy(api: PluginApi<"core">): Promise<ApprovalPolicy> {
   const value = await api.contribute.settings.value(PERMISSIONS);
   const ceiling = (await api.session.info()).mcp?.ceiling;

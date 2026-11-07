@@ -150,20 +150,17 @@ export const preferences = {
     SessionViewSchema,
     DEFAULT_SESSION_VIEW,
   ),
-  /** `null` is Home. */
   sidebarFolded: definePreference(
     { key: SIDEBAR, field: "folded" },
     Type.Array(Type.Union([Type.String(), Type.Null()])),
     [],
   ),
-  /** Rows each list shows past its first page, by list key. */
   sidebarRevealed: definePreference(
     { key: SIDEBAR, field: "revealed" },
     Type.Record(Type.String(), Type.Integer({ minimum: 0 })),
     {},
   ),
   developerMode: definePreference({ key: "nyte:developer-mode:v1" }, Type.Boolean(), false),
-  /** Shows projects in the sidebar; a developer feature. */
   projects: definePreference({ key: "nyte:projects:v1" }, Type.Boolean(), true),
 } as const;
 

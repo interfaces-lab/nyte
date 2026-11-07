@@ -9,7 +9,6 @@ export type SplitId = Id<"split">;
 
 export type SplitDirection = "right" | "down";
 
-/** What a pane tab shows. The layout reads only `kind`; the kind's own module owns the rest. */
 export interface TabContent {
   readonly kind: string;
 }
@@ -29,11 +28,9 @@ export interface Pane<Content extends TabContent> {
   readonly id: PaneId;
   readonly tabs: PaneTabs<Content>;
   readonly active: PaneTabId;
-  /** Out of view with its size kept, as the explorer is after ⌘B. */
   readonly hidden: boolean;
 }
 
-/** A share divides the room the pixel-sized children leave. */
 export type PaneSize =
   | { readonly kind: "share"; readonly share: number }
   | { readonly kind: "pixels"; readonly pixels: number };
@@ -58,14 +55,12 @@ export interface Split<Content extends TabContent> {
 
 export type LayoutNode<Content extends TabContent> = Pane<Content> | Split<Content>;
 
-/** The splits and panes of one window tab. `focus` runs from the focused pane to the least recent. */
 export interface Layout<Content extends TabContent> {
   readonly root: LayoutNode<Content>;
   readonly focus: readonly [PaneId, ...PaneId[]];
   readonly zoomed: PaneId | null;
 }
 
-/** Where a tab lands: a pane's tab row, or a new pane beside one. */
 export type TabPlace =
   | { readonly kind: "focused" }
   | { readonly kind: "pane"; readonly pane: PaneId; readonly index: number }
@@ -75,7 +70,6 @@ export type TabPlace =
       readonly direction: SplitDirection;
       readonly side: "before" | "after";
     }
-  /** The most recently focused pane holding a tab of this kind, else a new pane after the focused one. */
   | { readonly kind: "for"; readonly tabKind: string };
 
 export type LayoutAction<Content extends TabContent> =
@@ -95,11 +89,8 @@ export type LayoutAction<Content extends TabContent> =
   | { readonly kind: "zoom"; readonly pane: PaneId | null }
   | { readonly kind: "toggle-hidden"; readonly pane: PaneId };
 
-/** What the layout asks of the kinds it holds, and where new ids come from. */
 export interface LayoutRules<Content extends TabContent> {
-  /** Opening content whose identity matches an open tab shows that tab instead. */
   readonly identify: (content: Content) => string | undefined;
-  /** A replaceable tab gives way to the next tab of its kind opened in its pane, as a preview does. */
   readonly replaceable: (content: Content) => boolean;
   readonly newId: () => string;
 }
@@ -115,7 +106,6 @@ export function createLayout<Content extends TabContent>(
   return { root: pane, focus: [pane.id], zoomed: null };
 }
 
-/** Every pane in reading order. */
 export function layoutPanes<Content extends TabContent>(
   node: LayoutNode<Content>,
 ): readonly Pane<Content>[] {
@@ -144,7 +134,6 @@ export function paneOfTab<Content extends TabContent>(
   return layoutPanes(layout.root).find((pane) => pane.tabs.some((entry) => entry.id === tab));
 }
 
-/** A tab is shown when its pane is in view and it is the pane's active tab. */
 export function tabShown<Content extends TabContent>(
   layout: Layout<Content>,
   tab: PaneTabId,
@@ -285,7 +274,6 @@ function setContent<Content extends TabContent>(
   return replacePane(layout, { ...pane, tabs });
 }
 
-/** Moves the pane's active tab into a new pane after it; a pane with one tab has nothing to split off. */
 function split<Content extends TabContent>(
   layout: Layout<Content>,
   paneId: PaneId,
@@ -405,7 +393,6 @@ function placeTab<Content extends TabContent>(
   }
 }
 
-/** Takes the place of a replaceable tab of the same kind, else goes after the active tab. */
 function intoPane<Content extends TabContent>(
   layout: Layout<Content>,
   tab: PaneTab<Content>,
@@ -516,7 +503,6 @@ function insertBeside<Content extends TabContent>(
   );
 }
 
-/** A share halves between the pane and its new neighbour; beside a pixel-sized pane, the newcomer takes an average share. */
 function splitSize<Content extends TabContent>(
   size: PaneSize,
   siblings: SplitChildren<Content>,
@@ -537,7 +523,6 @@ function splitSize<Content extends TabContent>(
   return { kept: size, added: { kind: "share", share } };
 }
 
-/** Removes a tab; an emptied pane leaves the tree. The last tab of the last pane stays. */
 function removeTab<Content extends TabContent>(
   layout: Layout<Content>,
   tabId: PaneTabId,
@@ -589,7 +574,6 @@ function removePane<Content extends TabContent>(
   return children === undefined ? undefined : { ...node, children };
 }
 
-/** A child split running the same way as its parent gives its children to the parent. */
 function flatten<Content extends TabContent>(
   direction: SplitDirection,
   children: readonly SplitChild<Content>[],
@@ -672,7 +656,6 @@ function mapSplit<Content extends TabContent>(
   return replaceChildren(node, (child) => mapSplit(child, splitId, update));
 }
 
-/** Rebuilds a split only when a child changed, so untouched subtrees keep their identity. */
 function replaceChildren<Content extends TabContent>(
   node: Split<Content>,
   update: (child: LayoutNode<Content>) => LayoutNode<Content>,
@@ -689,7 +672,6 @@ function replaceChildren<Content extends TabContent>(
   return rebuilt === undefined ? node : { ...node, children: rebuilt };
 }
 
-/** Keeps `focus` to panes in the tree, in view first, and `zoomed` to a pane that exists. */
 export function normalizeLayout<Content extends TabContent>(
   layout: Layout<Content>,
 ): Layout<Content> {
@@ -739,7 +721,6 @@ function mapTabs<Content extends TabContent>(
   return [update(tabs[0]), ...tabs.slice(1).map(update)];
 }
 
-/** `tabs` with `tab` at `index`, clamped to the row. */
 function insertAt<Content extends TabContent>(
   tabs: readonly PaneTab<Content>[],
   index: number,

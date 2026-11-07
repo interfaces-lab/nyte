@@ -1,12 +1,3 @@
-/**
- * A broker over a real local D1 (wrangler's platform proxy), real jose
- * signatures, and a generated Clerk RSA key, run in Node under a fake `Date`.
- * Each environment's relay is its real `EnvironmentRecord` over `node:sqlite`,
- * reached the way RPC reaches it (arguments and answers cloned); only its
- * sockets are fake: a desktop that answers enrollments, and a record of the
- * socket effects and forwards. The real relay runs in workerd in the
- * `relay-*.test.ts` files. Only the Clerk Backend API is fake outside.
- */
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
@@ -96,7 +87,6 @@ export type DesktopMode =
   | "wrong-digest"
   | "huge";
 
-/** A desktop on its relay: holds the machine key and answers enrollments. */
 export class FakeDesktop {
   readonly key: PrivateJwk;
   environmentId = "";
@@ -104,7 +94,6 @@ export class FakeDesktop {
   mode: DesktopMode = "ok";
   readonly recorded: EnrollmentClaims[] = [];
   readonly consumed = new Set<string>();
-  /** Runs after the desktop records an enrollment and before it answers. */
   beforeReceipt: (() => Promise<void>) | undefined;
 
   constructor(key: PrivateJwk) {
@@ -170,21 +159,11 @@ export interface RelayCall {
   readonly path: string | null;
 }
 
-/**
- * Every environment's relay as the broker sees it: a real record per
- * environment over its own SQLite, a desktop per linked environment that
- * answers enrollments, and `calls`, which records forwards to the desktop
- * and the socket effects a relay would apply (`/reset` ends channels,
- * `/revoke` closes sockets). An outbox write the record owes is drained at
- * once, as the relay's alarm would.
- */
 export class FakeRelay {
   readonly calls: RelayCall[] = [];
   readonly desktops = new Map<string, FakeDesktop>();
-  /** Environments whose desktop holds an authenticated relay socket. */
   readonly connected = new Set<string>();
   readonly storages = new Map<string, DurableObjectSql>();
-  /** The D1 binding every relay reads and writes, as the Worker's own is shared in production. */
   readonly directory: D1Database;
   private readonly records = new Map<string, EnvironmentRecord>();
   private readonly keys: BrokerKeys;
@@ -216,7 +195,6 @@ export class FakeRelay {
     this.storages.clear();
   }
 
-  /** The rows of one relay table across every environment, each with its `environment_id`. */
   rows(table: "devices" | "outbox" | "proofs"): unknown[] {
     return [...this.storages].flatMap(([environmentId, storage]) =>
       storage.sql
@@ -370,9 +348,7 @@ export interface Harness {
   readonly relay: FakeRelay;
   readonly clerkApi: FakeClerkApi;
   readonly logs: LogEntry[];
-  /** Every URL the broker fetched. */
   readonly egress: string[];
-  /** How far the fake `Date` runs ahead of the real one. Setting it moves the clock. */
   readonly clock: { offsetMs: number };
   readonly brokerKeys: BrokerKeys;
   now(): number;
@@ -425,7 +401,6 @@ export interface Harness {
     actor: Actor,
     input: { readonly environmentId: string; readonly deviceId: string },
   ): Promise<Answer>;
-  /** The desktop relays a phone's own release of its device. */
   release(
     desktop: FakeDesktop,
     input: { readonly deviceId: string; readonly environmentId?: string; readonly body?: string },
@@ -459,7 +434,6 @@ export interface Harness {
     input?: { readonly secret?: string; readonly timestamp?: number },
   ): Promise<Answer>;
   sweep(): Promise<void>;
-  /** Rows of a D1 table, or of a relay table across every environment. */
   rows(table: (typeof TABLES)[number] | "devices" | "outbox" | "proofs"): Promise<unknown[]>;
 }
 
@@ -913,7 +887,6 @@ export async function createHarness(): Promise<Harness> {
   return harness;
 }
 
-/** A field of an unknown JSON value, for assertions. */
 export function read(value: unknown, ...path: readonly string[]): unknown {
   return path.reduce<unknown>((current, key) => field(current, key), value);
 }

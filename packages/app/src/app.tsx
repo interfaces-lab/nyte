@@ -38,7 +38,6 @@ function useChatWindowStage(router: AppRouter): void {
   });
 }
 
-/** Tells the desktop which chat this window shows, so it can stay quiet about that one. */
 function useViewedChat(): void {
   useMountEffect(() => {
     const attention = nyte.host.attention;

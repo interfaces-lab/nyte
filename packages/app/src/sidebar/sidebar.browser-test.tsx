@@ -204,7 +204,6 @@ function stored() {
   return Value.Parse(StoredSidebar, parsed);
 }
 
-// The window's own panes, so the window sees what the sidebar opens, as in the app.
 const panes = windowTabs.controller();
 
 function label(name: string): HTMLElement | undefined {

@@ -18,64 +18,24 @@ export type { Citation } from "./citation.ts";
 export { showsAnswer, showsReport, shownContent } from "./user-messages.ts";
 export type { AnswerMessage, ReportMessage } from "./user-messages.ts";
 
-/**
- * A message the user sent, or one a child, job or action delivered for them.
- *
- * @category presentation
- */
 export type UserMessage = Extract<Message, { readonly kind: "user" }>;
 
-/**
- * A message that carries a part: text, thinking, a tool call or a plugin's part.
- *
- * @category presentation
- */
 export type PartMessage = Extract<Message, { readonly kind: "part" }>;
 
-/**
- * A part message holding a tool call.
- *
- * @category presentation
- */
 export type ToolMessage = PartMessage & { readonly state: ToolPartState };
 
-/**
- * A part message holding assistant text.
- *
- * @category presentation
- */
 export type TextMessage = PartMessage & { readonly state: PartState<typeof text> };
 
-/**
- * A part message holding the model's thinking.
- *
- * @category presentation
- */
 export type ThinkingMessage = PartMessage & { readonly state: PartState<typeof thinking> };
 
-/**
- * Narrows to a tool call's part.
- *
- * @category presentation
- */
 export function showsTool(message: Message): message is ToolMessage {
   return isPart(message, tool);
 }
 
-/**
- * Narrows to an assistant text part.
- *
- * @category presentation
- */
 export function showsText(message: Message): message is TextMessage {
   return isPart(message, text);
 }
 
-/**
- * Narrows to a thinking part.
- *
- * @category presentation
- */
 export function showsThinking(message: Message): message is ThinkingMessage {
   return isPart(message, thinking);
 }
@@ -114,25 +74,10 @@ export function readRawPart(message: PartMessage): RawPart {
  */
 export type ToolTense = "running" | "past" | "none";
 
-/**
- * The colour family of a tool line's state.
- *
- * @category presentation
- */
 export type ToolTone = "running" | "attention" | "success" | "failure" | "stopped";
 
-/**
- * The word a tool line adds after its subject when the outcome needs saying.
- *
- * @category presentation
- */
 export type ToolWord = "Needs input" | "Failed" | "Blocked" | "Stopped" | "Interrupted";
 
-/**
- * How every client shows a tool call's state; clients change only case and glyphs.
- *
- * @category presentation
- */
 export interface ToolStatus {
   readonly tense: ToolTense;
   readonly tone: ToolTone;
@@ -220,11 +165,6 @@ export function toolOutput(state: ToolPartState): string {
  */
 export type TaskState = "waiting" | "retrying" | "working" | "background" | "failed" | "done";
 
-/**
- * Screen readers hear the same word sighted users see.
- *
- * @category presentation
- */
 export function taskLabel(state: TaskState): string {
   return TASK_LABELS[state];
 }
@@ -238,11 +178,6 @@ const TASK_LABELS = {
   done: "Done",
 } as const satisfies Readonly<Record<TaskState, string>>;
 
-/**
- * A delegate call's state as a task, for a child no client knows yet.
- *
- * @category presentation
- */
 export function callTaskState(status: ToolStatus): TaskState {
   return CALL_STATES[status.tone];
 }
@@ -255,11 +190,6 @@ const CALL_STATES = {
   stopped: "done",
 } as const satisfies Readonly<Record<ToolTone, TaskState>>;
 
-/**
- * Whether a task has finished, either done or failed.
- *
- * @category presentation
- */
 export function taskEnded(state: TaskState): boolean {
   return state === "done" || state === "failed";
 }
@@ -305,11 +235,6 @@ export type RunStatus =
   | { readonly kind: "retrying"; readonly run: RunId }
   | { readonly kind: "waiting-for-approval"; readonly run: RunId };
 
-/**
- * How many of a head's background items are still working and how many wait on the user.
- *
- * @category presentation
- */
 export type BackgroundWork = HeadInfo["background"];
 
 const IDLE: RunStatus = { kind: "idle" };
@@ -432,25 +357,10 @@ export function planningLabel(planningMs: number): string | undefined {
   return planningMs < SLOW_PLANNING_MS ? PLANNING_LABEL : "Taking longer than expected…";
 }
 
-/**
- * Also holds the live row's place before {@link planningLabel} shows it.
- *
- * @category presentation
- */
 export const PLANNING_LABEL = "Planning next moves";
 
-/**
- * How long without progress before the live row says a run is planning.
- *
- * @category presentation
- */
 export const PLANNING_DELAY_MS = 200;
 
-/**
- * How long without progress before the live row says a run is taking longer than expected.
- *
- * @category presentation
- */
 export const SLOW_PLANNING_MS = 15_000;
 
 /**
@@ -471,11 +381,6 @@ export function mainHead(session: Pick<SessionInfo, "heads">): HeadInfo | undefi
   return session.heads.find((head) => head.name === "main") ?? session.heads[0];
 }
 
-/**
- * A session's state, the same in a list row, a tab and a parent's task list.
- *
- * @category presentation
- */
 export function sessionMark(session: Pick<SessionInfo, "heads">): TaskState {
   const head = mainHead(session);
 
@@ -491,11 +396,6 @@ export function sessionTitle(session: Pick<SessionInfo, "name" | "parent">): str
   return session.name ?? (session.parent === null ? "New chat" : SUBAGENT_TITLE);
 }
 
-/**
- * A child session's title while it has no name or a client doesn't know it yet.
- *
- * @category presentation
- */
 export const SUBAGENT_TITLE = "Subagent";
 
 /**
@@ -528,11 +428,6 @@ export function findCommandArgument(value: string, cursor: number): CommandArgum
   return cursor < start ? undefined : { command, start, query: value.slice(start, cursor) };
 }
 
-/**
- * The `@` mention or `/` command the caret is in, with the word's bounds.
- *
- * @category presentation
- */
 export interface CompletionTrigger {
   readonly kind: "@" | "/";
   readonly start: number;
@@ -563,11 +458,6 @@ export function completionTrigger(
   return { kind, start, end, query: value.slice(start + 1, caret) };
 }
 
-/**
- * The verb for each tense that asserts one.
- *
- * @category presentation
- */
 export type ToolVerbs = Readonly<Record<Exclude<ToolTense, "none">, string>>;
 
 type DelegateClass = Extract<ToolClass, { readonly kind: "delegate" }>;
@@ -601,12 +491,6 @@ const DELEGATE_NOUNS = {
   stop: "stop",
 } as const satisfies Readonly<Record<DelegateRole, string>>;
 
-/**
- * How a custom tool reads: its verbs, and the name and server an MCP tool
- * carries, or a fixed detail for a built-in.
- *
- * @category presentation
- */
 export interface CustomTool {
   readonly verbs: ToolVerbs;
   readonly name?: string;
@@ -666,11 +550,6 @@ function customDetail(custom: CustomTool): string | undefined {
   return custom.server === undefined ? custom.name : `${custom.name} in ${custom.server}`;
 }
 
-/**
- * The verbs a tool call speaks with.
- *
- * @category presentation
- */
 export function toolVerbs(toolClass: ToolClass): ToolVerbs {
   switch (toolClass.kind) {
     case "read":
@@ -724,12 +603,6 @@ export function delegateSubject(toolClass: DelegateClass): string {
   return toolClass.title ?? "subagent";
 }
 
-/**
- * What a call acts on, in full: a path, a command, an agent's title, or a
- * custom tool's name.
- *
- * @category presentation
- */
 export function toolSubject(toolClass: ToolClass): string | undefined {
   switch (toolClass.kind) {
     case "read":
@@ -904,20 +777,8 @@ export function toolDetail(toolClass: ToolClass, cwd: string | undefined): ToolD
   }
 }
 
-/**
- * The step that gets a failed run going again. Each client names it its own
- * way: a command, a key or a settings page.
- *
- * @category presentation
- */
 export type Recovery = "compact" | "sign-in" | "switch-model";
 
-/**
- * What a failed run says: one sentence, its tone, and the step that recovers
- * from it when the user has one to take.
- *
- * @category presentation
- */
 export interface FailureNotice {
   readonly text: string;
   readonly tone: "neutral" | "danger";
@@ -940,11 +801,6 @@ function danger(notice: string, recovery?: Recovery): FailureNotice {
   return { text: notice, tone: "danger", recovery };
 }
 
-/**
- * The notice for a run's failure.
- *
- * @category presentation
- */
 export function failureNotice(failure: Failure): FailureNotice {
   switch (failure.class) {
     case "aborted":

@@ -1,7 +1,3 @@
-/**
- * Account wording, kept as data like `connect-copy.ts`: each ending says what
- * happened, then what to do. `action` names the one control that can help.
- */
 import { DEVICE_LIMIT } from "@nyte-ai/connect";
 import type { BrokerFailure } from "@nyte-ai/connect";
 import { connectCopy } from "../connection/connect-copy.ts";

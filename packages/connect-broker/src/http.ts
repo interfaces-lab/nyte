@@ -1,13 +1,8 @@
-/**
- * Response helpers and bounded reads. Error messages are fixed per code and
- * never echo input.
- */
 import type { ErrorBody, ErrorCode } from "@nyte-ai/connect";
 import type { Static, TSchema } from "typebox";
 import { Value } from "typebox/value";
 import type { Answer } from "./environment-api.ts";
 
-/** Most bytes the broker reads from a request body. */
 const REQUEST_BODY_LIMIT = 16_384;
 
 const STATUS = {
@@ -40,11 +35,6 @@ const MESSAGES = {
   internal: "Internal error.",
 } as const satisfies Record<ErrorCode, string>;
 
-/**
- * A request that ends with an error answer. Thrown inside handlers, answered
- * once at the top. `status` overrides the code's usual one, as 503 does for a
- * dependency that cannot answer now.
- */
 export class Refusal extends Error {
   readonly code: ErrorCode;
   readonly status: number;
@@ -86,10 +76,6 @@ export function refusal(
   return json(init.status ?? STATUS[code], body, init.headers);
 }
 
-/**
- * Read at most `limit` bytes of UTF-8 text. Undefined when the stream is
- * longer, not UTF-8, or fails, so callers never buffer an unbounded answer.
- */
 export async function readText(
   body: ReadableStream<Uint8Array> | null,
   limit: number,
@@ -133,7 +119,6 @@ export async function readText(
   }
 }
 
-/** A request body as text, refused when it is too large or not UTF-8. */
 export async function requestText(request: Request, limit = REQUEST_BODY_LIMIT): Promise<string> {
   const declared = request.headers.get("content-length");
 
@@ -145,7 +130,6 @@ export async function requestText(request: Request, limit = REQUEST_BODY_LIMIT):
   return text;
 }
 
-/** Parse JSON text against a schema. Anything else is undefined. */
 export function parseJson<S extends TSchema>(schema: S, text: string): Static<S> | undefined {
   let value: unknown;
 
@@ -158,7 +142,6 @@ export function parseJson<S extends TSchema>(schema: S, text: string): Static<S>
   return Value.Check(schema, value) ? value : undefined;
 }
 
-/** Parse a request body against its schema or refuse it. */
 export function parseBody<S extends TSchema>(schema: S, text: string): Static<S> {
   const value = parseJson(schema, text);
 
@@ -167,7 +150,6 @@ export function parseBody<S extends TSchema>(schema: S, text: string): Static<S>
   return value;
 }
 
-/** The value a relay answered, or its refusal thrown for the top of the request to answer. */
 export function unwrap<T>(answer: Answer<T>): T {
   if (!answer.ok) throw new Refusal(answer.code, answer.status);
 

@@ -9,21 +9,15 @@ import type { TrayView } from "./tray.ts";
 export interface WindowView {
   readonly tabs: WindowState;
   readonly trays: ReadonlyMap<SessionId, TrayView>;
-  /** Settings has the stage, so no chat is on screen. */
   readonly settings: boolean;
-  /** The workbench is maximized over the chats. */
   readonly covered: boolean;
-  /** The window is visible and has focus. */
   readonly focused: boolean;
   readonly chats: ChatDirectory;
 }
 
 export interface Exposure {
-  /** Chats on screen: every pane of the active tab and the agent its tray shows. */
   readonly shown: ReadonlySet<SessionId>;
-  /** Shown chats the user can read now: uncovered, in a focused window. A chat under its tray's agent is covered. */
   readonly looking: ReadonlySet<SessionId>;
-  /** Chats whose completed run left a reply past the read mark, except those the user is looking at. */
   readonly unread: ReadonlySet<SessionId>;
 }
 
@@ -36,7 +30,6 @@ export function expose(view: WindowView): Exposure {
   return { ...placed, unread };
 }
 
-/** Includes chats the user is looking at: until a visit moves the mark, this still holds the chat just opened. */
 export function unreadOnHost(chats: ChatDirectory): ReadonlySet<SessionId> {
   return new Set(
     [...chats.values()].flatMap((chat) =>

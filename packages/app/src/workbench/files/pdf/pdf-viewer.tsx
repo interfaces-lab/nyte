@@ -88,7 +88,6 @@ function shortcutZoom(event: KeyboardEvent, zoom: number): number | undefined {
   return event.key === "0" ? 1 : undefined;
 }
 
-/** Stays mounted across a document's versions; `file` is undefined while the next one opens. */
 export function PdfViewer(input: {
   readonly file: PdfFile | undefined;
   readonly label: string;

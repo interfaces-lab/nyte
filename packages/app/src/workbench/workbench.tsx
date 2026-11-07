@@ -13,7 +13,7 @@ import { useHostState } from "../data/host.ts";
 import {
   clampWorkbenchWidthToBounds,
   WORKBENCH_CENTER_WIDTH_MIN,
-  WORKBENCH_SHARE_DEFAULT,
+  DEFAULT_WIDTH,
   setActiveWorkbenchWidth,
   workbenchPanelWidth,
   workbenchWidthBounds,
@@ -45,7 +45,6 @@ import { Deferred, loadDeferred } from "../lib/deferred.tsx";
 import { preferences, useSetting } from "../preferences/index.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 
-/** How many workspaces keep their panels mounted: the current one and the last ones visited. */
 const MOUNTED_VIEWS = 3;
 
 interface ResizeState {
@@ -233,16 +232,16 @@ function WorkbenchViewHost({
   const panelRef = useRef<HTMLElement | null>(null);
   const resizeRef = useRef<ResizeState | undefined>(undefined);
   const bounds = workbenchWidthBounds(stageWidth);
-  const compact = view.collapsed === "compact" || bounds.kind === "overlay";
+  const compact = view.collapsed === "compact" || bounds.narrow;
   const maximized = view.layout.kind === "maximized";
   const chatShowing = workbenchShowsChat(view.layout);
   const panelWidth = maximized ? stageWidth : workbenchPanelWidth(view.width, stageWidth);
 
   const setWidth = (width: number): void =>
-    workbench.dispatch(viewKey, { kind: "set-share", share: width / stageWidth });
+    workbench.dispatch(viewKey, { kind: "set-width", pixels: width });
 
   const resetWidth = () =>
-    workbench.dispatch(viewKey, { kind: "set-share", share: WORKBENCH_SHARE_DEFAULT });
+    workbench.dispatch(viewKey, { kind: "set-width", pixels: DEFAULT_WIDTH.pixels });
 
   const beginResize = (event: PointerEvent<HTMLDivElement>): void => {
     if (event.button !== 0) return;
@@ -268,7 +267,12 @@ function WorkbenchViewHost({
     const panel = panelRef.current;
 
     if (panel !== null) {
-      panel.style.width = `${String(resize.nextWidth)}px`;
+      const preview = props(workbenchStyles.panelWidth(resize.nextWidth)).style;
+
+      for (const entry of Object.entries(preview ?? {})) {
+        panel.style.setProperty(entry[0], String(entry[1]));
+      }
+
       setActiveWorkbenchWidth(resize.nextWidth);
     }
   };
@@ -372,12 +376,11 @@ function WorkbenchViewHost({
       {...props(
         workbenchStyles.panel,
         panelVisible && hairline.inlineStart,
-        panelVisible && workbenchStyles.panelOpen,
+        panelVisible && [workbenchStyles.panelOpen, workbenchStyles.panelWidth(view.width.pixels)],
         !panelVisible && (compact ? workbenchStyles.railHostCompact : workbenchStyles.railHost),
-        panelVisible && (maximized || bounds.kind === "overlay") && workbenchStyles.panelOverlay,
+        panelVisible && maximized && workbenchStyles.panelOverlay,
         panelHidden && workbenchStyles.panelHidden,
       )}
-      style={panelVisible ? { width: panelWidth } : undefined}
     >
       {!panelVisible &&
         current &&

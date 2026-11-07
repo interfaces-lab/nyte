@@ -4,7 +4,6 @@ import { Link, type Href } from "expo-router";
 import { css, html } from "react-strict-dom";
 import { controls, radii, textStyles, tokens } from "../theme.ts";
 
-/** The bordered pill used for actions that sit above the composer. */
 export function Chip({
   children,
   onClick,

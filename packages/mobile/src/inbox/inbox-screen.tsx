@@ -30,7 +30,6 @@ import { AccountButton } from "./account-button.tsx";
 import { useDateSections, useFilterCards, useTwoLinePreview } from "../settings/preferences.ts";
 import { controls, useTheme, spacing, textStyles, tokens } from "../theme.ts";
 
-// The menu order is the source of truth; the type and the labels derive from it.
 const filterOrder = ["all", "attention", "working", "pinned"] as const;
 
 type Filter = (typeof filterOrder)[number];
@@ -42,7 +41,6 @@ const filterLabels: Record<Filter, string> = {
   pinned: "Pinned",
 };
 
-/** Typing in the search field must not spend one host request per keystroke. */
 const SEARCH_DEBOUNCE_MS = 250;
 
 function activeToday(session: SessionInfo, now: number): boolean {
@@ -85,16 +83,6 @@ function SessionSection({
   );
 }
 
-/**
- * The session list with the composer for a new conversation. A pull is the only load that blanks the
- * rows, so the spinner belongs to it alone; returning to the app reloads in place.
- *
- * One table drives the sections, the filter menu, and the empty state, so a row never sits in a section
- * the filter of the same name hides. Groups with no filter of their own show only in the unfiltered
- * list. Settled agents split by day only while the date sections are on; otherwise they run together
- * under no heading. Hiding the filter cards also hides the only way out of a filter, so the list then
- * shows everything.
- */
 export function InboxScreen() {
   const theme = useTheme();
   const { live } = useHost();

@@ -177,7 +177,6 @@ export default {
         channel: nightly ? "nightly" : "latest",
       },
   directories: { output: "dist", buildResources: "build" },
-  // Claude Code runs the user's installed `claude`, so the SDK's ~230 MB platform binaries stay out.
   files: ["out/**/*", "package.json", "!**/node_modules/@anthropic-ai/claude-agent-sdk-*/**/*"],
   asarUnpack: ["node_modules/@lydell/**/*", "node_modules/@anthropic-ai/claude-agent-sdk*/**/*"],
   extraResources: [
@@ -186,7 +185,6 @@ export default {
     { from: "../canvas/dist/shell", to: "canvas" },
   ],
   mac: updateTest ? { ...mac, notarize: false } : mac,
-  // Hidden files sit below the 540 × 380 window, or Finder places them beside the app for anyone showing hidden files.
   dmg: {
     contents: [
       { x: 130, y: 220, type: "file" },

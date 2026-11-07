@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import type { ReactElement } from "react";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
+import { Morph } from "@nyte-ai/ui/morph";
 import type { BrowserBoundsMessage } from "../contract/bridge.ts";
 import { BrowserPanel } from "../workbench/browser/browser-panel.tsx";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
@@ -12,7 +13,6 @@ import "../theme/tokens.stylex.ts";
 const URL_UNDER_TEST = "https://example.com/";
 
 interface RecordedBounds extends BrowserBoundsMessage {
-  /** Whether the still had loaded in the slot when the panel sent these bounds. */
   readonly still: boolean;
 }
 
@@ -62,7 +62,7 @@ async function until(predicate: () => boolean, what: string): Promise<void> {
   }
 }
 
-function Harness({ menuOpen }: { menuOpen: boolean }): ReactElement {
+function Harness({ overlay }: { overlay: "menu" | "morph" | undefined }): ReactElement {
   return (
     <>
       <BrowserPanel
@@ -74,7 +74,7 @@ function Harness({ menuOpen }: { menuOpen: boolean }): ReactElement {
         onUrlChange={() => undefined}
         workspacePath={null}
       />
-      <Menu open={menuOpen} onOpenChange={() => undefined}>
+      <Menu open={overlay === "menu"} onOpenChange={() => undefined}>
         <MenuTrigger
           render={
             <button type="button" style={{ position: "fixed", top: "50%", left: "50%" }}>
@@ -86,6 +86,18 @@ function Harness({ menuOpen }: { menuOpen: boolean }): ReactElement {
           <MenuItem>Files</MenuItem>
         </MenuContent>
       </Menu>
+      <Morph.Root open={overlay === "morph"} onOpenChange={() => undefined}>
+        <div style={{ position: "fixed", top: "50%", left: "50%" }}>
+          <Morph.Trigger>Preview</Morph.Trigger>
+        </div>
+        <Morph.Portal>
+          <Morph.Backdrop />
+          <Morph.Popup>
+            <Morph.Title>Image preview</Morph.Title>
+            <Morph.Close>Close</Morph.Close>
+          </Morph.Popup>
+        </Morph.Portal>
+      </Morph.Root>
     </>
   );
 }
@@ -97,16 +109,16 @@ export async function run(): Promise<string> {
   const root = createRoot(container);
   const queryClient = new QueryClient();
 
-  const render = (menuOpen: boolean): void =>
+  const render = (overlay: "menu" | "morph" | undefined): void =>
     flushSync(() =>
       root.render(
         <QueryClientProvider client={queryClient}>
-          <Harness menuOpen={menuOpen} />
+          <Harness overlay={overlay} />
         </QueryClientProvider>,
       ),
     );
 
-  render(false);
+  render(undefined);
 
   await until(() => window.__nyteBounds.length > 0 && last().visible, "the page to be shown");
   const shown = last();
@@ -117,7 +129,7 @@ export async function run(): Promise<string> {
     "The page was captured while nothing covered it",
   );
 
-  render(true);
+  render("menu");
   await until(() => !last().visible, "the page to hide under the menu");
   const hidden = last();
   check(window.__nyteCapture.calls === 1, "Covering the page did not capture it exactly once");
@@ -130,13 +142,13 @@ export async function run(): Promise<string> {
     "Hiding the page moved or resized it instead of leaving its bounds alone",
   );
 
-  render(false);
+  render(undefined);
   await until(() => last().visible, "the page to come back when the menu closes");
   check(still() !== null, "The still left before the page came back over it");
   await until(() => still() === null, "the still to leave once the page shows");
 
   window.__nyteCapture.mode = "hold";
-  render(true);
+  render("menu");
   const covered = performance.now();
   await frames(5);
   check(last().visible, "The page hid before its capture arrived or the wait ran out");
@@ -145,20 +157,31 @@ export async function run(): Promise<string> {
   check(waited >= 400 && waited < 1_000, `The page waited ${String(waited)} ms for its capture`);
   check(still() === null, "A still showed although no capture arrived");
 
-  render(false);
+  render(undefined);
   await until(() => last().visible, "the page to come back after a capture that never arrived");
 
   for (const mode of ["reject", "broken"] as const) {
     window.__nyteCapture.mode = mode;
     const calls = window.__nyteCapture.calls;
-    render(true);
+    render("menu");
     await until(() => window.__nyteCapture.calls > calls, `the ${mode} capture to start`);
     await frames(2);
     check(!last().visible, `The page waited for the cap after a ${mode} capture`);
     check(still() === null, `A still showed after a ${mode} capture`);
-    render(false);
+    render(undefined);
     await until(() => last().visible, `the page to come back after a ${mode} capture`);
   }
+
+  window.__nyteCapture.mode = "still";
+  const calls = window.__nyteCapture.calls;
+  render("morph");
+  await until(() => !last().visible, "the page to hide under Morph");
+  check(
+    window.__nyteCapture.calls === calls + 1 && last().still,
+    "Morph must cover the native page only after its still loads",
+  );
+  render(undefined);
+  await until(() => last().visible && still() === null, "the page to return after Morph closes");
 
   return "passed";
 }

@@ -21,7 +21,6 @@ const surface = create({
   },
 });
 
-/** The raised surface every popup shares: material, radius, `shadowLg` and the hairline frame. */
 export const floatingSurfaceStyles = {
   material: surface.material,
   modalPopup: surface.modalPopup,

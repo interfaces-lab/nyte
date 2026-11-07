@@ -45,36 +45,10 @@ export type {
  */
 export type Plugin = CorePlugin<"core">;
 
-/**
- * What a core plugin's `activate` and hook handlers receive: the session,
- * its environment, the registries, storage and `request`.
- *
- * @category plugins
- * @since 0.1.0
- */
 export type PluginApi = CorePluginApi<"core">;
 
-/**
- * Names a hook a core plugin may handle.
- *
- * @category hooks
- * @since 0.1.0
- */
 export type HookName = SideHookName<"core">;
 
-/**
- * Returns a core hook handler's signature, for a helper factored out of a
- * plugin's `hooks`.
- *
- * @category hooks
- * @since 0.1.0
- */
 export type HookHandler<N extends HookName> = SideHookHandler<"core", N>;
 
-/**
- * Returns a core hook entry: a handler, or a handler with an order.
- *
- * @category hooks
- * @since 0.1.0
- */
 export type HookEntry<N extends HookName> = SideHookEntry<"core", N>;

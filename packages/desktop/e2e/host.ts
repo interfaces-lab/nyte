@@ -23,7 +23,6 @@ const DESKTOP_ROOT = resolve(import.meta.dirname, "..");
 
 const TUI_ROOT = resolve(DESKTOP_ROOT, "../tui");
 
-/** How long the host has to answer on its socket after launchd starts it, and to exit after `bootout`. */
 const HOST_MS = 30_000;
 
 export const E2E_MODEL: ModelRef = { provider: "anthropic", id: POLISH_MODEL };
@@ -34,7 +33,6 @@ const JsonObjectType = Type.Record(Type.String(), Type.Unknown());
 
 export interface E2eHostOptions {
   readonly home: string;
-  /** Where the app resolves its development tailnet sidecar: `<parent>/tui/dist/nyte-tailnet`, as `app.getAppPath()/../tui` resolves it. */
   readonly parentDirectory: string;
   readonly places?: string;
   readonly environment?: Readonly<Record<string, string>>;
@@ -43,19 +41,12 @@ export interface E2eHostOptions {
 
 export interface E2eHost {
   readonly label: string;
-  /** The variables the app needs to find this host's launchd job and generate the same plist. */
   readonly environment: Readonly<Record<string, string>>;
   pid(): Promise<number | null>;
-  /** Stops the host process for `ms`, so the app finds it held. */
   hold(ms: number): Promise<void>;
   close(): Promise<void>;
 }
 
-/**
- * Starts the e2e build's host for `home` as its own launchd job, as the app's development agent would, over
- * the scripted catalog served at a local Anthropic endpoint. The app launched with
- * `environment` finds the same job loaded and only connects to its socket.
- */
 export async function startE2eHost(options: E2eHostOptions): Promise<E2eHost> {
   const nyteHome = join(options.home, ".nyte");
   const log = (line: string): number => options.output.push(`${line}\n`);
@@ -123,7 +114,6 @@ export async function startE2eHost(options: E2eHostOptions): Promise<E2eHost> {
   };
 }
 
-/** Signs `home` in to the scripted Anthropic endpoint with a key and picks its model, through the store the host opens. */
 async function signIn(home: string, origin: string): Promise<void> {
   const models = join(home, ".nyte", "models-store.json");
   await mkdir(join(home, ".nyte"), { recursive: true, mode: 0o700 });
@@ -172,7 +162,6 @@ async function signIn(home: string, origin: string): Promise<void> {
   }
 }
 
-/** The Electron binary the e2e app and its host run. */
 export async function electronExecutable(): Promise<string> {
   const electronRoot = join(DESKTOP_ROOT, "node_modules/electron");
   const executable = await readFile(join(electronRoot, "path.txt"), "utf8");
@@ -200,7 +189,6 @@ async function runningHost(nyteHome: string): Promise<number | null> {
   return socket && Value.Check(RunningHostType, parsed) && alive(parsed.pid) ? parsed.pid : null;
 }
 
-/** Loads `job` into launchd, as the app's development agent does on macOS. */
 async function bootstrapJob(job: HostAgentJob, home: string): Promise<() => Promise<void>> {
   const agents = join(home, "Library", "LaunchAgents");
   const plist = join(agents, `${job.label}.plist`);
@@ -214,7 +202,6 @@ async function bootstrapJob(job: HostAgentJob, home: string): Promise<() => Prom
   };
 }
 
-/** Starts `job` as a detached process, as the app starts its host where there is no launchd. */
 async function spawnJob(job: HostAgentJob): Promise<() => Promise<void>> {
   const log = job.log === null ? null : await open(job.log, "a");
   const output = log === null ? "ignore" : log.fd;
@@ -246,7 +233,6 @@ async function bootout(label: string): Promise<void> {
   await exited(Number(found), "its launchd job's bootout");
 }
 
-/** Waits for `pid` to exit after `after`, and kills it if it outlives the wait. */
 async function exited(pid: number, after: string): Promise<void> {
   resume(pid);
   const gone = await waitFor(async () => !alive(pid), `the host ${String(pid)} to exit`).then(

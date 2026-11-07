@@ -1,13 +1,5 @@
 #!/usr/bin/env node
 
-/**
- * Validates the product palette in src/lib/brand.ts.
- *
- * Site chrome reads Cloud `--nyte-*` tokens. This script does not require
- * docs-local aliases. brand.ts is the source of swatch hexes the /branding
- * page renders.
- */
-
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

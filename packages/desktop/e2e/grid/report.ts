@@ -19,7 +19,6 @@ export interface ElementRef {
 }
 
 export interface Violation {
-  /** The number on the state's overlay. */
   readonly n: number;
   readonly id: string;
   readonly state: string;
@@ -30,7 +29,6 @@ export interface Violation {
   readonly value: string;
   readonly expected: string;
   readonly box: Rect;
-  /** The line it should have met: a rail's x, a row's centre or a facing baseline. */
   readonly target: Finding["target"];
   readonly cause: Cause;
 }
@@ -50,7 +48,6 @@ interface WindowSizes {
   readonly main: { readonly width: number; readonly height: number };
   readonly narrow: { readonly width: number; readonly height: number };
   readonly workArea: { readonly width: number; readonly height: number };
-  /** The device scale factor the window rendered at. */
   readonly scale: number;
 }
 
@@ -74,7 +71,6 @@ const ORDER: readonly RuleId[] = [
   "end-in-view",
 ];
 
-/** A miss the report doesn't count because a reported one covers it, kept so a later run can tell revealed from added. */
 export interface MaskedMiss {
   readonly id: string;
   readonly rule: RuleId;
@@ -84,7 +80,6 @@ export interface MaskedMiss {
   readonly value: string;
 }
 
-/** Turns one state's findings into numbered, sorted violations with their causes. */
 export function stateResult(input: {
   readonly state: string;
   readonly snapshot: Snapshot;
@@ -151,11 +146,6 @@ export function stateResult(input: {
   };
 }
 
-/**
- * A violation's id names what is wrong and where, never a coordinate, so a miss that only moves keeps
- * it: state, rule, region, element key and property. Two findings that share all five get an ordinal
- * in the order of their `detail`, which carries no coordinate either.
- */
 function violationIds(
   state: string,
   findings: readonly Finding[],
@@ -206,7 +196,6 @@ function compareFindings(a: Finding, b: Finding): number {
 const where = (ref: SourceRef | null): string =>
   ref === null ? "no source line" : `${ref.path}:${String(ref.line)}`;
 
-/** The key a cause is counted under in the hill-climb queue. */
 function causeKey(cause: Cause): string {
   switch (cause.kind) {
     case "token":
@@ -233,7 +222,6 @@ const tally = (keys: readonly string[]): [string, number][] => {
   return [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
 };
 
-/** Writes report.json and summary.txt, and returns the summary. */
 export async function writeReport(input: {
   readonly out: string;
   readonly build: Build;

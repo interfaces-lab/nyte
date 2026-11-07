@@ -52,7 +52,6 @@ const modelUsage = Type.Object({
   }),
 });
 
-/** When a record was written, in epoch ms; `null` when its line carries no readable timestamp. */
 const recordedAt = Type.Union([Type.Number(), Type.Null()]);
 
 const snapshot = Type.Object({
@@ -120,7 +119,6 @@ function parseRecordedAt(value: string | undefined): number | null {
   return Number.isNaN(parsed) ? null : parsed;
 }
 
-/** Whether a record falls in `window`, by the host's local day. An undated record counts only toward all time. */
 function recordedIn(window: UsageWindow, at: number | null): boolean {
   if (at === null) return window.sinceDay === null;
   const day = localDay(at);
@@ -128,7 +126,6 @@ function recordedIn(window: UsageWindow, at: number | null): boolean {
   return day <= window.untilDay && (window.sinceDay === null || day >= window.sinceDay);
 }
 
-/** Folds Claude Code transcript lines into usage snapshots. An unparsable last line without its newline is not counted malformed: a writer may still be appending it. */
 const claudeCodeParser: HistoryParser<ClaudeCodeFileScan> = (from) => {
   const keyed = new Map(from?.keyed);
   const anonymous = [...(from?.anonymous ?? [])];
@@ -207,11 +204,6 @@ const claudeCodeParser: HistoryParser<ClaudeCodeFileScan> = (from) => {
   return { line, scan: () => ({ keyed: [...keyed], anonymous: [...anonymous], malformedRecords }) };
 };
 
-/**
- * Reads one history file unless it was last written before `window` opens: no record is dated
- * after its file's last write. The path counts as seen either way, so the cache keeps a file the
- * window passes over.
- */
 async function readHistoryInWindow<Scan>(
   path: string,
   window: UsageWindow,
@@ -386,7 +378,6 @@ const codexRow = Type.Object({ model: Type.String(), usage: modelUsage, at: reco
 
 export type CodexRow = Static<typeof codexRow>;
 
-/** What a rollout's next line is read against: see {@link codexParser}. */
 const codexCursor = Type.Object({
   model: Type.String(),
   sawMeta: Type.Boolean(),
@@ -570,13 +561,6 @@ export async function readCodexUsage(options: CodexUsageOptions): Promise<CodexU
   }
 }
 
-/**
- * Folds one Codex rollout. A `token_count` names no model, so the last `turn_context` does; only
- * the file's first session meta counts, since a fork repeats its ancestors' metas straight after
- * and would move the fork anchor; and a `token_count` equal to the one before is a re-emission
- * at a stream boundary, not new usage. That reading state is the scan's cursor, so a grown
- * rollout resumes against it.
- */
 const codexParser: HistoryParser<CodexFileScan> = (from) => {
   const modern = new Map(from?.modern);
   const legacy = [...(from?.legacy ?? [])];
@@ -700,7 +684,6 @@ export function createUsageScanCaches(): UsageScanCaches {
   return { claudeCode: new UsageScanCache(), codex: new UsageScanCache() };
 }
 
-/** Bump when a parser changes what it keeps, so an older document is dropped instead of misread. */
 const USAGE_SCAN_CACHE_VERSION = 1;
 
 const usageScanCacheDocument = Type.Object({

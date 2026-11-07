@@ -1,4 +1,3 @@
-/** Catalog models for providers that serve their own models.dev listings: model labs and their coding plans. */
 import type {
   AnthropicMessagesCompat,
   Api,
@@ -22,7 +21,6 @@ const VERTEX_BASE_URL = "https://{location}-aiplatform.googleapis.com";
 
 const BEDROCK_INFERENCE_PROFILE_ONLY_MODEL_IDS = new Set(["anthropic.claude-opus-5"]);
 
-/** models.dev lists these aliases, but OpenAI APIs do not accept them. */
 const MODELS_DEV_OPENAI_UNSUPPORTED_MODEL_IDS = new Set(["gpt-5.6"]);
 
 const XAI_RESPONSES_COMPAT: OpenAIResponsesCompat = {
@@ -66,7 +64,6 @@ const QWEN_TOKEN_PLAN_REASONING_EFFORT_UNSUPPORTED_MODEL_IDS = new Set([
   "qwen3.7-plus",
 ]);
 
-// Retired preview id — models.dev may still list it after GA ships.
 const QWEN_TOKEN_PLAN_EXCLUDED_MODEL_IDS = new Set(["qwen3.8-max-preview"]);
 
 /**
@@ -91,7 +88,6 @@ function bedrockBaseUrl(modelId: string): string {
     : "https://bedrock-runtime.us-east-1.amazonaws.com";
 }
 
-/** Amazon Bedrock models, without AI21 Jamba (no tool use in streaming mode) and Mistral 7B Instruct v0 (no system messages). */
 export function bedrockModels(data: ModelsDevCatalog, metadata: ModelsDevMetadata): Model<Api>[] {
   const models: Model<Api>[] = [];
 
@@ -114,7 +110,6 @@ export function bedrockModels(data: ModelsDevCatalog, metadata: ModelsDevMetadat
   return models;
 }
 
-/** Anthropic models, adding Claude Haiku 5.5 until models.dev lists it and correcting Sonnet 5.5's cache-read price. */
 export function anthropicModels(data: ModelsDevCatalog, metadata: ModelsDevMetadata): Model<Api>[] {
   const anthropic = data.anthropic?.models;
 
@@ -173,7 +168,6 @@ export function anthropicModels(data: ModelsDevCatalog, metadata: ModelsDevMetad
   return models;
 }
 
-/** The model a `-latest` Gemini alias currently points at in a provider's listing. */
 function geminiAliasSource(
   models: Record<string, ModelsDevModel>,
   modelId: string,
@@ -186,7 +180,6 @@ function geminiAliasSource(
   return model;
 }
 
-/** Gemini API models; the `-latest` aliases take their target's capabilities and prices. */
 export function googleModels(data: ModelsDevCatalog, metadata: ModelsDevMetadata): Model<Api>[] {
   const google = data.google?.models;
   const models: Model<Api>[] = [];
@@ -213,13 +206,6 @@ export function googleModels(data: ModelsDevCatalog, metadata: ModelsDevMetadata
   return models;
 }
 
-/**
- * Google Vertex Gemini models. The google-vertex models.dev catalog also includes Claude,
- * OpenAI, and other MaaS models that do not use the @google/genai Gemini streaming path the
- * google-vertex provider implements. models.dev reports Vertex cache prices for Gemini 2.5
- * Flash that do not match the official Gemini API standard pricing table; only
- * cachedContentTokenCount counts as cacheRead.
- */
 export function vertexModels(data: ModelsDevCatalog, metadata: ModelsDevMetadata): Model<Api>[] {
   const vertex = data["google-vertex"]?.models;
   const models: Model<Api>[] = [];
@@ -256,7 +242,6 @@ export function vertexModels(data: ModelsDevCatalog, metadata: ModelsDevMetadata
   return models;
 }
 
-/** The tool-capable models of a models.dev provider that need nothing beyond the common fields. */
 export function plainModels(
   data: ModelsDevCatalog,
   source: string,
@@ -279,7 +264,6 @@ export function plainModels(
   return models;
 }
 
-/** OpenAI models over the Responses API. */
 export function openAiModels(data: ModelsDevCatalog, metadata: ModelsDevMetadata): Model<Api>[] {
   return plainModels(
     data,
@@ -316,7 +300,6 @@ export function xaiModels(data: ModelsDevCatalog, metadata: ModelsDevMetadata): 
   return models;
 }
 
-/** Z.ai's international and China coding plans, priced at Z.ai's API rates when models.dev lists them. */
 export function zaiModels(data: ModelsDevCatalog, metadata: ModelsDevMetadata): Model<Api>[] {
   const variants = [
     {
@@ -380,7 +363,6 @@ export function zaiModels(data: ModelsDevCatalog, metadata: ModelsDevMetadata): 
   return models;
 }
 
-/** Mistral models; a missing cache-read price defaults to a tenth of the input price. */
 export function mistralModels(data: ModelsDevCatalog, metadata: ModelsDevMetadata): Model<Api>[] {
   const models: Model<Api>[] = [];
 
@@ -410,7 +392,6 @@ export function mistralModels(data: ModelsDevCatalog, metadata: ModelsDevMetadat
   return models;
 }
 
-/** MiniMax's international and China Anthropic-compatible APIs; the SDK appends /v1/messages. */
 export function minimaxModels(data: ModelsDevCatalog, metadata: ModelsDevMetadata): Model<Api>[] {
   const variants = [
     { key: "minimax", provider: "minimax", baseUrl: "https://api.minimax.io/anthropic" },
@@ -431,11 +412,6 @@ export function minimaxModels(data: ModelsDevCatalog, metadata: ModelsDevMetadat
   return models;
 }
 
-/**
- * Kimi For Coding over its Anthropic-compatible API; the SDK appends /v1/messages. models.dev
- * may expose versioned aliases (k2p5, k2p6, k2p7): they become kimi-for-coding, and are dropped
- * when that id is listed itself. Zero prices fall back to the implied Moonshot API rates.
- */
 export function kimiCodingModels(
   data: ModelsDevCatalog,
   metadata: ModelsDevMetadata,
@@ -489,7 +465,6 @@ export function kimiCodingModels(
   return models;
 }
 
-/** Moonshot's international and China APIs; Kimi K3 reasons, takes effort, and falls back to its list prices. */
 export function moonshotModels(data: ModelsDevCatalog, metadata: ModelsDevMetadata): Model<Api>[] {
   const variants = [
     { key: "moonshotai", provider: "moonshotai", baseUrl: "https://api.moonshot.ai/v1" },
@@ -546,11 +521,6 @@ export function moonshotModels(data: ModelsDevCatalog, metadata: ModelsDevMetada
   return models;
 }
 
-/**
- * Xiaomi MiMo models. Built-in `xiaomi` targets the API billing endpoint (single stable URL,
- * keys from platform.xiaomimimo.com). The three `xiaomi-token-plan-*` providers cover prepaid
- * Token Plan endpoints in cn / ams / sgp.
- */
 export function xiaomiModels(data: ModelsDevCatalog, metadata: ModelsDevMetadata): Model<Api>[] {
   const xiaomiCompat: OpenAICompletionsCompat = {
     requiresReasoningContentOnAssistantMessages: true,
@@ -604,13 +574,6 @@ export function xiaomiModels(data: ModelsDevCatalog, metadata: ModelsDevMetadata
   return models;
 }
 
-/**
- * Alibaba Cloud Model Studio Token Plan models. International and China use separate
- * endpoints and API keys (sk-sp- prefix). The Individual provider reuses the international
- * source and endpoint with a narrower catalog, and throws when models.dev lacks one of its
- * models. models.dev keys are "alibaba-token-plan[-cn]"; Nyte exposes them as
- * "qwen-token-plan[-cn]" plus the Individual catalog view.
- */
 export function qwenTokenPlanModels(
   data: ModelsDevCatalog,
   metadata: ModelsDevMetadata,

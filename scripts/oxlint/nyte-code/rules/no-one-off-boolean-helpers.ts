@@ -33,7 +33,6 @@ const BOOLEAN_METHODS = new Set([
   "test",
 ]);
 
-/** Read the one expression a function body returns; null when the body is more than `return <expression>`. */
 function readSingleExpression(fn: FunctionValue): ESTree.Expression | null {
   if (fn.body === null) return null;
   if (fn.body.type !== "BlockStatement") return fn.body;
@@ -44,7 +43,6 @@ function readSingleExpression(fn: FunctionValue): ESTree.Expression | null {
   return statement.argument;
 }
 
-/** Decide from syntax alone whether an expression evaluates to a boolean. */
 function readsAsBoolean(expression: ESTree.Expression): boolean {
   switch (expression.type) {
     case "ParenthesizedExpression":
@@ -82,7 +80,6 @@ function returnsBoolean(fn: FunctionValue, expression: ESTree.Expression): boole
   return returnType.type === "TSBooleanKeyword";
 }
 
-/** Find the one call site of a helper; null when it is read anywhere else or more than once. */
 function findOnlyCall(variable: Variable, fn: FunctionValue): ESTree.Node | null {
   const reads = variable.references.filter((reference) => reference.isRead());
 
@@ -96,10 +93,6 @@ function findOnlyCall(variable: Variable, fn: FunctionValue): ESTree.Node | null
   return call;
 }
 
-/**
- * Disallow a non-exported helper whose body is one boolean expression and that is called from exactly one
- * place in the file. Inlining it keeps the condition in the chain that uses it.
- */
 export const noOneOffBooleanHelpersRule = defineRule({
   meta: {
     type: "suggestion",

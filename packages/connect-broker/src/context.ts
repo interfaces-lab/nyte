@@ -1,8 +1,3 @@
-/**
- * What one request or scheduled run works with, and the D1 rate limits it
- * obeys. Limits on an environment's own traffic live in its relay
- * (`environment-record.ts`).
- */
 import type { Config, Env } from "./config.ts";
 import { parseConfig } from "./config.ts";
 import type { D1Database, D1PreparedStatement } from "./d1.ts";
@@ -15,7 +10,6 @@ import { hitCount, hitStatement } from "./store/replays.ts";
 type Fetch = (input: string, init: RequestInit) => Promise<Response>;
 
 export interface Dependencies {
-  /** Outbound requests: the Clerk Backend API only. */
   readonly fetch: Fetch;
   readonly log: Logger;
 }
@@ -23,13 +17,10 @@ export interface Dependencies {
 export interface Context extends Dependencies {
   readonly config: Config;
   readonly db: D1Database;
-  /** The relay Durable Object of one environment. */
   readonly environment: (environmentId: string) => EnvironmentApi;
-  /** Run after the answer is sent. Failures are logged, never thrown. */
   readonly defer: (task: Promise<unknown>) => void;
 }
 
-/** The context for `env`, or undefined when a binding is invalid; the failing names are logged. */
 export function createContext(input: {
   readonly env: Env;
   readonly dependencies: Dependencies;
@@ -58,7 +49,6 @@ export function createContext(input: {
 }
 
 const RATE_LIMITS = {
-  /** Opening a link transaction, from one client address: the one route that writes D1 for anyone. */
   address: { windowMs: 60_000, limit: 300 },
   list: { windowMs: 60_000, limit: 60 },
   link: { windowMs: 600_000, limit: 10 },
@@ -72,7 +62,6 @@ const RATE_LIMITS = {
 
 export type RateLimit = keyof typeof RATE_LIMITS;
 
-/** The statement that counts one request against `bucket` for `subject`; `withinLimit` reads its row. */
 export function rateStatement(
   context: Context,
   bucket: RateLimit,
@@ -89,7 +78,6 @@ export function withinLimit(bucket: RateLimit, row: unknown): boolean {
   return hitCount(row) <= RATE_LIMITS[bucket].limit;
 }
 
-/** Count one request against `bucket` for `subject`, or refuse it. */
 export async function throttle(
   context: Context,
   bucket: RateLimit,

@@ -1,7 +1,3 @@
-/**
- * The open set for the docs site: Lucide at stroke 1.5, Central's weight.
- * Used when Central Icons aren't installed; scripts/icons.mjs decides.
- */
 import {
   ArrowDown,
   Bot,

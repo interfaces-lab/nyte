@@ -1,7 +1,3 @@
-/**
- * The Anthropic Messages adapter: request parameters, the event stream, and
- * the simple reasoning mapping.
- */
 import Anthropic from "@anthropic-ai/sdk";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
@@ -108,13 +104,6 @@ export type AnthropicEffort = (typeof ANTHROPIC_EFFORTS)[number];
 
 export type AnthropicThinkingDisplay = "summarized" | "omitted";
 
-/**
- * Stable deferred tool declared whenever native tool changes are in use. Anthropic adds
- * hidden prompt scaffolding as soon as any tool has `defer_loading`; declaring this
- * placeholder from the first request keeps that scaffolding in the cached prefix, so the
- * first real late tool does not invalidate the cache (measured: full miss without it).
- * It is never activated and the model cannot see it.
- */
 const DEFERRED_TOOL_PLACEHOLDER: BetaTool = {
   name: "__pi_deferred_placeholder__",
   description: "Reserved placeholder. Never available. Never call this.",
@@ -132,11 +121,6 @@ function applyAnthropicFastModePricing(usage: Usage, fast: boolean): void {
     usage.cost.input + usage.cost.output + usage.cost.cacheRead + usage.cost.cacheWrite;
 }
 
-/**
- * Native tool changes reference tools by name, so a redefined name cannot be expressed,
- * and Anthropic rejects a tool list where every tool is deferred, so there must be an
- * initial active tool to anchor the deferred ones. Otherwise the current tool list is sent.
- */
 function usesNativeToolChanges(
   model: Model<"anthropic-messages">,
   context: TranscriptContext,
@@ -223,7 +207,6 @@ const AnthropicErrorEventSchema = Type.Object({
   error: Type.Object({ type: Type.String(), message: Type.String() }),
 });
 
-/** The message of an Anthropic `error` event (`{"type":"error","error":{"type","message"}}`), or its raw data when it has none. */
 function anthropicErrorText(data: string): string {
   try {
     const parsed: unknown = JSON.parse(data);
@@ -635,11 +618,6 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
   );
 };
 
-/**
- * Map ThinkingLevel to Anthropic effort levels for adaptive thinking.
- * Note: effort "max" is available on all adaptive-thinking Claude models, while native
- * "xhigh" is only available on Opus 4.7/4.8, Sonnet 5, and Fable 5.
- */
 function mapThinkingLevelToEffort(
   model: Model<"anthropic-messages">,
   level: SimpleStreamOptions["reasoning"],
@@ -662,12 +640,6 @@ function mapThinkingLevelToEffort(
   }
 }
 
-/**
- * Maps a simple reasoning level onto Anthropic thinking. Adaptive models take an effort;
- * budget models clamp the level to what the model supports before choosing a thinking-token
- * budget. An undefined `maxTokens` means the caller set no output cap, so the model cap is
- * used; it is never coerced to 0, which would make the thinking budget the whole `max_tokens`.
- */
 export const streamSimple: StreamFunction<"anthropic-messages", SimpleStreamOptions> = (
   model: Model<"anthropic-messages">,
   context: TranscriptContext,
@@ -735,23 +707,6 @@ function systemBlock(
 
 const AnthropicMetadataSchema = Type.Object({ user_id: Type.String() });
 
-/**
- * The Messages request body.
- *
- * - Native tool changes anchor every later declaration at its system message, so tool results
- *   carry no `tool_reference` loads; otherwise the current tool list is split between up-front
- *   definitions and the ones the transcript loaded via `addedToolNames`.
- * - With native tool changes, initial tools stay active with the cache breakpoint on the last
- *   one. Every later declaration is deferred and only surfaced by its `tool_addition` block;
- *   removed tools stay declared and are withdrawn by `tool_removal`. The request-level list
- *   therefore only grows, keeping the cached prefix intact across tool changes.
- * - Thinking display defaults to "summarized" so Opus 4.7 and Mythos Preview behave like older
- *   Claude 4 models, whose API default is also "summarized".
- * - `disablePreferredStrictTools` sends `prefer` tools non-strict, for the one resend after
- *   Anthropic rejects the strict tool set for its grammar size, tool count, or union limits.
- *   `hasPreferredStrictTools` says whether that resend would differ. A started stream is never
- *   resent.
- */
 function buildParams(
   model: Model<"anthropic-messages">,
   context: TranscriptContext,
@@ -921,11 +876,6 @@ interface StopReasonResult {
   errorMessage?: string;
 }
 
-/**
- * Maps an Anthropic stop reason. `pause_turn` counts as a stop, so the caller resubmits;
- * `stop_sequence` cannot happen because no stop sequences are sent; `sensitive` (content
- * flagged by safety filters, not yet in the SDK types) is an error.
- */
 function mapStopReason(
   delta: Extract<AnthropicEvent, { type: "message_delta" }>["delta"],
 ): StopReasonResult {

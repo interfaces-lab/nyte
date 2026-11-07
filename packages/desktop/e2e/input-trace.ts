@@ -48,7 +48,6 @@ export interface LongTask {
 }
 
 export interface InputTrace {
-  /** Each keydown's Event Timing span, from its timestamp to the paint after it, inside the marked windows. */
   readonly keydownMs: readonly number[];
   readonly renderingMs: readonly number[];
   readonly longTasks: readonly LongTask[];

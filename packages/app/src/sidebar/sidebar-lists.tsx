@@ -542,7 +542,7 @@ export function WorkspaceRow({
       )}
       <MenuSeparator />
       <MenuItem icon="trash" variant="danger" onClick={onRemove}>
-        Remove Workspace from Sidebar
+        Remove
       </MenuItem>
     </>
   );

@@ -214,11 +214,6 @@ interface SurfacePlacement {
   readonly cancelFocus: () => void;
 }
 
-/**
- * Keeps the native view on the slot. When an overlay covers the slot, `createPageCover`
- * puts a still of the page under the view before hiding it, so the overlay paints over the
- * still rather than a blank slot. A still for another page or surface is never drawn.
- */
 function useSurfacePlacement(
   slot: RefObject<HTMLDivElement | null>,
   surface: string,
@@ -373,7 +368,7 @@ function FocusAddressNextFrame({
   return null;
 }
 
-function addElementToChat(picked: BrowserElementPick): void {
+async function addElementToChat(picked: BrowserElementPick): Promise<void> {
   const image =
     picked.image?.startsWith(PNG_DATA_URL) === true
       ? new File([Uint8Array.fromBase64(picked.image.slice(PNG_DATA_URL.length))], "element.png", {
@@ -381,7 +376,7 @@ function addElementToChat(picked: BrowserElementPick): void {
         })
       : undefined;
 
-  addToChat({
+  await addToChat({
     reference: {
       kind: "excerpt",
       source: { kind: "browser", url: picked.url, selector: picked.selector },
@@ -518,8 +513,8 @@ export function BrowserPanel({
     setPicking(true);
     void browserBridge()
       .pickElement({ surface })
-      .then((picked) => {
-        if (picked !== undefined) addElementToChat(picked);
+      .then(async (picked) => {
+        if (picked !== undefined) await addElementToChat(picked);
       })
       .catch((cause: unknown) => setFailure(errorMessage(cause)))
       .finally(() => setPicking(false));

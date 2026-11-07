@@ -92,7 +92,6 @@ export function keepPaths(changes: ChangeSet, paths: ReadonlySet<string>): Chang
   };
 }
 
-/** Whether a chat outside `session`'s family has a live run or a running job in its folder. */
 export async function anotherChatLive(kernel: Kernel, session: SessionId): Promise<boolean> {
   const own = await readSession(kernel.store, session);
 
@@ -127,7 +126,6 @@ export async function anotherChatLive(kernel: Kernel, session: SessionId): Promi
   return roots.some((root) => root !== null && root !== family);
 }
 
-/** The session at the top of `record`'s parents; a missing parent ends the walk there. */
 async function findRoot(store: StoreConnection, record: SessionRecord): Promise<SessionId> {
   if (record.parent === null) return record.id;
   const parent = await readSession(store, record.parent);

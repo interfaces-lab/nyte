@@ -25,10 +25,6 @@ import { indexDelegateNames } from "./delegate-names.ts";
 import { useChatDraft } from "./drafts.ts";
 import { seeWhileForeground } from "./seen.ts";
 
-/**
- * One conversation's screen. A waiting subagent's question holds this conversation too, so it is
- * answered here as well as in the subagent's own conversation, which takes no messages of its own.
- */
 export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
   const { client, live, newerHost } = useHost();
   const insets = useSafeAreaInsets();

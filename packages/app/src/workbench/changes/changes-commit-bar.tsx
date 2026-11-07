@@ -329,7 +329,6 @@ interface CommitRun {
   readonly onPushInterrupted: () => void;
 }
 
-/** Runs every step against the folder open when the run started, even if the window moves to another folder mid-run. */
 async function runCommitAction(run: CommitRun): Promise<CommitBarResult> {
   const { options } = run;
   const plan = commitActionPlan(run.action);

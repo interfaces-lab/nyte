@@ -4,7 +4,6 @@ import type { ESTree } from "@oxlint/plugins";
 
 const EFFECT_HOOKS = new Set(["useEffect", "useLayoutEffect", "useInsertionEffect"]);
 
-/** Read the hook name of `useEffect(…)` or `React.useEffect(…)`, or null for any other call. */
 function readEffectHook(callee: ESTree.Expression | ESTree.Super): string | null {
   if (callee.type === "Identifier") return EFFECT_HOOKS.has(callee.name) ? callee.name : null;
   if (callee.type !== "MemberExpression" || callee.computed) return null;
@@ -12,7 +11,6 @@ function readEffectHook(callee: ESTree.Expression | ESTree.Super): string | null
   return EFFECT_HOOKS.has(callee.property.name) ? callee.property.name : null;
 }
 
-/** Report every direct React effect hook; mount-time work goes through `useMountEffect`, and a real survivor states its reason. */
 export const noDirectEffectRule = defineRule({
   meta: {
     type: "problem",

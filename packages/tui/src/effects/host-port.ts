@@ -104,15 +104,12 @@ export function hostPort(
 
       return { provider: found.id, name: found.name };
     },
-    async logout(provider, driver) {
-      const { provider: found } = await logoutProvider({
+    logout: (provider, driver) =>
+      logoutProvider({
         connection: host,
         driver,
         ...(provider === null ? {} : { providerId: provider }),
-      });
-
-      return { provider: found.id, name: found.name };
-    },
+      }),
     async hostPlugins() {
       for await (const view of host.watch()) return view.plugins;
 

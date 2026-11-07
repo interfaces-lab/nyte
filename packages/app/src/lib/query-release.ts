@@ -3,10 +3,6 @@ import type { QueryCache, QueryFunctionContext } from "@tanstack/react-query";
 
 const held = new WeakMap<QueryCache, Map<string, () => void>>();
 
-/**
- * Gives `release` to the fetch `context` belongs to. A cancelled fetch runs it at once; one that
- * lands runs it when the cache drops the query or a later fetch of the query lands.
- */
 export function releaseWithQuery(
   context: Pick<QueryFunctionContext, "client" | "queryKey" | "signal">,
   release: () => void,

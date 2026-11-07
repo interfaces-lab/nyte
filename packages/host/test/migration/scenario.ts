@@ -47,7 +47,6 @@ const jsonObject = json.filter(isJsonObject);
 
 const waitTarget = schemaArbitrary(withJson(WaitTargetType));
 
-/** What an unsettled call waits on: one target, or several with input waking it too. */
 const waiting = fc.oneof(
   waitTarget,
   fc.record({
@@ -57,7 +56,6 @@ const waiting = fc.oneof(
   }),
 );
 
-/** An edit tool's output as Nyte wrote it before patches were text. */
 const legacyPatch = fc.record({
   path: fc.constantFrom("a.ts", "src/b.ts", "c d.md"),
   status: fc.constantFrom(...FileStatusType.enum),
@@ -73,7 +71,6 @@ const legacyOutcome = fc.record({
   parts: fc.constant([]),
 });
 
-/** Whether a store stamped `from` can still hold what the step reaching `version` rewrites. */
 function older(from: number, version: number): boolean {
   return from < version;
 }
@@ -346,7 +343,6 @@ const described = schemaArbitrary(variant("session")).filter(isJsonObject);
 
 const modelRef = schemaArbitrary(withJson(ModelRefType));
 
-/** A session event as stores logged it before head background counts. */
 function withoutBackground(event: JsonObject) {
   const info = isJsonObject(event.info) ? event.info : {};
   const heads = Array.isArray(info.heads) ? info.heads : [];
@@ -484,7 +480,6 @@ function events(from: number): fc.Arbitrary<readonly Json[]> {
     .map((groups) => groups.flat());
 }
 
-/** A run an older Nyte ended before it kept the run's last record: the run's records, which no ref reaches, and whether its session ref and its `runs/` ref are still there. */
 interface EndedRun {
   readonly session: string;
   readonly run: string;
@@ -529,7 +524,6 @@ const endedRun: fc.Arbitrary<EndedRun> = fc
     }),
   }));
 
-/** A store an older Nyte could have written: its stamp, its refs and their records, its sessions' logged events, each in a form the stamp still allows, and the runs it ended before it kept their last records. */
 export const scenario = fc.integer({ min: 0, max: STORE_VERSION }).chain((from) =>
   fc.record({
     from: fc.constant(from),
@@ -539,7 +533,6 @@ export const scenario = fc.integer({ min: 0, max: STORE_VERSION }).chain((from) 
   }),
 );
 
-/** Writes `input` as the store an older Nyte stamped `input.from` left at `path`: the records through this checkout's store, with the host identity every opened store holds, then the log, the stamp, and no table or index the stamp predates. */
 export async function writeStore(
   path: string,
   input: {

@@ -39,11 +39,6 @@ export function ScanSheet({ visible, onClose, onScan }: ScanSheetProps) {
   );
 }
 
-/**
- * The live camera session. A code stays in frame for many callbacks; a ref latches before React commits,
- * so a second callback in the same frame cannot connect twice. The session is an external system that
- * stays mounted while only its activity follows the app's foreground.
- */
 function ScanSession({ onClose, onScan }: Omit<ScanSheetProps, "visible">) {
   const insets = useSafeAreaInsets();
   const device = useCameraDevice("back");

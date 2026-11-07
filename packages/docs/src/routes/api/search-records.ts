@@ -2,7 +2,6 @@ import { createFileRoute } from "@tanstack/react-router";
 import type { DocumentRecord } from "fumadocs-core/search/algolia";
 import { searchIndexes } from "~/lib/docs";
 
-/** The pages as Algolia records, for `pnpm sync:algolia` to push after a deploy. */
 export const Route = createFileRoute("/api/search-records")({
   server: {
     handlers: {

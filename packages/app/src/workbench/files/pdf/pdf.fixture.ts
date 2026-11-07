@@ -1,13 +1,9 @@
 export interface FixturePage {
-  /** Width and height in PDF units; US Letter when absent. */
   readonly size?: readonly [number, number];
-  /** A content stream; the page's number in large type when absent. */
   readonly content?: string;
-  /** The page tree lists the page, but its object is `null`. */
   readonly broken?: boolean;
 }
 
-/** A PDF with one page per entry, written by hand so tests need no PDF library. */
 export function samplePdf(pages: readonly FixturePage[]): Uint8Array<ArrayBuffer> {
   const objects = [
     "<< /Type /Catalog /Pages 2 0 R >>",

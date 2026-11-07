@@ -40,7 +40,6 @@ export interface Disk {
     { readonly contents: string | Uint8Array; readonly version: FileVersion }
   >;
   readonly directories: Set<string>;
-  /** Hears every `put`, with the file's absolute path; an open `watch` is one listener. */
   readonly watchers: Set<(path: string) => void>;
   put(path: string, contents: string | Uint8Array): void;
   text(path: string): string | undefined;
@@ -777,7 +776,6 @@ function fakeBrowser(provider: FakeProvider): BrowserApi {
   };
 }
 
-/** GitHub with the `gh` CLI missing: a folder with no repository, and no pull request opened. */
 function fakeGitHub(): GitHubApi {
   return {
     state: async () => ({ pullRequest: { kind: "unavailable" } }),

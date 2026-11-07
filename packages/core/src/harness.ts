@@ -30,7 +30,6 @@ import type {
 } from "./index.ts";
 import type { PartRecord, WorkspaceRecord } from "./store.ts";
 
-/** The head a test session drives. */
 export const main: HeadName = asId("main");
 
 export const workspace: WorkspaceId = asId("w1");
@@ -97,7 +96,6 @@ export interface Script {
   started(count: number): Promise<Turn>;
 }
 
-/** Returns a {@link Script} with no turns started. */
 export function script(): Script {
   const turns: Turn[] = [];
 
@@ -221,7 +219,6 @@ export async function setup(
   };
 }
 
-/** The test workspace's environment: `env`, serving no files; given snapshots, an empty folder that takes them. */
 function provider(snapshots: SnapshotsApi | undefined): EnvironmentProvider {
   const base: EnvironmentProvider = {
     kind: "test",

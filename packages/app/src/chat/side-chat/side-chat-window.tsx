@@ -65,7 +65,6 @@ const styles = create({
   },
   note: { margin: 0, color: role.contentSecondary },
   error: { margin: 0, color: role.contentAccent },
-  /** Inset by `s2` at `radius.control`, so its corners follow the window's `radius.surface`. */
   field: {
     display: "flex",
     alignItems: "flex-end",
@@ -109,18 +108,12 @@ const styles = create({
   },
 });
 
-/** Draws side chat `sessionId` with its composer, handing that composer to `inputRef`. */
 export type SideChatConversation = ComponentType<{
   readonly paneId: PaneId;
   readonly sessionId: SessionId;
   readonly inputRef: (handle: ComposerEditorHandle | null) => void;
 }>;
 
-/**
- * `parent`'s side chats in a window over its transcript, kept above the composer. ⌘J opens it
- * from the active pane, on the side chat it last showed or the newest, and folds it again from
- * inside it; `focusMain` hands the keys back to the chat's own composer.
- */
 export function SideChatWindow({
   parent,
   paneId,
@@ -272,7 +265,6 @@ function SideChatBody({
   return <FirstQuestion parent={parent} error={shown.error} question={shown.question} />;
 }
 
-/** A side chat not yet started: its first question starts it. */
 function FirstQuestion({
   parent,
   error,
@@ -330,7 +322,6 @@ function FirstQuestion({
   );
 }
 
-/** Adds the side chat's conversation to the chat's next message, as a chip in its composer. */
 function AddToChat({
   chat,
   title,
@@ -357,7 +348,6 @@ function AddToChat({
   );
 }
 
-/** The folded window: the side chat's title, a spinner while it works, a dot for a reply you haven't seen. */
 function Pill({
   title,
   chat,
@@ -381,7 +371,6 @@ function Pill({
   );
 }
 
-/** ⌘J in the active pane: opens the side chat, or folds it when focus is already in it. */
 function SideChatShortcut({
   parent,
   onFold,

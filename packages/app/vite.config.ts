@@ -4,12 +4,6 @@ import { defaultClientConditions, defineConfig } from "vite";
 import { deferredEntries } from "./src/lib/deferred-entries.ts";
 import { canvasShell, deferredChunks, devConsole, shareCentralIconBase } from "./vite.ts";
 
-/**
- * The browser build of the interface: `index.html` mounts `src/web/entry.tsx`.
- * StyleX compiles @nyte-ai/ui from source here, so it resolves the
- * `nyte-source` condition. An older lightningcss target would polyfill the
- * tokens' light-dark() and relative colours with variables nothing defines.
- */
 export default defineConfig({
   plugins: [
     deferredChunks(deferredEntries),

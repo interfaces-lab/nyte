@@ -1,15 +1,6 @@
-/**
- * Context-window overflow as a function of the failure class, plus the length
- * stop a caller may recover from.
- */
 import type { AssistantMessage } from "@nyte-ai/schema/model";
 import { classifyAssistantFailure } from "./failure.ts";
 
-/**
- * Whether an assistant message overflowed the context window: a provider error
- * that says so, or, with `contextWindow`, a silent overflow the provider accepted
- * or truncated. The error text patterns live in `failure.ts`.
- */
 export function overflowsContext(message: AssistantMessage, contextWindow?: number): boolean {
   return (
     classifyAssistantFailure(message, contextWindow === undefined ? undefined : { contextWindow })

@@ -5,13 +5,6 @@ import { useEffect } from "react";
 import type { SessionInfo } from "@nyte-ai/sdk";
 import { liveRun } from "../view-helpers.ts";
 
-/**
- * WidgetKit renders this content in its own process, over a background that follows the device
- * appearance, and it keeps rendering while the app is suspended. A fixed palette suits one appearance
- * and washes out in the other, so the activity names SwiftUI's adaptive colors instead of the app's
- * brand hexes: they resolve per appearance at draw time, and the Dynamic Island, which is always dark,
- * resolves them as light-on-black.
- */
 const FOREGROUND = "primary";
 
 const MUTED = "secondary";
@@ -74,7 +67,6 @@ function lockScreenUi(working: readonly SessionInfo[], attention: readonly Sessi
   );
 }
 
-/** The Live Activity's lock-screen and Dynamic Island views; a question outranks progress everywhere they show. */
 export function workLiveActivityVariants(
   working: readonly SessionInfo[],
   attention: readonly SessionInfo[],
@@ -119,7 +111,6 @@ export function workLiveActivityVariants(
   return variants;
 }
 
-/** Keep the Live Activity, a native system, in step with session state: start, update, or end it. */
 export function useWorkLiveActivitySync(
   working: readonly SessionInfo[],
   attention: readonly SessionInfo[],

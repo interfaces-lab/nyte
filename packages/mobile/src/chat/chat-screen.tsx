@@ -56,15 +56,9 @@ type ChatScreenProps = {
   delegateNames: ReadonlyMap<SessionId, string>;
   changes: HeadView["changes"] | undefined;
   onAskMerge: () => void;
-  /** Set for a subagent's conversation, which takes no messages of its own. */
   subagent: { parentName: string; onOpenParent: () => void } | undefined;
 };
 
-/**
- * A session's transcript under a floating glass header, with the composer docked above the keyboard.
- * The list spans the window while rows and the composer share one measured column, and the jump pill
- * doubles as the way back to an off-screen question.
- */
 export function ChatScreen({
   state,
   heads,
@@ -194,7 +188,6 @@ export function ChatScreen({
 }
 
 const styles = css.create({
-  /** The route's view is native, so the screen fills by size rather than growing as a flex child. */
   screen: {
     display: "flex",
     flexDirection: "column",

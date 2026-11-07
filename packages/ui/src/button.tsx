@@ -27,7 +27,6 @@ import { appearance, motion, role, shadow, type } from "./styles/vars.stylex.ts"
 import { ControlGlyphs, Icon, IconSwap, type GlyphSize, type IconName } from "./icon.tsx";
 import { Loader } from "./loader.tsx";
 
-/** A loading button is disabled but keeps its look behind the loader. */
 const disabled = "[data-disabled]:not([aria-busy='true'])";
 
 const controlStyles = create({
@@ -112,10 +111,6 @@ const controlStyles = create({
     },
   },
   joinedIcon: { width: `max(var(--_btn-height), ${target.min})` },
-  /**
-   * A joined outline button keeps its old ring: its `::before` is the hit area and its `::after` the
-   * divider, so it can't take `hairline.controlRing`'s forced-colors border. No button uses it today.
-   */
   joinedOutline: {
     boxShadow: {
       default: `inset 0 0 0 1px ${role.strokeTertiary}, ${shadow.shadowSm}`,
@@ -195,10 +190,6 @@ const buttonVariants = create({
   ghost: { backgroundColor: ghostFill },
   outline: {
     backgroundColor: { default: role.bgElevated, [disabled]: role.fillTertiary },
-    /**
-     * Only a condition: StyleX writes a custom property's default outside the cascade layers, where it
-     * would beat a `[disabled]` value inside them. A disabled button keeps the initial, no shadow.
-     */
     "--nyte-hairline-elevation": { default: null, [`:not(${disabled})`]: shadow.shadowSm },
   },
   solid: {

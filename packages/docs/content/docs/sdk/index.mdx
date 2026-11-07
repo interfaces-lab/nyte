@@ -39,7 +39,8 @@ handles.
 
 `sdk.open` starts a host inside your Node process. Use it for a script, a CLI or a server that
 runs the agent itself. With no options it works in the current folder and keeps chats in
-`~/.nyte/nyte.db`, the same store `nyte` uses. It needs Node 26.4 or later.
+`~/.nyte/nyte.db`, the same store `nyte` uses. It runs as a host of its own beside any `nyte host`
+on the machine, and the two share that store. It needs Node 26.4 or later.
 
 `sdk.connect` reaches a host running in another process or on another machine, over HTTP. Use it
 in a browser, a phone app, or any client of a host you started elsewhere. It takes the host's URL
@@ -62,9 +63,11 @@ Connection
 │   ├── view, history, tree, see
 │   ├── heads         create, merge, remove; head(name) for one
 │   ├── run(id), receipt(id), part(id), parts.create
-│   └── info, update, remove, stop, command, completeCommand
+│   └── info, update, remove, fork, stop, command, completeCommand
 ├── workspaces        list, inspect, add, forget, cleanWorktrees
 ├── workspace(id)     info, update, files, git, github, browser, jobs, mcp, changes
+├── projects          create; project(id) for update
+├── catalogs          read
 ├── models            list, login, logout, setDefault, verify, refresh, usage, accounts
 ├── settings          apply
 ├── plugins           replace, check
@@ -83,18 +86,19 @@ from your own scheduler.
 
 ## Packages [#packages]
 
-| Import                    | What it has                                                                                 |
-| ------------------------- | ------------------------------------------------------------------------------------------- |
-| `@nyte-ai/sdk`            | `sdk.open`, `sdk.connect`, `SdkError`, `pagedViews`, `createSendJournal`                    |
-| `@nyte-ai/sdk/client`     | The same without `sdk.open`, plus `openHost` and its row stores, so it never loads the host |
-| `@nyte-ai/host`           | `sqliteStore`, `localProvider` and the deploy targets                                       |
-| `@nyte-ai/host/providers` | `chatOnlyProvider`, for a host with no folder                                               |
-| `@nyte-ai/plugin/core`    | `isPart`, `definePart`, the built-in parts and the core `Plugin` type                       |
-| `@nyte-ai/plugin/client`  | The same part helpers, `defineRenderer` and the client `Plugin` type                        |
-| `@nyte-ai/schema`         | `asId` for typed ids, and `standard` to pass TypeBox schemas where one is expected          |
+| Import                    | What it has                                                                                         |
+| ------------------------- | --------------------------------------------------------------------------------------------------- |
+| `@nyte-ai/sdk`            | `sdk.open`, `sdk.connect`, `SdkError`, `pagedViews`, `createSendJournal`                            |
+| `@nyte-ai/sdk/client`     | The same without `sdk.open`, plus `openHost`, its stores and `headView`, so it never loads the host |
+| `@nyte-ai/host`           | `sqliteStore`, `localProvider` and the deploy targets                                               |
+| `@nyte-ai/host/providers` | `chatOnlyProvider`, for a host with no folder                                                       |
+| `@nyte-ai/plugin/core`    | `isPart`, `definePart`, the built-in parts and the core `Plugin` type                               |
+| `@nyte-ai/plugin/client`  | The same part helpers, `defineRenderer` and the client `Plugin` type                                |
+| `@nyte-ai/schema`         | `asId` for typed ids, and `standard` to pass TypeBox schemas where one is expected                  |
 
 In a browser or React Native bundle, `@nyte-ai/sdk` resolves to a build without the host. Its
-`sdk.open` rejects with `SdkError("unavailable")`.
+`sdk.open` rejects with `SdkError("unavailable")`. `openHost` and its stores come only from
+`@nyte-ai/sdk/client`, on every platform.
 
 ## Where to go next [#where-to-go-next]
 

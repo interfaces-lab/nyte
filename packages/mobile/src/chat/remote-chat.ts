@@ -28,15 +28,10 @@ import {
 } from "../connection/live.ts";
 import { uploadDraft, type DraftContent } from "../media/attachments.ts";
 
-/** The host's answer to a message the SDK's journal holds: the message it became, or why the host refused it. */
 export type SendAnswer =
   | { kind: "sent"; message: Message["id"] }
   | { kind: "refused"; error: string };
 
-/**
- * `taken` once the photos are uploaded and the SDK's journal holds the message: the transcript shows it
- * from then on and the journal retries it while the host is unreachable, so the composer can let go.
- */
 export type SendOutcome =
   | { kind: "taken"; answer: Promise<SendAnswer> }
   | { kind: "failed"; error: string }
@@ -48,7 +43,6 @@ function describeSendError(cause: unknown, newerHost: boolean): string {
     : describeHostError(cause, newerHost);
 }
 
-/** The draft as a message the host can take, with its photos uploaded, or why it couldn't be. */
 async function uploadMessage(
   client: Connection,
   session: Session,
@@ -64,7 +58,6 @@ async function uploadMessage(
   }
 }
 
-/** What kept the head from switching to `model`, or `undefined` once it switched. */
 async function configureModel(
   head: Head,
   model: ModelInfo,
@@ -83,11 +76,6 @@ async function configureModel(
   }
 }
 
-/**
- * A session's live view and what the conversation does to it. `sending` covers only the photo upload;
- * the SDK's journal serializes the sends after it. `withdraw` drops a message the host hasn't started
- * on, and `steerNow` moves a queued one into the running response.
- */
 export function useRemoteChat(client: Connection, sessionId: SessionId, headName?: HeadName) {
   const { newerHost, live } = useHost();
   const session = client.session(sessionId);

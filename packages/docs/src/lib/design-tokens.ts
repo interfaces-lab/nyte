@@ -1,9 +1,3 @@
-/**
- * The design site prints token values from the source that declares them, so
- * a page can never disagree with @nyte-ai/ui. A token is either one value or
- * a fine-pointer default with a coarse-pointer override.
- */
-
 // oxlint-disable-next-line import/default -- Vite's ?raw query makes the file's text the default export.
 import tokensSource from "@nyte-ai/ui/styles/tokens.stylex?raw";
 
@@ -35,10 +29,6 @@ export function declaredToken(name: string): DeclaredToken {
   return token;
 }
 
-/**
- * The px a type token resolves to at the default 13px UI size. Sizes are
- * written as `base * n / 13`, so at the default they are `n`.
- */
 export function atDefaultSize(value: string): string {
   const ratio = /\* ([\d.]+) \/ \d+/.exec(value);
   return ratio ? `${ratio[1]}px` : value;

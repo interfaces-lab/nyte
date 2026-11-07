@@ -100,9 +100,10 @@ const end = await receipt.settled({ signal: AbortSignal.timeout(60_000) });
 ## Retries are already handled
 
 `send` gives the message an id before anything reaches the network, and the message shows in the
-view at once as `unsent`. If the host can't be reached, the SDK resends under the same id until it
-answers, and the host admits the message once. You don't need your own retry loop. Sends to one head
-go out one at a time, in the order you made them.
+view at once as `unsent`: in `session.view()`, and in a head store's view through `unsentSends`, as
+[Render a session](/docs/sdk/guides/render-a-session) shows. If the host can't be reached, the SDK
+resends under the same id until it answers, and the host admits the message once. You don't need
+your own retry loop. Sends to one head go out one at a time, in the order you made them.
 
 Only connection failures are retried. Any other error, such as a hook refusing the message, rejects
 `send` and removes the message from the view.

@@ -1,7 +1,3 @@
-/**
- * Conversion of the neutral transcript and tools into Responses API input,
- * shared by the OpenAI Responses and Codex adapters.
- */
 import type {
   CustomTool,
   FunctionTool,
@@ -40,30 +36,24 @@ import {
 } from "./constrained-sampling.ts";
 import { transformMessages } from "./transform-messages.ts";
 
-/** A function tool as sent; `strict` is omitted for providers that reject or ignore the field. */
 type ResponsesFunctionTool = Omit<FunctionTool, "strict"> & Partial<Pick<FunctionTool, "strict">>;
 
 export type ResponsesTool = CustomTool | ResponsesFunctionTool;
 
-/** Loads deferred tools in place, for providers that support `additional_tools`. */
 interface ResponsesAdditionalToolsItem {
   type: "additional_tools";
   role: "developer";
   tools: ResponsesTool[];
 }
 
-/** A client-executed tool search result, which loads deferred tools for `tool-search` providers. */
 interface ResponsesToolSearchOutputItem extends Omit<ResponseToolSearchOutputItemParam, "tools"> {
   tools: ResponsesTool[];
 }
 
-/** An item the matching provider produced, replayed verbatim. */
 const ReplayedItemSchema = Type.Object({ type: Type.String() });
 
-/** Checkpoint material: the provider's own opaque window of items. */
 const CheckpointItemsSchema = Type.Array(ReplayedItemSchema);
 
-/** A reasoning item stored whole in a thinking signature by the stream processor. */
 const ReplayedReasoningSchema = Type.Object({ type: Type.Literal("reasoning") });
 
 type ReplayedResponsesItem = Static<typeof ReplayedItemSchema>;
@@ -84,7 +74,6 @@ export function encodeTextSignatureV1(id: string, phase?: TextSignatureV1["phase
   return JSON.stringify(payload);
 }
 
-/** A text signature: the v1 JSON payload, or a legacy plain-string message id. */
 function parseTextSignature(
   signature: string | undefined,
 ): { id: string; phase?: TextSignatureV1["phase"] } | undefined {
@@ -138,11 +127,8 @@ function convertToolResultOutput<TApi extends Api>(
 interface ConvertResponsesMessagesOptions {
   includeSystemPrompt?: boolean;
   grammarToolInputProperties?: ReadonlyMap<string, string>;
-  /** Whether later system messages are sent in place; otherwise they are folded into the leading prompt. */
   supportsMidConvoSystemMessages?: boolean;
-  /** Request-list tools that tool results load via `addedToolNames`. */
   deferredTools?: ReadonlyMap<string, Tool>;
-  /** How late tools reach the model: system-message anchors and `addedToolNames` loads share it. */
   deferredToolsMode?: "additional-tools" | "tool-search";
   toolOptions?: ConvertResponsesToolsOptions;
 }
@@ -154,16 +140,6 @@ interface ConvertResponsesToolsOptions {
   deferLoading?: boolean;
 }
 
-/**
- * The transcript as Responses input items.
- *
- * - Tool call item ids must start with `fc_`, and message ids are at most 64 characters.
- * - Tool calls from a different model drop their item id: OpenAI tracks which item ids were
- *   paired with `rs_*` reasoning items, and omitting the id avoids that pairing validation, as
- *   for cross-provider calls. Ids that do not match the replayed item type are dropped too:
- *   `function_call` ids must be `fc_*` and `custom_tool_call` ids `ctc_*`. Foreign ids normalize
- *   to `fc_*`, and a call switches type when grammar tool support differs.
- */
 export function convertResponsesMessages(
   model: Model<"openai-responses" | "azure-openai-responses" | "openai-codex-responses">,
   context: TranscriptContext,

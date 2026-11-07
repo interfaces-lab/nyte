@@ -4,11 +4,6 @@ import type { Login } from "@nyte-ai/core";
 import type { OperationOutput } from "@nyte-ai/protocol";
 import type { Rows } from "./rows.ts";
 
-/**
- * A login streamed over `login.steps`: `begin` starts it on the host and
- * answers the key its steps and answers go by; `known` is that key when the
- * caller knows it before starting.
- */
 export function loginHandle(rows: Rows, begin: () => Promise<string>, known: string | null): Login {
   let started: Promise<string> | null = null;
 

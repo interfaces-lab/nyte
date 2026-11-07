@@ -142,7 +142,6 @@ export function ContextSelector({
   );
 }
 
-/** Mounted while the selector is active: its shortcut opens the menu, and going inactive closes it. */
 function ContextShortcut({
   action,
   mac,

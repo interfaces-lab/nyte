@@ -58,10 +58,6 @@ type Performed =
 
 type PartUpdateOutcome = Awaited<ReturnType<Part<PartDefinition>["update"]>>;
 
-/**
- * Inside a durable step, records that the part landed. Closing deletes the part's ref, so a
- * replayed step reads that record instead of creating the closed part again.
- */
 export async function createPart<K extends PartDefinition>(
   kernel: Kernel,
   context: ConnectionContext,

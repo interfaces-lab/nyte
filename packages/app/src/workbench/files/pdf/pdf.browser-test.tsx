@@ -20,7 +20,6 @@ function check(condition: boolean, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
 
-/** Settles with `promise`, or with "timed out" once `ms` pass. */
 function within<T>(ms: number, promise: Promise<T>): Promise<T | "timed out"> {
   return Promise.race([
     promise,
@@ -68,7 +67,6 @@ async function opensWithoutReadingLaterPages(): Promise<void> {
   );
 }
 
-/** About half a second of drawing: tens of thousands of strokes. */
 const SLOW_PAGE = Array.from(
   { length: 60_000 },
   (_, index) =>
@@ -78,7 +76,6 @@ const SLOW_PAGE = Array.from(
 const nextFrame = () =>
   new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
-/** Polls `read` each frame for up to five seconds until it returns something. */
 async function eventually<T>(read: () => T | undefined): Promise<T | undefined> {
   const end = performance.now() + 5000;
 
@@ -92,7 +89,6 @@ async function eventually<T>(read: () => T | undefined): Promise<T | undefined> 
   return undefined;
 }
 
-/** Letter-sized slots in the scroller and column `createPdfPages` expects, scrolled to page `top`, from 1. */
 function mountPages(file: PdfFile, pages: number, top: number) {
   const scroller = document.createElement("div");
   scroller.style.cssText = "width: 400px; height: 300px; overflow: auto";
@@ -133,7 +129,6 @@ function mountPages(file: PdfFile, pages: number, top: number) {
   };
 }
 
-/** A page only arrives in a message from the worker, so a few microtasks after the queue opens, the first paint is waiting for one. */
 async function teardownMidLoad(): Promise<void> {
   const reader = createPdfReader(new URL(window.pdfWorker));
   const file = await reader.open(samplePdf(Array.from({ length: 6 }, () => ({}))), () => {});

@@ -171,7 +171,6 @@ export type RemoteReach = RemoteAccessPluginId;
 
 export type RemoteAccessPluginId = "cloudflare";
 
-/** The host's tailnet node as `host.tailnet.status` reports it, or `unavailable` when the host runs none. */
 export type TailnetNode = TailnetStatus | { readonly state: "unavailable" };
 
 export interface CloudflareTunnelSettings {
@@ -396,7 +395,6 @@ export interface BrowserFocusMessage {
 
 export type UpdateChannel = "stable" | "nightly";
 
-/** The local store's first open: it started migrating data from an older release, or it is ready. */
 export type StoreOpening = "migrating" | "ready";
 
 export type UpdateState =
@@ -406,7 +404,6 @@ export type UpdateState =
   | { readonly kind: "installing"; readonly version: string }
   | { readonly kind: "failed"; readonly version: string; readonly message: string };
 
-/** The nyte CLI the desktop app ships in its resources: ready to run, or what's wrong with it. */
 export type BundledCli =
   | {
       readonly kind: "ready";
@@ -426,7 +423,6 @@ export type HostEvent =
   | { kind: "workspace_closed" }
   | { kind: "server_changed" }
   | { kind: "open_session"; session: SessionId }
-  /** A chat finished, failed or needs an answer while Nyte is in front, told in the app, not the system. */
   | { kind: "chat_alert"; session: SessionId; state: AlertState; title: string; body: string }
   | { kind: "remote_access_changed" }
   | { kind: "status"; message: string }
@@ -443,7 +439,6 @@ export type HostEvent =
   | {
       kind: "browser_agent_opened";
       owner: string | null;
-      /** The agent's page, which a Browser tab shows instead of opening its own. */
       surface: string;
       url: string;
     };
@@ -489,7 +484,6 @@ export interface BrowserBridge {
   setFocus(message: BrowserFocusMessage): void;
 }
 
-/** The longest terminal notification title and body the desktop posts. */
 export const TERMINAL_NOTICE_LIMITS = { title: 256, body: 1024 } as const;
 
 export interface TerminalNotice {
@@ -497,7 +491,6 @@ export interface TerminalNotice {
   readonly body: string;
 }
 
-/** What the desktop needs to alert you well: the chat a window shows, and notifications to post. */
 export interface AttentionBridge {
   viewing(session: SessionId | null): void;
   notify(notice: TerminalNotice): void;

@@ -127,7 +127,6 @@ export interface OpenOptions {
         dispatch(target: { readonly session: SessionId; readonly head: HeadName }): Promise<void>;
       };
   readonly secrets?: { key(): Promise<Uint8Array> };
-  /** Serves MCP servers to this host's sessions and clients; see {@link McpHub}. */
   readonly mcp?: McpHubFactory;
   /** The serving machine's GitHub CLI login, served as `Connection.github`; absent, its calls throw `SdkError("unavailable")`. */
   readonly github?: GitHubAccountApi;
@@ -204,7 +203,6 @@ export interface Connection {
   readonly credential: CredentialSource;
   readonly sessions: Sessions;
   readonly workspaces: Workspaces;
-  /** The host's projects; `watch()` lists them. */
   readonly projects: Projects;
 
   session(id: SessionId): Session;
@@ -314,7 +312,6 @@ export interface Login {
 
 export type PluginFile = { readonly path: string };
 
-/** A plugin directory loaded file by file: each file that gave a core plugin, with its path, and each that did not, with one issue naming it. */
 export type PluginDirectory = {
   readonly loaded: readonly { readonly plugin: Plugin<"core">; readonly path: string }[];
   readonly failed: readonly { readonly path: string; readonly issue: ValidationIssue }[];

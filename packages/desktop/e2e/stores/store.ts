@@ -94,29 +94,12 @@ export function endedRuns(store: string, session: string): readonly RunEnd[] {
   );
 }
 
-export function storeVersion(store: string): number {
-  return read(store, (database) => {
-    const row = database.prepare("SELECT version FROM store_meta WHERE id = 1").get();
-
-    return typeof row?.version === "number" ? row.version : 0;
-  });
-}
-
 export function integrity(store: string): string {
   return read(store, (database) => {
     const row = database.prepare("PRAGMA integrity_check").get();
 
     return typeof row?.integrity_check === "string" ? row.integrity_check : "unknown";
   });
-}
-
-export function sessionIds(store: string): readonly string[] {
-  return read(store, (database) =>
-    database
-      .prepare("SELECT DISTINCT session FROM log ORDER BY session")
-      .all()
-      .flatMap((row) => (typeof row.session === "string" ? [row.session] : [])),
-  );
 }
 
 export function parkerPid(store: string, session: string): number | null {

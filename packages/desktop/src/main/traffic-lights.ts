@@ -1,7 +1,6 @@
 import { release } from "node:os";
 import { macOSWindowButtonHeight } from "@nyte-ai/app/contract/window-buttons.ts";
 
-/** The app's titlebar height, `--nyte-titlebar-height`; the window buttons center in it. */
 const TITLEBAR_HEIGHT = 40;
 
 export function macOSTrafficLightPosition(zoomFactor: number): Electron.Point {

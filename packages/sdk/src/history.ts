@@ -2,7 +2,6 @@ import type { Message, SessionView, TurnInfo, ViewOptions } from "@nyte-ai/schem
 import type { Head } from "@nyte-ai/core";
 import { pushed } from "./watch.ts";
 
-/** A head's views with its older messages paged in on demand: each view's `messages` are the pages `earlier` loaded, then the messages the watch carries, its `turns` the pages' turns before the watch's, and its `leadingPrompt` the prompt of the turn its first message belongs to when that prompt is not among its messages. A view whose messages and turns are the ones the view before it carried keeps that view's arrays. Iterate it once. */
 type Pageable = Pick<SessionView, "messages" | "turns" | "leadingPrompt">;
 
 export interface PagedViews<V extends Pageable = SessionView> extends AsyncIterable<V> {

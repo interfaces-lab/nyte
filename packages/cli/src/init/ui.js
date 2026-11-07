@@ -1,10 +1,5 @@
 import * as clack from "@clack/prompts";
 
-/**
- * The two faces of init: clack in a terminal, plain lines everywhere else
- * (CI logs, pipes). Both show the same plan with the same marks:
- *   + apply   → apply, and a vendor tool or a person acts   ~ checked again   ✓ done
- */
 export function duration(ms) {
   const seconds = Math.round(ms / 1000);
 
@@ -30,7 +25,6 @@ export function duration(ms) {
  * @property {(step: Step) => void} stepInterrupted
  * @property {(summary: { applied: number, done: number, ms: number }) => void} ready
  */
-/** Plan lines without styling: what to apply first, then what is already done. */
 export function planLines(plan, ctx) {
   const titles = new Map(plan.map((row) => [row.step.id, row.step.title]));
   const width = Math.max(...plan.map((row) => row.step.title.length)) + 3;
@@ -195,7 +189,6 @@ export function clackUI(ctx, next) {
   };
 }
 
-/** Plain lines for logs: no color, no cursor movement, one line per event. */
 export function plainUI(ctx, next, write = (text) => process.stdout.write(`${text}\n`)) {
   const machine = `${ctx.os.name} ${ctx.os.version}`.trim();
   const name = (step) => step.title.toLowerCase();

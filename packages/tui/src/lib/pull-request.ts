@@ -4,7 +4,6 @@ import { GLYPHS } from "./constants.ts";
 
 type CheckState = GitHubCheck["state"];
 
-/** The order a summary names the states in: what needs attention first. */
 const SUMMARY_ORDER: readonly CheckState[] = ["failed", "pending", "passed", "skipped"];
 
 const CHECK_MARKS = {
@@ -52,7 +51,6 @@ function pullRequestLines(pullRequest: GitHubPullRequest): readonly TextLine[] {
   ];
 }
 
-/** What `/pr` shows: the branch's pull request and its checks, or what stands in the way, the machine's `gh` login first; `null` where the host serves no GitHub. */
 export function gitHubLines(
   found: { readonly account: GitHubAccountState; readonly folder: GitHubState } | null,
 ): readonly TextLine[] {

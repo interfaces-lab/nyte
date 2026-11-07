@@ -27,7 +27,11 @@ export const workbenchStyles = create({
     flexShrink: 0,
     paddingInline: space.s2,
   },
-  panelOpen: { minWidth: workbench.panelWidth },
+  panelOpen: {
+    minWidth: 0,
+    width: `clamp(${workbench.widthMin}px, var(--_workbench-width), max(${workbench.widthMin}px, calc(100cqi - ${workbench.centerWidthMin}px)))`,
+  },
+  panelWidth: (pixels: number) => ({ "--_workbench-width": `${pixels}px` }),
   railHost: { width: workbench.railWidth, minWidth: workbench.railWidth },
   railHostCompact: { width: workbench.iconRailWidth, minWidth: workbench.iconRailWidth },
   panelOverlay: {
@@ -36,7 +40,8 @@ export const workbenchStyles = create({
     insetBlock: 0,
     insetInlineEnd: 0,
     minWidth: 0,
-    maxWidth: "100vw",
+    width: "100cqi",
+    maxWidth: "100cqi",
     backgroundColor: role.bgBase,
     "--nyte-hairline-elevation": shadow.shadowWorkbench,
   },

@@ -69,7 +69,6 @@ export type OpenHostOptions = Omit<OpenOptions, "store" | "workspace" | "models"
   /** How plugin files are imported fresh; Node's resolve hook (`nodePluginImport`) by default. A Bun host passes its own. */
   readonly pluginImport?: PluginImport;
   readonly tailnet?: { readonly binary: string };
-  /** Plugins that act through the host's connected clients, called with how to ask the client that offers an action: Nyte.app's browser and canvas previews. */
   readonly clientPlugins?: (actions: ClientActions) => readonly Plugin<"core">[];
   /** How the MCP authorization server fetches a client's metadata document; from public https addresses only by default. */
   readonly fetchClientMetadata?: ClientMetadataFetch;

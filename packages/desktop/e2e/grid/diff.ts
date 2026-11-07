@@ -1,9 +1,3 @@
-/**
- * `pnpm --dir packages/desktop grid:diff <before> <after>` pairs two grid reports' violations by id and
- * labels each one removed, kept, added or revealed. Revealed is a miss the before report masked behind
- * a reported one, at the same value, that shows once the cover is fixed; it isn't new. Exits 1 when
- * anything is added.
- */
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import process from "node:process";
@@ -44,7 +38,6 @@ interface Paired {
   readonly label: Label;
   readonly state: string;
   readonly line: string;
-  /** A kept violation whose value or expected value moved, such as an alignment that shifted with the titlebar. */
   readonly changed: boolean;
 }
 

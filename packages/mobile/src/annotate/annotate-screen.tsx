@@ -47,11 +47,6 @@ const TAP_TOLERANCE = 8;
 
 type Spot = { x: number; y: number };
 
-/**
- * Everything the user drew, newest last. One list keeps points and strokes in
- * the order they were made, so undo is a pop and the comment lives on the point
- * it belongs to.
- */
 type Mark = { kind: "point"; point: AnnotationPoint } | { kind: "stroke"; points: readonly Spot[] };
 
 type Canvas = { width: number; height: number };
@@ -66,7 +61,6 @@ type ResponderDeps = {
   setSelected: (n: number) => void;
 };
 
-/** Touch position as a fraction of the canvas, so marks survive resizing. */
 function toSpot(x: number, y: number, size: Canvas): Spot {
   return {
     x: Math.min(1, Math.max(0, x / size.width)),
@@ -74,11 +68,6 @@ function toSpot(x: number, y: number, size: Canvas): Spot {
   };
 }
 
-/**
- * Taps place numbered points; drags draw strokes. The in-flight drag lives in
- * the responder's own closure and reaches the canvas as `drawing` until release
- * commits it as a mark.
- */
 function createAnnotateResponder(deps: ResponderDeps) {
   const { size, saving, nextNumber, marks, addMark, setDrawing, setSelected } = deps;
   const points = marks.flatMap((mark) => (mark.kind === "point" ? [mark.point] : []));
@@ -147,12 +136,6 @@ function createAnnotateResponder(deps: ResponderDeps) {
   });
 }
 
-/**
- * Draw strokes and numbered point comments over a staged photo. Marks bake into the image on save, so
- * re-editing starts from the flattened capture with its point comments; earlier strokes are already
- * drawn in. The stroke under the finger becomes a mark on release. Only the canvas size, the save lock,
- * and the next point number reach the responder; the drag itself lives in the responder's closure.
- */
 export function AnnotateScreen({ imageId, uri }: { imageId: string; uri: string }) {
   const theme = useTheme();
 
@@ -544,7 +527,6 @@ const nativeStyles = {
     borderRadius: radii.bubble,
     overflow: "hidden",
   } satisfies ViewStyle,
-  /** The comment sits on a white pill over the photo, so it keeps the light palette in either appearance. */
   commentInput: {
     color: themes.light.foreground,
     ...typography.title,

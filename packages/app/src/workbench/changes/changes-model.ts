@@ -41,7 +41,6 @@ const UNKNOWN_STAT: LineStat = { kind: "unknown" };
 const EMPTY_ROWS: readonly VcsChangeRow[] = [];
 
 interface ResolvedChangesScope {
-  /** Uncommitted when the tab names a turn or chat there is nothing to read for. */
   readonly scope: WorkbenchChangesScope;
   readonly value: string;
   readonly rows: ChangeRow["source"];
@@ -130,7 +129,6 @@ const recordedVersions = new WeakMap<readonly ChangeRow[], number>();
 
 let nextRecordedVersion = 0;
 
-/** A number per recorded row list, so a new list from the host reads its patches again. */
 function recordedVersion(rows: readonly ChangeRow[]): number {
   const known = recordedVersions.get(rows);
 
@@ -141,7 +139,6 @@ function recordedVersion(rows: readonly ChangeRow[]): number {
   return nextRecordedVersion;
 }
 
-/** A new key with the same lineage keeps showing the earlier patches as stale until the new ones land. */
 export function patchIdentity(input: {
   readonly resolved: ResolvedChangesScope;
   readonly repository: ChangesRepository | undefined;
@@ -299,7 +296,6 @@ export function sidebarFiles(
   });
 }
 
-/** The scope's file count and line totals, the totals undefined while any row's stat is unknown. */
 export function changeTotals(
   rows: readonly ChangeRow[],
   manifest: ChangeSet | undefined,

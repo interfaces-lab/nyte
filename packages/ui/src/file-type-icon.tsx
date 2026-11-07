@@ -1,9 +1,9 @@
 import { create, props } from "@stylexjs/stylex";
 import { createFileTreeIconResolver, getBuiltInSpriteSheet } from "@pierre/trees";
 import type { ReactElement } from "react";
-import { glyph } from "@nyte-ai/ui/styles/schema.stylex";
-import { role } from "@nyte-ai/ui/styles/vars.stylex";
-import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
+import { glyph } from "./styles/schema.stylex.ts";
+import { role } from "./styles/vars.stylex.ts";
+import { surfaceTheme } from "./surface-theme.ts";
 
 type FileIconTone =
   | "gray"

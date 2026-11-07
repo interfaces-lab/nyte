@@ -1,0 +1,115 @@
+---
+title: Morph
+description: "A dialog that expands from its trigger"
+---
+
+```ts title="Import"
+import { Morph } from "@nyte-ai/ui/morph";
+```
+
+Morph animates between its trigger and popup with a shared layout. Use it to expand a preview without losing its place.
+
+## Usage
+
+- Control `open` and `onOpenChange` on `Morph.Root`.
+- Give the trigger and popup matching content. Keep controls outside the popup's layout box if only the preview should expand.
+- Include `Morph.Title` and a reachable `Morph.Close` inside the popup.
+- Place `Morph.Backdrop` and `Morph.Popup` inside `Morph.Portal`. The portal retains them through the exit animation.
+- Use `initialFocus` and `finalFocus` to choose the controls focused on open and close.
+
+## Anatomy
+
+```tsx
+<Morph.Root open={open} onOpenChange={setOpen}>
+  <Morph.Trigger />
+  <Morph.Portal>
+    <Morph.Backdrop />
+    <Morph.Popup>
+      <Morph.Title />
+      <Morph.Description />
+      <Morph.Close />
+    </Morph.Popup>
+  </Morph.Portal>
+</Morph.Root>
+```
+
+## Examples
+
+```tsx
+import { useState } from "react";
+import { Morph } from "@nyte-ai/ui/morph";
+
+function Preview() {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Morph.Root open={open} onOpenChange={setOpen}>
+      <Morph.Trigger>Open preview</Morph.Trigger>
+      <Morph.Portal>
+        <Morph.Backdrop />
+        <Morph.Popup>
+          <Morph.Title>Preview</Morph.Title>
+          <Morph.Description>A closer look at the selection.</Morph.Description>
+          <Morph.Close>Close</Morph.Close>
+        </Morph.Popup>
+      </Morph.Portal>
+    </Morph.Root>
+  );
+}
+```
+
+## Props
+
+| Part                | Styling                                                                 |
+| ------------------- | ----------------------------------------------------------------------- |
+| `Morph.Root`        | Renders nothing; requires controlled `open`                             |
+| `Morph.Trigger`     | Relatively positioned button, raised during the shared-layout animation |
+| `Morph.Portal`      | Retains the popup through exit                                          |
+| `Morph.Backdrop`    | Fixed scrim                                                             |
+| `Morph.Popup`       | Fixed, centered dialog; content determines its size                     |
+| `Morph.Close`       | Unstyled Base UI button                                                 |
+| `Morph.Title`       | Unstyled Base UI heading                                                |
+| `Morph.Description` | Unstyled Base UI paragraph                                              |
+
+The rendered parts accept `xstyle`, `className` and `style`. Trigger, backdrop and popup use Motion elements internally. The shared layout ID is private to each root. Reduced motion replaces the shared-layout animation with an opacity fade.
+
+The part tables below come from Base UI, MIT, © Material-UI SAS.
+
+### Root
+
+<include>../../base-ui-reference/dialog/Root.md</include>
+
+### Trigger
+
+<include>../../base-ui-reference/dialog/Trigger.md</include>
+
+### Portal
+
+<include>../../base-ui-reference/dialog/Portal.md</include>
+
+### Backdrop
+
+<include>../../base-ui-reference/dialog/Backdrop.md</include>
+
+### Popup
+
+<include>../../base-ui-reference/dialog/Popup.md</include>
+
+### Close
+
+<include>../../base-ui-reference/dialog/Close.md</include>
+
+### Title
+
+<include>../../base-ui-reference/dialog/Title.md</include>
+
+### Description
+
+<include>../../base-ui-reference/dialog/Description.md</include>
+
+## Accessibility
+
+- Base UI names the dialog with `Morph.Title` and describes it with `Morph.Description`.
+- Focus moves inside on open, stays contained, and returns to the trigger on close unless `finalFocus` selects another control.
+- Escape and outside press close the dialog. `disablePointerDismissal` disables outside press.
+- Reduced motion fades the popup without transforming it.

@@ -9,9 +9,7 @@ export interface MarkdownOrigin {
 
 interface InlineContext {
   readonly origin: MarkdownOrigin;
-  /** Emphasis characters that appear more than once in the textblock, so could pair up. */
   readonly paired?: string;
-  /** Soft breaks read as spaces where a line can't break: ATX headings and table cells. */
   readonly singleLine: boolean;
   readonly table: boolean;
 }
@@ -38,7 +36,6 @@ function index(value: unknown): number | undefined {
   return Number.isInteger(value) ? Number(value) : undefined;
 }
 
-/** A block or paragraph left as parsed comes back byte for byte. */
 export function serializeMarkdown(doc: ProseMirrorNode, origin: MarkdownOrigin): string {
   const layout = origin.layout;
   const empty = doc.childCount === 1 && doc.firstChild?.type.name === "paragraph";

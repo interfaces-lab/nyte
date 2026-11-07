@@ -1,14 +1,6 @@
-/**
- * The one `text/event-stream` decoder the adapters share.
- */
-
-/** One dispatched server-sent event. */
 interface ServerSentEvent {
-  /** The `event` field, or null when the event had none. */
   event: string | null;
-  /** The event's `data` lines joined with newlines. */
   data: string;
-  /** Every non-blank line of the event as received, for error reports. */
   raw: string[];
 }
 
@@ -56,10 +48,6 @@ function decodeLine(line: string, state: DecoderState): ServerSentEvent | undefi
   return undefined;
 }
 
-/**
- * Splits complete lines off `buffer`. A trailing CR waits for the next chunk unless `final`,
- * because it may be the first half of a CRLF.
- */
 function* takeLines(buffer: LineBuffer, chunk: string, final: boolean): Generator<string> {
   let start = 0;
 
@@ -98,13 +86,6 @@ function* takeLines(buffer: LineBuffer, chunk: string, final: boolean): Generato
   if (start < chunk.length) buffer.fragments.push(chunk.slice(start));
 }
 
-/**
- * Decodes a `text/event-stream` body per the WHATWG grammar: CR, LF and CRLF line ends split
- * anywhere across chunks, comments, one optional space after the field colon, and a final event
- * flushed at EOF. The body is cancelled when `signal` aborts (rejecting with "Request was
- * aborted"), when no chunk arrives within `idleTimeoutMs` (rejecting with a `TimeoutError`
- * DOMException), and when the consumer stops iterating.
- */
 export async function* iterateServerSentEvents(
   body: ReadableStream<Uint8Array>,
   signal?: AbortSignal,

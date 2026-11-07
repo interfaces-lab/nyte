@@ -1,7 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { findPage } from "~/lib/docs";
 
-/** `/llms.mdx/docs/build/composition/content.md` is that page as Markdown. */
 export const Route = createFileRoute("/llms.mdx/$")({
   server: {
     handlers: {

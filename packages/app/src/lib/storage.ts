@@ -5,7 +5,6 @@ import { Value } from "typebox/value";
 export type StorageArea = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
 interface ReadOptions {
-  /** Earlier builds stored some strings bare; text that isn't JSON is checked as itself. */
   readonly text?: boolean;
 }
 
@@ -42,7 +41,6 @@ export function removeStored(area: StorageArea | undefined, key: string): void {
   guardWrite(() => area.removeItem(key));
 }
 
-/** One of the two guarded calls at the storage boundary: a refused write keeps the stored value and is reported, not thrown. */
 function guardWrite(write: () => void): void {
   try {
     write();
@@ -58,7 +56,6 @@ function guardWrite(write: () => void): void {
 
 const UNREADABLE = Symbol("unreadable");
 
-/** The other guarded call at the storage boundary: anything may have written this text. */
 function parseJson(text: string): unknown {
   try {
     return JSON.parse(text);

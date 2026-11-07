@@ -100,7 +100,7 @@ Paths are relative to the workspace folder. A `version` identifies one state of 
 
 | Method                            | Returns                      | What it does                                                                                                      |
 | --------------------------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `read(path, { as? })`             | `Promise<FileDocument>`      | The file as `text` with `contents` and `version`, or as `image`, `pdf`, `binary` or `large`                       |
+| `read(path, { as? })`             | `Promise<FileDocument>`      | The file as `text` with `contents` and `version`, as `image`, `pdf`, `binary` or `large`, or `missing`            |
 | `bytes(path)`                     | `Promise<ByteReader>`        | The raw bytes                                                                                                     |
 | `stat(path)`                      | `Promise<... \| null>`       | `kind`, `size` and `version`, or `null` when nothing is there                                                     |
 | `write(path, contents, options?)` | `Promise<WriteOutcome>`      | Writes text or bytes. `saved` with the new `version`, `stale` with the current one, or `missing-parent`           |
@@ -162,7 +162,7 @@ Reads need participant authority; every method that changes the repository needs
 | `checkout({ name })`                                        | `Promise<GitOutcome>`           | Checks out a branch                                                                                                          |
 | `push({ setUpstream? })`                                    | `Promise<GitOutcome>`           | Pushes the current branch                                                                                                    |
 
-A scope is `{ kind: "worktree" }`, `"staged"`, `"unstaged"`, `{ kind: "commit", commit }` or
+A scope is `{ kind }` with `worktree`, `staged` or `unstaged`, or `{ kind: "commit", commit }`, or
 `{ kind: "branch", base }`.
 
 Every write takes `{ expect? }`, a git revision from `status()`, and answers a `GitOutcome`:
@@ -269,10 +269,10 @@ owner authority, and a host without MCP throws `SdkError("unavailable")`.
 | `logout(server)`              | `Promise<McpChange>`     | Deletes the server's stored OAuth credentials                                                     |
 
 `user` servers live in `~/.nyte/mcp.json`, and `project` servers in the trusted workspace's
-`.nyte/mcp.json`. [MCP servers](/docs/configure/mcp-servers) covers the file format. Changes answer `updated`, `missing` when no server has that name, or `invalid`
-with a `message`. `login` works like a [model login](/docs/sdk/reference/connection#models): show
-the `open` step's URL, and answer the `paste` step with the URL the browser ended on when the
-browser can't reach the host machine.
+`.nyte/mcp.json`. [MCP servers](/docs/configure/mcp-servers) covers the file format. Changes answer
+`updated`, `missing` when no server has that name, or `invalid` with a `message`. `login` works
+like a [model login](/docs/sdk/reference/connection#models): show the `open` step's URL, and answer
+the `paste` step with the URL the browser ended on when the browser can't reach the host machine.
 
 ```ts
 const mcp = workspace.mcp;

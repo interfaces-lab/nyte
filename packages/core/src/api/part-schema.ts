@@ -9,7 +9,6 @@ import { matchesOutput } from "../util/json-schema.ts";
 
 type Answer<K extends PartDefinition> = NonNullable<Awaited<ReturnType<Part<K>["answer"]>>>;
 
-/** The schemas of the action `name` that `definition` declares; undefined when it declares none by that name. */
 export function findAction(
   definition: Pick<PartDefinition, "actions"> | null,
   name: string,
@@ -19,7 +18,6 @@ export function findAction(
     : undefined;
 }
 
-/** Whether `value` fits `kind`'s state schema; a part opened without its definition takes any state. */
 export function fitsState<K extends PartDefinition, T>(
   kind: K | null,
   value: T,
@@ -27,7 +25,6 @@ export function fitsState<K extends PartDefinition, T>(
   return kind === null || matchesOutput(kind.state, value);
 }
 
-/** Whether `answer`'s input fits the input schema of the action it names; a part opened without its definition takes any answer. */
 export function fitsAnswer<
   K extends PartDefinition,
   A extends { readonly action: PropertyKey; readonly input: unknown },
@@ -38,10 +35,6 @@ export function fitsAnswer<
   return spec !== undefined && matchesOutput(spec.input, answer.input);
 }
 
-/**
- * Whether `value` fits the output schema `action` declares in `declared`, which defaults to `kind`. An action
- * with no output schema, or a null `declared`, returns nothing.
- */
 export function fitsActionOutput<K extends PartDefinition, A extends keyof PartActions<K>>(
   kind: K | null,
   action: A,

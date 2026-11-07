@@ -5,15 +5,12 @@ import type { Plugin } from "../contract/plugin.ts";
 import { readWorkspace } from "../env/environment.ts";
 import { projectTrust } from "../env/trust.ts";
 
-/** The folder, under the home and under a trusted workspace, whose files are plugins. */
 export const PLUGIN_FOLDER = ".nyte/plugins";
 
-/** `<home>/.nyte/plugins`. */
 export function userPluginFolder(home: string): string {
   return `${home.replace(/\/+$/u, "")}/${PLUGIN_FOLDER}`;
 }
 
-/** A trusted local workspace's `.nyte/plugins`, or null for one untrusted or not on this machine. */
 async function projectPluginFolder(kernel: Kernel, workspace: WorkspaceId): Promise<string | null> {
   const record = await readWorkspace(kernel.store, workspace);
 
@@ -24,7 +21,6 @@ async function projectPluginFolder(kernel: Kernel, workspace: WorkspaceId): Prom
   return `${record.target.path.replace(/\/+$/u, "")}/${PLUGIN_FOLDER}`;
 }
 
-/** The plugins `runtime`'s session would load now: its assigned plugins, each file loaded again, or else a new chat's in `workspace`. */
 export async function sessionPlugins(
   kernel: Kernel,
   runtime: PluginRuntime,
@@ -37,7 +33,6 @@ export async function sessionPlugins(
   return [...kernel.plugins.builtins, ...(await loadPlugins(kernel, assigned))];
 }
 
-/** Returns `plugins` with each file loaded through the host's plugin loader, in order. */
 export async function loadPlugins(
   kernel: Kernel,
   plugins: readonly (Plugin<"core"> | PluginFile)[],
@@ -49,7 +44,6 @@ export async function loadPlugins(
   return each.flat();
 }
 
-/** The plugins a new chat in `workspace` loads: the built-ins, the host's, then the folder's own once it is trusted. */
 export async function newChatPlugins(
   kernel: Kernel,
   workspace: WorkspaceId,
@@ -61,7 +55,6 @@ export async function newChatPlugins(
   ];
 }
 
-/** The plugins in a trusted workspace's `.nyte/plugins`, each file on its own: a file that fails is reported on the folder's row and the others still load. */
 async function loadProjectPlugins(
   kernel: Kernel,
   workspace: WorkspaceId,
@@ -92,13 +85,6 @@ async function loadProjectPlugins(
   return found.loaded.map((entry) => entry.plugin);
 }
 
-/**
- * Reloads the host's plugins from `<home>/.nyte/plugins` after a change there: the files that
- * load take the place of those loaded before, beside the host's other plugins, and nothing
- * reloads while every file gives the plugin its last load gave, whether the host took it or not.
- * A file that fails, or whose plugin the host refuses, is reported on its own row, and a row whose
- * file no longer fails is withdrawn.
- */
 export async function reloadUserPlugins(kernel: Kernel): Promise<void> {
   const home = kernel.home;
 
@@ -134,7 +120,6 @@ export async function reloadUserPlugins(kernel: Kernel): Promise<void> {
   reportUserPluginFailures(kernel, loaded, refused, failed);
 }
 
-/** Records a load of `<home>/.nyte/plugins` as the one the next load compares against, puts each file that failed or was refused on its own row, and withdraws the rows of the files that no longer do. */
 export function reportUserPluginFailures(
   kernel: Kernel,
   plugins: readonly Plugin<"core">[],
@@ -152,7 +137,6 @@ export function reportUserPluginFailures(
   kernel.plugins.state.user = { plugins, refused, failing };
 }
 
-/** Whether two plugin lists hold the same objects in the same order. */
 export function samePlugins(
   left: readonly Plugin<"core">[],
   right: readonly Plugin<"core">[],

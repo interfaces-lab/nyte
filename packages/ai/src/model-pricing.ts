@@ -3,7 +3,6 @@ import type { ResponseCreateParamsStreaming } from "openai/resources/responses/r
 
 export const ANTHROPIC_FAST_MODE_COST_MULTIPLIER = 2;
 
-/** Shared by request accounting and model-selection previews. GPT-6 reports Fast mode as a `fast` tier the SDK types do not list. */
 function getServiceTierCostMultiplier(
   model: Pick<Model<Api>, "id">,
   serviceTier: ResponseCreateParamsStreaming["service_tier"] | "fast",
@@ -36,7 +35,6 @@ export function applyServiceTierPricing(
     usage.cost.input + usage.cost.output + usage.cost.cacheRead + usage.cost.cacheWrite;
 }
 
-/** An unknown provider's premium must not be presented as a standard rate. */
 export function getFastModeCostMultiplier(model: Model<Api>): number | undefined {
   switch (model.api) {
     case "openai-responses":

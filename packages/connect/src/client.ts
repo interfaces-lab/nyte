@@ -1,10 +1,3 @@
-/**
- * The phone's broker client. Every call carries a fresh Clerk session JWT from
- * `sessionToken`, sent once and never stored here. Answers are size- and
- * time-bounded and checked against the contract before they are returned.
- * Desktop addresses are never taken from an answer: `relayAddress` derives
- * them from this origin.
- */
 import { Value } from "typebox/value";
 import type { TSchema, Static } from "typebox";
 import { namesBrokerOrigin } from "./encoding.ts";
@@ -27,11 +20,8 @@ import type {
 } from "./schemas.ts";
 
 export type BrokerFailure =
-  /** No signed-in Clerk session to authenticate with. */
   | { readonly kind: "signed_out" }
-  /** The broker or a session token could not be had in time, or the call was cancelled. */
   | { readonly kind: "network" }
-  /** The broker answered outside the contract. */
   | { readonly kind: "bad_response"; readonly status: number }
   | { readonly kind: "refused"; readonly status: number; readonly code: ErrorCode };
 
@@ -48,52 +38,31 @@ export class BrokerError extends Error {
 }
 
 interface BrokerClientOptions {
-  /** `CONNECT_ORIGIN`, a canonical `https://` origin such as `https://connect.example.com`. */
   readonly origin: string;
-  /**
-   * A fresh Clerk session JWT, or null when signed out. Called once per
-   * request, inside its timeout: a lookup still pending when the request
-   * times out or is aborted is abandoned, and its token is never sent.
-   */
   readonly sessionToken: () => Promise<string | null>;
   readonly fetch?: (...args: Parameters<typeof fetch>) => ReturnType<typeof fetch>;
 }
 
 export interface BrokerClient {
   listEnvironments(input: { readonly signal?: AbortSignal }): Promise<EnvironmentList>;
-  /**
-   * Register a device digest with one environment. It resolves once the
-   * desktop recorded the device and the broker activated it; the desktop may
-   * refuse the token for up to `ENROLLMENT_READINESS_SECONDS` while its lease
-   * catches up.
-   */
   enroll(input: {
     readonly environmentId: string;
     readonly request: EnrollRequest;
     readonly signal?: AbortSignal;
   }): Promise<EnrollResponse>;
-  /**
-   * Revoke a device and the Clerk session that enrolled it: the strong
-   * revocation for an owner removing a device or signing out. To drop only
-   * this phone's own credential, call the desktop's `DELETE /_nyte/connect/device`
-   * with that credential instead; the broker offers phones no weaker route.
-   */
   revokeDevice(input: {
     readonly environmentId: string;
     readonly deviceId: string;
     readonly signal?: AbortSignal;
   }): Promise<void>;
-  /** Remove a desktop from the account, its relay, and every device. */
   removeEnvironment(input: {
     readonly environmentId: string;
     readonly signal?: AbortSignal;
   }): Promise<void>;
-  /** What a link code names: the host's own name and the fingerprint to compare. Creates and binds nothing. */
   lookupLinkTransaction(input: {
     readonly userCode: string;
     readonly signal?: AbortSignal;
   }): Promise<LinkTransactionLookup>;
-  /** Bind this account to the key whose fingerprint the user compared. */
   approveLinkTransaction(input: {
     readonly transactionId: string;
     readonly fingerprint: string;
@@ -113,11 +82,6 @@ function id(value: string): string {
   return value;
 }
 
-/**
- * `start()`'s result, unless `signal` aborts first. A promise that cannot be
- * cancelled, such as a Clerk token lookup, is left to settle on its own and
- * its late value is dropped. Never calls `start` once `signal` has aborted.
- */
 function unlessAborted<T>(start: () => Promise<T>, signal: AbortSignal): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     if (signal.aborted) {
@@ -153,7 +117,6 @@ function unlessAborted<T>(start: () => Promise<T>, signal: AbortSignal): Promise
   });
 }
 
-/** The body as text, refused once it passes the limit. */
 async function boundedText(response: Response): Promise<string> {
   const declared = Number(response.headers.get("content-length") ?? "0");
 
@@ -201,14 +164,6 @@ async function boundedText(response: Response): Promise<string> {
   return new TextDecoder().decode(bytes);
 }
 
-/**
- * A broker client bound to `options.origin`. Each request's time bound starts before the session
- * token lookup, so a stalled Clerk cannot hold a call past its timeout or its caller's abort, and a
- * token that arrives as the bound runs out is not sent. The bound uses timers and listeners rather
- * than `AbortSignal.timeout`/`any`, which Hermes may lack. The request init is built apart from the
- * call so runtimes whose `RequestInit` lacks `credentials` (Workers) still accept it; phones and
- * browsers send no cookies with it.
- */
 export function createBrokerClient(options: BrokerClientOptions): BrokerClient {
   if (!namesBrokerOrigin(options.origin))
     throw new Error("The connect origin must be a canonical https:// origin.");

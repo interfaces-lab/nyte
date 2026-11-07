@@ -3,7 +3,6 @@ import type { BunPlugin } from "bun";
 
 const MAIN = fileURLToPath(new URL("main.tsx", import.meta.url));
 
-/** Swaps the CLI entry for one story, so `NYTE_STORY=<id>` runs it without the CLI or a host. */
 export function storyEntry(id: string) {
   return {
     name: "nyte-story",

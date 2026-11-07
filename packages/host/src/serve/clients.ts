@@ -288,7 +288,6 @@ function openClients(): Clients {
   };
 }
 
-/** Asks the first connected client that declared `action` to perform it on the host's own behalf; `not_supported` when none did. */
 export function performOffered(
   server: ServerHost,
   request: { readonly action: string; readonly input: Json; readonly timeoutMs: number },

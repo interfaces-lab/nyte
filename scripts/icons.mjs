@@ -1,18 +1,4 @@
 #!/usr/bin/env node
-/**
- * Picks the icon set for every package that draws icons. Central Icons are
- * licensed per user, so they install only with a CENTRAL_LICENSE_KEY; without
- * one pnpm skips them as optional dependencies and the build uses Lucide, with
- * brand marks from Simple Icons.
- *
- * Each package keeps both sets side by side and imports a generated
- * `selected` module that re-exports one of them. TypeScript and the bundlers
- * only see the selected set, so a checkout without Central still typechecks
- * and its build output holds no Central code.
- *
- * NYTE_ICONS=central|lucide overrides the choice. Runs on install and before
- * the builds that read the selection; writes a file only when it changes.
- */
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import process from "node:process";
@@ -53,7 +39,6 @@ export const ICON_CONSUMERS = [
   },
 ];
 
-/** True when every Central alias the package needs is installed. */
 function centralInstalled(consumer) {
   return consumer.central.every((alias) =>
     existsSync(join(root, consumer.package, "node_modules", alias, "package.json")),
@@ -100,7 +85,6 @@ function selectedSource(consumer, set) {
   ].join("\n");
 }
 
-/** Writes each package's `selected` module and returns what it chose. */
 export function selectIcons(env = process.env) {
   return ICON_CONSUMERS.map((consumer) => {
     const set = iconSet(consumer.name, env);

@@ -5,12 +5,6 @@ import type { SearchProvider, SearchResult } from "@nyte-ai/plugin/core";
 import { readCapped } from "./body.ts";
 import type { Fetch } from "./body.ts";
 
-/**
- * The search providers the web plugin ships, by id and display name.
- *
- * @category plugins
- * @since 0.1.0
- */
 export const PROVIDERS = [
   { id: "exa", name: "Exa" },
   { id: "tavily", name: "Tavily" },
@@ -18,12 +12,6 @@ export const PROVIDERS = [
   { id: "parallel", name: "Parallel" },
 ] as const;
 
-/**
- * Names a search provider the web plugin ships.
- *
- * @category plugins
- * @since 0.1.0
- */
 export type ShippedProvider = (typeof PROVIDERS)[number]["id"];
 
 /**
@@ -195,13 +183,6 @@ export const adapters: {
   },
 };
 
-/**
- * Returns the shipped providers for the search registry, each reading its key
- * through `key` on every search and sending through `fetch`.
- *
- * @category plugins
- * @since 0.1.0
- */
 export function shippedProviders(
   fetch: Fetch,
   key: (provider: ShippedProvider) => Promise<string | undefined>,

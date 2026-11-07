@@ -16,7 +16,6 @@ import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { codeBlockStyles, proseStyles } from "../../chat/markdown/prose.stylex.ts";
 import { markdownStyles } from "./markdown.stylex.ts";
 
-/** An attribute that only the markdown source sets; pasted HTML leaves it at its default. */
 function kept(value: unknown): Attribute {
   return { default: value, rendered: false, parseHTML: () => null };
 }
@@ -25,7 +24,6 @@ function css(styles: { readonly className?: string }): string {
   return styles.className ?? "";
 }
 
-/** An index into the parsed source; a split or pasted node starts without one. */
 const sourceIndex: Attribute = { ...kept(null), keepOnSplit: false };
 
 const HEADINGS = [1, 2, 3, 4, 5, 6] as const;
@@ -371,7 +369,6 @@ const TableCell = Node.create({
   ],
 });
 
-/** The roles prosemirror-tables reads from the schema. */
 const TABLE_ROLES = new Map([
   ["table", "table"],
   ["tableRow", "row"],
@@ -425,7 +422,6 @@ const HardBreak = Node.create({
   },
 });
 
-/** A source line break inside a paragraph, which reads as a space. */
 const SoftBreak = Node.create({
   name: "softBreak",
   group: "inline",
@@ -435,7 +431,6 @@ const SoftBreak = Node.create({
   renderText: () => " ",
 });
 
-/** Markdown the editor can't model (HTML, footnotes, link definitions), kept as written. */
 const RawBlock = Node.create({
   name: "rawBlock",
   group: "block",
@@ -578,7 +573,6 @@ const Origin = Extension.create({
   ],
 });
 
-/** Node views that need React are added by the editor. */
 export const markdownExtensions: Extensions = [
   Doc,
   Text,

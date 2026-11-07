@@ -6,29 +6,18 @@ import type { AttentionDelivery } from "../shared/attention.ts";
 import type { HostWindow } from "../shared/host-window.ts";
 
 export interface AlertWindows {
-  /** The Nyte window with focus, if Nyte is the active app. */
   focused(): HostWindow | undefined;
-  /** The window focused last, opening the saved windows when none is open. */
   latest(): HostWindow;
   reveal(window: HostWindow): void;
   send(window: HostWindow, event: HostEvent): void;
 }
 
-/** A window that has reported the chat it shows, or one still loading with a chat to open once it can. */
 type WindowState =
-  /** The chat on screen as the window reported it; compared with sessions, never trusted as one. */
   | { readonly kind: "ready"; readonly viewed: string | null }
   | { readonly kind: "loading"; readonly opening: SessionId };
 
-/** macOS keeps a notification clickable in Notification Center only while it stays referenced. */
 const KEPT_NOTIFICATIONS = 100;
 
-/**
- * Posts what the host decided deserves your attention: a toast in the window you're using while
- * Nyte is in front, a system notification that opens its chat when it isn't, the Dock badge, and a
- * Dock bounce that stops once you switch to Nyte. Knows which chat each window shows, so it can
- * stay quiet about the one you're looking at.
- */
 export class Alerts {
   readonly #settings: () => DesktopSettings;
   readonly #windows: AlertWindows;
@@ -75,7 +64,6 @@ export class Alerts {
       this.#windows.send(window, { kind: "open_session", session: before.opening });
   }
 
-  /** Terminal notifications are system notifications too, so the page-wide switch silences them. */
   terminal(window: HostWindow, notice: TerminalNotice): void {
     const settings = this.#settings();
 
@@ -85,7 +73,6 @@ export class Alerts {
     );
   }
 
-  /** The window's page loads again; it reports its chat once it's ready, and a chat waiting to open stays. */
   reloading(window: HostWindow): void {
     if (this.#windowStates.get(window)?.kind === "ready") this.#windowStates.delete(window);
   }
@@ -94,7 +81,6 @@ export class Alerts {
     this.#windowStates.delete(window);
   }
 
-  /** A window that has loaded shows it as a toast; otherwise the system says it. */
   #tell(focused: HostWindow | undefined, delivery: AttentionDelivery): void {
     if (focused !== undefined && this.#windowStates.get(focused)?.kind === "ready") {
       this.#windows.send(focused, {

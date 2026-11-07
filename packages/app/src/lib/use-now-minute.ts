@@ -39,7 +39,6 @@ function readMinute(): number {
   return minute;
 }
 
-/** The current time floored to the minute; re-renders the caller when the minute changes. */
 export function useNowMinute(): number {
   return useSyncExternalStore(subscribe, readMinute);
 }

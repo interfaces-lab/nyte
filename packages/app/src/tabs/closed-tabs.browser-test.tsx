@@ -13,12 +13,10 @@ import { tabPlace, tabPlaces } from "./model.ts";
 import { useWindowTabsSync } from "./use-window-tabs.tsx";
 import { windowTabs } from "./window-tabs.ts";
 
-/** A chat outside the host's 50 most active, which its own read still finds. */
 const quiet = sessionRow("quiet", { name: "Quiet" });
 
 const ARCHIVED = asId<"session">("archived");
 
-/** A chat no list carries and its own read doesn't find. */
 const DELETED = asId<"session">("deleted");
 
 const others = Array.from({ length: 50 }, (_, index) => sessionRow(`other-${String(index)}`));

@@ -12,16 +12,12 @@ import { childList, sessionList } from "./directory.ts";
 
 export interface SessionRows {
   readonly rows: ReadonlyMap<SessionId, SessionInfo>;
-  /** Each row as the host lists it, before pending actions: what the host still has. */
   readonly hosted: ReadonlyMap<SessionId, SessionInfo>;
-  /** The root chats in the host's order; until the host lists them, the copy the last window kept. */
   readonly roots: readonly SessionInfo[] | undefined;
-  /** The host's list of every session has arrived, so a row it lacks is read on its own. */
   readonly listed: boolean;
   readonly missing: ReadonlySet<SessionId>;
 }
 
-/** The app's session actions. The rows store applies their pending changes, so it owns them. */
 export const sessionActions = new SessionActions({ client: queryClient, findRow: findSessionRow });
 
 export const sessionRows = (): SessionRows => store.getSnapshot();
@@ -32,12 +28,10 @@ export function findSessionRow(id: SessionId): SessionInfo | undefined {
   return sessionRows().rows.get(id);
 }
 
-/** Also reads `id` on its own while the host's lists don't carry it. */
 export function subscribeSessionRow(id: SessionId, notice: () => void): () => void {
   return ask(asked, id, notice);
 }
 
-/** Also hears every child of `parent`, however many sessions the host's lists carry. */
 export function subscribeChildRows(parent: SessionId, notice: () => void): () => void {
   return ask(askedParents, parent, notice);
 }
@@ -59,7 +53,6 @@ function ask(counts: Map<SessionId, number>, id: SessionId, notice: () => void):
   };
 }
 
-/** Undefined while the row loads, null once it is known missing. */
 export function useSessionRow<S>(
   id: SessionId | undefined,
   select: (session: SessionInfo) => S,
@@ -89,7 +82,6 @@ export function useRootRows(): readonly SessionInfo[] | undefined {
 export const readSession = async (sessionId: SessionId) =>
   (await connected()).session(sessionId).info();
 
-/** For a session the lists don't carry; a missing one reads as null. */
 export function sessionQuery(sessionId: SessionId) {
   return {
     queryKey: keys.session(sessionId),
@@ -301,14 +293,11 @@ const store = derivedStore(
 );
 
 export interface RowSources {
-  /** Most complete first: a session takes its row from the first list that has it. */
   readonly lists: readonly (readonly SessionInfo[] | undefined)[];
   readonly roots: readonly SessionInfo[] | undefined;
-  /** The session as pending renames, pins, archives and deletes leave it; null once deleted. */
   readonly project: (session: SessionInfo) => SessionInfo | null;
 }
 
-/** A row equal to one in `previous` keeps its identity, and so do the map and the roots when nothing in them changed. */
 export function mergeSessionRows(
   sources: RowSources,
   previous: Pick<SessionRows, "rows" | "hosted" | "roots">,

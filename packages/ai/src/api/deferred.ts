@@ -1,7 +1,3 @@
-/**
- * One-shot provider calls. Each loads its client on first use so importing the
- * package root does not bundle every SDK.
- */
 import { providerRequest } from "../model-variants.ts";
 import type { Context, Model } from "../types.ts";
 import type { OpenAICompactResult } from "./openai-compact.ts";

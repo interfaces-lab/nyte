@@ -54,7 +54,6 @@ type PermissionHandoff =
   | { kind: "idle" }
   | { kind: "presenting" | "dismissing"; action: ExtendMode | "manage" };
 
-/** Whether `mode` can open now, needs the system permission prompt first, or failed to load. */
 async function prepareMode(
   mode: ExtendMode,
   camera: { granted: boolean; requestable: boolean },
@@ -72,11 +71,6 @@ async function prepareMode(
   }
 }
 
-/**
- * Plus → glass menu → photo grid or live camera. Geometry is one continuous
- * blend of closed / open / extended, so closing from the grid shrinks straight
- * back to the plus.
- */
 export function AttachmentsMenu({
   progress,
   extendProgress,

@@ -121,7 +121,6 @@ function parseRequestInput(body: unknown): unknown[] {
   return body.input;
 }
 
-// Parse the persisted provider-owned JSON before handing it back to the adapter.
 const savedWindow = Type.Array(
   Type.Union([
     Type.Object({

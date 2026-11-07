@@ -1,8 +1,3 @@
-/**
- * Building blocks for provider auth definitions: the standard env-var api-key
- * auth with a paste-your-key login, and a lazy OAuth wrapper that defers
- * loading Node-only flow code until first use.
- */
 import type { ApiKeyAuth, OAuthAuth } from "./types.ts";
 
 /**

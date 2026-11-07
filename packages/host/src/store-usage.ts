@@ -117,7 +117,6 @@ export function foldUsage(cells: Map<string, UsageCell>, record: UsageRecord): v
   });
 }
 
-/** Request rows after a log rowid, read from the log kind index in rowid order. */
 export const USAGE_EVENTS =
   "SELECT rowid AS id, session, seq, at, event FROM log WHERE json_extract(event, '$.kind') = 'request' AND rowid > ?";
 
@@ -238,19 +237,13 @@ export function projectUsageReport(
   };
 }
 
-/**
- * Request usage folded into cells, through log row `through`. The log only grows, so a later read
- * folds just the rows after `through`; a store whose earlier rows changed is folded again whole.
- */
 export interface StoreUsageCache {
   path: string;
   /** Cells bucket requests by local day, so another time zone refolds them. */
   timeZone: string;
   through: number;
-  /** How many request rows `through` covers, which tells a rewritten or replaced store apart. */
   requests: number;
   readonly sessions: Map<SessionId, Map<string, UsageCell>>;
-  /** Whether a read folded rows since the cache was last saved. */
   changed: boolean;
 }
 
@@ -358,7 +351,6 @@ export function readNyteUsage(
   }
 }
 
-/** Folds the request rows after `cache.through` into `cache`, first emptying it when the rows it covers no longer match. */
 function foldNewRequests(database: DatabaseSync, path: string, cache: StoreUsageCache): void {
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
@@ -415,7 +407,6 @@ function foldNewRequests(database: DatabaseSync, path: string, cache: StoreUsage
   }
 }
 
-/** Bump when what a cell keeps changes, so an older document is dropped instead of misread. */
 const STORE_USAGE_CACHE_VERSION = 1;
 
 const amount = Type.Number();

@@ -16,7 +16,6 @@ const styles = create({
   count: { color: role.contentAccent },
 });
 
-/** The hue carries the meaning, so each count takes its scope's accent ink. */
 export function ChangeStats({
   added,
   removed,

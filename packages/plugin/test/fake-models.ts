@@ -117,7 +117,6 @@ export const env: ExecutionEnv = {
   close: async () => undefined,
 };
 
-/** Composes a host as `composeHost` does, with its kernel beside it, for tests that read kernel state. */
 async function composed(
   options: ComposeOptions,
 ): Promise<ServedHost & { readonly kernel: Kernel }> {

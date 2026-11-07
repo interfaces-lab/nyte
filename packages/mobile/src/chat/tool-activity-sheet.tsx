@@ -222,7 +222,6 @@ function readOutput(outcome: ToolOutcome): string | undefined {
   }
 }
 
-/** Where a detail row leads once the sheet has dismissed. */
 type Destination = { kind: "file"; path: string } | { kind: "session"; id: SessionId };
 
 function ActivityDetail({

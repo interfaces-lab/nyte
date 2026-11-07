@@ -14,7 +14,6 @@ type Inside =
   | { readonly kind: "inside"; readonly path: string }
   | { readonly kind: "invalid"; readonly reason: "root" | "outside" };
 
-/** Platforms whose rename fails while something holds a file under it open. */
 const LOCKING = platform === "win32";
 
 const RENAME_ATTEMPTS = 8;
@@ -23,26 +22,10 @@ const RENAME_BACKOFF_MS = 250;
 
 const HOLDING = "nyte-trash";
 
-/** Every hold this host process made, by token: what `restore` puts back. A restart purges the rest. */
 const holds = new Map<TrashToken, { readonly held: string; readonly original: string }>();
 
-/** Holding folders already cleared of an earlier process's holds. */
 const purged = new Set<string>();
 
-/**
- * Moves, copies, new folders and trash for a folder over `node:fs`, each one native call. Every path
- * resolves against `root`; the root itself and anything outside it are `invalid`. A move or copy
- * never replaces what is at `to` (`stale { exists }`), except a move to the same entry under another
- * case on a case-insensitive disk (same device and 64-bit inode, paths equal ignoring case). A
- * folder never goes into itself, through a linked parent either. `move` is `fs.rename` (`invalid {
- * cross-device }` on `EXDEV`); `copy` is `fs.cp` keeping links as they are and removing what it
- * made when it fails; on Windows a rename refused with `EPERM`, `EACCES` or `EBUSY` is retried for
- * about two seconds, then `busy`. Between the check and the rename another writer can still create
- * `to`; node has no rename that refuses to replace, so that race is accepted. `trash` renames the
- * entry into `<git common dir>/nyte-trash/<token>/`, `unavailable` outside a repository or when
- * that folder is on another device; holds live until this host process ends, and the first trash
- * after a start removes every hold an earlier process left.
- */
 export function localTransfers(root: string): Transfers {
   const inside = (path: string): Inside => {
     const target = resolve(root, path);
@@ -182,7 +165,6 @@ export function localTransfers(root: string): Transfers {
   };
 }
 
-/** Whether `target` lies inside `source`, comparing real paths so a linked parent counts. */
 async function into(source: string, target: string): Promise<boolean> {
   const real = await realpath(source).catch(() => source);
   const parent = await nearestReal(dirname(target));
@@ -223,7 +205,6 @@ async function renameRetrying(from: string, to: string, attempt = 1): Promise<Tr
   }
 }
 
-/** The repository's shared git folder's hold, cleared of earlier processes' holds; null outside a repository. */
 async function holdingFolder(root: string): Promise<string | null> {
   const ran = await run("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], {
     cwd: root,

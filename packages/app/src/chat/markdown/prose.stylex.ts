@@ -73,7 +73,6 @@ export const proseStyles = create({
     listStyleType: "revert",
   },
   listItem: { whiteSpace: "normal" },
-  /** A task list's checkbox: a 16px control centred on its line, so it lands on whole pixels. */
   taskCheckbox: {
     boxSizing: "border-box",
     width: control.height2xs,
@@ -209,11 +208,11 @@ export const proseStyles = create({
     whiteSpace: "pre",
   },
   imageLabel: { color: role.contentSecondary },
+  imageSpacing: { display: "inline-flex", maxWidth: "100%", marginBlock: space.s2 },
   image: {
     display: "block",
     maxWidth: "100%",
     height: "auto",
-    marginBlock: space.s2,
     borderRadius: radius.control,
     outlineWidth: 1,
     outlineStyle: "solid",

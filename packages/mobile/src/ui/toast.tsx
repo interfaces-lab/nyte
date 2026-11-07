@@ -75,7 +75,6 @@ function push(kind: ToastKind, title: string, body?: string) {
   emit();
 }
 
-/** Fire a transient banner from anywhere — no hook or context needed. */
 export const toast = {
   show: (title: string, body?: string) => push("default", title, body),
   success: (title: string, body?: string) => push("success", title, body),
@@ -88,10 +87,6 @@ function subscribe(listener: () => void) {
   return () => listeners.delete(listener);
 }
 
-/**
- * One toast. Reduced motion swaps the slide for a fade, so the enter still reads as an arrival; the exit
- * runs once the store marks it leaving, while a drag moves the card directly.
- */
 function ToastCard({ item }: { item: ToastItem }) {
   const theme = useTheme();
   const reduceMotion = useReducedMotion();
@@ -167,7 +162,6 @@ function ToastCard({ item }: { item: ToastItem }) {
   );
 }
 
-/** Mounted once the store marks the toast leaving: fades it out, then removes it. */
 function ToastExit(props: {
   id: number;
   offset: SharedValue<number>;
@@ -188,7 +182,6 @@ function ToastExit(props: {
   return null;
 }
 
-/** Mounts once under the root layout; renders above the composer. */
 export function Toaster() {
   const insets = useSafeAreaInsets();
   const toasts = useSyncExternalStore(subscribe, () => items);
@@ -252,6 +245,5 @@ const styles = css.create({
     minWidth: 0,
     gap: 1,
   },
-  /** RSD's weak-type check rejects a style whose only prop is the non-CSS lineClamp, so it rides with a real text prop. */
   body: { lineClamp: 2, textAlign: "start" },
 });

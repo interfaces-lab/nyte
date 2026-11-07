@@ -44,7 +44,6 @@ import { buildBaseOptions, simpleReasoningEffort } from "./simple-options.ts";
 
 const OPENAI_TOOL_CALL_PROVIDERS = new Set(["openai", "openai-codex", "opencode"]);
 
-// OpenAI Responses rejects max_output_tokens below 16.
 const OPENAI_RESPONSES_MIN_OUTPUT_TOKENS = 16;
 
 function getCompat(model: Model<"openai-responses">): Required<OpenAIResponsesCompat> {
@@ -82,11 +81,6 @@ function getPromptCacheOptions(
   return undefined;
 }
 
-/**
- * The Responses request body as sent. The SDK's create params cannot carry replayed checkpoint
- * items, function tools without `strict`, or reasoning efforts newer than its union, such as
- * "max", which the API accepts.
- */
 type ResponsesRequest = Omit<ResponseCreateParamsStreaming, "input" | "tools" | "reasoning"> & {
   input: ResponsesInput;
   tools?: ResponsesTool[];
@@ -176,7 +170,6 @@ export async function compactOpenAIResponsesContext(
   return readOpenAICompactResponse(response, model, serviceTier);
 }
 
-/** Streams an OpenAI Responses request. */
 export const stream: StreamFunction<"openai-responses", OpenAIResponsesOptions> = (
   model: Model<"openai-responses">,
   context: TranscriptContext,
@@ -326,15 +319,6 @@ function createClient(input: {
   });
 }
 
-/**
- * The Responses request body.
- *
- * - Later system messages anchor their own tool additions, and `addedToolNames` on a tool result
- *   only loads request-list tools the transcript did not anchor, so nothing is declared twice.
- * - Stateless (`store: false`) providers continue reasoning across turns only when every response
- *   carries its encrypted reasoning back, so xAI and Copilot always request it.
- * - `samplingParams` merge last, so custom keys override the named request fields.
- */
 function buildParams(
   model: Model<"openai-responses">,
   context: TranscriptContext,

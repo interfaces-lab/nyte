@@ -71,7 +71,7 @@ const renameParameters = standard(
 const renameTool: ToolDefinition<Infer<typeof renameParameters>> = {
   name: "session_rename",
   description:
-    "Rename the current session. Use a short, specific title that summarizes the work being done.",
+    "Rename this chat when the user asks for a new name; chats get a title on their own. Use a short, specific title.",
   parameters: renameParameters,
   class: (args) => ({ kind: "custom", label: `Renaming to ${args.title.trim()}` }),
   effects: "none",

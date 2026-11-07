@@ -31,19 +31,16 @@ type JsonObject = { readonly [key: string]: Json };
 
 const NAME_LIMIT = 64;
 
-/** The longest a call may run in all, however often its progress resets the per-request timeout. */
 const CALL_LIMIT_MS = 10 * 60_000;
 
 const DRAFT_2020_12 = Meta["https://json-schema.org/draft/2020-12/schema"];
 
-/** JSON Schema draft-04 through 2020-12, by `$schema` URI without its scheme or empty fragment; draft-03's boolean `required` is no provider's. */
 const DRAFTS = new Map(
   Object.entries(Meta)
     .filter(([uri]) => !uri.includes("draft-03"))
     .map(([uri, meta]) => [draftKey(uri), meta] as const),
 );
 
-/** The exposure `entry` gives `tool`: an exact `toolExposure` key, else the first matching pattern, else the server's. */
 export function toolExposure(entry: McpServerEntry, tool: string): McpExposure {
   const exact = entry.toolExposure.find(([pattern]) => pattern === tool);
 
@@ -53,18 +50,11 @@ export function toolExposure(entry: McpServerEntry, tool: string): McpExposure {
   return matched?.[1] ?? entry.exposure;
 }
 
-/** A server's listed tools that sessions get, and why each of the others is left out. */
 export type CheckedTools = {
   readonly usable: readonly Tool[];
   readonly issues: readonly ValidationIssue[];
 };
 
-/**
- * Splits a server's listed tools into those whose input schema is JSON Schema
- * for an object, which providers accept, and an issue for each of the rest.
- * A tool with a bad schema would fail every request that declares it, so no
- * session gets it.
- */
 export function checkToolSchemas(server: string, tools: readonly Tool[]): CheckedTools {
   const usable: Tool[] = [];
   const issues: ValidationIssue[] = [];
@@ -88,11 +78,6 @@ export function checkToolSchemas(server: string, tools: readonly Tool[]): Checke
   return { usable, issues };
 }
 
-/**
- * Checks `schema` against the draft its `$schema` names, or when it names none typebox knows,
- * against every draft: servers emit draft-07 tuples and draft-04 boolean bounds without saying
- * so. Errors are reported against the named draft, else 2020-12.
- */
 function findSchemaProblem(schema: Tool["inputSchema"]): string | null {
   if (schema["type"] !== "object") return 'its type is not "object"';
   const declared = schema["$schema"];
@@ -114,14 +99,12 @@ function draftKey(uri: string): string {
   return uri.replace(/^https?:\/\//, "").replace(/#$/, "");
 }
 
-/** Calls one of the server's tools over its live connection, its `traceparent` carried to the server; throws when the server is not connected. */
 export type McpCall = (
   name: string,
   args: Record<string, unknown>,
   options: McpRequestOptions & { readonly traceparent?: string },
 ) => Promise<CallToolResult>;
 
-/** An `McpClient` whose requests carry a `traceparent` given in their options to the server in `params._meta`, where MCP's trace-context convention puts it. */
 export class TracingMcpClient extends McpClient {
   override request<Result = unknown>(
     method: string,
@@ -143,11 +126,6 @@ export class TracingMcpClient extends McpClient {
   }
 }
 
-/**
- * Turns a server's listed tools into session tools named
- * `mcp__<server>__<tool>`, in the namespace `mcp__<server>` (alias
- * `<server>`) that carries the server's description and instructions.
- */
 export function bridgeTools(
   entry: McpServerEntry,
   listed: { readonly tools: readonly Tool[]; readonly instructions: string | null },
@@ -196,7 +174,6 @@ function globMatches(pattern: string, value: string): boolean {
   return new RegExp(`^${source}$`).test(value);
 }
 
-/** One listed tool as a session tool. Codemode's go unlisted like `deferred` ones; the session's prompt names their server instead. */
 function bridge(
   entry: McpServerEntry,
   tool: Tool,
@@ -288,11 +265,6 @@ function toolProgress(update: ProgressNotification): ToolProgress {
     : { text, fraction: Math.min(1, update.progress / update.total) };
 }
 
-/**
- * The result's blocks as tool content. Text past `CLIP_CHARS` in all keeps
- * its head and its longer tail, which is where logs put the failure, and the
- * whole text is attached once as a file.
- */
 async function readToolContent(
   result: CallToolResult,
   env: ExecutionEnv,
@@ -330,7 +302,6 @@ async function readToolContent(
   ];
 }
 
-/** The result's text blocks, and its other blocks but images as JSON, one per line. */
 function resultText(result: CallToolResult): string {
   return result.content
     .flatMap((block) =>

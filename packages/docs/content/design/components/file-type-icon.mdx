@@ -1,0 +1,41 @@
+---
+title: File type icon
+description: "The icon for a file's language or format, tinted to match"
+---
+
+```ts title="Import"
+import { FileTypeIcon, FileTypeIconSprite } from "@nyte-ai/ui/file-type-icon";
+```
+
+Marks a file by its type in a file mention, a tab, or a changed-files row.
+
+## Usage
+
+- Render `FileTypeIconSprite` once per document. Every `FileTypeIcon` draws a symbol from it.
+- The icon follows the path's file name and extension. An unknown type gets a plain file icon in
+  gray.
+- The icon fills the medium glyph slot.
+
+## Examples
+
+```tsx
+<FileTypeIconSprite />
+<FileTypeIcon path="src/app.ts" />
+<FileTypeIcon path="README.md" />
+```
+
+## Props
+
+### FileTypeIcon
+
+| Prop   | Type     | Default | Description                                      |
+| ------ | -------- | ------- | ------------------------------------------------ |
+| `path` | `string` |         | The file's path. Backslashes read as separators. |
+
+### FileTypeIconSprite
+
+No props.
+
+## Accessibility
+
+- Both render `aria-hidden`. Name the file in the text beside the icon.

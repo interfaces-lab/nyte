@@ -10,11 +10,9 @@ const exact = new Map([
   ["/docs/build/desktop", "/docs"],
 ]);
 
-/** The component reference moved from /docs/components (and before that /cloud) to the design site. */
 const movedReference =
   /^\/(?:cloud|docs\/components)\/(?:foundations|components)\/([a-z0-9-]+)\/?$/;
 
-/** The current path for a retired one, or undefined. */
 export function retiredPathTarget(pathname: string): string | undefined {
   const trimmed = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
   const direct = exact.get(trimmed);

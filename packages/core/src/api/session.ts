@@ -563,7 +563,6 @@ async function remove(
   });
 }
 
-/** Discards a start that hasn't run, else stops the runs. */
 async function stop(
   kernel: Kernel,
   session: SessionId,

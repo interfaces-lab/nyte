@@ -6,11 +6,6 @@ import type { ESTree } from "@oxlint/plugins";
 
 const IS_HELPER_NAME = /^is[A-Z0-9]/;
 
-/**
- * Disallow `isFoo` helper functions: function declarations, named function expressions, function-valued
- * bindings, and private class methods. Public members and object-literal methods are left alone because an
- * external contract (Node's `Stats.isFile`, a plugin API) can dictate their names.
- */
 export const noIsHelperNamesRule = defineRule({
   meta: {
     type: "suggestion",

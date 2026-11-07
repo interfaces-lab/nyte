@@ -34,7 +34,6 @@ const contentStair = (node) => {
   return /--nyte-content-[\w-]+/.exec(styleText(node).join(""))?.[0] ?? null;
 };
 
-/** A computed opacity is null: the rule only judges literals. */
 const opacityAmount = (node) => {
   if (Value.Check(numberLiteral, node)) return node.value;
 
@@ -101,7 +100,6 @@ const colorsText = (node) => {
   return false;
 };
 
-/** A content colour mixed only with transparent is a wash of its hue, unless it colours text. */
 const reportMixedInk = (context, node, text) => {
   const stairs = colorMixes(text)
     .map((operands) => {
@@ -128,7 +126,6 @@ const namesDisabled = (text) => /disabled/i.test(text ?? "");
 const DISABLED_SELECTOR =
   /:disabled(?![-\w])|\[(?:data-)?disabled\]|\[aria-disabled=(["']?)true\1\]/;
 
-/** A selector with every `:not(…)` cut out, so `:hover:not([data-disabled])` names no disabled state. */
 const withoutNegations = (text) => {
   const open = text.indexOf(":not(");
 
@@ -208,7 +205,6 @@ const innerInk = (context, block) =>
     .map((member) => innerInk(context, member.value))
     .find((stair) => stair !== undefined);
 
-/** A block's opacity also fades the text of blocks nested in it, so their colour counts. */
 const fadedOpacities = (context, block, inherited, disabled) => {
   const ink = blockInk(context, block) ?? inherited;
   const opacity = findMember(block, "opacity");
@@ -230,7 +226,6 @@ const fadedOpacities = (context, block, inherited, disabled) => {
   ];
 };
 
-/** Fading or mixing text drops it below its stair's floor. Disabled states are exempt from floors. */
 export const noFadedInk = {
   meta: {
     docs: {
@@ -260,7 +255,6 @@ export const noFadedInk = {
   },
 };
 
-/** `disabled ? a : b` exempts `a` only; each leading `!` flips it. */
 const disabledBranch = (context, node) => {
   const test = context.sourceCode.getText(node.test).trim();
 

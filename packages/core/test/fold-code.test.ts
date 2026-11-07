@@ -18,13 +18,11 @@ import { FOLD_CODE } from "../src/fold/code.ts";
 
 const SOURCE = new URL("../src/", import.meta.url);
 
-/** The files that turn a session's log into the state a checkpoint holds: the fold, and the checkpoint's encoder and decoder. */
 const ROOTS = ["fold/fold.ts", "fold/checkpoint.ts"];
 
 const VALIDATES =
   "Validates a checkpoint field on restore. A narrower schema rejects the checkpoint and the log replays; it never changes a field.";
 
-/** Every value the roots reach outside src/fold/, which FOLD_CODE doesn't hash, and why changing it can't make a restored checkpoint differ from replaying the log. */
 const OUTSIDE = new Map([
   ["contract/fold.ts#INDEX", "A symbol the state's index is keyed by; only its identity counts."],
   [
@@ -152,7 +150,6 @@ it("keeps the code that shapes fold checkpoints in src/fold/, which FOLD_CODE ha
   ).toEqual([...OUTSIDE.keys()].toSorted());
 });
 
-/** The names each import or re-export of `source` binds at run time, `*` for a whole module; type-only ones are erased and left out. */
 function valueImports(
   source: SourceFile,
 ): readonly { readonly from: string; readonly names: readonly string[] }[] {
@@ -206,7 +203,6 @@ function readSpecifier(specifier: Expression): string {
   return specifier.text;
 }
 
-/** A relative import as a path under src/, a package import as written. */
 function resolveImport(file: string, from: string): string {
   if (!from.startsWith(".")) return from;
 

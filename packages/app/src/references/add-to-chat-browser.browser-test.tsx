@@ -39,10 +39,12 @@ export async function run(): Promise<string> {
   const composer = createRef<ComposerEditorHandle>();
   const images: File[] = [];
 
-  const stop = receiveChatExcerpts(({ reference, image }) => {
-    composer.current?.insertReference(reference);
+  let stop = receiveChatExcerpts((excerpt) => {
+    if ("reference" in excerpt) composer.current?.insertReference(excerpt.reference);
 
-    if (image !== undefined) images.push(image);
+    if (excerpt.image !== undefined) images.push(excerpt.image);
+
+    return composer.current?.readElement() ?? false;
   });
 
   flushSync(() =>
@@ -123,6 +125,24 @@ export async function run(): Promise<string> {
       }),
     );
     await until(() => window.__nytePicks === 2, "the chord to start a pick");
+    await until(
+      () => toggle()?.getAttribute("aria-pressed") === "false",
+      "the shortcut pick to finish",
+    );
+    stop();
+    stop = receiveChatExcerpts(async () => {
+      throw new Error("Could not read element.png");
+    });
+    toggle()?.click();
+    await until(() => window.__nytePicks === 3, "the failing image pick to start");
+    await until(
+      () =>
+        browser
+          ?.querySelector('[role="alert"]')
+          ?.textContent?.includes("Could not read element.png") === true,
+      "the picked image's intake error",
+    );
+    check(toggle()?.getAttribute("aria-pressed") === "false", "A failed intake must end the pick");
 
     return "passed";
   } finally {

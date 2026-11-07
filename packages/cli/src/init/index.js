@@ -1,8 +1,3 @@
-/**
- * `npx nyte-ai init`: sets up a Nyte checkout on macOS or Ubuntu. Runs in the
- * Node launcher before any binary download, so it works on a machine that has
- * nothing but Node.
- */
 import { homedir } from "node:os";
 import process from "node:process";
 
@@ -38,7 +33,6 @@ export function parseInitArgs(args) {
   return flags;
 }
 
-/** Adds the caller's GitHub token, if the environment has one, to GitHub API requests. */
 function githubFetch(env) {
   const token = env.GH_TOKEN || env.GITHUB_TOKEN;
 

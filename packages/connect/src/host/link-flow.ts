@@ -15,16 +15,10 @@ import { UNLINK_LIMIT } from "./store.ts";
 import type { ConnectStore, LinkKey } from "./store.ts";
 import { LinkStopped, linkFailure, refusedCode, sessionSubject } from "./tokens.ts";
 
-/**
- * How this host gets an owner's approval to link. A desktop asks its own
- * sign-in for a session JWT; a headless host opens a broker transaction and
- * shows the code and fingerprint for the owner to approve elsewhere.
- */
 export type LinkAuthorizer =
   | { readonly kind: "session"; readonly account: AccountSession }
   | {
       readonly kind: "transaction";
-      /** The transaction is open: show where to approve, the code and the fingerprint to compare. */
       readonly onOpened: (opened: Extract<ConnectLinking, { kind: "awaiting_approval" }>) => void;
     };
 
@@ -32,19 +26,14 @@ interface LinkFlowOptions {
   readonly store: ConnectStore;
   readonly broker: DesktopBroker | undefined;
   readonly authorizer: LinkAuthorizer | undefined;
-  /** This host's name at the broker; defaults to the machine's. */
   readonly name: string | undefined;
   readonly linkPollMs: number;
-  /** Ends with the runtime. */
   readonly signal: AbortSignal;
   readonly closed: () => boolean;
-  /** Run after every earlier change to the link or serving state. */
   readonly serial: <T>(operation: () => Promise<T>) => Promise<T>;
   readonly changed: () => void;
   readonly outbox: ConnectOutbox;
-  /** Unlink `environmentId` as the user would, if it is still the link. */
   readonly unlink: (environmentId: string) => Promise<void>;
-  /** A new link landed: forget what the last one taught. */
   readonly linked: () => void;
 }
 
@@ -57,12 +46,6 @@ interface LinkAttempt {
   persisted: string | undefined;
 }
 
-/**
- * One link attempt at a time, by session JWT or by broker transaction. The
- * machine key and the transaction are written down before each broker call,
- * so a crash or a cancel resumes or retires the same operation instead of
- * leaving an orphan environment at the broker.
- */
 export class LinkFlow {
   private readonly options: LinkFlowOptions;
   private linking: ConnectLinking = { kind: "idle" };
@@ -72,17 +55,14 @@ export class LinkFlow {
     this.options = options;
   }
 
-  /** Where the current or last attempt stands. */
   get state(): ConnectLinking {
     return this.linking;
   }
 
-  /** Whether an attempt is running. */
   get running(): boolean {
     return this.attempt !== undefined;
   }
 
-  /** Run one attempt, or wait for the running one. The outcome is in `state`, not thrown. */
   async link(): Promise<void> {
     const pending = this.attempt;
 
@@ -114,7 +94,6 @@ export class LinkFlow {
     await attempt.done;
   }
 
-  /** The user gives the link up: the attempt ends and an open transaction is cancelled at the broker. */
   async cancel(): Promise<void> {
     const pending = this.attempt;
 
@@ -124,7 +103,6 @@ export class LinkFlow {
     await pending.done;
   }
 
-  /** End the attempt for shutdown; settles once it has. */
   abort(): Promise<void> {
     const pending = this.attempt;
     pending?.controller.abort();
@@ -559,7 +537,6 @@ function mintOperation() {
   };
 }
 
-/** Whether the stored link key is still the transaction operation `intent` names. */
 function sameOperation(
   stored: LinkKey | null,
   intent: TransactionLinkKey,

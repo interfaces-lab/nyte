@@ -1,7 +1,3 @@
-/**
- * Fetch-only Copilot OAuth.
- * Hosts own interaction and storage; login and refresh publish only complete credentials.
- */
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 import {
@@ -60,11 +56,9 @@ const CopilotCredential = Type.Object({
 
 export interface GitHubCopilotOAuthOptions {
   fetch?: FetchFunction;
-  /** The client must be permitted to use Copilot's session-token exchange. */
   clientId?: string;
 }
 
-/** Credential storage is an external boundary, including provider-specific metadata. */
 export function matchesCopilotCredential(
   value: unknown,
 ): value is Static<typeof CopilotCredential> {
@@ -94,7 +88,6 @@ function copilotOrigin(token: string): string {
   return url.origin;
 }
 
-/** Both fetch and body reading share a deadline; remote error text never reaches a login UI. */
 async function requestCopilot(input: {
   fetch: FetchFunction | undefined;
   url: string;
@@ -185,7 +178,6 @@ async function startDeviceAuthorization(input: {
   };
 }
 
-/** The poll loop owns the expiry message; the lifetime signal only cuts off a request that hangs past it. */
 const LIFETIME_GRACE_MS = 1_000;
 
 async function pollForGitHubToken(input: {
@@ -259,10 +251,6 @@ async function pollForGitHubToken(input: {
   }
 }
 
-/**
- * A GitHub grant and a Copilot session have different shapes, so they cannot be interchanged.
- * `expires` is the token's actual expiry: shared auth resolution already refreshes five minutes before it.
- */
 async function loadCopilotCredential(input: {
   fetch: FetchFunction | undefined;
   github: Static<typeof GitHubToken>;

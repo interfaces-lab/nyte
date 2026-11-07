@@ -96,14 +96,12 @@ export function useHostEvents(): void {
   });
 }
 
-/** How each reason looks: a question waits on you, a failure carries its error. */
 const ALERT_TOAST = {
   waiting: "warning",
   failed: "error",
   done: undefined,
 } as const satisfies Readonly<Record<AlertState, string | undefined>>;
 
-/** One toast per chat: a newer alert replaces the older one. Open goes to the chat and clears it. */
 function showChatAlert(alert: Extract<HostEvent, { kind: "chat_alert" }>): void {
   const id = `chat-alert:${alert.session}`;
 

@@ -54,7 +54,6 @@ function effortFor(
   return EFFORTS.find((effort) => effort === mapped) ?? (level === "minimal" ? "low" : undefined);
 }
 
-/** The `claude` the user installed, which the Agent SDK runs: Nyte ships no copy of its own. */
 async function findClaudeCode(): Promise<string | undefined> {
   await processEnvironment();
 

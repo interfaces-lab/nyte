@@ -14,7 +14,6 @@ const subscribeToNothing = () => () => undefined;
 const siteLinkClass =
   "block rounded-full px-2.5 py-1.5 text-muted-foreground hover:bg-foreground/5 hover:text-foreground";
 
-/** The site nav's phone menu: the docs tree, then the site's own links. */
 export function SiteMobileNav({
   docs,
   site,
@@ -76,13 +75,6 @@ export function SiteMobileNav({
   );
 }
 
-/**
- * A phone menu that fills the screen beneath a sticky bar, which stays on top
- * with its close control, the way a native sheet keeps its toolbar. While it
- * is open, `html[data-menu-open]` locks the page and drops the nav's
- * over-the-plate colours. It remembers the page it was opened on, so
- * navigating anywhere else closes it.
- */
 export function MobileMenu({
   buttonClassName,
   panelClassName,
@@ -141,7 +133,6 @@ export function MobileMenu({
   );
 }
 
-/** Mounted while the menu is open: locks the page, focuses the panel and closes on Escape. */
 function OpenMenu(props: {
   panel: RefObject<HTMLDivElement | null>;
   toggle: RefObject<HTMLButtonElement | null>;

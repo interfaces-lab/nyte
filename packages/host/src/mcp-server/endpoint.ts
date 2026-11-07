@@ -60,7 +60,6 @@ const rows: { readonly [name: string]: Declaration<unknown, unknown> } = OPERATI
 const INSTRUCTIONS =
   "Tools read and steer the sessions on this Nyte host. Each tool is one host operation.";
 
-/** Every marked row the wire answers once, as an MCP tool: its name with `.` as `_`, its summary and its wire input JSON Schema. */
 const TOOLS: readonly Tool[] = describeOperations().flatMap((description) => {
   const name = description.name;
   const access = rows[name]?.mcp;
@@ -81,7 +80,6 @@ const TOOLS: readonly Tool[] = describeOperations().flatMap((description) => {
   ];
 });
 
-/** Serves `/mcp` through the MCP SDK's `createMcpHandler`: 2026-07-28 requests per request, and 2025-era requests through its stateless fallback. Host and Origin are checked first, then the bearer token, which must be one the grants issued for this URL; the per-request server lists only the tools the grant may call. A tool call runs its operation as the grant's principal, `mcp:<grant>`, with participant authority. */
 export function createMcpEndpoint(options: {
   readonly server: ServerHost;
   readonly grants: McpGrants;

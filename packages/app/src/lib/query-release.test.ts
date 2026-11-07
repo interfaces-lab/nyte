@@ -5,7 +5,6 @@ import type { ByteReader } from "@nyte-ai/sdk";
 import { releaseWithQuery } from "./query-release.ts";
 import { blobUrlQuery } from "./use-blob-url.ts";
 
-/** Each read waits until the test finishes it, so a cancelled read can land after its replacement. */
 function gatedReads() {
   const gates: (() => void)[] = [];
 

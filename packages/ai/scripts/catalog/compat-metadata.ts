@@ -1,4 +1,3 @@
-/** Compatibility, transcript and prompt-cache metadata the generator derives for each catalog model. */
 import { isDeepStrictEqual } from "util";
 import type {
   AnthropicMessagesCompat,
@@ -12,7 +11,6 @@ import type { ModelsDevMetadata } from "./models-dev.ts";
 
 export const OPENAI_DAYBREAK_BLUE_MODEL_ID = "gpt-daybreak-blue-latest";
 
-/** Whether a model id names Daybreak Blue, by its own name or its `-latest` alias. */
 export function namesDaybreakBlue(modelId: string): boolean {
   return modelId === "gpt-daybreak-blue" || modelId === OPENAI_DAYBREAK_BLUE_MODEL_ID;
 }
@@ -127,11 +125,6 @@ export function mergeAnthropicMessagesCompat(
   model.compat = { ...model.compat, ...compat };
 }
 
-/**
- * The Chat Completions behavior a provider's endpoint has, detected from its id and base URL.
- * `supportsStrictMode` preserves built-in behavior as explicit metadata against the
- * conservative runtime default.
- */
 export function detectOpenAICompletionsCompat(model: Model<Api>): OpenAICompletionsResolvedCompat {
   const provider = model.provider;
   const baseUrl = model.baseUrl;
@@ -277,13 +270,6 @@ export function applyOpenAICompletionsCompatMetadata(model: Model<Api>): void {
   }
 }
 
-/**
- * The Anthropic Messages behavior a provider's model has. OpenCode Zen and GitHub Copilot
- * forward mid-conversation system messages but reject `tool_addition`/`tool_removal` blocks,
- * so tool changes stay top-level there. Haiku 5.5 tool changes are verified only with inline
- * tool definitions (`inline-tools-2026-09-15`), which the adapter does not send yet. OpenCode
- * Qwen 3.8 Flash emits and accepts thinking blocks with empty signatures.
- */
 export function getAnthropicMessagesCompat(
   provider: string,
   modelId: string,
@@ -327,7 +313,6 @@ export function applyAnthropicMessagesCompatMetadata(model: Model<Api>): void {
   }
 }
 
-/** Whether a direct Anthropic model has fallbacks or serves as one. */
 export function inAnthropicFallbackChain(model: Model<Api>): model is Model<"anthropic-messages"> {
   if (model.provider !== "anthropic" || model.api !== "anthropic-messages") return false;
 
@@ -377,12 +362,6 @@ export function applyStrictToolCompatMetadata(model: Model<Api>): void {
   }
 }
 
-/**
- * Responses endpoints verified (OpenAI, ChatGPT Codex backend, GitHub Copilot,
- * opencode zen) or documented (Azure OpenAI, Cloudflare AI Gateway) to pass
- * OpenAI custom grammar tools through. OpenAI rejects `type: "custom"` tools
- * for pre-GPT-5 models (gpt-4.x, gpt-4o, o-series).
- */
 const OPENAI_GRAMMAR_TOOL_PROVIDERS = new Set([
   "openai",
   "openai-codex",
@@ -430,13 +409,6 @@ export function applyOpenAIToolSearchMetadata(model: Model<Api>): void {
   model.compat = compat;
 }
 
-/**
- * Moonshot Kimi K2.6/K2.7 accept system text after the conversation starts but reject
- * tool-bearing system messages. Kimi K3 accepts both forms; Fireworks and OpenCode pass
- * its tool-bearing form through. GitHub Copilot forwards K3 text but silently drops its
- * tool-bearing message. DeepSeek V4 Pro and OpenAI models behind OpenRouter also accept
- * plain system text in place.
- */
 export function applyOpenAICompletionsTranscriptMetadata(model: Model<Api>): void {
   if (model.api !== "openai-completions") return;
 
@@ -467,12 +439,6 @@ export function applyOpenAICompletionsTranscriptMetadata(model: Model<Api>): voi
   };
 }
 
-/**
- * Newer OpenAI Responses models accept developer messages after the conversation has started.
- * OpenCode Zen, OpenCode Go, and GitHub Copilot pass both those messages and
- * `additional_tools` items through to OpenAI unchanged; tool search is not verified
- * through those proxies.
- */
 const OPENAI_RESPONSES_PROXY_PROVIDERS = new Set(["opencode", "opencode-go", "github-copilot"]);
 
 export function applyOpenAIResponsesTranscriptMetadata(model: Model<Api>): void {
@@ -519,18 +485,12 @@ export function applyOpenAIExplicitPromptCacheMetadata(model: Model<Api>): void 
  */
 const ANTHROPIC_PROMPT_CACHE: ModelPromptCache = { short: 300, long: 3600 };
 
-/**
- * Annotates prompt-cache lifetimes. OpenAI gets none yet: before enabling warming for
- * explicit OpenAI caches, re-evaluate it using observed expiry, replay, and billing
- * behavior; a documented TTL alone does not establish full cache loss.
- */
 export function applyPromptCacheMetadata(model: Model<Api>): void {
   if (model.provider === "anthropic" && model.api === "anthropic-messages") {
     model.promptCache = ANTHROPIC_PROMPT_CACHE;
   }
 }
 
-/** Copies models.dev's fast mode onto direct Anthropic and OpenAI models, Codex reading OpenAI's. */
 export function applyModelsDevModeMetadata(model: Model<Api>, metadata: ModelsDevMetadata): void {
   const provider = model.provider === "openai-codex" ? "openai" : model.provider;
 

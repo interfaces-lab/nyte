@@ -96,7 +96,6 @@ async function fingerprint(extra: ExtraChats): Promise<string> {
   return hash.digest("hex").slice(0, 16);
 }
 
-/** Opens `home` in process over the scripted catalog, as the Anthropic model `nyte host` later reaches over HTTP, so the seeded chats name the model the e2e host serves. */
 function openOffline(home: string) {
   dev.off();
 
@@ -109,7 +108,6 @@ function openOffline(home: string) {
   return sdk.open({ models, home, workspace: { kind: "local", path: home } });
 }
 
-/** Reads through the desktop's token, so the desktop opens the chat with this read mark. */
 async function readAsDesktop(host: Host, session: SessionId): Promise<void> {
   await using listener = await host.listen({
     transport: { kind: "fetch" },

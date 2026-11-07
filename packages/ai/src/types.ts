@@ -1,10 +1,3 @@
-/**
- * Request option and adapter contract types for @nyte-ai/ai. The neutral message,
- * model, and tool types live in @nyte-ai/schema and are re-exported here so
- * callers can import everything from one place; this
- * file adds only what a provider request needs on top of them: transport and
- * auth options, and the stream function contract.
- */
 import type {
   Api,
   CacheRetention,
@@ -104,7 +97,6 @@ export interface ProviderResponse {
 export interface AccountLimitWindow {
   /** Stable provider-owned bucket id, for example `five_hour` or `seven_day`. */
   id: string;
-  /** Display name, for example `5-hour`, `Weekly`, or `Opus weekly`. */
   label: string;
   usedPercent: number;
   /** Unix timestamp in milliseconds. */
@@ -135,19 +127,15 @@ export type AccountLimitsResult =
       readonly message: string;
     };
 
-/** Account endpoint metadata, independent of a provider's model catalog. */
 export type AccountLimitsTarget = Pick<Model<Api>, "provider" | "baseUrl" | "headers">;
 
-/** Auth and transport for a provider's non-generating account usage request. */
 export type AccountLimitsFetchOptions = Pick<
   ProviderRequestOptions,
   "apiKey" | "headers" | "fetch" | "signal" | "timeoutMs"
 >;
 
-/** Authentication, HTTP transport, and lifecycle callbacks shared by provider requests. */
 export interface ProviderRequestOptions<TModel = Model<Api>> {
   signal?: AbortSignal;
-  /** Request the model's advertised fast inference mode; each API maps it to its own field. */
   fast?: boolean;
   apiKey?: string;
   /**
@@ -164,11 +152,7 @@ export interface ProviderRequestOptions<TModel = Model<Api>> {
   env?: ProviderEnv;
   /** Inspects the provider request body just before it is sent. */
   onPayload?: (payload: unknown, model: TModel) => void | Promise<void>;
-  /**
-   * Optional callback invoked after an HTTP response is received.
-   */
   onResponse?: (response: ProviderResponse, model: TModel) => void | Promise<void>;
-  /** Account-limit telemetry observed during a provider request. */
   onAccountLimits?: (limits: AccountLimits, model: TModel) => void | Promise<void>;
   /**
    * Optional custom HTTP headers to include in API requests.
@@ -251,17 +235,8 @@ export interface DeferredFetchOptions extends ProviderRequestOptions<Model<Api>>
   wait?: number;
 }
 
-/** Request options for best-effort deferred-response cancellation. */
 export type DeferredCancelOptions = ProviderRequestOptions<Model<Api>>;
 
-/**
- * The uniform stream contract of an API implementation module: every module
- * under `src/api/` exports `stream` and `streamSimple`; capable modules may also
- * export deferred-response methods. Lazy wrappers (`lazyApi()`) and provider
- * factories pass these around as values. This is the untyped dispatch shape;
- * per-API option typing lives on the implementation modules themselves and on
- * `Provider.stream()` via `ApiStreamOptions`.
- */
 export interface ProviderStreams {
   stream(
     model: Model<Api>,
@@ -285,7 +260,6 @@ export interface ProviderStreams {
   ): Promise<void>;
 }
 
-// Unified options with reasoning passed to streamSimple() and completeSimple()
 export interface SimpleStreamOptions extends StreamOptions {
   /** Provider-neutral tool selection for simple requests. Default: "auto". */
   toolChoice?: ToolChoice;

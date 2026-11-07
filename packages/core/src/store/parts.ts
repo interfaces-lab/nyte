@@ -24,7 +24,6 @@ import { load, put, readCall, readRefExpectation, toCommitObjectId } from "./ses
 import type { Tip } from "./session.ts";
 import type { StoreConnection } from "../contract/store.ts";
 
-/** The host's part waiters and actions; a waiter on a part that fails is answered null, from the bus, wherever the failure was written. */
 export function createPartTable(bus: SessionBus): PartTable {
   const table: PartTable = { waiters: new Map(), acting: new Map() };
 
@@ -114,7 +113,6 @@ export async function settleAnswersFrom(kernel: Kernel): Promise<void> {
   }
 }
 
-/** Settles a part on its head in one write of each ref: the part's record, expecting the revision it was read at, logs `logged` and then its settled event, and the commit that lands it moves the head. */
 export async function settling(
   store: StoreConnection,
   input: {

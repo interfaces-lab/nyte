@@ -1,8 +1,3 @@
-/**
- * The D1 index of environments: claims, the owner's list, and retirement. A
- * retired row never changes back. Each environment's devices, policy, and
- * presence live in its relay Durable Object (`environment-record.ts`).
- */
 import type { LinkTransactionState } from "@nyte-ai/connect";
 import type { D1Database } from "../d1.ts";
 import { findOwner, sessionDenied } from "./owners.ts";
@@ -18,7 +13,6 @@ import {
 } from "./rows.ts";
 import type { Environment, LinkTransaction, Owner } from "./rows.ts";
 
-/** Environments an owner may hold at once. */
 const ENVIRONMENT_LIMIT = 3;
 
 export async function listActiveEnvironments(
@@ -222,7 +216,6 @@ async function refusedClaim(
   return { kind: "limit" };
 }
 
-/** Retire an environment's index row: its slot frees and its key stays a tombstone. Idempotent. */
 export async function retireEnvironment(
   db: D1Database,
   input: { readonly id: string; readonly at: number },
@@ -230,7 +223,6 @@ export async function retireEnvironment(
   await db.prepare(`${RETIRE_ENVIRONMENTS} id = ?1`).bind(input.id, input.at).run();
 }
 
-/** The owner's environment ids: the active ones, or every one the owner ever linked. */
 export async function ownerEnvironmentIds(
   db: D1Database,
   input: { readonly ownerId: string; readonly state: "active" | "any" },
@@ -245,11 +237,6 @@ export async function ownerEnvironmentIds(
   return many(IdRow, results).map((row) => row.id);
 }
 
-/**
- * What an environment's relay copies once, the first time a desktop or its
- * owner reaches it: the identity, which never changes, and its owner's
- * current standing.
- */
 export async function loadEnvironment(
   db: D1Database,
   id: string,

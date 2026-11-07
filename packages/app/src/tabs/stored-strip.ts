@@ -29,7 +29,6 @@ const pageSchema = Type.Object(
   strict,
 );
 
-/** Version 2 held at most two panes, `primary` and `secondary`. */
 const earlierPaneId = Type.Union([Type.Literal("primary"), Type.Literal("secondary")]);
 
 const earlierLayoutSchema = Type.Union([
@@ -81,7 +80,6 @@ const currentStripSchema = stripSchema(3, storedLayoutSchema);
 
 type StoredStrip = Static<typeof currentStripSchema>;
 
-/** The lasting tabs of a window as stored; previews are left out before this runs. */
 export function storeStrip(state: WindowState): StoredStrip {
   const storeTab = (tab: WindowState["tabs"][number]) => ({
     id: tab.id,
@@ -100,10 +98,6 @@ export function storeStrip(state: WindowState): StoredStrip {
   };
 }
 
-/**
- * Reads a stored strip, either version. A tab whose layout no longer restores shows a new chat;
- * `createId` names that chat's pane and tab.
- */
 export function parseStrip(stored: unknown, createId: () => string): WindowState | undefined {
   if (Value.Check(currentStripSchema, stored))
     return restoreStrip(
@@ -161,10 +155,6 @@ function restoreView<Stored>(
   };
 }
 
-/**
- * A version 2 pane keeps its id, so its drafts and scroll still match; a split showing one chat in
- * both panes becomes the focused pane, as version 2 showed it.
- */
 function migrateLayout(layout: Static<typeof earlierLayoutSchema>): Layout<PaneContent> {
   if (layout.kind === "single") return singlePane(layout.paneId, layout.selection);
 

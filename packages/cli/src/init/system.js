@@ -7,11 +7,6 @@ import process from "node:process";
 
 import { Interrupted } from "./engine.js";
 
-/**
- * Appends every command and its output to ~/.nyte/logs/init-<time>.log, mode
- * 0600. nyte triage reads these and redacts them before anything leaves the
- * machine. A log that can't be written never stops setup.
- */
 export function openLog(home, now = new Date()) {
   const stamp = now.toISOString().replace(/[-:]/gu, "").replace("T", "-").slice(0, 15);
   const directory = join(home, ".nyte", "logs");
@@ -105,7 +100,6 @@ export function createExec({ env, log }) {
   return { capture, run };
 }
 
-/** Splits a byte stream into lines, dropping carriage-return progress redraws. */
 function lines(onLine) {
   let buffer = "";
 
@@ -124,7 +118,6 @@ function lines(onLine) {
 
 const GITHUB_API = "https://api.github.com";
 
-/** The newest release of a GitHub repository: its tag and asset download URLs. */
 export async function latestRelease(repository, fetchFn = globalThis.fetch) {
   const response = await fetchFn(`${GITHUB_API}/repos/${repository}/releases/latest`, {
     headers: { accept: "application/vnd.github+json" },
@@ -141,7 +134,6 @@ export async function latestRelease(repository, fetchFn = globalThis.fetch) {
   return { tag: release.tag_name, assets };
 }
 
-/** The SHA-256 listed for `name` in a `<hash>  <name>` checksum file. */
 export function checksumFor(listing, name) {
   for (const line of listing.split("\n")) {
     const [hash, file] = line.trim().split(/\s+/u);
@@ -154,7 +146,6 @@ export function checksumFor(listing, name) {
   throw new Error(`The checksum file doesn't list ${name}.`);
 }
 
-/** Downloads `url` to `path` and fails unless its SHA-256 is `expected`. */
 export async function downloadVerified(url, path, expected, fetchFn = globalThis.fetch) {
   const response = await fetchFn(url, { signal: AbortSignal.timeout(10 * 60_000) });
 
@@ -169,7 +160,6 @@ export async function downloadVerified(url, path, expected, fetchFn = globalThis
   await writeFile(path, bytes);
 }
 
-/** Installs an executable atomically, so a half-written file is never on PATH. */
 export async function installExecutable(source, destination) {
   await mkdir(join(destination, ".."), { recursive: true });
   const temporary = `${destination}.${process.pid}.tmp`;

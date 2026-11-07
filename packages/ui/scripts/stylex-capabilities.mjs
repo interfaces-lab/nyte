@@ -1,9 +1,3 @@
-/**
- * Compiles one minimal snippet per CSS feature with the installed StyleX babel
- * plugin and writes the results into this package's AGENTS.md as a dense
- * capability block. A feature passes only when the transform succeeds and the
- * emitted CSS is valid. `--check` exits 1 when the block is stale.
- */
 import { readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";

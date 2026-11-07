@@ -52,7 +52,6 @@ const styles = create({
     overflowWrap: "anywhere",
   },
   fact: { paddingBlock: space.s1 },
-  // Icons sit on the label's first line, however far the text below wraps.
   factPrimary: { alignItems: "start" },
   icon: { height: type.leadingSm, color: role.contentTertiary },
   wrap: { whiteSpace: "normal", overflowWrap: "anywhere" },
@@ -88,7 +87,6 @@ export function ChatCardContent({
   );
 }
 
-/** Copy items for a chat's folder and branch, for menus a keyboard can reach. */
 export function ChatCopyMenuItems({
   sessionId,
 }: {

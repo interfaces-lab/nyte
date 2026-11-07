@@ -10,7 +10,6 @@ import { authenticateToken, redeemPairing } from "../engine/principals.ts";
 import { sendReceipt } from "../engine/receipts.ts";
 import { hostPrincipalsRef } from "../store/refs.ts";
 
-/** Returns the {@link ServerHost} port over a composed kernel. */
 export function createServerHost(kernel: Kernel): ServerHost {
   return {
     hostId: kernel.hostId,

@@ -1,45 +1,26 @@
-/**
- * Connect-screen copy, kept as data so each outcome is a case rather than a
- * string assembled at a call site. Every stage answers two questions in order:
- * what happened, then what to do next. A stage without a next step is a dead
- * end the user has to guess their way out of.
- *
- * Wording follows the host's own labels. When the desktop renames a setting,
- * this file is the one place the instructions change.
- */
-
 import type { SdkError } from "@nyte-ai/sdk";
 import type { SavedConnection } from "./connection.ts";
 
 export type ConnectFailure =
-  /** Reached a Nyte server; it refused the token. */
   | { readonly kind: "refused" }
-  /** Nothing answered within the verify window. */
   | { readonly kind: "silent"; readonly address: string }
-  /** Something answered and was not a Nyte server. */
   | { readonly kind: "wrongServer"; readonly address: string }
   | { readonly kind: "notSaved" }
   | { readonly kind: "identityChanged"; readonly address: string; readonly url: string }
   | { readonly kind: "unverified"; readonly address: string }
   | { readonly kind: "keychain" }
-  /** Nothing here recognized the ending. Say so rather than blame the network. */
   | { readonly kind: "unexpected"; readonly detail: string }
   | { readonly kind: "cancelled" };
 
-/** Where the user is in one attempt. Failures name the cause, not just "failed". */
 export type ConnectStage =
   | { readonly kind: "idle" }
   | { readonly kind: "verifying"; readonly address: string }
-  /** The details never left the phone: the address breaks the HTTP/HTTPS policy. */
   | { readonly kind: "rejected"; readonly reason: string }
   | ConnectFailure;
 
 export interface ConnectCopy {
-  /** What happened, in a few words. */
   readonly title: string;
-  /** The next thing to do, as an instruction. */
   readonly body: string;
-  /** Present when retrying the same details could work. */
   readonly retry: string | undefined;
 }
 

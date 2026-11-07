@@ -167,7 +167,6 @@ export function createRegistrySet(input: {
 function createRegistry<T, Handle = Disposer>(input: {
   key(item: T, owner: string): string;
   handle?(item: T, owner: string): Handle;
-  /** Why an item can't be registered at all, or `undefined` when it can. */
   refuse?(item: T): string | undefined;
   readonly overrides?: boolean;
   onChange(): void;
@@ -499,7 +498,6 @@ export async function runCommand(
   }
 }
 
-/** Asks a chat's command `name` what may follow `prefix`, holding its plugins meanwhile. */
 export async function completeSessionCommand(
   kernel: Kernel,
   context: ConnectionContext,
@@ -551,7 +549,6 @@ async function runHeld(
   }
 }
 
-/** Finds command `name` and runs it with `text`. */
 export async function invokeCommand(
   kernel: Kernel,
   context: ConnectionContext,
@@ -585,7 +582,6 @@ export async function invokeCommand(
   }
 }
 
-/** Asks command `name` what may follow `prefix`: none from a command that is missing or suggests nothing, and none, reported to its plugin, from one that throws. */
 export async function completeCommand(
   kernel: Kernel,
   context: ConnectionContext,
@@ -613,7 +609,6 @@ export async function completeCommand(
   }
 }
 
-/** Finds command `name` and the api it runs with, under the caller's authority. */
 function findCommand(
   kernel: Kernel,
   context: ConnectionContext,

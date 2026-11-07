@@ -7,7 +7,6 @@ import { Type } from "typebox";
 import { compile, isJson } from "@nyte-ai/schema";
 import type { McpClient } from "./grants.ts";
 
-/** One answer from a client's metadata URL: its status, the headers that set how long it may be cached, and its body. */
 export type ClientMetadataAnswer = {
   readonly status: number;
   readonly cacheControl: string | null;
@@ -15,10 +14,8 @@ export type ClientMetadataAnswer = {
   readonly body: string;
 };
 
-/** Fetches a Client ID Metadata Document; it refuses what it may not fetch by throwing. */
 export type ClientMetadataFetch = (url: URL) => Promise<ClientMetadataAnswer>;
 
-/** Finds the clients that identify themselves by a metadata document URL. */
 export interface ClientDirectory {
   find(clientId: string): Promise<McpClient | null>;
 }
@@ -48,7 +45,6 @@ const document = compile(
 
 const PRIVATE = privateRanges();
 
-/** Whether `clientId` names a metadata document: an https URL with a path, no fragment and no credentials. */
 export function namesMetadataDocument(clientId: string): boolean {
   if (!clientId.startsWith("https://") || !URL.canParse(clientId)) return false;
   const url = new URL(clientId);
@@ -56,7 +52,6 @@ export function namesMetadataDocument(clientId: string): boolean {
   return url.pathname !== "/" && url.hash === "" && url.username === "" && url.password === "";
 }
 
-/** Keeps fetched documents for as long as their Cache-Control or Expires allows, at most a day, and a minute when they name no lifetime; `no-store` and `no-cache` keep nothing. A document counts only when its `client_id` is its URL, it names a client and redirect URIs, and it asks for no client authentication. */
 export function createClientDirectory(fetchDocument: ClientMetadataFetch): ClientDirectory {
   const cache = new Map<string, Cached>();
 
@@ -93,7 +88,6 @@ export function createClientDirectory(fetchDocument: ClientMetadataFetch): Clien
   };
 }
 
-/** Fetches a metadata document over https from a public address only: the name resolves once, every address must be public, and the connection goes to that address. It follows no redirect, waits 5 s at most and reads 5 KiB at most. */
 export const fetchClientMetadata: ClientMetadataFetch = async (url) => {
   if (url.protocol !== "https:") throw new Error("A client metadata document needs an https URL.");
   const host = url.hostname.replace(/^\[(.*)\]$/, "$1");
@@ -154,7 +148,6 @@ export const fetchClientMetadata: ClientMetadataFetch = async (url) => {
   });
 };
 
-/** Whether a redirect URI is one this host sends a code to: https, or http on a loopback host, with no fragment. */
 export function allowsRedirect(uri: string): boolean {
   if (!URL.canParse(uri)) return false;
   const url = new URL(uri);

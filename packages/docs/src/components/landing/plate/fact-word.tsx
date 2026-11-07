@@ -5,15 +5,12 @@ interface FactWordProps {
   href: string;
   above: string;
   below: string;
-  /** Tailwind class setting --tint, the pill and hover colour. */
   tint: string;
-  /** Tailwind classes recolouring one pill, such as a model's brand colour. */
   aboveTint?: string;
   belowTint?: string;
   children: ReactNode;
 }
 
-/** A word in the sentence that, on hover or focus, throws two facts about itself and lets them drift with the pointer. */
 export function FactWord({
   href,
   above,

@@ -23,7 +23,6 @@ afterEach(async () => {
 
 const PROMPT = "<ready> ";
 
-/** The temporary folder before a test points TMPDIR elsewhere. */
 const TEMP = tmpdir();
 
 const WAIT_MS = 10_000;
@@ -46,17 +45,13 @@ type Terminal = {
   readonly home: string;
   text(): string;
   prompts(): number;
-  /** Types a line and waits for the prompt after it. */
   submit(line: string): Promise<void>;
-  /** Types a line without waiting. */
   type(line: string): Promise<void>;
   until(found: () => boolean, what: string): Promise<void>;
-  /** Waits until the output shows `text`, which typed input must not echo. */
   shows(text: string): Promise<void>;
   close(): Promise<void>;
 };
 
-/** A real login shell in a pty through `localExec`, with HOME (and ZDOTDIR) at a fresh folder holding `files`. */
 async function openTerminal(
   shell: string,
   files: Readonly<Record<string, string>>,
@@ -127,7 +122,6 @@ const interrupt = (terminal: Terminal): Promise<void> => terminal.job.write(new 
 
 const NONCE = /[0-9a-f]{64}/;
 
-/** How many variables this process passes on whose values look like a nonce. */
 const inheritedHex = (): number =>
   Object.entries(process.env).filter(([name, value]) => NONCE.test(`${name}=${value ?? ""}`))
     .length;
@@ -144,9 +138,7 @@ const fakeMarkers = [
 const shells: readonly {
   readonly name: string;
   readonly path: string | undefined;
-  /** The user's startup file that sets the prompt. */
   readonly rc: string;
-  /** User prompt hooks that log the status they see and, while `$HOME/hold` exists, block in a command substitution, a child in the shell's process group; and a user preexec hook that sets `__user_preexec`. */
   readonly hooks: string;
 }[] = [
   {

@@ -1,7 +1,6 @@
 import { Type, type Static } from "typebox";
 import { NullableTokenCount } from "./token-count.ts";
 
-// Decode only the fields this adapter consumes. Other provider fields remain intact.
 const UsageSchema = Type.Object({
   input_tokens: NullableTokenCount,
   output_tokens: NullableTokenCount,
@@ -80,10 +79,6 @@ export type AnthropicEvent = Static<typeof AnthropicEventSchema>;
 
 export const AnthropicEventTypeSchema = Type.Index(AnthropicEventSchema, ["type"]);
 
-/**
- * Unknown block variants are forward-compatible. Malformed *known* variants must
- * not fall through this alternative, so its exclusions derive from the schemas above.
- */
 export const IgnoredAnthropicEventSchema = Type.Union([
   Type.Object({
     type: Type.Literal("content_block_start"),

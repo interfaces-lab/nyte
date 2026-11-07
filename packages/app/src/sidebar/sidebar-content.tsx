@@ -92,7 +92,6 @@ export function SidebarContent({ children }: { readonly children: ReactNode }): 
   );
 }
 
-/** Keyed by the visible layer: moves focus that was in the sidebar into the layer just shown. */
 function LayerFocus({ contentRef }: { readonly contentRef: RefObject<HTMLElement | null> }): null {
   useMountEffect(() => {
     const node = contentRef.current;

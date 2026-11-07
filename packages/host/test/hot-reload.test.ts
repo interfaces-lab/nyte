@@ -24,7 +24,6 @@ async function folder(): Promise<string> {
   return made;
 }
 
-/** A plugin file contributing one command; with `log`, it appends a line there each time it activates. */
 function plugin(id: string, command: string, log?: string): string {
   const activate =
     log === undefined
@@ -78,7 +77,6 @@ async function pluginRows(host: Host): Promise<HostView["plugins"]> {
   return [];
 }
 
-/** A host on a trusted local `workspace` with a chat open there. */
 async function chatIn(home: string, workspace: string, fake: FakeModels = fakeModels()) {
   const host = await openHost({
     store: memoryStore(),
@@ -244,7 +242,6 @@ describe("hot reload", () => {
   });
 });
 
-/** A message's text as a provider renders it, the sections of a system message included. */
 function sent(message: Message | undefined): string {
   if (message === undefined) return "";
 
@@ -253,7 +250,6 @@ function sent(message: Message | undefined): string {
   return JSON.stringify(message.content);
 }
 
-/** What a provider caches of each message: its role and what it says, without the usage a later request rewrites. */
 function shape(messages: readonly Message[]): readonly string[] {
   return messages.map((message) => `${message.role}:${sent(message)}`);
 }

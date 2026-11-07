@@ -46,7 +46,6 @@ function unread(
   });
 }
 
-/** `unread` stands for the window's answer, which the window's own tests cover. */
 function glyph(row: SessionInfo, rows: readonly SessionInfo[] = [row], unread = true): string {
   return renderToStaticMarkup(<TaskMark state={chatMark(row, chatsFor(rows))} unread={unread} />);
 }

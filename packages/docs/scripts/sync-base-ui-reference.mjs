@@ -21,10 +21,9 @@ const RAW = `https://raw.githubusercontent.com/mui/base-ui/${BASE_UI_REF}/docs/s
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const docsRoot = path.resolve(here, "..");
-// Per-part reference tables. Component pages `<include>` the parts they wrap.
+
 const partsDir = path.join(docsRoot, "content/base-ui-reference");
 
-/** Base UI docs slugs. Avatar has a styled wrapper but no subpath. */
 const slugs = [
   "alert-dialog",
   "autocomplete",
@@ -59,7 +58,6 @@ async function fetchText(url) {
   return response.text();
 }
 
-/** The generated reference, minus its autogen banner. */
 function reference(typesMd) {
   return typesMd
     .split("\n")
@@ -69,7 +67,6 @@ function reference(typesMd) {
     .trim();
 }
 
-/** Split the reference into `### Part` sections keyed by part name, skipping `Root.Props`-style type aliases. */
 function parts(typesMd) {
   const result = new Map();
   const sections = reference(typesMd).split(/^(?=### )/m);

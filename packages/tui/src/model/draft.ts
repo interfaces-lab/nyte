@@ -56,10 +56,8 @@ export interface MarkerSpan {
 
 export const NO_PARTS: DraftParts = new Map();
 
-/** A paste with more lines than this becomes a part, and a sent message folds past it. */
 export const PASTE_COLLAPSE_LINES = 8;
 
-/** A paste longer than this many characters becomes a part even on one line. */
 export const PASTE_COLLAPSE_CHARS = 2_000;
 
 export function draftModel(draft: Draft): DraftModel {
@@ -368,11 +366,6 @@ interface ContentInputs {
 
 type ContentPart = Exclude<UserContent, string>[number];
 
-/**
- * What the draft sends: its text, a file or folder chip as a `reference`, a
- * skill (leading or inline) as a `skill` part, an image as its uploaded
- * `file`, an excerpt as itself, and a paste or shell chip as its text.
- */
 export function draftContent(draft: DraftSnapshot, inputs: ContentInputs): UserContent {
   const text = draft.text.trim();
   const { parts } = snapshot(draft);

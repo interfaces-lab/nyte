@@ -48,7 +48,6 @@ function heads(execution: Execution, waiting = 0): readonly HeadInfo[] {
   ];
 }
 
-/** The host's list of every session holds its 50 most active; the root's subagents are older. */
 const others = Array.from({ length: 51 }, (_, index) => sessionRow(`other-${String(index)}`));
 
 const middle = sessionRow("middle", {

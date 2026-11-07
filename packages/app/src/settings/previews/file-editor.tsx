@@ -34,10 +34,6 @@ const ITEMS: readonly CodeViewItem<undefined>[] = [
   },
 ];
 
-/**
- * The file editor's `CodeView` and status bar with its options and styles, showing a sample file
- * and blame instead of loading them from the workspace.
- */
 export function FileEditorPreview(): ReactElement {
   const theme = useSetting(preferences.theme);
   const lineNumbers = useSetting(preferences.fileLineNumbers);
@@ -68,7 +64,6 @@ export function FileEditorPreview(): ReactElement {
   );
 }
 
-/** The sample's lines, and with word wrap on, the `exponent` line taking a second. */
 const LINES = CONTENTS.split("\n").length;
 
 const WRAPPED_LINES = LINES + 1;
