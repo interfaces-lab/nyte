@@ -579,6 +579,27 @@ export function FilesExplorer({
         }}
         onDoubleClick={(event) => openFromTree(event.nativeEvent, false)}
         onKeyDown={(event) => {
+          if (
+            event.defaultPrevented ||
+            event.nativeEvent.isComposing ||
+            event.metaKey ||
+            event.ctrlKey ||
+            event.altKey ||
+            event.shiftKey
+          )
+            return;
+
+          if (
+            event.nativeEvent
+              .composedPath()
+              .some(
+                (target) =>
+                  target instanceof HTMLElement &&
+                  target.matches('input, textarea, [contenteditable="true"]'),
+              )
+          )
+            return;
+
           if (event.key === "Enter") openFromTree(event.nativeEvent, true);
 
           if (event.key === "F2") {

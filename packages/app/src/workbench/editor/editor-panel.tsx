@@ -271,6 +271,35 @@ export function EditorPanel({
       aria-label={WORKBENCH_KINDS.editor.label}
       {...props(styles.panel, treeStatusTheme)}
       onKeyDownCapture={(event) => {
+        if (!shown || event.defaultPrevented || event.nativeEvent.isComposing) return;
+
+        if (
+          nyte.platform === "darwin" &&
+          event.ctrlKey &&
+          !event.metaKey &&
+          !event.altKey &&
+          event.code === "Minus"
+        ) {
+          if (
+            event.nativeEvent
+              .composedPath()
+              .some(
+                (target) =>
+                  target instanceof Element &&
+                  target.matches(
+                    'input, textarea, [role="dialog"], [role="alertdialog"], [role="menu"]',
+                  ),
+              )
+          )
+            return;
+          event.preventDefault();
+
+          if (event.shiftKey) fileActions.forward(viewKey);
+          else fileActions.back(viewKey);
+
+          return;
+        }
+
         if (!(event.metaKey || event.ctrlKey)) return;
         const key = event.key.toLowerCase();
 
@@ -285,7 +314,11 @@ export function EditorPanel({
           showSearch();
         }
 
-        const primary = nyte.platform === "darwin" ? event.metaKey : event.ctrlKey;
+        const primary =
+          !event.altKey &&
+          (nyte.platform === "darwin"
+            ? event.metaKey && !event.ctrlKey
+            : event.ctrlKey && !event.metaKey);
 
         if (primary && event.key === "\\") {
           event.preventDefault();
@@ -299,7 +332,7 @@ export function EditorPanel({
             ? ""
             : primary && event.shiftKey && key === "o"
               ? "@"
-              : event.ctrlKey && !event.metaKey && !event.shiftKey && key === "g"
+              : event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && key === "g"
                 ? ":"
                 : undefined;
 
