@@ -156,7 +156,6 @@ export function EditorPanel({
   const searchRef = useRef<HTMLDivElement>(null);
   const editors = useRef(new Map<string, FileEditorHandle>());
   const activeFile = tabs.active;
-  const activePath = activeFile?.path;
   const pendingFile = tabs.pendingClose;
   const panelRef = useRef<HTMLElement>(null);
   const closeOrigin = useRef<WorkbenchTabId | undefined>(undefined);
@@ -233,10 +232,31 @@ export function EditorPanel({
       ? []
       : findSymbols(activeFile.path, activeContents);
 
+  const visitedFile = useRef<
+    | {
+        readonly viewKey: WorkbenchViewKey;
+        readonly file: typeof activeFile;
+      }
+    | undefined
+  >(undefined);
+
   // oxlint-disable-next-line nyte-code/no-direct-effect -- records activation from tab clicks and group focus in the file store
   useEffect(() => {
-    if (shown && activePath !== undefined) fileActions.remember(viewKey, activePath);
-  }, [shown, activePath, viewKey]);
+    if (!shown) return;
+    const previous = visitedFile.current;
+    visitedFile.current = { viewKey, file: activeFile };
+
+    if (activeFile === undefined) return;
+
+    if (previous?.viewKey === viewKey) {
+      if (previous.file?.id === activeFile.id && previous.file.path === activeFile.path) return;
+
+      if (previous.file !== undefined && !tabs.tabs.some((file) => file.id === previous.file?.id))
+        return;
+    }
+
+    fileActions.remember(viewKey, activeFile.path);
+  }, [shown, activeFile, tabs.tabs, viewKey]);
 
   const recentFiles = tabs.recent.flatMap((path) => {
     const file = files.data?.find((entry) => entry.path === path);
