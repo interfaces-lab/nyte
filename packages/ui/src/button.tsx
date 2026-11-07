@@ -12,6 +12,7 @@ import {
 import { hairline } from "./styles/hairline.stylex.ts";
 import { focus } from "./styles/a11y.stylex.ts";
 import { joinedSolid } from "./styles/button.stylex.ts";
+import { controlRoot } from "./styles/control.stylex.ts";
 import { button, control, media, radius, space, target } from "./styles/schema.stylex.ts";
 import {
   mergeStyleProps,
@@ -390,6 +391,7 @@ export function buttonStyle<State>(
       size === "2xs" || size === "xs" ? text.sm : text.base,
       tone !== "neutral" && intent[tone],
       controlStyles.base,
+      controlRoot,
       buttonSizes[size],
       pill && pillSizes[size],
       iconOnly && controlStyles.iconOnly,

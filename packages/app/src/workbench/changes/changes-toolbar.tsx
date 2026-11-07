@@ -183,6 +183,7 @@ function scopeIcon(scope: WorkbenchChangesScope): IconName {
 function ScopeRadioItem({ option }: { readonly option: ChangesScopeOption }): ReactElement {
   return (
     <MenuRadioItem
+      data-change-stats-control=""
       value={changesScopeValue(option.scope)}
       icon={scopeIcon(option.scope)}
       label={option.label}
@@ -227,6 +228,7 @@ function TurnScopeItem({
 
   return (
     <MenuRadioItem
+      data-change-stats-control=""
       value={changesScopeValue(option.scope)}
       icon={changed ? "git-branch" : undefined}
       meta={totals.stats === undefined ? null : <ChangeStats {...totals.stats} />}
@@ -420,7 +422,11 @@ export function ChangesToolbar({
         <Menu>
           <MenuTrigger
             render={
-              <Button icon={scopeIcon(scope)} xstyle={styles.scopeTriggerLayout}>
+              <Button
+                icon={scopeIcon(scope)}
+                data-change-stats-control=""
+                xstyle={styles.scopeTriggerLayout}
+              >
                 <span {...props(styles.scopeLabel)}>{scopeLabel}</span>
                 <ScopeMeta key={scopeKey} stats={scopeStats} fileCount={scopeFileCount} />
                 <span {...props(styles.scopeChevron)}>

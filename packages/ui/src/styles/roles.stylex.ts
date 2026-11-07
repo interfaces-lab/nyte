@@ -13,8 +13,7 @@ const glass = (light: number, dark: number) =>
 const shade = (role: string, light: number, dark: number) =>
   `light-dark(oklch(from var(--nyte-${role}) calc(l * ${light}) c h), oklch(from var(--nyte-${role}) calc(l * ${dark}) c h))`;
 
-const ink =
-  "light-dark(oklch(from var(--nyte-theme-100) min(l, 0.45) c h), oklch(from var(--nyte-theme-80) max(l, 0.85) c h))";
+const ink = "light-dark(var(--nyte-theme-100), oklch(from var(--nyte-theme-80) max(l, 0.74) c h))";
 
 const stair = (light: number, lightCeiling: number, dark: number, darkFloor: number) =>
   `light-dark(oklch(from var(--nyte-theme-${light}) min(l, ${lightCeiling}) c h), oklch(from var(--nyte-theme-${dark}) max(l, ${darkFloor}) c h))`;
@@ -37,7 +36,7 @@ export const roles = defineVars({
   "--nyte-content-tertiary": contrast(stair(90, 0.5, 70, 0.69), step(110, 50)),
   "--nyte-content-quaternary": contrast(stair(80, 0.6, 90, 0.57), step(100, 70)),
   "--nyte-content-disabled": contrast(step(50, 100), step(70, 90)),
-  "--nyte-content-accent": contrast(ink, stair(100, 0.38, 40, 0.85)),
+  "--nyte-content-accent": contrast(ink, step(100, 40)),
   "--nyte-content-on-interactive-strong": "var(--nyte-theme-0)",
   "--nyte-content-on-control": "var(--nyte-neutral-0)",
 
@@ -90,7 +89,7 @@ export const roles = defineVars({
 });
 
 const hued = {
-  "--nyte-content-accent": contrast(ink, stair(100, 0.38, 60, 0.85)),
+  "--nyte-content-accent": contrast(ink, step(100, 60)),
   "--nyte-bg-scrim-translucent": glass(40, 130),
   "--nyte-bg-interactive-strong": "var(--nyte-theme-80)",
   "--nyte-bg-control-selected": "oklch(from var(--nyte-theme-80) min(l, 0.62) c h)",

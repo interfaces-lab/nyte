@@ -516,7 +516,13 @@ export function ChangesCard({
       </div>
       <ul {...props(turnStyles.changesList)}>
         {shown.map((file) => (
-          <Row key={file.path} render={<li />} interactive xstyle={turnStyles.changesFile}>
+          <Row
+            key={file.path}
+            render={<li />}
+            interactive
+            data-change-stats-control=""
+            xstyle={turnStyles.changesFile}
+          >
             <Tooltip>
               <TooltipTrigger
                 render={

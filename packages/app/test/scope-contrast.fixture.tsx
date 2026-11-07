@@ -1,4 +1,11 @@
 import { create, props, type StyleXStyles } from "@stylexjs/stylex";
+import { createRoot } from "react-dom/client";
+import { flushSync } from "react-dom";
+import { Button } from "@nyte-ai/ui/button";
+import { Menu, MenuContent, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "@nyte-ai/ui/menu";
+import { Row } from "@nyte-ai/ui/row";
+import { ChangeStats } from "../src/components/change-stats.tsx";
+import { turnStyles } from "../src/chat/transcript/turn.stylex.ts";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
 
@@ -32,7 +39,83 @@ const stairs = [
   ["disabled", styles.disabled, 1],
 ] as const;
 
-export function run(): string {
+export async function mount(): Promise<void> {
+  const container = document.createElement("div");
+  container.id = "count-controls";
+  document.body.append(container);
+  document.documentElement.style.setProperty("--nyte-reduce-transparency", "1");
+  flushSync(() => {
+    createRoot(container).render(
+      <div {...props(styles.base)}>
+        {(["base", "chrome"] as const).flatMap((surface) =>
+          [false, true].map((open) => (
+            <div
+              key={`${surface}-${String(open)}`}
+              {...props(surface === "base" ? styles.base : styles.chromeSurface)}
+            >
+              <Button
+                data-count-case={`${surface}-${open ? "open" : "closed"}`}
+                data-change-stats-control=""
+                aria-expanded={open}
+              >
+                <ChangeStats added={86} removed={24} />
+              </Button>
+            </div>
+          )),
+        )}
+        <Row
+          interactive
+          data-count-case="turn-file"
+          data-change-stats-control=""
+          xstyle={turnStyles.changesFile}
+        >
+          <Row.Primary>
+            <ChangeStats added={86} removed={24} />
+          </Row.Primary>
+        </Row>
+        <Menu open>
+          <MenuTrigger render={<Button>Scope</Button>} />
+          <MenuContent>
+            <MenuRadioGroup value="turn">
+              <MenuRadioItem
+                value="turn"
+                data-count-case="menu"
+                data-change-stats-control=""
+                meta={<ChangeStats added={86} removed={24} />}
+              >
+                This turn
+              </MenuRadioItem>
+            </MenuRadioGroup>
+          </MenuContent>
+        </Menu>
+      </div>,
+    );
+  });
+  await new Promise<void>((done) =>
+    requestAnimationFrame(() => requestAnimationFrame(() => done())),
+  );
+  const item = document.querySelector('[data-count-case="menu"]');
+
+  if (item === null) throw new Error("Missing scope menu item");
+  item.setAttribute("data-highlighted", "");
+}
+
+function backgroundLayers(element: Element): string[] {
+  const computed = getComputedStyle(element);
+  const overlay = computed.backgroundImage.match(/^linear-gradient\((.+), \1\)$/u)?.[1];
+
+  if (computed.backgroundImage !== "none" && overlay === undefined)
+    throw new Error(`Unexpected count background: ${computed.backgroundImage}`);
+
+  return [
+    ...(element.parentElement === null ? [] : backgroundLayers(element.parentElement)),
+    computed.backgroundColor,
+    ...(overlay === undefined ? [] : [overlay]),
+  ];
+}
+
+export async function run(): Promise<string> {
+  if (document.getElementById("count-controls") === null) await mount();
   const canvas = document.createElement("canvas");
   canvas.width = 1;
   canvas.height = 1;
@@ -70,7 +153,20 @@ export function run(): string {
     surface: string;
     ratio: number;
     minimum: number;
+    color?: string;
+    expected?: string;
   }[] = [];
+
+  const hex = (color: string): string => {
+    context.clearRect(0, 0, 1, 1);
+    context.fillStyle = color;
+    context.fillRect(0, 0, 1, 1);
+
+    return Array.from(context.getImageData(0, 0, 1, 1).data)
+      .slice(0, 3)
+      .map((byte) => byte.toString(16).padStart(2, "0"))
+      .join("");
+  };
 
   const scopes = [
     { name: "neutral", theme: [], hue: 250, chroma: 1 },
@@ -216,41 +312,36 @@ export function run(): string {
       host.remove();
     }
 
-    for (const scope of ["green", "red"] as const) {
-      const host = document.createElement("div");
-      const fill = document.createElement("span");
-      const label = document.createElement("span");
-      label.className = props(surfaceTheme[scope], styles.accent).className ?? "";
-      fill.append(label);
-      host.append(fill);
-      document.body.append(host);
+    for (const control of document.querySelectorAll("[data-count-case]")) {
+      const stats = control.querySelector('[aria-label="86 added, 24 removed"]');
 
-      for (const [surface, background] of [
-        ["base", styles.base],
-        ["chrome", styles.chromeSurface],
-      ] as const) {
-        host.className = props(background).className ?? "";
-        const ground = getComputedStyle(host).backgroundColor;
+      if (stats === null || stats.children.length !== 2)
+        throw new Error("Missing ChangeStats counts");
 
-        for (const [state, style] of [
-          ["hover", styles.fillTertiary],
-          ["selected", styles.fillSecondary],
-          ["pressed", styles.fillPrimary],
-        ] as const) {
-          fill.className = props(style).className ?? "";
-          const layers = [ground, getComputedStyle(fill).backgroundColor];
-          results.push({
-            mode,
-            scope: `${scope}-on-neutral`,
-            role: "accent",
-            surface: `${surface}+${state}`,
-            ratio: ratio(luminance([...layers, getComputedStyle(label).color]), luminance(layers)),
-            minimum: 4.5,
-          });
-        }
+      const neutral = control.matches(":active, [aria-expanded=true], [data-highlighted]");
+      const more = matchMedia("(prefers-contrast: more)").matches;
+
+      const palette =
+        mode === "light"
+          ? ["116d3e", "a63536"]
+          : more
+            ? ["78bd90", "e28d88"]
+            : ["0bcb74", "ff535a"];
+
+      for (const [index, label] of Array.from(stats.children).entries()) {
+        const color = getComputedStyle(label).color;
+        const layers = backgroundLayers(label);
+        results.push({
+          mode,
+          scope: `${index === 0 ? "green" : "red"}-on-neutral`,
+          role: "count",
+          surface: `${control.getAttribute("data-count-case")}+${control.matches(":active") ? "held" : control.matches(":hover") ? "hover" : "rest"}`,
+          ratio: ratio(luminance([...layers, color]), luminance(layers)),
+          minimum: 4.5,
+          color: hex(color),
+          expected: neutral ? hex(getComputedStyle(stats).color) : palette[index],
+        });
       }
-
-      host.remove();
     }
 
     for (const scope of ["blue", "red"] as const) {
