@@ -8,6 +8,7 @@ const TLA_TS = "tla-ts@0.0.6";
 const SYNC_COMMIT = "d142cf6dd8cbddcda21866cd2a795dd33abdb475";
 const COVERED_FILES = [
   "packages/core/src/compose.ts",
+  "packages/core/src/contract/presence.ts",
   "packages/core/src/engine/presence.ts",
   "packages/core/src/drive/execution.ts",
   "packages/core/src/fold/commit.ts",

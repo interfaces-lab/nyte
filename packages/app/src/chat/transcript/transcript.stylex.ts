@@ -20,6 +20,7 @@ export const messageScrollerStyles = create({
     overflowY: "auto",
     overflowAnchor: "none",
     outlineStyle: "none",
+    containerType: "size",
     "--_top-fade": { default: "0px", "[data-top-fade='true']": conversation.edgeFade },
     maskImage:
       "linear-gradient(to bottom, transparent, black var(--_top-fade), black calc(100% - var(--_dock-height, 0px) - var(--_dock-fade, 0px)), transparent calc(100% - var(--_dock-height, 0px)))",

@@ -1,4 +1,5 @@
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
+import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
@@ -21,7 +22,6 @@ const styles = create({
     overflow: "clip",
     borderRadius: radius.control,
     backgroundColor: role.bgMutedTranslucent,
-    boxShadow: `inset 0 0 0 1px ${role.strokeQuaternary}`,
   },
   toolbar: {
     display: "flex",
@@ -81,7 +81,7 @@ export function MermaidDiagram({ source }: { readonly source: string }): ReactEl
     return <CodeBlock code={source} lang="mermaid" />;
 
   return (
-    <figure aria-label="Mermaid diagram" {...props(styles.figure)}>
+    <figure aria-label="Mermaid diagram" {...props(styles.figure, hairline.ring)}>
       <figcaption {...props(styles.toolbar)}>
         <Button
           size="sm"

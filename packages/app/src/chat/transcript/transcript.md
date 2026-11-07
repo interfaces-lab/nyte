@@ -36,7 +36,7 @@ Reading returns to Following only through rules 2, 3 and 4. Saving or cancelling
 ## Composer
 
 13. The composer is docked to the bottom of the conversation column and never moves with content. The transcript fades out above the composer, so no transcript content shows below its top edge.
-14. At the end, 114px separate the last row from the top of the composer.
+14. At the end, 114px separate the last row from the top of the composer, or 17% of the room above the composer, rounded down to the 2px grid, when that is less. The room is the Messages view's height minus the composer's.
 15. When the composer's height changes, because a tray opens or the draft grows, Following stays at the end and Reading keeps its anchor.
 
 ## Sticky prompts
@@ -49,7 +49,7 @@ Reading returns to Following only through rules 2, 3 and 4. Saving or cancelling
 
 19. A row keeps its identity, its DOM and its position through every change to its content. That covers a prompt or steered message joining its turn, a continuation folding into the previous row, a commit replacing live parts, and streamed text arriving.
 
-The latest turn owns one summary row, keyed by its prompt. The row always reserves the height of a full Files Changed card, while the turn runs and after it ends. The card appearing, or a turn with no changes, never changes the row's height. A prompt that opens its own turn moves the summary row to that turn. A prompt that joins a running turn doesn't.
+The latest turn owns one summary row, keyed by its prompt. While the turn runs, the row reserves the height of a full Files Changed card, so the card can arrive without moving the transcript. The reservation leaves the Messages view's first 320px to the conversation, so a view under 320px tall reserves nothing and a taller one reserves at most its height minus 320px. After the turn ends, the row holds the card if there are changes and is empty if there are none. A card taller than the reservation grows the row, and Following keeps the end in view. A prompt that opens its own turn moves the summary row to that turn. A prompt that joins a running turn doesn't.
 
 ## Restore and resize
 

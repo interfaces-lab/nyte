@@ -3,7 +3,7 @@ name: naming
 description: >
   Use before naming or renaming a type, record, schema, concept, UI word, command, or a
   package-level module or folder: a new session, turn, pane or lane concept, a label users see,
-  a `*Record` or wire type, or a new folder in the app. Trigger on "what should this be called",
+  a `*Record` or wire type, or a new folder in the app or core. Trigger on "what should this be called",
   "rename", "new concept", "is X the same as Y", or a word the code spells two ways.
 ---
 
@@ -19,6 +19,7 @@ One name per concept. Before you add or change a name:
 4. Wire and stored names (`packages/schema`, core's `*Record` schemas) keep their spelling. A
    rename there is a migration, not a naming fix; leave it unless asked.
 
-For a new module or folder in the app, read `docs/app-structure.md` first. Each folder owns one
-concept: put the module in the folder that owns it, or name a new folder for its concept and add
-it to `LAYERS` (`pnpm layers` checks the imports) and the doc's folder table.
+For a new module or folder in the app, read `docs/app-structure.md` first; in core, read
+`docs/core-structure.md`. Each folder owns one concept: put the module in the folder that owns it,
+or name a new folder for its concept and add it to that package's `layers` in
+`scripts/check-layers.mjs` (`pnpm layers` checks the imports) and the doc's folder table.

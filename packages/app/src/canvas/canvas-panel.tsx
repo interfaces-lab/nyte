@@ -7,6 +7,7 @@ import type { BlobId, PartId, SessionId } from "@nyte-ai/sdk";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@nyte-ai/ui/select";
 import { Spinner } from "@nyte-ai/ui/spinner";
 import { Toggle } from "@nyte-ai/ui/toggle";
+import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
@@ -129,7 +130,7 @@ export function CanvasPanel({
 
   return (
     <section aria-label={state.title} {...props(styles.panel)}>
-      <div {...props(workbenchStyles.toolbar, styles.toolbar)}>
+      <div {...props(workbenchStyles.toolbar, hairline.blockEnd, styles.toolbar)}>
         <span {...props(text.base, styles.title)}>{state.title}</span>
         {editing && (
           <span role="status" {...props(text.sm, styles.editing)}>

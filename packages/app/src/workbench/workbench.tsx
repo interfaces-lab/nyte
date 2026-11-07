@@ -5,6 +5,7 @@ import type { KeyboardEvent, PointerEvent, ReactElement } from "react";
 import { clientCapabilities } from "../contract/client-actions.ts";
 import type { ClientCapabilities } from "../contract/client-actions.ts";
 import { nyte } from "../contract/nyte.ts";
+import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 import { Icon, PanelToggleIcon } from "@nyte-ai/ui/icon";
 import { Row } from "@nyte-ai/ui/row";
 import { Toggle } from "@nyte-ai/ui/toggle";
@@ -370,7 +371,7 @@ function WorkbenchViewHost({
       inert={panelHidden ? true : undefined}
       {...props(
         workbenchStyles.panel,
-        panelVisible && workbenchStyles.edge,
+        panelVisible && hairline.inlineStart,
         panelVisible && workbenchStyles.panelOpen,
         !panelVisible && (compact ? workbenchStyles.railHostCompact : workbenchStyles.railHost),
         panelVisible && (maximized || bounds.kind === "overlay") && workbenchStyles.panelOverlay,

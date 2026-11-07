@@ -256,9 +256,10 @@ function checkFollowing(label: string): void {
       ? 0
       : stage.dock.getBoundingClientRect().top - last.getBoundingClientRect().bottom;
 
+  const room = stage.viewport.clientHeight - stage.dock.offsetHeight;
   expectRule(
     "14",
-    Math.abs(gap - 114) <= 1,
+    Math.abs(gap - Math.min(114, 2 * Math.floor((room * 0.17) / 2))) <= 1,
     `${label}: last row ends ${gap.toFixed(1)}px above the composer`,
   );
 }
@@ -873,7 +874,7 @@ async function checkRules(): Promise<string> {
       "completion did not fill the reserved footer",
     );
     stream.push({ ...finishedNext, changes: [] });
-    await frames("empty footer", () => checkFooter(nextFooter, false));
+    await frames("empty footer", () => expectRule("footer", !nextFooter.offsetHeight, "reserved"));
 
     step = "edit submission before the host updates";
     stream.push(finishedNext);

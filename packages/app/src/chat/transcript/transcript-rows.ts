@@ -762,7 +762,9 @@ function rowEstimate(
     }
 
     case "changes":
-      return CHANGES_CARD_BASE_ESTIMATE + CHANGES_CARD_ROW_ESTIMATE * CHANGES_VISIBLE_FILES;
+      return row.state === "ready" && row.files.length === 0
+        ? 0
+        : CHANGES_CARD_BASE_ESTIMATE + CHANGES_CARD_ROW_ESTIMATE * CHANGES_VISIBLE_FILES;
     default: {
       const _exhaustive: never = row;
 

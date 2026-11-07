@@ -10,6 +10,7 @@ import {
 } from "./button.tsx";
 import { ControlGlyphs, Icon } from "./icon.tsx";
 import type { StyledProps } from "./style.ts";
+import { hairline } from "./styles/hairline.stylex.ts";
 
 export function Toggle<Value extends string>({
   indicator = "fill",
@@ -35,7 +36,7 @@ export function Toggle<Value extends string>({
       {...buttonStyle(
         "ghost",
         size,
-        { iconOnly, pill, tone, xstyle, className, style },
+        { iconOnly, pill, tone, xstyle: [hairline.pressedRing, xstyle], className, style },
         indicator === "glyph",
       )}
     >

@@ -9,7 +9,8 @@ import { expect, test } from "./fixtures.ts";
 import { buildSourceIndex, compileExpr } from "./grid/cause.ts";
 import type { SourceIndex } from "./grid/cause.ts";
 import { check } from "./grid/check.ts";
-import { clearOverlay, collect, drawOverlay } from "./grid/collect.ts";
+import { collect } from "./grid/collect.ts";
+import { clearOverlay, drawOverlay } from "./grid/overlay.ts";
 import type { Plan, Snapshot } from "./grid/collect.ts";
 import { overlayMarks, stateResult, writeReport } from "./grid/report.ts";
 import type { StateResult } from "./grid/report.ts";
@@ -106,7 +107,10 @@ function planFor(index: SourceIndex): Plan {
         css: compileExpr(index, rail.offset),
       })),
       rows: region.rhythm?.rows ?? null,
-      pitch: region.rhythm === null ? null : compileExpr(index, region.rhythm.pitch),
+      pitch:
+        region.rhythm === null || region.rhythm.pitch === null
+          ? null
+          : compileExpr(index, region.rhythm.pitch),
       centred: region.centred,
     })),
     exceptions: Object.values(GRID_RULES).flatMap((rule) =>

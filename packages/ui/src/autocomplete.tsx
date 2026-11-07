@@ -3,6 +3,7 @@ import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 
 import { focus } from "./styles/a11y.stylex.ts";
+import { hairline } from "./styles/hairline.stylex.ts";
 import { floatingSurfaceStyles } from "./styles/floating-surface.stylex.ts";
 import { control, glyph, layer, menu, radius, row, space } from "./styles/schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
@@ -65,7 +66,6 @@ const styles = create({
     borderStyle: "none",
     borderRadius: 0,
     backgroundColor: "transparent",
-    boxShadow: `inset 0 -1px 0 0 ${role.strokeQuaternary}`,
     color: role.contentPrimary,
     fontFamily: type.fontSans,
     fontSize: {
@@ -136,7 +136,7 @@ const styles = create({
 
 const inputVariants = create({
   popup: {},
-  inline: { height: row.heightMd, paddingInline: space.s2, boxShadow: "none" },
+  inline: { height: row.heightMd, paddingInline: space.s2 },
 });
 
 const listVariants = create({
@@ -294,7 +294,13 @@ export function AutocompleteInput({
     <Combobox.Input
       data-slot="autocomplete-input"
       {...mergeStyleProps(
-        props(styles.input, focus.ringInset, inputVariants[variant], xstyle),
+        props(
+          styles.input,
+          variant === "popup" && hairline.blockEnd,
+          focus.ringInset,
+          inputVariants[variant],
+          xstyle,
+        ),
         className,
         style,
       )}

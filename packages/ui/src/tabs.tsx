@@ -3,6 +3,7 @@ import { create, props } from "@stylexjs/stylex";
 import { createContext, use, type ReactElement } from "react";
 
 import { focus } from "./styles/a11y.stylex.ts";
+import { hairline } from "./styles/hairline.stylex.ts";
 import { button, control, media, radius, space, target } from "./styles/schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
 import type { Restyle } from "./styles/contracts.ts";
@@ -19,13 +20,11 @@ const lists = create({
     padding: space.s0_5,
     borderRadius: `calc(${button.radiusSm} + 2px)`,
     backgroundColor: role.bgMutedTranslucent,
-    boxShadow: `inset 0 0 0 1px ${role.strokeQuaternary}`,
   },
   underline: {
     display: "flex",
     flexDirection: { default: "row", '[data-orientation="vertical"]': "column" },
     gap: space.s4,
-    boxShadow: `inset 0 -1px 0 ${role.strokeQuaternary}`,
   },
   pill: {
     display: "flex",
@@ -75,14 +74,18 @@ const tabs = create({
     backgroundColor: {
       default: "transparent",
       ":hover:not([data-active])": { [media.hover]: role.fillTertiary },
-      "[data-active]": role.bgElevated,
+      "[data-active]": { default: role.bgElevated, [media.forcedColors]: "SelectedItem" },
     },
-    boxShadow: { default: "none", "[data-active]": shadow.shadowSm },
+    boxShadow: {
+      default: "none",
+      "[data-active]": { default: shadow.shadowSm, [media.forcedColors]: "none" },
+    },
     color: {
       default: role.contentSecondary,
       ":hover": { [media.hover]: role.contentPrimary },
-      "[data-active]": role.contentPrimary,
+      "[data-active]": { default: role.contentPrimary, [media.forcedColors]: "SelectedItemText" },
     },
+    forcedColorAdjust: { default: null, "[data-active]": "none" },
     fontFamily: type.fontSans,
     fontWeight: type.weightMedium,
     userSelect: "none",
@@ -117,7 +120,13 @@ const tabs = create({
       insetInline: 0,
       insetBlockEnd: 0,
       height: 1.5,
-      backgroundColor: { default: "transparent", ":is([data-active])": role.contentPrimary },
+      backgroundColor: {
+        default: "transparent",
+        ":is([data-active])": {
+          default: role.contentPrimary,
+          [media.forcedColors]: "SelectedItem",
+        },
+      },
       content: '""',
     },
   },
@@ -131,18 +140,19 @@ const tabs = create({
     borderStyle: "solid",
     borderColor: {
       default: role.strokeQuaternary,
-      "[data-active]": role.strokeTertiary,
+      "[data-active]": { default: role.strokeTertiary, [media.forcedColors]: "SelectedItemText" },
     },
     backgroundColor: {
       default: "transparent",
       ":hover:not([data-active])": { [media.hover]: role.fillTertiary },
-      "[data-active]": role.fillSecondary,
+      "[data-active]": { default: role.fillSecondary, [media.forcedColors]: "SelectedItem" },
     },
     color: {
       default: role.contentSecondary,
       ":hover": { [media.hover]: role.contentPrimary },
-      "[data-active]": role.contentPrimary,
+      "[data-active]": { default: role.contentPrimary, [media.forcedColors]: "SelectedItemText" },
     },
+    forcedColorAdjust: { default: null, "[data-active]": "none" },
     fontFamily: type.fontSans,
     fontWeight: type.weightMedium,
   },
@@ -159,13 +169,14 @@ const tabs = create({
     backgroundColor: {
       default: "transparent",
       ":hover:not([data-active])": { [media.hover]: role.fillTertiary },
-      "[data-active]": role.fillSecondary,
+      "[data-active]": { default: role.fillSecondary, [media.forcedColors]: "SelectedItem" },
     },
     color: {
       default: role.contentSecondary,
       ":hover": { [media.hover]: role.contentPrimary },
-      "[data-active]": role.contentPrimary,
+      "[data-active]": { default: role.contentPrimary, [media.forcedColors]: "SelectedItemText" },
     },
+    forcedColorAdjust: { default: null, "[data-active]": "none" },
     fontFamily: type.fontSans,
   },
 });
@@ -219,7 +230,17 @@ function TabsList({
     <TabsPrimitive.List
       activateOnFocus={variant === "segmented"}
       {...rest}
-      {...mergeStyleProps(props(indicator.list, lists[variant], xstyle), className, style)}
+      {...mergeStyleProps(
+        props(
+          indicator.list,
+          lists[variant],
+          variant === "segmented" && hairline.ring,
+          variant === "underline" && hairline.blockEnd,
+          xstyle,
+        ),
+        className,
+        style,
+      )}
     />
   );
 }

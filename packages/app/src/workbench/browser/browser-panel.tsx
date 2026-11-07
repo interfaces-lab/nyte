@@ -1,3 +1,4 @@
+import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 import { control, row, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, keyframes, props } from "@stylexjs/stylex";
 import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
@@ -660,7 +661,7 @@ export function BrowserPanel({
       }}
     >
       {visible && blank && <FocusAddressNextFrame address={addressRef} />}
-      <div {...props(workbenchStyles.toolbar, styles.toolbar)}>
+      <div {...props(workbenchStyles.toolbar, hairline.blockEnd, styles.toolbar)}>
         <Button
           iconOnly
           icon="arrow-left"

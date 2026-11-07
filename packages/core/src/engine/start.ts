@@ -5,7 +5,6 @@ import { CORE_CONTEXT, PARTICIPANT_AUTHORITY } from "../contract/host.ts";
 import type { ConnectionContext } from "../contract/host.ts";
 import type { Kernel } from "../contract/kernel.ts";
 import type { SessionRecord } from "../contract/records.ts";
-import { releaseWorktree } from "../env/worktrees.ts";
 import { commit } from "../fold/commit.ts";
 import { withFold } from "../fold/reads.ts";
 import { releaseParts } from "../store/parts.ts";
@@ -140,7 +139,7 @@ export async function discardSession(
   ]);
 
   await kernel.environments.detach(session);
-  await releaseWorktree(kernel, session, found.record.workspace);
+  await kernel.releaseWorktree(session, found.record.workspace);
 
   return true;
 }

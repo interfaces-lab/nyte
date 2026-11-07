@@ -40,6 +40,7 @@ import type {
 import type { PartDefinitions } from "./contract/parts.ts";
 import type { ServedHost } from "./contract/server.ts";
 import type { Plugin } from "./contract/plugin.ts";
+import type { Member } from "./contract/presence.ts";
 import { decodeHostIdentity, envelope } from "./contract/records.ts";
 import type { HostIdentity } from "./contract/records.ts";
 import type { StoreConnection } from "./contract/store.ts";
@@ -55,7 +56,6 @@ import { createExecutionState, dispatchHead, driveInProcess } from "./drive/exec
 import { createChildTable } from "./engine/children.ts";
 import { createJobTable, jobHandle } from "./engine/jobs.ts";
 import { openPresence } from "./engine/presence.ts";
-import type { Member } from "./engine/presence.ts";
 import { createPartDefinitions } from "./engine/part-definitions.ts";
 import { createConnectionRegistry } from "./engine/principals.ts";
 import { stopStart } from "./engine/start.ts";
@@ -77,17 +77,23 @@ import { bumpGeneration } from "./extend/registry.ts";
 import { publishViews } from "./extend/part-views.ts";
 import { reportUserPluginFailures, userPluginFolder } from "./extend/plugin-folders.ts";
 import { closeWatches, forgetScans, resourcesPlugin, watchHome } from "./extend/resources.ts";
-import { settingInfos } from "./extend/setting-layers.ts";
+import { settingInfos } from "./extend/setting-definitions.ts";
 import { createSettingsApi } from "./extend/settings.ts";
 import { createBus } from "./fold/bus.ts";
 import { createFoldCache, createLogPublisher, pollStore } from "./fold/watch.ts";
 import { createModelState } from "./store/model-state.ts";
 import { createPartTable } from "./store/parts.ts";
 import { hostIdentityRef, kvRef } from "./store/refs.ts";
+import { loadSecretCipherKey } from "./store/secrets.ts";
 import { readHeld, readKv } from "./store/session.ts";
 import { dev } from "./util/dev-log.ts";
 import { variablesPlugin } from "./env/variables.ts";
-import { cleanWorktrees, sweepWorktrees, worktreesPlugin } from "./env/worktrees.ts";
+import {
+  cleanWorktrees,
+  releaseWorktree,
+  sweepWorktrees,
+  worktreesPlugin,
+} from "./env/worktrees.ts";
 
 export type ComposeOptions = OpenOptions & {
   readonly home: string | null;
@@ -461,6 +467,7 @@ export function createKernel(input: KernelOptions): Kernel {
   let environments: EnvironmentRegistry | null = null;
   let jobs: JobTable | null = null;
   let pages: PageTable | null = null;
+  let secretKey: Promise<CryptoKey> | null = null;
 
   const kernel: Kernel = {
     hostId: input.hostId,
@@ -564,6 +571,9 @@ export function createKernel(input: KernelOptions): Kernel {
     }),
     connections: createConnectionRegistry(),
     secrets: input.secrets ?? null,
+    get secretKey() {
+      return (secretKey ??= kernel.secrets === null ? null : loadSecretCipherKey(kernel.secrets));
+    },
     github: input.github ?? null,
     images: input.images ?? null,
     get mcp() {
@@ -623,6 +633,7 @@ export function createKernel(input: KernelOptions): Kernel {
       activationSession: (context, session) => activationSession(kernel, context, session),
     },
     stopStart: (session) => stopStart(kernel, session),
+    releaseWorktree: (session, workspace) => releaseWorktree(kernel, session, workspace),
   };
 
   const execution = kernel.execution;

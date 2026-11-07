@@ -30,6 +30,7 @@ import { keys, queryClient } from "../../data/query-client.ts";
 import { gitFor, refreshVcs } from "../../data/vcs.ts";
 import { selectedWorkspaceId } from "../../data/workspaces.ts";
 import { intent } from "@nyte-ai/ui/surface-theme";
+import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
@@ -292,9 +293,6 @@ const styles = create({
     gap: space.s1_5,
     flexShrink: 0,
     padding: space.s2,
-    borderBottomWidth: 1,
-    borderBottomStyle: "solid",
-    borderBottomColor: role.strokeQuaternary,
   },
   actions: { display: "flex", alignItems: "center", gap: space.s2, minWidth: 0 },
   branchField: { flex: 1 },
@@ -518,7 +516,7 @@ export function ChangesCommitBar({
 
   return (
     <form
-      {...props(styles.bar)}
+      {...props(styles.bar, hairline.blockEnd)}
       onSubmit={(event) => {
         event.preventDefault();
 

@@ -1,4 +1,4 @@
-import { isJson, SdkError } from "@nyte-ai/schema";
+import { isJson, isJsonObject, SdkError } from "@nyte-ai/schema";
 import type {
   ConfigurationPatch,
   ConfigureOutcome,
@@ -11,9 +11,10 @@ import type { Kernel } from "../contract/kernel.ts";
 import type { Setting, SettingDefinition } from "../contract/plugin.ts";
 import { collectContributions } from "../engine/contributions.ts";
 import { WORKSPACE_TRUST } from "../env/trust.ts";
-import { trustChanged } from "../env/workspaces.ts";
+import { dropScans, trustChanged } from "../env/workspaces.ts";
 import { commit } from "../fold/commit.ts";
 import { headRef, kvRef, sessionRef } from "../store/refs.ts";
+import { sealText } from "../store/secrets.ts";
 import {
   attempt,
   EMPTY_REVISION,
@@ -23,11 +24,11 @@ import {
   requireSession,
   STALE,
 } from "../store/session.ts";
+import { readSetting } from "../store/setting-layers.ts";
 import { check } from "../util/json-schema.ts";
 import { publishCatalog } from "./registry.ts";
-import { dropScans, SKILL_PATHS } from "./resources.ts";
-import { sealSecretEntries } from "./secret-settings.ts";
-import { findSettingDefinition, readSetting, settingInfos } from "./setting-layers.ts";
+import { SKILL_PATHS } from "./resources.ts";
+import { findSettingDefinition, settingInfos } from "./setting-definitions.ts";
 
 export function createSettingsApi(kernel: Kernel): SettingsApi {
   return {
@@ -153,6 +154,37 @@ async function storeHostValue(
     ...[...kernel.plugins.runtimes().keys()].map((session) => publishCatalog(kernel, session)),
     publishSettings(kernel),
   ]);
+}
+
+async function sealSecretEntries(
+  kernel: Kernel,
+  written: Json,
+  stored: Json | undefined,
+): Promise<Json> {
+  if (!isJsonObject(written)) return written;
+
+  const kept = isJsonObject(stored) ? stored : {};
+
+  const entries = await Promise.all(
+    Object.entries(written).map(async (entry): Promise<[string, Json]> => {
+      const key = entry[0];
+      const value = entry[1];
+
+      if (!isJsonObject(value) || value.secret !== true) return [key, value];
+
+      if (typeof value.value === "string")
+        return [key, { secret: true, ...(await sealText(kernel, value.value)) }];
+
+      const previous = kept[key];
+
+      if (isJsonObject(previous) && previous.secret === true && "ciphertext" in previous)
+        return [key, previous];
+
+      throw new SdkError("invalid", `${key} is secret but has no value to keep. Enter one.`);
+    }),
+  );
+
+  return Object.fromEntries(entries);
 }
 
 async function settingsConfigured(

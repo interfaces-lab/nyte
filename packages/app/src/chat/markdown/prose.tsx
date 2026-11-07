@@ -22,11 +22,13 @@ import type { Components, ExtraProps, StreamdownProps, UrlTransform } from "stre
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { openConversationLink } from "./external-link.ts";
 import { useQuery } from "@tanstack/react-query";
-import { mentionFilesOptions } from "../../data/files.ts";
+import { filesFor, mentionFilesOptions } from "../../data/files.ts";
+import { blobUrlQuery } from "../../lib/use-blob-url.ts";
 import { useChatFolder } from "../chat-folder.ts";
 import { CodeBlock } from "./code-block.tsx";
 import { MermaidDiagram } from "./mermaid-diagram.tsx";
 import { Icon } from "@nyte-ai/ui/icon";
+import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 import { FileTypeIcon } from "../../components/file-type-icon.tsx";
 import {
   fileFromUrl,
@@ -37,6 +39,7 @@ import {
 import type { MessageReference } from "../../references/message-references.ts";
 import type { MentionFile } from "../../data/files.ts";
 import { asId } from "@nyte-ai/schema";
+import type { ByteReader, WorkspaceId } from "@nyte-ai/sdk";
 import { useReferenceOpener } from "../../references/reference-opener.tsx";
 import { proseStyles } from "./prose.stylex.ts";
 import { SubagentCitation } from "../tools/subagent-call.tsx";
@@ -62,6 +65,8 @@ function nodeText(node: ReactNode): string {
 }
 
 const AGENT_LINK = "agent:";
+
+const URL_SCHEME = /^[a-z][a-z\d+.-]*:/iu;
 
 const InsideLink = createContext(false);
 
@@ -304,9 +309,16 @@ function MarkdownRule({
   );
 }
 
-function MarkdownImage({ node, alt, style }: ComponentProps<"img"> & ExtraProps): ReactElement {
+function MarkdownImage({
+  node,
+  alt,
+  src,
+  style,
+}: ComponentProps<"img"> & ExtraProps): ReactElement {
   const fades = node?.properties["data-sd-animate"] === true;
   const settle = use(FadeEnd);
+  const folder = useChatFolder();
+  const label = alt ?? "image";
 
   return (
     <span
@@ -315,9 +327,48 @@ function MarkdownImage({ node, alt, style }: ComponentProps<"img"> & ExtraProps)
       onAnimationEnd={() => settle?.(node)}
       {...props(proseStyles.imageLabel, fades && proseStyles.chunk)}
     >
-      {alt ?? "image"}
+      {folder === undefined || src === undefined || src === "" || URL_SCHEME.test(src) ? (
+        label
+      ) : (
+        <FileImage workspace={folder.id} path={safeDecode(src)} label={label} />
+      )}
     </span>
   );
+}
+
+/**
+ * The app's CSP refuses file URLs, so a local path reaches the page as a blob URL read through the
+ * chat folder's files. Agents rewrite screenshots in place, so a later answer naming the same path
+ * rereads it.
+ */
+function FileImage(input: {
+  readonly workspace: WorkspaceId;
+  readonly path: string;
+  readonly label: string;
+}): ReactNode {
+  const url = useQuery({
+    ...blobUrlQuery(["files", "bytes", input.workspace, input.path], () =>
+      readImage(input.workspace, input.path),
+    ),
+    staleTime: 10_000,
+    refetchOnMount: true,
+  }).data;
+
+  return url === undefined ? (
+    input.label
+  ) : (
+    <img src={url} alt={input.label} {...props(proseStyles.image)} />
+  );
+}
+
+/** Any path an answer names loads on sight, so a non-image is closed before its bytes are buffered. */
+async function readImage(workspace: WorkspaceId, path: string): Promise<ByteReader> {
+  const reader = await (await filesFor(workspace)).bytes(path);
+
+  if (reader.mime?.startsWith("image/") === true) return reader;
+  await reader.close();
+
+  throw new Error(`${path} is not an image.`);
 }
 
 const markdownComponents = {
@@ -356,21 +407,27 @@ const markdownComponents = {
   li: ({ node: _node, className: _className, ...elementProps }) => (
     <li {...elementProps} {...props(proseStyles.listItem)} />
   ),
+  input: ({ node: _node, className: _className, ...elementProps }) => (
+    <input {...elementProps} {...props(proseStyles.taskCheckbox)} />
+  ),
   blockquote: ({ node: _node, className: _className, ...elementProps }) => (
     <blockquote {...elementProps} {...props(proseStyles.blockquote)} />
   ),
   hr: MarkdownRule,
   pre: MarkdownPre,
   table: ({ node: _node, className: _className, ...elementProps }) => (
-    <div data-nyte-scrollport data-prose-table {...props(proseStyles.tableWrap)}>
+    <div data-nyte-scrollport data-prose-table {...props(proseStyles.tableWrap, hairline.ring)}>
       <table {...elementProps} {...props(proseStyles.table)} />
     </div>
   ),
   th: ({ node: _node, className: _className, ...elementProps }) => (
-    <th {...elementProps} {...props(proseStyles.cell, proseStyles.headerCell)} />
+    <th
+      {...elementProps}
+      {...props(proseStyles.cell, hairline.tableCell, proseStyles.headerCell)}
+    />
   ),
   td: ({ node: _node, className: _className, ...elementProps }) => (
-    <td {...elementProps} {...props(proseStyles.cell)} />
+    <td {...elementProps} {...props(proseStyles.cell, hairline.tableCell)} />
   ),
   img: MarkdownImage,
   span: FadeSpan,

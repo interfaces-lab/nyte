@@ -31,6 +31,7 @@ import { workbench } from "../../theme/schema.stylex.ts";
 import { nyte } from "../../contract/nyte.ts";
 import { preferences, useSetting } from "../../preferences/index.ts";
 import { keyOwner } from "../../lib/focus-owner.ts";
+import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
@@ -75,9 +76,6 @@ const styles = create({
     minHeight: workbench.headerHeight,
     paddingBlock: workbench.headerPaddingBlock,
     paddingInlineEnd: space.s2,
-    borderBottomWidth: 1,
-    borderBottomStyle: "solid",
-    borderBottomColor: role.strokeQuaternary,
     backgroundColor: role.bgBase,
   },
   headerButton: {
@@ -480,7 +478,8 @@ function StackHeader({
       open={!collapsed}
       onOpenChange={() => headers.get()?.onToggleCollapsed(path)}
       data-change-path={path}
-      xstyle={styles.headerRow}
+      data-slot="change-header"
+      xstyle={[styles.headerRow, hairline.blockEnd]}
     >
       <Collapsible.Trigger
         variant="plain"

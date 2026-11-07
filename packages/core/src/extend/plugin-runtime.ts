@@ -97,7 +97,6 @@ export function createPluginState(): PluginState {
     holds: new Map(),
     settings: new Set(),
     publishing: new Map(),
-    secretKey: null,
     user: { plugins: [], refused: [], failing: [] },
     viewFailures: [],
   };

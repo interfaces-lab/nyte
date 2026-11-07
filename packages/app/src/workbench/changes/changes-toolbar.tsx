@@ -20,6 +20,7 @@ import type { IconName } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { useRecordedChanges, useVcsLog } from "../../data/vcs.ts";
+import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 import { menu, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { workbenchStyles } from "../workbench.stylex.ts";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
@@ -416,7 +417,7 @@ export function ChangesToolbar({
 
   return (
     <>
-      <div {...props(workbenchStyles.toolbar)}>
+      <div {...props(workbenchStyles.toolbar, hairline.blockEnd)}>
         <Menu>
           <MenuTrigger
             render={

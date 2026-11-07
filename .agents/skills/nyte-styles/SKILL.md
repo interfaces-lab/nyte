@@ -30,6 +30,7 @@ All of it is in `packages/ui/src/styles/`, exported as `@nyte-ai/ui/styles/*`.
 | `schema.stylex.ts` | Geometry handles: `space`, `glyph`, `target`, `control`, `button`, `input`, `row`, `menu`, `dialog`, `radius`, `layer` | components |
 | `text.stylex.ts` | Whole text styles: `text.xs`, `sm`, `base`, `baseCompact`, `lg`, `xl`, `2xl`, `3xl`, `code` | compose first: `props(text.sm, styles.label)` |
 | `a11y.stylex.ts`, `floating-surface.stylex.ts` | Focus rings, `srOnly`, the raised-surface frame | components |
+| `hairline.stylex.ts` | 1px edges drawn as inset shadows: `hairline.blockEnd`, `inlineStart`, `tableCell`, `ring`, `ringAfter`, `controlRing` | components, beside the box's own style: `props(styles.bar, hairline.blockEnd)` |
 | `base.css` | The browser baseline in `@layer base` | hosts import it once |
 | `tailwind.css` | The Tailwind bridge for docs and the demo site | Tailwind hosts |
 
@@ -71,10 +72,27 @@ rules always beat base.css; an app style passed through `xstyle` always beats th
    only. Weights come from `type.weight*`. (lint: `nyte-design/no-raw-font-weight`; test:
    `pnpm --dir packages/app exec vitest --run style-cascade`; the size and line-height pairing is not enforced)
 4. **Spacing reads the scale.** Padding, margin, gap, and inset use `space.*` (Tailwind steps on a
-   4px unit, `space.px` for a hairline). A structural measurement gets a name in a schema file.
+   4px unit, `space.px` for a 1px length). A structural measurement gets a name in a schema file.
    Controls take their height from the `control` scale; rows and menu items from `row`, which
    keeps the touch target. An `Icon` takes a glyph step for `size`. (lint:
    `nyte-design/spacing-scale`, `nyte-design/size-grid`, `nyte-design/control-size`)
+   A hairline never takes layout space, so a box keeps its grid size: draw a 1px separator or frame
+   with `hairline` (`@nyte-ai/ui/styles/hairline.stylex`): `blockEnd`, `inlineStart`, `tableCell` on
+   table cells (the row rule and the column divider), `ring`, `ringAfter` (the ring on `::after`,
+   above the content, for a popup), or `controlRing` (a control's boundary in `strokeTertiary`). Each
+   is an inset box-shadow, in `strokeQuaternary` unless it's a control's boundary. Forced colors drop
+   shadows, so there `blockEnd`, `inlineStart` and `tableCell` draw a border image with no border
+   width, `ring` an outline inside the box, and `ringAfter` and `controlRing` a border on their
+   `::after`, none taking a pixel. A box with `ringAfter` or `controlRing` is positioned and leaves its
+   `::after` free.
+   No 1px border as a separator or divider, and no padding that makes up for one. A box takes one
+   hairline style, and sets no `boxShadow` of its own and no property its forced-colors edge uses:
+   `borderImage` with the edge styles, `outline*` with `ring` (so not on a box that draws its own focus
+   outline). StyleX merges per property and ui's styles sit in an earlier layer than the app's, so a
+   second hairline or the caller's value would replace the first. A raised box sets its drop shadow as
+   `--nyte-hairline-elevation` (registered in base.css, not inherited), which every hairline style
+   draws before its edge. Add a variant to `hairline` instead.
+   (not enforced)
 5. **CSS owns what CSS can resolve.** Hover, focus-within, sibling state, container size, entry
    animation, and fallbacks are StyleX features; check the capability block in
    `packages/ui/AGENTS.md` before reaching for React state, effects, observers, or

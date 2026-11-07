@@ -1,5 +1,6 @@
 import { SdkError } from "@nyte-ai/schema";
 import type { HostId, Revision } from "@nyte-ai/schema";
+import type { Member, Presence } from "../contract/presence.ts";
 import { envelope } from "../contract/records.ts";
 import type { StoreConnection } from "../contract/store.ts";
 import { PROCESSES, processRef } from "../store/refs.ts";
@@ -12,28 +13,6 @@ export const LAPSE_MS = 20_000;
 const FORGET_MS = 10 * 60_000;
 
 const GAP_MS = 2 * BEAT_MS;
-
-export interface Member {
-  readonly label: string;
-  readonly pid: number | null;
-  readonly capabilities: readonly string[];
-}
-
-export type Holder =
-  | { readonly kind: "me" }
-  | { readonly kind: "absent" }
-  | { readonly kind: "alive"; readonly until: number }
-  | { readonly kind: "dead"; readonly name: string; readonly expect: Revision };
-
-export interface Presence {
-  readonly instance: string;
-  readonly member: Member;
-  readonly store: StoreConnection;
-  readonly revoked: AbortSignal;
-  holder(instance: string): Promise<Holder>;
-  sweep(): Promise<void>;
-  close(leases?: readonly { readonly name: string; readonly expect: Revision }[]): Promise<void>;
-}
 
 export const REVOKED =
   "Another Nyte took over this one's work while it was paused, so this host stopped; it reopens on its own.";

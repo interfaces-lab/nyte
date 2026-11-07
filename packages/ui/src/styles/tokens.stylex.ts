@@ -15,7 +15,10 @@ export const transparency = defineVars({
 });
 
 export const focusModality = defineVars({
-  "--nyte-focus-color": "lab(53.1052% -1.53607 -54.9391)",
+  "--nyte-focus-color": {
+    default: "lab(53.1052% -1.53607 -54.9391)",
+    "@media (forced-colors: active)": "Highlight",
+  },
   "--nyte-focus-ring": "var(--nyte-focus-color)",
 });
 

@@ -3,6 +3,7 @@ name: verify-takeover-fence
 description: "Check the takeover design with TLC and the real SQLite implementation with deterministic behavior tests when changing presence, execution claims, ref fences, or SQLite refs.set."
 paths:
   - "packages/core/src/compose.ts"
+  - "packages/core/src/contract/presence.ts"
   - "packages/core/src/engine/presence.ts"
   - "packages/core/src/drive/execution.ts"
   - "packages/core/src/fold/commit.ts"
@@ -49,9 +50,9 @@ Last confirmed product code at `d142cf6dd8cbddcda21866cd2a795dd33abdb475` on `ma
 
 | Source and function | Covered behavior |
 | --- | --- |
-| `packages/core/src/compose.ts:301-314`, `composeKernel` | Member-enabled kernels use `presence.store`. The test exercises this wiring. |
-| `packages/core/src/engine/presence.ts:60-78,99-137`, `openPresence`, `beat`, `revoke`, `store.refs.set` | Registration, heartbeat CAS, automatic process fences and delayed local revocation. |
-| `packages/core/src/engine/presence.ts:147-162`, `holder` | Prepared claims use the process revision from `dead`. The test reaches that result with a controlled clock; the model starts after it. |
+| `packages/core/src/compose.ts:355-372`, `composeKernel` | Member-enabled kernels use `presence.store`. The test exercises this wiring. |
+| `packages/core/src/engine/presence.ts:39-57,78-116`, `openPresence`, `beat`, `revoke`, `store.refs.set` | Registration, heartbeat CAS, automatic process fences and delayed local revocation. |
+| `packages/core/src/engine/presence.ts:126-141`, `holder`; `packages/core/src/contract/presence.ts:10-14`, `Holder` | Prepared claims use the process revision from `dead`. The test reaches that result with a controlled clock; the model starts after it. |
 | `packages/core/src/drive/execution.ts:145-193,473-475,500-563`, `advance`, `claim`, `claimNow` | The test's public path reaches the real claim. Lease acquisition and dead-process deletion share one update array. |
 | `packages/core/src/fold/commit.ts:49-68`, `commit` | Claim publication uses `kernel.store.refs.set`. |
 | `packages/core/src/store/log.ts:5-14`, `admits`, `fenceNames` | Revision expectations and existence of fence refs decide admission. |
@@ -62,7 +63,7 @@ Last confirmed product code at `d142cf6dd8cbddcda21866cd2a795dd33abdb475` on `ma
 `check.mjs` prints the output of this command as a re-review notice:
 
 ```sh
-git log --oneline d142cf6dd8cbddcda21866cd2a795dd33abdb475..HEAD -- packages/core/src/compose.ts packages/core/src/engine/presence.ts packages/core/src/drive/execution.ts packages/core/src/fold/commit.ts packages/core/src/store/log.ts packages/core/src/store/refs.ts packages/host/src/sqlite.ts
+git log --oneline d142cf6dd8cbddcda21866cd2a795dd33abdb475..HEAD -- packages/core/src/compose.ts packages/core/src/contract/presence.ts packages/core/src/engine/presence.ts packages/core/src/drive/execution.ts packages/core/src/fold/commit.ts packages/core/src/store/log.ts packages/core/src/store/refs.ts packages/host/src/sqlite.ts
 ```
 
 History output is not a gate. Unrelated edits do not prevent TLC from running. An unavailable history range is a notice too. Review uncommitted changes separately; this log cannot show them.
@@ -87,7 +88,7 @@ The real-code test was run independently against these temporary product edits:
 
 | Temporary edit | Result |
 | --- | --- |
-| Remove `name` from the appended fences in `presence.ts:128`. | 10 of 42 schedules fail. |
+| Remove `name` from the appended fences in `presence.ts:107`. | 10 of 42 schedules fail. |
 | Remove the dead-process deletion from the claim array in `execution.ts:543-545`. | 19 of 42 schedules fail. |
 | Filter out names beginning `processes/` downstream in `fenceNames`, `store/log.ts:14`. | 10 of 42 schedules fail. |
 

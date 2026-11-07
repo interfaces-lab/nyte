@@ -346,7 +346,7 @@ export function ComposerFrame({
 
   return (
     <form
-      data-composer-frame
+      data-composer-frame={surface}
       ref={frameRef}
       aria-label="Message"
       onFocus={() => setFocused(true)}

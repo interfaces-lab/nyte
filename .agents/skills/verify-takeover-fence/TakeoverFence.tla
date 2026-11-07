@@ -4,7 +4,7 @@ EXTENDS Naturals
 \* Design parameters, not extracted code semantics. run.py checks the TRUE
 \* baseline and each FALSE variant as model-level mutation self-tests.
 \* AppendProcessFence: openPresence.store.refs.set,
-\* packages/core/src/engine/presence.ts:124-129.
+\* packages/core/src/engine/presence.ts:103-108.
 \* DeleteProcessOnClaim: claimNow,
 \* packages/core/src/drive/execution.ts:532-547.
 CONSTANTS AppendProcessFence, DeleteProcessOnClaim
@@ -13,7 +13,7 @@ CONSTANTS AppendProcessFence, DeleteProcessOnClaim
 \* independently finished claimNow's earlier awaits and prepared updates for
 \* the same lease revision and dead A process revision, both called 1 here.
 \* claimNow, packages/core/src/drive/execution.ts:508-547; holder,
-\* packages/core/src/engine/presence.ts:147-162. All B/C presence refs exist.
+\* packages/core/src/engine/presence.ts:126-141. All B/C presence refs exist.
 \* A can be paused between its synchronous wrapper and its SQL transaction.
 \* A's own callbacks cannot interleave there, but B/C are other OS processes.
 Contenders == {"B", "C"}
@@ -32,31 +32,31 @@ VARIABLES
   \* connect.refs.set, packages/host/src/sqlite.ts:392-470.
   claimPC,
   \* A's AbortController.signal.aborted. revoke / store.refs.set / beat,
-  \* packages/core/src/engine/presence.ts:73-78,99-108,124-135.
+  \* packages/core/src/engine/presence.ts:52-57,78-87,103-114.
   revoked,
   \* A's current synchronous turn before SQL starts. store.refs.set / beat,
-  \* packages/core/src/engine/presence.ts:99-104,124-129;
+  \* packages/core/src/engine/presence.ts:78-83,103-108;
   \* connect.refs.set, packages/host/src/sqlite.ts:392-396.
   turn,
   \* A's one publication: wrapper, transaction, await continuation. The
   \* publication stands for a head/ref update passed through commit and the
   \* presence wrapper, not an immutable objects.put. commit,
   \* packages/core/src/fold/commit.ts:49-68; openPresence.store.refs.set,
-  \* packages/core/src/engine/presence.ts:124-137.
+  \* packages/core/src/engine/presence.ts:103-116.
   writePC,
   \* Whether A's pending RefUpdate.fences includes processRef(A).
   \* openPresence.store.refs.set,
-  \* packages/core/src/engine/presence.ts:127-129.
+  \* packages/core/src/engine/presence.ts:106-108.
   writeFence,
   \* A's pending set outcome, read only after the await. connect.refs.set,
   \* packages/host/src/sqlite.ts:405-410,467-470; store.refs.set,
-  \* packages/core/src/engine/presence.ts:127-135.
+  \* packages/core/src/engine/presence.ts:106-114.
   writeOutcome,
   \* A's one beat: invocation, SQL, await continuation. beat,
-  \* packages/core/src/engine/presence.ts:99-115.
+  \* packages/core/src/engine/presence.ts:78-94.
   beatPC,
   \* The heartbeat's pending SQL result. beat,
-  \* packages/core/src/engine/presence.ts:104-108;
+  \* packages/core/src/engine/presence.ts:83-87;
   \* connect.refs.set, packages/host/src/sqlite.ts:413-432.
   beatOutcome,
   \* History witness, not product state: a successful A publication at
@@ -66,7 +66,7 @@ VARIABLES
   stalePublication
 
 \* Initial cut described above. A registered at revision 1 via openPresence,
-\* packages/core/src/engine/presence.ts:60-69; A owns the existing lease
+\* packages/core/src/engine/presence.ts:39-48; A owns the existing lease
 \* written by claimNow, packages/core/src/drive/execution.ts:532-563.
 Init ==
   /\ processRevision = 1
@@ -98,7 +98,7 @@ ClaimTransaction(c) ==
                  beatPC, beatOutcome, stalePublication>>
 
 \* Synchronous pre-await part of store.refs.set, openPresence,
-\* packages/core/src/engine/presence.ts:124-129. A can be OS-paused before
+\* packages/core/src/engine/presence.ts:103-108. A can be OS-paused before
 \* entering raw.refs.set's SQL, but cannot run another A callback there.
 BeginWrite ==
   /\ writePC = "ready" /\ turn = "free"
@@ -124,7 +124,7 @@ WriteTransaction ==
                  writeFence, beatPC, beatOutcome>>
 
 \* Continuation AFTER await raw.refs.set. store.refs.set / revoke,
-\* packages/core/src/engine/presence.ts:73-78,127-137.
+\* packages/core/src/engine/presence.ts:52-57,106-116.
 ReplyWrite ==
   /\ writePC = "reply" /\ turn = "free"
   /\ revoked' = (revoked \/ writeOutcome = "fenced")
@@ -133,7 +133,7 @@ ReplyWrite ==
                  writeOutcome, beatPC, beatOutcome, stalePublication>>
 
 \* One timer invocation's synchronous pre-await part. beat,
-\* packages/core/src/engine/presence.ts:99-104. Only one beat is in scope,
+\* packages/core/src/engine/presence.ts:78-83. Only one beat is in scope,
 \* so its captured local revision is 1 and no second beating call runs.
 BeginBeat ==
   /\ beatPC = "ready" /\ turn = "free"
@@ -144,7 +144,7 @@ BeginBeat ==
                  stalePublication>>
 
 \* One raw heartbeat SQL transaction. beat,
-\* packages/core/src/engine/presence.ts:104; admits,
+\* packages/core/src/engine/presence.ts:83; admits,
 \* packages/core/src/store/log.ts:5-10; connect.refs.set,
 \* packages/host/src/sqlite.ts:413-432. Revision 2 is a fresh unequal token.
 BeatTransaction ==
@@ -157,7 +157,7 @@ BeatTransaction ==
                  writeOutcome, stalePublication>>
 
 \* Continuation AFTER heartbeat await. beat / revoke,
-\* packages/core/src/engine/presence.ts:73-78,104-114. Updating revision,
+\* packages/core/src/engine/presence.ts:52-57,83-93. Updating revision,
 \* wroteAt and seen has no effect on this one-beat cut and is projected out.
 ReplyBeat ==
   /\ beatPC = "reply" /\ turn = "free"
@@ -166,7 +166,7 @@ ReplyBeat ==
   /\ UNCHANGED <<processRevision, leaseOwner, claimPC, turn, writePC,
                  writeFence, writeOutcome, beatOutcome, stalePublication>>
 
-\* Union of beat / store.refs.set, packages/core/src/engine/presence.ts:99-137,
+\* Union of beat / store.refs.set, packages/core/src/engine/presence.ts:78-116,
 \* and claimNow, packages/core/src/drive/execution.ts:532-547, through
 \* connect.refs.set, packages/host/src/sqlite.ts:392-470. Terminal states and
 \* indefinitely paused actors are allowed; no fairness or liveness claim.

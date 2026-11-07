@@ -29,8 +29,8 @@ import type {
 } from "../contract/kernel.ts";
 import { decodeRunRecord } from "../contract/records.ts";
 import type { PartRecord, RunRecord } from "../contract/records.ts";
-import { progressMark } from "../drive/interruptions.ts";
-import { unpaused } from "../drive/pause.ts";
+import { progressMark } from "../engine/interruptions.ts";
+import { unpaused } from "../engine/pause.ts";
 import { resolveHeadConfiguration } from "../engine/contributions.ts";
 import { intendedCall } from "../engine/durable.ts";
 import { stopRequested } from "../engine/fence.ts";

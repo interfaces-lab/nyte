@@ -1,6 +1,14 @@
 import type { Rect, SnapBox, SnapRegion, SnapText, Snapshot } from "./collect.ts";
-import { ALIGNMENTS, CHROME_BAR_TOKENS, GRID_RULES, REGIONS, SCALE, spell } from "./rules.ts";
-import type { BoxFact, Expr, Pick, RegionName, RuleId } from "./rules.ts";
+import {
+  ALIGNMENTS,
+  CHROME_BAR_TOKENS,
+  GRID_RULES,
+  REGIONS,
+  SCALE,
+  spell,
+  termsIn,
+} from "./rules.ts";
+import type { BoxFact, Pick, RegionName, RuleId } from "./rules.ts";
 import { LONGHANDS } from "./cause.ts";
 import {
   boxTree,
@@ -96,9 +104,13 @@ const TYPE_SIZES: ReadonlySet<number> = new Set(
  * - An end-aligned box's start follows its width, but its end edge is still checked against the rails.
  * - An odd inline padding or margin passes when it puts the box's content or edge on one of its region's rails.
  */
+/** The roles that make a button a list or header row. */
+const ROW_ROLES = new Set(["row", "listitem", "treeitem", "option"]);
+
 export function check(snapshot: Snapshot): CheckResult {
   const tree = boxTree(snapshot);
   const boxes = snapshot.boxes;
+  const declaredRows = new Set(snapshot.regions.flatMap((region) => region.rows));
 
   const hits = new Map<string, number>();
   const findings: Finding[] = [];
@@ -284,15 +296,8 @@ export function check(snapshot: Snapshot): CheckResult {
 
       if (!framed(ancestor)) continue;
 
-      const inner =
-        ancestor.rect.height -
-        ["border-top-width", "border-bottom-width", "padding-top", "padding-bottom"].reduce(
-          (sum, property) => sum + (ancestor.lengths[property] ?? 0),
-          0,
-        );
-
       const other =
-        !near(control.rect.height, inner) ||
+        !near(control.rect.height, innerHeight(ancestor)) ||
         boxes.some(
           (entry) =>
             entry.control && entry.id !== control.id && descends(tree, entry.id, ancestor.id),
@@ -302,6 +307,37 @@ export function check(snapshot: Snapshot): CheckResult {
     }
 
     return control;
+  }
+
+  function rowButton(box: SnapBox): boolean {
+    const row = box.parent === null ? undefined : boxes[box.parent];
+
+    if (row === undefined || !(box.tag === "button" || box.role === "button")) return false;
+
+    if (![box, row].some((entry) => ROW_ROLES.has(entry.role ?? "") || declaredRows.has(entry.id)))
+      return false;
+
+    const others = boxes.filter(
+      (entry) =>
+        entry.control && entry.visible && entry.id !== box.id && descends(tree, entry.id, row.id),
+    );
+
+    return (
+      row.rect.height >= Math.min(...SCALE.rows) &&
+      near(box.rect.height, innerHeight(row)) &&
+      others.length > 0 &&
+      others.every((entry) => entry.rect.width < box.rect.width)
+    );
+  }
+
+  function innerHeight(box: SnapBox): number {
+    return (
+      box.rect.height -
+      ["border-top-width", "border-bottom-width", "padding-top", "padding-bottom"].reduce(
+        (sum, property) => sum + (box.lengths[property] ?? 0),
+        0,
+      )
+    );
   }
 
   function framed(box: SnapBox): boolean {
@@ -382,7 +418,8 @@ export function check(snapshot: Snapshot): CheckResult {
 
     if (box.control && !box.font.inline) {
       const measured = paintedControl(box);
-      const tall = inSet(SCALE.controls, measured.rect.height);
+      const heights = rowButton(box) ? [...SCALE.rows, ...SCALE.bars] : SCALE.controls;
+      const tall = inSet(heights, measured.rect.height);
       const square = !box.iconOnly || near(measured.rect.width, measured.rect.height);
 
       if (
@@ -394,7 +431,7 @@ export function check(snapshot: Snapshot): CheckResult {
           box: measured.id,
           property: tall ? "width" : "height",
           value: `${px(measured.rect.width)} × ${px(measured.rect.height)}`,
-          expected: tall ? "as wide as it is tall" : `${spell(SCALE.controls)} tall`,
+          expected: tall ? "as wide as it is tall" : `${spell(heights)} tall`,
           target: null,
           cause: { kind: "property", box: measured.id, property: tall ? "width" : "height" },
         });
@@ -454,24 +491,17 @@ export function check(snapshot: Snapshot): CheckResult {
     });
   }
 
-  function insideScroller(box: SnapBox): boolean {
-    for (let current = box.parent; current !== null; current = boxes[current]?.parent ?? null)
-      if (boxes[current]?.facts.includes("h-scroller") === true) return true;
-
-    return false;
-  }
-
   function railEdge(box: SnapBox): boolean {
     if (box.painted && !box.svg) return true;
 
     if (box.control) return box.iconOnly;
 
-    return box.svg && !insideControl(box);
+    return box.svg && !hasAncestor(box, (ancestor) => ancestor.control);
   }
 
-  function insideControl(box: SnapBox): boolean {
+  function hasAncestor(box: SnapBox, test: (ancestor: SnapBox) => boolean): boolean {
     for (let current = box.parent; current !== null; current = boxes[current]?.parent ?? null)
-      if (boxes[current]?.control === true) return true;
+      if (boxes[current] !== undefined && test(boxes[current])) return true;
 
     return false;
   }
@@ -495,7 +525,7 @@ export function check(snapshot: Snapshot): CheckResult {
         exempt("half-pixel", box, {
           ignore:
             axis === "y"
-              ? ["centred", "end-aligned", "auto-table-column"]
+              ? ["centred", "end-aligned", "auto-table-column", "beside-text-width", "slider-thumb"]
               : box.facts.includes("after-text")
                 ? []
                 : ["inline-run"],
@@ -640,9 +670,9 @@ export function check(snapshot: Snapshot): CheckResult {
         });
       }
 
-      if (spec.rhythm === null || region.pitch === null) continue;
+      if (spec.rhythm === null) continue;
       const pitch = region.pitch;
-      const terms = termsIn(spec.rhythm.pitch);
+      const terms = spec.rhythm.pitch === null ? [] : termsIn(spec.rhythm.pitch);
 
       const rows = region.rows
         .flatMap((id) => boxes[id] ?? [])
@@ -672,7 +702,7 @@ export function check(snapshot: Snapshot): CheckResult {
 
         const previous = rows[index - 1];
 
-        if (previous === undefined) return;
+        if (previous === undefined || pitch === null) return;
         const step = row.rect.top - previous.rect.top;
 
         if (Math.abs(step - pitch) <= EPSILON || Math.abs(step - pitch) > SCALE.railNear) return;
@@ -770,11 +800,16 @@ export function check(snapshot: Snapshot): CheckResult {
 
       if (own.some((rail) => near(rail.offset, candidate.offset))) continue;
 
+      const overflows =
+        candidate.from === "end" &&
+        candidate.offset < -EPSILON &&
+        candidate.box.facts.includes("after-text");
+
       const rail = own
         .flatMap((entry) => {
           const distance = Math.abs(entry.offset - candidate.offset);
 
-          return distance <= SCALE.railNear ? [{ entry, distance }] : [];
+          return distance <= SCALE.railNear || overflows ? [{ entry, distance }] : [];
         })
         .sort((a, b) => a.distance - b.distance)[0]?.entry;
 
@@ -784,12 +819,18 @@ export function check(snapshot: Snapshot): CheckResult {
         candidate.text === null || candidate.text.align === "start" ? [] : [candidate.text.align];
 
       const scrolled: BoxFact[] =
-        candidate.from === "end" && insideScroller(candidate.box) ? ["scrolled-overflow"] : [];
+        candidate.from === "end" &&
+        hasAncestor(candidate.box, (ancestor) => ancestor.facts.includes("h-scroller"))
+          ? ["scrolled-overflow"]
+          : [];
 
       if (
         exempt("rail", candidate.box, {
           extra: [...textFacts, ...scrolled],
-          ignore: candidate.from === "end" ? ["end-aligned"] : [],
+          ignore: [
+            ...(candidate.from === "end" ? (["end-aligned"] as const) : []),
+            ...(candidate.from === "start" || overflows ? (["after-text"] as const) : []),
+          ],
         })
       )
         continue;
@@ -832,7 +873,12 @@ export function check(snapshot: Snapshot): CheckResult {
           detail: alignment.name,
           group: `align|${alignment.name}|${String(a.box.id)}|${String(b.box.id)}`,
           box: a.box.id,
-          property: alignment.axis === "x" ? "left" : "baseline",
+          property:
+            alignment.axis === "x"
+              ? "left"
+              : alignment.a.kind === "box" && alignment.a.line === "end"
+                ? "bottom"
+                : "baseline",
           value: px(a.value),
           expected: `${px(b.value)}, ${alignment.name}: ${b.label}`,
           target: { axis: alignment.axis, at: b.value },
@@ -878,7 +924,11 @@ export function check(snapshot: Snapshot): CheckResult {
     axis: "x" | "y",
   ): { value: number; box: SnapBox; label: string }[] {
     if (pick.kind === "box")
-      return boxesByPick(pick.selector).flatMap((box) => lineValue(box, axis, pick.name) ?? []);
+      return boxesByPick(pick.selector).flatMap((box) =>
+        axis === "y" && pick.line === "end"
+          ? [{ value: box.rect.top + box.rect.height, box, label: pick.name }]
+          : (lineValue(box, axis, pick.name) ?? []),
+      );
 
     const value = pickValue(pick, axis);
 
@@ -931,27 +981,6 @@ export function check(snapshot: Snapshot): CheckResult {
     const ids = snapshot.picks.find((pick) => pick.name === selector)?.boxes ?? [];
 
     return ids.flatMap((id) => boxes[id] ?? []);
-  }
-}
-
-/** The handles an expression reads, which a rail's own declarations may use without being its cause. */
-function termsIn(expr: Expr): string[] {
-  switch (expr.op) {
-    case "handle":
-      return [expr.handle];
-    case "px":
-      return [];
-    case "sum":
-      return expr.terms.flatMap(termsIn);
-    case "diff":
-      return [...termsIn(expr.left), ...termsIn(expr.right)];
-    case "half":
-      return termsIn(expr.of);
-    default: {
-      const exhaustive: never = expr;
-
-      return exhaustive;
-    }
   }
 }
 

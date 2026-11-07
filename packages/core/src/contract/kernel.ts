@@ -33,6 +33,7 @@ import type {
   ToolInfo,
   Usage,
   ValidationIssue,
+  WorkspaceId,
 } from "@nyte-ai/schema";
 import type { KeyedSerial } from "@nyte-ai/schema/serial";
 import type { FoldCache, LogPublisher, SessionBus } from "./fold.ts";
@@ -64,7 +65,7 @@ import type {
   SettingDefinition,
   SettingsRegistry,
 } from "./plugin.ts";
-import type { Presence } from "../engine/presence.ts";
+import type { Presence } from "./presence.ts";
 import type { CallRecord, SessionRecord } from "./records.ts";
 import type { Session } from "./session.ts";
 import type { StoreConnection } from "./store.ts";
@@ -156,6 +157,12 @@ export interface Kernel {
 
   readonly secrets: NonNullable<OpenOptions["secrets"]> | null;
 
+  /**
+   * The AES-GCM key `sealText` and `openText` use, imported from `secrets` on first read and kept,
+   * a failed import too. Null when the host has no `secrets`.
+   */
+  readonly secretKey: Promise<CryptoKey> | null;
+
   readonly mcp: McpHub | null;
 
   readonly github: GitHubAccountApi | null;
@@ -167,6 +174,8 @@ export interface Kernel {
   readonly handles: Handles;
 
   stopStart(session: SessionId): Promise<MessageId | null>;
+
+  releaseWorktree(session: SessionId, workspace: WorkspaceId): Promise<void>;
 }
 
 export interface PluginHost {
@@ -400,7 +409,6 @@ export interface PluginState {
   readonly holds: Map<PartDefinition, { count: number; readonly dispose: Disposer }>;
   readonly settings: Set<(id: string, session: SessionId | null) => void>;
   readonly publishing: Map<SessionId, Promise<void>>;
-  secretKey: Promise<CryptoKey> | null;
   user: {
     readonly plugins: readonly Plugin<"core">[];
     readonly refused: readonly PluginFailure[];

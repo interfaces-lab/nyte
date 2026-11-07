@@ -1,21 +1,13 @@
 import { isJson } from "@nyte-ai/schema";
-import type { Json, SessionId, SettingInfo } from "@nyte-ai/schema";
+import type { SessionId, SettingInfo } from "@nyte-ai/schema";
 import type { Kernel } from "../contract/kernel.ts";
 import type { SettingDefinition } from "../contract/plugin.ts";
-import { kvRef } from "../store/refs.ts";
-import { MAIN, readKv, readSession } from "../store/session.ts";
-import { check, convertJsonSchema } from "../util/json-schema.ts";
-import { redactSecretEntries } from "./secret-settings.ts";
-import type { StoreConnection } from "../contract/store.ts";
+import { readSettingLayers } from "../store/setting-layers.ts";
+import { convertJsonSchema } from "../util/json-schema.ts";
 
 interface Defined {
   readonly definition: SettingDefinition;
   readonly owner: string;
-}
-
-interface Layer {
-  readonly value: Json;
-  readonly from: "host" | "session";
 }
 
 export async function settingInfos(
@@ -64,51 +56,6 @@ export async function settingInfos(
   );
 
   return infos.flatMap((info) => (info === null ? [] : [info]));
-}
-
-export async function readSettingLayers(
-  store: StoreConnection,
-  definition: Pick<SettingDefinition, "id" | "scope" | "secret">,
-  session: SessionId | null,
-): Promise<readonly Layer[]> {
-  const [own, stored] = await Promise.all([
-    definition.scope === "session" && session !== null
-      ? sessionValue(store, session, definition.id)
-      : undefined,
-    readKv(store, kvRef("host", "settings", definition.id)),
-  ]);
-
-  const host = stored !== undefined && definition.secret ? redactSecretEntries(stored) : stored;
-
-  return [
-    ...(own === undefined ? [] : [{ value: own, from: "session" } as const]),
-    ...(host === undefined ? [] : [{ value: host, from: "host" } as const]),
-  ];
-}
-
-export async function readSetting<T>(
-  store: StoreConnection,
-  definition: SettingDefinition<T>,
-  session: SessionId | null,
-): Promise<T> {
-  for (const layer of await readSettingLayers(store, definition, session)) {
-    const checked = await check(definition.schema, layer.value);
-
-    if (checked.kind === "valid") return checked.value;
-  }
-
-  return definition.default;
-}
-
-async function sessionValue(
-  store: StoreConnection,
-  session: SessionId,
-  id: string,
-): Promise<Json | undefined> {
-  const found = await readSession(store, session);
-  const settings = found?.record.heads.find((head) => head.name === MAIN)?.selected?.settings;
-
-  return settings !== undefined && Object.hasOwn(settings, id) ? settings[id] : undefined;
 }
 
 export function findSettingDefinition(kernel: Kernel, id: string): Defined | undefined {

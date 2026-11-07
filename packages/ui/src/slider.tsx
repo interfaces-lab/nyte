@@ -166,6 +166,7 @@ function SliderThumb({
 }: StyledProps<SliderPrimitive.Thumb.Props, Restyle<"Slider.Thumb">>): ReactElement {
   return (
     <SliderPrimitive.Thumb
+      data-slot="slider-thumb"
       {...rest}
       {...mergeStyleProps(
         (state: SliderPrimitive.Thumb.State) =>

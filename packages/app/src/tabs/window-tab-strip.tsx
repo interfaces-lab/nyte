@@ -11,6 +11,7 @@ import {
   ContextMenuTrigger,
 } from "@nyte-ai/ui/context-menu";
 import { Icon } from "@nyte-ai/ui/icon";
+import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 import { Input } from "@nyte-ai/ui/input";
 import { Kbd } from "@nyte-ai/ui/kbd";
 import { Tabs } from "@nyte-ai/ui/tabs";
@@ -183,6 +184,7 @@ function TabView({
               stripStyles.tab,
               closable && stripStyles.tabClosable,
               active && stripStyles.tabActive,
+              active && hairline.ring,
               tab.preview && stripStyles.tabPreview,
             )}
             onMouseDown={(event) => {

@@ -1,12 +1,7 @@
 import { create, keyframes } from "@stylexjs/stylex";
-import { media, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { control, media, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { conversation } from "../../theme/schema.stylex.ts";
 import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
-
-const CODE_RING = `inset 0 0 0 1px ${role.strokeQuaternary}`;
-
-/** A row rule that takes no height, so each row is exactly `tableRowHeight`. */
-const ROW_RULE = `inset 0 -1px 0 ${role.strokeQuaternary}`;
 
 export const FADE_MS = 150;
 
@@ -74,10 +69,19 @@ export const proseStyles = create({
     marginInline: 0,
     marginBlockStart: { default: space.s2, ":is(li > ul, li > ol)": space.s1, ":first-child": 0 },
     marginBlockEnd: { default: space.s4, ":last-child": 0 },
-    paddingInlineStart: "2em",
+    paddingInlineStart: space.s6,
     listStyleType: "revert",
   },
   listItem: { whiteSpace: "normal" },
+  /** A task list's checkbox: a 16px control centred on its line, so it lands on whole pixels. */
+  taskCheckbox: {
+    boxSizing: "border-box",
+    width: control.height2xs,
+    height: control.height2xs,
+    marginBlock: `calc((1lh - ${control.height2xs}) / 2) 0`,
+    marginInline: `0 ${space.s2}`,
+    verticalAlign: "top",
+  },
   strong: {
     color: `var(--_prose-strong-color, ${role.contentPrimary})`,
     fontWeight: type.weightSemibold,
@@ -168,11 +172,6 @@ export const proseStyles = create({
     overflowX: "auto",
     overflowY: "hidden",
     borderRadius: radius.control,
-    boxShadow: CODE_RING,
-    /** Forced colors drop box-shadows, so the frame and the row rules come back as borders there. */
-    borderWidth: { default: 0, [media.forcedColors]: 1 },
-    borderStyle: "solid",
-    borderColor: role.strokeQuaternary,
   },
   table: {
     width: "max-content",
@@ -185,15 +184,6 @@ export const proseStyles = create({
   cell: {
     paddingBlock: `calc((${conversation.tableRowHeight} - ${type.leadingBase}) / 2)`,
     paddingInline: space.s2_5,
-    borderWidth: 0,
-    borderInlineEndWidth: { default: 1, ":last-child": 0 },
-    borderBlockEndWidth: {
-      default: 0,
-      [media.forcedColors]: { default: 1, ":is(tbody > tr:last-child > *)": 0 },
-    },
-    borderStyle: "solid",
-    borderColor: role.strokeQuaternary,
-    boxShadow: { default: ROW_RULE, ":is(tbody > tr:last-child > *)": "none" },
     textAlign: "start",
     verticalAlign: "top",
   },
@@ -219,6 +209,17 @@ export const proseStyles = create({
     whiteSpace: "pre",
   },
   imageLabel: { color: role.contentSecondary },
+  image: {
+    display: "block",
+    maxWidth: "100%",
+    height: "auto",
+    marginBlock: space.s2,
+    borderRadius: radius.control,
+    outlineWidth: 1,
+    outlineStyle: "solid",
+    outlineColor: role.strokeTertiary,
+    outlineOffset: -1,
+  },
   chunk: {
     animationName: { default: chunkFadeIn, "@media (prefers-reduced-motion: reduce)": "none" },
     animationDuration: `var(--sd-duration, ${FADE_MS}ms)`,

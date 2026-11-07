@@ -450,6 +450,7 @@ function ChangesPanelView({
   return (
     <section
       {...props(styles.panel)}
+      data-slot="changes-panel"
       aria-label="Workspace changes"
       onKeyDown={(event) => {
         const action = changesShortcutAction(event.nativeEvent, nyte.platform === "darwin");

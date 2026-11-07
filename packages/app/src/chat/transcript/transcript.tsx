@@ -51,6 +51,9 @@ type TranscriptVirtualizer = Virtualizer<HTMLDivElement, HTMLDivElement>;
 
 const VIEWPORT_GUESS = 800;
 
+/** The most of the room above the composer that the end gap takes, so a short pane keeps its last rows in view. The gap rounds down to the 2px grid, so rows at the end sit on whole pixels. */
+const END_GAP_SHARE = 0.17;
+
 const MEASURED_TRANSCRIPTS = 16;
 
 const measured = new Map<string, VirtualItem[]>();
@@ -228,6 +231,7 @@ export function TranscriptContent({
 
   const [viewport, setViewport] = useState<HTMLDivElement | null>(null);
   const [dockHeight, setDockHeight] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(VIEWPORT_GUESS);
 
   const mode = useRef<TranscriptMode>(initialMode(initialPosition));
   const input = useRef<ReaderInput>(NO_INPUT);
@@ -379,7 +383,11 @@ export function TranscriptContent({
     rangeExtractor,
     overscan: OVERSCAN,
     paddingStart: TRANSCRIPT_PADDING_START,
-    paddingEnd: TRANSCRIPT_PADDING_END + dockHeight,
+    paddingEnd:
+      Math.min(
+        TRANSCRIPT_PADDING_END,
+        2 * Math.floor((Math.max(0, viewportHeight - dockHeight) * END_GAP_SHARE) / 2),
+      ) + dockHeight,
     anchorTo: "end",
     scrollEndThreshold: -1,
     directDomUpdates: true,
@@ -426,7 +434,7 @@ export function TranscriptContent({
       syncSticky(scroll, content.current);
       queueMicrotask(() => syncScrollButton(scroll, dock));
     }
-  }, [dock, dockHeight, ready, sticky, virtualRows, virtualizer]);
+  }, [dock, dockHeight, ready, sticky, viewportHeight, virtualRows, virtualizer]);
 
   // oxlint-disable-next-line nyte-code/no-direct-effect -- installs the virtualizer's scroll adjustment before it measures
   useLayoutEffect(() => {
@@ -608,6 +616,10 @@ export function TranscriptContent({
             viewport={viewport}
             content={content}
             onPresent={() => present(virtualizer)}
+            onResize={(height) => {
+              flushSync(() => setViewportHeight(height));
+              present(virtualizer);
+            }}
             onHold={hold}
             onInput={touch}
             onPress={press}
@@ -663,11 +675,12 @@ export function TranscriptContent({
   );
 }
 
-/** Mounted once the viewport exists: its size and the reader's input steer the transcript's scroll mode. */
+/** Mounted once the viewport exists: its height sizes the end gap, and the reader's input steers the transcript's scroll mode. */
 function ViewportInput({
   viewport,
   content,
   onPresent,
+  onResize,
   onHold,
   onInput,
   onPress,
@@ -676,19 +689,21 @@ function ViewportInput({
   readonly viewport: HTMLDivElement;
   readonly content: RefObject<HTMLDivElement | null>;
   readonly onPresent: () => void;
+  readonly onResize: (height: number) => void;
   readonly onHold: (element: Element) => void;
   readonly onInput: (upward: boolean) => void;
   readonly onPress: (pressed: boolean) => void;
   readonly onSelectionChange: () => void;
 }): null {
   const present = useEffectEvent(onPresent);
+  const resized = useEffectEvent(onResize);
   const hold = useEffectEvent(onHold);
   const input = useEffectEvent(onInput);
   const press = useEffectEvent(onPress);
   const select = useEffectEvent(onSelectionChange);
 
   useMountEffect(() => {
-    const resize = new ResizeObserver(() => present());
+    const resize = new ResizeObserver(() => resized(viewport.clientHeight));
     resize.observe(viewport);
     let touchY = 0;
 

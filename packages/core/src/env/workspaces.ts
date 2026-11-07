@@ -24,13 +24,13 @@ import type {
   PageHolder,
   PatchCache,
   PatchSlot,
+  ScanEntry,
   SnapshotsApi,
   Workspace,
   Workspaces,
   WorkspaceState,
 } from "../contract/workspace.ts";
 import { createJobs, jobHandle } from "../engine/jobs.ts";
-import { dropScans } from "../extend/resources.ts";
 import { cleanWorktrees } from "./worktrees.ts";
 import { commit } from "../fold/commit.ts";
 import { endedRunRef, runRef, workspaceRef } from "../store/refs.ts";
@@ -80,6 +80,16 @@ export function createWorkspaceState(): WorkspaceState {
     batches: new Map(),
     held: new Map(),
   };
+}
+
+/** Drops the cached scans `chosen` picks (every one by default), so their sessions scan again; the watches stay. */
+export function dropScans(
+  kernel: Kernel,
+  chosen: (session: SessionId, entry: ScanEntry) => boolean = () => true,
+): void {
+  const table = kernel.workspaceState.scans;
+
+  for (const [session, entry] of table) if (chosen(session, entry)) table.delete(session);
 }
 
 export function createWorkspaces(

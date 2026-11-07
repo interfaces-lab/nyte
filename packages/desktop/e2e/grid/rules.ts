@@ -10,6 +10,9 @@ export const SCALE = {
   controls: [16, 20, 24, 28, 32, 36],
   /** Cursor's Glass bar: the titlebar and every pane header. */
   chromeBar: 40,
+  /** The row scale: the control heights at or above the 24px target. */
+  rows: [24, 28, 32, 36],
+  bars: [40, 44, 48],
   radii: [0, 4, 6, 8, 12, 14, 16, 9999],
   icons: [10, 12, 14, 16, 20],
   type: [
@@ -73,7 +76,9 @@ export type BoxFact =
   | "shadow"
   | "auto-table-column"
   | "scrolled-overflow"
-  | "h-scroller";
+  | "h-scroller"
+  | "beside-text-width"
+  | "slider-thumb";
 
 export type ElementMatch =
   | { readonly by: "selector"; readonly selector: string }
@@ -166,7 +171,7 @@ export const GRID_RULES = {
     ],
   },
   "control-size": {
-    says: `A control is ${spell(SCALE.controls)} tall; an icon-only control is as wide as it is tall. A control is measured at its outermost painted box: a control that paints no edge or fill of its own and fills the height inside a painted box that wraps no other control is measured as that box, as an input is as its input group.`,
+    says: `A control is ${spell(SCALE.controls)} tall; an icon-only control is as wide as it is tall. A control is measured at its outermost painted box: a control that paints no edge or fill of its own and fills the height inside a painted box that wraps no other control is measured as that box, as an input is as its input group. A button that is a list or header row, because it carries or sits directly in role row, listitem, treeitem or option or a region's declared row, and that fills that row's height and is the widest of its controls, is measured as a row; the row is at least as tall as the row scale's first step and holds more than one control, ${spell([...SCALE.rows, ...SCALE.bars])} tall.`,
     exceptions: [
       composerEditor,
       {
@@ -174,6 +179,12 @@ export const GRID_RULES = {
         match: { by: "selector", selector: '[role="switch"]' },
         reason:
           "A switch is a 30×18 track, as Cursor's settings switch (.solid-switch) is; it isn't sized like a button.",
+      },
+      {
+        name: "slider-thumb",
+        match: { by: "selector", selector: '[data-slot="slider-thumb"]' },
+        reason:
+          "A slider's thumb is a 14px knob inside the slider, not a control of its own: its hit target is the 24px target on its ::before, and the slider is the control.",
       },
       {
         name: "multi-line",
@@ -217,6 +228,18 @@ export const GRID_RULES = {
           "An inline box in a line of text sits where the text puts it. On y the line's baseline does: in 15/24 Inter it is at 17.5px, so painted inline code lands on a half pixel at every type pair. On x, only when the run follows text on its line, glyph advances do. A run that starts its line is still checked on x.",
       },
       {
+        name: "slider-position",
+        match: { by: "fact", fact: "slider-thumb" },
+        reason:
+          "A slider's thumb sits at its value's share of the track, so its x is the value, not a length a token sets. On x only.",
+      },
+      {
+        name: "text-width-row",
+        match: { by: "fact", fact: "beside-text-width" },
+        reason:
+          "An item in a flex row whose siblings take their width from their text (a dialog's Cancel beside Save, a tab after other tabs, a chip after a chip) sits where those text widths put it, and text has fractional advances. No token sizes a word. On x only.",
+      },
+      {
         name: "auto-table-columns",
         match: { by: "fact", fact: "auto-table-column" },
         reason:
@@ -234,6 +257,12 @@ export const GRID_RULES = {
         match: { by: "fact", fact: "scrolled-overflow" },
         reason:
           "Everything inside a horizontally scrolling container, its table box included, is scrolled content: the region's end rail belongs to the column, not to what scrolls inside it. Start rails still apply.",
+      },
+      {
+        name: "ragged-end",
+        match: { by: "fact", fact: "after-text" },
+        reason:
+          "An inline run that follows text on its line ends where the glyphs before it put it, as ragged text does, so it is exempt from the end rail. Ending past the region's end edge is overflow: that is a violation against the nearest end rail however far off it is.",
       },
     ],
   },
@@ -267,6 +296,27 @@ export type Expr =
   | { readonly op: "diff"; readonly left: Expr; readonly right: Expr }
   | { readonly op: "half"; readonly of: Expr };
 
+/** The handles an expression reads, which a rail's own declarations may use without being its cause. */
+export function termsIn(expr: Expr): string[] {
+  switch (expr.op) {
+    case "handle":
+      return [expr.handle];
+    case "px":
+      return [];
+    case "sum":
+      return expr.terms.flatMap(termsIn);
+    case "diff":
+      return [...termsIn(expr.left), ...termsIn(expr.right)];
+    case "half":
+      return termsIn(expr.of);
+    default: {
+      const exhaustive: never = expr;
+
+      return exhaustive;
+    }
+  }
+}
+
 export const handle = (name: string): Expr => ({ op: "handle", handle: name });
 
 export const px = (value: number): Expr => ({ op: "px", px: value });
@@ -283,11 +333,13 @@ export type RegionName =
   | "sidebar"
   | "conversation"
   | "composer"
+  | "composer-new-chat"
   | "workbench-rail"
   | "settings-nav"
   | "settings-page"
   | "dialog"
-  | "editor";
+  | "editor"
+  | "changes";
 
 /** Where a region's box is: a selector, or the element inside `within` whose width reads `token`. */
 export type Locate =
@@ -303,7 +355,8 @@ export interface Rail {
 
 export interface Rhythm {
   readonly rows: string;
-  readonly pitch: Expr;
+  /** Null when the rows have no fixed pitch, as file headers with diffs between them don't. */
+  readonly pitch: Expr | null;
   readonly why: string;
 }
 
@@ -404,7 +457,7 @@ export const REGIONS: readonly RegionSpec[] = [
   },
   {
     name: "composer",
-    locate: { by: "selector", selector: 'form[aria-label="Message"]' },
+    locate: { by: "selector", selector: 'form[data-composer-frame="follow-up"]' },
     rails: [
       {
         name: "controls",
@@ -417,6 +470,26 @@ export const REGIONS: readonly RegionSpec[] = [
         from: "end",
         offset: sum(px(1), handle("space.s2")),
         why: "The send button sits inside the frame's border and end padding.",
+      },
+    ],
+    rhythm: null,
+    centred: null,
+  },
+  {
+    name: "composer-new-chat",
+    locate: { by: "selector", selector: 'form[data-composer-frame="new-chat"]' },
+    rails: [
+      {
+        name: "controls",
+        from: "start",
+        offset: sum(px(1), handle("space.s3")),
+        why: "The new chat's composer is the larger frame: its controls sit inside its border and 12px padding.",
+      },
+      {
+        name: "controls-end",
+        from: "end",
+        offset: sum(px(1), handle("space.s3")),
+        why: "The send button sits inside the frame's border and 12px end padding.",
       },
     ],
     rhythm: null,
@@ -502,6 +575,30 @@ export const REGIONS: readonly RegionSpec[] = [
     centred: null,
   },
   {
+    name: "changes",
+    locate: { by: "selector", selector: '[data-slot="changes-panel"]' },
+    rails: [
+      {
+        name: "content",
+        from: "start",
+        offset: handle("space.s2"),
+        why: "The commit form and the panel's content start at its 8px padding.",
+      },
+      {
+        name: "content-end",
+        from: "end",
+        offset: handle("space.s2"),
+        why: "They end at the same padding.",
+      },
+    ],
+    rhythm: {
+      rows: '[data-slot="change-header"]',
+      pitch: null,
+      why: "Each changed file's header is the list's row; its diff sits between headers, so there is no fixed pitch.",
+    },
+    centred: null,
+  },
+  {
     name: "dialog",
     locate: { by: "selector", selector: '[role="dialog"]' },
     rails: [
@@ -532,6 +629,8 @@ export type Pick =
       readonly selector: string;
       /** Keep only matches in a chat pane whose bottom is on the window's bottom edge; each one is compared. */
       readonly within?: "bottom-edge-pane";
+      /** On the y axis, the box's first text baseline (the default) or its bottom edge. */
+      readonly line?: "baseline" | "end";
     }
   | { readonly kind: "rail"; readonly region: RegionName; readonly rail: string };
 
@@ -563,15 +662,17 @@ export const ALIGNMENTS: readonly Alignment[] = [
     axis: "y",
     a: {
       kind: "box",
-      name: "the sidebar footer",
-      selector: 'aside:has(> nav[aria-label="Sessions and workspaces"]) > div:last-child',
+      name: "the sidebar footer row",
+      selector: 'aside:has(> nav[aria-label="Sessions and workspaces"]) > div:last-child > div',
+      line: "end",
     },
     b: {
       kind: "box",
       name: "the composer footer",
       selector: 'form[aria-label="Message"] ~ div',
       within: "bottom-edge-pane",
+      line: "end",
     },
-    why: "The sidebar footer and the composer footer close the window on one baseline.",
+    why: "The sidebar footer row and the composer footer close the window on one line: their bottom edges meet. Their text is 13px and 12px, whose baselines can't both sit on whole pixels and match.",
   },
 ];

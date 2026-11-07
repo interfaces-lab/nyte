@@ -159,7 +159,7 @@ export const sidebarStyles = create({
     flexShrink: 0,
   },
   workspacePrimary: {
-    paddingInlineEnd: `calc(${sidebar.actionSize} + 2px)`,
+    paddingInlineEnd: `calc(${sidebar.actionSize} + ${space.s1})`,
   },
   sessionRow: {
     "--_row-meta-color": role.contentSecondary,

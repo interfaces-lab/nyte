@@ -11,6 +11,7 @@ import type { Attribute, Extensions } from "@tiptap/core";
 import { history, redo, undo } from "@tiptap/pm/history";
 import { goToNextCell, tableEditing } from "@tiptap/pm/tables";
 import { props } from "@stylexjs/stylex";
+import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { codeBlockStyles, proseStyles } from "../../chat/markdown/prose.stylex.ts";
 import { markdownStyles } from "./markdown.stylex.ts";
@@ -310,7 +311,7 @@ const Table = Node.create({
   parseHTML: () => [{ tag: "table" }],
   renderHTML: () => [
     "div",
-    { "data-nyte-scrollport": "", class: css(props(proseStyles.tableWrap)) },
+    { "data-nyte-scrollport": "", class: css(props(proseStyles.tableWrap, hairline.ring)) },
     ["table", { class: css(props(proseStyles.table)) }, ["tbody", 0]],
   ],
   addKeyboardShortcuts: () => ({
@@ -351,7 +352,7 @@ const TableHeader = Node.create({
     "th",
     {
       ...cellStyle(node.attrs["align"]),
-      class: css(props(proseStyles.cell, proseStyles.headerCell)),
+      class: css(props(proseStyles.cell, hairline.tableCell, proseStyles.headerCell)),
     },
     0,
   ],
@@ -365,7 +366,7 @@ const TableCell = Node.create({
   parseHTML: () => [{ tag: "td" }],
   renderHTML: ({ node }) => [
     "td",
-    { ...cellStyle(node.attrs["align"]), class: css(props(proseStyles.cell)) },
+    { ...cellStyle(node.attrs["align"]), class: css(props(proseStyles.cell, hairline.tableCell)) },
     0,
   ],
 });

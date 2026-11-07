@@ -4,8 +4,8 @@ import { Type } from "typebox";
 import type { Kernel } from "../contract/kernel.ts";
 import type { Plugin, SecretEntry, SettingDefinition } from "../contract/plugin.ts";
 import type { WorkspaceRecord } from "../contract/records.ts";
-import { openText } from "../extend/plugin-api.ts";
 import { kvRef } from "../store/refs.ts";
+import { openText } from "../store/secrets.ts";
 import { readKv } from "../store/session.ts";
 
 export const VARIABLES: SettingDefinition<Readonly<Record<string, SecretEntry>>> = {

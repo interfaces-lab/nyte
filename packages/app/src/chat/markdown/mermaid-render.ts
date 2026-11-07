@@ -30,10 +30,20 @@ export function renderDiagram(source: string): DiagramResult {
     })
       .replace(/^ *@import .*\n/gm, "")
       .replace(/^ *text \{ font-family: .*\n/m, "")
-      .replace(/(\.mono \{ font-family: )[^;]*/, `$1${type.fontMono}`);
+      .replace(/(\.mono \{ font-family: )[^;]*/, `$1${type.fontMono}`)
+      .replace(/<svg\b[^>]*>/, wholePixelSize);
 
     return svg.length > MAX_SVG_LENGTH ? { kind: "source" } : { kind: "diagram", svg };
   } catch {
     return { kind: "source" };
   }
+}
+
+/** Rounds the diagram's outer width and height up to even pixels, the box grid; its viewBox keeps the drawing. */
+function wholePixelSize(tag: string): string {
+  return tag.replace(
+    /\b(width|height)="(\d+(?:\.\d+)?)"/g,
+    (_match, name: string, value: string) =>
+      `${name}="${String(2 * Math.ceil(Number(value) / 2))}"`,
+  );
 }

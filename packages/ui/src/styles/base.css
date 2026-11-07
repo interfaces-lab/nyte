@@ -1,3 +1,13 @@
+/*
+ * A box's elevation drawn with its hairline (`hairline` in hairline.stylex.ts reads it before its
+ * inset edge). It doesn't inherit, so a raised panel's shadow stays off the hairlines inside it.
+ */
+@property --nyte-hairline-elevation {
+  syntax: "*";
+  inherits: false;
+  initial-value: 0 0 #0000;
+}
+
 @layer base {
   *,
   ::after,
