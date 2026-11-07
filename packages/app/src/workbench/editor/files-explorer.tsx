@@ -93,6 +93,7 @@ export function FilesExplorer({
   const scope = listing.scope;
   const filter = listing.filter;
   const [naming, setNaming] = useState<Naming>();
+  const pendingRename = useRef<string | undefined>(undefined);
   const [confirming, setConfirming] = useState<{ readonly path: string; readonly name: string }>();
   const [itemHeight] = useState(treeItemHeight);
 
@@ -255,6 +256,8 @@ export function FilesExplorer({
       return;
     }
 
+    pendingRename.current = `${copy}${item.kind === "directory" ? "/" : ""}`;
+    setSelection({ revision: tabs.revealRevision, scope: "all", filter: "" });
     refresh();
     const target = absolute(copy);
 
@@ -462,13 +465,18 @@ export function FilesExplorer({
 
     if (!shownPaths.current.has(tabs.revealPath)) return;
     revealed.current = tabs.revealRevision;
-    expandAncestors(model, tabs.revealPath);
-
-    for (const path of model.getSelectedPaths()) model.getItem(path)?.deselect();
-
-    model.getItem(tabs.revealPath)?.select();
-    model.scrollToPath(tabs.revealPath, { offset: "nearest", focus: true });
+    revealTreePath(model, tabs.revealPath);
   }, [model, files.data, scope, filter, tabs.revealPath, tabs.revealRevision]);
+
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- names a completed copy only after the refreshed index has added its row
+  useLayoutEffect(() => {
+    const path = pendingRename.current;
+
+    if (path === undefined || !shownPaths.current.has(path)) return;
+    revealTreePath(model, path);
+
+    if (model.startRenaming(path)) pendingRename.current = undefined;
+  }, [model, files.data, scope, filter]);
 
   const activePath = tabs.active?.external === false ? tabs.active.displayPath : undefined;
   const followed = useRef<string | undefined>(undefined);
@@ -655,6 +663,15 @@ function treePaths(
           (!path.endsWith("/") &&
             fuzzyScore(path.slice(path.lastIndexOf("/") + 1), needle) !== undefined)),
     );
+}
+
+function revealTreePath(model: FileTreeModel, path: string): void {
+  expandAncestors(model, path);
+
+  for (const selected of model.getSelectedPaths()) model.getItem(selected)?.deselect();
+
+  model.getItem(path)?.select();
+  model.scrollToPath(path, { offset: "nearest", focus: true });
 }
 
 function expandAncestors(model: FileTreeModel, path: string): void {
