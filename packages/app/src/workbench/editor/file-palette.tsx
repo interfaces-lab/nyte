@@ -10,6 +10,7 @@ import type { MentionFile } from "../../data/files.ts";
 import { fuzzyScore } from "../../lib/fuzzy-match.ts";
 import { mentionsFolder } from "../../references/message-references.ts";
 import type { OutlineSymbol } from "./outline.ts";
+import { SymbolKindGlyph } from "./symbol-kind.tsx";
 
 const MATCH_LIMIT = 50;
 
@@ -141,6 +142,8 @@ export function FilePalette({
                     leading={
                       row.target.kind === "file" ? (
                         <FileTypeIcon path={row.target.file.displayPath} />
+                      ) : row.target.kind === "symbol" ? (
+                        <SymbolKindGlyph kind={row.target.symbol.kind} />
                       ) : (
                         <Icon name="chevron-right" size="md" />
                       )

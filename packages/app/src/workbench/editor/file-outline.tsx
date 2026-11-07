@@ -3,16 +3,20 @@ import type { ReactElement } from "react";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 import { Row } from "@nyte-ai/ui/row";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@nyte-ai/ui/tooltip";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { preferences, useSetting } from "../../preferences/index.ts";
 import type { OutlineSymbol } from "./outline.ts";
+import { SymbolKindGlyph } from "./symbol-kind.tsx";
 
 export function FileOutline({
+  path,
   symbols,
   empty,
   onOpen,
 }: {
+  readonly path: string | undefined;
   readonly symbols: readonly OutlineSymbol[];
   readonly empty: string;
   readonly onOpen: (line: number) => void;
@@ -25,10 +29,16 @@ export function FileOutline({
       onOpenChange={preferences.fileOutline.set}
       {...props(hairline.blockStart, styles.root, open && styles.open)}
     >
-      <Collapsible.Trigger xstyle={styles.trigger}>
-        <Collapsible.Chevron />
-        Outline
-      </Collapsible.Trigger>
+      <Tooltip>
+        <TooltipTrigger render={<Collapsible.Trigger xstyle={styles.trigger} />}>
+          <Collapsible.Chevron />
+          Outline
+          {path !== undefined && (
+            <span {...props(styles.filename)}>{path.slice(path.lastIndexOf("/") + 1)}</span>
+          )}
+        </TooltipTrigger>
+        {path !== undefined && <TooltipContent>{path}</TooltipContent>}
+      </Tooltip>
       <Collapsible.Panel xstyle={styles.panel}>
         {symbols.length === 0 ? (
           <p {...props(styles.empty)}>{empty}</p>
@@ -38,10 +48,13 @@ export function FileOutline({
               <li key={`${String(symbol.line)}:${symbol.name}`}>
                 <Row
                   variant="nav"
-                  title={`${symbol.kind}, line ${String(symbol.line)}`}
+                  aria-label={`${symbol.name}, ${symbol.kind}, line ${String(symbol.line)}`}
                   xstyle={styles.row(symbol.depth)}
                   onClick={() => onOpen(symbol.line)}
                 >
+                  <Row.Leading>
+                    <SymbolKindGlyph kind={symbol.kind} />
+                  </Row.Leading>
                   <Row.Label>{symbol.name}</Row.Label>
                   <Row.Meta>{symbol.line}</Row.Meta>
                 </Row>
@@ -58,6 +71,13 @@ const styles = create({
   root: { display: "flex", flexDirection: "column", flexShrink: 0, minHeight: 0 },
   open: { flexBasis: "34%" },
   trigger: { flexShrink: 0, paddingInline: space.s2_5, color: role.contentSecondary },
+  filename: {
+    marginInlineStart: "auto",
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
   panel: { flex: 1, minHeight: 0, overflowY: "auto" },
   list: { margin: 0, padding: space.s1, listStyle: "none" },
   row: (depth: number) => ({

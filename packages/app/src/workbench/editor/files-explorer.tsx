@@ -523,6 +523,7 @@ export function FilesExplorer({
         {...props(workbenchStyles.treeTheme, styles.tree, unmatched && styles.hidden)}
       />
       <FileOutline
+        path={tabs.active?.displayPath}
         symbols={outline.symbols}
         empty={outline.path === undefined ? "Open a file to see its outline" : "No symbols"}
         onOpen={(line) => {
