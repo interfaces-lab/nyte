@@ -294,6 +294,7 @@ export type {
   ProjectInput,
   ProjectPatch,
   SharedDoc,
+  ContextFile,
   WorkspaceInspection,
   WorkspaceTarget,
   WriteOutcome,

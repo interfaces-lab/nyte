@@ -14,7 +14,8 @@
   "scripts": {
     "clean": "rm -rf node_modules .turbo",
     "test": "vitest --run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "verify:host": "node scripts/verify-host.ts"
   },
   "dependencies": {
     "@nyte-ai/ai": "workspace:*",

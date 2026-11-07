@@ -1,4 +1,4 @@
-import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
+import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { button, control, glyph, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
@@ -19,6 +19,7 @@ import { appearance, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { patchDigest } from "./changes-viewed.ts";
 import { diffStyles } from "./diff.stylex.ts";
 import type { DiffFilesLoader } from "./diff-expansion.ts";
+import { ChangeStats } from "../components/change-stats.tsx";
 
 type DiffViewVariant = "inline" | "card" | "workbench" | "stack";
 
@@ -173,22 +174,20 @@ function applyDiffScopes(node: HTMLElement): void {
     {
       scope: surfaceTheme.green,
       properties: [
-        ["--diffs-bg-addition-override", role.fillTertiary],
-        ["--diffs-bg-addition-emphasis-override", role.fillSecondary],
-        ["--diffs-addition-color-override", role.contentSecondary],
+        ["--diffs-addition-color-override", role.strokeAccent],
+        ["--diffs-fg-number-addition-override", role.contentAccent],
       ],
     },
     {
       scope: surfaceTheme.red,
       properties: [
-        ["--diffs-bg-deletion-override", role.fillTertiary],
-        ["--diffs-bg-deletion-emphasis-override", role.fillSecondary],
-        ["--diffs-deletion-color-override", role.contentSecondary],
+        ["--diffs-deletion-color-override", role.strokeAccent],
+        ["--diffs-fg-number-deletion-override", role.contentAccent],
       ],
     },
     {
       scope: surfaceTheme.blue,
-      properties: [["--diffs-modified-color-override", role.contentSecondary]],
+      properties: [["--diffs-modified-color-override", role.strokeAccent]],
     },
   ] as const) {
     sample.className = props(entry.scope).className ?? "";
@@ -202,7 +201,7 @@ function applyDiffScopes(node: HTMLElement): void {
   sample.remove();
 }
 
-export function adaptDiffExpanders(node: HTMLElement): void {
+function adaptDiffExpanders(node: HTMLElement): void {
   const root = node.shadowRoot;
 
   if (root === null) return;
@@ -238,6 +237,12 @@ export function adaptDiffExpanders(node: HTMLElement): void {
   }
 }
 
+/** A diff renderer that skips this shows Pierre's own colours. */
+export function adaptDiffRender(node: HTMLElement): void {
+  applyDiffScopes(node);
+  adaptDiffExpanders(node);
+}
+
 function onPostRender(...[node, , phase]: [HTMLElement, unknown, PostRenderPhase]): void {
   if (phase === "unmount") {
     node.shadowRoot?.querySelector("pre")?.remove();
@@ -245,8 +250,7 @@ function onPostRender(...[node, , phase]: [HTMLElement, unknown, PostRenderPhase
     return;
   }
 
-  applyDiffScopes(node);
-  adaptDiffExpanders(node);
+  adaptDiffRender(node);
 }
 
 const PATCH_OPTIONS = {
@@ -345,16 +349,8 @@ export function DiffView({
             <TooltipTrigger render={<span {...props(diffStyles.path)}>{label ?? path}</span>} />
             <TooltipContent>{path}</TooltipContent>
           </Tooltip>
-          <span
-            aria-label={`${String(diff.added)} added, ${String(diff.removed)} removed`}
-            {...props(diffStyles.stats)}
-          >
-            {diff.added > 0 && (
-              <span {...props(intent.success, diffStyles.added)}>+{diff.added}</span>
-            )}
-            {diff.removed > 0 && (
-              <span {...props(intent.danger, diffStyles.removed)}>-{diff.removed}</span>
-            )}
+          <span {...props(diffStyles.stats)}>
+            <ChangeStats added={diff.added} removed={diff.removed} />
           </span>
         </div>
       )}

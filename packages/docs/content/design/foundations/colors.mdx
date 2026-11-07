@@ -115,6 +115,19 @@ checked state or the slider's filled part.
 
 <RoleTable group="control" />
 
+## Data
+
+`chartSeries` paints a data mark, such as a chart bar, at 3:1 on both bases.
+
+<RoleTable group="data" />
+
+## Utility
+
+`scrollbarThumb` is the scrollbar thumb. `conversationUserShellBg` is the shell behind a sent
+message in the transcript.
+
+<RoleTable group="utility" />
+
 ## Hue scopes
 
 Pass a scope to `props()` and every role inside reads that hue. `custom` takes its hue from
@@ -125,6 +138,19 @@ Pass a scope to `props()` and every role inside reads that hue. `custom` takes i
 ```tsx
 <span {...props(surfaceTheme.green, styles.badge)}>Added</span>
 ```
+
+Every scoped role in each hue, light and dark:
+
+<ScopeTables />
+
+## Ramps
+
+Each hue has twenty steps, from `0`, the lightest, to `150`, the darkest. A role picks a light step
+and a dark step from the scope's ramp. The translucent ramp holds the same steps as glass for fills
+and strokes, so it differs per scheme. `custom` builds its ramp from `--nyte-custom-hue` and has
+no fixed values.
+
+<HueRamps />
 
 ## Intents
 

@@ -27,7 +27,7 @@ const styles = create({
     gap: space.s2,
     paddingBlock: space.s1,
     paddingInline: space.s2_5,
-    color: role.contentSecondary,
+    color: role.contentPrimary,
     fontSize: type.fontSm,
     lineHeight: type.leadingSm,
   },
@@ -38,10 +38,10 @@ const styles = create({
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
-    color: role.contentPrimary,
   },
   detail: {
     flexShrink: 0,
+    color: role.contentTertiary,
     fontVariantNumeric: "tabular-nums",
   },
   failed: { color: role.contentTertiary },
@@ -83,11 +83,11 @@ export function DownloadsBar({ surface, downloads }: DownloadsBarProps): ReactEl
         const done = download.state === "completed";
 
         return (
-          <div key={download.id} {...props(styles.item)}>
+          <div key={download.id} {...props(styles.item, !running && !done && styles.failed)}>
             <span {...props(styles.glyph)}>
               {running ? <Loader /> : <Icon name={done ? "checkmark" : "x"} size="xs" />}
             </span>
-            <span {...props(styles.name, !running && !done && styles.failed)} title={download.path}>
+            <span {...props(styles.name)} title={download.path}>
               {download.filename}
             </span>
             <span {...props(styles.detail)}>{detail(download)}</span>

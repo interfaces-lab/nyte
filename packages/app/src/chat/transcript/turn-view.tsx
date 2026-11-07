@@ -77,6 +77,7 @@ import { useNowMinute } from "../../lib/use-now-minute.ts";
 import type { PromptRow, TurnItemRow } from "./transcript-rows.ts";
 import { errorMessage } from "../../contract/errors.ts";
 import type { DesktopCatalog, DesktopModelOption } from "../../data/catalog.ts";
+import { ChangeStats } from "../../components/change-stats.tsx";
 
 function UserMessagePreview({
   expandable,
@@ -522,21 +523,7 @@ export function ChangesCard({
                       <FileTypeIcon path={file.path} />
                     </Row.Leading>
                     <Row.Label>{file.path.split("/").at(-1) ?? file.path}</Row.Label>
-                    <span
-                      aria-label={`${String(file.added)} added, ${String(file.removed)} removed`}
-                      {...props(turnStyles.changesStats)}
-                    >
-                      {file.added > 0 && (
-                        <span {...props(intent.success, turnStyles.changesAdded)}>
-                          +{file.added}
-                        </span>
-                      )}
-                      {file.removed > 0 && (
-                        <span {...props(intent.danger, turnStyles.changesRemoved)}>
-                          &minus;{file.removed}
-                        </span>
-                      )}
-                    </span>
+                    <ChangeStats added={file.added} removed={file.removed} />
                   </Row.Primary>
                 }
               />

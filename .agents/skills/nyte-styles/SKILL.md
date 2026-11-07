@@ -36,7 +36,9 @@ All of it is in `packages/ui/src/styles/`, exported as `@nyte-ai/ui/styles/*`.
 Native code can't read CSS variables. `packages/ui/src/platform-colors.ts` is generated from the
 roles (`pnpm --dir packages/ui sync:tokens`) and gives mobile and the docs mobile host every role as
 hex per scheme and hue: `platformColors.light.contentQuaternary`,
-`platformScopes.dark.red.contentSecondary`. Renaming or deleting a role breaks those readers, so run
+`platformScopes.dark.red.contentSecondary`, and `platform-ramps.ts` gives every ramp step: `platformRamps.blue.opaque["80"]`.
+The design docs' Colors page renders all three, so a new role or step appears there without an
+edit. Renaming or deleting a role breaks those readers, so run
 `pnpm --dir packages/mobile exec tsc --noEmit` after a role change.
 
 App-only structural measurements (sidebar width, titlebar height, prose measure) live in

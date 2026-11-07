@@ -61,14 +61,6 @@ export const stepGroupStyles = create({
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
-  stats: {
-    display: "inline-flex",
-    gap: space.s1_5,
-    flexShrink: 0,
-    fontVariantNumeric: "tabular-nums",
-  },
-  added: { color: role.contentSecondary },
-  removed: { color: role.contentSecondary },
   calls: {
     display: "flex",
     flexDirection: "column",

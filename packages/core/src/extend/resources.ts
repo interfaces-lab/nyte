@@ -23,6 +23,8 @@ import { classifyFileSupport, readWorkspace } from "../env/environment.ts";
 import { projectTrust, WORKSPACE_TRUST } from "../env/trust.ts";
 import { kvRef } from "../store/refs.ts";
 import { readKv, requireSession } from "../store/session.ts";
+import { contextFile, contextFilter, KEEP_ALL, KEEP_NONE } from "./context-filter.ts";
+import type { ContextFilter } from "./context-filter.ts";
 import { dev } from "../util/dev-log.ts";
 import type { StoreConnection } from "../contract/store.ts";
 import { publishViews } from "./part-views.ts";
@@ -42,7 +44,7 @@ type RealPath = (path: string) => Promise<string | null>;
 /** Files on one machine, and its real paths where its provider resolves them. */
 type Reader = { readonly files: FilesApi; readonly real: RealPath | null };
 
-type FoundContext = ContextFile & {
+type FoundContext = Omit<ContextFile, "id"> & {
   /** The name in `CONTEXT_NAMES` it was read under. */
   readonly name: string;
   /** Its real path, which names the file however it was reached; the path it was read at where the machine resolves none. */
@@ -73,7 +75,7 @@ const scanIssues = new WeakMap<Resources, readonly ValidationIssue[]>();
 export async function scanResources(kernel: Kernel, session: SessionId): Promise<Resources> {
   const record = (await requireSession(kernel.store, session)).record;
   const workspace = record.workspace;
-  const contextFiles = record.contextFiles ?? true;
+  const keeps = await contextFilter(kernel, record);
   const table = kernel.workspaceState.scans;
   const cached = table.get(session);
 
@@ -82,7 +84,7 @@ export async function scanResources(kernel: Kernel, session: SessionId): Promise
   const entry: ScanEntry = {
     workspace,
     resources: follow(kernel, session, workspace)
-      .then(() => scan(kernel, workspace, () => kernel.environments.attach(session), contextFiles))
+      .then(() => scan(kernel, workspace, () => kernel.environments.attach(session), keeps))
       .then((resources) => {
         const api = kernel.plugins.runtimes().get(session)?.api("resources");
 
@@ -149,7 +151,7 @@ export async function closeWatches(kernel: Kernel): Promise<void> {
 
 /** Scans the resources a new chat in `workspace` would read, before the chat exists, over the workspace's own attachment. */
 export function scanWorkspaceResources(kernel: Kernel, workspace: WorkspaceId): Promise<Resources> {
-  return scan(kernel, workspace, () => kernel.environments.attachWorkspace(workspace), true);
+  return scan(kernel, workspace, () => kernel.environments.attachWorkspace(workspace), KEEP_ALL);
 }
 
 export function resourceIssues(resources: Resources): readonly ValidationIssue[] {
@@ -173,7 +175,7 @@ export async function refreshPromptFiles(kernel: Kernel, session: SessionId): Pr
 
   const found = await readers(kernel, record.workspace, () => kernel.environments.attach(session));
 
-  const fresh = await readPromptInputs(kernel, found, record.contextFiles ?? true);
+  const fresh = await readPromptInputs(kernel, found, await contextFilter(kernel, record));
   const known: PromptInputs = { contextFiles: resources.contextFiles, prompt: resources.prompt };
 
   if (JSON.stringify(fresh) === JSON.stringify(known)) return;
@@ -270,14 +272,14 @@ async function scan(
   kernel: Kernel,
   workspace: WorkspaceId,
   attach: () => Promise<ExecutionEnv>,
-  withContext: boolean,
+  keeps: ContextFilter,
 ): Promise<Resources> {
   const found = await readers(kernel, workspace, attach);
   const user = found.homeEnv?.files ?? null;
   const home = kernel.home;
 
   const [inputs, projectSkills, userSkills, pathSkills, projectDocs, userDocs] = await Promise.all([
-    readPromptInputs(kernel, found, withContext),
+    readPromptInputs(kernel, found, keeps),
     found.project === null ? [] : skillsIn(found.project, SKILL_DIRECTORIES, "project", found.root),
     user === null ? [] : skillsIn(user, SKILL_DIRECTORIES, "user", home),
     user === null ? [] : skillsAt(user, await skillPaths(kernel.store), home),
@@ -314,18 +316,19 @@ async function scan(
   return resources;
 }
 
-/** The prompt files `found` reads: the context files (the user's in `<home>/.nyte`, each ancestor's, then the folder's own) when `withContext`, and `.nyte/SYSTEM.md` and `.nyte/APPEND_SYSTEM.md`, a trusted folder's before the user's. */
+/** The prompt files `found` reads: the context files `keeps` keeps (the user's in `<home>/.nyte`, each ancestor's, then the folder's own), and `.nyte/SYSTEM.md` and `.nyte/APPEND_SYSTEM.md`, a trusted folder's before the user's. */
 async function readPromptInputs(
   kernel: Kernel,
   found: Awaited<ReturnType<typeof readers>>,
-  withContext: boolean,
+  keeps: ContextFilter,
 ): Promise<PromptInputs> {
   const user = found.homeEnv?.files ?? null;
   const home = kernel.home;
 
   const [contextFiles, userSystem, userAppend, projectSystem, projectAppend] = await Promise.all([
-    withContext
-      ? findContextFiles(
+    keeps === KEEP_NONE
+      ? []
+      : findContextFiles(
           found.homeEnv === null || home === null
             ? null
             : {
@@ -340,8 +343,7 @@ async function readPromptInputs(
                 real: realPaths(found.provider, found.env),
                 root: found.root,
               },
-        )
-      : [],
+        ).then((files) => files.filter(keeps)),
     user === null ? null : readText(user, ".nyte/SYSTEM.md"),
     user === null ? null : readText(user, ".nyte/APPEND_SYSTEM.md"),
     found.project === null ? null : readText(found.project, ".nyte/SYSTEM.md"),
@@ -753,7 +755,7 @@ async function findContextFiles(
     if (found === null || found.entry === shadowed || seen.has(found.real)) return [];
     seen.add(found.real);
 
-    return [{ path: found.path, scope: found.scope, content: found.content }];
+    return [contextFile(found)];
   });
 }
 

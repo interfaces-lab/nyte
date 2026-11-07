@@ -11,17 +11,15 @@ import { create, props } from "@stylexjs/stylex";
 import { useEffectEvent, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 import type { ReactElement, Ref } from "react";
 import { useSyncExternalStoreWithSelector } from "use-sync-external-store/with-selector";
-import { AnimatedNumber } from "../../components/animated-number.tsx";
 import { FileTypeIcon } from "../../components/file-type-icon";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
-import { intent } from "@nyte-ai/ui/surface-theme";
 import { Button } from "@nyte-ai/ui/button";
 import { ADD_TO_CHAT_LABEL, addToChat, addsToChat } from "../../references/add-to-chat.ts";
 import type { DiffFilesLoader } from "../../diff/diff-expansion.ts";
 import {
   DIFF_SEPARATOR_CSS,
   EXPANSION_LINE_COUNT,
-  adaptDiffExpanders,
+  adaptDiffRender,
 } from "../../diff/diff-view.tsx";
 import { diffStyles } from "../../diff/diff.stylex.ts";
 import {
@@ -45,6 +43,7 @@ import { createChangesCodeViewItems, type ChangesStackItem } from "./changes-sta
 import { diffRangeExcerpt } from "../../references/diff-range.ts";
 import type { ChangesLayout } from "./changes-view-options.ts";
 import type { ViewedState } from "../../diff/changes-viewed.ts";
+import { ChangeStats } from "../../components/change-stats.tsx";
 
 const styles = create({
   stack: {
@@ -265,7 +264,7 @@ export function ChangesStack({
     layout: { ...DEFAULT_CODE_VIEW_LAYOUT, paddingTop: 0 },
     unsafeCSS: STACK_CSS,
     onPostRender: (node, _instance, phase) => {
-      if (phase !== "unmount") adaptDiffExpanders(node);
+      if (phase !== "unmount") adaptDiffRender(node);
     },
     enableLineSelection: true,
     onGutterUtilityClick: (
@@ -495,20 +494,8 @@ function StackHeader({
         <Collapsible.Chevron size="xs" xstyle={diffStyles.stackHeaderChevron} />
         <span {...props(diffStyles.stackPath, styles.path)}>{path}</span>
         {(added > 0 || removed > 0) && (
-          <span
-            aria-label={`${String(added)} added, ${String(removed)} removed`}
-            {...props(diffStyles.stackStats)}
-          >
-            {added > 0 && (
-              <span {...props(intent.success, diffStyles.added)}>
-                +<AnimatedNumber value={added} />
-              </span>
-            )}
-            {removed > 0 && (
-              <span {...props(intent.danger, diffStyles.removed)}>
-                -<AnimatedNumber value={removed} />
-              </span>
-            )}
+          <span {...props(diffStyles.stackStats)}>
+            <ChangeStats added={added} removed={removed} />
           </span>
         )}
       </Collapsible.Trigger>

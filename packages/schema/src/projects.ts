@@ -29,8 +29,8 @@ export const ProjectInfoType = Type.Object({
  * One coordinator chat in a folder and the settings every chat in it reads on each request.
  * `coordinator` is the chat, set when its first message starts it; its subagents are the
  * project's agents. `instructions` join their system prompt, the `skills` named there are read
- * into it, and the MCP servers in `disabledMcp` and the shared docs in `disabledDocs` (by
- * `SharedDoc.id`) are left out of it. A session is in a project when its `project` names it.
+ * into it, and the MCP servers in `disabledMcp` and the shared docs and context files in
+ * `disabledDocs` (by `SharedDoc.id` and `ContextFile.id`) are left out of it. A session is in a project when its `project` names it.
  */
 export type ProjectInfo = Decoded<typeof ProjectInfoType>;
 
@@ -78,3 +78,17 @@ export const SharedDocType = Type.Object({
 });
 
 export type SharedDoc = Decoded<typeof SharedDocType>;
+
+/**
+ * A rules file a chat reads into its system prompt (`AGENTS.md`, `CLAUDE.md` and the like): the
+ * home's (`user`), one above the folder (`ancestor`) or the folder's own (`project`). `id` is
+ * `context:<scope>:<name>`, the same in every worktree, with the full `location` for an ancestor.
+ */
+export const ContextFileType = Type.Object({
+  id: Type.String(),
+  name: Type.String(),
+  scope: Type.Enum(["user", "ancestor", "project"]),
+  location: Type.String(),
+});
+
+export type ContextFile = Decoded<typeof ContextFileType>;

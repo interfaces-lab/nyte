@@ -68,7 +68,7 @@ export function updatePart(
   const next = change(current);
 
   if (next === current) return;
-  draft.parts.set(id, next);
+  putPart(draft, next);
   const message = draft.messages.get(toPartMessageId(id));
 
   if (message?.kind === "part")
@@ -83,6 +83,22 @@ export function updatePart(
   if (index < 0) return;
   draft.partViews = draft.partViews.with(index, partView(next));
   touchRow(draft, "parts", id);
+}
+
+export function putPart(draft: Draft, record: PartRecord): void {
+  draft.parts.set(record.id, record);
+
+  if (awaitsSettlement(record)) draft.unsettled.add(record.id);
+  else draft.unsettled.delete(record.id);
+}
+
+export function dropPart(draft: Draft, id: PartId): void {
+  draft.parts.delete(id);
+  draft.unsettled.delete(id);
+}
+
+export function awaitsSettlement(part: PartRecord): boolean {
+  return part.status.kind === "live" || part.status.kind === "waiting";
 }
 
 export function committed(draft: Draft, id: CommitId): Message | undefined {

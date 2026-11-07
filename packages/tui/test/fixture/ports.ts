@@ -274,7 +274,7 @@ export function fakeHost(): FakeHost {
     addSession,
     starts,
     folders,
-    folderCatalog: { commands: [], skills: [], docs: [] },
+    folderCatalog: { commands: [], skills: [], docs: [], contextFiles: [] },
     folderRuns: [],
     folderCommandResult: null,
     session: (id) => addSession(id),

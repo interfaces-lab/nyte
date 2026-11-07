@@ -28,8 +28,18 @@ export type Published =
   | { readonly kind: "published" }
   | { readonly kind: "taken"; readonly by: RunningHost };
 
+/** The exit status of a `nyte host` that found another host serving this home (EX_TEMPFAIL). */
+export const HOST_TAKEN_EXIT = 75;
+
 export function hostFilePath(env: Readonly<Record<string, string | undefined>> = process.env) {
   return join(hostStateDirectory(env), "host.json");
+}
+
+/** The lock that elects the one served host for this home; the store itself stays shared. */
+export function hostLockPath(
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): string {
+  return join(hostStateDirectory(env), "host.lock");
 }
 
 export function hostSocketPath(env: Readonly<Record<string, string | undefined>> = process.env) {

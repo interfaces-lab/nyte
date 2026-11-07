@@ -8,6 +8,7 @@ import { commit } from "../fold/commit.ts";
 import { PROJECTS, projectRef, workspaceRef } from "../store/refs.ts";
 import { attempt, load, put, readSession, STALE } from "../store/session.ts";
 import type { Found } from "../store/session.ts";
+import { dropScans } from "../extend/resources.ts";
 
 export function createProjects(kernel: Kernel): Projects {
   return {
@@ -70,7 +71,10 @@ export function projectHandle(kernel: Kernel, id: ProjectId): Project {
 
       await publishProjects(kernel);
 
-      if (JSON.stringify(before.disabledMcp) !== JSON.stringify(updated.disabledMcp))
+      if (
+        JSON.stringify(before.disabledMcp) !== JSON.stringify(updated.disabledMcp) ||
+        JSON.stringify(before.disabledDocs) !== JSON.stringify(updated.disabledDocs)
+      )
         await reloadProjectSessions(kernel, id);
 
       return updated;
@@ -152,16 +156,17 @@ export async function coordinatorUpdate(
   };
 }
 
-/** Reloads the plugins of the project's running chats, so the MCP servers it leaves out leave their tools. */
+/** Rescans and reloads the project's running chats, so the MCP servers and context files it leaves out leave their prompt and tools. */
 async function reloadProjectSessions(kernel: Kernel, id: ProjectId): Promise<void> {
   const sessions = [...kernel.plugins.runtimes().keys()];
   const records = await Promise.all(sessions.map((session) => readSession(kernel.store, session)));
 
-  await Promise.all(
-    records.flatMap((found) =>
-      found?.record.project === id ? [kernel.plugins.reload(found.record.id)] : [],
-    ),
+  const chosen = new Set(
+    records.flatMap((found) => (found?.record.project === id ? [found.record.id] : [])),
   );
+
+  dropScans(kernel, (session) => chosen.has(session));
+  await Promise.all([...chosen].map((session) => kernel.plugins.reload(session)));
 }
 
 /** `record` with the fields `patch` sets, or `record` itself when it sets none to a new value. */

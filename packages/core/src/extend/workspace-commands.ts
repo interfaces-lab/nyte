@@ -23,7 +23,7 @@ import {
 import { scanWorkspaceResources } from "./resources.ts";
 import { settingHandle } from "./settings.ts";
 
-/** The commands, skills and shared docs a new chat in `workspace` would offer, read before the chat exists. */
+/** The commands, skills, shared docs and context files a new chat in `workspace` would offer, read before the chat exists. */
 export function readWorkspaceCatalog(
   kernel: Kernel,
   workspace: WorkspaceId,
@@ -32,6 +32,12 @@ export function readWorkspaceCatalog(
     commands: commandInfos(registries),
     skills: skillInfos(registries),
     docs: inputs.docs,
+    contextFiles: inputs.contextFiles.map((file) => ({
+      id: file.id,
+      name: file.path.slice(file.path.lastIndexOf("/") + 1),
+      scope: file.scope,
+      location: file.path,
+    })),
   }));
 }
 

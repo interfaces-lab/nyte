@@ -41,6 +41,7 @@ import {
   committed,
   dropFailed,
   dropHead,
+  dropPart,
   dropRow,
   emptyHead,
   emptyStamps,
@@ -53,6 +54,7 @@ import {
   openTurn,
   partView,
   pendingTurn,
+  putPart,
   setCatalogId,
   setChanges,
   setMessage,
@@ -88,6 +90,7 @@ export function emptyFold(input: {
     siblings: new Map(),
     inputs: new Map(),
     parts: new Map(),
+    unsettled: new Set(),
     runs: new Map(),
     calls: new Map(),
     turns: new Map(),
@@ -707,7 +710,7 @@ function applyPart(draft: Draft, event: Logged<"part">): void {
       );
     case "closed":
       if (!draft.parts.has(id) || draft.messages.has(toPartMessageId(id))) return;
-      draft.parts.delete(id);
+      dropPart(draft, id);
       draft.partViews = draft.partViews.filter((view) => view.id !== id);
       dropRow(draft, "parts", id);
   }
@@ -734,7 +737,7 @@ function create(
   };
 
   const role = transcriptRole(event.placement);
-  draft.parts.set(id, record);
+  putPart(draft, record);
 
   if (run !== null) {
     const owned = draft.byRun.get(run) ?? [];

@@ -482,7 +482,7 @@ async function main(): Promise<PrintOutcome | undefined> {
   }
 
   if (command === "host") {
-    await hostCommand(invocationArgs.slice(1), untilInterrupted(), output);
+    process.exitCode = await hostCommand(invocationArgs.slice(1), untilInterrupted(), output);
 
     return undefined;
   }

@@ -5,6 +5,8 @@ import { readGroups } from "./tokens.mjs";
 
 const outputPath = join(dirname(fileURLToPath(import.meta.url)), "..", "src", "platform-colors.ts");
 
+const rampsPath = join(dirname(fileURLToPath(import.meta.url)), "..", "src", "platform-ramps.ts");
+
 const check = process.argv.includes("--check");
 
 const tokenDirectory = join(dirname(fileURLToPath(import.meta.url)), "..", "src", "styles");
@@ -390,17 +392,23 @@ const formatHex = (color) => {
 const colorNames = Object.keys(roles).filter((name) => !nonColors.has(name));
 
 /**
- * The roles a native or static consumer reads inside a hue scope: status text,
- * diff and status fills, chart marks, and diagram strokes.
+ * The roles a native or static consumer reads inside a hue scope: every stair, the accents, the
+ * strong and control fills, the button fill and chart marks.
  */
-const scopedColorNames = [
-  "--nyte-content-secondary",
-  "--nyte-content-quaternary",
-  "--nyte-fill-primary",
-  "--nyte-fill-tertiary",
-  "--nyte-bg-interactive-strong",
-  "--nyte-chart-series",
-];
+const scopedColorNames = colorNames.filter(
+  (name) =>
+    /^--nyte-(content|fill|stroke)-/.test(name) ||
+    [
+      "--nyte-bg-interactive-strong",
+      "--nyte-bg-control-selected",
+      "--nyte-button-fill",
+      "--nyte-chart-series",
+    ].includes(name),
+);
+
+const rampSteps = Object.keys(theme)
+  .map((name) => /^--nyte-theme-(\d+)$/.exec(name)?.[1])
+  .filter((step) => step !== undefined);
 
 const scheme = (mode, names) =>
   names
@@ -443,14 +451,38 @@ const scopedScheme = (mode) =>
 
 const scopesOutput = `export const platformScopes = {\n  light: {\n${scopedScheme("light")}\n  },\n  dark: {\n${scopedScheme("dark")}\n  },\n} as const;\n`;
 
-const generated = `// ${notice}\n${neutralOutput}\n${scopesOutput}`;
+const ramp = (mode, prefix) =>
+  rampSteps
+    .map(
+      (step) =>
+        `      "${step}": "${formatHex(resolve(declared[`${prefix}${step}`], mode, [`${prefix}${step}`]))}",`,
+    )
+    .join("\n");
 
-if (check) {
-  const current = await readFile(outputPath, "utf8");
+const rampsOutput = `export const platformRamps = {\n${hues
+  .map((hue) => {
+    declared = {
+      ...neutralDeclarations,
+      ...Object.fromEntries(defaults(themeGroups.get(hue).values)),
+    };
 
-  if (current !== generated) {
-    throw new Error("platform-colors.ts is stale; run pnpm --filter @nyte-ai/ui sync:tokens");
+    return `  ${hue}: {\n    opaque: {\n${ramp("light", "--nyte-theme-")}\n    },\n    translucentLight: {\n${ramp("light", "--nyte-theme-translucent-")}\n    },\n    translucentDark: {\n${ramp("dark", "--nyte-theme-translucent-")}\n    },\n  },`;
+  })
+  .join("\n")}\n} as const;\n`;
+
+const outputs = [
+  [outputPath, `// ${notice}\n${neutralOutput}\n${scopesOutput}`],
+  [rampsPath, `// ${notice}\n${rampsOutput}`],
+];
+
+for (const [path, generated] of outputs) {
+  if (check) {
+    const current = await readFile(path, "utf8");
+
+    if (current !== generated) {
+      throw new Error(`${path} is stale; run pnpm --filter @nyte-ai/ui sync:tokens`);
+    }
+  } else {
+    await writeFile(path, generated);
   }
-} else {
-  await writeFile(outputPath, generated);
 }

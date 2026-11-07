@@ -172,15 +172,6 @@ export const turnStyles = create({
     color: role.contentSecondary,
   },
   changesFileIcon: { position: "relative", insetBlockStart: 1, width: glyph.md },
-  changesStats: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: space.s2,
-    flexShrink: 0,
-    fontVariantNumeric: "tabular-nums",
-  },
-  changesAdded: { color: role.contentSecondary },
-  changesRemoved: { color: role.contentSecondary },
   userEdit: {
     display: "flex",
     flexDirection: "column",

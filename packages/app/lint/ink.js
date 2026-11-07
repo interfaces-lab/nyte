@@ -19,7 +19,6 @@ const DISABLED_INK =
   "contentDisabled is for disabled controls. Use role.contentTertiary for information, " +
   "role.contentQuaternary for decoration.";
 
-/** The content stair a value reads, as `role.contentSecondary` or its `--nyte-content-*` variable. */
 const contentStair = (node) => {
   if (
     node.type === "MemberExpression" &&
@@ -35,7 +34,7 @@ const contentStair = (node) => {
   return /--nyte-content-[\w-]+/.exec(styleText(node).join(""))?.[0] ?? null;
 };
 
-/** `0.5`, `"0.5"`, or `"50%"` as a fraction; anything computed is null. */
+/** A computed opacity is null: the rule only judges literals. */
 const opacityAmount = (node) => {
   if (Value.Check(numberLiteral, node)) return node.value;
 
@@ -47,7 +46,6 @@ const opacityAmount = (node) => {
   return match[2] === "" ? Number(match[1]) : Number(match[1]) / 100;
 };
 
-/** The text of a template, with each content handle written as its handle. */
 const templateText = (context, node) =>
   node.quasis
     .map((quasi, index) => {
@@ -62,7 +60,6 @@ const templateText = (context, node) =>
     })
     .join("");
 
-/** The comma-separated arguments of the call that opens at `start`, nested calls kept whole. */
 const callArguments = (text, start) => {
   const parts = [];
   let depth = 0;
@@ -86,7 +83,6 @@ const callArguments = (text, start) => {
   return [...parts, text.slice(from)];
 };
 
-/** Each color-mix() in a value, nested ones too, as its colour operands without their percentages. */
 const colorMixes = (text) =>
   [...text.matchAll(/color-mix\(/gi)].map((match) =>
     callArguments(text, match.index + match[0].length)
@@ -94,7 +90,6 @@ const colorMixes = (text) =>
       .map((operand) => operand.replace(/(?:^|\s)\d*\.?\d+%(?:\s|$)/, " ").trim()),
   );
 
-/** A literal that is the value of `color`, under any of its conditions. */
 const colorsText = (node) => {
   for (let parent = node.parent; parent; parent = parent.parent) {
     if (parent.type !== "Property" && parent.type !== "ObjectExpression") return false;
@@ -106,11 +101,7 @@ const colorsText = (node) => {
   return false;
 };
 
-/**
- * A mix of a content stair with another colour lands between two stairs, on
- * no floor. A content colour mixed only with transparent is a wash of its hue
- * and passes, unless it colours text, where it is a fade.
- */
+/** A content colour mixed only with transparent is a wash of its hue, unless it colours text. */
 const reportMixedInk = (context, node, text) => {
   const stairs = colorMixes(text)
     .map((operands) => {
@@ -156,7 +147,6 @@ const withoutNegations = (text) => {
   return withoutNegations(text.slice(0, open) + text.slice(close + 1));
 };
 
-/** The string a module-level `const` holds, so `[disabled]` reads as the selector it names. */
 const constantText = (context, name) =>
   context.sourceCode.ast.body
     .flatMap((statement) =>
@@ -168,10 +158,6 @@ const constantText = (context, name) =>
     .flatMap((declarator) => (declarator.init ? styleText(declarator.init) : []))
     .join("");
 
-/**
- * A key as written: `[when.ancestor("[data-disabled]")]` reads from its source and `[disabled]`
- * from the constant it names.
- */
 const keyText = (context, member) => {
   if (!member.computed) return keyName(member.key, false) ?? "";
 
@@ -180,11 +166,9 @@ const keyText = (context, member) => {
   return context.sourceCode.getText(member.key);
 };
 
-/** A key that selects a disabled state rather than excluding one. */
 const selectsDisabled = (context, member) =>
   DISABLED_SELECTOR.test(withoutNegations(keyText(context, member)));
 
-/** The leaves of a value outside its disabled conditions, which the contrast floors exempt. */
 const enabledLeaves = (context, node) =>
   node.type === "ObjectExpression"
     ? node.properties.flatMap((member) =>
@@ -199,7 +183,6 @@ const findMember = (block, name) =>
     (member) => member.type === "Property" && keyName(member.key, member.computed) === name,
   );
 
-/** The condition and pseudo-element blocks nested in a block, not the condition maps of its properties. */
 const nestedBlocks = (block) =>
   block.properties.filter((member) => {
     if (member.type !== "Property" || member.value.type !== "ObjectExpression") return false;
@@ -218,7 +201,6 @@ const blockInk = (context, block) => {
         .find((stair) => stair !== null);
 };
 
-/** The first content stair a block or a block nested in it sets, outside disabled states. */
 const innerInk = (context, block) =>
   blockInk(context, block) ??
   nestedBlocks(block)
@@ -226,11 +208,7 @@ const innerInk = (context, block) =>
     .map((member) => innerInk(context, member.value))
     .find((stair) => stair !== undefined);
 
-/**
- * Each opacity fade on a block whose text has a content stair: its own `color`, the nearest
- * ancestor's, or one a nested block sets, which the block's opacity fades too. Blocks under a
- * disabled state are exempt.
- */
+/** A block's opacity also fades the text of blocks nested in it, so their colour counts. */
 const fadedOpacities = (context, block, inherited, disabled) => {
   const ink = blockInk(context, block) ?? inherited;
   const opacity = findMember(block, "opacity");
@@ -252,13 +230,7 @@ const fadedOpacities = (context, block, inherited, disabled) => {
   ];
 };
 
-/**
- * Each stair has a contrast floor on every surface; fading text with opacity
- * or mixing it with another colour drops it below the floor the stair
- * promised. A whole element fading to 0 or 1, opacity on a style that sets no
- * content colour, such as an image, and a disabled state, which the floors
- * exempt, pass.
- */
+/** Fading or mixing text drops it below its stair's floor. Disabled states are exempt from floors. */
 export const noFadedInk = {
   meta: {
     docs: {
@@ -288,10 +260,7 @@ export const noFadedInk = {
   },
 };
 
-/**
- * The branch a disabled-named test selects when it holds: `disabled ? a : b` picks `a`, and
- * each leading `!` flips it. A test that names no disabled state selects neither.
- */
+/** `disabled ? a : b` exempts `a` only; each leading `!` flips it. */
 const disabledBranch = (context, node) => {
   const test = context.sourceCode.getText(node.test).trim();
 
@@ -301,7 +270,6 @@ const disabledBranch = (context, node) => {
   return negations % 2 === 0 ? node.consequent : node.alternate;
 };
 
-/** Each contentDisabled below a value that no disabled condition, style, or test selects. */
 const strayDisabledInk = (context, node, allowed) => {
   if (node.type === "ObjectExpression") {
     return node.properties.flatMap((member) =>
@@ -340,7 +308,6 @@ const strayDisabledInk = (context, node, allowed) => {
     : [];
 };
 
-/** contentDisabled is exempt from the contrast floors, so on anything still readable it fails them. */
 export const disabledInk = {
   meta: { docs: { description: "Keep role.contentDisabled to disabled states." } },
   create(context) {

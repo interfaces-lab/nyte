@@ -7,7 +7,8 @@ import { useLayoutEffect, useState } from "react";
 import type { FileStatus } from "@nyte-ai/sdk";
 import { workbenchStyles } from "../workbench.stylex.ts";
 
-const styles = create({ status: { color: role.contentSecondary } });
+/** A git status is read by its hue, so it takes the accent ink, as diff counts do. */
+const styles = create({ status: { color: role.contentAccent } });
 
 export function treeItemHeight(): number {
   const probe = document.createElement("div");
@@ -22,9 +23,9 @@ export function treeItemHeight(): number {
 
 export function useTreeStatusTheme() {
   const [colors, setColors] = useState({
-    added: role.contentSecondary,
-    modified: role.contentSecondary,
-    deleted: role.contentSecondary,
+    added: role.contentAccent,
+    modified: role.contentAccent,
+    deleted: role.contentAccent,
   });
 
   // oxlint-disable-next-line nyte-code/no-direct-effect -- reads computed theme colors before paint and watches the root's attributes

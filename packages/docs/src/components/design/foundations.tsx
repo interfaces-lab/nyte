@@ -4,6 +4,7 @@
  */
 
 import { platformColors, platformScopes } from "@nyte-ai/ui/platform-colors";
+import { platformRamps } from "@nyte-ai/ui/platform-ramps";
 import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { motion, role, shadow, type } from "@nyte-ai/ui/styles/vars.stylex";
@@ -19,17 +20,29 @@ const roleNames = Object.keys(platformColors.light).filter(
   (name): name is RoleName => name in platformColors.light,
 );
 
-/** Each group keeps the declaration order of the roles, so a stair reads strongest first. */
-const roleGroups = {
-  content: (name: RoleName) => name.startsWith("content"),
-  fill: (name: RoleName) => name.startsWith("fill"),
-  stroke: (name: RoleName) => name.startsWith("stroke"),
-  surface: (name: RoleName) =>
-    name.startsWith("bg") && name !== "bgInteractiveStrong" && !name.startsWith("bgControl"),
-  material: (name: RoleName) => name.endsWith("Material") || name === "windowWash",
-  action: (name: RoleName) => name === "bgInteractiveStrong" || name.startsWith("button"),
-  control: (name: RoleName) => name.startsWith("bgControl"),
-} as const;
+type RoleGroup =
+  | "content"
+  | "fill"
+  | "stroke"
+  | "surface"
+  | "material"
+  | "action"
+  | "control"
+  | "data"
+  | "utility";
+
+/** The last group catches every other role, so a new one shows up without an edit. */
+function roleGroup(name: RoleName): RoleGroup {
+  if (name.startsWith("content")) return "content";
+  if (name.startsWith("fill")) return "fill";
+  if (name.startsWith("stroke")) return "stroke";
+  if (name.startsWith("bgControl")) return "control";
+  if (name === "bgInteractiveStrong" || name.startsWith("button")) return "action";
+  if (name.endsWith("Material") || name === "windowWash") return "material";
+  if (name.startsWith("bg")) return "surface";
+  if (name === "chartSeries") return "data";
+  return "utility";
+}
 
 function kebab(name: string): string {
   return name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
@@ -47,9 +60,9 @@ function Value({ children }: { children: ReactNode }) {
   return <code {...props(styles.value)}>{children}</code>;
 }
 
-/** Every colour role in a group, as its light and dark values on their own page colour. */
-export function RoleTable({ group }: { group: keyof typeof roleGroups }) {
-  const rows = roleNames.filter(roleGroups[group]);
+/** Declaration order, so a stair reads strongest first. */
+export function RoleTable({ group }: { group: RoleGroup }) {
+  const rows = roleNames.filter((name) => roleGroup(name) === group);
   return (
     <div className="doc-table-scroll">
       <table>
@@ -82,6 +95,131 @@ export function RoleTable({ group }: { group: keyof typeof roleGroups }) {
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+type Hue = keyof typeof platformRamps;
+
+const hues = Object.keys(platformRamps).filter((hue): hue is Hue => hue in platformRamps);
+
+type ScopedRole = keyof (typeof platformScopes)["light"][Hue];
+
+const scopedRoles = Object.keys(platformScopes.light.gray).filter(
+  (name): name is ScopedRole => name in platformScopes.light.gray,
+);
+
+export function HueRamps() {
+  return (
+    <div {...props(styles.ramps)}>
+      {hues.map((hue) => (
+        <details key={hue} {...props(styles.rampDetails)}>
+          <summary {...props(styles.rampSummary)}>
+            <code {...props(styles.rampName)}>{hue}</code>
+            <span {...props(styles.rampStrip)}>
+              {Object.values(platformRamps[hue].opaque).map((color) => (
+                <span key={color} {...props(styles.rampStep(color))} />
+              ))}
+            </span>
+          </summary>
+          <div className="doc-table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Step</th>
+                  <th>Opaque</th>
+                  <th>Translucent, light</th>
+                  <th>Translucent, dark</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Object.keys(platformRamps[hue].opaque).map((step) => (
+                  <tr key={step}>
+                    <td>
+                      <code>--nyte-theme-{step}</code>
+                    </td>
+                    {(
+                      [
+                        [platformRamps[hue].opaque, platformColors.light.bgBase],
+                        [platformRamps[hue].translucentLight, platformColors.light.bgBase],
+                        [platformRamps[hue].translucentDark, platformColors.dark.bgBase],
+                      ] as const
+                    ).map(([ramp, backdrop], index) => (
+                      <td key={index}>
+                        <span {...props(styles.chipRow)}>
+                          <Chip color={rampValue(ramp, step)} backdrop={backdrop} />
+                          <Value>{rampValue(ramp, step)}</Value>
+                        </span>
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      ))}
+    </div>
+  );
+}
+
+function rampValue(ramp: Readonly<Record<string, string>>, step: string): string {
+  return ramp[step] ?? "";
+}
+
+export function ScopeTables() {
+  return (
+    <div {...props(styles.ramps)}>
+      {hues.map((hue) => (
+        <details key={hue} {...props(styles.rampDetails)}>
+          <summary {...props(styles.rampSummary)}>
+            <code {...props(styles.rampName)}>surfaceTheme.{hue}</code>
+            <span {...props(styles.rampStrip)}>
+              {(
+                [
+                  "contentPrimary",
+                  "contentSecondary",
+                  "contentTertiary",
+                  "contentQuaternary",
+                ] as const
+              ).map((name) => (
+                <span key={name} {...props(styles.rampStep(platformScopes.light[hue][name]))} />
+              ))}
+            </span>
+          </summary>
+          <div className="doc-table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Role</th>
+                  <th>Light</th>
+                  <th>Dark</th>
+                </tr>
+              </thead>
+              <tbody>
+                {scopedRoles.map((name) => (
+                  <tr key={name}>
+                    <td>
+                      <code>role.{name}</code>
+                    </td>
+                    {(["light", "dark"] as const).map((scheme) => (
+                      <td key={scheme}>
+                        <span {...props(styles.chipRow)}>
+                          <Chip
+                            color={platformScopes[scheme][hue][name]}
+                            backdrop={platformColors[scheme].bgBase}
+                          />
+                          <Value>{platformScopes[scheme][hue][name]}</Value>
+                        </span>
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      ))}
     </div>
   );
 }
@@ -581,6 +719,31 @@ export function MotionScale() {
 }
 
 const styles = create({
+  ramps: { display: "flex", flexDirection: "column", gap: space.s2 },
+  rampDetails: {
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: role.strokeQuaternary,
+    borderRadius: radius.card,
+    paddingInline: space.s3,
+    paddingBlock: space.s2,
+  },
+  rampSummary: {
+    display: "flex",
+    alignItems: "center",
+    gap: space.s3,
+    cursor: "pointer",
+  },
+  rampName: { minWidth: "9rem" },
+  rampStrip: {
+    display: "flex",
+    flex: 1,
+    minWidth: 0,
+    height: space.s4,
+    overflow: "hidden",
+    borderRadius: radius.indicator,
+  },
+  rampStep: (color: string) => ({ flex: 1, backgroundColor: color }),
   value: {
     fontFamily: type.fontMono,
     fontSize: type.fontCode,
