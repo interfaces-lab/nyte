@@ -58,6 +58,7 @@ export interface FileTab extends FileNavigation, FileState {
 }
 
 interface FileViewRuntime {
+  readonly recent: readonly string[];
   readonly history: readonly FileLocation[];
   readonly historyIndex: number;
   readonly closeQueue: readonly WorkbenchTabId[];
@@ -72,6 +73,7 @@ export interface FileGroup {
 }
 
 interface FileTabs {
+  readonly recent: readonly string[];
   readonly tabs: readonly FileTab[];
   readonly active: FileTab | undefined;
   readonly groups: readonly FileGroup[];
@@ -84,6 +86,7 @@ interface FileTabs {
 }
 
 const EMPTY_VIEW: FileViewRuntime = {
+  recent: [],
   history: [],
   historyIndex: -1,
   closeQueue: [],
@@ -238,6 +241,7 @@ export function createFileTabStore(
     const active = tabs.find((tab) => tab.id === selected?.id);
 
     const view = {
+      recent: current.recent,
       tabs,
       active,
       groups: workbenchView.groups.map((group) => {
@@ -400,6 +404,16 @@ export function createFileTabStore(
   };
 
   const actions = {
+    remember(key: WorkbenchViewKey, path: string): void {
+      const current = getRuntimeView(key);
+
+      if (current.recent[0] === path) return;
+      views.set(key, {
+        ...current,
+        recent: [path, ...current.recent.filter((held) => held !== path)],
+      });
+      commit(key);
+    },
     open(key: WorkbenchViewKey, location: FileLocation & { readonly preview?: boolean }): void {
       open(key, location, (current) => ({ ...current, ...visit(current, location) }));
     },
@@ -557,6 +571,7 @@ export function createFileTabStore(
 
       views.set(key, {
         ...current,
+        recent: [...new Set(current.recent.map((path) => target(path) ?? path))],
         history: current.history.map((location) => ({
           ...location,
           path: target(location.path) ?? location.path,

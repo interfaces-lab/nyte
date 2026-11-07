@@ -1,7 +1,7 @@
 import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReactElement } from "react";
 import { worktreeFiles } from "./worktree-files.ts";
 import { errorMessage } from "../../contract/errors.ts";
@@ -148,6 +148,7 @@ export function EditorPanel({
   const searchRef = useRef<HTMLDivElement>(null);
   const editors = useRef(new Map<string, FileEditorHandle>());
   const activeFile = tabs.active;
+  const activePath = activeFile?.path;
   const pendingFile = tabs.pendingClose;
   const panelRef = useRef<HTMLElement>(null);
   const closeOrigin = useRef<WorkbenchTabId | undefined>(undefined);
@@ -215,8 +216,13 @@ export function EditorPanel({
       ? []
       : findSymbols(activeFile.path, activeContents);
 
-  const openFiles = tabs.tabs.flatMap((tab) => {
-    const file = files.data?.find((entry) => entry.path === tab.path);
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- records activation from tab clicks and group focus in the file store
+  useEffect(() => {
+    if (shown && activePath !== undefined) fileActions.remember(viewKey, activePath);
+  }, [shown, activePath, viewKey]);
+
+  const recentFiles = tabs.recent.flatMap((path) => {
+    const file = files.data?.find((entry) => entry.path === path);
 
     return file === undefined ? [] : [file];
   });
@@ -544,7 +550,9 @@ export function EditorPanel({
       <FilePalette
         query={palette}
         files={files.data}
-        recent={openFiles}
+        recent={recentFiles}
+        filesError={files.error}
+        onRetryFiles={() => void files.refetch()}
         active={
           activeFile === undefined || activeContents === undefined
             ? undefined

@@ -2,6 +2,9 @@ import { props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import { Command } from "@nyte-ai/ui/command";
 import { Icon } from "@nyte-ai/ui/icon";
+import { Button } from "@nyte-ai/ui/button";
+import { FileTypeIcon, FileTypeIconSprite } from "@nyte-ai/ui/file-type-icon";
+import { Loader } from "@nyte-ai/ui/loader";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import type { MentionFile } from "../../data/files.ts";
 import { createFileRanking } from "../../lib/file-ranking.ts";
@@ -19,7 +22,13 @@ type Mode =
     }
   | { readonly kind: "symbol"; readonly needle: string };
 
+type PaletteTarget =
+  | { readonly kind: "file"; readonly file: MentionFile }
+  | { readonly kind: "symbol"; readonly symbol: OutlineSymbol }
+  | { readonly kind: "line" };
+
 interface Row {
+  readonly target: PaletteTarget;
   readonly key: string;
   readonly label: string;
   readonly detail?: string;
@@ -36,6 +45,8 @@ export function FilePalette({
   query,
   files,
   recent,
+  filesError,
+  onRetryFiles,
   active,
   onQueryChange,
   onClose,
@@ -45,6 +56,8 @@ export function FilePalette({
   readonly query: string | undefined;
   readonly files: readonly MentionFile[] | undefined;
   readonly recent: readonly MentionFile[];
+  readonly filesError: Error | null;
+  readonly onRetryFiles: () => void;
   readonly active: PaletteFile | undefined;
   readonly onQueryChange: (query: string) => void;
   readonly onClose: () => void;
@@ -59,6 +72,15 @@ export function FilePalette({
   };
 
   const rows = paletteRows(mode, { files, recent, active, onOpenFile, onGoTo });
+  const recentPaths = new Set(recent.map((file) => file.path));
+
+  const groups =
+    mode.kind === "files" && mode.needle === ""
+      ? [
+          { heading: "Recent", rows: rows.filter((row) => recentPaths.has(row.key)) },
+          { heading: "All files", rows: rows.filter((row) => !recentPaths.has(row.key)) },
+        ]
+      : [{ heading: undefined, rows }];
 
   return (
     <Command.Root
@@ -73,6 +95,7 @@ export function FilePalette({
         value={query ?? ""}
         onValueChange={onQueryChange}
       >
+        <FileTypeIconSprite />
         <Command.Input
           aria-label="Go to file"
           placeholder="Go to file, :line or @symbol"
@@ -87,18 +110,49 @@ export function FilePalette({
           {`${String(rows.length)} ${rows.length === 1 ? "result" : "results"}`}
         </div>
         <Command.List aria-label={mode.kind === "symbol" ? "Symbols" : "Files"}>
-          <Command.Empty>{emptyMessage(mode, active)}</Command.Empty>
-          {rows.map((row) => (
-            <Command.Item
-              key={row.key}
-              value={row.key}
-              leading={<Icon name={mode.kind === "files" ? "file" : "chevron-right"} size="md" />}
-              meta={row.detail}
-              onClick={() => run(row.run)}
-            >
-              {row.label}
-            </Command.Item>
-          ))}
+          <Command.Empty>
+            {mode.kind === "files" && filesError !== null ? (
+              <div>
+                <p>Could not load files.</p>
+                <Button onClick={onRetryFiles}>Retry</Button>
+              </div>
+            ) : mode.kind === "files" && files === undefined ? (
+              <div>
+                <Loader />
+                <p>Loading files…</p>
+              </div>
+            ) : (
+              <div>
+                <p>{emptyMessage(mode, active)}</p>
+                {mode.kind === "files" && mode.needle !== "" && (
+                  <Button onClick={() => onQueryChange("")}>Clear Search</Button>
+                )}
+              </div>
+            )}
+          </Command.Empty>
+          {groups
+            .filter((group) => group.rows.length > 0)
+            .map((group) => (
+              <Command.Group key={group.heading ?? "matches"} heading={group.heading}>
+                {group.rows.map((row) => (
+                  <Command.Item
+                    key={row.key}
+                    value={row.key}
+                    leading={
+                      row.target.kind === "file" ? (
+                        <FileTypeIcon path={row.target.file.displayPath} />
+                      ) : (
+                        <Icon name="chevron-right" size="md" />
+                      )
+                    }
+                    meta={row.detail}
+                    onClick={() => run(row.run)}
+                  >
+                    {row.label}
+                  </Command.Item>
+                ))}
+              </Command.Group>
+            ))}
         </Command.List>
       </Command.Popup>
     </Command.Root>
@@ -134,18 +188,24 @@ function paletteRows(
 ): readonly Row[] {
   switch (mode.kind) {
     case "files": {
+      const indexed = (input.files ?? []).filter((file) => !mentionsFolder(file));
+      const recentPaths = new Set(input.recent.map((file) => file.path));
+
       const matches =
         mode.needle === ""
-          ? input.recent
-          : createFileRanking(
-              (input.files ?? []).filter((file) => !mentionsFolder(file)),
-              MATCH_LIMIT,
-            )(mode.needle);
+          ? [
+              ...input.recent.filter((file) => !mentionsFolder(file)),
+              ...indexed
+                .filter((file) => !recentPaths.has(file.path))
+                .sort((left, right) => left.displayPath.localeCompare(right.displayPath)),
+            ]
+          : createFileRanking(indexed, MATCH_LIMIT)(mode.needle);
 
       return matches.map((file) => {
         const slash = file.displayPath.lastIndexOf("/");
 
         return {
+          target: { kind: "file", file },
           key: file.path,
           label: file.displayPath.slice(slash + 1),
           detail: slash > 0 ? file.displayPath.slice(0, slash) : undefined,
@@ -163,6 +223,7 @@ function paletteRows(
 
       return [
         {
+          target: { kind: "line" },
           key: `line:${String(target)}`,
           label:
             mode.column === undefined
@@ -177,6 +238,7 @@ function paletteRows(
       return (input.active?.symbols ?? [])
         .filter((symbol) => symbol.name.toLocaleLowerCase().includes(mode.needle))
         .map((symbol) => ({
+          target: { kind: "symbol", symbol },
           key: `symbol:${String(symbol.line)}:${symbol.name}`,
           label: symbol.name,
           detail: `${symbol.kind} \u00b7 line ${String(symbol.line)}`,
@@ -193,7 +255,7 @@ function paletteRows(
 function emptyMessage(mode: Mode, active: PaletteFile | undefined): string {
   switch (mode.kind) {
     case "files":
-      return mode.needle === "" ? "Type to find a file" : "No files match";
+      return mode.needle === "" ? "No files in this folder" : `No files match "${mode.needle}"`;
     case "line":
       return active === undefined
         ? "Open a file to go to a line"
