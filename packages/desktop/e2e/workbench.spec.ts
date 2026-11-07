@@ -96,7 +96,7 @@ test("the workbench journey", async ({ desktop }) => {
     await openChat(page, FIXTURES.beta);
     const rail = workbench(page).getByRole("navigation", { name: "Workbench navigation" });
     await expect(rail.getByRole("button")).toContainText([
-      "Files",
+      "Editor",
       "Changes",
       "New Browser",
       "New Terminal",
@@ -112,29 +112,29 @@ test("the workbench journey", async ({ desktop }) => {
     ).toBeVisible();
   });
 
-  await test.step("New workbench tab offers Files, Changes, Browser and Terminal", async () => {
+  await test.step("New workbench tab offers Editor, Changes, Browser and Terminal", async () => {
     await page.getByRole("button", { name: "New workbench tab" }).click();
     await expect(
       page.getByRole("menu", { name: "New workbench tab" }).getByRole("menuitem"),
-    ).toHaveText(["Files", "Changes", "Browser", "Terminal"]);
+    ).toHaveText(["Editor", "Changes", "Browser", "Terminal"]);
     await page.keyboard.press("Escape");
     await expect(page.getByRole("menu", { name: "New workbench tab" })).toBeHidden();
   });
 
-  await test.step("Files opens on the Start page over the home folder", async () => {
-    await openWorkbenchTab(page, "Files");
-    await expect(workbenchTabs(page).getByRole("tab", { name: "Files" })).toHaveAttribute(
+  await test.step("Editor opens on the Start page over the home folder", async () => {
+    await openWorkbenchTab(page, "Editor");
+    await expect(workbenchTabs(page).getByRole("tab", { name: "Editor" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
 
-    const files = workbench(page)
-      .getByRole("tabpanel", { name: "Files" })
-      .getByRole("region", { name: "Files" });
+    const editorPanel = workbench(page)
+      .getByRole("tabpanel", { name: "Editor" })
+      .getByRole("region", { name: "Editor", exact: true });
 
-    await expect(files.getByRole("navigation", { name: "File path" })).toHaveText("Files");
-    await expect(files.getByRole("combobox", { name: "Go to file" })).toBeVisible();
-    const start = files.getByRole("region", { name: "Start" });
+    await expect(editorPanel.getByRole("navigation", { name: "File path" })).toHaveText("Editor");
+    await expect(editorPanel.getByRole("combobox", { name: "Go to file" })).toBeVisible();
+    const start = editorPanel.getByRole("region", { name: "Start" });
     await expect(start.getByRole("button", { name: "Show Explorer" })).toBeVisible();
     await expect(
       start.getByRole("button", { name: `Search in Files ${primaryKey} F` }),
@@ -142,12 +142,15 @@ test("the workbench journey", async ({ desktop }) => {
   });
 
   await test.step("a markdown file opens as a document, edits in place and saves only the edit", async () => {
-    const files = workbench(page).getByRole("region", { name: "Files" });
-    await files.getByRole("button", { name: "Show Explorer" }).click();
-    await files.getByRole("treeitem", { name: /notes\.md/u }).click();
-    const editor = files.getByRole("textbox", { name: "notes.md" });
+    const editorPanel = workbench(page).getByRole("region", { name: "Editor", exact: true });
+    await editorPanel.getByRole("button", { name: "Show Explorer" }).click();
+    await editorPanel.getByRole("treeitem", { name: /notes\.md/u }).click();
+    const editor = editorPanel.getByRole("textbox", { name: "notes.md" });
     await expect(editor.getByRole("heading", { name: "Field notes", level: 1 })).toBeVisible();
-    await expect(files.getByRole("definition")).toHaveText(["Field notes", "[e2e, markdown]"]);
+    await expect(editorPanel.getByRole("definition")).toHaveText([
+      "Field notes",
+      "[e2e, markdown]",
+    ]);
     await expect(editor.getByRole("checkbox")).toHaveCount(2);
     const diagram = editor.getByRole("figure", { name: "Mermaid diagram" }).locator("svg");
     await expect(diagram).toBeVisible();
@@ -166,20 +169,22 @@ test("the workbench journey", async ({ desktop }) => {
     for (let count = 0; count < "jumps.".length; count += 1) await page.keyboard.press("Backspace");
     await page.keyboard.type("leaps.");
     await page.keyboard.press("ControlOrMeta+s");
-    await expect(files.getByText("Saved", { exact: true })).toBeVisible();
+    await expect(editorPanel.getByText("Saved", { exact: true })).toBeVisible();
     await expect.poll(() => readFile(notesPath, "utf8")).toBe(NOTES.replace("jumps.", "leaps."));
 
-    await files.getByRole("button", { name: "File options" }).click();
+    await editorPanel.getByRole("button", { name: "File options" }).click();
     await page.getByRole("menuitem", { name: "View Source" }).click();
-    await expect(files.getByText("title: Field notes")).toBeVisible();
+    await expect(editorPanel.getByText("title: Field notes")).toBeVisible();
     await expect(editor.getByRole("heading")).toHaveCount(0);
-    await files.getByRole("button", { name: "File options" }).click();
+    await editorPanel.getByRole("button", { name: "File options" }).click();
     await page.getByRole("menuitem", { name: "View Document" }).click();
     await expect(editor.getByRole("heading", { name: "Field notes", level: 1 })).toBeVisible();
 
     await editor.getByRole("link", { name: "the guide" }).click({ modifiers: ["ControlOrMeta"] });
     await expect(
-      files.getByRole("textbox", { name: "guide.md" }).getByRole("heading", { name: "Guide" }),
+      editorPanel
+        .getByRole("textbox", { name: "guide.md" })
+        .getByRole("heading", { name: "Guide" }),
     ).toBeVisible();
 
     const tabs = workbenchTabs(page);
@@ -188,11 +193,11 @@ test("the workbench journey", async ({ desktop }) => {
   });
 
   await test.step("a PDF opens with its first page drawn, its page count and a zoom control", async () => {
-    const files = workbench(page).getByRole("region", { name: "Files" });
-    await files.getByRole("treeitem", { name: /field-guide\.pdf/u }).click();
-    const document = files.getByRole("region", { name: "field-guide.pdf" });
+    const editorPanel = workbench(page).getByRole("region", { name: "Editor", exact: true });
+    await editorPanel.getByRole("treeitem", { name: /field-guide\.pdf/u }).click();
+    const document = editorPanel.getByRole("region", { name: "field-guide.pdf" });
     await expect(document.getByRole("img")).toHaveCount(3);
-    await expect(files.getByText("Page 1 of 3")).toBeVisible();
+    await expect(editorPanel.getByText("Page 1 of 3")).toBeVisible();
 
     const canvas = document.getByRole("img", { name: "Page 1", exact: true }).locator("canvas");
 
@@ -210,8 +215,8 @@ test("the workbench journey", async ({ desktop }) => {
       )
       .toBe(true);
 
-    await files.getByRole("button", { name: "Zoom in" }).click();
-    await expect(files.getByText("125%")).toBeVisible();
+    await editorPanel.getByRole("button", { name: "Zoom in" }).click();
+    await expect(editorPanel.getByText("125%")).toBeVisible();
 
     const tabs = workbenchTabs(page);
     await closeTab(tabs, tabs.getByRole("tab", { name: "field-guide.pdf" }));
@@ -228,13 +233,13 @@ test("the workbench journey", async ({ desktop }) => {
     await expect(changes.getByRole("status")).toHaveText(
       "Couldn't read changes. Check that this folder is a Git repository.",
     );
-    await expect(workbenchTabs(page).getByRole("tab")).toHaveText(["Files", "Changes"]);
+    await expect(workbenchTabs(page).getByRole("tab")).toHaveText(["Editor", "Changes"]);
   });
 
   await test.step("Terminal opens a shell tab with a focused input", async () => {
     await openWorkbenchTab(page, "Terminal");
     const tab = workbenchTabs(page).getByRole("tab", { selected: true });
-    await expect(tab).not.toHaveText(/^(Files|Changes|Browser)$/u);
+    await expect(tab).not.toHaveText(/^(Editor|Changes|Browser)$/u);
 
     const terminal = workbench(page)
       .getByRole("tabpanel")
@@ -284,7 +289,7 @@ test("the workbench journey", async ({ desktop }) => {
       .getByRole("navigation", { name: "Workbench navigation" })
       .getByRole("button");
 
-    for (const label of ["Files", "Changes", "Browser", "New Browser", "New Terminal"]) {
+    for (const label of ["Editor", "Changes", "Browser", "New Browser", "New Terminal"]) {
       await expect(rows.filter({ hasText: new RegExp(`^${label}$`, "u") })).toHaveCount(1);
     }
 
@@ -303,7 +308,7 @@ test("the workbench journey", async ({ desktop }) => {
   await test.step("closing every tab collapses the panel and brings the rail back", async () => {
     const tabs = workbenchTabs(page);
 
-    for (const name of ["Browser", "Changes", "Files"]) {
+    for (const name of ["Browser", "Changes", "Editor"]) {
       await closeTab(tabs, tabs.getByRole("tab", { name, exact: true }));
     }
 
@@ -315,7 +320,106 @@ test("the workbench journey", async ({ desktop }) => {
     await expect(
       workbench(page)
         .getByRole("navigation", { name: "Workbench navigation" })
-        .getByRole("button", { name: "Files" }),
+        .getByRole("button", { name: "Editor" }),
     ).toBeVisible();
   });
+});
+
+test("saved v7 workbench tabs reopen as Editor", async ({ desktop }, testInfo) => {
+  const page = desktop.page;
+
+  for (const selection of [
+    { active: "files", label: "Editor", capture: "editor-selected" },
+    { active: "kept-document", label: "migration-notes.md", capture: "document-selected" },
+  ]) {
+    await test.step(`v7 restores ${selection.capture} as v8 and survives another reload`, async () => {
+      const path = join(desktop.home, "migration-notes.md");
+      const preview = join(desktop.home, "migration-preview.ts");
+      await writeFile(path, "# Preserved document\n");
+      await writeFile(preview, "export const preserved = true;\n");
+
+      const documents = [
+        { id: "kept-document", kind: "file", path, preview: false },
+        { id: "kept-preview", kind: "file", path: preview, preview: true },
+      ];
+
+      const view = {
+        key: desktop.home,
+        tabs: [{ id: "files", kind: "files" }, ...documents],
+        active: selection.active,
+        expanded: true,
+        maximized: false,
+        width: 640,
+      };
+
+      const before = { version: 7, views: [view] };
+
+      const expected = {
+        version: 8,
+        views: [{ ...view, tabs: [{ id: "files", kind: "editor" }, ...documents] }],
+      };
+
+      await testInfo.attach(`${selection.capture}-v7`, {
+        body: JSON.stringify(before, null, 2),
+        contentType: "application/json",
+      });
+      await page.evaluate((value) => {
+        localStorage.setItem("nyte:desktop:workbench:v7", JSON.stringify(value));
+      }, before);
+
+      for (const reload of [1, 2]) {
+        await page.reload();
+        await page.locator("[data-nyte-shell]").waitFor({ state: "visible" });
+        await openChat(page, FIXTURES.beta);
+        const tabs = workbenchTabs(page);
+        await expect(tabs.getByRole("tab")).toHaveText([
+          "Editor",
+          "migration-notes.md",
+          "migration-preview.ts",
+        ]);
+        await expect(tabs.getByRole("tab", { name: selection.label, exact: true })).toHaveAttribute(
+          "aria-selected",
+          "true",
+        );
+        await expect(tabs.getByRole("tab", { name: "Editor", exact: true })).toHaveAttribute(
+          "id",
+          `${desktop.home}-tab-files`,
+        );
+        await expect(
+          tabs.getByRole("tab", { name: "migration-notes.md", exact: true }),
+        ).toHaveAttribute("id", `${desktop.home}-tab-kept-document`);
+        const editorPanel = workbench(page).getByRole("region", { name: "Editor", exact: true });
+        await expect(editorPanel).toBeVisible();
+
+        if (selection.active === "files")
+          await expect(editorPanel.getByRole("combobox", { name: "Go to file" })).toBeVisible();
+        else
+          await expect(
+            editorPanel
+              .getByRole("textbox", { name: "migration-notes.md" })
+              .getByRole("heading", { name: "Preserved document" }),
+          ).toBeVisible();
+
+        const written = await page.evaluate(() =>
+          localStorage.getItem("nyte:desktop:workbench:v7"),
+        );
+
+        expect(written).toBe(JSON.stringify(expected));
+        await testInfo.attach(`${selection.capture}-reload-${reload}-v8`, {
+          body: written ?? "",
+          contentType: "application/json",
+        });
+        const capture = testInfo.outputPath(`${selection.capture}-reload-${reload}.png`);
+        await page.screenshot({ path: capture });
+        await testInfo.attach(`${selection.capture}-reload-${reload}`, {
+          path: capture,
+          contentType: "image/png",
+        });
+        await testInfo.attach(`${selection.capture}-reload-${reload}-accessibility`, {
+          body: await workbench(page).ariaSnapshot(),
+          contentType: "text/plain",
+        });
+      }
+    });
+  }
 });

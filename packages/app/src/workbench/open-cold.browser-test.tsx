@@ -11,8 +11,7 @@ import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { ChangesPanel } from "./changes/changes-panel.tsx";
 import { WORKBENCH_HOME_VIEW_KEY } from "./paths.ts";
 import { useWorkbenchSnapshot, workbench } from "./store.ts";
-import { FilesPanel } from "./files/files-panel.tsx";
-import { FileTabMenuItems } from "./files/file-tab-menu.tsx";
+import { EditorPanel } from "./editor/editor-panel.tsx";
 import { TerminalPanel } from "./terminal/terminal-panel.tsx";
 import {
   addTerminalToChat,
@@ -66,8 +65,7 @@ export async function run(): Promise<string> {
   check(readDeferred("workbench") === undefined, "The panels' chunk was already loaded");
   window.publishWorkbench = () =>
     publishDeferred("workbench", {
-      FilesPanel,
-      FileTabMenuItems,
+      EditorPanel,
       ChangesPanel,
       TerminalPanel,
       addTerminalToChat,

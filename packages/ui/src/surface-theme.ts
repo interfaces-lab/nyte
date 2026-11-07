@@ -1,4 +1,4 @@
-import { accent, tinted } from "./styles/roles.stylex.ts";
+import { accent, danger, tinted } from "./styles/roles.stylex.ts";
 import {
   blue,
   brown,
@@ -33,5 +33,5 @@ export const intent = {
   primary: [blue, accent],
   success: surfaceTheme.green,
   warning: surfaceTheme.yellow,
-  danger: surfaceTheme.red,
+  danger: [red, danger],
 } as const;

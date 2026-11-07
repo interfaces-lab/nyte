@@ -155,7 +155,7 @@ test("the GitHub CLI, the Nyte account, and this Mac each change only their own 
   assert.doesNotMatch(signedIn.get("Nyte account") ?? "", /The Octocat|octocat/);
 
   const signedOutLinked = groups(render(GITHUB.ready, NYTE.signedOutLinked));
-  assert.match(signedOutLinked.get("Nyte account") ?? "", /Sign In…/);
+  assert.match(signedOutLinked.get("Nyte account") ?? "", /Sign In/);
   assert.match(signedOutLinked.get("This Mac") ?? "", /Reachable/, "signing out unlinked the Mac");
   assert.match(signedOutLinked.get("GitHub") ?? "", /octocat/);
   assert.doesNotMatch(signedOutLinked.get("GitHub") ?? "", /The Octocat/);

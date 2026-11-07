@@ -42,7 +42,7 @@ const nameField = () => document.querySelector<HTMLInputElement>('input[aria-lab
 const dialogText = () => document.querySelector('[role="dialog"]')?.textContent ?? "";
 
 const pairButton = () =>
-  [...document.querySelectorAll("button")].find((button) => button.textContent?.trim() === "Pair…");
+  [...document.querySelectorAll("button")].find((button) => button.textContent?.trim() === "Pair");
 
 const pressable = (button: HTMLButtonElement | undefined): button is HTMLButtonElement =>
   button !== undefined && !button.disabled && button.getAttribute("aria-disabled") !== "true";
@@ -97,7 +97,7 @@ export async function run() {
   const root = createRoot(container);
 
   async function addDevice(): Promise<void> {
-    await until(() => pressable(pairButton()), "Pair… to enable");
+    await until(() => pressable(pairButton()), "Pair to enable");
     pairButton()?.click();
     await until(() => nameField() !== null, "the device name field");
     const field = nameField();
@@ -131,7 +131,7 @@ export async function run() {
       "the connecting note",
     );
 
-    if (pressable(pairButton())) throw new Error("Pair… was enabled before the tunnel connected");
+    if (pressable(pairButton())) throw new Error("Pair was enabled before the tunnel connected");
 
     connection = { kind: "connected", connections: 1 };
     await refresh();

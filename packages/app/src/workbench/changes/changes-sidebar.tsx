@@ -27,8 +27,8 @@ import type { ChangeStatus } from "../../diff/change-tree.ts";
 import type { ViewedState } from "../../diff/changes-viewed.ts";
 import type { LineStat } from "@nyte-ai/sdk";
 import { PIERRE_TREE_CSS } from "../../lib/pierre-worker-provider.tsx";
-import { syncTreePaths } from "../files/tree-paths.ts";
-import { treeItemHeight, useTreeStatusTheme } from "../files/tree-theme.ts";
+import { syncTreePaths } from "../editor/tree-paths.ts";
+import { treeItemHeight, useTreeStatusTheme } from "../editor/tree-theme.ts";
 import { workbenchStyles } from "../workbench.stylex.ts";
 import { SidePanel } from "../side-panel.tsx";
 

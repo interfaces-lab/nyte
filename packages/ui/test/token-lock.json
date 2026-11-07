@@ -524,6 +524,14 @@
       "--nyte-content-accent",
       "--nyte-scrollbar-thumb"
     ],
+    "ui/src/styles/roles.stylex.ts danger": [
+      "--nyte-bg-control-selected",
+      "--nyte-bg-interactive-strong",
+      "--nyte-bg-scrim-translucent",
+      "--nyte-content-accent",
+      "--nyte-content-secondary",
+      "--nyte-scrollbar-thumb"
+    ],
     "ui/src/styles/roles.stylex.ts roles": [
       "--nyte-bg-base",
       "--nyte-bg-chrome",

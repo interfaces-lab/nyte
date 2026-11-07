@@ -5,7 +5,7 @@ import type { highlightRuntime } from "../chat/markdown/highlight.deferred.ts";
 import type { mermaidRuntime } from "../chat/markdown/mermaid.deferred.ts";
 import type { previewsRuntime } from "../settings/previews/previews.deferred.tsx";
 import type { ghosttyRuntime } from "../workbench/terminal/ghostty.deferred.ts";
-import type { pdfRuntime } from "../workbench/files/pdf/pdf.deferred.ts";
+import type { pdfRuntime } from "../workbench/editor/pdf/pdf.deferred.ts";
 import type { workbenchRuntime } from "../workbench/panels.deferred.tsx";
 
 export const deferredEntries = {
@@ -34,7 +34,7 @@ export const deferredEntries = {
     packages: [],
   },
   pdf: {
-    module: new URL("../workbench/files/pdf/pdf.deferred.ts", import.meta.url).href,
+    module: new URL("../workbench/editor/pdf/pdf.deferred.ts", import.meta.url).href,
     packages: ["pdfjs-dist/"],
   },
   charts: {

@@ -62,7 +62,7 @@
     "dev": "vite",
     "e2e": "pnpm --dir ../canvas build && pnpm build && playwright test --config e2e/playwright.config.ts",
     "test": "vitest --run",
-    "test:markdown-sweep": "NYTE_MARKDOWN_CORPUS=repository vitest --run --project unit src/workbench/files/markdown-roundtrip.test.ts",
+    "test:markdown-sweep": "NYTE_MARKDOWN_CORPUS=repository vitest --run --project unit src/workbench/editor/markdown-roundtrip.test.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p e2e"
   },
   "dependencies": {
@@ -100,7 +100,8 @@
     "streamdown": "^2.7.1",
     "torph": "^0.1.3",
     "typebox": "^1.4.3",
-    "use-sync-external-store": "^1.7.0"
+    "use-sync-external-store": "^1.7.0",
+    "web-tree-sitter": "0.25.10"
   },
   "devDependencies": {
     "@nyte-ai/ai": "workspace:*",

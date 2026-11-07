@@ -7,7 +7,7 @@
     "environment-variables",
     "agents",
     "---Desktop app---",
-    "desktop/files",
+    "desktop/editor",
     "---Configure---",
     "configure/settings",
     "configure/permissions",

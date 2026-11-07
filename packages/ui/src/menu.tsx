@@ -1,5 +1,6 @@
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
 import { create, defaultMarker, props, when } from "@stylexjs/stylex";
+import { controlRoot } from "./styles/control.stylex.ts";
 import type { ComponentProps, ReactElement, ReactNode } from "react";
 
 import { floatingSurfaceStyles } from "./styles/floating-surface.stylex.ts";
@@ -270,6 +271,7 @@ export function menuItemStyle<State>(
     props(
       variant === "danger" && intent.danger,
       menuStyles.item,
+      controlRoot,
       defaultMarker(),
       itemVariants[variant],
       itemLayouts[layout],

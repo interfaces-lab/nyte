@@ -3,7 +3,7 @@ import { clientCapabilities } from "../contract/client-actions.ts";
 import { nyte } from "../contract/nyte.ts";
 import { mentionsFolder } from "../references/message-references.ts";
 import type { ReferenceOpener } from "../references/reference-opener.tsx";
-import { fileActions } from "./files/file-store.ts";
+import { fileActions } from "./editor/file-store.ts";
 import { matchingTab, WORKBENCH_KINDS } from "./model.ts";
 import type {
   KindInput,
@@ -131,8 +131,14 @@ export function workbenchReferenceOpener(view: WorkbenchViewKey): ReferenceOpene
 
         if (mentionsFolder(file)) return () => fileActions.reveal(view, file.displayPath);
 
+        const lines = reference.lines;
+
         return () =>
-          fileActions.open(view, { path: file.path, line: reference.lines?.start, preview: true });
+          fileActions.open(view, {
+            path: file.path,
+            target: lines === undefined ? undefined : lineTarget(lines),
+            preview: true,
+          });
       }
 
       case "skill":
@@ -145,7 +151,7 @@ export function workbenchReferenceOpener(view: WorkbenchViewKey): ReferenceOpene
         if (source.kind !== "diff" || source.side === "old") return undefined;
         const path = `${workspacePath.replace(/\/$/u, "")}/${source.path}`;
 
-        return () => fileActions.open(view, { path, line: source.start, preview: true });
+        return () => fileActions.open(view, { path, target: lineTarget(source), preview: true });
       }
 
       case "changes":
@@ -160,4 +166,11 @@ export function workbenchReferenceOpener(view: WorkbenchViewKey): ReferenceOpene
       }
     }
   };
+}
+
+/** A single line puts the caret on it; a longer range selects every line. */
+function lineTarget(lines: { readonly start: number; readonly end: number }) {
+  return lines.start === lines.end
+    ? { kind: "position" as const, line: lines.start }
+    : { kind: "lines" as const, lines: { start: lines.start, end: lines.end } };
 }

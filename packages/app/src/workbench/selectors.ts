@@ -1,13 +1,22 @@
 import type { IconName } from "@nyte-ai/ui/icon";
 import type { ClientCapabilities } from "../contract/client-actions.ts";
 import {
+  activeEditorFile,
+  EDITOR_SLOT,
+  tabSlot,
   WORKBENCH_KINDS,
   workbenchLaunchers,
   workbenchShowsChat,
   workbenchTabAvailable,
   workbenchTabLabel,
 } from "./model.ts";
-import type { LaunchKind, WorkbenchScope, WorkbenchTab, WorkbenchViewState } from "./model.ts";
+import type {
+  LaunchKind,
+  WorkbenchScope,
+  WorkbenchStripTab,
+  WorkbenchTab,
+  WorkbenchViewState,
+} from "./model.ts";
 
 export function visibleTabs(
   view: WorkbenchViewState,
@@ -19,6 +28,25 @@ export function visibleTabs(
       workbenchTabAvailable(scope, tab.kind, capabilities) &&
       (tab.kind !== "file" || tab.group === view.group),
   );
+}
+
+export function workbenchStripTabs(
+  view: WorkbenchViewState,
+  scope: WorkbenchScope,
+  capabilities: ClientCapabilities,
+): readonly WorkbenchStripTab[] {
+  const editor = view.tabs.find((tab) => tabSlot(tab) === EDITOR_SLOT);
+  const target = activeEditorFile(view) ?? editor;
+
+  return view.tabs.flatMap((tab): WorkbenchStripTab[] => {
+    if (!workbenchTabAvailable(scope, tab.kind, capabilities)) return [];
+
+    if (tab.kind !== "file" && tab.kind !== "editor") return [tab];
+
+    if (tab !== editor || target === undefined) return [];
+
+    return [{ kind: "editor", id: EDITOR_SLOT, target: target.id }];
+  });
 }
 
 export function activeWorkbenchTab(

@@ -193,7 +193,7 @@ function LinkSteps({
             loading={link.isPending}
             onClick={() => link.mutate()}
           >
-            {account.kind === "signed_in" ? "Link This Mac" : "Sign In and Link…"}
+            {account.kind === "signed_in" ? "Link This Mac" : "Sign In and Link"}
           </Button>
         </>
       }

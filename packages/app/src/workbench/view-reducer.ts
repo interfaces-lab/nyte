@@ -1,4 +1,5 @@
 import {
+  activeEditorFile,
   changesScopeValue,
   MAXIMIZED_CHAT_LAYOUT,
   MAXIMIZED_WORKBENCH_LAYOUT,
@@ -10,6 +11,7 @@ import {
 } from "./model.ts";
 import type {
   EditorGroupId,
+  EditorTarget,
   KindTab,
   WorkbenchChangesScope,
   WorkbenchTab,
@@ -59,7 +61,7 @@ export type WorkbenchViewAction =
     }
   | { readonly kind: "activate"; readonly id: WorkbenchTabId }
   | { readonly kind: "close"; readonly id: WorkbenchTabId }
-  | { readonly kind: "move"; readonly id: WorkbenchTabId; readonly index: number }
+  | { readonly kind: "move-slot"; readonly slot: string; readonly before: string | null }
   | { readonly kind: "patch"; readonly id: WorkbenchTabId; readonly change: WorkbenchTabPatch }
   | { readonly kind: "toggle" }
   | { readonly kind: "toggle-collapsed" }
@@ -67,22 +69,16 @@ export type WorkbenchViewAction =
   | { readonly kind: "show-chat" }
   | { readonly kind: "set-width"; readonly pixels: number }
   | { readonly kind: "toggle-sidebar"; readonly slot: string }
-  /** Opens `tab` in a new group, `group`, beside the focused one. */
   | {
       readonly kind: "split";
       readonly tab: KindTab<"file">;
       readonly group: EditorGroupId;
       readonly side: Side;
     }
-  /**
-   * Moves the file tab `id` into the group `into`, or into a new group, `group`, beside it. A
-   * group that holds the same file already shows that tab instead.
-   */
   | {
       readonly kind: "place";
-      readonly id: WorkbenchTabId;
-      readonly into: EditorGroupId;
-      readonly zone: Side | "center";
+      readonly tab: KindTab<"file">;
+      readonly target: EditorTarget;
       readonly group: EditorGroupId;
     }
   | { readonly kind: "focus-group"; readonly group: EditorGroupId };
@@ -159,15 +155,16 @@ export function reduceView(
       return state.tabs.some((tab) => tab.id === action.id) ? activate(state, action.id) : state;
     case "close":
       return close(state, action.id);
-    case "move": {
-      const from = state.tabs.findIndex((tab) => tab.id === action.id);
-      const target = Math.max(0, Math.min(state.tabs.length - 1, Math.round(action.index)));
-      const moved = state.tabs[from];
+    case "move-slot": {
+      if (action.slot === action.before) return state;
+      const moved = state.tabs.filter((tab) => tabSlot(tab) === action.slot);
 
-      if (moved === undefined || from === target) return state;
-      const tabs = state.tabs.filter((tab) => tab.id !== action.id);
+      if (moved.length === 0) return state;
+      const kept = state.tabs.filter((tab) => tabSlot(tab) !== action.slot);
+      const before = kept.findIndex((tab) => tabSlot(tab) === action.before);
+      const index = before < 0 ? kept.length : before;
 
-      return { ...state, tabs: [...tabs.slice(0, target), moved, ...tabs.slice(target)] };
+      return { ...state, tabs: [...kept.slice(0, index), ...moved, ...kept.slice(index)] };
     }
 
     case "patch":
@@ -200,7 +197,7 @@ export function reduceView(
         {
           ...state,
           tabs: [...state.tabs, { ...action.tab, group: action.group }],
-          groups: besideGroup(state, state.group, action.side, action.group),
+          groups: besideGroup(state, action.tab.group, action.side, action.group),
         },
         action.tab.id,
       );
@@ -244,6 +241,13 @@ function addTab(
 function activate(state: WorkbenchViewState, id: WorkbenchTabId): WorkbenchViewState {
   const layout = revealWorkbench(state.layout);
   const tab = state.tabs.find((candidate) => candidate.id === id);
+
+  if (tab?.kind === "editor") {
+    const file = activeEditorFile(state);
+
+    if (file !== undefined) return activate(state, file.id);
+  }
+
   const group = tab?.kind === "file" ? tab.group : undefined;
 
   if (
@@ -280,26 +284,72 @@ function place(
   state: WorkbenchViewState,
   action: Extract<WorkbenchViewAction, { readonly kind: "place" }>,
 ): WorkbenchViewState {
-  const moved = state.tabs.find((tab) => tab.id === action.id);
+  const target = action.target;
 
-  if (moved?.kind !== "file") return state;
+  if (!state.groups.some((group) => group.id === target.group)) return state;
 
-  if (action.zone === "center") {
-    const twin = state.tabs.find(
-      (tab) => tab.kind === "file" && tab.group === action.into && tab.path === moved.path,
-    );
+  if (
+    target.kind === "tabs" &&
+    target.before !== null &&
+    !state.tabs.some(
+      (tab) => tab.kind === "file" && tab.id === target.before && tab.group === target.group,
+    )
+  )
+    return state;
 
-    if (twin !== undefined)
-      return twin.id === moved.id
-        ? activate(state, moved.id)
-        : activate(close(state, moved.id), twin.id);
+  const held = state.tabs.find((tab) => tab.id === action.tab.id);
+  const moved = held?.kind === "file" ? held : action.tab;
+  const prepared = held === undefined ? { ...state, tabs: [...state.tabs, moved] } : state;
 
-    return activate(withGroup(state, moved, action.into), moved.id);
+  if (target.kind === "body" && target.zone !== "center") {
+    const split = {
+      ...prepared,
+      groups: besideGroup(prepared, target.group, target.zone, action.group),
+    };
+
+    return activate(withGroup(split, moved, action.group), moved.id);
   }
 
-  const split = { ...state, groups: besideGroup(state, action.into, action.zone, action.group) };
+  const twin = state.tabs.find(
+    (tab) => tab.kind === "file" && tab.group === target.group && tab.path === moved.path,
+  );
 
-  return activate(withGroup(split, moved, action.group), moved.id);
+  const before = target.kind === "tabs" ? target.before : null;
+
+  if (twin?.kind === "file" && twin.id !== moved.id)
+    return insertFile(close(prepared, moved.id), twin, before);
+
+  return insertFile(
+    withGroup(prepared, moved, target.group),
+    { ...moved, group: target.group },
+    before,
+  );
+}
+
+function insertFile(
+  state: WorkbenchViewState,
+  tab: KindTab<"file">,
+  before: WorkbenchTabId | null,
+): WorkbenchViewState {
+  if (before === tab.id) return activate(state, tab.id);
+
+  const kept = state.tabs.filter((candidate) => candidate.id !== tab.id);
+
+  const last = kept.findLast(
+    (candidate) => candidate.kind === "file" && candidate.group === tab.group,
+  );
+
+  const index =
+    before !== null
+      ? kept.findIndex((candidate) => candidate.id === before)
+      : last === undefined
+        ? Math.min(
+            state.tabs.findIndex((candidate) => candidate.id === tab.id),
+            kept.length,
+          )
+        : kept.findIndex((candidate) => candidate.id === last.id) + 1;
+
+  return activate({ ...state, tabs: [...kept.slice(0, index), tab, ...kept.slice(index)] }, tab.id);
 }
 
 /** Moves `tab` into `group`; the group it leaves closes once it holds nothing, unless it's the last. */
@@ -308,6 +358,8 @@ function withGroup(
   tab: KindTab<"file">,
   group: EditorGroupId,
 ): WorkbenchViewState {
+  if (tab.group === group) return state;
+
   const tabs = state.tabs.map((candidate) =>
     candidate.id === tab.id ? { ...tab, group } : candidate,
   );

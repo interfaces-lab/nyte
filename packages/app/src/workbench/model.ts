@@ -44,7 +44,7 @@ interface TabFields {
     readonly title: string;
     readonly pinned: number | null;
   };
-  readonly files: Readonly<Record<never, never>>;
+  readonly editor: Readonly<Record<never, never>>;
 }
 
 export type WorkbenchTabKind = keyof TabFields;
@@ -59,9 +59,33 @@ export type WorkbenchTabInput = { [Kind in WorkbenchTabKind]: KindInput<Kind> }[
 
 export type WorkbenchTab = { [Kind in WorkbenchTabKind]: KindTab<Kind> }[WorkbenchTabKind];
 
+export type WorkbenchStripTab =
+  | Exclude<WorkbenchTab, { readonly kind: "file" | "editor" }>
+  | {
+      readonly kind: "editor";
+      readonly id: typeof EDITOR_SLOT;
+      readonly target: WorkbenchTabId;
+    };
+
+export type EditorDrop =
+  | { readonly kind: "tab"; readonly id: WorkbenchTabId }
+  | { readonly kind: "file"; readonly path: string };
+
+export type EditorTarget =
+  | {
+      readonly kind: "tabs";
+      readonly group: EditorGroupId;
+      readonly before: WorkbenchTabId | null;
+    }
+  | {
+      readonly kind: "body";
+      readonly group: EditorGroupId;
+      readonly zone: "before" | "center" | "after";
+    };
+
 export type WorkbenchScope = { readonly kind: "pathless" } | { readonly kind: "project" };
 
-export type LaunchKind = "files" | "changes" | "browser" | "terminal";
+export type LaunchKind = "editor" | "changes" | "browser" | "terminal";
 
 interface KindDescriptor<Kind extends WorkbenchTabKind> {
   readonly label: string;
@@ -80,12 +104,12 @@ const always = (): boolean => true;
 type WorkbenchKinds = { readonly [Kind in WorkbenchTabKind]: KindDescriptor<Kind> };
 
 export const WORKBENCH_KINDS: WorkbenchKinds = {
-  files: {
-    label: "Files",
+  editor: {
+    label: "Editor",
     icon: "file",
     available: projectOnly,
-    launch: { policy: "singleton", input: { kind: "files" } },
-    identity: () => "files",
+    launch: { policy: "singleton", input: { kind: "editor" } },
+    identity: () => "editor",
   },
   changes: {
     label: "Changes",
@@ -135,7 +159,7 @@ export const WORKBENCH_KINDS: WorkbenchKinds = {
 };
 
 const LAUNCH_ORDER = Object.freeze([
-  "files",
+  "editor",
   "changes",
   "browser",
   "terminal",
@@ -220,7 +244,7 @@ export const MAXIMIZED_CHAT_LAYOUT = Object.freeze({
 
 export const WORKBENCH_CHAT_TAB = "chat";
 
-export const FILES_SLOT = "files";
+export const EDITOR_SLOT = "editor";
 
 export function workbenchShowsChat(layout: WorkbenchLayout): boolean {
   return layout.kind === "maximized" && layout.showing === "chat";
@@ -265,6 +289,16 @@ export const DEFAULT_VIEW = Object.freeze({
   group: FIRST_GROUP,
 }) satisfies WorkbenchViewState;
 
+export function activeEditorFile(view: WorkbenchViewState): KindTab<"file"> | undefined {
+  const selected = view.groups.find((group) => group.id === view.group)?.active;
+  const files = view.tabs.filter((tab) => tab.kind === "file");
+
+  return (
+    files.find((tab) => tab.group === view.group && tab.id === selected) ??
+    files.find((tab) => tab.group === view.group)
+  );
+}
+
 export function tabSlot(tab: WorkbenchTab): string {
-  return tab.kind === "file" || tab.kind === "files" ? FILES_SLOT : tab.id;
+  return tab.kind === "file" || tab.kind === "editor" ? EDITOR_SLOT : tab.id;
 }

@@ -12,8 +12,8 @@ async function openServerWorkspace(page: Page): Promise<void> {
   await expect(pane.getByRole("button", { name: /^nyte-e2e-web-/u })).toBeVisible();
 }
 
-async function viewSource(page: Page, files: Locator): Promise<void> {
-  await files.getByRole("button", { name: "File options" }).click();
+async function viewSource(page: Page, editorPanel: Locator): Promise<void> {
+  await editorPanel.getByRole("button", { name: "File options" }).click();
   await page.getByRole("menuitem", { name: "View Source" }).click();
 }
 
@@ -22,37 +22,37 @@ test("a paired browser reads, edits, blames, searches, and mentions workspace fi
 }) => {
   const errors = collectErrors(page);
   const savedLine = `Saved through workspace.save ${randomUUID()}.`;
-  const files = page.getByRole("region", { name: "Files" });
-  const readme = files.getByRole("treeitem", { name: /README\.md/u });
+  const editorPanel = page.getByRole("region", { name: "Editor", exact: true });
+  const readme = editorPanel.getByRole("treeitem", { name: /README\.md/u });
   await pair(page);
 
   await test.step("a new chat starts in Home and opens the server's workspace from its menu", () =>
     openServerWorkspace(page));
 
-  await test.step("the web workbench offers Files and a terminal, without a native browser tab", async () => {
+  await test.step("the web workbench offers Editor and a terminal, without a native browser tab", async () => {
     const workbench = page.getByRole("navigation", { name: "Workbench navigation" });
-    const filesAction = workbench.getByRole("button", { name: "Files", exact: true });
-    await expect(filesAction).toBeVisible();
+    const editorAction = workbench.getByRole("button", { name: "Editor", exact: true });
+    await expect(editorAction).toBeVisible();
     await expect(
       workbench.getByRole("button", { name: "New Terminal", exact: true }),
     ).toBeVisible();
     await expect(workbench.getByRole("button", { name: "New Browser", exact: true })).toHaveCount(
       0,
     );
-    await filesAction.click();
-    await expect(page.getByRole("tab", { name: "Files", exact: true })).toBeVisible();
-    await expect(files).toBeVisible();
+    await editorAction.click();
+    await expect(page.getByRole("tab", { name: "Editor", exact: true })).toBeVisible();
+    await expect(editorPanel).toBeVisible();
   });
 
   await test.step("opening README.md from the explorer reads it from the workspace", async () => {
-    await files.getByRole("button", { name: "Show Explorer", exact: true }).click();
+    await editorPanel.getByRole("button", { name: "Show Explorer", exact: true }).click();
     await readme.click();
-    await expect(files.getByText(README_LINE, { exact: true })).toBeVisible();
-    await viewSource(page, files);
+    await expect(editorPanel.getByText(README_LINE, { exact: true })).toBeVisible();
+    await viewSource(page, editorPanel);
   });
 
   await test.step("a saved edit is on disk after a reload", async () => {
-    const editor = files.getByRole("textbox", { name: "README.md" });
+    const editor = editorPanel.getByRole("textbox", { name: "README.md" });
     await editor.click();
     await page.keyboard.press("ControlOrMeta+End");
     await page.keyboard.press("Enter");
@@ -60,29 +60,31 @@ test("a paired browser reads, edits, blames, searches, and mentions workspace fi
     await expect(editor).toBeFocused();
     await expect(page.getByRole("combobox", { name: "Message" })).not.toContainText(savedLine);
     await page.keyboard.press("ControlOrMeta+s");
-    await expect(files.getByText("Saved", { exact: true })).toBeVisible();
+    await expect(editorPanel.getByText("Saved", { exact: true })).toBeVisible();
 
     await page.reload();
     await openServerWorkspace(page);
-    await expect(files).toBeVisible();
-    await files.getByRole("button", { name: "Files Sidebar", exact: true, pressed: false }).click();
+    await expect(editorPanel).toBeVisible();
+    await editorPanel
+      .getByRole("button", { name: "Editor Sidebar", exact: true, pressed: false })
+      .click();
     await readme.click();
-    await expect(files.getByText(savedLine, { exact: true })).toBeVisible();
+    await expect(editorPanel.getByText(savedLine, { exact: true })).toBeVisible();
   });
 
   await test.step("Git blame names the seeded commit author", async () => {
-    await viewSource(page, files);
-    await files.getByText(README_LINE, { exact: true }).click();
-    await files.getByRole("button", { name: "File options" }).click();
+    await viewSource(page, editorPanel);
+    await editorPanel.getByText(README_LINE, { exact: true }).click();
+    await editorPanel.getByRole("button", { name: "File options" }).click();
     await page.getByRole("menuitemcheckbox", { name: "Git Blame" }).click();
-    await expect(files.getByText(/E2E Author/u)).toBeVisible();
+    await expect(editorPanel.getByText(/E2E Author/u)).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(page.getByRole("menu")).toBeHidden();
   });
 
   await test.step("workspace search starts idle and finds the README line", async () => {
-    await files.getByRole("button", { name: "Search Files" }).click();
-    const search = files.getByRole("region", { name: "Workspace search" });
+    await editorPanel.getByRole("button", { name: "Search Files" }).click();
+    const search = editorPanel.getByRole("region", { name: "Workspace search" });
     const query = search.getByRole("textbox", { name: "Search workspace" });
     await expect(query).toBeVisible();
 

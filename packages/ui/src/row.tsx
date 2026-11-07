@@ -5,6 +5,7 @@ import { useRender } from "@base-ui/react/use-render";
 import { create, props, type StyleXStyles } from "@stylexjs/stylex";
 
 import { focus } from "./styles/a11y.stylex.ts";
+import { controlRoot } from "./styles/control.stylex.ts";
 import { glyph, media, row, space, target } from "./styles/schema.stylex.ts";
 import { selectionWithin } from "./selection.ts";
 import { mergeStyleProps, type StyledProps, type XStyle } from "./style.ts";
@@ -285,6 +286,7 @@ export function Row({
       "data-slot": "row",
       ...mergeStyleProps(
         props(
+          controlRoot,
           variant === "bare"
             ? styles.bare
             : [

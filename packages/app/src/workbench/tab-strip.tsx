@@ -6,7 +6,6 @@ import type { SessionId } from "@nyte-ai/sdk";
 import type { ClientCapabilities } from "../contract/client-actions.ts";
 import { errorMessage } from "../contract/errors.ts";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
-import { FileTypeIcon } from "@nyte-ai/ui/file-type-icon";
 import { TaskMark } from "../components/task-mark.tsx";
 import {
   MOVE_SHORTCUTS,
@@ -40,19 +39,19 @@ import {
 } from "./model.ts";
 import type {
   WorkbenchScope,
+  WorkbenchStripTab,
   WorkbenchTab,
   WorkbenchTabId,
   WorkbenchViewKey,
   WorkbenchViewState,
 } from "./model.ts";
-import { activeWorkbenchTab, tabPresentation, visibleTabs } from "./selectors.ts";
+import { activeWorkbenchTab, tabPresentation, workbenchStripTabs } from "./selectors.ts";
 import { workbench } from "./store.ts";
 import { closeTab, endTerminal, launch } from "./commands.ts";
-import { Deferred, readDeferred } from "../lib/deferred.tsx";
+import { readDeferred } from "../lib/deferred.tsx";
 import { useCanvasEditing } from "../canvas/canvas-activity.ts";
 import { useTerminalRuntime } from "./terminal/terminal-store.ts";
 import type { ProgramRecord } from "./terminal/terminal-program-status.ts";
-import { fileActions, useFileTabs } from "./files/file-store.ts";
 
 const TAB_CONTENT_FADE =
   "linear-gradient(to right, black calc(100% - 36px), transparent calc(100% - 12px))";
@@ -108,7 +107,7 @@ const styles = create({
     },
   },
   active: { backgroundColor: role.fillSecondary, color: role.contentPrimary },
-  chatItem: { "--_tab-content-mask": "none" },
+  withoutClose: { "--_tab-content-mask": "none" },
   tab: {
     display: "inline-flex",
     alignItems: "center",
@@ -143,15 +142,7 @@ const styles = create({
     },
   },
   label: { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" },
-  preview: { fontStyle: "italic" },
   tabIcon: { display: "inline-flex" },
-  dirty: {
-    width: 6,
-    height: 6,
-    flexShrink: 0,
-    borderRadius: "50%",
-    backgroundColor: role.contentAccent,
-  },
   running: {
     display: "inline-flex",
     width: glyph.md,
@@ -254,21 +245,33 @@ export function WorkbenchTabStrip({
   readonly sessionId?: SessionId;
 }): ReactElement {
   const terminals = useTerminalRuntime();
-  const files = useFileTabs(viewKey);
-  const pendingFile = files.pendingClose;
   const stripRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const terminalCloseRef = useRef<HTMLButtonElement>(null);
-  const fileCloseRef = useRef<HTMLButtonElement>(null);
   const [terminalClose, setTerminalClose] = useState<TerminalCloseState>({ kind: "closed" });
 
-  const tabs = visibleTabs(view, scope, capabilities);
+  const tabs = workbenchStripTabs(view, scope, capabilities);
 
   const chatShowing = workbenchShowsChat(view.layout);
 
-  const activeValue = chatShowing
-    ? WORKBENCH_CHAT_TAB
-    : (activeWorkbenchTab(view, scope, capabilities)?.id ?? null);
+  const active = activeWorkbenchTab(view, scope, capabilities);
+  const activeValue = chatShowing ? WORKBENCH_CHAT_TAB : active === null ? null : tabSlot(active);
+
+  const activateTab = (id: WorkbenchTabId): void => {
+    if (id === WORKBENCH_CHAT_TAB) {
+      workbench.dispatch(viewKey, { kind: "show-chat" });
+
+      return;
+    }
+
+    const tab = tabs.find((entry) => entry.id === id);
+
+    if (tab !== undefined)
+      workbench.dispatch(viewKey, {
+        kind: "activate",
+        id: tab.kind === "editor" ? tab.target : tab.id,
+      });
+  };
 
   const focusSelectedTab = (): void => {
     requestAnimationFrame(() => {
@@ -290,7 +293,8 @@ export function WorkbenchTabStrip({
     );
   };
 
-  const close = (tab: WorkbenchTab): void => {
+  const close = (tab: WorkbenchStripTab): void => {
+    if (tab.kind === "editor") return;
     void closeTab(viewKey, tab.id).then(
       (outcome) => {
         if (outcome.kind === "closed") focusSelectedTab();
@@ -302,31 +306,14 @@ export function WorkbenchTabStrip({
     );
   };
 
-  const closeOtherFiles = (id: WorkbenchTabId): void => {
-    const group = files.tabs.find((tab) => tab.id === id)?.group;
-
-    for (const other of files.tabs)
-      if (other.id !== id && other.group === group && !other.dirty && !other.saving)
-        void closeTab(viewKey, other.id);
-  };
-
   return (
     <div ref={stripRef} {...props(styles.root)}>
-      <Tabs.Root
-        ref={listRef}
-        value={activeValue}
-        xstyle={styles.tabs}
-        onValueChange={(id) =>
-          id === WORKBENCH_CHAT_TAB
-            ? workbench.dispatch(viewKey, { kind: "show-chat" })
-            : workbench.dispatch(viewKey, { kind: "activate", id })
-        }
-      >
+      <Tabs.Root ref={listRef} value={activeValue} xstyle={styles.tabs} onValueChange={activateTab}>
         <Tabs.List aria-label="Workbench tabs" xstyle={styles.list}>
           {view.layout.kind === "maximized" && (
             <div
               role="presentation"
-              {...props(styles.item, styles.chatItem, chatShowing && styles.active)}
+              {...props(styles.item, styles.withoutClose, chatShowing && styles.active)}
             >
               <Tabs.Tab
                 variant="bare"
@@ -352,26 +339,20 @@ export function WorkbenchTabStrip({
           <SortableList
             ids={tabs.map((tab) => tab.id)}
             listRef={listRef}
-            onPick={(id) => workbench.dispatch(viewKey, { kind: "activate", id })}
+            onPick={activateTab}
             onReorder={(order, id) => {
               const after = order[order.findIndex((entry) => entry === id) + 1];
 
               workbench.dispatch(viewKey, {
-                kind: "move",
-                id,
-                index:
-                  after === undefined
-                    ? view.tabs.length
-                    : view.tabs.filter((tab) => tab.id !== id).findIndex((tab) => tab.id === after),
+                kind: "move-slot",
+                slot: id,
+                before: after ?? null,
               });
             }}
           >
             {tabs.map((tab) => {
-              const file =
-                tab.kind === "file" ? files.tabs.find((item) => item.id === tab.id) : undefined;
-
               const terminal = tab.kind === "terminal" ? terminals.get(tab.id) : undefined;
-              const presentation = tabPresentation(tab, file, terminal);
+              const presentation = tabPresentation(tab, undefined, terminal);
               const label = presentation.label;
 
               const program = PROGRAM_URGENCY.map((state) =>
@@ -389,6 +370,7 @@ export function WorkbenchTabStrip({
                   {...props(
                     agentTerminal && surfaceTheme.purple,
                     styles.item,
+                    tab.kind === "editor" && styles.withoutClose,
                     agentTerminal && styles.agentTerminal,
                     activeValue === tab.id && styles.active,
                   )}
@@ -411,14 +393,7 @@ export function WorkbenchTabStrip({
                     ]
                       .filter((part) => part !== undefined)
                       .join("\n")}
-                    aria-label={
-                      file === undefined
-                        ? label
-                        : `${file.displayPath}${file.dirty ? ", unsaved changes" : ""}`
-                    }
-                    onDoubleClick={() => {
-                      if (tab.kind === "file") fileActions.pin(viewKey, tab.id);
-                    }}
+                    aria-label={label}
                     aria-controls={`${viewKey}-panel-${tabSlot(tab)}`}
                     xstyle={styles.tab}
                     onFocus={(event) =>
@@ -442,9 +417,9 @@ export function WorkbenchTabStrip({
                       const element = event.currentTarget;
 
                       workbench.dispatch(viewKey, {
-                        kind: "move",
-                        id: tab.id,
-                        index: view.tabs.findIndex((entry) => entry.id === neighbour.id),
+                        kind: "move-slot",
+                        slot: tab.id,
+                        before: step < 0 ? neighbour.id : (tabs[position + 2]?.id ?? null),
                       });
                       requestAnimationFrame(() => element.focus());
                     }}
@@ -456,24 +431,10 @@ export function WorkbenchTabStrip({
                         data-agent-terminal={agentTerminal ? "true" : undefined}
                         {...props(styles.content)}
                       >
-                        {tab.kind === "file" ? (
-                          <FileTypeIcon path={tab.path} />
-                        ) : (
-                          <span {...props(styles.tabIcon)}>
-                            <Icon name={WORKBENCH_KINDS[tab.kind].icon} size="md" />
-                          </span>
-                        )}
-                        <span
-                          {...props(
-                            styles.label,
-                            tab.kind === "file" && tab.preview && styles.preview,
-                          )}
-                        >
-                          {label}
+                        <span {...props(styles.tabIcon)}>
+                          <Icon name={WORKBENCH_KINDS[tab.kind].icon} size="md" />
                         </span>
-                        {file?.dirty && (
-                          <span aria-hidden="true" {...props(surfaceTheme.yellow, styles.dirty)} />
-                        )}
+                        <span {...props(styles.label)}>{label}</span>
                         {running && (
                           <span aria-label="Running" {...props(styles.running)}>
                             <Loader />
@@ -483,53 +444,37 @@ export function WorkbenchTabStrip({
                       </span>
                     )}
                   </Tabs.Tab>
-                  <span {...props(styles.close)}>
-                    <Button
-                      size="2xs"
-                      variant="plain"
-                      iconOnly
-                      icon="x"
-                      aria-label={`Close ${label} tab`}
-                      ref={
-                        activeValue !== tab.id
-                          ? undefined
-                          : tab.kind === "terminal"
-                            ? terminalCloseRef
-                            : tab.kind === "file"
-                              ? fileCloseRef
+                  {tab.kind !== "editor" && (
+                    <span {...props(styles.close)}>
+                      <Button
+                        size="2xs"
+                        variant="plain"
+                        iconOnly
+                        icon="x"
+                        aria-label={`Close ${label} tab`}
+                        ref={
+                          activeValue !== tab.id
+                            ? undefined
+                            : tab.kind === "terminal"
+                              ? terminalCloseRef
                               : undefined
-                      }
-                      tabIndex={activeValue === tab.id ? 0 : -1}
-                      onClick={(event) => {
-                        if (tab.kind === "terminal") terminalCloseRef.current = event.currentTarget;
+                        }
+                        tabIndex={activeValue === tab.id ? 0 : -1}
+                        onClick={(event) => {
+                          if (tab.kind === "terminal")
+                            terminalCloseRef.current = event.currentTarget;
 
-                        if (tab.kind === "file") fileCloseRef.current = event.currentTarget;
-                        close(tab);
-                      }}
-                    />
-                  </span>
+                          close(tab);
+                        }}
+                      />
+                    </span>
+                  )}
                 </div>
               );
 
               return (
                 <SortableItem key={tab.id} id={tab.id} xstyle={styles.slot}>
-                  {file !== undefined ? (
-                    <ContextMenu>
-                      <ContextMenuTrigger render={trigger} />
-                      <ContextMenuContent aria-label={`${label} actions`}>
-                        <Deferred entry="workbench">
-                          {({ FileTabMenuItems }) => (
-                            <FileTabMenuItems
-                              viewKey={viewKey}
-                              file={file}
-                              onClose={() => close(tab)}
-                              onCloseOthers={() => closeOtherFiles(tab.id)}
-                            />
-                          )}
-                        </Deferred>
-                      </ContextMenuContent>
-                    </ContextMenu>
-                  ) : terminal === undefined ? (
+                  {terminal === undefined ? (
                     trigger
                   ) : (
                     <ContextMenu>
@@ -596,21 +541,6 @@ export function WorkbenchTabStrip({
           </MenuContent>
         </Menu>
       </span>
-      <ConfirmDialog
-        open={pendingFile !== undefined}
-        pending={pendingFile?.saving === true}
-        pendingLabel="Saving…"
-        error={undefined}
-        finalFocus={fileCloseRef}
-        title="Discard Changes"
-        description={`Your changes to ${pendingFile?.displayPath ?? "this file"} will be lost.`}
-        confirmLabel="Discard Changes"
-        onOpenChange={() => fileActions.cancelClose(viewKey)}
-        onConfirm={() => {
-          fileActions.discardClose(viewKey);
-          focusSelectedTab();
-        }}
-      />
       <ConfirmDialog
         open={terminalClose.kind !== "closed"}
         pending={terminalClose.kind === "closing"}

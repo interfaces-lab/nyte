@@ -37,9 +37,9 @@ import { ChangesPanel } from "./changes/changes-panel.tsx";
 import { ChangesToolbar } from "./changes/changes-toolbar.tsx";
 import { workbenchViewKey } from "./paths.ts";
 import { workbench } from "./store.ts";
-import { TextFileEditor } from "./files/file-editor.tsx";
-import { fileActions } from "./files/file-store.ts";
-import { FilesPanel } from "./files/files-panel.tsx";
+import { TextFileEditor } from "./editor/file-editor.tsx";
+import { fileActions } from "./editor/file-store.ts";
+import { EditorPanel } from "./editor/editor-panel.tsx";
 import { Workbench } from "./workbench.tsx";
 
 const NAMES = ["alpha", "bravo", "charlie"] as const;
@@ -63,7 +63,7 @@ const CONTENTS = Array.from(
 
 const WATCHED = {
   Workbench,
-  FilesPanel,
+  EditorPanel,
   TextFileEditor,
   CodeView,
   ChangesPanel,
@@ -293,7 +293,7 @@ function counts(): Counts {
 
   return {
     Workbench: read(Workbench),
-    FilesPanel: read(FilesPanel),
+    EditorPanel: read(EditorPanel),
     TextFileEditor: read(TextFileEditor),
     CodeView: read(CodeView),
     ChangesPanel: read(ChangesPanel),

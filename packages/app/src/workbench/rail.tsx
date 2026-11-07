@@ -23,7 +23,7 @@ import { ChangeStats } from "../components/change-stats.tsx";
 import { changeTotals, workingRows } from "./changes/changes-model.ts";
 import { useChangesViewOptions } from "./changes/changes-view-options.ts";
 import { launch, openChanges } from "./commands.ts";
-import { useFileTabs } from "./files/file-store.ts";
+import { useFileTabs } from "./editor/file-store.ts";
 import { WORKBENCH_KINDS, workbenchLaunchers } from "./model.ts";
 import type {
   WorkbenchChangesScope,

@@ -165,7 +165,7 @@ function AccountGroup({ connect }: { readonly connect: ConnectBridge }): ReactEl
             description="Reach this Mac from your iPhone."
             control={
               <Button variant="outline" loading={signIn.isPending} onClick={() => signIn.mutate()}>
-                Sign In…
+                Sign In
               </Button>
             }
           />
@@ -356,7 +356,7 @@ function GitHubAccountRow({
                   <MenuItem onClick={refresh}>Refresh</MenuItem>
                   <MenuSeparator />
                   <MenuItem variant="danger" onClick={() => setConfirmSignOut(true)}>
-                    Sign Out of GitHub CLI…
+                    Sign Out of GitHub CLI
                   </MenuItem>
                 </MenuContent>
               </Menu>
@@ -572,7 +572,7 @@ function MacGroup({
             open={trayOpen}
             onOpenChange={setTrayOpen}
             side="bottom"
-            trigger={<Button variant="outline">Link This Mac…</Button>}
+            trigger={<Button variant="outline">Link This Mac</Button>}
           />
         }
       />

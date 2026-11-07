@@ -1,9 +1,10 @@
-import { create, props } from "@stylexjs/stylex";
+import { create, props, when } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { AnimatedNumber } from "./animated-number.tsx";
+import { controlRoot } from "@nyte-ai/ui/styles/control.stylex";
 
 const styles = create({
   stats: {
@@ -13,7 +14,15 @@ const styles = create({
     flexShrink: 0,
     fontVariantNumeric: "tabular-nums",
   },
-  count: { color: role.contentAccent },
+  count: {
+    color: {
+      default: role.contentAccent,
+      [when.ancestor(
+        ":is([data-change-stats-control]):is(:active, [aria-expanded=true], [data-pressed], [data-highlighted]):not(:disabled, [data-disabled])",
+        controlRoot,
+      )]: "inherit",
+    },
+  },
 });
 
 export function ChangeStats({

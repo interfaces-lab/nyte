@@ -2,12 +2,19 @@ import { stylex } from "@nyte-ai/ui/stylex";
 import react from "@vitejs/plugin-react";
 import { defaultClientConditions, defineConfig } from "vite";
 import { deferredEntries } from "./src/lib/deferred-entries.ts";
-import { canvasShell, deferredChunks, devConsole, shareCentralIconBase } from "./vite.ts";
+import {
+  canvasShell,
+  deferredChunks,
+  devConsole,
+  fileStructureLicenses,
+  shareCentralIconBase,
+} from "./vite.ts";
 
 export default defineConfig({
   plugins: [
     deferredChunks(deferredEntries),
     shareCentralIconBase(),
+    fileStructureLicenses(),
     canvasShell(),
     devConsole(),
     stylex.vite({

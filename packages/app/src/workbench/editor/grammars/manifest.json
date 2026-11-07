@@ -1,0 +1,276 @@
+{
+  "grammars": [
+    {
+      "language": "javascript",
+      "aliases": ["javascript", "js", "jsx"],
+      "package": "tree-sitter-javascript",
+      "version": "0.25.0",
+      "archive": "https://registry.npmjs.org/tree-sitter-javascript/-/tree-sitter-javascript-0.25.0.tgz",
+      "integrity": "sha512-1fCbmzAskZkxcZzN41sFZ2br2iqTYP3tKls1b/HKGNPQUVOpsUxpmGxdN/wMqAk3jYZnYBR1dd/y/0avMeU7dw==",
+      "entry": "package/tree-sitter-javascript.wasm",
+      "sha256": "5fb488d0cabb4775a594bab85682de5ad6ce83c0d6ac997a9f82dd084d571240",
+      "bytes": 411770,
+      "abiVersion": 15,
+      "license": "MIT",
+      "licenseFile": "tree-sitter-javascript.txt",
+      "foldQuery": "javascript.scm",
+      "symbolQuery": "javascript-symbols.scm"
+    },
+    {
+      "language": "typescript",
+      "aliases": ["typescript", "ts"],
+      "package": "tree-sitter-typescript",
+      "version": "0.23.2",
+      "archive": "https://registry.npmjs.org/tree-sitter-typescript/-/tree-sitter-typescript-0.23.2.tgz",
+      "integrity": "sha512-e04JUUKxTT53/x3Uq1zIL45DoYKVfHH4CZqwgZhPg5qYROl5nQjV+85ruFzFGZxu+QeFVbRTPDRnqL9UbU4VeA==",
+      "entry": "package/tree-sitter-typescript.wasm",
+      "sha256": "778025db5a8be0e70f8ccc3671e486dfeddd048c25d9e8a70c26de2e1bf6f97d",
+      "bytes": 1413849,
+      "abiVersion": 14,
+      "license": "MIT",
+      "licenseFile": "tree-sitter-typescript.txt",
+      "foldQuery": "typescript.scm",
+      "symbolQuery": "typescript-symbols.scm"
+    },
+    {
+      "language": "tsx",
+      "aliases": ["tsx"],
+      "package": "tree-sitter-typescript",
+      "version": "0.23.2",
+      "archive": "https://registry.npmjs.org/tree-sitter-typescript/-/tree-sitter-typescript-0.23.2.tgz",
+      "integrity": "sha512-e04JUUKxTT53/x3Uq1zIL45DoYKVfHH4CZqwgZhPg5qYROl5nQjV+85ruFzFGZxu+QeFVbRTPDRnqL9UbU4VeA==",
+      "entry": "package/tree-sitter-tsx.wasm",
+      "sha256": "79e5da75ea62855a0cd67177685f0164eac87d5f630b3cbe1e0a099751ad30f8",
+      "bytes": 1445638,
+      "abiVersion": 14,
+      "license": "MIT",
+      "licenseFile": "tree-sitter-typescript.txt",
+      "foldQuery": "tsx.scm",
+      "symbolQuery": "typescript-symbols.scm"
+    },
+    {
+      "language": "python",
+      "aliases": ["python", "py"],
+      "package": "tree-sitter-python",
+      "version": "0.25.0",
+      "archive": "https://registry.npmjs.org/tree-sitter-python/-/tree-sitter-python-0.25.0.tgz",
+      "integrity": "sha512-eCmJx6zQa35GxaCtQD+wXHOhYqBxEL+bp71W/s3fcDMu06MrtzkVXR437dRrCrbrDbyLuUDJpAgycs7ncngLXw==",
+      "entry": "package/tree-sitter-python.wasm",
+      "sha256": "16108b50df4ee9a30168794252ab55e7c93bfc5765d7fa0aa3e335752c515f47",
+      "bytes": 457883,
+      "abiVersion": 15,
+      "license": "MIT",
+      "licenseFile": "tree-sitter-python.txt",
+      "foldQuery": "python.scm",
+      "symbolQuery": "python-symbols.scm"
+    },
+    {
+      "language": "go",
+      "aliases": ["go"],
+      "package": "tree-sitter-go",
+      "version": "0.25.0",
+      "archive": "https://registry.npmjs.org/tree-sitter-go/-/tree-sitter-go-0.25.0.tgz",
+      "integrity": "sha512-APBc/Dq3xz/e35Xpkhb1blu5UgW+2E3RyGWawZSCNcbGwa7jhSQPS8KsUupuzBla8PCo8+lz9W/JDJjmfRa2tw==",
+      "entry": "package/tree-sitter-go.wasm",
+      "sha256": "9504573f352b20be7f2f1911754d710622aedc15afff16d5ed8fb5645681aee7",
+      "bytes": 217182,
+      "abiVersion": 15,
+      "license": "MIT",
+      "licenseFile": "tree-sitter-go.txt",
+      "foldQuery": "go.scm",
+      "symbolQuery": "go-symbols.scm"
+    },
+    {
+      "language": "rust",
+      "aliases": ["rust", "rs"],
+      "package": "tree-sitter-rust",
+      "version": "0.24.0",
+      "archive": "https://registry.npmjs.org/tree-sitter-rust/-/tree-sitter-rust-0.24.0.tgz",
+      "integrity": "sha512-NWemUDf629Tfc90Y0Z55zuwPCAHkLxWnMf2RznYu4iBkkrQl2o/CHGB7Cr52TyN5F1DAx8FmUnDtCy9iUkXZEQ==",
+      "entry": "package/tree-sitter-rust.wasm",
+      "sha256": "f65f354215611fd94ad34134b3427eb3d58cbb745df7b6509ba722184db73d57",
+      "bytes": 1102547,
+      "abiVersion": 14,
+      "license": "MIT",
+      "licenseFile": "tree-sitter-rust.txt",
+      "foldQuery": "rust.scm",
+      "symbolQuery": "rust-symbols.scm"
+    },
+    {
+      "language": "json",
+      "aliases": ["json"],
+      "package": "tree-sitter-json",
+      "version": "0.24.8",
+      "archive": "https://registry.npmjs.org/tree-sitter-json/-/tree-sitter-json-0.24.8.tgz",
+      "integrity": "sha512-Tc9ZZYwHyWZ3Tt1VEw7Pa2scu1YO7/d2BCBbKTx5hXwig3UfdQjsOPkPyLpDJOn/m1UBEWYAtSdGAwCSyagBqQ==",
+      "entry": "package/tree-sitter-json.wasm",
+      "sha256": "d2119fb98d5912719b13f9458574f8608d2d29dfbe45f6be1f860ea1fe2a2405",
+      "bytes": 5596,
+      "abiVersion": 14,
+      "license": "MIT",
+      "licenseFile": "tree-sitter-json.txt",
+      "foldQuery": "json.scm",
+      "symbolQuery": null
+    },
+    {
+      "language": "css",
+      "aliases": ["css"],
+      "package": "tree-sitter-css",
+      "version": "0.25.0",
+      "archive": "https://registry.npmjs.org/tree-sitter-css/-/tree-sitter-css-0.25.0.tgz",
+      "integrity": "sha512-FRc9R8ePrwJiUhZsuZ/wcFQ3K8Z+9yCgDrrUjuYswGWlN89UvcB9vslTUGZElQWGwhS8sUw3/r2n4lpb2sxT4Q==",
+      "entry": "package/tree-sitter-css.wasm",
+      "sha256": "8a23977fe271357cce6f254ef88c9bebf3854602d8046605aef6a45c02135c59",
+      "bytes": 128668,
+      "abiVersion": 15,
+      "license": "MIT",
+      "licenseFile": "tree-sitter-css.txt",
+      "foldQuery": "css.scm",
+      "symbolQuery": null
+    },
+    {
+      "language": "html",
+      "aliases": ["html"],
+      "package": "tree-sitter-html",
+      "version": "0.23.2",
+      "archive": "https://registry.npmjs.org/tree-sitter-html/-/tree-sitter-html-0.23.2.tgz",
+      "integrity": "sha512-TN+l+7cCeLx9db/1RhRSqMAZO/266Oh2BHb8J8hMSSFLuzYvFTYP/UnD3S0mny5awzw05KzFNgu2vnwzN9wVJg==",
+      "entry": "package/tree-sitter-html.wasm",
+      "sha256": "c48fcd82c7ea8bf943180088ba7f28c48b2bb5287874179168bf9d31e394cf85",
+      "bytes": 18385,
+      "abiVersion": 14,
+      "license": "MIT",
+      "licenseFile": "tree-sitter-html.txt",
+      "foldQuery": "html.scm",
+      "symbolQuery": null
+    },
+    {
+      "language": "markdown",
+      "aliases": ["markdown", "md"],
+      "package": "@opentui/core",
+      "version": "0.8.2",
+      "archive": "https://registry.npmjs.org/@opentui/core/-/core-0.8.2.tgz",
+      "integrity": "sha512-Ko6BfyIiCWjm/15nfgBW7aWS+jkZ+Lh16PaEecawWRnhKo7H0BsJGhnpOe/BVcrnBI7bzLgMIP5cWyDffWEP7w==",
+      "entry": "package/assets/markdown/tree-sitter-markdown.wasm",
+      "sha256": "3e13182f21373634c40653f170e6f2d2790914eb2c243927086d79023c534f7a",
+      "bytes": 421534,
+      "abiVersion": 15,
+      "license": "MIT",
+      "licenseFile": "opentui.txt",
+      "foldQuery": "markdown.scm",
+      "symbolQuery": "markdown-symbols.scm"
+    },
+    {
+      "language": "yaml",
+      "aliases": ["yaml", "yml"],
+      "package": "@tree-sitter-grammars/tree-sitter-yaml",
+      "version": "0.7.1",
+      "archive": "https://registry.npmjs.org/@tree-sitter-grammars/tree-sitter-yaml/-/tree-sitter-yaml-0.7.1.tgz",
+      "integrity": "sha512-AynBwkIoQCTgjDR33bDUp9Mqq+YTco0is3n5hRApMqG9of/6A4eQsfC1/uSEeHSUyMQSYawcAWamsexnVpIP4Q==",
+      "entry": "package/tree-sitter-yaml.wasm",
+      "sha256": "e752dc21c3591df9b45692fe417d101f45d1828c28c44d79005f4066dc7e4e91",
+      "bytes": 189255,
+      "abiVersion": 14,
+      "license": "MIT",
+      "licenseFile": "@tree-sitter-grammars--tree-sitter-yaml.txt",
+      "foldQuery": "yaml.scm",
+      "symbolQuery": null
+    },
+    {
+      "language": "bash",
+      "aliases": ["bash", "shell", "shellscript", "sh"],
+      "package": "tree-sitter-bash",
+      "version": "0.25.1",
+      "archive": "https://registry.npmjs.org/tree-sitter-bash/-/tree-sitter-bash-0.25.1.tgz",
+      "integrity": "sha512-7hMytuYIMoXOq24yRulgIxthE9YmggZIOHCyPTTuJcu6EU54tYD+4G39cUb28kxC6jMf/AbPfWGLQtgPTdh3xw==",
+      "entry": "package/tree-sitter-bash.wasm",
+      "sha256": "8292919c88a0f7d3fb31d0cd0253ca5a9531bc1ede82b0537f2c63dd8abe6a7a",
+      "bytes": 1358224,
+      "abiVersion": 15,
+      "license": "MIT",
+      "licenseFile": "tree-sitter-bash.txt",
+      "foldQuery": "bash.scm",
+      "symbolQuery": "bash-symbols.scm"
+    }
+  ],
+  "runtime": {
+    "package": "web-tree-sitter",
+    "version": "0.25.10",
+    "wasmSha256": "f38dcc4b43b818f9a0785bc1c6d5611a75ac4cdd428ff3f02757c34ca4e46d7f",
+    "licenseFile": "web-tree-sitter-LICENSE.txt"
+  },
+  "markdownProvenance": {
+    "distributor": "@opentui/core@0.8.2",
+    "gitHead": "b7d9797f72a00afd4149175aa25f94475075a350",
+    "sourceVersion": "tree-sitter-markdown v0.5.1",
+    "source": "https://github.com/tree-sitter-grammars/tree-sitter-markdown/releases/download/v0.5.1/tree-sitter-markdown.wasm",
+    "license": "https://raw.githubusercontent.com/tree-sitter-grammars/tree-sitter-markdown/v0.5.1/LICENSE"
+  },
+  "licenses": [
+    {
+      "file": "tree-sitter-javascript.txt",
+      "sha256": "2e0110e07abef7c2548b26ec9d6969775617ca539a0dc8dbeeb14d6452c711d1",
+      "source": "https://registry.npmjs.org/tree-sitter-javascript/-/tree-sitter-javascript-0.25.0.tgz#package/LICENSE"
+    },
+    {
+      "file": "tree-sitter-typescript.txt",
+      "sha256": "49bf33cf78ef5897e4e161ce1517df7de1ae5042a65b6bcfd44401e0fc606559",
+      "source": "https://registry.npmjs.org/tree-sitter-typescript/-/tree-sitter-typescript-0.23.2.tgz#package/LICENSE"
+    },
+    {
+      "file": "tree-sitter-python.txt",
+      "sha256": "d724405ce238a22c0d35769c5a36b386ad5958192efe8bbb304fb2896254575f",
+      "source": "https://registry.npmjs.org/tree-sitter-python/-/tree-sitter-python-0.25.0.tgz#package/LICENSE"
+    },
+    {
+      "file": "tree-sitter-go.txt",
+      "sha256": "2e0110e07abef7c2548b26ec9d6969775617ca539a0dc8dbeeb14d6452c711d1",
+      "source": "https://registry.npmjs.org/tree-sitter-go/-/tree-sitter-go-0.25.0.tgz#package/LICENSE"
+    },
+    {
+      "file": "tree-sitter-rust.txt",
+      "sha256": "31d5b6f4243d5c7c6e1c4ebbbb9f6407bd1457a08bcc4f706521710341acba36",
+      "source": "https://registry.npmjs.org/tree-sitter-rust/-/tree-sitter-rust-0.24.0.tgz#package/LICENSE"
+    },
+    {
+      "file": "tree-sitter-json.txt",
+      "sha256": "2e0110e07abef7c2548b26ec9d6969775617ca539a0dc8dbeeb14d6452c711d1",
+      "source": "https://registry.npmjs.org/tree-sitter-json/-/tree-sitter-json-0.24.8.tgz#package/LICENSE"
+    },
+    {
+      "file": "tree-sitter-css.txt",
+      "sha256": "c5cfb43042b6b72045f4ba997834d0a7786d2793d91680868b5815b39f14fc78",
+      "source": "https://registry.npmjs.org/tree-sitter-css/-/tree-sitter-css-0.25.0.tgz#package/LICENSE"
+    },
+    {
+      "file": "tree-sitter-html.txt",
+      "sha256": "2e0110e07abef7c2548b26ec9d6969775617ca539a0dc8dbeeb14d6452c711d1",
+      "source": "https://registry.npmjs.org/tree-sitter-html/-/tree-sitter-html-0.23.2.tgz#package/LICENSE"
+    },
+    {
+      "file": "opentui.txt",
+      "sha256": "d9c397a5dc5ac77a2a08fc967ea06a65317a4b5b8de48f6f732ffcb21737e3d2",
+      "source": "https://registry.npmjs.org/@opentui/core/-/core-0.8.2.tgz#package/LICENSE"
+    },
+    {
+      "file": "@tree-sitter-grammars--tree-sitter-yaml.txt",
+      "sha256": "2d181298822a124f6d106118dcc69c8d4d26ac668559be29682c452e712b0947",
+      "source": "https://registry.npmjs.org/@tree-sitter-grammars/tree-sitter-yaml/-/tree-sitter-yaml-0.7.1.tgz#package/LICENSE"
+    },
+    {
+      "file": "tree-sitter-bash.txt",
+      "sha256": "49bf33cf78ef5897e4e161ce1517df7de1ae5042a65b6bcfd44401e0fc606559",
+      "source": "https://registry.npmjs.org/tree-sitter-bash/-/tree-sitter-bash-0.25.1.tgz#package/LICENSE"
+    },
+    {
+      "file": "web-tree-sitter-LICENSE.txt",
+      "source": "https://registry.npmjs.org/web-tree-sitter/-/web-tree-sitter-0.25.10.tgz#package/LICENSE",
+      "sha256": "5f9cf9fb6acb1972b35ae29119ce563bb60ec097656bc4b69b9bac2d04c7a147"
+    },
+    {
+      "file": "tree-sitter-markdown-v0.5.1.txt",
+      "source": "https://raw.githubusercontent.com/tree-sitter-grammars/tree-sitter-markdown/v0.5.1/LICENSE",
+      "sha256": "52ec8a1bf8256511e2a92613e0bb41ffefba3897f16fa958d7bb28c466dd4804"
+    }
+  ]
+}

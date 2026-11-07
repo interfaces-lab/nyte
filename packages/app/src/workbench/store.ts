@@ -3,6 +3,7 @@ import type { PartId, SessionId } from "@nyte-ai/sdk";
 import { clientCapabilities } from "../contract/client-actions.ts";
 import type { ClientCapabilities } from "../contract/client-actions.ts";
 import { nyte } from "../contract/nyte.ts";
+import { localArea } from "../lib/storage.ts";
 import { DEFAULT_VIEW } from "./model.ts";
 import type {
   WorkbenchSnapshot,
@@ -68,7 +69,7 @@ export function createWorkbenchStore(
 
 export const workbench = createWorkbenchStore(
   () => clientCapabilities(nyte.host),
-  workbenchPersistence(),
+  workbenchPersistence(localArea()),
 );
 
 export function useWorkbenchSnapshot(): WorkbenchSnapshot {

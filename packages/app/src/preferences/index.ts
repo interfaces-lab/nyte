@@ -122,7 +122,7 @@ export const preferences = {
   fileAutoSave: definePreference({ key: FILES, field: "autoSave" }, Type.Boolean(), false),
   fileFormatOnSave: definePreference({ key: FILES, field: "formatOnSave" }, Type.Boolean(), false),
   fileOutline: definePreference({ key: FILES, field: "outline" }, Type.Boolean(), true),
-  fileSidePanel: definePreference(
+  editorSidePanel: definePreference(
     { key: FILES, field: "sidePanel" },
     Type.Enum(["start", "end"]),
     "end",

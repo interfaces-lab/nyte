@@ -172,7 +172,7 @@ catalogs:
       version: 6.0.3
 
 patchedDependencies:
-  '@pierre/diffs@1.6.4': 9ac13c48499e615bc228c89e0ed630c2d059f84684d2ac306ece702fd6b414e4
+  '@pierre/diffs@1.6.4': eadb86cd3f7e3a6ca79c9239446c2567533838c79f625b462f82191a407a2aa8
   '@pierre/trees@1.0.0-beta.6': e64fcd26f78cf9addbb742d7d2f450941e91efbf4fd2c3a2702b15c6b4429e33
   app-builder-lib@26.18.0: 58647f4cf6f79dbc6654112d48911f1a0099059ab0eee3012a3f934acf204859
   react-native-view-shot@6.1.1: fc4910ae3c520ebd39858b80de1313225f911504d98d466bae5fc27bf12d2374
@@ -286,7 +286,7 @@ importers:
         version: link:../vt
       '@pierre/diffs':
         specifier: 1.6.4
-        version: 1.6.4(patch_hash=9ac13c48499e615bc228c89e0ed630c2d059f84684d2ac306ece702fd6b414e4)(@shikijs/themes@4.5.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+        version: 1.6.4(patch_hash=eadb86cd3f7e3a6ca79c9239446c2567533838c79f625b462f82191a407a2aa8)(@shikijs/themes@4.5.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@pierre/highlights':
         specifier: ^0.4.0
         version: 0.4.0
@@ -356,6 +356,9 @@ importers:
       use-sync-external-store:
         specifier: ^1.7.0
         version: 1.7.0(react@19.3.1)
+      web-tree-sitter:
+        specifier: 0.25.10
+        version: 0.25.10
     devDependencies:
       '@nyte-ai/ai':
         specifier: workspace:*
@@ -1059,7 +1062,7 @@ importers:
         version: link:../ui
       '@pierre/diffs':
         specifier: 1.6.4
-        version: 1.6.4(patch_hash=9ac13c48499e615bc228c89e0ed630c2d059f84684d2ac306ece702fd6b414e4)(@shikijs/themes@4.5.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+        version: 1.6.4(patch_hash=eadb86cd3f7e3a6ca79c9239446c2567533838c79f625b462f82191a407a2aa8)(@shikijs/themes@4.5.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@stylexjs/stylex':
         specifier: ^0.19.1
         version: 0.19.1
@@ -17043,7 +17046,7 @@ snapshots:
       tslib: 2.8.1
       webcrypto-core: 1.9.2
 
-  '@pierre/diffs@1.6.4(patch_hash=9ac13c48499e615bc228c89e0ed630c2d059f84684d2ac306ece702fd6b414e4)(@shikijs/themes@4.5.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+  '@pierre/diffs@1.6.4(patch_hash=eadb86cd3f7e3a6ca79c9239446c2567533838c79f625b462f82191a407a2aa8)(@shikijs/themes@4.5.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
     dependencies:
       '@pierre/highlights': 0.4.0
       '@pierre/theme': 2.0.0
