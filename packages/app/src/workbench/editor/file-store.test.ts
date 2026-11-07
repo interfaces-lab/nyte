@@ -31,11 +31,11 @@ describe("file runtime store", () => {
 
     store.actions.open(key, first);
     store.actions.open(key, second);
-    store.actions.open(key, { ...first, line: 12 });
+    store.actions.open(key, { ...first, target: { kind: "position", line: 12 } });
 
     const tabs = store.getView(key).tabs;
     assert.equal(tabs.length, 2);
-    assert.equal(tabs[0]?.line, 12);
+    assert.deepEqual(tabs[0]?.target, { kind: "position", line: 12 });
     assert.equal(store.getView(key).active?.path, first.path);
     assert.deepEqual(
       workbench.getView(key).tabs.map((tab) => tab.kind),
@@ -318,14 +318,14 @@ describe("file runtime store", () => {
   test("history restores file locations without owning tab activation", () => {
     const workbench = createWorkbenchStore(() => ({ browser: true }));
     const store = createFileTabStore(workbench);
-    store.actions.open(key, { ...first, line: 10 });
-    store.actions.open(key, { ...first, line: 20 });
+    store.actions.open(key, { ...first, target: { kind: "position", line: 10 } });
+    store.actions.open(key, { ...first, target: { kind: "position", line: 20 } });
     store.actions.open(key, second);
     store.actions.back(key);
     assert.equal(store.getView(key).active?.path, first.path);
-    assert.equal(store.getView(key).tabs[0]?.line, 20);
+    assert.deepEqual(store.getView(key).tabs[0]?.target, { kind: "position", line: 20 });
     store.actions.back(key);
-    assert.equal(store.getView(key).tabs[0]?.line, 10);
+    assert.deepEqual(store.getView(key).tabs[0]?.target, { kind: "position", line: 10 });
   });
 
   test("opening a file at a line publishes once, with the tab and its line together", () => {
@@ -336,10 +336,17 @@ describe("file runtime store", () => {
 
     const unsubscribe = store.subscribe(() => {
       const active = store.getView(key).active;
-      seen.push([active?.path, active?.line]);
+      seen.push([
+        active?.path,
+        active?.target?.kind === "position" ? active.target.line : undefined,
+      ]);
     });
 
-    store.actions.open(key, { ...second, line: 5, preview: true });
+    store.actions.open(key, {
+      ...second,
+      target: { kind: "position", line: 5 },
+      preview: true,
+    });
     store.actions.back(key);
     unsubscribe();
 

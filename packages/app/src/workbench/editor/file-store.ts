@@ -2,6 +2,7 @@ import type { FileDocument } from "@nyte-ai/sdk";
 import type { QueryClient } from "@tanstack/react-query";
 import { useSyncExternalStore } from "react";
 import { keys, queryClient } from "../../data/query-client.ts";
+import type { MessageReference } from "../../references/message-references.ts";
 import type {
   EditorDrop,
   EditorGroupId,
@@ -18,11 +19,22 @@ import type { WorkbenchStore } from "../store.ts";
 import type { WorkbenchViewAction } from "../view-reducer.ts";
 import type { FileBuffer, FileDocumentSnapshot } from "./file-document.ts";
 
+type FileLineRange = NonNullable<Extract<MessageReference, { readonly kind: "file" }>["lines"]>;
+
+/** Where to put the caret or selection: lines are one-based, a range includes both ends. */
+type FileTarget =
+  | { readonly kind: "position"; readonly line: number; readonly column?: number }
+  | {
+      readonly kind: "match";
+      readonly line: number;
+      readonly column: number;
+      readonly length: number;
+    }
+  | { readonly kind: "lines"; readonly lines: FileLineRange };
+
 interface FileLocation {
   readonly path: string;
-  readonly line?: number;
-  readonly column?: number;
-  readonly length?: number;
+  readonly target?: FileTarget;
 }
 
 type FileScope = Exclude<FileDocument, { readonly kind: "missing" }>["scope"];
@@ -30,13 +42,14 @@ type FileScope = Exclude<FileDocument, { readonly kind: "missing" }>["scope"];
 type FileDraft = Pick<FileDocumentSnapshot, "contents" | "savedContents" | "version">;
 
 /** Where a tab was last asked to show its file. */
-interface FileNavigation extends Omit<FileLocation, "path"> {
+interface FileNavigation {
+  readonly target?: FileTarget;
   readonly navigationRevision: number;
 }
 
 /** What every tab showing one file shares: its contents, how they're shown, and whether they're saved. */
 interface FileState {
-  /** Opening at a line shows the source. */
+  /** Opening at a target shows the source. */
   readonly showSource: boolean;
   readonly saving: boolean;
   readonly draft: FileDraft | undefined;
@@ -102,25 +115,44 @@ function visit(
 ): Pick<FileViewRuntime, "history" | "historyIndex"> {
   const previous = current.history[current.historyIndex];
 
-  if (
-    previous?.path === location.path &&
-    previous.line === location.line &&
-    previous.column === location.column
-  ) {
+  if (previous?.path === location.path && sameTarget(previous.target, location.target))
     return { history: current.history, historyIndex: current.historyIndex };
-  }
 
   const history = [
     ...current.history.slice(0, current.historyIndex + 1),
-    {
-      path: location.path,
-      line: location.line,
-      column: location.column,
-      length: location.length,
-    },
+    { path: location.path, target: location.target },
   ];
 
   return { history, historyIndex: history.length - 1 };
+}
+
+function sameTarget(first: FileTarget | undefined, second: FileTarget | undefined): boolean {
+  if (first === undefined || second === undefined) return first === second;
+
+  switch (first.kind) {
+    case "position":
+      return (
+        second.kind === "position" && first.line === second.line && first.column === second.column
+      );
+    case "match":
+      return (
+        second.kind === "match" &&
+        first.line === second.line &&
+        first.column === second.column &&
+        first.length === second.length
+      );
+    case "lines":
+      return (
+        second.kind === "lines" &&
+        first.lines.start === second.lines.start &&
+        first.lines.end === second.lines.end
+      );
+    default: {
+      const exhaustive: never = first;
+
+      return exhaustive;
+    }
+  }
 }
 
 /** Moves the entries of `key`'s files that `target` maps to their new paths. */
@@ -355,9 +387,7 @@ export function createFileTabStore(
     const previous = navigation(id);
 
     navigations.set(id, {
-      line: location.line,
-      column: location.column,
-      length: location.length,
+      target: location.target,
       navigationRevision: previous.navigationRevision + 1,
     });
   };
@@ -382,7 +412,7 @@ export function createFileTabStore(
     if (replace !== undefined) navigations.delete(replace);
     navigate(id, location);
 
-    if (location.line !== undefined)
+    if (location.target !== undefined)
       files.set(fileKey(key, location.path), {
         ...fileState(key, location.path),
         showSource: true,

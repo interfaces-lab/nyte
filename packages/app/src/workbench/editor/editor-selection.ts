@@ -1,4 +1,4 @@
-import type { EditorSelection } from "@pierre/diffs/edit";
+import type { EditorSelection, Range } from "@pierre/diffs/edit";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { ADD_TO_CHAT_LABEL, addToChatShortcut } from "../../references/add-to-chat.ts";
 
@@ -39,6 +39,30 @@ export function selectedLines(
   const last = end.character === 0 && end.line > start.line ? end.line - 1 : end.line;
 
   return { start: start.line + 1, end: last + 1 };
+}
+
+/**
+ * Selects whole lines `start` to `end` of `text`, one-based and inclusive, clamped to the file: up to
+ * the next line's start, or the last line's end at the end of the file. Backward, so the caret stays
+ * on the first line.
+ */
+export function wholeLineSelection(
+  text: string,
+  lines: { readonly start: number; readonly end: number },
+): Range & { readonly direction: "backward" } {
+  const rows = text.split("\n");
+  const last = rows.length - 1;
+  const start = Math.min(Math.max(lines.start, 1), rows.length) - 1;
+  const end = Math.min(Math.max(lines.end, lines.start), rows.length) - 1;
+
+  return {
+    start: { line: start, character: 0 },
+    end:
+      end < last
+        ? { line: end + 1, character: 0 }
+        : { line: last, character: rows[last]?.length ?? 0 },
+    direction: "backward",
+  };
 }
 
 export function selectionAction(mac: boolean, add: () => void): HTMLElement {

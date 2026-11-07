@@ -613,7 +613,17 @@ export function EditorPanel({
                   <WorkspaceSearch
                     active={shown && sidebar === "search"}
                     drafts={drafts}
-                    onOpen={(location) => fileActions.open(viewKey, location)}
+                    onOpen={(location) =>
+                      fileActions.open(viewKey, {
+                        path: location.path,
+                        target: {
+                          kind: "match",
+                          line: location.line,
+                          column: location.column,
+                          length: location.length,
+                        },
+                      })
+                    }
                   />
                 )}
               </div>
@@ -637,7 +647,10 @@ export function EditorPanel({
         onOpenFile={(file) => fileActions.open(viewKey, file)}
         onGoTo={(line, column) => {
           if (activeFile !== undefined)
-            fileActions.open(viewKey, { path: activeFile.path, line, column });
+            fileActions.open(viewKey, {
+              path: activeFile.path,
+              target: { kind: "position", line, column },
+            });
         }}
       />
       <ConfirmDialog

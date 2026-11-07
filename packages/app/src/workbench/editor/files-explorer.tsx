@@ -623,7 +623,11 @@ export function FilesExplorer({
         symbols={outline.symbols}
         empty={outline.path === undefined ? "Open a file to see its outline" : "No symbols"}
         onOpen={(line) => {
-          if (outline.path !== undefined) fileActions.open(viewKey, { path: outline.path, line });
+          if (outline.path !== undefined)
+            fileActions.open(viewKey, {
+              path: outline.path,
+              target: { kind: "position", line },
+            });
         }}
       />
       <ConfirmDialog

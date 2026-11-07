@@ -22,7 +22,12 @@ import { diffStyles } from "../../diff/diff.stylex.ts";
 import { revealLabel, showContextMenu } from "../../components/context-menu.ts";
 import { nyte } from "../../contract/nyte.ts";
 import { addFileToChat, addsToChat } from "../../references/add-to-chat.ts";
-import { SELECTION_ACTION_CSS, selectedLines, selectionAction } from "./editor-selection.ts";
+import {
+  SELECTION_ACTION_CSS,
+  selectedLines,
+  selectionAction,
+  wholeLineSelection,
+} from "./editor-selection.ts";
 import { ChangePeek, useLineChanges } from "./change-peek.tsx";
 import { revertChange } from "./line-changes.ts";
 import {
@@ -493,35 +498,33 @@ export function TextFileEditor({
   const [search, setSearch] = useState<EditorSearch>();
   const mac = nyte.platform === "darwin";
 
-  const navigation = useRef({
-    active,
-    revision: navigationRevision,
-    line: file.line,
-    column: file.column,
-    length: file.length,
-  });
+  const navigation = useRef({ active, revision: navigationRevision, target: file.target });
 
   const appliedNavigation = useRef(-1);
 
   const [caret, setCaret] = useState<Caret>({ revision: navigationRevision });
 
   if (caret.revision !== navigationRevision) setCaret({ revision: navigationRevision });
-  const line = caret.line ?? file.line ?? 1;
-  const column = caret.column ?? file.column ?? 1;
+  const target = file.target;
 
-  const readCaret = (): void => {
-    const selection = viewer.current?.getEditor(file.path)?.getViewState().selections?.[0];
+  const line = caret.line ?? (target?.kind === "lines" ? target.lines.start : target?.line) ?? 1;
 
+  const column = caret.column ?? (target?.kind === "lines" ? 1 : target?.column) ?? 1;
+
+  const showCaret = (selection: EditorSelection | undefined): void => {
     if (selection === undefined) return;
     const focus = selection.direction === -1 ? selection.start : selection.end;
 
     setCaret({
-      revision: navigationRevision,
+      revision: navigation.current.revision,
       line: focus.line + 1,
       column: focus.character + 1,
       lines: selectedLines(selection),
     });
   };
+
+  const readCaret = (): void =>
+    showCaret(viewer.current?.getEditor(file.path)?.getViewState().selections?.[0]);
 
   const addSelection = (selection: EditorSelection | undefined): boolean => {
     const lines = selectedLines(selection);
@@ -658,42 +661,50 @@ export function TextFileEditor({
     if (editor !== undefined) replaceContents(editor, snapshot.contents);
   }, [file.path, snapshot.contents]);
 
-  const showTarget = (editor: Pick<Editor, "focus" | "setSelections"> | undefined): void => {
-    const target = navigation.current;
+  const showTarget = (
+    editor: Pick<Editor, "focus" | "getText" | "getViewState" | "setSelections"> | undefined,
+  ): void => {
+    const request = navigation.current;
+    const shown = request.target;
 
-    if (!target.active || target.line === undefined || appliedNavigation.current >= target.revision)
+    if (!request.active || shown === undefined || appliedNavigation.current >= request.revision)
       return;
-    appliedNavigation.current = target.revision;
+    appliedNavigation.current = request.revision;
+    const range = shown.kind === "lines" ? shown.lines : { start: shown.line, end: shown.line };
     viewer.current?.scrollTo({
       type: "line",
       id: file.path,
-      lineNumber: target.line,
+      lineNumber: range.start,
       align: "center",
     });
-    viewer.current?.setSelectedLines({
-      id: file.path,
-      range: { start: target.line, end: target.line },
-    });
+    viewer.current?.setSelectedLines({ id: file.path, range });
 
     if (editor === undefined) return;
     editor.focus({
-      lineNumber: target.line,
-      character: (target.column ?? 1) - 1,
+      lineNumber: range.start,
+      character: shown.kind === "lines" ? 0 : (shown.column ?? 1) - 1,
       preventScroll: true,
     });
 
-    if (target.column !== undefined && target.length !== undefined)
+    if (shown.kind === "match")
       editor.setSelections([
         {
-          start: { line: target.line - 1, character: target.column - 1 },
-          end: { line: target.line - 1, character: target.column - 1 + target.length },
+          start: { line: shown.line - 1, character: shown.column - 1 },
+          end: { line: shown.line - 1, character: shown.column - 1 + shown.length },
           direction: "forward",
         },
       ]);
+
+    if (shown.kind !== "lines") return;
+    editor.setSelections([wholeLineSelection(editor.getText(), shown.lines)]);
+    showCaret(editor.getViewState().selections?.[0]);
   };
 
   const attachEditor = (
-    editor: Pick<Editor, "getFile" | "getText" | "applyEdits" | "focus" | "setSelections">,
+    editor: Pick<
+      Editor,
+      "getFile" | "getText" | "getViewState" | "applyEdits" | "focus" | "setSelections"
+    >,
   ): void => {
     if (editor.getFile() === undefined) return;
     replaceContents(editor, buffer.getSnapshot().contents);
@@ -705,18 +716,12 @@ export function TextFileEditor({
 
   // oxlint-disable-next-line nyte-code/no-direct-effect -- applies line navigation to the imperative editor before paint
   useLayoutEffect(() => {
-    navigation.current = {
-      active,
-      revision: navigationRevision,
-      line: file.line,
-      column: file.column,
-      length: file.length,
-    };
+    navigation.current = { active, revision: navigationRevision, target: file.target };
     const editor = viewer.current?.getEditor(file.path);
 
     if (editor !== undefined) attachCurrentEditor(editor);
     else if (readOnly) showCurrentTarget(undefined);
-  }, [active, file.column, file.length, file.line, file.path, navigationRevision, readOnly]);
+  }, [active, file.path, file.target, navigationRevision, readOnly]);
 
   const discard = async (): Promise<void> => {
     if (buffer.getSnapshot().status.kind === "saving")
