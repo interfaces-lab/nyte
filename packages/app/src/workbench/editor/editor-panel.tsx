@@ -25,7 +25,8 @@ import { useHostState } from "../../data/host.ts";
 import { useMentionFiles, useWorkspaceFile } from "../../data/files.ts";
 import { workbench } from "../../theme/schema.stylex.ts";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
-import { WORKBENCH_KINDS, type WorkbenchViewKey } from "../model.ts";
+import { EDITOR_SLOT, WORKBENCH_KINDS } from "../model.ts";
+import type { EditorGroupId, WorkbenchTabId, WorkbenchViewKey } from "../model.ts";
 import { FileBreadcrumbs } from "./file-breadcrumbs.tsx";
 import { opensReadOnly, WorkspaceFileEditor } from "./file-editor.tsx";
 import { EditorEmptyState } from "./editor-empty-state.tsx";
@@ -39,6 +40,7 @@ import { FilePalette } from "./file-palette.tsx";
 import { FilesExplorer } from "./files-explorer.tsx";
 import { findSymbols } from "./outline.ts";
 import { EditorGroupView } from "./editor-groups.tsx";
+import { EditorTabs } from "./editor-tabs.tsx";
 import { SidePanel } from "../side-panel.tsx";
 
 const styles = create({
@@ -57,7 +59,10 @@ const styles = create({
     lineHeight: type.leadingXs,
   },
   body: { display: "flex", flex: 1, minWidth: 0, minHeight: 0 },
+  editorArea: { display: "flex", flexDirection: "column", flex: 1, minWidth: 0, minHeight: 0 },
+  groupTabs: { display: "flex", flexShrink: 0, minWidth: 0 },
   editors: { display: "flex", flex: 1, minWidth: 0, minHeight: 0 },
+  filePanel: { position: "absolute", inset: 0, display: "flex", minWidth: 0, minHeight: 0 },
   explorer: { display: "flex", flexDirection: "column", flex: 1, minWidth: 0, minHeight: 0 },
   sidebarBody: { display: "flex", flexDirection: "column", flex: 1, minWidth: 0, minHeight: 0 },
   hidden: { display: "none" },
@@ -143,10 +148,39 @@ export function EditorPanel({
   const searchRef = useRef<HTMLDivElement>(null);
   const editors = useRef(new Map<string, FileEditorHandle>());
   const activeFile = tabs.active;
+  const pendingFile = tabs.pendingClose;
+  const panelRef = useRef<HTMLElement>(null);
+  const closeOrigin = useRef<WorkbenchTabId | undefined>(undefined);
   const activeDocument = useWorkspaceFile(activeFile?.path).data;
   const readOnly = activeDocument !== undefined && opensReadOnly(activeDocument);
 
   const unsaved = activeFile?.dirty === true;
+
+  const restoreFileFocus = (): HTMLElement | null =>
+    (closeOrigin.current === undefined
+      ? null
+      : document.getElementById(`${viewKey}-file-tab-${closeOrigin.current}`)) ??
+    panelRef.current?.querySelector<HTMLElement>(
+      '[data-editor-tabs][data-focused] [role="tab"][aria-selected="true"]',
+    ) ??
+    document.getElementById(`${viewKey}-tab-${EDITOR_SLOT}`) ??
+    document.getElementById("workbench-toggle");
+
+  const closeFile = (id: WorkbenchTabId): void => {
+    closeOrigin.current = id;
+
+    if (!fileActions.close(viewKey, id)) return;
+    closeOrigin.current = undefined;
+    requestAnimationFrame(() => restoreFileFocus()?.focus());
+  };
+
+  const closeGroup = (group: EditorGroupId): void => {
+    closeOrigin.current = tabs.groups.find((entry) => entry.id === group)?.active?.id;
+
+    if (!fileActions.closeGroup(viewKey, group)) return;
+    closeOrigin.current = undefined;
+    requestAnimationFrame(() => restoreFileFocus()?.focus());
+  };
 
   const showSidebar = (): void => {
     if (!sidebarVisible) onToggleSidebar();
@@ -210,6 +244,7 @@ export function EditorPanel({
 
   return (
     <section
+      ref={panelRef}
       aria-label={WORKBENCH_KINDS.editor.label}
       {...props(styles.panel, treeStatusTheme)}
       onKeyDownCapture={(event) => {
@@ -250,208 +285,228 @@ export function EditorPanel({
         setPalette(query);
       }}
     >
-      <div {...props(workbenchStyles.toolbar, hairline.blockEnd, styles.toolbar)}>
-        <Button
-          iconOnly
-          icon="arrow-left"
-          aria-label="Go back"
-          disabled={!tabs.canGoBack}
-          onClick={() => fileActions.back(viewKey)}
-        />
-        <Button
-          iconOnly
-          icon="arrow-right"
-          aria-label="Go forward"
-          disabled={!tabs.canGoForward}
-          onClick={() => fileActions.forward(viewKey)}
-        />
-        <FileBreadcrumbs
-          path={activeFile?.displayPath}
-          external={activeFile?.external === true}
-          files={files.data}
-          onOpen={(file) => fileActions.open(viewKey, { ...file, preview: true })}
-        />
-        {activeFile?.dirty && (
-          <span aria-label="Unsaved changes" {...props(styles.dirty)}>
-            ●
-          </span>
-        )}
-        <Button
-          iconOnly
-          icon="split-right"
-          aria-label="Split Editor Right"
-          title={`Split Editor Right (${nyte.platform === "darwin" ? "⌘\\" : "Ctrl+\\"})`}
-          disabled={activeFile === undefined}
-          onClick={() => fileActions.split(viewKey, "after")}
-        />
-        <Menu>
-          <MenuTrigger
-            render={
-              <Button iconOnly ref={menuRef} icon="more-horizontal" aria-label="File options" />
-            }
-          />
-          <MenuContent align="end" xstyle={styles.menu}>
-            {activeFile !== undefined &&
-              activeDocument?.kind === "text" &&
-              opensAsMarkdown(activeFile.path) && (
-                <>
+      <div {...props(styles.body)}>
+        <div {...props(styles.editorArea)}>
+          <div {...props(styles.groupTabs, hairline.blockEnd)}>
+            {tabs.groups.map((group, index) => (
+              <EditorTabs
+                key={group.id}
+                viewKey={viewKey}
+                group={group}
+                index={index}
+                focused={group.id === tabs.group}
+                many={tabs.groups.length > 1}
+                onClose={closeFile}
+                onCloseGroup={closeGroup}
+              />
+            ))}
+          </div>
+          <div {...props(workbenchStyles.toolbar, hairline.blockEnd, styles.toolbar)}>
+            <Button
+              iconOnly
+              icon="arrow-left"
+              aria-label="Go back"
+              disabled={!tabs.canGoBack}
+              onClick={() => fileActions.back(viewKey)}
+            />
+            <Button
+              iconOnly
+              icon="arrow-right"
+              aria-label="Go forward"
+              disabled={!tabs.canGoForward}
+              onClick={() => fileActions.forward(viewKey)}
+            />
+            <FileBreadcrumbs
+              path={activeFile?.displayPath}
+              external={activeFile?.external === true}
+              files={files.data}
+              onOpen={(file) => fileActions.open(viewKey, { ...file, preview: true })}
+            />
+            {activeFile?.dirty && (
+              <span aria-label="Unsaved changes" {...props(styles.dirty)}>
+                ●
+              </span>
+            )}
+            <Menu>
+              <MenuTrigger
+                render={
+                  <Button iconOnly ref={menuRef} icon="more-horizontal" aria-label="File options" />
+                }
+              />
+              <MenuContent align="end" xstyle={styles.menu}>
+                {activeFile !== undefined &&
+                  activeDocument?.kind === "text" &&
+                  opensAsMarkdown(activeFile.path) && (
+                    <>
+                      <MenuItem
+                        layout="plain"
+                        onClick={() =>
+                          fileActions.setShowSource(
+                            viewKey,
+                            activeFile.path,
+                            !activeFile.showSource,
+                          )
+                        }
+                      >
+                        {activeFile.showSource ? "View Document" : "View Source"}
+                      </MenuItem>
+                      <MenuSeparator inset />
+                    </>
+                  )}
+                <MenuItem
+                  layout="plain"
+                  meta={nyte.platform === "darwin" ? "⌘S" : "Ctrl+S"}
+                  disabled={!unsaved}
+                  onClick={() => {
+                    if (activeFile !== undefined) void editors.current.get(activeFile.id)?.save();
+                  }}
+                >
+                  Save File
+                </MenuItem>
+                <MenuItem
+                  layout="plain"
+                  disabled={activeDocument?.kind !== "text" || readOnly}
+                  onClick={() => {
+                    if (activeFile !== undefined) void editors.current.get(activeFile.id)?.format();
+                  }}
+                >
+                  Format Document
+                </MenuItem>
+                <MenuSeparator inset />
+                <MenuItem
+                  layout="plain"
+                  disabled={activeFile === undefined}
+                  onClick={() => {
+                    if (activeFile !== undefined) copyPath(activeFile.path);
+                  }}
+                >
+                  Copy Path
+                </MenuItem>
+                <MenuItem
+                  layout="plain"
+                  disabled={activeFile === undefined || readOnly}
+                  onClick={() => {
+                    if (activeFile !== undefined) copyPath(activeFile.displayPath);
+                  }}
+                >
+                  Copy Relative Path
+                </MenuItem>
+                {revealPath !== undefined && (
                   <MenuItem
                     layout="plain"
-                    onClick={() =>
-                      fileActions.setShowSource(viewKey, activeFile.path, !activeFile.showSource)
-                    }
+                    disabled={activeFile === undefined}
+                    onClick={() => {
+                      if (activeFile !== undefined) void revealPath({ path: activeFile.path });
+                    }}
                   >
-                    {activeFile.showSource ? "View Document" : "View Source"}
+                    {revealLabel(nyte.platform)}
                   </MenuItem>
-                  <MenuSeparator inset />
-                </>
-              )}
-            <MenuItem
-              layout="plain"
-              meta={nyte.platform === "darwin" ? "⌘S" : "Ctrl+S"}
-              disabled={!unsaved}
-              onClick={() => {
-                if (activeFile !== undefined) void editors.current.get(activeFile.id)?.save();
-              }}
-            >
-              Save File
-            </MenuItem>
-            <MenuItem
-              layout="plain"
-              disabled={activeDocument?.kind !== "text" || readOnly}
-              onClick={() => {
-                if (activeFile !== undefined) void editors.current.get(activeFile.id)?.format();
-              }}
-            >
-              Format Document
-            </MenuItem>
-            <MenuSeparator inset />
-            <MenuItem
-              layout="plain"
-              disabled={activeFile === undefined}
-              onClick={() => {
-                if (activeFile !== undefined) copyPath(activeFile.path);
-              }}
-            >
-              Copy Path
-            </MenuItem>
-            <MenuItem
-              layout="plain"
-              disabled={activeFile === undefined || readOnly}
-              onClick={() => {
-                if (activeFile !== undefined) copyPath(activeFile.displayPath);
-              }}
-            >
-              Copy Relative Path
-            </MenuItem>
-            {revealPath !== undefined && (
-              <MenuItem
-                layout="plain"
-                disabled={activeFile === undefined}
-                onClick={() => {
-                  if (activeFile !== undefined) void revealPath({ path: activeFile.path });
-                }}
-              >
-                {revealLabel(nyte.platform)}
-              </MenuItem>
-            )}
-            <MenuSeparator inset />
-            {FILE_TOGGLES.map(([label, setting]) => (
-              <FilePreferenceItem key={label} label={label} setting={setting} />
-            ))}
-            <MenuItem
-              layout="plain"
-              onClick={() =>
-                preferences.editorSidePanel.set(sidePanel === "start" ? "end" : "start")
-              }
-            >
-              {sidePanel === "start" ? "Move Side Panel Right" : "Move Side Panel Left"}
-            </MenuItem>
-            <MenuSeparator inset />
-            <MenuItem
-              layout="plain"
-              variant={unsaved ? "danger" : "default"}
-              disabled={!unsaved}
-              onClick={() => {
-                setDiscardError(undefined);
-                setDiscardPath(activeFile?.path);
-              }}
-            >
-              Discard Changes…
-            </MenuItem>
-          </MenuContent>
-        </Menu>
-        <Toggle
-          iconOnly
-          icon="search"
-          aria-label="Search Files"
-          pressed={sidebarVisible && sidebar === "search"}
-          onPressedChange={(pressed) => (pressed ? showSearch() : setSidebar("explorer"))}
-        />
-        <Toggle
-          iconOnly
-          indicator="glyph"
-          aria-label={`${WORKBENCH_KINDS.editor.label} Sidebar`}
-          pressed={sidebarVisible}
-          onPressedChange={onToggleSidebar}
-        >
-          <PanelToggleIcon
-            side={sidePanel === "start" ? "left" : "right"}
-            visible={sidebarVisible}
-          />
-        </Toggle>
-      </div>
-      {copyError !== undefined && (
-        <div role="alert" {...props(styles.empty)}>
-          Could not copy path. {copyError}
-        </div>
-      )}
-      <div {...props(styles.body)}>
-        <div {...props(styles.editors)}>
-          {tabs.groups.map((group, index) => (
-            <EditorGroupView
-              key={group.id}
-              viewKey={viewKey}
-              group={group}
-              index={index}
-              many={tabs.groups.length > 1}
-              focused={group.id === tabs.group}
-            >
-              {group.id === tabs.group && group.active === undefined && (
-                <EditorEmptyState
-                  files={files.data}
-                  changes={changes}
-                  explorerVisible={sidebarVisible && sidebar === "explorer"}
-                  onOpen={(file) => fileActions.open(viewKey, { ...file, preview: true })}
-                  onShowExplorer={() => {
-                    setSidebar("explorer");
-                    showSidebar();
-                  }}
-                  onSearch={showSearch}
-                />
-              )}
-              {group.tabs.map((file) => (
-                <WorkspaceFileEditor
-                  key={file.id}
-                  ref={(editor) => {
-                    if (editor === null) editors.current.delete(file.id);
-                    else editors.current.set(file.id, editor);
-                  }}
-                  viewKey={viewKey}
-                  file={file}
-                  active={shown && file.id === group.active?.id}
-                  autoSave={
-                    autoSave &&
-                    workspaceActive &&
-                    tabs.tabs.find((tab) => tab.path === file.path)?.id === file.id &&
-                    tabs.pendingClose?.id !== file.id &&
-                    discardPath !== file.path
+                )}
+                <MenuSeparator inset />
+                {FILE_TOGGLES.map(([label, setting]) => (
+                  <FilePreferenceItem key={label} label={label} setting={setting} />
+                ))}
+                <MenuItem
+                  layout="plain"
+                  onClick={() =>
+                    preferences.editorSidePanel.set(sidePanel === "start" ? "end" : "start")
                   }
-                  onGoToLine={() => setPalette(":")}
-                />
-              ))}
-            </EditorGroupView>
-          ))}
+                >
+                  {sidePanel === "start" ? "Move Side Panel Right" : "Move Side Panel Left"}
+                </MenuItem>
+                <MenuSeparator inset />
+                <MenuItem
+                  layout="plain"
+                  variant={unsaved ? "danger" : "default"}
+                  disabled={!unsaved}
+                  onClick={() => {
+                    setDiscardError(undefined);
+                    setDiscardPath(activeFile?.path);
+                  }}
+                >
+                  Discard Changes…
+                </MenuItem>
+              </MenuContent>
+            </Menu>
+            <Toggle
+              iconOnly
+              icon="search"
+              aria-label="Search Files"
+              pressed={sidebarVisible && sidebar === "search"}
+              onPressedChange={(pressed) => (pressed ? showSearch() : setSidebar("explorer"))}
+            />
+            <Toggle
+              iconOnly
+              indicator="glyph"
+              aria-label={`${WORKBENCH_KINDS.editor.label} Sidebar`}
+              pressed={sidebarVisible}
+              onPressedChange={onToggleSidebar}
+            >
+              <PanelToggleIcon
+                side={sidePanel === "start" ? "left" : "right"}
+                visible={sidebarVisible}
+              />
+            </Toggle>
+          </div>
+          {copyError !== undefined && (
+            <div role="alert" {...props(styles.empty)}>
+              Could not copy path. {copyError}
+            </div>
+          )}
+          <div {...props(styles.editors)}>
+            {tabs.groups.map((group, index) => (
+              <EditorGroupView
+                key={group.id}
+                viewKey={viewKey}
+                group={group}
+                index={index}
+                many={tabs.groups.length > 1}
+                focused={group.id === tabs.group}
+              >
+                {group.id === tabs.group && group.active === undefined && (
+                  <EditorEmptyState
+                    files={files.data}
+                    changes={changes}
+                    explorerVisible={sidebarVisible && sidebar === "explorer"}
+                    onOpen={(file) => fileActions.open(viewKey, { ...file, preview: true })}
+                    onShowExplorer={() => {
+                      setSidebar("explorer");
+                      showSidebar();
+                    }}
+                    onSearch={showSearch}
+                  />
+                )}
+                {group.tabs.map((file) => (
+                  <div
+                    key={file.id}
+                    id={`${viewKey}-file-panel-${file.id}`}
+                    role="tabpanel"
+                    aria-labelledby={`${viewKey}-file-tab-${file.id}`}
+                    hidden={file.id !== group.active?.id}
+                    {...props(styles.filePanel)}
+                  >
+                    <WorkspaceFileEditor
+                      ref={(editor) => {
+                        if (editor === null) editors.current.delete(file.id);
+                        else editors.current.set(file.id, editor);
+                      }}
+                      viewKey={viewKey}
+                      file={file}
+                      active={shown && file.id === group.active?.id}
+                      autoSave={
+                        autoSave &&
+                        workspaceActive &&
+                        tabs.tabs.find((tab) => tab.path === file.path)?.id === file.id &&
+                        tabs.pendingClose?.id !== file.id &&
+                        discardPath !== file.path
+                      }
+                      onGoToLine={() => setPalette(":")}
+                    />
+                  </div>
+                ))}
+              </EditorGroupView>
+            ))}
+          </div>
         </div>
         {sidebarVisible && (
           <SidePanel side={sidePanel}>
@@ -501,6 +556,26 @@ export function EditorPanel({
         onGoTo={(line, column) => {
           if (activeFile !== undefined)
             fileActions.open(viewKey, { path: activeFile.path, line, column });
+        }}
+      />
+      <ConfirmDialog
+        open={pendingFile !== undefined}
+        pending={pendingFile?.saving === true}
+        pendingLabel="Saving…"
+        finalFocus={restoreFileFocus}
+        title="Discard Changes"
+        description={
+          <span aria-live="polite">{`Your changes to ${pendingFile?.displayPath ?? "this file"} will be lost.`}</span>
+        }
+        confirmLabel="Discard Changes"
+        onOpenChange={(open) => {
+          if (open) return;
+          closeOrigin.current = pendingFile?.id;
+          fileActions.cancelClose(viewKey);
+        }}
+        onConfirm={() => {
+          closeOrigin.current = undefined;
+          fileActions.discardClose(viewKey);
         }}
       />
       <ConfirmDialog

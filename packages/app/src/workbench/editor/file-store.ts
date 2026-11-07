@@ -3,12 +3,15 @@ import type { QueryClient } from "@tanstack/react-query";
 import { useSyncExternalStore } from "react";
 import { keys, queryClient } from "../../data/query-client.ts";
 import type {
+  EditorDrop,
   EditorGroupId,
+  EditorTarget,
   KindTab,
   WorkbenchTabId,
   WorkbenchViewKey,
   WorkbenchViewState,
 } from "../model.ts";
+import { activeEditorFile } from "../model.ts";
 import { workspaceFile } from "../paths.ts";
 import { workbench } from "../store.ts";
 import type { WorkbenchStore } from "../store.ts";
@@ -57,7 +60,7 @@ export interface FileTab extends FileNavigation, FileState {
 interface FileViewRuntime {
   readonly history: readonly FileLocation[];
   readonly historyIndex: number;
-  readonly pendingCloseId: WorkbenchTabId | null;
+  readonly closeQueue: readonly WorkbenchTabId[];
   readonly revealPath: string | null;
   readonly revealRevision: number;
 }
@@ -65,13 +68,11 @@ interface FileViewRuntime {
 export interface FileGroup {
   readonly id: EditorGroupId;
   readonly tabs: readonly FileTab[];
-  /** The file it shows: for the focused group, the strip's selection when that's one of its files. */
   readonly active: FileTab | undefined;
 }
 
 interface FileTabs {
   readonly tabs: readonly FileTab[];
-  /** The strip's file, which is the focused group's. */
   readonly active: FileTab | undefined;
   readonly groups: readonly FileGroup[];
   readonly group: EditorGroupId;
@@ -85,7 +86,7 @@ interface FileTabs {
 const EMPTY_VIEW: FileViewRuntime = {
   history: [],
   historyIndex: -1,
-  pendingCloseId: null,
+  closeQueue: [],
   revealPath: null,
   revealRevision: 0,
 };
@@ -233,7 +234,8 @@ export function createFileTabStore(
       return cached.view;
     const current = getRuntimeView(key);
     const tabs = fileTabs(key);
-    const active = tabs.find((tab) => tab.id === workbenchView.active);
+    const selected = activeEditorFile(workbenchView);
+    const active = tabs.find((tab) => tab.id === selected?.id);
 
     const view = {
       tabs,
@@ -244,12 +246,13 @@ export function createFileTabStore(
         return {
           id: group.id,
           tabs: held,
-          active:
-            group.id === workbenchView.group ? active : held.find((tab) => tab.id === group.active),
+          active: held.find((tab) => tab.id === group.active) ?? held[0],
         };
       }),
       group: workbenchView.group,
-      pendingClose: tabs.find((tab) => tab.id === current.pendingCloseId),
+      pendingClose: current.closeQueue
+        .map((id) => tabs.find((tab) => tab.id === id))
+        .find((tab) => tab !== undefined),
       canGoBack: current.historyIndex > 0,
       canGoForward: current.historyIndex < current.history.length - 1,
       revealPath: current.revealPath ?? undefined,
@@ -318,9 +321,30 @@ export function createFileTabStore(
       ...current,
       history,
       historyIndex,
-      pendingCloseId: current.pendingCloseId === id ? null : current.pendingCloseId,
+      closeQueue: current.closeQueue.filter((pending) => pending !== id),
     });
     commit(key, { kind: "close", id });
+  };
+
+  const advanceCloseQueue = (key: WorkbenchViewKey): void => {
+    for (const id of getRuntimeView(key).closeQueue) {
+      const tabs = fileTabs(key);
+      const tab = tabs.find((candidate) => candidate.id === id);
+
+      if (tab === undefined) {
+        const current = getRuntimeView(key);
+        views.set(key, {
+          ...current,
+          closeQueue: current.closeQueue.filter((pending) => pending !== id),
+        });
+        continue;
+      }
+
+      const shared = tabs.some((other) => other.id !== id && other.path === tab.path);
+
+      if (!shared && (tab.dirty || tab.saving)) return;
+      remove(key, id);
+    }
   };
 
   const navigate = (id: WorkbenchTabId, location: FileLocation): void => {
@@ -400,8 +424,12 @@ export function createFileTabStore(
       const shared = fileTabs(key).some((other) => other.id !== id && other.path === tab.path);
 
       if (!shared && (tab.dirty || tab.saving)) {
-        views.set(key, { ...getRuntimeView(key), pendingCloseId: tab.id });
-        commit(key);
+        const current = getRuntimeView(key);
+
+        if (!current.closeQueue.includes(tab.id)) {
+          views.set(key, { ...current, closeQueue: [...current.closeQueue, tab.id] });
+          commit(key);
+        }
 
         return false;
       }
@@ -410,26 +438,35 @@ export function createFileTabStore(
 
       return true;
     },
+    closeGroup(key: WorkbenchViewKey, group: EditorGroupId): boolean {
+      for (const tab of fileTabs(key)) if (tab.group === group) actions.close(key, tab.id);
+
+      return !fileTabs(key).some((tab) => tab.group === group);
+    },
     cancelClose(key: WorkbenchViewKey): void {
       const current = getRuntimeView(key);
 
-      if (current.pendingCloseId === null) return;
-      views.set(key, { ...current, pendingCloseId: null });
+      if (current.closeQueue.length === 0) return;
+      views.set(key, { ...current, closeQueue: [] });
       commit(key);
     },
     discardClose(key: WorkbenchViewKey): void {
-      const pending = fileTabs(key).find((tab) => tab.id === getRuntimeView(key).pendingCloseId);
+      const pending = getView(key).pendingClose;
 
-      if (pending !== undefined && !pending.saving) remove(key, pending.id);
+      if (pending === undefined || pending.saving) return;
+      remove(key, pending.id);
+      advanceCloseQueue(key);
     },
     setShowSource(key: WorkbenchViewKey, path: string, showSource: boolean): void {
       setFileState(key, path, { showSource });
     },
     setSaving(key: WorkbenchViewKey, path: string, saving: boolean): void {
       setFileState(key, path, { saving });
+      advanceCloseQueue(key);
     },
     setDraft(key: WorkbenchViewKey, path: string, draft: FileDraft | undefined): void {
       setFileState(key, path, { draft });
+      advanceCloseQueue(key);
     },
     buffer(key: WorkbenchViewKey, path: string, create: () => FileBuffer): FileBuffer {
       const held = buffers.get(fileKey(key, path));
@@ -466,38 +503,39 @@ export function createFileTabStore(
       navigate(tab.id, source);
       commit(key, { kind: "split", tab, group: crypto.randomUUID(), side });
     },
-    place(
-      key: WorkbenchViewKey,
-      id: WorkbenchTabId,
-      into: EditorGroupId,
-      zone: "before" | "center" | "after",
-    ): void {
-      commit(key, { kind: "place", id, into, zone, group: crypto.randomUUID() });
-    },
-    openBeside(
-      key: WorkbenchViewKey,
-      path: string,
-      group: EditorGroupId,
-      zone: "before" | "center" | "after",
-    ): void {
-      commit(key, { kind: "focus-group", group });
+    place(key: WorkbenchViewKey, source: EditorDrop, target: EditorTarget): void {
+      const held = store.getView(key).tabs.find((tab) => {
+        if (tab.kind !== "file") return false;
 
-      if (zone === "center") {
-        actions.open(key, { path });
+        if (source.kind === "tab") return tab.id === source.id;
 
-        return;
-      }
+        return (
+          (target.kind === "tabs" || target.zone === "center") &&
+          tab.path === source.path &&
+          tab.group === target.group
+        );
+      });
 
-      const tab: KindTab<"file"> = {
-        id: crypto.randomUUID(),
-        kind: "file",
-        path,
-        preview: false,
-        group,
-      };
+      const tab: KindTab<"file"> | undefined =
+        held?.kind === "file"
+          ? held
+          : source.kind === "file"
+            ? {
+                id: crypto.randomUUID(),
+                kind: "file",
+                path: source.path,
+                preview: false,
+                group: target.group,
+              }
+            : undefined;
 
-      navigate(tab.id, { path });
-      commit(key, { kind: "split", tab, group: crypto.randomUUID(), side: zone });
+      if (tab === undefined) return;
+
+      if (held === undefined) navigate(tab.id, { path: tab.path });
+      commit(key, { kind: "place", tab, target, group: crypto.randomUUID() });
+
+      if (source.kind === "tab" && !store.getView(key).tabs.some((entry) => entry.id === source.id))
+        navigations.delete(source.id);
     },
     focusGroup(key: WorkbenchViewKey, group: EditorGroupId): void {
       commit(key, { kind: "focus-group", group });

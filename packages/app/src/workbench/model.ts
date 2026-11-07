@@ -59,6 +59,30 @@ export type WorkbenchTabInput = { [Kind in WorkbenchTabKind]: KindInput<Kind> }[
 
 export type WorkbenchTab = { [Kind in WorkbenchTabKind]: KindTab<Kind> }[WorkbenchTabKind];
 
+export type WorkbenchStripTab =
+  | Exclude<WorkbenchTab, { readonly kind: "file" | "editor" }>
+  | {
+      readonly kind: "editor";
+      readonly id: typeof EDITOR_SLOT;
+      readonly target: WorkbenchTabId;
+    };
+
+export type EditorDrop =
+  | { readonly kind: "tab"; readonly id: WorkbenchTabId }
+  | { readonly kind: "file"; readonly path: string };
+
+export type EditorTarget =
+  | {
+      readonly kind: "tabs";
+      readonly group: EditorGroupId;
+      readonly before: WorkbenchTabId | null;
+    }
+  | {
+      readonly kind: "body";
+      readonly group: EditorGroupId;
+      readonly zone: "before" | "center" | "after";
+    };
+
 export type WorkbenchScope = { readonly kind: "pathless" } | { readonly kind: "project" };
 
 export type LaunchKind = "editor" | "changes" | "browser" | "terminal";
@@ -264,6 +288,16 @@ export const DEFAULT_VIEW = Object.freeze({
   groups: Object.freeze([Object.freeze({ id: FIRST_GROUP, active: null })]),
   group: FIRST_GROUP,
 }) satisfies WorkbenchViewState;
+
+export function activeEditorFile(view: WorkbenchViewState): KindTab<"file"> | undefined {
+  const selected = view.groups.find((group) => group.id === view.group)?.active;
+  const files = view.tabs.filter((tab) => tab.kind === "file");
+
+  return (
+    files.find((tab) => tab.group === view.group && tab.id === selected) ??
+    files.find((tab) => tab.group === view.group)
+  );
+}
 
 export function tabSlot(tab: WorkbenchTab): string {
   return tab.kind === "file" || tab.kind === "editor" ? EDITOR_SLOT : tab.id;

@@ -1,6 +1,7 @@
 import { expect, test } from "vitest";
 import type { StorageArea } from "../lib/storage.ts";
 import { FIRST_GROUP } from "./model.ts";
+import { createFileTabStore } from "./editor/file-store.ts";
 import { persistable, workbenchPersistence } from "./persistence.ts";
 import { createWorkbenchStore } from "./store.ts";
 
@@ -128,13 +129,14 @@ test.each([
     });
     expect(storage.writes).toHaveLength(row.writes);
     expect(storage.area.getItem(KEY)).toBe(JSON.stringify(expected));
+    expect(createFileTabStore(store).getView("/workspace").active?.id).toBe("document-1");
 
     store.dispatch("/workspace", {
       kind: "open",
       tab: { id: "new-editor", kind: "editor" },
       activate: true,
     });
-    expect(store.getView("/workspace")).toMatchObject({ active: "files", tabs: view.tabs });
+    expect(store.getView("/workspace")).toMatchObject({ active: "document-1", tabs: view.tabs });
 
     const written = persistable(store.getSnapshot());
     persistence.set(written);

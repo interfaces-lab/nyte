@@ -97,9 +97,8 @@ export async function run(): Promise<string> {
     );
     const tabs = [...container.querySelectorAll<HTMLElement>('[role="tab"]')];
     check(
-      tabs.map((tab) => tab.getAttribute("aria-label")).join("|") ===
-        "Changes|pnpm test|src/app.ts",
-      "Tabs must keep the store's interleaved order",
+      tabs.map((tab) => tab.getAttribute("aria-label")).join("|") === "Changes|pnpm test|Editor",
+      "Workbench tabs must show panels in order, with files inside Editor",
     );
     const agentTab = tabs[1];
     check(agentTab !== undefined, "Missing agent terminal tab");

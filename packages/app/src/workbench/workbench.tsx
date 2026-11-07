@@ -349,7 +349,7 @@ function WorkbenchViewHost({
         key={slot}
         id={`${viewKey}-panel-${slot}`}
         role="tabpanel"
-        aria-labelledby={`${viewKey}-tab-${tab.id}`}
+        aria-labelledby={`${viewKey}-tab-${slot}`}
         hidden={!visible}
         aria-hidden={!visible}
         inert={!visible ? true : undefined}

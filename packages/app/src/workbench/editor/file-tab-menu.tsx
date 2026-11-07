@@ -1,10 +1,16 @@
 import type { ReactElement } from "react";
-import { ContextMenuItem, ContextMenuSeparator } from "@nyte-ai/ui/context-menu";
+import {
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
+} from "@nyte-ai/ui/context-menu";
 import { revealLabel } from "../../components/context-menu.ts";
 import { nyte } from "../../contract/nyte.ts";
 import { addFileToChat } from "../../references/add-to-chat.ts";
-import type { WorkbenchViewKey } from "../model.ts";
-import { fileActions } from "./file-store.ts";
+import type { EditorTarget, WorkbenchViewKey } from "../model.ts";
+import { fileActions, useFileTabs } from "./file-store.ts";
 import type { FileTab } from "./file-store.ts";
 
 export function FileTabMenuItems({
@@ -19,6 +25,33 @@ export function FileTabMenuItems({
   readonly onCloseOthers: () => void;
 }): ReactElement {
   const revealPath = nyte.host.revealPath;
+  const files = useFileTabs(viewKey);
+  const group = files.groups.find((entry) => entry.id === file.group);
+  const position = group?.tabs.findIndex((tab) => tab.id === file.id) ?? -1;
+  const left = document.dir === "rtl" ? 1 : -1;
+  const right = -left;
+
+  const move = (target: EditorTarget): void => {
+    fileActions.place(viewKey, { kind: "tab", id: file.id }, target);
+    requestAnimationFrame(() => {
+      const selected = document
+        .getElementById(`${viewKey}-file-tabs-${target.group}`)
+        ?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
+
+      selected?.scrollIntoView({ block: "nearest", inline: "nearest" });
+      selected?.focus();
+    });
+  };
+
+  const moveOne = (step: number): void =>
+    move({
+      kind: "tabs",
+      group: file.group,
+      before:
+        step < 0
+          ? (group?.tabs[position - 1]?.id ?? null)
+          : (group?.tabs[position + 2]?.id ?? null),
+    });
 
   return (
     <>
@@ -41,6 +74,34 @@ export function FileTabMenuItems({
       <ContextMenuItem onClick={() => fileActions.split(viewKey, "before", file.id)}>
         Split Left
       </ContextMenuItem>
+      <ContextMenuItem
+        disabled={group?.tabs[position + left] === undefined}
+        onClick={() => moveOne(left)}
+      >
+        Move Left
+      </ContextMenuItem>
+      <ContextMenuItem
+        disabled={group?.tabs[position + right] === undefined}
+        onClick={() => moveOne(right)}
+      >
+        Move Right
+      </ContextMenuItem>
+      {files.groups.length > 1 && (
+        <ContextMenuSub>
+          <ContextMenuSubTrigger>Move to Group</ContextMenuSubTrigger>
+          <ContextMenuSubContent>
+            {files.groups.map((destination, index) => (
+              <ContextMenuItem
+                key={destination.id}
+                disabled={destination.id === file.group}
+                onClick={() => move({ kind: "tabs", group: destination.id, before: null })}
+              >
+                {`Group ${String(index + 1)}`}
+              </ContextMenuItem>
+            ))}
+          </ContextMenuSubContent>
+        </ContextMenuSub>
+      )}
       <ContextMenuSeparator />
       <ContextMenuItem icon="paperclip" onClick={() => addFileToChat(file)}>
         Add File to Chat

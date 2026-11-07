@@ -12,7 +12,6 @@ import { ChangesPanel } from "./changes/changes-panel.tsx";
 import { WORKBENCH_HOME_VIEW_KEY } from "./paths.ts";
 import { useWorkbenchSnapshot, workbench } from "./store.ts";
 import { EditorPanel } from "./editor/editor-panel.tsx";
-import { FileTabMenuItems } from "./editor/file-tab-menu.tsx";
 import { TerminalPanel } from "./terminal/terminal-panel.tsx";
 import {
   addTerminalToChat,
@@ -67,7 +66,6 @@ export async function run(): Promise<string> {
   window.publishWorkbench = () =>
     publishDeferred("workbench", {
       EditorPanel,
-      FileTabMenuItems,
       ChangesPanel,
       TerminalPanel,
       addTerminalToChat,
