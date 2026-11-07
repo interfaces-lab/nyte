@@ -7,7 +7,7 @@ import { FileTypeIcon, FileTypeIconSprite } from "@nyte-ai/ui/file-type-icon";
 import { Loader } from "@nyte-ai/ui/loader";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import type { MentionFile } from "../../data/files.ts";
-import { createFileRanking } from "../../lib/file-ranking.ts";
+import { fuzzyScore } from "../../lib/fuzzy-match.ts";
 import { mentionsFolder } from "../../references/message-references.ts";
 import type { OutlineSymbol } from "./outline.ts";
 
@@ -199,7 +199,22 @@ function paletteRows(
                 .filter((file) => !recentPaths.has(file.path))
                 .sort((left, right) => left.displayPath.localeCompare(right.displayPath)),
             ]
-          : createFileRanking(indexed, MATCH_LIMIT)(mode.needle);
+          : indexed
+              .flatMap((file) => {
+                const name = file.displayPath.slice(file.displayPath.lastIndexOf("/") + 1);
+                const filename = fuzzyScore(name, mode.needle);
+                const score = filename ?? fuzzyScore(file.displayPath, mode.needle);
+
+                return score === undefined
+                  ? []
+                  : [{ file, score, filename: filename !== undefined }];
+              })
+              .sort(
+                (left, right) =>
+                  Number(right.filename) - Number(left.filename) || right.score - left.score,
+              )
+              .slice(0, MATCH_LIMIT)
+              .map((match) => match.file);
 
       return matches.map((file) => {
         const slash = file.displayPath.lastIndexOf("/");
@@ -236,13 +251,18 @@ function paletteRows(
 
     case "symbol":
       return (input.active?.symbols ?? [])
-        .filter((symbol) => symbol.name.toLocaleLowerCase().includes(mode.needle))
-        .map((symbol) => ({
-          target: { kind: "symbol", symbol },
-          key: `symbol:${String(symbol.line)}:${symbol.name}`,
-          label: symbol.name,
-          detail: `${symbol.kind} \u00b7 line ${String(symbol.line)}`,
-          run: () => input.onGoTo(symbol.line, undefined),
+        .flatMap((symbol) => {
+          const score = fuzzyScore(symbol.name, mode.needle);
+
+          return score === undefined ? [] : [{ symbol, score }];
+        })
+        .sort((left, right) => right.score - left.score)
+        .map((match) => ({
+          target: { kind: "symbol", symbol: match.symbol },
+          key: `symbol:${String(match.symbol.line)}:${match.symbol.name}`,
+          label: match.symbol.name,
+          detail: `${match.symbol.kind} \u00b7 line ${String(match.symbol.line)}`,
+          run: () => input.onGoTo(match.symbol.line, undefined),
         }));
     default: {
       const exhaustive: never = mode;

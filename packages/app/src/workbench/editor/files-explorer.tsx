@@ -22,6 +22,7 @@ import { refreshVcs } from "../../data/vcs.ts";
 import type { MentionFile } from "../../data/files.ts";
 import type { SelectedWorkspace } from "../../contract/bridge.ts";
 import { PIERRE_TREE_CSS } from "../../lib/pierre-worker-provider.tsx";
+import { fuzzyScore } from "../../lib/fuzzy-match.ts";
 import { addFileToChat } from "../../references/add-to-chat.ts";
 import { setTreeDrag } from "../../references/composer-file-drop.ts";
 import type { WorkbenchViewKey } from "../model.ts";
@@ -547,10 +548,6 @@ export function FilesExplorer({
   );
 }
 
-/**
- * What the tree lists: every file and folder, or the changed files alone, narrowed to the paths
- * that hold `filter` ignoring case. The tree draws a listed file's folders itself.
- */
 function treePaths(
   files: readonly MentionFile[] | undefined,
   changes: readonly WorktreeFile[],
@@ -558,14 +555,16 @@ function treePaths(
   filter: string,
 ): readonly string[] {
   const changed = new Set(changes.map((change) => change.path));
-  const needle = filter.toLocaleLowerCase();
+  const needle = filter.trim();
 
   return (files ?? [])
     .map((file) => file.displayPath)
     .filter(
       (path) =>
         (scope === "all" || changed.has(path)) &&
-        (needle === "" || path.toLocaleLowerCase().includes(needle)),
+        (needle === "" ||
+          (!path.endsWith("/") &&
+            fuzzyScore(path.slice(path.lastIndexOf("/") + 1), needle) !== undefined)),
     );
 }
 
