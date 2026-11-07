@@ -409,6 +409,11 @@ function refusingFiles(): FilesApi {
     stat: refuse,
     write: refuse,
     remove: refuse,
+    move: refuse,
+    copy: refuse,
+    mkdir: refuse,
+    trash: refuse,
+    restore: refuse,
     batch: () => {
       throw new Error("Core wraps batch.");
     },

@@ -298,6 +298,10 @@ export type {
   WorkspaceInspection,
   WorkspaceTarget,
   WriteOutcome,
+  TransferOutcome,
+  TrashOutcome,
+  TrashToken,
+  RestoreOutcome,
 } from "@nyte-ai/schema";
 
 export { dev } from "@nyte-ai/core";

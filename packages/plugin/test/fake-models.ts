@@ -98,6 +98,11 @@ export const env: ExecutionEnv = {
     stat: refuse,
     write: refuse,
     remove: refuse,
+    move: refuse,
+    copy: refuse,
+    mkdir: refuse,
+    trash: refuse,
+    restore: refuse,
     batch: () => {
       throw new Error("No files in tests.");
     },

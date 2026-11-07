@@ -33,7 +33,7 @@ type BatchEntry = OperationInput<"files.batch">["entries"][number];
 
 type Pending =
   | ({ readonly kind: "put" } & Parameters<FileBatch["put"]>[0])
-  | ({ readonly kind: "remove" } & Parameters<FileBatch["remove"]>[0]);
+  | Exclude<BatchEntry, { readonly kind: "put" }>;
 
 const encoder = new TextEncoder();
 
@@ -93,10 +93,13 @@ function filesApi(rows: Rows, workspace: WorkspaceId): FilesApi {
   const plan = (pending: readonly Pending[]): FileBatch => ({
     put: (input) => plan([...pending, { kind: "put", ...input }]),
     remove: (input) => plan([...pending, { kind: "remove", ...input }]),
+    move: (input) => plan([...pending, { kind: "move", ...input }]),
+    copy: (input) => plan([...pending, { kind: "copy", ...input }]),
+    mkdir: (input) => plan([...pending, { kind: "mkdir", ...input }]),
     async apply() {
       const entries = await Promise.all(
         pending.map(async (entry): Promise<BatchEntry> => {
-          if (entry.kind === "remove") return entry;
+          if (entry.kind !== "put") return entry;
           const { contents, ...rest } = entry;
 
           return {
@@ -130,6 +133,11 @@ function filesApi(rows: Rows, workspace: WorkspaceId): FilesApi {
         typeof contents === "string" ? encoder.encode(contents) : contents,
       ),
     remove: (path, options) => rows.call("files.remove", { workspace, path, options }),
+    move: (from, to) => rows.call("files.move", { workspace, from, to }),
+    copy: (from, to) => rows.call("files.copy", { workspace, from, to }),
+    mkdir: (path) => rows.call("files.mkdir", { workspace, path }),
+    trash: (path) => rows.call("files.trash", { workspace, path }),
+    restore: (token) => rows.call("files.restore", { workspace, token }),
     batch: () => plan([]),
     format: (path, contents) => rows.call("files.format", { workspace, path, contents }),
     scan: (input) => rows.frames("files.scan", { workspace, ...input }),

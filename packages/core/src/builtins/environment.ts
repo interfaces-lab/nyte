@@ -120,7 +120,7 @@ const jobParameters = standard(
 const read: ToolDefinition<Infer<typeof readParameters>> = {
   name: "read",
   description:
-    "Read a file in the workspace. Text comes back as numbered lines; an image comes back as an image.",
+    "Read a file in the workspace. Text comes back as numbered lines, which a reply cites as `path:line`; an image comes back as an image.",
   parameters: readParameters,
   class: (args) => ({ kind: "read", path: args.path }),
   effects: "none",
@@ -285,8 +285,7 @@ const list: ToolDefinition<Infer<typeof listParameters>> = {
 
 const bash: ToolDefinition<Infer<typeof bashParameters>> = {
   name: "bash",
-  description:
-    "Run a shell command in the workspace root and return its output and exit code. Long output keeps its end.",
+  description: `Run a shell command in the workspace root and return its output and exit code. Each call starts a new shell, so cd and exported variables don't carry over; chain dependent steps with &&. The command gets no input, so one that prompts or opens an editor waits until the timeout; pass flags that skip prompts. Output keeps its last ${CLIP_CHARS.toLocaleString("en-US")} characters; filter it when you need the start. Stop a process by its PID or with the job tool, never by a name pattern such as pkill -f, which can match Nyte's own processes.`,
   parameters: bashParameters,
   class: (args) =>
     args.description === undefined

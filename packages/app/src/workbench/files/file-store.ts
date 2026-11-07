@@ -2,12 +2,18 @@ import type { FileDocument } from "@nyte-ai/sdk";
 import type { QueryClient } from "@tanstack/react-query";
 import { useSyncExternalStore } from "react";
 import { keys, queryClient } from "../../data/query-client.ts";
-import type { WorkbenchTabId, WorkbenchViewKey, WorkbenchViewState } from "../model.ts";
+import type {
+  EditorGroupId,
+  KindTab,
+  WorkbenchTabId,
+  WorkbenchViewKey,
+  WorkbenchViewState,
+} from "../model.ts";
 import { workspaceFile } from "../paths.ts";
 import { workbench } from "../store.ts";
 import type { WorkbenchStore } from "../store.ts";
 import type { WorkbenchViewAction } from "../view-reducer.ts";
-import type { FileDocumentSnapshot } from "./file-document.ts";
+import type { FileBuffer, FileDocumentSnapshot } from "./file-document.ts";
 
 interface FileLocation {
   readonly path: string;
@@ -20,15 +26,20 @@ type FileScope = Exclude<FileDocument, { readonly kind: "missing" }>["scope"];
 
 type FileDraft = Pick<FileDocumentSnapshot, "contents" | "savedContents" | "version">;
 
-interface FileRuntime extends Omit<FileLocation, "path"> {
+/** Where a tab was last asked to show its file. */
+interface FileNavigation extends Omit<FileLocation, "path"> {
   readonly navigationRevision: number;
+}
+
+/** What every tab showing one file shares: its contents, how they're shown, and whether they're saved. */
+interface FileState {
   /** Opening at a line shows the source. */
   readonly showSource: boolean;
   readonly saving: boolean;
   readonly draft: FileDraft | undefined;
 }
 
-export interface FileTab extends FileRuntime {
+export interface FileTab extends FileNavigation, FileState {
   /** The path inside the view's workspace, or the absolute path of a file outside it. */
   readonly displayPath: string;
   /**
@@ -38,6 +49,7 @@ export interface FileTab extends FileRuntime {
   readonly external: boolean;
   readonly id: WorkbenchTabId;
   readonly path: string;
+  readonly group: EditorGroupId;
   readonly preview: boolean;
   readonly dirty: boolean;
 }
@@ -50,9 +62,19 @@ interface FileViewRuntime {
   readonly revealRevision: number;
 }
 
+export interface FileGroup {
+  readonly id: EditorGroupId;
+  readonly tabs: readonly FileTab[];
+  /** The file it shows: for the focused group, the strip's selection when that's one of its files. */
+  readonly active: FileTab | undefined;
+}
+
 interface FileTabs {
   readonly tabs: readonly FileTab[];
+  /** The strip's file, which is the focused group's. */
   readonly active: FileTab | undefined;
+  readonly groups: readonly FileGroup[];
+  readonly group: EditorGroupId;
   readonly pendingClose: FileTab | undefined;
   readonly canGoBack: boolean;
   readonly canGoForward: boolean;
@@ -67,6 +89,8 @@ const EMPTY_VIEW: FileViewRuntime = {
   revealPath: null,
   revealRevision: 0,
 };
+
+const CLEAN: FileState = { showSource: false, saving: false, draft: undefined };
 
 function visit(
   current: FileViewRuntime,
@@ -95,11 +119,41 @@ function visit(
   return { history, historyIndex: history.length - 1 };
 }
 
+/** Moves the entries of `key`'s files that `target` maps to their new paths. */
+function rekey<Value>(
+  map: Map<string, Value>,
+  key: WorkbenchViewKey,
+  target: (path: string) => string | undefined,
+): void {
+  const prefix = fileKey(key, "");
+
+  for (const [held, value] of Array.from(map)) {
+    const path = held.startsWith(prefix) ? target(held.slice(prefix.length)) : undefined;
+
+    if (path === undefined) continue;
+    map.delete(held);
+    map.set(fileKey(key, path), value);
+  }
+}
+
+/** One file in one view: tabs in different groups share it, views don't. */
+function fileKey(key: WorkbenchViewKey, path: string): string {
+  return `${key}\n${path}`;
+}
+
+/**
+ * Open files over the workbench's file tabs. Tabs showing one file share its buffer, draft and
+ * save state, kept until the last of them closes; closing one of several never asks. `split`
+ * opens a tab's file, by default the strip's, in a new group beside its own; `place` drops a tab
+ * into a group or beside it.
+ */
 export function createFileTabStore(
   store: WorkbenchStore = workbench,
   queries: QueryClient = queryClient,
 ) {
-  const documents = new Map<WorkbenchTabId, FileRuntime>();
+  const navigations = new Map<WorkbenchTabId, FileNavigation>();
+  const files = new Map<string, FileState>();
+  const buffers = new Map<string, FileBuffer>();
   const views = new Map<WorkbenchViewKey, FileViewRuntime>();
 
   const snapshots = new Map<
@@ -117,13 +171,11 @@ export function createFileTabStore(
 
   const getRuntimeView = (key: WorkbenchViewKey): FileViewRuntime => views.get(key) ?? EMPTY_VIEW;
 
-  const runtime = (id: WorkbenchTabId): FileRuntime =>
-    documents.get(id) ?? {
-      navigationRevision: 0,
-      showSource: false,
-      saving: false,
-      draft: undefined,
-    };
+  const navigation = (id: WorkbenchTabId): FileNavigation =>
+    navigations.get(id) ?? { navigationRevision: 0 };
+
+  const fileState = (key: WorkbenchViewKey, path: string): FileState =>
+    files.get(fileKey(key, path)) ?? CLEAN;
 
   const commit = (key: WorkbenchViewKey, action?: WorkbenchViewAction): void => {
     revision += 1;
@@ -145,20 +197,22 @@ export function createFileTabStore(
   const fileTabs = (key: WorkbenchViewKey): readonly FileTab[] =>
     store.getView(key).tabs.flatMap((tab) => {
       if (tab.kind !== "file") return [];
-      const current = runtime(tab.id);
+      const state = fileState(key, tab.path);
 
       const inside =
         documentScope(tab.path) === "external" ? undefined : workspaceFile(tab.path, [key]);
 
       return [
         {
-          ...current,
+          ...navigation(tab.id),
+          ...state,
           id: tab.id,
           path: tab.path,
+          group: tab.group,
           displayPath: inside?.relative ?? tab.path,
           external: inside === undefined,
           preview: tab.preview,
-          dirty: current.draft !== undefined,
+          dirty: state.draft !== undefined,
         },
       ];
     });
@@ -179,10 +233,22 @@ export function createFileTabStore(
       return cached.view;
     const current = getRuntimeView(key);
     const tabs = fileTabs(key);
+    const active = tabs.find((tab) => tab.id === workbenchView.active);
 
     const view = {
       tabs,
-      active: tabs.find((tab) => tab.id === workbenchView.active),
+      active,
+      groups: workbenchView.groups.map((group) => {
+        const held = tabs.filter((tab) => tab.group === group.id);
+
+        return {
+          id: group.id,
+          tabs: held,
+          active:
+            group.id === workbenchView.group ? active : held.find((tab) => tab.id === group.active),
+        };
+      }),
+      group: workbenchView.group,
       pendingClose: tabs.find((tab) => tab.id === current.pendingCloseId),
       canGoBack: current.historyIndex > 0,
       canGoForward: current.historyIndex < current.history.length - 1,
@@ -195,16 +261,38 @@ export function createFileTabStore(
     return view;
   };
 
-  const find = (key: WorkbenchViewKey, path: string): FileTab | undefined =>
-    fileTabs(key).find((tab) => tab.path === path);
+  const inGroup = (
+    key: WorkbenchViewKey,
+    path: string,
+    group: EditorGroupId = store.getView(key).group,
+  ): FileTab | undefined => fileTabs(key).find((tab) => tab.path === path && tab.group === group);
 
-  const pin = (key: WorkbenchViewKey, tab: FileTab): void => {
-    if (tab.preview)
-      store.dispatch(key, {
-        kind: "patch",
-        id: tab.id,
-        change: { kind: "file", patch: { preview: false } },
-      });
+  const setFileState = (key: WorkbenchViewKey, path: string, change: Partial<FileState>): void => {
+    const current = fileState(key, path);
+    const next = { ...current, ...change };
+
+    if (
+      next.showSource === current.showSource &&
+      next.saving === current.saving &&
+      next.draft?.contents === current.draft?.contents &&
+      next.draft?.version === current.draft?.version &&
+      next.draft?.savedContents === current.draft?.savedContents
+    )
+      return;
+
+    files.set(fileKey(key, path), next);
+
+    const pinned =
+      next.draft === undefined
+        ? undefined
+        : fileTabs(key).find((tab) => tab.path === path && tab.preview);
+
+    commit(
+      key,
+      pinned === undefined
+        ? undefined
+        : { kind: "patch", id: pinned.id, change: { kind: "file", patch: { preview: false } } },
+    );
   };
 
   const remove = (key: WorkbenchViewKey, id: WorkbenchTabId): void => {
@@ -212,7 +300,13 @@ export function createFileTabStore(
     const tab = fileTabs(key).find((candidate) => candidate.id === id);
 
     if (tab === undefined) return;
-    documents.delete(id);
+    navigations.delete(id);
+
+    if (!fileTabs(key).some((other) => other.id !== id && other.path === tab.path)) {
+      files.delete(fileKey(key, tab.path));
+      buffers.delete(fileKey(key, tab.path));
+    }
+
     const history = current.history.filter((location) => location.path !== tab.path);
 
     const historyIndex =
@@ -229,39 +323,52 @@ export function createFileTabStore(
     commit(key, { kind: "close", id });
   };
 
+  const navigate = (id: WorkbenchTabId, location: FileLocation): void => {
+    const previous = navigation(id);
+
+    navigations.set(id, {
+      line: location.line,
+      column: location.column,
+      length: location.length,
+      navigationRevision: previous.navigationRevision + 1,
+    });
+  };
+
   const open = (
     key: WorkbenchViewKey,
     location: FileLocation & { readonly preview?: boolean },
     next: (current: FileViewRuntime) => FileViewRuntime,
   ): void => {
     const preview = location.preview === true;
-    const existing = find(key, location.path);
+    const group = store.getView(key).group;
+    const existing = inGroup(key, location.path, group);
     const id = existing?.id ?? crypto.randomUUID();
 
     const replace =
       existing === undefined && preview
-        ? fileTabs(key).find((tab) => tab.preview && !tab.dirty && !tab.saving)?.id
+        ? fileTabs(key).find(
+            (tab) => tab.group === group && tab.preview && !tab.dirty && !tab.saving,
+          )?.id
         : undefined;
 
-    if (replace !== undefined) documents.delete(replace);
-    const previous = runtime(id);
-    documents.set(id, {
-      ...previous,
-      line: location.line,
-      column: location.column,
-      length: location.length,
-      navigationRevision: previous.navigationRevision + 1,
-      showSource: location.line === undefined ? previous.showSource : true,
-    });
+    if (replace !== undefined) navigations.delete(replace);
+    navigate(id, location);
+
+    if (location.line !== undefined)
+      files.set(fileKey(key, location.path), {
+        ...fileState(key, location.path),
+        showSource: true,
+      });
+
     views.set(key, next(getRuntimeView(key)));
     commit(key, {
       kind: "open-file",
-      tab: { id, kind: "file", path: location.path, preview },
+      tab: { id, kind: "file", path: location.path, preview, group },
       replace,
     });
   };
 
-  const navigate = (key: WorkbenchViewKey, historyIndex: number): void => {
+  const historyStep = (key: WorkbenchViewKey, historyIndex: number): void => {
     const location = getRuntimeView(key).history[historyIndex];
 
     if (location === undefined) return;
@@ -285,12 +392,14 @@ export function createFileTabStore(
         activate: true,
       });
     },
-    close(key: WorkbenchViewKey, path: string): boolean {
-      const tab = find(key, path);
+    close(key: WorkbenchViewKey, id: WorkbenchTabId): boolean {
+      const tab = fileTabs(key).find((candidate) => candidate.id === id);
 
       if (tab === undefined) return true;
 
-      if (tab.dirty || tab.saving) {
+      const shared = fileTabs(key).some((other) => other.id !== id && other.path === tab.path);
+
+      if (!shared && (tab.dirty || tab.saving)) {
         views.set(key, { ...getRuntimeView(key), pendingCloseId: tab.id });
         commit(key);
 
@@ -309,56 +418,134 @@ export function createFileTabStore(
       commit(key);
     },
     discardClose(key: WorkbenchViewKey): void {
-      const pendingCloseId = getRuntimeView(key).pendingCloseId;
+      const pending = fileTabs(key).find((tab) => tab.id === getRuntimeView(key).pendingCloseId);
 
-      if (pendingCloseId !== null && documents.get(pendingCloseId)?.saving !== true) {
-        remove(key, pendingCloseId);
-      }
+      if (pending !== undefined && !pending.saving) remove(key, pending.id);
     },
     setShowSource(key: WorkbenchViewKey, path: string, showSource: boolean): void {
-      const tab = find(key, path);
-
-      if (tab === undefined || tab.showSource === showSource) return;
-      documents.set(tab.id, { ...runtime(tab.id), showSource });
-      commit(key);
+      setFileState(key, path, { showSource });
     },
     setSaving(key: WorkbenchViewKey, path: string, saving: boolean): void {
-      const tab = find(key, path);
-
-      if (tab === undefined || tab.saving === saving) return;
-      documents.set(tab.id, { ...runtime(tab.id), saving });
-      commit(key);
+      setFileState(key, path, { saving });
     },
     setDraft(key: WorkbenchViewKey, path: string, draft: FileDraft | undefined): void {
-      const tab = find(key, path);
+      setFileState(key, path, { draft });
+    },
+    buffer(key: WorkbenchViewKey, path: string, create: () => FileBuffer): FileBuffer {
+      const held = buffers.get(fileKey(key, path));
 
-      if (
-        tab === undefined ||
-        (tab.draft?.contents === draft?.contents &&
-          tab.draft?.version === draft?.version &&
-          tab.draft?.savedContents === draft?.savedContents)
-      ) {
+      if (held !== undefined) return held;
+      const made = create();
+      buffers.set(fileKey(key, path), made);
+
+      return made;
+    },
+    pin(key: WorkbenchViewKey, id: WorkbenchTabId): void {
+      const tab = fileTabs(key).find((candidate) => candidate.id === id);
+
+      if (tab?.preview === true)
+        store.dispatch(key, {
+          kind: "patch",
+          id: tab.id,
+          change: { kind: "file", patch: { preview: false } },
+        });
+    },
+    split(key: WorkbenchViewKey, side: "before" | "after", id?: WorkbenchTabId): void {
+      const source = fileTabs(key).find((tab) => tab.id === (id ?? store.getView(key).active));
+
+      if (source === undefined) return;
+
+      const tab: KindTab<"file"> = {
+        id: crypto.randomUUID(),
+        kind: "file",
+        path: source.path,
+        preview: false,
+        group: source.group,
+      };
+
+      navigate(tab.id, source);
+      commit(key, { kind: "split", tab, group: crypto.randomUUID(), side });
+    },
+    place(
+      key: WorkbenchViewKey,
+      id: WorkbenchTabId,
+      into: EditorGroupId,
+      zone: "before" | "center" | "after",
+    ): void {
+      commit(key, { kind: "place", id, into, zone, group: crypto.randomUUID() });
+    },
+    openBeside(
+      key: WorkbenchViewKey,
+      path: string,
+      group: EditorGroupId,
+      zone: "before" | "center" | "after",
+    ): void {
+      commit(key, { kind: "focus-group", group });
+
+      if (zone === "center") {
+        actions.open(key, { path });
+
         return;
       }
 
-      documents.set(tab.id, { ...runtime(tab.id), draft });
-      commit(
-        key,
-        draft !== undefined && tab.preview
-          ? { kind: "patch", id: tab.id, change: { kind: "file", patch: { preview: false } } }
-          : undefined,
-      );
-    },
-    pin(key: WorkbenchViewKey, path: string): void {
-      const tab = find(key, path);
+      const tab: KindTab<"file"> = {
+        id: crypto.randomUUID(),
+        kind: "file",
+        path,
+        preview: false,
+        group,
+      };
 
-      if (tab !== undefined) pin(key, tab);
+      navigate(tab.id, { path });
+      commit(key, { kind: "split", tab, group: crypto.randomUUID(), side: zone });
+    },
+    focusGroup(key: WorkbenchViewKey, group: EditorGroupId): void {
+      commit(key, { kind: "focus-group", group });
+    },
+    moved(
+      key: WorkbenchViewKey,
+      moves: readonly { readonly from: string; readonly to: string }[],
+    ): void {
+      const target = (path: string): string | undefined =>
+        moves.flatMap((move) =>
+          path === move.from
+            ? [move.to]
+            : path.startsWith(`${move.from}/`)
+              ? [`${move.to}${path.slice(move.from.length)}`]
+              : [],
+        )[0];
+
+      const current = getRuntimeView(key);
+
+      views.set(key, {
+        ...current,
+        history: current.history.map((location) => ({
+          ...location,
+          path: target(location.path) ?? location.path,
+        })),
+      });
+
+      rekey(files, key, target);
+      rekey(buffers, key, target);
+
+      for (const tab of fileTabs(key)) {
+        const path = target(tab.path);
+
+        if (path !== undefined)
+          store.dispatch(key, {
+            kind: "patch",
+            id: tab.id,
+            change: { kind: "file", patch: { path } },
+          });
+      }
+
+      commit(key);
     },
     back(key: WorkbenchViewKey): void {
-      navigate(key, getRuntimeView(key).historyIndex - 1);
+      historyStep(key, getRuntimeView(key).historyIndex - 1);
     },
     forward(key: WorkbenchViewKey): void {
-      navigate(key, getRuntimeView(key).historyIndex + 1);
+      historyStep(key, getRuntimeView(key).historyIndex + 1);
     },
   };
 

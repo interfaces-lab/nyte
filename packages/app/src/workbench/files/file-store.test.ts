@@ -45,7 +45,7 @@ describe("file runtime store", () => {
     assert.equal(workbench.getView(key).active, tabs[0]?.id);
   });
 
-  test("drafts survive tab switches and remain isolated by tab ID", () => {
+  test("drafts survive tab switches and stay apart between workspaces", () => {
     const workbench = createWorkbenchStore(() => ({ browser: true }));
     const store = createFileTabStore(workbench);
     const other = workbenchViewKey("/other-workspace");
@@ -78,11 +78,12 @@ describe("file runtime store", () => {
       version: asId<"file-version">("v1"),
     });
 
-    assert.equal(store.actions.close(key, first.path), false);
+    const id = store.getView(key).tabs[0]?.id ?? "";
+    assert.equal(store.actions.close(key, id), false);
     assert.equal(workbench.getView(key).tabs.length, 1);
     store.actions.cancelClose(key);
     assert.equal(store.getView(key).tabs[0]?.draft?.contents, "unsaved");
-    store.actions.close(key, first.path);
+    store.actions.close(key, id);
     store.actions.discardClose(key);
     assert.equal(workbench.getView(key).tabs.length, 0);
   });
@@ -92,7 +93,7 @@ describe("file runtime store", () => {
     const store = createFileTabStore(workbench);
     store.actions.open(key, { ...first, preview: true });
     store.actions.open(key, { ...second, preview: true });
-    store.actions.pin(key, second.path);
+    store.actions.pin(key, store.getView(key).tabs[0]?.id ?? "");
     store.actions.open(key, { ...third, preview: true });
 
     assert.deepEqual(

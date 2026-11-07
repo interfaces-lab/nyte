@@ -49,6 +49,8 @@ export type GitRevision = Id<"git-revision">;
 
 export type FileVersion = Id<"file-version">;
 
+export type TrashToken = Id<"trash">;
+
 export type DocumentRevision = Id<"document-revision">;
 
 export type Revision = Id<"revision">;
@@ -126,6 +128,8 @@ export const GitCommitIdSchema: Schema<GitCommitId> = standard(idSchema<"git-com
 export const GitRevisionSchema: Schema<GitRevision> = standard(idSchema<"git-revision">());
 
 export const FileVersionSchema: Schema<FileVersion> = standard(idSchema<"file-version">());
+
+export const TrashTokenSchema: Schema<TrashToken> = standard(idSchema<"trash">());
 
 export const DocumentRevisionSchema: Schema<DocumentRevision> =
   standard(idSchema<"document-revision">());

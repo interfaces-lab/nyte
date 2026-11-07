@@ -1,5 +1,5 @@
 {
-  "revision": 15,
+  "revision": 16,
   "operations": {
     "connection.watch": "3828353a916407ab",
     "connection.blob": "d661f9695af8afc2",
@@ -112,7 +112,12 @@
     "files.stat": "020ea18284c1a702",
     "files.write": "d132ef5aa00dcdcc",
     "files.remove": "d283619ab43d546c",
-    "files.batch": "c6bd935b549ca2c2",
+    "files.move": "2e0bc8c52e191f35",
+    "files.copy": "4dd3cfcdd8af1c8d",
+    "files.mkdir": "a8672250c7d444cc",
+    "files.trash": "346f419809b9ae54",
+    "files.restore": "c1c9b25f95ac2a92",
+    "files.batch": "80a54e269f90dc4a",
     "files.format": "deb74473a3cbca5d",
     "files.scan": "3f8a79156be00e57",
     "files.find": "9bdd977f5939686c",

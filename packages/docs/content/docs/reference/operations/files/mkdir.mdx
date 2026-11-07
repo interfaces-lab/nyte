@@ -1,0 +1,122 @@
+---
+title: files.mkdir
+description: Creates a folder and any missing parents.
+---
+
+Creates a folder and any missing parents. It answers `done` when the folder is there,
+including when it already was, and `invalid` with `reason` `not-a-folder` when a file is at the
+path or at one of its parents.
+
+## When to call it
+
+From a new-folder action in a file tree.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `files` capability.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "path": "src/features/billing"
+}
+```
+
+Response:
+
+```json
+{ "kind": "done" }
+```
+
+## Errors
+
+- `unavailable` or `denied` when the workspace doesn't offer files or can't change them.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `files`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "path"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "path": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "done"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "reason"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "stale"
+        },
+        "reason": {
+          "enum": ["missing", "exists"]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "reason"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "invalid"
+        },
+        "reason": {
+          "enum": ["root", "outside", "into-itself", "cross-device", "not-a-folder"]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "busy"
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

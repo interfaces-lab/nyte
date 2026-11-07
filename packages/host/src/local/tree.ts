@@ -392,6 +392,15 @@ export function watchPath(
   };
 }
 
+/** Null for a path that isn't there; any other failure goes on. */
+export function missing(error: unknown): null {
+  const code = readErrorCode(error);
+
+  if (code === "ENOENT" || code === "ENOTDIR") return null;
+
+  throw error;
+}
+
 export function readErrorCode(error: unknown): string | null {
   return typeof error === "object" &&
     error !== null &&

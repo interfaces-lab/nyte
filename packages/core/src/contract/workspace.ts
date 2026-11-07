@@ -74,6 +74,10 @@ import type {
   WorkspaceInspection,
   WorkspaceTarget,
   WriteOutcome,
+  TransferOutcome,
+  TrashOutcome,
+  TrashToken,
+  RestoreOutcome,
 } from "@nyte-ai/schema";
 import type { Login, PluginStorage } from "./host.ts";
 import type { Receipt } from "./session.ts";
@@ -382,6 +386,14 @@ export interface FilesApi {
     options?: { readonly expect?: FileVersion | "absent"; readonly parents?: boolean },
   ): Promise<WriteOutcome>;
   remove(path: string, options?: { readonly expect?: FileVersion }): Promise<WriteOutcome>;
+  /** Renames in one step, a folder with everything in it; never replaces what is at `to`. */
+  move(from: string, to: string): Promise<TransferOutcome>;
+  /** Copies with links and modes kept; never replaces or merges into what is at `to`. */
+  copy(from: string, to: string): Promise<TransferOutcome>;
+  mkdir(path: string): Promise<TransferOutcome>;
+  /** Deletes into a hold `restore` undoes until the host restarts; `unavailable` where the provider keeps none. */
+  trash(path: string): Promise<TrashOutcome>;
+  restore(token: TrashToken): Promise<RestoreOutcome>;
   batch(): FileBatch;
   format(path: string, contents: string): Promise<FormatOutcome>;
   scan(input?: {
@@ -405,6 +417,9 @@ export interface FileBatch {
     readonly expect?: FileVersion | "absent";
   }): FileBatch;
   remove(input: { readonly path: string; readonly expect?: FileVersion }): FileBatch;
+  move(input: { readonly path: string; readonly to: string }): FileBatch;
+  copy(input: { readonly path: string; readonly to: string }): FileBatch;
+  mkdir(input: { readonly path: string }): FileBatch;
   apply(): Promise<Receipt<BatchOutcome>>;
 }
 
@@ -417,7 +432,9 @@ export type BatchEntry =
       readonly contents: string | Uint8Array | { readonly blob: BlobId };
       readonly expect?: FileVersion | "absent";
     }
-  | { readonly kind: "remove"; readonly path: string; readonly expect?: FileVersion };
+  | { readonly kind: "remove"; readonly path: string; readonly expect?: FileVersion }
+  | { readonly kind: "move" | "copy"; readonly path: string; readonly to: string }
+  | { readonly kind: "mkdir"; readonly path: string };
 
 type HeldBatch = {
   readonly receipt: Receipt<BatchOutcome>;

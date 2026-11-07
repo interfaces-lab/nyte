@@ -5,6 +5,7 @@ import type {
   Json,
   ReceiptId,
   SnapshotId,
+  TransferOutcome,
   WriteOutcome,
 } from "@nyte-ai/schema";
 import type { Kernel } from "../contract/kernel.ts";
@@ -130,7 +131,7 @@ async function execute(
   const stale: string[] = [];
 
   for (const entry of entries) {
-    if (entry.expect === undefined) continue;
+    if (!("expect" in entry) || entry.expect === undefined) continue;
 
     try {
       const current = (await files.stat(entry.path))?.version ?? null;
@@ -148,35 +149,15 @@ async function execute(
   for (const [index, entry] of entries.entries()) {
     if (signal.aborted) return { kind: "stopped", applied };
     const remaining = entries.slice(index).map((next) => next.path);
-    let outcome: WriteOutcome;
+    let failure: string | undefined;
 
     try {
-      outcome =
-        entry.kind === "remove"
-          ? await files.remove(entry.path, { expect: entry.expect })
-          : await files.write(entry.path, await resolveFileContents(kernel.store, entry.contents), {
-              expect: entry.expect,
-              parents: true,
-            });
+      failure = await applyEntry(kernel, files, entry);
     } catch (error) {
-      return {
-        kind: "partial",
-        applied,
-        remaining,
-        reason: error instanceof Error ? error.message : String(error),
-      };
+      failure = error instanceof Error ? error.message : String(error);
     }
 
-    if (outcome.kind !== "saved")
-      return {
-        kind: "partial",
-        applied,
-        remaining,
-        reason:
-          outcome.kind === "stale"
-            ? `${entry.path} moved while the batch ran.`
-            : `${entry.path} has no parent directory.`,
-      };
+    if (failure !== undefined) return { kind: "partial", applied, remaining, reason: failure };
     applied.push(entry.path);
   }
 
@@ -186,6 +167,87 @@ async function execute(
     paths: applied,
   };
 }
+
+/** Applies one entry; the reason it didn't, or undefined once it did. */
+async function applyEntry(
+  kernel: Kernel,
+  files: FilesApi,
+  entry: BatchEntry,
+): Promise<string | undefined> {
+  switch (entry.kind) {
+    case "put":
+    case "remove": {
+      const outcome =
+        entry.kind === "remove"
+          ? await files.remove(entry.path, { expect: entry.expect })
+          : await files.write(entry.path, await resolveFileContents(kernel.store, entry.contents), {
+              expect: entry.expect,
+              parents: true,
+            });
+
+      return writeFailure(entry.path, outcome);
+    }
+
+    case "move":
+      return transferFailure(entry.path, await files.move(entry.path, entry.to));
+    case "copy":
+      return transferFailure(entry.path, await files.copy(entry.path, entry.to));
+    case "mkdir":
+      return transferFailure(entry.path, await files.mkdir(entry.path));
+    default: {
+      const exhaustive: never = entry;
+
+      return exhaustive;
+    }
+  }
+}
+
+function writeFailure(path: string, outcome: WriteOutcome): string | undefined {
+  switch (outcome.kind) {
+    case "saved":
+      return undefined;
+    case "stale":
+      return `${path} moved while the batch ran.`;
+    case "missing-parent":
+      return `${path} has no parent directory.`;
+    default: {
+      const exhaustive: never = outcome;
+
+      return exhaustive;
+    }
+  }
+}
+
+function transferFailure(path: string, outcome: TransferOutcome): string | undefined {
+  switch (outcome.kind) {
+    case "done":
+      return undefined;
+    case "stale":
+      return outcome.reason === "missing"
+        ? `${path} is gone.`
+        : `Something is already at the destination of ${path}.`;
+    case "invalid":
+      return INVALID_REASONS[outcome.reason](path);
+    case "busy":
+      return `${path} is open in another program.`;
+    default: {
+      const exhaustive: never = outcome;
+
+      return exhaustive;
+    }
+  }
+}
+
+const INVALID_REASONS = {
+  root: () => "The workspace folder itself can't be moved or copied.",
+  outside: (path: string) => `${path} is outside the workspace.`,
+  "into-itself": (path: string) => `${path} can't go inside itself.`,
+  "cross-device": (path: string) => `${path} can't move to another disk.`,
+  "not-a-folder": (path: string) => `A file is already at ${path}.`,
+} satisfies Record<
+  Extract<TransferOutcome, { kind: "invalid" }>["reason"],
+  (path: string) => string
+>;
 
 async function captureFileSnapshot(
   kernel: Kernel,
@@ -233,17 +295,37 @@ async function resolveFileContents(
 
 async function hashFileBatch(entries: readonly BatchEntry[]): Promise<string> {
   const described = await Promise.all(
-    entries.map(async (entry): Promise<Json> => ({
-      kind: entry.kind,
-      path: entry.path,
-      expect: entry.expect ?? null,
-      contents:
-        entry.kind === "remove"
-          ? null
-          : typeof entry.contents === "string"
-            ? entry.contents
-            : `bytes:${entry.contents instanceof Uint8Array ? await blobId(entry.contents) : entry.contents.blob}`,
-    })),
+    entries.map(async (entry): Promise<Json> => {
+      switch (entry.kind) {
+        case "put":
+          return {
+            kind: entry.kind,
+            path: entry.path,
+            expect: entry.expect ?? null,
+            contents:
+              typeof entry.contents === "string"
+                ? entry.contents
+                : `bytes:${entry.contents instanceof Uint8Array ? await blobId(entry.contents) : entry.contents.blob}`,
+          };
+        case "remove":
+          return {
+            kind: entry.kind,
+            path: entry.path,
+            expect: entry.expect ?? null,
+            contents: null,
+          };
+        case "move":
+        case "copy":
+          return { kind: entry.kind, path: entry.path, to: entry.to };
+        case "mkdir":
+          return { kind: entry.kind, path: entry.path };
+        default: {
+          const exhaustive: never = entry;
+
+          return exhaustive;
+        }
+      }
+    }),
   );
 
   return objectId(described);

@@ -695,6 +695,26 @@ export const operations = {
     { ...pathInput, options: { expect: fileVersion } },
     { ...pathInput, options: { expect: null } },
   ),
+  "files.move input": operation(
+    OPERATIONS["files.move"].input,
+    { workspace, from: "src/a", to: "src/b" },
+    { workspace, from: "src/a" },
+  ),
+  "files.copy input": operation(
+    OPERATIONS["files.copy"].input,
+    { workspace, from: "src/a.ts", to: "src/a copy.ts" },
+    { workspace, to: "src/b" },
+  ),
+  "files.mkdir input": operation(OPERATIONS["files.mkdir"].input, pathInput, { workspace }),
+  "files.trash input": operation(OPERATIONS["files.trash"].input, pathInput, {
+    workspace,
+    path: 1,
+  }),
+  "files.restore input": operation(
+    OPERATIONS["files.restore"].input,
+    { workspace, token: asId<"trash">("t1") },
+    { workspace },
+  ),
   "files.batch input": operation(
     OPERATIONS["files.batch"].input,
     {
@@ -703,6 +723,9 @@ export const operations = {
       entries: [
         { kind: "put", path: "a.ts", contents: "x", expect: "absent" },
         { kind: "remove", path: "b.ts", expect: fileVersion },
+        { kind: "move", path: "c", to: "d" },
+        { kind: "copy", path: "d", to: "e" },
+        { kind: "mkdir", path: "f" },
       ],
     },
     { workspace, entries: [{ kind: "move", path: "a.ts" }] },

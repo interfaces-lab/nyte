@@ -9,6 +9,7 @@ import {
   workbenchShowsChat,
 } from "./model.ts";
 import type {
+  EditorGroupId,
   KindTab,
   WorkbenchChangesScope,
   WorkbenchTab,
@@ -28,7 +29,10 @@ type WorkbenchTabPatch =
         Pick<ChangesTab, "scope" | "selectedPath" | "pathRevealRevision" | "scrollTop">
       >;
     }
-  | { readonly kind: "file"; readonly patch: { readonly preview: boolean } }
+  | {
+      readonly kind: "file";
+      readonly patch: Partial<Pick<KindTab<"file">, "path" | "preview">>;
+    }
   | { readonly kind: "browser"; readonly patch: { readonly url: string } }
   | { readonly kind: "canvas"; readonly patch: Partial<Pick<CanvasTab, "title" | "pinned">> };
 
@@ -63,7 +67,28 @@ export type WorkbenchViewAction =
   | { readonly kind: "toggle-maximized" }
   | { readonly kind: "show-chat" }
   | { readonly kind: "set-share"; readonly share: number }
-  | { readonly kind: "toggle-sidebar"; readonly slot: string };
+  | { readonly kind: "toggle-sidebar"; readonly slot: string }
+  /** Opens `tab` in a new group, `group`, beside the focused one. */
+  | {
+      readonly kind: "split";
+      readonly tab: KindTab<"file">;
+      readonly group: EditorGroupId;
+      readonly side: Side;
+    }
+  /**
+   * Moves the file tab `id` into the group `into`, or into a new group, `group`, beside it. A
+   * group that holds the same file already shows that tab instead.
+   */
+  | {
+      readonly kind: "place";
+      readonly id: WorkbenchTabId;
+      readonly into: EditorGroupId;
+      readonly zone: Side | "center";
+      readonly group: EditorGroupId;
+    }
+  | { readonly kind: "focus-group"; readonly group: EditorGroupId };
+
+type Side = "before" | "after";
 
 export function reduceView(
   state: WorkbenchViewState,
@@ -173,6 +198,27 @@ export function reduceView(
         : { ...state, width };
     }
 
+    case "split":
+      return activate(
+        {
+          ...state,
+          tabs: [...state.tabs, { ...action.tab, group: action.group }],
+          groups: besideGroup(state, state.group, action.side, action.group),
+        },
+        action.tab.id,
+      );
+    case "place":
+      return place(state, action);
+    case "focus-group": {
+      const target = state.groups.find((group) => group.id === action.group);
+
+      if (target === undefined || action.group === state.group) return state;
+
+      return target.active === null
+        ? { ...state, group: action.group }
+        : activate(state, target.active);
+    }
+
     case "toggle-sidebar":
       return {
         ...state,
@@ -200,10 +246,111 @@ function addTab(
 
 function activate(state: WorkbenchViewState, id: WorkbenchTabId): WorkbenchViewState {
   const layout = revealWorkbench(state.layout);
+  const tab = state.tabs.find((candidate) => candidate.id === id);
+  const group = tab?.kind === "file" ? tab.group : undefined;
 
-  return state.active === id && state.expanded && layout === state.layout
-    ? state
-    : { ...state, active: id, expanded: true, layout };
+  if (
+    state.active === id &&
+    state.expanded &&
+    layout === state.layout &&
+    (group === undefined || state.group === group)
+  )
+    return state;
+
+  const shown = { ...state, active: id, expanded: true, layout };
+
+  if (group === undefined) return shown;
+
+  return {
+    ...shown,
+    group,
+    groups: state.groups.map((entry) => (entry.id === group ? { ...entry, active: id } : entry)),
+  };
+}
+
+function besideGroup(
+  state: WorkbenchViewState,
+  anchor: EditorGroupId,
+  side: Side,
+  id: EditorGroupId,
+): WorkbenchViewState["groups"] {
+  const at = state.groups.findIndex((group) => group.id === anchor) + (side === "after" ? 1 : 0);
+
+  return [...state.groups.slice(0, at), { id, active: null }, ...state.groups.slice(at)];
+}
+
+function place(
+  state: WorkbenchViewState,
+  action: Extract<WorkbenchViewAction, { readonly kind: "place" }>,
+): WorkbenchViewState {
+  const moved = state.tabs.find((tab) => tab.id === action.id);
+
+  if (moved?.kind !== "file") return state;
+
+  if (action.zone === "center") {
+    const twin = state.tabs.find(
+      (tab) => tab.kind === "file" && tab.group === action.into && tab.path === moved.path,
+    );
+
+    if (twin !== undefined)
+      return twin.id === moved.id
+        ? activate(state, moved.id)
+        : activate(close(state, moved.id), twin.id);
+
+    return activate(withGroup(state, moved, action.into), moved.id);
+  }
+
+  const split = { ...state, groups: besideGroup(state, action.into, action.zone, action.group) };
+
+  return activate(withGroup(split, moved, action.group), moved.id);
+}
+
+/** Moves `tab` into `group`; the group it leaves closes once it holds nothing, unless it's the last. */
+function withGroup(
+  state: WorkbenchViewState,
+  tab: KindTab<"file">,
+  group: EditorGroupId,
+): WorkbenchViewState {
+  const tabs = state.tabs.map((candidate) =>
+    candidate.id === tab.id ? { ...tab, group } : candidate,
+  );
+
+  const left = state.groups.map((entry) =>
+    entry.id === tab.group && entry.active === tab.id
+      ? { ...entry, active: groupNeighbour(state.tabs, tab) }
+      : entry,
+  );
+
+  return pruneGroups({ ...state, tabs, groups: left });
+}
+
+/** The file tab a group shows once `tab` leaves it: the one after it, else the one before. */
+function groupNeighbour(
+  tabs: readonly WorkbenchTab[],
+  tab: KindTab<"file">,
+): WorkbenchTabId | null {
+  const siblings = tabs.filter(
+    (candidate) => candidate.kind === "file" && candidate.group === tab.group,
+  );
+
+  const index = siblings.findIndex((candidate) => candidate.id === tab.id);
+
+  return siblings[index + 1]?.id ?? siblings[index - 1]?.id ?? null;
+}
+
+function pruneGroups(state: WorkbenchViewState): WorkbenchViewState {
+  const held = new Set(state.tabs.flatMap((tab) => (tab.kind === "file" ? [tab.group] : [])));
+  const kept = state.groups.filter((group) => held.has(group.id));
+  const groups = kept.length === 0 ? state.groups.slice(0, 1) : kept;
+
+  if (groups.length === state.groups.length) return state;
+  const index = state.groups.findIndex((group) => group.id === state.group);
+
+  const focused = groups.some((group) => group.id === state.group)
+    ? state.group
+    : ((groups[Math.min(index, groups.length - 1)] ?? groups[0])?.id ?? state.group);
+
+  return { ...state, groups, group: focused };
 }
 
 function close(state: WorkbenchViewState, id: WorkbenchTabId): WorkbenchViewState {
@@ -212,15 +359,28 @@ function close(state: WorkbenchViewState, id: WorkbenchTabId): WorkbenchViewStat
 
   if (closed === undefined) return state;
   const tabs = state.tabs.filter((tab) => tab.id !== id);
+  const sibling = closed.kind === "file" ? groupNeighbour(state.tabs, closed) : null;
+
+  const groups =
+    closed.kind === "file"
+      ? state.groups.map((group) => (group.active === id ? { ...group, active: sibling } : group))
+      : state.groups;
+
+  const pruned = pruneGroups({ ...state, tabs, groups });
 
   const active =
-    state.active === id ? (tabs[index]?.id ?? tabs[index - 1]?.id ?? null) : state.active;
+    state.active === id
+      ? (sibling ??
+        pruned.groups.find((group) => group.id === pruned.group)?.active ??
+        tabs[index]?.id ??
+        tabs[index - 1]?.id ??
+        null)
+      : state.active;
 
   const slot = tabSlot(closed);
 
   return {
-    ...state,
-    tabs,
+    ...pruned,
     active,
     expanded: state.expanded && active !== null,
     sidebars: tabs.some((tab) => tabSlot(tab) === slot)
@@ -258,10 +418,13 @@ function patchTab(tab: WorkbenchTab, change: WorkbenchTabPatch): WorkbenchTab {
         : next;
     }
 
-    case "file":
-      return tab.kind !== "file" || tab.preview === change.patch.preview
-        ? tab
-        : { ...tab, preview: change.patch.preview };
+    case "file": {
+      if (tab.kind !== "file") return tab;
+      const next = { ...tab, ...change.patch };
+
+      return next.path === tab.path && next.preview === tab.preview ? tab : next;
+    }
+
     case "browser":
       return tab.kind !== "browser" || tab.url === change.patch.url
         ? tab

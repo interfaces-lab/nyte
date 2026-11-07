@@ -3,7 +3,8 @@ import type { FileTree, FileTreeBatchOperation } from "@pierre/trees";
 /**
  * Moves `model` from showing `shown` to showing `paths` and returns what it shows now: the
  * paths and their folders. The first fill resets the tree, so its initial expansion applies;
- * later fills remove and add only what changed, so the folders a reader opened stay open.
+ * later fills remove and add only what changed, so the folders a reader opened stay open. A
+ * later fill checks each path against the tree, which an inline rename moves on its own.
  */
 export function syncTreePaths(
   model: FileTree,
@@ -20,10 +21,12 @@ export function syncTreePaths(
 
   const changes: FileTreeBatchOperation[] = [
     ...[...shown]
-      .filter((path) => !next.has(path))
+      .filter((path) => !next.has(path) && model.getItem(path) !== null)
       .sort((left, right) => right.length - left.length)
       .map((path) => ({ type: "remove" as const, path })),
-    ...paths.flatMap((path) => (shown.has(path) ? [] : [{ type: "add" as const, path }])),
+    ...paths.flatMap((path) =>
+      shown.has(path) || model.getItem(path) !== null ? [] : [{ type: "add" as const, path }],
+    ),
   ];
 
   if (changes.length > 0) model.batch(changes);

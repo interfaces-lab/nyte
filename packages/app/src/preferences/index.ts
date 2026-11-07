@@ -121,6 +121,12 @@ export const preferences = {
   fileGitBlame: definePreference({ key: FILES, field: "gitBlame" }, Type.Boolean(), false),
   fileAutoSave: definePreference({ key: FILES, field: "autoSave" }, Type.Boolean(), false),
   fileFormatOnSave: definePreference({ key: FILES, field: "formatOnSave" }, Type.Boolean(), false),
+  fileOutline: definePreference({ key: FILES, field: "outline" }, Type.Boolean(), true),
+  fileSidePanel: definePreference(
+    { key: FILES, field: "sidePanel" },
+    Type.Enum(["start", "end"]),
+    "end",
+  ),
   changesLayout: definePreference(
     { key: CHANGES, field: "layout" },
     Type.Enum(["unified", "split"]),

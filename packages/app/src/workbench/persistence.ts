@@ -4,6 +4,7 @@ import type { Static } from "typebox";
 import type { ClientCapabilities } from "../contract/client-actions.ts";
 import { type Persisted, persisted } from "../lib/storage.ts";
 import {
+  FIRST_GROUP,
   MAXIMIZED_WORKBENCH_LAYOUT,
   SPLIT_LAYOUT,
   type WorkbenchSnapshot,
@@ -118,6 +119,7 @@ type PersistedTab = Static<typeof persistedTab>;
 function persistedTabFor(tab: WorkbenchTab): PersistedTab | undefined {
   switch (tab.kind) {
     case "file":
+      return { id: tab.id, kind: "file", path: tab.path, preview: tab.preview };
     case "canvas":
     case "files":
     case "changes":
@@ -136,8 +138,11 @@ function persistedTabFor(tab: WorkbenchTab): PersistedTab | undefined {
   }
 }
 
+/** Editor groups aren't stored: every restored file tab opens in the first group. */
 function restoreTab(tab: PersistedTab): WorkbenchTab {
-  return tab.kind === "browser" ? { ...tab, surface: null } : tab;
+  if (tab.kind === "browser") return { ...tab, surface: null };
+
+  return tab.kind === "file" ? { ...tab, group: FIRST_GROUP } : tab;
 }
 
 function restoreWidth(stored: Static<typeof persistedWorkbenchView>): WorkbenchWidth {
@@ -189,6 +194,15 @@ export function restoreSnapshot(
           Object.freeze({
             tabs: Object.freeze(tabs.map((tab) => Object.freeze(tab))),
             active,
+            groups: [
+              {
+                id: FIRST_GROUP,
+                active: tabs.some((tab) => tab.id === active && tab.kind === "file")
+                  ? active
+                  : null,
+              },
+            ],
+            group: FIRST_GROUP,
             expanded: stored.expanded,
             collapsed: "floating",
             layout: stored.maximized ? MAXIMIZED_WORKBENCH_LAYOUT : SPLIT_LAYOUT,

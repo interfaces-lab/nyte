@@ -462,6 +462,9 @@ function wrapFiles(kernel: Kernel, scope: FileScope, files: FilesApi): FilesApi 
   const plan = (entries: readonly BatchEntry[]): FileBatch => ({
     put: (input) => plan([...entries, { kind: "put", ...input }]),
     remove: (input) => plan([...entries, { kind: "remove", ...input }]),
+    move: (input) => plan([...entries, { kind: "move", ...input }]),
+    copy: (input) => plan([...entries, { kind: "copy", ...input }]),
+    mkdir: (input) => plan([...entries, { kind: "mkdir", ...input }]),
     apply: () => applyBatch(kernel, scope, files, entries),
   });
 
@@ -471,6 +474,11 @@ function wrapFiles(kernel: Kernel, scope: FileScope, files: FilesApi): FilesApi 
     stat: (path) => files.stat(path),
     write: (path, contents, options) => files.write(path, contents, options),
     remove: (path, options) => files.remove(path, options),
+    move: (from, to) => files.move(from, to),
+    copy: (from, to) => files.copy(from, to),
+    mkdir: (path) => files.mkdir(path),
+    trash: (path) => files.trash(path),
+    restore: (token) => files.restore(token),
     batch: () => plan([]),
     format: (path, contents) => files.format(path, contents),
     scan: (input) => files.scan(input),

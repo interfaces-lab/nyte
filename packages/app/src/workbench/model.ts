@@ -5,6 +5,9 @@ import { DEFAULT_WIDTH, type WorkbenchWidth } from "./width.ts";
 
 export type WorkbenchTabId = string;
 
+/** An editor group in Files: its file tabs side by side with other groups'. */
+export type EditorGroupId = string;
+
 export type WorkbenchViewKey = string;
 
 export type WorkbenchChangesScope =
@@ -21,7 +24,11 @@ export type TerminalOwner =
 
 interface TabFields {
   readonly terminal: { readonly owner: TerminalOwner };
-  readonly file: { readonly path: string; readonly preview: boolean };
+  readonly file: {
+    readonly path: string;
+    readonly preview: boolean;
+    readonly group: EditorGroupId;
+  };
   readonly changes: {
     readonly scope: WorkbenchChangesScope;
     readonly selectedPath: string | null;
@@ -121,7 +128,7 @@ export const WORKBENCH_KINDS: WorkbenchKinds = {
     icon: "file",
     available: projectOnly,
     launch: undefined,
-    identity: (tab) => tab.path,
+    identity: (tab) => `${tab.group}\n${tab.path}`,
   },
   canvas: {
     label: "Canvas",
@@ -229,9 +236,22 @@ export function revealWorkbench(layout: WorkbenchLayout): WorkbenchLayout {
   return workbenchShowsChat(layout) ? MAXIMIZED_WORKBENCH_LAYOUT : layout;
 }
 
+/** A group's file on screen; the strip's own selection decides it for the focused group. */
+export interface EditorGroup {
+  readonly id: EditorGroupId;
+  readonly active: WorkbenchTabId | null;
+}
+
+/** The group every view starts with and every restored file tab lands in. */
+export const FIRST_GROUP: EditorGroupId = "first";
+
 export interface WorkbenchViewState {
   readonly tabs: readonly WorkbenchTab[];
   readonly active: WorkbenchTabId | null;
+  /** Files' editor groups in reading order; never empty. */
+  readonly groups: readonly EditorGroup[];
+  /** The focused group: the one the strip lists files of and new files open in. */
+  readonly group: EditorGroupId;
   readonly expanded: boolean;
   readonly collapsed: "floating" | "compact";
   readonly layout: WorkbenchLayout;
@@ -252,6 +272,8 @@ export const DEFAULT_VIEW = Object.freeze({
   layout: SPLIT_LAYOUT,
   width: DEFAULT_WIDTH,
   sidebars: Object.freeze([]),
+  groups: Object.freeze([Object.freeze({ id: FIRST_GROUP, active: null })]),
+  group: FIRST_GROUP,
 }) satisfies WorkbenchViewState;
 
 export function tabSlot(tab: WorkbenchTab): string {

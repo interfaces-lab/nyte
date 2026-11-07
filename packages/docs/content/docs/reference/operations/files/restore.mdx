@@ -1,0 +1,99 @@
+---
+title: files.restore
+description: Puts a trashed file or folder back where it was.
+---
+
+Puts a trashed file or folder back where it was. `stale` with `reason` `exists` when
+something has taken its place, which stays as it is, or `expired` when the hold is gone: restored
+already, or the host restarted since.
+
+## When to call it
+
+From the undo of a delete made with `files.trash`.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `files` capability.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "token": "4f1e2d3c-5b6a-4789-8a7b-6c5d4e3f2a1b"
+}
+```
+
+Response:
+
+```json
+{ "kind": "restored" }
+```
+
+## Errors
+
+- `unavailable` or `denied` when the workspace doesn't offer files or can't change them.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `files`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "token"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "token": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "restored"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "reason"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "stale"
+        },
+        "reason": {
+          "enum": ["exists", "expired"]
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

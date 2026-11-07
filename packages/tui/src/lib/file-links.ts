@@ -1,10 +1,9 @@
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { parseCitation } from "@nyte-ai/plugin/client/presentation";
 import { Lexer, walkTokens } from "marked";
 import type { Token } from "marked";
-
-const LOCATION = /:\d+(?::\d+)?$/u;
 
 const NOT_A_PATH = /[\s*?()[\]{}<>|"'`$#\\]/u;
 
@@ -26,7 +25,7 @@ export function linkFilePaths(markdown: string, root: string): string {
 
 /** The file URL a code span names, or `null` when it doesn't read as a file path. */
 function readFileTarget(code: string, root: string): string | null {
-  const path = code.replace(LOCATION, "");
+  const path = parseCitation(code).path;
   const name = path.slice(path.lastIndexOf("/") + 1);
 
   if (

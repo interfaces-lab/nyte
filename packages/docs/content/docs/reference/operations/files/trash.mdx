@@ -1,0 +1,136 @@
+---
+title: files.trash
+description: Deletes a file or folder into a hold that a restore undoes until the host restarts.
+---
+
+Deletes a file or folder into a hold and answers its `token`, which `files.restore` uses
+to put it back. The local provider holds it in the repository's shared git folder, so it is out of
+the tree, git status and builds, and moves there in one rename whatever its size. Holds last until
+the host process ends; the next start clears them. It answers `unavailable` when the provider keeps
+no hold, such as outside a git repository or when that folder is on another disk; delete with
+`files.remove` instead. `stale` when nothing is at the path, `invalid` for the workspace root or a
+path outside it, `busy` when a file under it is open elsewhere.
+
+## When to call it
+
+From a delete action that offers undo.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `files` capability.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "path": "src/legacy"
+}
+```
+
+Response:
+
+```json
+{ "kind": "trashed", "token": "4f1e2d3c-5b6a-4789-8a7b-6c5d4e3f2a1b" }
+```
+
+## Errors
+
+- `unavailable` or `denied` when the workspace doesn't offer files or can't change them.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `files`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "path"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "path": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind", "token"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "trashed"
+        },
+        "token": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "stale"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "reason"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "invalid"
+        },
+        "reason": {
+          "enum": ["root", "outside"]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "unavailable"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "busy"
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}
