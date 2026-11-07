@@ -203,7 +203,7 @@ export function TunnelPairButton({ tunnel }: { readonly tunnel: ConfiguredTunnel
         disabled={tunnel.connection.kind !== "connected"}
         onClick={() => setNaming(true)}
       >
-        Pair…
+        Pair
       </Button>
       {naming && (
         <NameDeviceDialog
@@ -250,7 +250,6 @@ export function CloudflareSection({
       return (
         <SettingsSection title={TITLE}>
           <FactRow
-            icon="cloudflare"
             title="Settings unavailable"
             detail="Nyte can't read or write ~/.nyte/cloudflare-tunnel.json. Fix or remove it, then restart Nyte."
           />
@@ -260,7 +259,6 @@ export function CloudflareSection({
       return (
         <SettingsSection title={TITLE}>
           <FactRow
-            icon="cloudflare"
             title="Not set up"
             detail={
               tunnel.cloudflaredInstalled
@@ -269,7 +267,7 @@ export function CloudflareSection({
             }
           >
             <Button variant="outline" onClick={() => setEditing(true)}>
-              Set Up Tunnel…
+              Set Up Tunnel
             </Button>
           </FactRow>
           {editing && <TunnelDialog initial={undefined} onOpenChange={setEditing} />}
@@ -320,8 +318,6 @@ function ConfiguredSection({
       note={waiting ? "You can pair devices once the tunnel connects." : undefined}
     >
       <FactRow
-        icon="cloudflare"
-        tone={serving ? "on" : "neutral"}
         title={`https://${tunnel.hostname}`}
         detail={
           !tunnel.cloudflaredInstalled ? (
@@ -338,10 +334,10 @@ function ConfiguredSection({
         }
       >
         <Button variant="outline" onClick={() => setEditing(true)}>
-          Change Tunnel…
+          Change Tunnel
         </Button>
         <Button variant="outline" onClick={() => setRemoving(true)}>
-          Remove Tunnel…
+          Remove Tunnel
         </Button>
       </FactRow>
       <SettingsSwitchRow

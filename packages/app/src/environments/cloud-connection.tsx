@@ -80,7 +80,7 @@ function ConnectDialog({ onOpenChange }: { readonly onOpenChange: (open: boolean
     <SettingsFormDialog
       open
       title="Connect to Host"
-      description="List another Nyte host's chats in the sidebar. For a host behind Cloudflare Tunnel, copy both from the pairing link under Pair… in its Settings > Server. A host on your tailnet ignores the token, so enter any text."
+      description="List another Nyte host's chats in the sidebar. For a host behind Cloudflare Tunnel, copy both from the pairing link under Pair in its Settings > Server. A host on your tailnet ignores the token, so enter any text."
       submitLabel="Connect"
       canSubmit={address.trim() !== "" && token.trim() !== ""}
       pending={connect.isPending}
@@ -170,14 +170,13 @@ export function RemoteHost(): ReactElement {
         actions={
           state?.kind === "none" ? (
             <Button variant="outline" onClick={() => setConnecting(true)}>
-              Connect to Host…
+              Connect to Host
             </Button>
           ) : undefined
         }
       >
         {state === undefined ? (
           <FactRow
-            icon="server"
             title={TITLE}
             detail={server.isError ? errorMessage(server.error) : "Checking…"}
           />
@@ -192,12 +191,7 @@ export function RemoteHost(): ReactElement {
             </span>
           </div>
         ) : (
-          <FactRow
-            icon="server"
-            tone={state.kind === "connected" ? "on" : "neutral"}
-            title={state.baseUrl}
-            detail={hostDetail(state, server.isFetching)}
-          >
+          <FactRow title={state.baseUrl} detail={hostDetail(state, server.isFetching)}>
             {state.kind === "unavailable" && (
               <Button
                 variant="outline"
@@ -208,10 +202,10 @@ export function RemoteHost(): ReactElement {
               </Button>
             )}
             <Button variant="outline" onClick={() => setConnecting(true)}>
-              Change Host…
+              Change Host
             </Button>
             <Button variant="outline" onClick={() => setConfirming(true)}>
-              Disconnect…
+              Disconnect
             </Button>
           </FactRow>
         )}

@@ -40,7 +40,7 @@ export function ConnectDevices({
           name: device.name,
           detail: deviceDetail(device, view),
         }))}
-        action="Revoke…"
+        action="Revoke"
         pending={revoke.isPending ? revoke.variables : undefined}
         onAction={(deviceId) => {
           setTarget(view.devices.find((device) => device.id === deviceId));

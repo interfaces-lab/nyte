@@ -20,23 +20,56 @@ import { CloudflareSection, TunnelPairButton } from "./remote-tunnel.tsx";
 
 type Serving = Extract<RemoteAccessState, { kind: "serving" }>;
 
-function AddressSection({ state }: { readonly state: Serving }): ReactElement {
+function AddressSection({
+  tailnet,
+  serving,
+}: {
+  readonly tailnet: string | undefined;
+  readonly serving: Serving | undefined;
+}): ReactElement | null {
+  if (tailnet === undefined && serving === undefined) return null;
+
+  const both = tailnet !== undefined && serving !== undefined;
+
   return (
     <SettingsSection>
-      <SettingsRow title="Remote address" description={state.address} controlWidth="wide">
-        <span {...props(shareStyles.actions)}>
-          <CopyButton label="Address" value={state.address} />
-          {state.cloudflare.kind === "configured" ? (
-            <TunnelPairButton tunnel={state.cloudflare} />
-          ) : null}
-        </span>
-      </SettingsRow>
+      {tailnet !== undefined && (
+        <SettingsRow
+          title={both ? "Tailscale address" : "Remote address"}
+          description={tailnet}
+          controlWidth="wide"
+        >
+          <CopyButton label="Address" value={tailnet} />
+        </SettingsRow>
+      )}
+      {serving !== undefined && (
+        <SettingsRow
+          title={both ? "Cloudflare Tunnel address" : "Remote address"}
+          description={serving.address}
+          controlWidth="wide"
+        >
+          <span {...props(shareStyles.actions)}>
+            <CopyButton label="Address" value={serving.address} />
+            {serving.cloudflare.kind === "configured" ? (
+              <TunnelPairButton tunnel={serving.cloudflare} />
+            ) : null}
+          </span>
+        </SettingsRow>
+      )}
     </SettingsSection>
   );
 }
 
 function tailnetName(node: TailnetNode): string | undefined {
   return node.state === "running" ? node.dnsName?.replace(/\.$/, "") : undefined;
+}
+
+function tailnetAddress(node: TailnetNode): string | undefined {
+  const name = tailnetName(node);
+
+  return name !== undefined && node.state === "running" && node.https === "available"
+    ? `https://${name}`
+    : undefined;
 }
 
 function tailnetDetail(node: TailnetNode): string {
@@ -56,9 +89,12 @@ function tailnetDetail(node: TailnetNode): string {
     case "running": {
       const name = tailnetName(node) ?? "this Mac";
 
-      return node.https === "available"
-        ? `Running at https://${name}`
-        : `Running as ${name}. Turn on HTTPS certificates in the Tailscale admin console to pair devices.`;
+      if (node.https !== "available")
+        return `Running as ${name}. Turn on HTTPS certificates in the Tailscale admin console to pair devices.`;
+
+      return node.loginName === undefined
+        ? `On your tailnet as ${name.split(".")[0] ?? name}`
+        : `Signed in as ${node.loginName}`;
     }
 
     case "stopped":
@@ -110,19 +146,13 @@ function TailscaleSection({
   readonly onSignOut: () => void;
 }): ReactElement {
   const enabled = node.state !== "disabled" && node.state !== "unavailable";
-  const name = tailnetName(node);
 
   return (
     <SettingsSection
       title="Tailscale"
       note="This Mac joins your tailnet as a device of its own. Devices of yours on the tailnet reach it there; no token leaves this Mac."
     >
-      <FactRow
-        icon="devices"
-        tone={node.state === "running" ? "on" : "neutral"}
-        title="Tailscale node"
-        detail={tailnetDetail(node)}
-      >
+      <FactRow title="Tailscale node" detail={tailnetDetail(node)}>
         {node.state === "needs_login" && node.authUrl !== undefined && (
           <Button
             variant="solid"
@@ -131,7 +161,7 @@ function TailscaleSection({
               if (node.authUrl !== undefined) void nyte.host.openExternal({ url: node.authUrl });
             }}
           >
-            Sign In…
+            Sign In
           </Button>
         )}
         {enabled && node.state !== "needs_login" && (
@@ -140,11 +170,6 @@ function TailscaleSection({
           </Button>
         )}
       </FactRow>
-      {name !== undefined && node.state === "running" && node.https === "available" && (
-        <SettingsRow title="Remote address" description={`https://${name}`} controlWidth="wide">
-          <CopyButton label="Address" value={`https://${name}`} />
-        </SettingsRow>
-      )}
       <SettingsSwitchRow
         title="Serve over Tailscale"
         description="Runs Nyte's own Tailscale node beside its host"
@@ -263,8 +288,6 @@ export function RemoteAccess({ active }: { readonly active: boolean }): ReactEle
     <>
       <SettingsSection>
         <FactRow
-          icon="laptop"
-          tone={reaches.length > 0 ? "on" : "neutral"}
           title="This Mac"
           detail={
             state === undefined
@@ -278,14 +301,14 @@ export function RemoteAccess({ active }: { readonly active: boolean }): ReactEle
         >
           {reaches.length > 0 && (
             <Button variant="outline" tone="danger" onClick={() => setConfirming(true)}>
-              Stop Sharing…
+              Stop Sharing
             </Button>
           )}
         </FactRow>
       </SettingsSection>
-      {serving !== undefined && <AddressSection state={serving} />}
       {state !== undefined && (
         <>
+          <AddressSection tailnet={tailnetAddress(state.tailnet)} serving={serving} />
           <TailscaleSection
             node={state.tailnet}
             pending={pending}

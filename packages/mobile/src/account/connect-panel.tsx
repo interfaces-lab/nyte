@@ -360,7 +360,7 @@ function MacGroup({
                   : "No other computers on this account"}
               </html.span>
               <html.span style={[textStyles.caption, styles.start]}>
-                On a Mac, open {SHARE_LOCATION} and choose Link This Mac… On a server, run nyte
+                On a Mac, open {SHARE_LOCATION} and choose Link This Mac. On a server, run nyte
                 account.
               </html.span>
             </html.div>

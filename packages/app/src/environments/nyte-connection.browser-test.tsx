@@ -159,10 +159,10 @@ export async function run() {
       linking: { kind: "idle" },
       notice: { kind: "none" },
     });
-    await until(() => button("Link This Mac…", container) !== undefined, "the link entry");
-    await press("Link This Mac…", () => container);
+    await until(() => button("Link This Mac", container) !== undefined, "the link entry");
+    await press("Link This Mac", () => container);
     await until(() => trayText().includes("Reach this Mac from your iPhone"), "the tray");
-    await press("Sign In and Link…", tray);
+    await press("Sign In and Link", tray);
     await until(() => calls.includes("link"), "link() to be called");
 
     await remoteAccessChanged({
@@ -182,7 +182,7 @@ export async function run() {
       notice: { kind: "none" },
     });
     finishLink?.();
-    await until(() => button("Sign In and Link…", tray()) !== undefined, "linking again");
+    await until(() => button("Sign In and Link", tray()) !== undefined, "linking again");
     check(tray()?.querySelector('[role="alert"]') === null, "A chosen cancel read as a failure");
 
     await remoteAccessChanged({
@@ -263,13 +263,13 @@ export async function run() {
     const listed = () =>
       document.querySelector('[aria-label="Devices"]')?.textContent?.includes("iPhone") === true;
 
-    await press("Revoke… iPhone", () => container);
+    await press("Revoke iPhone", () => container);
     await until(() => confirmation() !== undefined, "the revoke confirmation");
     await press("Cancel", confirmation);
     await until(() => confirmation() === undefined, "the revoke confirmation to close");
     check(listed(), "Cancel removed the device");
 
-    await press("Revoke… iPhone", () => container);
+    await press("Revoke iPhone", () => container);
     await press("Revoke Device", confirmation);
     await until(() => confirmation() === undefined && !listed(), "the device to be revoked");
 
@@ -280,7 +280,7 @@ export async function run() {
     remoteAccess()?.click();
     await until(() => calls.includes("setEnabled:false"), "setEnabled({ enabled: false })");
 
-    await press("Unlink This Mac…", () => container);
+    await press("Unlink This Mac", () => container);
     await until(() => confirmation() !== undefined, "the unlink confirmation");
     check(
       confirmation()?.textContent?.includes("lose access to this Mac right away") === true,
@@ -290,7 +290,7 @@ export async function run() {
     await until(() => confirmation() === undefined, "the confirmation to close");
     check(!calls.includes("unlink"), "Cancel unlinked this Mac");
 
-    await press("Unlink This Mac…", () => container);
+    await press("Unlink This Mac", () => container);
     await until(() => confirmation() !== undefined, "the unlink confirmation again");
     await press("Unlink This Mac", confirmation);
     await until(() => calls.includes("unlink"), "unlink() to be called");

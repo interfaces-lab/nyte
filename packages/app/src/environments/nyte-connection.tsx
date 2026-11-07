@@ -63,13 +63,11 @@ function LinkedConnection({
       }
     >
       <FactRow
-        icon="user"
-        tone={view.enabled ? "on" : "neutral"}
         title={`Linked to ${owner.label}`}
         detail={`${view.environment.name} · ${deviceCount(devices.length)}`}
       >
         <Button ref={unlinkRef} variant="outline" onClick={() => setConfirming(true)}>
-          Unlink This Mac…
+          Unlink This Mac
         </Button>
       </FactRow>
       <SettingsSwitchRow
@@ -111,11 +109,7 @@ export function NyteConnection({
   if (view === undefined) {
     return (
       <SettingsSection title={TITLE}>
-        <FactRow
-          icon="user"
-          title={TITLE}
-          detail={state.isError ? errorMessage(state.error) : "Checking…"}
-        />
+        <FactRow title={TITLE} detail={state.isError ? errorMessage(state.error) : "Checking…"} />
       </SettingsSection>
     );
   }
@@ -123,7 +117,7 @@ export function NyteConnection({
   if (view.kind === "unavailable") {
     return view.reason === "not_configured" ? null : (
       <SettingsSection title={TITLE}>
-        <FactRow icon="user" title="Unavailable" detail={unavailableDetail(view.reason)} />
+        <FactRow title="Unavailable" detail={unavailableDetail(view.reason)} />
       </SettingsSection>
     );
   }
@@ -134,7 +128,6 @@ export function NyteConnection({
   return (
     <SettingsSection title={TITLE}>
       <FactRow
-        icon="user"
         title="Not linked"
         detail={
           view.kind === "unlinked"
@@ -147,7 +140,7 @@ export function NyteConnection({
           open={trayOpen}
           onOpenChange={setTrayOpen}
           side="bottom"
-          trigger={<Button variant="outline">Link This Mac…</Button>}
+          trigger={<Button variant="outline">Link This Mac</Button>}
         />
       </FactRow>
     </SettingsSection>
