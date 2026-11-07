@@ -33,14 +33,14 @@ test.each(
     ].map((state) => ({ contrast, ...state })),
   ),
 )(
-  "the colour stairs and count ink keep their contracts with $contrast contrast, $state",
+  "the colour stairs, count and danger ink keep their contracts with $contrast contrast, $state",
   { timeout: 60_000 },
   async ({ contrast, forcePseudoClasses }) => {
     const result: unknown = JSON.parse(
       await testRenderer(new URL("./scope-contrast.fixture.tsx", import.meta.url), "", {
         contrast,
         forcePseudoClasses,
-        forcePseudoSelector: "[data-count-case]",
+        forcePseudoSelector: "[data-count-case], [data-danger-control]",
       }),
     );
 
@@ -56,7 +56,7 @@ test.each(
       if (row.expected !== undefined) {
         expect(row.color, `${row.mode} ${row.scope} ink on ${row.surface}`).toBeDefined();
 
-        if (row.color === undefined) throw new Error("Missing count color");
+        if (row.color === undefined) throw new Error("Missing ink color");
 
         for (const offset of [0, 2, 4])
           expect(

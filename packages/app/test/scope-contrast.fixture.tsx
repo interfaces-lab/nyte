@@ -2,11 +2,20 @@ import { create, props, type StyleXStyles } from "@stylexjs/stylex";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import { Button } from "@nyte-ai/ui/button";
-import { Menu, MenuContent, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "@nyte-ai/ui/menu";
+import {
+  Menu,
+  MenuContent,
+  MenuItem,
+  MenuRadioGroup,
+  MenuRadioItem,
+  MenuTrigger,
+} from "@nyte-ai/ui/menu";
 import { Row } from "@nyte-ai/ui/row";
 import { ChangeStats } from "../src/components/change-stats.tsx";
 import { turnStyles } from "../src/chat/transcript/turn.stylex.ts";
-import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
+import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
+import { TaskMark } from "../src/components/task-mark.tsx";
+import { trayParts } from "../src/chat/trays/tray.tsx";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
 
 const styles = create({
@@ -73,6 +82,52 @@ export async function mount(): Promise<void> {
             <ChangeStats added={86} removed={24} />
           </Row.Primary>
         </Row>
+        <span data-danger-case="failed">
+          <TaskMark state="failed" />
+        </span>
+        <span data-danger-case="neutral-label" {...props(styles.primary)}>
+          Failed task
+        </span>
+        <span data-danger-reference="neutral" {...props(styles.primary)}>
+          Neutral
+        </span>
+        <span data-danger-reference="primary" {...props(intent.danger, styles.primary)}>
+          Primary
+        </span>
+        <span data-danger-reference="disabled" {...props(intent.danger, styles.disabled)}>
+          Disabled
+        </span>
+        <span data-danger-case="generic-red" {...props(surfaceTheme.red, styles.secondary)}>
+          ANSI red
+        </span>
+        <span data-danger-case="waiting">
+          <TaskMark state="waiting" />
+        </span>
+        <span data-danger-reference="warning" {...props(intent.warning, styles.secondary)}>
+          Warning
+        </span>
+        <div {...props(styles.elevated)}>
+          <div
+            data-danger-case="error-notice"
+            {...props(intent.danger, trayParts.notice, trayParts.error)}
+          >
+            Could not run the task.
+          </div>
+        </div>
+        {(["ghost", "outline", "plain", "quiet", "text"] as const).flatMap((variant) =>
+          ["rest", "open", "disabled"].map((state) => (
+            <Button
+              key={`${variant}-${state}`}
+              variant={variant}
+              tone="danger"
+              data-danger-control={`${variant}-${state}`}
+              aria-expanded={state === "open"}
+              disabled={state === "disabled"}
+            >
+              Delete
+            </Button>
+          )),
+        )}
         <Menu open>
           <MenuTrigger render={<Button>Scope</Button>} />
           <MenuContent>
@@ -86,6 +141,12 @@ export async function mount(): Promise<void> {
                 This turn
               </MenuRadioItem>
             </MenuRadioGroup>
+            <MenuItem data-danger-case="menu-rest" variant="danger">
+              Delete chat
+            </MenuItem>
+            <MenuItem data-danger-case="menu-highlighted" variant="danger" data-highlighted="">
+              Remove workspace
+            </MenuItem>
           </MenuContent>
         </Menu>
       </div>,
@@ -342,6 +403,55 @@ export async function run(): Promise<string> {
           expected: neutral ? hex(getComputedStyle(stats).color) : palette[index],
         });
       }
+    }
+
+    const more = matchMedia("(prefers-contrast: more)").matches;
+    const accent = mode === "light" ? "a63536" : more ? "e28d88" : "ff535a";
+    const secondary = mode === "light" ? (more ? "5a2423" : "7c2527") : more ? "ffd5d1" : "f0a5a0";
+
+    const reference = (name: string) => {
+      const element = document.querySelector(`[data-danger-reference="${name}"]`);
+
+      if (element === null) throw new Error(`Missing ${name} reference`);
+
+      return hex(getComputedStyle(element).color);
+    };
+
+    for (const host of document.querySelectorAll("[data-danger-case], [data-danger-control]")) {
+      const element = host.querySelector('[role="img"]') ?? host;
+
+      const name =
+        host.getAttribute("data-danger-case") ?? host.getAttribute("data-danger-control");
+
+      const disabled = host.matches(":disabled");
+
+      const interactive =
+        host.hasAttribute("data-danger-control") &&
+        host.matches(":hover, :active, [aria-expanded=true]");
+
+      const color = getComputedStyle(element).color;
+      const layers = backgroundLayers(element);
+      results.push({
+        mode,
+        scope: "danger",
+        role: "secondary",
+        surface: name ?? "unknown",
+        ratio: ratio(luminance([...layers, color]), luminance(layers)),
+        minimum: disabled ? 1 : 4.5,
+        color: hex(color),
+        expected:
+          name === "neutral-label"
+            ? reference("neutral")
+            : name === "waiting"
+              ? reference("warning")
+              : name === "generic-red"
+                ? secondary
+                : disabled
+                  ? reference("disabled")
+                  : interactive
+                    ? reference("primary")
+                    : accent,
+      });
     }
 
     for (const scope of ["blue", "red"] as const) {

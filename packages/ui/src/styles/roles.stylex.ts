@@ -98,6 +98,11 @@ const hued = {
 
 export const tinted = createTheme(roles, hued);
 
+export const danger = createTheme(roles, {
+  ...hued,
+  "--nyte-content-secondary": "var(--nyte-content-accent)",
+});
+
 export const surfaceTint = createTheme(roles, {
   "--nyte-bg-base": tint(step(0, 145), "50%"),
   "--nyte-bg-chrome": tint(step(5, 150), "100%"),
