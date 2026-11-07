@@ -79,14 +79,7 @@ export function showChat(
 ): readonly LayoutAction<PaneContent>[] {
   return sameSelection(activeSelection(layout), selection)
     ? []
-    : [
-        {
-          kind: "open",
-          content: chatContent(selection),
-          place: { kind: "focused" },
-          activate: true,
-        },
-      ];
+    : [{ kind: "open", content: chatContent(selection), place: { kind: "focused" } }];
 }
 
 export function canSplitPane(layout: Layout<PaneContent>, windowWidth: number): boolean {

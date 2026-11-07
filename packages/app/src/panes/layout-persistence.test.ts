@@ -29,7 +29,7 @@ function describe(state: Layout<Note> | undefined): string {
   const node = (entry: LayoutNode<Note>): string =>
     entry.kind === "pane"
       ? `${entry.hidden ? "~" : ""}${entry.id}[${entry.tabs.map((tab) => `${tab.content.text}${tab.id === entry.active ? "*" : ""}`).join(",")}]`
-      : `${entry.direction}(${entry.children.map((child) => `${node(child.node)} ${child.size.kind === "share" ? String(child.size.share) : `${String(child.size.pixels)}px`}`).join(", ")})`;
+      : `${entry.direction}(${entry.children.map((child) => `${node(child.node)} ${typeof child.size === "number" ? String(child.size) : `${String(child.size.px)}px`}`).join(", ")})`;
 
   return `${node(state.root)} focus ${state.focus.join(",")}${state.zoomed === null ? "" : ` zoom ${state.zoomed}`}`;
 }
@@ -57,7 +57,7 @@ const row = (...children: readonly unknown[]) => ({
   kind: "split",
   id: "row",
   direction: "right",
-  children: children.map((node) => ({ node, size: { kind: "share", share: 1 } })),
+  children: children.map((node) => ({ node, size: 1 })),
 });
 
 test.each<{ readonly name: string; readonly stored: StoredLayout; readonly expected: string }>([
@@ -108,6 +108,24 @@ test.each<{ readonly name: string; readonly stored: StoredLayout; readonly expec
       zoomed: null,
     },
     expected: "A[one*] focus A",
+  },
+  {
+    name: "sizes saved as a share or in pixels come back as a weight or px",
+    stored: {
+      root: {
+        kind: "split",
+        id: "row",
+        direction: "right",
+        children: [
+          { node: pane("A", [note("a1", "one")]), size: { kind: "pixels", pixels: 240 } },
+          { node: pane("B", [note("b1", "two")]), size: { kind: "share", share: 2 } },
+          { node: pane("C", [note("c1", "three")]), size: { px: 300 } },
+        ],
+      },
+      focus: ["A", "B", "C"],
+      zoomed: null,
+    },
+    expected: "right(A[one*] 240px, B[two*] 2, C[three*] 300px) focus A,B,C",
   },
   {
     name: "a pane the focus list forgot joins it last",
@@ -164,7 +182,7 @@ test("a tab its kind doesn't save is left out, and a pane with nothing saved dro
             active: one.id,
             hidden: false,
           },
-          size: { kind: "share", share: 1 },
+          size: 1,
         },
         {
           node: {
@@ -174,7 +192,7 @@ test("a tab its kind doesn't save is left out, and a pane with nothing saved dro
             active: draft.id,
             hidden: false,
           },
-          size: { kind: "share", share: 1 },
+          size: 1,
         },
       ],
     },

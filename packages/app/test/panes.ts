@@ -58,7 +58,6 @@ export const splitRight: PaneChange = (layout) => [
     kind: "open",
     content: chatContent({ kind: "blank" }),
     place: { kind: "edge", pane: layout.focus[0], direction: "right", side: "after" },
-    activate: true,
   },
 ];
 

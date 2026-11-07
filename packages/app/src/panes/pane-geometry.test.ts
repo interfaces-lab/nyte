@@ -31,9 +31,9 @@ function split(
   };
 }
 
-const share = (value: number): PaneSize => ({ kind: "share", share: value });
+const share = (value: number): PaneSize => value;
 
-const pixels = (value: number): PaneSize => ({ kind: "pixels", pixels: value });
+const pixels = (value: number): PaneSize => ({ px: value });
 
 function styles(root: Node, zoomed: string | null = null) {
   const state: Layout<Note> = {

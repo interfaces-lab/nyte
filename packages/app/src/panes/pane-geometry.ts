@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { sizeWeight } from "./layout.ts";
 import type { Layout, LayoutNode, PaneId, SplitDirection, SplitId, TabContent } from "./layout.ts";
 
 export interface Linear {
@@ -95,14 +96,11 @@ function place<Content extends TabContent>(node: LayoutNode<Content>, box: Box):
   const shown = node.children.filter((child) => !(child.node.kind === "pane" && child.node.hidden));
 
   const pixels = shown.reduce(
-    (sum, child) => sum + (child.size.kind === "pixels" ? child.size.pixels : 0),
+    (sum, child) => sum + (typeof child.size === "number" ? 0 : child.size.px),
     0,
   );
 
-  const shares = shown.reduce(
-    (sum, child) => sum + (child.size.kind === "share" ? child.size.share : 0),
-    0,
-  );
+  const weights = shown.reduce((sum, child) => sum + sizeWeight(child.size), 0);
 
   const free = add(extent, { px: -pixels, fraction: 0, gaps: 1 - shown.length });
   const last = shown.at(-1);
@@ -122,9 +120,9 @@ function place<Content extends TabContent>(node: LayoutNode<Content>, box: Box):
       const length =
         child === last
           ? subtract(add(start, extent), state.offset)
-          : child.size.kind === "pixels"
-            ? { px: child.size.pixels, fraction: 0, gaps: 0 }
-            : scale(free, shares === 0 ? 0 : child.size.share / shares);
+          : typeof child.size === "number"
+            ? scale(free, weights === 0 ? 0 : child.size / weights)
+            : { px: child.size.px, fraction: 0, gaps: 0 };
 
       const inner = merge(state.placed, place(child.node, along(state.offset, length)));
       const end = add(state.offset, length);

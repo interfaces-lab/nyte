@@ -2,8 +2,8 @@ import { props } from "@stylexjs/stylex";
 import { useState, useSyncExternalStore } from "react";
 import type { PointerEvent, ReactElement, ReactNode } from "react";
 import { sessionScreenStyles } from "./session-screen.stylex.ts";
-import { layoutPanes, reduceLayout, tabShown } from "./layout.ts";
-import type { Layout, LayoutNode, PaneId, PaneSize, PaneTabId, Split } from "./layout.ts";
+import { layoutPanes, reduceLayout, sizeWeight, tabShown } from "./layout.ts";
+import type { Layout, LayoutNode, PaneSize, Split } from "./layout.ts";
 import type { LayoutStore } from "./layout-store.ts";
 import { boxStyle, layoutGeometry } from "./pane-geometry.ts";
 import type { Box, Geometry, Linear, Separator } from "./pane-geometry.ts";
@@ -22,13 +22,15 @@ interface Frame {
   readonly gap: number;
 }
 
+type RenderTab = (input: PaneTabInput) => ReactNode;
+
 export function LayoutView({
   store,
   renderTab,
   children,
 }: {
   readonly store: LayoutStore;
-  readonly renderTab: (input: PaneTabInput) => ReactNode;
+  readonly renderTab: RenderTab;
   readonly children?: ReactNode;
 }): ReactElement {
   const layout = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
@@ -50,7 +52,18 @@ export function LayoutView({
       return box === undefined ||
         (paneMount(tab.content) === "while-active" && tab.id !== pane.active)
         ? []
-        : [{ pane: pane.id, tab: tab.id, content: tab.content, box }];
+        : [
+            {
+              box,
+              input: {
+                pane: pane.id,
+                tab: tab.id,
+                content: tab.content,
+                visible: tabShown(layout, tab.id),
+                focused: layout.focus[0] === pane.id,
+              },
+            },
+          ];
     }),
   );
 
@@ -58,15 +71,11 @@ export function LayoutView({
     <div ref={observe} {...props(sessionScreenStyles.layout)}>
       {tabs.map((entry) => (
         <LayoutTab
-          key={entry.tab}
+          key={entry.input.tab}
           store={store}
-          pane={entry.pane}
-          tab={entry.tab}
-          content={entry.content}
+          input={entry.input}
           box={entry.box}
-          visible={tabShown(layout, entry.tab)}
-          focused={layout.focus[0] === entry.pane}
-          zoomed={layout.zoomed === entry.pane}
+          zoomed={layout.zoomed === entry.input.pane}
           renderTab={renderTab}
         />
       ))}
@@ -88,25 +97,20 @@ export function LayoutView({
 
 function LayoutTab({
   store,
-  pane,
-  tab,
-  content,
+  input,
   box,
-  visible,
-  focused,
   zoomed,
   renderTab,
 }: {
   readonly store: LayoutStore;
-  readonly pane: PaneId;
-  readonly tab: PaneTabId;
-  readonly content: PaneContent;
+  readonly input: PaneTabInput;
   readonly box: Box;
-  readonly visible: boolean;
-  readonly focused: boolean;
   readonly zoomed: boolean;
-  readonly renderTab: (input: PaneTabInput) => ReactNode;
+  readonly renderTab: RenderTab;
 }): ReactElement {
+  const pane = input.pane;
+  const visible = input.visible;
+
   const focus = (): void => {
     if (store.getSnapshot().focus[0] === pane) return;
     store.dispatch({ kind: "focus", pane });
@@ -116,7 +120,7 @@ function LayoutTab({
   return (
     <div
       data-nyte-pane-id={pane}
-      data-nyte-pane-tab={tab}
+      data-nyte-pane-tab={input.tab}
       inert={visible ? undefined : true}
       {...props(
         sessionScreenStyles.layoutTab,
@@ -127,7 +131,7 @@ function LayoutTab({
       onPointerDown={focus}
       onFocusCapture={focus}
     >
-      {renderTab({ tab, pane, content, visible, focused })}
+      {renderTab(input)}
     </div>
   );
 }
@@ -270,11 +274,7 @@ function LayoutSeparator({
         const split = findSplit(layout.root, separator.split);
 
         if (split !== undefined)
-          resize(
-            split.children.map((child) =>
-              child.size.kind === "share" ? { kind: "share", share: 1 } : child.size,
-            ),
-          );
+          resize(split.children.map((child) => (typeof child.size === "number" ? 1 : child.size)));
       }}
       onKeyDown={(event) => {
         const sizes = step(event.currentTarget, event.key);
@@ -334,14 +334,13 @@ function sizesAt(
 
   const children = measured.split.children;
 
-  const shared = children.reduce(
-    (sum, child, index) =>
-      sum + (child.size.kind === "share" && lengths.has(index) ? child.size.share : 0),
+  const weights = children.reduce(
+    (sum, child, index) => sum + (lengths.has(index) ? sizeWeight(child.size) : 0),
     0,
   );
 
-  const sharedLength = children.reduce(
-    (sum, child, index) => sum + (child.size.kind === "share" ? (lengths.get(index) ?? 0) : 0),
+  const weightedLength = children.reduce(
+    (sum, child, index) => sum + (typeof child.size === "number" ? (lengths.get(index) ?? 0) : 0),
     0,
   );
 
@@ -350,12 +349,9 @@ function sizesAt(
 
     if (next === undefined) return child.size;
 
-    if (child.size.kind === "pixels") return { kind: "pixels", pixels: next };
+    if (typeof child.size !== "number") return { px: next };
 
-    return {
-      kind: "share",
-      share: sharedLength === 0 ? child.size.share : (next / sharedLength) * shared,
-    };
+    return weightedLength === 0 ? child.size : (next / weightedLength) * weights;
   });
 }
 
@@ -402,16 +398,13 @@ function separatorValue(
     (child) => !(child.node.kind === "pane" && child.node.hidden),
   );
 
-  const shares = (shown ?? []).reduce(
-    (sum, child) => sum + (child.size.kind === "share" ? child.size.share : 0),
-    0,
-  );
+  const weights = (shown ?? []).reduce((sum, child) => sum + sizeWeight(child.size), 0);
 
   const leading = (split?.children.slice(0, separator.index + 1) ?? [])
     .filter((child) => shown?.includes(child) === true)
-    .reduce((sum, child) => sum + (child.size.kind === "share" ? child.size.share : 0), 0);
+    .reduce((sum, child) => sum + sizeWeight(child.size), 0);
 
-  const now = shares === 0 ? 50 : Math.round((leading / shares) * 100);
+  const now = weights === 0 ? 50 : Math.round((leading / weights) * 100);
   const measured = frame === undefined ? undefined : measure(layout, separator, geometry, frame);
 
   if (measured === undefined) return { now, min: 0, max: 100 };

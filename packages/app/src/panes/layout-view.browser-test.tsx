@@ -262,10 +262,7 @@ async function checkLayout(): Promise<string> {
         {
           kind: "resize",
           split: split.id,
-          sizes: [
-            { kind: "share", share: 0.35 },
-            { kind: "share", share: 0.65 },
-          ],
+          sizes: [0.35, 0.65],
         },
       ]),
       await step("zoom", [{ kind: "zoom", pane: right.pane }]),

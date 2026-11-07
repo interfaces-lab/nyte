@@ -102,7 +102,6 @@ export class PaneController {
         kind: "open",
         content: chatContent(BLANK),
         place: { kind: "edge", pane: this.getSnapshot().focus[0], direction, side: "after" },
-        activate: true,
       },
     ]);
   }
@@ -152,7 +151,7 @@ export class PaneController {
 
     this.#show([
       source === undefined
-        ? { kind: "open", content: chatContent(selection), place, activate: true }
+        ? { kind: "open", content: chatContent(selection), place }
         : { kind: "move", tab: source.tab, place },
     ]);
   }

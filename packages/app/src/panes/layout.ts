@@ -31,9 +31,8 @@ export interface Pane<Content extends TabContent> {
   readonly hidden: boolean;
 }
 
-export type PaneSize =
-  | { readonly kind: "share"; readonly share: number }
-  | { readonly kind: "pixels"; readonly pixels: number };
+/** A weight shared with the split's other weighted children, or a fixed width in pixels. */
+export type PaneSize = number | { readonly px: number };
 
 export interface SplitChild<Content extends TabContent> {
   readonly node: LayoutNode<Content>;
@@ -73,12 +72,7 @@ export type TabPlace =
   | { readonly kind: "for"; readonly tabKind: string };
 
 export type LayoutAction<Content extends TabContent> =
-  | {
-      readonly kind: "open";
-      readonly content: Content;
-      readonly place: TabPlace;
-      readonly activate: boolean;
-    }
+  | { readonly kind: "open"; readonly content: Content; readonly place: TabPlace }
   | { readonly kind: "move"; readonly tab: PaneTabId; readonly place: TabPlace }
   | { readonly kind: "activate"; readonly tab: PaneTabId }
   | { readonly kind: "close"; readonly tab: PaneTabId }
@@ -96,6 +90,10 @@ export interface LayoutRules<Content extends TabContent> {
 }
 
 export const MAX_PANES = 6;
+
+export function sizeWeight(size: PaneSize): number {
+  return typeof size === "number" ? size : 0;
+}
 
 export function createLayout<Content extends TabContent>(
   content: Content,
@@ -155,7 +153,7 @@ export function reduceLayout<Content extends TabContent>(
 ): Layout<Content> {
   switch (action.kind) {
     case "open":
-      return open(layout, action.content, action.place, action.activate, rules);
+      return open(layout, action.content, action.place, rules);
     case "move":
       return move(layout, action.tab, action.place, rules);
     case "activate":
@@ -186,7 +184,6 @@ function open<Content extends TabContent>(
   layout: Layout<Content>,
   content: Content,
   place: TabPlace,
-  activate: boolean,
   rules: LayoutRules<Content>,
 ): Layout<Content> {
   const identity = rules.identify(content);
@@ -198,12 +195,12 @@ function open<Content extends TabContent>(
           .flatMap((pane) => pane.tabs)
           .find((tab) => rules.identify(tab.content) === identity);
 
-  if (existing !== undefined) return activate ? activateTab(layout, existing.id) : layout;
+  if (existing !== undefined) return activateTab(layout, existing.id);
   const tab = { id: asId<"pane-tab">(rules.newId()), content };
 
   return place.kind === "pane"
-    ? insertTab(layout, tab, place.pane, place.index, activate)
-    : placeTab(layout, tab, place, activate, rules);
+    ? insertTab(layout, tab, place.pane, place.index)
+    : placeTab(layout, tab, place, rules);
 }
 
 function move<Content extends TabContent>(
@@ -234,8 +231,8 @@ function move<Content extends TabContent>(
 
   const moved =
     place.kind === "pane"
-      ? insertTab(without, tab, place.pane, place.index, true)
-      : placeTab(without, tab, place, true, rules);
+      ? insertTab(without, tab, place.pane, place.index)
+      : placeTab(without, tab, place, rules);
 
   return moved === without ? layout : moved;
 }
@@ -299,9 +296,9 @@ function resize<Content extends TabContent>(
       const size = sizes[index] ?? child.size;
 
       const same =
-        size.kind === "share"
-          ? child.size.kind === "share" && child.size.share === size.share
-          : child.size.kind === "pixels" && child.size.pixels === size.pixels;
+        typeof size === "number"
+          ? child.size === size
+          : typeof child.size !== "number" && child.size.px === size.px;
 
       return same ? child : { node: child.node, size };
     });
@@ -364,12 +361,11 @@ function placeTab<Content extends TabContent>(
   layout: Layout<Content>,
   tab: PaneTab<Content>,
   place: Exclude<TabPlace, { readonly kind: "pane" }>,
-  activate: boolean,
   rules: LayoutRules<Content>,
 ): Layout<Content> {
   switch (place.kind) {
     case "focused":
-      return intoPane(layout, tab, focusedPane(layout), activate, rules);
+      return intoPane(layout, tab, focusedPane(layout), rules);
     case "edge":
       return besidePane(layout, tab, place.pane, place.direction, place.side, rules);
     case "for": {
@@ -377,12 +373,10 @@ function placeTab<Content extends TabContent>(
         .map((id) => findPane(layout, id))
         .find((pane) => pane?.tabs.some((entry) => entry.content.kind === place.tabKind));
 
-      if (holder !== undefined) return intoPane(layout, tab, holder, activate, rules);
+      if (holder !== undefined) return intoPane(layout, tab, holder, rules);
       const beside = besidePane(layout, tab, focusedPane(layout).id, "right", "after", rules);
 
-      return beside === layout
-        ? intoPane(layout, tab, focusedPane(layout), activate, rules)
-        : beside;
+      return beside === layout ? intoPane(layout, tab, focusedPane(layout), rules) : beside;
     }
 
     default: {
@@ -397,7 +391,6 @@ function intoPane<Content extends TabContent>(
   layout: Layout<Content>,
   tab: PaneTab<Content>,
   pane: Pane<Content>,
-  activate: boolean,
   rules: LayoutRules<Content>,
 ): Layout<Content> {
   const replaced = pane.tabs.find(
@@ -406,15 +399,13 @@ function intoPane<Content extends TabContent>(
 
   if (replaced !== undefined) {
     const tabs = mapTabs(pane.tabs, (entry) => (entry === replaced ? tab : entry));
-    const active = pane.active === replaced.id ? tab.id : pane.active;
-    const next = replacePane(layout, { ...pane, tabs, active });
 
-    return activate ? focusAndActivate(next, pane.id, tab.id) : next;
+    return focusAndActivate(replacePane(layout, { ...pane, tabs }), pane.id, tab.id);
   }
 
   const after = pane.tabs.findIndex((entry) => entry.id === pane.active) + 1;
 
-  return insertTab(layout, tab, pane.id, after, activate);
+  return insertTab(layout, tab, pane.id, after);
 }
 
 function insertTab<Content extends TabContent>(
@@ -422,14 +413,13 @@ function insertTab<Content extends TabContent>(
   tab: PaneTab<Content>,
   paneId: PaneId,
   index: number,
-  activate: boolean,
 ): Layout<Content> {
   const pane = findPane(layout, paneId);
 
   if (pane === undefined) return layout;
   const next = replacePane(layout, { ...pane, tabs: insertAt(pane.tabs, index, tab) });
 
-  return activate ? focusAndActivate(next, pane.id, tab.id) : next;
+  return focusAndActivate(next, pane.id, tab.id);
 }
 
 function besidePane<Content extends TabContent>(
@@ -466,8 +456,8 @@ function insertBeside<Content extends TabContent>(
 ): LayoutNode<Content> {
   if (node.kind === "pane") {
     if (node.id !== target) return node;
-    const placed: SplitChild<Content> = { node: pane, size: { kind: "share", share: 1 } };
-    const kept: SplitChild<Content> = { node, size: { kind: "share", share: 1 } };
+    const placed: SplitChild<Content> = { node: pane, size: 1 };
+    const kept: SplitChild<Content> = { node, size: 1 };
 
     return {
       kind: "split",
@@ -507,20 +497,13 @@ function splitSize<Content extends TabContent>(
   size: PaneSize,
   siblings: SplitChildren<Content>,
 ): { readonly kept: PaneSize; readonly added: PaneSize } {
-  if (size.kind === "share") {
-    const half: PaneSize = { kind: "share", share: size.share / 2 };
+  if (typeof size === "number") return { kept: size / 2, added: size / 2 };
+  const weights = siblings.flatMap((child) => (typeof child.size === "number" ? [child.size] : []));
 
-    return { kept: half, added: half };
-  }
+  const added =
+    weights.length === 0 ? 1 : weights.reduce((sum, value) => sum + value, 0) / weights.length;
 
-  const shares = siblings.flatMap((child) =>
-    child.size.kind === "share" ? [child.size.share] : [],
-  );
-
-  const share =
-    shares.length === 0 ? 1 : shares.reduce((sum, value) => sum + value, 0) / shares.length;
-
-  return { kept: size, added: { kind: "share", share } };
+  return { kept: size, added };
 }
 
 function removeTab<Content extends TabContent>(
@@ -582,19 +565,12 @@ function flatten<Content extends TabContent>(
     if (child.node.kind !== "split" || child.node.direction !== direction) return [child];
     const inner = child.node.children;
 
-    const total = inner.reduce(
-      (sum, entry) => sum + (entry.size.kind === "share" ? entry.size.share : 0),
-      0,
-    );
-
+    const total = inner.reduce((sum, entry) => sum + sizeWeight(entry.size), 0);
     const outer = child.size;
 
     return inner.map((entry) =>
-      entry.size.kind === "share" && outer.kind === "share" && total > 0
-        ? {
-            node: entry.node,
-            size: { kind: "share", share: (entry.size.share / total) * outer.share },
-          }
+      typeof entry.size === "number" && typeof outer === "number" && total > 0
+        ? { node: entry.node, size: (entry.size / total) * outer }
         : entry,
     );
   });

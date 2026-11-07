@@ -56,7 +56,7 @@ function row(...children: readonly (readonly [Node, number])[]): Node {
 }
 
 function share(value: number): PaneSize {
-  return { kind: "share", share: value };
+  return value;
 }
 
 function layout(
@@ -83,7 +83,7 @@ function describe(state: Layout<Note>): string {
 
     const children = entry.children.map(
       (child) =>
-        `${node(child.node)} ${child.size.kind === "share" ? String(Number(child.size.share.toFixed(4))) : `${String(child.size.pixels)}px`}`,
+        `${node(child.node)} ${typeof child.size === "number" ? String(Number(child.size.toFixed(4))) : `${String(child.size.px)}px`}`,
     );
 
     return `${entry.direction}(${children.join(", ")})`;
@@ -141,7 +141,6 @@ test.each<{
       kind: "open",
       content: { kind: "note", text: "four" },
       place: { kind: "focused" },
-      activate: true,
     },
     expected: "right(A[one,four*,two] 1, B[three*] 1) focus A,B",
     kept: [ONE, TWO, THREE],
@@ -152,7 +151,6 @@ test.each<{
       kind: "open",
       content: { kind: "note", text: "three" },
       place: { kind: "focused" },
-      activate: true,
     },
     expected: "right(A[one*,two] 1, B[three*] 1) focus B,A",
     kept: [ONE, TWO, THREE],
@@ -231,7 +229,6 @@ test.each<{
       kind: "open",
       content: { kind: "preview", text: "sketch" },
       place: { kind: "focused" },
-      activate: true,
     },
     expected: "A[one,sketch*] focus A",
   },
@@ -242,7 +239,6 @@ test.each<{
       kind: "open",
       content: { kind: "note", text: "four" },
       place: { kind: "for", tabKind: "note" },
-      activate: true,
     },
     expected: "right(A[chat*] 1, B[three,four*] 1) focus B,A",
   },
@@ -253,7 +249,6 @@ test.each<{
       kind: "open",
       content: { kind: "note", text: "four" },
       place: { kind: "for", tabKind: "note" },
-      activate: true,
     },
     expected: "right(A[chat*] 1, id2[four*] 1) focus id2,A",
   },

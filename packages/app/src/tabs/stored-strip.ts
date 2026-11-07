@@ -178,14 +178,8 @@ function migrateLayout(layout: Static<typeof earlierLayoutSchema>): Layout<PaneC
       id: asId<"split">("split"),
       direction: layout.direction,
       children: [
-        {
-          node: earlierPane(layout.leading, layout[layout.leading]),
-          size: { kind: "share", share: layout.ratio },
-        },
-        {
-          node: earlierPane(trailing, layout[trailing]),
-          size: { kind: "share", share: 1 - layout.ratio },
-        },
+        { node: earlierPane(layout.leading, layout[layout.leading]), size: layout.ratio },
+        { node: earlierPane(trailing, layout[trailing]), size: 1 - layout.ratio },
       ],
     },
     focus: [asId<"pane">(focused), asId<"pane">(other)],

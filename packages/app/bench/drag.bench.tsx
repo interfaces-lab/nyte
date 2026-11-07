@@ -76,10 +76,7 @@ export async function run(): Promise<string> {
       const started = performance.now();
       const ratio = RATIO_FROM + ((RATIO_TO - RATIO_FROM) * move) / (MOVES - 1);
       const lead = (ratio * (panes.length - 1)) / (1 - ratio);
-      const sizes = panes.map((_, index) => ({
-        kind: "share" as const,
-        share: index === 0 ? lead : 1,
-      }));
+      const sizes = panes.map((_, index) => (index === 0 ? lead : 1));
       const geometry = layoutGeometry(
         reduceLayout(layout, { kind: "resize", split: SPLIT, sizes }, paneRules),
       );
@@ -118,7 +115,7 @@ function rowLayout(panes: readonly PaneId[]): Layout<PaneContent> {
         active: tab,
         hidden: false,
       },
-      size: { kind: "share", share: 1 },
+      size: 1,
     };
   });
   const first = children[0];

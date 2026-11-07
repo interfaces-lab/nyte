@@ -3,7 +3,15 @@ import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Value } from "typebox/value";
 import { layoutPanes, normalizeLayout } from "./layout.ts";
-import type { Layout, LayoutNode, Pane, PaneTab, SplitChild, TabContent } from "./layout.ts";
+import type {
+  Layout,
+  LayoutNode,
+  Pane,
+  PaneSize,
+  PaneTab,
+  SplitChild,
+  TabContent,
+} from "./layout.ts";
 
 export interface StoredContent {
   readonly kind: string;
@@ -14,9 +22,15 @@ const strict = { additionalProperties: false };
 
 const nonEmpty = Type.String({ minLength: 1 });
 
+const weight = Type.Number({ exclusiveMinimum: 0 });
+
+const pixels = Type.Number({ minimum: 0 });
+
 const sizeSchema = Type.Union([
-  Type.Object({ kind: Type.Literal("share"), share: Type.Number({ exclusiveMinimum: 0 }) }, strict),
-  Type.Object({ kind: Type.Literal("pixels"), pixels: Type.Number({ minimum: 0 }) }, strict),
+  weight,
+  Type.Object({ px: pixels }, strict),
+  Type.Object({ kind: Type.Literal("share"), share: weight }, strict),
+  Type.Object({ kind: Type.Literal("pixels"), pixels }, strict),
 ]);
 
 const tabSchema = Type.Object({ id: nonEmpty, kind: nonEmpty, fields: Type.Unknown() }, strict);
@@ -124,7 +138,7 @@ function restoreNode<Content extends TabContent>(
   const children = stored.children.flatMap((child): SplitChild<Content>[] => {
     const node = restoreNode(child.node, restore);
 
-    return node === undefined ? [] : [{ node, size: child.size }];
+    return node === undefined ? [] : [{ node, size: restoreSize(child.size) }];
   });
 
   const first = children[0];
@@ -164,6 +178,12 @@ function restorePane<Content extends TabContent>(
     active,
     hidden: stored.hidden,
   };
+}
+
+function restoreSize(size: Static<typeof sizeSchema>): PaneSize {
+  if (typeof size === "number" || "px" in size) return size;
+
+  return size.kind === "share" ? size.share : { px: size.pixels };
 }
 
 function uniqueIds<Content extends TabContent>(root: LayoutNode<Content>): boolean {

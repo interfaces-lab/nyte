@@ -63,8 +63,8 @@ test.each<{
         id: asId<"split">("split"),
         direction: "right",
         children: [
-          { node: pane("secondary", beta), size: { kind: "share", share: 0.3 } },
-          { node: pane("primary", alpha), size: { kind: "share", share: 0.7 } },
+          { node: pane("secondary", beta), size: 0.3 },
+          { node: pane("primary", alpha), size: 0.7 },
         ],
       },
       focus: [asId<"pane">("primary"), asId<"pane">("secondary")],
@@ -80,8 +80,8 @@ test.each<{
         id: asId<"split">("split"),
         direction: "down",
         children: [
-          { node: pane("primary", alpha), size: { kind: "share", share: 0.3 } },
-          { node: pane("secondary", blank), size: { kind: "share", share: 0.7 } },
+          { node: pane("primary", alpha), size: 0.3 },
+          { node: pane("secondary", blank), size: 0.7 },
         ],
       },
       focus: [asId<"pane">("primary"), asId<"pane">("secondary")],
