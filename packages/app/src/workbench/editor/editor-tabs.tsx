@@ -237,7 +237,6 @@ export function EditorTabs(input: {
             );
           })}
           {insertion?.before === null && <span aria-hidden="true" {...props(styles.insertEnd)} />}
-          {group.tabs.length === 0 && <span {...props(styles.empty)}>No open files</span>}
         </Tabs.List>
       </Tabs.Root>
       <span {...props(styles.actions)}>
@@ -388,7 +387,6 @@ const styles = create({
     pointerEvents: "var(--_file-close-events)",
   },
   actions: { display: "flex", flexShrink: 0, gap: space.s0_5 },
-  empty: { paddingInline: space.s1, fontSize: type.fontSm, lineHeight: type.leadingSm },
   path: { whiteSpace: "normal", overflowWrap: "anywhere" },
   insertBefore: {
     "::before": {

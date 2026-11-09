@@ -294,7 +294,6 @@ export function WorkbenchTabStrip({
   };
 
   const close = (tab: WorkbenchStripTab): void => {
-    if (tab.kind === "editor") return;
     void closeTab(viewKey, tab.id).then(
       (outcome) => {
         if (outcome.kind === "closed") focusSelectedTab();
@@ -370,7 +369,6 @@ export function WorkbenchTabStrip({
                   {...props(
                     agentTerminal && surfaceTheme.purple,
                     styles.item,
-                    tab.kind === "editor" && styles.withoutClose,
                     agentTerminal && styles.agentTerminal,
                     activeValue === tab.id && styles.active,
                   )}
@@ -444,31 +442,28 @@ export function WorkbenchTabStrip({
                       </span>
                     )}
                   </Tabs.Tab>
-                  {tab.kind !== "editor" && (
-                    <span {...props(styles.close)}>
-                      <Button
-                        size="2xs"
-                        variant="plain"
-                        iconOnly
-                        icon="x"
-                        aria-label={`Close ${label} tab`}
-                        ref={
-                          activeValue !== tab.id
-                            ? undefined
-                            : tab.kind === "terminal"
-                              ? terminalCloseRef
-                              : undefined
-                        }
-                        tabIndex={activeValue === tab.id ? 0 : -1}
-                        onClick={(event) => {
-                          if (tab.kind === "terminal")
-                            terminalCloseRef.current = event.currentTarget;
+                  <span {...props(styles.close)}>
+                    <Button
+                      size="2xs"
+                      variant="plain"
+                      iconOnly
+                      icon="x"
+                      aria-label={`Close ${label} tab`}
+                      ref={
+                        activeValue !== tab.id
+                          ? undefined
+                          : tab.kind === "terminal"
+                            ? terminalCloseRef
+                            : undefined
+                      }
+                      tabIndex={activeValue === tab.id ? 0 : -1}
+                      onClick={(event) => {
+                        if (tab.kind === "terminal") terminalCloseRef.current = event.currentTarget;
 
-                          close(tab);
-                        }}
-                      />
-                    </span>
-                  )}
+                        close(tab);
+                      }}
+                    />
+                  </span>
                 </div>
               );
 

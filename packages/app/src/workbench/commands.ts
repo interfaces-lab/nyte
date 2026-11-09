@@ -4,7 +4,7 @@ import { nyte } from "../contract/nyte.ts";
 import { mentionsFolder } from "../references/message-references.ts";
 import type { ReferenceOpener } from "../references/reference-opener.tsx";
 import { fileActions } from "./editor/file-store.ts";
-import { FOLLOW_BROWSE, matchingTab, WORKBENCH_KINDS } from "./model.ts";
+import { EDITOR_SLOT, FOLLOW_BROWSE, matchingTab, WORKBENCH_KINDS } from "./model.ts";
 import type {
   KindInput,
   LaunchKind,
@@ -69,6 +69,8 @@ type CloseOutcome =
   | { readonly kind: "confirm"; readonly reason: "dirty" | "running" };
 
 export async function closeTab(view: WorkbenchViewKey, id: WorkbenchTabId): Promise<CloseOutcome> {
+  if (id === EDITOR_SLOT) return closeEditor(view);
+
   const tab = workbench.getView(view).tabs.find((candidate) => candidate.id === id);
 
   if (tab?.kind === "file")
@@ -92,6 +94,23 @@ export async function closeTab(view: WorkbenchViewKey, id: WorkbenchTabId): Prom
   }
 
   workbench.dispatch(view, { kind: "close", id });
+
+  return { kind: "closed" };
+}
+
+function closeEditor(view: WorkbenchViewKey): CloseOutcome {
+  const files = workbench.getView(view).tabs.filter((tab) => tab.kind === "file");
+  const closed = files.map((tab) => fileActions.close(view, tab.id));
+  const kept = files[closed.indexOf(false)];
+
+  if (kept !== undefined) {
+    workbench.dispatch(view, { kind: "activate", id: kept.id });
+
+    return { kind: "confirm", reason: "dirty" };
+  }
+
+  for (const tab of workbench.getView(view).tabs)
+    if (tab.kind === "editor") workbench.dispatch(view, { kind: "close", id: tab.id });
 
   return { kind: "closed" };
 }
