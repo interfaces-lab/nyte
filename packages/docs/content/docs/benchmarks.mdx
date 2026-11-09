@@ -1,0 +1,73 @@
+---
+title: Benchmarks
+description: How much Nyte sends before your first word, how little time it adds, how well models use its tools, and how it compares.
+---
+
+Nyte is a harness: it gives a model its tools, runs them and keeps the conversation. A good harness stays out of the model's way. This page measures how much Nyte sends before your first word, how little time it adds, whether models use its tools well, and what it connects to.
+
+<BenchmarkHighlights />
+
+## Prompt size [#prompt]
+
+Every request starts with the harness's own text: its instructions and a definition for each tool. You pay for it on every turn, and it takes room your code could use.
+
+<PromptSize />
+
+Each harness is measured as it ships, in an empty project with no skills, MCP servers or project instructions. Characters are compared because each provider counts tokens its own way.
+
+## Harness speed [#speed]
+
+How much time Nyte itself adds to a turn. The run swaps the model for a scripted one that answers at once and has it read a one-line file, so what's left is Nyte: taking the message, building each request, running the tool call and saving the answer.
+
+<HarnessOverhead />
+
+Run both on your machine with `pnpm --dir packages/nyte-bench overhead --out /tmp/nyte-overhead`.
+
+## Tool use [#tools]
+
+A smaller prompt only helps if models still use the tools well. Nyte Bench sends real models short requests through a fresh Nyte with only its built-in tools, and checks what they do: the right tool in as few rounds as the request needs, with every call working the first time. The chart cases never mention a chart; the model has to see that the numbers want one. Each chart is then rendered in a real browser and fails if it throws an error.
+
+<SuiteScores />
+
+Three samples per case. Run it with `pnpm --dir packages/nyte-bench bench --out /tmp/nyte-bench`.
+
+## Long coding tasks [#deepswe]
+
+Nyte Bench runs Nyte on [DeepSWE](https://deepswe.datacurve.ai/) tasks: feature and bug-fix work in real open-source repositories, graded by each task's own tests. The chart puts Nyte's run beside the results [eve publishes](https://eve.dev/docs/code-extension) for eve-code, opencode, pi and fx on the same model.
+
+<HarnessBenchmark />
+
+### Read it carefully [#caveats]
+
+- **The task sets differ.** eve-bench runs 12 DeepSWE tasks it doesn't name. Nyte runs tasks drawn from DeepSWE v1.1 with a fixed seed. The rows share a model, a time limit and a verifier, but not their tasks, so compare them as separate measurements, not as a ranking.
+- **Overlapping intervals are ties.** Each line is a 95% interval from resampling whole tasks. When two lines overlap, the run can't tell those harnesses apart.
+- **Few tasks give wide intervals.** More tasks narrow an interval. More attempts on the same tasks barely do.
+- **The machines differ.** Nyte's runs use DeepSWE's x86 images under emulation on Apple silicon, so a slow test suite eats more of the 20 minutes than it would in eve-bench's sandboxes.
+
+### How a run works [#method]
+
+Each attempt follows DeepSWE v1.1:
+
+1. The task's image starts with no network. Nyte runs on this machine and sends every command into the container, so builds and tests use the task's toolchain.
+2. Nyte gets the task's instruction as its first message, on `anthropic/claude-sonnet-5-5` with high reasoning, and has 20 minutes, eve-bench's limit.
+3. The task's collect command turns Nyte's commits into a patch.
+4. The task's verifier applies that patch in a fresh container and runs the held-out tests. An attempt resolves only when every graded test passes. A crash or a timeout counts as a failure.
+
+Web search and fetch are off, as they are in eve-bench, so the model can't look up an upstream fix. Cost is the providers' list price for every request, including the chat title.
+
+You need Docker and a Nyte login for the model's provider. Clone DeepSWE, then run Nyte Bench from a Nyte checkout:
+
+```sh
+git clone https://github.com/datacurve-ai/deep-swe /tmp/deep-swe
+pnpm --dir packages/nyte-bench deepswe --dataset /tmp/deep-swe/tasks --out /tmp/nyte-deepswe
+```
+
+It writes `results.jsonl`, one line per attempt, and `summary.json` in the shape this page reads.
+
+## Capabilities [#capabilities]
+
+Nyte and eve are built for different jobs. eve is a framework for deploying agents into places like Slack, GitHub and your own web app. Nyte is a harness you use directly, from the desktop, the terminal, the web or your phone, with the model logins you already have. Each cell links to the page that shows it.
+
+<HarnessCapabilities />
+
+eve's column is counted from its source at version 1.0.0-rc.6.

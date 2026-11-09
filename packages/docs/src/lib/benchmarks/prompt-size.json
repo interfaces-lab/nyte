@@ -1,0 +1,27 @@
+{
+  "source": "https://github.com/pingdotgg/t3code/tree/ad9e87111fd9b2f10ec320b4de0a6ad3a092278a/evals/mcp-tool-use/templates",
+  "note": "Characters of JSON in one captured turn's fixed prompt: tool definitions plus system text. T3 Code's own tools and instructions are left out.",
+  "harnesses": [
+    {
+      "harness": "Nyte",
+      "tools": 18,
+      "toolChars": 12834,
+      "systemChars": 542,
+      "ours": true
+    },
+    {
+      "harness": "Claude Code",
+      "tools": 13,
+      "toolChars": 34255,
+      "systemChars": 18542,
+      "ours": false
+    },
+    {
+      "harness": "Codex",
+      "tools": 11,
+      "toolChars": 38437,
+      "systemChars": 27712,
+      "ours": false
+    }
+  ]
+}

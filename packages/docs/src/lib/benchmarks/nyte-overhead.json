@@ -1,0 +1,129 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-11-09T22:32:23.062Z",
+  "prompt": {
+    "systemChars": 542,
+    "toolChars": 12834,
+    "tools": [
+      {
+        "name": "canvas_render",
+        "chars": 2785
+      },
+      {
+        "name": "bash",
+        "chars": 1413
+      },
+      {
+        "name": "create",
+        "chars": 1249
+      },
+      {
+        "name": "task",
+        "chars": 1082
+      },
+      {
+        "name": "question",
+        "chars": 962
+      },
+      {
+        "name": "edit",
+        "chars": 916
+      },
+      {
+        "name": "request_secret",
+        "chars": 826
+      },
+      {
+        "name": "read",
+        "chars": 489
+      },
+      {
+        "name": "web_fetch",
+        "chars": 430
+      },
+      {
+        "name": "job",
+        "chars": 386
+      },
+      {
+        "name": "send",
+        "chars": 373
+      },
+      {
+        "name": "write",
+        "chars": 366
+      },
+      {
+        "name": "list",
+        "chars": 330
+      },
+      {
+        "name": "await",
+        "chars": 317
+      },
+      {
+        "name": "web_search",
+        "chars": 246
+      },
+      {
+        "name": "session_rename",
+        "chars": 230
+      },
+      {
+        "name": "read_agent",
+        "chars": 230
+      },
+      {
+        "name": "stop",
+        "chars": 204
+      }
+    ]
+  },
+  "scripted": {
+    "runs": 50,
+    "description": "One turn on a scripted model that answers at once: read a small file, then reply. What remains is the harness's own time.",
+    "hostOpenColdMs": 25.454416000000037,
+    "hostOpenMs": {
+      "p50": 14.565792000000101,
+      "p90": 15.254645200000004
+    },
+    "preModelMs": {
+      "p50": 8.6114501953125,
+      "p90": 9.4738037109375
+    },
+    "toolHopMs": {
+      "p50": 1.1697998046875,
+      "p90": 1.4837158203125
+    },
+    "finalizeMs": {
+      "p50": 1.3524169921875,
+      "p90": 1.7110107421875
+    },
+    "harnessMs": {
+      "p50": 11.63907176562509,
+      "p90": 12.996651671875066
+    },
+    "turnMs": {
+      "p50": 13.7227783203125,
+      "p90": 15.631494140625
+    }
+  },
+  "firstRequest": {
+    "prompt": "Reply with the single word OK.",
+    "models": [
+      {
+        "model": "anthropic/claude-sonnet-5-5",
+        "tokens": 5680,
+        "tools": 18,
+        "costUsd": 0.022875399999999997
+      },
+      {
+        "model": "openai-codex/gpt-6.1-sol",
+        "tokens": 2786,
+        "tools": 18,
+        "costUsd": 0.006852
+      }
+    ]
+  },
+  "machine": "Apple M4 Pro, SQLite store"
+}

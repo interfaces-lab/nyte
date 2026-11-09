@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "dataset": {
+    "name": "deepswe",
+    "version": "v1.1",
+    "commit": "0b9fabbb63b9104d678fe965e1632f2dd9eaa2ea",
+    "selection": "named"
+  },
+  "model": {
+    "id": "anthropic/claude-sonnet-5-5",
+    "thinking": "high"
+  },
+  "attempts": 1,
+  "tasks": ["ink-grid-box-layout", "kysely-window-grouping-helpers", "yjs-map-conflict-detection"],
+  "timeoutSec": 1200,
+  "generatedAt": "2026-11-09T19:57:02.193Z",
+  "harness": {
+    "harness": "nyte",
+    "version": "171cb754c",
+    "resolved": 1,
+    "attempts": 3,
+    "resolveRate": {
+      "estimate": 0.3333333333333333,
+      "low": 0,
+      "high": 1
+    },
+    "costUsd": 2.6169454,
+    "costPerResolvedUsd": 2.6169454,
+    "inputTokens": 4210155,
+    "outputTokens": 124144,
+    "cachedShare": 0.9418498843866794,
+    "latencyP50Ms": 636892,
+    "latencyP90Ms": 1087976,
+    "source": "171cb754c",
+    "runUrl": null,
+    "measuredAt": "2026-11-09T19:57:02.217Z"
+  },
+  "perTask": [
+    {
+      "task": "ink-grid-box-layout",
+      "language": "typescript",
+      "resolved": 0,
+      "attempts": 1
+    },
+    {
+      "task": "kysely-window-grouping-helpers",
+      "language": "typescript",
+      "resolved": 1,
+      "attempts": 1
+    },
+    {
+      "task": "yjs-map-conflict-detection",
+      "language": "javascript",
+      "resolved": 0,
+      "attempts": 1
+    }
+  ]
+}

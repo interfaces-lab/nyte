@@ -1,0 +1,127 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-11-09T22:32:23.696Z",
+  "models": ["anthropic/claude-sonnet-5-5", "openai-codex/gpt-6.1-sol"],
+  "suites": [
+    {
+      "id": "tool-calls",
+      "title": "Tool calls",
+      "models": [
+        {
+          "model": "anthropic/claude-sonnet-5-5",
+          "passed": 20,
+          "graded": 24,
+          "bad": {
+            "passed": 9,
+            "graded": 12
+          },
+          "guard": {
+            "passed": 5,
+            "graded": 6
+          },
+          "control": {
+            "passed": 6,
+            "graded": 6
+          }
+        },
+        {
+          "model": "openai-codex/gpt-6.1-sol",
+          "passed": 19,
+          "graded": 24,
+          "bad": {
+            "passed": 7,
+            "graded": 12
+          },
+          "guard": {
+            "passed": 6,
+            "graded": 6
+          },
+          "control": {
+            "passed": 6,
+            "graded": 6
+          }
+        }
+      ]
+    },
+    {
+      "id": "subagent-models",
+      "title": "Subagent models",
+      "models": [
+        {
+          "model": "anthropic/claude-sonnet-5-5",
+          "passed": 15,
+          "graded": 15,
+          "bad": {
+            "passed": 15,
+            "graded": 15
+          },
+          "guard": {
+            "passed": 0,
+            "graded": 0
+          },
+          "control": {
+            "passed": 0,
+            "graded": 0
+          }
+        },
+        {
+          "model": "openai-codex/gpt-6.1-sol",
+          "passed": 15,
+          "graded": 15,
+          "bad": {
+            "passed": 15,
+            "graded": 15
+          },
+          "guard": {
+            "passed": 0,
+            "graded": 0
+          },
+          "control": {
+            "passed": 0,
+            "graded": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "canvas",
+      "title": "Canvas",
+      "models": [
+        {
+          "model": "anthropic/claude-sonnet-5-5",
+          "passed": 24,
+          "graded": 27,
+          "bad": {
+            "passed": 9,
+            "graded": 12
+          },
+          "guard": {
+            "passed": 6,
+            "graded": 6
+          },
+          "control": {
+            "passed": 9,
+            "graded": 9
+          }
+        },
+        {
+          "model": "openai-codex/gpt-6.1-sol",
+          "passed": 24,
+          "graded": 27,
+          "bad": {
+            "passed": 9,
+            "graded": 12
+          },
+          "guard": {
+            "passed": 6,
+            "graded": 6
+          },
+          "control": {
+            "passed": 9,
+            "graded": 9
+          }
+        }
+      ]
+    }
+  ]
+}

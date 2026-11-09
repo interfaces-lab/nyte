@@ -15,6 +15,14 @@ import { splitHref } from "~/lib/href";
 import { componentsMdxComponents } from "~/components/components/mdx";
 import { foundationsMdxComponents } from "~/components/design/mdx";
 import { DocCard } from "~/components/mdx/doc-card";
+import {
+  BenchmarkHighlights,
+  HarnessBenchmark,
+  HarnessCapabilities,
+  HarnessOverhead,
+  PromptSize,
+  SuiteScores,
+} from "~/components/mdx/harness-benchmark";
 import { DesktopDownload } from "~/components/mdx/install";
 import { Mermaid } from "~/components/mdx/mermaid";
 
@@ -50,8 +58,14 @@ export const mdxComponents = {
   CodeBlockTabsTrigger,
   DocCard,
   DesktopDownload,
+  BenchmarkHighlights,
   GroupPanel,
+  HarnessBenchmark,
+  HarnessCapabilities,
+  HarnessOverhead,
   Mermaid,
+  PromptSize,
+  SuiteScores,
 } satisfies MDXComponents;
 
 declare global {
