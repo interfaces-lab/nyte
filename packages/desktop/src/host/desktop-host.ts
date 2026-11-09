@@ -9,6 +9,7 @@ import { ConnectError, ConnectRuntime } from "@nyte-ai/connect/host";
 import type {
   HostEvent,
   OpenWorkspaceOutcome,
+  RegisterWorkspaceOutcome,
   RemoteAccessPluginId,
   RemoteAccessState,
   SelectedWorkspace,
@@ -226,6 +227,8 @@ export class DesktopHost {
   readonly #usageScan: UsageScanReader;
   readonly #servers: ServerSettingsStore;
   readonly #selections = new Map<HostWindow, SelectedWorkspace>();
+  /** The folder Finder opened a window for: it shows when the window has no selection, across reloads. */
+  readonly #seeds = new Map<HostWindow, SelectedWorkspace>();
   #settings: DesktopSettings = DEFAULT_DESKTOP_SETTINGS;
   #tailnet: string | undefined;
   #rows: readonly SessionInfo[] = [];
@@ -399,15 +402,20 @@ export class DesktopHost {
     },
     "host.state": async (window) => this.#state(window),
     "host.restore": async (window, { session }) => {
-      if (!this.#selections.has(window)) await this.#selectChatFolder(window, session);
+      if (this.#state(window).workspace === undefined)
+        await this.#selectChatFolder(window, session);
 
       return this.#state(window);
     },
     "host.openWorkspace": (window, { path }) => this.#openWorkspace(window, path),
+    "host.registerWorkspace": (_window, { path }) => this.#registerWorkspace(path),
     "host.trustWorkspace": (window, { path }) => this.#openWorkspace(window, path, true),
     "host.closeWorkspace": async (window) => {
-      if (this.#selections.delete(window))
-        this.#deps.emitHostEvent({ kind: "workspace_closed" }, window);
+      const shown = this.#state(window).workspace !== undefined;
+      this.#selections.delete(window);
+      this.#seeds.delete(window);
+
+      if (shown) this.#deps.emitHostEvent({ kind: "workspace_closed" }, window);
     },
     "host.usage": async (_window, usageWindow) => this.#usageScan.scan({ window: usageWindow }),
     "host.server.state": () => this.#serverState(),
@@ -477,8 +485,40 @@ export class DesktopHost {
     "host.connect.signOut": () => this.#connect.signOut(),
   } satisfies HostCalls;
 
+  /** The window's renderer is gone or reloading; a seed outlives it. */
   releaseWindow(window: HostWindow): void {
     this.#selections.delete(window);
+  }
+
+  closeWindow(window: HostWindow): void {
+    this.#selections.delete(window);
+    this.#seeds.delete(window);
+  }
+
+  registerWorkspace(path: string): Promise<RegisterWorkspaceOutcome> {
+    return this.#registerWorkspace(path);
+  }
+
+  /** Shows `workspace` in a window before its first load, so it emits nothing. */
+  seedWorkspace(window: HostWindow, workspace: SelectedWorkspace): void {
+    this.#seeds.set(window, workspace);
+  }
+
+  selectedWorkspace(window: HostWindow): SelectedWorkspace | undefined {
+    return this.#state(window).workspace;
+  }
+
+  /** The host's available local folders. */
+  async localWorkspaces(): Promise<readonly SelectedWorkspace[]> {
+    const host = await this.#ready();
+
+    return (await host.workspaces.list()).flatMap((workspace) =>
+      workspace.availability.kind === "available" &&
+      workspace.target.kind === "local" &&
+      "path" in workspace.target
+        ? [{ id: workspace.id, path: workspace.target.path, name: basename(workspace.target.path) }]
+        : [],
+    );
   }
 
   remoteChanged(): void {
@@ -528,7 +568,7 @@ export class DesktopHost {
   }
 
   #state(window: HostWindow) {
-    return { workspace: this.#selections.get(window) };
+    return { workspace: this.#selections.get(window) ?? this.#seeds.get(window) };
   }
 
   async #selectChatFolder(window: HostWindow, session: string): Promise<void> {
@@ -563,6 +603,16 @@ export class DesktopHost {
     path: string,
     trust = false,
   ): Promise<OpenWorkspaceOutcome> {
+    const registered = await this.#registerWorkspace(path, trust);
+
+    if (registered.kind === "failed") return registered;
+    this.#selections.set(window, registered.workspace);
+    this.#deps.emitHostEvent({ kind: "workspace_opened", workspace: registered.workspace }, window);
+
+    return { kind: "opened", workspace: registered.workspace, needsTrust: registered.needsTrust };
+  }
+
+  async #registerWorkspace(path: string, trust = false): Promise<RegisterWorkspaceOutcome> {
     const host = await this.#ready();
     const seen = await host.workspaces.inspect({ kind: "local", path });
     const added = await host.workspaces.add(seen.target, { expect: { identity: seen.identity } });
@@ -576,13 +626,10 @@ export class DesktopHost {
     if (trust) await host.workspace(added.workspace).update({ projectResources: true });
     const workspace = await host.workspace(added.workspace).info();
     const folder = "path" in workspace.target ? workspace.target.path : path;
-    const selected = { id: workspace.id, path: folder, name: basename(folder) };
-    this.#selections.set(window, selected);
-    this.#deps.emitHostEvent({ kind: "workspace_opened", workspace: selected }, window);
 
     return {
-      kind: "opened",
-      workspace: selected,
+      kind: "registered",
+      workspace: { id: workspace.id, path: folder, name: basename(folder) },
       needsTrust: workspace.trusted === null && seen.projectSources.length > 0,
     };
   }

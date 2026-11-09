@@ -66,6 +66,7 @@ export type WorkbenchViewAction =
   | { readonly kind: "toggle" }
   | { readonly kind: "toggle-collapsed" }
   | { readonly kind: "toggle-maximized" }
+  | { readonly kind: "maximize" }
   | { readonly kind: "show-chat" }
   | { readonly kind: "set-width"; readonly pixels: number }
   | { readonly kind: "toggle-sidebar"; readonly slot: string }
@@ -182,6 +183,10 @@ export function reduceView(
         ...state,
         layout: state.layout.kind === "maximized" ? SPLIT_LAYOUT : MAXIMIZED_WORKBENCH_LAYOUT,
       };
+    case "maximize":
+      return state.layout.kind === "maximized" && !workbenchShowsChat(state.layout)
+        ? state
+        : { ...state, layout: MAXIMIZED_WORKBENCH_LAYOUT };
     case "show-chat":
       return state.layout.kind === "maximized" && !workbenchShowsChat(state.layout)
         ? { ...state, layout: MAXIMIZED_CHAT_LAYOUT }

@@ -27,8 +27,10 @@ import { asId } from "@nyte-ai/schema";
 import { activeTab, tabPlace } from "../tabs/model.ts";
 import { placeHref } from "../tabs/places.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
+import { parseWindowOpen } from "../contract/desktop-window.ts";
 import type { DesktopWindow } from "../contract/desktop-window.ts";
 import { CustomizeSurface } from "../customize/customize.tsx";
+import { openWindowInEditor } from "../commands/window-commands.ts";
 import { ProjectOverview } from "../projects/project-overview.tsx";
 import { showsSettingsSection, rememberWorkspaceHref, SettingsSurface } from "../settings/index.ts";
 
@@ -247,6 +249,8 @@ const routeTree = rootRoute.addChildren([workspaceRouteTree, settingsRoute]);
 
 export function startWindowTabs(desktopWindow: DesktopWindow): void {
   windowTabs.start(desktopWindow);
+
+  if (desktopWindow.open !== undefined) openWindowInEditor(parseWindowOpen(desktopWindow.open));
 }
 
 export function windowTabRoute(): string {

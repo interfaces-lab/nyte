@@ -146,7 +146,9 @@ export interface AppInfo {
 
 export type AppMenuCommand =
   | { readonly kind: "action"; readonly action: AppMenuAction }
-  | { readonly kind: "about"; readonly info: AppInfo };
+  | { readonly kind: "about"; readonly info: AppInfo }
+  /** A file Finder opened with Nyte, inside this window's workspace. */
+  | { readonly kind: "open-file"; readonly path: string };
 
 export type ServerState =
   | { readonly kind: "none" }
@@ -279,6 +281,14 @@ export interface TrustConsent {
   readonly path: string;
   readonly identity: string;
 }
+
+export type RegisterWorkspaceOutcome =
+  | {
+      readonly kind: "registered";
+      readonly workspace: SelectedWorkspace;
+      readonly needsTrust: boolean;
+    }
+  | { readonly kind: "failed"; readonly message: string };
 
 export type OpenWorkspaceOutcome =
   | { kind: "opened"; workspace: SelectedWorkspace; needsTrust: boolean }
@@ -519,7 +529,10 @@ export interface HostBridge {
   readonly remember?: (credential: CredentialSource) => void;
   fonts(): Promise<LocalFontCatalog>;
   openWorkspace(input: { path: string }): Promise<OpenWorkspaceOutcome>;
+  /** Adds the folder to the host's workspaces without selecting it for this window. */
+  registerWorkspace(input: { path: string }): Promise<RegisterWorkspaceOutcome>;
   readonly pickWorkspace?: () => Promise<OpenWorkspaceOutcome>;
+  readonly pickFolder?: () => Promise<string | undefined>;
   readonly trustWorkspace?: (input: {
     path: string;
     consent?: TrustConsent;

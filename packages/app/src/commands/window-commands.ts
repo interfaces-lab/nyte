@@ -1,15 +1,18 @@
 import type { RegisteredRouter } from "@tanstack/react-router";
 import type { AppMenuAction, HostState } from "../contract/bridge.ts";
+import type { DesktopWindowOpen } from "../contract/desktop-window.ts";
 import { shellActions } from "../tabs/shell-state.ts";
 import { folderPicker } from "../panes/open-workspace.tsx";
 import { clientCapabilities } from "../contract/client-actions.ts";
 import { focusNextPane, splitPanes } from "../panes/pane-context.tsx";
 import { nyte } from "../contract/nyte.ts";
 import { keys, queryClient } from "../data/query-client.ts";
+import { commitHostWorkspace } from "../data/workspaces.ts";
 import { closeSettings } from "../settings/return.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
 import { settingsActionPages } from "../sidebar/action-icons.ts";
 import { launch } from "../workbench/commands.ts";
+import { fileActions } from "../workbench/editor/file-store.ts";
 import { workbenchShowsChat } from "../workbench/model.ts";
 import { workbenchScope, workbenchViewKey } from "../workbench/paths.ts";
 import { activeWorkbenchTab } from "../workbench/selectors.ts";
@@ -69,6 +72,25 @@ function toggleTerminal(): void {
   else if (terminal !== undefined)
     workbench.dispatch(viewKey, { kind: "activate", id: terminal.id });
   else launch(viewKey, "terminal");
+}
+
+/**
+ * Seeds a window Finder opened: its workspace, which no host call reads at boot, then that
+ * folder's Editor, with the file when there is one, filling the window.
+ */
+export function openWindowInEditor(open: DesktopWindowOpen): void {
+  if (open.workspace !== undefined) commitHostWorkspace(open.workspace);
+  const view = workbenchViewKey(open.workspace?.path);
+
+  if (open.kind === "file") fileActions.open(view, { path: open.path });
+  else launch(view, "editor");
+  workbench.dispatch(view, { kind: "maximize" });
+}
+
+/** Opens a file Finder sent to this window in the current view's Editor. */
+export function openFileInEditor(router: RegisteredRouter, path: string): void {
+  uncoverPanes(router);
+  fileActions.open(workbenchViewKey(currentWorkspacePath()), { path });
 }
 
 export function runWindowCommand(router: RegisteredRouter, command: AppMenuAction): boolean {

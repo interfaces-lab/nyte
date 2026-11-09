@@ -10,6 +10,7 @@ import { hashKey } from "@tanstack/react-query";
 import type { Query } from "@tanstack/react-query";
 import { Type } from "typebox";
 import type { HostState } from "../contract/bridge.ts";
+import { SelectedWorkspaceType } from "../contract/desktop-window.ts";
 import { keys, queryClient } from "../data/query-client.ts";
 import { newestModelCatalog } from "../data/catalog.ts";
 import { chatStore } from "../data/chat-store.ts";
@@ -37,14 +38,7 @@ const FirstFrameType = Type.Object(
       Type.Object(
         {
           session: sessionId,
-          workspace: Type.Object(
-            {
-              id: idSchema<"workspace">(),
-              path: Type.String({ minLength: 1 }),
-              name: Type.String(),
-            },
-            { additionalProperties: false },
-          ),
+          workspace: SelectedWorkspaceType,
         },
         { additionalProperties: false },
       ),

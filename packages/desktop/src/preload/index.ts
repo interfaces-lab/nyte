@@ -18,6 +18,7 @@ import {
   VIEWING_CHANNEL,
   WINDOW_FULLSCREEN_CHANNEL,
   WINDOW_ID_ARGUMENT,
+  WINDOW_OPEN_ARGUMENT,
   WINDOW_PAINTED_CHANNEL,
   WINDOW_ZOOM_CHANNEL,
 } from "../shared/ipc.ts";
@@ -106,6 +107,7 @@ const bridge = {
       launchWindows === undefined
         ? undefined
         : { windowIds: launchWindows.split(",").filter((id) => id !== "") },
+    open: argumentValue(WINDOW_OPEN_ARGUMENT),
   },
   windowPainted: () => ipcRenderer.send(WINDOW_PAINTED_CHANNEL),
   ...(canvasShell === undefined ? {} : { canvasShell }),
@@ -128,7 +130,9 @@ const bridge = {
     fonts: none("host.fonts"),
     usage: object("host.usage"),
     openWorkspace: object("host.openWorkspace"),
+    registerWorkspace: object("host.registerWorkspace"),
     pickWorkspace: none("host.pickWorkspace"),
+    pickFolder: none("host.pickFolder"),
     trustWorkspace: object("host.trustWorkspace"),
     closeWorkspace: none("host.closeWorkspace"),
     storeOpening: none("host.storeOpening"),

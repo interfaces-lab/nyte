@@ -33,9 +33,13 @@ export const WINDOW_ID_ARGUMENT = "--nyte-window";
 /** Given only to a window opened while no other was: every window id worth keeping. */
 export const LAUNCH_WINDOWS_ARGUMENT = "--nyte-launch-windows";
 
+/** Given only to a window Finder opened: its `DesktopWindowOpen` as JSON. */
+export const WINDOW_OPEN_ARGUMENT = "--nyte-open";
+
 export const MAIN_OPERATION_PATHS = [
   "host.fonts",
   "host.pickWorkspace",
+  "host.pickFolder",
   "host.storeOpening",
   "host.updates.state",
   "host.updates.check",
@@ -69,6 +73,7 @@ const HOST_PROCESS_PATHS = [
   "host.restore",
   "host.usage",
   "host.openWorkspace",
+  "host.registerWorkspace",
   "host.trustWorkspace",
   "host.closeWorkspace",
   "host.server.state",
@@ -121,6 +126,7 @@ export type DesktopBridge = {
     | "endpoint"
     | "fonts"
     | "openWorkspace"
+    | "registerWorkspace"
     | "closeWorkspace"
     | "server"
     | "remote"
@@ -136,6 +142,7 @@ export type DesktopBridge = {
         | "usage"
         | "restore"
         | "pickWorkspace"
+        | "pickFolder"
         | "trustWorkspace"
         | "updates"
         | "hostRestart"

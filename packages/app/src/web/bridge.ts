@@ -3,6 +3,7 @@ import type {
   HostEvent,
   NyteBridge,
   OpenWorkspaceOutcome,
+  RegisterWorkspaceOutcome,
   SelectedWorkspace,
 } from "../contract/bridge.ts";
 import { errorMessage } from "../contract/errors.ts";
@@ -72,7 +73,11 @@ export function createWebBridge(): WebBridge {
     return connection;
   };
 
-  const openWorkspace = async ({ path }: { path: string }): Promise<OpenWorkspaceOutcome> => {
+  const registerWorkspace = async ({
+    path,
+  }: {
+    path: string;
+  }): Promise<RegisterWorkspaceOutcome> => {
     try {
       const host = connected();
       const seen = await host.workspaces.inspect({ kind: "local", path });
@@ -83,18 +88,26 @@ export function createWebBridge(): WebBridge {
 
       if (added.kind === "unavailable")
         return { kind: "failed", message: "This folder is not available on the server." };
-      selected = { id: added.workspace, path, name: workspaceName(seen) };
-      emit({ kind: "workspace_opened", workspace: selected });
       const { trusted } = await host.workspace(added.workspace).info();
 
       return {
-        kind: "opened",
-        workspace: selected,
+        kind: "registered",
+        workspace: { id: added.workspace, path, name: workspaceName(seen) },
         needsTrust: trusted === null && seen.projectSources.length > 0,
       };
     } catch (cause) {
       return { kind: "failed", message: errorMessage(cause) };
     }
+  };
+
+  const openWorkspace = async (input: { path: string }): Promise<OpenWorkspaceOutcome> => {
+    const registered = await registerWorkspace(input);
+
+    if (registered.kind === "failed") return registered;
+    selected = registered.workspace;
+    emit({ kind: "workspace_opened", workspace: selected });
+
+    return { kind: "opened", workspace: selected, needsTrust: registered.needsTrust };
   };
 
   const bridge: NyteBridge = {
@@ -115,11 +128,13 @@ export function createWebBridge(): WebBridge {
       },
       fonts: () => Promise.resolve({ sans: [], monospace: [] }),
       openWorkspace,
+      registerWorkspace,
       pickWorkspace: async (): Promise<OpenWorkspaceOutcome> => {
         const path = await requestFolderPath(connected().hostId);
 
         return path === undefined ? { kind: "cancelled" } : openWorkspace({ path });
       },
+      pickFolder: () => requestFolderPath(connected().hostId),
       closeWorkspace: async () => {
         selected = undefined;
         emit({ kind: "workspace_closed" });

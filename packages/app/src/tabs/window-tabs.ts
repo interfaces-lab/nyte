@@ -69,7 +69,7 @@ class WindowTabs {
     return this.#startupDestination;
   }
 
-  start(desktopWindow: DesktopWindow): void {
+  start(desktopWindow: Pick<DesktopWindow, "id" | "launch">): void {
     this.#strip = true;
     this.#windowKey = `${WINDOW_KEY_PREFIX}${desktopWindow.id}`;
 

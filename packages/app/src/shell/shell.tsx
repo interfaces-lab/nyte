@@ -6,7 +6,7 @@ import { AboutDialog } from "./about-dialog.tsx";
 import type { ReactElement } from "react";
 import { WorkspaceDialogHost } from "../panes/open-workspace.tsx";
 import { ProjectDialogHost } from "../projects/project-dialog.tsx";
-import { runWindowCommand, windowCommand } from "../commands/window-commands.ts";
+import { openFileInEditor, runWindowCommand, windowCommand } from "../commands/window-commands.ts";
 import { shellActions, useOverlays, useStagePage } from "../tabs/shell-state.ts";
 import { SidebarPane } from "../sidebar/sidebar-pane.tsx";
 import { useSidebar } from "../sidebar/use-sidebar.ts";
@@ -226,6 +226,8 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
       shellActions.showAbout(command.kind === "about" ? command.info : undefined);
 
       if (command.kind === "action") runWindowCommand(shellRouter, command.action);
+
+      if (command.kind === "open-file") openFileInEditor(shellRouter, command.path);
     }),
   );
 

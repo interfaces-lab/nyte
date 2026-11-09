@@ -107,7 +107,7 @@ export const WORKBENCH_KINDS: WorkbenchKinds = {
   editor: {
     label: "Editor",
     icon: "file",
-    available: projectOnly,
+    available: always,
     launch: { policy: "singleton", input: { kind: "editor" } },
     identity: () => "editor",
   },
@@ -145,7 +145,7 @@ export const WORKBENCH_KINDS: WorkbenchKinds = {
   file: {
     label: "File",
     icon: "file",
-    available: projectOnly,
+    available: always,
     launch: undefined,
     identity: (tab) => `${tab.group}\n${tab.path}`,
   },

@@ -90,15 +90,24 @@ test("the strip projects one Editor entry and reorders it without changing file 
 });
 
 test.each([
-  { scope: { kind: "project" } as const, expected: [EDITOR_SLOT, "terminal"] },
-  { scope: { kind: "pathless" } as const, expected: ["terminal"] },
+  { scope: { kind: "project" } as const, expected: [EDITOR_SLOT, "changes", "terminal"] },
+  { scope: { kind: "pathless" } as const, expected: [EDITOR_SLOT, "terminal"] },
 ])("the Editor strip projection respects the $scope.kind scope", (row) => {
   const state = reduceView(
-    reduceView(DEFAULT_VIEW, {
-      kind: "open-file",
-      tab: { id: "file", kind: "file", path: "/workspace/file.ts", group: "first", preview: false },
-      replace: undefined,
-    }),
+    reduceView(
+      reduceView(DEFAULT_VIEW, {
+        kind: "open-file",
+        tab: {
+          id: "file",
+          kind: "file",
+          path: "/workspace/file.ts",
+          group: "first",
+          preview: false,
+        },
+        replace: undefined,
+      }),
+      { kind: "open-changes", id: "changes", scope: { kind: "uncommitted" }, path: null },
+    ),
     { kind: "add", tab: { id: "terminal", kind: "terminal", owner: { kind: "user" } } },
   );
 

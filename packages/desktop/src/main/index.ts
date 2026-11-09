@@ -15,7 +15,7 @@ import { randomUUID } from "node:crypto";
 import { macOSTrafficLightPosition } from "./traffic-lights.ts";
 import { mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import {
   BROWSER_BOUNDS_CHANNEL,
   BROWSER_FOCUS_CHANNEL,
@@ -31,6 +31,7 @@ import {
   VIEWING_CHANNEL,
   WINDOW_FULLSCREEN_CHANNEL,
   WINDOW_ID_ARGUMENT,
+  WINDOW_OPEN_ARGUMENT,
   WINDOW_PAINTED_CHANNEL,
   WINDOW_ZOOM_CHANNEL,
 } from "../shared/ipc.ts";
@@ -81,6 +82,8 @@ import type { HostWindow } from "../shared/host-window.ts";
 import { DEFAULT_DESKTOP_SETTINGS } from "@nyte-ai/app/contract/desktop-settings.ts";
 import { LaunchStateStore } from "./launch-state.ts";
 import { registerUpdates } from "./updates/updates.ts";
+import { createOpenWith } from "./open-with.ts";
+import type { DesktopWindowOpen } from "@nyte-ai/app/contract/desktop-window.ts";
 
 import {
   decodeBrowserBounds,
@@ -259,6 +262,14 @@ const alerts = new Alerts(() => settings, {
   send: (window, event) => send(window, HOST_EVENT_CHANNEL, event),
 });
 
+const openWith = createOpenWith({
+  host: startedHost,
+  windows: () => [...windows.keys()],
+  send: (window, path) => windows.get(window)?.menuCommands.dispatch({ kind: "open-file", path }),
+  open: (opening) => createWindow(undefined, opening),
+  failed: (path, message) => dialog.showErrorBox(`Couldn't open ${basename(path)}`, message),
+});
+
 function applyViewCommand(contents: Electron.WebContents, command: ViewCommand): void {
   switch (command) {
     case "toggle-devtools":
@@ -357,6 +368,7 @@ const mainCalls: CallTable = {
       .call(window, "host.openWorkspace", { path: picked })
       .catch(throwForRenderer);
   },
+  "host.pickFolder": (window) => pickFolder(window),
   "host.storeOpening": async () => "ready",
   "host.updates.state": async () => updates?.state() ?? { kind: "idle" },
   "host.updates.check": async () => updates?.click(),
@@ -454,6 +466,7 @@ function startHost(): DesktopHost {
     linkChanged: (state) => {
       hostTray?.refresh();
       emitHostEvent({ kind: "host_restart_changed", restart: hostRestart(state) });
+      openWith.reachable(state.kind === "connected");
     },
     registrationChanged: () => hostTray?.refresh(),
   });
@@ -627,7 +640,11 @@ function openingFrame(): OpeningFrame {
 
 const FIRST_FRAME_LIMIT_MS = 4_000;
 
-function createWindow(windowId: string = randomUUID()): NyteWindow {
+/**
+ * A window Finder opened shows what it opened, not the last chat a launch returns to, and its
+ * workspace is seeded before it loads, so every load of it shows the folder.
+ */
+function createWindow(windowId: string = randomUUID(), opening?: DesktopWindowOpen): NyteWindow {
   const frame = openingFrame();
   const kept = launchState.windows();
 
@@ -645,9 +662,10 @@ function createWindow(windowId: string = randomUUID()): NyteWindow {
         `${CANVAS_SHELL_ARGUMENT}=${canvasShell}`,
         `${MACHINE_NAME_ARGUMENT}=${machineName()}`,
         `${WINDOW_ID_ARGUMENT}=${windowId}`,
-        ...(windows.size === 0
+        ...(windows.size === 0 && opening === undefined
           ? [`${LAUNCH_WINDOWS_ARGUMENT}=${launchState.windows().join(",")}`]
           : []),
+        ...(opening === undefined ? [] : [`${WINDOW_OPEN_ARGUMENT}=${JSON.stringify(opening)}`]),
       ],
       contextIsolation: true,
       nodeIntegration: false,
@@ -747,6 +765,7 @@ function createWindow(windowId: string = randomUUID()): NyteWindow {
     if (url !== created.webContents.getURL()) event.preventDefault();
   });
 
+  if (opening?.workspace !== undefined) desktopHost?.seedWorkspace(id, opening.workspace);
   void created.loadURL(rendererUrl);
 
   created.on("close", () => {
@@ -773,7 +792,7 @@ function createWindow(windowId: string = randomUUID()): NyteWindow {
     if (!quitting && windows.size > 0)
       launchState.setWindows(launchState.windows().filter((kept) => kept !== windowId));
     browserSurfaces.releaseWindow(id);
-    desktopHost?.releaseWindow(id);
+    desktopHost?.closeWindow(id);
     alerts.release(id);
 
     if (windows.size === 0) {
@@ -860,6 +879,11 @@ if (!hasSingleInstanceLock) {
   );
   account = createAccount(config);
 
+  app.on("open-file", (event, path) => {
+    event.preventDefault();
+    openWith.add(path);
+  });
+
   app.on("second-instance", (_event, argv) => {
     const clerkCallback = argv.some((arg) => arg.startsWith(`${scheme}:`));
 
@@ -927,6 +951,7 @@ if (!hasSingleInstanceLock) {
     updatesReady.resolve();
     showHostTray();
     restoreWindows();
+    openWith.ready();
 
     const cli =
       app.isPackaged && process.platform !== "win32"

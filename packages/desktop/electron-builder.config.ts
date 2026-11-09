@@ -125,6 +125,80 @@ async function bundleHostAgent(context: AfterPackContext): Promise<void> {
   await writeFile(join(agents, `${job.label}.plist`), hostAgentPlist(job));
 }
 
+const SOURCE_TYPES = [
+  { name: "Plain Text", extensions: ["txt", "text", "log", "csv", "tsv", "diff", "patch"] },
+  { name: "Markdown", extensions: ["md", "markdown", "mdx"] },
+  {
+    name: "Configuration",
+    extensions: ["json", "jsonc", "json5", "yaml", "yml", "toml", "ini", "cfg", "conf", "env"],
+  },
+  { name: "Markup", extensions: ["html", "htm", "xml", "svg", "css", "scss", "sass", "less"] },
+  {
+    name: "JavaScript",
+    extensions: ["js", "mjs", "cjs", "jsx", "ts", "mts", "cts", "tsx", "vue", "svelte", "astro"],
+  },
+  { name: "Shell Script", extensions: ["sh", "bash", "zsh", "fish", "ps1"] },
+  {
+    name: "Source Code",
+    extensions: [
+      "py",
+      "pyi",
+      "rb",
+      "go",
+      "rs",
+      "java",
+      "kt",
+      "kts",
+      "scala",
+      "swift",
+      "c",
+      "h",
+      "cc",
+      "cpp",
+      "cxx",
+      "hpp",
+      "m",
+      "mm",
+      "cs",
+      "php",
+      "lua",
+      "dart",
+      "ex",
+      "exs",
+      "erl",
+      "hs",
+      "ml",
+      "mli",
+      "clj",
+      "cljs",
+      "r",
+      "jl",
+      "zig",
+      "nix",
+      "sql",
+      "graphql",
+      "gql",
+      "proto",
+      "tf",
+      "hcl",
+      "cmake",
+      "mk",
+      "gradle",
+    ],
+  },
+] as const;
+
+/** Finder's Open With: text and source files, and folders. No `LSHandlerRank`, so Nyte is never the default. */
+const DOCUMENT_TYPES = [
+  ...SOURCE_TYPES.map((type) => ({
+    CFBundleTypeName: type.name,
+    CFBundleTypeRole: "Editor",
+    CFBundleTypeOSTypes: ["****"],
+    CFBundleTypeExtensions: type.extensions,
+  })),
+  { CFBundleTypeName: "Folder", CFBundleTypeRole: "Editor", LSItemContentTypes: ["public.folder"] },
+];
+
 const mac = {
   category: "public.app-category.developer-tools",
   icon: "build/icon.icns",
@@ -136,6 +210,7 @@ const mac = {
   forceCodeSigning: true,
   entitlements: "build/entitlements.mac.plist",
   entitlementsInherit: "build/entitlements.mac.plist",
+  extendInfo: { CFBundleDocumentTypes: DOCUMENT_TYPES },
   extraResources: [
     ...CLI,
     { from: "resources/icon.png", to: "icon.png" },
