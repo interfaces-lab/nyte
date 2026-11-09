@@ -154,7 +154,11 @@ export interface Kernel {
 
   readonly connections: ConnectionRegistry;
 
-  request<T>(session: SessionId, input: ModelRequestInput<T>): Promise<ModelRequestOutcome<T>>;
+  /** One request outside any run. With a session it runs that session's request hooks and charges the session; with `null` it runs no plugin hooks and charges nothing. */
+  request<T>(
+    session: SessionId | null,
+    input: ModelRequestInput<T>,
+  ): Promise<ModelRequestOutcome<T>>;
 
   readonly secrets: NonNullable<OpenOptions["secrets"]> | null;
 

@@ -9,6 +9,7 @@ import { PROJECTS, projectRef, workspaceRef } from "../store/refs.ts";
 import { attempt, load, put, readSession, STALE } from "../store/session.ts";
 import type { Found } from "../store/session.ts";
 import { dropScans } from "../env/workspaces.ts";
+import { draftProject } from "./project-draft.ts";
 
 export function createProjects(kernel: Kernel): Projects {
   return {
@@ -45,6 +46,7 @@ export function createProjects(kernel: Kernel): Projects {
 
       return project;
     },
+    draft: (input) => draftProject(kernel, input),
   };
 }
 

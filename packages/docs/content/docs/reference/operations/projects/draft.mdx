@@ -1,0 +1,140 @@
+---
+title: projects.draft
+description: Drafts a project's name, instructions, skills, MCP servers and shared docs from a goal, with one request to the given model. Nothing is saved.
+---
+
+Reads the workspace's skills, shared docs and MCP servers, sends them with `goal` to `model` in one
+request, and returns a setup in the shape `projects.create` takes. The model picks what to turn on;
+the host keeps only skills, servers and docs the workspace has, and lists the rest in `disabledMcp`
+and `disabledDocs`. Context files such as `AGENTS.md` stay on. Nothing is saved, the request belongs
+to no session, and no session's usage counts it.
+
+## When to call it
+
+From a "New Project" form, after the person writes a goal and before `projects.create`, so they can
+check the draft first. Call it again for a new draft.
+
+## Access
+
+Any principal with `participant` authority. Host scope.
+
+## Example
+
+Request body:
+
+```json
+{
+  "input": {
+    "goal": "Polish the settings screens for 0.42",
+    "workspace": "9dee0b6e-42c2-4ec2-be3a-cf6ff4dcacd2",
+    "model": { "provider": "anthropic", "id": "claude-opus-5-5" }
+  }
+}
+```
+
+Response:
+
+```json
+{
+  "name": "Settings polish",
+  "instructions": "Only change the settings screens and their stories.\nRun pnpm check before you report.",
+  "skills": ["nyte-styles"],
+  "disabledMcp": ["linear"],
+  "disabledDocs": ["project:release-notes.md"]
+}
+```
+
+## Errors
+
+- `unknown` when the workspace isn't registered on the host.
+- `invalid` when the model isn't in the catalog, or the input doesn't match the schema, such as an
+  empty goal.
+- `unavailable` when the model refuses, the request fails, or its answer isn't the JSON the host
+  asked for.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `participant`
+- Scope: `host`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["input"],
+  "properties": {
+    "input": {
+      "type": "object",
+      "required": ["goal", "workspace", "model"],
+      "properties": {
+        "goal": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "workspace": {
+          "type": "string"
+        },
+        "model": {
+          "type": "object",
+          "required": ["provider", "id"],
+          "properties": {
+            "provider": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "object",
+  "required": ["name", "instructions", "skills", "disabledMcp", "disabledDocs"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "instructions": {
+      "type": "string"
+    },
+    "skills": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "disabledMcp": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "disabledDocs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}
+```
+
+{/* generated:end */}

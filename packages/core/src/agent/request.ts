@@ -38,12 +38,22 @@ import { dev } from "../util/dev-log.ts";
 import { check, convertJsonSchema } from "../util/json-schema.ts";
 import { addUsage, ZERO_USAGE } from "../util/usage.ts";
 
-interface Completed {
+interface Answered {
   readonly message: AssistantMessage;
   readonly usage: Usage;
-  readonly info: ModelInfo;
-
   readonly failure: Failure | null;
+}
+
+interface Completed extends Answered {
+  readonly info: ModelInfo;
+}
+
+interface Asked {
+  readonly request: Pick<ModelRequest, "model" | "thinking" | "options">;
+  readonly system: string | undefined;
+  readonly messages: readonly Message[];
+  readonly maxOutput?: number;
+  readonly signal?: AbortSignal;
 }
 
 export const RETRY_POLICY: RetryPolicy = {
@@ -126,22 +136,56 @@ export async function complete(
   kernel: Kernel,
   models: Models,
   runtime: PluginRuntime,
-  input: {
+  input: Asked & {
     readonly where: HookContext;
     readonly step: "compaction" | "summary" | "plugin";
-    readonly request: Pick<ModelRequest, "model" | "thinking" | "options">;
-    readonly system: string | undefined;
-    readonly messages: readonly Message[];
-    readonly maxOutput?: number;
-    readonly signal?: AbortSignal;
   },
 ): Promise<Completed | null> {
-  const { request, where, signal } = input;
+  const { request, where } = input;
   const model = models.getModel(request.model.provider, request.model.id);
   const info = modelInfo(models, request.model, runtime);
 
   if (model === undefined || info === null) return null;
   dev("request", "start", { session: where.session, model: model.id, step: input.step });
+
+  const message = await exchange(kernel, models, model, where.session, input, async (sent) => {
+    void runtime.hooks.observe(
+      "after_request",
+      {
+        model: request.model,
+        thinking: request.thinking,
+        usage: sent.usage,
+        durationMs: sent.durationMs,
+        step: input.step,
+      },
+      where,
+    );
+
+    if (unanswered(sent.message))
+      await chargeFailed(
+        kernel,
+        where,
+        requestEvent(where.head, input.step, sent.usage, info),
+        sent.usage,
+      );
+  });
+
+  return { ...answered(message, model), info };
+}
+
+async function exchange(
+  kernel: Kernel,
+  models: Models,
+  model: Model<Api>,
+  session: SessionId | null,
+  input: Asked,
+  attempted: (sent: {
+    readonly message: AssistantMessage;
+    readonly usage: Usage;
+    readonly durationMs: number;
+  }) => Promise<void>,
+): Promise<AssistantMessage> {
+  const { request, signal } = input;
 
   const send = async (): Promise<AssistantMessage> => {
     const started = Date.now();
@@ -156,44 +200,27 @@ export async function complete(
           samplingParams: { ...request.options.sampling },
           headers: { ...request.options.headers },
           maxTokens: input.maxOutput,
-          sessionId: where.session,
+          sessionId: session ?? undefined,
         },
       ),
     );
 
     const usage = calculateUsage(message, model);
-    dev("request", "end", {
-      session: where.session,
-      stop: message.stopReason,
-      tokens: usage.total,
-    });
-
-    void runtime.hooks.observe(
-      "after_request",
-      {
-        model: request.model,
-        thinking: request.thinking,
-        usage,
-        durationMs: Date.now() - started,
-        step: input.step,
-      },
-      where,
-    );
-
-    if (unanswered(message))
-      await chargeFailed(kernel, where, requestEvent(where.head, input.step, usage, info), usage);
+    dev("request", "end", { session, stop: message.stopReason, tokens: usage.total });
+    await attempted({ message, usage, durationMs: Date.now() - started });
 
     return message;
   };
 
-  const message = await retryAssistantCall(send, RETRY_POLICY, signal, {
+  return retryAssistantCall(send, RETRY_POLICY, signal, {
     onRetryScheduled: (attempt, _max, ms) => dev("request", "retry", { attempt, ms }),
   });
+}
 
+function answered(message: AssistantMessage, model: Model<Api>): Answered {
   return {
     message,
     usage: calculateUsage(message, model),
-    info,
     failure: unanswered(message) ? classifyAssistantFailure(message) : null,
   };
 }
@@ -238,14 +265,13 @@ const REFUSALS = ["refusal", "content_filter", "SAFETY"] as const;
 
 export function createRequest(kernel: Kernel, models: Models): Kernel["request"] {
   function request<T>(
-    session: SessionId,
+    session: SessionId | null,
     input: ModelRequestInput<T>,
   ): Promise<ModelRequestOutcome<T>>;
   async function request(
-    session: SessionId,
+    session: SessionId | null,
     input: ModelRequestInput<unknown>,
   ): Promise<ModelRequestOutcome<unknown>> {
-    await requireSession(kernel.store, session);
     const thinking = input.thinking ?? "off";
     const output = input.output;
 
@@ -259,15 +285,18 @@ export function createRequest(kernel: Kernel, models: Models): Kernel["request"]
             .filter((part) => part !== undefined && part !== "")
             .join("\n\n");
 
-    const sent = await complete(kernel, models, kernel.plugins.runtime(session), {
-      where: { session, head: null, run: null, principal: LOCAL },
-      step: "plugin",
+    const asked: Asked = {
       request: { model: input.model, thinking, options: { sampling: {}, headers: {} } },
       system,
       messages: input.messages,
       maxOutput: input.maxOutput,
       signal: input.signal,
-    });
+    };
+
+    const sent =
+      session === null
+        ? await answerAlone(kernel, models, asked)
+        : await answerIn(kernel, models, session, asked);
 
     if (sent === null)
       throw new SdkError(
@@ -275,10 +304,7 @@ export function createRequest(kernel: Kernel, models: Models): Kernel["request"]
         `No model ${input.model.provider}/${input.model.id} is in the catalog.`,
       );
 
-    const { message, usage, info, failure } = sent;
-
-    if (failure === null)
-      await rideRef(kernel, sessionRef(session), requestEvent(null, "plugin", usage, info));
+    const { message, usage, failure } = sent;
     const raw = message.rawStopReason;
 
     if (raw !== undefined && REFUSALS.some((reason) => raw === reason || raw.endsWith(reason)))
@@ -311,6 +337,35 @@ export function createRequest(kernel: Kernel, models: Models): Kernel["request"]
   }
 
   return request;
+}
+
+async function answerIn(
+  kernel: Kernel,
+  models: Models,
+  session: SessionId,
+  asked: Asked,
+): Promise<Answered | null> {
+  await requireSession(kernel.store, session);
+
+  const sent = await complete(kernel, models, kernel.plugins.runtime(session), {
+    ...asked,
+    where: { session, head: null, run: null, principal: LOCAL },
+    step: "plugin",
+  });
+
+  if (sent !== null && sent.failure === null)
+    await rideRef(kernel, sessionRef(session), requestEvent(null, "plugin", sent.usage, sent.info));
+
+  return sent;
+}
+
+async function answerAlone(kernel: Kernel, models: Models, asked: Asked): Promise<Answered | null> {
+  const model = models.getModel(asked.request.model.provider, asked.request.model.id);
+
+  if (model === undefined) return null;
+  dev("request", "start", { session: null, model: model.id, step: "plugin" });
+
+  return answered(await exchange(kernel, models, model, null, asked, async () => undefined), model);
 }
 
 function parseJson(text: string): { readonly value: unknown } | null {

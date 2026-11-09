@@ -88,7 +88,10 @@ export function createClient(transport: Transport, context: ClientContext): Conn
       forget: (id) => rows.call("workspaces.forget", { id }),
       cleanWorktrees: () => rows.call("workspaces.cleanWorktrees", {}),
     },
-    projects: { create: (input) => rows.call("projects.create", { input }) },
+    projects: {
+      create: (input) => rows.call("projects.create", { input }),
+      draft: (input) => rows.call("projects.draft", { input }),
+    },
     session: (id) => sessionHandle(bound, id),
     workspace: (id) => workspaceHandle(rows, id),
     project: (id) => ({

@@ -64,6 +64,31 @@ export type ProjectInput = Decoded<typeof ProjectInputType>;
 
 export const ProjectInfoSchema: Schema<ProjectInfo> = standard(ProjectInfoType);
 
+export const ProjectDraftInputType = Type.Object({
+  goal: Type.String({ minLength: 1, pattern: "\\S" }),
+  workspace: idSchema<"workspace">(),
+  model: ModelRefType,
+});
+
+export type ProjectDraftInput = Decoded<typeof ProjectDraftInputType>;
+
+export const ProjectDraftType = Type.Pick(ProjectInfoType, [
+  "name",
+  "instructions",
+  "skills",
+  "disabledMcp",
+  "disabledDocs",
+]);
+
+/**
+ * A setup drafted from a goal, for a person to check before `projects.create`. `skills` names only
+ * skills the folder has; `disabledMcp` and `disabledDocs` name its MCP servers and shared docs the
+ * goal doesn't need, never a context file.
+ */
+export type ProjectDraft = Decoded<typeof ProjectDraftType>;
+
+export const ProjectDraftSchema: Schema<ProjectDraft> = standard(ProjectDraftType);
+
 /**
  * A file in a `.nyte/projects/docs` folder, the home's (`user`) or the workspace's (`project`),
  * that a project's chats read and add to. `id` is `<scope>:<name>`, the same in every worktree.

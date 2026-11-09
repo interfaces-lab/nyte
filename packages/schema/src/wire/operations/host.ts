@@ -24,7 +24,13 @@ import {
   ProviderUsageType,
 } from "../../models.ts";
 import { PromptOverrideType } from "../../plugins.ts";
-import { ProjectInfoSchema, ProjectInputType, ProjectPatchType } from "../../projects.ts";
+import {
+  ProjectDraftInputType,
+  ProjectDraftSchema,
+  ProjectInfoSchema,
+  ProjectInputType,
+  ProjectPatchType,
+} from "../../projects.ts";
 import { pagedSchema, ParentFilterType } from "../../primitives.ts";
 import { SessionCatalogViewSchema, SessionInfoType, SessionsReadType } from "../../sessions.ts";
 import {
@@ -233,6 +239,14 @@ export const HOST_OPERATIONS = {
     kind: "command",
     input: wireObject({ input: ProjectInputType }),
     output: ProjectInfoSchema,
+  },
+  "projects.draft": {
+    ...PARTICIPANT,
+    summary:
+      "Drafts a project's name, instructions, skills, MCP servers and shared docs from a goal, with one request to the given model. Nothing is saved.",
+    kind: "command",
+    input: wireObject({ input: ProjectDraftInputType }),
+    output: ProjectDraftSchema,
   },
   "project.update": {
     ...PARTICIPANT,

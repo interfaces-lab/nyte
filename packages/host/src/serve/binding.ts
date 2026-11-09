@@ -265,6 +265,7 @@ export function bindConnection(connection: Connection, options: BindingOptions):
     "settings.apply": ({ id, value }) => connection.settings.apply(id, value),
 
     "projects.create": ({ input }) => connection.projects.create(input),
+    "projects.draft": ({ input }) => connection.projects.draft(input),
     "project.update": ({ project, patch }) => connection.project(project).update(patch),
 
     "workspaces.list": () => connection.workspaces.list(),
