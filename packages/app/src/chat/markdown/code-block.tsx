@@ -1,12 +1,12 @@
 import { props } from "@stylexjs/stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { useQuery } from "@tanstack/react-query";
-import { useRef, useState } from "react";
+import { Fragment, useRef, useState } from "react";
 import type { ReactElement } from "react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { Button } from "@nyte-ai/ui/button";
-import { loadDeferred } from "../../lib/deferred.tsx";
-import { keys } from "../../data/query-client.ts";
+import { loadDeferred, readDeferred } from "../../lib/deferred.tsx";
+import type { DeferredRuntimes } from "../../lib/deferred-entries.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { useCopyConfirmation } from "../../components/copy-confirmation.ts";
 import { codeBlockStyles } from "./prose.stylex.ts";
@@ -14,14 +14,8 @@ import { codeBlockStyles } from "./prose.stylex.ts";
 interface HighlightedCode {
   readonly code: string;
   readonly language: string;
-  readonly html: string;
+  readonly lines: readonly string[];
 }
-
-type HighlightResult =
-  | { readonly kind: "highlighted"; readonly value: HighlightedCode }
-  | { readonly kind: "plain" };
-
-const PLAIN_HIGHLIGHT = { kind: "plain" } as const;
 
 const HIGHLIGHT_CACHE_MAX_BYTES = 8 * 1024 * 1024;
 
@@ -55,7 +49,12 @@ function cachedHighlight(code: string, language: string): HighlightedCode | unde
 }
 
 function highlightBytes(value: HighlightedCode): number {
-  return (value.code.length + value.language.length + value.html.length) * 2;
+  return (
+    (value.code.length +
+      value.language.length +
+      value.lines.reduce((total, line) => total + line.length, 0)) *
+    2
+  );
 }
 
 function rememberHighlight(value: HighlightedCode): void {
@@ -81,45 +80,58 @@ function rememberHighlight(value: HighlightedCode): void {
   }
 }
 
-async function requestHighlight(code: string, language: string): Promise<HighlightResult> {
-  const html = await loadDeferred("highlight").then(
-    (runtime) => runtime.highlightCode(code, language),
-    () => undefined,
-  );
+function highlightLines(
+  runtime: DeferredRuntimes["highlight"],
+  code: string,
+  language: string,
+  streaming: boolean,
+): readonly string[] | undefined {
+  if (streaming) return runtime.highlightOpenCode(code, language);
 
-  if (html === undefined) return PLAIN_HIGHLIGHT;
+  const lines = runtime.highlightCode(code, language);
 
-  const value = { code, language, html };
+  if (lines !== undefined) rememberHighlight({ code, language, lines });
 
-  rememberHighlight(value);
-
-  return { kind: "highlighted", value };
+  return lines;
 }
 
 function HighlightedCode({
   code,
   language,
   nearViewport,
+  streaming,
 }: {
   code: string;
   language: string;
   nearViewport: boolean;
+  streaming: boolean;
 }): ReactElement {
-  const cached = cachedHighlight(code, language);
+  const cached = streaming ? undefined : cachedHighlight(code, language);
 
-  const { data } = useQuery({
-    queryKey: keys.highlight(language, code),
-    queryFn: () => requestHighlight(code, language),
+  const { data: runtime } = useQuery({
+    queryKey: ["deferred", "highlight"],
+    queryFn: () => loadDeferred("highlight"),
+    initialData: () => readDeferred("highlight"),
     enabled: nearViewport && language !== "" && cached === undefined,
-    gcTime: 0,
   });
 
-  const html = data?.kind === "highlighted" ? data.value.html : cached?.html;
+  const lines =
+    cached?.lines ??
+    (nearViewport && runtime !== undefined
+      ? highlightLines(runtime, code, language, streaming)
+      : undefined);
 
-  return html === undefined ? (
-    <code>{code}</code>
-  ) : (
-    <code dangerouslySetInnerHTML={{ __html: html }} />
+  if (lines === undefined) return <code>{code}</code>;
+
+  return (
+    <code>
+      {lines.map((html, index) => (
+        <Fragment key={index}>
+          {index > 0 && "\n"}
+          <span dangerouslySetInnerHTML={{ __html: html }} />
+        </Fragment>
+      ))}
+    </code>
   );
 }
 
@@ -180,11 +192,12 @@ export function CodeBlock({
       </span>
       <div data-nyte-scrollport {...props(codeBlockStyles.scroll)}>
         <pre data-nyte-code {...props(text.code, codeBlockStyles.pre)}>
-          {streaming ? (
-            <code>{code}</code>
-          ) : (
-            <HighlightedCode code={code} language={language} nearViewport={nearViewport} />
-          )}
+          <HighlightedCode
+            code={code}
+            language={language}
+            nearViewport={nearViewport}
+            streaming={streaming}
+          />
         </pre>
       </div>
     </figure>

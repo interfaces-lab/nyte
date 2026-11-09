@@ -1,6 +1,6 @@
 import { publishDeferred } from "../../lib/deferred.tsx";
-import { highlightCode, highlightTokens } from "./highlight-code.ts";
+import { highlightCode, highlightOpenCode, highlightTokens } from "./highlight-code.ts";
 
-export const highlightRuntime = { highlightCode, highlightTokens };
+export const highlightRuntime = { highlightCode, highlightOpenCode, highlightTokens };
 
 publishDeferred("highlight", highlightRuntime);
