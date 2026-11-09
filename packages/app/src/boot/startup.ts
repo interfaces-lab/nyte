@@ -6,6 +6,7 @@ import {
   releaseStartupReads,
   startupConnection,
 } from "../data/startup.ts";
+import { connectionProblem } from "../data/connection.ts";
 
 interface RendererStartupOptions {
   readonly fonts: readonly string[];
@@ -18,6 +19,8 @@ interface RendererStartupOptions {
 
 const STARTUP_READS_FALLBACK_MS = 1000;
 
+const RETRY_MS = [250, 500, 1_000, 2_000] as const;
+
 function mark(name: string): void {
   if (performance.getEntriesByName(name).length === 0) performance.mark(name);
 }
@@ -25,16 +28,35 @@ function mark(name: string): void {
 export function startRendererStartup(options: RendererStartupOptions): void {
   const { connect } = options;
   let loading = false;
+  let failures = 0;
   holdStartupReads();
 
   const open = (): void => {
-    publishStartupConnection({ kind: "connecting" });
     connect().then(
       () => {
         publishStartupConnection({ kind: "connected" });
         setTimeout(releaseStartupReads, STARTUP_READS_FALLBACK_MS);
       },
-      () => publishStartupConnection({ kind: "failed", retry: open }),
+      (cause: unknown) => {
+        const problem = connectionProblem(cause).kind;
+
+        if (problem === "network") {
+          setTimeout(open, RETRY_MS[Math.min(failures, RETRY_MS.length - 1)]);
+          failures += 1;
+          publishStartupConnection({ kind: "unreachable" });
+
+          return;
+        }
+
+        publishStartupConnection({
+          kind: "failed",
+          problem,
+          retry: () => {
+            publishStartupConnection({ kind: "connecting" });
+            open();
+          },
+        });
+      },
     );
   };
 

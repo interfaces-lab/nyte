@@ -20,6 +20,7 @@ import { PaneControllerProvider } from "../panes/pane-context.tsx";
 import { SessionDndProvider } from "../panes/session-dnd.tsx";
 import { useHostRelease } from "../data/host.ts";
 import { startupConnection } from "../data/startup.ts";
+import type { StartupProblem } from "../data/startup.ts";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { layer, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { shell, sidebar } from "../theme/schema.stylex.ts";
@@ -114,14 +115,28 @@ function StoreMigration(): ReactElement | null {
   );
 }
 
+const STARTUP_FAILURE = {
+  authentication: "The host refused this app. Pair with it again.",
+  incompatible: "This host runs another version of Nyte. Update both, then try again.",
+  server: "The host hit an error while opening your workspace.",
+} as const satisfies Readonly<Record<StartupProblem, string>>;
+
 function ConnectionFailure(): ReactElement | null {
   const connection = useSyncExternalStore(startupConnection.subscribe, startupConnection.read);
+
+  if (connection.kind === "unreachable")
+    return (
+      <div role="status" {...props(styles.connectionFailure)}>
+        <Loader />
+        <span>Can&rsquo;t reach the host. Reconnecting&hellip;</span>
+      </div>
+    );
 
   if (connection.kind !== "failed") return null;
 
   return (
     <div role="alert" {...props(styles.connectionFailure)}>
-      <span>Couldn&rsquo;t open your workspace.</span>
+      <span>{STARTUP_FAILURE[connection.problem]}</span>
       <Button variant="outline" onClick={connection.retry}>
         Try Again
       </Button>

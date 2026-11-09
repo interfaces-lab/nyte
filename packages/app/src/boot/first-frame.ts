@@ -162,7 +162,7 @@ export async function windowContentReady(): Promise<void> {
   const check = (): void => {
     const kind = startupConnection.read().kind;
 
-    if (kind === "failed" || kind === "migrating") noContent.resolve();
+    if (kind === "failed" || kind === "unreachable" || kind === "migrating") noContent.resolve();
   };
 
   const leave = startupConnection.subscribe(check);

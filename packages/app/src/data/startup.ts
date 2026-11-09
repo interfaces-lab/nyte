@@ -1,10 +1,14 @@
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
+import type { ConnectionProblem } from "../contract/connection.ts";
+
+export type StartupProblem = Exclude<ConnectionProblem["kind"], "network">;
 
 type StartupConnection =
   | { readonly kind: "connecting" }
   | { readonly kind: "migrating" }
   | { readonly kind: "connected" }
-  | { readonly kind: "failed"; readonly retry: () => void };
+  | { readonly kind: "unreachable" }
+  | { readonly kind: "failed"; readonly problem: StartupProblem; readonly retry: () => void };
 
 let connectionState: StartupConnection = { kind: "connecting" };
 

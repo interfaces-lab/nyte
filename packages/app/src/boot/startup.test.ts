@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test, vi } from "vitest";
+import { SdkError } from "@nyte-ai/sdk";
 import { startRendererStartup } from "./startup.ts";
 import { startupConnection } from "../data/startup.ts";
 
@@ -41,7 +42,7 @@ test("the host connection opens at once and the interface mounts while it never 
   assert.equal(startupConnection.read().kind, "connecting");
 });
 
-test("a failed connection leaves the shell mounted and retries on request", async () => {
+test("a connection the host fails leaves the shell mounted and retries on request", async () => {
   let attempts = 0;
   const failed = settled("failed");
 
@@ -52,7 +53,7 @@ test("a failed connection leaves the shell mounted and retries on request", asyn
     connect: async () => {
       attempts += 1;
 
-      if (attempts === 1) throw new Error("host unavailable");
+      if (attempts === 1) throw new SdkError("internal", "The host failed.");
     },
     showError: () => assert.fail("local startup should succeed"),
   });
@@ -61,6 +62,7 @@ test("a failed connection leaves the shell mounted and retries on request", asyn
   const state = startupConnection.read();
 
   if (state.kind !== "failed") assert.fail("the connection should have failed");
+  assert.equal(state.problem, "server");
   const connected = settled("connected");
   state.retry();
   await connected;

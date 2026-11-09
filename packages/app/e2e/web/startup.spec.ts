@@ -71,7 +71,7 @@ test("a saved connection mounts from its snapshot, and another host behind it le
   expect(errors).toEqual({ pageErrors: [], consoleErrors: [] });
 });
 
-test("a saved connection that cannot reach its host keeps the shell, its draft and a retry", async ({
+test("a saved connection that cannot reach its host keeps the shell and its draft, and reconnects once the host answers", async ({
   page,
 }) => {
   await recordSnapshot(page);
@@ -79,14 +79,16 @@ test("a saved connection that cannot reach its host keeps the shell, its draft a
   const release = await reloadHeld(page);
   await release("refuse");
 
-  const failure = page.getByRole("alert").filter({ hasText: "Couldn’t open your workspace." });
+  const failure = page
+    .getByRole("status")
+    .filter({ hasText: "Can’t reach the host. Reconnecting…" });
+
   await expect(failure).toBeVisible();
   await expect(page.getByRole("combobox", { name: "Message" })).toHaveText(DRAFT);
   await expect(page.getByRole("heading", { name: "Connect to a Desktop" })).toHaveCount(0);
   expect(await storedSnapshot(page)).not.toBeNull();
 
   await release("continue");
-  await failure.getByRole("button", { name: "Try Again" }).click();
   await expect(failure).toHaveCount(0);
   await expect(page.getByRole("combobox", { name: "Message" })).toHaveText(DRAFT);
 });
