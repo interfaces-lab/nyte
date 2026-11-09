@@ -16,6 +16,7 @@ const styles = create({
     alignItems: "center",
     gap: space.px,
     padding: space.s0_5,
+    // A grouped Toggle's radius is this radius minus this padding, so their corners stay concentric.
     borderRadius: radius.control,
     backgroundColor: role.bgMutedTranslucent,
   },

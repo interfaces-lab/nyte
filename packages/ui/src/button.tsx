@@ -112,7 +112,11 @@ const controlStyles = create({
     },
   },
   joinedIcon: { width: `max(var(--_btn-height), ${target.min})` },
-  grouped: { marginBlock: 0, marginInline: 0 },
+  grouped: {
+    "--_btn-radius": `calc(${radius.control} - ${space.s0_5})`,
+    marginBlock: 0,
+    marginInline: 0,
+  },
   joinedOutline: {
     boxShadow: {
       default: `inset 0 0 0 1px ${role.strokeTertiary}, ${shadow.shadowSm}`,
