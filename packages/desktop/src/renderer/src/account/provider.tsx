@@ -191,7 +191,13 @@ function AccountLoader(): ReactElement {
   );
 
   return state.kind === "ready" ? (
-    <state.runtime.Provider publishableKey={state.publishableKey} onPrompt={setPrompt}>
+    <state.runtime.Provider
+      publishableKey={state.publishableKey}
+      onPrompt={(next) => {
+        command.current = next;
+        setPrompt(next);
+      }}
+    >
       {dialog}
     </state.runtime.Provider>
   ) : (
