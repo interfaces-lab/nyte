@@ -39,7 +39,7 @@ function medianRows(rows: readonly Row[]): Row {
       if (!values.every((value) => typeof value === "number")) return [key, first[key]];
       const sorted = values.toSorted((a, b) => a - b);
 
-      return [key, sorted[Math.floor(sorted.length / 2)]];
+      return [key, key.endsWith("_ms") ? sorted[0] : sorted[Math.floor(sorted.length / 2)]];
     }),
   );
 }

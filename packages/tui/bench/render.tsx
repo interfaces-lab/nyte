@@ -4,16 +4,15 @@ import type { SessionView } from "@nyte-ai/sdk";
 import { createTestRenderer } from "@opentui/core/testing";
 import type { Renderable } from "@opentui/core";
 import { render as mountSolid } from "@opentui/solid";
-import { createMemo, createSignal } from "solid-js";
 import { AppProvider } from "../src/app/context.tsx";
 import type { App } from "../src/app/context.tsx";
 import { createKit } from "../src/app/kit.ts";
+import { createStore } from "../src/app/store.ts";
 import { createTickers } from "../src/app/ticker.ts";
-import { DARK_THEME } from "../src/lib/theme.ts";
-import type { Msg } from "../src/model/msg.ts";
-import { reduce } from "../src/model/reduce.ts";
 import { deriveScreen } from "../src/model/screen.ts";
 import type { ScreenModel } from "../src/model/screen.ts";
+import { DARK_THEME } from "../src/lib/theme.ts";
+import { reduce } from "../src/model/reduce.ts";
 import type { State } from "../src/model/state.ts";
 import { registerSyntaxParsers } from "../src/services/syntax-parsers.ts";
 import { Screen } from "../src/ui/screen.tsx";
@@ -132,7 +131,7 @@ function heapMb(): number {
   return heapStats().heapSize / 1024 / 1024;
 }
 
-const round = (value: number): number => Math.round(value * 100) / 100;
+const round = (value: number): number => Math.round(value * 1000) / 1000;
 
 registerSyntaxParsers();
 
@@ -161,18 +160,25 @@ const setup = await createTestRenderer({ width: 120, height: 40, kittyKeyboard: 
 
 const initial = ready(settledView);
 
-const [state, setState] = createSignal<State>(initial);
+const pureSession = initial.facts.chat?.kind === "session" ? initial.facts.chat.id : null;
 
-let current = initial;
+if (pureSession === null) throw new Error("The bench session did not open.");
 
-let previousScreen: ScreenModel | null = null;
-
-const screen = createMemo(() => (previousScreen = deriveScreen(state(), previousScreen)));
-
-const dispatch = (msg: Msg): void => {
-  current = reduce(current, msg, NOW).state;
-  setState(current);
-};
+const store = createStore({
+  initial,
+  now: () => NOW,
+  runner: () => ({
+    run: () => undefined,
+    boot: () => undefined,
+    changed: () => undefined,
+    exited: new Promise<{ readonly code: number }>(() => undefined),
+    settled: async () => undefined,
+    dispose: async () => undefined,
+  }),
+  report: (_origin, error) => {
+    throw error;
+  },
+});
 
 const mountStart = performance.now();
 
@@ -191,7 +197,7 @@ await mountSolid(() => {
     },
   });
 
-  const app: App = { screen, dispatch, kit };
+  const app: App = { screen: store.screen, dispatch: store.dispatch, kit };
 
   return (
     <AppProvider app={app}>
@@ -208,9 +214,7 @@ const renderables = countRenderables(setup.renderer.root);
 
 const settledHeap = heapMb() - baselineHeap;
 
-const session = current.facts.chat?.kind === "session" ? current.facts.chat.id : null;
-
-if (session === null) throw new Error("The bench session did not open.");
+const session = pureSession;
 
 const reduceTimes: number[] = [];
 
@@ -218,7 +222,7 @@ const frameTimes: number[] = [];
 
 for (const view of streamViews) {
   const start = performance.now();
-  dispatch({ kind: "view", session, view, freshness: FRESH });
+  store.dispatch({ kind: "view", session, view, freshness: FRESH });
   const reduced = performance.now();
   await setup.renderOnce();
   frameTimes.push(performance.now() - start);
@@ -231,9 +235,23 @@ const scrollTimes: number[] = [];
 
 for (let index = 0; index < SCROLLS; index++) {
   const start = performance.now();
-  dispatch({ kind: "scroll", to: index < SCROLLS / 2 ? "page-up" : "page-down" });
+  store.dispatch({ kind: "scroll", to: index < SCROLLS / 2 ? "page-up" : "page-down" });
   await setup.renderOnce();
   scrollTimes.push(performance.now() - start);
+}
+
+const pureTimes: number[] = [];
+const deriveTimes: number[] = [];
+let previousScreen: ScreenModel | null = null;
+let pure: State = initial;
+
+for (const view of streamViews) {
+  const start = performance.now();
+  pure = reduce(pure, { kind: "view", session: pureSession, view, freshness: FRESH }, NOW).state;
+  pureTimes.push(performance.now() - start);
+  const derived = performance.now();
+  previousScreen = deriveScreen(pure, previousScreen);
+  deriveTimes.push(performance.now() - derived);
 }
 
 const frame = setup.captureCharFrame();
@@ -253,7 +271,9 @@ process.stdout.write(
     stream_frame_median_ms: round(median(frameTimes)),
     stream_frame_p95_ms: round(p95(frameTimes)),
     stream_total_ms: round(frameTimes.reduce((sum, value) => sum + value, 0)),
-    stream_reduce_median_ms: round(median(reduceTimes)),
+    stream_reduce_median_ms: round(median(pureTimes)),
+    stream_derive_median_ms: round(median(deriveTimes)),
+    stream_dispatch_median_ms: round(median(reduceTimes)),
     scroll_frame_median_ms: round(median(scrollTimes)),
     frame_ok: frame.includes("streamed words"),
   })}\n`,

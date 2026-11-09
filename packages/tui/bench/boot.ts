@@ -1,4 +1,6 @@
 import { spawnSync } from "node:child_process";
+import { rm } from "node:fs/promises";
+import { join } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { openPty } from "../qa/pty.ts";
@@ -26,6 +28,7 @@ function median(values: readonly number[]): number {
 }
 
 async function bootOnce(home: Awaited<ReturnType<typeof freshHome>>) {
+  await rm(join(home.nyteHome, "tui-first-frame.json"), { force: true });
   await using pty = await openPty({ binary: BINARY, cwd: home.cwd, env: home.env });
   const deadline = performance.now() + 15_000;
 
@@ -36,9 +39,16 @@ async function bootOnce(home: Awaited<ReturnType<typeof freshHome>>) {
 
   const paintMs = performance.now() - pty.spawnedAt;
   const paintRss = rssKb(pty.pid);
+
+  while (!pty.screen().text.includes("ctrl+p model")) {
+    if (performance.now() > deadline) throw new Error(`Never ready:\n${pty.screen().text}`);
+    await Bun.sleep(1);
+  }
+
+  const readyMs = performance.now() - pty.spawnedAt;
   await Bun.sleep(SETTLE_MS);
 
-  return { paintMs, paintRss, settledRss: rssKb(pty.pid), screen: pty.screen().text };
+  return { paintMs, readyMs, paintRss, settledRss: rssKb(pty.pid), screen: pty.screen().text };
 }
 
 const versionTimes: number[] = [];
@@ -72,8 +82,10 @@ process.stdout.write(
   `${JSON.stringify({
     version_median_ms: round(median(versionTimes)),
     cold_paint_ms: round(cold.paintMs),
+    cold_ready_ms: round(cold.readyMs),
     warm_paint_median_ms: round(median(warm.map((run) => run.paintMs))),
     warm_paint_min_ms: round(Math.min(...warm.map((run) => run.paintMs))),
+    warm_ready_median_ms: round(median(warm.map((run) => run.readyMs))),
     paint_rss_mb: round(median(warm.map((run) => run.paintRss)) / 1024),
     settled_rss_mb: round(median(warm.map((run) => run.settledRss)) / 1024),
   })}\n`,
