@@ -1,4 +1,4 @@
-import { compile, PerformEventType, SdkError, SOCKET_PATH, withJson } from "@nyte-ai/schema";
+import { SdkError, SOCKET_PATH } from "@nyte-ai/schema";
 import type {
   ActionDeclaration,
   Awaitable,
@@ -25,6 +25,7 @@ import type {
   SocketLike,
 } from "@nyte-ai/protocol";
 import { catalogCache } from "./catalogs.ts";
+import { performs } from "./event-checks.ts";
 import { openClientsStore } from "./live-clients.ts";
 import type { ClientsStore } from "./live-clients.ts";
 import { openSessions } from "./live-sessions.ts";
@@ -107,8 +108,6 @@ type Joined = { readonly scope: string; readonly attachment: Attachment };
 type Waiter = { resolve(socket: HostSocket): void; reject(error: SdkError): void };
 
 type Offered = { readonly action: ActionDeclaration; readonly handler: ActionHandler };
-
-const performs = compile(withJson(PerformEventType));
 
 const hosts = new Map<string, Owned>();
 

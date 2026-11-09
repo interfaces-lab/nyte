@@ -20,7 +20,8 @@
       "browser": "./src/index.web.ts",
       "default": "./src/index.ts"
     },
-    "./client": "./src/index.client.ts"
+    "./client": "./src/index.client.ts",
+    "./event-checks": "./src/event-checks.ts"
   },
   "publishConfig": {
     "exports": {
@@ -41,6 +42,10 @@
       "./client": {
         "types": "./dist/src/index.client.d.ts",
         "import": "./dist/src/index.client.js"
+      },
+      "./event-checks": {
+        "types": "./dist/src/event-checks.d.ts",
+        "import": "./dist/src/event-checks.js"
       }
     },
     "access": "public",

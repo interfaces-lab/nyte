@@ -1,7 +1,7 @@
 import { Worker } from "node:worker_threads";
 import { Type } from "typebox";
 import type { Static } from "typebox";
-import { Compile } from "typebox/compile";
+import { Value } from "typebox/value";
 import { compiled } from "../compiled.ts";
 
 const MAX_SOURCE_CHARS = 8_000;
@@ -14,7 +14,7 @@ const MAX_DIAGRAM_CHARS = 100_000;
 
 const KEPT_DIAGRAMS = 64;
 
-const DiagramRequestType = Type.Object({ id: Type.Integer(), source: Type.String() });
+export const DiagramRequestType = Type.Object({ id: Type.Integer(), source: Type.String() });
 
 const DiagramReplyType = Type.Union([
   Type.Object({ id: Type.Integer(), kind: Type.Literal("drawn"), text: Type.String() }),
@@ -24,10 +24,6 @@ const DiagramReplyType = Type.Union([
 type DiagramRequest = Static<typeof DiagramRequestType>;
 
 export type DiagramReply = Static<typeof DiagramReplyType>;
-
-export const diagramRequests = Compile(DiagramRequestType);
-
-const diagramReplies = Compile(DiagramReplyType);
 
 interface Diagrams {
   draw(source: string): Promise<string>;
@@ -54,7 +50,7 @@ export function createDiagrams(): Diagrams {
 
     started.unref();
     started.on("message", (reply) => {
-      if (!diagramReplies.Check(reply)) return;
+      if (!Value.Check(DiagramReplyType, reply)) return;
       const pending = waiting.get(reply.id);
 
       if (pending === undefined) return;

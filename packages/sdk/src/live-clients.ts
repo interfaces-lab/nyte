@@ -1,13 +1,11 @@
-import { ClientRowType, compile, withJson } from "@nyte-ai/schema";
 import type { ClientRow } from "@nyte-ai/schema";
+import { clientRows } from "./event-checks.ts";
 import { keepRows, listenerSet } from "./live.ts";
 import type { Join, Live } from "./live.ts";
 
 export interface ClientsStore extends Live<ReadonlyMap<string, ClientRow>> {
   close(): void;
 }
-
-const clientRows = compile(withJson(ClientRowType));
 
 export function openClientsStore(join: Join): ClientsStore {
   const listeners = listenerSet();

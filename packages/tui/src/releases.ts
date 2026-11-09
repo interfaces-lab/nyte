@@ -5,7 +5,7 @@ import process from "node:process";
 import { isJsonObject } from "@nyte-ai/schema";
 import { gt, prerelease, valid } from "semver";
 import { Type } from "typebox";
-import { Compile } from "typebox/compile";
+import { Value } from "typebox/value";
 import { toJson } from "./json.ts";
 import { errorMessage } from "./lib/format.ts";
 import { VERSION } from "./version.ts";
@@ -26,8 +26,9 @@ export function releaseChannel(version: string): UpdateChannel {
 }
 
 /** The shape of the desktop's `UpdateSettingsStore` file. */
-const updateSettings = Compile(
-  Type.Object({ channel: Type.Enum(["stable", "nightly"]) }, { additionalProperties: false }),
+const UpdateSettingsType = Type.Object(
+  { channel: Type.Enum(["stable", "nightly"]) },
+  { additionalProperties: false },
 );
 
 function updateSettingsPath(): string {
@@ -43,7 +44,7 @@ export async function followedChannel(): Promise<UpdateChannel> {
     .then((text) => toJson(JSON.parse(text)))
     .catch(() => undefined);
 
-  return updateSettings.Check(saved) ? saved.channel : releaseChannel(VERSION);
+  return Value.Check(UpdateSettingsType, saved) ? saved.channel : releaseChannel(VERSION);
 }
 
 /** Saves the channel updates follow, replacing the file in one rename. */

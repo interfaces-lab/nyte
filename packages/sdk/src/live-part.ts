@@ -1,7 +1,8 @@
-import { compile, isJson, SessionChangeType, withJson } from "@nyte-ai/schema";
+import { isJson } from "@nyte-ai/schema";
 import type { PartId, PartView, SessionChange, SessionId } from "@nyte-ai/schema";
 import { asSdkError } from "@nyte-ai/protocol";
 import type { HostSocket, SocketEvent } from "@nyte-ai/protocol";
+import { sessionChanges } from "./event-checks.ts";
 import { freshnessCell, listenerSet, readRetries, request } from "./live.ts";
 import type { Freshness, Join, Live } from "./live.ts";
 
@@ -13,8 +14,6 @@ export interface PartStore extends Live<PartSnapshot | null> {
 }
 
 type Held = { readonly seq: number; readonly row: PartView | null };
-
-const changes = compile(withJson(SessionChangeType));
 
 export function openPartStore(
   input: { readonly session: SessionId; readonly part: PartId },
@@ -76,7 +75,7 @@ export function openPartStore(
   const receive = (live: HostSocket, event: SocketEvent): void => {
     if (event.scope !== `session/${input.session}`) return;
 
-    if (event.kind !== "change" || !changes.Check(event)) return;
+    if (event.kind !== "change" || !sessionChanges.Check(event)) return;
 
     if (reading || held === null) {
       pending.push(event);

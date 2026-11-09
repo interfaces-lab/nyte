@@ -1,4 +1,3 @@
-import { ActivationType, compile, SessionChangeType, withJson } from "@nyte-ai/schema";
 import type {
   Activation,
   CatalogId,
@@ -12,6 +11,7 @@ import type {
 import { asSdkError, openSessionStore } from "@nyte-ai/protocol";
 import type { HostSocket, SessionRows, SessionStore, SocketEvent } from "@nyte-ai/protocol";
 import type { Catalogs } from "./catalogs.ts";
+import { activations, sessionChanges } from "./event-checks.ts";
 import { freshnessCell, keepRows, listenerSet, readRetries, request, sameJson } from "./live.ts";
 import type { Freshness, Join, Live } from "./live.ts";
 
@@ -36,10 +36,6 @@ export interface HeadStore extends Live<HeadSnapshot | null> {
 }
 
 type Held = { readonly store: SessionStore; activation: Activation };
-
-const changes = compile(withJson(SessionChangeType));
-
-const activations = compile(withJson(ActivationType));
 
 const EMPTY_CATALOG: SessionCatalogView = {
   commands: [],
@@ -165,7 +161,7 @@ export function openHeadStore(
       return;
     }
 
-    if (event.kind !== "change" || !changes.Check(event)) return;
+    if (event.kind !== "change" || !sessionChanges.Check(event)) return;
 
     if (reading || held === null) {
       pending.push(event);

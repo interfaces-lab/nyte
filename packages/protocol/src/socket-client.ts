@@ -1,17 +1,4 @@
-import {
-  API_MIN_REVISION,
-  API_REVISION,
-  compile,
-  ErrorFrameType,
-  EventFrameType,
-  isJson,
-  isJsonObject,
-  ResultFrameType,
-  SdkError,
-  TextFrameType,
-  WelcomeFrameType,
-  withJson,
-} from "@nyte-ai/schema";
+import { API_MIN_REVISION, API_REVISION, isJson, isJsonObject, SdkError } from "@nyte-ai/schema";
 import type {
   ClientInfo,
   EventFrame,
@@ -20,6 +7,7 @@ import type {
   TextFrame,
   WelcomeFrame,
 } from "@nyte-ai/schema";
+import { errors, events, results, texts, welcomes } from "./frame-checks.ts";
 import { decodeError } from "./wire.ts";
 
 export interface SocketLike {
@@ -51,16 +39,6 @@ type Waiting = {
   readonly resolve: (output: Json) => void;
   readonly reject: (error: SdkError) => void;
 };
-
-const welcomes = compile(withJson(WelcomeFrameType));
-
-const results = compile(withJson(ResultFrameType));
-
-const errors = compile(withJson(ErrorFrameType));
-
-const events = compile(withJson(EventFrameType));
-
-const texts = compile(withJson(TextFrameType));
 
 export async function openHostSocket(input: {
   readonly socket: SocketLike;

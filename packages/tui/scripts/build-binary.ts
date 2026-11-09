@@ -7,6 +7,7 @@ import solidPlugin from "@opentui/solid/bun-plugin";
 import { valid } from "semver";
 import { VERSION } from "../src/version.ts";
 import { codemodePlugin } from "./codemode-plugin.ts";
+import { checksPlugin } from "./checks-plugin.ts";
 import { BINARY_ENTRYPOINTS, binaryDefines } from "./defines.ts";
 import { docsPlugin } from "./docs-plugin.ts";
 import { photonPlugin } from "./photon-plugin.ts";
@@ -43,7 +44,7 @@ try {
     entrypoints: BINARY_ENTRYPOINTS.map((entry) => join(packages, entry)),
     root: packages,
     target: "bun",
-    plugins: [solidPlugin, codemodePlugin, photonPlugin, docsPlugin],
+    plugins: [solidPlugin, codemodePlugin, photonPlugin, docsPlugin, checksPlugin],
     define: { ...binaryDefines(process.env), NYTE_BUILT_VERSION: JSON.stringify(version) },
     format: "esm",
     minify: true,

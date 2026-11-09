@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import process from "node:process";
 import { Type } from "typebox";
 import type { Static } from "typebox";
-import { Compile } from "typebox/compile";
+import { Value } from "typebox/value";
 
 const RunningHostType = Type.Object({
   url: Type.String(),
@@ -16,13 +16,9 @@ const RunningHostType = Type.Object({
 /** What `nyte host` writes to `host.json` while it serves: where it listens, its token, its process and its local socket. */
 export type RunningHost = Static<typeof RunningHostType>;
 
-const runningHosts = Compile(RunningHostType);
-
 const HostAddressType = Type.Object({ port: Type.Integer(), token: Type.String() });
 
 export type HostAddress = Static<typeof HostAddressType>;
-
-const hostAddresses = Compile(HostAddressType);
 
 export type Published =
   | { readonly kind: "published" }
@@ -100,7 +96,7 @@ export async function publishHost(path: string, host: RunningHost): Promise<Publ
 export async function readHostAddress(path: string): Promise<HostAddress | null> {
   const parsed = await readJson(path);
 
-  return hostAddresses.Check(parsed) ? parsed : null;
+  return Value.Check(HostAddressType, parsed) ? parsed : null;
 }
 
 export async function saveHostAddress(path: string, address: HostAddress): Promise<void> {
@@ -116,7 +112,7 @@ export async function withdrawHost(path: string, pid: number): Promise<void> {
 async function readHostFile(path: string): Promise<RunningHost | null> {
   const parsed = await readJson(path);
 
-  return runningHosts.Check(parsed) ? parsed : null;
+  return Value.Check(RunningHostType, parsed) ? parsed : null;
 }
 
 async function readJson(path: string): Promise<unknown> {

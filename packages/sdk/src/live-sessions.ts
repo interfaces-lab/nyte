@@ -1,13 +1,8 @@
-import {
-  ActivationType,
-  compile,
-  isJsonObject,
-  SessionsChangeType,
-  withJson,
-} from "@nyte-ai/schema";
+import { isJsonObject } from "@nyte-ai/schema";
 import type { Activation, Json, SessionId, SessionInfo, SessionsChange } from "@nyte-ai/schema";
 import { asSdkError, openDirectoryStore } from "@nyte-ai/protocol";
 import type { DirectoryStore, HostSocket, OperationInput, SocketEvent } from "@nyte-ai/protocol";
+import { activations, sessionsChanges } from "./event-checks.ts";
 import { freshnessCell, keepRows, listenerSet, readRetries, request, sameJson } from "./live.ts";
 import type { Freshness, Join, Live } from "./live.ts";
 
@@ -23,10 +18,6 @@ export interface SessionsStore extends Live<SessionsSnapshot | null> {
   freshness(): Freshness;
   close(): void;
 }
-
-const changes = compile(withJson(SessionsChangeType));
-
-const activations = compile(withJson(ActivationType));
 
 export function openSessions(window: SessionsWindow, join: Join): SessionsStore {
   const listeners = listenerSet();
@@ -94,7 +85,7 @@ export function openSessions(window: SessionsWindow, join: Join): SessionsStore 
       return;
     }
 
-    if (event.kind !== "change" || !changes.Check(event)) return;
+    if (event.kind !== "change" || !sessionsChanges.Check(event)) return;
 
     if (reading || store === null) {
       pending.push(event);

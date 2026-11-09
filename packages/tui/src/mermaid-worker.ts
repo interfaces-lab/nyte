@@ -1,6 +1,7 @@
 import { parentPort } from "node:worker_threads";
 import { renderMermaidASCII } from "beautiful-mermaid";
-import { diagramRequests } from "./services/diagrams.ts";
+import { Value } from "typebox/value";
+import { DiagramRequestType } from "./services/diagrams.ts";
 import type { DiagramReply } from "./services/diagrams.ts";
 
 const port = parentPort;
@@ -8,7 +9,7 @@ const port = parentPort;
 if (port === null) throw new Error("The diagram worker must run on a worker thread.");
 
 port.on("message", (request) => {
-  if (!diagramRequests.Check(request)) return;
+  if (!Value.Check(DiagramRequestType, request)) return;
   let reply: DiagramReply;
 
   try {
