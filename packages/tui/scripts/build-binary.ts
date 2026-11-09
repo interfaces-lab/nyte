@@ -46,6 +46,8 @@ try {
     plugins: [solidPlugin, codemodePlugin, photonPlugin, docsPlugin],
     define: { ...binaryDefines(process.env), NYTE_BUILT_VERSION: JSON.stringify(version) },
     format: "esm",
+    minify: true,
+    splitting: true,
     bytecode: true,
     compile: { outfile: executable, autoloadBunfig: false, autoloadDotenv: false },
   });
