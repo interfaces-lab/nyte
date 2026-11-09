@@ -148,7 +148,7 @@ export function VariablesSettings(): ReactElement {
           <div {...ROW_MARK} {...props(settingsPatterns.rowRule, styles.addRow)}>
             <Button
               icon="plus"
-              disabled={entries === undefined || editing !== null}
+              disabled={entries === undefined || editing !== null || save.isPending}
               onClick={() => setEditing({ kind: "new" })}
             >
               Add Variable
