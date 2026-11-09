@@ -23,7 +23,6 @@ const stateSchema = Type.Object({
   theme: themeSource,
   window: Type.Optional(windowFrame),
   windows: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
-  menuBarOnly: Type.Optional(Type.Boolean()),
 });
 
 const launchState = Compile(stateSchema);
@@ -63,14 +62,6 @@ export class LaunchStateStore {
 
   windows(): readonly string[] {
     return this.#state.windows ?? [];
-  }
-
-  menuBarOnly(): boolean {
-    return this.#state.menuBarOnly ?? false;
-  }
-
-  setMenuBarOnly(menuBarOnly: boolean): void {
-    this.#write({ ...this.#state, menuBarOnly });
   }
 
   setTheme(theme: ThemeSource): void {

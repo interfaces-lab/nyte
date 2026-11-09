@@ -794,7 +794,6 @@ function showHostTray(): void {
   hostTray = createHostTray({
     agent: hostRuntime.agent,
     link: hostRuntime.link,
-    launchState,
     checkForUpdates: () => void updates?.click(),
     openApp: () => {
       app.focus({ steal: true });
@@ -955,7 +954,7 @@ if (!hasSingleInstanceLock) {
   });
 
   app.on("window-all-closed", () => {
-    if (process.platform !== "darwin" && !launchState.menuBarOnly()) app.quit();
+    if (process.platform !== "darwin") app.quit();
   });
 
   app.on("activate", () => {

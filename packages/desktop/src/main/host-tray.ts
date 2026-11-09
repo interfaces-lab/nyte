@@ -7,10 +7,11 @@ import { processAlive } from "./host-agent.ts";
 import type { HostAgent } from "./host-agent.ts";
 import type { HostLink } from "./host-link.ts";
 import { readHostStatus } from "./host-status.ts";
-import type { LaunchStateStore } from "./launch-state.ts";
 import type { HostIssue, HostReading, HostStatus } from "./host-status.ts";
 
 const PROBE_EVERY_MS = 5_000;
+
+const HEADER_ICON_POINTS = 32;
 
 const STATUS_LABELS = {
   running: "Running",
@@ -38,7 +39,6 @@ const ISSUE_LABELS = {
 export interface HostTrayOptions {
   readonly agent: HostAgent;
   readonly link: HostLink;
-  readonly launchState: Pick<LaunchStateStore, "menuBarOnly" | "setMenuBarOnly">;
   checkForUpdates(): void;
   openApp(): void;
   openSettings(): void;
@@ -49,11 +49,11 @@ export interface HostTray {
 }
 
 export function createHostTray(options: HostTrayOptions): HostTray {
-  if (options.launchState.menuBarOnly()) app.dock?.hide();
-  const icon = nativeImage.createFromPath(trayIconPath());
+  const icon = nativeImage.createFromPath(resourcePath("trayTemplate.png"));
   icon.setTemplateImage(true);
   const tray = new Tray(icon);
-  const dots = new Map<HostStatus, NativeImage>();
+  const appIcon = nativeImage.createFromPath(resourcePath("icon.png"));
+  const headerIcons = new Map<HostStatus, NativeImage>();
   let reading: HostReading = { status: "stopped", issues: [] };
   let open = false;
   let probing: Promise<void> | undefined;
@@ -74,19 +74,19 @@ export function createHostTray(options: HostTrayOptions): HostTray {
     return probing;
   };
 
-  const dot = (status: HostStatus): NativeImage => {
-    const found = dots.get(status);
+  const headerIcon = (status: HostStatus): NativeImage => {
+    const found = headerIcons.get(status);
 
     if (found !== undefined) return found;
-    const made = statusDot(STATUS_COLORS[status]);
-    dots.set(status, made);
+    const made = badgedIcon(appIcon, STATUS_COLORS[status]);
+    headerIcons.set(status, made);
 
     return made;
   };
 
   const show = async (): Promise<void> => {
     await refresh();
-    const menu = Menu.buildFromTemplate(items(options, reading, dot(reading.status)));
+    const menu = Menu.buildFromTemplate(items(options, reading, headerIcon(reading.status)));
     menu.once("menu-will-show", () => {
       open = true;
     });
@@ -133,17 +133,20 @@ async function probe(
 function items(
   options: HostTrayOptions,
   reading: HostReading,
-  dot: NativeImage,
+  headerIcon: NativeImage,
 ): MenuItemConstructorOptions[] {
   const state = options.link.state;
-  const host = state.kind === "connected" ? state.version : "unknown";
-  const versions = `Nyte ${app.getVersion()} · Host ${host}`;
+
+  const versions = [
+    `Nyte ${app.getVersion()}`,
+    ...(state.kind === "connected" ? [`Nyte Host ${state.version}`] : []),
+  ];
 
   return [
     {
       label: SUBLABELS ? "Nyte Host" : `Nyte Host: ${STATUS_LABELS[reading.status]}`,
       sublabel: SUBLABELS ? STATUS_LABELS[reading.status] : undefined,
-      icon: dot,
+      icon: headerIcon,
       click: () => options.openApp(),
     },
     ...reading.issues.map((issue): MenuItemConstructorOptions =>
@@ -158,52 +161,49 @@ function items(
         : { label: ISSUE_LABELS.unreachable, enabled: false },
     ),
     { type: "separator" },
-    {
-      label: SUBLABELS ? "Copy Versions" : `Copy ${versions}`,
-      sublabel: SUBLABELS ? versions : undefined,
-      click: () => clipboard.writeText(versions),
-    },
+    ...versions.map((label): MenuItemConstructorOptions => ({
+      label,
+      toolTip: "Copy Versions",
+      click: () => clipboard.writeText(versions.join("\n")),
+    })),
     { type: "separator" },
     { label: "Check for Updates…", click: () => options.checkForUpdates() },
     { label: "Settings…", click: () => options.openSettings() },
-    {
-      label: "Menu bar only",
-      type: "checkbox",
-      checked: options.launchState.menuBarOnly(),
-      click: (item) => setMenuBarOnly(options, item.checked),
-    },
     { type: "separator" },
     { label: "Quit Nyte", click: () => app.quit() },
   ];
 }
 
-function statusDot(color: readonly [number, number, number]): NativeImage {
-  const size = 16;
-  const pixels = Buffer.alloc(size * size * 4);
+function badgedIcon(source: NativeImage, color: readonly [number, number, number]): NativeImage {
+  const image = nativeImage.createEmpty();
 
-  for (let y = 0; y < size; y++)
-    for (let x = 0; x < size; x++) {
-      const distance = Math.hypot(x + 0.5 - size / 2, y + 0.5 - size / 2);
-      const alpha = Math.max(0, Math.min(1, 5.5 - distance));
-      const at = (y * size + x) * 4;
-      pixels[at] = Math.round(color[2] * alpha);
-      pixels[at + 1] = Math.round(color[1] * alpha);
-      pixels[at + 2] = Math.round(color[0] * alpha);
-      pixels[at + 3] = Math.round(255 * alpha);
-    }
+  for (const scaleFactor of [1, 2]) {
+    const size = HEADER_ICON_POINTS * scaleFactor;
+    const pixels = source.resize({ width: size, height: size, quality: "best" }).toBitmap();
+    const center = size * 0.84;
+    const radius = size * 0.11;
+    const gap = size * 0.05;
 
-  return nativeImage.createFromBitmap(pixels, { width: size, height: size, scaleFactor: 2 });
+    for (let y = 0; y < size; y++)
+      for (let x = 0; x < size; x++) {
+        const distance = Math.hypot(x + 0.5 - center, y + 0.5 - center);
+        const keep = 1 - Math.max(0, Math.min(1, radius + gap - distance + 0.5));
+        const dot = Math.max(0, Math.min(1, radius - distance + 0.5));
+        const at = (y * size + x) * 4;
+        pixels[at] = Math.round((pixels[at] ?? 0) * keep + color[2] * dot);
+        pixels[at + 1] = Math.round((pixels[at + 1] ?? 0) * keep + color[1] * dot);
+        pixels[at + 2] = Math.round((pixels[at + 2] ?? 0) * keep + color[0] * dot);
+        pixels[at + 3] = Math.round((pixels[at + 3] ?? 0) * keep + 255 * dot);
+      }
+
+    image.addRepresentation({ scaleFactor, width: size, height: size, buffer: pixels });
+  }
+
+  return image;
 }
 
-function setMenuBarOnly(options: HostTrayOptions, menuBarOnly: boolean): void {
-  options.launchState.setMenuBarOnly(menuBarOnly);
-
-  if (menuBarOnly) app.dock?.hide();
-  else void app.dock?.show();
-}
-
-function trayIconPath(): string {
+function resourcePath(name: string): string {
   return app.isPackaged
-    ? join(process.resourcesPath, "trayTemplate.png")
-    : join(app.getAppPath(), "resources", "trayTemplate.png");
+    ? join(process.resourcesPath, name)
+    : join(app.getAppPath(), "resources", name);
 }

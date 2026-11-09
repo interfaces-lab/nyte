@@ -138,6 +138,7 @@ const mac = {
   entitlementsInherit: "build/entitlements.mac.plist",
   extraResources: [
     ...CLI,
+    { from: "resources/icon.png", to: "icon.png" },
     { from: "resources/trayTemplate.png", to: "trayTemplate.png" },
     { from: "resources/trayTemplate@2x.png", to: "trayTemplate@2x.png" },
   ],
