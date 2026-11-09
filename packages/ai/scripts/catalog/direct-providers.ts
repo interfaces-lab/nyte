@@ -110,6 +110,46 @@ export function bedrockModels(data: ModelsDevCatalog, metadata: ModelsDevMetadat
   return models;
 }
 
+const CLAUDE_FABLE_52: ModelsDevModel = {
+  name: "Claude Fable 5.2",
+  tool_call: true,
+  structured_output: true,
+  reasoning: true,
+  reasoning_options: [{ type: "effort", values: ["low", "medium", "high", "xhigh", "max"] }],
+  modalities: { input: ["text", "image", "pdf"], output: ["text"] },
+  limit: { context: 1000000, output: 128000 },
+  cost: { input: 8, output: 40, cache_read: 0.2, cache_write: 10 },
+};
+
+/** Lists Claude Fable 5.2 under the models.dev providers that serve it until models.dev does. */
+export function addUnlistedClaudeFable52(data: ModelsDevCatalog): void {
+  const anthropic = data.anthropic?.models;
+  const openrouter = data.openrouter?.models;
+  const vercel = data.vercel?.models;
+
+  if (anthropic) {
+    anthropic["claude-fable-5-2"] ??= {
+      ...CLAUDE_FABLE_52,
+      id: "claude-fable-5-2",
+      experimental: {
+        modes: {
+          fast: {
+            cost: { input: 16, output: 80, cache_read: 0.4, cache_write: 20 },
+            provider: {
+              body: { speed: "fast" },
+              headers: { "anthropic-beta": "fast-mode-2026-02-01" },
+            },
+          },
+        },
+      },
+    };
+  }
+
+  if (openrouter) openrouter["anthropic/claude-fable-5.2"] ??= CLAUDE_FABLE_52;
+
+  if (vercel) vercel["anthropic/claude-fable-5.2"] ??= CLAUDE_FABLE_52;
+}
+
 export function anthropicModels(data: ModelsDevCatalog, metadata: ModelsDevMetadata): Model<Api>[] {
   const anthropic = data.anthropic?.models;
 

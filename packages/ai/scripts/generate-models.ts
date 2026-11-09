@@ -25,6 +25,7 @@ import {
   withoutUnservedModels,
 } from "./catalog/curated-models.ts";
 import {
+  addUnlistedClaudeFable52,
   anthropicModels,
   bedrockModels,
   googleModels,
@@ -73,6 +74,8 @@ async function loadModelsDevData(): Promise<{
 }> {
   const startedAt = performance.now();
   const data = await fetchModelsDevCatalog();
+
+  addUnlistedClaudeFable52(data);
   const metadata = new ModelsDevMetadata();
 
   for (const [modelId, model] of Object.entries(data.openrouter?.models ?? {})) {

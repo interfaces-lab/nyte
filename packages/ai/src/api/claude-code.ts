@@ -1,6 +1,6 @@
 import type { Tool } from "../types.ts";
 
-export const claudeCodeVersion = "2.1.280";
+export const claudeCodeVersion = "2.1.319";
 
 /**
  * Claude Code 2.x tool names, PascalCase as Claude Code sends them.
