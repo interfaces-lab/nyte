@@ -24,7 +24,7 @@ import { TabsDemo, TabsPillDemo, TabsSegmentedDemo, TabsUnderlineDemo } from "./
 import { ToggleDemo, ToggleGroupDemo, ToggleGroupMultipleDemo } from "./demos/toggle";
 import { ToolbarDemo } from "./demos/toolbar";
 import { TooltipDemo } from "./demos/tooltip";
-import { IconDemo, PanelToggleIconDemo } from "./demos/icon";
+import { IconDemo, PanelToggleIconDemo, SplitPreviewIconDemo } from "./demos/icon";
 import { KbdDemo } from "./demos/kbd";
 import { LoaderDemo } from "./demos/loader";
 import { SpinnerDemo } from "./demos/spinner";
@@ -69,6 +69,7 @@ export const componentsMdxComponents = {
   TooltipDemo,
   IconDemo,
   PanelToggleIconDemo,
+  SplitPreviewIconDemo,
   KbdDemo,
   LoaderDemo,
   SpinnerDemo,

@@ -14,7 +14,7 @@ import { sidebarPush, useSidebarSwipe } from "../sidebar/sidebar-swipe.ts";
 import { Sidebar } from "../sidebar/sidebar.tsx";
 import { Button } from "@nyte-ai/ui/button";
 import { Loader } from "@nyte-ai/ui/loader";
-import { Toaster } from "@nyte-ai/ui/toast";
+import { ToastProvider } from "@nyte-ai/ui/toast";
 import { Titlebar } from "./titlebar.tsx";
 import { PaneControllerProvider } from "../panes/pane-context.tsx";
 import { SessionDndProvider } from "../panes/session-dnd.tsx";
@@ -34,7 +34,6 @@ import { useWindowTabsSync } from "../tabs/use-window-tabs.tsx";
 import { windowTabs } from "../tabs/window-tabs.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { closeSettings } from "../settings/index.ts";
-import { preferences, useSetting } from "../preferences/index.ts";
 import { settingsRoute } from "./routes.tsx";
 
 const styles = create({
@@ -162,9 +161,11 @@ function ReleaseNotice(): ReactElement | null {
 export function Shell({ appIcon }: { appIcon: string }): ReactElement {
   return (
     <TooltipProvider>
-      <PaneControllerProvider>
-        <ShellChrome appIcon={appIcon} />
-      </PaneControllerProvider>
+      <ToastProvider>
+        <PaneControllerProvider>
+          <ShellChrome appIcon={appIcon} />
+        </PaneControllerProvider>
+      </ToastProvider>
     </TooltipProvider>
   );
 }
@@ -178,7 +179,6 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
   const sidebarCollapsed = useSidebar().state === "collapsed";
   const mac = nyte.platform === "darwin";
   const strip = windowTabs.strip;
-  const toastPosition = useSetting(preferences.toastPosition);
   useWindowTabsSync();
 
   const onKeyDown = useEffectEvent((event: KeyboardEvent): void => {
@@ -255,7 +255,6 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
       <WorkspaceDialogHost />
       <ProjectDialogHost />
       <StoreMigration />
-      <Toaster position={toastPosition} />
       {about !== undefined && (
         <AboutDialog
           info={about}

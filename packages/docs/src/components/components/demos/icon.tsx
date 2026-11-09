@@ -1,5 +1,5 @@
 import { Button } from "@nyte-ai/ui/button";
-import { Icon, PanelToggleIcon } from "@nyte-ai/ui/icon";
+import { Icon, PanelToggleIcon, SplitPreviewIcon } from "@nyte-ai/ui/icon";
 import { useState } from "react";
 
 export function IconDemo() {
@@ -24,5 +24,18 @@ export function PanelToggleIconDemo() {
     >
       <PanelToggleIcon side="left" visible={visible} />
     </Button>
+  );
+}
+
+export function SplitPreviewIconDemo() {
+  return (
+    <>
+      <Button iconOnly aria-label="Split Right">
+        <SplitPreviewIcon side="right" />
+      </Button>
+      <Button iconOnly aria-label="Split Down">
+        <SplitPreviewIcon side="down" />
+      </Button>
+    </>
   );
 }

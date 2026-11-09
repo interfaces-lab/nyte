@@ -678,7 +678,9 @@
       "--nyte-switch-padding-md",
       "--nyte-switch-width-md",
       "--nyte-target-gap",
-      "--nyte-target-min"
+      "--nyte-target-min",
+      "--nyte-toast-min-width",
+      "--nyte-toast-width"
     ],
     "ui/src/styles/tokens.stylex.ts controls": [
       "--nyte-control-height-2xs",
@@ -1042,6 +1044,7 @@
     ],
     "ui/src/styles/schema.stylex.ts switchControl": ["heightMd", "knobMd", "paddingMd", "widthMd"],
     "ui/src/styles/schema.stylex.ts target": ["gap", "min"],
+    "ui/src/styles/schema.stylex.ts toast": ["minWidth", "width"],
     "app/src/theme/schema.stylex.ts conversation": [
       "composerExpandedRadius",
       "composerFooterSegmentMaxWidth",

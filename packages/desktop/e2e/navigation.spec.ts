@@ -5,14 +5,12 @@ import {
   chatPane,
   chatRow,
   chatTab,
-  menuShortcut,
   messages,
   openChat,
   openNewChat,
   primaryKey,
   revealChat,
   send,
-  shiftKey,
   sidebar,
 } from "./ui.ts";
 
@@ -139,18 +137,11 @@ test("the navigation journey", async ({ desktop }) => {
     await expect(chatTab(page, FIXTURES.alpha)).toHaveAttribute("aria-selected", "true");
   });
 
-  await test.step("Chat actions offers the two splits", async () => {
-    await page.getByRole("button", { name: "Chat actions" }).click();
-    const menu = page.getByRole("menu", { name: "Chat actions" });
-    await expect(
-      menu.getByRole("menuitem", { name: `Split Down ${menuShortcut(shiftKey, primaryKey, "D")}` }),
-    ).toBeVisible();
-    await expect(
-      menu.getByRole("menuitem", { name: `Split Right ${menuShortcut(primaryKey, "D")}` }),
-    ).toBeVisible();
-    await expect(menu.getByRole("menuitem")).toHaveCount(2);
-    await page.keyboard.press("Escape");
-    await expect(menu).toBeHidden();
+  await test.step("the title bar offers the two splits", async () => {
+    const splits = page.getByRole("group", { name: "Split Chat" });
+    await expect(splits.getByRole("button", { name: "Split Right", exact: true })).toBeVisible();
+    await expect(splits.getByRole("button", { name: "Split Down", exact: true })).toBeVisible();
+    await expect(splits.getByRole("button")).toHaveCount(2);
   });
 
   await test.step("Customize lists the plugins", async () => {

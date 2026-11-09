@@ -1,11 +1,13 @@
-import { create, props } from "@stylexjs/stylex";
+import { create, props, when } from "@stylexjs/stylex";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { createContext, use, type CSSProperties, type ReactElement, type ReactNode } from "react";
 
 import { FILLED_GLYPHS, GLYPHS } from "./glyphs/selected.generated.ts";
 import type { FilledIconName, IconName } from "./icon-names.ts";
 import { mergeStyleProps } from "./style.ts";
-import { glyph } from "./styles/schema.stylex.ts";
+import { controlRoot } from "./styles/control.stylex.ts";
+import { glyph, media } from "./styles/schema.stylex.ts";
+import { motion as motionTokens } from "./styles/vars.stylex.ts";
 import type { Restyle } from "./styles/contracts.ts";
 
 export type { FilledIconName, IconName } from "./icon-names.ts";
@@ -18,6 +20,43 @@ const styles = create({
     flexShrink: 0,
   },
   swap: { display: "inline-grid", flexShrink: 0 },
+  splitPane: {
+    fill: "currentColor",
+    transformBox: "fill-box",
+    opacity: {
+      default: 0,
+      [when.ancestor(":hover:not([data-disabled])", controlRoot)]: { default: 0, [media.hover]: 1 },
+      [when.ancestor(":focus-visible", controlRoot)]: 1,
+    },
+    transitionProperty: "opacity, scale",
+    transitionDuration: {
+      default: motionTokens.durationFast,
+      "@media (prefers-reduced-motion: reduce)": "0s",
+    },
+    transitionTimingFunction: motionTokens.easeOut,
+  },
+  splitRight: {
+    transformOrigin: "left center",
+    scale: {
+      default: "0.5 1",
+      [when.ancestor(":hover:not([data-disabled])", controlRoot)]: {
+        default: "0.5 1",
+        [media.hover]: "1",
+      },
+      [when.ancestor(":focus-visible", controlRoot)]: "1",
+    },
+  },
+  splitDown: {
+    transformOrigin: "center top",
+    scale: {
+      default: "1 0.5",
+      [when.ancestor(":hover:not([data-disabled])", controlRoot)]: {
+        default: "1 0.5",
+        [media.hover]: "1",
+      },
+      [when.ancestor(":focus-visible", controlRoot)]: "1",
+    },
+  },
   swapLayer: { display: "inline-grid", gridArea: "1 / 1" },
 });
 
@@ -172,6 +211,48 @@ export function PanelToggleIcon({
           strokeLinecap={visible ? undefined : "round"}
           strokeLinejoin="round"
         />
+      </svg>
+    </IconFrame>
+  );
+}
+
+export type SplitSide = "right" | "down";
+
+const SPLITS = {
+  right: {
+    divider: "M12 4.75V19.25",
+    pane: "M12 4.75H19.25C20.3546 4.75 21.25 5.64543 21.25 6.75V17.25C21.25 18.3546 20.3546 19.25 19.25 19.25H12V4.75Z",
+    grow: styles.splitRight,
+  },
+  down: {
+    divider: "M2.75 12H21.25",
+    pane: "M2.75 12H21.25V17.25C21.25 18.3546 20.3546 19.25 19.25 19.25H4.75C3.64543 19.25 2.75 18.3546 2.75 17.25V12Z",
+    grow: styles.splitDown,
+  },
+} as const;
+
+export function SplitPreviewIcon({
+  side,
+  size = "md",
+}: {
+  readonly side: SplitSide;
+  readonly size?: GlyphSize;
+}): ReactElement {
+  const split = SPLITS[side];
+
+  return (
+    <IconFrame size={size}>
+      <svg
+        aria-hidden="true"
+        width="100%"
+        height="100%"
+        viewBox="0 0 24 24"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path d={split.pane} {...props(styles.splitPane, split.grow)} />
+        <path d={PANEL_FRAME_PATH} stroke="currentColor" strokeWidth={1.5} strokeLinejoin="round" />
+        <path d={split.divider} stroke="currentColor" strokeWidth={1.5} />
       </svg>
     </IconFrame>
   );

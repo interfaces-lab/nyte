@@ -1,5 +1,4 @@
 import { typed } from "@nyte-ai/schema/model";
-import { TOAST_POSITIONS } from "@nyte-ai/ui/toast";
 import { Type } from "typebox";
 import type { ThemePreference } from "../contract/bridge.ts";
 import { DEFAULT_SESSION_VIEW, SessionViewSchema } from "./session-view.ts";
@@ -50,11 +49,6 @@ export const preferences = {
     { key: "nyte:confirm-external-links:v1" },
     Type.Boolean(),
     true,
-  ),
-  toastPosition: definePreference(
-    { key: "nyte:toast-position:v1" },
-    Type.Enum(TOAST_POSITIONS),
-    "bottom-right",
   ),
   trustedLinkHosts: definePreference(
     { key: "nyte:trusted-link-hosts:v1" },

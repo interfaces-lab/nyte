@@ -4,14 +4,26 @@ description: "A notification stack for outcomes the user did not just watch happ
 ---
 
 ```ts title="Import"
-import { Toaster, toast } from "@nyte-ai/ui/toast";
+import {
+  ToastGlyph,
+  ToastProvider,
+  ToastStack,
+  toast,
+  toastHolds,
+  useHeldToasts,
+  useToasts,
+} from "@nyte-ai/ui/toast";
 ```
 
-`Toaster` renders the stack and `toast.add` opens a notification in it. Keep form errors in the form.
+`ToastStack` renders the toasts `ToastProvider` holds, and `toast.add` opens one. Keep form errors in the form.
 
 ## Usage
 
-- Mount one `Toaster` near the app root before calling `toast.add`. Calls can come from outside React.
+- Wrap the app in one `ToastProvider` and render one `ToastStack` inside it before calling `toast.add`. Calls can come from outside React.
+- The stack drops from the element whose CSS `anchor-name` matches its `anchor`, aligned to that element's end edge, or from the window's top end corner without one. It folds into a deck and spreads while pointed at or focused.
+- A toast without an `id` gets one from what it says, so a repeat lands on the live copy, shows ×2, and restarts its timer.
+- Warnings and errors hold. One that leaves the stack before anyone answers it, by its timer, its close button, a swipe or `toast.hold`, waits in `useHeldToasts` until `toast.close` ends it.
+- `useToasts` and `useHeldToasts` feed a view of your own, such as a list behind the anchor. Pass `hidden` to the stack while that view shows them, and draw their marks with `ToastGlyph`.
 - Error toasts with a string title get a Copy error button. A string description joins the copied text on a new line.
 - Action buttons use `actionProps`. Call `toast.close(id)` in the handler to close the notification.
 
@@ -56,7 +68,7 @@ import { Toaster, toast } from "@nyte-ai/ui/toast";
 >
   Error
 </Button>
-<Toaster />
+<ToastStack />
 ```
 
 ### A toast that stays
@@ -112,31 +124,45 @@ Each state accepts a string or an options object. `success` and `error` also acc
 
 ## Props
 
-### Toaster
+### ToastProvider
 
-`Toaster` accepts Base UI's `Toast.Provider` props except `children`, plus `position`.
+| Prop       | Type        | Default  | Description                           |
+| ---------- | ----------- | -------- | ------------------------------------- |
+| `children` | `ReactNode` | Required |                                       |
+| `limit`    | `number`    | `3`      | Older toasts are hidden, not removed. |
 
-| Prop           | Type            | Default          | Description                               |
-| -------------- | --------------- | ---------------- | ----------------------------------------- |
-| `timeout`      | `number`        | `5000`           | Auto-close milliseconds. `0` disables.    |
-| `limit`        | `number`        | `3`              | Older toasts are hidden, not removed.     |
-| `toastManager` | `ToastManager`  | `toast`          |                                           |
-| `position`     | `ToastPosition` | `"bottom-right"` | `TOAST_POSITIONS` lists the values below. |
+### ToastStack
 
-`ToastPosition` is `"top-left" | "top-center" | "top-right" | "bottom-left" | "bottom-center" | "bottom-right"`.
+| Prop     | Type      | Default | Description                                         |
+| -------- | --------- | ------- | --------------------------------------------------- |
+| `anchor` | `string`  |         | A dashed ident, the `anchor-name` to drop from.     |
+| `hidden` | `boolean` | `false` | Keeps the stack out of sight; the toasts stay live. |
+
+### useToasts and useHeldToasts
+
+`useToasts` returns `readonly ToastItem[]`, newest first, including toasts playing their exit. `ToastItem` is a toast whose `data` is `ToastData`: `at`, when `toast.add` last stamped it, and `count`, how many times it said the same thing.
+
+`useHeldToasts` returns `readonly HeldToast[]`, newest first: the `id`, `type`, `title`, `description`, `actionProps` and `data` of each toast that holds and left the stack unanswered. `toastHolds(item)` says whether a toast holds.
+
+### ToastGlyph
+
+| Prop   | Type                  | Default  | Description                                          |
+| ------ | --------------------- | -------- | ---------------------------------------------------- |
+| `type` | `string \| undefined` | Required | A spinner for `"loading"`, info for an unknown type. |
 
 ### toast
 
 | Call                                                  | Returns          | Description                                   |
 | ----------------------------------------------------- | ---------------- | --------------------------------------------- |
 | `toast.add(options)`                                  | `string`         | Opens or updates by id. Refreshes timer.      |
-| `toast.close(id?)`                                    | `void`           | Omit id to close all.                         |
+| `toast.close(id?)`                                    | `void`           | Ends it, held or live. Omit id to end all.    |
+| `toast.hold(id)`                                      | `void`           | Takes it out of the stack; a hold waits held. |
 | `toast.update(id, options)`                           | `void`           | Also accepts a function of the current toast. |
 | `toast.promise(promise, { loading, success, error })` | `Promise<Value>` | Tracks the operation.                         |
 
 ### Toast options
 
-`ToastOptions<Data>` types `toast.add` options, with `Data extends object`.
+`ToastOptions` types `toast.add` options. `toast.add` sets their `data`.
 `toast.update` accepts partial options without `id` or `transitionStatus`.
 
 | Option             | Type                                    | Description                                                                  |

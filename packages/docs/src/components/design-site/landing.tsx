@@ -1,4 +1,4 @@
-import { Toaster } from "@nyte-ai/ui/toast";
+import { ToastProvider, ToastStack } from "@nyte-ai/ui/toast";
 import { mdxComponents } from "~/components/mdx";
 import { catalog, pageSlug } from "~/lib/design-catalog";
 import type { DocPage } from "~/lib/docs";
@@ -66,7 +66,9 @@ export function DesignLanding({ page }: { page: DocPage }) {
           </section>
         );
       })}
-      <Toaster />
+      <ToastProvider>
+        <ToastStack />
+      </ToastProvider>
     </DesignMain>
   );
 }

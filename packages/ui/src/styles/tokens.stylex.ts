@@ -283,6 +283,8 @@ export const components = defineVars({
   "--nyte-dialog-padding": "24px",
   "--nyte-dialog-gap": "16px",
   "--nyte-dialog-radius": "16px",
+  "--nyte-toast-width": "320px",
+  "--nyte-toast-min-width": "280px",
   "--nyte-clipboard-preview-max-width": "360px",
   "--nyte-clipboard-preview-max-height": "240px",
   "--nyte-shape-indicator": "4px",

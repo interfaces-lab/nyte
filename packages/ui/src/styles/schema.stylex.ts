@@ -145,6 +145,11 @@ export const menu = defineConsts({
   maxHeight: "var(--nyte-menu-max-height)",
 });
 
+export const toast = defineConsts({
+  width: "var(--nyte-toast-width)",
+  minWidth: "var(--nyte-toast-min-width)",
+});
+
 export const dialog = defineConsts({
   width: "var(--nyte-dialog-width)",
   padding: "var(--nyte-dialog-padding)",

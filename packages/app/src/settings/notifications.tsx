@@ -2,12 +2,10 @@ import type { TaskState } from "@nyte-ai/plugin/client/presentation";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Row } from "@nyte-ai/ui/row";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@nyte-ai/ui/select";
-import { focus, srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
-import { glyph, media, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
-import { appearance, role } from "@nyte-ai/ui/styles/vars.stylex";
-import { intent } from "@nyte-ai/ui/surface-theme";
+import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
+import { glyph, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { Switch } from "@nyte-ai/ui/switch";
-import { TOAST_POSITIONS, type ToastPosition } from "@nyte-ai/ui/toast";
 import { create, props } from "@stylexjs/stylex";
 import { useState, type ReactElement } from "react";
 import { TaskMark } from "../components/task-mark.tsx";
@@ -23,7 +21,7 @@ import {
   type AlertSettings,
   type AlertState,
 } from "../contract/desktop-settings.ts";
-import { preferences, useSetting } from "../preferences/index.ts";
+import { useSetting } from "../preferences/index.ts";
 import { pluginSetting } from "../preferences/plugin.ts";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
 import { available } from "./capability.ts";
@@ -109,7 +107,6 @@ type State = (typeof STATES)[number];
 export function NotificationsSettings(): ReactElement {
   const mac = available(["mac"]);
   const [open, setOpen] = useState<AlertState | undefined>(undefined);
-  const position = useSetting(preferences.toastPosition);
   const terminal = useSetting(terminalNotifications);
   const every = useSetting(remindMinutes) ?? 2;
 
@@ -126,15 +123,6 @@ export function NotificationsSettings(): ReactElement {
 
   return (
     <>
-      <SettingsSection title="In-app notifications">
-        <SettingsRow title="Position" description={`Shown ${positionLabel(position)}`}>
-          <PositionPicker
-            value={position}
-            onChange={(next) => preferences.toastPosition.set(next)}
-          />
-        </SettingsRow>
-      </SettingsSection>
-
       <SettingsSection
         title="Agent activity"
         preview={
@@ -383,73 +371,7 @@ function reminderNote(waiting: readonly AlertChannel[], every: number): string |
   return undefined;
 }
 
-function positionLabel(position: ToastPosition): string {
-  return position.replace("-", " ");
-}
-
-function PositionPicker({
-  value,
-  onChange,
-}: {
-  readonly value: ToastPosition;
-  readonly onChange: (position: ToastPosition) => void;
-}): ReactElement {
-  return (
-    <div role="radiogroup" aria-label="Notification position" {...props(styles.picker)}>
-      {TOAST_POSITIONS.map((position) => (
-        <label
-          key={position}
-          {...props(
-            position === value && intent.primary,
-            styles.cell,
-            position === value && styles.cellOn,
-          )}
-        >
-          <input
-            type="radio"
-            name="toast-position"
-            value={position}
-            checked={position === value}
-            aria-label={positionLabel(position)}
-            onChange={() => onChange(position)}
-            {...props(srOnly)}
-          />
-          {position === value && <Icon name="checkmark" size="xs" />}
-        </label>
-      ))}
-    </div>
-  );
-}
-
 const styles = create({
-  picker: {
-    display: "grid",
-    gridTemplateColumns: "repeat(3, 32px)",
-    gridTemplateRows: "16px 16px",
-    rowGap: space.s6,
-    columnGap: space.s2,
-    padding: space.s2,
-    borderRadius: radius.control,
-    backgroundColor: role.bgBase,
-    boxShadow: `0 0 0 1px ${role.strokeQuaternary}`,
-  },
-  cell: {
-    position: "relative",
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radius.pill,
-    outlineStyle: { default: "none", ":has(:focus-visible)": "solid" },
-    outlineWidth: 1,
-    outlineColor: appearance.focusRing,
-    outlineOffset: 1,
-    backgroundColor: { default: role.bgMuted, ":hover": { [media.hover]: role.fillTertiary } },
-    color: role.contentOnInteractiveStrong,
-    cursor: appearance.cursorInteractive,
-  },
-  cellOn: {
-    backgroundColor: role.bgInteractiveStrong,
-  },
   stateRow: { width: "100%" },
   stateGlyph: {
     display: "inline-flex",

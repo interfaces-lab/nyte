@@ -4,7 +4,7 @@ description: "Named glyphs from Central Icons, outlined or filled"
 ---
 
 ```ts title="Import"
-import { ControlGlyphs, Icon, IconSwap, PanelToggleIcon } from "@nyte-ai/ui/icon";
+import { ControlGlyphs, Icon, IconSwap, PanelToggleIcon, SplitPreviewIcon } from "@nyte-ai/ui/icon";
 ```
 
 Named glyphs.
@@ -45,6 +45,20 @@ const [visible, setVisible] = useState(true);
 </Button>;
 ```
 
+### Split preview
+
+The pane a split would open fills while the button holding the glyph is pointed at or focused.
+
+<Preview>
+  <SplitPreviewIconDemo />
+</Preview>
+
+```tsx
+<Button iconOnly aria-label="Split Down">
+  <SplitPreviewIcon side="down" />
+</Button>
+```
+
 ## Props
 
 ### Icon and IconSwap
@@ -72,6 +86,13 @@ const [visible, setVisible] = useState(true);
 | `side`    | `"left" \| "right"` |         |
 | `visible` | `boolean`           |         |
 | `size`    | `GlyphSize`         | `"md"`  |
+
+### SplitPreviewIcon
+
+| Prop   | Type                | Default |
+| ------ | ------------------- | ------- |
+| `side` | `"right" \| "down"` |         |
+| `size` | `GlyphSize`         | `"md"`  |
 
 ### GlyphSize
 

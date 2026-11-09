@@ -1,5 +1,5 @@
 import { create } from "@stylexjs/stylex";
-import { control, layer, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { control, layer, space, target } from "@nyte-ai/ui/styles/schema.stylex";
 import { shell, sidebar, workbench } from "../theme/schema.stylex.ts";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
 
@@ -46,7 +46,6 @@ export const titlebarStyles = create({
     height: "100%",
     overflow: "clip",
   },
-  centerTrailing: { paddingInlineEnd: space.s2_5 },
   workbenchSlot: {
     display: "flex",
     alignItems: "center",
@@ -69,6 +68,20 @@ export const titlebarStyles = create({
     borderInlineStartWidth: 0,
     boxShadow: "none",
   },
+  splitGroup: {
+    display: "flex",
+    alignItems: "center",
+    gap: target.gap,
+    paddingInlineEnd: target.gap,
+  },
+  trailing: {
+    display: "flex",
+    alignItems: "center",
+    flexShrink: 0,
+    height: "100%",
+    paddingInlineEnd: target.gap,
+  },
+  trailingLast: { paddingInlineEnd: space.s2_5 },
   actionTrack: {
     display: "inline-flex",
     alignItems: "center",

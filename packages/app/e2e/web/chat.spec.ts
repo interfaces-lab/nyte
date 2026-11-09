@@ -77,7 +77,7 @@ test("without a tab strip a child chat opens in the pane and the title bar's bac
   await expect(back).toBeVisible();
 
   const title = banner.getByText("Map the core", { exact: true });
-  const actions = banner.getByRole("button", { name: "Chat actions" });
+  const actions = banner.getByRole("button", { name: "Split Right" });
 
   for (const scheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme: scheme });

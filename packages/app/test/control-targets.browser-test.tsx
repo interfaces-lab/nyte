@@ -58,7 +58,7 @@ import { Toggle } from "@nyte-ai/ui/toggle";
 import { ToggleGroup } from "@nyte-ai/ui/toggle-group";
 import { Toolbar } from "@nyte-ai/ui/toolbar";
 import { Tooltip, TooltipProvider, TooltipTrigger } from "@nyte-ai/ui/tooltip";
-import { Toaster, toast } from "@nyte-ai/ui/toast";
+import { ToastProvider, ToastStack, toast } from "@nyte-ai/ui/toast";
 import "../src/theme/tokens.stylex.ts";
 
 const selector =
@@ -458,7 +458,13 @@ export async function run(): Promise<string> {
 
     if (options === null) throw new Error("Missing Select options");
     measure(options);
-    flushSync(() => root.render(<Toaster />));
+    flushSync(() =>
+      root.render(
+        <ToastProvider>
+          <ToastStack />
+        </ToastProvider>,
+      ),
+    );
     toast.add({
       title: "File saved",
       timeout: 0,

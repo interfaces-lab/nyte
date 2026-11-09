@@ -7,8 +7,8 @@ import { useState } from "react";
 import type { ReactElement } from "react";
 import type { SessionId } from "@nyte-ai/sdk";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
-import { PanelToggleIcon } from "@nyte-ai/ui/icon";
-import { Menu, MenuContent, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
+import { PanelToggleIcon, SplitPreviewIcon } from "@nyte-ai/ui/icon";
+import type { SplitSide } from "@nyte-ai/ui/icon";
 import { Button, ButtonLink } from "@nyte-ai/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { Toggle } from "@nyte-ai/ui/toggle";
@@ -32,10 +32,10 @@ import { useSidebar } from "../sidebar/use-sidebar.ts";
 import {
   clientActionAriaShortcut,
   clientActionKeys,
-  clientActionShortcut,
   clientActions,
   clientCapabilities,
 } from "../contract/client-actions.ts";
+import { NeedsYou } from "./needs-you.tsx";
 
 import { WorkbenchTabStrip } from "../workbench/tab-strip.tsx";
 import type { WindowState } from "../tabs/model.ts";
@@ -215,21 +215,12 @@ export function Titlebar(): ReactElement {
     </span>
   );
 
-  if (settingsOpen) {
-    return (
-      <header {...props(titlebarStyles.bar)}>
-        {sidebarSlot}
-        <div {...props(titlebarStyles.contentArea, strip && titlebarStyles.contentAreaTabbed)} />
-      </header>
-    );
-  }
-
   return (
     <header {...props(titlebarStyles.bar)}>
       {sidebarSlot}
       <div {...props(titlebarStyles.contentArea, strip && titlebarStyles.contentAreaTabbed)}>
-        <span {...props(titlebarStyles.center, !workspaceVisible && titlebarStyles.centerTrailing)}>
-          {strip ? (
+        <span {...props(titlebarStyles.center)}>
+          {settingsOpen ? null : strip ? (
             <TitlebarTabStrip state={tabs} mac={mac} />
           ) : (
             <span {...props(titlebarStyles.titleSlot)}>
@@ -238,31 +229,26 @@ export function Titlebar(): ReactElement {
               )}
             </span>
           )}
-          {(workspaceVisible || strip) && onePane && !(workbenchOpen && maximized) && (
-            <span {...props(titlebarStyles.actionTrack)}>
-              <Menu>
-                <MenuTrigger render={<Button iconOnly icon="more" aria-label="Chat actions" />} />
-                <MenuContent align="end">
-                  <MenuItem
-                    icon="split-down"
-                    meta={clientActionShortcut(clientActions.splitDown, mac)}
+          {(workspaceVisible || (strip && !settingsOpen)) &&
+            onePane &&
+            !(workbenchOpen && maximized) && (
+              <span role="group" aria-label="Split Chat" {...props(titlebarStyles.splitGroup)}>
+                {(["right", "down"] as const).map((side) => (
+                  <SplitChatButton
+                    key={side}
+                    side={side}
+                    mac={mac}
                     disabled={!canSplit || !workspaceVisible}
-                    onClick={() => panes.split("down")}
-                  >
-                    {clientActions.splitDown.label}
-                  </MenuItem>
-                  <MenuItem
-                    icon="split-right"
-                    meta={clientActionShortcut(clientActions.splitRight, mac)}
-                    disabled={!canSplit || !workspaceVisible}
-                    onClick={() => panes.split("right")}
-                  >
-                    {clientActions.splitRight.label}
-                  </MenuItem>
-                </MenuContent>
-              </Menu>
-            </span>
-          )}
+                    onSplit={() => panes.split(side)}
+                  />
+                ))}
+              </span>
+            )}
+        </span>
+        <span {...props(titlebarStyles.trailing, !workspaceVisible && titlebarStyles.trailingLast)}>
+          <span {...props(titlebarStyles.control)}>
+            <NeedsYou />
+          </span>
         </span>
         {workspaceVisible && (
           <div
@@ -330,5 +316,46 @@ export function Titlebar(): ReactElement {
         )}
       </div>
     </header>
+  );
+}
+
+const SPLIT_ACTIONS = {
+  right: clientActions.splitRight,
+  down: clientActions.splitDown,
+} as const;
+
+function SplitChatButton({
+  side,
+  mac,
+  disabled,
+  onSplit,
+}: {
+  readonly side: SplitSide;
+  readonly mac: boolean;
+  readonly disabled: boolean;
+  readonly onSplit: () => void;
+}): ReactElement {
+  const action = SPLIT_ACTIONS[side];
+
+  return (
+    <span {...props(titlebarStyles.actionTrack)}>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              iconOnly
+              aria-label={action.label}
+              aria-keyshortcuts={clientActionAriaShortcut(action, mac)}
+              disabled={disabled}
+              onClick={onSplit}
+              title={undefined}
+            >
+              <SplitPreviewIcon side={side} />
+            </Button>
+          }
+        />
+        <TooltipContent shortcut={clientActionKeys(action, mac)}>{action.label}</TooltipContent>
+      </Tooltip>
+    </span>
   );
 }

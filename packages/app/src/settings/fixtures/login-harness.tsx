@@ -5,15 +5,17 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode } from "react";
 import type { ReactElement } from "react";
 import { createRoot } from "react-dom/client";
-import { Toaster } from "@nyte-ai/ui/toast";
+import { ToastProvider, ToastStack } from "@nyte-ai/ui/toast";
 import { queryClient } from "../../data/query-client.ts";
 import { ProvidersSettings } from "../models-settings.tsx";
 
 function Harness(): ReactElement {
   return (
     <QueryClientProvider client={queryClient}>
-      <ProvidersSettings />
-      <Toaster />
+      <ToastProvider>
+        <ProvidersSettings />
+        <ToastStack />
+      </ToastProvider>
     </QueryClientProvider>
   );
 }

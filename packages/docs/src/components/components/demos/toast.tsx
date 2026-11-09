@@ -1,9 +1,9 @@
 import { Button } from "@nyte-ai/ui/button";
-import { Toaster, toast } from "@nyte-ai/ui/toast";
+import { ToastProvider, ToastStack, toast } from "@nyte-ai/ui/toast";
 
 export function ToastDemo() {
   return (
-    <>
+    <ToastProvider>
       <Button variant="outline" onClick={() => toast.add({ title: "Workspace saved" })}>
         Default
       </Button>
@@ -38,7 +38,7 @@ export function ToastDemo() {
       >
         Error
       </Button>
-      <Toaster />
-    </>
+      <ToastStack />
+    </ToastProvider>
   );
 }
