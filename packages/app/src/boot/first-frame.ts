@@ -14,6 +14,7 @@ import { keys, queryClient } from "../data/query-client.ts";
 import { newestModelCatalog } from "../data/catalog.ts";
 import { chatStore } from "../data/chat-store.ts";
 import { sessionList } from "../data/directory.ts";
+import { hostWatch } from "../data/watches.ts";
 import { sessionId } from "../data/schemas.ts";
 import { startupConnection } from "../data/startup.ts";
 import { activeTab, tabPlace } from "../tabs/model.ts";
@@ -30,6 +31,7 @@ const FirstFrameType = Type.Object(
     hostId: Type.String({ minLength: 1 }),
     catalog: ModelCatalogViewType,
     workspaces: Type.Array(WorkspaceInfoType),
+    home: Type.Union([idSchema<"workspace">(), Type.Null()]),
     sessions: Type.Array(SessionInfoType, { maxItems: ROOT_LIMIT }),
     folder: Type.Union([
       Type.Object(
@@ -59,6 +61,7 @@ const SEEDED_KEYS = [
   keys.modelCatalog("initial"),
   keys.firstFrameWorkspaces,
   keys.firstFrameRoots,
+  keys.firstFrameHome,
 ].map((key) => hashKey(key));
 
 let seededHostId: string | undefined;
@@ -83,6 +86,7 @@ export function seedFirstFrame(host: string): boolean {
   queryClient.setQueryData(keys.modelCatalog("initial"), frame.catalog, { updatedAt: 0 });
   queryClient.setQueryData(keys.firstFrameWorkspaces, frame.workspaces, { updatedAt: 0 });
   queryClient.setQueryData(keys.firstFrameRoots, frame.sessions, { updatedAt: 0 });
+  queryClient.setQueryData(keys.firstFrameHome, frame.home, { updatedAt: 0 });
   const place = tabPlace(activeTab(windowTabs.getSnapshot()));
 
   if (frame.folder !== null && place.kind === "session" && place.sessionId === frame.folder.session)
@@ -122,15 +126,17 @@ function write(): void {
   const catalog = newestModelCatalog();
   const workspaces = queryClient.getQueryData<readonly WorkspaceInfo[]>(keys.workspaces);
   const directory = sessionList("roots").value;
+  const host = hostWatch("host").value;
 
   if (recording === undefined || catalog === undefined) return;
 
-  if (workspaces === undefined || directory === undefined) return;
+  if (workspaces === undefined || directory === undefined || host === undefined) return;
 
   writeStored(localArea(), FIRST_FRAME_KEY, {
     ...recording,
     catalog,
     workspaces,
+    home: host.defaultWorkspace,
     sessions: recentRoots(directory),
     folder: windowFolder(),
   } satisfies FirstFrame);

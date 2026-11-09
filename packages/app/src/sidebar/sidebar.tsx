@@ -20,11 +20,15 @@ import { usePaneActions, usePaneLayout } from "../panes/pane-context.tsx";
 import { activeSelection, sameSelection } from "../panes/pane-layout.ts";
 import { nyte } from "../contract/nyte.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
-import { useForgetWorkspace, useWorkspaces, type RailWorkspace } from "../data/workspaces.ts";
+import {
+  useForgetWorkspace,
+  useHomeWorkspace,
+  useWorkspaces,
+  type RailWorkspace,
+} from "../data/workspaces.ts";
 import { useHostState, useServerState } from "../data/host.ts";
-import { useWorkspaceSessions } from "../data/sessions.ts";
-import { sessionActions } from "../data/session-rows.ts";
-import { localSessions } from "../data/session-list.ts";
+import { sessionActions, useRootRows } from "../data/session-rows.ts";
+import { groupByWorkspace, localSessions } from "../data/session-list.ts";
 import { useChats } from "../chats/index.ts";
 import { chatWindow, unreadOnHost, useChatWindow } from "../window/index.ts";
 import type { SettingsSection } from "../settings/index.ts";
@@ -77,17 +81,17 @@ function listedNeighbours(
 }
 
 function NewChatRow({
-  showDrafts,
+  listsDrafts,
   paletteOpen,
   mac,
 }: {
-  readonly showDrafts: boolean;
+  readonly listsDrafts: boolean;
   readonly paletteOpen: boolean;
   readonly mac: boolean;
 }): ReactElement {
   const panes = usePaneActions();
   const { drafts, activeDraftId } = useDrafts();
-  const listed = showDrafts && drafts.some((draft) => draft.id === activeDraftId);
+  const listed = listsDrafts && drafts.some((draft) => draft.id === activeDraftId);
   const current = activeDraftId !== undefined && !listed && !paletteOpen;
 
   return (
@@ -115,8 +119,22 @@ export function Sidebar(): ReactElement {
   const panes = usePaneActions();
   const host = useHostState();
   const open = host.data.workspace;
+  const home = useHomeWorkspace();
   const workspaces = useWorkspaces();
-  const workspaceSessions = useWorkspaceSessions();
+  const roots = useRootRows();
+
+  const railWorkspaces =
+    home === undefined
+      ? undefined
+      : (workspaces.data ?? []).filter((workspace) => workspace.id !== home);
+
+  const openPlace = open === undefined || open.id === home ? null : open.id;
+
+  const workspaceGroups =
+    roots === undefined || railWorkspaces === undefined
+      ? undefined
+      : groupByWorkspace(roots, railWorkspaces);
+
   const server = useServerState();
   const forgetWorkspace = useForgetWorkspace();
   const chats = useChats((directory) => directory);
@@ -133,6 +151,11 @@ export function Sidebar(): ReactElement {
   const [archivingAll, setArchivingAll] = useState<{
     readonly workspaceName: string;
     readonly sessionIds: readonly SessionId[];
+  }>();
+
+  const [removing, setRemoving] = useState<{
+    readonly workspace: WorkspaceId;
+    readonly name: string;
   }>();
 
   const [collectionExpanded, setCollectionExpanded] = useState(true);
@@ -156,14 +179,14 @@ export function Sidebar(): ReactElement {
   const paneSession =
     paneSessionId === undefined
       ? undefined
-      : workspaceSessions.data
+      : workspaceGroups
           ?.flatMap((workspaceGroup) => workspaceGroup.sessions)
           .find((session) => session.id === paneSessionId);
 
-  if (selection.kind === "blank" && listedWhenBlank === undefined && workspaceSessions.data)
+  if (selection.kind === "blank" && listedWhenBlank === undefined && workspaceGroups)
     setListedWhenBlank(
       new Set(
-        workspaceSessions.data.flatMap((workspaceGroup) =>
+        workspaceGroups.flatMap((workspaceGroup) =>
           workspaceGroup.sessions.map((session) => session.id),
         ),
       ),
@@ -211,7 +234,7 @@ export function Sidebar(): ReactElement {
     view,
     showDrafts,
     activeSessionId,
-    openWorkspace: open?.id ?? null,
+    openWorkspace: openPlace,
     unavailable: new Set(
       (workspaces.data ?? []).flatMap((workspace) =>
         workspace.available === false ? [workspace.id] : [],
@@ -236,10 +259,8 @@ export function Sidebar(): ReactElement {
         })
       : sessions;
 
-  const listed: readonly ListedSession[] | undefined = workspaceSessions.data
+  const listed: readonly ListedSession[] | undefined = workspaceGroups
     ?.flatMap((workspaceGroup) => {
-      if (workspaceGroup.workspacePath === null && !homeVisible) return [];
-
       const place: SessionPlace = {
         workspace: workspaceGroup.workspacePath === null ? null : workspaceGroup.workspace,
         path: workspaceGroup.workspacePath,
@@ -263,7 +284,7 @@ export function Sidebar(): ReactElement {
   const activeWorkspace =
     paneSession === undefined
       ? undefined
-      : workspaceSessions.data?.find((workspaceGroup) =>
+      : workspaceGroups?.find((workspaceGroup) =>
           workspaceGroup.sessions.some((session) => session.id === paneSession.id),
         );
 
@@ -276,7 +297,7 @@ export function Sidebar(): ReactElement {
             : sessionsForView(
                 (activeWorkspace &&
                   localSessions(
-                    workspaceSessions.data ?? [],
+                    workspaceGroups ?? [],
                     activeWorkspace.workspacePath === null ? null : activeWorkspace.workspace,
                   )) ??
                   [],
@@ -289,13 +310,25 @@ export function Sidebar(): ReactElement {
           activeSessionId,
         );
 
+  const homeSessions =
+    workspaceGroups === undefined
+      ? undefined
+      : outsideProjects(localSessions(workspaceGroups, null));
+
+  const homeListed =
+    homeVisible &&
+    homeSessions !== undefined &&
+    folderView(homeSessions, view, now, chats, unread).some((group) => group.sessions.length > 0);
+
   const entries: readonly ({ kind: "home" } | ({ kind: "project" } & RailWorkspace))[] = [
-    ...(homeVisible ? [{ kind: "home" } as const] : []),
-    ...(workspaces.data ?? [])
+    ...(homeListed ? [{ kind: "home" } as const] : []),
+    ...(railWorkspaces ?? [])
       .filter((workspace) => workspace.worktree === null)
       .toSorted((left, right) => left.name.localeCompare(right.name))
       .map((workspace) => ({ kind: "project", ...workspace }) as const),
   ];
+
+  const rowPlaces = entries.map((entry) => (entry.kind === "home" ? null : entry.id));
 
   const folders = entries.map((entry) => {
     const place: SessionPlace =
@@ -304,9 +337,9 @@ export function Sidebar(): ReactElement {
         : { workspace: entry.id, path: entry.path };
 
     const sessions =
-      workspaceSessions.data === undefined
+      workspaceGroups === undefined
         ? undefined
-        : outsideProjects(localSessions(workspaceSessions.data, place.workspace));
+        : outsideProjects(localSessions(workspaceGroups, place.workspace));
 
     const name = entry.kind === "home" ? "Home" : entry.name;
     const expanded = !folded.includes(place.workspace);
@@ -328,7 +361,7 @@ export function Sidebar(): ReactElement {
         name={name}
         path={entry.kind === "home" ? "Home" : entry.path}
         available={entry.kind === "home" || entry.available !== false}
-        active={entry.kind === "home" ? open === undefined : open?.id === entry.id}
+        active={place.workspace === openPlace}
         expanded={expanded}
         onExpandedChange={(next) => setExpanded(place.workspace, next)}
         onNewChat={
@@ -347,7 +380,10 @@ export function Sidebar(): ReactElement {
         onRemove={
           entry.kind === "home"
             ? () => preferences.homeVisible.set(false)
-            : () => forgetWorkspace.mutate(entry.id)
+            : () => {
+                forgetWorkspace.reset();
+                setRemoving({ workspace: entry.id, name });
+              }
         }
         retained={kept && <ListedRows rows={[{ place, session: kept }]} context={context} />}
       >
@@ -355,7 +391,7 @@ export function Sidebar(): ReactElement {
           listId={`${sessionListId}-${encodeURIComponent(`local:${place.workspace ?? "home"}`)}`}
           place={place}
           sessions={kept === undefined ? sessions : sessions?.filter((session) => session !== kept)}
-          open={place.workspace === (open?.id ?? null)}
+          open={place.workspace === openPlace}
           context={context}
         />
       </WorkspaceRow>
@@ -373,7 +409,11 @@ export function Sidebar(): ReactElement {
           />
         )}
         <div {...props(styles.primaryActions)}>
-          <NewChatRow showDrafts={showDrafts} paletteOpen={paletteOpen} mac={mac} />
+          <NewChatRow
+            listsDrafts={showDrafts && (flat || rowPlaces.includes(openPlace))}
+            paletteOpen={paletteOpen}
+            mac={mac}
+          />
 
           <SearchPalette
             open={paletteOpen}
@@ -474,15 +514,11 @@ export function Sidebar(): ReactElement {
                   value={view}
                   homeVisible={homeVisible}
                   onHomeVisibleChange={preferences.homeVisible.set}
-                  filterDisabled={workspaceSessions.data === undefined}
+                  filterDisabled={workspaceGroups === undefined}
                   onChange={preferences.sidebarView.set}
                   onOpenFolder={openFolder}
                   onCollapseAll={() =>
-                    flat
-                      ? setCollectionExpanded(false)
-                      : preferences.sidebarFolded.set(
-                          entries.map((entry) => (entry.kind === "home" ? null : entry.id)),
-                        )
+                    flat ? setCollectionExpanded(false) : preferences.sidebarFolded.set(rowPlaces)
                   }
                 />
               </div>
@@ -547,6 +583,34 @@ export function Sidebar(): ReactElement {
             setArchivingAll(undefined);
             sessionActions.archive(archivingAll.sessionIds, true);
           }}
+        />
+      )}
+      {removing !== undefined && (
+        <ConfirmDialog
+          open
+          pending={forgetWorkspace.isPending}
+          error={
+            forgetWorkspace.data?.kind === "busy"
+              ? "A chat in this folder is still working. Stop it, then try again."
+              : forgetWorkspace.isError
+                ? "Couldn't remove this folder. Try again."
+                : undefined
+          }
+          finalFocus={confirmationReturnRef}
+          title={`Remove ${removing.name}`}
+          description="Every chat in this folder is deleted, archived ones too. This can't be undone. The files on disk stay."
+          confirmLabel="Remove Folder and Chats"
+          pendingLabel="Removing chats…"
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen) setRemoving(undefined);
+          }}
+          onConfirm={() =>
+            forgetWorkspace.mutate(removing.workspace, {
+              onSuccess: (outcome) => {
+                if (outcome.kind !== "busy") setRemoving(undefined);
+              },
+            })
+          }
         />
       )}
     </aside>

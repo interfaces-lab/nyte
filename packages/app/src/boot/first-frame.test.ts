@@ -34,6 +34,7 @@ function snapshot(host: string): string {
     hostId: "host-1",
     catalog,
     workspaces: [],
+    home: null,
     sessions: [sessionRow("recent")],
     folder: null,
   });

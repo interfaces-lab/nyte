@@ -15,6 +15,7 @@ export const keys = {
   workspaceInfo: (workspace: WorkspaceId | undefined) => ["workspaces", "info", workspace] as const,
   firstFrameWorkspaces: ["first-frame", "workspaces"] as const,
   firstFrameRoots: ["first-frame", "roots"] as const,
+  firstFrameHome: ["first-frame", "home"] as const,
   modelCatalog: (generation: string) => ["catalog", "models", generation] as const,
   accountLimits: (generation: string) => ["account-limits", generation] as const,
   modelAccounts: (provider: string, generation: string) =>

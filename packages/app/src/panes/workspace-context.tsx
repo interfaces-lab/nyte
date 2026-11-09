@@ -9,13 +9,12 @@ import {
   MenuSubContent,
   MenuSubTrigger,
 } from "@nyte-ai/ui/menu";
-import { useGitHub, useGitHubState } from "../account/github-account.ts";
+import { useGitHubRepository } from "../account/github-account.ts";
 import { folderPicker, handleOpenOutcome } from "./open-workspace.tsx";
 import { clientActions } from "../contract/client-actions.ts";
 import { nyte } from "../contract/nyte.ts";
 import { useHostState } from "../data/host.ts";
-import { useWorkspaceSessions } from "../data/sessions.ts";
-import { useWorkspaces } from "../data/workspaces.ts";
+import { useRecentWorkspaces } from "../data/workspaces.ts";
 import { ContextSelector } from "./context-selector.tsx";
 import { contextStyles } from "./context-selector.stylex.ts";
 import { BranchSegment } from "./branch-segment.tsx";
@@ -26,9 +25,7 @@ const INLINE_FOLDERS = 5;
 export function WorkspaceContext({ active }: { readonly active: boolean }) {
   const host = useHostState();
   const workspace = host.data.workspace;
-  const workspaces = useWorkspaces();
-  const github = useGitHubState(useGitHub());
-  const repository = github.data?.repository;
+  const repository = useGitHubRepository(workspace?.id);
 
   const workspaceName =
     workspace === undefined
@@ -39,49 +36,10 @@ export function WorkspaceContext({ active }: { readonly active: boolean }) {
 
   const openFolder = folderPicker();
 
-  const groups = useWorkspaceSessions().data ?? [];
-  const lastActivity = new Map<string, number>();
-
-  for (const { workspacePath, sessions } of groups) {
-    if (workspacePath === null) continue;
-
-    for (const session of sessions)
-      lastActivity.set(
-        workspacePath,
-        Math.max(session.lastActivityAt, lastActivity.get(workspacePath) ?? 0),
-      );
-  }
-
-  const folders = [
-    ...new Map(
-      (workspaces.data ?? [])
-        .filter(
-          (candidate) =>
-            candidate.available &&
-            candidate.worktree === null &&
-            candidate.path !== workspace?.path,
-        )
-        .map((candidate) => [candidate.path, candidate]),
-    ).values(),
-  ].toSorted(
-    (left, right) => (lastActivity.get(right.path) ?? 0) - (lastActivity.get(left.path) ?? 0),
-  );
-
-  const nameCounts = new Map<string, number>();
-
-  for (const folder of folders) nameCounts.set(folder.name, (nameCounts.get(folder.name) ?? 0) + 1);
+  const folders = useRecentWorkspaces({ exclude: workspace?.path });
 
   const workspaceItems = folders.map((folder) => (
-    <MenuRadioItem
-      key={folder.path}
-      value={folder.path}
-      icon="folder"
-      meta={
-        (nameCounts.get(folder.name) ?? 0) > 1
-          ? folder.path.split(/[\\/]/u).filter(Boolean).at(-2)
-          : undefined
-      }
-    >
+    <MenuRadioItem key={folder.path} value={folder.path} icon="folder" meta={folder.hint}>
       <span title={folder.path}>{folder.name}</span>
     </MenuRadioItem>
   ));

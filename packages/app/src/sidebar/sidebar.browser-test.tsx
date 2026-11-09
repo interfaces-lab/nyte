@@ -4,7 +4,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, RouterContextProvider } from "@tanstack/react-router";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
-import type { Execution, SessionInfo, WorkspaceInfo } from "@nyte-ai/sdk";
+import type { Execution, HostView, SessionInfo, WorkspaceInfo } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
@@ -94,9 +94,26 @@ const seen: string[] = [];
 
 const updates: string[] = [];
 
+const host: HostView = {
+  id: asId<"host">("scripted"),
+  link: { kind: "connected" },
+  operations: null,
+  name: "Test",
+  platform: "linux",
+  version: "0.0.0",
+  catalog: asId<"catalog-generation">("initial"),
+  plugins: [],
+  settings: [],
+  views: [],
+  defaultWorkspace: asId<"workspace">("home"),
+  projects: [],
+  authority: new Set(),
+};
+
 const scripted = scriptedConnection({
+  host: viewStream(host),
   sessions,
-  workspaces: [folder("alpha"), folder("beta"), folder("empty")],
+  workspaces: [folder("alpha"), folder("beta"), folder("empty"), folder("home")],
   session: (id) => ({
     head: (name) => ({
       ...scripted.connection.session(id),
@@ -241,8 +258,14 @@ async function pinnedChatsLeaveTheirWorkspace(): Promise<void> {
   check(listed.length === 1, "the pinned chat leaves its workspace");
 }
 
-async function emptyWorkspaceSaysNoChatsYet(): Promise<void> {
-  check(find("div", "No chats yet") !== undefined, "an empty workspace says No chats yet");
+async function homeIsListedOnlyWithChats(): Promise<void> {
+  check(label("home") === undefined, "the default workspace has no folder row");
+  check(label("Home") === undefined, "Home stays hidden while it has no chats");
+  sessions.push([...directory(true), chat("Home chat", "home", 50)]);
+  await until(() => label("Home chat") !== undefined, "the chat in Home");
+  check(label("Home") !== undefined, "a chat brings Home back");
+  sessions.push(directory(true));
+  await until(() => label("Home") === undefined, "Home to hide again");
 }
 
 async function arrowKeysMoveFocusAndFold(): Promise<void> {
@@ -418,7 +441,7 @@ const STEPS = {
   storedViewAndFoldsAreShown,
   openChatStaysUnderItsFoldedWorkspace,
   pinnedChatsLeaveTheirWorkspace,
-  emptyWorkspaceSaysNoChatsYet,
+  homeIsListedOnlyWithChats,
   arrowKeysMoveFocusAndFold,
   unfoldingIsStoredAndKeepsTheOpenChat,
   hoverButtonsSitBesideTheAge,

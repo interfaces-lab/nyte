@@ -3,21 +3,10 @@ import type { SessionId } from "@nyte-ai/sdk";
 import type { ChatView } from "./chat-store.ts";
 import { projectSessionChoice, sessionConfigurationOptions } from "./session-configuration.ts";
 import type { PendingConfiguration } from "./session-configuration.ts";
-import { groupByWorkspace } from "./session-list.ts";
 import { useRootRows } from "./session-rows.ts";
 import { chatStore } from "./chat-store.ts";
 import { useWatch, useWatchSelect } from "./watch-store.ts";
 import { subagentActivity } from "./session-activity.ts";
-import { useWorkspaces } from "./workspaces.ts";
-
-export function useWorkspaceSessions() {
-  const roots = useRootRows();
-  const workspaces = useWorkspaces().data;
-
-  return {
-    data: roots === undefined ? undefined : groupByWorkspace(roots, workspaces ?? []),
-  };
-}
 
 export function useSessionSearch(search: string, enabled = true) {
   const roots = useRootRows();
