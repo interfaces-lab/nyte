@@ -1,11 +1,10 @@
 import { TextBuffer } from "@opentui/core";
 import type { NativeResourceOwner, WidthMethod } from "@opentui/core";
-import stringWidth from "string-width";
 
 const segmenter = new Intl.Segmenter();
 
 export function displayWidth(text: string): number {
-  return stringWidth(text);
+  return Bun.stringWidth(text);
 }
 
 export function padDisplay(text: string, width: number): string {

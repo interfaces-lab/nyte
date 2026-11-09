@@ -1662,9 +1662,6 @@ importers:
       solid-js:
         specifier: ^1.9.18
         version: 1.9.18
-      string-width:
-        specifier: ^8.3.0
-        version: 8.3.0
       typebox:
         specifier: ^1.4.6
         version: 1.4.6

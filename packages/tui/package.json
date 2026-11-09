@@ -34,7 +34,6 @@
     "open": "^11.0.4",
     "semver": "^7.8.6",
     "solid-js": "^1.9.18",
-    "string-width": "^8.3.0",
     "typebox": "^1.4.6"
   },
   "devDependencies": {
