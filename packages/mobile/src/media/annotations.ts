@@ -8,9 +8,13 @@ export type AnnotationPoint = {
   comment: string;
 };
 
+export type AnnotationMark =
+  | { kind: "point"; point: AnnotationPoint }
+  | { kind: "stroke"; points: readonly { x: number; y: number }[] };
+
 type ImageAnnotation = {
   image: StagedImage;
-  points: AnnotationPoint[];
+  marks: AnnotationMark[];
 };
 
 const store = new Map<string, ImageAnnotation>();
@@ -51,8 +55,10 @@ export function resolveAttachment(staged: StagedImage) {
 
   if (annotation === undefined) return { image: staged, note: undefined };
 
-  const note = annotation.points
-    .filter((point) => point.comment.trim() !== "")
+  const note = annotation.marks
+    .flatMap((mark) =>
+      mark.kind === "point" && mark.point.comment.trim() !== "" ? [mark.point] : [],
+    )
     .map(
       (point) =>
         `${String(point.n)}) at ${String(Math.round(point.x * 100))}%,${String(

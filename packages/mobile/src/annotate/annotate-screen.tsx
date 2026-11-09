@@ -28,6 +28,7 @@ import {
   clearAnnotation,
   readAnnotation,
   writeAnnotation,
+  type AnnotationMark,
   type AnnotationPoint,
 } from "../media/annotations.ts";
 import {
@@ -47,16 +48,14 @@ const TAP_TOLERANCE = 8;
 
 type Spot = { x: number; y: number };
 
-type Mark = { kind: "point"; point: AnnotationPoint } | { kind: "stroke"; points: readonly Spot[] };
-
 type Canvas = { width: number; height: number };
 
 type ResponderDeps = {
   size: Canvas | undefined;
   saving: boolean;
   nextNumber: number;
-  marks: readonly Mark[];
-  addMark: (mark: Mark) => void;
+  marks: readonly AnnotationMark[];
+  addMark: (mark: AnnotationMark) => void;
   setDrawing: (points: readonly Spot[] | undefined) => void;
   setSelected: (n: number) => void;
 };
@@ -140,13 +139,8 @@ export function AnnotateScreen({ imageId, uri }: { imageId: string; uri: string 
   const theme = useTheme();
 
   const insets = useSafeAreaInsets();
-  const [existing] = useState(() => readAnnotation(imageId));
-  const baseUri = existing?.image.uri ?? uri;
   const [size, setSize] = useState<Canvas | undefined>(undefined);
-
-  const [marks, setMarks] = useState<Mark[]>(() =>
-    (existing?.points ?? []).map((point) => ({ kind: "point", point })),
-  );
+  const [marks, setMarks] = useState(() => readAnnotation(imageId)?.marks ?? []);
 
   const [drawing, setDrawing] = useState<readonly Spot[] | undefined>(undefined);
   const [selected, setSelected] = useState<number | undefined>(undefined);
@@ -247,7 +241,11 @@ export function AnnotateScreen({ imageId, uri }: { imageId: string; uri: string 
       const image = await prepareImage(captured);
       writeAnnotation(imageId, {
         image,
-        points: points.map((point) => ({ ...point, comment: point.comment.trim() })),
+        marks: marks.map((mark) =>
+          mark.kind === "point"
+            ? { kind: "point", point: { ...mark.point, comment: mark.point.comment.trim() } }
+            : mark,
+        ),
       });
       router.back();
     } catch {
@@ -314,7 +312,7 @@ export function AnnotateScreen({ imageId, uri }: { imageId: string; uri: string 
           {...responder.panHandlers}
         >
           <Image
-            source={{ uri: baseUri }}
+            source={{ uri }}
             style={nativeStyles.canvasImage}
             resizeMode="contain"
             accessible
