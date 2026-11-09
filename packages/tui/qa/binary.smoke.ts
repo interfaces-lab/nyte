@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { readFile, stat, writeFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -178,21 +178,17 @@ test("SIGTERM during a run exits 143, stops the run and says so on stderr", asyn
   });
 });
 
-test("before its host opens, the TUI paints the recorded model and keys typed at launch, and takes Enter", async () => {
+test("before its host opens, the TUI paints keys typed at launch and takes Enter", async () => {
   await using home = await freshHome();
-  const recorded = { model: { provider: "test", id: "recorded" }, effort: "off", fast: false };
-  await writeFile(join(home.nyteHome, "tui-first-frame.json"), `${JSON.stringify(recorded)}\n`);
   await using pty = await openPty({ binary: BINARY, cwd: home.cwd, env: home.env, typed: "hi" });
 
-  await pty.waitFor(
-    (screen) => screen.text.includes("❯ hi") && screen.text.includes("│ recorded │"),
-  );
+  await pty.waitFor((screen) => screen.text.includes("❯ hi"));
   const painted = performance.now() - pty.spawnedAt;
   pty.press("chat.submit");
   await pty.waitFor((screen) => screen.text.includes("sends when Nyte connects"));
   const accepted = performance.now() - pty.spawnedAt;
   console.log(
-    `spawn to the composer with typed keys and the recorded model: ${painted.toFixed(0)} ms; to the sent message waiting for the host: ${accepted.toFixed(0)} ms`,
+    `spawn to the composer with typed keys: ${painted.toFixed(0)} ms; to the sent message waiting for the host: ${accepted.toFixed(0)} ms`,
   );
 }, 30_000);
 

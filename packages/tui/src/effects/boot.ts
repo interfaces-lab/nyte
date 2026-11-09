@@ -30,19 +30,15 @@ export interface BootOptions {
   readonly effort: Thinking | null;
 }
 
-export function launchChat(options: BootOptions, recorded: Selection | null): BlankChat | null {
+export function launchChat(options: BootOptions): BlankChat | null {
   if (options.target.kind !== "new") return null;
-  const id = asId<"session">(crypto.randomUUID());
-  const folder = { kind: "launch-folder" } as const;
-
-  if (options.model !== null || recorded === null)
-    return { kind: "blank", id, folder, selection: PLACEHOLDER_SELECTION, unresolved: true };
 
   return {
     kind: "blank",
-    id,
-    folder,
-    selection: { ...recorded, effort: options.effort ?? recorded.effort },
+    id: asId<"session">(crypto.randomUUID()),
+    folder: { kind: "launch-folder" },
+    selection: PLACEHOLDER_SELECTION,
+    unresolved: true,
   };
 }
 
@@ -64,12 +60,6 @@ export async function boot(options: BootOptions, context: HandlerContext): Promi
   const flagged = flagSelection(options, catalog);
   const resolved = defaultSelection(catalog);
   const selection = flagged ?? resolved;
-  const launched = context.read().facts.chat;
-
-  if (resolved !== null && (launched === null || !sameSelection(launched.selection, resolved)))
-    void ports.firstFrame.write(resolved).catch((cause: unknown) => {
-      ports.log.write("effect", cause);
-    });
 
   if (selection === null) {
     scope.exit.resolve({ code: 1 });

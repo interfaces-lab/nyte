@@ -9,12 +9,6 @@ import { rootSessions } from "../../src/run.ts";
 import { FileSettingsStore } from "../../src/services/settings.ts";
 import { composerShows, cursorCell, footerShows, shownAt, startTui } from "../harness/tui.ts";
 
-const RECORDED: Selection = {
-  model: { provider: "test", id: "older" },
-  effort: "off",
-  fast: false,
-};
-
 const CURRENT: Selection = { model: { provider: "test", id: "model" }, effort: "off", fast: false };
 
 function layoutRows(tui: Pick<TestRendererSetup, "captureSpans">): readonly number[] {
@@ -25,38 +19,16 @@ function layoutRows(tui: Pick<TestRendererSetup, "captureSpans">): readonly numb
   );
 }
 
-const launched = (frame: string, model: string): boolean =>
-  composerShows(frame, "typed at launch") && footerShows(frame, model, "off");
+test("the host's model appears in the footer in place once the host opens", async () => {
+  await using tui = await startTui({ opened: false, typed: "typed at launch" });
 
-test("a launch paints the composer, the recorded model and keys typed at launch within 50 ms, while the host never opens", async () => {
-  await using tui = await startTui({
-    opened: false,
-    typed: "typed at launch",
-    record: true,
-    firstFrame: RECORDED,
-  });
-
-  const frame = await tui.frame((shown) => launched(shown, "older"));
-
-  expect(shownAt(tui, (shown) => launched(shown, "older"))).toBeLessThanOrEqual(50);
-  expect(tui.store.screen().blocked).toBeNull();
-  expect(frame).toContain("for files");
-  expect(frame).toContain("enter send");
-  expect(tui.store.state().facts.host).toBe("opening");
-});
-
-test("the catalog's model replaces the recorded one in place once the host opens", async () => {
-  await using tui = await startTui({
-    opened: false,
-    typed: "typed at launch",
-    firstFrame: RECORDED,
-  });
-
-  await tui.frame((shown) => launched(shown, "older"));
+  await tui.frame((shown) => composerShows(shown, "typed at launch"));
   const before = layoutRows(tui);
   const cursor = cursorCell(tui);
   tui.openHost();
-  await tui.frame((shown) => launched(shown, "model"));
+  await tui.frame(
+    (shown) => composerShows(shown, "typed at launch") && footerShows(shown, "model", "off"),
+  );
 
   expect(before.every((row) => row >= 0)).toBe(true);
   expect(layoutRows(tui)).toEqual(before);
@@ -65,7 +37,7 @@ test("the catalog's model replaces the recorded one in place once the host opens
 });
 
 test("Enter before the host opens keeps the message on screen and starts the chat once it does", async () => {
-  await using tui = await startTui({ opened: false, firstFrame: CURRENT });
+  await using tui = await startTui({ opened: false });
 
   await tui.send("first words");
   await tui.frame(
@@ -86,7 +58,7 @@ test("Enter before the host opens keeps the message on screen and starts the cha
 });
 
 test("Esc recalls a message waiting for the host into the composer, and nothing starts", async () => {
-  await using tui = await startTui({ opened: false, firstFrame: CURRENT });
+  await using tui = await startTui({ opened: false });
 
   await tui.send("never mind");
   await tui.frame((frame) => frame.includes("sends when Nyte connects"));
@@ -98,23 +70,15 @@ test("Esc recalls a message waiting for the host into the composer, and nothing 
   expect(await Array.fromAsync(rootSessions(tui.fixture.host))).toHaveLength(0);
 });
 
-test("a recorded model the host no longer lists hands the message back and names the fix", async () => {
-  await using tui = await startTui({ opened: false, firstFrame: RECORDED });
-
-  await tui.send("hello there");
-  tui.openHost();
-  await tui.frame((frame) => composerShows(frame, "hello there"));
-
-  expect(tui.store.state().local.notice?.text).toBe("older isn't available. ctrl+p picks another.");
-  expect(await Array.fromAsync(rootSessions(tui.fixture.host))).toHaveLength(0);
-});
-
-test("without a recorded model the first frame takes keys and Enter, shows every waiting message, and starts on the host's default", async () => {
+test("a launch paints the composer and keys typed at launch within 50 ms while the host opens, takes Enter, shows every waiting message, and starts on the host's default", async () => {
   await using tui = await startTui({ opened: false, typed: "typed at launch", record: true });
 
-  await tui.frame((frame) => frame.includes("❯ typed at launch"));
-  expect(shownAt(tui, (frame) => frame.includes("❯ typed at launch"))).toBeLessThanOrEqual(50);
+  const painted = await tui.frame((shown) => shown.includes("❯ typed at launch"));
+  expect(shownAt(tui, (shown) => shown.includes("❯ typed at launch"))).toBeLessThanOrEqual(50);
   expect(tui.store.screen().blocked).toBeNull();
+  expect(painted).toContain("for files");
+  expect(painted).toContain("enter send");
+  expect(tui.store.state().facts.host).toBe("opening");
 
   tui.mockInput.pressEnter();
   await tui.send("and a follow-up");

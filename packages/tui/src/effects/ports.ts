@@ -52,7 +52,6 @@ export interface Ports {
   readonly composer: Handle<ComposerPort>;
   readonly scroll: Handle<ScrollPort>;
   readonly settings: SettingsPort;
-  readonly firstFrame: FirstFramePort;
   readonly plugins: PluginsPort;
   readonly shell: ShellPort;
   readonly files: FilesPort;
@@ -188,11 +187,6 @@ export interface SettingsPort {
   read(cwd: string): SettingsRead;
   write(cwd: string, patch: SettingsPatch): Promise<ResolvedSettings>;
   settled(): Promise<void>;
-}
-
-export interface FirstFramePort {
-  read(): Selection | null;
-  write(selection: Selection): Promise<void>;
 }
 
 export interface PluginsPort {

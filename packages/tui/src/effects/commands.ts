@@ -115,7 +115,7 @@ export async function configure(effect: Of<"configure">, context: HandlerContext
   const { chat } = read().facts;
 
   if (chat?.kind === "blank" && chat.id === effect.session) {
-    await configureBlank(effect, chat.selection, context);
+    configureBlank(effect, chat.selection, context);
 
     return;
   }
@@ -131,12 +131,12 @@ export async function configure(effect: Of<"configure">, context: HandlerContext
   if (result.kind === "failed") throw new Error(result.message);
 }
 
-async function configureBlank(
+function configureBlank(
   effect: Of<"configure">,
   current: Selection,
   context: HandlerContext,
-): Promise<void> {
-  const { dispatch, ports, read } = context;
+): void {
+  const { dispatch, read } = context;
   const catalog = read().facts.catalog.catalog;
   const patch = buildConfigPatch(effect.selection, current, catalog);
   const model = patch.model ?? current.model;
@@ -144,9 +144,6 @@ async function configureBlank(
 
   const selection = toSelection({ model, thinkingLevel: effort }, catalog);
   dispatch({ kind: "selection", session: effect.session, selection });
-  await ports.firstFrame.write(selection).catch((error: unknown) => {
-    ports.log.write("effect", error);
-  });
 }
 
 export async function checkTrust(

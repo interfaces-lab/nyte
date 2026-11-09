@@ -21,7 +21,6 @@ import { connectHost } from "../local-host.ts";
 import { openLiveHost } from "../live-host.ts";
 import type { HostSource } from "../local-host.ts";
 import type { FailureReport } from "../model/state.ts";
-import { firstFramePort } from "../services/first-frame.ts";
 import { TUI_RENDERER_CONFIG } from "../services/rendering.ts";
 import { registerSyntaxParsers } from "../services/syntax-parsers.ts";
 import { createKeymap } from "./keyboard.ts";
@@ -126,7 +125,6 @@ export async function runTui(flags: RunFlags, source: HostSource): Promise<numbe
       composer: createHandle(),
       scroll: createHandle(),
       settings: settingsPort(),
-      firstFrame: firstFramePort(join(home, "tui-first-frame.json")),
       shell: shellPort(),
       files: filesPort(),
       log,

@@ -120,7 +120,7 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
   const quit = (): void => closing.resolve(0);
   const hangUp = (): void => closing.resolve(exitStatus("SIGHUP"));
   const { settings, invalid } = options.ports.settings.read(options.cwd);
-  const chat = launchChat(options.boot, options.ports.firstFrame.read());
+  const chat = launchChat(options.boot);
 
   const root = createRoot((dispose) => {
     const store = createStore({

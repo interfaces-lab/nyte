@@ -19,7 +19,6 @@ import type { BootOptions } from "../../src/effects/boot.ts";
 import { openCrashLog } from "../../src/effects/crash.ts";
 import type { SettingsPort, ShellPort } from "../../src/effects/ports.ts";
 import { watchTerminal } from "../../src/lifecycle.ts";
-import type { Selection } from "../../src/model/state.ts";
 import { keyStrokes } from "../../src/lib/constants.ts";
 import type { ChatCommand } from "../../src/lib/constants.ts";
 import { openLiveHost } from "../../src/live-host.ts";
@@ -44,7 +43,6 @@ export interface TuiOptions {
   readonly kit?: (kit: Kit) => Kit;
   readonly local?: { readonly shell?: ShellPort; readonly cwd?: string };
   readonly record?: boolean;
-  readonly firstFrame?: Selection;
   readonly settings?: SettingsPort;
 }
 
@@ -74,7 +72,6 @@ export async function startTui(options: TuiOptions = {}): Promise<Tui> {
   const fixture = options.fixture ?? (await openTestHost());
   const home = mkdtempSync(join(tmpdir(), "nyte-tui-app-"));
   const fakes = fakePorts(fakeHost());
-  fakes.firstFrame.saved = options.firstFrame ?? null;
   const cwd = options.local?.cwd ?? home;
   const opening = Promise.withResolvers<void>();
 
