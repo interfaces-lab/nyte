@@ -370,29 +370,36 @@ const results = groups.map(([label, probes]) => [
   probes.map(([name, code, filename = "probe.tsx"]) => ({ name, failure: probe(code, filename) })),
 ]);
 
-const lines = results.flatMap(([label, probes]) => {
-  const verdicts = Map.groupBy(probes, (entry) => entry.failure);
+const names = (entries) => entries.map((entry) => `\`${entry.name}\``).join(", ");
 
-  return [...verdicts].map(
-    ([failure, entries]) =>
-      `|${label}: ${entries.map((entry) => entry.name).join(", ")} — ${failure === undefined ? "YES" : `NO (${failure})`}`,
-  );
+const rows = results.map(([label, probes]) => {
+  const working = probes.filter((entry) => entry.failure === undefined);
+  const failing = probes.filter((entry) => entry.failure !== undefined);
+  const verdicts = Map.groupBy(failing, (entry) => entry.failure);
+  const broken = [...verdicts].map(([failure, entries]) => `${names(entries)}: ${failure}`);
+
+  return `| \`${label}\` | ${names(working) || "None"} | ${broken.join("; ") || "None"} |`;
 });
 
 const block = [
   start,
   "",
-  `[StyleX v${version} CSS Support]|Use CSS-native solutions. Don't build JS workarounds for supported features.`,
-  ...lines,
-  "|PATTERN: hover on touch -> @media (hover: hover) guard",
-  "|PATTERN: dialog/popover entry -> @starting-style + transitionBehavior:allow-discrete (not useState+rAF)",
-  "|PATTERN: parent state -> child style -> stylex.when.ancestor(':hover', marker) with stylex.defineMarker() from a .stylex.ts file (not CSS nesting). The ancestor MUST include marker in its stylex.props() call. Prefer a component-scoped defineMarker() over defaultMarker(), which leaks state from outer containers",
-  "|PATTERN: container responsive -> @container (not ResizeObserver)",
-  "|PATTERN: zebra striping -> :nth-child(even) (not index%2 JS)",
-  "|PATTERN: CSS fallback values -> stylex.firstThatWorks() (not manual fallback)",
-  "|PATTERN: dynamic/runtime values -> stylex.create({ s: (value) => ({ prop: value }) }) (not inline styles)",
-  "|PATTERN: conditional styles -> stylex.props(condition && styles.x) (not className toggling)",
-  "|VERIFY: pnpm --dir packages/ui check:stylex",
+  `StyleX v${version}. Use CSS-native solutions. Don't build JS workarounds for supported features.`,
+  "",
+  "| Group | Works | Doesn't work |",
+  "| --- | --- | --- |",
+  ...rows,
+  "",
+  "- Hover on touch: guard it with `@media (hover: hover)`.",
+  "- Dialog or popover entry: `@starting-style` with `transitionBehavior: allow-discrete`, not `useState` plus `requestAnimationFrame`.",
+  "- Parent state that styles a child: `stylex.when.ancestor(':hover', marker)` with a `stylex.defineMarker()` from a `.stylex.ts` file, not CSS nesting. The ancestor must pass `marker` to its `stylex.props()` call. Prefer a component-scoped `defineMarker()` over `defaultMarker()`, which leaks state from outer containers.",
+  "- Responsive to a container: `@container`, not `ResizeObserver`.",
+  "- Zebra striping: `:nth-child(even)`, not `index % 2` in JS.",
+  "- CSS fallback values: `stylex.firstThatWorks()`, not a manual fallback.",
+  "- Runtime values: `stylex.create({ s: (value) => ({ prop: value }) })`, not inline styles.",
+  "- Conditional styles: `stylex.props(condition && styles.x)`, not class name toggling.",
+  "",
+  "Verify with `pnpm --dir packages/ui check:stylex`.",
   "",
   end,
 ].join("\n");

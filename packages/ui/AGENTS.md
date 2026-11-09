@@ -13,30 +13,33 @@ Reserve line-height: 1 and leading-none for non-text glyphs, icons, or deliberat
 
 <!-- STYLEX-CAPS:START -->
 
-[StyleX v0.19.1 CSS Support]|Use CSS-native solutions. Don't build JS workarounds for supported features.
-|AT-RULES: @media, (hover: hover), (prefers-reduced-motion), (prefers-color-scheme), (scripting), @supports, @container, @container (+named), @starting-style, @starting-style (transform), @scope — YES
-|AT-RULES: @layer, @property (explicit) — NO (compiles but invalid CSS output)
-|PSEUDO-CLS: :hover, :focus, :focus-visible, :focus-within, :active, :disabled, :first-child, :last-child, :nth-child(), :where(), :is(), :has(), :not(), :placeholder-shown, :checked, :empty, :modal, :user-valid, :user-invalid — YES
-|PSEUDO-EL: ::before, ::after, ::placeholder, ::selection, ::backdrop, ::marker, ::file-selector-button, ::view-transition-old/new — YES
-|COMPOUND: ::backdrop+condition, RTL :is([dir="rtl"] *), nested @media+pseudo — YES
-|VALUES: var(), calc(), clamp(), round(), round(up, …), light-dark(), color-mix(), container-type, container-name, color-scheme, accent-color, textWrap:balance, textWrap:pretty, fieldSizing:content, interpolateSize:allow-keywords — YES
-|ANIM: transition shorthand, transition longhands, transitionBehavior:allow-discrete, animation longhands, stylex.keyframes, stylex.viewTransitionClass() — YES
-|ANIM: animation shorthand — NO (rejected: animation is not supported)
-|WHEN (stylex.when.*): ancestor(':hover'), ancestor(':focus-within'), ancestor(':active'), ancestor(':disabled'), ancestor('[data-attr]'), ancestor(…)+@media, descendant(':hover'), siblingBefore(':checked'), siblingAfter(':checked'), anySibling(':hover'), defineMarker() scoped ancestor — YES
-|NESTING: CSS nesting with & — NO (rejected: Invalid pseudo or at-rule)
-|API: stylex.firstThatWorks(), stylex.positionTry(), stylex.types.color(), stylex.types.length(), stylex.defineConsts() — YES
-|DYNAMIC: functions in stylex.create — YES
-|VARS: stylex.defineVars, stylex.createTheme (require .stylex.ts files) — YES
-|ANCHOR: anchorName, positionAnchor, anchor() — YES
-|LAYOUT: grid, flex+gap, aspect-ratio, overscrollBehavior, scrollbarGutter, scrollbarWidth, scrollbarColor, logical props — YES
-|PATTERN: hover on touch -> @media (hover: hover) guard
-|PATTERN: dialog/popover entry -> @starting-style + transitionBehavior:allow-discrete (not useState+rAF)
-|PATTERN: parent state -> child style -> stylex.when.ancestor(':hover', marker) with stylex.defineMarker() from a .stylex.ts file (not CSS nesting). The ancestor MUST include marker in its stylex.props() call. Prefer a component-scoped defineMarker() over defaultMarker(), which leaks state from outer containers
-|PATTERN: container responsive -> @container (not ResizeObserver)
-|PATTERN: zebra striping -> :nth-child(even) (not index%2 JS)
-|PATTERN: CSS fallback values -> stylex.firstThatWorks() (not manual fallback)
-|PATTERN: dynamic/runtime values -> stylex.create({ s: (value) => ({ prop: value }) }) (not inline styles)
-|PATTERN: conditional styles -> stylex.props(condition && styles.x) (not className toggling)
-|VERIFY: pnpm --dir packages/ui check:stylex
+StyleX v0.19.1. Use CSS-native solutions. Don't build JS workarounds for supported features.
+
+| Group | Works | Doesn't work |
+| --- | --- | --- |
+| `AT-RULES` | `@media`, `(hover: hover)`, `(prefers-reduced-motion)`, `(prefers-color-scheme)`, `(scripting)`, `@supports`, `@container`, `@container (+named)`, `@starting-style`, `@starting-style (transform)`, `@scope` | `@layer`, `@property (explicit)`: compiles but invalid CSS output |
+| `PSEUDO-CLS` | `:hover`, `:focus`, `:focus-visible`, `:focus-within`, `:active`, `:disabled`, `:first-child`, `:last-child`, `:nth-child()`, `:where()`, `:is()`, `:has()`, `:not()`, `:placeholder-shown`, `:checked`, `:empty`, `:modal`, `:user-valid`, `:user-invalid` | None |
+| `PSEUDO-EL` | `::before`, `::after`, `::placeholder`, `::selection`, `::backdrop`, `::marker`, `::file-selector-button`, `::view-transition-old/new` | None |
+| `COMPOUND` | `::backdrop+condition`, `RTL :is([dir="rtl"] *)`, `nested @media+pseudo` | None |
+| `VALUES` | `var()`, `calc()`, `clamp()`, `round()`, `round(up, …)`, `light-dark()`, `color-mix()`, `container-type`, `container-name`, `color-scheme`, `accent-color`, `textWrap:balance`, `textWrap:pretty`, `fieldSizing:content`, `interpolateSize:allow-keywords` | None |
+| `ANIM` | `transition shorthand`, `transition longhands`, `transitionBehavior:allow-discrete`, `animation longhands`, `stylex.keyframes`, `stylex.viewTransitionClass()` | `animation shorthand`: rejected: animation is not supported |
+| `WHEN (stylex.when.*)` | `ancestor(':hover')`, `ancestor(':focus-within')`, `ancestor(':active')`, `ancestor(':disabled')`, `ancestor('[data-attr]')`, `ancestor(…)+@media`, `descendant(':hover')`, `siblingBefore(':checked')`, `siblingAfter(':checked')`, `anySibling(':hover')`, `defineMarker() scoped ancestor` | None |
+| `NESTING` | None | `CSS nesting with &`: rejected: Invalid pseudo or at-rule |
+| `API` | `stylex.firstThatWorks()`, `stylex.positionTry()`, `stylex.types.color()`, `stylex.types.length()`, `stylex.defineConsts()` | None |
+| `DYNAMIC` | `functions in stylex.create` | None |
+| `VARS` | `stylex.defineVars`, `stylex.createTheme (require .stylex.ts files)` | None |
+| `ANCHOR` | `anchorName`, `positionAnchor`, `anchor()` | None |
+| `LAYOUT` | `grid`, `flex+gap`, `aspect-ratio`, `overscrollBehavior`, `scrollbarGutter`, `scrollbarWidth`, `scrollbarColor`, `logical props` | None |
+
+- Hover on touch: guard it with `@media (hover: hover)`.
+- Dialog or popover entry: `@starting-style` with `transitionBehavior: allow-discrete`, not `useState` plus `requestAnimationFrame`.
+- Parent state that styles a child: `stylex.when.ancestor(':hover', marker)` with a `stylex.defineMarker()` from a `.stylex.ts` file, not CSS nesting. The ancestor must pass `marker` to its `stylex.props()` call. Prefer a component-scoped `defineMarker()` over `defaultMarker()`, which leaks state from outer containers.
+- Responsive to a container: `@container`, not `ResizeObserver`.
+- Zebra striping: `:nth-child(even)`, not `index % 2` in JS.
+- CSS fallback values: `stylex.firstThatWorks()`, not a manual fallback.
+- Runtime values: `stylex.create({ s: (value) => ({ prop: value }) })`, not inline styles.
+- Conditional styles: `stylex.props(condition && styles.x)`, not class name toggling.
+
+Verify with `pnpm --dir packages/ui check:stylex`.
 
 <!-- STYLEX-CAPS:END -->
