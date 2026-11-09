@@ -265,7 +265,7 @@ export function AppearanceSettings(): ReactElement {
       <SettingsSection>
         <SelectRow
           setting={preferences.theme}
-          title="Theme"
+          title="Color scheme"
           description="Follow the system, or always use light or dark"
           options={THEMES}
         />

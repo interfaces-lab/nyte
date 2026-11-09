@@ -1,3 +1,4 @@
+import { useSyncExternalStore } from "react";
 import type { ThemePreference } from "../contract/bridge.ts";
 import { preferences } from "../preferences/index.ts";
 import {
@@ -6,6 +7,8 @@ import {
   windowHasVibrancy,
 } from "./appearance.ts";
 import type { CodeFont, UiFont } from "./fonts.ts";
+import { findTheme } from "./vscode-theme.ts";
+import type { VscodeTheme } from "./vscode-theme.ts";
 
 export interface Appearance {
   readonly theme: ThemePreference;
@@ -13,6 +16,7 @@ export interface Appearance {
   readonly pointerCursors: boolean;
   readonly tintHue: number;
   readonly tintIntensity: number;
+  readonly vscodeTheme: VscodeTheme | null;
   readonly uiFont: UiFont;
   readonly codeFont: CodeFont;
   readonly uiFontSize: number;
@@ -28,13 +32,19 @@ const colorSchemeQuery = window.matchMedia("(prefers-color-scheme: dark)");
 
 function readAppearance(): Appearance {
   const theme = preferences.theme.get();
+  const dark = theme === "dark" || (theme === "system" && colorSchemeQuery.matches);
 
   return {
     theme,
-    dark: theme === "dark" || (theme === "system" && colorSchemeQuery.matches),
+    dark,
     pointerCursors: preferences.pointerCursors.get(),
     tintHue: preferences.tintHue.get(),
     tintIntensity: preferences.tintIntensity.get(),
+    vscodeTheme: findTheme(
+      dark ? "dark" : "light",
+      preferences.themes.get(),
+      preferences.importedThemes.get(),
+    ),
     uiFont: preferences.uiFont.get(),
     codeFont: preferences.codeFont.get(),
     uiFontSize: preferences.uiFontSize.get(),
@@ -62,6 +72,8 @@ for (const preference of [
   preferences.pointerCursors,
   preferences.tintHue,
   preferences.tintIntensity,
+  preferences.themes,
+  preferences.importedThemes,
   preferences.uiFont,
   preferences.codeFont,
   preferences.uiFontSize,
@@ -89,3 +101,7 @@ export const appearance = {
     return () => listeners.delete(listener);
   },
 };
+
+export function useAppearance(): Appearance {
+  return useSyncExternalStore(appearance.subscribe, appearance.get, appearance.get);
+}

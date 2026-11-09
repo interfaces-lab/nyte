@@ -12,8 +12,10 @@ import { BrowserSettings } from "./browser.tsx";
 import { EditorSettings } from "./editor.tsx";
 import { GeneralSettings } from "./general.tsx";
 import { TerminalSettings } from "./terminal.tsx";
+import { ThemesSettings } from "./themes.tsx";
 import { VariablesSettings } from "./variables.tsx";
 import { SourceControlSettings } from "./source-control.tsx";
+import { loadDeferred } from "../lib/deferred.tsx";
 import { available, settingsContext } from "./capability.ts";
 import type { Capability } from "./capability.ts";
 
@@ -26,6 +28,10 @@ export interface PageInfo {
   readonly Page: ComponentType;
   readonly Actions?: ComponentType;
   readonly prefetch?: () => void;
+}
+
+function prefetchPreviews(): void {
+  void loadDeferred("previews").catch(() => {});
 }
 
 export const SETTINGS_PAGES = {
@@ -114,6 +120,7 @@ export const SETTINGS_PAGES = {
       "osc",
     ],
     Page: NotificationsSettings,
+    prefetch: prefetchPreviews,
   },
   appearance: {
     icon: "canvas-grid",
@@ -131,6 +138,30 @@ export const SETTINGS_PAGES = {
       "pointer",
     ],
     Page: AppearanceSettings,
+    prefetch: prefetchPreviews,
+  },
+  themes: {
+    icon: "circles",
+    title: "Themes",
+    group: "app",
+    needs: [],
+    keywords: [
+      "theme",
+      "color",
+      "vs code",
+      "vscode",
+      "import",
+      "light mode",
+      "dark mode",
+      "github",
+      "dracula",
+      "catppuccin",
+      "solarized",
+      "nord",
+      "tokyo night",
+      "pierre",
+    ],
+    Page: ThemesSettings,
   },
   usage: {
     icon: "trending",
@@ -169,6 +200,7 @@ export const SETTINGS_PAGES = {
       "whitespace",
     ],
     Page: EditorSettings,
+    prefetch: prefetchPreviews,
   },
   terminal: {
     icon: "console",
@@ -177,6 +209,7 @@ export const SETTINGS_PAGES = {
     needs: [],
     keywords: ["shell", "scrollback", "cursor", "blink"],
     Page: TerminalSettings,
+    prefetch: prefetchPreviews,
   },
   variables: {
     icon: "brackets",

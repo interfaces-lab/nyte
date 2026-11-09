@@ -17,6 +17,7 @@ test("the settings journey", async ({ desktop }) => {
       "General",
       "Notifications",
       "Appearance",
+      "Themes",
       "Agent",
       "Editor",
       "Terminal",
@@ -54,7 +55,7 @@ test("the settings journey", async ({ desktop }) => {
 
   await test.step("Appearance exposes theme, density, colors and typography", async () => {
     await openSettings(page, "Appearance");
-    await expect(page.getByRole("combobox", { name: "Theme" })).toHaveText("System");
+    await expect(page.getByRole("combobox", { name: "Color scheme" })).toHaveText("System");
     await expect(page.getByRole("heading", { level: 2 })).toHaveText([
       "Agent conversations",
       "Colors",
@@ -154,7 +155,7 @@ test("the settings journey", async ({ desktop }) => {
     const count = await links.count();
     const search = settingsNav(page).getByRole("searchbox", { name: "Search Settings" });
     await search.fill("theme");
-    await expect(links.filter({ hasNotText: "Settings" })).toHaveText(["Appearance"]);
+    await expect(links.filter({ hasNotText: "Settings" })).toHaveText(["Appearance", "Themes"]);
     await search.fill("");
     await expect(links).toHaveCount(count);
     await leaveSettings(page);

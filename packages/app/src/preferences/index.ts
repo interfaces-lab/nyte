@@ -4,6 +4,7 @@ import { Type } from "typebox";
 import type { ThemePreference } from "../contract/bridge.ts";
 import { DEFAULT_SESSION_VIEW, SessionViewSchema } from "./session-view.ts";
 import { CodeFontSchema, UiFontSchema } from "../theme/fonts.ts";
+import { ThemeChoicesSchema, VscodeThemeSchema } from "../theme/vscode-theme.ts";
 import { definePreference } from "./store.ts";
 import type { Preference } from "./store.ts";
 
@@ -72,6 +73,15 @@ export const preferences = {
   ),
   tintHue: definePreference({ key: APPEARANCE, field: "tintHue" }, integer(0, 360), 250),
   tintIntensity: definePreference({ key: APPEARANCE, field: "tintIntensity" }, integer(0, 100), 0),
+  themes: definePreference({ key: APPEARANCE, field: "themes" }, ThemeChoicesSchema, {
+    light: { source: "nyte" },
+    dark: { source: "nyte" },
+  }),
+  importedThemes: definePreference(
+    { key: APPEARANCE, field: "importedThemes" },
+    Type.Array(VscodeThemeSchema),
+    [],
+  ),
   uiFont: definePreference({ key: APPEARANCE, field: "uiFont" }, UiFontSchema, "inter"),
   codeFont: definePreference({ key: APPEARANCE, field: "codeFont" }, CodeFontSchema, "system"),
   uiFontSize: definePreference({ key: APPEARANCE, field: "uiFontSize" }, integer(12, 16), 13),

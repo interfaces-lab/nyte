@@ -3,14 +3,7 @@ import { Button } from "@nyte-ai/ui/button";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { Type } from "typebox";
-import {
-  use,
-  useEffectEvent,
-  useLayoutEffect,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from "react";
+import { use, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { canvas } from "@nyte-ai/plugin/canvas/schema";
 import type { CanvasState } from "@nyte-ai/plugin/canvas/schema";
@@ -39,7 +32,7 @@ import { workbenchViewKey } from "../workbench/paths.ts";
 import { useVisibleCanvasTab, workbench } from "../workbench/store.ts";
 import { canvasFrameEffects, canvasFrameHeight } from "./canvas-frame.ts";
 import type { CanvasPost } from "./canvas-frame.ts";
-import { appearance } from "../theme/appearance-store.ts";
+import { useAppearance } from "../theme/appearance-store.ts";
 import { canvasTheme } from "./canvas-theme.ts";
 import type { CanvasTheme } from "./canvas-theme.ts";
 import { openConversationLink } from "../chat/markdown/external-link.ts";
@@ -373,7 +366,7 @@ function CanvasShell({
   readonly onError: (message: string) => void;
 }): ReactElement {
   const frameRef = useRef<HTMLIFrameElement>(null);
-  const shown = useSyncExternalStore(appearance.subscribe, appearance.get, appearance.get);
+  const shown = useAppearance();
   const [initialized, setInitialized] = useState(false);
   const shell = useRef({ initialized: false, reported: new Set<string>() });
   const painted = useRef<EndSpan>(undefined);

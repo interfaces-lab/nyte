@@ -362,7 +362,7 @@ export default defineConfig({
         "packages/canvas/src/**/*.{ts,tsx}",
         "packages/lab/src/**/*.{ts,tsx}",
       ],
-      excludeFiles: ["packages/ui/src/styles/**"],
+      excludeFiles: ["packages/ui/src/styles/**", "packages/app/src/theme/vscode-theme.ts"],
       rules: { "nyte-design/no-faded-ink": "error", "nyte-design/disabled-ink": "error" },
     },
     {

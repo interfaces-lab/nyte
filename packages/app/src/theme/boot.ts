@@ -4,6 +4,7 @@ import { applyPointerCursors, applyTransparency, withoutTransitions } from "./ap
 import { appearance } from "./appearance-store.ts";
 import type { Appearance } from "./appearance-store.ts";
 import { codeFontFamily, localFontFamily, uiFontFamily } from "./fonts.ts";
+import { applyVscodeTheme } from "./vscode-theme.ts";
 
 function apply(shown: Appearance): void {
   const root = document.documentElement;
@@ -14,6 +15,7 @@ function apply(shown: Appearance): void {
   applyTint();
   root.style.setProperty("--nyte-custom-hue", String(shown.tintHue));
   root.style.setProperty("--nyte-custom-chroma-scale", String(shown.tintIntensity / 100));
+  applyVscodeTheme(shown.vscodeTheme);
   nyte.host.setThemePreference(shown.theme);
   root.style.setProperty("--nyte-font-family-sans", uiFontFamily(shown.uiFont));
   root.style.setProperty("--nyte-font-family-mono", codeFontFamily(shown.codeFont));

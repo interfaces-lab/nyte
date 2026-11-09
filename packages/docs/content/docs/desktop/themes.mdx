@@ -1,0 +1,44 @@
+---
+title: Themes
+description: Pick a color theme for light mode and one for dark mode, or import a VS Code color theme.
+---
+
+The desktop app keeps one theme for light mode and one for dark mode. **Settings** › **Appearance**
+› **Color scheme** decides which of the two you see: follow the system, or always light or dark.
+
+## Pick a theme [#pick]
+
+Open **Settings** › **Themes** and click a card under **Light mode** or **Dark mode**. **Nyte** is
+the app's own palette. The built-in themes are:
+
+| Light mode       | Dark mode        |
+| ---------------- | ---------------- |
+| Pierre Light     | Pierre Dark      |
+| GitHub Light     | GitHub Dark      |
+| Catppuccin Latte | Dracula          |
+| Solarized Light  | Catppuccin Mocha |
+|                  | Nord             |
+|                  | Tokyo Night      |
+
+**Hue** and **Intensity** under **Settings** › **Appearance** tint Nyte's palette. A theme other
+than Nyte sets its own surfaces, so the tint barely shows under one.
+
+## Import a VS Code theme [#import]
+
+Click **Import…** under **Import** and choose a VS Code color theme file, `.json` or `.jsonc`. Nyte
+adds it to light or dark mode by the theme's `type`, or by its background color when it has none,
+and switches that mode to it. Importing a theme with the same name for the same mode replaces it.
+
+Nyte reads these colors from the file:
+
+| Nyte uses it for   | Theme colors, first one present wins                                                                         |
+| ------------------ | ------------------------------------------------------------------------------------------------------------ |
+| Content background | `editor.background` (required)                                                                               |
+| Sidebar and chrome | `sideBar.background`, `activityBar.background`, `editor.background`                                          |
+| Text               | `editor.foreground`, `foreground`                                                                            |
+| Accent             | `textLink.foreground`, `focusBorder`, `button.background`, `activityBarBadge.background`, `badge.background` |
+
+Nyte derives the rest, such as secondary text, borders and fills, from the text and background.
+Syntax highlighting, canvases and the terminal's ANSI colors keep Nyte's colors.
+
+To delete an imported theme, click **Remove** beside it. A mode that used it goes back to Nyte.

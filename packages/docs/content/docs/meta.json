@@ -8,6 +8,7 @@
     "agents",
     "---Desktop app---",
     "desktop/editor",
+    "desktop/themes",
     "---Configure---",
     "configure/settings",
     "configure/permissions",
