@@ -12,10 +12,13 @@ import { getCurrentTools } from "@nyte-ai/schema/model";
 import type { TranscriptContext } from "@nyte-ai/schema/model";
 import type { ModelsFactory } from "./models.ts";
 import type { BenchCase, CaseKind } from "./case.ts";
+import { checkCanvas } from "./canvas-check.ts";
 import { grade } from "./grade.ts";
 import type { Call, Check, Trace } from "./grade.ts";
 
 const POLL_MS = 1000;
+
+const CANVAS_RENDER = "canvas_render";
 
 export interface Job {
   readonly suite: string;
@@ -84,12 +87,14 @@ export async function runSample(
 
   const spans = await readSpanFile(home.traceFile);
 
-  const trace: Trace = {
-    calls: settled.members.flatMap((member) =>
-      member.view.messages.flatMap((message) =>
-        isPart(message, tool) ? [readCall(member.by, message.state)] : [],
-      ),
+  const calls = settled.members.flatMap((member) =>
+    member.view.messages.flatMap((message) =>
+      isPart(message, tool) ? [readCall(member.by, message.state)] : [],
     ),
+  );
+
+  const trace: Trace = {
+    calls,
     requests: counted.requests(),
     subagents: counted.subagents(),
     served: spans.flatMap((span) =>
@@ -98,6 +103,13 @@ export async function runSample(
         : [],
     ),
     answer: settled.members[0] === undefined ? "" : lastText(settled.members[0].view),
+    canvases: await Promise.all(
+      calls
+        .filter(
+          (call) => call.by === "chat" && call.tool === CANVAS_RENDER && call.outcome === "ok",
+        )
+        .map((call) => checkCanvas(call.args)),
+    ),
   };
 
   const checks = grade(job.case.expect, trace);
@@ -123,7 +135,7 @@ export async function runSample(
 }
 
 /** Waits until the chat, its subagents and the reports they send back have all gone quiet. Stops them at the deadline, or once `over` says the chat took more rounds than the case allows. */
-async function settle(
+export async function settle(
   host: Host,
   root: SessionId,
   deadline: number,

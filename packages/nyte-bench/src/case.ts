@@ -18,6 +18,8 @@ export interface Expectation {
   readonly subagentModel?: string;
   /** Text the chat's last message holds, case-insensitively. */
   readonly answer?: readonly string[];
+  /** The chat renders a canvas the user can read: it renders in a real canvas runtime without errors, takes its colours from the theme and builds on the kit. */
+  readonly canvas?: true;
 }
 
 /** One prompt to a fresh chat, the world it runs in, and what the chat must do. */

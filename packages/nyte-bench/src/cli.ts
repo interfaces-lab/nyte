@@ -3,7 +3,8 @@ import { join } from "node:path";
 import process from "node:process";
 import { parseArgs } from "node:util";
 import { LINEUP, openCatalog, parseModel } from "./models.ts";
-import { describeRow, summarize } from "./report.ts";
+import { describeRow, summarize, tabulate } from "./report.ts";
+import { pool } from "./pool.ts";
 import { runSample } from "./sample.ts";
 import type { Job, Row } from "./sample.ts";
 import { SUITES } from "./suites.ts";
@@ -117,24 +118,8 @@ const summary = summarize(rows);
 
 await writeFile(join(out, "summary.md"), summary);
 
+await writeFile(join(out, "summary.json"), `${JSON.stringify(tabulate(rows), null, 2)}\n`);
+
 process.stdout.write(`\n${summary}`);
 
 process.exit(0);
-
-async function pool<T, R>(
-  items: readonly T[],
-  size: number,
-  work: (item: T) => Promise<R>,
-): Promise<readonly R[]> {
-  const done: R[] = [];
-  const queue = [...items];
-
-  const worker = async (): Promise<void> => {
-    for (let item = queue.shift(); item !== undefined; item = queue.shift())
-      done.push(await work(item));
-  };
-
-  await Promise.all(Array.from({ length: Math.max(1, size) }, worker));
-
-  return done;
-}

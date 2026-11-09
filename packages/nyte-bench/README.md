@@ -10,6 +10,7 @@ Each sample opens a fresh host from this checkout with `simulate()` from `@nyte-
 | --- | --- |
 | [`tool-calls`](suites/tool-calls/README.md) | Subagents, background agents and MCP tools, called right in one round |
 | [`subagent-models`](suites/subagent-models/README.md) | A subagent started on the model the user named loosely, in one round |
+| [`canvas`](suites/canvas/README.md) | A canvas when data reads faster as one, unprompted, that runs without errors |
 
 ## Run
 
@@ -23,8 +24,25 @@ pnpm --dir packages/nyte-bench bench --list
 - Models default to the lineup in `src/models.ts`: Claude Haiku 5.5 and Sonnet 5.5, and GPT-5.6 Luna and Sol, GPT-6 Luna, GPT-6.1 Sol and GPT-6 Astra on the ChatGPT login. Pass `--model provider/id` once per model, or an id of the lineup alone.
 - Credentials are your Nyte logins. The bench opens the host's store (`~/.nyte/nyte.db`, or `NYTE_DB`) read-only and decrypts the requested providers' logins in memory with `~/.nyte/secret.key`. It never refreshes, changes or writes them, because refreshing an OAuth token outside the host rotates it and can sign Nyte out. A login that expires within 15 minutes is refused: use that provider's model in Nyte once so the host refreshes it, then run again. A provider without a Nyte login falls back to its environment variable, such as `ANTHROPIC_API_KEY`.
 - Flags: `--suite <id>` and `--case <id>` (repeatable), `--samples <n>` (default 3), `--concurrency <n>` (samples in flight, default 4), `--timeout <s>` per sample (default 240).
-- A run writes `results.jsonl`, one row per sample with every call, its arguments and outcome, and `summary.md`, and prints the summary.
+- A run writes `results.jsonl`, one row per sample with every call, its arguments and outcome, `summary.md`, which it prints, and `summary.json`, the pass counts per suite and model.
 - It calls paid models, so CI doesn't run it. Each row records the token cost of the chat and its subagents; subscription logins report their list price.
+
+## Harness overhead and prompt size
+
+```sh
+pnpm --dir packages/nyte-bench overhead --out /tmp/nyte-overhead
+pnpm --dir packages/nyte-bench overhead --out /tmp/nyte-overhead --model anthropic/claude-sonnet-5-5
+```
+
+It runs turns on a scripted model that answers at once, so the time left is the harness's own: opening a host, the message to the first model request, a tool result to the next request and the last answer to settled, as medians and p90s. It also lists what a chat's first request carries, the system sections and each tool by size, largest first. With `--model`, it sends one real message per model and records the first request's input tokens. It writes `overhead.json`.
+
+## DeepSWE
+
+```sh
+pnpm --dir packages/nyte-bench deepswe --dataset /tmp/deep-swe/tasks --out /tmp/nyte-deepswe
+```
+
+It runs Nyte on DeepSWE v1.1 tasks the way the benchmark grades them: the task's image runs with no network in Docker, every command the chat starts runs inside it, the task's collect command turns the commits into a patch, and the task's verifier grades it in a fresh container. It needs Docker and a clone of `datacurve-ai/deep-swe`. Without `--task`, it picks 12 tasks with a fixed seed, 3 attempts each, on Claude Sonnet 5.5 with high reasoning and a 20-minute limit. It writes `results.jsonl` and a `summary.json` in the shape eve publishes its harness results in.
 
 ## Compare against a baseline
 

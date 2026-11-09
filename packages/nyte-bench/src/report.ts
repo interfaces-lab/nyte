@@ -115,6 +115,38 @@ export function summarize(all: readonly Row[]): string {
   ].join("\n");
 }
 
+/** The run as data: for each suite and model, samples passed over samples graded, by case kind, so a page can chart it. */
+export function tabulate(all: readonly Row[]) {
+  const graded = all.filter((row) => row.pass !== null);
+  const models = [...new Set(all.map((row) => row.model))];
+
+  const score = (rows: readonly Row[]) => ({
+    passed: rows.filter((row) => row.pass === true).length,
+    graded: rows.length,
+  });
+
+  return {
+    schemaVersion: 1,
+    generatedAt: new Date().toISOString(),
+    models,
+    suites: SUITES.filter((suite) => all.some((row) => row.suite === suite.id)).map((suite) => ({
+      id: suite.id,
+      title: suite.title,
+      models: models.map((model) => {
+        const rows = graded.filter((row) => row.suite === suite.id && row.model === model);
+
+        return {
+          model,
+          ...score(rows),
+          bad: score(rows.filter((row) => row.kind === "bad")),
+          guard: score(rows.filter((row) => row.kind === "guard")),
+          control: score(rows.filter((row) => row.kind === "control")),
+        };
+      }),
+    })),
+  };
+}
+
 function shortName(model: string): string {
   return model.slice(model.indexOf("/") + 1);
 }

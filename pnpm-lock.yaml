@@ -1411,12 +1411,18 @@ importers:
       '@nyte-ai/bench':
         specifier: workspace:*
         version: link:../bench
+      '@nyte-ai/canvas':
+        specifier: workspace:*
+        version: link:../canvas
       '@nyte-ai/core':
         specifier: workspace:*
         version: link:../core
       '@nyte-ai/host':
         specifier: workspace:*
         version: link:../host
+      '@nyte-ai/plugin':
+        specifier: workspace:*
+        version: link:../plugin
       '@nyte-ai/schema':
         specifier: workspace:*
         version: link:../schema

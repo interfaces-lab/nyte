@@ -1,4 +1,5 @@
 import type { Json } from "@nyte-ai/schema";
+import type { CanvasCheck } from "./canvas-check.ts";
 import type { Expectation } from "./case.ts";
 
 /** One tool call the chat or one of its subagents made, as it settled. */
@@ -19,6 +20,8 @@ export interface Trace {
   readonly subagents: readonly string[];
   readonly served: readonly string[];
   readonly answer: string;
+  /** Every canvas the chat rendered, in order, as the user would see it. */
+  readonly canvases: readonly CanvasCheck[];
 }
 
 export interface Check {
@@ -89,10 +92,42 @@ export function grade(expect: Expectation, trace: Trace): readonly Check[] {
                 : [...new Set(trace.subagents)].join(", "),
           },
         ]),
+    ...(expect.canvas === undefined ? [] : gradeCanvas(trace.canvases)),
     ...(expect.answer ?? []).map((needle) => ({
       name: `answers ${needle}`,
       pass: answer.includes(needle.toLowerCase()),
       detail: trace.answer.slice(0, 200),
     })),
+  ];
+}
+
+/** The last canvas is the one the user is left with, so it carries the quality checks. */
+function gradeCanvas(canvases: readonly CanvasCheck[]): readonly Check[] {
+  const last = canvases.at(-1);
+
+  if (last === undefined)
+    return [{ name: "renders a canvas", pass: false, detail: "no canvas_render call ended ok" }];
+
+  return [
+    {
+      name: "renders a canvas",
+      pass: true,
+      detail: `${canvases.length} canvas${canvases.length === 1 ? "" : "es"}`,
+    },
+    {
+      name: "canvas runs without errors",
+      pass: last.errors !== null && last.errors.length === 0,
+      detail: last.errors === null ? "no Chromium to preview with" : last.errors.join("; "),
+    },
+    {
+      name: "canvas takes colours from the theme",
+      pass: last.colours.length === 0,
+      detail: last.colours.slice(0, 5).join(", "),
+    },
+    {
+      name: "canvas builds on the kit",
+      pass: last.usesKit,
+      detail: last.usesKit ? "" : "never imports nyte/canvas",
+    },
   ];
 }

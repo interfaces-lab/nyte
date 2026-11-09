@@ -8,13 +8,17 @@
     "bench": "node src/cli.ts",
     "clean": "rm -rf node_modules .turbo",
     "compare": "node src/compare.ts",
+    "deepswe": "node src/deepswe.ts",
+    "overhead": "node src/overhead.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@nyte-ai/ai": "workspace:*",
     "@nyte-ai/bench": "workspace:*",
+    "@nyte-ai/canvas": "workspace:*",
     "@nyte-ai/core": "workspace:*",
     "@nyte-ai/host": "workspace:*",
+    "@nyte-ai/plugin": "workspace:*",
     "@nyte-ai/schema": "workspace:*",
     "typebox": "^1.4.6"
   },
