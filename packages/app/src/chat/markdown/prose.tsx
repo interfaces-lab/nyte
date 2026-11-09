@@ -33,7 +33,6 @@ import { FileTypeIcon } from "@nyte-ai/ui/file-type-icon";
 import {
   fileFromUrl,
   inlineCodeReference,
-  mentionsFolder,
   referenceTitle,
 } from "../../references/message-references.ts";
 import type { MessageReference } from "../../references/message-references.ts";
@@ -107,7 +106,7 @@ function FileCitation({
           <a
             {...elementProps}
             href={reference.file.url}
-            data-citation={mentionsFolder(reference.file) ? "folder" : "file"}
+            data-citation={reference.file.kind}
             {...props(intent.primary, proseStyles.link)}
             onClick={(event) => {
               event.preventDefault();
@@ -117,7 +116,7 @@ function FileCitation({
           >
             <span {...props(proseStyles.linkLead)}>
               <span aria-hidden="true" {...props(proseStyles.linkIcon)}>
-                {mentionsFolder(reference.file) ? (
+                {reference.file.kind === "folder" ? (
                   <Icon name="folder" size="xs" />
                 ) : (
                   <FileTypeIcon path={reference.file.path} />

@@ -12,7 +12,7 @@ export function readEditorDrop(event: DragEvent<HTMLElement>): EditorDrop | unde
   const id = event.dataTransfer.getData(FILE_TAB_DRAG);
 
   if (id !== "") return { kind: "tab", id };
-  const file = droppedTreeFiles(event).find((entry) => !entry.displayPath.endsWith("/"));
+  const file = droppedTreeFiles(event).find((entry) => entry.kind === "file");
 
   return file === undefined ? undefined : { kind: "file", path: file.path };
 }

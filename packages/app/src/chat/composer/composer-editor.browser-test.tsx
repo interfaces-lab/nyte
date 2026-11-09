@@ -25,6 +25,7 @@ export async function run(): Promise<string> {
   const ref = createRef<ComposerEditorHandle>();
 
   const file = {
+    kind: "file" as const,
     path: "/project/source.ts",
     url: "file:///project/source.ts",
     displayPath: "source.ts",

@@ -28,7 +28,7 @@ export async function run(): Promise<string> {
       check(image.type === "image/png", "The delivery must contain a native PNG export");
 
       return editor
-        .attachFiles([image], excerpt.signal)
+        .attachFiles([{ file: image, kind: "file" }], excerpt.signal)
         .then(() => {
           accepted += 1;
           acceptedName = image.name;

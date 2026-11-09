@@ -33,6 +33,7 @@ import type { PendingRowAction } from "./composer-queue.tsx";
 import { composerSource } from "./composer-suggestions.tsx";
 import { bindComposerFileDrop } from "../../references/composer-file-drop.ts";
 import { attachComposerFiles } from "./composer-files.ts";
+import type { ComposerFile } from "../../references/composer-file-drop.ts";
 import type { ComposerImageAttachment } from "../../panes/session-view-state.ts";
 import { ComposerFooter } from "./composer-footer.tsx";
 import { loadedPrompts, readPrompts, recallStep } from "./composer-history.ts";
@@ -389,7 +390,7 @@ export function Composer({
   };
 
   const addFiles = async (
-    files: readonly File[],
+    files: readonly ComposerFile[],
     signal?: AbortSignal,
   ): Promise<string | undefined> => {
     if (savingEdit) return "Finish editing the message, then attach the image again.";
@@ -913,7 +914,7 @@ function FileDrop({
   onFiles,
 }: {
   readonly element: HTMLElement;
-  readonly onFiles: (files: readonly File[]) => void;
+  readonly onFiles: (files: readonly ComposerFile[]) => void;
 }): null {
   const drop = useEffectEvent(onFiles);
 

@@ -168,7 +168,9 @@ function ReceiveExcerpts({
 
       if (excerpt.image === undefined) return element;
 
-      return composer.attachFiles([excerpt.image], excerpt.signal).then(() => element);
+      return composer
+        .attachFiles([{ file: excerpt.image, kind: "file" }], excerpt.signal)
+        .then(() => element);
     }),
   );
 

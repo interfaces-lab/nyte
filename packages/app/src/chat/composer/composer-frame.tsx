@@ -20,6 +20,7 @@ import {
   carriesFiles,
   carriesTreeFiles,
   droppedTreeFiles,
+  transferredFiles,
 } from "../../references/composer-file-drop.ts";
 import type { ComposerImageAttachment } from "../../panes/session-view-state.ts";
 import {
@@ -33,6 +34,7 @@ import type { RecallDirection } from "./composer-history.ts";
 import type { MessageReference } from "../../references/message-references.ts";
 import { composerStyles } from "./composer.stylex.ts";
 import { ComposerPicker } from "./model-picker.tsx";
+import type { ComposerFile } from "../../references/composer-file-drop.ts";
 
 const DROP_PLACEHOLDER = "Drop here to attach…";
 
@@ -81,7 +83,10 @@ interface ComposerFrameProps {
   attachments?: readonly ComposerImageAttachment[];
   attachmentBusy?: boolean;
   attachmentError?: string;
-  onFilesSelected?: (files: readonly File[], signal?: AbortSignal) => Promise<string | undefined>;
+  onFilesSelected?: (
+    files: readonly ComposerFile[],
+    signal?: AbortSignal,
+  ) => Promise<string | undefined>;
   onAttachmentRemove?: (id: string) => void;
   editing?: ComposerEditing;
   runningMessagePreference?: RunningMessagePreference;
@@ -396,7 +401,7 @@ export function ComposerFrame({
         if (disabled) return;
 
         if (canAttach && carriesFiles(event)) {
-          void onFilesSelected(Array.from(event.dataTransfer.files));
+          void onFilesSelected(transferredFiles(event.dataTransfer));
 
           return;
         }
@@ -433,7 +438,11 @@ export function ComposerFrame({
           tabIndex={-1}
           {...props(composerStyles.fileInput)}
           onChange={(event) => {
-            const picked = Array.from(event.currentTarget.files ?? []);
+            const picked = Array.from(event.currentTarget.files ?? [], (file) => ({
+              file,
+              kind: "file" as const,
+            }));
+
             event.currentTarget.value = "";
 
             if (picked.length > 0) void onFilesSelected(picked);

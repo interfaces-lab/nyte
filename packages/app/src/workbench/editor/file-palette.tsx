@@ -8,7 +8,6 @@ import { Loader } from "@nyte-ai/ui/loader";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import type { MentionFile } from "../../data/files.ts";
 import { fuzzyScore } from "../../lib/fuzzy-match.ts";
-import { mentionsFolder } from "../../references/message-references.ts";
 import type { OutlineSymbol } from "./outline.ts";
 import { SymbolKindGlyph } from "./symbol-kind.tsx";
 
@@ -191,13 +190,13 @@ function paletteRows(
 ): readonly Row[] {
   switch (mode.kind) {
     case "files": {
-      const indexed = (input.files ?? []).filter((file) => !mentionsFolder(file));
+      const indexed = (input.files ?? []).filter((file) => file.kind === "file");
       const recentPaths = new Set(input.recent.map((file) => file.path));
 
       const matches =
         mode.needle === ""
           ? [
-              ...input.recent.filter((file) => !mentionsFolder(file)),
+              ...input.recent.filter((file) => file.kind === "file"),
               ...indexed
                 .filter((file) => !recentPaths.has(file.path))
                 .sort((left, right) => left.displayPath.localeCompare(right.displayPath)),

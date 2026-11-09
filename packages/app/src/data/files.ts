@@ -49,6 +49,7 @@ export function useMentionFiles(folder: SelectedWorkspace | undefined, enabled: 
 
 export const mentionFileSchema = Type.ReadonlyObject(
   Type.Object({
+    kind: Type.Union([Type.Literal("file"), Type.Literal("folder")]),
     path: Type.String(),
     url: Type.String(),
     displayPath: Type.String(),
@@ -62,16 +63,25 @@ export function mentionFile(
   root: string,
   entry: Pick<FileEntryView, "path" | "kind">,
 ): MentionFile {
-  const folder = entry.kind === "directory" ? "/" : "";
-  const path = `${root.replace(/\/$/u, "")}/${entry.path}`;
-  const url = new URL("file:///");
-  url.pathname = `${path}${folder}`;
-  const name = entry.path.split("/").at(-1) ?? entry.path;
+  const kind = entry.kind === "directory" ? "folder" : "file";
 
   return {
-    path: `${path}${folder}`,
+    ...mentionFileAt(`${root.replace(/\/$/u, "")}/${entry.path}`, kind),
+    displayPath: kind === "folder" ? `${entry.path}/` : entry.path,
+  };
+}
+
+export function mentionFileAt(path: string, kind: MentionFile["kind"]): MentionFile {
+  const target = kind === "folder" ? `${path}/` : path;
+  const url = new URL("file://");
+  url.pathname = target.replace(/[%\\\n\r\t]/gu, encodeURIComponent);
+  const name = path.split("/").at(-1) ?? "";
+
+  return {
+    kind,
+    path: target,
     url: url.href,
-    displayPath: `${entry.path}${folder}`,
-    label: `${name}${folder}`,
+    displayPath: target,
+    label: name === "" ? "/" : `${name}${kind === "folder" ? "/" : ""}`,
   };
 }

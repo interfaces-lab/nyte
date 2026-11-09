@@ -1,6 +1,7 @@
 import { nyte } from "../../contract/nyte.ts";
 import type { ComposerEditorHandle } from "./composer-editor.tsx";
-import { fileFromUrl } from "../../references/message-references.ts";
+import { mentionFileAt } from "../../data/files.ts";
+import type { ComposerFile } from "../../references/composer-file-drop.ts";
 import type { MessageReference } from "../../references/message-references.ts";
 import type { ComposerImageAttachment } from "../../panes/session-view-state.ts";
 
@@ -34,23 +35,19 @@ function inlineImageType(file: File): string | undefined {
   return INLINE_IMAGE_TYPE_BY_EXTENSION.get(file.name.slice(dot + 1).toLowerCase());
 }
 
-function fileUrl(path: string): string {
-  const url = new URL("file://");
-  url.pathname = path.replace(/[%\\\n\r\t]/gu, encodeURIComponent);
-
-  return url.href;
-}
-
-function classifyComposerFile(file: File): ComposerFileIntake {
-  const mimeType = inlineImageType(file);
+function classifyComposerFile(entry: ComposerFile): ComposerFileIntake {
+  const file = entry.file;
+  const mimeType = entry.kind === "file" ? inlineImageType(file) : undefined;
 
   if (mimeType !== undefined) return { kind: "image", file, mimeType };
   const path = nyte.host.pathForFile(file);
-  const mention = path === "" ? undefined : fileFromUrl(fileUrl(path));
 
-  if (mention === undefined) return { kind: "unreachable", name: file.name };
+  if (path === "") return { kind: "unreachable", name: file.name };
 
-  return { kind: "reference", reference: { kind: "file", file: mention } };
+  return {
+    kind: "reference",
+    reference: { kind: "file", file: mentionFileAt(path, entry.kind) },
+  };
 }
 
 function readImageAttachment(args: {
@@ -104,7 +101,7 @@ function readImageAttachment(args: {
 }
 
 export async function attachComposerFiles(args: {
-  readonly files: readonly File[];
+  readonly files: readonly ComposerFile[];
   readonly editor: ComposerEditorHandle | null;
 }): Promise<{
   readonly attachments: readonly ComposerImageAttachment[];

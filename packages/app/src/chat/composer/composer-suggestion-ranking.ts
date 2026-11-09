@@ -1,6 +1,5 @@
 import type { MentionFile } from "../../data/files.ts";
 import { createFileRanking } from "../../lib/file-ranking.ts";
-import { mentionsFolder } from "../../references/message-references.ts";
 
 const MAX_FILE_SUGGESTIONS = 20;
 
@@ -35,7 +34,7 @@ function fileSuggestion(file: MentionFile): FileSuggestion {
     id: `file:${file.path}`,
     label: file.label,
     description: file.displayPath,
-    icon: mentionsFolder(file) ? "folder" : "file",
+    icon: file.kind,
     file,
   };
 }

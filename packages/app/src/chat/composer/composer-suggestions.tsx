@@ -19,11 +19,7 @@ import { createMentionSuggestionRanking } from "./composer-suggestion-ranking.ts
 import type { FileSuggestion, MentionSuggestion } from "./composer-suggestion-ranking.ts";
 import { composerEnterAction } from "./composer-keys.ts";
 import { mentionPreviewRows } from "../../references/mention-preview.ts";
-import {
-  CONVERSATION_MENTION,
-  mentionsFolder,
-  sameReference,
-} from "../../references/message-references.ts";
+import { CONVERSATION_MENTION, sameReference } from "../../references/message-references.ts";
 import type { MessageReference } from "../../references/message-references.ts";
 import { composerStyles } from "./composer.stylex.ts";
 
@@ -276,9 +272,8 @@ function suggestionAttribution(suggestion: ComposerSuggestion): string | undefin
       return suggestion.skill.location;
     case "mention":
     case "argument":
-      return undefined;
     case "file":
-      return mentionsFolder(suggestion.file) ? "Workspace folder" : "Workspace file";
+      return undefined;
     default: {
       const _exhaustive: never = suggestion;
 
@@ -353,7 +348,7 @@ function HighlightedSuggestionText({
 }
 
 function MentionPathPreview({ file }: { readonly file: MentionFile }): ReactElement {
-  const rows = mentionPreviewRows(file.displayPath);
+  const rows = mentionPreviewRows(file);
 
   return (
     <div {...props(composerStyles.suggestionPreviewPath)}>

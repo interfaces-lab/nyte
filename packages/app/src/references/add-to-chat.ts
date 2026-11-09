@@ -1,3 +1,4 @@
+import { mentionFileAt } from "../data/files.ts";
 import type { MentionFile } from "../data/files.ts";
 import type { MessageReference } from "./message-references.ts";
 
@@ -39,18 +40,10 @@ export function addFileToChat(
   file: Pick<MentionFile, "path" | "displayPath">,
   lines?: { readonly start: number; readonly end: number },
 ): boolean {
-  const url = new URL("file:///");
-  url.pathname = file.path;
-
   return addToChat({
     reference: {
       kind: "file",
-      file: {
-        path: file.path,
-        url: url.href,
-        displayPath: file.displayPath,
-        label: file.displayPath.split("/").at(-1) ?? file.displayPath,
-      },
+      file: { ...mentionFileAt(file.path, "file"), displayPath: file.displayPath },
       lines,
     },
   });

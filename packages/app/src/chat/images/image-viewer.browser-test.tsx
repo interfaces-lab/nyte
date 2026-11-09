@@ -27,7 +27,7 @@ export async function run(): Promise<string> {
 
     if (editor === null || target === null || target === undefined)
       throw new Error("Missing composer");
-    await editor.attachFiles([file], excerpt.signal);
+    await editor.attachFiles([{ file, kind: "file" }], excerpt.signal);
 
     return target;
   });

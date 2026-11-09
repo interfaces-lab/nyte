@@ -1,7 +1,6 @@
 import type { JobView, WorkspaceId } from "@nyte-ai/sdk";
 import { clientCapabilities } from "../contract/client-actions.ts";
 import { nyte } from "../contract/nyte.ts";
-import { mentionsFolder } from "../references/message-references.ts";
 import type { ReferenceOpener } from "../references/reference-opener.tsx";
 import { fileActions } from "./editor/file-store.ts";
 import { EDITOR_SLOT, FOLLOW_BROWSE, matchingTab, WORKBENCH_KINDS } from "./model.ts";
@@ -149,7 +148,7 @@ export function workbenchReferenceOpener(view: WorkbenchViewKey): ReferenceOpene
       case "file": {
         const file = reference.file;
 
-        if (mentionsFolder(file))
+        if (file.kind === "folder")
           return () => {
             workbench.dispatch(view, { kind: "browse", root: FOLLOW_BROWSE });
             fileActions.reveal(view, file.displayPath);

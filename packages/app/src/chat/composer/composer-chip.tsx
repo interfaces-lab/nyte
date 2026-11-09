@@ -8,11 +8,7 @@ import type { IconName } from "@nyte-ai/ui/icon";
 import { PreviewCard, PreviewCardContent, PreviewCardTrigger } from "@nyte-ai/ui/preview-card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { Button } from "@nyte-ai/ui/button";
-import {
-  mentionsFolder,
-  referenceLabel,
-  referenceTitle,
-} from "../../references/message-references.ts";
+import { referenceLabel, referenceTitle } from "../../references/message-references.ts";
 import type { MessageReference } from "../../references/message-references.ts";
 import { useReferenceOpener } from "../../references/reference-opener.tsx";
 import { FileTypeIcon } from "@nyte-ai/ui/file-type-icon";
@@ -28,7 +24,7 @@ const EXCERPT_ICONS = {
 function referenceIcon(reference: MessageReference): IconName {
   switch (reference.kind) {
     case "file":
-      return mentionsFolder(reference.file) ? "folder" : "file";
+      return reference.file.kind;
     case "skill":
       return "skills";
     case "mention":
@@ -58,7 +54,7 @@ export function ComposerChipView({
   const content = (
     <span {...props(composerStyles.mentionChipLabel)}>
       <span aria-hidden="true" {...props(composerStyles.mentionChipLeading)}>
-        {reference.kind === "file" && !mentionsFolder(reference.file) ? (
+        {reference.kind === "file" && reference.file.kind === "file" ? (
           <FileTypeIcon path={reference.file.path} />
         ) : (
           <Icon name={referenceIcon(reference)} size="xs" />

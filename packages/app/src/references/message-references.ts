@@ -4,7 +4,7 @@ import { ExcerptSourceType } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Value } from "typebox/value";
-import { type MentionFile, mentionFileSchema } from "../data/files.ts";
+import { type MentionFile, mentionFileAt, mentionFileSchema } from "../data/files.ts";
 
 export const messageReferenceSchema = Type.Union([
   Type.ReadonlyObject(
@@ -319,10 +319,6 @@ export function sameReference(left: MessageReference, right: MessageReference): 
   }
 }
 
-export function mentionsFolder(file: MentionFile): boolean {
-  return file.label.endsWith("/");
-}
-
 export function fileFromUrl(url: string): MentionFile | undefined {
   let parsed: URL;
 
@@ -341,14 +337,9 @@ export function fileFromUrl(url: string): MentionFile | undefined {
     return undefined;
   }
 
-  const directory = path.endsWith("/");
-  const name = path.replace(/\/$/u, "").split("/").at(-1) ?? "";
-
   return {
-    path,
+    ...mentionFileAt(path.replace(/\/$/u, ""), path.endsWith("/") ? "folder" : "file"),
     url,
-    displayPath: path,
-    label: name === "" ? "/" : `${name}${directory ? "/" : ""}`,
   };
 }
 
@@ -503,7 +494,7 @@ export function inlineCodeReference(
 
   if (file === undefined) return undefined;
 
-  if (mentionsFolder(file) || citation.lines === null) return { kind: "file", file };
+  if (file.kind === "folder" || citation.lines === null) return { kind: "file", file };
 
   return { kind: "file", file, lines: citation.lines };
 }

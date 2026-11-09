@@ -2,9 +2,24 @@ import type { MentionFile } from "../data/files.ts";
 
 interface ComposerFileDropTransfer {
   readonly types: ArrayLike<string>;
-  readonly files: FileList | readonly File[];
+  readonly items: DataTransferItemList;
   dropEffect: string;
   getData(format: string): string;
+}
+
+export interface ComposerFile {
+  readonly file: File;
+  readonly kind: MentionFile["kind"];
+}
+
+export function transferredFiles(transfer: Pick<DataTransfer, "items">): readonly ComposerFile[] {
+  return Array.from(transfer.items).flatMap((item) => {
+    const file = item.getAsFile();
+
+    if (file === null) return [];
+
+    return [{ file, kind: item.webkitGetAsEntry()?.isDirectory === true ? "folder" : "file" }];
+  });
 }
 
 interface ComposerFileDropEvent {
@@ -40,7 +55,7 @@ export function droppedTreeFiles(event: ComposerFileDropEvent): readonly Mention
 }
 
 function dropHandlers(args: {
-  readonly onFiles: (files: readonly File[]) => void;
+  readonly onFiles: (files: readonly ComposerFile[]) => void;
   readonly disabled?: boolean;
 }) {
   const accept = (event: ComposerFileDropEvent): boolean =>
@@ -61,14 +76,14 @@ function dropHandlers(args: {
       event.stopPropagation();
 
       if (!accept(event)) return;
-      args.onFiles(Array.from(event.dataTransfer?.files ?? []));
+      args.onFiles(event.dataTransfer === null ? [] : transferredFiles(event.dataTransfer));
     },
   };
 }
 
 export function bindComposerFileDrop(args: {
   readonly element: HTMLElement;
-  readonly onFiles: (files: readonly File[]) => void;
+  readonly onFiles: (files: readonly ComposerFile[]) => void;
   readonly disabled?: boolean;
 }): () => void {
   const { onDragEnter, onDragOver, onDrop } = dropHandlers(args);

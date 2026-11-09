@@ -34,6 +34,8 @@ import {
 import { clipboardReferenceFromPaste } from "../../references/message-references.ts";
 import type { MessageReference } from "../../references/message-references.ts";
 import { composerStyles } from "./composer.stylex.ts";
+import { transferredFiles } from "../../references/composer-file-drop.ts";
+import type { ComposerFile } from "../../references/composer-file-drop.ts";
 
 export interface ComposerEditorHandle {
   readElement(): HTMLDivElement | null;
@@ -43,7 +45,7 @@ export interface ComposerEditorHandle {
   replaceText(start: number, end: number, text: string): void;
   insertReference(reference: MessageReference, start?: number, end?: number): void;
   dropReferences(references: readonly MessageReference[], clientX: number, clientY: number): void;
-  attachFiles(files: readonly File[], signal?: AbortSignal): Promise<void>;
+  attachFiles(files: readonly ComposerFile[], signal?: AbortSignal): Promise<void>;
 }
 
 export interface ComposerComboboxState {
@@ -70,7 +72,7 @@ interface ComposerEditorProps {
   readonly onKeyDown: (event: KeyboardEvent) => void;
   readonly onFocusChange?: (focused: boolean) => void;
   readonly onFilesSelected?: (
-    files: readonly File[],
+    files: readonly ComposerFile[],
     signal?: AbortSignal,
   ) => Promise<string | undefined>;
 }
@@ -285,7 +287,8 @@ export function ComposerEditor({
             return event.defaultPrevented;
           },
           handlePaste: (view, event) => {
-            const pasted = Array.from(event.clipboardData?.files ?? []);
+            const pasted =
+              event.clipboardData === null ? [] : transferredFiles(event.clipboardData);
 
             if (pasted.length > 0 && onFilesSelected !== undefined) {
               void onFilesSelected(pasted);

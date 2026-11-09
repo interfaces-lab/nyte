@@ -9,6 +9,7 @@ import { Button } from "@nyte-ai/ui/button";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { ComposerFrame } from "./composer-frame.tsx";
 import { attachComposerFiles } from "./composer-files.ts";
+import type { ComposerFile } from "../../references/composer-file-drop.ts";
 import { composerSource } from "./composer-suggestions.tsx";
 import { bindComposerFileDrop } from "../../references/composer-file-drop.ts";
 import type { ComposerDocumentState, ComposerSubmission } from "./composer-document.ts";
@@ -139,7 +140,7 @@ function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement
   };
 
   const addFiles = async (
-    files: readonly File[],
+    files: readonly ComposerFile[],
     signal?: AbortSignal,
   ): Promise<string | undefined> => {
     setAttachmentReads((count) => count + 1);

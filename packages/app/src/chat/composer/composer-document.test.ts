@@ -30,6 +30,7 @@ import { referenceLabel, referenceText } from "../../references/message-referenc
 import type { MessageReference } from "../../references/message-references.ts";
 
 const file: MentionFile = {
+  kind: "file",
   path: "/project/a file.ts",
   url: "file:///project/a%20file.ts",
   displayPath: "a file.ts",
@@ -37,6 +38,7 @@ const file: MentionFile = {
 };
 
 const folder: MentionFile = {
+  kind: "folder",
   path: "/project/src/",
   url: "file:///project/src/",
   displayPath: "src/",

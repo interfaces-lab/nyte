@@ -41,6 +41,7 @@ import type { ComposerDocumentState, ComposerSubmission } from "../composer/comp
 import { ComposerFrame } from "../composer/composer-frame.tsx";
 import type { ComposerEditorHandle } from "../composer/composer-editor.tsx";
 import { attachComposerFiles } from "../composer/composer-files.ts";
+import type { ComposerFile } from "../../references/composer-file-drop.ts";
 import type { ComposerImageAttachment } from "../../panes/session-view-state.ts";
 import { useChatFolder } from "../chat-folder.ts";
 import {
@@ -257,7 +258,7 @@ export function UserMessageView({
   };
 
   const addFiles = async (
-    files: readonly File[],
+    files: readonly ComposerFile[],
     signal?: AbortSignal,
   ): Promise<string | undefined> => {
     const generation = editGeneration.current;

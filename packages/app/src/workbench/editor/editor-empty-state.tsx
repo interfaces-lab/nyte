@@ -8,7 +8,6 @@ import { Kbd } from "@nyte-ai/ui/kbd";
 import { Row } from "@nyte-ai/ui/row";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
-import { mentionsFolder } from "../../references/message-references.ts";
 import { createFileRanking } from "../../lib/file-ranking.ts";
 import { treeStatus } from "./tree-theme.ts";
 import { nyte } from "../../contract/nyte.ts";
@@ -18,7 +17,7 @@ const MATCH_LIMIT = 50;
 function useOpenableFiles(files: readonly MentionFile[] | undefined) {
   "use memo";
 
-  const openable = (files ?? []).filter((file) => !mentionsFolder(file));
+  const openable = (files ?? []).filter((file) => file.kind === "file");
 
   return {
     rank: createFileRanking(openable, MATCH_LIMIT),
