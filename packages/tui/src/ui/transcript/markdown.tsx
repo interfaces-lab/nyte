@@ -58,10 +58,9 @@ function readFence(line: string): { readonly marker: string; readonly mermaid: b
   };
 }
 
-export function createMermaidSplitter(): (markdown: string) => readonly Segment[] {
-  let previous = "";
-  let searchFrom = 0;
-  let lineStart = 0;
+/** Splits `markdown` into its prose and its closed mermaid fences, scanning it whole. */
+export function splitMermaid(markdown: string): readonly Segment[] {
+  const segments: Segment[] = [];
   let textStart = 0;
 
   let opened: {
@@ -70,81 +69,53 @@ export function createMermaidSplitter(): (markdown: string) => readonly Segment[
     readonly sourceStart: number;
   } | null = null;
 
-  let completed: Segment[] = [];
-  let result: readonly Segment[] = [{ kind: "markdown", text: "" }];
+  const visit = (start: number, end: number, next: number): void => {
+    const line = markdown.slice(start, end);
 
-  return (markdown) => {
-    if (markdown === previous) return result;
+    if (opened === null) {
+      const fence = readFence(line);
 
-    if (!markdown.startsWith(previous)) {
-      searchFrom = 0;
-      lineStart = 0;
-      textStart = 0;
-      opened = null;
-      completed = [];
+      if (fence !== null) opened = { fence, start, sourceStart: next };
+
+      return;
     }
 
-    const visit = (start: number, end: number, next: number): void => {
-      const line = markdown.slice(start, end);
+    const closing = line.trim();
+    const { marker, mermaid } = opened.fence;
 
-      if (opened === null) {
-        const fence = readFence(line);
+    if (closing.length < marker.length) return;
 
-        if (fence !== null) opened = { fence, start, sourceStart: next };
+    for (let at = 0; at < closing.length; at += 1) if (closing[at] !== marker[0]) return;
 
-        return;
-      }
-
-      const closing = line.trim();
-      const { marker, mermaid } = opened.fence;
-
-      if (closing.length < marker.length) return;
-
-      for (let at = 0; at < closing.length; at += 1) if (closing[at] !== marker[0]) return;
-
-      if (mermaid) {
-        if (opened.start > textStart)
-          completed.push({
-            kind: "markdown",
-            text: structuredClone(markdown.slice(textStart, opened.start - 1)),
-          });
-        completed.push({
-          kind: "mermaid",
-          source: structuredClone(markdown.slice(opened.sourceStart, start - 1)),
+    if (mermaid) {
+      if (opened.start > textStart)
+        segments.push({
+          kind: "markdown",
+          text: structuredClone(markdown.slice(textStart, opened.start - 1)),
         });
-        textStart = next;
-      }
-
-      opened = null;
-    };
-
-    for (
-      let end = markdown.indexOf("\n", searchFrom);
-      end !== -1;
-      end = markdown.indexOf("\n", lineStart)
-    ) {
-      visit(lineStart, end, end + 1);
-      lineStart = end + 1;
+      segments.push({
+        kind: "mermaid",
+        source: structuredClone(markdown.slice(opened.sourceStart, start - 1)),
+      });
+      textStart = next;
     }
 
-    searchFrom = markdown.length;
-    const stableLength = completed.length;
-    const stableOpened = opened;
-    const stableTextStart = textStart;
-
-    if (lineStart < markdown.length) visit(lineStart, markdown.length, markdown.length + 1);
-    const next = completed.slice();
-
-    if (textStart <= markdown.length)
-      next.push({ kind: "markdown", text: markdown.slice(textStart) });
-    completed.length = stableLength;
-    opened = stableOpened;
-    textStart = stableTextStart;
-    previous = markdown;
-    result = next;
-
-    return result;
+    opened = null;
   };
+
+  let lineStart = 0;
+
+  for (let end = markdown.indexOf("\n"); end !== -1; end = markdown.indexOf("\n", lineStart)) {
+    visit(lineStart, end, end + 1);
+    lineStart = end + 1;
+  }
+
+  if (lineStart < markdown.length) visit(lineStart, markdown.length, markdown.length + 1);
+
+  if (textStart <= markdown.length)
+    segments.push({ kind: "markdown", text: markdown.slice(textStart) });
+
+  return segments;
 }
 
 export function Markdown(props: {
@@ -156,7 +127,6 @@ export function Markdown(props: {
 }): JSX.Element {
   const { kit, screen } = useApp();
   const fileRoot = createMemo(() => screen().fileRoot);
-  const splitMermaid = createMermaidSplitter();
   const segments = createMemo(() => splitMermaid(props.content));
   const syntaxStyle = (): SyntaxStyle => (props.subtle ? kit.syntax().subtle : kit.syntax().normal);
 

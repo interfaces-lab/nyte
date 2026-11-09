@@ -2,7 +2,7 @@ import { decodePasteBytes, RenderableEvents, SyntaxStyle } from "@opentui/core";
 import type { KeyEvent, PasteEvent, TextareaRenderable } from "@opentui/core";
 import { onBlur, onFocus, useRenderer, useTerminalDimensions } from "@opentui/solid";
 import type { JSX } from "@opentui/solid";
-import { createEffect, createSignal, on, onCleanup, onMount, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, on, onCleanup, onMount, Show } from "solid-js";
 import { useApp } from "../../app/context.tsx";
 import { GLYPHS } from "../../lib/constants.ts";
 import { cellOffset } from "../../lib/width.ts";
@@ -215,7 +215,11 @@ export function Composer(props: {
     }),
   );
 
-  createEffect(on(() => props.markers, sync));
+  const markerSpans = createMemo(() =>
+    props.markers.map((span) => `${span.marker}:${String(span.from)}:${String(span.to)}`).join(" "),
+  );
+
+  createEffect(on(markerSpans, sync));
 
   createEffect(
     on(

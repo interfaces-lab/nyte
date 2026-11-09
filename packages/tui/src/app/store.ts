@@ -33,19 +33,19 @@ export function createStore(options: StoreOptions): Store {
 
   return createRoot((dispose) => {
     const [state, setState] = createSignal(current);
-    let previous: ScreenModel | null = null;
+    let lastGood: ScreenModel | null = null;
 
     const screen = createMemo(() => {
       const next = state();
 
       try {
-        previous = deriveScreen(next, previous);
+        lastGood = deriveScreen(next, lastGood);
       } catch (error) {
-        if (previous === null) throw error;
+        if (lastGood === null) throw error;
         queueMicrotask(() => options.report("reducer", error));
       }
 
-      return previous;
+      return lastGood;
     });
 
     const step = (msg: Msg): void => {

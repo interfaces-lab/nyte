@@ -122,7 +122,3 @@ function fitHints(interactions: Interactions, width: number): readonly Hint[] {
 
   return candidates.filter((hint) => shown.includes(hint));
 }
-
-export function sameHint(left: Hint, right: Hint): boolean {
-  return left.command === right.command && left.label === right.label && left.tier === right.tier;
-}

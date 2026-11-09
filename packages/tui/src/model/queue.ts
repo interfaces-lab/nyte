@@ -135,15 +135,3 @@ export function rowMessage(session: FollowedSession | null, id: MessageId): User
 
   return found?.kind === "user" ? found : null;
 }
-
-export function sameQueueRow(left: QueueRow, right: QueueRow): boolean {
-  return (
-    left.id === right.id &&
-    left.text === right.text &&
-    left.delivery === right.delivery &&
-    left.withdrawable === right.withdrawable &&
-    left.editable === right.editable &&
-    left.editing === right.editing &&
-    JSON.stringify(left.place) === JSON.stringify(right.place)
-  );
-}

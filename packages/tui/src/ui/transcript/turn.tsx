@@ -3,7 +3,7 @@ import type { Message } from "@nyte-ai/sdk";
 import { TextAttributes } from "@opentui/core";
 import type { BoxRenderable } from "@opentui/core";
 import type { JSX } from "@opentui/solid";
-import { createMemo, Match, Show, Switch } from "solid-js";
+import { createMemo, For, Match, Show, Switch } from "solid-js";
 import type { Accessor } from "solid-js";
 import {
   agentGroupSummary,
@@ -25,7 +25,6 @@ import { agentStatus } from "../../lib/tool-card.ts";
 import type { TurnModel, TurnStatus } from "../../model/transcript.ts";
 import { AssistantText } from "./assistant-text.tsx";
 import { Column } from "./block.tsx";
-import { Keyed } from "./keyed.tsx";
 import { Marker } from "./marker.tsx";
 import { PluginPart } from "./plugin-part.tsx";
 import { ReportBlock } from "./report.tsx";
@@ -107,26 +106,29 @@ function AgentGroup(props: { readonly messages: readonly Message[] }): JSX.Eleme
           {header().detail === undefined ? "" : ` ${header().detail}`}
         </span>
       </text>
-      <Keyed each={props.messages} by={(message) => message.id}>
-        {(message) => <MessageView message={message} pending={false} />}
-      </Keyed>
+      <For each={props.messages.map((message) => message.id)}>
+        {(_id, index) => <MessageView message={() => props.messages[index()]} pending={false} />}
+      </For>
     </box>
   );
 }
 
-function SegmentView(props: { readonly segment: Accessor<Segment> }): JSX.Element {
+function SegmentView(props: {
+  readonly id: string;
+  readonly segment: Accessor<Segment | undefined>;
+}): JSX.Element {
   const app = useApp();
 
   const single = createMemo(() => {
     const current = props.segment();
 
-    return current.kind === "message" ? current.message : undefined;
+    return current?.kind === "message" ? current.message : undefined;
   });
 
   const group = createMemo(() => {
     const current = props.segment();
 
-    return current.kind === "agents" ? current.messages : undefined;
+    return current?.kind === "agents" ? current.messages : undefined;
   });
 
   return (
@@ -137,14 +139,8 @@ function SegmentView(props: { readonly segment: Accessor<Segment> }): JSX.Elemen
       <Match when={group()}>
         {(messages: Accessor<readonly Message[]>) => <AgentGroup messages={messages()} />}
       </Match>
-      <Match when={props.segment().kind === "earlier"}>
-        <text
-          id={props.segment().key}
-          fg={app.kit.theme().dim}
-          wrapMode="none"
-          truncate
-          selectable={false}
-        >
+      <Match when={props.segment()?.kind === "earlier"}>
+        <text id={props.id} fg={app.kit.theme().dim} wrapMode="none" truncate selectable={false}>
           earlier steps not shown
         </text>
       </Match>
@@ -168,9 +164,9 @@ export function TurnView(props: {
 
   return (
     <Column id={`turn:${id}`} ref={props.ref}>
-      <Keyed each={segments()} by={(entry) => entry.key}>
-        {(entry) => <SegmentView segment={entry} />}
-      </Keyed>
+      <For each={segments().map((entry) => entry.key)}>
+        {(key, index) => <SegmentView id={key} segment={() => segments()[index()]} />}
+      </For>
       <Show when={props.turn().status}>
         {(status: Accessor<TurnStatus>) => <TurnStatusRow turn={id} status={status()} />}
       </Show>
@@ -178,42 +174,44 @@ export function TurnView(props: {
   );
 }
 
-function readUser(message: Message): UserMessage | undefined {
-  return message.kind === "user" && !showsReport(message) && !showsAnswer(message)
+function readUser(message: Message | undefined): UserMessage | undefined {
+  return message?.kind === "user" && !showsReport(message) && !showsAnswer(message)
     ? message
     : undefined;
 }
 
-function readReport(message: Message): ReportMessage | undefined {
-  return message.kind === "user" && showsReport(message) ? message : undefined;
+function readReport(message: Message | undefined): ReportMessage | undefined {
+  return message?.kind === "user" && showsReport(message) ? message : undefined;
 }
 
-function readAnswer(message: Message): AnswerMessage | undefined {
-  return message.kind === "user" && showsAnswer(message) ? message : undefined;
+function readAnswer(message: Message | undefined): AnswerMessage | undefined {
+  return message?.kind === "user" && showsAnswer(message) ? message : undefined;
 }
 
-function readTool(message: Message): ToolMessage | undefined {
-  return showsTool(message) ? message : undefined;
+function readTool(message: Message | undefined): ToolMessage | undefined {
+  return message !== undefined && showsTool(message) ? message : undefined;
 }
 
-function readProse(message: Message): Prose | undefined {
-  return showsText(message) ? message : undefined;
+function readProse(message: Message | undefined): Prose | undefined {
+  return message !== undefined && showsText(message) ? message : undefined;
 }
 
-function readThought(message: Message): Prose | undefined {
-  return showsThinking(message) ? message : undefined;
+function readThought(message: Message | undefined): Prose | undefined {
+  return message !== undefined && showsThinking(message) ? message : undefined;
 }
 
-function readMarker(message: Message): PartMessage | undefined {
-  return isPart(message, compaction) || isPart(message, branchSummary) ? message : undefined;
+function readMarker(message: Message | undefined): PartMessage | undefined {
+  return message !== undefined && (isPart(message, compaction) || isPart(message, branchSummary))
+    ? message
+    : undefined;
 }
 
-function readPart(message: Message): PartMessage | undefined {
-  return message.kind === "part" ? message : undefined;
+function readPart(message: Message | undefined): PartMessage | undefined {
+  return message?.kind === "part" ? message : undefined;
 }
 
 export function MessageView(props: {
-  readonly message: Accessor<Message>;
+  readonly message: Accessor<Message | undefined>;
   readonly pending: boolean;
 }): JSX.Element {
   const scope = useTranscript();

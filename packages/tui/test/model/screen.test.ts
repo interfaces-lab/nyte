@@ -355,21 +355,6 @@ describe("footer and status", () => {
   });
 });
 
-describe("identity", () => {
-  test("unchanged queue rows and hints keep their identity across frames", () => {
-    const view = buildView((v) =>
-      v.pending("a", { schedule: { kind: "next-turn", reason: "idle" } }),
-    );
-    const state = ready(view);
-    const first = deriveScreen(state, null);
-    const second = deriveScreen(play(state, { kind: "tick", now: 5 }).state, first);
-
-    expect(second.queue).toBe(first.queue);
-    expect(second.hints).toBe(first.hints);
-    expect(second.transcript.rows).toBe(first.transcript.rows);
-  });
-});
-
 describe("drawing inputs", () => {
   test("the session's tasks and the wheel setting reach the screen as they are", () => {
     const job: Task = {

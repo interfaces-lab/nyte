@@ -595,7 +595,6 @@ function scrolled(state: State, atBottom: boolean): State {
     followedSession(state)?.view ?? null,
     followedShells(state),
     transcript,
-    null,
   );
 
   if (atBottom && model.window.end === model.rows.length)

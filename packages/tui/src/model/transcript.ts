@@ -1,9 +1,16 @@
 import type { Failure, Message, TurnId, TurnInfo } from "@nyte-ai/sdk";
 import type { HeadView } from "@nyte-ai/sdk/client";
-import { runMark, runStatus, showsTool, taskLabel } from "@nyte-ai/plugin/client/presentation";
+import {
+  runMark,
+  runStatus,
+  showsAnswer,
+  showsReport,
+  showsTool,
+  taskLabel,
+} from "@nyte-ai/plugin/client/presentation";
 import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { MIN_REPORTED_DURATION_MS } from "../lib/constants.ts";
-import { pendingAnswers, promptMessages, pendingReports } from "../lib/view-helpers.ts";
+import { unlandedMessages } from "../lib/view-helpers.ts";
 import type { ShellJob, TranscriptLocal } from "./state.ts";
 import { mountWindow } from "./window.ts";
 import type { MountWindow } from "./window.ts";
@@ -24,6 +31,8 @@ export type Row =
 
 export interface TranscriptModel {
   readonly rows: readonly Row[];
+  /** The keys of the mounted rows, `rows.slice(window.start, window.end)`, in order. */
+  readonly visible: readonly RowKey[];
   readonly window: MountWindow;
   readonly following: boolean;
   readonly toolOutput: "collapsed" | "expanded";
@@ -60,18 +69,6 @@ const STOPPED: Failure = { class: "aborted", message: "Run stopped." };
 
 const NO_BLOCKS: readonly Message[] = [];
 
-const AWAITS_DELEGATE = new WeakMap<Message, boolean>();
-
-const TURN_INDEXES = new WeakMap<readonly TurnInfo[], ReadonlyMap<TurnId, number>>();
-
-const TURN_MODELS = new WeakMap<TurnInfo, TurnModel>();
-
-const TURN_ROWS = new WeakMap<TurnModel, Row>();
-
-const MESSAGE_ROWS = new WeakMap<Message, Row>();
-
-const SHELL_ROWS = new WeakMap<ShellJob, Row>();
-
 export function rowWeight(row: Row): number {
   return row.kind === "turn" ? Math.max(1, row.turn.blocks.length) : 1;
 }
@@ -80,7 +77,6 @@ export function deriveTranscript(
   view: HeadView | null,
   shells: readonly ShellJob[],
   local: TranscriptLocal,
-  previous: TranscriptModel | null,
 ): TranscriptModel {
   const timed = view === null ? [] : turnRows(view);
 
@@ -102,32 +98,21 @@ export function deriveTranscript(
     while (next < jobs.length && (jobs[next]?.startedAt ?? Infinity) < at) {
       const job = jobs[next];
 
-      if (job !== undefined) rows.push(shellRow(job));
+      if (job !== undefined) rows.push({ kind: "shell", key: `shell:${job.id}`, job });
       next += 1;
     }
 
     rows.push(row);
   }
 
-  for (const job of jobs.slice(next)) rows.push(shellRow(job));
+  for (const job of jobs.slice(next)) rows.push({ kind: "shell", key: `shell:${job.id}`, job });
 
-  const kept =
-    previous !== null &&
-    previous.rows.length === rows.length &&
-    previous.rows.every((row, index) => row === rows[index])
-      ? previous.rows
-      : rows;
-
-  const window = mountWindow(kept, rowWeight, local.window);
+  const window = mountWindow(rows, rowWeight, local.window);
 
   return {
-    rows: kept,
-    window:
-      previous !== null &&
-      previous.window.start === window.start &&
-      previous.window.end === window.end
-        ? previous.window
-        : window,
+    rows,
+    visible: rows.slice(window.start, window.end).map((row) => row.key),
+    window,
     following: local.following,
     toolOutput: local.toolOutput,
     disclosures: local.disclosures,
@@ -136,7 +121,7 @@ export function deriveTranscript(
 }
 
 function turnRows(view: HeadView): readonly Row[] {
-  const indexes = readTurnIndexes(view.turns);
+  const indexes = new Map(view.turns.map((info, index) => [info.id, index]));
   const first = Math.min(firstReachedTurn(view.messages, indexes), view.turns.length - 1);
   const count = view.turns.length - Math.max(0, first);
   const blocks = Array.from({ length: count }, (): Message[] | null => null);
@@ -146,7 +131,12 @@ function turnRows(view: HeadView): readonly Row[] {
   for (const message of view.leadingPrompt === null
     ? view.messages
     : [view.leadingPrompt, ...view.messages]) {
-    if (message.kind === "part" && message.partKind === "tool" && awaitsDelegate(message)) continue;
+    if (
+      showsTool(message) &&
+      message.state.class.kind === "delegate" &&
+      message.state.class.role === "await"
+    )
+      continue;
 
     if (message.turn !== current) {
       current = message.turn;
@@ -166,16 +156,33 @@ function turnRows(view: HeadView): readonly Row[] {
     const info = view.turns[index];
 
     if (info === undefined) continue;
-    const turn = turnModel(info, blocks[index - first] ?? NO_BLOCKS, view);
+    const built = blocks[index - first] ?? NO_BLOCKS;
 
-    if (turn.blocks.length === 0 && (info.state.kind === "ended" || info.run === null)) continue;
-    rows.push(turnRow(turn));
+    if (built.length === 0 && (info.state.kind === "ended" || info.run === null)) continue;
+
+    rows.push({
+      kind: "turn",
+      key: `turn:${info.id}`,
+      turn: {
+        info,
+        blocks: built,
+        status: turnStatus(info, built, view),
+        clipped: view.leadingPrompt?.turn === info.id,
+      },
+    });
   }
 
   const pending = view.execution.kind !== "idle";
+  const unlanded = unlandedMessages(view.messages);
 
-  for (const message of [...promptMessages(view), ...pendingReports(view), ...pendingAnswers(view)])
-    rows.push(messageRow(message, pending));
+  const waiting = [
+    ...unlanded.filter((message) => !showsReport(message) && !showsAnswer(message)),
+    ...unlanded.filter(showsReport),
+    ...unlanded.filter(showsAnswer),
+  ];
+
+  for (const message of waiting)
+    rows.push({ kind: "prompt", key: `prompt:${message.id}`, message, pending });
 
   return rows;
 }
@@ -194,122 +201,6 @@ function firstReachedTurn(
   }
 
   return first;
-}
-
-function readTurnIndexes(turns: readonly TurnInfo[]): ReadonlyMap<TurnId, number> {
-  const known = TURN_INDEXES.get(turns);
-
-  if (known !== undefined) return known;
-  const indexes = new Map(turns.map((info, index) => [info.id, index]));
-  TURN_INDEXES.set(turns, indexes);
-
-  return indexes;
-}
-
-function awaitsDelegate(message: Message): boolean {
-  const known = AWAITS_DELEGATE.get(message);
-
-  if (known !== undefined) return known;
-
-  const awaits =
-    showsTool(message) &&
-    message.state.class.kind === "delegate" &&
-    message.state.class.role === "await";
-
-  AWAITS_DELEGATE.set(message, awaits);
-
-  return awaits;
-}
-
-function turnModel(info: TurnInfo, built: readonly Message[], view: HeadView): TurnModel {
-  const before = TURN_MODELS.get(info);
-
-  const blocks =
-    before !== undefined &&
-    before.blocks.length === built.length &&
-    before.blocks.every((message, index) => message === built[index])
-      ? before.blocks
-      : built;
-
-  const clipped = view.leadingPrompt?.turn === info.id;
-  const kept = before !== undefined && before.blocks === blocks && before.clipped === clipped;
-
-  if (kept && info.state.kind === "ended") return before;
-  const status = turnStatus(info, blocks, view);
-
-  if (kept && sameStatus(before.status, status)) return before;
-  const model = { info, blocks, status, clipped };
-  TURN_MODELS.set(info, model);
-
-  return model;
-}
-
-function sameStatus(left: TurnStatus | null, right: TurnStatus | null): boolean {
-  if (left === null || right === null) return left === right;
-
-  switch (left.kind) {
-    case "unanswered":
-      return right.kind === "unanswered";
-    case "working":
-      return (
-        right.kind === "working" &&
-        right.activity === left.activity &&
-        right.startedAt === left.startedAt
-      );
-    case "thinking":
-      return right.kind === "thinking" && right.startedAt === left.startedAt;
-    case "waiting":
-      return right.kind === "waiting" && right.question === left.question;
-    case "retrying":
-      return (
-        right.kind === "retrying" &&
-        right.until === left.until &&
-        right.reason === left.reason &&
-        right.attempt === left.attempt
-      );
-    case "settled":
-      return (
-        right.kind === "settled" &&
-        right.durationMs === left.durationMs &&
-        right.failure === left.failure &&
-        right.stopped === left.stopped
-      );
-    default: {
-      const _exhaustive: never = left;
-
-      return _exhaustive;
-    }
-  }
-}
-
-function turnRow(turn: TurnModel): Row {
-  const known = TURN_ROWS.get(turn);
-
-  if (known !== undefined) return known;
-  const row: Row = { kind: "turn", key: `turn:${turn.info.id}`, turn };
-  TURN_ROWS.set(turn, row);
-
-  return row;
-}
-
-function messageRow(message: UserMessage, pending: boolean): Row {
-  const known = MESSAGE_ROWS.get(message);
-
-  if (known?.kind === "prompt" && known.pending === pending) return known;
-  const row: Row = { kind: "prompt", key: `prompt:${message.id}`, message, pending };
-  MESSAGE_ROWS.set(message, row);
-
-  return row;
-}
-
-function shellRow(job: ShellJob): Row {
-  const known = SHELL_ROWS.get(job);
-
-  if (known !== undefined) return known;
-  const row: Row = { kind: "shell", key: `shell:${job.id}`, job };
-  SHELL_ROWS.set(job, row);
-
-  return row;
 }
 
 export function turnStatus(

@@ -1,5 +1,5 @@
 import type { JSX } from "@opentui/solid";
-import { For } from "solid-js";
+import { Index } from "solid-js";
 
 export interface Chunk {
   readonly fg: string;
@@ -8,6 +8,8 @@ export interface Chunk {
 
 export function Spans(props: { readonly chunks: readonly Chunk[] }): JSX.Element {
   return (
-    <For each={props.chunks}>{(chunk) => <span style={{ fg: chunk.fg }}>{chunk.text}</span>}</For>
+    <Index each={props.chunks}>
+      {(chunk) => <span style={{ fg: chunk().fg }}>{chunk().text}</span>}
+    </Index>
   );
 }

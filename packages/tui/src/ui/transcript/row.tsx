@@ -8,28 +8,30 @@ import { Column } from "./block.tsx";
 import { ShellCard } from "./shell-card.tsx";
 import { MessageView, TurnView } from "./turn.tsx";
 
+/** One mounted row, looked up by its position among the mounted keys; `key` names it for good. */
 export function RowView(props: {
-  readonly row: Accessor<Row>;
+  readonly key: string;
+  readonly row: Accessor<Row | undefined>;
   readonly anchor: (node: BoxRenderable) => void;
 }): JSX.Element {
-  const key = props.row().key;
+  const key = props.key;
 
   const turn = createMemo(() => {
     const row = props.row();
 
-    return row.kind === "turn" ? row.turn : undefined;
+    return row?.kind === "turn" ? row.turn : undefined;
   });
 
   const prompt = createMemo(() => {
     const row = props.row();
 
-    return row.kind === "prompt" ? row : undefined;
+    return row?.kind === "prompt" ? row : undefined;
   });
 
   const shell = createMemo(() => {
     const row = props.row();
 
-    return row.kind === "shell" ? row.job : undefined;
+    return row?.kind === "shell" ? row.job : undefined;
   });
 
   return (

@@ -212,35 +212,39 @@ export function QueueRows(): JSX.Element {
           />
         )}
       </For>
-      <For each={queue()}>
-        {(row, index) => (
-          <QueueLine
-            row={row}
-            hint={hintFor(index())}
-            onPress={() => {
-              drag = { id: row.id, moved: false };
-            }}
-            onMove={() => {
-              if (drag !== null) drag.moved = true;
-            }}
-            onRelease={() => {
-              if (drag === null || drag.id !== row.id || drag.moved) return;
-              drag = null;
-              app.dispatch({
-                kind: "open",
-                dialog: { kind: "list", purpose: { kind: "queue", message: row.id } },
-              });
-            }}
-            onDrop={() => {
-              const dragged = drag;
-              drag = null;
+      <For each={queue().map((row) => row.id)}>
+        {(id, index) => (
+          <Show when={queue()[index()]}>
+            {(row: Accessor<QueueRow>) => (
+              <QueueLine
+                row={row()}
+                hint={hintFor(index())}
+                onPress={() => {
+                  drag = { id, moved: false };
+                }}
+                onMove={() => {
+                  if (drag !== null) drag.moved = true;
+                }}
+                onRelease={() => {
+                  if (drag === null || drag.id !== id || drag.moved) return;
+                  drag = null;
+                  app.dispatch({
+                    kind: "open",
+                    dialog: { kind: "list", purpose: { kind: "queue", message: id } },
+                  });
+                }}
+                onDrop={() => {
+                  const dragged = drag;
+                  drag = null;
 
-              if (dragged === null || !dragged.moved) return;
-              const to = dropTarget(app.screen().queue, dragged.id, row.id);
+                  if (dragged === null || !dragged.moved) return;
+                  const to = dropTarget(app.screen().queue, dragged.id, id);
 
-              if (to !== null) app.dispatch({ kind: "reorder", message: dragged.id, to });
-            }}
-          />
+                  if (to !== null) app.dispatch({ kind: "reorder", message: dragged.id, to });
+                }}
+              />
+            )}
+          </Show>
         )}
       </For>
     </box>

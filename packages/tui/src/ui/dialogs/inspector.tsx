@@ -23,7 +23,6 @@ import { placement } from "../../model/dialogs/dialog.ts";
 import type { ScrollPort } from "../../model/native.ts";
 import type { TranscriptLocal } from "../../model/state.ts";
 import { deriveTranscript } from "../../model/transcript.ts";
-import type { TranscriptModel } from "../../model/transcript.ts";
 import { Transcript } from "../transcript/transcript.tsx";
 import { hint, joinHints, Note, Panel, useRowCap } from "./panel.tsx";
 
@@ -36,7 +35,6 @@ function AgentTranscript(props: {
   const app = useApp();
   const renderer = useRenderer();
   const cap = useRowCap();
-  let previous: TranscriptModel | null = null;
   let port: ScrollPort | null = null;
 
   const model = createMemo(() => {
@@ -47,9 +45,7 @@ function AgentTranscript(props: {
       disclosures: NO_DISCLOSURES,
     };
 
-    previous = deriveTranscript(props.task.view ?? null, [], local, previous);
-
-    return previous;
+    return deriveTranscript(props.task.view ?? null, [], local);
   });
 
   createEffect(

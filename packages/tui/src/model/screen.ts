@@ -16,12 +16,11 @@ import type { CompletionModel } from "./completion.ts";
 import type { Dialog } from "./dialogs/dialog.ts";
 import { liveMarkers } from "./draft.ts";
 import type { DraftModel, DraftPart, MarkerSpan } from "./draft.ts";
-import { footerFor, hintsFor, sameHint } from "./footer.ts";
+import { footerFor, hintsFor } from "./footer.ts";
 import type { FooterModel, Hint } from "./footer.ts";
-import { keepEqual } from "./identity.ts";
 import { blockedReason, interactionsFor } from "./interactions.ts";
 import type { Interactions } from "./interactions.ts";
-import { queuedCount, sameQueueRow } from "./queue.ts";
+import { queuedCount } from "./queue.ts";
 import type { QueueRow } from "./queue.ts";
 import { approvalHeading, approvalPanel, currentApproval } from "./approval.ts";
 import { currentQuestion, questionPanel, questionTitle } from "./question.ts";
@@ -136,50 +135,41 @@ export function keyboardDialog(state: State): Dialog | null {
   );
 }
 
-function sameSpan(left: MarkerSpan, right: MarkerSpan): boolean {
-  return left.marker === right.marker && left.from === right.from && left.to === right.to;
-}
-
-function livePreview(
-  state: State,
-  markers: readonly MarkerSpan[],
-  previous: PreviewModel | null,
-): PreviewModel | null {
+function livePreview(state: State, markers: readonly MarkerSpan[]): PreviewModel | null {
   const marker = state.local.preview;
   const part = marker === null ? undefined : state.local.draft.parts.get(marker);
 
   if (marker === null || part === undefined || !markers.some((span) => span.marker === marker))
     return null;
 
-  return previous?.marker === marker && previous.part === part ? previous : { marker, part };
+  return { marker, part };
 }
 
-export function deriveScreen(state: State, previous: ScreenModel | null): ScreenModel {
+/** `held` is the last screen drawn: while the pointer drags a selection its hints stay as they were. */
+export function deriveScreen(state: State, held: Pick<ScreenModel, "hints"> | null): ScreenModel {
   const session = followedSession(state);
   const view = session?.view ?? null;
   const blank = state.facts.chat?.kind === "blank" ? state.facts.chat : null;
   const starting = state.local.submissions.some((sent) => sent.session === blank?.id);
 
-  const waiting = keepEqual(
-    previous?.waiting,
-    waitingMessages(state).map((sent) => sent.snapshot.text.replaceAll(/\s+/gu, " ").trim()),
-    (left, right) => left === right,
+  const waiting = waitingMessages(state).map((sent) =>
+    sent.snapshot.text.replaceAll(/\s+/gu, " ").trim(),
   );
 
   const dialog = keyboardDialog(state);
   const input = tableInputFor(state, dialog);
-  const queue = keepEqual(previous?.queue, input.queue, sameQueueRow);
+  const queue = input.queue;
 
   const interactions = interactionsFor(input);
 
   const hints =
-    state.facts.terminal.dragging && previous !== null
-      ? previous.hints
-      : keepEqual(previous?.hints, hintsFor(interactions, state.facts.terminal.width), sameHint);
+    state.facts.terminal.dragging && held !== null
+      ? held.hints
+      : hintsFor(interactions, state.facts.terminal.width);
 
   const { question } = input;
   const execution = view?.execution;
-  const markers = keepEqual(previous?.markers, liveMarkers(state.local.draft), sameSpan);
+  const markers = liveMarkers(state.local.draft);
 
   return {
     opening: view === null && (blank === null || (starting && waiting.length === 0)),
@@ -193,19 +183,14 @@ export function deriveScreen(state: State, previous: ScreenModel | null): Screen
     question,
     draft: input.draft,
     markers,
-    preview: livePreview(state, markers, previous?.preview ?? null),
+    preview: livePreview(state, markers),
     editing: input.editing,
     shell: input.shell,
     completion: input.completion,
     dialog,
     blocked: input.blocked,
     queue,
-    transcript: deriveTranscript(
-      view,
-      followedShells(state),
-      state.local.transcript,
-      previous?.transcript ?? null,
-    ),
+    transcript: deriveTranscript(view, followedShells(state), state.local.transcript),
     tasks: state.facts.tasks,
     scrollAcceleration: state.facts.settings.scrollAcceleration,
     interactions,
