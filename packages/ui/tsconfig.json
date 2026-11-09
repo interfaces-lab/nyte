@@ -6,6 +6,7 @@
     "lib": ["ES2024", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "types": ["vite/client", "node"],
     "paths": {
       "@nyte-ai/ui": ["./src"],
       "@nyte-ai/ui/*": ["./src/*"]

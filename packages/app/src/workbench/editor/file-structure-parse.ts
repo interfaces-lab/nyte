@@ -1,6 +1,10 @@
-import type { SourceLineSpan } from "@pierre/diffs";
 import type { Node, Query, QueryMatch, Tree } from "web-tree-sitter";
-import type { CodeFoldRegion, FileStructureData, RangedOutlineSymbol } from "./file-structure.ts";
+import type {
+  CodeFoldRegion,
+  FileStructureData,
+  RangedOutlineSymbol,
+  SourceLineSpan,
+} from "./file-structure.ts";
 
 export function parseFileStructure(input: {
   readonly contents: string;

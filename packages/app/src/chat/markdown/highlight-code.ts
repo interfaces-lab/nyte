@@ -1,6 +1,6 @@
-import { codeToTokens, isSupportedLanguage, StreamTokenizer } from "@pierre/highlights";
-import type { Lang, ThemedToken } from "@pierre/highlights";
-import { codeThemes } from "../../lib/code-themes.ts";
+import { codeToTokens, isSupportedLanguage, StreamTokenizer } from "@nyte-ai/ui/highlights";
+import type { Lang, ThemedToken } from "@nyte-ai/ui/highlights";
+import { codeThemes } from "@nyte-ai/ui/code-themes";
 
 const HTML_ESCAPES = new Map([
   ["&", "&amp;"],

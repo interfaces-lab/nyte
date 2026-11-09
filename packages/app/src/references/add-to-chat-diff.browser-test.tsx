@@ -1,5 +1,5 @@
 import "../../test/window-bridge.ts";
-import { parsePatchFiles } from "@pierre/diffs";
+import { parsePatchFiles } from "@nyte-ai/ui/diffs";
 import { createRef } from "react";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";

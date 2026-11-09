@@ -1,4 +1,4 @@
-import type { FileContents, FileDiffLoadedFiles, FileDiffMetadata } from "@pierre/diffs";
+import type { FileContents, FileDiffLoadedFiles, FileDiffMetadata } from "@nyte-ai/ui/diffs";
 import type { GitApi, GitScope } from "@nyte-ai/sdk";
 import { patchDigest } from "./changes-viewed.ts";
 

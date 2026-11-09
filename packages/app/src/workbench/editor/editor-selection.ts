@@ -1,4 +1,4 @@
-import type { EditorSelection, Range } from "@pierre/diffs/edit";
+import type { EditorSelection, Range } from "@nyte-ai/ui/diffs/edit";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { ADD_TO_CHAT_LABEL, addToChatShortcut } from "../../references/add-to-chat.ts";
 

@@ -99,6 +99,51 @@
       "types": "./dist/file-type-icon.d.ts",
       "default": "./dist/file-type-icon.js"
     },
+    "./code-themes": {
+      "nyte-source": "./src/code-themes.ts",
+      "types": "./dist/code-themes.d.ts",
+      "default": "./dist/code-themes.js"
+    },
+    "./diffs": {
+      "nyte-source": "./src/diffs.ts",
+      "types": "./dist/diffs.d.ts",
+      "default": "./dist/diffs.js"
+    },
+    "./diffs/edit": {
+      "nyte-source": "./src/diffs/edit.ts",
+      "types": "./dist/diffs/edit.d.ts",
+      "default": "./dist/diffs/edit.js"
+    },
+    "./diffs/react": {
+      "nyte-source": "./src/diffs/react.ts",
+      "types": "./dist/diffs/react.d.ts",
+      "default": "./dist/diffs/react.js"
+    },
+    "./diffs/worker": {
+      "nyte-source": "./src/diffs/worker.ts",
+      "types": "./dist/diffs/worker.d.ts",
+      "default": "./dist/diffs/worker.js"
+    },
+    "./highlights": {
+      "nyte-source": "./src/highlights.ts",
+      "types": "./dist/highlights.d.ts",
+      "default": "./dist/highlights.js"
+    },
+    "./trees": {
+      "nyte-source": "./src/trees.ts",
+      "types": "./dist/trees.d.ts",
+      "default": "./dist/trees.js"
+    },
+    "./trees/react": {
+      "nyte-source": "./src/trees/react.ts",
+      "types": "./dist/trees/react.d.ts",
+      "default": "./dist/trees/react.js"
+    },
+    "./worker-pool": {
+      "nyte-source": "./src/worker-pool.tsx",
+      "types": "./dist/worker-pool.d.ts",
+      "default": "./dist/worker-pool.js"
+    },
     "./icon": {
       "nyte-source": "./src/icon.tsx",
       "types": "./dist/icon.d.ts",
@@ -260,6 +305,8 @@
     "@nivo/axes": "^0.99.0",
     "@nivo/bar": "^0.99.0",
     "@nivo/line": "^0.99.0",
+    "@pierre/diffs": "1.7.0-beta.3",
+    "@pierre/highlights": "^0.5.0",
     "@pierre/trees": "^1.0.0-beta.6",
     "@shadcn/react": "^0.3.1",
     "@stylexjs/stylex": "^0.19.1",
@@ -275,7 +322,8 @@
     "@types/react-dom": "^19.3.0",
     "esbuild": "^0.28.2",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1"
+    "react-dom": "^19.3.1",
+    "vite": "^8.3.5"
   },
   "peerDependencies": {
     "react": "^19.3.1",

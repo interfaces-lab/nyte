@@ -1,5 +1,9 @@
-import type { SourceLineSpan } from "@pierre/diffs";
 import type { OutlineSymbol } from "./outline.ts";
+
+export interface SourceLineSpan {
+  readonly startLine: number;
+  readonly endLine: number;
+}
 
 export interface CodeFoldRegion {
   readonly headerLine: number;

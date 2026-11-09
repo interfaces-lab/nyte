@@ -1,4 +1,4 @@
-import type { FileDiffMetadata } from "@pierre/diffs";
+import type { FileDiffMetadata } from "@nyte-ai/ui/diffs";
 
 export interface LineChange {
   readonly kind: "added" | "modified" | "deleted";

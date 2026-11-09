@@ -1,6 +1,6 @@
-import { getFiletypeFromFileName } from "@pierre/diffs";
-import type { SupportedLanguages } from "@pierre/diffs";
-import type { EditorSelection } from "@pierre/diffs/edit";
+import { getFiletypeFromFileName } from "@nyte-ai/ui/diffs";
+import type { SupportedLanguages } from "@nyte-ai/ui/diffs";
+import type { EditorSelection } from "@nyte-ai/ui/diffs/edit";
 import { selectedLines } from "./editor-selection.ts";
 
 export const INDENT_SIZES = [2, 4, 8] as const;

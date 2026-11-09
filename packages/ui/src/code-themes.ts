@@ -1,7 +1,7 @@
-import { platformColors, platformScopes } from "@nyte-ai/ui/platform-colors";
 import type { Theme } from "@pierre/highlights";
 import pierreDark from "@pierre/highlights/themes/pierre-dark";
 import pierreLight from "@pierre/highlights/themes/pierre-light";
+import { platformColors, platformScopes } from "./platform-colors.ts";
 
 const TEXT_FLOOR = 4.5;
 

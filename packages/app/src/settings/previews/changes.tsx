@@ -1,4 +1,4 @@
-import { parsePatchFiles } from "@pierre/diffs";
+import { parsePatchFiles } from "@nyte-ai/ui/diffs";
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import { FileTypeIconSprite } from "@nyte-ai/ui/file-type-icon";

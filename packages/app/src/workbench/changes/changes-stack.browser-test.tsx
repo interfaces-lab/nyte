@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 import { ChangesStack } from "./changes-stack.tsx";
 import type { ChangesStackItem } from "./changes-stack-code-view.ts";
 import { patchDigest } from "../../diff/changes-viewed.ts";
-import { parsePatchFiles } from "@pierre/diffs";
+import { parsePatchFiles } from "@nyte-ai/ui/diffs";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../../theme/tokens.stylex.ts";
 
@@ -170,7 +170,10 @@ export async function run(): Promise<string> {
       header("src/alpha.ts").getAttribute("aria-expanded") === "true",
       "Revealing the match unfolds alpha",
     );
-    check(CSS.highlights.get("diffs-search-focus")?.size === 1, "The current match is highlighted");
+    check(
+      CSS.highlights.get("diffs-search-current")?.size === 1,
+      "The current match is highlighted",
+    );
     check(
       container
         .querySelector('[data-change-path="src/alpha.ts"]')
@@ -181,7 +184,7 @@ export async function run(): Promise<string> {
     find.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     await settle();
     check(container.querySelector('[role="search"]') === null, "Escape closes find");
-    check(CSS.highlights.get("diffs-search-focus")?.size === 0, "Closing find clears highlights");
+    check(CSS.highlights.get("diffs-search-current")?.size === 0, "Closing find clears highlights");
 
     return "passed";
   } finally {

@@ -1,5 +1,5 @@
 import { glob, readFile, rm, writeFile } from "node:fs/promises";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { stylex } from "../stylex.mjs";
@@ -11,7 +11,16 @@ const outdir = join(packageRoot, "dist");
 
 const watch = process.argv.includes("--watch");
 
-const entryPoints = await Array.fromAsync(glob(["src/*.ts", "src/*.tsx"], { cwd: packageRoot }));
+const manifest = JSON.parse(await readFile(join(packageRoot, "package.json"), "utf8"));
+
+const nestedEntries = Object.values(manifest.exports)
+  .filter((target) => target.default !== undefined && target["nyte-source"]?.split("/").length > 3)
+  .map((target) => relative(".", target["nyte-source"]));
+
+const entryPoints = [
+  ...(await Array.fromAsync(glob(["src/*.ts", "src/*.tsx"], { cwd: packageRoot }))),
+  ...nestedEntries,
+];
 
 const layerStylesheet = {
   name: "nyte-ui-layer",
@@ -32,7 +41,7 @@ const layerStylesheet = {
           )
         )
           continue;
-        const compiled = join(outdir, `${basename(entry).replace(/\.tsx?$/, "")}.js`);
+        const compiled = join(outdir, `${relative("src", entry).replace(/\.tsx?$/, "")}.js`);
         const javascript = await readFile(compiled, "utf8");
         await writeFile(compiled, `"use client";\n${javascript}`);
       }

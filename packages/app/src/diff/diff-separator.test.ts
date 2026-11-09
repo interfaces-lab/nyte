@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import type { FileDiffMetadata } from "@pierre/diffs";
+import type { FileDiffMetadata } from "@nyte-ai/ui/diffs";
 import { createDiffFilesLoader } from "./diff-expansion.ts";
 import type { DiffContents } from "./diff-expansion.ts";
 import { testRenderer } from "../../test/renderer.ts";

@@ -1,4 +1,4 @@
-import type { FileDiffMetadata } from "@pierre/diffs";
+import type { FileDiffMetadata } from "@nyte-ai/ui/diffs";
 import type { PatchEntry } from "./changes-patches.ts";
 
 const FAILED_PATCH = "The patch could not be read.";

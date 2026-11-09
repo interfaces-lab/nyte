@@ -21,6 +21,11 @@ const uiLibraryImports = [
     group: ["@base-ui/**"],
     message: "Import the styled component from @nyte-ai/ui. Base UI stays inside packages/ui.",
   },
+  {
+    group: ["@pierre/**"],
+    message:
+      "Import Pierre through @nyte-ai/ui/<same subpath without @pierre/>, e.g. @nyte-ai/ui/diffs/react.",
+  },
 ];
 
 const conceptFolderImports = ["chats", "window"].map((folder) => ({

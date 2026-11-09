@@ -14,8 +14,9 @@ paths:
 
 # Cloud component docs
 
-These pages document `@nyte-ai/ui` for someone who installed it. The team and its agents also
-read them as the reference for what the package does, so a wrong example becomes a wrong commit.
+These pages document `@nyte-ai/ui` for the team and its agents. The package is private and only
+this repo's workspace packages depend on it, so the pages are the reference for what it does, and a
+wrong example becomes a wrong commit.
 
 ## Authority
 
@@ -27,8 +28,9 @@ read them as the reference for what the package does, so a wrong example becomes
 
 ## Workflow
 
-1. Read `packages/ui/package.json` exports. Every import path is one page, named for the
-   component. Asset paths get no page.
+1. Read `packages/ui/package.json` exports. Every component import path is one page, named for the
+   component. Asset, style, helper and engine re-export paths (`diffs`, `trees`, `highlights`,
+   `worker-pool`, `code-themes`) get no page; the ui `AGENTS.md` documents the engines.
 2. Read the component source before writing a sentence about it. Component subpaths resolve
    directly to `packages/ui/src/<name>.tsx`; check the manifest for shared implementations.
 3. Write the page against [references/page-contract.md](references/page-contract.md).
@@ -36,8 +38,8 @@ read them as the reference for what the package does, so a wrong example becomes
 
 ## Boundaries
 
-- Document what a reader can install. `@nyte-ai/desktop` is private, so its components and app
-  surfaces get no pages. That section existed once and was deleted.
+- Document what `@nyte-ai/ui` exports. The app's and desktop's own components and surfaces get no
+  pages. That section existed once and was deleted.
 - Do not vendor Base UI's prose. Pull their props tables in with `<include>` so a regenerated
   table never rewrites our words.
 - Do not inherit Base UI's emphasis. Their pages weight every API equally because they document a

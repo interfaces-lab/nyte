@@ -8,6 +8,8 @@ const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
 
 const UI_MODULE = "@nyte-ai/ui/";
 
+const PIERRE_MODULE = /^@nyte-ai\/ui\/(?:diffs|trees|highlights)(?:\/|$)/;
+
 const TEXT_STYLE = ["fontSize", "lineHeight", "letterSpacing"];
 
 const SHARED_STYLES = new Map([
@@ -230,7 +232,11 @@ const noRestyle = {
 
           if (sharedStyles?.has(imported)) {
             shared.set(specifier.local.name, sharedStyles.get(imported));
-          } else if (source.startsWith(UI_MODULE) && !source.includes("/styles/")) {
+          } else if (
+            source.startsWith(UI_MODULE) &&
+            !source.includes("/styles/") &&
+            !PIERRE_MODULE.test(source)
+          ) {
             components.set(specifier.local.name, imported);
           }
         }

@@ -1,5 +1,5 @@
-import { parsePatchFiles } from "@pierre/diffs";
-import type { FileDiffMetadata } from "@pierre/diffs";
+import { parsePatchFiles } from "@nyte-ai/ui/diffs";
+import type { FileDiffMetadata } from "@nyte-ai/ui/diffs";
 import type { PatchEntry as HostPatch } from "@nyte-ai/sdk";
 
 export const PATCH_READ_MAX = 50;

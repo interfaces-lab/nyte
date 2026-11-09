@@ -1,4 +1,4 @@
-import type { FileDiffMetadata, SelectedLineRange } from "@pierre/diffs";
+import type { FileDiffMetadata, SelectedLineRange } from "@nyte-ai/ui/diffs";
 import type { ExcerptReference } from "./message-references.ts";
 
 interface DiffRow {

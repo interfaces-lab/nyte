@@ -1,14 +1,21 @@
-import { DEFAULT_CODE_VIEW_LAYOUT } from "@pierre/diffs";
-import type { CodeViewLineSelection, CodeViewSearch, SelectedLineRange } from "@pierre/diffs";
-import { CodeView } from "@pierre/diffs/react";
+import { DEFAULT_CODE_VIEW_LAYOUT } from "@nyte-ai/ui/diffs";
+import type { CodeViewLineSelection, CodeViewSearch, SelectedLineRange } from "@nyte-ai/ui/diffs";
+import { CodeView } from "@nyte-ai/ui/diffs/react";
 import type {
   CodeViewAnnotationArgs,
   CodeViewHandle,
   CodeViewItem,
   CodeViewReactOptions,
-} from "@pierre/diffs/react";
+} from "@nyte-ai/ui/diffs/react";
 import { create, props } from "@stylexjs/stylex";
-import { useEffectEvent, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
+import {
+  useEffectEvent,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import type { ReactElement, Ref } from "react";
 import { useSyncExternalStoreWithSelector } from "use-sync-external-store/with-selector";
 import { FileTypeIcon } from "@nyte-ai/ui/file-type-icon";
@@ -26,10 +33,10 @@ import {
   PIERRE_HIGHLIGHTER_OPTIONS,
   PIERRE_TOKEN_CSS,
   PierreWorkerProvider,
-} from "../../lib/pierre-worker-provider.tsx";
+} from "@nyte-ai/ui/worker-pool";
 import { workbench } from "../../theme/schema.stylex.ts";
 import { nyte } from "../../contract/nyte.ts";
-import { preferences, useSetting } from "../../preferences/index.ts";
+import { useAppearance } from "../../theme/appearance-store.ts";
 import { keyOwner } from "../../lib/focus-owner.ts";
 import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
@@ -214,7 +221,7 @@ export function ChangesStack({
   readonly onActivePath: (path: string) => void;
   readonly onDemandPatch?: (path: string) => () => void;
 }): ReactElement {
-  const theme = useSetting(preferences.theme);
+  const theme = useAppearance().theme;
   const viewer = useRef<CodeViewHandle<string, undefined>>(null);
   const restore = useRef<number | undefined>(scrollTop);
   const appliedFocusRevision = useRef(0);
@@ -263,6 +270,12 @@ export function ChangesStack({
       if (phase !== "unmount") adaptDiffRender(node);
     },
     enableLineSelection: true,
+    searchOptions: { disableShortcuts: true },
+    onRevealSearchMatch: (item: { readonly id: string }) => {
+      const source = model.sourceById.get(item.id);
+
+      if (source !== undefined) onExpand(source.path);
+    },
     onGutterUtilityClick: (
       range: SelectedLineRange,
       context: { readonly item: { readonly id: string } },
@@ -359,7 +372,7 @@ export function ChangesStack({
           return;
         }
 
-        const next = viewer.current?.getInstance()?.search;
+        const next = viewer.current?.getInstance()?.openHeadlessSearch({ scope: "all" });
 
         if (next === undefined) return;
         event.preventDefault();
@@ -381,13 +394,11 @@ export function ChangesStack({
         />
       )}
       {find !== undefined && (
-        <FindWidget
+        <ChangesFind
           ref={findWidget}
-          label="Find in changes"
-          target={find}
-          placement={styles.findPlacement}
+          search={find}
           onClose={() => {
-            find.clear();
+            find.close();
             setFind(undefined);
             viewer.current?.getInstance()?.getContainerElement()?.focus({ preventScroll: true });
           }}
@@ -407,11 +418,6 @@ export function ChangesStack({
           onSelectedLinesChange={(next) =>
             setSelection((current) => (sameSelection(current, next) ? current : next))
           }
-          onRevealSearchMatch={(codeItem) => {
-            const source = model.sourceById.get(codeItem.id);
-
-            if (source !== undefined) onExpand(source.path);
-          }}
           renderCustomHeader={renderHeader}
           renderAnnotation={renderNotice}
           onScroll={(top, instance) => {
@@ -442,6 +448,30 @@ export function ChangesStack({
         />
       </PierreWorkerProvider>
     </div>
+  );
+}
+
+function ChangesFind({
+  ref,
+  search,
+  onClose,
+}: {
+  readonly ref: Ref<FindWidgetHandle>;
+  readonly search: CodeViewSearch;
+  readonly onClose: () => void;
+}): ReactElement | null {
+  const open = useSyncExternalStore(search.subscribe, () => search.getSnapshot().open);
+
+  if (!open) return null;
+
+  return (
+    <FindWidget
+      ref={ref}
+      label="Find in changes"
+      target={search}
+      placement={styles.findPlacement}
+      onClose={onClose}
+    />
   );
 }
 

@@ -3,6 +3,14 @@
 What changed, why, and the evidence behind it. A new rule belongs here before it belongs in the
 other files. Remove one when it stops helping.
 
+## 2026-11-08, the reader works in this repo
+
+The skill said the pages served someone who installed `@nyte-ai/ui`. The package is
+`private: true` and only workspace packages depend on it, most of them from source through the
+`nyte-source` condition. The reader is the team and its agents. Pierre's re-export subpaths and the
+worker pool joined the package the same day; they are not components, so they get no page, and the
+ui `AGENTS.md` names which engine powers each module.
+
 ## 2026-10-01, one implementation per component
 
 Components live directly in `packages/ui/src/<name>.tsx`, and their subpaths resolve to those

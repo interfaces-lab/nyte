@@ -1,4 +1,4 @@
-import { getFiletypeFromFileName } from "@pierre/diffs";
+import { getFiletypeFromFileName } from "@nyte-ai/ui/diffs";
 
 export type SymbolKind = "function" | "class" | "type" | "variable" | "heading";
 

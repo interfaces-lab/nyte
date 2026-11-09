@@ -1,5 +1,5 @@
-import type { FileDiffMetadata, LineAnnotation } from "@pierre/diffs";
-import type { CodeViewItem } from "@pierre/diffs/react";
+import type { FileDiffMetadata, LineAnnotation } from "@nyte-ai/ui/diffs";
+import type { CodeViewItem } from "@nyte-ai/ui/diffs/react";
 import type { LineStat } from "@nyte-ai/sdk";
 import { patchDigest } from "../../diff/changes-viewed.ts";
 import type { ChangeStackSection } from "../../diff/stacked-diff.ts";

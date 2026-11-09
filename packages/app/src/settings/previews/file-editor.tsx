@@ -1,11 +1,12 @@
-import { CodeView, EditProvider } from "@pierre/diffs/react";
-import type { CodeViewItem } from "@pierre/diffs/react";
+import { CodeView, EditProvider } from "@nyte-ai/ui/diffs/react";
+import type { CodeViewItem } from "@nyte-ai/ui/diffs/react";
 import { control, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import { diffStyles } from "../../diff/diff.stylex.ts";
-import { PierreWorkerProvider } from "../../lib/pierre-worker-provider.tsx";
+import { PierreWorkerProvider } from "@nyte-ai/ui/worker-pool";
 import { preferences, useSetting } from "../../preferences/index.ts";
+import { useAppearance } from "../../theme/appearance-store.ts";
 import { diffView } from "../../theme/schema.stylex.ts";
 import {
   createEditor,
@@ -35,7 +36,7 @@ const ITEMS: readonly CodeViewItem<undefined>[] = [
 ];
 
 export function FileEditorPreview(): ReactElement {
-  const theme = useSetting(preferences.theme);
+  const theme = useAppearance().theme;
   const lineNumbers = useSetting(preferences.fileLineNumbers);
   const wordWrap = useSetting(preferences.fileWordWrap);
   const gitBlame = useSetting(preferences.fileGitBlame);

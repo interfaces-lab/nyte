@@ -1,4 +1,4 @@
-import type { FileTree, FileTreeBatchOperation } from "@pierre/trees";
+import type { FileTree, FileTreeBatchOperation } from "@nyte-ai/ui/trees";
 
 export function syncTreePaths(
   model: FileTree,

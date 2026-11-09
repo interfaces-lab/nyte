@@ -1,5 +1,5 @@
 import { measureNaturalWidth, prepare } from "@chenglou/pretext";
-import { FileTree, useFileTree } from "@pierre/trees/react";
+import { FileTree, useFileTree } from "@nyte-ai/ui/trees/react";
 import { create, props } from "@stylexjs/stylex";
 import { Fragment, useLayoutEffect, useRef, useState } from "react";
 import type { ReactElement, RefObject } from "react";
@@ -9,7 +9,7 @@ import { Menu, MenuContent, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Popover } from "@nyte-ai/ui/popover";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import type { MentionFile } from "../../data/files.ts";
-import { PIERRE_TREE_CSS } from "../../lib/pierre-worker-provider.tsx";
+import { PIERRE_TREE_CSS } from "@nyte-ai/ui/worker-pool";
 import { syncTreePaths } from "./tree-paths.ts";
 import { treeItemHeight } from "./tree-theme.ts";
 import { WORKBENCH_KINDS } from "../model.ts";
@@ -60,7 +60,7 @@ export function FileBreadcrumbs({
   const crumbs = external ? undefined : path;
   const fit = useCrumbFit(nav, crumbs);
   const segments = crumbs?.split("/") ?? [];
-  const hidden = segments.slice(0, fit.hidden);
+  const hidden = segments.slice(0, Math.min(fit.hidden, segments.length - 1));
 
   return (
     <nav ref={nav} aria-label="File path" {...props(styles.path)}>

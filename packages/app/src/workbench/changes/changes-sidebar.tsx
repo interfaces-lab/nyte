@@ -1,5 +1,5 @@
 import { space, target } from "@nyte-ai/ui/styles/schema.stylex";
-import { FileTree, useFileTree } from "@pierre/trees/react";
+import { FileTree, useFileTree } from "@nyte-ai/ui/trees/react";
 import { create, props } from "@stylexjs/stylex";
 import { useId, useLayoutEffect, useRef, useState } from "react";
 import type { ReactElement, RefObject } from "react";
@@ -26,7 +26,7 @@ import {
 import type { ChangeStatus } from "../../diff/change-tree.ts";
 import type { ViewedState } from "../../diff/changes-viewed.ts";
 import type { LineStat } from "@nyte-ai/sdk";
-import { PIERRE_TREE_CSS } from "../../lib/pierre-worker-provider.tsx";
+import { PIERRE_TREE_CSS } from "@nyte-ai/ui/worker-pool";
 import { syncTreePaths } from "../editor/tree-paths.ts";
 import { treeItemHeight, useTreeStatusTheme } from "../editor/tree-theme.ts";
 import { workbenchStyles } from "../workbench.stylex.ts";

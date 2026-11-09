@@ -1,0 +1,603 @@
+diff --git a/dist/components/CodeView.d.ts b/dist/components/CodeView.d.ts
+index 774c1abbf4c00586b4fd3af0bf525a5d7c45d015..36d788c37716e2dda568e221e5fd9e395f541253 100644
+--- a/dist/components/CodeView.d.ts
++++ b/dist/components/CodeView.d.ts
+@@ -1,4 +1,5 @@
+ import { SearchOptionDefaults, SearchPanelMode, SearchPanelState } from "../search/index.js";
++import { CodeViewSearch } from "../search/headlessSearch.js";
+ import { CodeViewDiffItem, CodeViewFileItem, CodeViewItem, CodeViewLayout, CodeViewScrollBehavior, CodeViewScrollTarget, HunkSeparators, ScrollRequestResult, SelectedLineRange, SmoothScrollSettings, VirtualFileMetrics, VirtualWindowSpecs } from "../types.js";
+ import { EditCompletionDecision, EditorChangeEvent, EditorType, FileDiffEditCompleteEvent, FileEditCompleteEvent } from "../editor/types.js";
+ import { SelectionWriteOptions } from "../managers/InteractionManager.js";
+@@ -166,6 +167,12 @@ interface CodeViewOptions<LAnnotation, Caret> extends CodeViewPassThroughOptions
+    * change, and with undefined when it closes.
+    */
+   onSearchStateChange?(state: SearchPanelState | undefined): void;
++  /**
++   * Unfolds a collapsed item that holds a search match. With it set, search
++   * covers collapsed items and the reveal resumes once the item arrives
++   * unfolded; without it, collapsed items are skipped.
++   */
++  onRevealSearchMatch?(item: CodeViewItem<LAnnotation>): void;
+   /**
+    * Return an in-memory retention key for an item's editable draft and
+    * undo/redo history. Called only when CodeView creates the item's editor.
+@@ -362,6 +369,8 @@ declare class CodeView<LAnnotation = undefined, Caret = undefined> {
+    * `searchOptions.disableShortcuts`) call this from their own handler.
+    */
+   openSearch(options?: CodeViewOpenSearchOptions): void;
++  /** Opens a find/replace session the host draws its own UI for. */
++  openHeadlessSearch(options?: CodeViewOpenSearchOptions): CodeViewSearch | undefined;
+   /** Closes the find/replace panel and clears its match highlights. */
+   closeSearch(): void;
+   isSearchOpen(): boolean;
+diff --git a/dist/components/CodeView.js b/dist/components/CodeView.js
+index 6ee5032aee523b4c3e10f70202874f141f28ff10..9028c1ba9f488b3aa64d457b483ad4b0b4803038 100644
+--- a/dist/components/CodeView.js
++++ b/dist/components/CodeView.js
+@@ -12,6 +12,7 @@ import { revealMatchHorizontally } from "../search/revealMatchHorizontally.js";
+ import { SearchHighlighter } from "../search/SearchHighlighter.js";
+ import { areObjectsEqual } from "../utils/areObjectsEqual.js";
+ import { SearchPanelWidget } from "../search/SearchPanelWidget.js";
++import { createHeadlessSearch } from "../search/headlessSearch.js";
+ import { areManagedSnapshotsEqual } from "../utils/areManagedSnapshotsEqual.js";
+ import { areThemesEqual } from "../utils/areThemesEqual.js";
+ import { areOptionsEqual } from "../utils/areOptionsEqual.js";
+@@ -207,6 +208,7 @@ var CodeView = class CodeView {
+ 	root;
+ 	resizeObserver;
+ 	searchPanel;
++	headlessSearch;
+ 	searchState = {
+ 		scope: void 0,
+ 		matches: [],
+@@ -559,7 +561,7 @@ var CodeView = class CodeView {
+ 		queueRender(this.syncSearchFocus);
+ 	};
+ 	syncSearchFocus = () => {
+-		if (this.searchPanel == null || this.isSearchPanelFocused()) return;
++		if (this.searchPanel == null || this.searchPanel === this.headlessSearch?.panel || this.isSearchPanelFocused()) return;
+ 		this.setSearchScope(this.focusedEditor != null ? { itemId: this.focusedEditor.id } : void 0);
+ 	};
+ 	removeSearchFocusListeners() {
+@@ -593,6 +595,7 @@ var CodeView = class CodeView {
+ 		this.searchState.centerNavigation = false;
+ 		this.searchMatchesDirty = false;
+ 		this.searchState.pendingHorizontalReveal = false;
++		this.searchState.pendingReveal = void 0;
+ 	}
+ 	isSearchMatchInView(match) {
+ 		const item = this.idToItem.get(match.itemId);
+@@ -615,6 +618,13 @@ var CodeView = class CodeView {
+ 	scrollToSearchMatch(match) {
+ 		this.searchState.pendingHorizontalReveal = true;
+ 		this.searchState.current = match;
++		const folded = this.idToItem.get(match.itemId)?.item;
++		if (folded?.collapsed === true && this.options.onRevealSearchMatch != null) {
++			this.searchState.pendingReveal = match;
++			this.options.onRevealSearchMatch(folded);
++			return;
++		}
++		this.searchState.pendingReveal = void 0;
+ 		this.render();
+ 		if (!this.searchState.centerNavigation && this.isSearchMatchInView(match)) {
+ 			this.clearPendingScroll();
+@@ -732,7 +742,7 @@ var CodeView = class CodeView {
+ 		for (const item of items) {
+ 			const remaining = MAX_SEARCH_MATCHES - matches.length;
+ 			if (remaining <= 0) break;
+-			if (item.item.collapsed === true) continue;
++			if (item.item.collapsed === true && this.options.onRevealSearchMatch == null) continue;
+ 			const nextMatches = (scope != null || item.type === "file" ? this.searchEditedItem(item, searchParams, remaining) : void 0) ?? (item.type === "file" ? this.searchFileItem(item, searchParams, remaining) : this.searchDiffItem(item, searchParams, remaining));
+ 			const bounds = item.element == null ? void 0 : item.instance.getRenderedBounds();
+ 			for (const match of nextMatches) {
+@@ -1034,6 +1044,46 @@ var CodeView = class CodeView {
+ 			defaultQuery: query ?? this.getSearchQueryFromScope(),
+ 			defaults: this.options.searchOptions?.defaults,
+ 			mode,
++			...this.searchPanelCallbacks()
++		});
++		this.searchPanel = searchPanel;
++		searchPanel.mount();
++		if (this.searchPanel !== searchPanel) return;
++		this.root?.ownerDocument.addEventListener("focusin", this.handleSearchFocusIn);
++		searchPanel.getHostElement().addEventListener("focusout", this.handleSearchPanelBlur);
++		searchPanel.getHostElement().dataset.searchPanelOverlay = "";
++		searchPanel.focus();
++	}
++	/**
++	* Opens a find/replace session without Pierre's panel, for hosts that draw
++	* their own find UI. Reopening refocuses it through `openRevision`.
++	*/
++	openHeadlessSearch(options) {
++		const { container } = this;
++		if (this.root == null || container == null) return;
++		const { mode = "find", scope = "focused", query } = options ?? {};
++		const headless = this.headlessSearch;
++		if (headless != null && this.searchPanel === headless.panel) {
++			if (query != null) headless.panel.setQuery(query);
++			headless.panel.setMode(mode);
++			headless.panel.focus();
++			return headless.target;
++		}
++		this.closeSearch();
++		this.setSearchScope(this.resolveSearchScope(scope));
++		this.searchHighlighter ??= SearchHighlighter.create(container.ownerDocument);
++		const next = createHeadlessSearch({
++			defaultQuery: query ?? this.getSearchQueryFromScope(),
++			mode,
++			...this.searchPanelCallbacks()
++		});
++		this.headlessSearch = next;
++		this.searchPanel = next.panel;
++		next.panel.mount();
++		return next.target;
++	}
++	searchPanelCallbacks() {
++		return {
+ 			replace: this.getSearchReplaceHandlers(),
+ 			onStateChange: (state) => {
+ 				if (this.searchMatchesDirty) return;
+@@ -1064,20 +1114,14 @@ var CodeView = class CodeView {
+ 			onClose: () => {
+ 				this.closeSearch();
+ 			}
+-		});
+-		this.searchPanel = searchPanel;
+-		searchPanel.mount();
+-		if (this.searchPanel !== searchPanel) return;
+-		this.root?.ownerDocument.addEventListener("focusin", this.handleSearchFocusIn);
+-		searchPanel.getHostElement().addEventListener("focusout", this.handleSearchPanelBlur);
+-		searchPanel.getHostElement().dataset.searchPanelOverlay = "";
+-		searchPanel.focus();
++		};
+ 	}
+ 	/** Closes the find/replace panel and clears its match highlights. */
+ 	closeSearch() {
+ 		const { searchPanel } = this;
+ 		this.removeSearchFocusListeners();
+ 		this.searchPanel = void 0;
++		this.headlessSearch = void 0;
+ 		this.resetSearchState();
+ 		if (searchPanel == null) return;
+ 		searchPanel.cleanup();
+@@ -1844,6 +1888,10 @@ var CodeView = class CodeView {
+ 		item.item = nextItem;
+ 		item.version = nextItem.version;
+ 		item.renderedOptionsRevision = -1;
++		const reveal = this.searchState.pendingReveal;
++		if (reveal != null && reveal.itemId === nextItem.id && nextItem.collapsed !== true) queueMicrotask(() => {
++			if (this.searchState.pendingReveal === reveal) this.scrollToSearchMatch(reveal);
++		});
+ 		return true;
+ 	}
+ 	getMaxScrollTopForHeight(scrollHeight) {
+diff --git a/dist/components/FileDiff.js b/dist/components/FileDiff.js
+index 734ff9862cdfe65b8082599c6c221c4886436e01..051e0e685776b989b895081a987630594725c136 100644
+--- a/dist/components/FileDiff.js
++++ b/dist/components/FileDiff.js
+@@ -2,6 +2,7 @@ import { CUSTOM_HEADER_SLOT_ID, DEFAULT_THEMES, EMPTY_LINE_ANNOTATIONS, EMPTY_RE
+ import { isSafari } from "../utils/platform.js";
+ import { HighlighterDisposedError } from "../highlighter/highlighterType.js";
+ import { getThemes } from "../utils/getThemes.js";
++import { getHighlighterThemeStyles } from "../utils/getHighlighterThemeStyles.js";
+ import { getHighlighterIfLoaded, getSharedHighlighter } from "../highlighter/shared_highlighter.js";
+ import { dequeueRender, queueRender } from "../managers/UniversalRenderingManager.js";
+ import { areObjectsEqual } from "../utils/areObjectsEqual.js";
+@@ -733,7 +734,7 @@ var FileDiff = class {
+ 		if (expandUnchanged) this.loadFilesIfNecessary();
+ 		this.hunksRenderer.setOptions(this.getHunksRendererOptions(this.options));
+ 		this.syncInteractionOptions();
+-		this.prepareRenderData(this.hunksRenderer.getDiffForNextRender(workingDiff));
++		this.prepareRenderData(collapsed ? workingDiff : this.hunksRenderer.getDiffForNextRender(workingDiff));
+ 		const { disableErrorHandling = false, disableFileHeader = false } = this.options;
+ 		if (disableFileHeader) {
+ 			if (this.headerElement != null) {
+@@ -750,11 +751,21 @@ var FileDiff = class {
+ 			this.removeRenderedCode();
+ 			this.clearAuxiliaryNodes();
+ 			try {
+-				const hunksResult = this.hunksRenderer.renderDiff(workingDiff, EMPTY_RENDER_RANGE);
+-				if (hunksResult != null) this.applyThemeState(fileContainer, hunksResult.themeStyles, themeType, hunksResult.baseThemeType);
+-				if (hunksResult?.headerElement != null) this.applyHeaderToDOM(hunksResult.headerElement, fileContainer, hunksResult.fileDiff);
++				const theme = this.getTheme();
++				const highlighter = getHighlighterIfLoaded({ theme, lang: "text" });
++				if (highlighter != null) this.applyThemeState(fileContainer, getHighlighterThemeStyles({ theme, highlighter }), themeType, typeof theme === "string" ? highlighter.getTheme(theme).type : void 0);
++				else getSharedHighlighter({
++					themes: getThemes(theme),
++					langs: ["text"],
++					preferredHighlighter: resolvePreferredHighlighter(this.workerManager, this.options)
++				}).then(() => {
++					if (this.enabled && this.fileContainer === fileContainer && this.options.collapsed && areThemesEqual(theme, this.getTheme())) this.rerender();
++				}).catch((error) => {
++					if (!(error instanceof HighlighterDisposedError)) console.error(error);
++				});
++				if (!disableFileHeader) this.applyHeaderToDOM(this.hunksRenderer.renderHeader(workingDiff), fileContainer, workingDiff);
+ 				this.renderSeparators([]);
+-				this.adoptRenderData(hunksResult?.fileDiff ?? workingDiff);
++				this.adoptRenderData(workingDiff);
+ 				this.injectUnsafeCSS();
+ 			} catch (error) {
+ 				if (disableErrorHandling) throw error;
+diff --git a/dist/components/VirtualizedFileDiff.js b/dist/components/VirtualizedFileDiff.js
+index 984f049ff3694dd353fa6637b0f09fc7dce74992..8f659c06b70ba603f725cccdcaebe89c21b00f6b 100644
+--- a/dist/components/VirtualizedFileDiff.js
++++ b/dist/components/VirtualizedFileDiff.js
+@@ -626,7 +626,7 @@ var VirtualizedFileDiff = class extends FileDiff {
+ 	rerender() {
+ 		if (!this.enabled || this.getInputDiff() == null && this.additionFile == null && this.deletionFile == null) return;
+ 		const workingDiff = this.getWorkingDiff();
+-		const nextRenderDiff = workingDiff == null ? void 0 : this.hunksRenderer.getDiffForNextRender(workingDiff);
++		const nextRenderDiff = workingDiff == null || this.options.collapsed === true ? workingDiff : this.hunksRenderer.getDiffForNextRender(workingDiff);
+ 		if (this.isSimpleMode()) this.pendingRender = void 0;
+ 		this.forceRenderOverride = true;
+ 		if (this.isSimpleMode() && this.requestRender()) return;
+@@ -790,7 +790,7 @@ var VirtualizedFileDiff = class extends FileDiff {
+ 		const previousRenderedDiff = this.getRenderedDiff();
+ 		const { pendingRender } = this;
+ 		const previousLayoutDiff = pendingRender?.diff ?? previousRenderedDiff;
+-		const pendingRenderDiff = this.hunksRenderer.getDiffForNextRender(workingDiff);
++		const pendingRenderDiff = this.options.collapsed === true ? workingDiff : this.hunksRenderer.getDiffForNextRender(workingDiff);
+ 		this.pendingRender = {
+ 			workingDiff,
+ 			diff: pendingRenderDiff
+diff --git a/dist/editor/editor.js b/dist/editor/editor.js
+index a9905d43382de2ca03d6111ba9ab3725d8cb6981..0c80b409e4a658ab9b5ad8f9ce649fac5beebf6a 100644
+--- a/dist/editor/editor.js
++++ b/dist/editor/editor.js
+@@ -134,6 +134,7 @@ var Editor = class {
+ 	#isGutterMouseDown = false;
+ 	#isContentMouseDown = false;
+ 	#altColumnDrag;
++	#dragPointer;
+ 	#shiftKeyPressed = false;
+ 	#selectionStart;
+ 	#deletedSelectionText = "";
+@@ -850,7 +851,10 @@ var Editor = class {
+ 				this.#initSelections = void 0;
+ 				this.#scrollToPrimaryCaret(false, "center");
+ 			} else if (this.#scrollingToLine !== void 0) this.#scrollToLine(this.#scrollingToLine, this.#scrollingToLineChar, this.#scrollingToLineNoFocus);
+-			else if (this.#focusRequest?.restore != null) this.#restoreReplacementFocus();
++			else if (this.#isContentMouseDown) {
++				this.#cancelFocusRequest();
++				this.#extendDragToPointer();
++			} else if (this.#focusRequest?.restore != null) this.#restoreReplacementFocus();
+ 			else if (this.#selections !== void 0 && this.#selections.length > 0 && this.#contentHasFocus && !this.#retainSearchPanelFocus) this.focus({ preventScroll: true });
+ 			if (this.#retainSearchPanelFocus) this.#searchPanel?.focus();
+ 			if (restoreEditorStateOnSync) {
+@@ -1107,6 +1111,7 @@ var Editor = class {
+ 		];
+ 	}
+ 	#resetSelectionGesture() {
++		this.#dragPointer = void 0;
+ 		this.#selectEventDisposes?.forEach((dispose) => dispose());
+ 		this.#selectEventDisposes = void 0;
+ 		this.#isPointerOverAnnotation = false;
+@@ -1128,7 +1133,7 @@ var Editor = class {
+ 		this.#suppressNativeSelectionSync = this.#selections !== void 0;
+ 	}
+ 	#canReadNativeSelection() {
+-		return !this.#isComposing && this.#focusRequest == null && !this.#isPointerOverAnnotation && !this.#suppressNativeSelectionSync && this.#contentHasFocus;
++		return !this.#isComposing && this.#focusRequest == null && !this.#isPointerOverAnnotation && !this.#suppressNativeSelectionSync && this.#dragPointer?.owned !== true && this.#contentHasFocus;
+ 	}
+ 	#listenContentElement(contentEl, gutterEl) {
+ 		this.#setComposing(false);
+@@ -1150,6 +1155,7 @@ var Editor = class {
+ 				onBlur?.();
+ 			}, { passive: true }),
+ 			addEventListener(contentEl, "pointerdown", (e) => {
++				if (!targetIsContentElement(e)) return;
+ 				this.#canMountSelectionAction = true;
+ 				if (this.#focusRequest?.restore != null) this.#cancelFocusRequest();
+ 				this.#suppressNativeSelectionSync = false;
+@@ -1194,6 +1200,27 @@ var Editor = class {
+ 						passive: true
+ 					}));
+ 				} else if (e.button === 0 && isPrimaryModifier(e)) this.#reservedSelections = this.#selections?.map((selection) => ({ ...selection }));
++				else if (e.button === 0 && !e.shiftKey) {
++					const anchor = this.#positionFromPoint(e.clientX, e.clientY);
++					if (anchor !== void 0) {
++						this.#dragPointer = {
++							anchor,
++							x: e.clientX,
++							y: e.clientY,
++							owned: false
++						};
++						selectEventDisposes.push(addEventListener(document, "pointermove", (moveEvent) => {
++							const drag = this.#dragPointer;
++							if (drag === void 0 || moveEvent.pointerType !== "mouse") return;
++							drag.x = moveEvent.clientX;
++							drag.y = moveEvent.clientY;
++							this.#extendDragToPointer();
++						}, {
++							capture: true,
++							passive: true
++						}));
++					}
++				}
+ 				this.#replaceSelectEventListeners(selectEventDisposes);
+ 				if (e.shiftKey) {
+ 					const primarySelection = this.#selections?.at(-1);
+@@ -2333,6 +2360,41 @@ var Editor = class {
+ 			if (this.#selections !== void 0 || this.#matches !== void 0 || this.#markerRenderer !== void 0) this.#updateSelections(this.#selections ?? []);
+ 		});
+ 	}
++	/** Native selection can't follow a drag once its anchor row unmounts: https://github.com/pierrecomputer/pierre/issues/1189 */
++	#extendDragToPointer() {
++		const drag = this.#dragPointer;
++		const viewport = this.#getScrollViewport();
++		const contentElement = this.#contentElement;
++		if (drag === void 0 || !(viewport instanceof HTMLElement) || contentElement === void 0) return;
++		const bounds = viewport.getBoundingClientRect();
++		if (!drag.owned && drag.y >= bounds.top && drag.y <= bounds.bottom) return;
++		drag.owned = true;
++		const area = contentElement.getBoundingClientRect();
++		const head = this.#positionFromPoint(Math.min(Math.max(drag.x, area.left + 1), area.right - 1), Math.min(Math.max(drag.y, Math.max(bounds.top, area.top) + 1), Math.min(bounds.bottom, area.bottom) - 1));
++		if (head === void 0) return;
++		const anchor = {
++			start: drag.anchor,
++			end: drag.anchor,
++			direction: 0
++		};
++		this.#updateSelections([createSelectionFrom(anchor, {
++			start: head,
++			end: head,
++			direction: 0
++		})]);
++	}
++	#positionFromPoint(x, y) {
++		const shadowRoot = this.#fileContainer?.shadowRoot;
++		if (shadowRoot == null) return;
++		const caret = document.caretPositionFromPoint?.(x, y, { shadowRoots: [shadowRoot] });
++		if (caret == null) return;
++		return convertSelection({
++			startContainer: caret.offsetNode,
++			startOffset: caret.offset,
++			endContainer: caret.offsetNode,
++			endOffset: caret.offset
++		}, 0)?.start;
++	}
+ 	#updateAltColumnSelections() {
+ 		const drag = this.#altColumnDrag;
+ 		const selectionStart = this.#selectionStart;
+diff --git a/dist/index.d.ts b/dist/index.d.ts
+index 757c5c21f4e58db7e8e4f854e5ca3ded90dd538b..977dc2609bd47ffb77ecd5f759b521fe6da8a4b6 100644
+--- a/dist/index.d.ts
++++ b/dist/index.d.ts
+@@ -1,4 +1,5 @@
+ import { MAX_SEARCH_MATCHES, MatchRange, ReplacementDocument, SearchMatchVisitor, SearchOptionDefaults, SearchPanelMode, SearchPanelState, SearchParams, SearchPosition, SearchableDocument, buildSearchReplacementText, searchDocument } from "./search/index.js";
++import { CodeViewSearch, CodeViewSearchQuery, CodeViewSearchSnapshot } from "./search/headlessSearch.js";
+ import { LineEnding, lineEndingOf, normalizeLineBreaks, uniformLineEndings } from "./utils/lineEndings.js";
+ import { CODE_VIEW_FOOTER_ATTRIBUTE, CODE_VIEW_HEADER_ATTRIBUTE, COMMIT_METADATA_SPLIT, CORE_CSS_ATTRIBUTE, CUSTOM_HEADER_SLOT_ID, DEFAULT_CODE_VIEW_FILE_METRICS, DEFAULT_CODE_VIEW_LAYOUT, DEFAULT_COLLAPSED_CONTEXT_THRESHOLD, DEFAULT_EXPANDED_REGION, DEFAULT_HIGHLIGHTER, DEFAULT_LOCALE, DEFAULT_MESSAGES, DEFAULT_RENDER_RANGE, DEFAULT_SMOOTH_SCROLL_SETTINGS, DEFAULT_THEMES, DEFAULT_TOKENIZE_MAX_LENGTH, DEFAULT_VIRTUAL_FILE_METRICS, DIFFS_SCROLLBAR_GUTTER_MEASURED_PROPERTY, DIFFS_SCROLLBAR_MEASURE_ATTRIBUTE, DIFFS_TAG_NAME, EMPTY_LINE_ANNOTATIONS, EMPTY_RENDER_RANGE, FILENAME_HEADER_REGEX, FILE_CONTEXT_BLOB, GIT_DIFF_FILE_BREAK_REGEX, HEADER_FILENAME_SUFFIX_SLOT_ID, HEADER_METADATA_SLOT_ID, HEADER_PREFIX_SLOT_ID, HUNK_HEADER, INDEX_LINE_METADATA, MERGE_CONFLICT_BASE_MARKER_REGEX, MERGE_CONFLICT_END_MARKER_REGEX, MERGE_CONFLICT_SEPARATOR_MARKER_REGEX, MERGE_CONFLICT_START_MARKER_REGEX, SPLIT_WITH_NEWLINES, THEME_CSS_ATTRIBUTE, UNIFIED_DIFF_FILE_BREAK_REGEX, UNSAFE_CSS_ATTRIBUTE } from "./constants.js";
+ import { CSSVariablesThemeOptions, DiffsTheme } from "./highlighter/themes/types.js";
+@@ -138,4 +139,4 @@ import { setPreNodeProperties } from "./utils/setWrapperNodeProps.js";
+ import { tokenStyle } from "./utils/tokenStyle.js";
+ import { tokensToHtml } from "./utils/tokensToHtml.js";
+ import { trimPatchContext } from "./utils/trimPatchContext.js";
+-export { type AnnotationLineMap, type AnnotationSide, type AnnotationSpan, type AppliedThemeStyleCache, AttachedLanguages, type BaseCodeOptions, type BaseDiffOptions, type BaseDiffOptionsWithDefaults, CODE_VIEW_DIFF_OPTION_KEYS, CODE_VIEW_FILE_OPTION_KEYS, CODE_VIEW_FOOTER_ATTRIBUTE, CODE_VIEW_HEADER_ATTRIBUTE, COMMIT_METADATA_SPLIT, CORE_CSS_ATTRIBUTE, type CSSVariablesThemeOptions, CUSTOM_HEADER_SLOT_ID, type ChangeContent, type ChangeTypes, type CodeColumnType, CodeColumns, type CodeToHtmlOptions, CodeToTokenTransformStream, CodeToTokenTransformStreamOptions, type CodeToTokensOptions, CodeView, CodeViewCoordinator, CodeViewCreateEditorOptions, type CodeViewDiffItem, type CodeViewFileItem, type CodeViewItem, CodeViewItemEditCompleteEventMap, CodeViewItemEditCompleteHandler, type CodeViewItemScrollTarget, type CodeViewLayout, type CodeViewLineScrollTarget, CodeViewLineSelection, CodeViewMode, CodeViewModeItemMap, CodeViewOpenSearchOptions, CodeViewOptions, type CodeViewPositionScrollTarget, type CodeViewRangeScrollTarget, CodeViewRenderedDiffItem, CodeViewRenderedFileItem, CodeViewRenderedItem, type CodeViewScrollBehavior, CodeViewScrollListener, type CodeViewScrollTarget, CodeViewSearchOptions, CodeViewSearchScope, CodeViewSlotSnapshot, Column, ColumnReconciler, type ConflictResolverTypes, type ContextContent, CreateFileHeaderElementProps, type CreatePatchOptions, type CreatePatchOptionsNonabortable, type CustomPreProperties, type CustomThemeLoader, DEFAULT_CODE_VIEW_FILE_METRICS, DEFAULT_CODE_VIEW_LAYOUT, DEFAULT_COLLAPSED_CONTEXT_THRESHOLD, DEFAULT_EXPANDED_REGION, DEFAULT_HIGHLIGHTER, DEFAULT_LOCALE, DEFAULT_MESSAGES, DEFAULT_RENDER_RANGE, DEFAULT_SMOOTH_SCROLL_SETTINGS, DEFAULT_THEMES, DEFAULT_TOKENIZE_MAX_LENGTH, DEFAULT_VIRTUAL_FILE_METRICS, DIFFS_SCROLLBAR_GUTTER_MEASURED_PROPERTY, DIFFS_SCROLLBAR_MEASURE_ATTRIBUTE, DIFFS_TAG_NAME, type DecorationItem, type DiffAcceptRejectHunkConfig, type DiffAcceptRejectHunkType, type DiffFileInput, DiffHunksRenderer, DiffHunksRendererOptions, DiffHunksRendererOptionsWithDefaults, type DiffIndicators, DiffLayout, DiffLayoutInput, DiffLayoutOptions, DiffLayoutResult, type DiffLib, type DiffLineAnnotation, type DiffLineEventBaseProps, DiffModel, type DiffModelChange, type DiffSide, type DiffTokenEventBaseProps, type DiffsEditorTokenizer, type DiffsEditorTokenizerOptions, type DiffsHighlighter, type DiffsI18nConfig, type DiffsMessageKey, type DiffsMessages, type DiffsStreamTokenizer, type DiffsTheme, type DiffsThemeNames, type DocumentLineChange, type DocumentLineEdit, type DocumentLines, EMPTY_LINE_ANNOTATIONS, EMPTY_RENDER_RANGE, EXTENSION_TO_FILE_FORMAT, type ExpansionDirections, type ExtensionFormatMap, FILENAME_HEADER_REGEX, FILE_CONTEXT_BLOB, File, type FileContents, FileDiff, type FileDiffContentsLoader, FileDiffEditChangeHandler, type FileDiffEditCompleteEvent, FileDiffEditCompleteHandler, FileDiffHydrationProps, type FileDiffLoadedChangedFiles, type FileDiffLoadedFiles, type FileDiffLoadedPureRenamedFile, type FileDiffMetadata, FileDiffOptions, FileDiffRenderBaseProps, FileDiffRenderData, FileDiffRenderInput, FileDiffRenderProps, FileDiffType, FileEditChangeHandler, type FileEditCompleteEvent, FileEditCompleteHandler, type FileHeaderRenderMode, FileHydrateProps, FileLayout, FileLayoutInput, FileLayoutResult, FileModel, FileModelChange, FileOptions, FileRenderData, FileRenderInput, FileRenderProps, FileRenderResult, FileRenderer, FileRendererOptions, FileStream, FileStreamOptions, type ForceDiffPlainTextOptions, type ForceFilePlainTextOptions, GIT_DIFF_FILE_BREAK_REGEX, type GapSpan, GetHoveredLineResult, GetLineIndexUtility, HEADER_FILENAME_SUFFIX_SLOT_ID, HEADER_METADATA_SLOT_ID, HEADER_PREFIX_SLOT_ID, HUNK_HEADER, HighlightRows, type HighlightedToken, HighlighterDisposedError, HighlighterOptions, type HighlighterTypes, type Hunk, type HunkBlock, type HunkData, type HunkExpansionRegion, type HunkLineType, type HunkSeparators, HunksRenderResult, INDEX_LINE_METADATA, InjectedRow, InteractionManager, InteractionManagerBaseOptions, InteractionManagerMode, InteractionManagerOptions, LayoutColumns, type LineAnnotation, LineAnnotationPosition, LineDecoration, LineDiffRangeCache, type LineDiffTypes, LineEnding, type LineEventBaseProps, type LineInfo, LineKey, LineMap, type LinePosition, type LineSpans, type LineTypes, LogTypes, MAX_SEARCH_MATCHES, MERGE_CONFLICT_BASE_MARKER_REGEX, MERGE_CONFLICT_END_MARKER_REGEX, MERGE_CONFLICT_SEPARATOR_MARKER_REGEX, MERGE_CONFLICT_START_MARKER_REGEX, MatchRange, type MaybeDiffFileInput, type MergeConflictActionPayload, MergeConflictActionTarget, MergeConflictActionsTypeOption, type MergeConflictMarkerRow, type MergeConflictMarkerRowType, type MergeConflictRegion, type MergeConflictResolution, MessagesSubscriber, ModelSessionState, type NumericScrollLineAnchor, type ObservedAnnotationNodes, type ObservedGridNodes, OnDiffLineClickProps, OnDiffLineEnterLeaveProps, OnLineClickProps, OnLineEnterLeaveProps, OnTokenEventProps, type ParseDiffOptions, type ParsePatchOptions, ParsedLine, type ParsedPatch, type PendingCodeViewLayoutReset, type PostRenderPhase, type PrePropertiesConfig, type ProcessFileConflictData, type RecallToken, ReconcileResult, RegisteredCustomLanguages, type RenderDiffFilesResult, type RenderDiffOptions, type RenderDiffResult, type RenderFileMetadata, type RenderFileOptions, type RenderFileResult, type RenderHeaderFilenameSuffixCallback, type RenderHeaderMetadataCallback, type RenderHeaderPrefixCallback, RenderMergeConflictActions, type RenderRange, RenderTokenLinesOptions, type RenderWindow, type RenderedDiffASTCache, type RenderedFileASTCache, RenderedLineContext, ReplacementDocument, ResizeManager, ResizeManagerColumnVariableMode, ResizeManagerSetupOptions, ResolvedLanguages, ResolvingLanguages, type RetainedDiffSessionSnapshot, RowCells, RowKey, RowSource, RowSpec, SPLIT_WITH_NEWLINES, SVGSpriteNames, SVGSpriteSheet, type ScrollRequestResult, ScrollSyncManager, SearchMatchVisitor, SearchOptionDefaults, SearchPanelMode, SearchPanelState, SearchParams, SearchPosition, SearchableDocument, type SelectedLineRange, type SelectionPoint, type SelectionSide, SelectionWriteOptions, type SharedRenderState, type SmoothScrollSettings, SpanScrollRequest, SplitInjectedRow, SplitInjectedRowPlacement, SplitLineDecorationProps, StartSessionOptions, type StickySpecs, type SupportedLanguages, THEME_CSS_ATTRIBUTE, type ThemeTypes, type ThemedDiffResult, type ThemedFileResult, type ThemedToken, type ThemesType, type TokenEventBase, type TokensResult, UNIFIED_DIFF_FILE_BREAK_REGEX, UNSAFE_CSS_ATTRIBUTE, UnifiedInjectedRowPlacement, UnifiedLineDecorationProps, UnresolvedFile, UnresolvedFileHydrationProps, UnresolvedFileOptions, UnresolvedFileRenderData, UnresolvedFileRenderInput, UnresolvedFileRenderProps, VIRTUALIZED_FILE_DIFF_LAYOUT_CHECKPOINT_INTERVAL, type VirtualFileMetrics, type VirtualWindowSpecs, VirtualizedFile, VirtualizedFileDiff, Virtualizer, VirtualizerConfig, VirtualizerScrollOptions, areDiffLineAnnotationsEqual, areDiffRenderOptionsEqual, areDiffTargetsEqual, areFileRenderOptionsEqual, areFilesEqual, areGhostTextRowsEqual, areHunkDataEqual, areLanguagesAttached, areLineAnnotationsEqual, areObjectsEqual, areOptionsEqual, arePrePropertiesEqual, areRenderRangesEqual, areSelectionsEqual, areThemesAttached, areThemesEqual, areVirtualWindowSpecsEqual, areWorkerStatsEqual, attachResolvedLanguages, attachResolvedThemes, attributeFor, buildSearchReplacementText, canUseWASM, cleanLastNewline, cleanUpResolvedLanguages, cleanUpResolvedThemes, clearRenderQueue, cloneFileDiffMetadata, cloneHunks, columnCells, createAnnotationElement, createAnnotationWrapperNode, createCSSVariablesTheme, createColumn, createCoreStyleElement, createDiffSpanDecoration, createEmptyRowBuffer, createFileHeaderElement, createGutterGap, createGutterItem, createGutterUtilityContentNode, createGutterUtilityElement, createGutterWrapper, createHastElement, createHighlighter, createIconElement, createNoNewlineElement, createPlainRow, createPreElement, createPreWrapperProperties, createRowNodes, createSeparator, createSpanFromToken, createStyleElement, createTextNodeElement, createThemeStyleElement, createTokenRow, createUnsafeCSSStyleNode, createWindowFromScrollPosition, dequeueRender, detachString, diffAcceptRejectHunk, disposeHighlighter, findCodeElement, formatCSSVariablePrefix, getCustomExtensionsMap, getCustomExtensionsVersion, getFiletypeFromFileName, getHighlighterIfLoaded, getHighlighterOptions, getHighlighterThemeStyles, getHighlighterType, getHunkSeparatorSlotName, getIconForType, getLineAnnotationName, getLineAnnotationSource, getLineEndingType, getLineNodes, getOrCreateCodeNode, getResolvedLanguages, getResolvedOrResolveLanguage, getResolvedOrResolveTheme, getResolvedThemes, getSharedHighlighter, getSingularPatch, getThemes, getTotalLineCountFromHunks, getUnresolvedDiffHunksRendererOptions, hasResolvedLanguages, hasResolvedThemes, hastToHtml, hydratePartialDiff, i18n, isDefaultRenderRange, isDiffAnnotation, isDiffAnnotationCollection, isFileAnnotation, isFileAnnotationCollection, isHighlighterLoaded, isHighlighterLoading, isHighlighterNull, isLineKey, isWorkerContext, lineDiffRangesFor, lineEndingOf, markRow, normalizeLineBreaks, parseDiffFromFile, parseLineType, parsePatchFiles, patchScrollbarGutterSize, pluckInteractionOptions, prefersReducedMotion, preloadHighlighter, prerenderHTMLIfNecessary, processFile, processLine, processPatch, pushOrJoinSpan, pushRow, queueRender, readAllLines, readChangedLines, readOnly, recordLineAnnotationSource, registerCustomCSSVariableTheme, registerCustomLanguage, registerCustomTheme, releaseStringDetachBuffer, renderDiffWithHighlighter, renderFileWithHighlighter, renderTokenLines, replaceCustomExtensions, resolveConflict, resolveLanguage, resolveLanguages, resolveRegion, resolveTheme, resolveThemes, searchDocument, setCustomExtension, setLanguageOverride, setPreNodeProperties, tokenStyle, tokensToHtml, trimPatchContext, uniformLineEndings, wrapCoreCSS, wrapThemeCSS, wrapUnsafeCSS };
+\ No newline at end of file
++export { type CodeViewSearch, type CodeViewSearchQuery, type CodeViewSearchSnapshot, type AnnotationLineMap, type AnnotationSide, type AnnotationSpan, type AppliedThemeStyleCache, AttachedLanguages, type BaseCodeOptions, type BaseDiffOptions, type BaseDiffOptionsWithDefaults, CODE_VIEW_DIFF_OPTION_KEYS, CODE_VIEW_FILE_OPTION_KEYS, CODE_VIEW_FOOTER_ATTRIBUTE, CODE_VIEW_HEADER_ATTRIBUTE, COMMIT_METADATA_SPLIT, CORE_CSS_ATTRIBUTE, type CSSVariablesThemeOptions, CUSTOM_HEADER_SLOT_ID, type ChangeContent, type ChangeTypes, type CodeColumnType, CodeColumns, type CodeToHtmlOptions, CodeToTokenTransformStream, CodeToTokenTransformStreamOptions, type CodeToTokensOptions, CodeView, CodeViewCoordinator, CodeViewCreateEditorOptions, type CodeViewDiffItem, type CodeViewFileItem, type CodeViewItem, CodeViewItemEditCompleteEventMap, CodeViewItemEditCompleteHandler, type CodeViewItemScrollTarget, type CodeViewLayout, type CodeViewLineScrollTarget, CodeViewLineSelection, CodeViewMode, CodeViewModeItemMap, CodeViewOpenSearchOptions, CodeViewOptions, type CodeViewPositionScrollTarget, type CodeViewRangeScrollTarget, CodeViewRenderedDiffItem, CodeViewRenderedFileItem, CodeViewRenderedItem, type CodeViewScrollBehavior, CodeViewScrollListener, type CodeViewScrollTarget, CodeViewSearchOptions, CodeViewSearchScope, CodeViewSlotSnapshot, Column, ColumnReconciler, type ConflictResolverTypes, type ContextContent, CreateFileHeaderElementProps, type CreatePatchOptions, type CreatePatchOptionsNonabortable, type CustomPreProperties, type CustomThemeLoader, DEFAULT_CODE_VIEW_FILE_METRICS, DEFAULT_CODE_VIEW_LAYOUT, DEFAULT_COLLAPSED_CONTEXT_THRESHOLD, DEFAULT_EXPANDED_REGION, DEFAULT_HIGHLIGHTER, DEFAULT_LOCALE, DEFAULT_MESSAGES, DEFAULT_RENDER_RANGE, DEFAULT_SMOOTH_SCROLL_SETTINGS, DEFAULT_THEMES, DEFAULT_TOKENIZE_MAX_LENGTH, DEFAULT_VIRTUAL_FILE_METRICS, DIFFS_SCROLLBAR_GUTTER_MEASURED_PROPERTY, DIFFS_SCROLLBAR_MEASURE_ATTRIBUTE, DIFFS_TAG_NAME, type DecorationItem, type DiffAcceptRejectHunkConfig, type DiffAcceptRejectHunkType, type DiffFileInput, DiffHunksRenderer, DiffHunksRendererOptions, DiffHunksRendererOptionsWithDefaults, type DiffIndicators, DiffLayout, DiffLayoutInput, DiffLayoutOptions, DiffLayoutResult, type DiffLib, type DiffLineAnnotation, type DiffLineEventBaseProps, DiffModel, type DiffModelChange, type DiffSide, type DiffTokenEventBaseProps, type DiffsEditorTokenizer, type DiffsEditorTokenizerOptions, type DiffsHighlighter, type DiffsI18nConfig, type DiffsMessageKey, type DiffsMessages, type DiffsStreamTokenizer, type DiffsTheme, type DiffsThemeNames, type DocumentLineChange, type DocumentLineEdit, type DocumentLines, EMPTY_LINE_ANNOTATIONS, EMPTY_RENDER_RANGE, EXTENSION_TO_FILE_FORMAT, type ExpansionDirections, type ExtensionFormatMap, FILENAME_HEADER_REGEX, FILE_CONTEXT_BLOB, File, type FileContents, FileDiff, type FileDiffContentsLoader, FileDiffEditChangeHandler, type FileDiffEditCompleteEvent, FileDiffEditCompleteHandler, FileDiffHydrationProps, type FileDiffLoadedChangedFiles, type FileDiffLoadedFiles, type FileDiffLoadedPureRenamedFile, type FileDiffMetadata, FileDiffOptions, FileDiffRenderBaseProps, FileDiffRenderData, FileDiffRenderInput, FileDiffRenderProps, FileDiffType, FileEditChangeHandler, type FileEditCompleteEvent, FileEditCompleteHandler, type FileHeaderRenderMode, FileHydrateProps, FileLayout, FileLayoutInput, FileLayoutResult, FileModel, FileModelChange, FileOptions, FileRenderData, FileRenderInput, FileRenderProps, FileRenderResult, FileRenderer, FileRendererOptions, FileStream, FileStreamOptions, type ForceDiffPlainTextOptions, type ForceFilePlainTextOptions, GIT_DIFF_FILE_BREAK_REGEX, type GapSpan, GetHoveredLineResult, GetLineIndexUtility, HEADER_FILENAME_SUFFIX_SLOT_ID, HEADER_METADATA_SLOT_ID, HEADER_PREFIX_SLOT_ID, HUNK_HEADER, HighlightRows, type HighlightedToken, HighlighterDisposedError, HighlighterOptions, type HighlighterTypes, type Hunk, type HunkBlock, type HunkData, type HunkExpansionRegion, type HunkLineType, type HunkSeparators, HunksRenderResult, INDEX_LINE_METADATA, InjectedRow, InteractionManager, InteractionManagerBaseOptions, InteractionManagerMode, InteractionManagerOptions, LayoutColumns, type LineAnnotation, LineAnnotationPosition, LineDecoration, LineDiffRangeCache, type LineDiffTypes, LineEnding, type LineEventBaseProps, type LineInfo, LineKey, LineMap, type LinePosition, type LineSpans, type LineTypes, LogTypes, MAX_SEARCH_MATCHES, MERGE_CONFLICT_BASE_MARKER_REGEX, MERGE_CONFLICT_END_MARKER_REGEX, MERGE_CONFLICT_SEPARATOR_MARKER_REGEX, MERGE_CONFLICT_START_MARKER_REGEX, MatchRange, type MaybeDiffFileInput, type MergeConflictActionPayload, MergeConflictActionTarget, MergeConflictActionsTypeOption, type MergeConflictMarkerRow, type MergeConflictMarkerRowType, type MergeConflictRegion, type MergeConflictResolution, MessagesSubscriber, ModelSessionState, type NumericScrollLineAnchor, type ObservedAnnotationNodes, type ObservedGridNodes, OnDiffLineClickProps, OnDiffLineEnterLeaveProps, OnLineClickProps, OnLineEnterLeaveProps, OnTokenEventProps, type ParseDiffOptions, type ParsePatchOptions, ParsedLine, type ParsedPatch, type PendingCodeViewLayoutReset, type PostRenderPhase, type PrePropertiesConfig, type ProcessFileConflictData, type RecallToken, ReconcileResult, RegisteredCustomLanguages, type RenderDiffFilesResult, type RenderDiffOptions, type RenderDiffResult, type RenderFileMetadata, type RenderFileOptions, type RenderFileResult, type RenderHeaderFilenameSuffixCallback, type RenderHeaderMetadataCallback, type RenderHeaderPrefixCallback, RenderMergeConflictActions, type RenderRange, RenderTokenLinesOptions, type RenderWindow, type RenderedDiffASTCache, type RenderedFileASTCache, RenderedLineContext, ReplacementDocument, ResizeManager, ResizeManagerColumnVariableMode, ResizeManagerSetupOptions, ResolvedLanguages, ResolvingLanguages, type RetainedDiffSessionSnapshot, RowCells, RowKey, RowSource, RowSpec, SPLIT_WITH_NEWLINES, SVGSpriteNames, SVGSpriteSheet, type ScrollRequestResult, ScrollSyncManager, SearchMatchVisitor, SearchOptionDefaults, SearchPanelMode, SearchPanelState, SearchParams, SearchPosition, SearchableDocument, type SelectedLineRange, type SelectionPoint, type SelectionSide, SelectionWriteOptions, type SharedRenderState, type SmoothScrollSettings, SpanScrollRequest, SplitInjectedRow, SplitInjectedRowPlacement, SplitLineDecorationProps, StartSessionOptions, type StickySpecs, type SupportedLanguages, THEME_CSS_ATTRIBUTE, type ThemeTypes, type ThemedDiffResult, type ThemedFileResult, type ThemedToken, type ThemesType, type TokenEventBase, type TokensResult, UNIFIED_DIFF_FILE_BREAK_REGEX, UNSAFE_CSS_ATTRIBUTE, UnifiedInjectedRowPlacement, UnifiedLineDecorationProps, UnresolvedFile, UnresolvedFileHydrationProps, UnresolvedFileOptions, UnresolvedFileRenderData, UnresolvedFileRenderInput, UnresolvedFileRenderProps, VIRTUALIZED_FILE_DIFF_LAYOUT_CHECKPOINT_INTERVAL, type VirtualFileMetrics, type VirtualWindowSpecs, VirtualizedFile, VirtualizedFileDiff, Virtualizer, VirtualizerConfig, VirtualizerScrollOptions, areDiffLineAnnotationsEqual, areDiffRenderOptionsEqual, areDiffTargetsEqual, areFileRenderOptionsEqual, areFilesEqual, areGhostTextRowsEqual, areHunkDataEqual, areLanguagesAttached, areLineAnnotationsEqual, areObjectsEqual, areOptionsEqual, arePrePropertiesEqual, areRenderRangesEqual, areSelectionsEqual, areThemesAttached, areThemesEqual, areVirtualWindowSpecsEqual, areWorkerStatsEqual, attachResolvedLanguages, attachResolvedThemes, attributeFor, buildSearchReplacementText, canUseWASM, cleanLastNewline, cleanUpResolvedLanguages, cleanUpResolvedThemes, clearRenderQueue, cloneFileDiffMetadata, cloneHunks, columnCells, createAnnotationElement, createAnnotationWrapperNode, createCSSVariablesTheme, createColumn, createCoreStyleElement, createDiffSpanDecoration, createEmptyRowBuffer, createFileHeaderElement, createGutterGap, createGutterItem, createGutterUtilityContentNode, createGutterUtilityElement, createGutterWrapper, createHastElement, createHighlighter, createIconElement, createNoNewlineElement, createPlainRow, createPreElement, createPreWrapperProperties, createRowNodes, createSeparator, createSpanFromToken, createStyleElement, createTextNodeElement, createThemeStyleElement, createTokenRow, createUnsafeCSSStyleNode, createWindowFromScrollPosition, dequeueRender, detachString, diffAcceptRejectHunk, disposeHighlighter, findCodeElement, formatCSSVariablePrefix, getCustomExtensionsMap, getCustomExtensionsVersion, getFiletypeFromFileName, getHighlighterIfLoaded, getHighlighterOptions, getHighlighterThemeStyles, getHighlighterType, getHunkSeparatorSlotName, getIconForType, getLineAnnotationName, getLineAnnotationSource, getLineEndingType, getLineNodes, getOrCreateCodeNode, getResolvedLanguages, getResolvedOrResolveLanguage, getResolvedOrResolveTheme, getResolvedThemes, getSharedHighlighter, getSingularPatch, getThemes, getTotalLineCountFromHunks, getUnresolvedDiffHunksRendererOptions, hasResolvedLanguages, hasResolvedThemes, hastToHtml, hydratePartialDiff, i18n, isDefaultRenderRange, isDiffAnnotation, isDiffAnnotationCollection, isFileAnnotation, isFileAnnotationCollection, isHighlighterLoaded, isHighlighterLoading, isHighlighterNull, isLineKey, isWorkerContext, lineDiffRangesFor, lineEndingOf, markRow, normalizeLineBreaks, parseDiffFromFile, parseLineType, parsePatchFiles, patchScrollbarGutterSize, pluckInteractionOptions, prefersReducedMotion, preloadHighlighter, prerenderHTMLIfNecessary, processFile, processLine, processPatch, pushOrJoinSpan, pushRow, queueRender, readAllLines, readChangedLines, readOnly, recordLineAnnotationSource, registerCustomCSSVariableTheme, registerCustomLanguage, registerCustomTheme, releaseStringDetachBuffer, renderDiffWithHighlighter, renderFileWithHighlighter, renderTokenLines, replaceCustomExtensions, resolveConflict, resolveLanguage, resolveLanguages, resolveRegion, resolveTheme, resolveThemes, searchDocument, setCustomExtension, setLanguageOverride, setPreNodeProperties, tokenStyle, tokensToHtml, trimPatchContext, uniformLineEndings, wrapCoreCSS, wrapThemeCSS, wrapUnsafeCSS };
+\ No newline at end of file
+diff --git a/dist/search/headlessSearch.d.ts b/dist/search/headlessSearch.d.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..a794c6c6a36f668b0788123a3dc005071ec0f823
+--- /dev/null
++++ b/dist/search/headlessSearch.d.ts
+@@ -0,0 +1,37 @@
++import { SearchPanelMode } from "./index.js";
++//#region src/search/headlessSearch.d.ts
++interface CodeViewSearchQuery {
++  readonly text: string;
++  readonly caseSensitive: boolean;
++  readonly wholeWord: boolean;
++  readonly regex: boolean;
++}
++interface CodeViewSearchSnapshot {
++  readonly total: number;
++  /** Index of the focused match in `total`, or undefined before navigation. */
++  readonly current: number | undefined;
++  /** A regex query that does not compile. */
++  readonly invalid: boolean;
++  /** `find` whenever the scope has no edit-mode item to replace in. */
++  readonly mode: SearchPanelMode;
++  readonly canReplace: boolean;
++  readonly defaultQuery: string;
++  /** Bumped each time the search is reopened, so the host can refocus its input. */
++  readonly openRevision: number;
++  /** False once the CodeView closed the search, e.g. on Escape. */
++  readonly open: boolean;
++}
++interface CodeViewSearch {
++  readonly getSnapshot: () => CodeViewSearchSnapshot;
++  readonly subscribe: (listener: () => void) => () => void;
++  setQuery(query: CodeViewSearchQuery | undefined): void;
++  next(): void;
++  previous(): void;
++  setReplaceText(text: string): void;
++  replace(): void;
++  replaceAll(): void;
++  setMode(mode: SearchPanelMode): void;
++  close(): void;
++}
++//#endregion
++export { CodeViewSearch, CodeViewSearchQuery, CodeViewSearchSnapshot };
+diff --git a/dist/search/headlessSearch.js b/dist/search/headlessSearch.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..8fdf2667be6082e3ba9b85cc9a4b765a7dc54a0e
+--- /dev/null
++++ b/dist/search/headlessSearch.js
+@@ -0,0 +1,175 @@
++import { dequeueRender, queueRender } from "../managers/UniversalRenderingManager.js";
++//#region src/search/headlessSearch.ts
++function createHeadlessSearch(options) {
++	const { defaultQuery, mode = "find", search, isSameMatch, scrollToMatch, replace, onQueryChange, onUpdate, onStateChange, onClose } = options;
++	const host = document.createElement("div");
++	const listeners = /* @__PURE__ */ new Set();
++	const params = {
++		text: defaultQuery,
++		replaceText: "",
++		caseSensitive: false,
++		wholeWord: false,
++		regex: false
++	};
++	const matches = {
++		all: [],
++		current: void 0
++	};
++	let replaceHandlers = replace;
++	let requestedMode = mode;
++	let openRevision = 0;
++	let closed = false;
++	let matchesUpdated = false;
++	const indexOf = (match) => matches.all.findIndex((candidate) => isSameMatch(candidate, match));
++	const isInvalid = () => {
++		if (!params.regex || params.text === "") return false;
++		try {
++			new RegExp(params.text);
++			return false;
++		} catch {
++			return true;
++		}
++	};
++	const buildSnapshot = () => {
++		const index = matches.current === void 0 ? -1 : indexOf(matches.current);
++		return {
++			total: matches.all.length,
++			current: index === -1 ? void 0 : index,
++			invalid: isInvalid(),
++			mode: replaceHandlers != null ? requestedMode : "find",
++			canReplace: replaceHandlers != null,
++			defaultQuery,
++			openRevision,
++			open: !closed
++		};
++	};
++	let snapshot = buildSnapshot();
++	const emit = () => {
++		snapshot = buildSnapshot();
++		if (!closed) onStateChange?.({
++			...params,
++			mode: snapshot.mode,
++			canReplace: snapshot.canReplace,
++			matchCount: snapshot.total,
++			currentMatchIndex: snapshot.current
++		});
++		for (const listener of listeners) listener();
++	};
++	const updateMatches = (updateOptions) => {
++		matchesUpdated = true;
++		const result = params.text !== "" ? search({ ...params }) : { matches: [] };
++		matches.all = result.matches;
++		if (matches.all.length === 0) {
++			matches.current = void 0;
++			onUpdate(result);
++		} else matches.current = onUpdate(result, updateOptions);
++		emit();
++	};
++	const initialize = () => {
++		if (!matchesUpdated && !closed) updateMatches();
++	};
++	const setParams = (next) => {
++		if (next.text !== params.text || next.caseSensitive !== params.caseSensitive || next.wholeWord !== params.wholeWord || next.regex !== params.regex) onQueryChange?.();
++		params.text = next.text;
++		params.caseSensitive = next.caseSensitive;
++		params.wholeWord = next.wholeWord;
++		params.regex = next.regex;
++		matches.current = void 0;
++		updateMatches();
++	};
++	const navigate = (previous) => {
++		initialize();
++		const all = matches.all;
++		const currentIndex = matches.current === void 0 ? -1 : indexOf(matches.current);
++		const next = all.length === 0 ? void 0 : previous ? currentIndex === -1 ? all.at(-1) : all.at(currentIndex - 1) ?? all.at(-1) : all[currentIndex + 1] ?? all[0];
++		if (next !== void 0) scrollToMatch(next, true);
++		matches.current = next;
++		emit();
++	};
++	const replaceCurrent = () => {
++		if (replaceHandlers == null || params.text === "" || matches.all.length === 0) return;
++		if (matches.current === void 0) navigate(false);
++		const current = matches.current;
++		if (current === void 0) return;
++		const next = replaceHandlers.replaceMatch(current, { ...params });
++		if (next !== void 0) scrollToMatch(next, true);
++		matches.current = void 0;
++		updateMatches();
++	};
++	const replaceAll = () => {
++		if (replaceHandlers == null || params.text === "" || matches.all.length === 0) return;
++		replaceHandlers.replaceAll(matches.all.slice(), { ...params });
++		matches.current = void 0;
++		updateMatches();
++	};
++	const setMode = (next) => {
++		requestedMode = next;
++		emit();
++	};
++	const panel = {
++		mount() {
++			emit();
++			queueRender(initialize);
++		},
++		getHostElement: () => host,
++		hasQuery: () => params.text !== "",
++		hasReplaceHandlers: () => replaceHandlers != null,
++		setReplaceHandlers(handlers) {
++			replaceHandlers = handlers;
++			emit();
++		},
++		updateMatches,
++		navigate,
++		setQuery(text) {
++			setParams({
++				...params,
++				text
++			});
++		},
++		setMode,
++		focus() {
++			openRevision++;
++			emit();
++		},
++		close() {
++			onClose();
++		},
++		cleanup() {
++			if (closed) return;
++			closed = true;
++			dequeueRender(initialize);
++			emit();
++		}
++	};
++	const target = {
++		getSnapshot: () => snapshot,
++		subscribe(listener) {
++			listeners.add(listener);
++			return () => {
++				listeners.delete(listener);
++			};
++		},
++		setQuery(query) {
++			setParams(query === void 0 ? {
++				...params,
++				text: ""
++			} : query);
++		},
++		next: () => navigate(false),
++		previous: () => navigate(true),
++		setReplaceText(text) {
++			params.replaceText = text;
++			emit();
++		},
++		replace: replaceCurrent,
++		replaceAll,
++		setMode,
++		close: () => onClose()
++	};
++	return {
++		panel,
++		target
++	};
++}
++//#endregion
++export { createHeadlessSearch };

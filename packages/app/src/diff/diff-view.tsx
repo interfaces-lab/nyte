@@ -2,9 +2,9 @@ import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { button, control, glyph, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
-import type { FileDiffMetadata, FileDiffOptions, PostRenderPhase } from "@pierre/diffs";
-import { parsePatchFiles } from "@pierre/diffs";
-import { FileDiff } from "@pierre/diffs/react";
+import type { FileDiffMetadata, FileDiffOptions, PostRenderPhase } from "@nyte-ai/ui/diffs";
+import { parsePatchFiles } from "@nyte-ai/ui/diffs";
+import { FileDiff } from "@nyte-ai/ui/diffs/react";
 import type { ReactElement } from "react";
 // oxlint-disable-next-line no-restricted-imports -- the compiler merges the patch parse into the theme/layout scope; keep it keyed on diff.patch alone
 import { useMemo } from "react";
@@ -13,8 +13,8 @@ import {
   PIERRE_HIGHLIGHTER_OPTIONS,
   PIERRE_TOKEN_CSS,
   PierreWorkerProvider,
-} from "../lib/pierre-worker-provider.tsx";
-import { preferences, useSetting } from "../preferences/index.ts";
+} from "@nyte-ai/ui/worker-pool";
+import { useAppearance } from "../theme/appearance-store.ts";
 import { appearance, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { patchDigest } from "./changes-viewed.ts";
 import { diffStyles } from "./diff.stylex.ts";
@@ -165,7 +165,7 @@ ${PIERRE_TOKEN_CSS}
 }
 ${DIFF_SEPARATOR_CSS}`;
 
-function applyDiffScopes(node: HTMLElement): void {
+export function applyDiffScopes(node: HTMLElement): void {
   const sample = document.createElement("span");
   sample.hidden = true;
   node.after(sample);
@@ -315,7 +315,7 @@ export function DiffView({
 }): ReactElement {
   const headed = variant === "workbench";
   const stacked = variant === "stack";
-  const theme = useSetting(preferences.theme);
+  const theme = useAppearance().theme;
   const renderable = useMemo(() => renderablePatch(diff.patch), [diff.patch]);
   const wrapped = wordWrap ?? stacked;
   const expansion = expandContext ? loadDiffFiles : undefined;
