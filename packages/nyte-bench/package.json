@@ -16,7 +16,7 @@
     "@nyte-ai/core": "workspace:*",
     "@nyte-ai/host": "workspace:*",
     "@nyte-ai/schema": "workspace:*",
-    "typebox": "^1.4.2"
+    "typebox": "^1.4.6"
   },
   "devDependencies": {
     "@types/node": "^26.6.5"

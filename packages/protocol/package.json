@@ -38,7 +38,7 @@
     "@nyte-ai/core": "workspace:*",
     "@nyte-ai/schema": "workspace:*",
     "fflate": "^0.8.3",
-    "typebox": "^1.4.3"
+    "typebox": "^1.4.6"
   },
   "devDependencies": {
     "@nyte-ai/ai": "workspace:*",

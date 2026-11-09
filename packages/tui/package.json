@@ -24,9 +24,9 @@
     "@nyte-ai/schema": "workspace:*",
     "@nyte-ai/sdk": "workspace:*",
     "@nyte-ai/service": "workspace:*",
-    "@opentui/core": "^0.8.2",
-    "@opentui/keymap": "^0.8.2",
-    "@opentui/solid": "^0.8.2",
+    "@opentui/core": "^0.8.3",
+    "@opentui/keymap": "^0.8.3",
+    "@opentui/solid": "^0.8.3",
     "beautiful-mermaid": "^1.1.3",
     "diff": "^9.0.0",
     "fuzzysort": "^4.0.2",
@@ -35,7 +35,7 @@
     "semver": "^7.8.6",
     "solid-js": "^1.9.18",
     "string-width": "^8.3.0",
-    "typebox": "^1.4.3"
+    "typebox": "^1.4.6"
   },
   "devDependencies": {
     "@babel/core": "^8.1.0",

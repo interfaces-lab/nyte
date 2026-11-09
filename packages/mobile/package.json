@@ -79,7 +79,7 @@
     "react-strict-dom": "^0.0.55",
     "remend": "^1.4.0",
     "semver": "^7.8.6",
-    "typebox": "^1.4.3"
+    "typebox": "^1.4.6"
   },
   "devDependencies": {
     "@babel/core": "^7.29.7",

@@ -166,7 +166,7 @@
     "@nyte-ai/schema": "workspace:*",
     "openai": "^7.47.0",
     "partial-json": "^0.1.7",
-    "typebox": "^1.4.3"
+    "typebox": "^1.4.6"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

@@ -27,7 +27,7 @@
     "@lydell/node-pty": "^1.2.0-beta.18",
     "electron-updater": "^6.8.11",
     "sucrase": "^3.35.1",
-    "typebox": "^1.4.3"
+    "typebox": "^1.4.6"
   },
   "devDependencies": {
     "@clerk/electron": "^0.1.8",

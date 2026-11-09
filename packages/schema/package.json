@@ -50,7 +50,7 @@
   },
   "dependencies": {
     "@standard-schema/spec": "^1.1.0",
-    "typebox": "^1.4.3"
+    "typebox": "^1.4.6"
   },
   "devDependencies": {
     "@cfworker/json-schema": "^4.1.4",

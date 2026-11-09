@@ -128,7 +128,7 @@
     "fflate": "^0.8.3",
     "ignore": "^7.0.14",
     "pg": "^8.23.1",
-    "typebox": "^1.4.2",
+    "typebox": "^1.4.6",
     "ws": "^8.22.0"
   },
   "devDependencies": {
