@@ -44,13 +44,15 @@
         "$TURBO_ROOT$/packages/tailnet/*.go",
         "$TURBO_ROOT$/packages/tailnet/go.mod",
         "$TURBO_ROOT$/packages/tailnet/go.sum",
-        "$TURBO_ROOT$/packages/tailnet/build.mjs"
+        "$TURBO_ROOT$/packages/tailnet/build.mjs",
+        "$TURBO_ROOT$/packages/docs/content/docs/**"
       ],
       "outputs": ["dist/nyte", "dist/nyte.exe", "dist/nyte-tailnet", "dist/nyte.version"]
     },
     "@nyte-ai/desktop#build": {
       "dependsOn": ["^build"],
       "env": ["NYTE_CONNECT_ORIGIN", "NYTE_RELEASE_VERSION"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/packages/docs/content/docs/**"],
       "outputs": ["out/**"]
     },
     "build:package": {

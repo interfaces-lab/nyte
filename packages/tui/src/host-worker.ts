@@ -1,5 +1,6 @@
 import { serveHostThread } from "@nyte-ai/service/host-worker";
 import { codemodeRuntimeOptions } from "./codemode-runtime.ts";
+import docs from "./docs-files.ts";
 import { imageRuntimeOptions } from "./image-runtime.ts";
 import { bunPluginImport } from "./plugin-import.ts";
 
@@ -8,4 +9,5 @@ serveHostThread({
   codemode: codemodeRuntimeOptions(),
   images: imageRuntimeOptions(),
   pluginImport: bunPluginImport(),
+  docs,
 });

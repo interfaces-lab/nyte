@@ -6,6 +6,7 @@
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
+    "./docs": "./src/docs.ts",
     "./host-endpoint": "./src/host-endpoint.ts",
     "./host-thread": "./src/host-thread.ts",
     "./host-worker": "./src/host-worker.ts",

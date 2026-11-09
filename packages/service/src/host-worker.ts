@@ -19,6 +19,8 @@ import { desktopSettingsPlugin } from "@nyte-ai/plugin/core/desktop-settings";
 import { dev, sdk } from "@nyte-ai/sdk";
 import type { Host } from "@nyte-ai/sdk";
 import { readConnectConfig } from "./connect-config.ts";
+import { docsPlugin, syncDocs } from "./docs.ts";
+import type { DocsFiles } from "./docs.ts";
 import { hostMessages } from "./host-thread.ts";
 import type { HostCommand, HostReport } from "./host-thread.ts";
 import { portConflict, probePort } from "./port.ts";
@@ -29,6 +31,7 @@ export interface HostWorkerRuntime {
   readonly codemode: Pick<CodemodeSandboxOptions, "workerUrl" | "wasm">;
   readonly images: NodeImagesOptions;
   readonly pluginImport?: PluginImport;
+  readonly docs: DocsFiles;
 }
 
 interface Opened {
@@ -157,7 +160,7 @@ async function open(
   }
 }
 
-function openLocalHost(
+async function openLocalHost(
   command: HostCommand,
   runtime: HostWorkerRuntime,
   revoked: () => void,
@@ -166,9 +169,14 @@ function openLocalHost(
   if (process.env.NYTE_DEV_LOG !== undefined) dev.forward(process.env.NYTE_DEV_LOG, runtime.source);
   const preview = chromiumCanvasPreview(files);
   const clients = command.socket !== undefined;
+  const docs = await syncDocs(runtime.docs);
 
   return sdk.open({
-    plugins: [codemodePlugin(runtime.codemode), ...(clients ? [desktopSettingsPlugin] : [])],
+    plugins: [
+      codemodePlugin(runtime.codemode),
+      docsPlugin(docs),
+      ...(clients ? [desktopSettingsPlugin] : []),
+    ],
     clientPlugins: (actions) =>
       clients
         ? [

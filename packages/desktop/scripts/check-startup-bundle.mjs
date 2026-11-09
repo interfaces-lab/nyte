@@ -1,5 +1,6 @@
 import { glob, readFile, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { parseSync, Visitor } from "vite";
 import { failure, formatSize, green, red, table } from "./terminal.mjs";
 
 const KIB = 1_024;
@@ -23,14 +24,39 @@ for await (const path of glob("src/**/*.{ts,tsx}", { cwd: desktopRoot })) {
   }
 }
 
+/** Picks the files worth parsing. Bundled strings, such as the docs, can quote an import, so only the parsed module requests decide. */
 const workspaceImport = /(?:from\s*|import\s*\(?\s*|require\s*\(\s*)["']@nyte-ai\//u;
 
 for await (const path of glob("out/main/**/*.js", { cwd: desktopRoot })) {
   const source = await readFile(join(desktopRoot, path), "utf8");
 
-  if (workspaceImport.test(source)) {
+  if (
+    workspaceImport.test(source) &&
+    moduleRequests(path, source).some((specifier) => specifier.startsWith("@nyte-ai/"))
+  ) {
     problems.push(`${path} imports unbundled workspace TypeScript; bundle all @nyte-ai packages`);
   }
+}
+
+function moduleRequests(path, source) {
+  const specifiers = [];
+
+  const add = (node) => {
+    if (node?.type === "Literal") specifiers.push(String(node.value));
+  };
+
+  new Visitor({
+    ImportDeclaration: (node) => add(node.source),
+    ExportAllDeclaration: (node) => add(node.source),
+    ExportNamedDeclaration: (node) => add(node.source),
+    ImportExpression: (node) => add(node.source),
+    CallExpression: (node) => {
+      if (node.callee.type === "Identifier" && node.callee.name.endsWith("require"))
+        add(node.arguments[0]);
+    },
+  }).visit(parseSync(path, source).program);
+
+  return specifiers;
 }
 
 async function staticGraph(entry) {

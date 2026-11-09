@@ -8,6 +8,7 @@ import { valid } from "semver";
 import { VERSION } from "../src/version.ts";
 import { codemodePlugin } from "./codemode-plugin.ts";
 import { BINARY_ENTRYPOINTS, binaryDefines } from "./defines.ts";
+import { docsPlugin } from "./docs-plugin.ts";
 import { photonPlugin } from "./photon-plugin.ts";
 
 const destination = fileURLToPath(new URL("../dist/", import.meta.url));
@@ -42,7 +43,7 @@ try {
     entrypoints: BINARY_ENTRYPOINTS.map((entry) => join(packages, entry)),
     root: packages,
     target: "bun",
-    plugins: [solidPlugin, codemodePlugin, photonPlugin],
+    plugins: [solidPlugin, codemodePlugin, photonPlugin, docsPlugin],
     define: { ...binaryDefines(process.env), NYTE_BUILT_VERSION: JSON.stringify(version) },
     format: "esm",
     bytecode: true,

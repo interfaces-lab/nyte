@@ -47,6 +47,10 @@ export function hostLogPath(env: Readonly<Record<string, string | undefined>> = 
   return join(hostStateDirectory(env), "logs", "host.log");
 }
 
+export function hostDocsPath(env: Readonly<Record<string, string | undefined>> = process.env) {
+  return join(hostStateDirectory(env), "docs");
+}
+
 function hostStateDirectory(env: Readonly<Record<string, string | undefined>>): string {
   return env["NYTE_HOME"] ?? join(homedir(), ".nyte");
 }
