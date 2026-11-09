@@ -25,6 +25,7 @@ import openaiAstraContext from "@nyte-ai/plugin/core/openai-astra-context";
 import { openaiCompaction } from "@nyte-ai/plugin/core/openai-compaction";
 import question from "@nyte-ai/plugin/core/question";
 import rename from "@nyte-ai/plugin/core/rename";
+import secretRequests from "@nyte-ai/plugin/core/secret";
 import subagents from "@nyte-ai/plugin/core/subagents";
 import telemetry from "@nyte-ai/plugin/core/telemetry";
 import toolSearch from "@nyte-ai/plugin/core/tool-search";
@@ -144,6 +145,7 @@ async function composeOpen(
   const builtins = [
     approvals,
     question,
+    secretRequests,
     rename,
     subagents,
     bashDescription,

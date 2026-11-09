@@ -371,17 +371,20 @@ export function skillInfos(registries: RegistrySet): readonly SkillInfo[] {
 }
 
 export function commandInfos(registries: RegistrySet): readonly CommandInfo[] {
-  return registries.commands.entries().map(({ item, owner }) => ({
-    name: item.name,
-    owner,
-    side: "core",
-    title: item.title,
-    description: item.description,
-    takesText: item.takesText === true || item.complete !== undefined,
-    completes: item.complete !== undefined,
-    category: item.category,
-    keywords: item.keywords,
-  }));
+  return registries.commands
+    .entries()
+    .filter((entry) => entry.item.hidden !== true)
+    .map(({ item, owner }) => ({
+      name: item.name,
+      owner,
+      side: "core",
+      title: item.title,
+      description: item.description,
+      takesText: item.takesText === true || item.complete !== undefined,
+      completes: item.complete !== undefined,
+      category: item.category,
+      keywords: item.keywords,
+    }));
 }
 
 export function publishCatalog(kernel: Kernel, session: SessionId): Promise<void> {

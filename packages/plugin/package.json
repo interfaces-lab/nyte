@@ -34,6 +34,7 @@
     "./core/openai-compaction": "./src/openai-compaction.ts",
     "./core/question": "./src/question/question.ts",
     "./core/rename": "./src/rename.ts",
+    "./core/secret": "./src/secret/secret.ts",
     "./core/subagents": "./src/subagents.ts",
     "./core/telemetry": "./src/telemetry.ts",
     "./core/tool-search": "./src/tool-search.ts",
@@ -50,7 +51,8 @@
     "./canvas/protocol": "./src/canvas/canvas-protocol.ts",
     "./canvas/schema": "./src/canvas/schema.ts",
     "./desktop-settings/schema": "./src/desktop-settings/schema.ts",
-    "./question/schema": "./src/question/schema.ts"
+    "./question/schema": "./src/question/schema.ts",
+    "./secret/schema": "./src/secret/schema.ts"
   },
   "publishConfig": {
     "exports": {
@@ -130,6 +132,10 @@
         "types": "./dist/src/rename.d.ts",
         "import": "./dist/src/rename.js"
       },
+      "./core/secret": {
+        "types": "./dist/src/secret/secret.d.ts",
+        "import": "./dist/src/secret/secret.js"
+      },
       "./core/subagents": {
         "types": "./dist/src/subagents.d.ts",
         "import": "./dist/src/subagents.js"
@@ -197,6 +203,10 @@
       "./question/schema": {
         "types": "./dist/src/question/schema.d.ts",
         "import": "./dist/src/question/schema.js"
+      },
+      "./secret/schema": {
+        "types": "./dist/src/secret/schema.d.ts",
+        "import": "./dist/src/secret/schema.js"
       }
     },
     "access": "public",

@@ -27,7 +27,7 @@ export function readWorkspaceCatalog(
   kernel: Kernel,
   workspace: WorkspaceId,
 ): Promise<WorkspaceCatalogView> {
-  return withNewChatPlugins(kernel, workspace, async ({ registries, inputs }) => ({
+  return withNewChatPlugins(kernel, workspace, false, async ({ registries, inputs }) => ({
     commands: commandInfos(registries),
     skills: skillInfos(registries),
     docs: inputs.docs,
@@ -47,7 +47,7 @@ export function runWorkspaceCommand(
   name: string,
   text: string,
 ): Promise<WorkspaceCommandOutcome> {
-  return withNewChatPlugins(kernel, workspace, async (plugins) => {
+  return withNewChatPlugins(kernel, workspace, true, async (plugins) => {
     const invoked = await invokeCommand(kernel, context, plugins.session, plugins, name, text);
 
     if (invoked.kind !== "returned") return invoked;
@@ -68,7 +68,7 @@ export function completeWorkspaceCommand(
   name: string,
   prefix: string,
 ): Promise<readonly CommandCompletion[]> {
-  return withNewChatPlugins(kernel, workspace, (plugins) =>
+  return withNewChatPlugins(kernel, workspace, false, (plugins) =>
     completeCommand(kernel, context, plugins.session, plugins, name, prefix),
   );
 }
@@ -76,6 +76,7 @@ export function completeWorkspaceCommand(
 async function withNewChatPlugins<T>(
   kernel: Kernel,
   workspace: WorkspaceId,
+  attach: boolean,
   work: (
     plugins: Pick<PluginRuntime, "registries" | "api"> & {
       readonly session: SessionId;
@@ -101,7 +102,9 @@ async function withNewChatPlugins<T>(
     newChatPlugins(kernel, workspace),
     scanWorkspaceResources(kernel, workspace),
   ]);
-  const activated = await activateApart(kernel, session, host, plugins, inputs);
+
+  const env = attach ? await kernel.environments.attachWorkspace(workspace) : null;
+  const activated = await activateApart(kernel, session, host, plugins, inputs, env);
 
   try {
     await registries.materialize();

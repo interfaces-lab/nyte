@@ -37,6 +37,7 @@ import { Timeline } from "./transcript/timeline.tsx";
 import { TranscriptProvider, useTranscriptControls } from "./transcript/transcript.tsx";
 import { ApprovalTray } from "./trays/approval-tray.tsx";
 import { QuestionTray } from "./trays/questions.tsx";
+import { SecretTray } from "./trays/secrets.tsx";
 import { transcriptProjector } from "./transcript/transcript-rows.ts";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { listAgents, SubagentTray, type SubagentTrayView } from "./trays/agents.tsx";
@@ -488,6 +489,11 @@ function ConversationScreen(conversation: SessionConversationProps): ReactElemen
                             viewport={scroll}
                           />
                           <QuestionTray disabled={failed || navigating} viewport={scroll} />
+                          <SecretTray
+                            sessionId={sessionId}
+                            disabled={failed || navigating}
+                            viewport={scroll}
+                          />
                           <SubagentTray
                             parentSessionId={sessionId}
                             agents={agents}

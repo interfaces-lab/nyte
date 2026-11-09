@@ -1,3 +1,9 @@
+import {
+  REMOVE_SECRET_COMMAND,
+  SAVED_SECRETS,
+  SavedSecretsType,
+} from "@nyte-ai/plugin/secret/schema";
+import type { SavedSecrets } from "@nyte-ai/plugin/secret/schema";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Input, Textarea } from "@nyte-ai/ui/input";
@@ -34,6 +40,10 @@ const EntriesType = Type.Record(
 type Entries = Static<typeof EntriesType>;
 
 const entriesSetting = pluginSetting(ID, EntriesType);
+
+const savedSecretsSetting = pluginSetting(SAVED_SECRETS, SavedSecretsType);
+
+const HOUR_MS = 60 * 60_000;
 
 const NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
@@ -110,42 +120,146 @@ export function VariablesSettings(): ReactElement {
   );
 
   return (
-    <SettingsSection description="Commands and terminals start with these. A folder's own value replaces one set for every folder">
-      {variables.map((variable) =>
-        editing?.kind === "variable" && editing.key === variable.key ? (
-          editor(variable)
+    <>
+      <SettingsSection description="Commands and terminals start with these. A folder's own value replaces one set for every folder">
+        {variables.map((variable) =>
+          editing?.kind === "variable" && editing.key === variable.key ? (
+            editor(variable)
+          ) : (
+            <VariableRow
+              key={variable.key}
+              variable={variable}
+              folder={folderName(variable.folder)}
+              busy={editing !== null || save.isPending}
+              onEdit={() => setEditing({ kind: "variable", key: variable.key })}
+              onRemove={() =>
+                save.mutate(
+                  Object.fromEntries(
+                    Object.entries(entries ?? {}).filter((entry) => entry[0] !== variable.key),
+                  ),
+                )
+              }
+            />
+          ),
+        )}
+        {editing?.kind === "new" ? (
+          editor(null)
         ) : (
-          <VariableRow
-            key={variable.key}
-            variable={variable}
-            folder={folderName(variable.folder)}
-            busy={editing !== null || save.isPending}
-            onEdit={() => setEditing({ kind: "variable", key: variable.key })}
-            onRemove={() =>
-              save.mutate(
-                Object.fromEntries(
-                  Object.entries(entries ?? {}).filter((entry) => entry[0] !== variable.key),
-                ),
-              )
-            }
-          />
-        ),
-      )}
-      {editing?.kind === "new" ? (
-        editor(null)
-      ) : (
-        <div {...ROW_MARK} {...props(settingsPatterns.rowRule, styles.addRow)}>
-          <Button
-            icon="plus"
-            disabled={entries === undefined || editing !== null}
-            onClick={() => setEditing({ kind: "new" })}
-          >
-            Add Variable
-          </Button>
-        </div>
-      )}
+          <div {...ROW_MARK} {...props(settingsPatterns.rowRule, styles.addRow)}>
+            <Button
+              icon="plus"
+              disabled={entries === undefined || editing !== null}
+              onClick={() => setEditing({ kind: "new" })}
+            >
+              Add Variable
+            </Button>
+          </div>
+        )}
+      </SettingsSection>
+      <SavedSecretsSection folderName={folderName} />
+    </>
+  );
+}
+
+function SavedSecretsSection({
+  folderName,
+}: {
+  readonly folderName: (folder: string | null) => string;
+}): ReactElement | null {
+  const saved = useSetting(savedSecretsSetting);
+
+  const remove = useMutation({
+    mutationFn: async (input: {
+      readonly directory: string;
+      readonly folder: SavedSecrets[string]["folder"];
+    }) => {
+      const outcome = await (
+        await connected()
+      )
+        .workspace(input.folder)
+        .command(REMOVE_SECRET_COMMAND, input.directory);
+
+      if (outcome.kind === "failed") throw new Error(outcome.message);
+
+      if (outcome.kind === "unknown") throw new Error("This host can't remove saved secrets.");
+    },
+    onError: (cause) => toast.add({ type: "error", title: errorMessage(cause) }),
+  });
+
+  const entries = Object.entries(saved ?? {}).toSorted((a, b) =>
+    a[1].name.localeCompare(b[1].name),
+  );
+
+  if (entries.length === 0) return null;
+
+  return (
+    <SettingsSection
+      title="Saved for agents"
+      description="Keys you pasted when an agent asked. Each is a private file only its commands read"
+    >
+      {entries.map((entry) => (
+        <SavedSecretRow
+          key={entry[0]}
+          secret={entry[1]}
+          folder={folderName(entry[1].folder)}
+          busy={remove.isPending}
+          onRemove={() => remove.mutate({ directory: entry[0], folder: entry[1].folder })}
+        />
+      ))}
     </SettingsSection>
   );
+}
+
+function SavedSecretRow({
+  secret,
+  folder,
+  busy,
+  onRemove,
+}: {
+  readonly secret: SavedSecrets[string];
+  readonly folder: string;
+  readonly busy: boolean;
+  readonly onRemove: () => void;
+}): ReactElement {
+  return (
+    <div {...ROW_MARK} {...props(settingsPatterns.rowRule, styles.variable)}>
+      <span {...props(styles.name)}>
+        <span {...props(styles.lock)}>
+          <Icon name="key" size="xs" />
+        </span>
+        <span {...props(styles.truncate)}>{secret.name}</span>
+      </span>
+      <span {...props(styles.value, styles.lifetime)}>
+        {describeExpiry(secret.expiresAt)}
+        {secret.expiresAt === null && (
+          <span {...props(styles.lock)}>
+            <Icon name="warning" size="xs" />
+          </span>
+        )}
+      </span>
+      <span {...props(styles.folder)}>{folder}</span>
+      <span {...props(styles.actions)}>
+        <Button
+          iconOnly
+          icon="trash"
+          aria-label={`Remove ${secret.name}`}
+          disabled={busy}
+          onClick={onRemove}
+        />
+      </span>
+    </div>
+  );
+}
+
+function describeExpiry(expiresAt: number | null): string {
+  if (expiresAt === null) return "Never deletes";
+  const hours = Math.floor((expiresAt - Date.now()) / HOUR_MS);
+
+  if (hours < 1) return "Deletes within an hour";
+
+  if (hours < 48) return `Deletes in ${hours} ${hours === 1 ? "hour" : "hours"}`;
+
+  return `Deletes in ${Math.floor(hours / 24)} days`;
 }
 
 function readVariables(entries: Entries): readonly Variable[] {
@@ -581,6 +695,7 @@ const styles = create({
     whiteSpace: "nowrap",
   },
   actions: { gridArea: "actions", display: "flex", gap: space.s1 },
+  lifetime: { display: "flex", alignItems: "center", gap: space.s1_5 },
   lock: { display: "inline-flex", flexShrink: 0, color: role.contentSecondary },
   truncate: { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   code: { fontFamily: type.fontMono, fontSize: type.fontCode },

@@ -33,7 +33,7 @@ import type {
   Registry,
   RegistryDraft,
 } from "../contract/plugin.ts";
-import type { Resources } from "../contract/workspace.ts";
+import type { ExecutionEnv, Resources } from "../contract/workspace.ts";
 import { RESERVED_PART_KINDS } from "../engine/part-definitions.ts";
 import { coveredHere, requireSession } from "../store/session.ts";
 import { callable } from "../util/callable.ts";
@@ -443,6 +443,7 @@ export async function activateApart(
   host: InstanceHost,
   plugins: readonly Plugin<"core">[],
   inputs: Resources | null,
+  env: ExecutionEnv | null,
 ): Promise<{
   readonly api: (owner: string) => PluginApi<"core"> | undefined;
   readonly dispose: Disposer;
@@ -451,7 +452,7 @@ export async function activateApart(
 
   for (const { plugin, ok } of preflight(plugins, [])) {
     if (!ok) continue;
-    const instance = createInstance(kernel, { plugin, session, env: UNRESOLVED.env, inputs });
+    const instance = createInstance(kernel, { plugin, session, env: { env }, inputs });
     const leave = instance.join(host);
 
     try {

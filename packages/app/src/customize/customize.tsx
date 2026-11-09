@@ -49,7 +49,7 @@ import {
   Section,
   Wide,
 } from "./customize-parts.tsx";
-import { customizeStyles as styles } from "./customize.stylex.ts";
+import { customizeDensity, customizeStyles as styles } from "./customize.stylex.ts";
 
 interface Presentation {
   readonly name: string;
@@ -73,6 +73,14 @@ const SHIPPED = new Map<string, Presentation>([
       name: "Questions",
       description: "Lets the agent ask you to choose",
       icon: "bubble-question",
+    },
+  ],
+  [
+    "secrets",
+    {
+      name: "Secrets",
+      description: "Lets the agent ask you for API keys and tokens",
+      icon: "key",
     },
   ],
   [
@@ -179,7 +187,11 @@ function presentPlugin(
     icon: presentation?.icon ?? "box-3d",
     shipped,
     failure,
-    settings: owned.settings.filter((setting) => owns(setting.owner)),
+    settings: owned.settings.filter(
+      (setting) =>
+        owns(setting.owner) &&
+        (setting.choices !== null || setting.value === true || setting.value === false),
+    ),
     commands: owned.commands.filter((command) => owns(command.owner)),
     tools: owned.tools.filter((tool) => owns(tool.owner) && tool.exposure !== "hidden"),
   };
@@ -582,7 +594,7 @@ export function CustomizeSurface({
     });
 
   return (
-    <div data-nyte-customize-surface {...props(page.content)}>
+    <div data-nyte-customize-surface {...props(customizeDensity, page.content)}>
       <div {...props(page.contentInner)}>
         <div {...props(styles.header)}>
           <div {...props(page.titleRow)}>

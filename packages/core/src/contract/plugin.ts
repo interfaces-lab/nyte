@@ -95,6 +95,11 @@ export interface Command<S extends Side = Side> {
 
   /** Picking the command waits for text after its name instead of running it at once. */
   readonly takesText?: boolean;
+  /**
+   * Leaves the command out of the session catalog, so no `/` menu offers it; a client still runs
+   * it by name. For a plugin's own client calls, such as a value that must not be stored.
+   */
+  readonly hidden?: boolean;
   readonly category?: string;
   readonly keywords?: readonly string[];
 
