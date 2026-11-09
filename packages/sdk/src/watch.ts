@@ -1,5 +1,5 @@
 import type { HostView, HostViewWire, Json, QueuedMessage, SessionView } from "@nyte-ai/schema";
-import { closable, coalesce } from "@nyte-ai/core";
+import { closable, coalesce } from "@nyte-ai/core/client";
 import type { Rows } from "./rows.ts";
 
 export type Sink<T> = {

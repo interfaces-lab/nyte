@@ -9,7 +9,7 @@ import type {
   PrincipalId,
   SessionId,
 } from "@nyte-ai/schema";
-import { dev, followTrace, holdMessage, traced } from "@nyte-ai/core";
+import { dev, followTrace, holdMessage, traced } from "@nyte-ai/core/client";
 import type { Connection, Head, PluginFile, RequestJournal, Session } from "@nyte-ai/core";
 import type { Transport } from "@nyte-ai/protocol";
 import { watchHost, withUnsent } from "./watch.ts";

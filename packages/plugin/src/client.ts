@@ -7,7 +7,15 @@ import type {
   PluginApi as CorePluginApi,
 } from "@nyte-ai/core";
 
-export { branchSummary, compaction, definePart, isPart, text, thinking, tool } from "@nyte-ai/core";
+export {
+  branchSummary,
+  compaction,
+  definePart,
+  isPart,
+  text,
+  thinking,
+  tool,
+} from "@nyte-ai/core/client";
 export type {
   ClientApi,
   Command,

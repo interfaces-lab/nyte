@@ -57,7 +57,7 @@ const ENTRIES = [
       ["agent"],
       ["drive"],
       ["api"],
-      ["compose.ts", "harness.ts", "index.ts", "server.ts", "store.ts", "testing.ts"],
+      ["client.ts", "compose.ts", "harness.ts", "index.ts", "server.ts", "store.ts", "testing.ts"],
     ],
     typeReach: new Map(),
     unplaced: new Set(),

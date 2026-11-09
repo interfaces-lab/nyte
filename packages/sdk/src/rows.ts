@@ -7,7 +7,7 @@ import type {
   OutputFrame,
   RequestOptions,
 } from "@nyte-ai/schema";
-import { closable, dev } from "@nyte-ai/core";
+import { closable, dev } from "@nyte-ai/core/client";
 import { decodeOutput, encodeInput } from "@nyte-ai/protocol";
 import type {
   ByteName,

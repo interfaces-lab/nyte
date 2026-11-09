@@ -17,7 +17,7 @@
 | 8 | `agent/` | One run's requests: transcript, prompt, compaction, the tool runner, `turn` and the agent loop | `turn.ts`, `agent-loop.ts` |
 | 9 | `drive/` | The head driver: claiming and renewing head leases, sweeps, takeover, handing a run to `kernel.turn` | `execution.ts` |
 | 10 | `api/` | The public interfaces (`Connection`, `Host`, `Session`, `Head`, `Part`, projects) and input validation | `connection.ts`, `session.ts` |
-| 11 | `compose.ts`, `harness.ts`, `index.ts`, `server.ts`, `store.ts`, `testing.ts` | Composition and the package entries | `compose.ts`, `index.ts` |
+| 11 | `client.ts`, `compose.ts`, `harness.ts`, `index.ts`, `server.ts`, `store.ts`, `testing.ts` | Composition and the package entries; `client.ts` is the entry client code loads, with nothing that does work at import | `compose.ts`, `index.ts` |
 
 ## Placing code
 

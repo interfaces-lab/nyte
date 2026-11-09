@@ -1,4 +1,4 @@
-import { isPart, text, thinking, tool } from "@nyte-ai/core";
+import { isPart, text, thinking, tool } from "@nyte-ai/core/client";
 import type { PartState } from "@nyte-ai/core";
 import type {
   Execution,

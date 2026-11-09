@@ -11,7 +11,7 @@ import type {
   PatchSetWire,
   WorkspaceId,
 } from "@nyte-ai/schema";
-import { closable } from "@nyte-ai/core";
+import { closable } from "@nyte-ai/core/client";
 import type {
   BrowserApi,
   FileBatch,

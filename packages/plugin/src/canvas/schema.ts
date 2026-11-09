@@ -1,4 +1,4 @@
-import { definePart } from "@nyte-ai/core";
+import { definePart } from "@nyte-ai/core/client";
 import { idSchema, standard } from "@nyte-ai/schema";
 import type { Infer } from "@nyte-ai/schema";
 import { Type } from "typebox";

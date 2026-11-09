@@ -1,6 +1,6 @@
 import { isJsonObject, SdkError, SdkErrorWireSchema, SdkErrorWireType } from "@nyte-ai/schema";
 import type { ByteReader, Json, OutputFrame, SdkErrorCode, SdkErrorWire } from "@nyte-ai/schema";
-import { dev } from "@nyte-ai/core";
+import { dev } from "@nyte-ai/core/client";
 import { parseJson } from "./json.ts";
 
 export const errorStatus = {

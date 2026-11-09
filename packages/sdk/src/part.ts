@@ -1,6 +1,6 @@
 import { asId, isJson, SdkError } from "@nyte-ai/schema";
 import type { Message, PartId, SessionId, ValidationIssue } from "@nyte-ai/schema";
-import { callable, fitsActionOutput, fitsAnswer, fitsState } from "@nyte-ai/core";
+import { callable, fitsActionOutput, fitsAnswer, fitsState } from "@nyte-ai/core/client";
 import type { Part, PartDefinition, PartState } from "@nyte-ai/core";
 import type { Rows } from "./rows.ts";
 

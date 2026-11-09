@@ -306,7 +306,7 @@ export type {
   RestoreOutcome,
 } from "@nyte-ai/schema";
 
-export { dev } from "@nyte-ai/core";
+export { dev } from "@nyte-ai/core/client";
 
 export {
   clearSpans,
@@ -318,7 +318,7 @@ export {
   startSpan,
   traced,
   tracing,
-} from "@nyte-ai/core";
+} from "@nyte-ai/core/client";
 
 export type { EndSpan, Span, SpanDetail, SpanName } from "@nyte-ai/core";
 

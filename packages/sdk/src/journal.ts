@@ -8,7 +8,7 @@ import type {
   SessionId,
   SessionView,
 } from "@nyte-ai/schema";
-import { dev } from "@nyte-ai/core";
+import { dev } from "@nyte-ai/core/client";
 import type { RequestJournal } from "@nyte-ai/core";
 import type { OperationOutput } from "@nyte-ai/protocol";
 import type { Rows } from "./rows.ts";

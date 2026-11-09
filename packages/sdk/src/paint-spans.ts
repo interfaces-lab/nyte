@@ -1,4 +1,4 @@
-import { followedTrace, startSpan, tracing } from "@nyte-ai/core";
+import { followedTrace, startSpan, tracing } from "@nyte-ai/core/client";
 import { mapped } from "@nyte-ai/protocol";
 import type { SessionId, SessionView } from "@nyte-ai/schema";
 

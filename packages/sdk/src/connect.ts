@@ -1,6 +1,6 @@
 import { IdentityChallengeSchema, isJson, SdkError } from "@nyte-ai/schema";
 import type { CredentialSource, HostId, HostViewWire, Json } from "@nyte-ai/schema";
-import { dev } from "@nyte-ai/core";
+import { dev } from "@nyte-ai/core/client";
 import type { ConnectOptions, Connection } from "@nyte-ai/core";
 import { createTransport, decodeError, decodeOutput } from "@nyte-ai/protocol";
 import type { Transport } from "@nyte-ai/protocol";
