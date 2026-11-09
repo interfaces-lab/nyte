@@ -2,7 +2,7 @@ import { APPROVAL_ACTIONS } from "@nyte-ai/plugin/approvals/schema";
 import { shortId } from "../../lib/format.ts";
 import type { ListPurpose } from "../dialogs/list.ts";
 import { NO_PARTS } from "../draft.ts";
-import { chatCommands, interactionsFor } from "../interactions.ts";
+import { CHAT_COMMANDS, interactionsFor } from "../interactions.ts";
 import type { Intent } from "../msg.ts";
 import { editingQuestionDraft, sameQuestion, storeQuestionDraft } from "../question.ts";
 import { queueRows } from "../queue.ts";
@@ -181,7 +181,7 @@ const CHOOSERS: Choosers = {
         { kind: "run-command", name: choice.slice("cmd:".length), argument: "" },
         now,
       );
-    const command = chatCommands().find((name) => `action:${name}` === choice);
+    const command = CHAT_COMMANDS.find((name) => `action:${name}` === choice);
 
     const intent =
       command === undefined ? null : interactionsFor(tableInputFor(closed, null))[command].intent;

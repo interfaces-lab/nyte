@@ -1,10 +1,5 @@
 import type { Delivery, SessionId } from "@nyte-ai/sdk";
-import {
-  completingCommands,
-  resolveCommand,
-  runnableCommand,
-  slashNamespace,
-} from "../commands.ts";
+import { completingCommands, resolveCommand, runnableCommand } from "../commands.ts";
 import {
   completionEdit,
   completionModel,
@@ -417,7 +412,7 @@ function completion(
   reduce: Reduce,
 ): Step {
   const model = completionModel(state.local.completion, state.local.draft, {
-    commands: slashNamespace(state),
+    commands: state.facts.slash,
     files: state.facts.workspace.mentions,
   });
 
@@ -479,7 +474,7 @@ function acceptCompletion(
   if (item === undefined) return stay(state);
 
   const edit = completionEdit(model, item, state.local.draft, alternate === null ? via : "tab", {
-    commands: slashNamespace(state),
+    commands: state.facts.slash,
     files: state.facts.workspace.mentions,
   });
 

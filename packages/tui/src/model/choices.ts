@@ -17,7 +17,7 @@ import { commandRegistry, indexSkills } from "./commands.ts";
 import type { Dialog } from "./dialogs/dialog.ts";
 import type { Choice, ListDialog, ListPurpose } from "./dialogs/list.ts";
 import { visibleChoices } from "./dialogs/list.ts";
-import { chatCommands, COMMAND_TITLES, interactionsFor } from "./interactions.ts";
+import { CHAT_COMMANDS, COMMAND_TITLES, interactionsFor } from "./interactions.ts";
 import { placeLabel, queueRows } from "./queue.ts";
 import { tableInputFor } from "./table-input.ts";
 import { settingRows, settingValue } from "./settings.ts";
@@ -59,7 +59,7 @@ function activeCommands(
 ): readonly { readonly command: ChatCommand; readonly label: string }[] {
   const interactions = interactionsFor(tableInputFor(state, null));
 
-  return chatCommands().flatMap((command) => {
+  return CHAT_COMMANDS.flatMap((command) => {
     const interaction = interactions[command];
 
     return interaction.intent === null || COMMAND_TITLES[command] === undefined

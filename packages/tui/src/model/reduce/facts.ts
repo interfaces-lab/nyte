@@ -10,7 +10,7 @@ import type {
 import type { HeadView } from "@nyte-ai/sdk/client";
 import { openQuestions } from "@nyte-ai/plugin/question/schema";
 import { shortId } from "../../lib/format.ts";
-import { completingCommands } from "../commands.ts";
+import { completingCommands, indexSlash } from "../commands.ts";
 import { CLOSED, explicitMentionQuery, nextCompletion } from "../completion.ts";
 import { addPart } from "../draft.ts";
 import type { Fact } from "../msg.ts";
@@ -57,9 +57,9 @@ export const factHandlers = {
     if (chat?.kind !== "blank" || chat.id !== msg.session || chat.folder.kind === "folder")
       return stay(state);
 
-    const next = withFacts(state, {
-      chat: { ...chat, folder: { kind: "folder", id: msg.workspace } },
-    });
+    const next = indexSlash(
+      withFacts(state, { chat: { ...chat, folder: { kind: "folder", id: msg.workspace } } }),
+    );
 
     return andThen(trustOnEntry(state, next, msg.workspace), (current) => ({
       state: current,
@@ -101,18 +101,21 @@ export const factHandlers = {
       ? stay(state)
       : stay(withFacts(state, { catalog: { generation: msg.generation, catalog: msg.catalog } })),
   settings: (state, msg) => stay(withFacts(state, { settings: msg.settings })),
-  "host-settings": (state, msg) => stay(withFacts(state, { hostSettings: msg.settings })),
+  "host-settings": (state, msg) =>
+    stay(indexSlash(withFacts(state, { hostSettings: msg.settings }))),
   "folder-catalog": (state, msg) =>
     msg.generation < (state.facts.folderCatalog?.generation ?? -1)
       ? stay(state)
       : stay(
-          withFacts(state, {
-            folderCatalog: {
-              generation: msg.generation,
-              workspace: msg.workspace,
-              catalog: msg.catalog,
-            },
-          }),
+          indexSlash(
+            withFacts(state, {
+              folderCatalog: {
+                generation: msg.generation,
+                workspace: msg.workspace,
+                catalog: msg.catalog,
+              },
+            }),
+          ),
         ),
   workspace: (state, msg) =>
     stay(
@@ -171,7 +174,7 @@ function opened(state: State, msg: Extract<Fact, { kind: "session-opened" }>): S
 }
 
 function entered(next: State): State {
-  return withLocal(next, {
+  return withLocal(indexSlash(next), {
     question: { ...next.local.question, dismissed: null, highlighted: 0 },
     transcript: {
       ...next.local.transcript,
@@ -189,6 +192,8 @@ function entered(next: State): State {
 function viewArrived(state: State, session: FollowedSession, view: HeadView, now: number): Step {
   const before = session.view;
   let next = withFacts(state, { chat: { ...session, view } });
+
+  if (view.catalog !== before?.catalog) next = indexSlash(next);
 
   const latest = latestRun(view.execution);
 

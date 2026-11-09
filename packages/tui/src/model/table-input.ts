@@ -1,6 +1,6 @@
 import type { RunId } from "@nyte-ai/sdk";
 import { availableModels, findModel } from "../lib/catalog.ts";
-import { runnableCommand, slashNamespace } from "./commands.ts";
+import { runnableCommand } from "./commands.ts";
 import { completionModel } from "./completion.ts";
 import type { CompletionModel } from "./completion.ts";
 import type { Dialog } from "./dialogs/dialog.ts";
@@ -145,7 +145,7 @@ export function tableInputFor(state: State, dialog: Dialog | null): TableInput {
     completion:
       dialog === null
         ? completionModel(state.local.completion, draft, {
-            commands: slashNamespace(state),
+            commands: state.facts.slash,
             files: state.facts.workspace.mentions,
           })
         : null,

@@ -136,7 +136,14 @@ export function availableSlashCommands(
   return claimed;
 }
 
-const sortedCommands = new WeakMap<readonly SlashCommand[], SlashCommand[]>();
+/** Slash commands in canonical order: by name. */
+export type SlashIndex = readonly SlashCommand[];
+
+export function slashIndex(commands: readonly SlashCommand[]): SlashIndex {
+  return commands.toSorted((left, right) => left.name.localeCompare(right.name));
+}
+
+const BUILTIN_SLASH = slashIndex(SLASH_COMMANDS);
 
 const MAX_SUGGESTIONS = 10;
 
@@ -156,21 +163,14 @@ function prefixLength(command: SlashCommand, query: string): number | undefined 
   return shortest;
 }
 
-function commandSuggestions(query: string, commands: readonly SlashCommand[]): SlashCommand[] {
-  let sorted = sortedCommands.get(commands);
-
-  if (sorted === undefined) {
-    sorted = commands.toSorted((left, right) => left.name.localeCompare(right.name));
-    sortedCommands.set(commands, sorted);
-  }
-
-  if (query === "") return [...sorted];
+function commandSuggestions(query: string, index: SlashIndex): SlashCommand[] {
+  if (query === "") return [...index];
 
   const needle = query.toLowerCase();
   const prefixed: { command: SlashCommand; length: number }[] = [];
   const rest: SlashCommand[] = [];
 
-  for (const command of sorted) {
+  for (const command of index) {
     const length = prefixLength(command, needle);
 
     if (length === undefined) rest.push(command);
@@ -218,7 +218,7 @@ interface SlashCompletion {
 
 export function slashCompletion(
   value: string,
-  commands: readonly SlashCommand[] = SLASH_COMMANDS,
+  index: SlashIndex = BUILTIN_SLASH,
   cursor = value.length,
 ): SlashCompletion | undefined {
   const trigger = completionTrigger(value, cursor);
@@ -229,7 +229,7 @@ export function slashCompletion(
     start: trigger.start,
     end: trigger.end,
     leading: opensDraft(value, trigger.start),
-    commands: commandSuggestions(trigger.query, commands),
+    commands: commandSuggestions(trigger.query, index),
   };
 }
 

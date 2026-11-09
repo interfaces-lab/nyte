@@ -5,6 +5,7 @@ import {
   parseComposerSubmission,
   SLASH_COMMANDS,
 } from "../lib/slash.ts";
+import { slashIndex } from "../lib/slash.ts";
 import type { BuiltinSlashName, SlashCommand } from "../lib/slash.ts";
 import type { Intent } from "./msg.ts";
 import { applyChoice, busyRefusal, matchChoice, settingRows } from "./settings.ts";
@@ -169,6 +170,11 @@ export function slashNamespace(state: State): readonly SlashCommand[] {
     settingRows(state).map((row) => ({ id: row.id, label: row.label })),
     indexSkills(state),
   );
+}
+
+/** `state` with its slash namespace indexed in canonical order, for a reducer whose transition changed the catalog. */
+export function indexSlash(state: State): State {
+  return { ...state, facts: { ...state.facts, slash: slashIndex(slashNamespace(state)) } };
 }
 
 export function commandRegistry(state: State): readonly CommandEntry[] {

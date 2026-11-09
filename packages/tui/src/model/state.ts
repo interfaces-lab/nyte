@@ -15,7 +15,9 @@ import type {
 import type { Freshness, HeadView, Health } from "@nyte-ai/sdk/client";
 import type { ResolvedSettings } from "../lib/settings-schema.ts";
 import type { Task } from "../lib/tasks.ts";
+import type { SlashIndex } from "../lib/slash.ts";
 import type { ThemeMode } from "../lib/theme.ts";
+import { indexSlash } from "./commands.ts";
 import type { CompletionState, IndexedMention } from "./completion.ts";
 import type { Dialog } from "./dialogs/dialog.ts";
 import type { ListDialog } from "./dialogs/list.ts";
@@ -35,6 +37,8 @@ export interface Facts {
   readonly chat: Chat | null;
   readonly catalog: CatalogFacts;
   readonly hostSettings: readonly SettingInfo[];
+  /** The slash namespace in canonical order; the reducer rebuilds it when the catalog changes. */
+  readonly slash: SlashIndex;
   readonly folderCatalog: FolderCatalog | null;
   readonly settings: ResolvedSettings;
   readonly tasks: readonly Task[];
@@ -264,13 +268,14 @@ interface Bootstrap {
 const EMPTY_DRAFT: Draft = { text: "", cursor: 0, row: "only", parts: NO_PARTS };
 
 export function initialState(bootstrap: Bootstrap): State {
-  return {
+  return indexSlash({
     facts: {
       host: "opening",
       health: { kind: "connecting" },
       chat: bootstrap.chat,
       catalog: { generation: -1, catalog: null },
       hostSettings: [],
+      slash: [],
       folderCatalog: null,
       settings: bootstrap.settings,
       tasks: [],
@@ -310,7 +315,7 @@ export function initialState(bootstrap: Bootstrap): State {
       move: null,
       preview: null,
     },
-  };
+  });
 }
 
 export function chatFolder(chat: Chat): ChatFolder {

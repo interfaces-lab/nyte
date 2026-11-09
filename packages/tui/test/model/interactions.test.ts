@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import type { ChatCommand } from "../../src/lib/constants.ts";
 import { reduceDialog } from "../../src/model/dialogs/dialog.ts";
 import type { Dialog } from "../../src/model/dialogs/dialog.ts";
-import { chatCommands, dialogKeys, interactionsFor } from "../../src/model/interactions.ts";
+import { CHAT_COMMANDS, dialogKeys, interactionsFor } from "../../src/model/interactions.ts";
 import type { CoreCommand, Interactions } from "../../src/model/interactions.ts";
 import { tableInput } from "../fixture/table.ts";
 import type { TableSpec } from "../fixture/table.ts";
@@ -560,7 +560,7 @@ describe("invariants over every situation", () => {
       };
 
       if (spec.dialog) {
-        for (const command of chatCommands()) {
+        for (const command of CHAT_COMMANDS) {
           const intent = interactions[command].intent;
 
           if (intent !== null && intent.kind !== "dialog") fail(`dialog leaves ${command} on`);

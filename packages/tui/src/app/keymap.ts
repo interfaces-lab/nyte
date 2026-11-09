@@ -9,7 +9,7 @@ import type { ChatCommand, FieldCommand } from "../lib/constants.ts";
 import { dialogText } from "../model/dialogs/dialog.ts";
 import type { Dialog } from "../model/dialogs/dialog.ts";
 import { FIELD_EDITS } from "../model/dialogs/field.ts";
-import { chatCommands } from "../model/interactions.ts";
+import { CHAT_COMMANDS } from "../model/interactions.ts";
 import { readDraft } from "../ui/composer/composer.tsx";
 import type { AppKeymap } from "./keyboard.ts";
 import type { Store } from "./store.ts";
@@ -65,7 +65,7 @@ export function installKeymap(options: KeymapOptions): () => void {
     keys: Object.fromEntries(names.map((name) => [name, CHAT_KEYBINDS[name]])),
   });
 
-  const names = chatCommands().filter((name) => !name.startsWith("composer."));
+  const names = CHAT_COMMANDS.filter((name) => !name.startsWith("composer."));
 
   const typing = (): boolean => {
     const open = dialog();

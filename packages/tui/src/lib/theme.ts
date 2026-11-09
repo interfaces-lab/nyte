@@ -212,19 +212,18 @@ function monochrome(theme: CliTheme): CliTheme {
   });
 }
 
-const THEMES = {
-  dark: { color: DARK_THEME, plain: monochrome(DARK_THEME) },
-  light: { color: LIGHT_THEME, plain: monochrome(LIGHT_THEME) },
-} as const;
+/** Each theme with and without color, solid or with the terminal's background showing through. */
+function variants(theme: CliTheme) {
+  const plain = monochrome(theme);
+  const through = (base: CliTheme) => Object.freeze({ ...base, backdrop: base.transparent });
 
-const SEE_THROUGH: ReadonlyMap<CliTheme, CliTheme> = new Map(
-  Object.values(THEMES).flatMap((forms) =>
-    Object.values(forms).map((theme) => [
-      theme,
-      Object.freeze({ ...theme, backdrop: theme.transparent }),
-    ]),
-  ),
-);
+  return {
+    color: { solid: theme, seeThrough: through(theme) },
+    plain: { solid: plain, seeThrough: through(plain) },
+  } as const;
+}
+
+const THEMES = { dark: variants(DARK_THEME), light: variants(LIGHT_THEME) } as const;
 
 function byName(raw: string | undefined): ThemeMode | undefined {
   const name = raw?.trim().toLowerCase();
@@ -263,10 +262,12 @@ function resolveThemeMode(
   );
 }
 
-export function themeForMode(mode: ThemeMode, env: NodeJS.ProcessEnv = process.env): CliTheme {
-  const noColor = env["NO_COLOR"];
+function palette(env: NodeJS.ProcessEnv): "color" | "plain" {
+  return env["NO_COLOR"] ? "plain" : "color";
+}
 
-  return noColor === undefined || noColor === "" ? THEMES[mode].color : THEMES[mode].plain;
+export function themeForMode(mode: ThemeMode, env: NodeJS.ProcessEnv = process.env): CliTheme {
+  return THEMES[mode][palette(env)].solid;
 }
 
 export function themeFor(
@@ -275,7 +276,7 @@ export function themeFor(
   env: NodeJS.ProcessEnv = process.env,
 ): CliTheme {
   const mode = resolveThemeMode(choice, reported, env);
-  const theme = themeForMode(mode, env);
+  const forms = THEMES[mode][palette(env)];
 
-  return mode === reported ? (SEE_THROUGH.get(theme) ?? theme) : theme;
+  return mode === reported ? forms.seeThrough : forms.solid;
 }

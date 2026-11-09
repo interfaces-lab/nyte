@@ -70,29 +70,14 @@ export function footerFor(state: State, queued: number): FooterModel {
   };
 }
 
+const SEPARATOR_WIDTH = displayWidth(" · ");
+
 function hintText(hint: Hint): string {
   return `${hint.keycap} ${hint.label}`;
 }
 
-let fitted: { readonly key: string; readonly hints: readonly Hint[] } | null = null;
-
+/** The hints the interactions show, in `HINT_ORDER`: every primary one, then each secondary one that still fits `width`. */
 export function hintsFor(interactions: Interactions, width: number): readonly Hint[] {
-  const key = HINT_ORDER.reduce((built, { command }) => {
-    const interaction = interactions[command];
-
-    return interaction.intent === null || interaction.hidden
-      ? `${built}\u0000`
-      : `${built}\u0000${interaction.label}\u0001`;
-  }, String(width));
-
-  if (fitted?.key === key) return fitted.hints;
-  const hints = fitHints(interactions, width);
-  fitted = { key, hints };
-
-  return hints;
-}
-
-function fitHints(interactions: Interactions, width: number): readonly Hint[] {
   const interruptShown =
     interactions["chat.interrupt"].intent !== null && !interactions["chat.interrupt"].hidden;
 
@@ -111,14 +96,20 @@ function fitHints(interactions: Interactions, width: number): readonly Hint[] {
     ];
   });
 
-  const shown = candidates.filter((hint) => hint.tier === "primary");
+  const primary = candidates.filter((hint) => hint.tier === "primary");
+  let used = displayWidth(primary.map(hintText).join(" · "));
+  let count = primary.length;
+  const kept = new Set(primary);
 
   for (const hint of candidates) {
     if (hint.tier === "primary") continue;
-    const next = [...shown, hint];
+    const next = used + displayWidth(hintText(hint)) + (count > 0 ? SEPARATOR_WIDTH : 0);
 
-    if (displayWidth(next.map(hintText).join(" · ")) <= width - 6) shown.push(hint);
+    if (next > width - 6) continue;
+    kept.add(hint);
+    used = next;
+    count += 1;
   }
 
-  return candidates.filter((hint) => shown.includes(hint));
+  return candidates.filter((hint) => kept.has(hint));
 }

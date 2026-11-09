@@ -4,7 +4,7 @@ import type { CommandCompletion } from "@nyte-ai/sdk";
 import { completionTrigger, findCommandArgument } from "@nyte-ai/plugin/client/presentation";
 import { directoryCompletionQuery } from "../lib/directory-completion.ts";
 import { acceptSlashCommand, slashCommandLabel, slashCompletion } from "../lib/slash.ts";
-import type { SlashCommand } from "../lib/slash.ts";
+import type { SlashCommand, SlashIndex } from "../lib/slash.ts";
 import type { Draft } from "./state.ts";
 
 export type CompletionState =
@@ -61,7 +61,7 @@ export interface CompletionItem {
 }
 
 interface CompletionSources {
-  readonly commands: readonly SlashCommand[];
+  readonly commands: SlashIndex;
   readonly files: readonly IndexedMention[] | null;
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { SLASH_COMMANDS } from "../../src/lib/slash.ts";
+import { SLASH_COMMANDS, slashIndex } from "../../src/lib/slash.ts";
 import {
   CLOSED,
   completionEdit,
@@ -16,10 +16,10 @@ import {
 import type { CompletionModel, IndexedMention, MentionFile } from "../../src/model/completion.ts";
 
 const SOURCES = {
-  commands: [
+  commands: slashIndex([
     ...SLASH_COMMANDS,
     { name: "review", description: "Review code", kind: "prompt" as const },
-  ],
+  ]),
   files: ["src/app.ts", "src/", "test/app.test.ts", "README.md"].map((entry) =>
     indexedMention("/w", entry),
   ),

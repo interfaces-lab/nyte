@@ -699,10 +699,5 @@ function namesChatCommand(name: string): name is ChatCommand {
   return Object.hasOwn(CHAT_KEYBINDS, name);
 }
 
-let commandList: readonly ChatCommand[] | null = null;
-
-export function chatCommands(): readonly ChatCommand[] {
-  commandList ??= Object.keys(CHAT_KEYBINDS).filter(namesChatCommand);
-
-  return commandList;
-}
+export const CHAT_COMMANDS: readonly ChatCommand[] =
+  Object.keys(CHAT_KEYBINDS).filter(namesChatCommand);
