@@ -69,13 +69,20 @@ const styles = create({
   railFloating: {
     position: "absolute",
     zIndex: layer.chrome,
-    insetBlock: sidebar.floatInset,
-    insetInlineStart: sidebar.floatInset,
     insetInlineEnd: "auto",
-    borderRadius: sidebar.floatRadius,
     overflow: "clip",
     pointerEvents: "auto",
     transitionProperty: "visibility",
+  },
+  railFloatingCard: {
+    insetBlock: `0 ${shell.cardInset}`,
+    insetInlineStart: shell.cardInset,
+    borderRadius: shell.cardRadius,
+  },
+  railFloatingEdge: {
+    insetBlock: sidebar.floatInset,
+    insetInlineStart: sidebar.floatInset,
+    borderRadius: sidebar.floatRadius,
   },
   handle: {
     position: "fixed",
@@ -259,7 +266,11 @@ export function SidebarPane({ children }: { readonly children: ReactNode }): Rea
         {...props(
           styles.rail,
           away && styles.railAway,
-          floating && [floatingSurfaceStyles.popup, styles.railFloating],
+          floating && [
+            floatingSurfaceStyles.popup,
+            styles.railFloating,
+            windowTabs.strip ? styles.railFloatingCard : styles.railFloatingEdge,
+          ],
         )}
         initial={false}
         style={{ x: floatX }}
