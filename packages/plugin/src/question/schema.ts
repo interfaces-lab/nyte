@@ -16,13 +16,11 @@ const infoSchema = Type.Object({
   options: Type.Array(
     Type.Object({
       label: Type.String({ minLength: 1, pattern: "\\S" }),
-      description: Type.String({ description: "Explain what this choice means." }),
+      description: Type.String({ description: "What this choice means." }),
     }),
-    { description: "Distinct choices. The user may answer in their own words." },
+    { description: "Distinct choices; the user can also write their own." },
   ),
-  multiple: Type.Optional(
-    Type.Boolean({ description: "Allow more than one choice. Defaults to false." }),
-  ),
+  multiple: Type.Optional(Type.Boolean({ description: "Allow several choices." })),
 });
 
 const info = standard(infoSchema);

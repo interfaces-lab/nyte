@@ -26,9 +26,11 @@ it("renders a canvas from the tool as an answer part, then replaces it in place 
   );
 
   await using host = await open(fake, [canvasPlugin]);
+
   const { session, receipt: started } = await host.sessions.start({
     content: "Show totals.",
   });
+
   await started.settled();
 
   const drawn = await until(async () =>
@@ -115,6 +117,7 @@ it("answers the model with the compiler's diagnostics, positioned per line, and 
   const view = await session.view();
 
   expect(view.messages.filter((message) => isPart(message, canvas))).toEqual([]);
+
   const result = fake.requests
     .at(-1)
     ?.context.messages.find((message) => message.role === "toolResult");
@@ -124,14 +127,14 @@ it("answers the model with the compiler's diagnostics, positioned per line, and 
   );
 });
 
-it("describes the tool with every kit export, every import and the libraries", () => {
+it("names every kit export and every library family a canvas can import", () => {
   expect(CANVAS_DESCRIPTION).toContain(
-    `Imports: \`react\`, \`react-dom\` (\`createPortal\` and \`flushSync\` only), \`${KIT_SPECIFIER}\`, the canvas's own files`,
+    `\`react\`, \`react-dom\` (createPortal, flushSync), \`${KIT_SPECIFIER}\`, your own files and \`three\`, \`d3-*\`, \`@nivo/*\`.`,
   );
 
   for (const name of Object.keys(LIBRARY_VERSIONS))
-    expect(CANVAS_DESCRIPTION).toContain(`\`${name}\` `);
-  expect(CANVAS_DESCRIPTION).toContain("`eval` and `new Function` are unavailable");
+    expect(name === "three" || name.startsWith("d3-") || name.startsWith("@nivo/")).toBe(true);
 
-  for (const name of KIT_EXPORTS) expect(CANVAS_DESCRIPTION).toContain(`- ${name} `);
+  for (const name of KIT_EXPORTS)
+    expect(CANVAS_DESCRIPTION).toMatch(new RegExp(`\\b${name}\\b`, "u"));
 });

@@ -8,11 +8,9 @@ import {
   CANVAS_MAX_HEIGHT,
   CANVAS_MIN_HEIGHT_HINT,
   CANVAS_SOURCE_LIMIT,
-  KIT,
   KIT_SPECIFIER,
   LIBRARY_VERSIONS,
   REACT_DOM_EXPORTS,
-  TINTS,
 } from "./canvas-protocol.ts";
 import { compileCanvas } from "./canvas-compile.ts";
 import { CANVAS_PREVIEW_WIDTHS, describeCanvasPreview } from "./canvas-preview.ts";
@@ -76,12 +74,12 @@ export const canvas = definePart({
 
 const source = Type.String({
   maxLength: CANVAS_SOURCE_LIMIT,
-  description: `${CANVAS_ENTRY}: the TSX module whose default export is the component.`,
+  description: `${CANVAS_ENTRY}, the entry module.`,
 });
 
 const files = Type.Optional(
   Type.Record(Type.String(), Type.String({ maxLength: CANVAS_SOURCE_LIMIT }), {
-    description: `The canvas's other modules, keyed by path from ${CANVAS_ENTRY}'s folder (\`chart.tsx\`, \`lib/scale.ts\`), which it imports as \`./chart\` or \`./lib/scale.ts\`.`,
+    description: "Other modules by path (`chart.tsx`), imported as `./chart`.",
   }),
 );
 
@@ -92,42 +90,56 @@ const parameters = standard(
     files,
     canvas: Type.Optional(
       Type.String({
-        description: "The id of a canvas to replace in place; omit to add a new one.",
+        description: "The id of a canvas to replace in place.",
       }),
     ),
     height: Type.Optional(
       Type.Number({
         minimum: CANVAS_MIN_HEIGHT_HINT,
         maximum: CANVAS_MAX_HEIGHT,
-        description: "Initial frame height in px until the canvas reports its own.",
+        description: "Initial height in px.",
       }),
     ),
   }),
 );
 
-const kitReference = Object.entries(KIT)
-  .map(([name, signature]) => `- ${name} ${signature}`)
-  .join("\n");
+/** Each library family once: the compiler names every module of a family when an import misses. */
+const libraryFamilies = [
+  ...new Set(
+    Object.keys(LIBRARY_VERSIONS).map((name) =>
+      name.includes("/")
+        ? `${name.slice(0, name.indexOf("/"))}/*`
+        : name.replace(/-[a-z]+$/u, "-*"),
+    ),
+  ),
+];
+
+/**
+ * The kit by what a canvas uses it for, with the props a model gets wrong when it guesses. Every
+ * export in `KIT` appears here once; the compiler rejects an import the kit doesn't export.
+ */
+const KIT_GUIDE = [
+  'Layout: Stack {direction, gap 0-6, align, justify, wrap}, Grid {columns | "auto", minWidth, gap}, Card {title, description, padding}, Section {title, description}, Panes {areas: string[], rows} with Pane {area, title, height}, Divider',
+  'Text: Heading {level}, Text {size, tone: "primary" | "secondary" | "tertiary", weight, mono}, Code {block}, FileLink {path, line}, Badge {tone}, Callout {tone, title}, Kbd {keys}',
+  "Facts: Stat {label, value, detail, delta, trend: number[]}, KeyValue {items: {label, value}[]}, Table {columns: {key, label, align}[], rows: {[key]: node}[]}, Meter {value, max, label}, Delta {value}, DiffStat {added, removed}, Steps {items: {title, body, status}[]}, Tracker {label, data: {tone, label}[]}",
+  'Charts; yFormat, valueFormat and format are functions (n) => string that carry units: LineChart {series: {id, data: {x, y}[]}[], yFormat, area}, BarChart {data: object[], keys: string[], indexBy, layout: "vertical" | "horizontal", mode: "grouped" | "stacked", valueFormat}, PieChart {data: {id, value}[], donut} for up to 5 parts, BarList {data: {label, value}[], format}, StackedBars {label, series: {key, label, tint}[], buckets: {key, label, values}[], format}, Sparkline {values}',
+  "Controls: Button, Tabs, Select, SelectTrigger, SelectValue, SelectContent, SelectItem, ToggleGroup, Toggle, Switch, Checkbox, Slider, Tooltip, TooltipTrigger, TooltipContent, Collapsible, Spinner. useNivoTheme() gives a @nivo chart its {theme, colors}; useColorScheme()",
+  'Other tone props: "neutral" | "info" | "success" | "warning" | "danger". tint: a colour name such as "blue" or "green".',
+].join("\n");
+
+/** When to draw, in the system prompt: a tool description says how, and models read it only once they have chosen the tool. */
+export const CANVAS_PROMPT = {
+  id: "canvas",
+  order: 50,
+  text: "When an answer rests on numbers, a trend, a breakdown or a comparison, show it with canvas_render, then sum it up in a sentence or two without repeating what the canvas shows. A single number or a short answer needs no canvas.",
+};
 
 export const CANVAS_DESCRIPTION = [
-  `Render a React canvas inline in the chat. \`source\` is ${CANVAS_ENTRY}, a TSX module whose default export is a component; split a large canvas into \`files\` it imports by relative path. Every file counts toward one ${Math.round(CANVAS_SOURCE_LIMIT / 1024)} KB budget.`,
-  `Imports: \`react\`, \`react-dom\` (${REACT_DOM_EXPORTS.map((name) => `\`${name}\``).join(" and ")} only), \`${KIT_SPECIFIER}\`, the canvas's own files, and these libraries, each loaded only by a canvas that imports it: ${Object.entries(
-    LIBRARY_VERSIONS,
-  )
-    .map(([name, version]) => `\`${name}\` ${version}`)
-    .join(
-      ", ",
-    )}. \`three\` is the core module without its addons, so orbit a camera yourself. Nothing else resolves (no other npm packages, no URLs, no fetch). \`eval\` and \`new Function\` are unavailable at run time.`,
-  `The canvas runs sandboxed with no network, on the chat's background with the user's theme applied through the kit. It is as wide as the reply, ${CANVAS_PREVIEW_WIDTHS.chat} px in the chat column and ${CANVAS_PREVIEW_WIDTHS.phone} px on a phone, so lay it out to fit both, and as tall as its content up to ${CANVAS_MAX_HEIGHT} px, then it scrolls. Give SVG and WebGL drawings a fixed pixel height; never use \`vh\` units or \`height: 100%\` on html or body, which follow the frame and make it stick, grow or collapse.`,
-  "Use the kit for layout, text, data and charts; never hard-code colours, fonts or backgrounds. An `<a href>` to an http(s) URL opens in the user's browser, and one to a workspace path such as `src/app.ts:42` opens that file at that line; other schemes are refused. Pass `canvas` to replace an earlier canvas in place.",
-  "",
-  'Charts: `StackedBars` and `Sparkline` are compact and axis-free, for a figure that sits beside its own number (a Stat, a Table row); use them first. `LineChart`, `BarChart` and `PieChart` are full charts with axes, gridlines and a readout, for a series that needs reading on its own: a line for change over time, bars to compare categories (`layout="horizontal"` when the labels are long), a pie only for up to five parts of one whole. All of them share one look and fit the width they get; give each series a `tint` only when a hue carries meaning (green for good, red for bad), or leave the order to the kit, which keeps neighbouring series apart for colour-blind readers.',
-  'Keep a chart to one value axis and at most eight series; fold the rest into an "Other" series, and put measures on different scales in separate charts. Pass `yFormat` or `valueFormat` to carry units (`$`, `%`, `ms`); the axis, readout and pie legend all use it. An empty series or data array draws a "No data" box, so render the chart as it is rather than guarding it.',
-  "For what the kit charts don't draw, such as a heatmap, treemap, sankey, scatter plot or a dense dashboard, import nivo directly. Use its SVG `Responsive*` components in a box with a fixed pixel height, not the `*Canvas` ones, which can't read the theme. Pass `useNivoTheme()`'s `theme` to every chart and its `colors` wherever a chart takes a colour list, so the chart follows the user's theme. Draw what nivo has no chart for, such as candlesticks, as a custom entry in a chart's `layers`. Lay out a dense dashboard or terminal with `Panes` instead of a Card per chart.",
-  `Tint = ${TINTS.map((tint) => `"${tint}"`).join(" | ")}.`,
-  "",
-  `\`${KIT_SPECIFIER}\` exports:`,
-  kitReference,
+  "Show the user a chart, table, dashboard or diagram inline in the chat.",
+  `\`source\` is a TSX module whose default export is a React component; split a large one into \`files\`. Imports: \`react\`, \`react-dom\` (${REACT_DOM_EXPORTS.join(", ")}), \`${KIT_SPECIFIER}\`, your own files and ${libraryFamilies.map((name) => `\`${name}\``).join(", ")}. No network.`,
+  `It is ${CANVAS_PREVIEW_WIDTHS.chat} px wide, ${CANVAS_PREVIEW_WIDTHS.phone} on a phone, and grows to ${CANVAS_MAX_HEIGHT} px tall; give an SVG or a @nivo chart's box a fixed pixel height. Take every colour, font and space from the kit, never a literal value.`,
+  `\`${KIT_SPECIFIER}\`:`,
+  KIT_GUIDE,
 ].join("\n");
 
 function describeErrors(errors: readonly CompileError[]): string {
@@ -396,12 +408,19 @@ function previewTool(measuring: Measuring): ToolDefinition<Infer<typeof previewP
 
 export function canvasPlugin(preview?: CanvasPreviewer): Plugin {
   if (preview === undefined)
-    return { id: "canvas", contribute: { parts: [canvas], tools: [renderTool(undefined)] } };
+    return {
+      id: "canvas",
+      contribute: { parts: [canvas], tools: [renderTool(undefined)], prompt: [CANVAS_PROMPT] },
+    };
   const measuring: Measuring = { preview, previews: new Map() };
 
   return {
     id: "canvas",
-    contribute: { parts: [canvas], tools: [renderTool(measuring), previewTool(measuring)] },
+    contribute: {
+      parts: [canvas],
+      tools: [renderTool(measuring), previewTool(measuring)],
+      prompt: [CANVAS_PROMPT],
+    },
   };
 }
 

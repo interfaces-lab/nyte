@@ -30,7 +30,7 @@ export function webSearch(
 ): ToolDefinition<{ query: string }, SearchOutput> {
   return {
     name: "web_search",
-    description: `Search the web using the user's selected search provider. Use this for current information beyond your knowledge cutoff. The current year is ${new Date().getFullYear()}.`,
+    description: `Search the web for current information. The year is ${new Date().getFullYear()}.`,
     parameters,
     output: standard(searchOutput),
     class: (args) => ({ kind: "custom", label: `Searching ${args.query}` }),

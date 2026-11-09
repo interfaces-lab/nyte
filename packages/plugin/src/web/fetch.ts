@@ -20,17 +20,17 @@ const USER_AGENT =
   "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; Nyte/1.0; +https://nyte.sh";
 
 const fetchParameters = Type.Object({
-  url: Type.String({ minLength: 1, description: "The http:// or https:// URL to fetch." }),
+  url: Type.String({ minLength: 1, description: "The URL." }),
   format: Type.Optional(
-    Type.Union([Type.Literal("markdown"), Type.Literal("text"), Type.Literal("html")], {
-      description: "What to return the page as. Defaults to markdown.",
+    Type.Enum(["markdown", "text", "html"], {
+      description: "Default markdown.",
     }),
   ),
   timeout: Type.Optional(
     Type.Number({
       exclusiveMinimum: 0,
       maximum: MAX_TIMEOUT_SECONDS,
-      description: `Seconds to wait, at most ${MAX_TIMEOUT_SECONDS}. Defaults to ${DEFAULT_TIMEOUT_SECONDS}.`,
+      description: `Seconds to wait; default ${DEFAULT_TIMEOUT_SECONDS}.`,
     }),
   ),
 });
@@ -51,8 +51,7 @@ const ACCEPT = {
 export function webFetch(fetch: Fetch): ToolDefinition<Static<typeof fetchParameters>> {
   return {
     name: "web_fetch",
-    description:
-      "Fetch an http(s) URL and return it as markdown (the default), text or HTML; an image comes back as a file. Read-only. Prefer a more specific tool when one fits.",
+    description: "Fetch an http(s) URL as markdown, text or HTML; an image comes back as a file.",
     parameters: standard(fetchParameters),
     class: (args) => ({ kind: "custom", label: `Fetching ${args.url}` }),
     effects: "none",

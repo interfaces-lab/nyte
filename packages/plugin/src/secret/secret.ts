@@ -130,7 +130,7 @@ export const secret = definePart({
 const request: ToolDefinition<Infer<typeof secretParameters>> = {
   name: SECRET_TOOL,
   description:
-    "Ask the user for one API key, token or password, and wait up to ten minutes. Call it instead of asking in chat; one secret per call. The user pastes it into the app, which saves it to an owner-only file and returns the file's path; you never see the value. Read the file only inside the command that needs it and never print it. Put a sign-up or settings link in url.",
+    "Ask the user for one API key, token or password instead of asking in chat. It returns the path of an owner-only file holding it; you never see the value. Read the file only in the command that needs it, and never print it.",
   parameters: secretParameters,
   class: (args) => ({ kind: "custom", label: args.name }),
   effects: "none",

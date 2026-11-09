@@ -14,25 +14,25 @@ export const SAVED_SECRETS = "secrets.saved";
 const name = Type.String({
   pattern: "^[A-Za-z_][A-Za-z0-9_]*$",
   maxLength: 128,
-  description: "What to call the secret, such as ELEVENLABS_API_KEY. It names the file.",
+  description: "Such as ELEVENLABS_API_KEY; it names the file.",
 });
 
 const label = Type.String({
   minLength: 1,
   maxLength: 60,
   pattern: "\\S",
-  description: "The tray's title, such as ElevenLabs API key.",
+  description: "A title, such as ElevenLabs API key.",
 });
 
 const reason = Type.String({
   minLength: 1,
   pattern: "\\S",
-  description: "What you need it for, in one sentence. Put a link in url.",
+  description: "What you need it for, in one sentence.",
 });
 
 const url = Type.String({
   pattern: "^https?://\\S+$",
-  description: "The page where the user can create or copy the secret. Shown as a button.",
+  description: "A page where the user can get it.",
 });
 
 const days = Type.Union([

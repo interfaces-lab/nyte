@@ -26,20 +26,18 @@ const SCHEDULED: Readonly<Record<Schedule["kind"], string>> = {
 const selectionParameters = {
   agent: Type.Optional(
     Type.String({
-      description:
-        "A registered agent to run as, only when the user names one. Without it, a chat that runs as an agent starts subagents of its own agent, model and thinking level; any other chat, of the default agent.",
+      description: "A registered agent to run as, only when the user names one.",
     }),
   ),
   model: Type.Optional(
     Type.String({
       description:
-        "A model to run on, only when the user asks for one: provider/id or an id from /model. Without it, the subagent runs on the inherited or default model.",
+        "A model to run on, only when the user asks for one: provider/id or an id from /model.",
     }),
   ),
   thinking: Type.Optional(
     Type.Enum(["off", "minimal", "low", "medium", "high", "xhigh", "max"], {
-      description:
-        "A thinking level, only when the user asks for one; the model must accept it. The inherited level or the model's default otherwise.",
+      description: "A thinking level, only when the user asks for one.",
     }),
   ),
 };
@@ -48,7 +46,7 @@ const isolationParameter = {
   isolation: Type.Optional(
     Type.Literal("worktree", {
       description:
-        "Only when the user asks for an isolated copy: runs the subagent in a git worktree on a new branch from HEAD, with your uncommitted changes copied in. The reply names the folder and branch. Without it, the subagent works in this workspace.",
+        "Only when the user asks for an isolated copy: a git worktree on a new branch from HEAD, with your uncommitted changes copied in.",
     }),
   ),
 };
@@ -59,7 +57,7 @@ const taskParameters = standard(
       description:
         "The task for the subagent, with everything it needs to know. Only its last message comes back, so say what that message should report.",
     }),
-    title: Type.Optional(Type.String({ description: "A short name for the subagent's session." })),
+    title: Type.Optional(Type.String({ description: "A short name." })),
     ...selectionParameters,
     ...isolationParameter,
   }),
@@ -71,12 +69,12 @@ const createParameters = standard(
       description:
         "The subagent's first message; it starts working on it at once. Only its last message comes back, so say what that message should report.",
     }),
-    title: Type.Optional(Type.String({ description: "A short name for the subagent's session." })),
+    title: Type.Optional(Type.String({ description: "A short name." })),
     ...selectionParameters,
     ...isolationParameter,
     role: Type.Optional(
       Type.String({
-        description: "Instructions the subagent keeps for every message, added to its prompt.",
+        description: "Instructions it keeps for every message.",
       }),
     ),
   }),
@@ -84,18 +82,18 @@ const createParameters = standard(
 
 const sendParameters = standard(
   Type.Object({
-    session: Type.String({ description: "The subagent's session id, from task or create." }),
+    session: Type.String({ description: "The id from task or create." }),
     prompt: Type.String({ description: "The message for the subagent." }),
   }),
 );
 
 const awaitParameters = standard(
   Type.Object({
-    session: Type.String({ description: "The subagent's session id, from task or create." }),
+    session: Type.String({ description: "The id from task or create." }),
     timeout: Type.Optional(
       Type.Integer({
         minimum: 1,
-        description: "Seconds to wait before returning while it still works.",
+        description: "Seconds to wait.",
       }),
     ),
   }),
@@ -103,20 +101,20 @@ const awaitParameters = standard(
 
 const readParameters = standard(
   Type.Object({
-    session: Type.String({ description: "The subagent's session id, from task or create." }),
+    session: Type.String({ description: "The id from task or create." }),
   }),
 );
 
 const stopParameters = standard(
   Type.Object({
-    session: Type.String({ description: "The subagent's session id, from task or create." }),
+    session: Type.String({ description: "The id from task or create." }),
   }),
 );
 
 const task: ToolDefinition<Infer<typeof taskParameters>> = {
   name: "task",
   description:
-    "Run a subagent and get its answer as this call's result. Use it whenever you need the answer this turn; several task calls in one response run in parallel. Give it everything it needs; it does not see this conversation. A new message to you ends the wait early, and the answer reaches you when it finishes.",
+    "Run a subagent and get its answer as this call's result, whenever you need the answer this turn. Several task calls in one response run in parallel. It does not see this conversation.",
   parameters: taskParameters,
   class: (args) => ({ kind: "delegate", child: null, role: "task", title: args.title ?? null }),
   replay: "safe",
@@ -151,7 +149,7 @@ const task: ToolDefinition<Infer<typeof taskParameters>> = {
 const create: ToolDefinition<Infer<typeof createParameters>> = {
   name: "create",
   description:
-    "Start a subagent in the background and return its id at once, for work you won't wait on or a subagent you'll message again with send. Its answer reaches you on its own when it finishes. When you need the answer this turn, use task instead. Link it in a reply as [short title](agent:<id>).",
+    "Start a subagent in the background and return its id, for work you won't wait on or a subagent you'll message again with send. Its answer reaches you on its own. When you need the answer this turn, use task instead. Link it in a reply as [short title](agent:<id>).",
   parameters: createParameters,
   class: (args) => ({ kind: "delegate", child: null, role: "create", title: args.title ?? null }),
   effects: "none",
@@ -178,7 +176,7 @@ const create: ToolDefinition<Infer<typeof createParameters>> = {
 const send: ToolDefinition<Infer<typeof sendParameters>> = {
   name: "send",
   description:
-    "Send a message to a subagent from create. A message sent while it works runs once that work ends, so there is no need to await first. Use await for its answer.",
+    "Send a message to a subagent from create. It runs once current work ends, so don't await first; await gets its answer.",
   parameters: sendParameters,
   class: (args) => ({
     kind: "delegate",
@@ -202,8 +200,7 @@ const send: ToolDefinition<Infer<typeof sendParameters>> = {
 
 const awaitChild: ToolDefinition<Infer<typeof awaitParameters>> = {
   name: "await",
-  description:
-    "Wait for a subagent to finish its current work and return its answer. A new message to you ends the wait early, with the subagent still working.",
+  description: "Wait for a subagent to finish its current work and return its answer.",
   parameters: awaitParameters,
   class: (args) => ({
     kind: "delegate",

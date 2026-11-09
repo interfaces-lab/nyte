@@ -135,7 +135,7 @@ export const question = definePart({
 const ask: ToolDefinition<Infer<typeof questionParameters>> = {
   name: QUESTION_TOOL,
   description:
-    "Ask the user one or more questions and wait up to a minute for their answers. Give each option a short label and a description. Use multiple when several choices may apply. The user can also write their own answer. If they don't answer in time, keep working; their answer arrives later as a message.",
+    "Ask the user questions with choices and wait up to a minute. If they don't answer in time, keep working; the answer arrives later as a message.",
   parameters: questionParameters,
   class: (args) => ({
     kind: "custom",

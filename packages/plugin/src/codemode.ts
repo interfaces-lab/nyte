@@ -21,6 +21,9 @@ const DESCRIPTION = `Run JavaScript that calls other tools. The input is raw Jav
 - \`text(value)\`, \`console.log(...)\` and \`return\` add output; \`store(key, value)\` and \`load(key)\` keep JSON values across codemode calls in this session.
 - Inside a script, \`ALL_TOOLS\`, \`await searchTools(query, { limit?, namespace? })\`, \`await describeTool(name)\` and \`await describeNamespace(name)\` find unlisted tools, such as MCP tools, and their declarations. They are script functions, not tools.`;
 
+/** Declared only while some tool is exposed to code, such as an MCP server's: without one, a script has nothing to call that a direct tool call can't. */
+const CODEMODE_TOOL = "codemode";
+
 const LISTING_TOKENS = 3000;
 
 const parameters = standard(
@@ -44,6 +47,14 @@ export function codemodePlugin(
     id: "codemode",
     activate(api) {
       api.contribute.tools.add(codemode(api, runtime));
+      api.hook("transform_transcript", (transcript) =>
+        api.contribute.tools.list().some((definition) => definition.exposure === "code")
+          ? transcript
+          : {
+              ...transcript,
+              tools: transcript.tools.filter((info) => info.name !== CODEMODE_TOOL),
+            },
+      );
       api.contribute.prompt.add((draft, siblings) => {
         const text = listTools(siblings.tools.list());
 
@@ -162,7 +173,7 @@ function codemode(
   runtime: Pick<CodemodeSandboxOptions, "workerUrl" | "wasm">,
 ): ToolDefinition<{ code: string }> {
   return {
-    name: "codemode",
+    name: CODEMODE_TOOL,
     description: DESCRIPTION,
     parameters,
     exposure: "model-only",
