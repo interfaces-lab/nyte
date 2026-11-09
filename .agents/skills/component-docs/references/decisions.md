@@ -1,62 +1,40 @@
 # Decisions
 
-What changed, why, and the evidence behind it. A new rule belongs here before it belongs in the
-other files. Remove one when it stops helping.
+Why each rule exists. Remove an entry when its rule goes.
 
 ## 2026-11-08, the reader works in this repo
 
-The skill said the pages served someone who installed `@nyte-ai/ui`. The package is
-`private: true` and only workspace packages depend on it, most of them from source through the
-`nyte-source` condition. The reader is the team and its agents. Pierre's re-export subpaths and the
-worker pool joined the package the same day; they are not components, so they get no page, and the
-ui `AGENTS.md` names which engine powers each module.
+`@nyte-ai/ui` is `private: true` and only workspace packages depend on it. The pages serve the team
+and its agents. Pierre's re-exports and the worker pool export React components but wrap engines,
+so they get no page.
 
-## 2026-10-01, one implementation per component
+## 2026-11-08, sourcing rules over voice rules
 
-Components live directly in `packages/ui/src/<name>.tsx`, and their subpaths resolve to those
-files. The root barrel and forwarding component modules were removed. Documentation uses
-individual component imports. `components.json` targets Base Nova and the same flat directory.
-
-## 2026-09-18, the reader is someone who installed the package
-
-The Cloud section documented the desktop app's component tier and its application surfaces, 22
-pages. `@nyte-ai/desktop` is `private: true` and ships to nobody, so none of it was installable or
-importable. Deleted. Evidence: the manifest, and ConnectKit documenting ConnectKit rather than the
-Family wallet app.
+An audit of the 39 component pages found the source defects listed in `sourcing.md` and four
+incomplete unions: Input `code`, Menu `quiet` and `action`, Row `bare`. Voice rules were almost
+never broken, so they shrank to one paragraph. The skill had gone stale too. It named a
+`TokenTable` component that no longer exists, ranked itself above the source, and pointed at
+desktop call sites, though 3 desktop files import ui against 294 in the app.
 
 ## 2026-09-18, one component, one page
 
-Pages were split into Primitives, the components we had written StyleX for, and Headless, the ones
-we re-exported unstyled. That split describes our implementation. A reader importing `Popover`
-from `@nyte-ai/ui/popover` is using our component either way. Merged into Components, one page per
-import path, both paths shown on the page.
+A Primitives and Headless split described our implementation, not what a reader imports. Merged
+into one page per subpath. 22 pages for desktop's own components were deleted.
 
-## 2026-09-25, every export is styled
+## 2026-09-18, include Base UI's tables, don't vendor their pages
 
-The subpaths used to re-export Base UI namespaces unstyled, and desktop kept its own styled copies
-of the same components. Desktop's copies moved into `@nyte-ai/ui`, every subpath now exports the
-styled component the root does, and apps extend it through `xstyle`, `className`, or `style`.
-Pages no longer teach an unstyled path or a Base UI import. Lint forbids importing `@base-ui/react`
-or `sonner` outside `packages/ui`.
-
-## 2026-09-18, include Base UI's tables, do not vendor their pages
-
-The headless pages were 11,600 lines of Base UI documentation reproduced verbatim by a generator.
-Most of it was their props tables, which already exist per part in `content/base-ui-reference/`,
-plus prose introducing demos the generator had stripped. The generator now writes only the part
-tables and the pages pull them in with `<include>`. Keep the MIT attribution, it is a condition of
+A generator copied 11,600 lines of Base UI pages, including prose introducing demos it had
+stripped. Pages now `<include>` the generated part tables. The MIT attribution is a condition of
 using their text.
 
-## 2026-09-18, source before neighbour
+## Coverage gaps
 
-Three defects reached the pages in one session, and all three came from an agent trusting an
-existing page over `packages/ui/src`: an invented `ButtonPrimitive` export, four documented Button
-variants against five in the type, and `createHandle` taught ahead of the common path. The rules
-in `sourcing.md` exist because of these three.
-
-## Open
-
-A deterministic check of documented imports against the package exports was written and removed.
-It caught all three defects above and passed the one legitimate alias, so the case for it is real.
-It was dropped to avoid a bespoke script with no owner. Revisit if the same class of defect
-returns, and prefer extending an existing check over adding a new one.
+- Nothing checks MDX snippets. An import check was written and removed for lack of an owner. On
+  2026-11-08 a throwaway check typechecked every fence against the ui source, ignoring names
+  defined outside the fence. It found three real errors, including `createPreviewCardHandle` and
+  an `xstyle` the `Dialog.Title` contract rejects, with one false positive. If it returns, it
+  belongs in the docs package's `typecheck` script, which CI runs. It can't judge union
+  completeness or example order.
+- Foundations pages have no contract.
+- `check:base-ui` compares against upstream `master`, so it fails for reasons unrelated to our
+  pages.

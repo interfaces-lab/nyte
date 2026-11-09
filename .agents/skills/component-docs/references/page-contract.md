@@ -1,41 +1,26 @@
 # Page contract
 
-Every page holds the same order, so a reader learns the shape once.
+Component pages hold this order. The components `index.mdx` is an overview and is exempt.
 
-1. Frontmatter `title` and `description`. One short line, no colon mid-sentence.
-2. Import block. Show the component's individual subpath in one fence.
+1. Frontmatter `title` and a one-line `description`.
+2. One fence importing from the component's own subpath.
 3. One or two sentences on what it is and when to reach for it.
 4. `## Usage`, only rules that change what a reader types.
-5. `## Anatomy`, the parts in nesting order. Skip it for a single element.
-6. `## Examples`, `<Preview>` where a demo exists, code fences otherwise.
-7. `## Props`, our props as a table, then `<include>` per Base UI part.
-8. `## Accessibility`, the keyboard model, focus behavior, and ARIA. Terse.
+5. `## Anatomy`, the parts in nesting order, when there is more than one.
+6. `## Examples`, `<Preview>` where a demo is registered, fences otherwise. Order them by what a
+   reader needs in their first ten uses, not by Base UI's sections.
+7. `## Props`, our props as a table, then an `<include>` per Base UI part, with the MIT attribution
+   line.
+8. `## Accessibility`, the keyboard model, focus and ARIA.
 
-Where a part passes through Base UI with no styling of its own, such as a trigger or a portal, say so
-in one line and skip its styled props table.
+A part that passes through Base UI unstyled, such as a trigger or a portal, gets one line saying so
+and no table of ours. Its `<include>` stays. Never copy Base UI's prose.
 
-## What belongs
+Keep out repo paths, generator commands, implementation history and roadmap. A limit the caller
+hits stays in. Never introduce an example that isn't on the page.
 
-Tables and code. A reader scans for the prop, the key, or the shape of the tree.
+Sentence case headings, straight quotes, no em dashes, no colon joining two clauses. Cut a sentence
+that could appear unchanged in another project's docs.
 
-## What does not
-
-- Repo paths, generator commands, which file consumes the component.
-- Rationale for the implementation, history, known gaps, roadmap notes.
-- Meta-commentary about the documentation itself.
-- Bolded **must** and **must not**, "is a defect". State the rule plainly.
-- Prose introducing an example that is not on the page. This was the single largest defect when
-  the pages were first written, because the generator stripped Base UI's live demos and left
-  their introductions behind.
-
-## Voice
-
-Sentence case headings. Straight quotes. No em dashes, use a period or a comma. No colons as
-mid-sentence connectors. Active voice. One idea per sentence. No closing pep talk. If a sentence
-could appear unchanged in another project's docs, cut it.
-
-## Components
-
-Only `<Preview>`, `<TokenTable>`, `<include>`, and demos registered in
-`packages/docs/src/components/components/mdx.tsx`. A demo and the code fence beside it must agree. When
-they disagree, one of them is lying to the reader, and it is usually the fence.
+Use only MDX components registered in `packages/docs/src/components/mdx.tsx`. A demo and the fence
+beside it show the same API.

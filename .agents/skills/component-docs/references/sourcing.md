@@ -1,46 +1,36 @@
 # Sourcing every claim
 
-A claim you cannot trace to a file does not go on the page. Soften nothing, cut it.
+A claim you can't trace to a file doesn't go on the page.
 
-| Claim                     | Read it from                                            |
-| ------------------------- | ------------------------------------------------------- |
-| An import path            | `exports` in `packages/ui/package.json`                 |
-| A name from a subpath     | The implementation named by `exports` in the manifest |
-| Our props and defaults    | `packages/ui/src/<name>.tsx`                            |
-| A union's members         | The exported type, every member of it                   |
-| A Base UI part            | A file in `content/base-ui-reference/<component>/`      |
-| A Base UI prop or default | The same directory, never memory                        |
-| What a real usage is like | Call sites in `packages/desktop/src`, as a check only   |
+| Claim                      | Read it from                                                   |
+| -------------------------- | -------------------------------------------------------------- |
+| An import path             | `exports` in `packages/ui/package.json`                        |
+| A name, prop or default    | The file that subpath's `nyte-source` entry names              |
+| A union's members          | The exported type, every member of it                          |
+| A Base UI part or prop     | The installed `@base-ui/react` types, then the generated table |
+| What real usage looks like | Call sites in `packages/app/src`, as a check only              |
 
-## Rules these came from
+## Named failures
 
-Each one is a defect that shipped.
+Each one shipped. Look for them by name in review.
 
-- **Never write an export that does not exist.** A page showed
-  `import { Button as ButtonPrimitive }`. There is no `ButtonPrimitive`. The alias was invented to
-  make a sentence read well, and readers would have imported a name that is not there.
-- **Rename only to resolve a collision in the same file.** Component subpaths export their own
-  names. Use those names directly unless another import in the same file collides.
-- **Enumerate a union from the type, not from a neighbouring page.** Button shipped five variants
-  while the page documented four, because the demo rendered four and the page copied the demo.
-- **Teach the common path first.** Alert dialog led with `createHandle()`, an API the repo calls
-  once, because Base UI gives handles a section on every overlay page. The common paths are
-  nesting the trigger and controlling with `open` and `onOpenChange`. Order examples by what a
-  reader needs in their first ten uses.
-- **Check paired prop names against each other.** `pressed` with `onPressedChange` is a toggle,
-  `checked` with `onCheckedChange` is a switch. Mixing them reads fine and compiles nowhere.
+- **Invented export.** `createPreviewCardHandle` was documented and never exported.
+- **Neighbour copy.** About a dozen pages say `className` and `style` "take plain values, not
+  functions of state". `StyledProps` keeps Base UI's types, so state functions work. One page
+  guessed and the rest copied it.
+- **Demo as union.** Button's page listed the four variants its demo rendered, against five in the
+  type. A demo may show a subset. The props table lists every member.
+- **Upstream emphasis.** Alert dialog led with `createHandle()` because Base UI gives handles a
+  section on every overlay page. Lead with nesting the trigger, then `open` with `onOpenChange`.
+- **Crossed pairs.** `pressed` goes with `onPressedChange`, `checked` with `onCheckedChange`.
+- **Qualifier creep.** An audit that fixed overbroad sentences by adding "unless", "except" and
+  "with the default" grew the prose 40%. A correction replaces the wrong sentence. If the true
+  version needs a qualifier for a case outside a reader's first ten uses, cut the sentence.
 
-## Snippets are code
-
-Examples get pasted. They follow the repo style in the root `AGENTS.md`: no `any`, no casts
-including `as T`, erasable syntax, top-level imports, no star imports, no renamed imports except
-the collision above, prefer `const`. A snippet that would fail review in the repo is a defect in
-the page.
+Snippets follow the root `AGENTS.md` code style.
 
 ## Before reporting done
 
-- Every name in every import exists in the package.
-- Every `<include>` path resolves.
-- Every union is complete.
-- `pnpm --dir packages/docs typecheck` passes.
-- `pnpm format` is clean.
+`pnpm --dir packages/docs typecheck` doesn't read MDX and passes with a broken snippet. Check by
+hand that every imported name is exported by its subpath, every props-table union is complete, and
+every `<include>` resolves from its page. Then run that typecheck and `pnpm format`.
