@@ -1043,11 +1043,11 @@
     "ui/src/styles/schema.stylex.ts switchControl": ["heightMd", "knobMd", "paddingMd", "widthMd"],
     "ui/src/styles/schema.stylex.ts target": ["gap", "min"],
     "app/src/theme/schema.stylex.ts conversation": [
-      "composerDock",
       "composerExpandedRadius",
       "composerFooterSegmentMaxWidth",
       "composerInset",
       "composerNewChatRadius",
+      "composerTrays",
       "edgeFade",
       "gutter",
       "headerHeight",
