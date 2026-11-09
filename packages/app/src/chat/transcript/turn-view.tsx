@@ -195,6 +195,7 @@ export function UserMessageView({
   const editButtonRef = useRef<HTMLButtonElement>(null);
   const transcript = useTranscriptControls();
   const editorRef = useRef<ComposerEditorHandle | null>(null);
+  const editGeneration = useRef(0);
   const original = contentDraftText(content);
 
   const canDismissEdit =
@@ -213,6 +214,7 @@ export function UserMessageView({
 
   const begin = (): void => {
     if (rowRef.current !== null) transcript.hold(rowRef.current);
+    editGeneration.current += 1;
     flushSync(() =>
       setEdit({
         document: {
@@ -258,12 +260,18 @@ export function UserMessageView({
     files: readonly File[],
     signal?: AbortSignal,
   ): Promise<string | undefined> => {
-    patchEdit((current) => ({ ...current, attachmentReads: current.attachmentReads + 1 }));
+    const generation = editGeneration.current;
+
+    const patchSameEdit = (patch: (current: UserEditState) => UserEditState): void => {
+      if (generation === editGeneration.current) patchEdit(patch);
+    };
+
+    patchSameEdit((current) => ({ ...current, attachmentReads: current.attachmentReads + 1 }));
 
     return attachComposerFiles({ files, editor: editorRef.current })
       .then((result) => {
         signal?.throwIfAborted();
-        patchEdit((current) => ({
+        patchSameEdit((current) => ({
           ...current,
           attachments: [...current.attachments, ...result.attachments],
           attachmentError: result.error,
@@ -272,7 +280,7 @@ export function UserMessageView({
         return result.error;
       })
       .finally(() =>
-        patchEdit((current) => ({ ...current, attachmentReads: current.attachmentReads - 1 })),
+        patchSameEdit((current) => ({ ...current, attachmentReads: current.attachmentReads - 1 })),
       );
   };
 

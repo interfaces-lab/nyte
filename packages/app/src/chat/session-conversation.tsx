@@ -294,7 +294,8 @@ function ConversationScreen(conversation: SessionConversationProps): ReactElemen
   const catalog = useCatalog(sessionId);
   const [draftName, setDraftName] = useState<string | undefined>();
   const [deletion, setDeletion] = useState<SessionDeletionState>({ kind: "closed" });
-  const [navigating, setNavigating] = useState(false);
+  const [savingEdits, setSavingEdits] = useState(0);
+  const navigating = savingEdits > 0;
 
   const kept = useChatWindow((snapshot) =>
     presentation === "full" ? (snapshot.trays.get(sessionId) ?? CLOSED_TRAY) : CLOSED_TRAY,
@@ -386,7 +387,7 @@ function ConversationScreen(conversation: SessionConversationProps): ReactElemen
     content: UserContent,
     edit: BranchModelChoice,
   ): Promise<void> => {
-    setNavigating(true);
+    setSavingEdits((count) => count + 1);
 
     return applyMessageEdit({
       sessionId,
@@ -396,7 +397,7 @@ function ConversationScreen(conversation: SessionConversationProps): ReactElemen
       choice: edit,
     })
       .then(() => awaitCurrentView(sessionId, store).catch(() => undefined))
-      .finally(() => setNavigating(false));
+      .finally(() => setSavingEdits((count) => count - 1));
   };
 
   return (
