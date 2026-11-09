@@ -404,6 +404,11 @@ export type UpdateState =
   | { readonly kind: "installing"; readonly version: string }
   | { readonly kind: "failed"; readonly version: string; readonly message: string };
 
+export type HostRestart =
+  | { readonly kind: "current" }
+  | { readonly kind: "needed"; readonly version: string }
+  | { readonly kind: "offline" };
+
 export type BundledCli =
   | {
       readonly kind: "ready";
@@ -417,6 +422,7 @@ export type BundledCli =
 export type HostEvent =
   | { kind: "update_changed"; state: UpdateState }
   | { kind: "update_channel_changed"; channel: UpdateChannel }
+  | { kind: "host_restart_changed"; restart: HostRestart }
   | { kind: "settings_changed"; settings: HostSettings }
   | { kind: "workspace_opened"; workspace: SelectedWorkspace }
   | { kind: "workspace_trust_required"; path: string }
@@ -525,6 +531,10 @@ export interface HostBridge {
     check(): Promise<void>;
     channel(): Promise<UpdateChannel>;
     setChannel(input: { readonly channel: UpdateChannel }): Promise<UpdateChannel>;
+  };
+  readonly hostRestart?: {
+    state(): Promise<HostRestart>;
+    run(): Promise<void>;
   };
   readonly bundledCli?: () => Promise<BundledCli>;
   server: {

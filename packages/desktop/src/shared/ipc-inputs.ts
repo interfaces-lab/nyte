@@ -90,6 +90,8 @@ export const CALL_INPUT_SCHEMAS: CallInputParsers = {
   "host.updates.check": compile(noInput),
   "host.updates.channel": compile(noInput),
   "host.updates.setChannel": compile(strict({ channel: Type.Enum(["stable", "nightly"]) })),
+  "host.hostRestart.state": compile(noInput),
+  "host.hostRestart.run": compile(noInput),
   "host.bundledCli": compile(noInput),
   "host.server.state": compile(noInput),
   "host.server.connect": compile(strict({ baseUrl: nonEmpty, token: nonEmpty })),

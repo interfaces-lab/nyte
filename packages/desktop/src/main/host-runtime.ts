@@ -14,6 +14,7 @@ import { hostAgent } from "./host-agent.ts";
 import type { AgentRegistration, HostAgent } from "./host-agent.ts";
 import type { HostConnection } from "@nyte-ai/sdk/client";
 import type { CanvasPreviewer } from "@nyte-ai/plugin/core/canvas-preview";
+import type { HostRestart } from "@nyte-ai/app/contract/bridge.ts";
 import type { BrowserAgent } from "../shared/browser-agent.ts";
 import { offerAppActions, openAppClient } from "../shared/host-client.ts";
 import { HostLink } from "./host-link.ts";
@@ -56,17 +57,9 @@ export function startHostRuntime(options: HostRuntimeOptions): HostRuntime {
     label: app.isPackaged ? undefined : process.env["NYTE_DESKTOP_HOST_LABEL"],
   });
 
-  let offered: string | undefined;
-
   const socket = join(options.nyteHome, "host.sock");
 
-  const link = new HostLink(socket, (state) => {
-    options.linkChanged?.(state);
-
-    if (state.kind !== "connected" || state.compatible || offered === state.version) return;
-    offered = state.version;
-    void offerRestart(agent, state.version);
-  });
+  const link = new HostLink(socket, (state) => options.linkChanged?.(state));
 
   void agent.start().then(
     (registration) => {
@@ -133,6 +126,12 @@ function mainPortEnd(port: MessagePortMain): PortEnd {
   };
 }
 
+export function hostRestart(state: HostLinkState): HostRestart {
+  if (state.kind !== "connected") return { kind: "offline" };
+
+  return state.compatible ? { kind: "current" } : { kind: "needed", version: state.version };
+}
+
 function announce(registration: AgentRegistration): void {
   if (registration === "enabled") return;
 
@@ -164,25 +163,6 @@ function announce(registration: AgentRegistration): void {
       ? "This copy of Nyte is missing its host. Reinstall Nyte."
       : "macOS didn't register the Nyte host. Quit and reopen Nyte.",
   );
-}
-
-async function offerRestart(agent: HostAgent, version: string): Promise<void> {
-  const { response } = await dialog.showMessageBox({
-    type: "warning",
-    message: "Nyte Host needs a restart",
-    detail: `The running host is Nyte ${version} and speaks another API than Nyte ${app.getVersion()}. Restart it from this copy of Nyte; running chats stop and continue after the restart.`,
-    buttons: ["Restart Host", "Not Now"],
-    defaultId: 0,
-    cancelId: 1,
-    noLink: true,
-  });
-
-  if (response === 0)
-    await agent
-      .restart()
-      .catch((cause: unknown) =>
-        dialog.showErrorBox("Nyte couldn't restart its host", describe(cause)),
-      );
 }
 
 function describe(cause: unknown): string {

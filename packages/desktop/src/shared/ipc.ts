@@ -41,6 +41,8 @@ export const MAIN_OPERATION_PATHS = [
   "host.updates.check",
   "host.updates.channel",
   "host.updates.setChannel",
+  "host.hostRestart.state",
+  "host.hostRestart.run",
   "host.bundledCli",
   "host.openExternal",
   "host.confirmExternal",
@@ -136,6 +138,7 @@ export type DesktopBridge = {
         | "pickWorkspace"
         | "trustWorkspace"
         | "updates"
+        | "hostRestart"
         | "bundledCli"
         | "revealPath"
         | "openPluginsFolder"

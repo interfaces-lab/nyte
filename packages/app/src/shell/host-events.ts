@@ -1,6 +1,7 @@
 import { toast } from "@nyte-ai/ui/toast";
-import type { HostEvent } from "../contract/bridge.ts";
+import type { HostEvent, HostRestart } from "../contract/bridge.ts";
 import type { AlertState } from "../contract/desktop-settings.ts";
+import { errorMessage } from "../contract/errors.ts";
 import { keys, queryClient } from "../data/query-client.ts";
 import { commitHostWorkspace } from "../data/workspaces.ts";
 import { nyte } from "../contract/nyte.ts";
@@ -18,6 +19,10 @@ import { windowTabs } from "../tabs/window-tabs.ts";
 
 export function useHostEvents(): void {
   useMountEffect(() => {
+    const showHostRestart = followHostRestart();
+
+    void nyte.host.hostRestart?.state().then(showHostRestart);
+
     const unsubscribe = nyte.host.onEvent((event) => {
       switch (event.kind) {
         case "workspace_trust_required":
@@ -39,6 +44,10 @@ export function useHostEvents(): void {
           return;
         case "update_channel_changed":
           queryClient.setQueryData(keys.updateChannel, event.channel);
+
+          return;
+        case "host_restart_changed":
+          showHostRestart(event.restart);
 
           return;
         case "settings_changed":
@@ -94,6 +103,79 @@ export function useHostEvents(): void {
 
     return unsubscribe;
   });
+}
+
+const HOST_RESTART = "host-restart";
+
+function followHostRestart(): (state: HostRestart) => void {
+  let restarting = false;
+
+  const restart = (): void => {
+    restarting = true;
+    toast.add({
+      id: HOST_RESTART,
+      type: "loading",
+      timeout: 0,
+      title: "Restarting Nyte Host…",
+      description: undefined,
+      actionProps: undefined,
+    });
+    void nyte.host.hostRestart?.run().catch((cause: unknown) => {
+      restarting = false;
+      toast.add({
+        id: HOST_RESTART,
+        type: "error",
+        timeout: 0,
+        title: "Couldn't restart Nyte Host",
+        description: errorMessage(cause),
+        actionProps: { children: "Try Again", onClick: restart },
+      });
+    });
+  };
+
+  return (state) => {
+    switch (state.kind) {
+      case "needed":
+        restarting = false;
+        toast.add({
+          id: HOST_RESTART,
+          type: "warning",
+          timeout: 0,
+          title: "Nyte Host needs a restart",
+          description: `It runs Nyte ${state.version}. Running chats pause and resume.`,
+          actionProps: { children: "Restart", onClick: restart },
+        });
+
+        return;
+      case "offline":
+        if (!restarting) toast.close(HOST_RESTART);
+
+        return;
+      case "current":
+        if (!restarting) {
+          toast.close(HOST_RESTART);
+
+          return;
+        }
+
+        restarting = false;
+        toast.add({
+          id: HOST_RESTART,
+          type: "success",
+          timeout: 4000,
+          title: "Nyte Host restarted",
+          description: undefined,
+          actionProps: undefined,
+        });
+
+        return;
+      default: {
+        const _exhaustive: never = state;
+
+        return _exhaustive;
+      }
+    }
+  };
 }
 
 const ALERT_TOAST = {
