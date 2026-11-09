@@ -33,6 +33,7 @@ import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import type { DesktopCatalog, DesktopModelOption } from "../../data/catalog.ts";
 import { showsSettingsSection } from "../../settings/index.ts";
 import {
+  AGENT_PROVIDERS,
   modelIcon,
   modelTriggerLabel,
   pickerGroups,
@@ -291,7 +292,7 @@ export function ModelPicker({
                     </AutocompleteGroupLabel>
                     {group.options.map((option) => (
                       <AutocompleteItem variant="inline" key={option.key} value={option}>
-                        {group.id === "favorites" || option.provider === "acp" ? (
+                        {group.id === "favorites" || AGENT_PROVIDERS.has(option.provider) ? (
                           <span {...props(styles.optionLabel)}>
                             <Icon name={modelIcon(option)} size="sm" />
                             {option.name}

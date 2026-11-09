@@ -82,6 +82,9 @@ const ACP_AGENT_ICONS = new Map<string, IconName>(
   } satisfies Record<string, IconName>),
 );
 
+/** Providers whose entries are agents, shown by name and icon and switched on or off like one model. */
+export const AGENT_PROVIDERS: ReadonlySet<string> = new Set(["acp", "claude-code"]);
+
 export function providerIcon(providerId: string): IconName {
   return PROVIDER_ICONS.get(providerId) ?? "model-generic";
 }

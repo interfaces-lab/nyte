@@ -6,7 +6,6 @@ import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { EffortLevel } from "@anthropic-ai/claude-agent-sdk";
 import {
   acquireSessionResources,
-  anthropicProvider,
   clampThinkingLevel,
   createAssistantMessageEventStream,
   getCurrentTools,
@@ -36,6 +35,31 @@ const API = "claude-agent-sdk";
 const EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const satisfies readonly EffortLevel[];
 
 const NOT_RUNNING = "Claude Code is no longer running this turn. Send a message to continue.";
+
+const BASE_URL = "process://claude-code";
+
+/** One agent, like an ACP agent: Claude Code runs the model its account defaults to. */
+const CLAUDE_CODE_MODEL: Model<Api> = {
+  id: CLAUDE_CODE_PROVIDER,
+  name: "Claude Code",
+  api: API,
+  provider: CLAUDE_CODE_PROVIDER,
+  baseUrl: BASE_URL,
+  reasoning: true,
+  thinkingLevelMap: {
+    off: null,
+    minimal: null,
+    low: "low",
+    medium: "medium",
+    high: "high",
+    xhigh: "xhigh",
+    max: "max",
+  },
+  input: ["text", "image"],
+  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  contextWindow: 1_000_000,
+  maxTokens: 128_000,
+};
 
 interface Binding {
   readonly cwd: string;
@@ -93,7 +117,6 @@ function answerOnce(
         prompt: flatPrompt(context.messages),
         options: {
           ...isolatedOptions(await findClaudeCode(), options?.env),
-          model: model.id,
           abortController: controller,
           systemPrompt: getCurrentSystemPrompt(context.messages),
           maxTurns: 1,
@@ -128,7 +151,6 @@ function answerOnce(
 }
 
 export function claudeCodeSdk(start: StartQuery = query) {
-  const catalog = anthropicProvider();
   const sessions = new Map<string, ClaudeCodeSession>();
   const bindings = new Map<string, Binding>();
 
@@ -167,7 +189,6 @@ export function claudeCodeSdk(start: StartQuery = query) {
 
       session = new ClaudeCodeSession({
         key,
-        model: model.id,
         cwd: binding.cwd,
         system,
         thinking: options?.reasoning !== undefined,
@@ -210,8 +231,9 @@ export function claudeCodeSdk(start: StartQuery = query) {
   const provider: Provider = {
     id: CLAUDE_CODE_PROVIDER,
     name: "Claude Code",
-    baseUrl: "process://claude-code",
+    baseUrl: BASE_URL,
     capabilities: { steer: true },
+    explicitOnly: true,
     auth: {
       apiKey: {
         name: "Claude Code login",
@@ -224,16 +246,7 @@ export function claudeCodeSdk(start: StartQuery = query) {
         },
       },
     },
-    getModels: () =>
-      catalog.getModels().map(({ compat: _compat, ...model }) => ({
-        ...model,
-        provider: CLAUDE_CODE_PROVIDER,
-        api: API,
-        baseUrl: "process://claude-code",
-      })),
-    refreshModels: async (context) => {
-      await catalog.refreshModels?.(context);
-    },
+    getModels: () => [CLAUDE_CODE_MODEL],
     stream: (model, context, options) =>
       stream(model, context, {
         signal: options?.signal,

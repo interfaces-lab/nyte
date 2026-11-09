@@ -20,7 +20,7 @@ import {
 import { Input } from "@nyte-ai/ui/input";
 import { Switch } from "@nyte-ai/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@nyte-ai/ui/select";
-import { modelIcon, providerIcon } from "../chat/composer/model-picker-state.ts";
+import { AGENT_PROVIDERS, modelIcon, providerIcon } from "../chat/composer/model-picker-state.ts";
 import { nyte } from "../contract/nyte.ts";
 import type { DesktopCatalog, DesktopModelOption, ProviderStatus } from "../data/catalog.ts";
 import {
@@ -85,7 +85,7 @@ function ModelList({
   models: readonly DesktopModelOption[];
 }): ReactElement {
   const setListing = useSetListing();
-  const agents = provider.id === "acp";
+  const agents = AGENT_PROVIDERS.has(provider.id);
   const hidden = models.filter((option) => option.listing === "hidden");
 
   return (
@@ -163,7 +163,7 @@ function ModelList({
 }
 
 function modelSummary(provider: ProviderStatus, models: readonly DesktopModelOption[]): string {
-  if (provider.id === "acp") {
+  if (AGENT_PROVIDERS.has(provider.id)) {
     const names = models.map((option) => option.name);
 
     return names.length <= 3
@@ -641,7 +641,7 @@ function ProviderRow({
                   setModelsOpen((open) => !open);
                 }}
               >
-                {provider.id === "acp" ? "Agents" : "Models"}
+                {AGENT_PROVIDERS.has(provider.id) ? "Agents" : "Models"}
                 <span {...props(srOnly)}> for {provider.name}</span>
                 <Icon name={modelsOpen ? "chevron-down" : "chevron-right"} size="xs" />
               </Button>

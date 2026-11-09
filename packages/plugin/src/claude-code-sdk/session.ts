@@ -28,7 +28,6 @@ import { emptyMessage, NYTE_SERVER, NYTE_TOOL_PREFIX, Translator } from "./trans
 
 interface Launch {
   readonly key: string;
-  readonly model: string;
   readonly cwd: string;
   readonly system: string;
   readonly thinking: boolean;
@@ -194,7 +193,6 @@ export class ClaudeCodeSession {
 
     const options: Options = {
       ...isolatedOptions(launch.claude, launch.env),
-      model: launch.model,
       cwd: launch.cwd,
       systemPrompt: { type: "custom", prompt: launch.system },
       includePartialMessages: true,
