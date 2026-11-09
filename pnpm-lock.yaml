@@ -1553,6 +1553,9 @@ importers:
       '@nyte-ai/schema':
         specifier: workspace:*
         version: link:../schema
+      typebox:
+        specifier: ^1.4.6
+        version: 1.4.6
     devDependencies:
       '@nyte-ai/bench':
         specifier: workspace:*
