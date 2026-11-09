@@ -477,6 +477,11 @@ export default defineConfig({
       files: ["packages/lab/src/design-mode/overlay.tsx"],
       rules: { "nyte-design/no-raw-colors": "off" },
     },
+    {
+      /** Not Nyte's surface: a studio film is rendered to video, so its look is fixed values. */
+      files: ["packages/lab/src/studio/films/**"],
+      rules: { "nyte-design/no-raw-colors": "off" },
+    },
     ...desktopProcessFolders.map(({ folder, forbidden }) => ({
       files: [`packages/desktop/src/${folder}/**`],
       rules: {
