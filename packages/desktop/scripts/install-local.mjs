@@ -18,6 +18,8 @@ const root = join(desktop, "..", "..");
 
 const application = "/Applications/Nyte.app";
 
+const BUILD_ATTEMPTS = 3;
+
 const support = join(homedir(), "Library", "Application Support", "Nyte");
 
 const updateLog = join(support, "updates.log");
@@ -44,9 +46,7 @@ const version = nightlyVersion();
 
 console.log(`Building Nyte ${version} to replace ${installed}.`);
 
-run("node", ["scripts/build.mjs", "--package", "--publish", "never", "--mac", "zip", "--arm64"], {
-  NYTE_RELEASE_VERSION: version,
-});
+packageBuild();
 
 const zip = `Nyte-${version}-mac-arm64.zip`;
 
@@ -171,6 +171,25 @@ async function until(label, timeout, done) {
   while (!done()) {
     if (Date.now() > deadline) throw new Error(`Timed out waiting for ${label}.`);
     await sleep(1_000);
+  }
+}
+
+/** Apple's timestamp server drops the odd one of the hundreds of signing requests a build makes, so a failed build runs again, three times in all. */
+function packageBuild() {
+  for (let attempt = 1; ; attempt += 1) {
+    const status = spawnSync(
+      "node",
+      ["scripts/build.mjs", "--package", "--publish", "never", "--mac", "zip", "--arm64"],
+      { cwd: desktop, env: { ...process.env, NYTE_RELEASE_VERSION: version }, stdio: "inherit" },
+    ).status;
+
+    if (status === 0) return;
+
+    if (attempt === BUILD_ATTEMPTS) {
+      throw new Error(`The build failed ${BUILD_ATTEMPTS} times. Nyte ${installed} is unchanged.`);
+    }
+
+    console.log(`The build failed (attempt ${attempt} of ${BUILD_ATTEMPTS}). Building again.`);
   }
 }
 

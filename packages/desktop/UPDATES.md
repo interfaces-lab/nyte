@@ -43,18 +43,10 @@ The release workflow builds and publishes the desktop app with every release. [R
 To build installers yourself, without publishing:
 
 ```sh
-pnpm --dir packages/desktop package:mac
+pnpm --dir packages/desktop package
 ```
 
-This writes the DMG, ZIP, blockmaps and `latest-mac.yml` to `dist/`. macOS builds are arm64 only. Other scripts build other targets:
-
-| Script | Builds |
-| --- | --- |
-| `package` | Installers for the current platform |
-| `package:mac:dmg`, `package:mac:zip` | One macOS artifact |
-| `package:linux`, `package:linux:appimage` | Linux installers, or the AppImage alone |
-| `package:win`, `package:win:nsis` | Windows installers, or the NSIS installer alone |
-| `package:app` | The unpacked app bundle |
+This builds the installers for the machine you run it on: on a Mac, the arm64 DMG, ZIP, blockmaps and `latest-mac.yml` in `dist/`. `package:app` builds only the unpacked app bundle. To build one artifact, pass electron-builder's target after `--`, as in `pnpm --dir packages/desktop package -- --mac zip --arm64`.
 
 Before you announce a release, install the previous version and update it. Check the download, the installation and the automatic relaunch, then confirm another check says Nyte is up to date.
 
@@ -64,14 +56,14 @@ Before you announce a release, install the previous version and update it. Check
 pnpm install:desktop
 ```
 
-This replaces `/Applications/Nyte.app` with a build of the checkout through the app's own updater, the way a nightly arrives. It builds a signed nightly ZIP, versioned like a nightly with the time of day as its run, and serves it on a loopback port. Then it quits Nyte and reopens it with `NYTE_UPDATE_FEED_PORT` set to that port. A packaged app with that variable checks `http://127.0.0.1:<port>` instead of GitHub. Once `updates.log` reports the download, the script quits Nyte so the update installs on quit, and opens the new version. Squirrel.Mac still checks the Developer ID, so the build must be signed with yours.
+This replaces `/Applications/Nyte.app` with a build of the checkout through the app's own updater, the way a nightly arrives. It builds a signed nightly ZIP, versioned like a nightly with the time of day as its run, and serves it on a loopback port. Then it quits Nyte and reopens it with `NYTE_UPDATE_FEED_PORT` set to that port. A packaged app with that variable checks `http://127.0.0.1:<port>` instead of GitHub. Once `updates.log` reports the download, the script quits Nyte so the update installs on quit, and opens the new version. Squirrel.Mac still checks the Developer ID, so the build must be signed with yours. Apple's timestamp server sometimes drops a signing request, so a failed build runs again, up to three times per run, before the script gives up and leaves the installed app alone.
 
 The installed app has to be on the nightly channel, and it has to be a build that reads `NYTE_UPDATE_FEED_PORT`. Replace an older build by hand once. A local build carries today's date, so a nightly from GitHub replaces it from the next day on.
 
 ## Local update test
 
 ```sh
-pnpm --dir packages/desktop update:local
+pnpm --dir packages/desktop update:test
 ```
 
 This builds the real app as **Nyte Update Test** 1.0.0 and 1.0.1, signed with your Developer ID but not notarized. It serves 1.0.1 on `http://localhost:8917` until you stop it. Open the 1.0.0 app the script prints and choose **Check for Updates…**. After the restart, About shows 1.0.1 and another check says it is up to date.
