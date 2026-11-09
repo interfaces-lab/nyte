@@ -4,6 +4,7 @@ import type { imageViewerRuntime } from "../chat/images/image-viewer.deferred.ts
 import type { highlightRuntime } from "../chat/markdown/highlight.deferred.ts";
 import type { mermaidRuntime } from "../chat/markdown/mermaid.deferred.ts";
 import type { previewsRuntime } from "../settings/previews/previews.deferred.tsx";
+import type { needsYouRuntime } from "../shell/needs-you-list.deferred.tsx";
 import type { ghosttyRuntime } from "../workbench/terminal/ghostty.deferred.ts";
 import type { pdfRuntime } from "../workbench/editor/pdf/pdf.deferred.ts";
 import type { workbenchRuntime } from "../workbench/panels.deferred.tsx";
@@ -45,6 +46,10 @@ export const deferredEntries = {
     module: new URL("../settings/previews/previews.deferred.tsx", import.meta.url).href,
     packages: [],
   },
+  needsYou: {
+    module: new URL("../shell/needs-you-list.deferred.tsx", import.meta.url).href,
+    packages: [],
+  },
 } as const;
 
 export interface DeferredRuntimes {
@@ -57,4 +62,5 @@ export interface DeferredRuntimes {
   pdf: typeof pdfRuntime;
   charts: typeof chartsRuntime;
   previews: typeof previewsRuntime;
+  needsYou: typeof needsYouRuntime;
 }
