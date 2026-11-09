@@ -67,6 +67,7 @@ export const TailnetStatusType = Type.Object({
   ]),
   authUrl: Type.Optional(Type.String()),
   dnsName: Type.Optional(Type.String()),
+  loginName: Type.Optional(Type.String()),
   https: Type.Enum(["pending", "available", "unavailable"]),
   access: TailnetAccessType,
   tags: Type.Array(Type.String()),

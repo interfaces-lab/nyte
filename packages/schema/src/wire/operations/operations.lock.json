@@ -1,7 +1,7 @@
 {
-  "revision": 16,
+  "revision": 20,
   "operations": {
-    "connection.watch": "3828353a916407ab",
+    "connection.watch": "a3fc0d5a93907590",
     "connection.blob": "d661f9695af8afc2",
     "catalogs.read": "f19aae90f2575f24",
     "operations.describe": "b17e90a432520966",
@@ -29,9 +29,9 @@
     "sessions.start": "e4d0dd6c9349a44b",
     "sessions.list": "880c8041a608d9d4",
     "sessions.read": "948192556f92bf5c",
-    "host.tailnet.status": "1064e33d9eb8164a",
-    "host.tailnet.configure": "b2d2c85351a29473",
-    "host.tailnet.logout": "ccad092113beb678",
+    "host.tailnet.status": "d8512fd7aefbd768",
+    "host.tailnet.configure": "90695a6d242db10d",
+    "host.tailnet.logout": "0041b560c3ca6a08",
     "host.execution.pause": "d662fe4fe2018933",
     "host.execution.resume": "6b60c8bcc1812efa",
     "mcp.approve": "e71e9810430d586e",

@@ -78,7 +78,8 @@ func TestSidecarAdmitsByWhoIs(t *testing.T) {
 
 	expectStatus(t, owned, func(now status) bool {
 		return now.State == "running" && now.HTTPS == "available" && now.Access == "owner" &&
-			now.DNSName == "owned.tail-scale.ts.net"
+			now.DNSName == "owned.tail-scale.ts.net" &&
+			now.LoginName == fmt.Sprintf("user-%d@fake-control.example.net", ownedNode.User)
 	})
 
 	expectStatus(t, open, func(now status) bool {

@@ -134,3 +134,11 @@ func dnsName(st *ipnstate.Status) string {
 
 	return strings.TrimSuffix(st.Self.DNSName, ".")
 }
+
+func loginName(st *ipnstate.Status) string {
+	if st.BackendState != ipn.Running.String() || st.Self == nil || st.Self.IsTagged() {
+		return ""
+	}
+
+	return st.User[st.Self.UserID].LoginName
+}

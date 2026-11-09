@@ -13,14 +13,15 @@ import (
 )
 
 type status struct {
-	State   string   `json:"state"`
-	Reason  string   `json:"reason,omitempty"`
-	Holder  int      `json:"holder,omitempty"`
-	AuthURL string   `json:"authUrl,omitempty"`
-	DNSName string   `json:"dnsName,omitempty"`
-	HTTPS   string   `json:"https"`
-	Access  string   `json:"access"`
-	Tags    []string `json:"tags"`
+	State     string   `json:"state"`
+	Reason    string   `json:"reason,omitempty"`
+	Holder    int      `json:"holder,omitempty"`
+	AuthURL   string   `json:"authUrl,omitempty"`
+	DNSName   string   `json:"dnsName,omitempty"`
+	LoginName string   `json:"loginName,omitempty"`
+	HTTPS     string   `json:"https"`
+	Access    string   `json:"access"`
+	Tags      []string `json:"tags"`
 }
 
 type reporter struct {
@@ -58,6 +59,7 @@ func (r *reporter) observe(st *ipnstate.Status) {
 		}
 
 		now.DNSName = dnsName(st)
+		now.LoginName = loginName(st)
 
 		if st.BackendState == ipn.Running.String() && st.Self != nil {
 			now.Tags = []string{}
