@@ -176,6 +176,15 @@ export const FileDocumentType = Type.Union([
 
 export type FileDocument = Decoded<typeof FileDocumentType>;
 
+/** A file read by absolute path: `FileDocument` without `scope`, since it belongs to no workspace. */
+export const DocumentType = Type.Union([
+  Type.Omit(FileDocumentType.anyOf[0], ["scope"]),
+  Type.Omit(FileDocumentType.anyOf[1], ["scope"]),
+  FileDocumentType.anyOf[2],
+]);
+
+export type Document = Decoded<typeof DocumentType>;
+
 export const FileStatusSchema: Schema<FileStatus> = standard(FileStatusType);
 
 export const FileChangeSchema: Schema<FileChange> = standard(FileChangeType);
@@ -201,3 +210,5 @@ export const TrashOutcomeSchema: Schema<TrashOutcome> = standard(TrashOutcomeTyp
 export const RestoreOutcomeSchema: Schema<RestoreOutcome> = standard(RestoreOutcomeType);
 
 export const FileDocumentSchema: Schema<FileDocument> = standard(FileDocumentType);
+
+export const DocumentSchema: Schema<Document> = standard(DocumentType);

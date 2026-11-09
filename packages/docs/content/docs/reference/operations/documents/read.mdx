@@ -1,0 +1,150 @@
+---
+title: documents.read
+description: Reads a file at an absolute path as text or as a document with its version.
+---
+
+Reads a file on the host machine by its absolute path, whether or not it is inside a workspace.
+It answers like [`files.read`](/docs/reference/operations/files/read) without `scope`: a UTF-8 text
+file up to 1 MiB answers `text` with its contents and version; a larger one answers `large`, and
+images, PDFs and other binaries answer their kind with size and version but no contents. A path
+with nothing there answers `missing`.
+
+`as: "document"` reads an SVG as an image rather than as text. The version is a SHA-256 of the
+contents; pass it as `expect` to [`documents.write`](/docs/reference/operations/documents/write) to
+save only if nobody changed the file since.
+
+## When to call it
+
+To open a file in an editor or viewer by its path, including a file outside every workspace. For
+binary contents, stream them with [`documents.bytes`](/docs/reference/operations/documents/bytes).
+
+## Access
+
+Only a principal with `owner` authority, since the path can be anywhere on the host machine. Host
+scope: it needs no workspace. The host answers it only when it runs the built-in local provider.
+
+## Example
+
+Request body:
+
+```json
+{ "path": "/Users/ada/notes/today.md" }
+```
+
+Response:
+
+```json
+{
+  "kind": "text",
+  "path": "/Users/ada/notes/today.md",
+  "mime": "text/markdown",
+  "contents": "# Today\n",
+  "version": "4b7d9f1a3c5e7b9d1f3a5c7e9b1d3f5a7c9e1b3d5f7a9c1e3b5d7f9a1c3e5b7d"
+}
+```
+
+## Errors
+
+- `invalid` when the path is relative or is a directory.
+- `denied` without owner authority.
+- `not_supported` when the host doesn't serve files by absolute path.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `owner`
+- Scope: `host`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["path"],
+  "properties": {
+    "path": {
+      "type": "string"
+    },
+    "options": {
+      "type": "object",
+      "properties": {
+        "as": {
+          "enum": ["text", "document"]
+        }
+      }
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind", "path", "mime", "contents", "version"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "text"
+        },
+        "path": {
+          "type": "string"
+        },
+        "mime": {
+          "type": "string"
+        },
+        "contents": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "path", "mime", "size", "version"],
+      "properties": {
+        "kind": {
+          "enum": ["image", "pdf", "binary", "large"]
+        },
+        "path": {
+          "type": "string"
+        },
+        "mime": {
+          "type": "string"
+        },
+        "size": {
+          "type": "number"
+        },
+        "version": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "path"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "missing"
+        },
+        "path": {
+          "type": "string"
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

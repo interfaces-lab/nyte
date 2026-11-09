@@ -11,7 +11,10 @@ import type {
   Cursor,
   DecodedObjectView,
   Disposer,
+  Document,
   ExecutionCoverage,
+  FileEvent,
+  FileVersion,
   HeadName,
   HostDescription,
   HostId,
@@ -50,6 +53,7 @@ import type {
   ValidationIssue,
   WorkspaceId,
   WorkspaceTarget,
+  WriteOutcome,
 } from "@nyte-ai/schema";
 import type { Models, Provider } from "@nyte-ai/ai";
 import type { Plugin } from "./plugin.ts";
@@ -130,7 +134,22 @@ export interface OpenOptions {
   readonly mcp?: McpHubFactory;
   /** The serving machine's GitHub CLI login, served as `Connection.github`; absent, its calls throw `SdkError("unavailable")`. */
   readonly github?: GitHubAccountApi;
+  /** Files on the serving machine by absolute path, served as `Connection.documents`; absent, its calls throw `SdkError("not_supported")`. */
+  readonly documents?: DocumentsApi;
   readonly images?: ImageProcessor;
+}
+
+/** Files on the serving machine by absolute path, outside any workspace. Every call needs owner authority; a relative path throws `SdkError("invalid")`. */
+export interface DocumentsApi {
+  read(path: string, options?: { readonly as?: "text" | "document" }): Promise<Document>;
+  bytes(path: string): Promise<ByteReader>;
+  write(
+    path: string,
+    contents: string | Uint8Array,
+    options?: { readonly expect?: "absent" | FileVersion; readonly parents?: boolean },
+  ): Promise<WriteOutcome>;
+  /** Changes to each named file, with the absolute paths in the events. */
+  watch(paths: readonly string[]): AsyncIterable<readonly FileEvent[]>;
 }
 
 export interface ImageLimits {
@@ -222,6 +241,8 @@ export interface Connection {
   readonly operations: OperationsApi;
   /** The serving machine's GitHub CLI login, shared by every workspace; signing in and out needs owner authority, and a host without one throws `SdkError("unavailable")`. */
   readonly github: GitHubAccountApi;
+  /** Files on the serving machine by absolute path; owner authority only, and a host without a local provider throws `SdkError("not_supported")`. */
+  readonly documents: DocumentsApi;
 
   close(): Promise<void>;
 

@@ -54,6 +54,7 @@ export const UPLOADS: ReadonlySet<string> = new Set([
   "files.write",
   "job.write",
   "files.upload",
+  "documents.write",
 ] satisfies readonly CallName[]);
 
 const ALLOWED_HEADERS = `Authorization, Content-Type, ${INPUT_HEADER}, ${CHANNEL_HEADER}, ${STREAM_HEADER}`;

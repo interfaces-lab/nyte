@@ -62,6 +62,10 @@ async function elevatedRows(sdk: Connection, at: Workspace): Promise<Record<stri
     "github.signIn": () => sdk.github.signIn(),
     "github.signOut": () => sdk.github.signOut(),
     "github.createPullRequest": () => github.api.createPullRequest({ title: "no" }),
+    "documents.read": () => sdk.documents.read("/etc/hosts"),
+    "documents.bytes": () => sdk.documents.bytes("/etc/hosts"),
+    "documents.write": () => sdk.documents.write("/tmp/no", "no"),
+    "documents.watch": () => sdk.documents.watch(["/tmp/no"])[Symbol.asyncIterator]().next(),
     "plugins.replace": () => sdk.plugins.replace([]),
     "plugins.check": () => sdk.plugins.check([]),
     "principals.list": () => sdk.principals.list(),
@@ -154,7 +158,7 @@ describe("connection gate (§52 rule 5)", () => {
       covered: false,
     });
 
-    expect(elevated).toHaveLength(41);
+    expect(elevated).toHaveLength(45);
     expect(await elevatedRows(participant, participant.workspace(at))).toEqual(denied);
     expect(await elevatedRows(invocation.sdk, invocation.workspace)).toEqual(denied);
   });

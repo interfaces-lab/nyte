@@ -27,7 +27,7 @@ import { mcpPlugin } from "./builtins/mcp.ts";
 import { systemPromptPlugin } from "./builtins/system-prompt.ts";
 import type { SessionBus } from "./contract/fold.ts";
 import { CORE_CONTEXT } from "./contract/host.ts";
-import type { ImageProcessor, ModelsApi, OpenOptions } from "./contract/host.ts";
+import type { DocumentsApi, ImageProcessor, ModelsApi, OpenOptions } from "./contract/host.ts";
 import type {
   Kernel,
   PluginHost,
@@ -383,6 +383,7 @@ async function composeKernel(
     models: options.models,
     mcp: options.mcp,
     github: options.github,
+    documents: options.documents,
     images: options.images,
     builtins: BUILTINS,
     hostPlugins: options.plugins,
@@ -436,6 +437,7 @@ type KernelOptions = Pick<Kernel, "hostId" | "store" | "description" | "host"> &
     readonly models?: Models;
     readonly mcp?: McpHubFactory;
     readonly github?: GitHubAccountApi;
+    readonly documents?: DocumentsApi;
     readonly images?: ImageProcessor;
   };
 
@@ -575,6 +577,7 @@ export function createKernel(input: KernelOptions): Kernel {
       return (secretKey ??= kernel.secrets === null ? null : loadSecretCipherKey(kernel.secrets));
     },
     github: input.github ?? null,
+    documents: input.documents ?? null,
     images: input.images ?? null,
     get mcp() {
       if (mcp === undefined) mcp = input.mcp?.({ secrets: pluginSecrets(kernel, "mcp") }) ?? null;

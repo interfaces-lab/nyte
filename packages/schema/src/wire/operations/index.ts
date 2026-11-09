@@ -4,6 +4,7 @@ import { isJson, isJsonObject } from "../../json.ts";
 import type { Json } from "../../json.ts";
 import type { Schema } from "../../schema.ts";
 import { BROWSER_OPERATIONS } from "./browser.ts";
+import { DOCUMENT_OPERATIONS } from "./documents.ts";
 import { EVENT_OPERATIONS } from "./events.ts";
 import type { OperationRows } from "./fields.ts";
 import { FILE_OPERATIONS } from "./files.ts";
@@ -23,6 +24,7 @@ export const OPERATIONS = {
   ...SESSION_OPERATIONS,
   ...WORKSPACE_OPERATIONS,
   ...FILE_OPERATIONS,
+  ...DOCUMENT_OPERATIONS,
   ...GIT_OPERATIONS,
   ...GITHUB_OPERATIONS,
   ...BROWSER_OPERATIONS,

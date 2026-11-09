@@ -1,0 +1,105 @@
+---
+title: documents.watch
+description: Streams changes to files at absolute paths as they happen.
+---
+
+Streams changes to files on the host machine named by their absolute paths. Each frame is a list
+of events, `created`, `modified` or `removed`, each with the absolute path and the version after
+(`null` when removed). Changes close together arrive in one frame, and while the reader is behind a
+path's last change wins. A missing path is watched from when it appears. Folders aren't reported,
+and an empty `paths` watches nothing.
+
+## When to call it
+
+To reload an open document when its file changes on disk.
+
+## Access
+
+Only a principal with `owner` authority, since the path can be anywhere on the host machine. Host
+scope: it needs no workspace. The host answers it only when it runs the built-in local provider.
+
+## Example
+
+Request body:
+
+```json
+{ "paths": ["/Users/ada/notes/today.md"] }
+```
+
+A frame:
+
+```json
+[
+  {
+    "path": "/Users/ada/notes/today.md",
+    "version": "7e9b1d3f5a7c9e1b3d5f7a9c1e3b5d7f9a1c3e5b7d9f1a3c5e7b9d1f3a5c7e9b",
+    "kind": "modified"
+  }
+]
+```
+
+## Errors
+
+- `invalid` when a path is relative.
+- `denied` without owner authority.
+- `not_supported` when the host doesn't serve files by absolute path.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `watch`
+- Authority: `owner`
+- Scope: `host`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["paths"],
+  "properties": {
+    "paths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["path", "version", "kind"],
+    "properties": {
+      "path": {
+        "type": "string"
+      },
+      "version": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "kind": {
+        "enum": ["created", "modified", "removed"]
+      }
+    }
+  }
+}
+```
+
+{/* generated:end */}

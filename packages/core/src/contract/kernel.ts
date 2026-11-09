@@ -41,6 +41,7 @@ import type {
   Connection,
   ConnectionContext,
   ConnectionRegistry,
+  DocumentsApi,
   Host,
   HostState,
   ImageProcessor,
@@ -162,6 +163,8 @@ export interface Kernel {
   readonly mcp: McpHub | null;
 
   readonly github: GitHubAccountApi | null;
+
+  readonly documents: DocumentsApi | null;
 
   readonly images: ImageProcessor | null;
 

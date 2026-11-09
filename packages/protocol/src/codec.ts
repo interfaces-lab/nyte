@@ -62,6 +62,7 @@ const plans = new WeakMap<Schema<unknown>, Plan>();
 const BYTE_ROWS = {
   "connection.blob": true,
   "files.bytes": true,
+  "documents.bytes": true,
   "page.capture": true,
 } as const satisfies { readonly [N in ByteName]: true };
 

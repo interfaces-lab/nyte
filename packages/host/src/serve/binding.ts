@@ -498,14 +498,8 @@ export function bindConnection(connection: Connection, options: BindingOptions):
       workspace(id).job(job).settled({ signal }),
 
     "files.read": async ({ workspace: id, path, options }) => (await files(id)).read(path, options),
-    "files.bytes": async ({ workspace: id, path }) => {
-      const reader = await (await files(id)).bytes(path);
-
-      const version =
-        "version" in reader && typeof reader.version === "string" ? reader.version : null;
-
-      return version === null ? { reader } : { reader, headers: { "X-Nyte-Version": version } };
-    },
+    "files.bytes": async ({ workspace: id, path }) =>
+      versioned(await (await files(id)).bytes(path)),
     "files.stat": async ({ workspace: id, path }) => (await files(id)).stat(path),
     "files.write": async ({ workspace: id, path, options }, { body }) =>
       (await files(id)).write(path, await readBytes(body), options),
@@ -529,6 +523,12 @@ export function bindConnection(connection: Connection, options: BindingOptions):
     "files.watch": async ({ workspace: id, paths }) => (await files(id)).watch({ paths }),
     "files.upload": async ({ workspace: id }, { body }) =>
       (await files(id)).upload(readChunks(body)),
+
+    "documents.read": ({ path, options }) => connection.documents.read(path, options),
+    "documents.bytes": async ({ path }) => versioned(await connection.documents.bytes(path)),
+    "documents.write": async ({ path, options }, { body }) =>
+      connection.documents.write(path, await readBytes(body), options),
+    "documents.watch": async ({ paths }) => connection.documents.watch(paths),
 
     "git.status": async ({ workspace: id }) => (await git(id)).status(),
     "git.watch": async ({ workspace: id }) => (await git(id)).watch(),
@@ -681,6 +681,13 @@ async function readBytes(body: ReadableStream<Uint8Array> | null): Promise<Uint8
   }
 
   return bytes;
+}
+
+/** Answers a reader's file version, when it carries one, as `X-Nyte-Version`. */
+function versioned(reader: ByteReader): ByteBody {
+  const version = "version" in reader && typeof reader.version === "string" ? reader.version : null;
+
+  return version === null ? { reader } : { reader, headers: { "X-Nyte-Version": version } };
 }
 
 function hostWire(view: HostView, principal: PrincipalId): HostViewWire {

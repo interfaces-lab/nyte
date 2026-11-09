@@ -34,6 +34,7 @@ import manifest from "../package.json" with { type: "json" };
 import { credentialStore } from "./credentials.ts";
 import { identitySigner } from "./identity-key.ts";
 import { readErrorCode } from "./local/tree.ts";
+import { localDocuments } from "./local/documents.ts";
 import { localGitHubAccount } from "./local/github.ts";
 import { localProvider } from "./local/provider.ts";
 import { importLegacyTrust } from "./local/legacy-trust.ts";
@@ -169,6 +170,7 @@ async function composeOpen(
   ];
 
   let projectDirs: () => Promise<readonly string[]> = async () => [];
+  const documentsClosed = new AbortController();
 
   const loader = createPluginLoader({
     dirs: async () => [join(home, ".nyte", "plugins"), ...(await projectDirs())],
@@ -185,6 +187,8 @@ async function composeOpen(
     models,
     mcp: options.mcp ?? createMcpHub({ home }),
     github: options.github ?? (usesLocalProvider ? localGitHubAccount({ home }) : undefined),
+    documents:
+      options.documents ?? (usesLocalProvider ? localDocuments(documentsClosed.signal) : undefined),
     images: options.images ?? nodeImages(),
     plugins,
     secrets,
@@ -200,6 +204,7 @@ async function composeOpen(
     revoked: options.onRevoked,
   }).catch((error: unknown) => {
     loader.close();
+    documentsClosed.abort();
 
     throw error;
   });
@@ -262,6 +267,7 @@ async function composeOpen(
       for (const listener of listeners) await listener.close();
       await tailnet.close();
       await host.close();
+      documentsClosed.abort();
       loader.close();
       await owned?.close();
     })();

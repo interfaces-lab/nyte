@@ -102,6 +102,17 @@ export function createClient(transport: Transport, context: ClientContext): Conn
       return watchHost(rows, opened);
     },
     blob: (id) => rows.bytes("connection.blob", { id }),
+    documents: {
+      read: (path, options) => rows.call("documents.read", { path, options }),
+      bytes: (path) => rows.bytes("documents.bytes", { path }),
+      write: (path, contents, options) =>
+        rows.upload(
+          "documents.write",
+          { path, options },
+          typeof contents === "string" ? new TextEncoder().encode(contents) : contents,
+        ),
+      watch: (paths) => rows.watch("documents.watch", { paths }),
+    },
     catalogs: { read: (id) => rows.call("catalogs.read", { id }) },
     models: {
       list: () => rows.call("models.list", {}),

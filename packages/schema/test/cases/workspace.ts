@@ -8,6 +8,7 @@ import {
   ConsoleEntrySchema,
   DiffOptionsSchema,
   FileChangeSchema,
+  DocumentSchema,
   FileDocumentSchema,
   FileEntryViewSchema,
   FileEventSchema,
@@ -127,6 +128,17 @@ export const workspaceCases = {
       version: fileVersion,
     },
     { kind: "huge", path: "x" },
+  ),
+  DocumentSchema: sample(
+    DocumentSchema,
+    {
+      kind: "text",
+      path: "/notes/a.md",
+      mime: "text/markdown",
+      contents: "# A\n",
+      version: fileVersion,
+    },
+    { kind: "text", path: "/notes/a.md", mime: "text/markdown", version: fileVersion },
   ),
   GitStatusSchema: sample(
     GitStatusSchema,

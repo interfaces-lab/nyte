@@ -10,6 +10,7 @@ import { ALL_AUTHORITY, LOCAL } from "../contract/host.ts";
 import type {
   Connection,
   ConnectionContext,
+  DocumentsApi,
   Host,
   ModelsApi,
   PluginFile,
@@ -42,6 +43,17 @@ const NO_GITHUB: GitHubAccountApi = {
 
 function unavailableGitHub(): never {
   throw new SdkError("unavailable", "This host has no GitHub CLI login to serve.");
+}
+
+const NO_DOCUMENTS: DocumentsApi = {
+  read: async () => unsupportedDocuments(),
+  bytes: async () => unsupportedDocuments(),
+  write: async () => unsupportedDocuments(),
+  watch: () => forwarded(async () => unsupportedDocuments()),
+};
+
+function unsupportedDocuments(): never {
+  throw new SdkError("not_supported", "This host serves no files by absolute path.");
 }
 
 export function createConnection(
@@ -129,6 +141,8 @@ export function createConnection(
     });
   };
 
+  const documents = kernel.documents ?? NO_DOCUMENTS;
+
   const close = async (): Promise<void> => {
     for (const stop of streams) stop();
     streams.clear();
@@ -187,6 +201,16 @@ export function createConnection(
     principals: gated("principals", createPrincipals(kernel), authority),
     operations: { describe: async (names) => describeOperations(names) },
     github: gated("github", kernel.github ?? NO_GITHUB, authority),
+    documents: gated("documents", documents, authority, {
+      watch: (paths) =>
+        track(
+          forwarded(async () => {
+            gate(authority, "documents.watch");
+
+            return documents.watch(paths);
+          }),
+        ),
+    }),
     close,
     [Symbol.asyncDispose]: close,
   };

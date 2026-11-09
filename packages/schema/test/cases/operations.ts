@@ -45,8 +45,10 @@ import {
   settled,
 } from "./fixtures.ts";
 import type { Case } from "./fixtures.ts";
+import { documentOperations } from "./documents.ts";
 
 export const operations = {
+  ...documentOperations,
   "connection.watch input": operation(OPERATIONS["connection.watch"].input, {}, 1),
   "connection.blob input": operation(OPERATIONS["connection.blob"].input, { id: blob }, {}),
   "connection.blob output": operation(

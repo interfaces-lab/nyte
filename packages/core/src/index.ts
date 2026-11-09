@@ -4,6 +4,7 @@ export type {
   ConnectOptions,
   Connection,
   ConnectionContext,
+  DocumentsApi,
   Host,
   ImageLimits,
   ImageProcessor,

@@ -1,0 +1,149 @@
+---
+title: documents.write
+description: Writes the request body to a file at an absolute path, optionally only if it still has the expected version.
+---
+
+Writes the request body to a file on the host machine by its absolute path. Send the bytes as the
+body and the JSON input in the `X-Nyte-Input` header, base64url encoded. With `expect`, the write
+happens only if the file still has that version, or with `"absent"`, only if nothing is there.
+Missing parent folders are created when `parents` is true.
+
+It answers `saved` with the new version, `stale` with the current version (or `null`) when
+`expect` doesn't match, or `missing-parent`. The file is written through a temporary file renamed
+into place, keeping an existing file's mode; through a symlink, its target is written.
+
+## When to call it
+
+To save a file opened with [`documents.read`](/docs/reference/operations/documents/read). Pass the
+version you read as `expect` so you don't overwrite a change made in the meantime.
+
+## Access
+
+Only a principal with `owner` authority, since the path can be anywhere on the host machine. Host
+scope: it needs no workspace. The host answers it only when it runs the built-in local provider.
+
+## Example
+
+`X-Nyte-Input` decodes to:
+
+```json
+{
+  "path": "/Users/ada/notes/today.md",
+  "options": { "expect": "4b7d9f1a3c5e7b9d1f3a5c7e9b1d3f5a7c9e1b3d5f7a9c1e3b5d7f9a1c3e5b7d" }
+}
+```
+
+The body is the new contents. Response:
+
+```json
+{
+  "kind": "saved",
+  "version": "7e9b1d3f5a7c9e1b3d5f7a9c1e3b5d7f9a1c3e5b7d9f1a3c5e7b9d1f3a5c7e9b"
+}
+```
+
+## Errors
+
+- `invalid` when the path is relative, its parent is not a folder, the input header isn't
+  base64url JSON, or the body is over the host's limit (8 MiB by default, answered with status
+  413).
+- `denied` without owner authority.
+- `not_supported` when the host doesn't serve files by absolute path.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `owner`
+- Scope: `host`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["path"],
+  "properties": {
+    "path": {
+      "type": "string"
+    },
+    "options": {
+      "type": "object",
+      "properties": {
+        "expect": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "absent"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "parents": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind", "version"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "saved"
+        },
+        "version": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "current"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "stale"
+        },
+        "current": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "missing-parent"
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

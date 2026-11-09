@@ -21,12 +21,14 @@ import { asId, SdkError } from "@nyte-ai/schema";
 import { serial } from "@nyte-ai/schema/serial";
 import type {
   ByteReader,
+  Document,
   FileEntryView,
   FileEvent,
   FileVersion,
   FormatOutcome,
   SearchFrame,
   SearchInput,
+  WriteOutcome,
 } from "@nyte-ai/schema";
 import type { FileBatch, FilesApi } from "@nyte-ai/core";
 import { Type } from "typebox";
@@ -101,95 +103,13 @@ export function localFiles(
   return {
     async read(path, readOptions) {
       const target = absolute(path);
-      const stats = await stat(target).catch(missing);
+      const document = await readDocument(target, path, readOptions?.as);
 
-      if (stats === null) return { kind: "missing", path };
-
-      if (stats.isDirectory()) throw new SdkError("invalid", `${path} is a directory.`);
-      const head = await readHead(target).catch(missing);
-
-      if (head === null) return { kind: "missing", path };
-      const file = classifyFile(target, head);
-      const scope = await findScope(root, target);
-
-      if (file.kind !== "text" && (file.mime !== "image/svg+xml" || readOptions?.as === "document"))
-        return {
-          kind: file.kind,
-          path,
-          scope,
-          mime: file.mime,
-          size: stats.size,
-          version: await hashFile(target),
-        };
-
-      if (stats.size > TEXT_LIMIT)
-        return {
-          kind: "large",
-          path,
-          scope,
-          mime: file.mime,
-          size: stats.size,
-          version: await hashFile(target),
-        };
-      const bytes = await readFile(target).catch(missing);
-
-      if (bytes === null) return { kind: "missing", path };
-      const version = hashVersion(bytes);
-      const text = decodeText(bytes);
-
-      return text === null
-        ? {
-            kind: "binary",
-            path,
-            scope,
-            mime: "application/octet-stream",
-            size: bytes.byteLength,
-            version,
-          }
-        : { kind: "text", path, scope, mime: file.mime, contents: text, version };
+      return document.kind === "missing"
+        ? document
+        : { ...document, scope: await findScope(root, target) };
     },
-    async bytes(path) {
-      const target = absolute(path);
-      const stats = await stat(target).catch(missing);
-
-      if (stats === null || !stats.isFile())
-        throw new SdkError("unknown", `No file is at ${path}.`);
-      const mime = classifyFile(target, await readHead(target)).mime;
-      const version = await hashFile(target);
-      let handle: Awaited<ReturnType<typeof open>> | null = null;
-
-      const close = async (): Promise<void> => {
-        const held = handle;
-        handle = null;
-        await held?.close();
-      };
-
-      return {
-        size: stats.size,
-        mime,
-        version,
-        async *chunks() {
-          handle = await open(target, "r");
-
-          try {
-            for (;;) {
-              const held = handle;
-
-              if (held === null) return;
-              const buffer = new Uint8Array(CHUNK);
-              const { bytesRead } = await held.read(buffer, 0, CHUNK, null);
-
-              if (bytesRead === 0) return;
-              yield buffer.subarray(0, bytesRead);
-            }
-          } finally {
-            await close();
-          }
-        },
-        close,
-        [Symbol.asyncDispose]: close,
-      };
-    },
+    bytes: async (path) => readBytes(absolute(path), path),
     async stat(path) {
       const target = absolute(path);
       const stats = await lstat(target).catch(missing);
@@ -207,39 +127,8 @@ export function localFiles(
 
       return { kind: "file", size: stats.size, version: await hashFile(target) };
     },
-    async write(path, contents, writeOptions) {
-      const target = await resolveLink(absolute(path));
-      const current = await currentVersion(target);
-      const expect = writeOptions?.expect;
-
-      if (expect === "absent" ? current !== null : expect !== undefined && expect !== current)
-        return { kind: "stale", current };
-      const parent = dirname(target);
-      const folder = await stat(parent).catch(missing);
-
-      if (folder === null) {
-        if (writeOptions?.parents !== true) return { kind: "missing-parent" };
-        await mkdir(parent, { recursive: true });
-      } else if (!folder.isDirectory())
-        throw new SdkError("invalid", `${dirname(path)} is not a directory.`);
-
-      const bytes = typeof contents === "string" ? new TextEncoder().encode(contents) : contents;
-      const mode = (await stat(target).catch(missing))?.mode;
-      const temporary = join(parent, `.${basename(target)}.${randomUUID()}.nyte-tmp`);
-
-      try {
-        await writeFile(temporary, bytes);
-
-        if (mode !== undefined) await chmod(temporary, mode & 0o7777);
-        await rename(temporary, target);
-      } catch (error) {
-        await unlink(temporary).catch(() => undefined);
-
-        throw error;
-      }
-
-      return { kind: "saved", version: hashVersion(bytes) };
-    },
+    write: async (path, contents, writeOptions) =>
+      writeDocument(absolute(path), path, contents, writeOptions),
     async remove(path, removeOptions) {
       const target = absolute(path);
       const link = await lstat(target).catch(missing);
@@ -311,6 +200,138 @@ export function localFiles(
       throw new SdkError("unavailable", "Core stores uploads; the local provider does not.");
     },
   };
+}
+
+/** Reads the file at the absolute `target` as `localFiles`' `read` does, without its `scope`; the answer names it `path`. */
+export async function readDocument(
+  target: string,
+  path: string,
+  as: "text" | "document" | undefined,
+): Promise<Document> {
+  const stats = await stat(target).catch(missing);
+
+  if (stats === null) return { kind: "missing", path };
+
+  if (stats.isDirectory()) throw new SdkError("invalid", `${path} is a directory.`);
+  const head = await readHead(target).catch(missing);
+
+  if (head === null) return { kind: "missing", path };
+  const file = classifyFile(target, head);
+
+  if (file.kind !== "text" && (file.mime !== "image/svg+xml" || as === "document"))
+    return {
+      kind: file.kind,
+      path,
+      mime: file.mime,
+      size: stats.size,
+      version: await hashFile(target),
+    };
+
+  if (stats.size > TEXT_LIMIT)
+    return {
+      kind: "large",
+      path,
+      mime: file.mime,
+      size: stats.size,
+      version: await hashFile(target),
+    };
+  const bytes = await readFile(target).catch(missing);
+
+  if (bytes === null) return { kind: "missing", path };
+  const version = hashVersion(bytes);
+  const text = decodeText(bytes);
+
+  return text === null
+    ? {
+        kind: "binary",
+        path,
+        mime: "application/octet-stream",
+        size: bytes.byteLength,
+        version,
+      }
+    : { kind: "text", path, mime: file.mime, contents: text, version };
+}
+
+/** Streams the file at the absolute `target` as `localFiles`' `bytes` does; errors name it `path`. */
+export async function readBytes(target: string, path: string): Promise<VersionedReader> {
+  const stats = await stat(target).catch(missing);
+
+  if (stats === null || !stats.isFile()) throw new SdkError("unknown", `No file is at ${path}.`);
+  const mime = classifyFile(target, await readHead(target)).mime;
+  const version = await hashFile(target);
+  let handle: Awaited<ReturnType<typeof open>> | null = null;
+
+  const close = async (): Promise<void> => {
+    const held = handle;
+    handle = null;
+    await held?.close();
+  };
+
+  return {
+    size: stats.size,
+    mime,
+    version,
+    async *chunks() {
+      handle = await open(target, "r");
+
+      try {
+        for (;;) {
+          const held = handle;
+
+          if (held === null) return;
+          const buffer = new Uint8Array(CHUNK);
+          const { bytesRead } = await held.read(buffer, 0, CHUNK, null);
+
+          if (bytesRead === 0) return;
+          yield buffer.subarray(0, bytesRead);
+        }
+      } finally {
+        await close();
+      }
+    },
+    close,
+    [Symbol.asyncDispose]: close,
+  };
+}
+
+/** Writes the absolute `target` as `localFiles`' `write` does; errors name it `path`. */
+export async function writeDocument(
+  target: string,
+  path: string,
+  contents: string | Uint8Array,
+  options: { readonly expect?: FileVersion | "absent"; readonly parents?: boolean } | undefined,
+): Promise<WriteOutcome> {
+  const resolved = await resolveLink(target);
+  const current = await currentVersion(resolved);
+  const expect = options?.expect;
+
+  if (expect === "absent" ? current !== null : expect !== undefined && expect !== current)
+    return { kind: "stale", current };
+  const parent = dirname(resolved);
+  const folder = await stat(parent).catch(missing);
+
+  if (folder === null) {
+    if (options?.parents !== true) return { kind: "missing-parent" };
+    await mkdir(parent, { recursive: true });
+  } else if (!folder.isDirectory())
+    throw new SdkError("invalid", `${dirname(path)} is not a directory.`);
+
+  const bytes = typeof contents === "string" ? new TextEncoder().encode(contents) : contents;
+  const mode = (await stat(resolved).catch(missing))?.mode;
+  const temporary = join(parent, `.${basename(resolved)}.${randomUUID()}.nyte-tmp`);
+
+  try {
+    await writeFile(temporary, bytes);
+
+    if (mode !== undefined) await chmod(temporary, mode & 0o7777);
+    await rename(temporary, resolved);
+  } catch (error) {
+    await unlink(temporary).catch(() => undefined);
+
+    throw error;
+  }
+
+  return { kind: "saved", version: hashVersion(bytes) };
 }
 
 async function findScope(root: string, path: string): Promise<"workspace" | "external"> {
@@ -744,26 +765,30 @@ async function readSearchable(path: string, size: number | null): Promise<string
   return bytes === null ? null : decodeText(bytes);
 }
 
-function watchFiles(
-  root: string,
+/** Watches `paths` as `localFiles`' `watch` does: a relative one under `root`, an absolute one as given and named so in its events. Without `root` it watches only the absolute `paths` it is given, never a whole tree. */
+export function watchFiles(
+  root: string | null,
   paths: readonly string[],
   signal: AbortSignal | undefined,
 ): AsyncIterable<readonly FileEvent[]> {
-  const whole = paths.length === 0 || paths.includes("");
+  const tree = root !== null && (paths.length === 0 || paths.includes("")) ? root : null;
+
+  const resolve = (path: string): string =>
+    root === null || isAbsolute(path) ? path : join(root, path);
 
   return feed<readonly FileEvent[]>(
     (sink) => {
-      const ignores = createIgnores(root);
+      const ignores = tree === null ? null : createIgnores(tree);
       const known = new Map<string, FileVersion | null>();
       const started = Date.now();
       const reads = serial();
 
       const readEvent = async (path: string): Promise<FileEvent | null> => {
         if (path.endsWith(".gitignore"))
-          ignores.forget(path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "");
+          ignores?.forget(path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "");
 
-        if (whole && (await ignores.ignored(path, false))) return null;
-        const at = isAbsolute(path) ? path : join(root, path);
+        if (ignores !== null && (await ignores.ignored(path, false))) return null;
+        const at = resolve(path);
         const stats = await lstat(at).catch(() => null);
 
         if (stats?.isDirectory() === true) return null;
@@ -794,7 +819,7 @@ function watchFiles(
         if (!changed.has("")) return inside;
         const below = [...known.keys()].filter((path) => path.startsWith(`${prefix}/`));
 
-        for await (const frame of walkTree(isAbsolute(prefix) ? prefix : join(root, prefix), {
+        for await (const frame of walkTree(resolve(prefix), {
           ignored: "include",
         }))
           if (frame.kind === "entries")
@@ -819,15 +844,14 @@ function watchFiles(
         });
       };
 
-      const watching = whole
-        ? [watchTree(root, { delay: WATCH_DELAY_MS, poll: WATCH_POLL_MS }, heard)]
-        : paths.map((prefix) =>
-            watchPath(
-              isAbsolute(prefix) ? prefix : join(root, prefix),
-              { delay: WATCH_DELAY_MS },
-              (changed) => heard(listMoved(prefix, changed)),
-            ),
-          );
+      const watching =
+        tree !== null
+          ? [watchTree(tree, { delay: WATCH_DELAY_MS, poll: WATCH_POLL_MS }, heard)]
+          : paths.map((prefix) =>
+              watchPath(resolve(prefix), { delay: WATCH_DELAY_MS }, (changed) =>
+                heard(listMoved(prefix, changed)),
+              ),
+            );
 
       const dispose = (): void => {
         for (const stop of watching) stop();
