@@ -2,6 +2,8 @@ import type { SessionInfo } from "@nyte-ai/sdk";
 import { useState } from "react";
 import { sessionMark } from "@nyte-ai/plugin/client/presentation";
 import type { TaskState } from "@nyte-ai/plugin/client/presentation";
+import { describeHostError } from "../connection/connection.ts";
+import { useHost } from "../connection/host-context.tsx";
 import { healthMessage, updatedLabel, useHealth, useSessions } from "../connection/live.ts";
 import type { LiveHost } from "../connection/live.ts";
 import type { Theme } from "../theme.ts";
@@ -88,7 +90,9 @@ export function markTone(mark: TaskState, theme: Theme) {
 export function useSessionList(live: LiveHost, search = "") {
   const [limit, setLimit] = useState(PAGE);
   const listed = useSessions(live, { parents: { kind: "roots" }, limit });
+  const { newerHost } = useHost();
   const health = healthMessage(useHealth(live));
+  const failure = listed?.freshness.kind === "stale" ? listed.freshness.error : null;
   const needle = search.trim().toLocaleLowerCase();
   const current = listed?.sessions;
   const [seen, setSeen] = useState(current);
@@ -108,7 +112,9 @@ export function useSessionList(live: LiveHost, search = "") {
         }
       : health !== undefined
         ? { kind: "failed", message: health }
-        : { kind: "loading" };
+        : failure !== null
+          ? { kind: "failed", message: describeHostError(failure, newerHost) }
+          : { kind: "loading" };
 
   const more = () => setLimit((previous) => previous + PAGE);
 
@@ -116,7 +122,7 @@ export function useSessionList(live: LiveHost, search = "") {
     list,
     busy: current === undefined && rows !== undefined,
     error: rows === undefined ? undefined : health,
-    updated: updatedLabel(listed?.freshness),
+    updated: rows === undefined ? undefined : updatedLabel(listed?.freshness),
     refresh: () => live.retry(),
     more,
   };

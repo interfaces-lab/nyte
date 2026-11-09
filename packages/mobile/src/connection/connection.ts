@@ -139,7 +139,7 @@ export function describeHostError(cause: unknown, newerHost: boolean): string {
     case "denied":
       return `The host refused the token. Scan a new code from ${SHARE_LOCATION}.`;
     case "unknown":
-      return "This conversation is no longer available.";
+      return "Your Mac couldn't find that.";
     case "unavailable":
       return "Couldn't reach the host. Check the address and that sharing is on.";
     case "stale":

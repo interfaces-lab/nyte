@@ -72,15 +72,25 @@ export async function verifyHost(input: {
   if (signal.aborted) return { kind: "cancelled" };
   let connection: HostConnection;
 
+  const connecting = sdk.connect({
+    url: saved.connection.url,
+    credentials: { kind: "token", token: saved.connection.token },
+    journal: createJournal(journals, JSON.stringify(route)),
+    fetch: hostFetch(saved),
+  });
+
+  const abandoned = new Promise<never>((_, reject) => {
+    signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+  });
+
   try {
-    connection = await sdk.connect({
-      url: saved.connection.url,
-      credentials: { kind: "token", token: saved.connection.token },
-      journal: createJournal(journals, JSON.stringify(route)),
-      fetch: hostFetch(saved),
-    });
+    connection = await Promise.race([connecting, abandoned]);
   } catch (cause) {
-    if (signal.aborted) return { kind: "cancelled" };
+    if (signal.aborted) {
+      void connecting.then((late) => late.close()).catch(() => undefined);
+
+      return { kind: "cancelled" };
+    }
 
     if (cause instanceof SdkError) return classifyConnectFailure(cause, address);
 

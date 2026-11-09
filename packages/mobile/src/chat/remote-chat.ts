@@ -1,5 +1,6 @@
 import { SdkError } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
+import type { RunId } from "@nyte-ai/schema";
 import type {
   CommitId,
   Configuration,
@@ -91,11 +92,15 @@ export function useRemoteChat(client: Connection, sessionId: SessionId, headName
   });
 
   const state = chat?.view;
-  const row = listed?.sessions.find((candidate) => candidate.id === sessionId);
+  const row = listed?.sessions?.find((candidate) => candidate.id === sessionId);
   const tip = row?.heads.find((entry) => entry.name === head.name)?.tip;
 
   const [sending, setSending] = useState(false);
-  const [sendError, setSendError] = useState<string>();
+
+  const [sendError, setSendError] = useState<{
+    readonly head: HeadName;
+    readonly message: string;
+  }>();
 
   const [modelSelection, setModelSelection] = useState<
     { kind: "saving"; model: ModelInfo } | { kind: "failed"; message: string } | undefined
@@ -115,7 +120,7 @@ export function useRemoteChat(client: Connection, sessionId: SessionId, headName
     setSending(false);
 
     if (upload.kind === "failed") {
-      setSendError(upload.error);
+      setSendError({ head: head.name, message: upload.error });
 
       return upload;
     }
@@ -131,7 +136,7 @@ export function useRemoteChat(client: Connection, sessionId: SessionId, headName
       );
 
     void answer.then((outcome) => {
-      if (outcome.kind === "refused") setSendError(outcome.error);
+      if (outcome.kind === "refused") setSendError({ head: head.name, message: outcome.error });
     });
 
     return { kind: "taken", answer };
@@ -161,17 +166,18 @@ export function useRemoteChat(client: Connection, sessionId: SessionId, headName
       .catch(() => undefined);
   };
 
-  const [stopError, setStopError] = useState<string>();
+  const [stopError, setStopError] = useState<{ readonly run: RunId; readonly message: string }>();
+  const execution = state?.execution;
+  const running = execution === undefined || execution.kind === "idle" ? undefined : execution.run;
 
   const stop = async (): Promise<void> => {
-    const execution = state?.execution;
-
-    if (execution === undefined || execution.kind === "idle") return;
+    if (running === undefined) return;
+    setStopError(undefined);
 
     try {
-      await session.run(execution.run.id).stop();
+      await session.run(running.id).stop();
     } catch (cause) {
-      setStopError(describeHostError(cause, newerHost));
+      setStopError({ run: running.id, message: describeHostError(cause, newerHost) });
     }
   };
 
@@ -192,7 +198,9 @@ export function useRemoteChat(client: Connection, sessionId: SessionId, headName
     reloadInfo: info.refetch,
     configuration,
     sending,
-    error: sendError ?? stopError,
+    error:
+      (sendError?.head === head.name ? sendError?.message : undefined) ??
+      (stopError?.run === running?.id ? stopError?.message : undefined),
     send,
     withdraw,
     steerNow,

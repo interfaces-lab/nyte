@@ -22,7 +22,7 @@ export interface ChatSnapshot {
 }
 
 export interface ListSnapshot {
-  readonly sessions: readonly SessionInfo[];
+  readonly sessions: readonly SessionInfo[] | undefined;
   readonly freshness: Freshness;
 }
 
@@ -143,11 +143,9 @@ export function useSessions(live: LiveHost, window: SessionsWindow): ListSnapsho
     return {
       read(previous) {
         const snapshot = store.snapshot();
-
-        if (snapshot === null) return undefined;
         const freshness = store.freshness();
 
-        const sessions = snapshot.ids.flatMap((id) => {
+        const sessions = snapshot?.ids.flatMap((id) => {
           const info = snapshot.rows.get(id);
 
           return info === undefined ? [] : [info];
@@ -155,8 +153,11 @@ export function useSessions(live: LiveHost, window: SessionsWindow): ListSnapsho
 
         return previous !== undefined &&
           previous.freshness === freshness &&
-          previous.sessions.length === sessions.length &&
-          previous.sessions.every((info, index) => info === sessions[index])
+          (previous.sessions === sessions ||
+            (previous.sessions !== undefined &&
+              sessions !== undefined &&
+              previous.sessions.length === sessions.length &&
+              previous.sessions.every((info, index) => info === sessions[index])))
           ? previous
           : { sessions, freshness };
       },

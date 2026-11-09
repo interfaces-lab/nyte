@@ -70,6 +70,7 @@ export function SettingsScreen() {
           style: "destructive",
           onPress: () => {
             setBusy(true);
+            setError(undefined);
             void disconnect().catch(() => {
               setBusy(false);
               setError("Couldn't remove the saved connection. Try again.");

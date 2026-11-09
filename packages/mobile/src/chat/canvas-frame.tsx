@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, View, useColorScheme, useWindowDimensions } from "react-native";
+import {
+  ActivityIndicator,
+  AppState,
+  View,
+  useColorScheme,
+  useWindowDimensions,
+} from "react-native";
 import { WebView } from "react-native-webview";
 import type { WebViewMessageEvent } from "react-native-webview";
 import Constants from "expo-constants";
@@ -23,6 +29,7 @@ import { mobileHostContext, shellEffect, shellScript, startupScript } from "./ca
 import type { ShellBound } from "./canvas-host.ts";
 import { openExternalLink } from "./markdown.tsx";
 import type { ChatRow } from "./transcript-rows.ts";
+import { useMountEffect } from "../use-mount-effect.ts";
 
 const HOST_INFO = {
   name: "nyte-ios",
@@ -116,6 +123,15 @@ export function CanvasWebView({
   const reported = useRef<string>(undefined);
   const [generation, setGeneration] = useState(0);
   const [ready, setReady] = useState(false);
+
+  useMountEffect(() => {
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") crashed.current = false;
+    });
+
+    return () => subscription.remove();
+  });
+
   const scrolls = size.kind === "fill" || size.scrolls;
 
   const [failure, setFailure] = useState<{ code: string; message: string; fatal: boolean }>();

@@ -192,6 +192,13 @@ export function useComposerSubmit({
 
   const submit = () => {
     if (submissionActive.current) return;
+
+    if (images.length > MAX_ATTACHMENTS) {
+      reportError("Remove a photo first.");
+
+      return;
+    }
+
     submissionActive.current = true;
     const submitted = draft;
     const submittedImages = images;

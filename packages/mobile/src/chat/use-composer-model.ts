@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { Connection, Head, ModelInfo } from "@nyte-ai/sdk";
 import { describeHostError } from "../connection/connection.ts";
 import { useHost } from "../connection/host-context.tsx";
@@ -53,6 +53,7 @@ export function useComposerModel(
   const [model, setModel] = useState<ModelInfo>();
   const [thinking, setThinking] = useState<ThinkingLevel>();
   const [selecting, setSelecting] = useState(false);
+  const latestChoice = useRef(0);
   const sessionModel = target.kind === "session" ? target.config?.model : undefined;
   const sessionThinking = target.kind === "session" ? target.config?.thinking : undefined;
 
@@ -94,6 +95,8 @@ export function useComposerModel(
     if (target.kind !== "session") return true;
 
     setSelecting(true);
+    latestChoice.current += 1;
+    const choiceNumber = latestChoice.current;
 
     const applied = await configureHead(
       openHead(client, target),
@@ -104,9 +107,9 @@ export function useComposerModel(
 
     setSelecting(false);
 
-    if (!applied) {
-      setModel(catalogModel);
-      setThinking(sessionThinking);
+    if (!applied && latestChoice.current === choiceNumber) {
+      setModel(undefined);
+      setThinking(undefined);
     }
 
     return applied;
@@ -116,9 +119,11 @@ export function useComposerModel(
     setThinking(choice);
 
     if (target.kind !== "session") return;
+    latestChoice.current += 1;
+    const choiceNumber = latestChoice.current;
     void configureHead(openHead(client, target), { thinking: choice }, newerHost, reportError).then(
       (applied) => {
-        if (!applied) setThinking(sessionThinking);
+        if (!applied && latestChoice.current === choiceNumber) setThinking(undefined);
       },
     );
   };

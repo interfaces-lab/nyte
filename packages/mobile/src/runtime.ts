@@ -1,3 +1,4 @@
+import "core-js/actual/array/to-sorted";
 import "core-js/actual/typed-array/from-base64";
 import "core-js/actual/typed-array/to-base64";
 import { getRandomValues, randomUUID } from "expo-crypto";

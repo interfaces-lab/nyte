@@ -103,9 +103,9 @@ all of them through `tailscale serve`, Cloudflare, or the account relay.
 development variant sets `NSAllowsArbitraryLoads` in `app.config.ts`, so preview and
 production builds refuse plain HTTP natively.
 
-The app stores the token in the Keychain and masks it in the form. Autofill is off,
-but iOS may still offer to save it in Passwords. Never put provider credentials or
-deployment secrets in the bundle.
+The app stores the token in the Keychain and masks it in the form. The token field is
+a one-time code to iOS, so iOS doesn't offer to save it in Passwords. Never put
+provider credentials or deployment secrets in the bundle.
 
 ### Host identity
 

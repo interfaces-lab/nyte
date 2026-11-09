@@ -304,7 +304,7 @@ export function ConnectionForm({
                   autoCapitalize="none"
                   autoCorrect={false}
                   autoComplete="off"
-                  textContentType="none"
+                  textContentType="oneTimeCode"
                   onSubmitEditing={() => {
                     if (complete) void connect();
                     else
