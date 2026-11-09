@@ -3,6 +3,26 @@ import "@nyte-ai/ui/styles/tokens.stylex";
 
 export const windowInput = defineVars({ "--nyte-window-zoom": "1" });
 
+export const sidebarMotion = defineVars({
+  "--nyte-sidebar-slide-duration": {
+    default: "80ms",
+    "@media (prefers-reduced-motion: reduce)": "0s",
+  },
+  "--nyte-sidebar-slide-easing": "cubic-bezier(0.25, 0.46, 0.45, 0.94)",
+  "--nyte-sidebar-slide-offset": "-100%",
+  "--nyte-sidebar-resize-duration": "0s",
+  "--nyte-sidebar-resize-delay": "var(--nyte-sidebar-slide-duration)",
+  "--nyte-sidebar-resize-easing": "linear",
+});
+
+export const settingsDensity = defineVars({
+  "--nyte-settings-row-padding": "8px 16px",
+  "--nyte-settings-section-title-font-size": "var(--nyte-font-size-base)",
+  "--nyte-settings-section-title-line-height": "var(--nyte-line-height-base)",
+  "--nyte-settings-description-font-size": "var(--nyte-font-size-sm)",
+  "--nyte-settings-description-line-height": "var(--nyte-line-height-sm)",
+});
+
 export const layout = defineVars({
   "--nyte-titlebar-height": "40px",
   "--nyte-titlebar-traffic-light-inset": "calc(72px / var(--nyte-window-zoom, 1))",
@@ -16,15 +36,6 @@ export const layout = defineVars({
   "--nyte-sidebar-handle-width": "8px",
   "--nyte-sidebar-float-inset": "5px",
   "--nyte-sidebar-float-radius": "12px",
-  "--nyte-sidebar-slide-duration": {
-    default: "80ms",
-    "@media (prefers-reduced-motion: reduce)": "0s",
-  },
-  "--nyte-sidebar-slide-easing": "cubic-bezier(0.25, 0.46, 0.45, 0.94)",
-  "--nyte-sidebar-slide-offset": "-100%",
-  "--nyte-sidebar-resize-duration": "0s",
-  "--nyte-sidebar-resize-delay": "var(--nyte-sidebar-slide-duration)",
-  "--nyte-sidebar-resize-easing": "linear",
   "--nyte-sidebar-row-height": "var(--nyte-row-height-md)",
   "--nyte-sidebar-ask-row-height": { default: "40px", "@media (pointer: coarse)": "52px" },
   "--nyte-sidebar-gutter": "8px",
@@ -43,12 +54,7 @@ export const layout = defineVars({
   "--nyte-settings-page-padding-block": "48px 64px",
   "--nyte-settings-section-gap": "24px",
   "--nyte-settings-card-gap": "8px",
-  "--nyte-settings-row-padding": "8px 16px",
   "--nyte-settings-row-min-height": "calc(var(--nyte-control-height-md) + 16px)",
-  "--nyte-settings-section-title-font-size": "var(--nyte-font-size-base)",
-  "--nyte-settings-section-title-line-height": "var(--nyte-line-height-base)",
-  "--nyte-settings-description-font-size": "var(--nyte-font-size-sm)",
-  "--nyte-settings-description-line-height": "var(--nyte-line-height-sm)",
   "--nyte-settings-row-padding-inline": "16px",
   "--nyte-settings-control-max-width": "160px",
   "--nyte-suggestion-item-height": "var(--nyte-row-height-md)",

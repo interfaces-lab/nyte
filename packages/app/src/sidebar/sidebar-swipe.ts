@@ -1,7 +1,7 @@
 import { createTheme } from "@stylexjs/stylex";
 import { useEffectEvent, useRef, useState, type RefObject } from "react";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
-import { layout } from "../theme/tokens.stylex.ts";
+import { sidebarMotion } from "../theme/tokens.stylex.ts";
 import { useSidebar } from "./use-sidebar.ts";
 
 const THRESHOLD = 16;
@@ -12,7 +12,7 @@ const IDLE_MS = 140;
 
 const PUSH_MS = 550;
 
-export const sidebarPush = createTheme(layout, {
+export const sidebarPush = createTheme(sidebarMotion, {
   "--nyte-sidebar-slide-duration": "0s",
   "--nyte-sidebar-slide-offset": "0%",
   "--nyte-sidebar-resize-duration": {
