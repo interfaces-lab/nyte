@@ -17,13 +17,6 @@ const usLayout = new Map([
   ["Slash", "/"],
 ]);
 
-const rightSides = new Map([
-  ["ShiftRight", Mods.SHIFT_SIDE],
-  ["ControlRight", Mods.CTRL_SIDE],
-  ["AltRight", Mods.ALT_SIDE],
-  ["MetaRight", Mods.SUPER_SIDE],
-]);
-
 const segmenter = new Intl.Segmenter();
 
 interface KeyText {
@@ -36,7 +29,7 @@ interface KeyText {
 export function readKey(input: KeyInput): KeyText {
   const produced = printable(input.key);
   const unshifted = unshiftedCodepoint(input.code, produced);
-  const mods = modifierBits(input) | (rightSides.get(input.code) ?? 0);
+  const mods = modifierBits(input);
   const consumedShift = input.shift && produced !== "" ? Mods.SHIFT : 0;
   const consumedAlt = input.alt && !input.optionAsAlt && produced !== "" ? Mods.ALT : 0;
 

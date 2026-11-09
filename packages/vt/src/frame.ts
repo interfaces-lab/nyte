@@ -1,7 +1,7 @@
 import {
   CellContentTag,
   CellWide,
-  CursorVisualStyle,
+  CursorStyle,
   PointTag,
   RenderStateData,
   RenderStateDirty,
@@ -13,48 +13,49 @@ import {
   StyleColorTag,
 } from "./constants.ts";
 import { check } from "./memory.ts";
+import { CellFlag, NO_COLOR, UnderlineStyle, createGrid } from "./screen.ts";
 
 import type { Context } from "./context.ts";
-import type { Cell, Cursor, CursorStyle, Frame, Rgb, Row, Underline } from "./index.ts";
+import type { Cursor, CursorStyle as CursorKind, Frame, Rgb, Screen } from "./index.ts";
 import type { Bits } from "./manifest.ts";
 
-type Style = Omit<Cell, "text" | "width">;
+interface Style {
+  readonly fg: Rgb;
+  readonly bg: Rgb;
+  readonly underlineColor: Rgb;
+  readonly flags: number;
+  readonly underline: number;
+}
 
 const defaultStyle: Style = {
-  fg: null,
-  bg: null,
-  bold: false,
-  italic: false,
-  faint: false,
-  blink: false,
-  inverse: false,
-  invisible: false,
-  strikethrough: false,
-  overline: false,
-  underline: "none",
-  underlineColor: null,
+  fg: NO_COLOR,
+  bg: NO_COLOR,
+  underlineColor: NO_COLOR,
+  flags: 0,
+  underline: UnderlineStyle.NONE,
 };
 
-const blank: Cell = Object.freeze({ ...defaultStyle, text: "", width: 1 });
+const hashPrime = 16777619;
 
-const cursorStyles = new Map<number, CursorStyle>([
-  [CursorVisualStyle.BAR, "bar"],
-  [CursorVisualStyle.BLOCK, "block"],
-  [CursorVisualStyle.UNDERLINE, "underline"],
-  [CursorVisualStyle.BLOCK_HOLLOW, "block-hollow"],
+const cursorStyles = new Map<number, CursorKind>([
+  [CursorStyle.BAR, "bar"],
+  [CursorStyle.BLOCK, "block"],
+  [CursorStyle.UNDERLINE, "underline"],
+  [CursorStyle.BLOCK_HOLLOW, "block-hollow"],
 ]);
 
-const underlines = new Map<number, Underline>([
-  [SgrUnderline.NONE, "none"],
-  [SgrUnderline.SINGLE, "single"],
-  [SgrUnderline.DOUBLE, "double"],
-  [SgrUnderline.CURLY, "curly"],
-  [SgrUnderline.DOTTED, "dotted"],
-  [SgrUnderline.DASHED, "dashed"],
+const underlines = new Map<number, number>([
+  [SgrUnderline.NONE, UnderlineStyle.NONE],
+  [SgrUnderline.SINGLE, UnderlineStyle.SINGLE],
+  [SgrUnderline.DOUBLE, UnderlineStyle.DOUBLE],
+  [SgrUnderline.CURLY, UnderlineStyle.CURLY],
+  [SgrUnderline.DOTTED, UnderlineStyle.DOTTED],
+  [SgrUnderline.DASHED, UnderlineStyle.DASHED],
 ]);
 
 interface Frames {
   readonly frame: (full: boolean, live: boolean) => Frame;
+  readonly screen: () => Screen;
   readonly capture: () => void;
   readonly hyperlink: (x: number, y: number) => string | null;
   readonly dispose: () => void;
@@ -85,78 +86,83 @@ export function createFrames(context: Context): Frames {
   const point = memory.allocate(layout.point.size);
   const gridRef = memory.allocate(layout.gridRef.size);
   const graphemes = memory.growable(64);
+  const graphemeBuffer = memory.allocate(layout.buffer.size);
   const rowValue = memory.allocate(8);
   const uri = memory.growable(256);
   const decoder = new TextDecoder();
+  const initial = context.geometry();
+  let grid = createGrid(initial.cols, initial.rows);
 
   const readRgb = (view: DataView, pointer: number): Rgb =>
     (view.getUint8(pointer + layout.rgb.r) << 16) |
     (view.getUint8(pointer + layout.rgb.g) << 8) |
     view.getUint8(pointer + layout.rgb.b);
 
-  const readColor = (view: DataView, pointer: number, palette: readonly Rgb[]): Rgb | null => {
-    const tag = view.getInt32(pointer + layout.styleColor.tag, true);
+  const readColor = (view: DataView, pointer: number, palette: readonly Rgb[]): Rgb => {
+    const tag = view.getUint8(pointer + layout.styleColor.tag);
 
     if (tag === StyleColorTag.PALETTE)
-      return palette[view.getUint8(pointer + layout.styleColor.palette)] ?? null;
+      return palette[view.getUint8(pointer + layout.styleColor.palette)] ?? NO_COLOR;
 
     if (tag === StyleColorTag.RGB) return readRgb(view, pointer + layout.styleColor.rgb);
 
-    return null;
+    return NO_COLOR;
   };
 
   const readStyle = (x: number, palette: readonly Rgb[]): Style => {
     check(native.ghostty_render_state_row_cells_select(cells, x), "cell select");
     check(
-      native.ghostty_render_state_row_cells_get(
-        cells,
-        RowCellsData.STYLE,
-        memory.sized(style, layout.style),
-      ),
+      native.ghostty_render_state_row_cells_get(cells, RowCellsData.STYLE, style),
       "cell style",
     );
     const view = memory.view();
-    const flag = (offset: number) => view.getUint8(style + offset) !== 0;
+    const flags = view.getUint16(style + layout.style.flags, true);
+    const flag = (field: Bits, value: number) => (bits(flags, 0, field) === 0 ? 0 : value);
 
     return {
       fg: readColor(view, style + layout.style.foreground, palette),
       bg: readColor(view, style + layout.style.background, palette),
-      bold: flag(layout.style.bold),
-      italic: flag(layout.style.italic),
-      faint: flag(layout.style.faint),
-      blink: flag(layout.style.blink),
-      inverse: flag(layout.style.inverse),
-      invisible: flag(layout.style.invisible),
-      strikethrough: flag(layout.style.strikethrough),
-      overline: flag(layout.style.overline),
-      underline: underlines.get(view.getInt32(style + layout.style.underline, true)) ?? "single",
       underlineColor: readColor(view, style + layout.style.underlineColor, palette),
+      flags:
+        flag(layout.style.bold, CellFlag.BOLD) |
+        flag(layout.style.italic, CellFlag.ITALIC) |
+        flag(layout.style.faint, CellFlag.FAINT) |
+        flag(layout.style.inverse, CellFlag.INVERSE) |
+        flag(layout.style.invisible, CellFlag.INVISIBLE) |
+        flag(layout.style.strikethrough, CellFlag.STRIKETHROUGH) |
+        flag(layout.style.overline, CellFlag.OVERLINE),
+      underline: underlines.get(bits(flags, 0, layout.style.underline)) ?? UnderlineStyle.SINGLE,
     };
   };
 
   const readGrapheme = (x: number) => {
     check(native.ghostty_render_state_row_cells_select(cells, x), "cell select");
-    check(
-      native.ghostty_render_state_row_cells_get(cells, RowCellsData.GRAPHEMES_LEN, out),
-      "grapheme length",
-    );
-    const length = memory.view().getUint32(out, true);
-    const buffer = graphemes.reserve(length * 4);
 
-    check(
-      native.ghostty_render_state_row_cells_get(cells, RowCellsData.GRAPHEMES_BUF, buffer),
-      "graphemes",
-    );
-    const view = memory.view();
+    const run = () => {
+      const view = memory.view();
 
-    return String.fromCodePoint(
-      ...Array.from({ length }, (_, index) => view.getUint32(buffer + index * 4, true)),
-    );
+      view.setUint32(graphemeBuffer + layout.buffer.pointer, graphemes.pointer(), true);
+      view.setUint32(graphemeBuffer + layout.buffer.capacity, graphemes.capacity(), true);
+
+      return native.ghostty_render_state_row_cells_get(
+        cells,
+        RowCellsData.GRAPHEMES_UTF8,
+        graphemeBuffer,
+      );
+    };
+
+    const first = run();
+    const length = () => memory.view().getUint32(graphemeBuffer + layout.buffer.length, true);
+
+    if (first === Result.OUT_OF_SPACE) graphemes.reserve(length());
+    check(first === Result.OUT_OF_SPACE ? run() : first, "graphemes");
+
+    return memory.text(graphemes.pointer(), length());
   };
 
   const cellBackground = (low: number, high: number, tag: number, palette: readonly Rgb[]) => {
     if (tag === CellContentTag.BG_COLOR_PALETTE)
-      return palette[bits(low, high, layout.cell.paletteIndex)] ?? null;
+      return palette[bits(low, high, layout.cell.paletteIndex)] ?? NO_COLOR;
 
     if (tag !== CellContentTag.BG_COLOR_RGB) return undefined;
 
@@ -167,7 +173,7 @@ export function createFrames(context: Context): Frames {
     );
   };
 
-  const readRow = (y: number, palette: readonly Rgb[]): Row => {
+  const writeRow = (y: number, palette: readonly Rgb[]) => {
     memory.view().setUint32(out, cells, true);
     check(native.ghostty_render_state_row_get(iterator, RowData.CELLS, out), "row cells");
     check(native.ghostty_render_state_row_get(iterator, RowData.CELLS_RAW, cellsView), "raw cells");
@@ -186,51 +192,72 @@ export function createFrames(context: Context): Frames {
       "row wrap",
     );
     const view = memory.view();
-    const wrapped = view.getUint8(out) !== 0;
+    const screen = grid.screen;
+    const clusters = grid.clusters;
     const pointer = view.getUint32(cellsView + layout.cellsView.pointer, true);
-    const count = view.getUint32(cellsView + layout.cellsView.length, true);
+    const count = Math.min(screen.cols, view.getUint32(cellsView + layout.cellsView.length, true));
     const raw = new DataView(memory.copy(pointer, count * layout.cell.size).buffer);
     const styles = new Map<number, Style>([[0, defaultStyle]]);
+    const base = y * screen.cols;
+    let hash = 2166136261;
 
-    return {
-      y,
-      wrapped,
-      selection:
-        selected === Result.SUCCESS
-          ? [
-              view.getUint16(rowSelection + layout.rowSelection.start, true),
-              view.getUint16(rowSelection + layout.rowSelection.end, true),
-            ]
-          : null,
-      cells: Array.from({ length: count }, (_, x): Cell => {
-        const low = raw.getUint32(x * layout.cell.size, true);
-        const high = raw.getUint32(x * layout.cell.size + 4, true);
-        const tag = bits(low, high, layout.cell.contentTag);
-        const wide = bits(low, high, layout.cell.wide);
-        const styleId = bits(low, high, layout.cell.styleId);
-        const background = cellBackground(low, high, tag, palette);
-        const codepoint = background === undefined ? bits(low, high, layout.cell.codepoint) : 0;
-        const width = wide === CellWide.WIDE ? 2 : wide === CellWide.SPACER_TAIL ? 0 : 1;
+    for (let x = 0; x < screen.cols; x += 1) {
+      const index = base + x;
+      const low = x < count ? raw.getUint32(x * layout.cell.size, true) : 0;
+      const high = x < count ? raw.getUint32(x * layout.cell.size + 4, true) : 0;
+      const tag = bits(low, high, layout.cell.contentTag);
+      const wide = bits(low, high, layout.cell.wide);
+      const styleId = bits(low, high, layout.cell.styleId);
+      const background = cellBackground(low, high, tag, palette);
+      const resolved = styles.get(styleId) ?? readStyle(x, palette);
+      const width = wide === CellWide.WIDE ? 2 : wide === CellWide.SPACER_TAIL ? 0 : 1;
+      const glyph = background === undefined ? bits(low, high, layout.cell.codepoint) : 0;
+      const fill = background ?? resolved.bg;
+      const grapheme = tag === CellContentTag.CODEPOINT_GRAPHEME;
+      const flags = resolved.flags | (grapheme ? CellFlag.CLUSTER : 0);
 
-        if (styleId === 0 && codepoint === 0 && background === undefined && width === 1)
-          return blank;
-        const resolved = styles.get(styleId) ?? readStyle(x, palette);
+      styles.set(styleId, resolved);
+      screen.glyph[index] = glyph;
+      screen.width[index] = width;
+      screen.fg[index] = resolved.fg;
+      screen.bg[index] = fill;
+      screen.underlineColor[index] = resolved.underlineColor;
+      screen.flags[index] = flags;
+      screen.underline[index] = resolved.underline;
+      hash = Math.imul(hash ^ glyph, hashPrime);
+      hash = Math.imul(hash ^ (width | (flags << 2) | (resolved.underline << 10)), hashPrime);
+      hash = Math.imul(hash ^ resolved.fg, hashPrime);
+      hash = Math.imul(hash ^ fill, hashPrime);
+      hash = Math.imul(hash ^ resolved.underlineColor, hashPrime);
 
-        styles.set(styleId, resolved);
+      if (!grapheme) {
+        clusters.delete(index);
+        continue;
+      }
 
-        return {
-          ...resolved,
-          text:
-            tag === CellContentTag.CODEPOINT_GRAPHEME
-              ? readGrapheme(x)
-              : codepoint === 0
-                ? ""
-                : String.fromCodePoint(codepoint),
-          width,
-          bg: background ?? resolved.bg,
-        };
-      }),
-    };
+      const cluster = readGrapheme(x);
+
+      clusters.set(index, cluster);
+
+      for (let unit = 0; unit < cluster.length; unit += 1)
+        hash = Math.imul(hash ^ cluster.charCodeAt(unit), hashPrime);
+    }
+
+    const start =
+      selected === Result.SUCCESS
+        ? view.getUint16(rowSelection + layout.rowSelection.start, true)
+        : -1;
+
+    const end =
+      selected === Result.SUCCESS
+        ? view.getUint16(rowSelection + layout.rowSelection.end, true)
+        : -1;
+
+    screen.wrapped[y] = view.getUint8(out) === 0 ? 0 : 1;
+    screen.selectionStart[y] = start;
+    screen.selectionEnd[y] = end;
+    hash = Math.imul(hash ^ start, hashPrime);
+    screen.hash[y] = Math.imul(hash ^ end, hashPrime) >>> 0;
   };
 
   const readCursor = (): Cursor | null => {
@@ -259,13 +286,7 @@ export function createFrames(context: Context): Frames {
     view.setUint16(point + layout.point.x, x, true);
     view.setUint32(point + layout.point.y, y, true);
 
-    return (
-      native.ghostty_terminal_grid_ref(
-        context.terminal,
-        point,
-        memory.sized(gridRef, layout.gridRef),
-      ) === Result.SUCCESS
-    );
+    return native.ghostty_terminal_grid_ref(context.terminal, point, gridRef) === Result.SUCCESS;
   };
 
   const viewportCellWide = (x: number, y: number) => {
@@ -297,22 +318,39 @@ export function createFrames(context: Context): Frames {
   };
 
   const allRows = (palette: readonly Rgb[]) => {
-    const rows: Row[] = [];
+    const dirty: number[] = [];
 
-    while (native.ghostty_render_state_row_iterator_next(iterator))
-      rows.push(readRow(rows.length, palette));
+    while (native.ghostty_render_state_row_iterator_next(iterator)) {
+      writeRow(dirty.length, palette);
+      dirty.push(dirty.length);
+    }
 
-    return rows;
+    return dirty;
   };
 
   const dirtyRows = (palette: readonly Rgb[]) => {
-    const rows: Row[] = [];
+    const dirty: number[] = [];
 
     while (native.ghostty_render_state_row_iterator_next_dirty(iterator, out)) {
-      rows.push(readRow(memory.view().getUint16(out, true), palette));
+      const y = memory.view().getUint16(out, true);
+
+      writeRow(y, palette);
+      dirty.push(y);
     }
 
-    return rows;
+    return dirty;
+  };
+
+  const resizeGrid = () => {
+    check(native.ghostty_render_state_get(state, RenderStateData.COLS, out), "columns");
+    const cols = memory.view().getUint16(out, true);
+    check(native.ghostty_render_state_get(state, RenderStateData.ROWS, out), "rows");
+    const rows = memory.view().getUint16(out, true);
+
+    if (cols === grid.screen.cols && rows === grid.screen.rows) return false;
+    grid = createGrid(cols, rows);
+
+    return true;
   };
 
   const capture = () =>
@@ -321,10 +359,14 @@ export function createFrames(context: Context): Frames {
   return {
     capture,
     hyperlink,
+    screen: () => grid.screen,
     frame: (full, live) => {
       if (live) capture();
+      const resized = resizeGrid();
       check(native.ghostty_render_state_get(state, RenderStateData.DIRTY, out), "dirty state");
-      const everything = full || memory.view().getInt32(out, true) === RenderStateDirty.FULL;
+
+      const everything =
+        full || resized || memory.view().getInt32(out, true) === RenderStateDirty.FULL;
 
       check(
         native.ghostty_render_state_get(
@@ -361,14 +403,14 @@ export function createFrames(context: Context): Frames {
         native.ghostty_render_state_get(state, RenderStateData.ROW_ITERATOR, out),
         "row iterator",
       );
-      const rows = everything ? allRows(palette) : dirtyRows(palette);
+      const dirty = everything ? allRows(palette) : dirtyRows(palette);
 
       check(native.ghostty_render_state_clean(state), "render state clean");
 
       return {
         full: everything,
         held: !live,
-        rows,
+        dirty,
         cursor: readCursor(),
         foreground,
         background,

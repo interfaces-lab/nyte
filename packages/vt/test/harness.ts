@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 
 import { createTerminal, loadEngine } from "../src/index.ts";
 
-import type { ColorScheme, Frame, KeyInput, Terminal, TerminalOptions } from "../src/index.ts";
+import type { ColorScheme, KeyInput, Screen, Terminal, TerminalOptions } from "../src/index.ts";
 
 export const wasmBytes = await readFile(new URL("../ghostty-vt.wasm", import.meta.url));
 
@@ -57,14 +57,20 @@ export async function openTerminal(
   };
 }
 
-export function screenText(frame: Frame) {
-  return frame.rows.map((row) =>
-    row.cells
-      .filter((cell) => cell.width !== 0)
-      .map((cell) => cell.text || " ")
+export function screenText(screen: Screen) {
+  return Array.from({ length: screen.rows }, (_, y) =>
+    Array.from({ length: screen.cols }, (_, x) => y * screen.cols + x)
+      .filter((index) => screen.width[index] !== 0)
+      .map((index) => screen.text(index) || " ")
       .join("")
       .trimEnd(),
   );
+}
+
+export function frameText(terminal: Terminal) {
+  terminal.frame(true);
+
+  return screenText(terminal.screen);
 }
 
 export function decode(bytes: Uint8Array) {

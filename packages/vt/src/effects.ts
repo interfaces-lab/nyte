@@ -1,4 +1,4 @@
-import { ColorScheme, DeviceAttributes, TerminalData } from "./constants.ts";
+import { ColorScheme, TerminalData } from "./constants.ts";
 import { check } from "./memory.ts";
 
 import type { Geometry } from "./context.ts";
@@ -34,8 +34,6 @@ export function createEffects(
   let flushing = false;
   let scheme = effects.colorScheme();
 
-  const attributes = layout.attributes;
-
   return {
     handlers: {
       writePty: (_terminal, _userdata, data, length) => {
@@ -69,23 +67,6 @@ export function createEffects(
       },
       colorScheme: (_terminal, _userdata, out) => {
         memory.view().setInt32(out, scheme === "dark" ? ColorScheme.DARK : ColorScheme.LIGHT, true);
-
-        return 1;
-      },
-      deviceAttributes: (_terminal, _userdata, out) => {
-        const view = memory.view();
-
-        view.setUint16(
-          out + attributes.conformanceLevel,
-          DeviceAttributes.CONFORMANCE_LEVEL_2,
-          true,
-        );
-        view.setUint16(out + attributes.features, DeviceAttributes.FEATURE_ANSI_COLOR, true);
-        view.setUint32(out + attributes.featureCount, 1, true);
-        view.setUint16(out + attributes.deviceType, DeviceAttributes.DEVICE_TYPE_VT220, true);
-        view.setUint16(out + attributes.firmwareVersion, DeviceAttributes.FIRMWARE_VERSION, true);
-        view.setUint16(out + attributes.romCartridge, 0, true);
-        view.setUint32(out + attributes.unitId, 0, true);
 
         return 1;
       },

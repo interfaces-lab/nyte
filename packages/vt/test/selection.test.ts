@@ -37,7 +37,8 @@ describe("selection", () => {
     terminal.select(at("release", 4, 0, 1020));
     expect(terminal.hasSelection()).toBe(true);
     expect(terminal.selectionText()).toBe("hello");
-    expect(terminal.frame(true).rows[0]?.selection).toEqual([0, 4]);
+    terminal.frame(true);
+    expect([terminal.screen.selectionStart[0], terminal.screen.selectionEnd[0]]).toEqual([0, 4]);
     terminal.clearSelection();
     expect(terminal.hasSelection()).toBe(false);
   });
@@ -54,8 +55,6 @@ describe("selection", () => {
     terminal.select(at("release", 8, 0, 1250));
     terminal.select(at("press", 8, 0, 1400));
     expect(terminal.selectionText()).toBe("hello world");
-    terminal.selectAll();
-    expect(terminal.selectionText()).toBe("hello world\nsecond line");
   });
 
   test("a cursor-line mark follows its row until scrollback drops it", async () => {

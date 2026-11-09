@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { openTerminal, screenText } from "./harness.ts";
+import { frameText, openTerminal, screenText } from "./harness.ts";
 
 describe("terminal", () => {
   afterEach(() => {
@@ -20,7 +20,7 @@ describe("terminal", () => {
     const scrollbar = session.terminal.scrollbar();
 
     expect(scrollbar.total).toBeGreaterThan(9_500);
-    expect(scrollbar.total).toBeLessThan(12_040);
+    expect(scrollbar.total).toBeLessThan(11_000);
     expect(scrollbar.length).toBe(40);
   });
 
@@ -28,9 +28,10 @@ describe("terminal", () => {
     const session = await openTerminal({ cols: 10, rows: 2 });
 
     session.write("\u{1F44D}\u{1F3FD}x");
-    const cells = session.terminal.frame(true).rows[0]?.cells ?? [];
+    session.terminal.frame(true);
+    const screen = session.terminal.screen;
 
-    expect(cells.slice(0, 3).map((cell) => [cell.text, cell.width])).toEqual([
+    expect([0, 1, 2].map((index) => [screen.text(index), screen.width[index]])).toEqual([
       ["\u{1F44D}\u{1F3FD}", 2],
       ["", 0],
       ["x", 1],
@@ -39,7 +40,7 @@ describe("terminal", () => {
 
   test("shows the finished synchronized frame while the next one is half drawn", async () => {
     const session = await openTerminal({ cols: 20, rows: 2 });
-    const top = () => screenText(session.terminal.frame(true))[0];
+    const top = () => frameText(session.terminal)[0];
 
     session.write("BASE");
     expect(top()).toBe("BASE");
@@ -57,12 +58,12 @@ describe("terminal", () => {
 
     session.write("BASE\u001b[?2026h\u001b[H\u001b[2Jstuck");
     const held = session.terminal.frame(true);
-    expect([screenText(held)[0], held.held]).toEqual(["BASE", true]);
+    expect([screenText(session.terminal.screen)[0], held.held]).toEqual(["BASE", true]);
     vi.advanceTimersByTime(1_050);
     const released = session.terminal.frame(true);
-    expect([screenText(released)[0], released.held]).toEqual(["stuck", false]);
+    expect([screenText(session.terminal.screen)[0], released.held]).toEqual(["stuck", false]);
     session.write("\u001b[H\u001b[2Jlive");
-    expect(screenText(session.terminal.frame(true))[0]).toBe("live");
+    expect(frameText(session.terminal)[0]).toBe("live");
   });
 
   test("reports alternate scroll only on the alternate screen with mode 1007", async () => {
@@ -91,11 +92,9 @@ describe("terminal", () => {
     session.terminal.write(new Uint8Array([0xac]));
     session.write(" \u001b[3");
     session.write("1mred\u001b[0m");
-    const row = session.terminal.frame(true).rows[0];
-
-    expect(screenText(session.terminal.frame(true))[0]).toBe("€ red");
-    expect(row?.cells[2]?.fg).toBe(0xff0000);
-    expect(row?.cells[2]?.text).toBe("r");
+    expect(frameText(session.terminal)[0]).toBe("€ red");
+    expect(session.terminal.screen.fg[2]).toBe(0xff0000);
+    expect(session.terminal.screen.text(2)).toBe("r");
   });
 
   test("reads an OSC 8 hyperlink's URI from each of its cells and nothing from plain text", async () => {
@@ -121,29 +120,26 @@ describe("terminal", () => {
 
     session.write("0123456789abcdefghij-wrapped\r\nshort");
 
-    expect(session.terminal.frame(true).rows.map((row) => row.wrapped)).toEqual([
-      true,
-      true,
-      false,
-      false,
-    ]);
+    session.terminal.frame(true);
+    expect([...session.terminal.screen.wrapped]).toEqual([1, 1, 0, 0]);
   });
 
   test("newline mode returns the carriage on line feed", async () => {
     const session = await openTerminal({ cols: 20, rows: 3, newlineMode: true });
 
     session.write("a\nb");
-    expect(screenText(session.terminal.frame(true)).slice(0, 2)).toEqual(["a", "b"]);
+    expect(frameText(session.terminal).slice(0, 2)).toEqual(["a", "b"]);
   });
 
-  test("returns only dirty rows after a full frame", async () => {
+  test("rewrites only dirty rows and keeps the rest of the screen", async () => {
     const session = await openTerminal({ cols: 20, rows: 4 });
 
     session.write("one\r\ntwo");
-    expect(session.terminal.frame(true).rows).toHaveLength(4);
-    expect(session.terminal.frame(false).rows).toHaveLength(0);
+    expect(session.terminal.frame(true).dirty).toEqual([0, 1, 2, 3]);
+    expect(session.terminal.frame(false).dirty).toEqual([]);
     session.write("!");
-    expect(session.terminal.frame(false).rows.map((row) => row.y)).toEqual([1]);
+    expect(session.terminal.frame(false).dirty).toEqual([1]);
+    expect(screenText(session.terminal.screen).slice(0, 2)).toEqual(["one", "two!"]);
   });
 
   test("dispose is idempotent and later calls throw", async () => {

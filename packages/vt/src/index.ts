@@ -6,8 +6,6 @@ export type ColorScheme = "light" | "dark";
 
 export type CursorStyle = "bar" | "block" | "underline" | "block-hollow";
 
-export type Underline = "none" | "single" | "double" | "curly" | "dotted" | "dashed";
-
 export interface Palette {
   readonly foreground: Rgb;
   readonly background: Rgb;
@@ -37,28 +35,21 @@ export interface TerminalOptions {
   readonly effects: TerminalEffects;
 }
 
-export interface Cell {
-  readonly text: string;
-  readonly width: 0 | 1 | 2;
-  readonly fg: Rgb | null;
-  readonly bg: Rgb | null;
-  readonly bold: boolean;
-  readonly italic: boolean;
-  readonly faint: boolean;
-  readonly blink: boolean;
-  readonly inverse: boolean;
-  readonly invisible: boolean;
-  readonly strikethrough: boolean;
-  readonly overline: boolean;
-  readonly underline: Underline;
-  readonly underlineColor: Rgb | null;
-}
-
-export interface Row {
-  readonly y: number;
-  readonly cells: readonly Cell[];
-  readonly selection: readonly [start: number, end: number] | null;
-  readonly wrapped: boolean;
+export interface Screen {
+  readonly cols: number;
+  readonly rows: number;
+  readonly glyph: Uint32Array;
+  readonly width: Uint8Array;
+  readonly fg: Int32Array;
+  readonly bg: Int32Array;
+  readonly underlineColor: Int32Array;
+  readonly flags: Uint8Array;
+  readonly underline: Uint8Array;
+  readonly wrapped: Uint8Array;
+  readonly selectionStart: Int32Array;
+  readonly selectionEnd: Int32Array;
+  readonly hash: Uint32Array;
+  text(index: number): string;
 }
 
 export interface Cursor {
@@ -72,7 +63,7 @@ export interface Cursor {
 export interface Frame {
   readonly full: boolean;
   readonly held: boolean;
-  readonly rows: readonly Row[];
+  readonly dirty: readonly number[];
   readonly cursor: Cursor | null;
   readonly foreground: Rgb;
   readonly background: Rgb;
@@ -135,6 +126,7 @@ export interface Mark {
 export interface Terminal {
   readonly cols: number;
   readonly rows: number;
+  readonly screen: Screen;
   write(bytes: Uint8Array): void;
   resize(cols: number, rows: number, cell: CellSize): void;
   reset(): void;
@@ -153,7 +145,6 @@ export interface Terminal {
   focus(focused: boolean): Uint8Array;
   paste(text: string): Uint8Array;
   select(input: SelectionInput): void;
-  selectAll(): void;
   clearSelection(): void;
   hasSelection(): boolean;
   selectionText(): string;
@@ -173,3 +164,5 @@ export interface Engine {
 export { loadEngine } from "./engine.ts";
 
 export { createTerminal } from "./terminal.ts";
+
+export { CellFlag, NO_COLOR, UnderlineStyle } from "./screen.ts";

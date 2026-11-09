@@ -1,13 +1,13 @@
 import { describe, expect, test } from "vitest";
 
-import { openTerminal, screenText } from "./harness.ts";
+import { frameText, openTerminal } from "./harness.ts";
 
 describe("effects", () => {
   test("answers device attributes and cursor position after the write", async () => {
     const session = await openTerminal();
 
     session.write("ab\u001b[c\u001b[>c\u001b[6n");
-    expect(session.replies).toEqual(["\u001b[?62;22c", "\u001b[>1;10;0c", "\u001b[1;3R"]);
+    expect(session.replies).toEqual(["\u001b[?62;22c", "\u001b[>1;0;0c", "\u001b[1;3R"]);
   });
 
   test("answers a color scheme query from colorScheme()", async () => {
@@ -27,8 +27,9 @@ describe("effects", () => {
     expect(session.replies).toEqual([]);
     session.write("\u001b[?2031h");
     session.terminal.colorSchemeChanged("dark");
+    session.terminal.colorSchemeChanged("light");
     session.write("\u001b[?996n");
-    expect(session.replies).toEqual(["\u001b[?997;1n", "\u001b[?997;1n"]);
+    expect(session.replies).toEqual(["\u001b[?997;1n", "\u001b[?997;2n", "\u001b[?997;2n"]);
   });
 
   test("reports title changes", async () => {
@@ -40,15 +41,22 @@ describe("effects", () => {
 
   test("a reply handler may write without recursing or reordering", async () => {
     const session = await openTerminal({ cols: 20, rows: 3 });
-    const seen: string[] = [];
+    const seen: [depth: number, reply: string][] = [];
+    let depth = 0;
 
     session.onReply((reply) => {
-      seen.push(reply);
+      depth += 1;
+      seen.push([depth, reply]);
 
-      if (seen.length === 1) session.write("\u001b[6nX");
+      if (seen.length === 1) session.write("X\u001b[6n");
+      depth -= 1;
     });
     session.write("\u001b[c\u001b[6n");
-    expect(seen).toEqual(["\u001b[?62;22c", "\u001b[1;1R", "\u001b[1;1R"]);
-    expect(screenText(session.terminal.frame(true))[0]).toBe("X");
+    expect(seen).toEqual([
+      [1, "\u001b[?62;22c"],
+      [1, "\u001b[1;1R"],
+      [1, "\u001b[1;2R"],
+    ]);
+    expect(frameText(session.terminal)[0]).toBe("X");
   });
 });

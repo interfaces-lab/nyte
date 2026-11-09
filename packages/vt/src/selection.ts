@@ -1,6 +1,6 @@
 import { pixelPosition } from "./context.ts";
 import {
-  FormatterFormat,
+  FormatterOption,
   GestureEventOption,
   GestureEventType,
   PointTag,
@@ -16,7 +16,6 @@ import type { Mark, SelectionInput } from "./index.ts";
 
 interface Selection {
   readonly select: (input: SelectionInput) => void;
-  readonly selectAll: () => void;
   readonly clear: () => void;
   readonly active: () => boolean;
   readonly text: () => string;
@@ -44,6 +43,11 @@ export function createSelection(context: Context): Selection {
       "selection gesture event",
     );
 
+  const formatter = memory.handle(
+    (slot) => native.ghostty_formatter_terminal_new(0, slot, terminal),
+    "formatter",
+  );
+
   const events = {
     press: event(GestureEventType.PRESS),
     drag: event(GestureEventType.DRAG),
@@ -57,7 +61,6 @@ export function createSelection(context: Context): Selection {
   const geometry = memory.allocate(layout.geometry.size);
   const value = memory.allocate(8);
   const coordinate = memory.allocate(layout.coordinate.size);
-  const options = memory.allocate(layout.formatOptions.size);
   const written = memory.allocate(8);
   const output = memory.growable(256);
   const marks = new Set<() => void>();
@@ -79,15 +82,11 @@ export function createSelection(context: Context): Selection {
   const resolve = (tag: number, x: number, y: number, target: number) => {
     writePoint(tag, x, y);
 
-    return native.ghostty_terminal_grid_ref(terminal, point, memory.sized(target, layout.gridRef));
+    return native.ghostty_terminal_grid_ref(terminal, point, target);
   };
 
   const readSelection = () => {
-    const result = native.ghostty_terminal_get(
-      terminal,
-      TerminalData.SELECTION,
-      memory.sized(selection, layout.selection),
-    );
+    const result = native.ghostty_terminal_get(terminal, TerminalData.SELECTION, selection);
 
     if (result !== Result.NO_VALUE) check(result, "selection query");
 
@@ -100,27 +99,18 @@ export function createSelection(context: Context): Selection {
       "selection install",
     );
 
-  const format = (target: number, unwrap: boolean) => {
-    const view = memory.view();
+  const setFormat = (option: number, pointer: number) =>
+    check(native.ghostty_formatter_set(formatter, option, pointer), "formatter option");
 
-    memory.sized(options, layout.formatOptions);
-    view.setInt32(options + layout.formatOptions.emit, FormatterFormat.PLAIN, true);
-    view.setUint8(options + layout.formatOptions.unwrap, unwrap ? 1 : 0);
-    view.setUint8(options + layout.formatOptions.trim, 1);
-    view.setUint32(options + layout.formatOptions.selection, target, true);
+  const format = (unwrap: boolean) => {
+    memory.view().setUint8(value, unwrap ? 1 : 0);
+    setFormat(FormatterOption.UNWRAP, value);
+    setFormat(FormatterOption.SELECTION, selection);
 
     const run = () =>
-      native.ghostty_terminal_selection_format_buf(
-        terminal,
-        options,
-        output.pointer(),
-        output.capacity(),
-        written,
-      );
+      native.ghostty_formatter_format_buf(formatter, output.pointer(), output.capacity(), written);
 
     const first = run();
-
-    if (first === Result.NO_VALUE) return "";
 
     if (first === Result.OUT_OF_SPACE) output.reserve(memory.view().getUint32(written, true));
     check(first === Result.OUT_OF_SPACE ? run() : first, "selection format");
@@ -186,12 +176,7 @@ export function createSelection(context: Context): Selection {
 
       if (input.action === "drag") configureDrag(input.rectangle, size);
 
-      const result = native.ghostty_selection_gesture_event(
-        gesture,
-        terminal,
-        target,
-        memory.sized(selection, layout.selection),
-      );
+      const result = native.ghostty_selection_gesture_event(gesture, terminal, target, selection);
 
       if (result === Result.SUCCESS) install(selection);
 
@@ -199,19 +184,9 @@ export function createSelection(context: Context): Selection {
 
       if (result !== Result.NO_VALUE) check(result, "selection gesture");
     },
-    selectAll: () => {
-      const result = native.ghostty_terminal_select_all(
-        terminal,
-        memory.sized(selection, layout.selection),
-      );
-
-      if (result === Result.NO_VALUE) return;
-      check(result, "select all");
-      install(selection);
-    },
     clear: () => install(0),
     active: readSelection,
-    text: () => format(0, true),
+    text: () => (readSelection() ? format(true) : ""),
     top: () => {
       if (!readSelection()) return null;
 
@@ -230,9 +205,8 @@ export function createSelection(context: Context): Selection {
 
       check(resolve(PointTag.ACTIVE, 0, y, selection + layout.selection.start), "mark start");
       check(resolve(PointTag.ACTIVE, cols - 1, y, selection + layout.selection.end), "mark end");
-      memory.sized(selection, layout.selection);
       memory.view().setUint8(selection + layout.selection.rectangle, 0);
-      const text = format(selection, false).trim();
+      const text = format(false).trim();
 
       if (text === "") return null;
       writePoint(PointTag.ACTIVE, 0, y);
@@ -278,6 +252,7 @@ export function createSelection(context: Context): Selection {
         native.ghostty_selection_gesture_event_free(target),
       );
       native.ghostty_selection_gesture_free(gesture, terminal);
+      native.ghostty_formatter_free(formatter);
     },
   };
 }

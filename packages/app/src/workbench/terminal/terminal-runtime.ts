@@ -229,11 +229,7 @@ async function buildView(id: string): Promise<TerminalView | undefined> {
     scrolled: () => surface.draw(true),
     linkModifier: (event) => (nyte.platform === "darwin" ? event.metaKey : event.ctrlKey),
     link: (at) =>
-      findLink(
-        at,
-        (y) => surface.row(y),
-        (cell) => terminal.hyperlink(cell.column, cell.row),
-      ),
+      findLink(at, terminal.screen, (cell) => terminal.hyperlink(cell.column, cell.row)),
     showLink: (link) => surface.showLink(link),
     openLink: (url) => openExternal(url),
   });

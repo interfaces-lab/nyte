@@ -1,4 +1,5 @@
-import type { Cell, Cursor, CursorStyle, Frame, Rgb, Row } from "@nyte-ai/vt";
+import { CellFlag, NO_COLOR, UnderlineStyle } from "@nyte-ai/vt";
+import type { Cursor, CursorStyle, Frame, Rgb, Screen } from "@nyte-ai/vt";
 import type { TerminalFont } from "./terminal-appearance.ts";
 import type { TerminalLink } from "./terminal-links.ts";
 import { drawGlyph } from "./terminal-glyphs.ts";
@@ -24,8 +25,7 @@ export interface Renderer {
   setFont(font: TerminalFont, metrics: CellMetrics): void;
   resize(width: number, height: number): void;
   release(): void;
-  paint(frame: Frame, scene: Scene): void;
-  row(y: number): Row | undefined;
+  paint(frame: Frame, screen: Screen, scene: Scene): void;
 }
 
 function fontString(font: TerminalFont, ratio: number, bold: boolean, italic: boolean): string {
@@ -81,37 +81,6 @@ interface Slot {
   readonly width: number;
 }
 
-const UNDERLINE_CODES = { none: 0, single: 1, double: 2, curly: 3, dotted: 4, dashed: 5 } as const;
-
-function signature(row: Row): number {
-  let hash = 2166136261;
-
-  for (const cell of row.cells) {
-    for (let index = 0; index < cell.text.length; index += 1)
-      hash = Math.imul(hash ^ cell.text.charCodeAt(index), 16777619);
-    hash = Math.imul(hash ^ (cell.fg ?? -1), 16777619);
-    hash = Math.imul(hash ^ (cell.bg ?? -1), 16777619);
-    hash = Math.imul(hash ^ (cell.underlineColor ?? -1), 16777619);
-    hash = Math.imul(
-      hash ^
-        (Number(cell.bold) |
-          (Number(cell.italic) << 1) |
-          (Number(cell.faint) << 2) |
-          (Number(cell.inverse) << 3) |
-          (Number(cell.invisible) << 4) |
-          (Number(cell.strikethrough) << 5) |
-          (Number(cell.overline) << 6) |
-          (cell.width << 7) |
-          (UNDERLINE_CODES[cell.underline] << 9)),
-      16777619,
-    );
-  }
-
-  hash = Math.imul(hash ^ (row.selection?.[0] ?? -1), 16777619);
-
-  return Math.imul(hash ^ (row.selection?.[1] ?? -1), 16777619);
-}
-
 function findShift(previous: readonly number[], next: readonly number[]): number {
   const counts = new Map<number, number>();
   previous.forEach((value) => counts.set(value, (counts.get(value) ?? 0) + 1));
@@ -140,7 +109,7 @@ function createAtlas() {
   const context = canvas.getContext("2d");
 
   if (context === null) throw new Error("Canvas rendering is unavailable");
-  const slots = new Map<string, Slot>();
+  const slots = new Map<number | string, Slot>();
   let shelfX = 0;
   let shelfY = 0;
   let framesSinceReset = ATLAS_RESET_FRAMES;
@@ -194,8 +163,8 @@ function createAtlas() {
 
       return true;
     },
-    find: (key: string) => slots.get(key),
-    add(key: string, width: number, height: number): Slot | null {
+    find: (key: number | string) => slots.get(key),
+    add(key: number | string, width: number, height: number): Slot | null {
       if (addsThisFrame >= ATLAS_ADDS_PER_FRAME) return null;
       addsThisFrame += 1;
       const slot = place(width, height);
@@ -213,29 +182,33 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
   if (context === null) throw new Error("Canvas rendering is unavailable");
   let font: TerminalFont = { family: "monospace", size: 13 };
   let metrics: CellMetrics | null = null;
-  let rows: (Row | undefined)[] = [];
   let foreground = -1;
   let background = -1;
   let cursorRow: number | null = null;
-  let signatures: number[] = [];
+  let painted: number[] = [];
   let linked: TerminalLink | null = null;
   const atlas = createAtlas();
-  const screen = { context, fill: -1, font: "" };
+  const onscreen = { context, fill: -1, font: "" };
   const glyphs = { context: atlas.context, fill: -1, font: "" };
 
   const setFill = (color: Rgb): void => {
-    if (color === screen.fill) return;
-    screen.fill = color;
+    if (color === onscreen.fill) return;
+    onscreen.fill = color;
     context.fillStyle = css(color);
   };
 
-  const prepare = (target: typeof screen, cell: Cell, color: Rgb, m: CellMetrics): void => {
+  const prepare = (target: typeof onscreen, flags: number, color: Rgb, m: CellMetrics): void => {
     if (target.fill !== color) {
       target.fill = color;
       target.context.fillStyle = css(color);
     }
 
-    const name = fontString(font, m.ratio, cell.bold, cell.italic);
+    const name = fontString(
+      font,
+      m.ratio,
+      (flags & CellFlag.BOLD) !== 0,
+      (flags & CellFlag.ITALIC) !== 0,
+    );
 
     if (target.font === name) return;
     target.font = name;
@@ -244,29 +217,49 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
 
   const rasterize = (
     target: CanvasRenderingContext2D,
-    cell: Cell,
+    text: string,
+    columns: number,
+    flags: number,
     x: number,
     top: number,
     m: CellMetrics,
   ): void => {
-    if (cell.faint) target.globalAlpha = 0.5;
+    const faint = (flags & CellFlag.FAINT) !== 0;
+
+    if (faint) target.globalAlpha = 0.5;
 
     const box = {
       x,
       y: top,
-      width: m.width * Math.max(1, cell.width),
+      width: m.width * Math.max(1, columns),
       height: m.height,
       thickness: m.thickness,
     };
 
-    if (!drawGlyph(target, cell.text, box)) target.fillText(cell.text, x, top + m.baseline);
+    if (!drawGlyph(target, text, box)) target.fillText(text, x, top + m.baseline);
 
-    if (cell.faint) target.globalAlpha = 1;
+    if (faint) target.globalAlpha = 1;
   };
 
-  const drawText = (cell: Cell, x: number, top: number, color: Rgb, m: CellMetrics): void => {
-    if (cell.invisible || cell.text === "" || cell.text === " ") return;
-    const key = `${cell.text}\u0000${String(color)}\u0000${cell.bold ? "b" : ""}${cell.italic ? "i" : ""}${cell.faint ? "f" : ""}`;
+  const drawText = (
+    screen: Screen,
+    index: number,
+    x: number,
+    top: number,
+    color: Rgb,
+    m: CellMetrics,
+  ): void => {
+    const flags = screen.flags[index] ?? 0;
+    const glyph = screen.glyph[index] ?? 0;
+    const cluster = (flags & CellFlag.CLUSTER) !== 0;
+
+    if ((flags & CellFlag.INVISIBLE) !== 0 || glyph === 0 || (glyph === 32 && !cluster)) return;
+    const face = flags & (CellFlag.BOLD | CellFlag.ITALIC | CellFlag.FAINT);
+
+    const key = cluster
+      ? `${screen.text(index)}\u0000${String(color)}\u0000${String(face)}`
+      : (glyph * 8 + face) * 0x1000000 + color;
+
     const pad = Math.ceil(m.width / 2);
     const found = atlas.find(key);
 
@@ -286,28 +279,31 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       return;
     }
 
-    const width = m.width * Math.max(1, cell.width) + 2 * pad;
+    const text = screen.text(index);
+    const columns = screen.width[index] ?? 1;
+    const width = m.width * Math.max(1, columns) + 2 * pad;
     const slot = atlas.add(key, width, m.height);
 
     if (slot === null) {
-      prepare(screen, cell, color, m);
-      rasterize(context, cell, x, top, m);
+      prepare(onscreen, flags, color, m);
+      rasterize(context, text, columns, flags, x, top, m);
 
       return;
     }
 
-    prepare(glyphs, cell, color, m);
+    prepare(glyphs, flags, color, m);
     atlas.context.save();
     atlas.context.beginPath();
     atlas.context.rect(slot.x, slot.y, width, m.height);
     atlas.context.clip();
-    rasterize(atlas.context, cell, slot.x + pad, slot.y, m);
+    rasterize(atlas.context, text, columns, flags, slot.x + pad, slot.y, m);
     atlas.context.restore();
     context.drawImage(atlas.canvas, slot.x, slot.y, width, m.height, x - pad, top, width, m.height);
   };
 
   const drawUnderline = (
-    cell: Cell,
+    screen: Screen,
+    index: number,
     x: number,
     top: number,
     width: number,
@@ -316,26 +312,28 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
   ): void => {
     const t = m.thickness;
     const y = top + m.underline;
-    setFill(cell.underlineColor ?? color);
+    const style = screen.underline[index] ?? UnderlineStyle.NONE;
+    const underlineColor = screen.underlineColor[index] ?? NO_COLOR;
+    setFill(underlineColor === NO_COLOR ? color : underlineColor);
 
-    if (cell.underline === "single") context.fillRect(x, y, width, t);
+    if (style === UnderlineStyle.SINGLE) context.fillRect(x, y, width, t);
 
-    if (cell.underline === "double") {
+    if (style === UnderlineStyle.DOUBLE) {
       const lower = Math.min(top + m.height - t, y + 2 * t);
       context.fillRect(x, lower - 2 * t, width, t);
       context.fillRect(x, lower, width, t);
     }
 
-    if (cell.underline === "dotted") {
+    if (style === UnderlineStyle.DOTTED) {
       for (let dot = 0; dot < width; dot += 2 * t) context.fillRect(x + dot, y, t, t);
     }
 
-    if (cell.underline === "dashed") {
+    if (style === UnderlineStyle.DASHED) {
       for (let dash = 0; dash < width; dash += m.width)
         context.fillRect(x + dash + Math.floor(m.width / 4), y, Math.ceil(m.width / 2), t);
     }
 
-    if (cell.underline === "curly") {
+    if (style === UnderlineStyle.CURLY) {
       const amplitude = Math.max(1, t);
       const middle = Math.min(y, top + m.height - amplitude - t);
       context.strokeStyle = context.fillStyle;
@@ -350,87 +348,114 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
   };
 
   const drawDecorations = (
-    cell: Cell,
+    screen: Screen,
+    index: number,
     x: number,
     top: number,
     color: Rgb,
     m: CellMetrics,
   ): void => {
-    if (cell.invisible) return;
-    const width = m.width * Math.max(1, cell.width);
+    const flags = screen.flags[index] ?? 0;
 
-    if (cell.underline !== "none") drawUnderline(cell, x, top, width, color, m);
+    if ((flags & CellFlag.INVISIBLE) !== 0) return;
+    const width = m.width * Math.max(1, screen.width[index] ?? 1);
+
+    if (screen.underline[index] !== UnderlineStyle.NONE)
+      drawUnderline(screen, index, x, top, width, color, m);
     setFill(color);
 
-    if (cell.strikethrough) context.fillRect(x, top + m.strike, width, m.thickness);
+    if ((flags & CellFlag.STRIKETHROUGH) !== 0)
+      context.fillRect(x, top + m.strike, width, m.thickness);
 
-    if (cell.overline) context.fillRect(x, top, width, m.thickness);
+    if ((flags & CellFlag.OVERLINE) !== 0) context.fillRect(x, top, width, m.thickness);
   };
 
-  const cellColors = (row: Row, cell: Cell, column: number, frame: Frame, scene: Scene) => {
-    const selected =
-      row.selection !== null && column >= row.selection[0] && column <= row.selection[1];
+  const foregroundAt = (screen: Screen, index: number, frame: Frame): Rgb => {
+    const fg = screen.fg[index] ?? NO_COLOR;
+    const bg = screen.bg[index] ?? NO_COLOR;
 
-    return {
-      foreground: cell.inverse ? (cell.bg ?? frame.background) : (cell.fg ?? frame.foreground),
-      background: selected
-        ? scene.selection
-        : cell.inverse
-          ? (cell.fg ?? frame.foreground)
-          : cell.bg,
-    };
+    if ((screen.flags[index] ?? 0) & CellFlag.INVERSE)
+      return bg === NO_COLOR ? frame.background : bg;
+
+    return fg === NO_COLOR ? frame.foreground : fg;
   };
 
-  const colorAt = (row: Row | undefined, column: number, frame: Frame, scene: Scene): Rgb => {
-    const cell = row?.cells[column];
+  const backgroundAt = (screen: Screen, y: number, x: number, frame: Frame, scene: Scene): Rgb => {
+    const index = y * screen.cols + x;
+    const start = screen.selectionStart[y] ?? -1;
 
-    return row === undefined || cell === undefined
-      ? frame.foreground
-      : cellColors(row, cell, column, frame, scene).foreground;
+    if (start !== -1 && x >= start && x <= (screen.selectionEnd[y] ?? -1)) return scene.selection;
+
+    if ((screen.flags[index] ?? 0) & CellFlag.INVERSE) {
+      const fg = screen.fg[index] ?? NO_COLOR;
+
+      return fg === NO_COLOR ? frame.foreground : fg;
+    }
+
+    return screen.bg[index] ?? NO_COLOR;
   };
 
-  const paintRow = (y: number, frame: Frame, scene: Scene, m: CellMetrics): void => {
+  const paintRow = (
+    y: number,
+    frame: Frame,
+    screen: Screen,
+    scene: Scene,
+    m: CellMetrics,
+  ): void => {
     const top = y * m.height;
-    const row = rows[y];
     setFill(frame.background);
     context.fillRect(0, top, canvas.width, m.height);
 
-    if (row !== undefined) {
-      const colors = row.cells.map((cell, column) => cellColors(row, cell, column, frame, scene));
+    if (y < screen.rows) {
       let start = 0;
+      let run = backgroundAt(screen, y, 0, frame, scene);
 
-      for (let column = 1; column <= row.cells.length; column += 1) {
-        const run = colors[start]?.background ?? null;
+      for (let column = 1; column <= screen.cols; column += 1) {
+        const next =
+          column < screen.cols ? backgroundAt(screen, y, column, frame, scene) : NO_COLOR;
 
-        if (column < row.cells.length && colors[column]?.background === run) continue;
+        if (column < screen.cols && next === run) continue;
 
-        if (run !== null) {
+        if (run !== NO_COLOR) {
           setFill(run);
           context.fillRect(start * m.width, top, (column - start) * m.width, m.height);
         }
 
         start = column;
+        run = next;
       }
 
-      row.cells.forEach((cell, column) => {
-        const color = colors[column]?.foreground ?? frame.foreground;
+      for (let column = 0; column < screen.cols; column += 1) {
+        const index = y * screen.cols + column;
 
-        if (cell.width === 0) return;
-        drawText(cell, column * m.width, top, color, m);
-        drawDecorations(cell, column * m.width, top, color, m);
-      });
+        if (screen.width[index] === 0) continue;
+        const color = foregroundAt(screen, index, frame);
+        drawText(screen, index, column * m.width, top, color, m);
+        drawDecorations(screen, index, column * m.width, top, color, m);
+      }
     }
 
     const link = scene.link;
 
     if (link === null || y < link.start.row || y > link.end.row) return;
     const first = y === link.start.row ? link.start.column : 0;
-    const last = y === link.end.row ? link.end.column : (row?.cells.length ?? 1) - 1;
-    setFill(colorAt(row, first, frame, scene));
+    const last = y === link.end.row ? link.end.column : screen.cols - 1;
+
+    setFill(
+      y < screen.rows && first < screen.cols
+        ? foregroundAt(screen, y * screen.cols + first, frame)
+        : frame.foreground,
+    );
     context.fillRect(first * m.width, top + m.underline, (last - first + 1) * m.width, m.thickness);
   };
 
-  const drawCursor = (cursor: Cursor, frame: Frame, scene: Scene, m: CellMetrics): void => {
+  const drawCursor = (
+    cursor: Cursor,
+    frame: Frame,
+    screen: Screen,
+    scene: Scene,
+    m: CellMetrics,
+  ): void => {
     const x = cursor.x * m.width;
     const top = cursor.y * m.height;
     const width = m.width * (cursor.wide ? 2 : 1);
@@ -450,11 +475,12 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       context.fillRect(x + width - t, top, t, m.height);
     }
 
-    if (style !== "block") return;
+    if (style !== "block" || cursor.y >= screen.rows || cursor.x >= screen.cols) return;
     context.fillRect(x, top, width, m.height);
-    const cell = rows[cursor.y]?.cells[cursor.x];
+    const index = cursor.y * screen.cols + cursor.x;
+    const bg = screen.bg[index] ?? NO_COLOR;
 
-    if (cell !== undefined) drawText(cell, x, top, cell.bg ?? frame.background, m);
+    drawText(screen, index, x, top, bg === NO_COLOR ? frame.background : bg, m);
   };
 
   return {
@@ -462,7 +488,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     setFont(next, nextMetrics) {
       font = next;
       metrics = nextMetrics;
-      signatures = [];
+      painted = [];
       atlas.clear();
     },
     resize(width, height) {
@@ -471,24 +497,21 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       canvas.height = height;
       canvas.style.width = String(width / ratio) + "px";
       canvas.style.height = String(height / ratio) + "px";
-      screen.fill = -1;
-      screen.font = "";
-      rows = [];
-      signatures = [];
+      onscreen.fill = -1;
+      onscreen.font = "";
+      painted = [];
       cursorRow = null;
     },
     release() {
       canvas.width = 0;
       canvas.height = 0;
-      signatures = [];
-      screen.fill = -1;
-      screen.font = "";
+      painted = [];
+      onscreen.fill = -1;
+      onscreen.font = "";
       atlas.release();
-      rows = [];
       cursorRow = null;
     },
-    row: (y) => rows[y],
-    paint(frame, scene) {
+    paint(frame, screen, scene) {
       const m = metrics;
 
       if (m === null || canvas.width === 0) return;
@@ -506,19 +529,12 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       const count = Math.ceil(canvas.height / m.height);
       const lines = Math.floor(canvas.height / m.height);
 
-      if (frame.full) rows = [];
-      frame.rows.forEach((row) => {
-        rows[row.y] = row;
-      });
       foreground = frame.foreground;
       background = frame.background;
-      const next = [...signatures];
-      frame.rows.forEach((row) => {
-        next[row.y] = signature(row);
-      });
+      const next = Array.from(screen.hash);
 
-      const whole = frame.rows.length >= lines && signatures.length >= lines && !recolored;
-      const shift = whole ? findShift(signatures.slice(0, lines), next.slice(0, lines)) : 0;
+      const whole = frame.dirty.length >= lines && painted.length >= lines && !recolored;
+      const shift = whole ? findShift(painted.slice(0, lines), next.slice(0, lines)) : 0;
 
       if (shift !== 0) {
         const kept = (lines - Math.abs(shift)) * m.height;
@@ -527,16 +543,14 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
         context.drawImage(canvas, 0, from, canvas.width, kept, 0, to, canvas.width, kept);
       }
 
-      const moved = signatures.map((_, y) => signatures[y + shift]);
+      const moved = painted.map((_, y) => painted[y + shift]);
 
-      const painted =
+      const rows =
         (frame.full || recolored) && shift === 0
           ? Array.from({ length: count }, (_, y) => y)
           : [
               ...new Set([
-                ...frame.rows
-                  .map((row) => row.y)
-                  .filter((y) => shift === 0 || next[y] === undefined || moved[y] !== next[y]),
+                ...frame.dirty.filter((y) => shift === 0 || moved[y] !== next[y]),
                 ...(shift === 0
                   ? []
                   : Array.from({ length: count - lines }, (_, index) => lines + index)),
@@ -560,11 +574,11 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
         context.fillRect(0, 0, canvas.width, canvas.height);
       }
 
-      painted.forEach((y) => paintRow(y, frame, scene, m));
-      signatures = next;
+      rows.forEach((y) => paintRow(y, frame, screen, scene, m));
+      painted = next;
       linked = scene.link;
 
-      if (cursor !== null) drawCursor(cursor, frame, scene, m);
+      if (cursor !== null) drawCursor(cursor, frame, screen, scene, m);
       cursorRow = cursor?.y ?? null;
     },
   };

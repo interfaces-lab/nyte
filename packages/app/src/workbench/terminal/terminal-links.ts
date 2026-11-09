@@ -1,4 +1,4 @@
-import type { Row } from "@nyte-ai/vt";
+import type { Screen } from "@nyte-ai/vt";
 
 export interface CellPoint {
   readonly row: number;
@@ -17,10 +17,10 @@ const NOT_URL = " ";
 
 export function findLink(
   at: CellPoint,
-  rowAt: (row: number) => Row | undefined,
+  screen: Screen,
   hyperlink: (cell: CellPoint) => string | null,
 ): TerminalLink | null {
-  const cells = lineCells(at.row, rowAt);
+  const cells = lineCells(at.row, screen);
   const index = cells.findIndex((cell) => cell.row === at.row && cell.column === at.column);
 
   if (index === -1) return null;
@@ -56,21 +56,26 @@ export function findLink(
   );
 }
 
-function lineCells(row: number, rowAt: (row: number) => Row | undefined) {
+function lineCells(row: number, screen: Screen) {
+  if (row < 0 || row >= screen.rows) return [];
   let top = row;
 
-  while (rowAt(top - 1)?.wrapped === true) top -= 1;
+  while (top > 0 && screen.wrapped[top - 1] === 1) top -= 1;
   let bottom = row;
 
-  while (rowAt(bottom)?.wrapped === true && rowAt(bottom + 1) !== undefined) bottom += 1;
+  while (bottom + 1 < screen.rows && screen.wrapped[bottom] === 1) bottom += 1;
 
-  return Array.from({ length: bottom - top + 1 }, (_, offset) => rowAt(top + offset)).flatMap(
-    (line) =>
-      line?.cells.map((cell, column) => ({
-        row: line.y,
+  return Array.from({ length: bottom - top + 1 }, (_, offset) => top + offset).flatMap((y) =>
+    Array.from({ length: screen.cols }, (_, column) => {
+      const index = y * screen.cols + column;
+      const text = screen.text(index);
+
+      return {
+        row: y,
         column,
-        text: cell.width === 1 && cell.text.length <= 1 ? cell.text || " " : NOT_URL,
-      })) ?? [],
+        text: screen.width[index] === 1 && text.length <= 1 ? text || " " : NOT_URL,
+      };
+    }),
   );
 }
 

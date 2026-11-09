@@ -1,9 +1,9 @@
 import { createContext } from "./context.ts";
 import {
+  CursorStyle,
   Mode,
   ScrollViewportTag,
   SysOption,
-  TerminalCursorStyle,
   TerminalData,
   TerminalOption,
 } from "./constants.ts";
@@ -16,20 +16,27 @@ import { createSelection } from "./selection.ts";
 import { installTrampolines } from "./trampoline.ts";
 
 import type { Geometry } from "./context.ts";
-import type { CellSize, CursorStyle, Engine, Palette, Terminal, TerminalOptions } from "./index.ts";
+import type {
+  CellSize,
+  CursorStyle as CursorKind,
+  Engine,
+  Palette,
+  Terminal,
+  TerminalOptions,
+} from "./index.ts";
 
 const cursorStyles = {
-  bar: TerminalCursorStyle.BAR,
-  block: TerminalCursorStyle.BLOCK,
-  underline: TerminalCursorStyle.UNDERLINE,
-  "block-hollow": TerminalCursorStyle.BLOCK_HOLLOW,
+  bar: CursorStyle.BAR,
+  block: CursorStyle.BLOCK,
+  underline: CursorStyle.UNDERLINE,
+  "block-hollow": CursorStyle.BLOCK_HOLLOW,
 } as const;
-
-const cursorReset = new TextEncoder().encode("\u001b[0 q");
 
 const writeChunk = 65_536;
 
 const holdLimit = 1000;
+
+const sizeMax = 0xffff_ffff;
 
 export async function createTerminal(engine: Engine, options: TerminalOptions): Promise<Terminal> {
   let session: Terminal | null = await openSession(engine, options);
@@ -48,6 +55,9 @@ export async function createTerminal(engine: Engine, options: TerminalOptions): 
     },
     get rows() {
       return rows;
+    },
+    get screen() {
+      return live().screen;
     },
     write: (bytes) => live().write(bytes),
     resize: (nextCols, nextRows, cell) => {
@@ -71,7 +81,6 @@ export async function createTerminal(engine: Engine, options: TerminalOptions): 
     focus: (focused) => live().focus(focused),
     paste: (text) => live().paste(text),
     select: (input) => live().select(input),
-    selectAll: () => live().selectAll(),
     clearSelection: () => live().clearSelection(),
     hasSelection: () => live().hasSelection(),
     selectionText: () => live().selectionText(),
@@ -149,7 +158,8 @@ async function openSession(engine: Engine, options: TerminalOptions): Promise<Te
   const setScrollback = (lines: number) => {
     memory.view().setUint32(value, lines, true);
     set(TerminalOption.SCROLLBACK_MAX_LINES, value, "scrollback lines");
-    set(TerminalOption.SCROLLBACK_MAX_BYTES, 0, "scrollback bytes");
+    memory.view().setUint32(value, sizeMax, true);
+    set(TerminalOption.SCROLLBACK_MAX_BYTES, value, "scrollback bytes");
   };
 
   const writeRgb = (offset: number, rgb: number) => {
@@ -172,13 +182,11 @@ async function openSession(engine: Engine, options: TerminalOptions): Promise<Te
     set(TerminalOption.COLOR_PALETTE, value, "palette");
   };
 
-  const setCursor = (cursor: { readonly style: CursorStyle; readonly blink: boolean }) => {
+  const setCursor = (cursor: { readonly style: CursorKind; readonly blink: boolean }) => {
     memory.view().setInt32(value, cursorStyles[cursor.style], true);
     set(TerminalOption.DEFAULT_CURSOR_STYLE, value, "cursor style");
     memory.view().setUint8(value, cursor.blink ? 1 : 0);
     set(TerminalOption.DEFAULT_CURSOR_BLINK, value, "cursor blink");
-
-    if (context.flag(TerminalData.VT_GROUND)) vtWrite(cursorReset);
   };
 
   const scrollViewport = (tag: number, delta: number) => {
@@ -186,7 +194,7 @@ async function openSession(engine: Engine, options: TerminalOptions): Promise<Te
 
     view.setInt32(scroll + layout.scrollViewport.tag, tag, true);
     view.setInt32(scroll + layout.scrollViewport.delta, delta, true);
-    native.ghostty_terminal_scroll_viewport(terminal, scroll);
+    check(native.ghostty_terminal_scroll_viewport(terminal, scroll), "scroll");
   };
 
   const context = createContext(native, layout, memory, terminal, () => geometry);
@@ -195,7 +203,6 @@ async function openSession(engine: Engine, options: TerminalOptions): Promise<Te
   set(TerminalOption.TITLE_CHANGED, pointer("titleChanged"), "title effect");
   set(TerminalOption.SIZE, pointer("size"), "size effect");
   set(TerminalOption.COLOR_SCHEME, pointer("colorScheme"), "color scheme effect");
-  set(TerminalOption.DEVICE_ATTRIBUTES, pointer("deviceAttributes"), "device attributes effect");
   set(TerminalOption.RENDER_HOLD, pointer("renderHold"), "render hold effect");
   check(native.ghostty_sys_set(SysOption.RANDOM_SECURE, pointer("randomSecure")), "secure random");
   resize(options.cols, options.rows, options.cell);
@@ -234,26 +241,26 @@ async function openSession(engine: Engine, options: TerminalOptions): Promise<Te
     get rows() {
       return geometry.rows;
     },
+    get screen() {
+      return frames.screen();
+    },
     write: (bytes) => {
       vtWrite(bytes);
+      input.modesChanged();
       effects.flush();
     },
     resize: (cols, rows, cell) => {
       resize(cols, rows, cell);
-      showLive();
       effects.flush();
     },
     reset: () => {
       native.ghostty_terminal_reset(terminal);
-      showLive();
+      input.modesChanged();
       effects.flush();
     },
     setPalette,
     setScrollback,
-    setCursor: (cursor) => {
-      setCursor(cursor);
-      effects.flush();
-    },
+    setCursor,
     colorSchemeChanged: (scheme) => {
       effects.scheme(scheme);
       const report = input.colorSchemeReport(scheme);
@@ -293,10 +300,6 @@ async function openSession(engine: Engine, options: TerminalOptions): Promise<Te
     paste: input.paste,
     select: (input) => {
       selection.select(input);
-      showLive();
-    },
-    selectAll: () => {
-      selection.selectAll();
       showLive();
     },
     clearSelection: () => {

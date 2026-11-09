@@ -1,5 +1,5 @@
 import { createTerminal } from "@nyte-ai/vt";
-import type { CellSize, Cursor, Engine, Row, Terminal } from "@nyte-ai/vt";
+import type { CellSize, Cursor, Engine, Terminal } from "@nyte-ai/vt";
 import { preferences } from "../../preferences/index.ts";
 import { colorScheme, terminalAppearance } from "./terminal-appearance.ts";
 import type { TerminalLink } from "./terminal-links.ts";
@@ -20,7 +20,6 @@ export interface TerminalSurface {
   focus(focused: boolean): void;
   restartBlink(): void;
   showLink(link: TerminalLink | null): void;
-  row(y: number): Row | undefined;
   dispose(): void;
 }
 
@@ -165,7 +164,11 @@ export async function openTerminalSurface(
           ? "focused"
           : "unfocused";
 
-    renderer.paint(next, { cursor: shownCursor, selection: appearance.selection, link });
+    renderer.paint(next, terminal.screen, {
+      cursor: shownCursor,
+      selection: appearance.selection,
+      link,
+    });
     const blinks = active && options.cursor !== "none" && next.cursor?.blinking === true;
 
     if (blinks !== (blinkTimer !== undefined)) {
@@ -269,7 +272,6 @@ export async function openTerminalSurface(
       link = next;
       draw(false);
     },
-    row: (y) => renderer.row(y),
     restartBlink() {
       if (blinkTimer !== undefined) startBlink();
       draw(false);

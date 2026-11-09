@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { openTerminal, screenText } from "./harness.ts";
+import { frameText, openTerminal } from "./harness.ts";
 
 const esc = "\u001b";
 
@@ -82,7 +82,7 @@ describe("viewport rows after repeated escape-heavy output", () => {
     const screens = Array.from({ length: 30 }, () => {
       session.terminal.write(fixture);
 
-      return screenText(session.terminal.frame(true));
+      return frameText(session.terminal);
     });
 
     expect(fixture.length).toBeGreaterThan(90_000);

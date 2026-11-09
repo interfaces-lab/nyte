@@ -11,10 +11,6 @@ export function readLayout(manifest: Manifest) {
   const scrollbar = struct("GhosttyTerminalScrollbar");
   const scrollViewport = struct("GhosttyTerminalScrollViewport");
   const modeConfig = struct("GhosttyTerminalModeConfig");
-  const attributes = struct("GhosttyDeviceAttributes");
-  const primary = struct("GhosttyDeviceAttributesPrimary");
-  const secondary = struct("GhosttyDeviceAttributesSecondary");
-  const tertiary = struct("GhosttyDeviceAttributesTertiary");
   const sizeReport = struct("GhosttySizeReportSize");
   const rgb = struct("GhosttyColorRgb");
   const cursor = struct("GhosttyRenderStateCursor");
@@ -22,6 +18,7 @@ export function readLayout(manifest: Manifest) {
   const rowSelection = struct("GhosttyRenderStateRowSelection");
   const cellsView = struct("GhosttyCellsView");
   const style = struct("GhosttyStyle");
+  const flags = (path: string) => manifest.packedField("GhosttyStyleFlags", [path]);
   const styleColor = struct("GhosttyStyleColor");
   const styleColorValue = struct("GhosttyStyleColorValue");
   const mouseSize = struct("GhosttyMouseEncoderSize");
@@ -33,11 +30,11 @@ export function readLayout(manifest: Manifest) {
   const selection = struct("GhosttySelection");
   const surfacePosition = struct("GhosttySurfacePosition");
   const geometry = struct("GhosttySelectionGestureGeometry");
-  const formatOptions = struct("GhosttyTerminalSelectionFormatOptions");
   const paste = struct("GhosttyPaste");
   const mimeReader = struct("GhosttyMimeReader");
   const writer = struct("GhosttyWriter");
   const string = struct("GhosttyString");
+  const buffer = struct("GhosttyBuffer");
   const valueOffset = scrollViewport.field("value");
   const coordinateOffset = point.field("value") + pointValue.field("coordinate", 8);
 
@@ -57,15 +54,6 @@ export function readLayout(manifest: Manifest) {
       size: modeConfig.size,
       mode: modeConfig.field("mode", 2),
       value: modeConfig.field("value", 1),
-    },
-    attributes: {
-      conformanceLevel: attributes.field("primary") + primary.field("conformance_level", 2),
-      features: attributes.field("primary") + primary.field("features"),
-      featureCount: attributes.field("primary") + primary.field("num_features", 4),
-      deviceType: attributes.field("secondary") + secondary.field("device_type", 2),
-      firmwareVersion: attributes.field("secondary") + secondary.field("firmware_version", 2),
-      romCartridge: attributes.field("secondary") + secondary.field("rom_cartridge", 2),
-      unitId: attributes.field("tertiary") + tertiary.field("unit_id", 4),
     },
     sizeReport: {
       rows: sizeReport.field("rows", 2),
@@ -118,22 +106,21 @@ export function readLayout(manifest: Manifest) {
     },
     style: {
       size: style.size,
-      sizeField: style.field("size", 4),
       foreground: style.field("fg_color", styleColor.size),
       background: style.field("bg_color", styleColor.size),
       underlineColor: style.field("underline_color", styleColor.size),
-      bold: style.field("bold", 1),
-      italic: style.field("italic", 1),
-      faint: style.field("faint", 1),
-      blink: style.field("blink", 1),
-      inverse: style.field("inverse", 1),
-      invisible: style.field("invisible", 1),
-      strikethrough: style.field("strikethrough", 1),
-      overline: style.field("overline", 1),
-      underline: style.field("underline", 4),
+      flags: style.field("flags", 2),
+      bold: flags("bold"),
+      italic: flags("italic"),
+      faint: flags("faint"),
+      inverse: flags("inverse"),
+      invisible: flags("invisible"),
+      strikethrough: flags("strikethrough"),
+      overline: flags("overline"),
+      underline: flags("underline"),
     },
     styleColor: {
-      tag: styleColor.field("tag", 4),
+      tag: styleColor.field("tag", 1),
       palette: styleColor.field("value") + styleColorValue.field("palette", 1),
       rgb: styleColor.field("value") + styleColorValue.field("rgb", rgb.size),
     },
@@ -157,10 +144,9 @@ export function readLayout(manifest: Manifest) {
       y: coordinateOffset + coordinate.field("y", 4),
     },
     coordinate: { size: coordinate.size, x: coordinate.field("x", 2), y: coordinate.field("y", 4) },
-    gridRef: { size: gridRef.size, sizeField: gridRef.field("size", 4) },
+    gridRef: { size: gridRef.size },
     selection: {
       size: selection.size,
-      sizeField: selection.field("size", 4),
       start: selection.field("start", gridRef.size),
       end: selection.field("end", gridRef.size),
       rectangle: selection.field("rectangle", 1),
@@ -177,14 +163,6 @@ export function readLayout(manifest: Manifest) {
       paddingLeft: geometry.field("padding_left", 4),
       screenHeight: geometry.field("screen_height", 4),
     },
-    formatOptions: {
-      size: formatOptions.size,
-      sizeField: formatOptions.field("size", 4),
-      emit: formatOptions.field("emit", 4),
-      unwrap: formatOptions.field("unwrap", 1),
-      trim: formatOptions.field("trim", 1),
-      selection: formatOptions.field("selection", 4),
-    },
     paste: {
       size: paste.size,
       sizeField: paste.field("size", 4),
@@ -198,6 +176,12 @@ export function readLayout(manifest: Manifest) {
     },
     writer: { write: writer.field("write", 4), userdata: writer.field("userdata", 4) },
     string: { size: string.size, pointer: string.field("ptr", 4), length: string.field("len", 4) },
+    buffer: {
+      size: buffer.size,
+      pointer: buffer.field("ptr", 4),
+      capacity: buffer.field("cap", 4),
+      length: buffer.field("len", 4),
+    },
   };
 }
 

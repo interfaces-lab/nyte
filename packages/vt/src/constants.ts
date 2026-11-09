@@ -7,23 +7,22 @@ export const Result = {
 } as const;
 
 export const TerminalOption = {
-  WRITE_PTY: 1,
-  TITLE_CHANGED: 5,
-  SIZE: 6,
-  COLOR_SCHEME: 7,
-  DEVICE_ATTRIBUTES: 8,
-  COLOR_FOREGROUND: 11,
-  COLOR_BACKGROUND: 12,
-  COLOR_CURSOR: 13,
-  COLOR_PALETTE: 14,
-  SELECTION: 21,
-  DEFAULT_CURSOR_STYLE: 22,
-  DEFAULT_CURSOR_BLINK: 23,
-  SCROLLBACK_MAX_BYTES: 27,
-  SCROLLBACK_MAX_LINES: 28,
-  MODE_DEFAULT: 33,
-  MODE: 34,
-  RENDER_HOLD: 41,
+  WRITE_PTY: 2,
+  TITLE_CHANGED: 6,
+  SIZE: 7,
+  COLOR_SCHEME: 8,
+  COLOR_FOREGROUND: 12,
+  COLOR_BACKGROUND: 13,
+  COLOR_CURSOR: 14,
+  COLOR_PALETTE: 15,
+  SELECTION: 22,
+  DEFAULT_CURSOR_STYLE: 23,
+  DEFAULT_CURSOR_BLINK: 24,
+  SCROLLBACK_MAX_BYTES: 28,
+  SCROLLBACK_MAX_LINES: 29,
+  MODE_DEFAULT: 34,
+  MODE: 35,
+  RENDER_HOLD: 42,
 } as const;
 
 export const TerminalData = {
@@ -36,26 +35,30 @@ export const TerminalData = {
   TITLE: 12,
   SELECTION: 31,
   MODE: 37,
-  VT_GROUND: 38,
 } as const;
 
 export const TerminalScreen = { ALTERNATE: 1 } as const;
 
-export const TerminalCursorStyle = { BAR: 0, BLOCK: 1, UNDERLINE: 2, BLOCK_HOLLOW: 3 } as const;
+export const CursorStyle = { BAR: 0, BLOCK: 1, UNDERLINE: 2, BLOCK_HOLLOW: 3 } as const;
 
 export const ScrollViewportTag = { BOTTOM: 1, DELTA: 2 } as const;
 
-export const RenderStateData = { DIRTY: 3, ROW_ITERATOR: 4, CURSOR: 18, COLORS: 19 } as const;
+export const RenderStateData = {
+  COLS: 1,
+  ROWS: 2,
+  DIRTY: 3,
+  ROW_ITERATOR: 4,
+  CURSOR: 18,
+  COLORS: 19,
+} as const;
 
 export const RenderStateDirty = { FULL: 2 } as const;
-
-export const CursorVisualStyle = { BAR: 0, BLOCK: 1, UNDERLINE: 2, BLOCK_HOLLOW: 3 } as const;
 
 export const RowData = { RAW: 2, CELLS: 3, SELECTION: 4, CELLS_RAW: 5 } as const;
 
 export const ScreenRowData = { WRAP: 1 } as const;
 
-export const RowCellsData = { STYLE: 2, GRAPHEMES_LEN: 3, GRAPHEMES_BUF: 4 } as const;
+export const RowCellsData = { STYLE: 2, GRAPHEMES_UTF8: 9 } as const;
 
 export const CellContentTag = {
   CODEPOINT_GRAPHEME: 1,
@@ -82,10 +85,6 @@ export const FocusEvent = { GAINED: 0, LOST: 1 } as const;
 
 export const KeyAction = { RELEASE: 0, PRESS: 1, REPEAT: 2 } as const;
 
-export const KeyEncoderOption = { MACOS_OPTION_AS_ALT: 6 } as const;
-
-export const OptionAsAlt = { FALSE: 0, TRUE: 1 } as const;
-
 export const MouseAction = { PRESS: 0, RELEASE: 1, MOTION: 2 } as const;
 
 export const MouseButton = {
@@ -98,28 +97,28 @@ export const MouseButton = {
   SEVEN: 7,
 } as const;
 
-export const MouseEncoderOption = { SIZE: 2, ANY_BUTTON_PRESSED: 3, TRACK_LAST_CELL: 4 } as const;
+export const MouseEncoderOption = { SIZE: 3, ANY_BUTTON_PRESSED: 4, TRACK_LAST_CELL: 5 } as const;
 
 export const PointTag = { ACTIVE: 0, VIEWPORT: 1, SCREEN: 2 } as const;
 
-export const FormatterFormat = { PLAIN: 0 } as const;
+export const FormatterOption = { UNWRAP: 2, SELECTION: 4 } as const;
 
 export const ClipboardLocation = { STANDARD: 0 } as const;
 
 export const PasteSource = { CLIPBOARD: 0 } as const;
 
-export const SysOption = { RANDOM_SECURE: 3 } as const;
+export const SysOption = { RANDOM_SECURE: 4 } as const;
 
 export const GestureEventType = { PRESS: 0, RELEASE: 1, DRAG: 2 } as const;
 
 export const GestureEventOption = {
-  REF: 0,
-  POSITION: 1,
-  REPEAT_DISTANCE: 2,
-  TIME_NS: 3,
-  REPEAT_INTERVAL_NS: 4,
-  RECTANGLE: 7,
-  GEOMETRY: 8,
+  REF: 1,
+  POSITION: 2,
+  REPEAT_DISTANCE: 3,
+  TIME_NS: 4,
+  REPEAT_INTERVAL_NS: 5,
+  RECTANGLE: 8,
+  GEOMETRY: 9,
 } as const;
 
 export const manifestEnums = {
@@ -127,11 +126,10 @@ export const manifestEnums = {
   GhosttyTerminalOption: TerminalOption,
   GhosttyTerminalData: TerminalData,
   GhosttyTerminalScreen: TerminalScreen,
-  GhosttyTerminalCursorStyle: TerminalCursorStyle,
+  GhosttyCursorStyle: CursorStyle,
   GhosttyTerminalScrollViewportTag: ScrollViewportTag,
   GhosttyRenderStateData: RenderStateData,
   GhosttyRenderStateDirty: RenderStateDirty,
-  GhosttyRenderStateCursorVisualStyle: CursorVisualStyle,
   GhosttyRenderStateRowData: RowData,
   GhosttyRowData: ScreenRowData,
   GhosttyRenderStateRowCellsData: RowCellsData,
@@ -142,13 +140,11 @@ export const manifestEnums = {
   GhosttyColorScheme: ColorScheme,
   GhosttyFocusEvent: FocusEvent,
   GhosttyKeyAction: KeyAction,
-  GhosttyKeyEncoderOption: KeyEncoderOption,
-  GhosttyOptionAsAlt: OptionAsAlt,
   GhosttyMouseAction: MouseAction,
   GhosttyMouseButton: MouseButton,
   GhosttyMouseEncoderOption: MouseEncoderOption,
   GhosttyPointTag: PointTag,
-  GhosttyFormatterFormat: FormatterFormat,
+  GhosttyFormatterOption: FormatterOption,
   GhosttyClipboardLocation: ClipboardLocation,
   GhosttyPasteSource: PasteSource,
   GhosttySysOption: SysOption,
@@ -170,15 +166,4 @@ export const Mods = {
   CTRL: 1 << 1,
   ALT: 1 << 2,
   SUPER: 1 << 3,
-  SHIFT_SIDE: 1 << 6,
-  CTRL_SIDE: 1 << 7,
-  ALT_SIDE: 1 << 8,
-  SUPER_SIDE: 1 << 9,
-} as const;
-
-export const DeviceAttributes = {
-  CONFORMANCE_LEVEL_2: 62,
-  FEATURE_ANSI_COLOR: 22,
-  DEVICE_TYPE_VT220: 1,
-  FIRMWARE_VERSION: 10,
 } as const;

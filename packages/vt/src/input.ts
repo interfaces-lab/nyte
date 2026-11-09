@@ -4,12 +4,10 @@ import {
   ColorScheme,
   FocusEvent,
   KeyAction,
-  KeyEncoderOption,
   Mode,
   MouseAction,
   MouseButton,
   MouseEncoderOption,
-  OptionAsAlt,
   PasteSource,
   Result,
   TerminalData,
@@ -33,6 +31,7 @@ interface Input {
   readonly colorSchemeReport: (scheme: Scheme) => Uint8Array;
   readonly paste: (text: string) => Uint8Array;
   readonly readMime: (writer: number) => number;
+  readonly modesChanged: () => void;
   readonly dispose: () => void;
 }
 
@@ -96,6 +95,7 @@ export function createInput(
   const mousePosition = memory.allocate(layout.mousePosition.size);
   const paste = memory.allocate(layout.paste.size);
   const mime = memory.allocate(layout.string.size);
+  const utf8 = memory.allocate(layout.string.size);
   const mimeText = new TextEncoder().encode("text/plain");
   const mimeBytes = memory.allocate(mimeText.length);
   const output = memory.growable(128);
@@ -104,12 +104,21 @@ export function createInput(
   const pressed = new Set<Button>();
   const encoder = new TextEncoder();
   let pending = { pointer: 0, length: 0 };
+  let modesStale = true;
+  let encodedGeometry: Geometry | null = null;
 
   memory.bytes().set(mimeText, mimeBytes);
   memory.view().setUint32(mime + layout.string.pointer, mimeBytes, true);
   memory.view().setUint32(mime + layout.string.length, mimeText.length, true);
+
+  const setMouse = (mouseOption: number, pointer: number) =>
+    check(
+      native.ghostty_mouse_encoder_set(mouseEncoder, mouseOption, pointer),
+      "mouse encoder option",
+    );
+
   memory.view().setUint8(option, 1);
-  native.ghostty_mouse_encoder_setopt(mouseEncoder, MouseEncoderOption.TRACK_LAST_CELL, option);
+  setMouse(MouseEncoderOption.TRACK_LAST_CELL, option);
 
   const encode = (
     run: (buffer: number, capacity: number, written: number) => number,
@@ -150,18 +159,19 @@ export function createInput(
       const pointer = keyText.reserve(text.length + 1);
 
       memory.bytes().set(text, pointer);
-      native.ghostty_key_encoder_setopt_from_terminal(keyEncoder, terminal);
-      memory
-        .view()
-        .setInt32(option, input.optionAsAlt ? OptionAsAlt.TRUE : OptionAsAlt.FALSE, true);
-      native.ghostty_key_encoder_setopt(keyEncoder, KeyEncoderOption.MACOS_OPTION_AS_ALT, option);
-      native.ghostty_key_event_set_action(keyEvent, keyActions[input.action]);
-      native.ghostty_key_event_set_key(keyEvent, keys.get(input.code) ?? 0);
-      native.ghostty_key_event_set_mods(keyEvent, key.mods);
-      native.ghostty_key_event_set_consumed_mods(keyEvent, key.consumed);
-      native.ghostty_key_event_set_composing(keyEvent, input.composing ? 1 : 0);
-      native.ghostty_key_event_set_utf8(keyEvent, text.length === 0 ? 0 : pointer, text.length);
-      native.ghostty_key_event_set_unshifted_codepoint(keyEvent, key.unshifted);
+      memory.view().setUint32(utf8 + layout.string.pointer, text.length === 0 ? 0 : pointer, true);
+      memory.view().setUint32(utf8 + layout.string.length, text.length, true);
+      check(native.ghostty_key_encoder_set_from_terminal(keyEncoder, terminal), "key modes");
+      check(native.ghostty_key_event_set_action(keyEvent, keyActions[input.action]), "key action");
+      check(native.ghostty_key_event_set_key(keyEvent, keys.get(input.code) ?? 0), "key");
+      check(native.ghostty_key_event_set_mods(keyEvent, key.mods), "key mods");
+      check(native.ghostty_key_event_set_consumed_mods(keyEvent, key.consumed), "consumed mods");
+      check(native.ghostty_key_event_set_composing(keyEvent, input.composing ? 1 : 0), "composing");
+      check(native.ghostty_key_event_set_utf8(keyEvent, utf8), "key text");
+      check(
+        native.ghostty_key_event_set_unshifted_codepoint(keyEvent, key.unshifted),
+        "unshifted codepoint",
+      );
 
       return encode(
         (buffer, capacity, length) =>
@@ -171,7 +181,6 @@ export function createInput(
     },
     mouseTracking,
     mouse: (input) => {
-      if (!mouseTracking()) return empty;
       const button = input.button;
 
       if (button !== null && input.action === "press" && heldButtons.has(button)) {
@@ -179,21 +188,36 @@ export function createInput(
       }
 
       if (button !== null && input.action === "release") pressed.delete(button);
-      writeMouseState(context.geometry(), input);
-      native.ghostty_mouse_encoder_setopt_from_terminal(mouseEncoder, terminal);
-      native.ghostty_mouse_encoder_setopt(mouseEncoder, MouseEncoderOption.SIZE, mouseSize);
-      native.ghostty_mouse_encoder_setopt(
-        mouseEncoder,
-        MouseEncoderOption.ANY_BUTTON_PRESSED,
-        option,
+      const geometry = context.geometry();
+
+      writeMouseState(geometry, input);
+
+      if (modesStale) {
+        check(
+          native.ghostty_mouse_encoder_set_from_terminal(mouseEncoder, terminal),
+          "mouse modes",
+        );
+        modesStale = false;
+      }
+
+      if (geometry !== encodedGeometry) {
+        setMouse(MouseEncoderOption.SIZE, mouseSize);
+        encodedGeometry = geometry;
+      }
+
+      setMouse(MouseEncoderOption.ANY_BUTTON_PRESSED, option);
+      check(
+        native.ghostty_mouse_event_set_action(mouseEvent, mouseActions[input.action]),
+        "action",
       );
-      native.ghostty_mouse_event_set_action(mouseEvent, mouseActions[input.action]);
-      native.ghostty_mouse_event_set_mods(mouseEvent, modifierBits(input));
-      native.ghostty_mouse_event_set_position(mouseEvent, mousePosition);
-
-      if (button === null) native.ghostty_mouse_event_clear_button(mouseEvent);
-
-      if (button !== null) native.ghostty_mouse_event_set_button(mouseEvent, mouseButtons[button]);
+      check(native.ghostty_mouse_event_set_mods(mouseEvent, modifierBits(input)), "mouse mods");
+      check(native.ghostty_mouse_event_set_position(mouseEvent, mousePosition), "mouse position");
+      check(
+        button === null
+          ? native.ghostty_mouse_event_clear_button(mouseEvent)
+          : native.ghostty_mouse_event_set_button(mouseEvent, mouseButtons[button]),
+        "mouse button",
+      );
 
       return encode(
         (buffer, capacity, length) =>
@@ -259,6 +283,9 @@ export function createInput(
       )
         ? 1
         : 0;
+    },
+    modesChanged: () => {
+      modesStale = true;
     },
     dispose: () => {
       native.ghostty_key_event_free(keyEvent);
