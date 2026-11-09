@@ -17,7 +17,7 @@ import type {
 import type { ConnectionContext } from "../contract/host.ts";
 import type { Kernel } from "../contract/kernel.ts";
 import { decodeRunRecord } from "../contract/records.ts";
-import type { WorkspaceRecord } from "../contract/records.ts";
+import type { SessionRecord, WorkspaceRecord } from "../contract/records.ts";
 import type {
   GitApi,
   HeldEntry,
@@ -31,11 +31,13 @@ import type {
   WorkspaceState,
 } from "../contract/workspace.ts";
 import { createJobs, jobHandle } from "../engine/jobs.ts";
+import { discardSession } from "../engine/start.ts";
 import { cleanWorktrees } from "./worktrees.ts";
 import { commit } from "../fold/commit.ts";
-import { endedRunRef, runRef, workspaceRef } from "../store/refs.ts";
+import { endedRunRef, parseSessionRef, runRef, workspaceRef } from "../store/refs.ts";
 import {
   attempt,
+  listSessionRecords,
   liveRuns,
   liveRunsOn,
   load,
@@ -180,9 +182,19 @@ export function createWorkspaces(
         const ref = await kernel.store.refs.get(workspaceRef(id));
 
         if (ref === null) return { kind: "missing" };
-        const sessions = await sessionsOn(kernel.store, id);
+        const sessions = await sessionsUnder(kernel.store, id);
 
-        if (sessions.length > 0) return { kind: "busy", sessions };
+        const running = (await kernel.store.sessions.pending({ kind: "run", sessions })).flatMap(
+          (run) => parseSessionRef(run.name) ?? [],
+        );
+
+        if (running.length > 0) return { kind: "busy", sessions: [...new Set(running)] };
+
+        for (const session of sessions) {
+          const found = await readSession(kernel.store, session);
+
+          if (found !== null && !(await discardSession(kernel, found, null))) return STALE;
+        }
 
         const outcome = await commit(kernel, [
           { name: workspaceRef(id), target: null, expect: ref.revision },
@@ -198,6 +210,34 @@ export function createWorkspaces(
     },
     cleanWorktrees: () => cleanWorktrees(kernel),
   };
+}
+
+/** The sessions on `workspace` or one of its worktrees, with every session below them, children before their parents. */
+async function sessionsUnder(
+  store: StoreConnection,
+  workspace: WorkspaceId,
+): Promise<readonly SessionId[]> {
+  const places = new Set([
+    workspace,
+    ...(await workspaceRecords(store)).flatMap((record) =>
+      record.isolation?.source === workspace ? [record.id] : [],
+    ),
+  ]);
+
+  const records = await listSessionRecords(store);
+  const byId = new Map(records.map((record) => [record.id, record]));
+
+  const ancestry = (record: SessionRecord): readonly SessionRecord[] => {
+    const parent = record.parent === null ? undefined : byId.get(record.parent);
+
+    return parent === undefined ? [record] : [record, ...ancestry(parent)];
+  };
+
+  return records
+    .map((record) => ({ id: record.id, ancestry: ancestry(record) }))
+    .filter((entry) => entry.ancestry.some((record) => places.has(record.workspace)))
+    .toSorted((left, right) => right.ancestry.length - left.ancestry.length)
+    .map((entry) => entry.id);
 }
 
 export function workspaceHandle(

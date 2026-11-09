@@ -1,14 +1,17 @@
 ---
 title: workspaces.forget
-description: Forgets a workspace unless a session still uses it.
+description: Forgets a workspace and removes every session on it.
 ---
 
-Unregisters a workspace. It answers `busy` with the sessions that still use it, and `missing` when
-no workspace has the id. Forgetting leaves the folder and its files alone.
+Unregisters a workspace and removes every session on it or on one of its worktrees, archived ones
+too, with each session's children. It answers `busy` with the sessions that still have a live run,
+and removes nothing, and `missing` when no workspace has the id. Forgetting leaves the folder and its
+files alone.
 
 ## When to call it
 
-When the user removes a workspace from the list. Remove or move its sessions first.
+When the user removes a workspace from the list. Stop its running sessions first; the removed
+sessions can't be restored.
 
 ## Access
 

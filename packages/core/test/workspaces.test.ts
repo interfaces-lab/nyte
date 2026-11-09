@@ -135,18 +135,20 @@ describe("workspaces", () => {
     );
   });
 
-  it("forgets a workspace only once no session uses it", async () => {
-    const { host, workspace } = await world();
+  it("forgets a workspace with its sessions, refusing while one of them runs", async () => {
+    const { kernel, host, workspace } = await world();
+    const other = await addWorkspace(host, "/work/other");
     const { session } = await host.sessions.start({ workspace, content: "Hi." });
+    await host.sessions.start({ workspace, parent: session.id, content: "Child." });
+    await session.update({ archived: true });
+    const { session: kept } = await host.sessions.start({ workspace: other, content: "Hi." });
+    await liveRun(kernel, kept.id);
 
-    expect(await host.workspace(workspace).info()).toMatchObject({ sessions: 1, writers: [] });
-    expect(await host.workspaces.forget(workspace)).toEqual({
-      kind: "busy",
-      sessions: [session.id],
-    });
-
-    expect(await session.remove()).toEqual({ kind: "removed" });
+    expect(await host.workspaces.forget(other)).toEqual({ kind: "busy", sessions: [kept.id] });
     expect(await host.workspaces.forget(workspace)).toEqual({ kind: "forgotten" });
+    expect(
+      (await host.sessions.list({ parents: { kind: "all" } })).items.map((info) => info.id),
+    ).toEqual([kept.id]);
     expect(await host.workspaces.forget(workspace)).toEqual({ kind: "missing" });
     await expect(host.workspace(workspace).info()).rejects.toMatchObject({ code: "unknown" });
   });

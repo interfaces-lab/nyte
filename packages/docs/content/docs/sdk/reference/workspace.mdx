@@ -24,13 +24,13 @@ if (git.kind === "available") {
 
 `connection.workspaces` manages the list of workspaces the host knows.
 
-| Method                  | Authority   | Returns                        | What it does                                                                                            |
-| ----------------------- | ----------- | ------------------------------ | ------------------------------------------------------------------------------------------------------- |
-| `list()`                | participant | `Promise<WorkspaceInfo[]>`     | The registered workspaces                                                                               |
-| `inspect(target)`       | owner       | `Promise<WorkspaceInspection>` | Reads a folder before adding it: whether it's reachable, its project files, and its id if already added |
-| `add(target, options?)` | owner       | `Promise<AddOutcome>`          | Registers a workspace. `added` or `exists` with its id, `stale`, or `unavailable`                       |
-| `forget(id)`            | owner       | `Promise<ForgetOutcome>`       | Unregisters it. `forgotten`, `missing`, or `busy` with the sessions that still use it                   |
-| `cleanWorktrees()`      | owner       | `Promise<{ cleaned }>`         | Removes leftover chat worktrees that hold no changes                                                    |
+| Method                  | Authority   | Returns                        | What it does                                                                                               |
+| ----------------------- | ----------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------- |
+| `list()`                | participant | `Promise<WorkspaceInfo[]>`     | The registered workspaces                                                                                  |
+| `inspect(target)`       | owner       | `Promise<WorkspaceInspection>` | Reads a folder before adding it: whether it's reachable, its project files, and its id if already added    |
+| `add(target, options?)` | owner       | `Promise<AddOutcome>`          | Registers a workspace. `added` or `exists` with its id, `stale`, or `unavailable`                          |
+| `forget(id)`            | owner       | `Promise<ForgetOutcome>`       | Unregisters it and removes its sessions. `forgotten`, `missing`, or `busy` with the sessions still running |
+| `cleanWorktrees()`      | owner       | `Promise<{ cleaned }>`         | Removes leftover chat worktrees that hold no changes                                                       |
 
 A target is `{ kind: "local", path }` for a folder on the host's machine. Other environment
 providers take `{ kind, locator }`.

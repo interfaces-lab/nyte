@@ -288,7 +288,7 @@ export const HOST_OPERATIONS = {
   },
   "workspaces.forget": {
     ...OWNER,
-    summary: "Forgets a workspace unless a session still uses it.",
+    summary: "Forgets a workspace and removes every session on it.",
     kind: "command",
     input: wireObject({ id: idSchema<"workspace">() }),
     output: ForgetOutcomeSchema,
