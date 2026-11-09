@@ -25,6 +25,8 @@ export const keys = {
   githubCapability: (workspace: WorkspaceId | undefined) =>
     ["github", "capability", workspace] as const,
   githubState: (workspace: WorkspaceId | undefined) => ["github", "state", workspace] as const,
+  githubRepository: (workspace: WorkspaceId | undefined) =>
+    ["github", "repository", workspace] as const,
   server: ["server"] as const,
   remoteAccess: ["remote-access"] as const,
   connect: ["remote-access", "connect"] as const,

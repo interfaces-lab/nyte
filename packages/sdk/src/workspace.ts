@@ -150,6 +150,7 @@ function filesApi(rows: Rows, workspace: WorkspaceId): FilesApi {
 
 function githubApi(rows: Rows, workspace: WorkspaceId): GitHubApi {
   return {
+    repository: () => rows.call("github.repository", { workspace }),
     state: () => rows.call("github.state", { workspace }),
     createPullRequest: (input) => rows.call("github.createPullRequest", { workspace, input }),
   };

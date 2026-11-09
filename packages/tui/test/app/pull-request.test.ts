@@ -39,7 +39,11 @@ function gitHubEnvironment(state: () => GitHubState): Plugin<"core"> {
 
   if (base === undefined) throw new Error("chatOnly provides no environment.");
 
-  const api: GitHubApi = { state: async () => state(), createPullRequest: refuse };
+  const api: GitHubApi = {
+    repository: refuse,
+    state: async () => state(),
+    createPullRequest: refuse,
+  };
 
   return { id: "github-environment", environment: { ...base, github: () => api } };
 }

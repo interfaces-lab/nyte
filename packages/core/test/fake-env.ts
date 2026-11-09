@@ -778,6 +778,7 @@ function fakeBrowser(provider: FakeProvider): BrowserApi {
 
 function fakeGitHub(): GitHubApi {
   return {
+    repository: async () => null,
     state: async () => ({ pullRequest: { kind: "unavailable" } }),
     createPullRequest: async () => ({ kind: "cli_missing" }),
   };

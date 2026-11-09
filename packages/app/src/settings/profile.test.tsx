@@ -15,7 +15,7 @@ const web: NyteBridge = { ...createWebBridge().bridge, machineName: "Studio Mac"
 
 const pending = (): Promise<never> => new Promise<never>(() => undefined);
 
-const github: GitHubApi = { state: pending, createPullRequest: pending };
+const github: GitHubApi = { repository: pending, state: pending, createPullRequest: pending };
 
 const desktop: NyteBridge = {
   ...web,

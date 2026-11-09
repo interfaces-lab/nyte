@@ -35,6 +35,7 @@ import type {
   GitHubAccountState,
   GitHubPullRequestInput,
   GitHubPullRequestOutcome,
+  GitHubRepository,
   GitHubState,
   HeadName,
   JobChange,
@@ -128,6 +129,8 @@ export interface GitApi {
  * the login is the machine's, `Connection.github`.
  */
 export interface GitHubApi {
+  /** The repository the remotes name, read from `git` alone; null without a GitHub remote. */
+  repository(): Promise<GitHubRepository | null>;
   /** The repository and the checked-out branch's pull request with its checks; the pull request is `unavailable` while the machine's `gh` has no account that can read it. */
   state(): Promise<GitHubState>;
   /** Opens a pull request for the checked-out branch, which the caller has pushed; an open one for the branch answers `exists` and opens nothing. */

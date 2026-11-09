@@ -1,0 +1,97 @@
+---
+title: github.repository
+description: Reads the GitHub repository the workspace's remotes name, without calling GitHub.
+---
+
+Reads the GitHub repository the workspace's remotes name, in the order `github.state` uses:
+`upstream`, `github`, `origin`, then the rest, github.com remotes only. It runs `git` alone, so it
+answers without a `gh` login or a network call. The result is `null` when no remote names a GitHub
+repository.
+
+## When to call it
+
+To name the workspace by its repository, such as `ada/shop`, before the pull request is known.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `github` capability.
+
+## Example
+
+Request body:
+
+```json
+{ "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0" }
+```
+
+Response:
+
+```json
+{
+  "owner": "ada",
+  "name": "shop",
+  "remoteName": "origin",
+  "url": "https://github.com/ada/shop"
+}
+```
+
+## Errors
+
+- `unavailable` or `denied` when the workspace doesn't offer GitHub.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `github`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["owner", "name", "remoteName", "url"],
+      "properties": {
+        "owner": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "remoteName": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "type": "null"
+    }
+  ]
+}
+```
+
+{/* generated:end */}

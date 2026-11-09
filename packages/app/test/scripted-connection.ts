@@ -236,6 +236,7 @@ export function scriptedConnection(script: ConnectionScript = {}): {
   };
 
   const github: GitHubApi = {
+    repository: refuse,
     state: refuse,
     createPullRequest: refuse,
     ...script.workspaceGitHub,

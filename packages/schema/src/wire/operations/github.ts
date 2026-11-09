@@ -2,9 +2,11 @@ import {
   GitHubAccountStateSchema,
   GitHubPullRequestInputType,
   GitHubPullRequestOutcomeSchema,
+  GitHubRepositoryType,
   GitHubStateSchema,
 } from "../../github.ts";
-import { ON_WORKSPACE, wireObject, WORKSPACE } from "./fields.ts";
+import { nullable } from "../nullable.ts";
+import { ON_WORKSPACE, wireObject, wireSchema, WORKSPACE } from "./fields.ts";
 import type { OperationRows } from "./fields.ts";
 
 const READ = { authority: "participant", scope: "workspace", capability: "github" } as const;
@@ -39,6 +41,13 @@ export const GITHUB_OPERATIONS = {
     kind: "command",
     input: NO_INPUT,
     output: GitHubAccountStateSchema,
+  },
+  "github.repository": {
+    ...READ,
+    summary: "Reads the GitHub repository the workspace's remotes name, without calling GitHub.",
+    kind: "query",
+    input: ON_WORKSPACE,
+    output: wireSchema(nullable(GitHubRepositoryType)),
   },
   "github.state": {
     ...READ,

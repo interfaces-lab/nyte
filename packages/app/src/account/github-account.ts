@@ -6,9 +6,10 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { SdkError } from "@nyte-ai/sdk";
-import type { GitHubAccountState, GitHubApi } from "@nyte-ai/sdk";
+import type { GitHubAccountState, GitHubApi, GitHubRepository, WorkspaceId } from "@nyte-ai/sdk";
+import { GitHubRepositoryType } from "@nyte-ai/schema";
 import { keys } from "../data/query-client.ts";
-import { useHostState } from "../data/host.ts";
+import { localArea, readStored, removeStored, writeStored } from "../lib/storage.ts";
 import { nyte } from "../contract/nyte.ts";
 import { connected } from "../data/connection.ts";
 import { startupReadsReleased } from "../data/startup.ts";
@@ -32,9 +33,7 @@ function usePendingAuth() {
   });
 }
 
-export function useGitHub(): GitHubApi | undefined {
-  const workspace = useHostState().data.workspace?.id;
-
+export function useGitHub(workspace: WorkspaceId | undefined): GitHubApi | undefined {
   const capability = useQuery({
     queryKey: keys.githubCapability(workspace),
     queryFn:
@@ -50,9 +49,38 @@ export function useGitHub(): GitHubApi | undefined {
   return capability.data ?? undefined;
 }
 
-export function useGitHubState(github: GitHubApi | undefined) {
-  const workspace = useHostState().data.workspace?.id;
+export function useGitHubRepository(
+  workspace: WorkspaceId | undefined,
+): GitHubRepository | undefined {
+  const repository = useQuery({
+    queryKey: keys.githubRepository(workspace),
+    queryFn:
+      workspace === undefined
+        ? skipToken
+        : async () => {
+            const github = await (await connected()).workspace(workspace).github();
+            const found = github.kind === "available" ? await github.api.repository() : null;
 
+            if (found === null) removeStored(localArea(), lastRepositoryKey(workspace));
+            else writeStored(localArea(), lastRepositoryKey(workspace), found);
+
+            return found;
+          },
+    placeholderData: () =>
+      workspace === undefined
+        ? undefined
+        : readStored(localArea(), lastRepositoryKey(workspace), GitHubRepositoryType, undefined),
+    staleTime: 30_000,
+  });
+
+  return repository.data ?? undefined;
+}
+
+function lastRepositoryKey(workspace: WorkspaceId): string {
+  return `nyte:github:repository:v1:${workspace}`;
+}
+
+export function useGitHubState(workspace: WorkspaceId | undefined, github: GitHubApi | undefined) {
   return useQuery({
     queryKey: keys.githubState(workspace),
     queryFn:

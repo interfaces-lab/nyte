@@ -1,1 +1,4 @@
-{ "title": "github", "pages": ["account", "sign-in", "sign-out", "state", "create-pull-request"] }
+{
+  "title": "github",
+  "pages": ["account", "sign-in", "sign-out", "repository", "state", "create-pull-request"]
+}

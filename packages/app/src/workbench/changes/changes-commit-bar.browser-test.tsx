@@ -73,6 +73,7 @@ const opened: string[] = [];
 const pushes: number[] = [];
 
 const github: GitHubApi = {
+  repository: refuse,
   state: refuse,
   createPullRequest: async (input) => {
     created.push(input);

@@ -27,7 +27,11 @@ installScripted(
   }),
 );
 
-const folder = { state: vi.fn<GitHubApi["state"]>(), createPullRequest: vi.fn() };
+const folder = {
+  repository: vi.fn<GitHubApi["repository"]>(),
+  state: vi.fn<GitHubApi["state"]>(),
+  createPullRequest: vi.fn(),
+};
 
 const clients = new Set<QueryClient>();
 
@@ -78,7 +82,7 @@ function probe(client: QueryClient) {
     // oxlint-disable-next-line react/globals -- the probe hands the hook result out to the test
     found = useGitHubAccount();
     // oxlint-disable-next-line react/globals -- the probe hands the hook result out to the test
-    repo = useGitHubState(folder);
+    repo = useGitHubState(client.getQueryData<HostState>(keys.host)?.workspace?.id, folder);
 
     return null;
   }

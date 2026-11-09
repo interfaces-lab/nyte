@@ -13,6 +13,7 @@ import type { GitHubPullRequest, GitHubPullRequestContext, GitHubRepository } fr
 import type { ConnectBridge } from "../contract/bridge.ts";
 import { errorMessage } from "../contract/errors.ts";
 import { nyte } from "../contract/nyte.ts";
+import { useHostState } from "../data/host.ts";
 import { openExternal } from "../lib/open-external.ts";
 import { settings } from "../theme/schema.stylex.ts";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
@@ -488,7 +489,8 @@ function PullRequestRow({
 
 function GitHubGroup(): ReactElement | null {
   const account = useGitHubAccount();
-  const folder = useGitHubState(useGitHub());
+  const workspace = useHostState().data.workspace?.id;
+  const folder = useGitHubState(workspace, useGitHub(workspace));
   const repository = folder.data?.repository;
 
   const refresh = () => {

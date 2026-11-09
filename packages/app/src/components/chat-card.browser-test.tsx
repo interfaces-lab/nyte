@@ -62,14 +62,11 @@ installScripted(
       },
     },
     workspaceGitHub: {
-      state: async () => ({
-        repository: {
-          owner: "nyte-ai",
-          name: "nyte",
-          remoteName: "origin",
-          url: "https://github.com/nyte-ai/nyte",
-        },
-        pullRequest: { kind: "none" },
+      repository: async () => ({
+        owner: "nyte-ai",
+        name: "nyte",
+        remoteName: "origin",
+        url: "https://github.com/nyte-ai/nyte",
       }),
     },
   }),

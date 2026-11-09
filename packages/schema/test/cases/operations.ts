@@ -836,6 +836,11 @@ export const operations = {
   ),
   "workspace.github input": operation(OPERATIONS["workspace.github"].input, workspaceInput, {}),
   "github.state input": operation(OPERATIONS["github.state"].input, workspaceInput, {}),
+  "github.repository output": operation(
+    OPERATIONS["github.repository"].output,
+    { owner: "octo", name: "hello", remoteName: "origin", url: "https://github.com/octo/hello" },
+    { owner: "octo" },
+  ),
   "github.account input": operation(OPERATIONS["github.account"].input, {}, 1),
   "github.signIn input": operation(OPERATIONS["github.signIn"].input, {}, 1),
   "github.signOut input": operation(OPERATIONS["github.signOut"].input, {}, 1),

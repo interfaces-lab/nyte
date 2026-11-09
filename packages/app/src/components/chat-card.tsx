@@ -1,4 +1,3 @@
-import { useQuery } from "@tanstack/react-query";
 import { create, props } from "@stylexjs/stylex";
 import type { ComponentProps, ReactElement, ReactNode } from "react";
 import type { SessionId } from "@nyte-ai/sdk";
@@ -13,8 +12,7 @@ import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { nyte } from "../contract/nyte.ts";
 import { useChat } from "../chats/index.ts";
-import { keys } from "../data/query-client.ts";
-import { connected } from "../data/connection.ts";
+import { useGitHubRepository } from "../account/github-account.ts";
 import { gitStatusWatch } from "../data/watches.ts";
 import { useWatch } from "../data/watch-store.ts";
 import { chatCardFacts } from "./chat-card-facts.ts";
@@ -142,24 +140,14 @@ function useChatCard(sessionId: SessionId): ChatCardFacts | undefined {
 
   const git = useWatch(workspace === undefined ? undefined : gitStatusWatch(workspace)).value;
 
-  const repository = useQuery({
-    queryKey: [...keys.github, "repository", workspace],
-    queryFn: async () => {
-      if (workspace === undefined) return null;
-      const github = await (await connected()).workspace(workspace).github();
-
-      return github.kind === "available" ? ((await github.api.state()).repository ?? null) : null;
-    },
-    enabled: workspace !== undefined,
-    staleTime: 30_000,
-  }).data;
+  const repository = useGitHubRepository(workspace);
 
   if (chat.kind !== "ready") return undefined;
 
   return chatCardFacts({
     chat: chat.chat,
     git,
-    repository: repository ?? undefined,
+    repository,
     surface: nyte.clientSurface,
   });
 }

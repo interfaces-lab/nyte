@@ -671,6 +671,7 @@ export function localGitHub(options?: {
   };
 
   return (env) => ({
+    repository: async () => (await remotes(env.cwd))[0] ?? null,
     state: async () => (await readState(env.cwd)).state,
     createPullRequest: (input) => createPullRequest(env.cwd, input),
   });
