@@ -1,6 +1,7 @@
 import { radius, space } from "./styles/schema.stylex.ts";
 import { ToggleGroup as ToggleGroupPrimitive } from "@base-ui/react/toggle-group";
 import { create, props } from "@stylexjs/stylex";
+import { createContext } from "react";
 import type { ReactElement } from "react";
 
 import { mergeStyleProps, type StyledProps } from "./style.ts";
@@ -20,16 +21,21 @@ const styles = create({
   },
 });
 
+export const ToggleGroupContext = createContext(false);
+
 export function ToggleGroup<Value extends string>({
   xstyle,
   className,
   style,
+  children,
   ...rest
 }: StyledProps<ToggleGroupPrimitive.Props<Value>, Restyle<"ToggleGroup">>): ReactElement {
   return (
     <ToggleGroupPrimitive
       {...rest}
       {...mergeStyleProps(props(styles.group, hairline.ring, xstyle), className, style)}
-    />
+    >
+      <ToggleGroupContext value={true}>{children}</ToggleGroupContext>
+    </ToggleGroupPrimitive>
   );
 }

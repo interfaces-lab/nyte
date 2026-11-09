@@ -112,6 +112,7 @@ const controlStyles = create({
     },
   },
   joinedIcon: { width: `max(var(--_btn-height), ${target.min})` },
+  grouped: { marginBlock: 0, marginInline: 0 },
   joinedOutline: {
     boxShadow: {
       default: `inset 0 0 0 1px ${role.strokeTertiary}, ${shadow.shadowSm}`,
@@ -356,6 +357,7 @@ export function buttonGlyphSize(size: ButtonSize, iconOnly: boolean): GlyphSize 
 type ButtonStyleOptions = Omit<ButtonAppearance, "xstyle"> & {
   readonly iconOnly?: boolean;
   readonly joined?: boolean;
+  readonly grouped?: boolean;
   readonly pill?: boolean;
   readonly xstyle?: XStyle;
 };
@@ -378,6 +380,7 @@ export function buttonStyle<State>(
   {
     iconOnly = false,
     joined = false,
+    grouped = false,
     pill = false,
     tone = variant === "text" ? "primary" : "neutral",
     xstyle,
@@ -399,6 +402,7 @@ export function buttonStyle<State>(
       variant === "outline" && (joined ? controlStyles.joinedOutline : hairline.controlRing),
       pill && controlStyles.pill,
       joined && controlStyles.joined,
+      grouped && controlStyles.grouped,
       joined && variant === "solid" && joinedSolid,
       joined && iconOnly && controlStyles.joinedIcon,
       size === "2xs" ? focus.ringInset : focus.ring,

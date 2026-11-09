@@ -31,6 +31,7 @@ import { chatWindow } from "../window/index.ts";
 import { useSidebar } from "../sidebar/use-sidebar.ts";
 import {
   clientActionAriaShortcut,
+  clientActionKeys,
   clientActionShortcut,
   clientActions,
   clientCapabilities,
@@ -206,7 +207,9 @@ export function Titlebar(): ReactElement {
               </Toggle>
             }
           />
-          <TooltipContent>{`${sidebarVisible ? "Hide Sidebar" : "Show Sidebar"} ${clientActionShortcut(clientActions.sidebar, mac)}`}</TooltipContent>
+          <TooltipContent shortcut={clientActionKeys(clientActions.sidebar, mac)}>
+            {sidebarVisible ? "Hide Sidebar" : "Show Sidebar"}
+          </TooltipContent>
         </Tooltip>
       </span>
     </span>
@@ -318,7 +321,9 @@ export function Titlebar(): ReactElement {
                     </Toggle>
                   }
                 />
-                <TooltipContent>{`${workbenchOpen ? "Close Workbench Panel" : "Open Workbench Panel"} ${clientActionShortcut(clientActions.workbench, mac)}`}</TooltipContent>
+                <TooltipContent shortcut={clientActionKeys(clientActions.workbench, mac)}>
+                  {workbenchOpen ? "Close Workbench Panel" : "Open Workbench Panel"}
+                </TooltipContent>
               </Tooltip>
             </span>
           </div>

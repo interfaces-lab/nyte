@@ -4,6 +4,7 @@ import type { ComponentProps, ReactElement } from "react";
 
 import { mergeStyleProps, type StyledProps } from "./style.ts";
 import type { Restyle } from "./styles/contracts.ts";
+import { hairline } from "./styles/hairline.stylex.ts";
 import { text } from "./styles/text.stylex.ts";
 import { motion, role, type } from "./styles/vars.stylex.ts";
 
@@ -16,12 +17,12 @@ const styles = create({
     flexShrink: 0,
     paddingBlock: space.px,
     paddingInline: space.s1,
-    borderRadius: radius.control,
-    backgroundColor: role.bgMutedTranslucent,
+    borderRadius: radius.indicator,
+    backgroundColor: role.fillTertiary,
     color: role.contentSecondary,
-    fontFamily: type.fontMono,
+    fontFamily: type.fontSans,
     fontWeight: type.weightRegular,
-    fontVariantLigatures: "none",
+    fontVariantNumeric: "tabular-nums",
     whiteSpace: "nowrap",
     transitionProperty: "background-color, color",
     transitionDuration: motion.durationInstant,
@@ -31,8 +32,6 @@ const styles = create({
     minWidth: glyph.md,
     minHeight: glyph.md,
     padding: 0,
-    borderRadius: radius.indicator,
-    fontFamily: type.fontSans,
   },
   held: { backgroundColor: role.fillPrimary, color: role.contentPrimary },
 });
@@ -61,6 +60,7 @@ export function Kbd({
         props(
           text.sm,
           styles.kbd,
+          !plain && hairline.ring,
           plain && styles.plain,
           keycap && styles.keycap,
           held && styles.held,

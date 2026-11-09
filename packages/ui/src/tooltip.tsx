@@ -2,6 +2,7 @@ import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip";
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 
+import { Kbd } from "./kbd.tsx";
 import { layer, radius, space } from "./styles/schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
 import type { Restyle } from "./styles/contracts.ts";
@@ -14,7 +15,7 @@ const styles = create({
   popup: {
     maxWidth: 260,
     paddingBlock: space.s1,
-    paddingInline: space.s1_5,
+    paddingInline: space.s2,
     borderRadius: radius.control,
     backgroundColor: role.bgElevated,
     boxShadow: shadow.shadowMdOutline,
@@ -36,6 +37,12 @@ const styles = create({
       "@media (prefers-reduced-motion: reduce)": "0s",
     },
     transitionTimingFunction: motion.easeOutQuint,
+  },
+  shortcut: {
+    display: "flex",
+    alignItems: "center",
+    gap: space.s2,
+    paddingInlineEnd: space.s1,
   },
 });
 
@@ -62,6 +69,8 @@ export function TooltipContent({
   sideOffset = 6,
   alignOffset,
   tint,
+  shortcut = [],
+  children,
   xstyle,
   className,
   style,
@@ -69,6 +78,7 @@ export function TooltipContent({
 }: StyledProps<TooltipPrimitive.Popup.Props, Restyle<"TooltipContent">> &
   Pick<TooltipPrimitive.Positioner.Props, "side" | "align" | "sideOffset" | "alignOffset"> & {
     readonly tint?: Tint;
+    readonly shortcut?: readonly string[];
   }): ReactElement {
   return (
     <TooltipPrimitive.Portal>
@@ -84,12 +94,21 @@ export function TooltipContent({
         <TooltipPrimitive.Popup
           data-slot="tooltip-content"
           {...mergeStyleProps(
-            props(text.xs, tint !== undefined && surfaceTheme[tint], styles.popup, xstyle),
+            props(
+              text.sm,
+              tint !== undefined && surfaceTheme[tint],
+              styles.popup,
+              shortcut.length > 0 && styles.shortcut,
+              xstyle,
+            ),
             className,
             style,
           )}
           {...rest}
-        />
+        >
+          {children}
+          {shortcut.length > 0 && <Kbd keys={shortcut} />}
+        </TooltipPrimitive.Popup>
       </TooltipPrimitive.Positioner>
     </TooltipPrimitive.Portal>
   );

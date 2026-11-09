@@ -16,6 +16,8 @@ use [Preview card](/design/preview-card).
   because the tooltip does not name it.
 - An icon-only [Button](/design/button) also sets its label as the native `title`. Pass
   `title={undefined}` so only one tooltip appears.
+- Pass a shortcut as `shortcut`, one string per key, rather than in the text. It draws as a
+  [Kbd](/design/kbd) after the label.
 - `TooltipContent` keeps line breaks in its text.
 - Wrap the app once in `TooltipProvider`. A trigger's own `delay` or `closeDelay` overrides it.
 - Keep instructions and disabled reasons visible outside the tooltip.
@@ -52,7 +54,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@nyte-
     <TooltipTrigger
       render={<Button iconOnly icon="trash" aria-label="Delete session" title={undefined} />}
     />
-    <TooltipContent>Delete session ⌘⌫</TooltipContent>
+    <TooltipContent shortcut={["⌘", "⌫"]}>Delete session</TooltipContent>
   </Tooltip>
 </TooltipProvider>;
 ```
@@ -85,6 +87,7 @@ the popup.
 | `sideOffset`  | `number \| OffsetFunction`                                                 | `6`        |
 | `alignOffset` | `number \| OffsetFunction`                                                 |            |
 | `tint`        | `Tint`                                                                     |            |
+| `shortcut`    | `readonly string[]`                                                        | `[]`       |
 
 #### Positioner
 

@@ -14,7 +14,7 @@ export function TooltipDemo() {
         <TooltipTrigger
           render={<Button iconOnly icon="trash" aria-label="Delete session" title={undefined} />}
         />
-        <TooltipContent>Delete session ⌘⌫</TooltipContent>
+        <TooltipContent shortcut={["⌘", "⌫"]}>Delete session</TooltipContent>
       </Tooltip>
     </TooltipProvider>
   );

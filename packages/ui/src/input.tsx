@@ -45,7 +45,7 @@ const field = create({
 const variants = create({
   raised: {
     borderColor: {
-      default: role.strokePrimary,
+      default: role.strokeTertiary,
       ":focus": appearance.focusColor,
       ":user-invalid": danger.border,
       "[aria-invalid=true]": role.strokeAccent,
@@ -77,7 +77,7 @@ const variants = create({
 const groupVariants = create({
   raised: {
     borderColor: {
-      default: role.strokePrimary,
+      default: role.strokeTertiary,
       ":focus-within": appearance.focusColor,
     },
     backgroundColor: role.bgElevated,

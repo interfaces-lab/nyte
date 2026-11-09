@@ -45,13 +45,6 @@ export const slider = defineConsts({
   thumb: "var(--nyte-slider-thumb)",
 });
 
-export const toast = defineConsts({
-  minHeight: "var(--nyte-toast-min-height)",
-  paddingBlock: "var(--nyte-toast-padding-block)",
-  inset: "var(--nyte-toast-inset)",
-  overhang: "var(--nyte-toast-overhang)",
-});
-
 export const clipboardPreview = defineConsts({
   maxWidth: "var(--nyte-clipboard-preview-max-width)",
   maxHeight: "var(--nyte-clipboard-preview-max-height)",

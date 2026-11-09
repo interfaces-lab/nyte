@@ -32,6 +32,7 @@ import {
   SortableList,
 } from "../components/sortable-strip.tsx";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
+import { clientActionKeys, clientActions } from "../contract/client-actions.ts";
 import { stripStyles } from "./window-tab-strip.stylex.ts";
 
 export type WindowTabSplit = "right" | "down";
@@ -432,7 +433,9 @@ export function WindowTabStrip(strip: WindowTabStripProps): ReactElement {
               />
             }
           />
-          <TooltipContent>{`New Tab ${mac ? "⌘T" : "Ctrl+T"}`}</TooltipContent>
+          <TooltipContent shortcut={clientActionKeys(clientActions.newTab, mac)}>
+            New Tab
+          </TooltipContent>
         </Tooltip>
       </span>
     </Tabs.Root>

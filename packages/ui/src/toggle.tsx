@@ -1,4 +1,5 @@
 import { Toggle as TogglePrimitive } from "@base-ui/react/toggle";
+import { use } from "react";
 import type { ReactElement } from "react";
 
 import {
@@ -11,6 +12,7 @@ import {
 import { ControlGlyphs, Icon } from "./icon.tsx";
 import type { StyledProps } from "./style.ts";
 import { hairline } from "./styles/hairline.stylex.ts";
+import { ToggleGroupContext } from "./toggle-group.tsx";
 
 export function Toggle<Value extends string>({
   indicator = "fill",
@@ -29,6 +31,8 @@ export function Toggle<Value extends string>({
   ButtonAppearance & {
     readonly indicator?: "fill" | "glyph";
   }): ReactElement {
+  const grouped = use(ToggleGroupContext);
+
   return (
     <TogglePrimitive
       title={tooltipTitle(iconOnly, rest["aria-label"])}
@@ -36,7 +40,15 @@ export function Toggle<Value extends string>({
       {...buttonStyle(
         "ghost",
         size,
-        { iconOnly, pill, tone, xstyle: [hairline.pressedRing, xstyle], className, style },
+        {
+          iconOnly,
+          pill,
+          tone,
+          grouped,
+          xstyle: [hairline.pressedRing, xstyle],
+          className,
+          style,
+        },
         indicator === "glyph",
       )}
     >
