@@ -417,6 +417,7 @@ export function BrowserPanel({
   const [draft, setDraft] = useState<string | undefined>(undefined);
   const [failure, setFailure] = useState<string | undefined>(undefined);
   const [picking, setPicking] = useState(false);
+  const latestPick = useRef(0);
   const stateUrl = state?.url;
   const blank = parseWebUrl(url) === undefined;
   const currentUrl = stateUrl ?? (blank ? "" : url);
@@ -511,13 +512,17 @@ export function BrowserPanel({
   const pickElement = (): void => {
     setFailure(undefined);
     setPicking(true);
+    latestPick.current += 1;
+    const pick = latestPick.current;
     void browserBridge()
       .pickElement({ surface })
       .then(async (picked) => {
         if (picked !== undefined) await addElementToChat(picked);
       })
       .catch((cause: unknown) => setFailure(errorMessage(cause)))
-      .finally(() => setPicking(false));
+      .finally(() => {
+        if (latestPick.current === pick) setPicking(false);
+      });
   };
 
   const runShortcut = (shortcut: BrowserShortcut): boolean => {
