@@ -1,16 +1,18 @@
 import { useRouter } from "@tanstack/react-router";
 import { useSyncExternalStore } from "react";
 import { Icon } from "@nyte-ai/ui/icon";
-import type { SessionId } from "@nyte-ai/sdk";
+import type { IconName } from "@nyte-ai/ui/icon";
+import type { ProjectInfo, SessionId } from "@nyte-ai/sdk";
 import { chatFolderPath, chatTitle, subscribeChats, useChats } from "../chats/index.ts";
 import type { ChatDirectory } from "../chats/index.ts";
 import { activateWorkspace } from "../sidebar/use-show-session.ts";
 import { nyte } from "../contract/nyte.ts";
+import { useProjects } from "../data/projects.ts";
 import { keys, queryClient } from "../data/query-client.ts";
 import { sessionRows, subscribeSessionRow, subscribeSessionRows } from "../data/session-rows.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 
-import { activeTab, showsPage, tabPlace, tabPlaces } from "./model.ts";
+import { activeTab, tabPlace, tabPlaces } from "./model.ts";
 import type { Place, WindowState } from "./model.ts";
 import { locationPlace, navigateTo, pageSection, samePlaceAt } from "./places.ts";
 import type { WindowTabItem } from "./window-tab-strip.tsx";
@@ -73,7 +75,7 @@ export function useWindowTabsSync(): void {
       if (location === undefined) return;
       const view = activeTab(windowTabs.getSnapshot()).view;
 
-      if (view.kind === "page" && showsPage(location) && view.page.kind === location.kind) {
+      if (view.kind === "page" && view.page.kind === "customize" && location.kind === "customize") {
         if (pageSection(view.page) !== pageSection(location))
           windowTabs.dispatch({ kind: "page-section", section: pageSection(location) });
 
@@ -153,7 +155,7 @@ function forgetGoneChats(): () => void {
   };
 }
 
-function placeTitle(place: Place, chats: ChatDirectory): string {
+function placeTitle(place: Place, chats: ChatDirectory, projects: readonly ProjectInfo[]): string {
   switch (place.kind) {
     case "blank":
       return "New chat";
@@ -161,6 +163,8 @@ function placeTitle(place: Place, chats: ChatDirectory): string {
       return chatTitle(chats.get(place.sessionId));
     case "customize":
       return "Customize";
+    case "project":
+      return projects.find((project) => project.id === place.projectId)?.name ?? "Project";
     default: {
       const _exhaustive: never = place;
 
@@ -169,8 +173,15 @@ function placeTitle(place: Place, chats: ChatDirectory): string {
   }
 }
 
+const PLACE_ICONS = {
+  blank: "new-chat",
+  customize: "customize",
+  project: "layers",
+} satisfies Record<Exclude<Place["kind"], "session">, IconName>;
+
 export function useWindowTabItems(state: WindowState): readonly WindowTabItem[] {
   const chats = useChats((directory) => directory);
+  const projects = useProjects();
 
   return state.tabs.map((tab) => {
     const places = tabPlaces(tab);
@@ -182,14 +193,12 @@ export function useWindowTabItems(state: WindowState): readonly WindowTabItem[] 
     );
 
     const glyph =
-      place.kind === "session" ? undefined : (
-        <Icon name={place.kind === "blank" ? "new-chat" : "customize"} size="sm" />
-      );
+      place.kind === "session" ? undefined : <Icon name={PLACE_ICONS[place.kind]} size="sm" />;
 
     return {
       id: tab.id,
-      title: placeTitle(place, chats),
-      tooltip: places.map((candidate) => placeTitle(candidate, chats)).join(" | "),
+      title: placeTitle(place, chats, projects),
+      tooltip: places.map((candidate) => placeTitle(candidate, chats, projects)).join(" | "),
       sessions,
       parent: chat?.parent ?? undefined,
       chat: place.kind === "session" ? place.sessionId : undefined,

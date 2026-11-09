@@ -19,6 +19,26 @@ export function useProjects(): readonly ProjectInfo[] {
   );
 }
 
+export type ProjectResult =
+  | { readonly kind: "loading" }
+  | { readonly kind: "missing" }
+  | { readonly kind: "ready"; readonly project: ProjectInfo };
+
+export function useProject(id: ProjectId): ProjectResult {
+  return useWatchSelect(
+    hostWatch("host"),
+    (state): ProjectResult => {
+      const projects = state.value?.projects;
+
+      if (projects === undefined) return { kind: "loading" };
+      const project = projects.find((entry) => entry.id === id && !entry.archived);
+
+      return project === undefined ? { kind: "missing" } : { kind: "ready", project };
+    },
+    (left, right) => JSON.stringify(left) === JSON.stringify(right),
+  );
+}
+
 export function coordinatedProject(session: SessionInfo): ProjectId | undefined {
   return session.parent === null ? session.project : undefined;
 }

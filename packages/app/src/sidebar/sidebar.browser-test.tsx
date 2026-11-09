@@ -261,10 +261,7 @@ async function arrowKeysMoveFocusAndFold(): Promise<void> {
   press(primary("Working chat"), "End");
   check(document.activeElement === primary("empty"), "End focuses the last control");
   press(primary("empty"), "Home");
-  check(
-    document.activeElement === document.querySelector('button[aria-label="New Project"]'),
-    "Home focuses the first control",
-  );
+  check(document.activeElement === get("button", "New Project"), "Home focuses New Project");
   press(document.activeElement ?? document.body, "ArrowDown");
   check(document.activeElement === primary("Pinned plan"), "Down reaches the first pinned chat");
   primary("Filler 8").focus();

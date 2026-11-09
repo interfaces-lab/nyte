@@ -1,4 +1,4 @@
-import type { SessionId } from "@nyte-ai/sdk";
+import type { ProjectId, SessionId } from "@nyte-ai/sdk";
 import { createLayout, reduceLayout } from "../panes/layout.ts";
 import type { Layout } from "../panes/layout.ts";
 import { paneRules } from "../panes/pane-kinds.ts";
@@ -13,11 +13,13 @@ import {
 } from "../panes/pane-layout.ts";
 import type { PaneSelection } from "../panes/pane-layout.ts";
 
-export type Page = {
+export type CustomizePage = {
   readonly kind: "customize";
   readonly section: string | undefined;
   readonly sessionId: SessionId | undefined;
 };
+
+export type Page = CustomizePage | { readonly kind: "project"; readonly projectId: ProjectId };
 
 export type Place = PaneSelection | Page;
 
@@ -80,7 +82,11 @@ const CLOSED_LIMIT = 25;
 const RECENT_LIMIT = 50;
 
 export function showsPage(place: Place): place is Page {
-  return place.kind === "customize";
+  return place.kind === "customize" || place.kind === "project";
+}
+
+function pageTabKey(page: Page): string {
+  return page.kind === "project" ? page.projectId : page.kind;
 }
 
 export function activeTab(state: WindowState): Tab {
@@ -188,15 +194,18 @@ function showsOnlyBlank(tab: Tab): boolean {
 }
 
 function showing(tab: Tab, place: Place): boolean {
-  if (tab.view.kind === "page") return showsPage(place) && tab.view.page.kind === place.kind;
+  if (tab.view.kind === "page")
+    return showsPage(place) && pageTabKey(tab.view.page) === pageTabKey(place);
 
   return place.kind === "session" && findSessionTab(tab.view.layout, place.sessionId) !== undefined;
 }
 
 function reveal(tab: Tab, place: Place): Tab {
   if (tab.view.kind === "page") {
-    if (!showsPage(place)) return tab;
-    const page = place.section === undefined ? { ...place, section: tab.view.page.section } : place;
+    const shown = tab.view.page;
+
+    if (place.kind !== "customize" || shown.kind !== "customize") return tab;
+    const page = place.section === undefined ? { ...place, section: shown.section } : place;
 
     return { ...tab, view: { kind: "page", page } };
   }
@@ -467,7 +476,9 @@ export function reduce(
     case "page-section": {
       const tab = activeTab(state);
 
-      if (tab.view.kind !== "page" || tab.view.page.section === action.section) return state;
+      if (tab.view.kind !== "page" || tab.view.page.kind !== "customize") return state;
+
+      if (tab.view.page.section === action.section) return state;
 
       return withTab(state, {
         ...tab,

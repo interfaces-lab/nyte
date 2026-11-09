@@ -2,7 +2,7 @@ import { asId } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import type { Static, TSchema } from "typebox";
 import { Value } from "typebox/value";
-import { sessionId } from "../data/schemas.ts";
+import { projectId, sessionId } from "../data/schemas.ts";
 import { createLayout } from "../panes/layout.ts";
 import type { Layout, Pane, PaneId } from "../panes/layout.ts";
 import { persistLayout, restoreLayout, storedLayoutSchema } from "../panes/layout-persistence.ts";
@@ -17,14 +17,17 @@ const strict = { additionalProperties: false };
 const pageSchema = Type.Object(
   {
     kind: Type.Literal("page"),
-    page: Type.Object(
-      {
-        kind: Type.Literal("customize"),
-        section: Type.Optional(Type.String()),
-        sessionId: Type.Optional(sessionId),
-      },
-      strict,
-    ),
+    page: Type.Union([
+      Type.Object(
+        {
+          kind: Type.Literal("customize"),
+          section: Type.Optional(Type.String()),
+          sessionId: Type.Optional(sessionId),
+        },
+        strict,
+      ),
+      Type.Object({ kind: Type.Literal("project"), projectId }, strict),
+    ]),
   },
   strict,
 );
@@ -149,9 +152,13 @@ function restoreView<Stored>(
 ): LastingTab["view"] {
   if (view.kind === "panes") return { kind: "panes", layout: restore(view.layout) };
 
+  const page = view.page;
+
+  if (page.kind === "project") return { kind: "page", page };
+
   return {
     kind: "page",
-    page: { kind: view.page.kind, section: view.page.section, sessionId: view.page.sessionId },
+    page: { kind: page.kind, section: page.section, sessionId: page.sessionId },
   };
 }
 

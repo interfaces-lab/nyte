@@ -14,13 +14,12 @@ import type { ReactElement, ReactNode } from "react";
 import type { ProjectId, ProjectInfo } from "@nyte-ai/schema";
 import type { ChatDirectory } from "../chats/index.ts";
 import { TaskMark } from "../components/task-mark.tsx";
-import { usePaneLayout, usePaneViewStateStore } from "../panes/pane-context.tsx";
+import { usePaneActions, usePaneLayout, usePaneViewStateStore } from "../panes/pane-context.tsx";
 import { activeSelection } from "../panes/pane-layout.ts";
 import type { ChatDraft } from "../panes/session-view-state.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
-import { openProject } from "../projects/open-project.ts";
 import { openProjectDialog } from "../projects/project-dialog.tsx";
-import { useStagePage } from "../tabs/shell-state.ts";
+import { shellActions, useStagePage } from "../tabs/shell-state.ts";
 import { DraftRow, SessionRow, type SessionPlace } from "./sidebar-rows.tsx";
 import { sidebarStyles as styles } from "./sidebar.stylex.ts";
 import {
@@ -135,6 +134,23 @@ function EmptyList({
   );
 }
 
+function AddRow({
+  label,
+  onClick,
+}: {
+  readonly label: string;
+  readonly onClick: () => void;
+}): ReactElement {
+  return (
+    <Row variant="nav" xstyle={styles.navRow} onClick={onClick}>
+      <Row.Leading xstyle={styles.navLeading}>
+        <Icon name="plus" size="sm" />
+      </Row.Leading>
+      <Row.Label>{label}</Row.Label>
+    </Row>
+  );
+}
+
 function ShowMore({
   listId,
   count,
@@ -222,16 +238,19 @@ export function ChatsList({
 }): ReactElement | null {
   const { view, reveal } = context;
   const { drafts: openDrafts, activeDraftId } = useDrafts();
+  const panes = usePaneActions();
   const [openShelves, setOpenShelves] = useState<ReadonlySet<SessionShelf>>(() => new Set());
   const drafts = context.showDrafts ? openDrafts : [];
 
   if (listed === undefined && drafts.length === 0) return null;
   const rows = listed ?? [];
 
+  const newChat = <AddRow label="New Chat" onClick={() => panes.newChat()} />;
+
   const lead = (
     <>
-      {rows.length === 0 && drafts.length === 0 && (
-        <EmptyList filtered={hasSessionFilters(view)} onClearFilters={context.onClearFilters} />
+      {rows.length === 0 && drafts.length === 0 && hasSessionFilters(view) && (
+        <EmptyList filtered onClearFilters={context.onClearFilters} />
       )}
       <Drafts drafts={drafts} activeDraftId={activeDraftId} />
     </>
@@ -308,6 +327,7 @@ export function ChatsList({
         {shelfPanel("working", "Working", <TaskMark state="working" />, false)}
         {shelfPanel("done", "Done", <Icon name="inbox-checked" size="sm" />, true)}
         {shelfPanel("archived", "Archived", <Icon name="archive" size="sm" />, true)}
+        {newChat}
       </div>
     );
   }
@@ -336,6 +356,7 @@ export function ChatsList({
           }
         />
       )}
+      {newChat}
     </div>
   );
 }
@@ -429,64 +450,54 @@ export function PinnedSection({
   );
 }
 
-/** One row per project. A row opens the project's chat; its settings open from the gear. */
+/** One row per project. A row opens the project's page; its settings open from the gear. */
 export function ProjectsSection({
   projects,
   selected,
 }: {
   readonly projects: readonly ProjectInfo[];
-  /** The project whose chat the pane shows. */
+  /** The project whose page or coordinator chat is in front. */
   readonly selected: ProjectId | undefined;
 }): ReactElement {
   return (
     <section aria-label="Projects" {...props(styles.section)}>
-      <div {...props(styles.sectionHeader, styles.sectionTitle, styles.sectionSpread)}>
+      <div {...props(styles.sectionHeader, styles.sectionTitle)}>
         <span {...props(styles.sectionLabel)}>Projects</span>
-        <Button
-          size="sm"
-          iconOnly
-          icon="plus"
-          aria-label="New Project"
-          onClick={() => openProjectDialog(null)}
-        />
       </div>
-      {projects.length === 0 ? (
-        <div {...props(text.base, styles.quiet, styles.sessionQuiet)}>No projects yet</div>
-      ) : (
-        projects.map((project) => (
-          <Row
-            key={project.id}
-            interactive
-            revealActions
-            xstyle={[
-              styles.rowSurface,
-              styles.workspaceRow,
-              project.id === selected && styles.rowSelected,
-            ]}
+      {projects.map((project) => (
+        <Row
+          key={project.id}
+          interactive
+          revealActions
+          xstyle={[
+            styles.rowSurface,
+            styles.workspaceRow,
+            project.id === selected && styles.rowSelected,
+          ]}
+        >
+          {project.id === selected && <Row.Backdrop xstyle={styles.sessionSelection} />}
+          <Row.Primary
+            xstyle={styles.workspacePrimary}
+            aria-current={project.id === selected ? "page" : undefined}
+            onClick={() => shellActions.openProject(project.id)}
           >
-            {project.id === selected && <Row.Backdrop xstyle={styles.sessionSelection} />}
-            <Row.Primary
-              xstyle={styles.workspacePrimary}
-              aria-current={project.id === selected ? "page" : undefined}
-              onClick={() => void openProject(project)}
-            >
-              <Row.Leading xstyle={styles.rowIcon}>
-                <Icon name="layers" size="sm" />
-              </Row.Leading>
-              <Row.Label>{project.name}</Row.Label>
-            </Row.Primary>
-            <Row.Actions placement="overlay">
-              <Button
-                size="sm"
-                iconOnly
-                icon="settings"
-                aria-label={`${project.name} Settings`}
-                onClick={() => openProjectDialog(project.id)}
-              />
-            </Row.Actions>
-          </Row>
-        ))
-      )}
+            <Row.Leading xstyle={styles.rowIcon}>
+              <Icon name="layers" size="sm" />
+            </Row.Leading>
+            <Row.Label>{project.name}</Row.Label>
+          </Row.Primary>
+          <Row.Actions placement="overlay">
+            <Button
+              size="sm"
+              iconOnly
+              icon="settings"
+              aria-label={`${project.name} Settings`}
+              onClick={() => openProjectDialog(project.id)}
+            />
+          </Row.Actions>
+        </Row>
+      ))}
+      <AddRow label="New Project" onClick={() => openProjectDialog(null)} />
     </section>
   );
 }

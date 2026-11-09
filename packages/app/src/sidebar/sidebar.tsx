@@ -95,14 +95,14 @@ function NewChatRow({
       variant="nav"
       selected={current}
       aria-current={current ? "page" : undefined}
-      xstyle={[styles.navRow, current && styles.navRowActive]}
+      xstyle={styles.navRow}
       onClick={() => panes.newChat()}
     >
       <Row.Leading xstyle={styles.navLeading}>
         <Icon name={actionIcons[clientActions.newChat.id]} size="sm" />
       </Row.Leading>
       <Row.Label>New Chat</Row.Label>
-      <span {...props(styles.shortcutSlot, styles.shortcutPersistent)}>
+      <span {...props(styles.shortcutSlot)}>
         <Kbd keys={clientActionKeys(clientActions.newChat, mac)} />
       </span>
     </Row>
@@ -445,9 +445,11 @@ export function Sidebar(): ReactElement {
             <ProjectsSection
               projects={projects}
               selected={
-                activeSessionId === undefined || paneSession === undefined
-                  ? undefined
-                  : coordinatedProject(paneSession)
+                page?.kind === "project"
+                  ? page.projectId
+                  : activeSessionId === undefined || paneSession === undefined
+                    ? undefined
+                    : coordinatedProject(paneSession)
               }
             />
           )}

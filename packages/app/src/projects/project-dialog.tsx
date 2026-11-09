@@ -24,6 +24,7 @@ import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
+import { Spinner } from "@nyte-ai/ui/spinner";
 import { SwitchField } from "@nyte-ai/ui/switch";
 import { Tabs } from "@nyte-ai/ui/tabs";
 import { toast } from "@nyte-ai/ui/toast";
@@ -41,7 +42,7 @@ import { useWatch } from "../data/watch-store.ts";
 import { mcpWatch } from "../data/watches.ts";
 import { useWorkspaces } from "../data/workspaces.ts";
 import type { RailWorkspace } from "../data/workspaces.ts";
-import { openProject } from "./open-project.ts";
+import { startProjectChat } from "./start-project-chat.ts";
 
 type ProjectTab = "general" | "agents" | "instructions" | "skills" | "mcp" | "docs";
 
@@ -97,10 +98,44 @@ function ProjectDialog({ project }: { readonly project: ProjectInfo | null }): R
   const folders = (useWorkspaces().data ?? []).filter((workspace) => workspace.worktree === null);
   const fallback = useHostState().data.workspace?.id ?? folders[0]?.id;
   const [edited, setDraft] = useState<Draft>(() => readDraft(project));
+  const [goal, setGoal] = useState("");
   const draft = { ...edited, workspace: edited.workspace ?? fallback };
   const [tab, setTab] = useState<ProjectTab>("general");
   const [submitted, setSubmitted] = useState(false);
   const nameMissing = draft.name.trim() === "";
+  const catalog = useCatalog();
+  const model = draft.models.coordinator ?? catalog.data?.defaults?.model ?? null;
+  const rules = useWorkspaceCatalog(draft.workspace).data?.contextFiles ?? [];
+
+  const drafting = useMutation({
+    mutationFn: async (input: {
+      readonly workspace: WorkspaceId;
+      readonly model: ModelRef;
+      readonly lastName: string | undefined;
+    }) => {
+      const connection = await connected();
+
+      return connection.projects.draft({
+        goal: goal.trim(),
+        workspace: input.workspace,
+        model: input.model,
+      });
+    },
+    onSuccess: (drafted, input) =>
+      setDraft((current) => ({
+        ...current,
+        ...drafted,
+        name:
+          current.name.trim() === "" || current.name === input.lastName
+            ? drafted.name
+            : current.name,
+        disabledDocs: [
+          ...current.disabledDocs.filter((id) => rules.some((rule) => rule.id === id)),
+          ...drafted.disabledDocs,
+        ],
+      })),
+    onError: (cause) => toast.add({ type: "error", title: errorMessage(cause) }),
+  });
 
   const save = useMutation({
     mutationFn: async (next: Draft): Promise<ProjectInfo> => {
@@ -132,7 +167,10 @@ function ProjectDialog({ project }: { readonly project: ProjectInfo | null }): R
     onSuccess: (saved) => {
       closeProjectDialog();
 
-      if (project === null) void openProject(saved);
+      if (project === null)
+        startProjectChat(saved, goal).catch((cause: unknown) =>
+          toast.add({ type: "error", title: errorMessage(cause) }),
+        );
     },
     onError: (cause) => toast.add({ type: "error", title: errorMessage(cause) }),
   });
@@ -158,7 +196,20 @@ function ProjectDialog({ project }: { readonly project: ProjectInfo | null }): R
   };
 
   return (
-    <Dialog.Root defaultOpen onOpenChange={(open) => !open && !pending && closeProjectDialog()}>
+    <Dialog.Root
+      defaultOpen
+      onOpenChange={(open, details) => {
+        if (open) return;
+
+        if (pending) {
+          details.cancel();
+
+          return;
+        }
+
+        closeProjectDialog();
+      }}
+    >
       <Dialog.Popup xstyle={styles.popup} aria-busy={pending}>
         <Dialog.Header>
           <Dialog.Title>{project === null ? "New Project" : project.name}</Dialog.Title>
@@ -171,53 +222,78 @@ function ProjectDialog({ project }: { readonly project: ProjectInfo | null }): R
             if (!pending) submit();
           }}
         >
-          <Tabs.Root
-            value={tab}
-            onValueChange={(next) =>
-              setTab(TABS.find((entry) => entry.value === next)?.value ?? tab)
-            }
-            xstyle={styles.tabs}
-          >
-            <Tabs.List aria-label="Project settings" xstyle={styles.tabList}>
-              {TABS.map((entry) => (
-                <Tabs.Tab key={entry.value} value={entry.value}>
-                  {entry.label}
-                </Tabs.Tab>
-              ))}
-            </Tabs.List>
-            <Tabs.Panel value="general" xstyle={styles.panel}>
-              <GeneralTab
-                draft={draft}
-                folders={folders}
-                creating={project === null}
-                nameIssue={submitted && nameMissing ? "Enter a name" : undefined}
-                onChange={setDraft}
-              />
-            </Tabs.Panel>
-            <Tabs.Panel value="agents" xstyle={styles.panel}>
-              <AgentsTab draft={draft} onChange={setDraft} />
-            </Tabs.Panel>
-            <Tabs.Panel value="instructions" xstyle={styles.panel}>
-              <Field label="Additional instructions" hint="Every chat in the project reads these.">
-                <Textarea
-                  aria-label="Additional instructions"
-                  rows={10}
-                  value={draft.instructions}
-                  placeholder="How work is done here, e.g. Read nyte-styles before touching StyleX. Run pnpm check before you report."
-                  onChange={(event) => setDraft({ ...draft, instructions: event.target.value })}
+          {drafting.isPending ? (
+            <div aria-live="polite" {...props(styles.panel, styles.drafting)}>
+              <p {...props(text.base, styles.goal)}>{goal.trim()}</p>
+              <span {...props(text.base, styles.draftingLine)}>
+                <Spinner />
+                Drafting the setup from your goal and this folder
+              </span>
+            </div>
+          ) : (
+            <Tabs.Root
+              value={tab}
+              onValueChange={(next) =>
+                setTab(TABS.find((entry) => entry.value === next)?.value ?? tab)
+              }
+              xstyle={styles.tabs}
+            >
+              <Tabs.List aria-label="Project settings" xstyle={styles.tabList}>
+                {TABS.map((entry) => (
+                  <Tabs.Tab key={entry.value} value={entry.value}>
+                    {entry.label}
+                  </Tabs.Tab>
+                ))}
+              </Tabs.List>
+              <Tabs.Panel value="general" xstyle={styles.panel}>
+                {project === null && (
+                  <Field label="Goal" hint="Sent to the coordinator as its first message.">
+                    <Textarea
+                      autoFocus
+                      aria-label="Goal"
+                      rows={3}
+                      value={goal}
+                      placeholder="What should this project get done?"
+                      onChange={(event) => setGoal(event.target.value)}
+                    />
+                  </Field>
+                )}
+                <GeneralTab
+                  draft={draft}
+                  folders={folders}
+                  creating={project === null}
+                  nameIssue={submitted && nameMissing ? "Enter a name" : undefined}
+                  onChange={setDraft}
                 />
-              </Field>
-            </Tabs.Panel>
-            <Tabs.Panel value="skills" xstyle={styles.panel}>
-              <SkillsTab draft={draft} onChange={setDraft} />
-            </Tabs.Panel>
-            <Tabs.Panel value="mcp" xstyle={styles.panel}>
-              <McpTab draft={draft} onChange={setDraft} />
-            </Tabs.Panel>
-            <Tabs.Panel value="docs" xstyle={styles.panel}>
-              <DocsTab draft={draft} onChange={setDraft} />
-            </Tabs.Panel>
-          </Tabs.Root>
+              </Tabs.Panel>
+              <Tabs.Panel value="agents" xstyle={styles.panel}>
+                <AgentsTab draft={draft} onChange={setDraft} />
+              </Tabs.Panel>
+              <Tabs.Panel value="instructions" xstyle={styles.panel}>
+                <Field
+                  label="Additional instructions"
+                  hint="Every chat in the project reads these."
+                >
+                  <Textarea
+                    aria-label="Additional instructions"
+                    rows={10}
+                    value={draft.instructions}
+                    placeholder="How work is done here, e.g. Read nyte-styles before touching StyleX. Run pnpm check before you report."
+                    onChange={(event) => setDraft({ ...draft, instructions: event.target.value })}
+                  />
+                </Field>
+              </Tabs.Panel>
+              <Tabs.Panel value="skills" xstyle={styles.panel}>
+                <SkillsTab draft={draft} onChange={setDraft} />
+              </Tabs.Panel>
+              <Tabs.Panel value="mcp" xstyle={styles.panel}>
+                <McpTab draft={draft} onChange={setDraft} />
+              </Tabs.Panel>
+              <Tabs.Panel value="docs" xstyle={styles.panel}>
+                <DocsTab draft={draft} onChange={setDraft} />
+              </Tabs.Panel>
+            </Tabs.Root>
+          )}
           <Dialog.Footer>
             {project !== null && (
               <Button
@@ -231,6 +307,11 @@ function ProjectDialog({ project }: { readonly project: ProjectInfo | null }): R
                 Archive Project
               </Button>
             )}
+            {project === null && drafting.isSuccess && (
+              <span {...props(text.sm, styles.hint, styles.note)}>
+                Drafted from your goal. Check each tab, then create.
+              </span>
+            )}
             <Dialog.Close
               render={
                 <Button variant="outline" disabled={pending}>
@@ -238,7 +319,37 @@ function ProjectDialog({ project }: { readonly project: ProjectInfo | null }): R
                 </Button>
               }
             />
-            <Button type="submit" variant="solid" tone="primary" loading={save.isPending}>
+            {project === null && (
+              <Button
+                variant={drafting.isSuccess ? "outline" : "solid"}
+                tone={drafting.isSuccess ? "neutral" : "primary"}
+                disabled={
+                  pending ||
+                  drafting.isPending ||
+                  goal.trim() === "" ||
+                  draft.workspace === undefined ||
+                  model === null
+                }
+                loading={drafting.isPending}
+                onClick={() => {
+                  if (draft.workspace !== undefined && model !== null)
+                    drafting.mutate({
+                      workspace: draft.workspace,
+                      model,
+                      lastName: drafting.data?.name ?? drafting.variables?.lastName,
+                    });
+                }}
+              >
+                {drafting.isSuccess ? "Draft Again" : "Draft Setup"}
+              </Button>
+            )}
+            <Button
+              type="submit"
+              variant={project === null && !drafting.isSuccess ? "outline" : "solid"}
+              tone={project === null && !drafting.isSuccess ? "neutral" : "primary"}
+              disabled={drafting.isPending}
+              loading={save.isPending}
+            >
               {project === null ? "Create Project" : "Save"}
             </Button>
           </Dialog.Footer>
@@ -267,7 +378,7 @@ function GeneralTab({
     <>
       <Field label="Name" issue={nameIssue}>
         <Input
-          autoFocus
+          autoFocus={!creating}
           aria-label="Name"
           aria-invalid={nameIssue !== undefined}
           value={draft.name}
@@ -641,4 +752,13 @@ const styles = create({
   itemName: { color: role.contentPrimary },
   notice: { margin: 0, color: role.contentSecondary, textWrap: "pretty" },
   archive: { marginInlineEnd: "auto" },
+  note: { marginInlineEnd: "auto", alignSelf: "center" },
+  drafting: { justifyContent: "center" },
+  goal: { margin: 0, color: role.contentPrimary, whiteSpace: "pre-line" },
+  draftingLine: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: space.s2,
+    color: role.contentSecondary,
+  },
 });

@@ -55,7 +55,6 @@ export const sidebarStyles = create({
     fontWeight: type.weightRegular,
   },
   navLeading: { width: sidebar.iconSlot },
-  navRowActive: { "--_shortcut-opacity": "1" },
   shortcutSlot: {
     display: "flex",
     alignItems: "center",
@@ -67,7 +66,6 @@ export const sidebarStyles = create({
     transitionDuration: motion.durationFast,
     transitionTimingFunction: motion.easeOut,
   },
-  shortcutPersistent: { opacity: 1 },
   scroll: {
     position: "relative",
     flex: 1,
@@ -105,7 +103,6 @@ export const sidebarStyles = create({
     flexShrink: 0,
   },
   sectionTitle: { paddingInlineStart: sidebar.headerInset },
-  sectionSpread: { justifyContent: "space-between" },
   sectionToggle: {
     display: "inline-flex",
     alignItems: "center",

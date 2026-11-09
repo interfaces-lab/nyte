@@ -29,6 +29,7 @@ import { placeHref } from "../tabs/places.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
 import type { DesktopWindow } from "../contract/desktop-window.ts";
 import { CustomizeSurface } from "../customize/customize.tsx";
+import { ProjectOverview } from "../projects/project-overview.tsx";
 import { showsSettingsSection, rememberWorkspaceHref, SettingsSurface } from "../settings/index.ts";
 
 const styles = create({
@@ -53,6 +54,8 @@ function WorkspaceRouteStage(): ReactElement {
   const page = useStagePage();
 
   if (page === undefined) return <SessionScreen />;
+
+  if (page.kind === "project") return <ProjectOverview key={page.projectId} id={page.projectId} />;
 
   return <CustomizeSurface sessionId={page.sessionId} />;
 }
@@ -207,6 +210,16 @@ async function readDirectory(): Promise<readonly SessionInfo[]> {
   return directory.value ?? [];
 }
 
+const projectRoute = createRoute({
+  getParentRoute: () => workspaceRoute,
+  path: "/project/$projectId",
+  params: {
+    parse: (params) => ({ projectId: asId<"project">(params.projectId) }),
+    stringify: ({ projectId }) => ({ projectId }),
+  },
+  errorComponent: RouteError,
+});
+
 export const settingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/settings/$section",
@@ -228,7 +241,7 @@ export const settingsRoute = createRoute({
   component: SettingsSurface,
 });
 
-const workspaceRouteTree = workspaceRoute.addChildren([indexRoute, sessionRoute]);
+const workspaceRouteTree = workspaceRoute.addChildren([indexRoute, sessionRoute, projectRoute]);
 
 const routeTree = rootRoute.addChildren([workspaceRouteTree, settingsRoute]);
 
