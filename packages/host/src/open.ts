@@ -35,6 +35,7 @@ import { credentialStore } from "./credentials.ts";
 import { identitySigner } from "./identity-key.ts";
 import { readErrorCode } from "./local/tree.ts";
 import { localDocuments } from "./local/documents.ts";
+import { createMediaLinks } from "./local/media.ts";
 import { localGitHubAccount } from "./local/github.ts";
 import { localProvider } from "./local/provider.ts";
 import { importLegacyTrust } from "./local/legacy-trust.ts";
@@ -172,6 +173,9 @@ async function composeOpen(
   let projectDirs: () => Promise<readonly string[]> = async () => [];
   const documentsClosed = new AbortController();
 
+  const media =
+    options.documents === undefined && usesLocalProvider ? createMediaLinks() : undefined;
+
   const loader = createPluginLoader({
     dirs: async () => [join(home, ".nyte", "plugins"), ...(await projectDirs())],
     import: options.pluginImport,
@@ -250,6 +254,7 @@ async function composeOpen(
       describe: () => description,
       tailnet,
       mcpServer,
+      media,
       ...listenOptions,
       identity: listenOptions.identity ?? (await (identity ??= identitySigner(host.hostId, home))),
     });

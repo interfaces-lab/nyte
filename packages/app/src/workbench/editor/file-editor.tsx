@@ -14,9 +14,8 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import type { MouseEvent, ReactElement, ReactNode, Ref } from "react";
+import type { MouseEvent, ReactElement, Ref } from "react";
 import type { Document } from "@nyte-ai/sdk";
-import { control, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { Button } from "@nyte-ai/ui/button";
 import type { ThemePreference } from "../../contract/bridge.ts";
 import { diffStyles } from "../../diff/diff.stylex.ts";
@@ -38,12 +37,11 @@ import {
   PierreWorkerProvider,
 } from "@nyte-ai/ui/worker-pool";
 import { keys } from "../../data/query-client.ts";
-import { loadDeferred } from "../../lib/deferred.tsx";
+import { loadDeferred, readDeferred } from "../../lib/deferred.tsx";
 import type { DeferredRuntimes } from "../../lib/deferred-entries.ts";
 import { documentsApi, useDocument, useSaveDocument } from "../../data/documents.ts";
 import { filesFor } from "../../data/files.ts";
 import { formatBytes } from "../../lib/format.ts";
-import { useBlobUrl } from "../../lib/use-blob-url.ts";
 import { gitFor } from "../../data/vcs.ts";
 import { preferences, useSetting } from "../../preferences/index.ts";
 import { useAppearance } from "../../theme/appearance-store.ts";
@@ -51,13 +49,14 @@ import { watchFamily } from "../../data/watch-store.ts";
 import { EditorFind } from "./editor-find.tsx";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { intent } from "@nyte-ai/ui/surface-theme";
-import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
-import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
+import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import type { WorkbenchViewKey } from "../model.ts";
 import { workspaceFile } from "../paths.ts";
 import { useWorkbenchWorkspace } from "../workbench-workspace.tsx";
 import { createFileDocument } from "./file-document.ts";
+import { FileImage, FileMessage, FileVideo, RevealButton, viewerStyles } from "./file-viewers.tsx";
+import type { SizedFile } from "./file-viewers.tsx";
 import { fileActions } from "./file-store.ts";
 import { MarkdownDocument } from "./markdown-document.tsx";
 import { opensAsMarkdown } from "./markdown-parse.ts";
@@ -65,8 +64,6 @@ import { pdfQuery } from "./pdf-query.ts";
 import type { FileTab } from "./file-store.ts";
 
 type TextFile = Extract<Document, { readonly kind: "text" }>;
-
-type SizedFile = Extract<Document, { readonly size: number }>;
 
 interface Caret {
   readonly revision: number;
@@ -134,17 +131,6 @@ export function createEditor<EType extends EditorType>(
 }
 
 export const styles = create({
-  root: {
-    position: "absolute",
-    inset: 0,
-    display: "flex",
-    flexDirection: "column",
-    flex: 1,
-    minWidth: 0,
-    minHeight: 0,
-    backgroundColor: role.bgBase,
-  },
-  hidden: { visibility: "hidden", pointerEvents: "none" },
   code: {
     "--diffs-min-number-column-width": "initial",
     overflow: "auto",
@@ -153,48 +139,9 @@ export const styles = create({
     minWidth: 0,
     minHeight: 0,
   },
-  message: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "flex-start",
-    gap: space.s2,
-    padding: space.s5,
-    color: role.contentSecondary,
-    textWrap: "pretty",
-  },
-  messageTitle: { color: role.contentPrimary, fontWeight: type.weightMedium },
-  messageDetail: { overflowWrap: "anywhere" },
-  image: {
-    display: "grid",
-    placeItems: "center",
-    flex: 1,
-    minHeight: 0,
-    overflow: "auto",
-    padding: space.s5,
-  },
-  picture: { display: "block", maxWidth: "100%", maxHeight: "100%", objectFit: "contain" },
-  status: {
-    display: "flex",
-    alignItems: "center",
-    gap: space.s2,
-    flexShrink: 0,
-    minHeight: control.heightMd,
-    paddingInline: space.s2_5,
-    color: role.contentSecondary,
-    fontSize: type.fontXs,
-    lineHeight: type.leadingSm,
-    backgroundColor: role.bgBase,
-  },
   error: { color: role.contentSecondary },
   saveText: { flex: "0 1 auto" },
   position: { flexShrink: 0, marginInlineStart: "auto", color: role.contentSecondary },
-  statusText: {
-    flex: 1,
-    minWidth: 0,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  },
 });
 
 function replaceContents(
@@ -242,11 +189,27 @@ function DiskSync({ path }: { readonly path: string }): null {
 
   useMountEffect(() => {
     const queryKey = keys.document(path);
-    void queryClient.refetchQueries({ queryKey, exact: true, stale: true });
+    const events = diskEvents(path);
 
-    return diskEvents(path).subscribe(
-      () => void queryClient.refetchQueries({ queryKey, exact: true }),
-    );
+    const read = () =>
+      void queryClient.refetchQueries({ queryKey, exact: true }, { cancelRefetch: false });
+
+    read();
+
+    return events.subscribe(() => {
+      const shown = queryClient.getQueryData<Document>(queryKey);
+      const event = events.value?.at(-1);
+
+      if (
+        event !== undefined &&
+        shown !== undefined &&
+        "version" in shown &&
+        shown.version === event.version
+      )
+        return;
+
+      read();
+    });
   });
 
   return null;
@@ -257,7 +220,7 @@ export function WorkspaceFileEditor(input: FileEditorProps): ReactElement {
 
   return (
     <>
-      {input.active && <DiskSync key={input.file.path} path={input.file.path} />}
+      <DiskSync key={input.file.path} path={input.file.path} />
       <FileView {...input} document={document} />
     </>
   );
@@ -272,7 +235,7 @@ function FileView(
   if (query.data === undefined)
     return query.isError ? (
       <FileMessage active={input.active} alert title="The file could not be opened.">
-        <span {...props(styles.messageDetail)}>{query.error.message}</span>
+        <span {...props(viewerStyles.messageDetail)}>{query.error.message}</span>
         {retry}
       </FileMessage>
     ) : (
@@ -286,6 +249,8 @@ function FileView(
       return <TextFileEditor {...input} document={document} reload={query.refetch} />;
     case "image":
       return <FileImage key={document.version} active={input.active} document={document} />;
+    case "video":
+      return <FileVideo key={document.version} active={input.active} document={document} />;
     case "pdf":
       return <FilePdf active={input.active} document={document} />;
     case "binary":
@@ -305,8 +270,15 @@ function FileView(
     case "missing":
       return (
         <FileMessage active={input.active} title="This file isn't on disk.">
-          <span {...props(styles.messageDetail)}>{document.path}</span>
+          <span {...props(viewerStyles.messageDetail)}>{document.path}</span>
           {retry}
+        </FileMessage>
+      );
+    case "directory":
+      return (
+        <FileMessage active={input.active} title="This is a folder.">
+          <span {...props(viewerStyles.messageDetail)}>{document.path}</span>
+          {reveal}
         </FileMessage>
       );
     default: {
@@ -317,100 +289,27 @@ function FileView(
   }
 }
 
-function FileMessage(input: {
-  readonly active: boolean;
-  readonly alert?: boolean;
-  readonly title: string;
-  readonly children?: ReactNode;
-}): ReactElement {
-  return (
-    <div
-      aria-hidden={!input.active}
-      inert={!input.active}
-      {...props(styles.root, !input.active && styles.hidden)}
-    >
-      <div role={input.alert === true ? "alert" : "status"} {...props(text.sm, styles.message)}>
-        <span {...props(styles.messageTitle)}>{input.title}</span>
-        {input.children}
-      </div>
-    </div>
-  );
-}
-
-function RevealButton(input: { readonly path: string }): ReactElement | null {
-  const revealPath = nyte.host.revealPath;
-
-  if (revealPath === undefined) return null;
-
-  return (
-    <Button onClick={() => void revealPath({ path: input.path })}>
-      {revealLabel(nyte.platform)}
-    </Button>
-  );
-}
-
-function FileImage(input: {
-  readonly active: boolean;
-  readonly document: SizedFile;
-}): ReactElement {
-  const path = input.document.path;
-
-  const url = useBlobUrl(["files", "bytes", path, input.document.version], async () =>
-    (await documentsApi()).bytes(path),
-  );
-
-  const [broken, setBroken] = useState(false);
-
-  if (broken)
-    return <FileMessage active={input.active} alert title="The image could not be displayed." />;
-
-  if (url.data === undefined)
-    return url.isError ? (
-      <FileMessage active={input.active} alert title="The image could not be loaded.">
-        <span {...props(styles.messageDetail)}>{url.error.message}</span>
-        <Button onClick={() => void url.refetch()}>Retry</Button>
-      </FileMessage>
-    ) : (
-      <FileMessage active={input.active} title="Opening file…" />
-    );
-
-  return (
-    <div
-      aria-hidden={!input.active}
-      inert={!input.active}
-      {...props(styles.root, !input.active && styles.hidden)}
-    >
-      <div {...props(styles.image)}>
-        <img
-          src={url.data}
-          alt={path.split("/").at(-1)}
-          onError={() => setBroken(true)}
-          {...props(styles.picture)}
-        />
-      </div>
-      <div {...props(styles.status)}>
-        <span {...props(styles.statusText)}>
-          {input.document.mime} · {formatBytes(input.document.size)}
-        </span>
-      </div>
-    </div>
-  );
-}
-
 function FilePdf(input: { readonly active: boolean; readonly document: SizedFile }): ReactElement {
-  const runtime = useQuery({ queryKey: ["deferred", "pdf"], queryFn: () => loadDeferred("pdf") });
+  const [runtime, setRuntime] = useState<DeferredRuntimes["pdf"] | "failed" | undefined>(() =>
+    readDeferred("pdf"),
+  );
 
-  if (runtime.data === undefined)
-    return runtime.isError ? (
+  useMountEffect(() => {
+    if (runtime === undefined)
+      void loadDeferred("pdf").then(setRuntime, () => setRuntime("failed"));
+  });
+
+  if (runtime === "failed")
+    return (
       <FileMessage active={input.active} title="PDFs can't be previewed here.">
         <span>PDF · {formatBytes(input.document.size)}</span>
         <RevealButton path={input.document.path} />
       </FileMessage>
-    ) : (
-      <FileMessage active={input.active} title="Opening file…" />
     );
 
-  return <PdfDocument {...input} runtime={runtime.data} />;
+  if (runtime === undefined) return <FileMessage active={input.active} title="Opening file…" />;
+
+  return <PdfDocument {...input} runtime={runtime} />;
 }
 
 function PdfDocument(input: {
@@ -444,7 +343,7 @@ function PdfDocument(input: {
         }
       >
         {pdf.error.name !== "PasswordException" && (
-          <span {...props(styles.messageDetail)}>{pdf.error.message}</span>
+          <span {...props(viewerStyles.messageDetail)}>{pdf.error.message}</span>
         )}
         <RevealButton path={path} />
       </FileMessage>
@@ -455,7 +354,7 @@ function PdfDocument(input: {
     <div
       aria-hidden={!input.active}
       inert={!input.active}
-      {...props(styles.root, !input.active && styles.hidden)}
+      {...props(viewerStyles.root, !input.active && viewerStyles.hidden)}
     >
       <runtime.PdfViewer
         file={pdf.isPlaceholderData ? undefined : pdf.data}
@@ -865,7 +764,7 @@ export function TextFileEditor({
         if (addSelection(viewer.current?.getEditor(file.path)?.getViewState().selections?.[0]))
           event.preventDefault();
       }}
-      {...props(styles.root, !active && styles.hidden)}
+      {...props(viewerStyles.root, !active && viewerStyles.hidden)}
     >
       {documentView ? (
         <MarkdownDocument
@@ -924,16 +823,16 @@ export function TextFileEditor({
         </>
       )}
       <div
-        {...props(statusVisible ? styles.status : srOnly)}
+        {...props(statusVisible ? viewerStyles.status : srOnly)}
         title={gitBlame ? blameText : undefined}
       >
-        {gitBlame && <span {...props(styles.statusText)}>{blameText}</span>}
-        <span role="status" {...props(styles.statusText, styles.saveText)}>
+        {gitBlame && <span {...props(viewerStyles.statusText)}>{blameText}</span>}
+        <span role="status" {...props(viewerStyles.statusText, styles.saveText)}>
           {saveText}
         </span>
         <span
           role="alert"
-          {...props(intent.danger, styles.error, styles.statusText, styles.saveText)}
+          {...props(intent.danger, styles.error, viewerStyles.statusText, styles.saveText)}
         >
           {errorText}
         </span>

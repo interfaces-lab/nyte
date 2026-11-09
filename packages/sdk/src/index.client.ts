@@ -6,6 +6,8 @@ export { openHost } from "./host-connection.ts";
 
 export { ticketSocket } from "./ticket-socket.ts";
 
+export { mediaLink } from "./media-link.ts";
+
 export { headView } from "./head-view.ts";
 
 export type { HeadView } from "./head-view.ts";

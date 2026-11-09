@@ -64,7 +64,7 @@ import { defaultSecrets } from "@nyte-ai/host/secrets";
 import { AccountStore } from "./account/account-store.ts";
 import { accountScheme } from "../shared/account/scheme.ts";
 import { offscreenCanvasPreviewer } from "./canvas-preview.ts";
-import { canvasShellUrl, registerRenderer } from "./renderer-protocol.ts";
+import { canvasShellUrl, mediaOrigin, registerRenderer } from "./renderer-protocol.ts";
 import { ACCOUNT_CHANNELS } from "../shared/account/protocol.ts";
 import { readConnectConfig } from "../shared/connect-config.ts";
 import type { ConnectConfig } from "../shared/connect-config.ts";
@@ -455,6 +455,7 @@ function startHost(): DesktopHost {
     agent: browserSurfaces.agent,
     preview: (request, signal) => previewCanvas(request, signal),
     previewSignal: () => previewsOpen.signal,
+    mediaOrigin: mediaOrigin(accountScheme({ packaged: app.isPackaged, updateTest })),
     emitHostEvent,
     keepAwake,
     settingsChanged: (next) => {
@@ -870,6 +871,7 @@ if (!hasSingleInstanceLock) {
     scheme,
     frontendApiHost: config?.clerk.frontendApiHost,
     shellRoot,
+    host: () => hostRuntime?.link.fetch,
   });
   canvasShell = canvasShellUrl(scheme);
   previewCanvas = offscreenCanvasPreviewer(

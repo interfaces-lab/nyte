@@ -13,6 +13,7 @@ import {
   editorViewOptions,
   styles as editorStyles,
 } from "../../workbench/editor/file-editor.tsx";
+import { viewerStyles } from "../../workbench/editor/file-viewers.tsx";
 
 const PATH = "src/format-bytes.ts";
 
@@ -43,7 +44,7 @@ export function FileEditorPreview(): ReactElement {
 
   return (
     <div {...props(styles.frame(wordWrap ? WRAPPED_LINES : LINES, gitBlame))}>
-      <div {...props(editorStyles.root)}>
+      <div {...props(viewerStyles.root)}>
         <PierreWorkerProvider>
           <EditProvider createEditor={createEditor}>
             <CodeView
@@ -55,9 +56,9 @@ export function FileEditorPreview(): ReactElement {
           </EditProvider>
         </PierreWorkerProvider>
         {gitBlame && (
-          <div {...props(editorStyles.status)}>
+          <div {...props(viewerStyles.status)}>
             <span>Line 1</span>
-            <span {...props(editorStyles.statusText)}>{BLAME}</span>
+            <span {...props(viewerStyles.statusText)}>{BLAME}</span>
           </div>
         )}
       </div>

@@ -121,7 +121,12 @@ server.listen(port, "127.0.0.1");
 
 process.env.ELECTRON_RENDERER_URL = `http://127.0.0.1:${String(port)}`;
 
-const rendererUrl = registerRenderer({ scheme, frontendApiHost: undefined, shellRoot });
+const rendererUrl = registerRenderer({
+  scheme,
+  frontendApiHost: undefined,
+  shellRoot,
+  host: () => undefined,
+});
 
 async function run(): Promise<void> {
   const compiled = await compileCanvas(await readFile(source, "utf8"));

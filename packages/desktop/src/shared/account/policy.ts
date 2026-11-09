@@ -34,6 +34,7 @@ export function rendererContentSecurityPolicy(input: {
   readonly frontendApiHost: string | undefined;
   readonly developmentOrigin: string | undefined;
   readonly canvasOrigin: string;
+  readonly mediaOrigin: string;
 }): string {
   const api = input.frontendApiHost === undefined ? "" : ` https://${input.frontendApiHost}`;
 
@@ -53,6 +54,7 @@ export function rendererContentSecurityPolicy(input: {
     `img-src 'self' data: blob: https://avatars.githubusercontent.com${api === "" ? "" : " https://img.clerk.com"}`,
     "style-src 'self' 'unsafe-inline'",
     "font-src 'self' data:",
+    `media-src 'self' blob: ${input.mediaOrigin}`,
     "worker-src 'self' blob:",
     `frame-src 'self' ${input.canvasOrigin}${challenges}`,
     "form-action 'self'",

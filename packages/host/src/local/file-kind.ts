@@ -3,8 +3,22 @@ import { extname } from "node:path";
 
 const PNG = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 
+const EBML = "\x1a\x45\xdf\xa3";
+
+const VIDEO_BRANDS = new Map([
+  ["qt  ", "video/quicktime"],
+  ["3gp4", "video/3gpp"],
+  ["3gp5", "video/3gpp"],
+  ["3gp6", "video/3gpp"],
+  ["3g2a", "video/3gpp2"],
+  ...["isom", "iso2", "iso4", "iso5", "iso6", "mp41", "mp42", "avc1", "dash", "mmp4", "MSNV"].map(
+    (brand) => [brand, "video/mp4"] as const,
+  ),
+  ...["M4V ", "M4VH", "M4VP"].map((brand) => [brand, "video/x-m4v"] as const),
+]);
+
 export interface FileClass {
-  readonly kind: "text" | "image" | "pdf" | "binary";
+  readonly kind: "text" | "image" | "video" | "pdf" | "binary";
   readonly mime: string;
 }
 
@@ -28,6 +42,15 @@ export function classifyFile(path: string, head: Buffer): FileClass {
 
   if (signature.slice(4, 8) === "ftyp" && /avi[fs]/u.test(head.toString("latin1", 8, 32)))
     return { kind: "image", mime: "image/avif" };
+
+  const video =
+    signature.slice(4, 8) === "ftyp"
+      ? VIDEO_BRANDS.get(signature.slice(8, 12))
+      : signature.startsWith(EBML) && head.toString("latin1", 0, 64).includes("webm")
+        ? "video/webm"
+        : undefined;
+
+  if (video !== undefined) return { kind: "video", mime: video };
 
   if (signature.startsWith("%PDF-")) return { kind: "pdf", mime: "application/pdf" };
 

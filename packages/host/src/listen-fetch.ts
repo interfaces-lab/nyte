@@ -1,4 +1,5 @@
-import { ORIGIN_PATTERN, SdkError, TICKET_PATH } from "@nyte-ai/schema";
+import { Type } from "typebox";
+import { compile, MEDIA_PATH, ORIGIN_PATTERN, SdkError, TICKET_PATH } from "@nyte-ai/schema";
 import { serial } from "@nyte-ai/schema/serial";
 import type { Authority, Disposer, Owned, PrincipalId } from "@nyte-ai/schema";
 import { dev } from "@nyte-ai/core";
@@ -13,6 +14,7 @@ import {
   errorStatus,
   operationsDigest,
 } from "@nyte-ai/protocol";
+import type { MediaLinks } from "./local/media.ts";
 import type { McpService } from "./mcp-server/server.ts";
 import { MCP_TOKEN_PREFIX } from "./mcp-server/token.ts";
 import { allowsOrigin, createHandler } from "./serve/handler.ts";
@@ -46,6 +48,8 @@ const TICKET_LIFETIME = 30_000;
 
 const encoder = new TextEncoder();
 
+const mediaRequests = compile(Type.Object({ path: Type.String() }));
+
 /** Serves a composed host as a bare fetch handler with no socket and no `node:*` import, so a Worker can serve it (§41j): `before`, the unauthenticated identity and describe routes, then `createHandler` over one cached connection per principal and authority, every response carrying `X-Nyte-Host` (§43a, §43j). A request authenticates by a pairing code, then the listener token (compared in constant time over SHA-256 digests, granting `auth.authority`) or a device token remembered until a commit from another process moves the host's principals, then `authorize` under `custom`; a revoke aborts that principal's open requests and streams. A `token` shorter than 16 characters throws `SdkError("invalid")`; `execution` (default: run covering all) drives covered sessions in process on an `admit-only` host, covers their leases otherwise and takes nothing on a `dispatch` host (§42v); `close()` disconnects the clients and releases the execution once, after which every request answers `unavailable`. */
 export async function listenFetch(
   host: ServedHost,
@@ -54,6 +58,7 @@ export async function listenFetch(
     readonly local?: boolean;
     readonly tailnet?: TailnetControl;
     readonly mcpServer?: McpService;
+    readonly media?: MediaLinks | undefined;
   },
 ): Promise<SocketListener> {
   const { auth } = options;
@@ -90,6 +95,7 @@ export async function listenFetch(
     streams.delete(entry.principal);
 
     for (const flight of open ?? []) flight.controller.abort(reason);
+    options.media?.revoke(entry.principal);
     void entry.connection.close();
   };
 
@@ -297,6 +303,31 @@ export async function listenFetch(
     return held.identity;
   };
 
+  const issueMedia = async (request: Request): Promise<Response> => {
+    if (!allowsCaller(request))
+      return failure(new SdkError("denied", "This origin may not call the host."), {});
+    const identity = await identify(request);
+
+    if (!identity.authority.has("owner"))
+      throw new SdkError("denied", "Streaming a file needs owner authority.");
+    const flight: Flight = { request, controller: new AbortController(), principal: null };
+    connectionFor(flight, identity.principal, identity.authority, identity.token);
+    land(flight);
+    const body: unknown = await request.json().catch(() => null);
+
+    if (!mediaRequests.Check(body)) throw new SdkError("invalid", "A media link needs a path.");
+    const token = await streamedMedia().issue(body.path, identity.principal);
+
+    return json({ path: `${MEDIA_PATH}/${token}` }, { ...cors(request), ...identity.headers });
+  };
+
+  const streamedMedia = (): MediaLinks => {
+    if (options.media === undefined)
+      throw new SdkError("not_supported", "This host streams no files.");
+
+    return options.media;
+  };
+
   const admitSocket = async (request: Request): Promise<SocketPeer> => {
     if (closing !== null) throw new SdkError("unavailable", "This listener is closed.");
 
@@ -382,6 +413,14 @@ export async function listenFetch(
 
     if (request.method === "POST" && url.pathname === TICKET_PATH) return issueTicket(request);
 
+    if (request.method === "POST" && url.pathname === MEDIA_PATH) return issueMedia(request);
+
+    if (request.method === "GET" && url.pathname.startsWith(`${MEDIA_PATH}/`))
+      return streamedMedia().serve(
+        url.pathname.slice(MEDIA_PATH.length + 1),
+        request.headers.get("Range"),
+      );
+
     if (request.method === "GET" && url.pathname === "/.nyte/describe") {
       if (options.describe === undefined)
         return failure(new SdkError("unknown", "This host describes nothing."), cors(request));
@@ -415,9 +454,11 @@ export async function listenFetch(
       failure(asSdkError(error), cors(request)),
     );
 
+    const path = new URL(request.url).pathname;
+
     dev("listen", "request", {
       method: request.method,
-      path: new URL(request.url).pathname,
+      path: path.startsWith(`${MEDIA_PATH}/`) ? MEDIA_PATH : path,
       status: response.status,
       principal:
         trace.principal === null ? "none" : trace.principal === TOKEN ? "token" : "principal",

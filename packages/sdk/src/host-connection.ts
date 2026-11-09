@@ -492,7 +492,7 @@ function superviseHost(address: string, options: HostOptions, registry: Registry
   };
 }
 
-async function credentialHeaders(
+export async function credentialHeaders(
   credentials: HostCredentials,
 ): Promise<Readonly<Record<string, string>>> {
   if (credentials.kind === "custom") return credentials.headers();

@@ -152,6 +152,9 @@ export const BatchOutcomeType = Type.Union([
 
 export type BatchOutcome = Decoded<typeof BatchOutcomeType>;
 
+/** Where a host listener streams one file to a `<video>` element: POST `{ path }` for a link under it, then GET the link with `Range`. */
+export const MEDIA_PATH = "/.nyte/media";
+
 const FILE_SCOPE = Type.Enum(["workspace", "external"]);
 
 export const FileDocumentType = Type.Union([
@@ -164,7 +167,7 @@ export const FileDocumentType = Type.Union([
     version: idSchema<"file-version">(),
   }),
   Type.Object({
-    kind: Type.Enum(["image", "pdf", "binary", "large"]),
+    kind: Type.Enum(["image", "video", "pdf", "binary", "large"]),
     path: Type.String(),
     scope: FILE_SCOPE,
     mime: Type.String(),
@@ -172,6 +175,7 @@ export const FileDocumentType = Type.Union([
     version: idSchema<"file-version">(),
   }),
   Type.Object({ kind: Type.Literal("missing"), path: Type.String() }),
+  Type.Object({ kind: Type.Literal("directory"), path: Type.String() }),
 ]);
 
 export type FileDocument = Decoded<typeof FileDocumentType>;
@@ -181,6 +185,7 @@ export const DocumentType = Type.Union([
   Type.Omit(FileDocumentType.anyOf[0], ["scope"]),
   Type.Omit(FileDocumentType.anyOf[1], ["scope"]),
   FileDocumentType.anyOf[2],
+  FileDocumentType.anyOf[3],
 ]);
 
 export type Document = Decoded<typeof DocumentType>;

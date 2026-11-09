@@ -50,6 +50,7 @@ export interface DesktopHostDependencies {
   readonly settingsChanged?: (settings: DesktopSettings) => void;
   readonly alert?: (delivery: AttentionDelivery) => void;
   readonly badge?: (count: number) => void;
+  readonly mediaOrigin?: string;
   emitHostEvent(event: HostEvent, window?: HostWindow): void;
 }
 
@@ -398,6 +399,7 @@ export class DesktopHost {
         url: HOST_PORT_ORIGIN,
         credentials: { kind: "token", token: "" },
         expect: { hostId: connection.hostId },
+        ...(this.#deps.mediaOrigin === undefined ? {} : { mediaOrigin: this.#deps.mediaOrigin }),
       };
     },
     "host.state": async (window) => this.#state(window),

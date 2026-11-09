@@ -4,10 +4,10 @@ description: Reads a file as text or as a document with its version.
 ---
 
 Reads a file in the workspace. A UTF-8 text file up to 1 MiB answers `text` with its contents and
-version; a larger one answers `large`, and images, PDFs and other binaries answer their kind with
-size and version but no contents. A path with nothing there answers `missing`. `scope` says whether
-the file's real path is inside the workspace (`workspace`) or reached through a link outside it
-(`external`).
+version; a larger one answers `large`, and images, videos, PDFs and other binaries answer their kind
+with size and version but no contents. A path with nothing there answers `missing`, and a folder
+answers `directory`. `scope` says whether the file's real path is inside the workspace (`workspace`)
+or reached through a link outside it (`external`).
 
 `as: "document"` reads an SVG as an image rather than as text. The version is a SHA-256 of the
 contents; pass it as `expect` to [`files.write`](/docs/reference/operations/files/write) to save only
@@ -49,7 +49,6 @@ Response:
 
 ## Errors
 
-- `invalid` when the path is a directory.
 - `unavailable` or `denied` when the workspace doesn't offer files, with the reason after
   `files:`. A workspace id the host doesn't have answers `unavailable`.
 
@@ -125,7 +124,7 @@ Response:
       "required": ["kind", "path", "scope", "mime", "size", "version"],
       "properties": {
         "kind": {
-          "enum": ["image", "pdf", "binary", "large"]
+          "enum": ["image", "video", "pdf", "binary", "large"]
         },
         "path": {
           "type": "string"
@@ -151,6 +150,19 @@ Response:
         "kind": {
           "type": "string",
           "const": "missing"
+        },
+        "path": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "path"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "directory"
         },
         "path": {
           "type": "string"

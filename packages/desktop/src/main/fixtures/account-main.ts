@@ -151,6 +151,7 @@ async function run(): Promise<void> {
     scheme,
     frontendApiHost: "clerk.example.com",
     shellRoot: join(app.getPath("temp"), "nyte-account-test-shell"),
+    host: () => undefined,
   });
   let window: BrowserWindow | undefined;
 

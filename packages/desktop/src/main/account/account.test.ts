@@ -69,12 +69,14 @@ describe("account configuration", () => {
       frontendApiHost: HOST,
       developmentOrigin: undefined,
       canvasOrigin: "nyte-desktop://canvas",
+      mediaOrigin: "nyte-desktop://media",
     });
 
     expect(policy).toContain(
       `script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline' https://${HOST} `,
     );
     expect(policy).toContain("frame-src 'self' nyte-desktop://canvas ");
+    expect(policy).toContain("media-src 'self' blob: nyte-desktop://media;");
     expect(policy).toContain(`connect-src 'self' https://${HOST} `);
     expect(policy).toContain("object-src 'none'");
     expect(policy).toContain("frame-ancestors 'none'");
@@ -89,6 +91,7 @@ describe("account configuration", () => {
       frontendApiHost: HOST,
       developmentOrigin: "http://127.0.0.1:5174",
       canvasOrigin: "nyte-desktop-dev://canvas",
+      mediaOrigin: "nyte-desktop-dev://media",
     });
 
     expect(policy).toContain("'unsafe-eval'");

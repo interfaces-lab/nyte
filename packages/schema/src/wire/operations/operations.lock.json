@@ -1,5 +1,5 @@
 {
-  "revision": 20,
+  "revision": 21,
   "operations": {
     "connection.watch": "a3fc0d5a93907590",
     "connection.blob": "d661f9695af8afc2",
@@ -109,7 +109,7 @@
     "job.idle": "0777c4e5d540b427",
     "job.stop": "ec14e002d974fd6d",
     "job.settled": "b299eb07fa0befd6",
-    "files.read": "aa5df825750ff65b",
+    "files.read": "3cd993d17bf76d2e",
     "files.bytes": "b0034900e9e6501c",
     "files.stat": "020ea18284c1a702",
     "files.write": "d132ef5aa00dcdcc",
@@ -126,7 +126,7 @@
     "files.search": "cdcf7744c74ab11d",
     "files.watch": "afa4cc4907cfd969",
     "files.upload": "7d880342fe292823",
-    "documents.read": "8389ae02a4e48567",
+    "documents.read": "8f416fdc99deb4b4",
     "documents.bytes": "2555ed03bd114a28",
     "documents.write": "93659918206b1f0e",
     "documents.watch": "4c25326cda46b669",

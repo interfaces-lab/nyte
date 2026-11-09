@@ -111,7 +111,7 @@ describe("localFiles", () => {
       kind: "text",
       contents: "hello\n",
     });
-    await expect(files.read(".")).rejects.toMatchObject({ code: "invalid" });
+    expect(await files.read(".")).toEqual({ kind: "directory", path: "." });
   });
 
   it("streams bytes with the version it read", async () => {

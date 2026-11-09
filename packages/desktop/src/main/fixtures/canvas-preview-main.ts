@@ -39,7 +39,7 @@ const scheme = ACCOUNT_SCHEMES.development;
 
 process.env.ELECTRON_RENDERER_URL = "http://127.0.0.1:9";
 
-registerRenderer({ scheme, frontendApiHost: undefined, shellRoot });
+registerRenderer({ scheme, frontendApiHost: undefined, shellRoot, host: () => undefined });
 
 const preview = offscreenCanvasPreviewer(scheme, shellRoot, join(directory, "driver.cjs"));
 

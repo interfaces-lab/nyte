@@ -1,13 +1,15 @@
 import { API_REVISION } from "@nyte-ai/schema";
 import { sdk, SdkError } from "@nyte-ai/sdk";
 import type { ConnectOptions, Connection, CredentialSource } from "@nyte-ai/sdk";
-import { openHost, ticketSocket } from "@nyte-ai/sdk/client";
+import { mediaLink, openHost, ticketSocket } from "@nyte-ai/sdk/client";
 import type { HostConnection, OpenSocket } from "@nyte-ai/sdk/client";
 import type { ConnectionProblem, HostEndpoint } from "../contract/connection.ts";
 
 let installed: Connection | undefined;
 
 let installedLive: HostConnection | undefined;
+
+let installedMedia: ((path: string) => Promise<string>) | undefined;
 
 const first = Promise.withResolvers<Connection>();
 
@@ -48,8 +50,27 @@ export async function connectHost(
   });
 
   installConnection(connection, live);
+  installedMedia = async (path) => {
+    const link = await mediaLink(endpoint.url, path, {
+      credentials: credential,
+      fetch: options.fetch,
+    });
+
+    return endpoint.mediaOrigin === undefined
+      ? link
+      : `${endpoint.mediaOrigin}${new URL(link).pathname}`;
+  };
 
   return connection;
+}
+
+export async function mediaUrl(path: string): Promise<string> {
+  await connected();
+
+  if (installedMedia === undefined)
+    throw new SdkError("not_supported", "This connection streams no files.");
+
+  return installedMedia(path);
 }
 
 export function installConnection(connection: Connection, live: HostConnection): void {

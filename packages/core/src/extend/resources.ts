@@ -1,4 +1,4 @@
-import { SdkError, standard } from "@nyte-ai/schema";
+import { standard } from "@nyte-ai/schema";
 import type {
   FileEntryView,
   SessionId,
@@ -855,13 +855,9 @@ async function listDirectChildren(
 }
 
 export async function readText(files: FilesApi, path: string): Promise<string | null> {
-  const document = await files.read(path).catch((error: unknown) => {
-    if (error instanceof SdkError && error.code === "invalid") return null;
+  const document = await files.read(path);
 
-    throw error;
-  });
-
-  return document?.kind === "text" ? document.contents : null;
+  return document.kind === "text" ? document.contents : null;
 }
 
 function frontmatter(content: string): ReadonlyMap<string, string> {

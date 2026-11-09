@@ -129,6 +129,8 @@ const read: ToolDefinition<Infer<typeof readParameters>> = {
 
     if (document.kind === "missing") return text(`${args.path} does not exist.`);
 
+    if (document.kind === "directory") return text(`${args.path} is a directory.`);
+
     if (document.kind === "text") return text(numbered(args.path, document.contents, args));
 
     return {
@@ -151,6 +153,8 @@ const write: ToolDefinition<Infer<typeof writeParameters>, PatchEntry> = {
   async execute(args, invocation) {
     const { files } = invocation.env;
     const previous = await files.read(args.path);
+
+    if (previous.kind === "directory") throw new Error(`${args.path} is a directory.`);
     const outcome = await files.write(args.path, args.content, { parents: true });
 
     if (outcome.kind !== "saved") throw new Error(`Could not write ${args.path}: ${outcome.kind}.`);

@@ -236,11 +236,23 @@ export function handle(request: Request): Promise<Response> {
 | ----------------------- | ------------------------------------------------------------------------------------- |
 | `POST /<operation>`     | One call to an operation in the operations table                                      |
 | `POST /.nyte/ws/ticket` | A one-time ticket for the WebSocket, valid for 30 seconds                             |
+| `POST /.nyte/media`     | For an owner, a link to stream one video by absolute path. See [media](#media)        |
+| `GET /.nyte/media/<id>` | That file, answering `Range` with 206, for a `<video>` element                        |
 | `GET /.nyte/identity`   | The host's signed answer to a challenge. See [identity](#identity)                    |
 | `GET /.nyte/describe`   | The host's name, platform and version                                                 |
 | `/mcp`                  | On a host from `sdk.open`, the MCP endpoint for outside agents, with its OAuth routes |
 
 Give it the root of a hostname, or strip your route's prefix before you pass the request on.
+
+### Stream a file to a video element [#media]
+
+A `<video>` element can't send credentials or a POST, so a page trades its credential for a link
+first. `POST /.nyte/media` with `{ "path": "/abs/path/clip.mp4" }` answers
+`{ "path": "/.nyte/media/<id>" }`, and the element loads that path from the host with `Range`
+headers. Only owner authority gets a link, only for a video, and only on a host that serves files
+from this machine. A link reads that one file, stops answering after 15 minutes unused, and dies
+when its principal is revoked. The Nyte relay doesn't carry these links yet, so a page connected
+through it can't stream. `mediaLink()` from `@nyte-ai/sdk/client` does the trade.
 
 A `Request` can't become a WebSocket, so the `fetch` transport doesn't serve `/.nyte/ws`. Clients
 reach a `fetch` listener with `sdk.connect`, which works over plain HTTP. `openHost` needs an

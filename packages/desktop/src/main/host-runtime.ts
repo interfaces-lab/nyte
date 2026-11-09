@@ -30,7 +30,7 @@ export interface HostRuntime {
 
 export type HostRuntimeOptions = Pick<
   DesktopHostDependencies,
-  "emitHostEvent" | "keepAwake" | "settingsChanged" | "alert" | "badge"
+  "emitHostEvent" | "keepAwake" | "settingsChanged" | "alert" | "badge" | "mediaOrigin"
 > & {
   readonly appId: string;
   readonly home: string;
@@ -86,6 +86,7 @@ export function startHostRuntime(options: HostRuntimeOptions): HostRuntime {
       cloudflare: new CloudflareTunnelPlugin({ home: join(options.home, ".nyte") }),
     },
     connect: options.connect,
+    mediaOrigin: options.mediaOrigin,
     emitHostEvent: options.emitHostEvent,
     keepAwake: options.keepAwake,
     settingsChanged: options.settingsChanged,

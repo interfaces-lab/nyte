@@ -219,6 +219,11 @@ Every caller with the same address shares one connection, and a later caller's o
 `ticketSocket({ fetch? })` trades the credentials for a one-use ticket at `POST /.nyte/ws/ticket`,
 then opens the socket with `?ticket=`.
 
+`mediaLink(address, path, { credentials, fetch? })` trades the credentials for a URL a `<video>`
+element can stream the video at the absolute `path` from, with `Range` and no credentials. It needs
+owner authority, and the URL stops answering after 15 minutes unused. See
+[streaming a file](/docs/host/serve#media).
+
 A `HostConnection` has:
 
 | Member                                     | What it does                                                                                                                                                       |

@@ -3,11 +3,11 @@ title: documents.read
 description: Reads a file at an absolute path as text or as a document with its version.
 ---
 
-Reads a file on the host machine by its absolute path, whether or not it is inside a workspace.
-It answers like [`files.read`](/docs/reference/operations/files/read) without `scope`: a UTF-8 text
+Reads a file on the host machine by its absolute path, whether or not it is inside a workspace. It
+answers like [`files.read`](/docs/reference/operations/files/read) without `scope`: a UTF-8 text
 file up to 1 MiB answers `text` with its contents and version; a larger one answers `large`, and
-images, PDFs and other binaries answer their kind with size and version but no contents. A path
-with nothing there answers `missing`.
+images, videos, PDFs and other binaries answer their kind with size and version but no contents. A
+path with nothing there answers `missing`, and a folder answers `directory`.
 
 `as: "document"` reads an SVG as an image rather than as text. The version is a SHA-256 of the
 contents; pass it as `expect` to [`documents.write`](/docs/reference/operations/documents/write) to
@@ -45,7 +45,7 @@ Response:
 
 ## Errors
 
-- `invalid` when the path is relative or is a directory.
+- `invalid` when the path is relative.
 - `denied` without owner authority.
 - `not_supported` when the host doesn't serve files by absolute path.
 
@@ -114,7 +114,7 @@ Response:
       "required": ["kind", "path", "mime", "size", "version"],
       "properties": {
         "kind": {
-          "enum": ["image", "pdf", "binary", "large"]
+          "enum": ["image", "video", "pdf", "binary", "large"]
         },
         "path": {
           "type": "string"
@@ -137,6 +137,19 @@ Response:
         "kind": {
           "type": "string",
           "const": "missing"
+        },
+        "path": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "path"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "directory"
         },
         "path": {
           "type": "string"
