@@ -8,10 +8,10 @@ These scripts build, package and install the `nyte` binary and the desktop app.
 `~/.nyte/bin`. To build the TUI and install it, run this from the root:
 
 ```sh
-pnpm install:nyte
+pnpm install:tui
 ```
 
-Other builds leave the installed binary alone. Packaging runs this installer. Put `~/.nyte/bin`
+Other builds and packaging leave the installed binary alone. Put `~/.nyte/bin`
 first on your `PATH` so another installation doesn't shadow it.
 
 `pnpm install:desktop` updates the installed desktop app to a build of the checkout through its
@@ -28,8 +28,7 @@ pnpm package:tui
 macOS. Then it calls `assemble-release.sh` on `packages/tui/dist/nyte`. The assembly step copies
 the existing executable, `nyte-tailnet` and `packages/cli/docs`, writes `VERSION`, and creates
 `dist/nyte-v<version>-<target>.tar.gz` with a `.sha256` file beside it. It never downloads or
-publishes. `package.sh` then installs the built binary at `~/.nyte/bin/nyte`. The CLI and TUI
-package versions must match.
+publishes. The CLI and TUI package versions must match.
 
 `release-targets.mjs` lists the platforms Nyte ships. The `nyte` binary ships for `darwin-arm64`,
 `linux-x64` and `linux-arm64`. The desktop app ships for macOS and Linux x64. Releases don't

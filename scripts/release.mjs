@@ -169,11 +169,11 @@ async function attachHost() {
   if (running !== null) return { host: running, started: false, stop: async () => undefined };
 
   if (!existsSync(BINARY))
-    throw new Error(`No installed nyte at ${BINARY}. Run \`pnpm install:nyte\`, then retry.`);
+    throw new Error(`No installed nyte at ${BINARY}. Run \`pnpm install:tui\`, then retry.`);
 
   if (spawnSync(BINARY, ["host", "--help"], { stdio: "ignore" }).status !== 0)
     throw new Error(
-      `${BINARY} is too old to run \`nyte host\`. Run \`pnpm install:nyte\` or \`nyte update\`, then retry.`,
+      `${BINARY} is too old to run \`nyte host\`. Run \`pnpm install:tui\` or \`nyte update\`, then retry.`,
     );
 
   const child = spawn(BINARY, ["host", "--json"], { stdio: ["ignore", "ignore", "pipe"] });

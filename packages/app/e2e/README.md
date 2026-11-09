@@ -13,10 +13,10 @@ pnpm --dir packages/app exec playwright install chromium
 Then build and run every spec:
 
 ```sh
-pnpm e2e
+pnpm e2e:web
 ```
 
-`pnpm e2e` builds the canvas shell and the app first. The app build inlines the canvas shell, so build both before running specs by hand:
+`pnpm e2e:web` builds the canvas shell and the app first. The app build inlines the canvas shell, so build both before running specs by hand:
 
 ```sh
 pnpm --dir packages/canvas build

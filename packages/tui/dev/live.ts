@@ -68,7 +68,7 @@ async function fromSource(
 
 async function startHost(path: string): Promise<Attached> {
   if (!(await Bun.file(BINARY).exists()))
-    throw new Error(`No installed nyte at ${BINARY}. Run \`pnpm install:nyte\`, then retry.`);
+    throw new Error(`No installed nyte at ${BINARY}. Run \`pnpm install:tui\`, then retry.`);
 
   const probe = Bun.spawn([BINARY, "host", "--help"], {
     stdin: "ignore",
@@ -78,7 +78,7 @@ async function startHost(path: string): Promise<Attached> {
 
   if ((await probe.exited) !== 0)
     throw new Error(
-      `${BINARY} is too old to run \`nyte host\`. Run \`pnpm install:nyte\` or \`nyte update\`, then retry.`,
+      `${BINARY} is too old to run \`nyte host\`. Run \`pnpm install:tui\` or \`nyte update\`, then retry.`,
     );
 
   const child = Bun.spawn([BINARY, "host", "--json"], {

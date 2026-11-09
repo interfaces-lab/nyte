@@ -1,5 +1,5 @@
 #!/bin/sh
-# `pnpm install:nyte`: puts the nyte built from this checkout where your terminal runs it.
+# `pnpm install:tui`: puts the nyte built from this checkout where your terminal runs it.
 set -eu
 cd "$(dirname "$0")/.."
 folder="$HOME/.nyte/bin"

@@ -2,7 +2,7 @@
 
 - Terminal rendering and keys live here; session behaviour belongs in core.
 - A Solid app on `@opentui/solid`. `runTui` owns process-long resources; `mountApp` mounts the app, and its `close()` leaves the host open. Print mode and the CLI entry, flags and runner sit outside it.
-- `pnpm dev:tui [directory]` runs from source with hot reload (`NYTE_RELOAD=off` disables it) on `~/.nyte/nyte-dev.db` (`NYTE_DB` overrides). Only `pnpm install:nyte` replaces `~/.nyte/bin/nyte`. Nothing from the dev tooling reaches the binary.
+- `pnpm dev:tui [directory]` runs from source with hot reload (`NYTE_RELOAD=off` disables it) on `~/.nyte/nyte-dev.db` (`NYTE_DB` overrides). Only `pnpm install:tui` replaces `~/.nyte/bin/nyte`. Nothing from the dev tooling reaches the binary.
 
 ## Architecture
 

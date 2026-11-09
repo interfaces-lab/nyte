@@ -12,7 +12,7 @@ current run's result and evidence in the task response.
   makes unrelated app tests fail.
 - Journeys for the TUI: `pnpm --dir packages/tui test` runs the in-process app journeys with the
   unit suite, and `pnpm --dir packages/tui test:binary` builds the binary and runs its smoke test.
-- Journeys for the web app: `pnpm e2e` starts its own server at `E2E_ORIGIN`.
+- Journeys for the web app: `pnpm e2e:web` starts its own server at `E2E_ORIGIN`.
 - Journeys for the desktop app: `pnpm e2e:desktop`.
 - Never drive an instance this run didn't start, unless the user asked you to look at theirs.
 

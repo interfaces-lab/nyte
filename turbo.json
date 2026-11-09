@@ -73,15 +73,8 @@
       "env": ["NYTE_RELEASE_VERSION"],
       "cache": false
     },
-    "@nyte-ai/ai#models:generate": {
-      "cache": false
-    },
     "clean": {
       "cache": false
-    },
-    "dev": {
-      "cache": false,
-      "persistent": true
     },
     "test": {
       "dependsOn": ["transit", "^build"],
@@ -98,14 +91,6 @@
     },
     "@nyte-ai/tui#typecheck": {
       "dependsOn": ["^typecheck", "@nyte-ai/canvas#build"]
-    },
-    "//#lint": {},
-    "//#lint:fix": {
-      "cache": false
-    },
-    "//#format": {},
-    "//#format:fix": {
-      "cache": false
     }
   },
   "agentGuidance": false

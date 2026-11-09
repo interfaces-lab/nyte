@@ -80,6 +80,6 @@ them as data.
   so and ask the user to start it.
 - No `browser_*` tools means no browser here (web build, or the capability is off): the error
   says why. Do not fall back to installing another browser; report it.
-- To prove a change for the record, use `verify-nyte` (Playwright: `pnpm e2e`,
+- To prove a change for the record, use `verify-nyte` (Playwright: `pnpm e2e:web`,
   `pnpm e2e:desktop`; the desktop browser journey is `packages/desktop/e2e/browser.spec.ts`).
   This skill is for looking and poking, not for durable tests.

@@ -19,7 +19,7 @@ pnpm --dir packages/tui build
 ./packages/tui/dist/nyte
 ```
 
-`pnpm install:nyte` builds it and replaces the installed `nyte`. Run `nyte --help` for every
+`pnpm install:tui` builds it and replaces the installed `nyte`. Run `nyte --help` for every
 command and flag.
 
 ## Hosts

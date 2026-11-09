@@ -71,7 +71,7 @@ Every runner starts from an empty store, so none of them can see rows an older b
 After changing a stored shape, run `pnpm --dir packages/host check:store [path]`. It reads the
 store read-only and exits 1 with each unreadable group, its count and first location.
 
-For web verification, use `pnpm e2e`. First read `packages/app/e2e/server/address.ts` and inspect
+For web verification, use `pnpm e2e:web`. First read `packages/app/e2e/server/address.ts` and inspect
 the selected port with `lsof -iTCP:5181 -sTCP:LISTEN`, substituting `NYTE_E2E_PORT` when set.
 The config reuses listeners outside CI. If the listener is unrelated, select an unused port
 through `NYTE_E2E_PORT` for the entire command. HTTP readiness still needs a usable-page check.
