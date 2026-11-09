@@ -27,15 +27,15 @@ export const settingsPatterns = create({
   sectionTitle: {
     margin: 0,
     color: role.contentPrimary,
-    fontSize: type.fontLg,
+    fontSize: settings.sectionTitleFont,
     fontWeight: type.weightSemibold,
-    lineHeight: type.leadingLg,
+    lineHeight: settings.sectionTitleLeading,
   },
   sectionDescription: {
     margin: 0,
     color: role.contentSecondary,
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
+    fontSize: settings.descriptionFont,
+    lineHeight: settings.descriptionLeading,
   },
   group: {
     display: "flex",
@@ -102,6 +102,13 @@ export const settingsPatterns = create({
     },
     padding: settings.rowPadding,
   },
+  rowMinHeight: { minHeight: settings.rowMinHeight },
+  rowFrame: {
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "center",
+    minHeight: settings.rowMinHeight,
+  },
   rowDetailed: { rowGap: space.s2 },
   rowCopy: {
     display: "flex",
@@ -132,9 +139,9 @@ export const settingsPatterns = create({
   },
   rowDescription: {
     color: role.contentSecondary,
-    fontSize: type.fontBase,
+    fontSize: settings.descriptionFont,
     fontWeight: type.weightRegular,
-    lineHeight: type.leadingBase,
+    lineHeight: settings.descriptionLeading,
     overflowWrap: "break-word",
   },
   rowControl: {

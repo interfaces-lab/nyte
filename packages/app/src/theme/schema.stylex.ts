@@ -73,6 +73,11 @@ export const settings = defineConsts({
   sectionGap: "var(--nyte-settings-section-gap)",
   cardGap: "var(--nyte-settings-card-gap)",
   rowPadding: "var(--nyte-settings-row-padding)",
+  rowMinHeight: "var(--nyte-settings-row-min-height)",
+  sectionTitleFont: "var(--nyte-settings-section-title-font-size)",
+  sectionTitleLeading: "var(--nyte-settings-section-title-line-height)",
+  descriptionFont: "var(--nyte-settings-description-font-size)",
+  descriptionLeading: "var(--nyte-settings-description-line-height)",
   rowPaddingInline: "var(--nyte-settings-row-padding-inline)",
   controlMaxWidth: "var(--nyte-settings-control-max-width)",
 });

@@ -72,21 +72,7 @@ const styles = create({
     minWidth: 0,
     flex: "1 1 0",
   },
-  factGlyph: {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    flex: "none",
-    width: avatar.md,
-    height: avatar.md,
-    borderRadius: radius.pill,
-    backgroundColor: role.bgMutedTranslucent,
-    color: role.contentSecondary,
-  },
-  factGlyphOn: {
-    backgroundColor: role.fillSecondary,
-    color: role.contentAccent,
-  },
+  factGlyph: { display: "inline-flex", flex: "none", color: role.contentSecondary },
   factActions: {
     display: "inline-flex",
     flexWrap: "wrap",
@@ -165,13 +151,11 @@ export function ConnectionMenu({
 
 export function FactRow({
   icon,
-  tone = "neutral",
   title,
   detail,
   children,
 }: {
-  readonly icon: IconName;
-  readonly tone?: "neutral" | "on";
+  readonly icon?: IconName;
   readonly title: ReactNode;
   readonly detail?: ReactNode;
   readonly children?: ReactNode;
@@ -179,15 +163,11 @@ export function FactRow({
   return (
     <div {...ROW_MARK} {...props(settingsPatterns.rowRule, settingsPatterns.row)}>
       <span {...props(styles.fact)}>
-        <span
-          {...props(
-            tone === "on" && intent.primary,
-            styles.factGlyph,
-            tone === "on" && styles.factGlyphOn,
-          )}
-        >
-          <Icon name={icon} size="md" />
-        </span>
+        {icon !== undefined && (
+          <span {...props(styles.factGlyph)}>
+            <Icon name={icon} size="md" />
+          </span>
+        )}
         <span {...props(settingsPatterns.rowCopy)}>
           <span {...props(settingsPatterns.rowTitle)}>{title}</span>
           {detail !== undefined && (
@@ -218,7 +198,9 @@ export function ConnectionRow({
       <span {...props(styles.glyph)}>{glyph}</span>
       <span {...props(styles.body)}>
         <span {...props(text.base, styles.title)}>{title}</span>
-        {detail !== undefined && <span {...props(text.base, styles.detail)}>{detail}</span>}
+        {detail !== undefined && (
+          <span {...props(settingsPatterns.rowDescription, styles.detail)}>{detail}</span>
+        )}
       </span>
       {control !== undefined && <span {...props(styles.control)}>{control}</span>}
       {expansion !== undefined && <div {...props(styles.expansion)}>{expansion}</div>}

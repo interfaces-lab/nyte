@@ -81,6 +81,7 @@ export function SettingsRow({
       {...props(
         settingsPatterns.rowRule,
         settingsPatterns.row,
+        settingsPatterns.rowMinHeight,
         detail !== undefined && settingsPatterns.rowDetailed,
       )}
     >
@@ -108,7 +109,7 @@ export function SettingsSwitchRow({
   ...rest
 }: Omit<SwitchFieldProps, "label" | "xstyle"> & { readonly title: string }): ReactElement {
   return (
-    <div {...ROW_MARK} {...props(settingsPatterns.rowRule)}>
+    <div {...ROW_MARK} {...props(settingsPatterns.rowRule, settingsPatterns.rowFrame)}>
       <SwitchField {...rest} label={title} xstyle={settingsPatterns.row} />
     </div>
   );

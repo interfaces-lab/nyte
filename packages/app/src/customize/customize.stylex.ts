@@ -1,6 +1,16 @@
-import { create } from "@stylexjs/stylex";
+import { create, createTheme } from "@stylexjs/stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { avatar, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { layout } from "../theme/tokens.stylex.ts";
+
+/** Customize borrows the settings patterns but keeps the roomier rows and type that only Settings dropped. */
+export const customizeDensity = createTheme(layout, {
+  "--nyte-settings-row-padding": "12px 16px",
+  "--nyte-settings-section-title-font-size": "var(--nyte-font-size-lg)",
+  "--nyte-settings-section-title-line-height": "var(--nyte-line-height-lg)",
+  "--nyte-settings-description-font-size": "var(--nyte-font-size-base)",
+  "--nyte-settings-description-line-height": "var(--nyte-line-height-base)",
+});
 
 export const customizeStyles = create({
   header: { display: "flex", flexDirection: "column", gap: space.s5 },

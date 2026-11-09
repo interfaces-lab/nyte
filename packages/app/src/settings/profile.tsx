@@ -109,7 +109,7 @@ function Row({
       <span {...props(styles.copy)}>
         <span {...props(text.base, styles.title)}>{title}</span>
         {description !== undefined && (
-          <span {...props(text.base, styles.description)}>{description}</span>
+          <span {...props(settingsPatterns.rowDescription, styles.description)}>{description}</span>
         )}
       </span>
       {value !== undefined && <span {...props(text.base, styles.value)}>{value}</span>}
