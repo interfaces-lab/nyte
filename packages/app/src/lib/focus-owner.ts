@@ -16,6 +16,10 @@ function focusPath(): readonly Element[] {
   return path;
 }
 
+export function focusWithin(selector: string): boolean {
+  return focusPath().some((element) => element.matches(selector));
+}
+
 export function keyOwner(): Element | undefined {
   return focusPath().find((element) => element.matches(KEY_OWNERS));
 }

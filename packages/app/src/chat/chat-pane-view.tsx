@@ -112,11 +112,9 @@ function TypeToCompose({
     const route = (event: KeyboardEvent): void => {
       if (event.defaultPrevented || event.isComposing) return;
       const owner = keyOwner();
+      const action = resolveClientAction(event, mac, "workspace", clientCapabilities(nyte.host));
 
-      if (
-        resolveClientAction(event, mac, "workspace", clientCapabilities(nyte.host))?.id ===
-        clientActions.selectModel.id
-      ) {
+      if (action?.id === clientActions.selectModel.id) {
         if (owner !== undefined && owner !== input.current?.readElement()) return;
         event.preventDefault();
         input.current
@@ -131,7 +129,11 @@ function TypeToCompose({
       }
 
       if (owner !== undefined || event.altKey) return;
-      const paste = (mac ? event.metaKey : event.ctrlKey) && event.key.toLowerCase() === "v";
+
+      const paste =
+        action === undefined &&
+        (mac ? event.metaKey : event.ctrlKey) &&
+        event.key.toLowerCase() === "v";
 
       const typed =
         !event.ctrlKey &&

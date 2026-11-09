@@ -132,6 +132,7 @@ export type AppMenuAction =
   | typeof clientActions.terminal.id
   | typeof clientActions.splitRight.id
   | typeof clientActions.splitDown.id
+  | typeof clientActions.markdownSource.id
   | typeof clientActions.focusPane.id
   | typeof clientActions.reloadWindow.id;
 

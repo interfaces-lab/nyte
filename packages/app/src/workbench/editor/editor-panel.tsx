@@ -19,6 +19,13 @@ import { revealLabel } from "../../components/context-menu.ts";
 import { PanelToggleIcon } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
 import { Toggle } from "@nyte-ai/ui/toggle";
+import { ToggleGroup } from "@nyte-ai/ui/toggle-group";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
+import {
+  clientActionAriaShortcut,
+  clientActionKeys,
+  clientActions,
+} from "../../contract/client-actions.ts";
 import { nyte } from "../../contract/nyte.ts";
 import { preferences, useSetting, type Preference } from "../../preferences/index.ts";
 import { useVcsSnapshot } from "../../data/vcs.ts";
@@ -133,6 +140,7 @@ export function EditorPanel({
   readonly onToggleSidebar: () => void;
 }): ReactElement {
   const treeStatusTheme = useTreeStatusTheme();
+  const mac = nyte.platform === "darwin";
   const shown = workspaceActive && visible;
   const browsed = useWorkbenchWorkspace();
   const workspace = browsed.kind === "ready" ? browsed.workspace : undefined;
@@ -298,6 +306,7 @@ export function EditorPanel({
   return (
     <section
       ref={panelRef}
+      data-editor-panel
       aria-label={WORKBENCH_KINDS.editor.label}
       {...props(styles.panel, treeStatusTheme)}
       onKeyDownCapture={(event) => {
@@ -413,6 +422,40 @@ export function EditorPanel({
                 ●
               </span>
             )}
+            {activeFile !== undefined &&
+              activeDocument?.kind === "text" &&
+              opensAsMarkdown(activeFile.path) && (
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <ToggleGroup
+                        aria-label="Markdown View"
+                        aria-keyshortcuts={clientActionAriaShortcut(
+                          clientActions.markdownSource,
+                          mac,
+                        )}
+                        value={[activeFile.showSource ? "source" : "document"]}
+                        onValueChange={(value) => {
+                          const next = value[0];
+
+                          if (next === "document" || next === "source")
+                            fileActions.setShowSource(viewKey, activeFile.path, next === "source");
+                        }}
+                      >
+                        <Toggle value="document" size="2xs">
+                          Document
+                        </Toggle>
+                        <Toggle value="source" size="2xs">
+                          Source
+                        </Toggle>
+                      </ToggleGroup>
+                    }
+                  />
+                  <TooltipContent shortcut={clientActionKeys(clientActions.markdownSource, mac)}>
+                    {activeFile.showSource ? "View Document" : "View Source"}
+                  </TooltipContent>
+                </Tooltip>
+              )}
             <Menu>
               <MenuTrigger
                 render={
@@ -420,25 +463,6 @@ export function EditorPanel({
                 }
               />
               <MenuContent align="end" xstyle={styles.menu}>
-                {activeFile !== undefined &&
-                  activeDocument?.kind === "text" &&
-                  opensAsMarkdown(activeFile.path) && (
-                    <>
-                      <MenuItem
-                        layout="plain"
-                        onClick={() =>
-                          fileActions.setShowSource(
-                            viewKey,
-                            activeFile.path,
-                            !activeFile.showSource,
-                          )
-                        }
-                      >
-                        {activeFile.showSource ? "View Document" : "View Source"}
-                      </MenuItem>
-                      <MenuSeparator inset />
-                    </>
-                  )}
                 <MenuItem
                   layout="plain"
                   meta={nyte.platform === "darwin" ? "⌘S" : "Ctrl+S"}

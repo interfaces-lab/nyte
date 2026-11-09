@@ -201,6 +201,13 @@ export const clientActions = {
     scope: "workspace",
     capability: "browser",
   },
+  markdownSource: {
+    id: "markdown-source",
+    label: "Toggle Markdown Source",
+    key: "v",
+    chord: "primary-shift",
+    scope: "workspace",
+  },
   focusPane: {
     id: "focus-pane",
     label: "Focus Next Pane",

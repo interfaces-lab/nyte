@@ -486,6 +486,9 @@ export function createFileTabStore(store: WorkbenchStore = workbench) {
     setShowSource(key: WorkbenchViewKey, path: string, showSource: boolean): void {
       setFileState(key, path, { showSource });
     },
+    toggleSource(key: WorkbenchViewKey, path: string): void {
+      setFileState(key, path, { showSource: !fileState(key, path).showSource });
+    },
     setSaving(key: WorkbenchViewKey, path: string, saving: boolean): void {
       setFileState(key, path, { saving });
       advanceCloseQueue(key);

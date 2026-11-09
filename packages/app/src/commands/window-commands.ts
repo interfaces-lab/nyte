@@ -1,6 +1,8 @@
+import type { Document } from "@nyte-ai/sdk";
 import type { RegisteredRouter } from "@tanstack/react-router";
 import type { AppMenuAction, HostState } from "../contract/bridge.ts";
 import type { DesktopWindowOpen } from "../contract/desktop-window.ts";
+import { focusWithin, keyOwner } from "../lib/focus-owner.ts";
 import { shellActions } from "../tabs/shell-state.ts";
 import { folderPicker } from "../panes/open-workspace.tsx";
 import { clientCapabilities } from "../contract/client-actions.ts";
@@ -13,9 +15,10 @@ import { windowTabs } from "../tabs/window-tabs.ts";
 import { settingsActionPages } from "../sidebar/action-icons.ts";
 import { launch } from "../workbench/commands.ts";
 import { fileActions } from "../workbench/editor/file-store.ts";
-import { workbenchShowsChat } from "../workbench/model.ts";
+import { opensAsMarkdown } from "../workbench/editor/markdown-parse.ts";
+import { activeEditorFile, EDITOR_SLOT, tabSlot, workbenchShowsChat } from "../workbench/model.ts";
 import { workbenchScope, workbenchViewKey } from "../workbench/paths.ts";
-import { activeWorkbenchTab } from "../workbench/selectors.ts";
+import { activeWorkbenchTab, shownWorkbenchTab } from "../workbench/selectors.ts";
 import { workbench } from "../workbench/store.ts";
 
 const COMMANDS = [
@@ -33,6 +36,7 @@ const COMMANDS = [
   "terminal",
   "split-right",
   "split-down",
+  "markdown-source",
   "focus-pane",
   "reload-window",
 ] as const satisfies readonly AppMenuAction[];
@@ -72,6 +76,36 @@ function toggleTerminal(): void {
   else if (terminal !== undefined)
     workbench.dispatch(viewKey, { kind: "activate", id: terminal.id });
   else launch(viewKey, "terminal");
+}
+
+function toggleMarkdownSource(): boolean {
+  if (
+    keyOwner() !== undefined &&
+    !focusWithin('[data-editor-panel] :is([data-slot="markdown-column"], diffs-container)')
+  )
+    return false;
+  const workspacePath = currentWorkspacePath();
+  const viewKey = workbenchViewKey(workspacePath);
+  const view = workbench.getView(viewKey);
+
+  const shown = shownWorkbenchTab(
+    view,
+    workbenchScope(workspacePath),
+    clientCapabilities(nyte.host),
+  );
+
+  const file =
+    shown !== null && tabSlot(shown) === EDITOR_SLOT ? activeEditorFile(view) : undefined;
+
+  if (
+    file === undefined ||
+    !opensAsMarkdown(file.path) ||
+    queryClient.getQueryData<Document>(keys.document(file.path))?.kind !== "text"
+  )
+    return false;
+  fileActions.toggleSource(viewKey, file.path);
+
+  return true;
 }
 
 /**
@@ -163,6 +197,8 @@ export function runWindowCommand(router: RegisteredRouter, command: AppMenuActio
       uncoverPanes(router);
 
       return splitPanes(windowTabs.controller(), command === "split-down" ? "down" : "right");
+    case "markdown-source":
+      return toggleMarkdownSource();
     case "focus-pane":
       return focusNextPane(windowTabs.controller());
     case "reload-window":
