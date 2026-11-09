@@ -158,6 +158,12 @@ Highlighted code follows the same floors: syntax colours keep 4.5:1 on the code 
 ## Adding or changing a token
 
 1. Put the value in the right `defineVars` group; expose a handle in `vars` or `schema`.
+   `createTheme` also applies its group's defaults class, so a theme re-declares every var in its
+   group, not only the ones it overrides, and hides any value set on an ancestor. Give a theme a
+   group of exactly the vars it changes, as `sidebarMotion` and `settingsDensity` do. Keep vars the
+   app writes on `<html>` at runtime, such as the chat width and the side panel width, out of
+   themed groups. `roles` is the exception: a hue scope re-resolves every role against its ramp on
+   purpose.
 2. `pnpm --dir packages/ui lock:tokens`, then review the lock diff.
 3. `pnpm --dir packages/ui sync:tokens` regenerates `platform-colors.ts` from the colour roles and
    the design-scale lint's space and box tables from the `space` and box-sizing handles.
