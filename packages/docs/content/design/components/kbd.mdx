@@ -7,7 +7,7 @@ description: "A keyboard shortcut drawn as a key cap"
 import { Kbd } from "@nyte-ai/ui/kbd";
 ```
 
-Shows the shortcut for a command, one key cap per key, beside the command's label.
+Shows a command's shortcut in one shared key cap.
 
 ## Usage
 
@@ -29,18 +29,18 @@ Shows the shortcut for a command, one key cap per key, beside the command's labe
 
 ## Props
 
-Native `<kbd>` attributes pass through.
+Native `<kbd>` attributes pass through except `children`, which comes from `keys`.
 
-| Prop        | Type                  | Default | Description                     |
-| ----------- | --------------------- | ------- | ------------------------------- |
-| `keys`      | `readonly string[]`   |         |                                 |
-| `plain`     | `boolean`             | `false` | No fill, edge, or padding.      |
-| `keycap`    | `boolean`             | `false` | One square key.                 |
-| `held`      | `boolean`             | `false` | The key is pressed.             |
-| `xstyle`    | `XStyle`              |         | See [Theming](/design/theming). |
-| `className` | `string`              |         | See [Theming](/design/theming). |
-| `style`     | `React.CSSProperties` |         | See [Theming](/design/theming). |
+| Prop        | Type                  | Default  | Description                        |
+| ----------- | --------------------- | -------- | ---------------------------------- |
+| `keys`      | `readonly string[]`   | Required |                                    |
+| `plain`     | `boolean`             | `false`  | No fill, edge, or padding.         |
+| `keycap`    | `boolean`             | `false`  | Unpadded, glyph-sized minimum box. |
+| `held`      | `boolean`             | `false`  | Appearance only.                   |
+| `xstyle`    | `Restyle<"Kbd">`      |          |                                    |
+| `className` | `string`              |          |                                    |
+| `style`     | `React.CSSProperties` |          |                                    |
 
 ## Accessibility
 
-- Renders a `<kbd>` with one `<span>` per key.
+- Does not register shortcuts.

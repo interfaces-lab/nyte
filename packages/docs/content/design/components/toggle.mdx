@@ -12,7 +12,7 @@ Use it to switch one thing on and off without a form value.
 ## Usage
 
 - `iconOnly` requires `aria-label`, which also becomes the native `title`.
-- Without `iconOnly`, pass `children` as the label.
+- Without `iconOnly`, label with `children`, not `aria-label`.
 
 ## Examples
 
@@ -31,17 +31,18 @@ const [pinned, setPinned] = useState(true);
 
 ## Props
 
-Takes every Base UI `Toggle` prop. `className` and `style` take plain values, not functions of
-state.
+Takes Base UI `Toggle` props with the label constraints above.
+`className` and `style` accept values or toggle-state functions.
 
 | Prop                 | Type                                                           | Default     | Description                       |
 | -------------------- | -------------------------------------------------------------- | ----------- | --------------------------------- |
 | `indicator`          | `"fill" \| "glyph"`                                            | `"fill"`    | `"glyph"` drops the pressed fill. |
-| `size`               | `"2xs" \| "xs" \| "sm" \| "md" \| "lg" \| "xl"`                | `"md"`      | See [Button](/design/button).     |
+| `size`               | `"2xs" \| "xs" \| "sm" \| "md" \| "lg" \| "xl"`                | `"md"`      |                                   |
+| `pill`               | `boolean`                                                      | `false`     |                                   |
 | `iconOnly`           | `boolean`                                                      | `false`     |                                   |
 | `icon`               | `IconName`                                                     |             |                                   |
 | `tone`               | `"neutral" \| "primary" \| "success" \| "warning" \| "danger"` | `"neutral"` |                                   |
-| `xstyle`             | `ButtonLayout`                                                 |             | Placement and width only.         |
+| `xstyle`             | `ButtonLayout`                                                 |             |                                   |
 | `className`, `style` | see [Theming](/design/theming)                                 |             |                                   |
 
 The reference table below comes from Base UI, MIT, © Material-UI SAS.
@@ -50,6 +51,4 @@ The reference table below comes from Base UI, MIT, © Material-UI SAS.
 
 ## Accessibility
 
-- Renders a native `<button>` with `aria-pressed`. Enter and Space flip it.
-- The `aria-label` names the control, not the current state.
-- Keyboard focus shows the [focus ring](/design/focus).
+The `aria-label` names the control, not its state.

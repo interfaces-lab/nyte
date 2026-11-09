@@ -9,14 +9,16 @@ import { button, radius } from "@nyte-ai/ui/styles/schema.stylex";
 import { surfaceTheme, intent } from "@nyte-ai/ui/surface-theme";
 ```
 
-Use colour roles inside scopes, component handles for controls, and radius names for rounded
-containers. Ramps, theme mappings, and size values are private.
+Use colour roles inside scopes, component handles for controls, and radius names for containers.
+Ramps and theme mappings have no public subpath. `styles/tokens.stylex` exports variable groups
+for theme overrides.
 
 ## Usage
 
 ```tsx
 import { create, props } from "@stylexjs/stylex";
-import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
+import { role } from "@nyte-ai/ui/styles/vars.stylex";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { radius } from "@nyte-ai/ui/styles/schema.stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
 
@@ -25,63 +27,59 @@ const styles = create({
     color: role.contentSecondary,
     backgroundColor: role.fillTertiary,
     borderRadius: radius.control,
-    fontSize: type.fontBase,
   },
 });
 
 export function Status() {
-  return <span {...props(intent.success, styles.status)}>Saved</span>;
+  return <span {...props(intent.success, text.base, styles.status)}>Saved</span>;
 }
 ```
 
-The default scope is neutral gray. `surfaceTheme.gray` applies tinted roles over gray, and
-`surfaceTheme.custom` takes its hue from `--nyte-custom-hue` and `--nyte-custom-chroma-scale`. Other
-scopes are `brown`, `orange`,
-`yellow`, `green`, `blue`, `purple`, `pink`, `red`, and `teal`.
+The default scope is neutral gray. `surfaceTheme.gray` applies tinted gray roles.
+`surfaceTheme.custom` reads `--nyte-custom-hue` and `--nyte-custom-chroma-scale`.
+Other scopes are `brown`, `orange`, `yellow`, `green`, `blue`, `purple`, `pink`, `red`, and `teal`.
 
-| Colour use                    | Scope                                                  | Role                                                              |
-| ----------------------------- | ------------------------------------------------------ | ----------------------------------------------------------------- |
-| Status text                   | `intent.success`, `intent.warning`, or `intent.danger` | `contentSecondary`                                                |
-| Filled action                 | `intent.primary`                                       | `buttonFill` and `contentOnInteractiveStrong`                     |
-| Syntax token                  | A hue per token kind                                   | `contentSecondary`                                                |
-| Dot, file glyph, chart series | A hue per category                                     | `contentAccent`                                                   |
-| Added diff line or word       | `surfaceTheme.green`                                   | `fillTertiary` for the line, `fillSecondary` over it for the word |
-| Removed diff line or word     | `surfaceTheme.red`                                     | The same fill roles                                               |
-| Avatar                        | A hue per avatar                                       | `fillTertiary` and `contentPrimary`                               |
+| Colour use    | Scope                                               | Role                                       |
+| ------------- | --------------------------------------------------- | ------------------------------------------ |
+| Status        | `intent.success`, `intent.warning`, `intent.danger` | `contentSecondary`                         |
+| Filled action | `intent.primary`                                    | `buttonFill`, `contentOnInteractiveStrong` |
+| Dot, glyph    | Category hue                                        | `contentAccent`                            |
+| Chart         | Category hue                                        | `chartSeries`                              |
+| Avatar        | Avatar hue                                          | `fillTertiary`, `contentPrimary`           |
 
-Apply a scope with `props(surfaceTheme.blue, styles.item)`. Scope the list when every item shares a
-hue.
+Apply scopes with `props(surfaceTheme.blue, styles.item)`. Scope a list when items share a hue.
+
+Code highlighting uses `codeThemes` from `@nyte-ai/ui/code-themes`. Diff tints are not
+`fillTertiary` or `fillSecondary`.
 
 ## Layers
 
-| Kind       | Order                                            | Consumer API                                                                                                                       |
-| ---------- | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
-| Colour     | Ramps → theme → neutral or tinted roles          | `role`                                                                                                                             |
-| Size       | Values → components → app layout                 | `control`, `button`, `input`, `switchControl`, `checkbox`, `row`, `menu`, `dialog`, `toast`, `glyph`, `clipboardPreview`, `radius` |
-| Type       | Font inputs and derived type scale               | `type`                                                                                                                             |
-| Motion     | Durations and easing                             | `motion`                                                                                                                           |
-| Shadow     | Size values and shadow inks → elevation          | `shadow`                                                                                                                           |
-| Appearance | Display, pointer, transparency, and focus inputs | `appearance`                                                                                                                       |
+| Kind                | Consumer API                                                                                                                                             |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Colour              | `role`                                                                                                                                                   |
+| Size                | `control`, `button`, `input`, `switchControl`, `checkbox`, `row`, `menu`, `dialog`, `command`, `avatar`, `slider`, `glyph`, `clipboardPreview`, `radius` |
+| Spacing and targets | `space`, `target`                                                                                                                                        |
+| Stacking            | `layer`                                                                                                                                                  |
+| Media               | `media`                                                                                                                                                  |
+| Type                | `type`                                                                                                                                                   |
+| Motion              | `motion`                                                                                                                                                 |
+| Shadow              | `shadow`                                                                                                                                                 |
+| Appearance          | `appearance`                                                                                                                                             |
 
-`radius` has five names: `indicator`, `control`, `card`, `surface`, and `pill`.
-Component radii stay on their component handles. Component sizes grow under `(pointer: coarse)`.
+`radius` names are `indicator`, `control`, `card`, `surface`, and `pill`.
+Component radii use component handles.
 
-`control` is the one control-height scale: `height2xs` to `heightXl`, 16 to 36px, and 28 to
-48px under a coarse pointer. Buttons, inputs, and toggles take a step. `row.heightMd` and
-`row.heightLg` take the `md` and `lg` steps but never fall below `target.min`, so a row or menu
-item is 44px on touch.
+`control.height2xs` through `control.heightXl` run from 16–36px, or 28–48px under a coarse pointer.
+`row.heightMd` and `row.heightLg` enforce `target.min`, reaching 44px on touch.
+Glyphs, avatars, and container radii stay fixed.
 
-Roles resolve through `light-dark()`, so `color-scheme` on an ancestor picks the appearance. The
-focus ring ignores hue scopes.
+Scheme-dependent roles follow `color-scheme`. `chartSeries` and `strokeAccent` use fixed ramp steps.
+Focus ignores hue scopes.
 
-Content, fills, and strokes are stairs. Each step has one job, each content step keeps a contrast
-floor on every surface, and hover moves up one step. See [Colors](/design/colors) for every step
-and the rules.
-`contentAccent` is the scope's hue as ink. Under `intent.danger` it is the error colour; under a
-category scope it is that hue.
+See [Colors](/design/colors) for stairs and contrast floors. `contentAccent` supplies scoped ink,
+including errors under `intent.danger`.
 
-Import handles instead of writing `var(--nyte-…)`. Use a design-scale literal when no handle
-exists.
+Import handles instead of raw variables. Use scale literals when no handle exists.
 
 ## Native colours
 
@@ -92,13 +90,16 @@ const page = platformColors.light.bgBase;
 const status = platformScopes.light.green.contentSecondary;
 ```
 
-Native colours contain resolved values for each appearance. Use a scope and role instead of a
-fixed status or syntax colour.
+`platformColors` snapshots neutral light/dark values at normal contrast. `platformScopes` snapshots
+selected category roles for ten fixed hues, excluding `custom` and intent overrides.
+Neither reacts to runtime appearance overrides.
 
 ## Compiled styles
 
-Without a StyleX compiler, load the package stylesheet.
+Without a StyleX compiler, load compiled component styles and the browser baseline once.
+Your own `create()` calls and source-only token modules still need compilation.
 
 ```css
+@import "@nyte-ai/ui/styles/base.css";
 @import "@nyte-ai/ui/ui.css";
 ```

@@ -11,7 +11,7 @@ A card with more about its trigger. For one line, use [Tooltip](/design/tooltip)
 
 ## Usage
 
-- Touch never opens the card, so repeat its content elsewhere.
+- Keep essential content available without the card.
 
 ## Anatomy
 
@@ -96,45 +96,26 @@ const styles = create({
 </PreviewCard>;
 ```
 
-### One card for a list
+### Controlled
 
 ```tsx
-import {
-  createPreviewCardHandle,
-  PreviewCard,
-  PreviewCardContent,
-  PreviewCardTrigger,
-} from "@nyte-ai/ui/preview-card";
+import { PreviewCard, PreviewCardContent, PreviewCardTrigger } from "@nyte-ai/ui/preview-card";
+import { useState } from "react";
 
-const [handle] = useState(() => createPreviewCardHandle<Suggestion>());
+const [open, setOpen] = useState(false);
 
-<>
-  {suggestions.map((suggestion) => (
-    <PreviewCardTrigger
-      key={suggestion.id}
-      handle={handle}
-      payload={suggestion}
-      delay={0}
-      render={<div role="option">{suggestion.label}</div>}
-    />
-  ))}
-  <PreviewCard handle={handle}>
-    {({ payload }) =>
-      payload === undefined ? null : (
-        <PreviewCardContent side="right" align="end" sideOffset={6}>
-          {payload.description}
-        </PreviewCardContent>
-      )
-    }
-  </PreviewCard>
-</>;
+<PreviewCard open={open} onOpenChange={setOpen}>
+  <PreviewCardTrigger href="https://nyte.sh">Nyte</PreviewCardTrigger>
+  <PreviewCardContent>More about Nyte</PreviewCardContent>
+</PreviewCard>;
 ```
 
 ## Props
 
-`PreviewCardContent` takes `xstyle`, `className`, and `style`. Its `className` and `style` cannot
-be functions of state. See [Theming](/design/theming). `PreviewCard`,
-`PreviewCardTrigger`, and `createPreviewCardHandle` are Base UI's.
+`PreviewCardContent` takes `xstyle`, `className`, and `style`. Its `className` and `style` accept
+plain values or functions of popup state. See [Theming](/design/theming).
+
+`PreviewCard` and `PreviewCardTrigger` pass through Base UI unstyled. No handle factory is exported.
 
 The reference tables below come from Base UI, MIT, © Material-UI SAS.
 
@@ -148,17 +129,17 @@ The reference tables below come from Base UI, MIT, © Material-UI SAS.
 
 ### PreviewCardContent
 
-Renders the portal, positioner, and popup. Positioning props go to the positioner and the rest to
-the popup.
+Only the positioning props in this table are accepted. `ref`, `className`, and `style` target the popup.
 
-| Prop                 | Type                                                                       | Default    |
-| -------------------- | -------------------------------------------------------------------------- | ---------- |
-| `side`               | `"top" \| "bottom" \| "left" \| "right" \| "inline-start" \| "inline-end"` | `"bottom"` |
-| `align`              | `"start" \| "center" \| "end"`                                             | `"center"` |
-| `sideOffset`         | `number \| OffsetFunction`                                                 | `4`        |
-| `alignOffset`        | `number \| OffsetFunction`                                                 |            |
-| `collisionAvoidance` | `CollisionAvoidance`                                                       |            |
-| `tint`               | `Tint`                                                                     |            |
+| Prop                 | Type                                                                                                           | Default                       |
+| -------------------- | -------------------------------------------------------------------------------------------------------------- | ----------------------------- |
+| `side`               | `"top" \| "bottom" \| "left" \| "right" \| "inline-start" \| "inline-end"`                                     | `"bottom"`                    |
+| `align`              | `"start" \| "center" \| "end"`                                                                                 | `"center"`                    |
+| `sideOffset`         | `number \| OffsetFunction`                                                                                     | `4`                           |
+| `alignOffset`        | `number \| OffsetFunction`                                                                                     | `0`                           |
+| `anchor`             | `Element \| VirtualElement \| RefObject<Element \| null> \| (() => Element \| VirtualElement \| null) \| null` | the trigger                   |
+| `collisionAvoidance` | `CollisionAvoidance`                                                                                           | `{ fallbackAxisSide: "end" }` |
+| `tint`               | `Tint`                                                                                                         |                               |
 
 #### Positioner
 
@@ -168,12 +149,6 @@ the popup.
 
 <include>../../base-ui-reference/preview-card/Popup.md</include>
 
-### createPreviewCardHandle
-
-<include>../../base-ui-reference/preview-card/createHandle.md</include>
-
 ## Accessibility
 
-- Keyboard focus on the trigger opens the card after `delay`. Escape and an outside press close
-  it.
-- The card appears without motion under `prefers-reduced-motion: reduce`.
+- Hover or keyboard focus opens the card, not touch. Escape closes it.

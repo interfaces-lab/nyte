@@ -12,8 +12,9 @@ A cancellable modal that takes focus. For a required response, use
 
 ## Usage
 
-- Every dialog needs a `Dialog.Title` as its accessible name. To hide it, use `srOnly` from
-  [Focus](/design/focus).
+- Name the dialog with `Dialog.Title`. To hide it, apply `srOnly` from [Focus](/design/focus)
+  to a native wrapper, not the title.
+- Include a `Dialog.Close` inside modal popups so touch screen readers can leave them.
 
 ## Anatomy
 
@@ -70,50 +71,59 @@ const [open, setOpen] = useState(false);
   <Dialog.Popup>
     <Dialog.Title>Rename Session</Dialog.Title>
     <form
-      onSubmit={async () => {
+      onSubmit={async (event) => {
+        event.preventDefault();
         await save();
         setOpen(false);
       }}
     >
       …
     </form>
+    <Dialog.Close>Cancel</Dialog.Close>
   </Dialog.Popup>
 </Dialog.Root>;
 ```
 
+Inside `Dialog.Root`.
+
 ```tsx
 import { Dialog } from "@nyte-ai/ui/dialog";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
-import { create } from "@stylexjs/stylex";
+import { create, props } from "@stylexjs/stylex";
 
 const styles = create({
   popup: { gap: 0, width: "min(610px, calc(100vw - 48px))", padding: 0 },
 });
 
 <Dialog.Popup xstyle={styles.popup}>
-  <Dialog.Title xstyle={srOnly}>Search</Dialog.Title>…
+  <div {...props(srOnly)}>
+    <Dialog.Title>Search</Dialog.Title>
+  </div>
+  …<Dialog.Close>Close</Dialog.Close>
 </Dialog.Popup>;
 ```
 
 ## Props
 
-| Part                 | Renders                        | Styling                      |
-| -------------------- | ------------------------------ | ---------------------------- |
-| `Dialog.Root`        | Nothing                        | None                         |
-| `Dialog.Trigger`     | `<button>`                     | None                         |
-| `Dialog.Popup`       | A portal, the scrim, a `<div>` | Bordered translucent panel   |
-| `Dialog.Header`      | `<div>`                        | Stacks title and description |
-| `Dialog.Title`       | `<h2>`                         | Large, semibold              |
-| `Dialog.Description` | `<p>`                          | Body size, secondary text    |
-| `Dialog.Footer`      | `<div>`                        | Right-aligns its buttons     |
-| `Dialog.Close`       | `<button>`                     | None                         |
+| Part                 | Renders              |
+| -------------------- | -------------------- |
+| `Dialog.Trigger`     | `<button>`           |
+| `Dialog.Popup`       | Portal, scrim, popup |
+| `Dialog.Header`      | `<div>`              |
+| `Dialog.Title`       | `<h2>`               |
+| `Dialog.Description` | `<p>`                |
+| `Dialog.Footer`      | `<div>`              |
+| `Dialog.Close`       | `<button>`           |
 
-Except `Dialog.Root`, each part takes `xstyle`, `className`, and `style`. `className` and `style`
-take plain values, not functions of state. See [Theming](/design/theming).
+Except `Dialog.Root`, each part takes `xstyle`, `className`, and `style`.
+`className` and `style` accept state functions on Base UI parts, plain values on Header and Footer.
+See [Theming](/design/theming).
 
 The part tables below come from Base UI, MIT, © Material-UI SAS.
 
 ### Root
+
+`Dialog.Root` passes through Base UI unstyled. No handle factory is exported.
 
 <include>../../base-ui-reference/dialog/Root.md</include>
 
@@ -123,12 +133,11 @@ The part tables below come from Base UI, MIT, © Material-UI SAS.
 
 ### Popup
 
-Renders the portal, scrim, and popup. It takes the Base UI popup props, including `ref`, and scrolls
-when its content is taller than the window.
+Takes Base UI popup props, including `ref`.
 
-| Prop   | Type   | Default | Description                                         |
-| ------ | ------ | ------- | --------------------------------------------------- |
-| `tint` | `Tint` |         | Scopes the panel to a hue. The scrim stays neutral. |
+| Prop   | Type   | Description                     |
+| ------ | ------ | ------------------------------- |
+| `tint` | `Tint` | Popup hue. Scrim stays neutral. |
 
 <include>../../base-ui-reference/dialog/Popup.md</include>
 
@@ -146,9 +155,5 @@ when its content is taller than the window.
 
 ## Accessibility
 
-- The popup has `role="dialog"`, labelled by `Dialog.Title` and described by `Dialog.Description`.
-- Focus moves into the popup on open and returns to the trigger on close. Tab cycles inside the
-  popup.
-- Escape closes. Outside press closes unless `disablePointerDismissal` is set on the root.
-- While open, outside content is inert and page scroll is locked.
-- `initialFocus` and `finalFocus` on the popup override where focus lands.
+- `Dialog.Description` describes the popup.
+- `initialFocus` and `finalFocus` override focus targets.

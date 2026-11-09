@@ -1,6 +1,6 @@
 ---
 title: Select
-description: "A compact trigger that picks one value from a list"
+description: "A compact trigger for picking values from a list"
 ---
 
 ```ts title="Import"
@@ -13,8 +13,7 @@ actions, use [Menu](/design/menu).
 ## Usage
 
 - Pass `items` to `Select` so `SelectValue` shows the chosen label instead of the raw value.
-- `onValueChange` can receive `null`.
-- Name the trigger with `aria-label`.
+- `onValueChange` can receive `null` in single-selection mode. With `multiple`, values and callbacks use arrays.
 
 ## Anatomy
 
@@ -81,9 +80,10 @@ function ThemeSelect() {
 
 ## Props
 
-Styled parts take `xstyle`, `className`, and `style`; see
-[Theming](/design/theming). Each sets `data-slot` to its kebab-case name, such as
-`select-item`. `Select` passes through Base UI.
+Styled parts take `xstyle`. `className` and `style` accept values or Base UI part-state functions.
+See [Theming](/design/theming).
+
+`Select` and `SelectValue` pass through Base UI unstyled, without `xstyle`.
 
 The reference tables below come from Base UI, MIT, © Material-UI SAS.
 
@@ -93,9 +93,12 @@ The reference tables below come from Base UI, MIT, © Material-UI SAS.
 
 ### SelectTrigger
 
-| Prop    | Type                   | Default      | Description                                         |
-| ------- | ---------------------- | ------------ | --------------------------------------------------- |
-| `width` | `"standard" \| "wide"` | `"standard"` | `wide` removes the 112px minimum and 180px maximum. |
+Takes Base UI trigger props except `render`. Style callbacks receive Button state (`disabled`).
+
+| Prop     | Type                   | Default      | Description                |
+| -------- | ---------------------- | ------------ | -------------------------- |
+| `width`  | `"standard" \| "wide"` | `"standard"` | Maximum `180px` or `100%`. |
+| `xstyle` | `ButtonLayout`         |              |                            |
 
 <include>../../base-ui-reference/select/Trigger.md</include>
 
@@ -105,18 +108,18 @@ The reference tables below come from Base UI, MIT, © Material-UI SAS.
 
 ### SelectContent
 
-Renders the portal, positioner, popup, and list. The positioning props below go to the positioner.
-Everything else goes to the popup.
+The popup is the listbox. `render`, `className`, `style`, and `xstyle` target the popup.
 
-| Prop                   | Type                                                                       | Default                                                      | Description                                                                                   |
-| ---------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
-| `side`                 | `"top" \| "bottom" \| "left" \| "right" \| "inline-start" \| "inline-end"` | `"bottom"`                                                   |                                                                                               |
-| `align`                | `"start" \| "center" \| "end"`                                             | `"end"`                                                      |                                                                                               |
-| `sideOffset`           | `number \| OffsetFunction`                                                 | `4`                                                          | Pixels. Ignored while the list is aligned to the trigger.                                     |
-| `alignOffset`          | `number \| OffsetFunction`                                                 |                                                              |                                                                                               |
-| `alignItemWithTrigger` | `boolean`                                                                  | `true`                                                       | Lays the list over the trigger with the chosen item on the trigger's value. Mouse input only. |
-| `collisionAvoidance`   | `CollisionAvoidance`                                                       | `{ side: "flip", align: "shift", fallbackAxisSide: "none" }` |                                                                                               |
-| `tint`                 | `Tint`                                                                     |                                                              | Scopes the popup to a hue.                                                                    |
+| Prop                   | Type                                                                       | Default                                                      | Description                                    |
+| ---------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------ | ---------------------------------------------- |
+| `side`                 | `"top" \| "bottom" \| "left" \| "right" \| "inline-start" \| "inline-end"` | `"bottom"`                                                   |                                                |
+| `align`                | `"start" \| "center" \| "end"`                                             | `"end"`                                                      |                                                |
+| `sideOffset`           | `number \| OffsetFunction`                                                 | `4`                                                          | Ignored during trigger alignment.              |
+| `alignOffset`          | `number \| OffsetFunction`                                                 | `0`                                                          |                                                |
+| `alignItemWithTrigger` | `boolean`                                                                  | `true`                                                       | Aligns selection over trigger for mouse input. |
+| `collisionAvoidance`   | `CollisionAvoidance`                                                       | `{ side: "flip", align: "shift", fallbackAxisSide: "none" }` |                                                |
+| `tint`                 | `Tint`                                                                     |                                                              |                                                |
+| `xstyle`               | `Restyle<"SelectContent">`                                                 |                                                              |                                                |
 
 #### Positioner
 
@@ -126,18 +129,14 @@ Everything else goes to the popup.
 
 <include>../../base-ui-reference/select/Popup.md</include>
 
-#### List
-
-<include>../../base-ui-reference/select/List.md</include>
-
 ### SelectItem
+
+| Prop     | Type                    |
+| -------- | ----------------------- |
+| `xstyle` | `Restyle<"SelectItem">` |
 
 <include>../../base-ui-reference/select/Item.md</include>
 
 ## Accessibility
 
-- The trigger has `role="combobox"`, the list `role="listbox"`, and each option `role="option"`
-  with `aria-selected`.
-- Arrow keys move through the options, Enter picks, and Escape closes. Typing matches option
-  labels.
-- Keyboard focus on the trigger shows the [focus ring](/design/focus).
+Name the trigger with `aria-label`.

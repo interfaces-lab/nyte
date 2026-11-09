@@ -11,10 +11,10 @@ A list or navigation row where the painted row is one target and actions sit bes
 
 ## Usage
 
-- The row inherits its typography.
-- Clicking anywhere on the painted row activates `Row.Primary`, including padding and sibling
-  `Row.Meta`. Child controls keep their own actions. Text selection and Shift-click do not activate
-  the row.
+- Put the main action in `Row.Primary` and sibling controls in `Row.Actions`.
+- Use `variant="nav"` without `Row.Primary` when the row itself is the button. Do not nest other
+  controls inside that button.
+- With `variant="bare"`, supply layout, states, and focus styling through `xstyle`.
 - Omit `Row.Body` when there is no `Row.Description`.
 
 ## Anatomy
@@ -164,59 +164,52 @@ const styles = create({
 
 ### Row
 
-Renders a `<div>`, or a `<button>` with `variant="nav"`, and takes that element's props plus:
+Renders a `<div>`, or a `<button>` with `variant="nav"`, and takes its native props.
 
-| Prop                           | Type                                                   | Default  | Description                                            |
-| ------------------------------ | ------------------------------------------------------ | -------- | ------------------------------------------------------ |
-| `variant`                      | `"list" \| "nav"`                                      | `"list"` | `nav` is itself the button and takes no `Row.Primary`. |
-| `size`                         | `"md" \| "lg"`                                         | `"md"`   | 28px or 32px, 44px on a coarse pointer.                |
-| `interactive`                  | `boolean`                                              | `false`  | Paints hover, focus, and selected states.              |
-| `selected`                     | `boolean`                                              | `false`  | Sets `data-selected`.                                  |
-| `revealActions`                | `boolean`                                              | `false`  | Hides actions until hover or focus.                    |
-| `render`                       | `ReactElement \| ((props: HTMLProps) => ReactElement)` |          |                                                        |
-| `className`, `style`, `xstyle` | see [Theming](/design/theming)                         |          |                                                        |
-
-### Row.Primary
-
-`type="button"` applies unless `render` replaces the element.
+| Prop                           | Type                                                              | Default  | Description                                                          |
+| ------------------------------ | ----------------------------------------------------------------- | -------- | -------------------------------------------------------------------- |
+| `variant`                      | `"list" \| "nav" \| "bare"`                                       | `"list"` | `bare` omits standard sizing, fill, action reveal, and focus styles. |
+| `size`                         | `"md" \| "lg"`                                                    | `"md"`   |                                                                      |
+| `interactive`                  | `boolean`                                                         | `false`  | Enables hover, focus-within, and selected fill.                      |
+| `selected`                     | `boolean`                                                         | `false`  | Sets `data-selected`.                                                |
+| `revealActions`                | `boolean`                                                         | `false`  |                                                                      |
+| `render`                       | `ReactElement \| ((props: HTMLProps, state: {}) => ReactElement)` |          |                                                                      |
+| `className`, `style`, `xstyle` | see [Theming](/design/theming)                                    |          |                                                                      |
 
 ### Row.Actions
 
-| Prop        | Type                    | Default    | Description                                               |
-| ----------- | ----------------------- | ---------- | --------------------------------------------------------- |
-| `placement` | `"inline" \| "overlay"` | `"inline"` | Takes space in the row, or floats over its trailing edge. |
+| Prop        | Type                    | Default    | Description                        |
+| ----------- | ----------------------- | ---------- | ---------------------------------- |
+| `placement` | `"inline" \| "overlay"` | `"inline"` | In flow or over the trailing edge. |
 
 ### Parts
 
-Every part takes `render`, `className`, `style`, `xstyle`, and the props of the element it renders.
+Every part takes `render`, plain `className` and `style`, `xstyle`, and its default element's native
+props. `Row.Primary`, `Row.Backdrop`, and bare `Row` accept unrestricted `XStyle`.
 
-| Part              | Renders    | Data slot         | Description                         |
-| ----------------- | ---------- | ----------------- | ----------------------------------- |
-| `Row.Backdrop`    | `<span>`   | `row-backdrop`    | Selection layer behind the content. |
-| `Row.Primary`     | `<button>` | `row-primary`     | Primary action for the painted row. |
-| `Row.Leading`     | `<span>`   | `row-leading`     | Fixed-width lane.                   |
-| `Row.Body`        | `<span>`   | `row-body`        | Label and description stack.        |
-| `Row.Label`       | `<span>`   | `row-label`       | Ellipsized title.                   |
-| `Row.Description` | `<span>`   | `row-description` | Smaller, ellipsized second line.    |
-| `Row.Meta`        | `<span>`   | `row-meta`        | Trailing text with tabular figures. |
-| `Row.Actions`     | `<span>`   | `row-actions`     | Action lane next to `Row.Primary`.  |
+| Part              | Renders    | Data slot         | Description                  |
+| ----------------- | ---------- | ----------------- | ---------------------------- |
+| `Row.Backdrop`    | `<span>`   | `row-backdrop`    | Selection layer.             |
+| `Row.Primary`     | `<button>` | `row-primary`     |                              |
+| `Row.Leading`     | `<span>`   | `row-leading`     | Fixed-width lane.            |
+| `Row.Body`        | `<span>`   | `row-body`        | Label and description stack. |
+| `Row.Label`       | `<span>`   | `row-label`       | Ellipsized.                  |
+| `Row.Description` | `<span>`   | `row-description` | Smaller, ellipsized.         |
+| `Row.Meta`        | `<span>`   | `row-meta`        | Tabular figures.             |
+| `Row.Actions`     | `<span>`   | `row-actions`     |                              |
 
 ### Row state and layout
 
-| Variable                | Default                                        | Description                                                 |
-| ----------------------- | ---------------------------------------------- | ----------------------------------------------------------- |
-| `--_row-padding-inline` | `row.paddingInlineMd` or `row.paddingInlineLg` | Inline padding and overlay action inset.                    |
-| `--_row-fill`           | `transparent`                                  | Background. Leave `interactive` off when owning its states. |
-| `--_row-meta-color`     | `role.contentSecondary`                        | Metadata color.                                             |
-
-`revealActions` sets `--_row-actions-display` to `none` when hidden and `inline-flex` when
-visible, and `--_row-actions-opacity` to `0` or `1`. Both are visible without hover support.
+| Variable                | Default                                        | Description                                 |
+| ----------------------- | ---------------------------------------------- | ------------------------------------------- |
+| `--_row-padding-inline` | `row.paddingInlineMd` or `row.paddingInlineLg` | Overlay inset.                              |
+| `--_row-fill`           | `transparent`                                  | Leave `interactive` off when owning states. |
+| `--_row-meta-color`     | `role.contentSecondary`                        |                                             |
 
 ## Accessibility
 
-- A `list` row is a `<div>` with no role.
-- `Row.Primary` draws the focus ring on keyboard focus.
-- `Row.Backdrop` is `aria-hidden`.
-- `selected` adds no ARIA. Add `aria-current` or `aria-selected` on `Row.Primary`.
-- An icon-only button inside `Row.Actions` needs `aria-label`. `revealActions` hides the lane with
-  `display: none`, so hidden actions leave the tab order. Focus on the primary reveals them.
+- Enter and Space activate `Row.Primary` and `nav` buttons.
+- Name icon-only controls in `Row.Actions` with `aria-label`.
+
+- `selected` adds no ARIA. Use `aria-current` on `Row.Primary` or a `nav` row for the current page.
+  Use `aria-selected` only with a role that supports it, not on a plain button.

@@ -7,26 +7,26 @@ description: "File and image attachments"
 import { Attachment, AttachmentContent, AttachmentTitle } from "@nyte-ai/ui/attachment";
 ```
 
-Parts for attached files and images. Your app handles uploads, previews and removal.
+Your app handles uploads, previews and removal.
 
 ## Usage
 
 - Style with `className` and `style`, not `xstyle`.
-- `AttachmentAction` uses Nyte button styles unless `render` replaces it.
+- For Trigger and Action, set `nativeButton={false}` when `render` produces a non-button element.
 
 ## Anatomy
 
-| Part                    | Element                     | Parent              |
-| ----------------------- | --------------------------- | ------------------- |
-| `AttachmentGroup`       | `div`                       | Your container      |
-| `Attachment`            | `div`                       | `AttachmentGroup`   |
-| `AttachmentMedia`       | `div`                       | `Attachment`        |
-| `AttachmentContent`     | `div`                       | `Attachment`        |
-| `AttachmentTitle`       | `span`                      | `AttachmentContent` |
-| `AttachmentDescription` | `span`                      | `AttachmentContent` |
-| `AttachmentTrigger`     | `button`, or `render`       | `Attachment`        |
-| `AttachmentActions`     | `div`                       | `Attachment`        |
-| `AttachmentAction`      | Base UI button, or `render` | `AttachmentActions` |
+| Part                    | Default element | Parent                              |
+| ----------------------- | --------------- | ----------------------------------- |
+| `AttachmentGroup`       | `div`           | Your container                      |
+| `Attachment`            | `div`           | `AttachmentGroup` or your container |
+| `AttachmentMedia`       | `div`           | `Attachment`                        |
+| `AttachmentContent`     | `div`           | `Attachment`                        |
+| `AttachmentTitle`       | `span`          | `AttachmentContent`                 |
+| `AttachmentDescription` | `span`          | `AttachmentContent`                 |
+| `AttachmentTrigger`     | `button`        | `Attachment`                        |
+| `AttachmentActions`     | `div`           | `Attachment`                        |
+| `AttachmentAction`      | Base UI button  | `AttachmentActions`                 |
 
 ## Examples
 
@@ -40,22 +40,22 @@ Parts for attached files and images. Your app handles uploads, previews and remo
 
 ## Props
 
-Parts take native props and refs and set a matching `data-slot`.
+Parts take native props and refs.
 
-| Part                | Prop          | Type                                                                                         | Default                           |
-| ------------------- | ------------- | -------------------------------------------------------------------------------------------- | --------------------------------- |
-| `Attachment`        | `state`       | `"idle" \| "uploading" \| "processing" \| "error" \| "done"`                                 | `"done"`                          |
-| `Attachment`        | `size`        | `"default" \| "sm" \| "xs" \| null`                                                          | `"default"`                       |
-| `Attachment`        | `orientation` | `"horizontal" \| "vertical" \| null`                                                         | `"horizontal"`                    |
-| `AttachmentMedia`   | `variant`     | `"icon" \| "image" \| null`                                                                  | `"icon"`                          |
-| `AttachmentTrigger` | `render`      | `ReactElement \| render callback`                                                            | `button`                          |
-| `AttachmentTrigger` | `type`        | Native button type                                                                           | `"button"`, only without `render` |
-| `AttachmentAction`  | `variant`     | `"default" \| "outline" \| "secondary" \| "ghost" \| "destructive" \| "link" \| null`        | `"ghost"`                         |
-| `AttachmentAction`  | `size`        | `"default" \| "xs" \| "sm" \| "lg" \| "icon" \| "icon-xs" \| "icon-sm" \| "icon-lg" \| null` | `"icon-xs"`                       |
+| Part               | Prop          | Type                                                                                         | Default        | Description                 |
+| ------------------ | ------------- | -------------------------------------------------------------------------------------------- | -------------- | --------------------------- |
+| `Attachment`       | `state`       | `"idle" \| "uploading" \| "processing" \| "error" \| "done"`                                 | `"done"`       | Sets `data-state`.          |
+| `Attachment`       | `size`        | `"default" \| "sm" \| "xs" \| null`                                                          | `"default"`    |                             |
+| `Attachment`       | `orientation` | `"horizontal" \| "vertical" \| null`                                                         | `"horizontal"` |                             |
+| `AttachmentMedia`  | `variant`     | `"icon" \| "image" \| null`                                                                  | `"icon"`       |                             |
+| `AttachmentAction` | `variant`     | `"default" \| "outline" \| "secondary" \| "ghost" \| "destructive" \| "link" \| null`        | `"ghost"`      | `null` uses ghost styling.  |
+| `AttachmentAction` | `size`        | `"default" \| "xs" \| "sm" \| "lg" \| "icon" \| "icon-xs" \| "icon-sm" \| "icon-lg" \| null` | `"icon-xs"`    | `null` uses default sizing. |
 
-`Attachment` sets `data-state`, `data-size` and `data-orientation`. Media sets `data-variant`. `null` omits the matching class and attribute. A `null` action variant means `"ghost"`.
+Only Trigger and Action accept `className` and `style` callbacks receiving `{ disabled: boolean }`.
 
-Only `AttachmentAction` accepts state callbacks for `className` and `style`.
+Trigger and Action take Base UI button props.
+
+The reference tables below come from Base UI, MIT, © Material-UI SAS.
 
 <include>../../base-ui-reference/button/Button.md</include>
 

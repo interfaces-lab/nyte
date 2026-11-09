@@ -7,13 +7,15 @@ description: "A control that turns a setting on or off"
 import { Switch, SwitchField } from "@nyte-ai/ui/switch";
 ```
 
-Use it for a setting that applies on change. `SwitchField` is a switch at the end of a labelled
-row, with an optional description.
+For settings that apply on change.
 
 ## Usage
 
-- `Switch` shows no text. Its `label` becomes the `aria-label`. For visible text, use
-  `SwitchField`.
+- `Switch.label` becomes its `aria-label`. Use `SwitchField` for visible text.
+
+## Anatomy
+
+`SwitchField` contains label text, an optional description, then the switch. The thumb is built in. Do not pass children.
 
 ## Examples
 
@@ -45,13 +47,12 @@ const [wrap, setWrap] = useState(true);
 
 ### Switch
 
-Takes every Base UI `Switch.Root` prop except `children`. `className` and `style` take plain
-values, not functions of state. The thumb is built in.
+Takes Base UI `Switch.Root` props except `children`. `className` and `style` accept values or switch-state functions.
 
-| Prop                           | Type                           | Default | Description |
-| ------------------------------ | ------------------------------ | ------- | ----------- |
-| `label`                        | `string`                       |         | Required.   |
-| `className`, `style`, `xstyle` | see [Theming](/design/theming) |         |             |
+| Prop                           | Type                           | Description |
+| ------------------------------ | ------------------------------ | ----------- |
+| `label`                        | `string`                       | Required.   |
+| `className`, `style`, `xstyle` | see [Theming](/design/theming) |             |
 
 The reference table below comes from Base UI, MIT, © Material-UI SAS.
 
@@ -59,18 +60,15 @@ The reference table below comes from Base UI, MIT, © Material-UI SAS.
 
 ### SwitchField
 
-Takes every `Switch` prop except `aria-label`, `aria-labelledby`, and `nativeButton`.
+Takes `Switch` props except `aria-label`, `aria-labelledby`, and `nativeButton`.
+`className`, `style`, and `xstyle` style the row. Callbacks receive Base UI `Field.Root` state.
 
-| Prop                           | Type                           | Default | Description                      |
-| ------------------------------ | ------------------------------ | ------- | -------------------------------- |
-| `label`                        | `string`                       |         | Required. Names the switch.      |
-| `description`                  | `string`                       |         | Secondary line under the label.  |
-| `className`, `style`, `xstyle` | see [Theming](/design/theming) |         | Apply to the row, not the track. |
+| Prop                           | Type                           | Description      |
+| ------------------------------ | ------------------------------ | ---------------- |
+| `label`                        | `string`                       | Required.        |
+| `description`                  | `string`                       | Below the label. |
+| `className`, `style`, `xstyle` | see [Theming](/design/theming) |                  |
 
 ## Accessibility
 
-- The root carries `role="switch"` and `aria-checked`. Space and Enter toggle it.
-- `readOnly` keeps the switch focusable but blocks changes.
-- `SwitchField` renders a `<label>`. Its `label` text names the switch through `aria-labelledby`,
-  and `description` is added to `aria-describedby`.
-- Keyboard focus shows the [focus ring](/design/focus).
+`SwitchField` connects `label` through `aria-labelledby` and `description` through `aria-describedby`.

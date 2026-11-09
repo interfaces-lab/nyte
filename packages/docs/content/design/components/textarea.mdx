@@ -7,11 +7,11 @@ description: "A multi-line field with vertical resize"
 import { Textarea } from "@nyte-ai/ui/textarea";
 ```
 
-A native `<textarea>` in the frame of [Input](/design/input).
+A native `<textarea>` framed like [Input](/design/input).
 
 ## Usage
 
-- It resizes vertically. `resize: "none"` in `xstyle` turns that off.
+- Disable resizing with `style={{ resize: "none" }}`, not `xstyle`.
 
 ## Examples
 
@@ -25,14 +25,14 @@ A native `<textarea>` in the frame of [Input](/design/input).
 
 ## Props
 
-Takes every `<textarea>` prop plus:
+Native `<textarea>` props. `className` and `style` take plain values.
 
-| Prop                           | Type                           | Default    | Description |
-| ------------------------------ | ------------------------------ | ---------- | ----------- |
-| `variant`                      | `"raised" \| "quiet"`          | `"raised"` |             |
-| `size`                         | `"md" \| "lg" \| "xl"`         | `"md"`     |             |
-| `className`, `style`, `xstyle` | see [Theming](/design/theming) |            |             |
+| Prop                           | Type                           | Default    |
+| ------------------------------ | ------------------------------ | ---------- |
+| `variant`                      | `"raised" \| "quiet"`          | `"raised"` |
+| `size`                         | `"md" \| "lg" \| "xl"`         | `"md"`     |
+| `className`, `style`, `xstyle` | see [Theming](/design/theming) |            |
 
 ## Accessibility
 
-Focus recolors the border. `aria-invalid` turns it red.
+Name it with a `<label>` or `aria-label`.

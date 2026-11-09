@@ -11,30 +11,31 @@ A form that shows one question at a time. Your app handles persistence and submi
 
 ## Usage
 
-- Place parts with `xstyle`. The component owns colors, typography, spacing and selection indicators. Navigation uses Nyte button styles unless `render` replaces them.
-- Give each item a unique `name`.
-- Pass `items` to server-render the initial order and state. Control the step with `item` and `onItemChange`.
-- Read answers from `FormData` in the root's `onSubmit`.
+- Give items unique `name` values and choices unique `value` values within their item.
+- For server rendering, keep `items` names, choice order, `disabled` and `required` synchronized with rendered parts.
+- Control steps with `item` and `onItemChange`.
+- Read `FormData` in `onSubmit`, using `getAll(name)` for multiple answers. Skipped answers are excluded.
+- Keep items mounted. Next requires an answer. Use Skip for unanswered optional items.
 
 ## Anatomy
 
-| Part                             | Element                                      | Parent          |
-| -------------------------------- | -------------------------------------------- | --------------- |
-| `Questionnaire`                  | `form`                                       | Your container  |
-| `QuestionnaireProgress`          | `div`                                        | Root            |
-| `QuestionnaireItem`              | `fieldset`                                   | Root            |
-| `QuestionnaireTitle`             | `legend`                                     | Item            |
-| `QuestionnaireDescription`       | `p`                                          | Item            |
-| `QuestionnaireChoices`           | `div`                                        | Item            |
-| `QuestionnaireChoice`            | `label` with input, label and shortcut spans | Item or Choices |
-| `QuestionnaireChoiceDescription` | `span`                                       | Choice          |
-| `QuestionnaireInput`             | `input`                                      | Item            |
-| `QuestionnaireError`             | `p`                                          | Item            |
-| `QuestionnaireActions`           | `div`                                        | Root            |
-| `QuestionnairePrevious`          | `button`                                     | Actions         |
-| `QuestionnaireSkip`              | `button`                                     | Actions         |
-| `QuestionnaireNext`              | `button`                                     | Actions         |
-| `QuestionnaireSubmit`            | `button`                                     | Actions         |
+| Part                             | Default element | Parent          |
+| -------------------------------- | --------------- | --------------- |
+| `Questionnaire`                  | `form`          | Your container  |
+| `QuestionnaireProgress`          | `div`           | Root            |
+| `QuestionnaireItem`              | `fieldset`      | Root            |
+| `QuestionnaireTitle`             | `legend`        | Item            |
+| `QuestionnaireDescription`       | `p`             | Item            |
+| `QuestionnaireChoices`           | `div`           | Item            |
+| `QuestionnaireChoice`            | `label`         | Item or Choices |
+| `QuestionnaireChoiceDescription` | `span`          | Choice          |
+| `QuestionnaireInput`             | `input`         | Item            |
+| `QuestionnaireError`             | `p`             | Item            |
+| `QuestionnaireActions`           | `div`           | Root            |
+| `QuestionnairePrevious`          | `button`        | Actions         |
+| `QuestionnaireSkip`              | `button`        | Actions         |
+| `QuestionnaireNext`              | `button`        | Actions         |
+| `QuestionnaireSubmit`            | `button`        | Actions         |
 
 ## Examples
 
@@ -48,33 +49,70 @@ A form that shows one question at a time. Your app handles persistence and submi
 
 ## Props
 
-Parts take native props and refs and set a matching `data-slot`.
+Parts take native props and refs. `className` and `style` take plain values.
 
-| Part       | Prop                                          | Type                                                                                                                                     | Default                                                    |
-| ---------- | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| Root       | `item`, `defaultItem`                         | `string`                                                                                                                                 | First enabled item                                         |
-| Root       | `onItemChange`                                | `(item: string) => void`                                                                                                                 | None                                                       |
-| Root       | `items`                                       | Readonly item definitions with `name`, optional `choices`, `disabled`, `required`                                                        | Registered items                                           |
-| Root       | `shortcuts`                                   | `"letters" \| "numbers"`                                                                                                                 | Off                                                        |
-| Root       | `noValidate`                                  | `boolean`                                                                                                                                | `true`                                                     |
-| Item       | `name`                                        | `string`                                                                                                                                 | Required                                                   |
-| Item       | `multiple`, `required`, `invalid`, `disabled` | `boolean`                                                                                                                                | `false`                                                    |
-| Item       | `onStatusChange`                              | `(status: "unanswered" \| "answered" \| "skipped") => void`                                                                              | None                                                       |
-| Choice     | `value`                                       | `string`                                                                                                                                 | Required                                                   |
-| Choice     | `checked`, `defaultChecked`, `disabled`       | `boolean`                                                                                                                                | Uncontrolled; default checked and disabled are `false`     |
-| Choice     | `onChange`                                    | Native input change handler                                                                                                              | None                                                       |
-| Input      | `type`                                        | `"date" \| "datetime-local" \| "email" \| "month" \| "number" \| "password" \| "search" \| "tel" \| "text" \| "time" \| "url" \| "week"` | `"text"`                                                   |
-| Navigation | `variant`                                     | `"default" \| "outline" \| "secondary" \| "ghost" \| "destructive" \| "link" \| null`                                                    | Previous and Skip `"outline"`; Next and Submit `"default"` |
-| Navigation | `size`                                        | `"default" \| "xs" \| "sm" \| "lg" \| "icon" \| "icon-xs" \| "icon-sm" \| "icon-lg" \| null`                                             | `"default"`                                                |
+| Part             | Prop             | Type                                                                                                                                     | Default                                            | Description                                                           |
+| ---------------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- | --------------------------------------------------------------------- |
+| All              | `className`      | `string`                                                                                                                                 | None                                               |                                                                       |
+| All              | `style`          | `React.CSSProperties`                                                                                                                    | None                                               |                                                                       |
+| Root             | `item`           | `string`                                                                                                                                 | Uncontrolled                                       | Active item name.                                                     |
+| Root             | `defaultItem`    | `string`                                                                                                                                 | First enabled item                                 | Initial uncontrolled item.                                            |
+| Root             | `onItemChange`   | `(item: string) => void`                                                                                                                 | None                                               | Requested item.                                                       |
+| Root             | `items`          | `readonly { name: string; choices?: readonly { value: string; disabled?: boolean }[]; disabled?: boolean; required?: boolean }[]`        | Registered items                                   | Initial order and shortcuts.                                          |
+| Root             | `shortcuts`      | `"letters" \| "numbers"`                                                                                                                 | Off                                                | A–Z or 1–9 for enabled choices.                                       |
+| Root             | `noValidate`     | `boolean`                                                                                                                                | `true`                                             | `false` adds native constraint checks. Answer validation always runs. |
+| Item             | `name`           | `string`                                                                                                                                 | Required                                           | `FormData` key and item identity.                                     |
+| Item             | `multiple`       | `boolean`                                                                                                                                | `false`                                            | Checkbox selections.                                                  |
+| Item             | `required`       | `boolean`                                                                                                                                | `false`                                            | Prevents skipping.                                                    |
+| Item             | `invalid`        | `boolean`                                                                                                                                | `false`                                            | Applies to enabled, unskipped items.                                  |
+| Item             | `disabled`       | `boolean`                                                                                                                                | `false`                                            | Excludes from navigation. Disables inputs.                            |
+| Item             | `onStatusChange` | `(status: "unanswered" \| "answered" \| "skipped") => void`                                                                              | None                                               |                                                                       |
+| Choice           | `value`          | `string`                                                                                                                                 | Required                                           | Submitted value.                                                      |
+| Choice           | `checked`        | `boolean`                                                                                                                                | Uncontrolled                                       | Pair with `onChange`.                                                 |
+| Choice           | `defaultChecked` | `boolean`                                                                                                                                | `false`                                            | Initial uncontrolled selection.                                       |
+| Choice           | `disabled`       | `boolean`                                                                                                                                | `false`                                            | Disabled with item.                                                   |
+| Choice           | `onChange`       | `React.ChangeEventHandler<HTMLInputElement>`                                                                                             | None                                               | Native input event.                                                   |
+| Input            | `type`           | `"date" \| "datetime-local" \| "email" \| "month" \| "number" \| "password" \| "search" \| "tel" \| "text" \| "time" \| "url" \| "week"` | `"text"`                                           |                                                                       |
+| Navigation       | `variant`        | `"default" \| "outline" \| "secondary" \| "ghost" \| "destructive" \| "link" \| null`                                                    | Previous/Skip `"outline"`, Next/Submit `"default"` | `null` uses ghost styling.                                            |
+| Navigation       | `size`           | `"default" \| "xs" \| "sm" \| "lg" \| "icon" \| "icon-xs" \| "icon-sm" \| "icon-lg" \| null`                                             | `"default"`                                        | `null` uses default sizing.                                           |
+| Navigation       | `type`           | `"button" \| "submit" \| "reset"`                                                                                                        | Submit `"submit"`, others `"button"`               |                                                                       |
+| Renderable parts | `render`         | `ReactElement \| render callback`                                                                                                        | See Rendering                                      |                                                                       |
 
-Input takes its item's `name`, so it has no `name` or `form` prop. Choice visually hides its native input and shortcut, and draws a radio or checkbox indicator according to the item's `multiple` prop. Put supporting text in `QuestionnaireChoiceDescription`.
+Input has no `name` or `form` prop. It accepts native `value`, `defaultValue` and `onChange`. Put choice supporting text in `QuestionnaireChoiceDescription`.
 
-Progress, Title, Description, Choices, Choice, Input, Error and navigation accept `render`. Callbacks receive HTML props and the [headless part state](https://ui.shadcn.com/docs/react/questionnaire#api-reference). `className` and `style` take plain values, not state callbacks.
+### Styling
 
-Without children, navigation shows "Previous", "Skip", "Next" or "Submit", Progress shows "Question N of M" and Error shows validation text for an invalid item. Submit is `type="submit"` and the others are `type="button"`.
+Optional `xstyle` has no default. Input and navigation do not accept it.
 
-The [headless questionnaire reference](https://ui.shadcn.com/docs/react/questionnaire) covers item definitions, validation and navigation visibility.
+| Part              | `xstyle` type                               | Allowed styles                                               |
+| ----------------- | ------------------------------------------- | ------------------------------------------------------------ |
+| Root              | `Restyle<"Questionnaire">`                  | Placement, width, height.                                    |
+| Progress          | `Restyle<"QuestionnaireProgress">`          | Placement, width.                                            |
+| Item              | `Restyle<"QuestionnaireItem">`              | Placement.                                                   |
+| Title             | `Restyle<"QuestionnaireTitle">`             | Placement, width.                                            |
+| Description       | `Restyle<"QuestionnaireDescription">`       | Placement, width.                                            |
+| Choices           | `Restyle<"QuestionnaireChoices">`           | Placement, width, height, `overflowY`, `overscrollBehavior`. |
+| Choice            | `Restyle<"QuestionnaireChoice">`            | Placement, width.                                            |
+| ChoiceDescription | `Restyle<"QuestionnaireChoiceDescription">` | Placement, width.                                            |
+| Error             | `Restyle<"QuestionnaireError">`             | Placement, width.                                            |
+| Actions           | `Restyle<"QuestionnaireActions">`           | Placement, width.                                            |
+
+### Rendering
+
+`render` accepts `ReactElement | ((props: Record<string, unknown>, state) => ReactElement | null)` on these parts. Spread callback props onto your element. Input and navigation use Nyte styles unless replaced.
+
+| Part               | Callback state                                                                                                                |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| Progress           | `{ current: number; first: boolean; last: boolean; total: number }`                                                           |
+| Title, Description | `Record<string, unknown>`                                                                                                     |
+| Choices            | `{ shortcuts: "letters" \| "numbers" \| null }`                                                                               |
+| Choice             | `{ checked: boolean; disabled: boolean; invalid: boolean; shortcut: string \| null; type: "checkbox" \| "radio" }`            |
+| Input              | `{ disabled: boolean; filled: boolean; invalid: boolean }`                                                                    |
+| Error              | `{ invalid: boolean }`                                                                                                        |
+| Navigation         | `{ disabled: boolean; shortcut: "Enter" \| null; status: "unanswered" \| "answered" \| "skipped" \| null; visible: boolean }` |
 
 ## Accessibility
 
-The item's `aria-describedby` includes Description and, when invalid, Error. Inactive items and unavailable actions are hidden and inert. Progress is a polite live `progressbar`. Up and Down move between answers, Left and Right between steps. Ctrl+Enter and Cmd+Enter advance or submit. Letter and number shortcuts require `shortcuts`.
+- Name each fieldset with Title or `aria-label`.
+- Ctrl+Enter or Cmd+Enter validates and advances or submits. Choice shortcuts require `shortcuts`.
+- With `render`, preserve native labels, inputs and buttons or equivalent keyboard and naming behavior.

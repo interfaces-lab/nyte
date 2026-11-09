@@ -113,39 +113,41 @@ const [open, setOpen] = useState(false);
 
 ### ConfirmDialog
 
-| Prop           | Type                                    | Default | Description                                                                      |
-| -------------- | --------------------------------------- | ------- | -------------------------------------------------------------------------------- |
-| `open`         | `boolean`                               |         |                                                                                  |
-| `title`        | `string`                                |         |                                                                                  |
-| `description`  | `React.ReactNode`                       |         | The consequence.                                                                 |
-| `confirmLabel` | `string`                                |         |                                                                                  |
-| `pendingLabel` | `string`                                |         | Status line shown while `pending`.                                               |
-| `pending`      | `boolean`                               | `false` | Makes both actions busy and ignores requests to close.                           |
-| `error`        | `string`                                |         | Shown under the description as an alert.                                         |
-| `finalFocus`   | As `AlertDialog.Popup`                  |         | Where focus lands on close, for a dialog with no trigger.                        |
-| `onOpenChange` | `(open: boolean, eventDetails) => void` |         | Called with `false` and the event details on Cancel or Escape, unless `pending`. |
-| `onConfirm`    | `() => void`                            |         | Called by the danger button. Close the dialog yourself.                          |
-| `tint`         | `Tint`                                  |         |                                                                                  |
+| Prop           | Type                                    | Default | Description                                               |
+| -------------- | --------------------------------------- | ------- | --------------------------------------------------------- |
+| `open`         | `boolean`                               |         | Required.                                                 |
+| `title`        | `string`                                |         | Required accessible name.                                 |
+| `description`  | `ReactNode`                             |         | Required consequence.                                     |
+| `confirmLabel` | `string`                                |         | Required.                                                 |
+| `pendingLabel` | `string`                                |         | Status announcement while pending.                        |
+| `pending`      | `boolean`                               | `false` | Makes actions busy. Blocks closing.                       |
+| `error`        | `string`                                |         | Announced as an alert.                                    |
+| `finalFocus`   | As `AlertDialog.Popup`                  |         | Focus target on close.                                    |
+| `onOpenChange` | `(open: boolean, eventDetails) => void` |         | Cancel or Escape requests closing. Ignored while pending. |
+| `onConfirm`    | `() => void`                            |         | Danger-button handler. Close the dialog yourself.         |
+| `tint`         | `Tint`                                  |         | Popup hue. Scrim stays neutral.                           |
 
 ### Parts
 
-| Part                      | Renders                        | Styling                 |
-| ------------------------- | ------------------------------ | ----------------------- |
-| `AlertDialog.Root`        | Nothing                        | None                    |
-| `AlertDialog.Trigger`     | `<button>`                     | None                    |
-| `AlertDialog.Popup`       | A portal, the scrim, a `<div>` | As `Dialog.Popup`       |
-| `AlertDialog.Header`      | `<div>`                        | As `Dialog.Header`      |
-| `AlertDialog.Title`       | `<h2>`                         | As `Dialog.Title`       |
-| `AlertDialog.Description` | `<p>`                          | As `Dialog.Description` |
-| `AlertDialog.Footer`      | `<div>`                        | As `Dialog.Footer`      |
-| `AlertDialog.Close`       | `<button>`                     | None                    |
+| Part                      | Renders              |
+| ------------------------- | -------------------- |
+| `AlertDialog.Trigger`     | `<button>`           |
+| `AlertDialog.Popup`       | Portal, scrim, popup |
+| `AlertDialog.Header`      | `<div>`              |
+| `AlertDialog.Title`       | `<h2>`               |
+| `AlertDialog.Description` | `<p>`                |
+| `AlertDialog.Footer`      | `<div>`              |
+| `AlertDialog.Close`       | `<button>`           |
 
-Except `AlertDialog.Root`, each part takes `xstyle`, `className`, and `style`. `className` and `style`
-take plain values, not functions of state. See [Theming](/design/theming).
+Except `AlertDialog.Root`, each part takes `xstyle`, `className`, and `style`.
+`className` and `style` accept state functions on Base UI parts, plain values on Header and Footer.
+See [Theming](/design/theming).
 
 The part tables below come from Base UI, MIT, © Material-UI SAS.
 
 ### Root
+
+`AlertDialog.Root` passes through Base UI unstyled. No handle factory is exported.
 
 <include>../../base-ui-reference/alert-dialog/Root.md</include>
 
@@ -154,6 +156,10 @@ The part tables below come from Base UI, MIT, © Material-UI SAS.
 <include>../../base-ui-reference/alert-dialog/Trigger.md</include>
 
 ### Popup
+
+| Prop   | Type   | Description                     |
+| ------ | ------ | ------------------------------- |
+| `tint` | `Tint` | Popup hue. Scrim stays neutral. |
 
 <include>../../base-ui-reference/alert-dialog/Popup.md</include>
 
@@ -171,12 +177,6 @@ The part tables below come from Base UI, MIT, © Material-UI SAS.
 
 ## Accessibility
 
-- The popup has `role="alertdialog"`, labelled by `AlertDialog.Title` and described by
-  `AlertDialog.Description`.
-- Outside press does not close. Escape does. To block that, call `details.cancel()` in
-  `onOpenChange` when `details.reason` is `escape-key`.
-- Focus moves into the popup on open and returns to the trigger on close. Tab cycles inside the
-  popup.
-- While open, outside content is inert and page scroll is locked.
-- `ConfirmDialog` focuses Cancel on open, sets `aria-busy` while `pending`, and gives its error
-  `role="alert"`.
+- Use `AlertDialog.Title` and `AlertDialog.Description` to name and describe the popup.
+- To block Escape, call `details.cancel()` in `onOpenChange` when `details.reason` is `escape-key`.
+- `initialFocus` and `finalFocus` override focus targets.

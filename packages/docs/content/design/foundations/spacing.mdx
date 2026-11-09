@@ -3,8 +3,7 @@ title: Spacing
 description: "One 4px unit, Tailwind's steps, and named structural measurements"
 ---
 
-Spacing counts 4px units the way Tailwind does: `s2` is two units, `s1_5` is one and a half.
-`space.px` is 1px, the width of a hairline.
+Spacing counts 4px units. `s2` is two units, `s1_5` is one and a half. `space.px` is 1px.
 
 ```ts
 import { space, target } from "@nyte-ai/ui/styles/schema.stylex";
@@ -14,13 +13,13 @@ import { space, target } from "@nyte-ai/ui/styles/schema.stylex";
 
 ## Rules
 
-- Padding, margin, gap, and inset use `space.*`.
-- A structural measurement, such as a sidebar width or a menu width, gets a name in a schema
-  file instead of a literal.
-- Controls and rows take their height from `button`, `input`, `row`, `menu`, or `target`.
-- Visual size and hit area are separate. A control stays at least `target.min` to hit: 24px, or
-  44px under a coarse pointer. Independent controls sit `target.gap` apart: 2px, or 8px.
-- Use logical properties: `paddingInline`, `marginBlockStart`, `insetInlineEnd`.
+- Use `space.*` for padding, margin, gap, and inset.
+- Name structural measurements, such as sidebar widths, in a schema.
+- Button and input heights come from `control`. Row and menu-item heights come from `row`.
+  `button`, `input`, and `menu` supply other geometry.
+- `target.min` is the hit-area floor, not visual height. It is 24px, or 44px under a coarse pointer.
+  Separate independent controls by `target.gap`, 2px or 8px respectively.
+- Use logical properties such as `paddingInline`, `marginBlockStart`, and `insetInlineEnd`.
 
 ## Targets
 
@@ -32,27 +31,40 @@ import { space, target } from "@nyte-ai/ui/styles/schema.stylex";
 import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 ```
 
-A hairline is a 1px edge that takes no layout space, so a box keeps its height on the grid. Each
-style draws an inset shadow in `strokeQuaternary`. Forced colors drop shadows, so there the edge
-styles draw a border image, `hairline.ring` an inset outline, and `hairline.ringAfter` and `hairline.controlRing` a border on
-their pseudo-element, which take no space either.
+Hairlines draw 1px edges without taking layout space. Shadow-drawn edges use `strokeQuaternary`,
+except `controlRing`'s `strokeTertiary`. Forced colors use border images, outlines, or borders.
+`startsAfter` and `endsAfter` use borders in both modes.
 
-| Style                  | Draws                                                                                                                                                                                           |
-| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `hairline.blockEnd`    | The bottom edge of a bar, a header row, or a form.                                                                                                                                              |
-| `hairline.inlineStart` | The inline-start edge of a panel, the left one in left-to-right text.                                                                                                                           |
-| `hairline.tableCell`   | A rule under each table row but the body's last, and a divider after each cell but the row's last. Set it on the cells.                                                                         |
-| `hairline.ring`        | All four sides, following the box's radius.                                                                                                                                                     |
-| `hairline.ringAfter`   | All four sides on the box's `::after`, above its content, for a focusable control or a popup. The box is positioned and leaves `::after` free.                                                  |
-| `hairline.controlRing` | A control's boundary in `strokeTertiary`, such as an outline button. Under forced colors a border on its `::after`, `Highlight` while focused. The box is positioned and leaves `::after` free. |
+Position boxes with pseudo-element hairlines and reserve `::after`.
+
+| Style                  | Draws                                                                       |
+| ---------------------- | --------------------------------------------------------------------------- |
+| `hairline.blockStart`  | Top edge                                                                    |
+| `hairline.blockEnd`    | Bottom edge                                                                 |
+| `hairline.inlineStart` | Inline-start edge                                                           |
+| `hairline.tableCell`   | Row and cell dividers, excluding last edges. Apply to cells.                |
+| `hairline.ring`        | Rounded frame                                                               |
+| `hairline.ringAfter`   | Frame above content on `::after`                                            |
+| `hairline.controlRing` | Control boundary. Forced-colors `::after` border uses `Highlight` on focus. |
+| `hairline.startsAfter` | Block-start and inline-start edges on `::after`                             |
+| `hairline.endsAfter`   | Block-end and inline-end edges on `::after`                                 |
+| `hairline.pressedRing` | Forced-colors `Highlight` border on `[data-pressed]::after`                 |
 
 ```tsx
-<div {...stylex.props(styles.toolbar, hairline.blockEnd)}>…</div>
+import { create, props } from "@stylexjs/stylex";
+import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
+import { space } from "@nyte-ai/ui/styles/schema.stylex";
+
+const styles = create({ toolbar: { padding: space.s2 } });
+
+export function ToolbarHeading() {
+  return <div {...props(styles.toolbar, hairline.blockEnd)}>Actions</div>;
+}
 ```
 
-- Draw a separator, a divider, or a frame with `hairline`, not a 1px border.
-- A box takes one hairline style and sets no `boxShadow` of its own. A second style or its own shadow
-  replaces the hairline's. A raised box sets its drop shadow as `--nyte-hairline-elevation`, which the
-  hairline draws under its edge and which doesn't pass to the boxes inside.
-- A box that takes a hairline sets no `borderImage` with an edge style, and no `outline` or its
-  longhands with `hairline.ring`. Those replace the forced-colors edge.
+- Use `hairline`, not 1px borders, for separators and frames.
+- Apply one shadow-drawing hairline per box. Do not set `boxShadow`. Set elevation through
+  `--nyte-hairline-elevation`.
+- Import `@nyte-ai/ui/styles/base.css` once for non-inheriting elevation and the solid border reset.
+- `pressedRing` can accompany a base hairline. Avoid competing `::after` styles.
+- Do not override `borderImage` on edge styles or `outline` on `hairline.ring`. They draw forced-colors edges.

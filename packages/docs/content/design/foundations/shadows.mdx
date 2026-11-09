@@ -1,6 +1,6 @@
 ---
 title: Shadows
-description: "Elevation in four steps, inked warm"
+description: "Four warm elevation shadows and a workbench shadow"
 ---
 
 ```ts
@@ -9,14 +9,18 @@ import { shadow } from "@nyte-ai/ui/styles/vars.stylex";
 
 <ShadowScale />
 
+`shadow.shadowWorkbench` is `0 0 8px 2px #00000014` in both schemes.
+
 ## Rules
 
-- The elevation shadows are inked in a warm near-black at 3 to 19 percent alpha, not neutral
-  grey, so they sit on the warm gray ramp. Dark mode doubles each alpha so the shadow still reads
-  on dark surfaces.
-- Height follows distance from the page: controls take `shadowSm`, popups `shadowLg`, modal
-  popups and dialogs `shadowXl`.
-- `shadowMdOutline` adds a hairline that sits outside in light mode and inside in dark mode, where
-  a drop shadow alone would vanish.
-- Popups share one frame, `floatingSurfaceStyles` in `floating-surface.stylex.ts`: material,
-  `radius.surface`, `shadowLg`, and an inset hairline. Compose it instead of restating them.
+- Elevation inks are warm near-black at about 3–19% alpha in light mode. Dark mode doubles them.
+- Use `shadow.shadowSm` for raised controls, `shadow.shadowLg` for popups, and `shadow.shadowXl`
+  for modal popups and dialogs.
+- `shadow.shadowMdOutline` adds an outside hairline in light mode, inside in dark.
+- `floatingSurfaceStyles.popup` combines material, filtering, `radius.surface`, `shadow.shadowLg`,
+  and `hairline.ringAfter`. `material` supplies only material and filtering.
+  `modalPopup` sets only the `shadow.shadowXl` elevation variable. Compose it with a hairline.
+
+```ts
+import { floatingSurfaceStyles } from "@nyte-ai/ui/styles/floating-surface.stylex";
+```

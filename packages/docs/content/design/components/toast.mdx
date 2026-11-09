@@ -11,13 +11,9 @@ import { Toaster, toast } from "@nyte-ai/ui/toast";
 
 ## Usage
 
-- Mount one `Toaster` near the app root.
-- Call `toast.add` anywhere, including outside React.
-- Set `type` to `"success"`, `"error"`, or `"warning"` for a status icon. `"loading"`, which `toast.promise` sets, shows a spinner.
-- Adding with an existing `id` updates that toast and refreshes its timer.
+- Mount one `Toaster` near the app root before calling `toast.add`. Calls can come from outside React.
 - Error toasts with a string title get a Copy error button. A string description joins the copied text on a new line.
 - Action buttons use `actionProps`. Call `toast.close(id)` in the handler to close the notification.
-- Each toast is one row at its own height: the status icon, the title with its description under it, the buttons, then close. The newest toast sits nearest the edge.
 
 ## Examples
 
@@ -82,7 +78,7 @@ toast.close(id);
 `onClose` runs for every close, including the timer and `toast.close`. Mark the action as undone before closing it.
 
 ```ts
-let undone = false;
+const action = { undone: false };
 
 toast.add({
   type: "success",
@@ -91,13 +87,13 @@ toast.add({
   actionProps: {
     children: "Undo",
     onClick: () => {
-      undone = true;
+      action.undone = true;
       restore();
       toast.close("archive");
     },
   },
   onClose: () => {
-    if (!undone) commit();
+    if (!action.undone) commit();
   },
 });
 ```
@@ -118,45 +114,48 @@ Each state accepts a string or an options object. `success` and `error` also acc
 
 ### Toaster
 
-`Toaster` accepts Base UI's `Toast.Provider` props except `children`, plus `position`. The stack uses the current color tokens, and toasts swipe away toward the nearest edge.
+`Toaster` accepts Base UI's `Toast.Provider` props except `children`, plus `position`.
 
-| Prop           | Type            | Default          | Description                                                                                                                                  |
-| -------------- | --------------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `timeout`      | `number`        | `5000`           | Default auto-close milliseconds. `0` disables automatic dismissal.                                                                           |
-| `limit`        | `number`        | `3`              | Visible toast limit. Older toasts are hidden rather than removed.                                                                            |
-| `toastManager` | `ToastManager`  | `toast`          | Manager whose notifications this stack renders.                                                                                              |
-| `position`     | `ToastPosition` | `"bottom-right"` | Where the stack sits: `top-left`, `top-center`, `top-right`, `bottom-left`, `bottom-center` or `bottom-right`. `TOAST_POSITIONS` lists them. |
+| Prop           | Type            | Default          | Description                               |
+| -------------- | --------------- | ---------------- | ----------------------------------------- |
+| `timeout`      | `number`        | `5000`           | Auto-close milliseconds. `0` disables.    |
+| `limit`        | `number`        | `3`              | Older toasts are hidden, not removed.     |
+| `toastManager` | `ToastManager`  | `toast`          |                                           |
+| `position`     | `ToastPosition` | `"bottom-right"` | `TOAST_POSITIONS` lists the values below. |
+
+`ToastPosition` is `"top-left" | "top-center" | "top-right" | "bottom-left" | "bottom-center" | "bottom-right"`.
 
 ### toast
 
-| Call                                                  | Returns          | Description                                                       |
-| ----------------------------------------------------- | ---------------- | ----------------------------------------------------------------- |
-| `toast.add(options)`                                  | `string`         | Opens a toast, or updates an existing id and refreshes its timer. |
-| `toast.close(id?)`                                    | `void`           | Closes one toast, or all of them with no argument.                |
-| `toast.update(id, options)`                           | `void`           | Updates a toast. Also accepts a function of the current toast.    |
-| `toast.promise(promise, { loading, success, error })` | `Promise<Value>` | Updates one toast through loading, success, and error.            |
+| Call                                                  | Returns          | Description                                   |
+| ----------------------------------------------------- | ---------------- | --------------------------------------------- |
+| `toast.add(options)`                                  | `string`         | Opens or updates by id. Refreshes timer.      |
+| `toast.close(id?)`                                    | `void`           | Omit id to close all.                         |
+| `toast.update(id, options)`                           | `void`           | Also accepts a function of the current toast. |
+| `toast.promise(promise, { loading, success, error })` | `Promise<Value>` | Tracks the operation.                         |
 
 ### Toast options
 
-`ToastOptions<Data>` is exported for typing options passed to `toast.add`. `toast.update` accepts partial options without `id`.
+`ToastOptions<Data>` types `toast.add` options, with `Data extends object`.
+`toast.update` accepts partial options without `id` or `transitionStatus`.
 
-| Option        | Type                                 | Description                                                                         |
-| ------------- | ------------------------------------ | ----------------------------------------------------------------------------------- |
-| `title`       | `ReactNode`                          | Notification title.                                                                 |
-| `type`        | `string`                             | `"success"`, `"error"`, and `"warning"` render status icons; `"loading"` a spinner. |
-| `description` | `ReactNode`                          | Text below the title.                                                               |
-| `id`          | `string`                             | Generated when omitted. Reuse it to update the toast and refresh its timer.         |
-| `timeout`     | `number`                             | Auto-close milliseconds. Defaults to the provider's timeout. `0` stays open.        |
-| `actionProps` | `ComponentPropsWithoutRef<"button">` | Action button props, including `children` and `onClick`.                            |
-| `onClose`     | `() => void`                         | Runs when the toast closes, whether by user, action handler, timer, or code.        |
-| `onRemove`    | `() => void`                         | Runs after the closed toast's exit animation finishes.                              |
-| `priority`    | `"low" \| "high"`                    | Polite or urgent announcement. Defaults to `"low"`.                                 |
-| `data`        | `Data`                               | Custom data associated with the toast.                                              |
+| Option             | Type                                    | Description                                                                  |
+| ------------------ | --------------------------------------- | ---------------------------------------------------------------------------- |
+| `title`            | `ReactNode`                             |                                                                              |
+| `type`             | `string`                                | `"success"`, `"error"`, `"warning"` show icons. `"loading"` shows a spinner. |
+| `description`      | `ReactNode`                             |                                                                              |
+| `id`               | `string`                                | Generated when omitted.                                                      |
+| `timeout`          | `number`                                | Auto-close milliseconds. Defaults to provider. `0` stays open.               |
+| `actionProps`      | `ComponentPropsWithoutRef<"button">`    |                                                                              |
+| `onClose`          | `() => void`                            | Runs on every close.                                                         |
+| `onRemove`         | `() => void`                            | Runs after exit animation.                                                   |
+| `priority`         | `"low" \| "high"`                       | Polite or urgent. Defaults to `"low"`.                                       |
+| `data`             | `Data`                                  |                                                                              |
+| `positionerProps`  | `ToastOptions<Data>["positionerProps"]` | Unused by `Toaster`.                                                         |
+| `transitionStatus` | `"starting" \| "ending"`                | `toast.add` overwrites with `"starting"`. Unavailable in `toast.update`.     |
 
 ## Accessibility
 
-- The viewport is a region named "Notifications" with `aria-live="polite"`.
-- `priority: "high"` announces a toast urgently without moving focus.
-- F6 focuses the notification stack. Hovering or focusing it pauses automatic dismissal.
-- Every close button is named "Dismiss notification". Every Copy button is named "Copy error", then "Copied" for a moment after copying.
+- `priority: "high"` announces urgently without moving focus.
+- F6 focuses the stack. Hover or focus pauses automatic dismissal.
 - Loading toasts have no timer but can still be closed.

@@ -13,8 +13,7 @@ import {
 } from "@nyte-ai/ui/context-menu";
 ```
 
-A menu that opens at the pointer on right click or long press. Use it as a shortcut to actions that
-also have a visible control, since many people never right-click.
+Right-click or long-press shortcuts to actions that also have visible controls.
 
 ## Usage
 
@@ -84,13 +83,18 @@ also have a visible control, since many people never right-click.
 
 ## Props
 
-Every styled part takes `xstyle`, `className`, and `style`. See
-[Theming](/design/theming). `ContextMenu`, `ContextMenuTrigger`, `ContextMenuGroup`,
-`ContextMenuRadioGroup`, and `ContextMenuSub` are Base UI's.
+Every styled part takes `xstyle`, `className`, and `style`. `className` and `style` accept plain
+values or functions of the underlying Base UI part's state. See [Theming](/design/theming).
+
+`ContextMenu`, `ContextMenuTrigger`, `ContextMenuRadioGroup`, `ContextMenuGroup`, and `ContextMenuSub`
+pass through Base UI unstyled.
 
 The reference tables below come from Base UI, MIT, © Material-UI SAS.
 
 ### ContextMenu
+
+`onItemHighlighted` accepts `(item: HTMLElement | undefined, eventDetails) => void`.
+Details include `label` and `reason` (`"keyboard"`, `"pointer"`, or `"none"`).
 
 <include>../../base-ui-reference/context-menu/Root.md</include>
 
@@ -100,13 +104,18 @@ The reference tables below come from Base UI, MIT, © Material-UI SAS.
 
 ### ContextMenuContent
 
-Renders the portal, positioner, and popup. Positioning props go to the positioner and the rest,
-including `ref`, to the popup. The popup opens at the pointer unless `anchor` is set.
+Only the positioning props in this table are accepted. `ref`, `className`, and `style` target the popup.
 
-| Prop               | Type                | Default |
-| ------------------ | ------------------- | ------- |
-| `collisionPadding` | `number \| Padding` | `8`     |
-| `tint`             | `Tint`              |         |
+| Prop                 | Type                                                                                                           | Default                                                                  |
+| -------------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `side`               | `"top" \| "bottom" \| "left" \| "right" \| "inline-start" \| "inline-end"`                                     | `"bottom"`                                                               |
+| `align`              | `"start" \| "center" \| "end"`                                                                                 | `"start"`                                                                |
+| `sideOffset`         | `number \| OffsetFunction`                                                                                     | `-5` when `side` is omitted and alignment is not centered, otherwise `0` |
+| `alignOffset`        | `number \| OffsetFunction`                                                                                     | `2` when `side` is omitted and alignment is not centered, otherwise `0`  |
+| `anchor`             | `Element \| VirtualElement \| RefObject<Element \| null> \| (() => Element \| VirtualElement \| null) \| null` | the pointer                                                              |
+| `collisionAvoidance` | `CollisionAvoidance`                                                                                           | `{ fallbackAxisSide: "none" }`                                           |
+| `collisionPadding`   | `number \| Padding`                                                                                            | `8`                                                                      |
+| `tint`               | `Tint`                                                                                                         |                                                                          |
 
 #### Positioner
 
@@ -118,8 +127,8 @@ including `ref`, to the popup. The popup opens at the pointer unless `anchor` is
 
 ### ContextMenuSubContent
 
-Takes the same props as `ContextMenuContent`. Base UI opens a submenu at `inline-end`, aligned to
-`start`.
+Takes `ContextMenuContent` props. Defaults to `side="inline-end"`, `align="start"`, the trigger anchor,
+and `collisionAvoidance={{ fallbackAxisSide: "end" }}`.
 
 | Prop          | Default                           |
 | ------------- | --------------------------------- |
@@ -128,8 +137,7 @@ Takes the same props as `ContextMenuContent`. Base UI opens a submenu at `inline
 
 ### Rows
 
-Each row takes the props of its [Menu](/design/menu#menuitem) counterpart.
-There is no switch item.
+Styled row props match [Menu](/design/menu#menuitem). There is no switch item.
 
 | Part                      | As                 |
 | ------------------------- | ------------------ |
@@ -143,13 +151,26 @@ There is no switch item.
 
 ### ContextMenuItem
 
+| Prop       | Type                               | Default     | Description                                                      |
+| ---------- | ---------------------------------- | ----------- | ---------------------------------------------------------------- |
+| `icon`     | `IconName`                         |             |                                                                  |
+| `leading`  | `ReactNode`                        |             | Non-nullish content replaces `icon` in `menu` layout.            |
+| `meta`     | `ReactNode`                        |             | Binds no key.                                                    |
+| `variant`  | `"default" \| "danger" \| "quiet"` | `"default"` |                                                                  |
+| `layout`   | `"menu" \| "plain" \| "action"`    | `"menu"`    | `plain` removes leading content. `action` centers a compact row. |
+| `children` | `ReactNode`                        |             |                                                                  |
+
 <include>../../base-ui-reference/context-menu/Item.md</include>
 
 ### ContextMenuLinkItem
 
+Takes the styled row props above except `variant`.
+
 <include>../../base-ui-reference/context-menu/LinkItem.md</include>
 
 ### ContextMenuCheckboxItem
+
+Takes row props except `variant`. `closeOnClick` defaults to `false`.
 
 <include>../../base-ui-reference/context-menu/CheckboxItem.md</include>
 
@@ -159,7 +180,7 @@ There is no switch item.
 
 ### ContextMenuRadioItem
 
-`closeOnClick` defaults to `true`, not Base UI's `false`.
+Takes row props except `variant`. `closeOnClick` defaults to `true`.
 
 <include>../../base-ui-reference/context-menu/RadioItem.md</include>
 
@@ -173,21 +194,28 @@ There is no switch item.
 
 ### ContextMenuSeparator
 
+| Prop    | Type      | Default |
+| ------- | --------- | ------- |
+| `inset` | `boolean` | `false` |
+
 <include>../../base-ui-reference/context-menu/Separator.md</include>
 
 ### ContextMenuSub
+
+Accepts `onItemHighlighted` as described for `ContextMenu`.
 
 <include>../../base-ui-reference/context-menu/SubmenuRoot.md</include>
 
 ### ContextMenuSubTrigger
 
+Takes `icon`, `leading`, and `layout` from the row table.
+
+| Prop    | Type        | Description                |
+| ------- | ----------- | -------------------------- |
+| `value` | `ReactNode` | Choice before the chevron. |
+
 <include>../../base-ui-reference/context-menu/SubmenuTrigger.md</include>
 
 ## Accessibility
 
-- The popup has `role="menu"`. Items are `menuitem`, radio items `menuitemradio`, and checkbox
-  items `menuitemcheckbox` with `aria-checked`.
-- Arrow Down and Up move focus and wrap. Typing matches item text, or `label` when set. Enter and
-  Space activate. Escape closes.
-- Arrow Right opens a submenu. Arrow Left closes it.
-- Disabled items stay reachable with the arrow keys and do not activate.
+- Enter and Space activate. Escape closes. `finalFocus` chooses where focus returns.

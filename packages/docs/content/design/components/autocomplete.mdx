@@ -6,17 +6,20 @@ description: "A list that filters as the user types"
 ```ts title="Import"
 import {
   Autocomplete,
+  AutocompleteClear,
   AutocompleteCollection,
   AutocompleteContent,
   AutocompleteEmpty,
   AutocompleteGroup,
   AutocompleteGroupLabel,
   AutocompleteInput,
+  AutocompleteInputGroup,
   AutocompleteItem,
   AutocompleteList,
   AutocompleteSeparator,
   AutocompleteStatus,
   AutocompleteTrigger,
+  AutocompleteValue,
 } from "@nyte-ai/ui/autocomplete";
 ```
 
@@ -25,13 +28,13 @@ A search field for a long list, such as fonts or models. For a short list, use
 
 ## Usage
 
-- Pass the current value as the children of `AutocompleteTrigger`.
+- Put the current value or `AutocompleteValue` inside `AutocompleteTrigger`.
 - Pass the data to `items` on `Autocomplete` and render each entry from a function child of
   `AutocompleteList`. Inside an `AutocompleteGroup`, render its entries with
   `AutocompleteCollection`.
-- Give each `AutocompleteItem` a `value`. The selected item shows a checkmark.
-- `value` and `onValueChange` on `Autocomplete` hold the selection. `onValueChange` passes `null`
-  when the selection clears.
+- Give each `AutocompleteItem` a `value`.
+- `value` and `onValueChange` hold the selection. Clearing passes `null` in single-selection mode.
+  With `multiple`, values and callbacks use arrays.
 - `inputValue` and `onInputValueChange` hold the search text.
 - To nest the list in another surface, such as a submenu, set `inline` and `open` on
   `Autocomplete`, drop `AutocompleteContent`, and set [`variant="inline"`](#variant).
@@ -42,16 +45,21 @@ A search field for a long list, such as fonts or models. For a short list, use
 
 ```tsx
 <Autocomplete>
-  <AutocompleteTrigger />
+  <AutocompleteTrigger aria-label="Model">
+    <AutocompleteValue />
+  </AutocompleteTrigger>
   <AutocompleteContent>
-    <AutocompleteInput />
+    <AutocompleteInputGroup>
+      <AutocompleteInput aria-label="Search models" />
+      <AutocompleteClear aria-label="Clear model">Clear</AutocompleteClear>
+    </AutocompleteInputGroup>
     <AutocompleteStatus />
     <AutocompleteList>
       <AutocompleteGroup>
         <AutocompleteSeparator />
         <AutocompleteGroupLabel />
         <AutocompleteCollection>
-          <AutocompleteItem />
+          {(item: string) => <AutocompleteItem value={item}>{item}</AutocompleteItem>}
         </AutocompleteCollection>
       </AutocompleteGroup>
     </AutocompleteList>
@@ -151,18 +159,28 @@ you.
 
 ## Props
 
-Styled parts take `xstyle`, `className`, and `style`; see
-[Theming](/design/theming). Each sets `data-slot` to its kebab-case name, such as
-`autocomplete-item`. `Autocomplete`, `AutocompleteValue`, `AutocompleteInputGroup`,
-`AutocompleteGroup`, and `AutocompleteCollection` pass through Base UI.
+Styled parts take `xstyle`. `className` and `style` accept values or Base UI part-state functions.
+See [Theming](/design/theming).
+
+`Autocomplete`, `AutocompleteValue`, `AutocompleteInputGroup`, `AutocompleteGroup`, and
+`AutocompleteCollection` pass through Base UI Combobox unstyled, without `xstyle`.
 
 The reference tables below come from Base UI, MIT, © Material-UI SAS.
 
 ### Autocomplete
 
+`onItemHighlighted` reasons are `"keyboard"`, `"pointer"`, and `"none"`.
+
 <include>../../base-ui-reference/combobox/Root.md</include>
 
 ### AutocompleteTrigger
+
+Takes Base UI trigger props except `render`. Style callbacks receive Button state (`disabled`).
+
+| Prop     | Type                   | Default      | Description                |
+| -------- | ---------------------- | ------------ | -------------------------- |
+| `width`  | `"standard" \| "wide"` | `"standard"` | Maximum `180px` or `100%`. |
+| `xstyle` | `ButtonLayout`         |              |                            |
 
 <include>../../base-ui-reference/combobox/Trigger.md</include>
 
@@ -172,22 +190,26 @@ The reference tables below come from Base UI, MIT, © Material-UI SAS.
 
 ### AutocompleteClear
 
+| Prop     | Type                           |
+| -------- | ------------------------------ |
+| `xstyle` | `Restyle<"AutocompleteClear">` |
+
 <include>../../base-ui-reference/combobox/Clear.md</include>
 
 ### AutocompleteContent
 
-Renders the portal, positioner, and popup. The positioning props below go to the positioner.
-Everything else goes to the popup.
+`render`, `className`, `style`, and `xstyle` target the popup.
 
-| Prop                 | Type                                                                       | Default    | Description                              |
-| -------------------- | -------------------------------------------------------------------------- | ---------- | ---------------------------------------- |
-| `side`               | `"top" \| "bottom" \| "left" \| "right" \| "inline-start" \| "inline-end"` | `"bottom"` |                                          |
-| `align`              | `"start" \| "center" \| "end"`                                             | `"start"`  |                                          |
-| `sideOffset`         | `number \| OffsetFunction`                                                 | `4`        | Pixels.                                  |
-| `alignOffset`        | `number \| OffsetFunction`                                                 |            |                                          |
-| `anchor`             | `AutocompleteContentProps["anchor"]`                                       |            | Element or virtual element to open from. |
-| `collisionAvoidance` | `CollisionAvoidance`                                                       |            |                                          |
-| `tint`               | `Tint`                                                                     |            | Scopes the popup to a hue.               |
+| Prop                 | Type                                                                       | Default                        | Description                 |
+| -------------------- | -------------------------------------------------------------------------- | ------------------------------ | --------------------------- |
+| `side`               | `"top" \| "bottom" \| "left" \| "right" \| "inline-start" \| "inline-end"` | `"bottom"`                     |                             |
+| `align`              | `"start" \| "center" \| "end"`                                             | `"start"`                      |                             |
+| `sideOffset`         | `number \| OffsetFunction`                                                 | `4`                            |                             |
+| `alignOffset`        | `number \| OffsetFunction`                                                 | `0`                            |                             |
+| `anchor`             | `AutocompleteContentProps["anchor"]`                                       |                                | Element or virtual element. |
+| `collisionAvoidance` | `CollisionAvoidance`                                                       | `{ fallbackAxisSide: "none" }` |                             |
+| `tint`               | `Tint`                                                                     |                                |                             |
+| `xstyle`             | `Restyle<"AutocompleteContent">`                                           |                                |                             |
 
 #### Positioner
 
@@ -199,6 +221,11 @@ Everything else goes to the popup.
 
 ### AutocompleteInput
 
+| Prop      | Type                           | Default   |
+| --------- | ------------------------------ | --------- |
+| `variant` | `"popup" \| "inline"`          | `"popup"` |
+| `xstyle`  | `Restyle<"AutocompleteInput">` |           |
+
 <include>../../base-ui-reference/combobox/Input.md</include>
 
 ### AutocompleteInputGroup
@@ -207,13 +234,19 @@ Everything else goes to the popup.
 
 ### AutocompleteList
 
+| Prop      | Type                          | Default   |
+| --------- | ----------------------------- | --------- |
+| `variant` | `"popup" \| "inline"`         | `"popup"` |
+| `xstyle`  | `Restyle<"AutocompleteList">` |           |
+
 <include>../../base-ui-reference/combobox/List.md</include>
 
 ### AutocompleteItem
 
-| Prop      | Type                  | Default   | Description              |
-| --------- | --------------------- | --------- | ------------------------ |
-| `variant` | `"popup" \| "inline"` | `"popup"` | See [Variant](#variant). |
+| Prop      | Type                          | Default   |
+| --------- | ----------------------------- | --------- |
+| `variant` | `"popup" \| "inline"`         | `"popup"` |
+| `xstyle`  | `Restyle<"AutocompleteItem">` |           |
 
 <include>../../base-ui-reference/combobox/Item.md</include>
 
@@ -227,17 +260,34 @@ Everything else goes to the popup.
 
 ### AutocompleteGroupLabel
 
+| Prop      | Type                                | Default   |
+| --------- | ----------------------------------- | --------- |
+| `variant` | `"popup" \| "inline"`               | `"popup"` |
+| `xstyle`  | `Restyle<"AutocompleteGroupLabel">` |           |
+
 <include>../../base-ui-reference/combobox/GroupLabel.md</include>
 
 ### AutocompleteSeparator
+
+| Prop     | Type                               |
+| -------- | ---------------------------------- |
+| `xstyle` | `Restyle<"AutocompleteSeparator">` |
 
 <include>../../base-ui-reference/combobox/Separator.md</include>
 
 ### AutocompleteEmpty
 
+| Prop     | Type                           |
+| -------- | ------------------------------ |
+| `xstyle` | `Restyle<"AutocompleteEmpty">` |
+
 <include>../../base-ui-reference/combobox/Empty.md</include>
 
 ### AutocompleteStatus
+
+| Prop     | Type                            |
+| -------- | ------------------------------- |
+| `xstyle` | `Restyle<"AutocompleteStatus">` |
 
 Takes up no space while empty.
 
@@ -248,17 +298,12 @@ Takes up no space while empty.
 `AutocompleteInput`, `AutocompleteList`, `AutocompleteItem`, and `AutocompleteGroupLabel` take
 `variant`.
 
-| Value      | Geometry                                         |
-| ---------- | ------------------------------------------------ |
-| `"popup"`  | Default. Sized for `AutocompleteContent`.        |
-| `"inline"` | Menu row geometry, for a host such as a submenu. |
+| Value      | Geometry                   |
+| ---------- | -------------------------- |
+| `"popup"`  | For `AutocompleteContent`. |
+| `"inline"` | For submenus.              |
 
 ## Accessibility
 
-- Name the input and the trigger with `aria-label`. The trigger's text is only the current value.
-- `AutocompleteList` renders `role="listbox"` and each `AutocompleteItem` `role="option"`. The
-  checkmark is hidden from assistive technology.
-- Arrow Down and Up move the highlight. The input is part of the loop. Enter picks the highlighted
-  item. Escape closes the popup.
-- `AutocompleteGroupLabel` names its group.
-- Keyboard focus on the trigger shows the [focus ring](/design/focus).
+- Name the input and trigger with `aria-label`. The trigger text is only the current value.
+- Arrow keys move the highlight while focus stays in the input. Enter picks. Escape closes.

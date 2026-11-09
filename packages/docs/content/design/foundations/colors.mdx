@@ -3,20 +3,19 @@ title: Colors
 description: "Colour stairs, surfaces, hue scopes, and intents"
 ---
 
-Colour comes in three layers. Ramps hold twenty steps per hue. A theme maps one hue onto the
-steps for a scope. Roles read the theme as `light-dark()` pairs, so a component names what a
-colour is for and the scheme picks the value.
+Ramps hold twenty steps per hue. Themes map hues onto scopes. Roles name colour uses through
+`light-dark()` pairs and shared ramp values.
 
 ```ts
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
 ```
 
-Content, fills, and strokes each come as a stair, strongest first. Each step has one job. A
-floor is the lowest contrast a role reaches on the base, muted, elevated, and chrome
-surfaces, and on `fillTertiary` over each, in light and dark, in every hue scope, at normal and
-increased contrast. Each content step also keeps at least 1.1 times the contrast of the step below
-it, and each fill and stroke step stays stronger than the one below it.
+Content, fills, and strokes form stairs, strongest first. Floors are minimum contrasts on base,
+muted, elevated, and chrome surfaces, including `fillTertiary` over each, in both schemes and
+contrast settings. They cover neutral and category scopes, not intent overrides.
+Each content step keeps at least 1.1 times the next step's contrast. Fill and stroke steps also
+stay ordered.
 
 ## Rules
 
@@ -24,9 +23,8 @@ it, and each fill and stroke step stays stronger than the one below it.
    `contentPrimary`. A fill moves from none to `fillTertiary`, `fillSecondary`, then
    `fillPrimary`. A stroke moves from `strokeQuaternary` to `strokeTertiary`, then
    `strokeSecondary`.
-2. Never de-emphasise text with `opacity` or `color-mix()`. Pick a lower stair. Text that fits no
-   stair is decoration and takes `contentQuaternary`. Opacity stays fine for fading a whole element
-   in or out, and for images.
+2. Never de-emphasise text with `opacity` or `color-mix()`. Pick a lower text stair, never
+   `contentQuaternary`. Use opacity for whole-element fades and images.
 3. `contentDisabled` is for disabled controls only. A failed, cancelled, or idle item that still
    informs takes `contentTertiary`, or `contentAccent` for an error. A decorative idle dot takes
    `contentQuaternary`.
@@ -34,28 +32,25 @@ it, and each fill and stroke step stays stronger than the one below it.
    chevron, a separator, or an idle mark.
 
 - Components read a role. They never write a hex, `rgb()`, `oklch()`, or `light-dark()`.
-- A new colour need is a new role in `roles.stylex.ts` with a handle in `vars.stylex.ts`.
 - Meaning picks a hue through an intent. A category picks one through a scope. Both reuse the
   same role names.
-- Nothing paints a page background in the desktop app. The window's material shows through.
 
 ## Content
 
 Text and icons.
 
-| Role                         | Job                                                     | Floor                      |
-| ---------------------------- | ------------------------------------------------------- | -------------------------- |
-| `contentPrimary`             | Body text, titles, values, a hovered label              | 7:1                        |
-| `contentSecondary`           | Labels, navigation and tool rows, pickers, idle buttons | 6:1                        |
-| `contentTertiary`            | Metadata, hints, placeholders, details, timestamps      | 4.5:1                      |
-| `contentQuaternary`          | Chevrons, separators, idle and decorative glyphs, rules | 3:1                        |
-| `contentDisabled`            | Disabled controls                                       | None                       |
-| `contentAccent`              | The scope's hue as ink, for error and attention text    | 4.5:1 on a surface         |
-| `contentOnInteractiveStrong` | The label on `buttonFill`                               | 4.5:1 on `buttonFill`      |
-| `contentOnControl`           | The check, knob, or thumb on a selected control         | 3:1 on `bgControlSelected` |
+| Role                         | Job                                       | Floor                      |
+| ---------------------------- | ----------------------------------------- | -------------------------- |
+| `contentPrimary`             | Body, titles, values, hovered labels      | 7:1                        |
+| `contentSecondary`           | Labels, navigation, pickers, idle buttons | 6:1                        |
+| `contentTertiary`            | Metadata, hints, placeholders             | 4.5:1                      |
+| `contentQuaternary`          | Decoration only, never text               | 3:1                        |
+| `contentDisabled`            | Disabled controls                         | None                       |
+| `contentAccent`              | Scoped ink                                | 4.5:1 on a surface         |
+| `contentOnInteractiveStrong` | Label on `buttonFill`                     | 4.5:1 on `buttonFill`      |
+| `contentOnControl`           | Selected check, knob, thumb               | 3:1 on `bgControlSelected` |
 
-`contentQuaternary` is never text. `contentAccent` also colours status dots. Under
-`intent.danger` it is the error colour. Under a category scope it is that hue.
+`contentAccent` colours status dots and category ink. Under `intent.danger` it is the error colour.
 
 <RoleTable group="content" />
 
@@ -63,11 +58,11 @@ Text and icons.
 
 Fills are translucent, so each one works on any surface.
 
-| Role            | Job                                                                                        |
-| --------------- | ------------------------------------------------------------------------------------------ |
-| `fillPrimary`   | A pressed filled chip, a strong active state, text selection                               |
-| `fillSecondary` | A pressed ghost, hover on a filled chip, and the selected, open, expanded, or current item |
-| `fillTertiary`  | Hover on a ghost row or button, and the rest fill of a chip or secondary control           |
+| Role            | Job                                                                   |
+| --------------- | --------------------------------------------------------------------- |
+| `fillPrimary`   | Pressed filled chip, strong active state, text selection              |
+| `fillSecondary` | Pressed ghost, filled-chip hover, selected/open/expanded/current item |
+| `fillTertiary`  | Ghost hover, resting chip or secondary control                        |
 
 `layerHover` and `layerPressed` paint `fillTertiary` and `fillSecondary` as a `background-image`,
 so they stack over an element's own background.
@@ -79,13 +74,13 @@ so they stack over an element's own background.
 Borders, dividers, and rings. `strokePrimary` and `strokeAccent` are opaque. The other strokes are
 translucent.
 
-| Role               | Job                                                                              | Floor |
-| ------------------ | -------------------------------------------------------------------------------- | ----- |
-| `strokePrimary`    | A control boundary, such as a checkbox, a slider thumb, or a raised input's edge | 3:1   |
-| `strokeSecondary`  | A strong border, and the hover, focus, or active border                          | None  |
-| `strokeTertiary`   | The default border                                                               | None  |
-| `strokeQuaternary` | A subtle divider, hairline, or card edge                                         | None  |
-| `strokeAccent`     | The scope's hue as a stroke                                                      | None  |
+| Role               | Job                                         | Floor |
+| ------------------ | ------------------------------------------- | ----- |
+| `strokePrimary`    | Unchecked checkbox or slider-thumb boundary | 3:1   |
+| `strokeSecondary`  | Strong, hover, focus, active border         | None  |
+| `strokeTertiary`   | Default border                              | None  |
+| `strokeQuaternary` | Subtle divider or edge                      | None  |
+| `strokeAccent`     | Scoped stroke                               | None  |
 
 <RoleTable group="stroke" />
 
@@ -97,7 +92,8 @@ The grounds a stair sits on, and the scrims behind a dialog or the command palet
 
 ## Material
 
-Materials let the window show through, and turn opaque when the system reduces transparency.
+Materials let the window show through. They turn opaque when the host sets
+`--nyte-reduce-transparency` to `1`. The token defaults to `0`.
 
 <RoleTable group="material" />
 
@@ -117,38 +113,49 @@ checked state or the slider's filled part.
 
 ## Data
 
-`chartSeries` paints a data mark, such as a chart bar, at 3:1 on both bases.
+`chartSeries` uses ramp step `90` in both schemes. Check contrast against the background.
+It does not guarantee 3:1.
 
 <RoleTable group="data" />
 
 ## Utility
 
-`scrollbarThumb` is the scrollbar thumb. `conversationUserShellBg` is the shell behind a sent
-message in the transcript.
+`conversationUserShellBg` fills the shell behind a sent message.
 
 <RoleTable group="utility" />
 
 ## Hue scopes
 
-Pass a scope to `props()` and every role inside reads that hue. `custom` takes its hue from
-`--nyte-custom-hue`.
+Pass a scope to `props()` to apply its ramp and tinted roles. Neutral control boundaries, unchecked
+controls, and `contentOnControl` stay neutral. `custom` reads `--nyte-custom-hue` (default `250`)
+and `--nyte-custom-chroma-scale` (default `1`).
 
 <HueScopes />
 
 ```tsx
-<span {...props(surfaceTheme.green, styles.badge)}>Added</span>
+import { create, props } from "@stylexjs/stylex";
+import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
+import { role } from "@nyte-ai/ui/styles/vars.stylex";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
+
+const styles = create({
+  badge: { color: role.contentSecondary, backgroundColor: role.fillTertiary },
+});
+
+export function Added() {
+  return <span {...props(surfaceTheme.green, text.sm, styles.badge)}>Added</span>;
+}
 ```
 
-Every scoped role in each hue, light and dark:
+Selected scoped roles for each fixed hue, light and dark, at normal contrast:
 
 <ScopeTables />
 
 ## Ramps
 
-Each hue has twenty steps, from `0`, the lightest, to `150`, the darkest. A role picks a light step
-and a dark step from the scope's ramp. The translucent ramp holds the same steps as glass for fills
-and strokes, so it differs per scheme. `custom` builds its ramp from `--nyte-custom-hue` and has
-no fixed values.
+Each hue runs from `0`, lightest, to `150`, darkest. Scheme-dependent roles pick light and dark
+ramp values. Translucent ramps supply fills and strokes per scheme.
+`custom` builds its ramp from `--nyte-custom-hue`, with no fixed values.
 
 <HueRamps />
 
@@ -156,14 +163,14 @@ no fixed values.
 
 <IntentTable />
 
-The primary intent fills solid buttons with the hue itself rather than darkening it for a text
-label, so its solid buttons suit glyphs and short labels.
+`intent.primary` sets `buttonFill` to blue step `80` without category lightness clamping.
+`intent.danger` maps `contentSecondary` to `contentAccent`, with a 4.5:1 floor rather than 6:1.
 
-The focus ring ignores scopes. It reads `appearance.focusRing`, a fixed blue.
+The focus ring ignores scopes. It reads `appearance.focusRing`, blue by default and `Highlight`
+in forced colors. The host can make the ring transparent for pointer focus.
 
 ## High contrast
 
-When the OS asks for more contrast (`prefers-contrast: more`), the content steps move toward the
-end of the ramp and keep their order. Fills and every stroke but `strokePrimary` get stronger, and
-control hover and press states darken or lighten further. `strokePrimary` and the surfaces keep
-their steps.
+Under `prefers-contrast: more`, content steps move toward the ramp's end, preserving order.
+Fills, translucent strokes, and control hover/press states strengthen.
+`strokePrimary`, `strokeAccent`, and surfaces keep their steps.

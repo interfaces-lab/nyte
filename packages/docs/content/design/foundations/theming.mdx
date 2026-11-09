@@ -3,53 +3,51 @@ title: Theming and styling channels
 description: "Token overrides, className, and xstyle"
 ---
 
-| Layer                       | Owns                                             | Mechanism                                               |
-| --------------------------- | ------------------------------------------------ | ------------------------------------------------------- |
-| Base UI and `@shadcn/react` | Interaction, focus, ARIA, data attributes        | Components and scroll/form controllers                  |
-| `@nyte-ai/ui`               | Reusable component styling                       | StyleX `stylex.create` reading [tokens](/design/tokens) |
-| The app                     | Layout, typography, product identity, composites | Token overrides, `className`, `xstyle`, own components  |
+| Layer         | Owns                                                      |
+| ------------- | --------------------------------------------------------- |
+| Base UI       | Interaction, focus, ARIA, state attributes                |
+| `@nyte-ai/ui` | Component styling through StyleX [tokens](/design/tokens) |
+| App           | Layout, typography, identity, composites                  |
 
 ## Colour scopes
 
-Pass a scope such as `surfaceTheme.blue` to `props()`, and components inside read that hue's colour
-roles. See [Tokens](/design/tokens).
+Pass scopes to `props()` for tinted roles. Use `intent` for meaning, `surfaceTheme` for categories.
 
 ```tsx
 import { create, props } from "@stylexjs/stylex";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
-```
 
-```ts
 const styles = create({
   panel: { backgroundColor: role.fillTertiary },
 });
-```
 
-```tsx
-<section {...props(surfaceTheme.blue, styles.panel)}>Preview</section>
+export function PreviewPanel() {
+  return <section {...props(surfaceTheme.blue, styles.panel)}>Preview</section>;
+}
 ```
-
-Use `intent` scopes for meaning and `surfaceTheme` scopes for category hues.
 
 ## Measurements
 
-Read control geometry from handles in `@nyte-ai/ui/styles/schema.stylex`, such as `button`, `input`, and
-`row`. They grow under `(pointer: coarse)`. Use a scale literal when no handle exists.
+Read geometry from `@nyte-ai/ui/styles/schema.stylex`. `control` supplies heights, `button` and
+`input` padding and radii. `row` heights enforce `target.min`. Use scale literals when no handle exists.
 
 ## Styling a component
 
-Each prop below overrides component styles. Chat layout parts accept only native `className` and
-`style`.
+Choose appearance through `size`, `variant`, and `tone`.
 
-| Prop        | Takes                                 |
-| ----------- | ------------------------------------- |
-| `xstyle`    | Styles from your `create()`           |
-| `className` | Any class, such as a Tailwind utility |
-| `style`     | Inline values, which beat both        |
+| Prop        | Takes                                                  |
+| ----------- | ------------------------------------------------------ |
+| `xstyle`    | `create()` styles within the part's `Restyle` contract |
+| `className` | String or supported state function                     |
+| `style`     | `CSSProperties` or supported state function            |
 
-Set a property through `xstyle` or `className`, not both. `Button` and `Toggle` take only placement
-properties in `xstyle`, typed as `ButtonLayout`.
+State functions require a Base UI-backed part. Check its prop type.
+`xstyle` merges last. Classes follow cascade order. Inline styles override ordinary stylesheet declarations.
+Set each property through one channel.
+
+`Button` and `Toggle` accept `ButtonLayout`, including placement and `borderRadius`, not padding,
+height, or colors.
 
 ## Data attributes
 
@@ -59,12 +57,17 @@ properties in `xstyle`, typed as `ButtonLayout`.
 | `AvatarImage`    | `data-slot="avatar-image"`                     |
 | `AvatarFallback` | `data-slot="avatar-fallback"`                  |
 | `Input`          | `data-slot="input"`                            |
+| `InputGroup`     | `data-slot="input-group"`                      |
 | `Textarea`       | `data-slot="textarea"`                         |
-
-Base UI also sets state attributes such as `data-disabled`, `data-popup-open`, `data-highlighted`,
-and `data-checked`.
 
 ## Dark mode
 
-Tokens follow the active `color-scheme` through `light-dark()`, not a `.dark` class. An app that
-toggles `.dark` sets `color-scheme: dark` under it.
+Use `applyDisplayMode` with `"light"` or `"dark"`. Resolve system preference yourself.
+
+```ts
+import { applyDisplayMode } from "@nyte-ai/ui/appearance";
+
+applyDisplayMode("dark");
+```
+
+A custom `.dark` class must set `color-scheme: dark`.

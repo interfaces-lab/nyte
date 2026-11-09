@@ -25,6 +25,7 @@ import { Popover } from "@nyte-ai/ui/popover";
 | [Command](/design/command)                   | `@nyte-ai/ui/command`          |
 | [Context menu](/design/context-menu)         | `@nyte-ai/ui/context-menu`     |
 | [Dialog](/design/dialog)                     | `@nyte-ai/ui/dialog`           |
+| [File type icon](/design/file-type-icon)     | `@nyte-ai/ui/file-type-icon`   |
 | [Icon](/design/icon)                         | `@nyte-ai/ui/icon`             |
 | [Input](/design/input)                       | `@nyte-ai/ui/input`            |
 | [Kbd](/design/kbd)                           | `@nyte-ai/ui/kbd`              |
@@ -34,6 +35,7 @@ import { Popover } from "@nyte-ai/ui/popover";
 | [Message](/design/message)                   | `@nyte-ai/ui/message`          |
 | [Message scroller](/design/message-scroller) | `@nyte-ai/ui/message-scroller` |
 | [Meter](/design/meter)                       | `@nyte-ai/ui/meter`            |
+| [Morph](/design/morph)                       | `@nyte-ai/ui/morph`            |
 | [Number field](/design/number-field)         | `@nyte-ai/ui/number-field`     |
 | [Popover](/design/popover)                   | `@nyte-ai/ui/popover`          |
 | [Preview card](/design/preview-card)         | `@nyte-ai/ui/preview-card`     |
@@ -51,5 +53,4 @@ import { Popover } from "@nyte-ai/ui/popover";
 | [Toolbar](/design/toolbar)                   | `@nyte-ai/ui/toolbar`          |
 | [Tooltip](/design/tooltip)                   | `@nyte-ai/ui/tooltip`          |
 
-Import these subpaths instead of `@base-ui/react`. When `render` produces something other than a `<button>`, pass `nativeButton={false}` so
-Base UI keeps button semantics.
+Import these subpaths instead of `@base-ui/react`. On button parts exposing `nativeButton`, pass `nativeButton={false}` when `render` produces a non-button.

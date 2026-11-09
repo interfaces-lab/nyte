@@ -7,20 +7,15 @@ description: "A panel that a trigger opens and closes"
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 ```
 
-A trigger that shows and hides one panel. Use it for detail a reader opens on demand, such as tool
-output or earlier messages.
+Shows and hides detail such as tool output or earlier messages.
 
 ## Usage
 
 - `defaultOpen` leaves the panel uncontrolled. `open` with `onOpenChange` controls it.
 - Use `variant="plain"` when another styled part, such as `Row.Primary`, renders the trigger.
-- `Collapsible.Root`, `Collapsible.Panel`, and `Collapsible.Preview` bring no look of their own. Lay
-  them out with `xstyle`.
-- `Collapsible.Panel` defaults `hiddenUntilFound` to `true`. The closed panel stays in the DOM, and
-  find-in-page can match its text and open it. Pass `hiddenUntilFound={false}` to unmount it.
-- Use `Collapsible.Preview` to keep content in view while closed when that content has controls of
-  its own. Closed, a press anywhere in it opens the collapsible, and a collapsible pressed inside it
-  opens without closing. Open, it is a plain container.
+- Lay out `Collapsible.Root` and `Collapsible.Preview` with `xstyle`. Style content inside the animated panel.
+- To unmount closed panels, pass `hiddenUntilFound={false}` and `keepMounted={false}`.
+- Use `Collapsible.Preview` for content with its own controls that stays visible while closed.
 
 ## Anatomy
 
@@ -100,23 +95,34 @@ const [open, setOpen] = useState(false);
 
 ## Props
 
-Every part takes `xstyle`, and `className` and `style` as plain values, not functions of state.
+`Root`, `Trigger`, and `Panel` preserve Base UI's `className` and `style` state callbacks.
+`Preview` and `Chevron` take plain strings and `React.CSSProperties` objects instead.
 See [Theming](/design/theming).
+
+| Part                                  | Prop     | Type                             |
+| ------------------------------------- | -------- | -------------------------------- |
+| `Root`, `Trigger`, `Panel`, `Preview` | `xstyle` | `XStyle`                         |
+| `Chevron`                             | `xstyle` | `Restyle<"Collapsible.Chevron">` |
 
 ### Trigger
 
 | Prop      | Type                      | Default        | Description                           |
 | --------- | ------------------------- | -------------- | ------------------------------------- |
-| `variant` | `"disclosure" \| "plain"` | `"disclosure"` | Inline toggle look, or a bare button. |
+| `variant` | `"disclosure" \| "plain"` | `"disclosure"` | Full-width disclosure or bare button. |
+
+### Panel
+
+| Prop               | Type      | Default | Description                                                                      |
+| ------------------ | --------- | ------- | -------------------------------------------------------------------------------- |
+| `hiddenUntilFound` | `boolean` | `true`  | Keeps closed content searchable in supporting browsers. Overrides `keepMounted`. |
 
 ### Chevron
 
-Renders a `<span>` with `aria-hidden`, holding a `chevron-right` [icon](/design/icon).
-It takes every `<span>` prop, plus:
+Takes native `<span>` props.
 
-| Prop   | Type        | Default | Description   |
-| ------ | ----------- | ------- | ------------- |
-| `size` | `GlyphSize` | `"2xs"` | A glyph step. |
+| Prop   | Type        | Default |
+| ------ | ----------- | ------- |
+| `size` | `GlyphSize` | `"2xs"` |
 
 ### Preview
 
@@ -138,9 +144,8 @@ The reference tables below come from Base UI, MIT, © Material-UI SAS.
 
 ## Accessibility
 
-- The trigger renders a native `<button>` with `aria-expanded`, and `aria-controls` pointing at the
-  panel while it is open. Enter and Space toggle it.
+- Enter and Space toggle the panel.
+
 - Rendering the trigger as something other than a `<button>` needs `nativeButton={false}`.
 - `disclosure` draws a focus ring. With `plain`, the rendered part owns focus styling.
-- The preview takes no role and no tab stop. The trigger stays the control, and controls inside
-  the preview keep their own roles.
+- Keep a keyboard-accessible trigger alongside the preview.

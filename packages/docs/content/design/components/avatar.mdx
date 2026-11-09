@@ -11,16 +11,15 @@ An image that falls back to initials while it loads or when it fails.
 
 ## Usage
 
-- Always include `AvatarFallback`.
-- Keep fallback text to two characters.
-- `tone` marks identity, not status.
+- Include `AvatarFallback` with two-character initials.
+- Choose `tone` for identity, not status.
 - `AvatarImage` needs `alt`. Use `alt=""` beside a visible name.
 
 ## Anatomy
 
 ```tsx
 <Avatar>
-  <AvatarImage />
+  <AvatarImage alt="" />
   <AvatarFallback />
 </Avatar>
 ```
@@ -35,7 +34,7 @@ An image that falls back to initials while it loads or when it fails.
 
 ```tsx
 <Avatar size="lg">
-  <AvatarImage src="…" alt="interfaces-lab" />
+  <AvatarImage src="https://github.com/interfaces-lab.png" alt="interfaces-lab" />
   <AvatarFallback>IL</AvatarFallback>
 </Avatar>
 <Avatar size="md"><AvatarFallback>NY</AvatarFallback></Avatar>
@@ -59,18 +58,24 @@ An image that falls back to initials while it loads or when it fails.
 
 ## Props
 
-The reference tables below come from Base UI, MIT, © Material-UI SAS.
+All three parts accept Base UI state callbacks for `className` and `style`.
+
+| Part             | Prop     | Type                        |
+| ---------------- | -------- | --------------------------- |
+| `Avatar`         | `xstyle` | `Restyle<"Avatar">`         |
+| `AvatarImage`    | `xstyle` | `Restyle<"AvatarImage">`    |
+| `AvatarFallback` | `xstyle` | `Restyle<"AvatarFallback">` |
 
 ### Avatar
 
-| Prop                           | Type                                                     | Default     | Description                     |
-| ------------------------------ | -------------------------------------------------------- | ----------- | ------------------------------- |
-| `size`                         | `"xs" \| "sm" \| "md" \| "lg"`                           | `"md"`      | 20, 24, 28, or 36px.            |
-| `corners`                      | `"circle" \| "rounded"`                                  | `"circle"`  | Full circle or rounded square.  |
-| `tone`                         | `"neutral" \| "orange" \| "blue" \| "violet" \| "green"` | `"neutral"` | Background and foreground pair. |
-| `className`, `style`, `xstyle` | see [Theming](/design/theming)                           |             |                                 |
+| Prop                           | Type                                                     | Default     | Description          |
+| ------------------------------ | -------------------------------------------------------- | ----------- | -------------------- |
+| `size`                         | `"xs" \| "sm" \| "md" \| "lg"`                           | `"md"`      | 20, 24, 28, or 36px. |
+| `corners`                      | `"circle" \| "rounded"`                                  | `"circle"`  |                      |
+| `tone`                         | `"neutral" \| "orange" \| "blue" \| "violet" \| "green"` | `"neutral"` |                      |
+| `className`, `style`, `xstyle` | see [Theming](/design/theming)                           |             |                      |
 
-`size` and `tone` also land on the root as `data-size` and `data-tone`.
+The reference tables below come from Base UI, MIT, © Material-UI SAS.
 
 <include>../../base-ui-reference/avatar/Root.md</include>
 
@@ -84,4 +89,5 @@ The reference tables below come from Base UI, MIT, © Material-UI SAS.
 
 ## Accessibility
 
-- The root is a `<span>` with no role. Meaning comes from the image's `alt` or the text around it.
+- Name the fallback with visible text or `role="img"` and `aria-label`. Image `alt` is unavailable
+  during fallback. Hide redundant initials with `aria-hidden`.

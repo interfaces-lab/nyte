@@ -5,54 +5,65 @@ description: "Focus rings, modality, and Base UI keyboard behavior"
 
 ## The ring
 
-Focusable components draw a 1px `appearance.focusRing` outline on `:focus-visible`. Hue scopes do
-not change its color.
+`focus` draws a 1px `appearance.focusRing` outline on `:focus-visible`, independent of hue scopes.
+Menus use `data-highlighted`. The ring is blue, or `Highlight` in forced colors.
 
 ```ts title="Import"
 import { focus, srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 ```
 
-| Style             | Use                                                                                     |
-| ----------------- | --------------------------------------------------------------------------------------- |
-| `focus.ring`      | A standalone control. The outline sits on the element's edge.                           |
-| `focus.ringInset` | A row or menu item flush inside a scroll container or popup, where an outer ring clips. |
-| `srOnly`          | Visually hidden and still announced, for a label on a control that reads by shape.      |
+| Style             | Use                            |
+| ----------------- | ------------------------------ |
+| `focus.ring`      | Standalone control             |
+| `focus.ringInset` | Rows where an outer ring clips |
+| `srOnly`          | Visually hidden label          |
 
 ```tsx
-<a href="/settings" {...stylex.props(styles.link, focus.ring)}>
-  Settings
-</a>
-```
+import { create, props } from "@stylexjs/stylex";
+import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
+import { role } from "@nyte-ai/ui/styles/vars.stylex";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 
-`Input`, `InputGroup`, and `Textarea` draw no ring. On focus, their border takes
-`appearance.focusColor` in every variant but `bare`.
+const styles = create({ link: { color: role.contentAccent } });
 
-## Focus modality
-
-Chromium matches `:focus-visible` on every text field focus, pointer clicks included. The host sets
-`data-nyte-focus-modality="pointer"` or `"keyboard"` on the document, and pointer mode hides the ring.
-
-```css
-:root[data-nyte-focus-modality="pointer"] {
-  --nyte-focus-ring: transparent;
+export function SettingsLink() {
+  return (
+    <a href="/settings" {...props(text.base, styles.link, focus.ring)}>
+      Settings
+    </a>
+  );
 }
 ```
 
-Start at `pointer` so autofocus draws no ring. Inside a text field, only Tab switches to keyboard
-mode. Elsewhere, any non-modifier key does. Listen in the capture phase so modality changes before a
-handler moves focus.
+`Input` and `Textarea` replace outlines with `appearance.focusColor` borders on `:focus`.
+Invalid borders can remain error-colored. `Input`'s `bare` variant has no focus indicator.
+`InputGroup` uses `:focus-within`.
 
-Without this switch, clicks into a text field draw a ring too. Never hide the ring for keyboard focus.
+## Focus modality
 
-## Keyboard model
+Apply a `focusModality` theme to the document for pointer focus.
 
-| Component            | Keys                                                                                                                                                                                  |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Button, Toggle       | Enter and Space activate. Toggle flips `aria-pressed`.                                                                                                                                |
-| Dialog, Alert dialog | Focus moves into the popup on open and returns to the trigger on close. Tab is trapped inside. Escape closes both. Alert dialog ignores outside presses.                              |
-| Menu                 | Arrow Down and Up move the highlight, Home and End jump, type-ahead matches item text, Enter and Space activate, Escape closes, Arrow Right opens a submenu and Arrow Left closes it. |
-| Input                | Native.                                                                                                                                                                               |
+```ts title="pointer-focus.stylex.ts"
+import { createTheme } from "@stylexjs/stylex";
+import { focusModality } from "@nyte-ai/ui/styles/tokens.stylex";
+
+export const pointerFocus = createTheme(focusModality, {
+  "--nyte-focus-ring": "transparent",
+});
+```
+
+Start in pointer mode. Switch to keyboard mode on Tab inside text fields, or any non-modifier
+key elsewhere. Listen during capture. Remove the override for keyboard focus. Input borders remain.
+
+## Keyboard defaults
+
+| Component            | Keys                                                                                                     |
+| -------------------- | -------------------------------------------------------------------------------------------------------- |
+| Button, Toggle       | Enter and Space activate                                                                                 |
+| Dialog, Alert dialog | Focus enters, stays inside, then returns. Escape requests closing. Alert dialog ignores outside presses. |
+| Menu                 | Arrows move, Home/End jump, typing matches labels, Enter/Space activate, Escape closes                   |
+| Input                | Native                                                                                                   |
 
 ## Disabled
 
-Disabled buttons, toggles, and menu items take `--nyte-content-disabled`.
+Disabled buttons, toggles, and menu items use `role.contentDisabled`. Loading buttons retain normal ink.

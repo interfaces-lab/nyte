@@ -7,14 +7,14 @@ description: "A dialog that expands from its trigger"
 import { Morph } from "@nyte-ai/ui/morph";
 ```
 
-Morph animates between its trigger and popup with a shared layout. Use it to expand a preview without losing its place.
+Expand a preview from its trigger without losing its place.
 
 ## Usage
 
 - Control `open` and `onOpenChange` on `Morph.Root`.
 - Give the trigger and popup matching content. Keep controls outside the popup's layout box if only the preview should expand.
 - Include `Morph.Title` and a reachable `Morph.Close` inside the popup.
-- Place `Morph.Backdrop` and `Morph.Popup` inside `Morph.Portal`. The portal retains them through the exit animation.
+- Place `Morph.Backdrop` and `Morph.Popup` inside `Morph.Portal`.
 - Use `initialFocus` and `finalFocus` to choose the controls focused on open and close.
 
 ## Anatomy
@@ -60,22 +60,30 @@ function Preview() {
 
 ## Props
 
-| Part                | Styling                                                                 |
-| ------------------- | ----------------------------------------------------------------------- |
-| `Morph.Root`        | Renders nothing; requires controlled `open`                             |
-| `Morph.Trigger`     | Relatively positioned button, raised during the shared-layout animation |
-| `Morph.Portal`      | Retains the popup through exit                                          |
-| `Morph.Backdrop`    | Fixed scrim                                                             |
-| `Morph.Popup`       | Fixed, centered dialog; content determines its size                     |
-| `Morph.Close`       | Unstyled Base UI button                                                 |
-| `Morph.Title`       | Unstyled Base UI heading                                                |
-| `Morph.Description` | Unstyled Base UI paragraph                                              |
+| Part                | Styling                        |
+| ------------------- | ------------------------------ |
+| `Morph.Root`        | Controlled `open`              |
+| `Morph.Trigger`     | Button                         |
+| `Morph.Portal`      | Retains popup through exit     |
+| `Morph.Backdrop`    | Fixed scrim                    |
+| `Morph.Popup`       | Centered, content-sized dialog |
+| `Morph.Close`       | Unstyled button                |
+| `Morph.Title`       | Unstyled heading               |
+| `Morph.Description` | Unstyled paragraph             |
 
-The rendered parts accept `xstyle`, `className` and `style`. Trigger, backdrop and popup use Motion elements internally. The shared layout ID is private to each root. Reduced motion replaces the shared-layout animation with an opacity fade.
+Except `Morph.Root` and `Morph.Portal`, each part accepts `xstyle`, `className`, and `style`.
+`className` and `style` accept plain values or state functions. Trigger, Backdrop, and Popup
+ignore caller-supplied `render`.
 
 The part tables below come from Base UI, MIT, © Material-UI SAS.
 
 ### Root
+
+| Prop   | Type      | Description                |
+| ------ | --------- | -------------------------- |
+| `open` | `boolean` | Required controlled state. |
+
+Takes Base UI's dialog root props otherwise. No handle factory is exported.
 
 <include>../../base-ui-reference/dialog/Root.md</include>
 
@@ -84,6 +92,9 @@ The part tables below come from Base UI, MIT, © Material-UI SAS.
 <include>../../base-ui-reference/dialog/Trigger.md</include>
 
 ### Portal
+
+`open` controls presence through the exit animation. `keepMounted` is forced while present.
+No `xstyle`. `className` and `style` accept plain values or empty-state callbacks.
 
 <include>../../base-ui-reference/dialog/Portal.md</include>
 
@@ -109,7 +120,4 @@ The part tables below come from Base UI, MIT, © Material-UI SAS.
 
 ## Accessibility
 
-- Base UI names the dialog with `Morph.Title` and describes it with `Morph.Description`.
-- Focus moves inside on open, stays contained, and returns to the trigger on close unless `finalFocus` selects another control.
-- Escape and outside press close the dialog. `disablePointerDismissal` disables outside press.
-- Reduced motion fades the popup without transforming it.
+- Reduced motion uses a 100 ms opacity fade.

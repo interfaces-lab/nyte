@@ -4,7 +4,7 @@ description: "Buttons and links with seven variants, six sizes, pill shapes, and
 ---
 
 ```ts title="Import"
-import { Button, ButtonGroup, ButtonLink, SplitButton } from "@nyte-ai/ui/button";
+import { Button, ButtonGroup, ButtonLink, PickerTrigger, SplitButton } from "@nyte-ai/ui/button";
 ```
 
 `Button` acts. `ButtonLink` navigates with a native `<a href>`.
@@ -19,9 +19,19 @@ import { Button, ButtonGroup, ButtonLink, SplitButton } from "@nyte-ai/ui/button
 - `Button` defaults to `type="button"`. Pass `type="submit"` to submit a form.
 - In a popup trigger's `render`, put the text inside the `Button`, as in
   `<Popover.Trigger render={<Button>Open</Button>} />`.
-- Add `pill` to a variant for fully rounded ends and pill padding.
 - Give every `ButtonGroup` part the same size. `SplitButton.MenuTrigger` needs a label that names
   the action and its target.
+
+## Anatomy
+
+```tsx
+<SplitButton.Root>
+  <SplitButton.Main>Commit</SplitButton.Main>
+  <SplitButton.MenuTrigger aria-label="More commit actions" />
+</SplitButton.Root>
+```
+
+Wrap `SplitButton.MenuTrigger` in the menu's trigger. See [Joined actions](#joined-actions).
 
 ## Examples
 
@@ -71,10 +81,6 @@ import { Button, ButtonGroup, ButtonLink, SplitButton } from "@nyte-ai/ui/button
 <Button variant="solid" icon="arrow-up" disabled>Send</Button>
 ```
 
-A disabled button takes muted ink in every variant, and `solid` and `outline` trade their fill for a
-quiet one. It looks the same in light and dark. A `loading` button keeps its enabled look under the
-`Loader`.
-
 ### Navigation and loading
 
 ```tsx
@@ -111,41 +117,64 @@ quiet one. It looks the same in light and dark. A `loading` button keeps its ena
 
 ### Button and ButtonLink
 
-`Button` takes every Base UI `Button` prop. `className` and `style` take plain values, not functions
-of state. `ButtonLink` takes native `<a>` attributes.
+`Button` takes Base UI props with the `iconOnly` restrictions below. `className` and `style` accept
+Base UI button-state callbacks. `ButtonLink` takes native `<a>` attributes and plain styling values.
 
-| Prop                 | Type                                                                          | Default                                       | Description                                                             |
-| -------------------- | ----------------------------------------------------------------------------- | --------------------------------------------- | ----------------------------------------------------------------------- |
-| `variant`            | `"ghost" \| "outline" \| "solid" \| "plain" \| "quiet" \| "text" \| "inline"` | `"ghost"`                                     | `quiet` is `plain` with 4px padding.                                    |
-| `tone`               | `"neutral" \| "primary" \| "success" \| "warning" \| "danger"`                | `"primary"` for `text`, otherwise `"neutral"` |                                                                         |
-| `size`               | `"2xs" \| "xs" \| "sm" \| "md" \| "lg" \| "xl"`                               | `"md"`                                        | 16, 20, 24, 28, 32, or 36px tall.                                       |
-| `iconOnly`           | `boolean`                                                                     | `false`                                       | Square control.                                                         |
-| `pill`               | `boolean`                                                                     | `false`                                       | Fully rounded ends with pill padding.                                   |
-| `icon`               | `IconName`                                                                    |                                               | Leading or standalone glyph.                                            |
-| `children`           | `ReactNode`                                                                   |                                               | Required for visible-text controls.                                     |
-| `xstyle`             | `ButtonLayout`                                                                |                                               | Position, inset, margin, flex, grid, order, and width.                  |
-| `className`, `style` | See [Theming](/design/theming)                                                |                                               | Applied to the control.                                                 |
-| `loading`            | `boolean`                                                                     | `false`                                       | Button only. Shows a `Loader`; disables activation but stays focusable. |
-| `disabledReason`     | `string`                                                                      |                                               | Button only. Shown as the `title` while `disabled`.                     |
-| `href`               | `string`                                                                      | Required for ButtonLink                       |                                                                         |
+| Prop                 | Type                                                                          | Default                                       | Description                                            |
+| -------------------- | ----------------------------------------------------------------------------- | --------------------------------------------- | ------------------------------------------------------ |
+| `variant`            | `"ghost" \| "outline" \| "solid" \| "plain" \| "quiet" \| "text" \| "inline"` | `"ghost"`                                     | `quiet` is `plain` with 4px inline padding.            |
+| `tone`               | `"neutral" \| "primary" \| "success" \| "warning" \| "danger"`                | `"primary"` for `text`, otherwise `"neutral"` |                                                        |
+| `size`               | `"2xs" \| "xs" \| "sm" \| "md" \| "lg" \| "xl"`                               | `"md"`                                        |                                                        |
+| `iconOnly`           | `boolean`                                                                     | `false`                                       |                                                        |
+| `pill`               | `boolean`                                                                     | `false`                                       | Fully rounded ends.                                    |
+| `icon`               | `IconName`                                                                    |                                               | Leading or standalone glyph.                           |
+| `children`           | `ReactNode`                                                                   |                                               | Required for visible-text controls.                    |
+| `xstyle`             | `ButtonLayout`                                                                |                                               | Placement, width, and border radius.                   |
+| `className`, `style` | See [Theming](/design/theming)                                                |                                               |                                                        |
+| `loading`            | `boolean`                                                                     | `false`                                       | Button only. Shows a `Loader` and disables activation. |
+| `disabledReason`     | `string`                                                                      |                                               | Button only. Shown as the `title` while `disabled`.    |
+| `aria-label`         | `string`                                                                      | Required when `iconOnly`                      | Not accepted on visible-text controls.                 |
+| `href`               | `string`                                                                      | Required for ButtonLink                       |                                                        |
+
+### ButtonGroup and SplitButton
+
+`ButtonGroup` and `SplitButton.Root` render `<div role="group">` and take native `<div>` props.
+`SplitButton.Main` is a `Button`. `SplitButton.MenuTrigger` is icon-only, requires `aria-label`,
+rejects `children`, and defaults `icon` to `chevron-down`.
+
+| Prop        | Type                     |
+| ----------- | ------------------------ |
+| `xstyle`    | `Restyle<"ButtonGroup">` |
+| `className` | `string`                 |
+| `style`     | `React.CSSProperties`    |
+
+### PickerTrigger
+
+An outline, medium button with an ellipsized value and trailing chevron. Takes Base UI button props
+and styling callbacks.
+
+| Prop     | Type                   | Default      | Description                          |
+| -------- | ---------------------- | ------------ | ------------------------------------ |
+| `width`  | `"standard" \| "wide"` | `"standard"` | Maximum width of 180px or 100%.      |
+| `xstyle` | `ButtonLayout`         |              | Placement, width, and border radius. |
+
+### Base UI button props
+
+Applies to `Button`, `SplitButton.Main`, `SplitButton.MenuTrigger`, and `PickerTrigger`, with the
+restrictions above.
 
 The reference table below comes from Base UI, MIT, © Material-UI SAS.
 
 <include>../../base-ui-reference/button/Button.md</include>
 
-### ButtonGroup and SplitButton
-
-`ButtonGroup` and `SplitButton.Root` render a `<div role="group">` with native `<div>` attributes
-plus `xstyle`, `className`, and `style`. `SplitButton.Main` is a `Button`.
-`SplitButton.MenuTrigger` is an icon-only `Button` that requires `aria-label`, takes no `children`,
-and defaults `icon` to `chevron-down`.
-
-The exported types include `ButtonProps`, `ButtonVariant`, `ButtonSize`, and `ButtonLayout`.
+The exported types include `ButtonProps`, `ButtonVariant`, `ButtonSize`, `ButtonSizing`,
+`ButtonAppearance`, `ButtonLayout`, and `PickerTriggerProps`.
 
 ## Accessibility
 
 - Enter and Space activate `Button`. Enter follows `ButtonLink`.
-- A disabled `Button` sets the native `disabled` attribute and leaves the tab order.
-- `loading` and `disabledReason` set `aria-disabled` instead, so the button keeps focus.
+- `focusableWhenDisabled` defaults to `true` while loading or disabled with `disabledReason`.
+  `disabledReason` alone does not disable a button.
 - `loading` sets `aria-busy` and keeps the accessible name.
+
 - Name a group with `aria-label` when its parts do not name it. Every part keeps its own tab stop.

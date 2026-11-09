@@ -11,19 +11,19 @@ Groups related buttons, toggles, and popup triggers, such as the panel toggles a
 
 ## Usage
 
-- `Toolbar.Button` renders a `Button`. Pass a `Button`, `Toggle`, or popup trigger to `render`.
-- Arrow keys skip a disabled item. A `Button` with `disabledReason` stays reachable and shows the
-  reason as its title.
+- Without `render`, pass [Button props](/design/button#props) to `Toolbar.Button`.
+- With `render`, put appearance props and `xstyle` on the rendered `Button`, `Toggle`, or popup trigger.
+- Put `disabled` on `Toolbar.Button`. Keep the rendered control's disabled and focusable behavior consistent.
 
 ## Anatomy
 
 ```tsx
 <Toolbar.Root>
-  <Toolbar.Button />
+  <Toolbar.Button>Action</Toolbar.Button>
   <Toolbar.Separator />
   <Toolbar.Group>
-    <Toolbar.Button />
-    <Toolbar.Button />
+    <Toolbar.Button>Action</Toolbar.Button>
+    <Toolbar.Button>Action</Toolbar.Button>
   </Toolbar.Group>
 </Toolbar.Root>
 ```
@@ -72,8 +72,16 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 
 ## Props
 
-`Toolbar.Root`, `Toolbar.Group`, and `Toolbar.Separator` take `xstyle`, and `className` and `style`
-as plain values. `Toolbar.Button` passes `className` and `style` to what it renders.
+`Root`, `Group`, and `Separator` accept Base UI `className` and `style` state callbacks.
+
+| Part                | Prop     | Type                           |
+| ------------------- | -------- | ------------------------------ |
+| `Toolbar.Root`      | `xstyle` | `Restyle<"Toolbar.Root">`      |
+| `Toolbar.Group`     | `xstyle` | `Restyle<"Toolbar.Group">`     |
+| `Toolbar.Separator` | `xstyle` | `Restyle<"Toolbar.Separator">` |
+
+Without `render`, `Toolbar.Button` defaults `focusableWhenDisabled` to `true`. Its styling callbacks
+receive button state. With `render`, it passes through Base UI toolbar-button props and state unstyled.
 
 The reference tables below come from Base UI, MIT, © Material-UI SAS.
 
@@ -95,8 +103,6 @@ The reference tables below come from Base UI, MIT, © Material-UI SAS.
 
 ## Accessibility
 
-- `Toolbar.Root` renders `role="toolbar"`. Label it with `aria-label` or `aria-labelledby`.
-- Arrow keys move focus between items. Focus wraps at the end unless you pass `loopFocus={false}`.
-- Orientation follows `orientation` and lands on `data-orientation` for every part.
-- A disabled item gets `data-disabled`. A disabled `Button` with `disabledReason` gets
-  `aria-disabled` in place of the native `disabled` attribute.
+- Label `Toolbar.Root` with `aria-label` or `aria-labelledby`.
+- Arrow keys move focus, including disabled buttons by default. Set `loopFocus={false}` to stop wrapping.
+- Root `orientation` sets arrow-key direction. The separator defaults to the opposite orientation.

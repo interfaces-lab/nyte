@@ -104,48 +104,73 @@ const [volume, setVolume] = useState(0.5);
 
 ## Props
 
-Every part adds `xstyle`, and its `className` and `style` take plain values. See
-[Theming](/design/theming).
+Every part adds `xstyle`. `className` and `style` accept values or Base UI part-state functions.
+See [Theming](/design/theming).
 
 The reference tables below come from Base UI, MIT, © Material-UI SAS.
 
 ### Root
 
-Defaults `thumbAlignment` to `"edge"`, not `"center"`.
+| Prop             | Type                                       | Default  |
+| ---------------- | ------------------------------------------ | -------- |
+| `thumbAlignment` | `"center" \| "edge" \| "edge-client-only"` | `"edge"` |
+| `xstyle`         | `XStyle`                                   |          |
+
+`value` and `defaultValue` accept a number or number array. Callbacks preserve that shape.
+`Orientation` is `"horizontal" | "vertical"`.
 
 <include>../../base-ui-reference/slider/Root.md</include>
 
 ### Label
 
+| Prop     | Type                      |
+| -------- | ------------------------- |
+| `xstyle` | `Restyle<"Slider.Label">` |
+
 <include>../../base-ui-reference/slider/Label.md</include>
 
 ### Value
+
+| Prop     | Type                      |
+| -------- | ------------------------- |
+| `xstyle` | `Restyle<"Slider.Value">` |
 
 <include>../../base-ui-reference/slider/Value.md</include>
 
 ### Control
 
+| Prop     | Type                        |
+| -------- | --------------------------- |
+| `xstyle` | `Restyle<"Slider.Control">` |
+
 <include>../../base-ui-reference/slider/Control.md</include>
 
 ### Track
+
+| Prop     | Type                      |
+| -------- | ------------------------- |
+| `xstyle` | `Restyle<"Slider.Track">` |
 
 <include>../../base-ui-reference/slider/Track.md</include>
 
 ### Indicator
 
+| Prop     | Type                          |
+| -------- | ----------------------------- |
+| `xstyle` | `Restyle<"Slider.Indicator">` |
+
 <include>../../base-ui-reference/slider/Indicator.md</include>
 
 ### Thumb
+
+| Prop     | Type                      |
+| -------- | ------------------------- |
+| `xstyle` | `Restyle<"Slider.Thumb">` |
 
 <include>../../base-ui-reference/slider/Thumb.md</include>
 
 ## Accessibility
 
-- Each thumb renders a nested `<input type="range">`. Arrow keys move by `step`, and Home and End
-  jump to the ends of the range.
-- Page Up, Page Down, and Shift with an arrow key move by `largeStep`.
 - `Slider.Label` names every thumb. In a range, or without a visible label, give each thumb an
   `aria-label`.
-- `aria-valuetext` on a thumb replaces the announced number. `getAriaValueText` overrides it.
-- `Slider.Value` renders an `<output>` element.
-- Keyboard focus on a thumb shows the [focus ring](/design/focus).
+- `aria-valuetext` replaces the announced number. `getAriaValueText` overrides it.

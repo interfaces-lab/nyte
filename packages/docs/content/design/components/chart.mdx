@@ -8,21 +8,22 @@ import { BarChart, Sparkline } from "@nyte-ai/ui/chart";
 import type { ChartSeries, ChartBucket } from "@nyte-ai/ui/chart";
 ```
 
-`BarChart` compares stacked values across buckets. `Sparkline` shows a row's trend without axes or
-labels, so keep the numbers in nearby text. Both are drawn by [nivo](https://nivo.rocks), with each
-series painted inside its tint's scope so theme and display-mode changes repaint them.
+`BarChart` compares stacked values across buckets. Use `Sparkline` for a row's trend, with its numbers in nearby text.
 
 ## Usage
 
-- Give each series and bucket a stable `key`. Put each bucket's `values` in `series` order, with
-  one nonnegative, finite number per series. Missing entries render as zero.
-- `BarChart` stacks series bottom to top and scales every bar against the largest bucket total.
-  It fills its container's width; `height` is the bars, and the labels sit in 20px below.
-- Pass `format` to format the readout's values and total. Pointing at any segment opens a readout of
-  its whole bucket. The first and last labels hang inward so neither is cut at the edge.
-- `ticks` selects evenly spaced bucket labels below the bars. Use an integer of at least `2`.
-- `Sparkline` scales against its own largest value. Use nonnegative, finite values and do not
-  compare line heights across sparklines as absolute quantities.
+- Give series and buckets stable `key` values. Match bucket `values` to `series` order using nonnegative, finite numbers. Missing entries render as zero.
+- `BarChart` fills its container's width. Allow 20px below `height` for labels.
+- Pass `format` for readout values and totals.
+- Use an integer of at least `2` for `ticks`.
+- Give `Sparkline` nonnegative, finite values. Each scales independently, so line heights are not comparable.
+
+## Anatomy
+
+| Component   | Element                  | Parent         |
+| ----------- | ------------------------ | -------------- |
+| `BarChart`  | `div` containing an SVG  | Your container |
+| `Sparkline` | `span` containing an SVG | Your container |
 
 ## Examples
 
@@ -73,54 +74,51 @@ const buckets = [
 
 ### BarChart
 
-| Prop        | Type                        | Default  | Description                                                         |
-| ----------- | --------------------------- | -------- | ------------------------------------------------------------------- |
-| `label`     | `string`                    | Required | Accessible name of the plot.                                        |
-| `series`    | `readonly ChartSeries[]`    | Required | Layers in bottom-to-top order.                                      |
-| `buckets`   | `readonly ChartBucket[]`    | Required | Bars in left-to-right order.                                        |
-| `format`    | `(value: number) => string` | Required | Formats each readout value and the total.                           |
-| `height`    | `number`                    | `88`     | Bar height in pixels, without the labels.                           |
-| `ticks`     | `number`                    | `5`      | Number of bucket labels below the plot, capped at the bucket count. |
-| `xstyle`    | `XStyle`                    |          | Styles the outer container.                                         |
-| `className` | `string`                    |          | Class on the outer container.                                       |
-| `style`     | `React.CSSProperties`       |          | Inline styles on the outer container.                               |
+| Prop        | Type                        | Default  | Description                          |
+| ----------- | --------------------------- | -------- | ------------------------------------ |
+| `label`     | `string`                    | Required | Accessible name.                     |
+| `series`    | `readonly ChartSeries[]`    | Required | Bottom-to-top layers.                |
+| `buckets`   | `readonly ChartBucket[]`    | Required | Left-to-right bars.                  |
+| `format`    | `(value: number) => string` | Required | Readout values and total.            |
+| `height`    | `number`                    | `88`     | Pixels, excluding labels.            |
+| `ticks`     | `number`                    | `5`      | Label count, capped at bucket count. |
+| `xstyle`    | `Restyle<"BarChart">`       | None     | Container placement and width.       |
+| `className` | `string`                    |          |                                      |
+| `style`     | `React.CSSProperties`       |          |                                      |
 
 ### ChartSeries
 
-| Field   | Type     | Description                                |
-| ------- | -------- | ------------------------------------------ |
-| `key`   | `string` | Stable series identity.                    |
-| `label` | `string` | Series name in the readout.                |
-| `tint`  | `Tint`   | Color of the layer and its readout swatch. |
+| Field   | Type     | Description             |
+| ------- | -------- | ----------------------- |
+| `key`   | `string` | Readout identity.       |
+| `label` | `string` | Readout name.           |
+| `tint`  | `Tint`   | Layer and swatch color. |
 
 ### ChartBucket
 
-| Field    | Type                | Description                                    |
-| -------- | ------------------- | ---------------------------------------------- |
-| `key`    | `string`            | Stable bucket identity.                        |
-| `label`  | `string`            | Bucket name in the readout and below the plot. |
-| `values` | `readonly number[]` | One value per series, in series order.         |
+| Field    | Type                | Description                      |
+| -------- | ------------------- | -------------------------------- |
+| `key`    | `string`            | Caller identity, not plot order. |
+| `label`  | `string`            | Readout and plot label.          |
+| `values` | `readonly number[]` | Series-order values.             |
 
 ### Sparkline
 
-| Prop        | Type                  | Default  | Description                                                  |
-| ----------- | --------------------- | -------- | ------------------------------------------------------------ |
-| `values`    | `readonly number[]`   | Required | Points in left-to-right order.                               |
-| `tint`      | `Tint`                |          | Uses a tinted stroke instead of the secondary content color. |
-| `label`     | `string`              |          | Accessible name. Without it, the line is decorative.         |
-| `width`     | `number`              | `72`     | Width in pixels.                                             |
-| `height`    | `number`              | `20`     | Height in pixels.                                            |
-| `xstyle`    | `XStyle`              |          | Styles the wrapper.                                          |
-| `className` | `string`              |          | Class on the wrapper.                                        |
-| `style`     | `React.CSSProperties` |          | Inline styles on the wrapper.                                |
+| Prop        | Type                   | Default  | Description                           |
+| ----------- | ---------------------- | -------- | ------------------------------------- |
+| `values`    | `readonly number[]`    | Required | Left-to-right points.                 |
+| `tint`      | `Tint`                 |          | Overrides secondary content color.    |
+| `label`     | `string`               |          | Accessible name. Omit for decoration. |
+| `width`     | `number`               | `72`     | Pixels.                               |
+| `height`    | `number`               | `20`     | Pixels.                               |
+| `xstyle`    | `Restyle<"Sparkline">` | None     | Wrapper placement and width.          |
+| `className` | `string`               |          |                                       |
+| `style`     | `React.CSSProperties`  |          |                                       |
 
 `Tint` accepts `"gray"`, `"brown"`, `"orange"`, `"yellow"`, `"green"`, `"blue"`, `"purple"`,
 `"pink"`, `"red"`, `"teal"`, and `"custom"`. See [Theming](/design/theming)
-for `xstyle`, `className`, and `style`.
+for `xstyle`, `className`, and `style`. `className` and `style` take plain values. Neither component forwards arbitrary native props or refs.
 
 ## Accessibility
 
-- `BarChart` renders one SVG with `role="img"` and the supplied `label`. The readout follows the
-  pointer only, so put the figures the chart shows in nearby text or a table as well.
-- `Sparkline` has no keyboard interaction. With `label`, it has `role="img"` and `aria-label`.
-  Without `label`, it is `aria-hidden`.
+The bar readout is pointer-only. Repeat figures in nearby text or a table. Give sparklines a `label` unless decorative.

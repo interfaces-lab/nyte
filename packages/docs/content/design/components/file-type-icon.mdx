@@ -7,14 +7,12 @@ description: "The icon for a file's language or format, tinted to match"
 import { FileTypeIcon, FileTypeIconSprite } from "@nyte-ai/ui/file-type-icon";
 ```
 
-Marks a file by its type in a file mention, a tab, or a changed-files row.
+Marks a file by its name and extension. Unknown types get a gray file icon.
 
 ## Usage
 
-- Render `FileTypeIconSprite` once per document. Every `FileTypeIcon` draws a symbol from it.
-- The icon follows the path's file name and extension. An unknown type gets a plain file icon in
-  gray.
-- The icon fills the medium glyph slot.
+- Render `FileTypeIconSprite` once per document.
+- Pass the file path to `FileTypeIcon`. There are no size, color, or styling props.
 
 ## Examples
 
@@ -28,9 +26,9 @@ Marks a file by its type in a file mention, a tab, or a changed-files row.
 
 ### FileTypeIcon
 
-| Prop   | Type     | Default | Description                                      |
-| ------ | -------- | ------- | ------------------------------------------------ |
-| `path` | `string` |         | The file's path. Backslashes read as separators. |
+| Prop   | Type     | Default  | Description                     |
+| ------ | -------- | -------- | ------------------------------- |
+| `path` | `string` | Required | Backslashes work as separators. |
 
 ### FileTypeIconSprite
 

@@ -12,24 +12,23 @@ A row of tabs with one panel visible at a time. Without panels, the list is a sw
 
 ## Usage
 
-- `variant` styles the list and its tabs. Nested roots set their own.
-- Each `Tabs.Tab` and `Tabs.Panel` needs a matching `value`. Without `defaultValue`, the first tab
-  starts active.
+- Set `variant` on the root to style the list and tabs.
+- Match each `Tabs.Tab` and `Tabs.Panel` by `value`.
 - `value` with `onValueChange` controls the root. `value={null}` leaves no tab active.
-- A hidden panel unmounts unless you pass `keepMounted`. A kept panel carries `hidden`, so an
-  `xstyle` that sets `display` must also hide it under `[hidden]`.
+- Pass `keepMounted` to preserve an inactive panel in the DOM. Preserve its `hidden` behavior
+  when adding styles.
 - `Tabs.Root` and `Tabs.Panel` bring no look of their own. Lay them out with `xstyle`.
-- Paint the optional `Tabs.Indicator` with `xstyle`.
+- Give `Tabs.Indicator` a class for its fill. Its `xstyle` only allows placement.
 
 ## Anatomy
 
 ```tsx
 <Tabs.Root>
   <Tabs.List>
-    <Tabs.Tab />
+    <Tabs.Tab value="overview">Overview</Tabs.Tab>
     <Tabs.Indicator />
   </Tabs.List>
-  <Tabs.Panel />
+  <Tabs.Panel value="overview" />
 </Tabs.Root>
 ```
 
@@ -102,16 +101,24 @@ A row of tabs with one panel visible at a time. Without panels, the list is a sw
 
 ## Props
 
-Every part takes `xstyle`, and `className` and `style` as plain values, not functions of state.
-See [Theming](/design/theming).
+Every part preserves Base UI's `className` and `style` state callbacks. See [Theming](/design/theming).
 
-### Root
+| Part            | Prop     | Type                                                    |
+| --------------- | -------- | ------------------------------------------------------- |
+| `Root`, `Panel` | `xstyle` | `XStyle`                                                |
+| `List`          | `xstyle` | `Restyle<"Tabs.List">`                                  |
+| `Tab`           | `xstyle` | `Restyle<"Tabs.Tab">` or `XStyle` with `variant="bare"` |
+| `Indicator`     | `xstyle` | `Restyle<"Tabs.Indicator">`                             |
 
-| Prop      | Type                                              | Default   | Description                                                                                                                       |
-| --------- | ------------------------------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `variant` | `"plain" \| "segmented" \| "underline" \| "pill"` | `"plain"` | `segmented` fills its track, `underline` nests in another strip, `pill` filters a list, and `plain` switches a surface's content. |
+| Part   | Prop              | Type                                              | Default                                   | Description                                                               |
+| ------ | ----------------- | ------------------------------------------------- | ----------------------------------------- | ------------------------------------------------------------------------- |
+| `Root` | `variant`         | `"plain" \| "segmented" \| "underline" \| "pill"` | `"plain"`                                 |                                                                           |
+| `List` | `activateOnFocus` | `boolean`                                         | `true` for `segmented`, otherwise `false` |                                                                           |
+| `Tab`  | `variant`         | `"bare"`                                          |                                           | Removes tab appearance, not target sizing, disabled state, or focus ring. |
 
 The reference tables below come from Base UI, MIT, © Material-UI SAS.
+
+### Root
 
 <include>../../base-ui-reference/tabs/Root.md</include>
 
@@ -133,10 +140,8 @@ The reference tables below come from Base UI, MIT, © Material-UI SAS.
 
 ## Accessibility
 
-- The parts render `role="tablist"`, `role="tab"`, and `role="tabpanel"`. The indicator renders
-  `role="presentation"`.
 - Label `Tabs.List` with `aria-label` or `aria-labelledby`.
-- Arrow keys move focus along the list. Focus wraps at the end unless you pass `loopFocus={false}`.
+- Arrow keys move focus along the list. Set `loopFocus={false}` on `Tabs.List` to stop focus wrapping.
 - Enter and Space activate the focused tab. With `activateOnFocus`, focus activates it. `segmented`
   turns `activateOnFocus` on by default.
 - A disabled first tab is skipped. Server rendering cannot skip it, so set `defaultValue` or `value`

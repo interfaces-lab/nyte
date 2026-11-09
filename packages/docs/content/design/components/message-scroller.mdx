@@ -8,6 +8,8 @@ import {
   MessageScrollerProvider,
   MessageScroller,
   MessageScrollerViewport,
+  MessageScrollerContent,
+  MessageScrollerItem,
 } from "@nyte-ai/ui/message-scroller";
 ```
 
@@ -15,80 +17,83 @@ A transcript scroll controller for ID jumps and streaming content.
 
 ## Usage
 
-- Wrap the root, controls and hook consumers in one `MessageScrollerProvider`.
-- Set the viewport height and overflow with `className` or `style`, not `xstyle`. Parts have no default layout.
-- `scrollToMessage` only reaches mounted items with a matching `messageId`.
-- `MessageScrollerButton` uses Nyte button styles unless `render` replaces it.
+- Wrap the root, controls and hook consumers in `MessageScrollerProvider`.
+- Set viewport height and overflow with `className` or `style`.
+- Put items directly inside Content with stable, unique `messageId` values.
+- `scrollToMessage` can queue jumps before content arrives. Otherwise, unknown IDs return `false`.
+- Button uses Nyte styles unless `render` replaces it.
 
 ## Anatomy
 
-| Part                      | Element                    | Parent                        |
-| ------------------------- | -------------------------- | ----------------------------- |
-| `MessageScrollerProvider` | Context only               | Transcript and hook consumers |
-| `MessageScroller`         | `div`                      | Provider                      |
-| `MessageScrollerViewport` | `div`                      | Root                          |
-| `MessageScrollerContent`  | `div` plus internal spacer | Viewport                      |
-| `MessageScrollerItem`     | `div`                      | Content                       |
-| `MessageScrollerButton`   | `button`, or `render`      | Provider                      |
+| Part                      | Default element | Parent                        |
+| ------------------------- | --------------- | ----------------------------- |
+| `MessageScrollerProvider` | Context only    | Transcript and hook consumers |
+| `MessageScroller`         | `div`           | Provider                      |
+| `MessageScrollerViewport` | `div`           | Root                          |
+| `MessageScrollerContent`  | `div`           | Viewport                      |
+| `MessageScrollerItem`     | `div`           | Content                       |
+| `MessageScrollerButton`   | `button`        | Provider                      |
 
 ## Examples
 
 ```tsx
-const messages = (
-  <MessageScrollerContent>
-    <MessageScrollerItem messageId="welcome">Hello.</MessageScrollerItem>
-  </MessageScrollerContent>
-);
-```
-
-```tsx
-const viewport = (
-  <MessageScrollerViewport style={{ height: 240, overflowY: "auto" }}>
-    {messages}
-  </MessageScrollerViewport>
-);
-```
-
-```tsx
 <MessageScrollerProvider autoScroll>
-  <MessageScroller>{viewport}</MessageScroller>
+  <MessageScroller>
+    <MessageScrollerViewport style={{ height: 240, overflowY: "auto" }}>
+      <MessageScrollerContent>
+        <MessageScrollerItem messageId="welcome">Hello.</MessageScrollerItem>
+      </MessageScrollerContent>
+    </MessageScrollerViewport>
+  </MessageScroller>
 </MessageScrollerProvider>
 ```
 
 ## Props
 
-DOM parts take native props and refs and set a matching `data-slot`. Button render callbacks get `active` and `direction` state.
+DOM parts take native props and refs. Root, Viewport, Content and Item have no default layout.
 
-| Part     | Prop                      | Type                                                                                         | Default       |
-| -------- | ------------------------- | -------------------------------------------------------------------------------------------- | ------------- |
-| Provider | `autoScroll`              | `boolean`                                                                                    | `false`       |
-| Provider | `defaultScrollPosition`   | `"start" \| "end" \| "last-anchor"`                                                          | `"end"`       |
-| Provider | `scrollEdgeThreshold`     | `number`                                                                                     | `8`           |
-| Provider | `scrollPreviousItemPeek`  | `number`                                                                                     | `64`          |
-| Provider | `scrollMargin`            | `number`                                                                                     | `0`           |
-| Viewport | `preserveScrollOnPrepend` | `boolean`                                                                                    | `true`        |
-| Content  | `spacerClassName`         | `string`                                                                                     | None          |
-| Item     | `messageId`               | `string`                                                                                     | None          |
-| Item     | `scrollAnchor`            | `boolean`                                                                                    | `false`       |
-| Button   | `direction`               | `"start" \| "end"`                                                                           | `"end"`       |
-| Button   | `behavior`                | `ScrollBehavior`                                                                             | `"smooth"`    |
-| Button   | `variant`                 | `"default" \| "outline" \| "secondary" \| "ghost" \| "destructive" \| "link" \| null`        | `"secondary"` |
-| Button   | `size`                    | `"default" \| "xs" \| "sm" \| "lg" \| "icon" \| "icon-xs" \| "icon-sm" \| "icon-lg" \| null` | `"icon-sm"`   |
+| Part      | Prop                      | Type                                                                                         | Default                                     | Description                                                                 |
+| --------- | ------------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------- | --------------------------------------------------------------------------- |
+| DOM parts | `className`               | `string`                                                                                     | None                                        |                                                                             |
+| DOM parts | `style`                   | `React.CSSProperties`                                                                        | None                                        |                                                                             |
+| Provider  | `autoScroll`              | `boolean`                                                                                    | `false`                                     | Follows growth at bottom until scrolled away.                               |
+| Provider  | `defaultScrollPosition`   | `"start" \| "end" \| "last-anchor"`                                                          | `"end"`                                     |                                                                             |
+| Provider  | `scrollEdgeThreshold`     | `number`                                                                                     | `8`                                         | Edge detection distance, px.                                                |
+| Provider  | `scrollPreviousItemPeek`  | `number`                                                                                     | `64`                                        | Space above automatic anchors, px.                                          |
+| Provider  | `scrollMargin`            | `number`                                                                                     | `0`                                         | Jump margin, px.                                                            |
+| Viewport  | `preserveScrollOnPrepend` | `boolean`                                                                                    | `true`                                      | Preserves position when prepending items.                                   |
+| Content   | `spacerClassName`         | `string`                                                                                     | None                                        | Trailing spacer classes.                                                    |
+| Item      | `messageId`               | `string`                                                                                     | None                                        | Jump and visibility ID.                                                     |
+| Item      | `scrollAnchor`            | `boolean`                                                                                    | `false`                                     | Turn boundary for automatic anchoring.                                      |
+| Button    | `direction`               | `"start" \| "end"`                                                                           | `"end"`                                     |                                                                             |
+| Button    | `behavior`                | `"auto" \| "instant" \| "smooth"`                                                            | `"smooth"`, or `"auto"` with reduced motion |                                                                             |
+| Button    | `render`                  | `ReactElement \| render callback`                                                            | Nyte chat button                            | Receives HTML props and `{ active: boolean, direction: "start" \| "end" }`. |
+| Button    | `type`                    | `"button" \| "submit" \| "reset"`                                                            | `"button"`                                  |                                                                             |
+| Button    | `variant`                 | `"default" \| "outline" \| "secondary" \| "ghost" \| "destructive" \| "link" \| null`        | `"secondary"`                               | `null` uses ghost styling.                                                  |
+| Button    | `size`                    | `"default" \| "xs" \| "sm" \| "lg" \| "icon" \| "icon-xs" \| "icon-sm" \| "icon-lg" \| null` | `"icon-sm"`                                 | `null` uses default sizing.                                                 |
 
-The button sets `data-direction`, `data-variant`, `data-size` and `data-active`. Without children, it shows an arrow and a visually hidden "Scroll to end" or "Scroll to start" label. Items set `data-message-id` and `data-scroll-anchor="true"` or `"false"`.
+All `className` and `style` values are plain. No part accepts `xstyle`.
 
 ### Hooks
 
-| Hook                             | Result                                                                                                             |
-| -------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `useMessageScroller()`           | `scrollToStart(options?)`, `scrollToEnd(options?)`, `scrollToMessage(messageId, options?)`; each returns `boolean` |
-| `useMessageScrollerScrollable()` | `{ start: boolean, end: boolean }`                                                                                 |
-| `useMessageScrollerVisibility()` | `{ currentAnchorId: string \| null, visibleMessageIds: string[] }`                                                 |
+| Hook                             | Result                                                                                                      |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `useMessageScroller()`           | `scrollToStart(options?)`, `scrollToEnd(options?)`, `scrollToMessage(messageId, options?)` return `boolean` |
+| `useMessageScrollerScrollable()` | `{ start: boolean, end: boolean }`                                                                          |
+| `useMessageScrollerVisibility()` | `{ currentAnchorId: string \| null, visibleMessageIds: string[] }`                                          |
 
-`MessageScrollerScrollOptions` has `align: "start" | "center" | "end" | "nearest"`, `behavior: ScrollBehavior` and `scrollMargin: number`.
+All `MessageScrollerScrollOptions` fields are optional.
+
+| Option         | Type                                        | Default                   | Description                   |
+| -------------- | ------------------------------------------- | ------------------------- | ----------------------------- |
+| `align`        | `"start" \| "center" \| "end" \| "nearest"` | `"start"`                 | `scrollToMessage` alignment.  |
+| `behavior`     | `"auto" \| "instant" \| "smooth"`           | `"auto"`                  | All methods.                  |
+| `scrollMargin` | `number`                                    | Provider's `scrollMargin` | `scrollToMessage` margin, px. |
+
+Start/end return `false` without a viewport. Message jumps return acceptance, not completion.
 
 The [headless scroller reference](https://ui.shadcn.com/docs/react/message-scroller) covers controller behavior.
 
 ## Accessibility
 
-The viewport defaults to `role="region"`, `aria-label="Messages"` and `tabIndex={0}`. Content defaults to `role="log"` and `aria-relevant="additions"`. Inactive scroll buttons are inert. Use `behavior="auto"` to scroll without animation.
+Pass `behavior="instant"` for immediate jumps. Name custom button children and preserve button semantics with `render`.

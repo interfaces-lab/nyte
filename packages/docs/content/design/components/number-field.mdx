@@ -17,9 +17,8 @@ For a small bounded value, such as a font size.
 
 ## Usage
 
-- Both value callbacks receive `null` when the input is cleared.
-- Save in `onValueCommitted`. It fires when the user leaves the input, releases a button, or presses
-  an arrow key, not on every keystroke.
+- Both value callbacks can receive `null` for an empty input.
+- Save in `onValueCommitted`, not on every keystroke.
 - The buttons default to "−" and "+". Pass children to replace them.
 
 ## Anatomy
@@ -65,35 +64,51 @@ For a small bounded value, such as a font size.
 
 ## Props
 
-Styled parts add `xstyle`, and their `className` and `style` take plain values, not functions of
-state. See [Theming](/design/theming). Each sets `data-slot` to its kebab-case name,
-such as `number-field-input`. `NumberField` passes through Base UI.
+Styled parts add `xstyle`. `className` and `style` accept values or Base UI part-state functions.
+See [Theming](/design/theming).
 
 The reference tables below come from Base UI, MIT, © Material-UI SAS.
 
 ### NumberField
 
+Passes through Base UI `NumberField.Root` unstyled, without `xstyle`.
+
 <include>../../base-ui-reference/number-field/Root.md</include>
 
 ### NumberFieldGroup
+
+| Prop     | Type                          |
+| -------- | ----------------------------- |
+| `xstyle` | `Restyle<"NumberFieldGroup">` |
 
 <include>../../base-ui-reference/number-field/Group.md</include>
 
 ### NumberFieldDecrement
 
+| Prop       | Type                              | Default |
+| ---------- | --------------------------------- | ------- |
+| `xstyle`   | `Restyle<"NumberFieldDecrement">` |         |
+| `children` | `ReactNode`                       | `"−"`   |
+
 <include>../../base-ui-reference/number-field/Decrement.md</include>
 
 ### NumberFieldInput
+
+| Prop     | Type                          |
+| -------- | ----------------------------- |
+| `xstyle` | `Restyle<"NumberFieldInput">` |
 
 <include>../../base-ui-reference/number-field/Input.md</include>
 
 ### NumberFieldIncrement
 
+| Prop       | Type                              | Default |
+| ---------- | --------------------------------- | ------- |
+| `xstyle`   | `Restyle<"NumberFieldIncrement">` |         |
+| `children` | `ReactNode`                       | `"+"`   |
+
 <include>../../base-ui-reference/number-field/Increment.md</include>
 
 ## Accessibility
 
-- Name `NumberFieldInput` with `aria-label` or a label.
-- Arrow Up and Arrow Down step the value. Home and End jump to `min` and `max` when set.
-- Alt with an arrow steps by `smallStep`, Shift by `largeStep`.
-- The group shows the focus outline while anything inside it has focus.
+Name `NumberFieldInput` with `aria-label` or a label.

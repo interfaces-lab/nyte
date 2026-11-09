@@ -7,12 +7,15 @@ description: "A box that is ticked, empty, or mixed"
 import { Checkbox, CheckboxField } from "@nyte-ai/ui/checkbox";
 ```
 
-`CheckboxField` is a checkbox in a labelled row, with an optional description. For a setting that
-applies on change, use [Switch](/design/switch).
+For settings that apply on change, use [Switch](/design/switch).
 
 ## Usage
 
-- `indeterminate` draws a dash, for a box over a partly ticked list.
+- Use `indeterminate` for a partly ticked list.
+
+## Anatomy
+
+`CheckboxField` contains `Checkbox`, label text, and an optional description. The indicator is built in. Do not pass children.
 
 ## Examples
 
@@ -74,13 +77,13 @@ const [archived, setArchived] = useState(false);
 
 ### Checkbox
 
-Takes every Base UI `Checkbox.Root` prop except `children`. `className` and `style` take plain
-values, not functions of state. The indicator is built in.
+Takes Base UI `Checkbox.Root` props except `children`. `className` and `style` accept values or checkbox-state functions.
 
-| Prop                           | Type                           | Default | Description |
-| ------------------------------ | ------------------------------ | ------- | ----------- |
-| `size`                         | `"md" \| "lg"`                 | `"md"`  |             |
-| `className`, `style`, `xstyle` | see [Theming](/design/theming) |         |             |
+| Prop                           | Type                           | Default | Description             |
+| ------------------------------ | ------------------------------ | ------- | ----------------------- |
+| `attention`                    | `boolean`                      | `false` | Warning border and dot. |
+| `size`                         | `"md" \| "lg"`                 | `"md"`  |                         |
+| `className`, `style`, `xstyle` | see [Theming](/design/theming) |         |                         |
 
 The reference table below comes from Base UI, MIT, © Material-UI SAS.
 
@@ -88,19 +91,15 @@ The reference table below comes from Base UI, MIT, © Material-UI SAS.
 
 ### CheckboxField
 
-Takes every `Checkbox` prop except `aria-label`, `aria-labelledby`, and `nativeButton`.
+Takes `Checkbox` props except `aria-label`, `aria-labelledby`, and `nativeButton`.
+`className`, `style`, and `xstyle` style the row. Callbacks receive Base UI `Field.Root` state.
 
-| Prop                           | Type                           | Default | Description                     |
-| ------------------------------ | ------------------------------ | ------- | ------------------------------- |
-| `label`                        | `string`                       |         | Required. Names the checkbox.   |
-| `description`                  | `string`                       |         | Secondary line under the label. |
-| `className`, `style`, `xstyle` | see [Theming](/design/theming) |         | Apply to the row, not the box.  |
+| Prop                           | Type                           | Description      |
+| ------------------------------ | ------------------------------ | ---------------- |
+| `label`                        | `string`                       | Required.        |
+| `description`                  | `string`                       | Below the label. |
+| `className`, `style`, `xstyle` | see [Theming](/design/theming) |                  |
 
 ## Accessibility
 
-- The root carries `role="checkbox"` and `aria-checked`, which is `"mixed"` while `indeterminate`.
-  Space toggles it.
-- A hidden `<input type="checkbox">` beside it takes part in form submission.
-- `CheckboxField` renders a `<label>`. Its `label` text names the checkbox through
-  `aria-labelledby`, and `description` is added to `aria-describedby`.
-- Keyboard focus shows the [focus ring](/design/focus).
+`CheckboxField` connects `label` through `aria-labelledby` and `description` through `aria-describedby`.

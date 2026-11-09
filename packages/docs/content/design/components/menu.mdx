@@ -7,9 +7,7 @@ description: "A list of actions opened from a trigger"
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@nyte-ai/ui/menu";
 ```
 
-A list of actions that opens from a button. Every row reserves a leading icon column and a trailing
-meta column, even when empty. The list opens below its trigger. For a control whose label shows the
-current choice, use [Select](/design/select), which opens over its trigger.
+Actions opened from a button. For a control showing the current choice, use [Select](/design/select).
 
 ## Usage
 
@@ -117,13 +115,18 @@ function SessionMenu() {
 
 ## Props
 
-Every styled part takes `xstyle`, `className`, and `style`. See
-[Theming](/design/theming). `Menu`, `MenuTrigger`, `MenuGroup`, `MenuRadioGroup`, and
-`MenuSub` are Base UI's.
+The styled popup and row parts take `xstyle`, `className`, and `style`. `className` and `style`
+accept plain values or functions of the underlying Base UI part's state. See [Theming](/design/theming).
+
+`Menu`, `MenuTrigger`, `MenuRadioGroup`, `MenuGroup`, and `MenuSub`
+pass through Base UI unstyled.
 
 The reference tables below come from Base UI, MIT, © Material-UI SAS.
 
 ### Menu
+
+`onItemHighlighted` accepts `(item: HTMLElement | undefined, eventDetails) => void`.
+Details include `label` and `reason` (`"keyboard"`, `"pointer"`, or `"none"`).
 
 <include>../../base-ui-reference/menu/Root.md</include>
 
@@ -133,22 +136,22 @@ The reference tables below come from Base UI, MIT, © Material-UI SAS.
 
 ### MenuContent
 
-Renders the portal, positioner, and popup. Positioning props go to the positioner and the rest,
-including `ref`, to the popup.
+Only the positioning props in this table are accepted. `ref`, `className`, and `style` target the popup.
 
 | Prop                 | Type                                                                                                           | Default                                                      |
 | -------------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
 | `side`               | `"top" \| "bottom" \| "left" \| "right" \| "inline-start" \| "inline-end"`                                     | `"bottom"`                                                   |
 | `align`              | `"start" \| "center" \| "end"`                                                                                 | `"start"`                                                    |
 | `sideOffset`         | `number \| OffsetFunction`                                                                                     | `4`                                                          |
-| `alignOffset`        | `number \| OffsetFunction`                                                                                     |                                                              |
+| `alignOffset`        | `number \| OffsetFunction`                                                                                     | `0`                                                          |
 | `anchor`             | `Element \| VirtualElement \| RefObject<Element \| null> \| (() => Element \| VirtualElement \| null) \| null` | the trigger                                                  |
 | `collisionAvoidance` | `CollisionAvoidance`                                                                                           | `{ side: "flip", align: "shift", fallbackAxisSide: "none" }` |
 | `collisionPadding`   | `number \| Padding`                                                                                            | `8`                                                          |
 | `tint`               | `Tint`                                                                                                         |                                                              |
 | `matchAnchorWidth`   | `boolean`                                                                                                      | `false`                                                      |
+| `footer`             | `ReactNode`                                                                                                    |                                                              |
 
-The popup scrolls when it runs out of room.
+`footer` stays below the scrollable body, after a separator.
 
 #### Positioner
 
@@ -160,9 +163,8 @@ The popup scrolls when it runs out of room.
 
 ### MenuSubContent
 
-Takes the same props as `MenuContent` except `matchAnchorWidth`. `side`, `align`, and
-`collisionAvoidance` have no defaults of their own. Base UI opens a submenu at `inline-end`,
-aligned to `start`.
+Takes `MenuContent` props except `matchAnchorWidth` and `footer`. Defaults to `side="inline-end"`,
+`align="start"`, and `collisionAvoidance={{ fallbackAxisSide: "end" }}`.
 
 | Prop          | Default                           |
 | ------------- | --------------------------------- |
@@ -171,14 +173,14 @@ aligned to `start`.
 
 ### MenuItem
 
-| Prop       | Type                    | Default     | Description                                  |
-| ---------- | ----------------------- | ----------- | -------------------------------------------- |
-| `icon`     | `IconName`              |             |                                              |
-| `leading`  | `ReactNode`             |             | Overrides `icon`.                            |
-| `meta`     | `ReactNode`             |             | Display only. It binds no key.               |
-| `variant`  | `"default" \| "danger"` | `"default"` |                                              |
-| `layout`   | `"menu" \| "plain"`     | `"menu"`    | `plain` removes the leading column.          |
-| `children` | `ReactNode`             |             | Optional when `render` supplies the content. |
+| Prop       | Type                               | Default     | Description                                                      |
+| ---------- | ---------------------------------- | ----------- | ---------------------------------------------------------------- |
+| `icon`     | `IconName`                         |             |                                                                  |
+| `leading`  | `ReactNode`                        |             | Non-nullish content replaces `icon` in `menu` layout.            |
+| `meta`     | `ReactNode`                        |             | Binds no key.                                                    |
+| `variant`  | `"default" \| "danger" \| "quiet"` | `"default"` |                                                                  |
+| `layout`   | `"menu" \| "plain" \| "action"`    | `"menu"`    | `plain` removes leading content. `action` centers a compact row. |
+| `children` | `ReactNode`                        |             |                                                                  |
 
 <include>../../base-ui-reference/menu/Item.md</include>
 
@@ -199,6 +201,8 @@ while checked.
 
 A `MenuCheckboxItem` that draws a switch in place of `meta` and the checkmark. It takes no `meta`.
 
+<include>../../base-ui-reference/menu/CheckboxItem.md</include>
+
 ### MenuRadioGroup
 
 <include>../../base-ui-reference/menu/RadioGroup.md</include>
@@ -208,9 +212,9 @@ A `MenuCheckboxItem` that draws a switch in place of `meta` and the checkmark. I
 Takes the props in the `MenuItem` table except `variant`. A checkmark follows `meta`
 on the chosen row.
 
-| Prop           | Type      | Default | Description                       |
-| -------------- | --------- | ------- | --------------------------------- |
-| `closeOnClick` | `boolean` | `true`  | Replaces Base UI's `false` below. |
+| Prop           | Type      | Default |
+| -------------- | --------- | ------- |
+| `closeOnClick` | `boolean` | `true`  |
 
 <include>../../base-ui-reference/menu/RadioItem.md</include>
 
@@ -224,13 +228,15 @@ on the chosen row.
 
 ### MenuSeparator
 
-| Prop    | Type      | Default | Description        |
-| ------- | --------- | ------- | ------------------ |
-| `inset` | `boolean` | `false` | Shortens the line. |
+| Prop    | Type      | Default |
+| ------- | --------- | ------- |
+| `inset` | `boolean` | `false` |
 
 <include>../../base-ui-reference/menu/Separator.md</include>
 
 ### MenuSub
+
+Accepts `onItemHighlighted` as described for `Menu`.
 
 <include>../../base-ui-reference/menu/SubmenuRoot.md</include>
 
@@ -238,20 +244,18 @@ on the chosen row.
 
 Takes `icon`, `leading`, and `layout` as `MenuItem` does.
 
-| Prop    | Type        | Description                        |
-| ------- | ----------- | ---------------------------------- |
-| `value` | `ReactNode` | Current choice before the chevron. |
+| Prop    | Type        | Description                |
+| ------- | ----------- | -------------------------- |
+| `value` | `ReactNode` | Choice before the chevron. |
 
 <include>../../base-ui-reference/menu/SubmenuTrigger.md</include>
 
+### MenuItemBody
+
+Unwrapped row content. Takes only `icon`, `leading`, `meta`, `layout`, and `children`
+from `MenuItem`, with `layout="menu"`.
+
 ## Accessibility
 
-- The popup has `role="menu"`. Give it `aria-label` when the trigger's text does not name it.
-- Items are `menuitem`, radio items are `menuitemradio`, and checkbox and switch items are
-  `menuitemcheckbox` with `aria-checked`.
-- Arrow Down and Up move focus and wrap. Home and End jump. Typing matches item text, or `label`
-  when set. Enter and Space activate. Escape closes and returns focus to the trigger.
-- Arrow Right opens a submenu. Arrow Left closes it.
-- Disabled items stay reachable with the arrow keys and do not activate.
-- Icons, switches, and checkmarks are hidden from assistive technology, so the label must say what
-  the row does.
+- Give the popup `aria-label` when the trigger text does not name it.
+- Put the action in the row label. Icons, switches, and checkmarks are hidden from assistive technology.

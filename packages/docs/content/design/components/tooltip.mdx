@@ -16,9 +16,7 @@ use [Preview card](/design/preview-card).
   because the tooltip does not name it.
 - An icon-only [Button](/design/button) also sets its label as the native `title`. Pass
   `title={undefined}` so only one tooltip appears.
-- Pass a shortcut as `shortcut`, one string per key, rather than in the text. It draws as a
-  [Kbd](/design/kbd) after the label.
-- `TooltipContent` keeps line breaks in its text.
+- Pass `shortcut` as one string per key, not label text.
 - Wrap the app once in `TooltipProvider`. A trigger's own `delay` or `closeDelay` overrides it.
 - Keep instructions and disabled reasons visible outside the tooltip.
 
@@ -61,31 +59,33 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@nyte-
 
 ## Props
 
-`TooltipContent` takes `xstyle`, `className`, and `style`. Its `className` and `style` cannot be
-functions of state. See [Theming](/design/theming). `Tooltip` and `TooltipTrigger` are
-Base UI's.
+`TooltipContent` takes `xstyle`, `className`, and `style`. Its `className` and `style` accept
+plain values or functions of popup state. See [Theming](/design/theming).
 
 The reference tables below come from Base UI, MIT, © Material-UI SAS.
 
 ### Tooltip
 
+`Tooltip` passes through Base UI's root unstyled. No handle factory is exported.
+
 <include>../../base-ui-reference/tooltip/Root.md</include>
 
 ### TooltipTrigger
+
+Unstyled, without `xstyle`. Clears `title`. `className` and `style` accept state functions.
 
 <include>../../base-ui-reference/tooltip/Trigger.md</include>
 
 ### TooltipContent
 
-Renders the portal, positioner, and popup. Positioning props go to the positioner and the rest to
-the popup.
+Only the positioning props in this table are accepted. `ref`, `className`, and `style` target the popup.
 
 | Prop          | Type                                                                       | Default    |
 | ------------- | -------------------------------------------------------------------------- | ---------- |
 | `side`        | `"top" \| "bottom" \| "left" \| "right" \| "inline-start" \| "inline-end"` | `"bottom"` |
 | `align`       | `"start" \| "center" \| "end"`                                             | `"center"` |
 | `sideOffset`  | `number \| OffsetFunction`                                                 | `6`        |
-| `alignOffset` | `number \| OffsetFunction`                                                 |            |
+| `alignOffset` | `number \| OffsetFunction`                                                 | `0`        |
 | `tint`        | `Tint`                                                                     |            |
 | `shortcut`    | `readonly string[]`                                                        | `[]`       |
 
@@ -99,16 +99,14 @@ the popup.
 
 ### TooltipProvider
 
-| Prop         | Default |
-| ------------ | ------- |
-| `delay`      | `300`   |
-| `closeDelay` | `100`   |
-| `timeout`    | `200`   |
+| Prop         | Type     | Default | Description                                     |
+| ------------ | -------- | ------- | ----------------------------------------------- |
+| `delay`      | `number` | `300`   | Hover milliseconds.                             |
+| `closeDelay` | `number` | `100`   | Closing milliseconds.                           |
+| `timeout`    | `number` | `200`   | Milliseconds after closing for instant opening. |
 
 <include>../../base-ui-reference/tooltip/Provider.md</include>
 
 ## Accessibility
 
-- Hover opens after `delay`. Keyboard focus opens at once.
-- Escape, an outside press, and a trigger click close it.
-- The popup appears without motion under `prefers-reduced-motion: reduce`.
+- Keep an accessible name on the control. The tooltip describes it.

@@ -77,15 +77,22 @@ const styles = create({
 const [open, setOpen] = useState(false);
 const anchor = useRef<HTMLDivElement>(null);
 
-<Popover.Root open={open} onOpenChange={setOpen}>
-  <Popover.Portal>
-    <Popover.Positioner anchor={anchor} side="top" align="start" sideOffset={8}>
-      <Popover.Popup>
-        <Popover.Title>Suggestions</Popover.Title>
-      </Popover.Popup>
-    </Popover.Positioner>
-  </Popover.Portal>
-</Popover.Root>;
+<>
+  <div ref={anchor}>Suggestions appear above this area.</div>
+  <Button variant="outline" onClick={() => setOpen(true)}>
+    Show suggestions
+  </Button>
+  <Popover.Root open={open} onOpenChange={setOpen}>
+    <Popover.Portal>
+      <Popover.Positioner anchor={anchor} side="top" align="start" sideOffset={8}>
+        <Popover.Popup>
+          <Popover.Title>Suggestions</Popover.Title>
+          <Popover.Close>Close</Popover.Close>
+        </Popover.Popup>
+      </Popover.Positioner>
+    </Popover.Portal>
+  </Popover.Root>
+</>;
 ```
 
 ### Detached triggers
@@ -112,8 +119,10 @@ const details = Popover.createHandle<{ name: string }>();
 ## Props
 
 `Popover.Backdrop`, `Popover.Positioner`, `Popover.Popup`, `Popover.Title`, and
-`Popover.Description` take `xstyle`. Their `className` and `style` cannot be functions of state. See
-[Theming](/design/theming). The other parts are Base UI's.
+`Popover.Description` take `xstyle`. Their `className` and `style` accept plain values or functions
+of state. See [Theming](/design/theming).
+
+Root, Trigger, Portal, Arrow, Viewport, and Close pass through Base UI unstyled.
 
 The reference tables below come from Base UI, MIT, © Material-UI SAS.
 
@@ -135,18 +144,18 @@ The reference tables below come from Base UI, MIT, © Material-UI SAS.
 
 ### Positioner
 
-| Prop               | Type                    | Default   |
-| ------------------ | ----------------------- | --------- |
-| `positionMethod`   | `'absolute' \| 'fixed'` | `'fixed'` |
-| `collisionPadding` | `Padding`               | `8`       |
+| Prop               | Type                                                                        | Default   |
+| ------------------ | --------------------------------------------------------------------------- | --------- |
+| `positionMethod`   | `'absolute' \| 'fixed'`                                                     | `'fixed'` |
+| `collisionPadding` | `number \| Partial<Record<"top" \| "right" \| "bottom" \| "left", number>>` | `8`       |
 
 <include>../../base-ui-reference/popover/Positioner.md</include>
 
 ### Popup
 
-| Prop   | Type   | Default |
-| ------ | ------ | ------- |
-| `tint` | `Tint` |         |
+| Prop   | Type   |
+| ------ | ------ |
+| `tint` | `Tint` |
 
 <include>../../base-ui-reference/popover/Popup.md</include>
 
@@ -170,12 +179,13 @@ The reference tables below come from Base UI, MIT, © Material-UI SAS.
 
 <include>../../base-ui-reference/popover/Close.md</include>
 
+### createHandle
+
+Keep the handle stable across renders.
+
+<include>../../base-ui-reference/popover/createHandle.md</include>
+
 ## Accessibility
 
-- `Popover.Title` renders an `<h2>` that labels the popup. `Popover.Description` renders a `<p>`
-  that describes it.
-- Escape, an outside press, and focus leaving the popup close it.
-- On open, focus moves to the first tabbable element in the popup, or to the popup itself when
-  opened by touch. On close, it returns to the trigger or the previously focused element.
-  `initialFocus` and `finalFocus` on the popup override both.
-- The popup appears without motion under `prefers-reduced-motion: reduce`.
+- Use `Popover.Title` and `Popover.Description` to name and describe the popup.
+- `initialFocus` and `finalFocus` override focus targets.

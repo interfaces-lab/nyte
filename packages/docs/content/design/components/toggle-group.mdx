@@ -81,8 +81,11 @@ const [range, setRange] = useState(["week"]);
 
 ## Props
 
-`xstyle` places and sizes the track. `className` and `style` take plain values, not functions of
-state. See [Theming](/design/theming).
+Takes Base UI `ToggleGroup` props. `className` and `style` accept values or toggle-group-state functions.
+
+| Prop     | Type                     | Description                     |
+| -------- | ------------------------ | ------------------------------- |
+| `xstyle` | `Restyle<"ToggleGroup">` | See [Theming](/design/theming). |
 
 The reference table below comes from Base UI, MIT, © Material-UI SAS.
 
@@ -94,6 +97,4 @@ The reference table below comes from Base UI, MIT, © Material-UI SAS.
 
 ## Accessibility
 
-- Renders `role="group"`. Label it with `aria-label` or `aria-labelledby`.
-- Arrow keys move focus between the toggles and wrap at the end unless `loopFocus={false}`.
-- Each toggle keeps its own `aria-pressed`. See [Toggle](/design/toggle).
+Label the group with `aria-label` or `aria-labelledby`.

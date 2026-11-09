@@ -7,14 +7,12 @@ description: "A turning ring for loading that isn't AI work"
 import { Loader } from "@nyte-ai/ui/loader";
 ```
 
+A turning ring for a loading page, account, download, or process. It inherits text color in a 16px glyph slot.
+
 ## Usage
 
-- `Loader` is for loading that isn't AI work: a page, an account, a download, a process. A running
-  chat, turn, subagent, or tool call shows a [Spinner](/design/spinner).
-- Choose the indicator at the call site. Don't restyle one to look like the other.
-- The loader fills a 16px glyph slot and takes the text color of its parent.
-- Under reduced motion it holds still.
-- A `Button` with `loading` shows a loader in place of its content.
+- Use `Loader` for non-AI loading and [Spinner](/design/spinner) for running AI work.
+- Set `loading` on `Button` for a built-in loader that keeps its accessible name.
 
 ## Examples
 
@@ -28,11 +26,11 @@ import { Loader } from "@nyte-ai/ui/loader";
 
 ## Props
 
-| Prop        | Type                  | Default | Description                     |
-| ----------- | --------------------- | ------- | ------------------------------- |
-| `xstyle`    | `XStyle`              |         | See [Theming](/design/theming). |
-| `className` | `string`              |         | See [Theming](/design/theming). |
-| `style`     | `React.CSSProperties` |         | See [Theming](/design/theming). |
+| Prop        | Type                  |
+| ----------- | --------------------- |
+| `xstyle`    | `Restyle<"Loader">`   |
+| `className` | `string`              |
+| `style`     | `React.CSSProperties` |
 
 ## Accessibility
 
