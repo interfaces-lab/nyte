@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.0.29 — 2026-11-09
+
+### Fixes
+
+- The SDK packages publish to npm again. `@nyte-ai/sdk` now depends on `typebox`, which its event validators' published types need, so the package build no longer fails. v0.0.28 reached GitHub but not npm, so this is the first npm release since v0.0.27 and it includes everything in v0.0.28.
+- A folder dragged in from Finder or pasted into the composer now shows as a folder mention instead of a file.
+
 ## v0.0.27 — 2026-11-04
 
 ### The host runs on its own
