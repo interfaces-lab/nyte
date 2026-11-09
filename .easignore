@@ -1,0 +1,65 @@
+# What EAS Build uploads. This file replaces every .gitignore for the build
+# archive, so it repeats their patterns.
+#
+# It differs from .gitignore in one way: the lab is uploaded. The lab is a
+# workspace package that git ignores, but pnpm-lock.yaml records it as an
+# importer, and EAS's frozen-lockfile install fails when an importer's
+# package.json is missing.
+
+# Dependencies, builds and caches
+node_modules/
+dist/
+out/
+out-e2e/
+.turbo/
+.next/
+.output/
+.nitro/
+.source/
+.tanstack/
+.wrangler/
+.vercel
+.pnpm-store/
+.cache/
+*.tsbuildinfo
+*.log
+*.log.[0-9]*
+playwright-report/
+test-results/
+__pycache__/
+*.pyc
+.DS_Store
+
+# Secrets
+.env*
+!.env.example
+.dev.vars*
+!.dev.vars.example
+
+# Nyte's per-workspace folders
+**/.nyte/*
+!/.nyte/plugins/
+!/.nyte/skills/
+!/.nyte/mcp.json
+.uji/
+
+# Anything personal or machine-specific lives in a .local folder
+.local/
+
+# Written by scripts
+*.generated*
+/packages/*/LICENSE
+/packages/*/THIRD-PARTY-NOTICES.md
+
+# Nested .gitignore files
+/.agents/skills/pnpm-*
+/packages/nyte-bench/runs/
+/packages/mobile/.expo/
+/packages/mobile/.voltra/
+/packages/mobile/ios/
+/packages/mobile/android/
+/packages/mobile/build/
+
+# With this file present EAS copies files instead of running `git archive`,
+# which would sweep in .git.
+.git/
