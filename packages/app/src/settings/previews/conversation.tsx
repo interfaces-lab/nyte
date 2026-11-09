@@ -43,15 +43,29 @@ const FINISHED: readonly ToolMessage[] = [
 ];
 
 const RUNNING: readonly ToolMessage[] = [
+  settledTool("usages", { kind: "shell", command: 'rg -n "DEFAULT_DENSITY" src' }, 4_200, {
+    text: `${FILE}:2:export const DEFAULT_DENSITY: Density = "compact";`,
+  }),
+  settledTool("test-file", { kind: "read", path: `${CWD}/src/density.test.ts` }, 4_900),
+  settledTool("typecheck", { kind: "shell", command: "pnpm typecheck" }, 5_600),
+  settledTool("lint", { kind: "shell", command: "pnpm lint" }, 9_800, {
+    text: "Found 0 warnings and 0 errors.",
+  }),
   {
-    ...message("test", STARTED + 5_000),
+    ...message("test", STARTED + 13_500),
     state: {
       call: asId<"call">("test"),
       name: "shell",
       args: null,
       class: { kind: "shell", command: "pnpm test" },
       phase: "running",
-      progress: null,
+      progress: {
+        text: [
+          "✓ src/density.test.ts (6 tests) 12ms",
+          "✓ src/preferences.test.ts (14 tests) 31ms",
+          "❯ src/step-group.test.ts 7/11",
+        ].join("\n"),
+      },
     },
     status: { kind: "live", run: asId<"run">("preview") },
   },
@@ -63,7 +77,7 @@ const REPLY = `Added \`balanced\` between the two densities:
 export type Density = "compact" | "balanced" | "detailed"; // Compact previews the running step, Detailed keeps finished steps open
 \`\`\`
 
-Running the tests now.`;
+Running the checks now.`;
 
 export function ConversationPreview(): ReactElement {
   const density = useSetting(preferences.toolCalls);
