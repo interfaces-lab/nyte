@@ -13,6 +13,7 @@ import {
   fileStructureLicenses,
   shareCentralIconBase,
   stylex,
+  trimStreamdown,
 } from "@nyte-ai/app/vite";
 
 const renderer = {
@@ -25,6 +26,7 @@ const renderer = {
       },
     }),
     shareCentralIconBase(),
+    trimStreamdown(),
     fileStructureLicenses(),
     stylex.vite({
       useCSSLayers: true,

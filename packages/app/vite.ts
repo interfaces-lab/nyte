@@ -1,7 +1,7 @@
 import { cp, readFile, readdir, stat } from "node:fs/promises";
 import { createWriteStream, mkdirSync } from "node:fs";
 import type { ServerResponse } from "node:http";
-import { extname, join, normalize, resolve, sep } from "node:path";
+import { dirname, extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { DevRow } from "@nyte-ai/sdk";
 import { Type } from "typebox";
@@ -34,6 +34,125 @@ export function shareCentralIconBase(): Plugin {
 
         return {
           code: `${react}import{CentralIconBase as ${base}}from"../CentralIconBase/index.mjs";${glyph}${code.slice(inlined.length)}`,
+          map: null,
+        };
+      },
+    },
+  };
+}
+
+const STREAMDOWN_CHUNK = /\/node_modules\/streamdown\/dist\/[^/]+\.js(?:\?|$)/u;
+
+const STREAMDOWN_STANDIN = "\0nyte:streamdown/";
+
+const PARSE_ONLY = "?nyte-parse-only";
+
+/** Streamdown's default for each of these tags still renders. Prose's `markdownComponents` overrides every other tag. */
+const STREAMDOWN_DEFAULTS = new Set(["thead", "tbody", "tr", "sup", "sub", "section"]);
+
+function unbundled(name: string): string {
+  return `throw new Error(${JSON.stringify(`Nyte builds Streamdown without ${name}, which prose replaces. Bundle it again before relying on Streamdown's default.`)})`;
+}
+
+const STREAMDOWN_STANDINS = new Map([
+  ["rehype-raw", `export default function rehypeRaw(){${unbundled("rehype-raw")}}`],
+  [
+    "rehype-sanitize",
+    `export const defaultSchema={};export default function rehypeSanitize(){${unbundled("rehype-sanitize")}}`,
+  ],
+  ["rehype-harden", `export function harden(){${unbundled("rehype-harden")}}`],
+  ["tailwind-merge", `export const twMerge=(...classes)=>classes.filter(Boolean).join(" ");`],
+]);
+
+/** Renders the plain element, so a tag prose stops overriding loses Streamdown's styling instead of the chat. */
+const PLAIN_COMPONENT =
+  "function nytePlain(tag){return({node,...props})=>createElement(tag,props)}";
+
+/**
+ * Streamdown imports what its defaults need, and the bundler can't tell that prose
+ * replaces those defaults: its own `rehypePlugins`, so the raw-HTML parser, the
+ * sanitizer and the hardener never run, and its own component for every tag but
+ * `STREAMDOWN_DEFAULTS`, so the default code block, table controls, link dialog and
+ * image download never render. Streamdown also merges its own fixed class lists with
+ * tailwind-merge, which has nothing to resolve in them, and registers remark-gfm's
+ * markdown serializer, which nothing reads.
+ *
+ * The build drops all of it. A dropped rehype plugin throws if reached, a dropped
+ * component renders the plain element, and a Streamdown or remark-gfm that no longer
+ * has the expected shape fails the build.
+ */
+export function trimStreamdown(): Plugin {
+  return {
+    name: "nyte:trim-streamdown",
+    apply: "build",
+    enforce: "pre",
+    resolveId: {
+      filter: { id: /^(?:rehype-raw|rehype-sanitize|rehype-harden|tailwind-merge|remark-gfm)$/u },
+      async handler(source, importer) {
+        if (importer === undefined || !STREAMDOWN_CHUNK.test(importer)) return;
+
+        if (source !== "remark-gfm") return `${STREAMDOWN_STANDIN}${source}`;
+        const resolved = await this.resolve(source, importer, { skipSelf: true });
+
+        if (resolved === null) this.error("Streamdown no longer resolves remark-gfm");
+
+        return `${join(dirname(resolved.id), "lib", "index.js")}${PARSE_ONLY}`;
+      },
+    },
+    async load(id) {
+      if (id.startsWith(STREAMDOWN_STANDIN))
+        return STREAMDOWN_STANDINS.get(id.slice(STREAMDOWN_STANDIN.length));
+
+      if (!id.endsWith(PARSE_ONLY)) return;
+      const code = await readFile(id.slice(0, -PARSE_ONLY.length), "utf8");
+
+      const parseOnly = code
+        .replace("import {gfmFromMarkdown, gfmToMarkdown} from", "import {gfmFromMarkdown} from")
+        .replace(/^ *const toMarkdownExtensions =\n.*\n/mu, "")
+        .replace(/^ *toMarkdownExtensions\.push\(gfmToMarkdown\(settings\)\)\n/mu, "");
+
+      if (parseOnly.includes("oMarkdown") || !parseOnly.includes("gfmFromMarkdown()"))
+        this.error(`${id} no longer registers its markdown serializer as expected`);
+
+      return { code: parseOnly, map: null };
+    },
+    transform: {
+      filter: { id: STREAMDOWN_CHUNK, code: 'displayName="Streamdown"' },
+      handler(code, id) {
+        const table = /(var [\w$]+=\{)(ol:[\w$]+,[^;]*?section:[\w$]+)(\};)/u.exec(code);
+
+        if (table === null || !code.includes("createElement,"))
+          this.error(`${id} no longer lists its default components as expected`);
+
+        const [whole, open, entries, close] = table;
+        const dropped: string[] = [];
+
+        const kept = entries.replaceAll(
+          /(^|,)(\w+):([\w$]+)(?=,|$)/gu,
+          (entry, comma: string, tag: string, component: string) => {
+            if (STREAMDOWN_DEFAULTS.has(tag)) return entry;
+            dropped.push(component);
+
+            return `${comma}${tag}:nytePlain(${JSON.stringify(tag)})`;
+          },
+        );
+
+        const unnamed = dropped.reduce(
+          (text, component) => {
+            const named = `${component}.displayName="`;
+            const at = text.indexOf(named);
+            const end = text.indexOf('";', at);
+
+            if (at === -1 || text.includes(named, end))
+              this.error(`${id} no longer names its default component ${component} once`);
+
+            return `${text.slice(0, at)}${text.slice(end + 2)}`;
+          },
+          code.replace(whole, `${open}${kept}${close}`),
+        );
+
+        return {
+          code: `${unnamed.replaceAll(/=(memo|lazy|createContext)\(/gu, "=/* @__PURE__ */$1(")}\n${PLAIN_COMPONENT}`,
           map: null,
         };
       },

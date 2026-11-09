@@ -8,12 +8,14 @@ import {
   devConsole,
   fileStructureLicenses,
   shareCentralIconBase,
+  trimStreamdown,
 } from "./vite.ts";
 
 export default defineConfig({
   plugins: [
     deferredChunks(deferredEntries),
     shareCentralIconBase(),
+    trimStreamdown(),
     fileStructureLicenses(),
     canvasShell(),
     devConsole(),
