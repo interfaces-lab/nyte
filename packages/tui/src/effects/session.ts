@@ -16,7 +16,8 @@ import type { BlankChat, Selection, State, WorkspaceFacts } from "../model/state
 import { SessionConfigurator } from "../services/session-config.ts";
 import type { ConfigPatch, RunChoice } from "../services/session-config.ts";
 import { readWorkspaceStatus } from "../services/workspace.ts";
-import { supersedes, VERSION } from "../version.ts";
+import { supersedes } from "../releases.ts";
+import { VERSION } from "../version.ts";
 import type { HandlerContext, LocalHandlerContext } from "./scope.ts";
 
 const HISTORY_PAGE = 200;

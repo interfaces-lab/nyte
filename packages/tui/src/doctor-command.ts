@@ -17,7 +17,8 @@ import { availableModels } from "./lib/catalog.ts";
 import { errorMessage } from "./lib/format.ts";
 import { connectHost } from "./local-host.ts";
 import { secretFilesIn } from "./secrets.ts";
-import { VERSION, findUpdate } from "./version.ts";
+import { findUpdate } from "./releases.ts";
+import { VERSION } from "./version.ts";
 
 /** `skip` is a check that didn't run, on purpose or because another check failed; it is no problem. */
 export type CheckStatus = "ok" | "warn" | "fail" | "skip";

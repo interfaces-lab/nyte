@@ -9,8 +9,9 @@ import { confirm } from "./cli/prompt.ts";
 import { errorMessage } from "./lib/format.ts";
 import { describeUpdateOutcome, latestReleaseText, selfUpdate } from "./update.ts";
 import type { UpdateOutcome, UpdateProgress } from "./update.ts";
-import { VERSION, findUpdate, followedChannel } from "./version.ts";
-import type { UpdateChannel } from "./version.ts";
+import { findUpdate, followedChannel } from "./releases.ts";
+import type { UpdateChannel } from "./releases.ts";
+import { VERSION } from "./version.ts";
 
 type UpdateRequest =
   | { readonly kind: "check" }

@@ -18,7 +18,7 @@
 
 - No `any` and no casts (`as T`, angle brackets). Use inference, narrowing, schema-derived types or `satisfies`. `as const` is fine. (lint: `typescript/no-explicit-any`, `typescript/consistent-type-assertions`)
 - Erasable syntax only: no enums, parameter properties or namespaces. (typecheck: `erasableSyntaxOnly`)
-- Top-level imports only. No dynamic, type-position `import()`, star or renamed imports, except to resolve a name collision.
+- Top-level imports only. No dynamic, type-position `import()`, star or renamed imports, except to resolve a name collision. The one dynamic `import()` allowed is the CLI entry router loading the command it dispatches, so a command never evaluates another command's modules.
 - `const`, early returns, no `else` after a return, dot notation, no destructuring.
 - Inline values and trivial helpers used once. Extract real operations and boundary handling. (lint, boolean helpers: `nyte-code/no-one-off-boolean-helpers`)
 - No `<thing>Of` helpers (`keyOf`, `configurationOf`). Name the operation (`findModel`) or inline it. (lint: `nyte-code/no-of-lookup-names`)

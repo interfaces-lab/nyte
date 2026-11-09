@@ -1,11 +1,8 @@
 import process from "node:process";
 import type { Connection } from "@nyte-ai/sdk";
-import { accountCommand } from "./account-command.ts";
-import { apiCommand } from "./api-command.ts";
 import { COMMANDS } from "./cli/commands.ts";
 import type { CommandName } from "./cli/commands.ts";
 import { CliError, shellCommand, suggest } from "./cli/errors.ts";
-import { renderHelp } from "./cli/help.ts";
 import { createInvocation } from "./cli/invocation.ts";
 import type { CommandEnd, Invocation } from "./cli/invocation.ts";
 import { resolveMode } from "./cli/mode.ts";
@@ -13,27 +10,10 @@ import { createOutput } from "./cli/output.ts";
 import type { Output } from "./cli/output.ts";
 import { route } from "./cli/route.ts";
 import type { Route } from "./cli/route.ts";
-import { eventsCommand } from "./events-command.ts";
-import { connectHostSocket } from "./host-socket.ts";
-import { doctorCommand } from "./doctor-command.ts";
-import { mcpCommand } from "./mcp-command.ts";
-import { skillCommand } from "./skill-command.ts";
-import { triageCommand } from "./triage-command.ts";
-import { trustCommand, untrustCommand } from "./trust-command.ts";
-import { availableModels } from "./lib/catalog.ts";
 import { misplacedCommand, parseFlags, readPrompt, readStdin, resolveTuiResume } from "./flags.ts";
 import type { RunFlags } from "./flags.ts";
-import { loginCommand, logoutCommand } from "./login-command.ts";
-import { statusCommand } from "./status-command.ts";
-import { updateCommand } from "./update-command.ts";
-import { VERSION } from "./version.ts";
-import { addFolder, flagConfiguration, targetSession, trustFolder } from "./run.ts";
-import { hostCommand } from "./host-command.ts";
-import { connectHost } from "./local-host.ts";
-import { openLiveHost } from "./live-host.ts";
 import type { HostSource } from "./local-host.ts";
-import { printRun } from "./print.ts";
-import { runTui } from "./app/main.tsx";
+import { VERSION } from "./version.ts";
 
 interface Context {
   readonly output: Output;
@@ -44,7 +24,9 @@ type Handler = (args: readonly string[], context: Context) => Promise<CommandEnd
 
 const HANDLERS: Record<CommandName, Handler> = {
   trust: async (args, context) => {
-    await trustCommand({
+    const command = await import("./trust-command.ts");
+
+    await command.trustCommand({
       args,
       output: context.output,
       signal: context.invocation.signal,
@@ -54,7 +36,9 @@ const HANDLERS: Record<CommandName, Handler> = {
     return { kind: "exit", code: 0 };
   },
   untrust: async (args, context) => {
-    await untrustCommand({
+    const command = await import("./trust-command.ts");
+
+    await command.untrustCommand({
       args,
       output: context.output,
       signal: context.invocation.signal,
@@ -64,7 +48,9 @@ const HANDLERS: Record<CommandName, Handler> = {
     return { kind: "exit", code: 0 };
   },
   login: async (args, context) => {
-    await loginCommand({
+    const command = await import("./login-command.ts");
+
+    await command.loginCommand({
       args,
       output: context.output,
       signal: context.invocation.signal,
@@ -74,7 +60,9 @@ const HANDLERS: Record<CommandName, Handler> = {
     return { kind: "exit", code: 0 };
   },
   logout: async (args, context) => {
-    await logoutCommand({
+    const command = await import("./login-command.ts");
+
+    await command.logoutCommand({
       args,
       output: context.output,
       signal: context.invocation.signal,
@@ -84,7 +72,9 @@ const HANDLERS: Record<CommandName, Handler> = {
     return { kind: "exit", code: 0 };
   },
   status: async (args, context) => {
-    await statusCommand({
+    const command = await import("./status-command.ts");
+
+    await command.statusCommand({
       args,
       output: context.output,
       signal: context.invocation.signal,
@@ -94,7 +84,9 @@ const HANDLERS: Record<CommandName, Handler> = {
     return { kind: "exit", code: 0 };
   },
   update: async (args, context) => {
-    await updateCommand({
+    const command = await import("./update-command.ts");
+
+    await command.updateCommand({
       args,
       output: context.output,
       signal: context.invocation.signal,
@@ -103,64 +95,95 @@ const HANDLERS: Record<CommandName, Handler> = {
 
     return { kind: "exit", code: 0 };
   },
-  account: async (args, context) => ({
-    kind: "exit",
-    code: await accountCommand(args, {
-      output: context.output,
-      signal: context.invocation.signal,
-    }),
-  }),
-  mcp: async (args, context) => ({
-    kind: "exit",
-    code: await mcpCommand({
-      args,
-      connect: (source) => openHost(context, source),
-      signal: context.invocation.signal,
-      output: context.output,
-    }),
-  }),
-  api: async (args, context) => ({
-    kind: "exit",
-    code: await apiCommand({
-      args,
-      attach: (url) => openHost(context, attachedSource(url)),
-      connect: (hostUrl) =>
-        connectHostSocket({
-          source: hostUrl === undefined ? { kind: "local" } : attachedSource(hostUrl),
-          name: "nyte api",
-        }),
-      stdin: () => readStdin(context.output.mode.tty.stdin, context.invocation.signal),
-      output: context.output,
-      width: process.stdout.columns ?? 80,
-    }),
-  }),
-  skill: async (args, context) => ({
-    kind: "exit",
-    code: await skillCommand({ args, env: process.env, output: context.output }),
-  }),
-  host: async (args, context) => ({
-    kind: "exit",
-    code: await hostCommand(args, context.invocation.signal, context.output),
-  }),
-  events: async (args, context) => ({
-    kind: "exit",
-    code: await eventsCommand({
-      args,
-      dialer: (hostUrl) => {
-        const source: HostSource =
-          hostUrl === undefined ? { kind: "local" } : attachedSource(hostUrl);
+  account: async (args, context) => {
+    const command = await import("./account-command.ts");
 
-        return () => connectHostSocket({ source, name: "nyte events" });
-      },
-      signal: context.invocation.signal,
-      output: context.output,
-    }),
-  }),
-  doctor: async (args, context) => ({
-    kind: "exit",
-    code: await doctorCommand(args, context.output),
-  }),
-  triage: async (args, context) => ({ kind: "exit", code: await triageCommand(args, context) }),
+    return {
+      kind: "exit",
+      code: await command.accountCommand(args, {
+        output: context.output,
+        signal: context.invocation.signal,
+      }),
+    };
+  },
+  mcp: async (args, context) => {
+    const command = await import("./mcp-command.ts");
+
+    return {
+      kind: "exit",
+      code: await command.mcpCommand({
+        args,
+        connect: (source) => openHost(context, source),
+        signal: context.invocation.signal,
+        output: context.output,
+      }),
+    };
+  },
+  api: async (args, context) => {
+    const command = await import("./api-command.ts");
+    const socket = await import("./host-socket.ts");
+
+    return {
+      kind: "exit",
+      code: await command.apiCommand({
+        args,
+        attach: (url) => openHost(context, attachedSource(url)),
+        connect: (hostUrl) =>
+          socket.connectHostSocket({
+            source: hostUrl === undefined ? { kind: "local" } : attachedSource(hostUrl),
+            name: "nyte api",
+          }),
+        stdin: () => readStdin(context.output.mode.tty.stdin, context.invocation.signal),
+        output: context.output,
+        width: process.stdout.columns ?? 80,
+      }),
+    };
+  },
+  skill: async (args, context) => {
+    const command = await import("./skill-command.ts");
+
+    return {
+      kind: "exit",
+      code: await command.skillCommand({ args, env: process.env, output: context.output }),
+    };
+  },
+  host: async (args, context) => {
+    const command = await import("./host-command.ts");
+
+    return {
+      kind: "exit",
+      code: await command.hostCommand(args, context.invocation.signal, context.output),
+    };
+  },
+  events: async (args, context) => {
+    const command = await import("./events-command.ts");
+    const socket = await import("./host-socket.ts");
+
+    return {
+      kind: "exit",
+      code: await command.eventsCommand({
+        args,
+        dialer: (hostUrl) => {
+          const source: HostSource =
+            hostUrl === undefined ? { kind: "local" } : attachedSource(hostUrl);
+
+          return () => socket.connectHostSocket({ source, name: "nyte events" });
+        },
+        signal: context.invocation.signal,
+        output: context.output,
+      }),
+    };
+  },
+  doctor: async (args, context) => {
+    const command = await import("./doctor-command.ts");
+
+    return { kind: "exit", code: await command.doctorCommand(args, context.output) };
+  },
+  triage: async (args, context) => {
+    const command = await import("./triage-command.ts");
+
+    return { kind: "exit", code: await command.triageCommand(args, context) };
+  },
 };
 
 const argv = process.argv.slice(2);
@@ -187,12 +210,16 @@ process.exitCode = await invocation.finish(end, json);
 
 async function run(target: Route, context: Context): Promise<CommandEnd> {
   switch (target.kind) {
-    case "help":
+    case "help": {
+      const help = await import("./cli/help.ts");
+
       context.output.result(
-        `${renderHelp(target.path, context.output.mode.stdout, process.stdout.columns ?? 80)}\n`,
+        `${help.renderHelp(target.path, context.output.mode.stdout, process.stdout.columns ?? 80)}\n`,
       );
 
       return { kind: "exit", code: 0 };
+    }
+
     case "version":
       if (target.json) context.output.json({ version: VERSION });
       else context.output.result(`${VERSION}\n`);
@@ -229,7 +256,8 @@ async function openHost(
   context: Context,
   source: HostSource = { kind: "local" },
 ): Promise<Connection> {
-  const host = await connectHost(source, (phase) => context.output.progress(phase));
+  const local = await import("./local-host.ts");
+  const host = await local.connectHost(source, (phase) => context.output.progress(phase));
   context.invocation.defer(() => host.close());
 
   return host.connection;
@@ -306,7 +334,9 @@ async function chat(args: readonly string[], context: Context): Promise<CommandE
   context.invocation.signal.throwIfAborted();
   context.invocation.handoff();
 
-  return process.exit(await runTui(resolveTuiResume(flags), source));
+  return process.exit(
+    await (await import("./app/main.tsx")).runTui(resolveTuiResume(flags), source),
+  );
 }
 
 /** One prompt. Everything the flags name is checked before the first change: trust, model settings or the send. */
@@ -324,27 +354,33 @@ async function print(
   };
 
   stopIfCanceled();
-  const local = await connectHost(source, (phase) => out.progress(phase));
+  const localHost = await import("./local-host.ts");
+  const liveHost = await import("./live-host.ts");
+  const setup = await import("./run.ts");
+  const models = await import("./lib/catalog.ts");
+  const printing = await import("./print.ts");
+  const local = await localHost.connectHost(source, (phase) => out.progress(phase));
   context.invocation.defer(() => local.close());
   const host = local.connection;
-  const live = openLiveHost(local.endpoint, "cli");
+  const live = liveHost.openLiveHost(local.endpoint, "cli");
   context.invocation.defer(() => live.release());
   stopIfCanceled();
   const catalog = await host.models.list();
 
-  if (availableModels(catalog).length === 0)
+  if (models.availableModels(catalog).length === 0)
     throw new CliError("missing_input", "Can't send a prompt without a stored credential.", {
       next: [{ label: "Sign in to a provider", argv: ["nyte", "login"] }],
     });
-  const configuration = flagConfiguration(catalog, flags);
-  const resumed = await targetSession(host, flags.resume);
+  const configuration = setup.flagConfiguration(catalog, flags);
+  const resumed = await setup.targetSession(host, flags.resume);
 
   if (flags.resume.kind === "latest" && resumed === null)
     throw new CliError("not_found", "Can't continue the latest chat. There are no chats yet.", {
       next: [{ label: "Start a chat", argv: ["nyte", "-p", "<PROMPT>"] }],
     });
 
-  if (flags.trust !== undefined) await trustFolder(host, flags.resume, process.cwd(), flags.trust);
+  if (flags.trust !== undefined)
+    await setup.trustFolder(host, flags.resume, process.cwd(), flags.trust);
 
   if (resumed !== null && flags.resume.kind === "latest" && !flags.json) {
     const workspace = await host.workspace((await resumed.info()).workspace).info();
@@ -376,14 +412,14 @@ async function print(
   const started =
     resumed === null
       ? await host.sessions.start({
-          workspace: await addFolder(host, process.cwd()),
+          workspace: await setup.addFolder(host, process.cwd()),
           content: prompt,
           contextFiles: flags.contextFiles,
           configuration,
         })
       : { session: resumed, receipt: await resumed.send(prompt) };
 
-  await printRun({
+  await printing.printRun({
     session: started.session,
     live,
     receipt: started.receipt,

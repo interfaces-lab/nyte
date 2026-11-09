@@ -3,7 +3,7 @@ import type { ModelCatalogView, SessionId, Thinking } from "@nyte-ai/sdk";
 import { availableModels, findModel } from "../lib/catalog.ts";
 import type { BlankChat, Selection } from "../model/state.ts";
 import { describeUpdateOutcome, selfUpdate } from "../update.ts";
-import { checkForUpdate } from "../version.ts";
+import { checkForUpdate } from "../releases.ts";
 import { configure } from "./commands.ts";
 import type { HandlerContext } from "./scope.ts";
 import {

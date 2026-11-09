@@ -38,9 +38,9 @@ import {
   REPO,
   saveChannel,
   supersedes,
-  VERSION,
-} from "./version.ts";
-import type { UpdateChannel } from "./version.ts";
+} from "./releases.ts";
+import type { UpdateChannel } from "./releases.ts";
+import { VERSION } from "./version.ts";
 
 const execFileAsync = promisify(execFile);
 

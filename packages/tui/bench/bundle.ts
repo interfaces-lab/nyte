@@ -21,6 +21,7 @@ const result = await Bun.build({
   define: binaryDefines(process.env),
   external: ["@opentui/core-*"],
   format: "esm",
+  splitting: true,
   outdir,
   metafile: true,
 });
