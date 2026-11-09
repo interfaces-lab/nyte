@@ -12,6 +12,7 @@ import type {
   MessageId,
   PartId,
   PartView,
+  Placement,
   QueuedMessage,
   SessionView,
   TurnId,
@@ -69,15 +70,21 @@ export function updatePart(
 
   if (next === current) return;
   putPart(draft, next);
-  const message = draft.messages.get(toPartMessageId(id));
 
-  if (message?.kind === "part")
-    return setMessage(draft, {
-      ...message,
-      state: next.state,
-      version: next.version,
-      status: next.status,
-    });
+  if (transcriptRole(next.placement) !== null) {
+    const message = draft.messages.get(toPartMessageId(id));
+
+    if (message?.kind === "part")
+      setMessage(draft, {
+        ...message,
+        state: next.state,
+        version: next.version,
+        status: next.status,
+      });
+
+    return;
+  }
+
   const index = draft.partViews.findIndex((view) => view.id === id);
 
   if (index < 0) return;
@@ -375,16 +382,18 @@ export function belongsInQueue(message: Message, execution: Execution): message 
 }
 
 function unsign(message: Message): Message {
-  if (
-    message.kind !== "part" ||
-    (message.partKind !== text.kind && message.partKind !== thinking.kind)
-  )
-    return message;
-  const state = message.state;
+  if (message.kind !== "part") return message;
+  const state = unsignedState(message.partKind, message.state);
 
-  if (!SIGNED.Check(state) || state.signature === null) return message;
+  return state === message.state ? message : { ...message, state };
+}
 
-  return { ...message, state: { ...state, signature: null } };
+function unsignedState<State>(partKind: string, state: State): State | { signature: null } {
+  if (partKind !== text.kind && partKind !== thinking.kind) return state;
+
+  if (!SIGNED.Check(state) || state.signature === null) return state;
+
+  return { ...state, signature: null };
 }
 
 export function openTurn(
@@ -489,7 +498,7 @@ export function partView(part: PartRecord): PartView {
     id: part.id,
     partKind: part.partKind,
     placement: part.placement,
-    state: part.state,
+    state: unsignedState(part.partKind, part.state),
     version: part.version,
     status: part.status,
     owner: part.owner,
@@ -500,6 +509,13 @@ export function reuse<T>(previous: readonly T[], next: readonly T[]): readonly T
   return previous.length === next.length && previous.every((item, index) => item === next[index])
     ? previous
     : next;
+}
+
+export function transcriptRole(placement: Placement): "step" | "answer" | "note" | null {
+  if (placement.kind !== "transcript") return null;
+  const role = placement.role;
+
+  return role === "step" || role === "answer" || role === "note" ? role : null;
 }
 
 export function toPartMessageId(part: PartId): MessageId {

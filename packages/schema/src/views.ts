@@ -95,6 +95,8 @@ export const MessageType = Type.Union([
 
 export type Message = Decoded<typeof MessageType>;
 
+export const PartReadType = Type.Object({ seq: SeqType, part: nullable(PartViewType) });
+
 export const TurnInfoType = Type.Object({
   id: idSchema<"turn">(),
   run: nullable(idSchema<"run">()),

@@ -9,6 +9,7 @@ import type {
   HeadName,
   HostId,
   Json,
+  PartId,
   PerformEvent,
   SessionId,
   TextFrame,
@@ -30,6 +31,8 @@ import { openSessions } from "./live-sessions.ts";
 import type { SessionsStore, SessionsWindow } from "./live-sessions.ts";
 import { openHeadStore } from "./live-head.ts";
 import type { HeadStore } from "./live-head.ts";
+import { openPartStore } from "./live-part.ts";
+import type { PartStore } from "./live-part.ts";
 import { listenerSet, request, retryDelay } from "./live.ts";
 import type { Attachment, Live } from "./live.ts";
 
@@ -80,6 +83,7 @@ export interface HostConnection {
   release(): void;
   call<N extends CallName>(name: N, input: OperationInput<N>): Promise<OperationOutput<N>>;
   head(session: SessionId, head: HeadName, options: { readonly tail: number }): HeadStore;
+  part(session: SessionId, part: PartId): PartStore;
   directory(window?: SessionsWindow): SessionsStore;
   text(listener: (update: TextUpdate) => void): Disposer;
   clients(): ClientsStore;
@@ -446,6 +450,7 @@ function superviseHost(address: string, options: HostOptions, registry: Registry
     },
     head: (session, head, view) =>
       openHeadStore({ session, head, tail: view.tail }, join, catalogs),
+    part: (session, part) => openPartStore({ session, part }, join),
     directory: (window) => openSessions(window ?? {}, join),
     text(listener) {
       texts.add(listener);

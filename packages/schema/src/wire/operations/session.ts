@@ -31,6 +31,7 @@ import {
 import {
   HeadWindowType,
   HistoryPageType,
+  PartReadType,
   ResumeType,
   SessionViewSchema,
   UserStatusType,
@@ -352,6 +353,14 @@ export const SESSION_OPERATIONS = {
       }),
     }),
     output: wireObject({ part: idSchema<"part">() }),
+  },
+  "part.read": {
+    ...PARTICIPANT,
+    summary:
+      "Reads one part wherever it sits in its session, at a seq the session's changes continue from.",
+    kind: "query",
+    input: wireObject(PART),
+    output: wireSchema(PartReadType),
   },
   "part.update": {
     ...PARTICIPANT,

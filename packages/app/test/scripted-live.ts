@@ -1,9 +1,11 @@
 import { SdkError } from "@nyte-ai/sdk";
-import type { HeadName, SessionId, SessionInfo, SessionView } from "@nyte-ai/sdk";
+import type { HeadName, PartId, SessionId, SessionInfo, SessionView } from "@nyte-ai/sdk";
 import type {
   HeadSnapshot,
   HeadStore,
   HostConnection,
+  PartSnapshot,
+  PartStore,
   SessionsSnapshot,
   SessionsStore,
 } from "@nyte-ai/sdk/client";
@@ -36,6 +38,7 @@ export function scriptedLive(script: LiveScript): HostConnection {
     release: () => undefined,
     call: refuse,
     head: (session, head) => headStore(script.views(session), head),
+    part: (session, part) => partStore(script.views(session), part),
     directory(window) {
       const parents = window?.parents;
 
@@ -79,6 +82,34 @@ function headStore(source: LiveSource<SessionView> | undefined, head: HeadName):
   return {
     subscribe: (listener) => source?.subscribe(listener) ?? (() => undefined),
     snapshot: read,
+    freshness: () =>
+      view === undefined
+        ? { kind: "stale", since: 0, error: source === undefined ? MISSING : null }
+        : { kind: "fresh", seq: view.seq },
+    close: () => undefined,
+  };
+}
+
+function partStore(source: LiveSource<SessionView> | undefined, part: PartId): PartStore {
+  let view: SessionView | undefined;
+  let snapshot: PartSnapshot | null = null;
+
+  return {
+    subscribe: (listener) => source?.subscribe(listener) ?? (() => undefined),
+    snapshot() {
+      const latest = source?.latest();
+
+      if (latest !== view) {
+        view = latest;
+
+        snapshot =
+          latest === undefined
+            ? null
+            : { part: latest.parts.find((row) => row.id === part) ?? null };
+      }
+
+      return snapshot;
+    },
     freshness: () =>
       view === undefined
         ? { kind: "stale", since: 0, error: source === undefined ? MISSING : null }

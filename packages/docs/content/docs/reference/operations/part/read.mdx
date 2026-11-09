@@ -1,0 +1,407 @@
+---
+title: part.read
+description: Reads one part wherever it sits in its session, at a seq the session's changes continue from.
+---
+
+Reads one part by id, whichever head or message holds it, as its row: `placement` says whether it
+sits in a transcript, a panel or a modal. `part` is `null` when the session has no such part. `seq`
+is the session seq the answer is current through.
+
+To keep the part current, apply each `change` event on the session's scope with a `seq` above the
+answer's. A `parts` upsert with this id replaces the row. A transcript part's changes arrive as
+upserts of its message, whose `id` is the part's id; take `state`, `version` and `status` from it.
+Read the part again when its id is in `parts.drop`, or when its message arrives and the row you
+hold is `null` or not a transcript part: one change can close a part and create another with the
+same id.
+
+## When to call it
+
+After [`events.subscribe`](/docs/reference/operations/events/subscribe) on the session's scope,
+never before, so a change between the two isn't lost. Use it for a part shown outside its chat,
+such as a canvas beside it, instead of reading a window large enough to hold it.
+
+## Access
+
+Any principal with `participant` authority who can read the session. Session scope. It answers over
+HTTP and on the WebSocket.
+
+## Example
+
+Input:
+
+```json
+{
+  "session": "0b7d2c4e-6f1a-4b3c-9e8d-7a6b5c4d3e2f",
+  "part": "7e0da290-f3a1-4db9-9b06-cd22b8faba83"
+}
+```
+
+Output, with the part's state shortened:
+
+```json
+{
+  "seq": 12,
+  "part": {
+    "id": "7e0da290-f3a1-4db9-9b06-cd22b8faba83",
+    "partKind": "canvas",
+    "placement": { "kind": "transcript", "role": "note" },
+    "state": { "title": "Terminal" },
+    "version": 2,
+    "status": {
+      "kind": "settled",
+      "commit": "a1f4c2d9-5e3b-4c7a-8d6f-0b9e2a1c3d4e",
+      "endedAt": 1762470004000
+    },
+    "owner": "canvas"
+  }
+}
+```
+
+## Errors
+
+- `unknown` for a session the host doesn't have.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `participant`
+- Scope: `session`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["session", "part"],
+  "properties": {
+    "session": {
+      "type": "string"
+    },
+    "part": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "object",
+  "required": ["seq", "part"],
+  "properties": {
+    "seq": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "part": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["id", "partKind", "placement", "state", "version", "status", "owner"],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "partKind": {
+              "type": "string"
+            },
+            "placement": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "required": ["kind", "role"],
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "transcript"
+                    },
+                    "role": {
+                      "enum": ["step", "answer", "note"]
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": ["kind"],
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "modal"
+                    }
+                  }
+                },
+                {
+                  "allOf": [
+                    {
+                      "type": "object",
+                      "required": ["kind"],
+                      "properties": {
+                        "kind": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "patternProperties": {
+                        "^.*$": {
+                          "$ref": "Json"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            "state": {
+              "$ref": "Json"
+            },
+            "version": {
+              "type": "number"
+            },
+            "status": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "required": ["kind", "run"],
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "live"
+                    },
+                    "run": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "waiting": {
+                      "type": "string"
+                    },
+                    "answer": {
+                      "type": "object",
+                      "required": ["action", "input"],
+                      "properties": {
+                        "action": {
+                          "type": "string"
+                        },
+                        "input": {
+                          "$ref": "Json"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": ["kind", "run", "on"],
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "waiting"
+                    },
+                    "run": {
+                      "type": "string"
+                    },
+                    "on": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": ["kind", "session", "run"],
+                          "properties": {
+                            "deadline": {
+                              "type": "number"
+                            },
+                            "kind": {
+                              "type": "string",
+                              "const": "run"
+                            },
+                            "session": {
+                              "type": "string"
+                            },
+                            "run": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "object",
+                          "required": ["kind", "job"],
+                          "properties": {
+                            "deadline": {
+                              "type": "number"
+                            },
+                            "kind": {
+                              "type": "string",
+                              "const": "job"
+                            },
+                            "job": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "object",
+                          "required": ["kind", "part"],
+                          "properties": {
+                            "deadline": {
+                              "type": "number"
+                            },
+                            "kind": {
+                              "type": "string",
+                              "const": "part"
+                            },
+                            "part": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "object",
+                          "required": ["kind", "until"],
+                          "properties": {
+                            "deadline": {
+                              "type": "number"
+                            },
+                            "kind": {
+                              "type": "string",
+                              "const": "timer"
+                            },
+                            "until": {
+                              "type": "number"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": ["kind", "commit", "endedAt"],
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "settled"
+                    },
+                    "commit": {
+                      "type": "string"
+                    },
+                    "endedAt": {
+                      "type": "number"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": ["kind", "run", "failure"],
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "failed"
+                    },
+                    "run": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "failure": {
+                      "type": "object",
+                      "required": ["class", "message"],
+                      "properties": {
+                        "class": {
+                          "enum": [
+                            "rate_limit",
+                            "auth",
+                            "quota",
+                            "context_window",
+                            "overloaded",
+                            "network",
+                            "aborted",
+                            "provider",
+                            "runner"
+                          ]
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "retryAfterMs": {
+                          "type": "number"
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "owner": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "Json": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "Json"
+          }
+        },
+        {
+          "type": "object",
+          "patternProperties": {
+            "^.*$": {
+              "$ref": "Json"
+            }
+          }
+        }
+      ],
+      "$id": "Json"
+    }
+  }
+}
+```
+
+{/* generated:end */}

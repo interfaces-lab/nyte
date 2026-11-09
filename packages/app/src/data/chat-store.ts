@@ -1,4 +1,5 @@
 import { asId } from "@nyte-ai/schema";
+import type { PartId, PartView } from "@nyte-ai/schema";
 import { pagedViews, tracePaints } from "@nyte-ai/sdk";
 import type { PagedViews, SessionId } from "@nyte-ai/sdk";
 import { headView, streamText, unsentSends, withStreamedText } from "@nyte-ai/sdk/client";
@@ -135,6 +136,45 @@ function laidViews(
       },
     };
   });
+}
+
+export type ShownPart = { readonly part: PartView | null; readonly staleSince: number | null };
+
+const partStores = liveFamily((live, key: string): AsyncIterable<ShownPart> =>
+  liveValues<ShownPart>((changed) => {
+    const [session = "", part = ""] = key.split(" ");
+    const store = live.part(asId<"session">(session), asId<"part">(part));
+    const stop = store.subscribe(changed);
+    let shown = partStores(key).value ?? null;
+
+    return {
+      read() {
+        const freshness = store.freshness();
+        const staleSince = freshness.kind === "stale" ? freshness.since : null;
+        const snapshot = store.snapshot();
+        const found = snapshot === null ? shown?.part : snapshot.part;
+
+        if (found === undefined) {
+          if (freshness.kind === "stale" && freshness.error !== null) throw freshness.error;
+
+          return null;
+        }
+
+        if (shown?.part === found && shown.staleSince === staleSince) return shown;
+        shown = { part: found, staleSince };
+
+        return shown;
+      },
+      close() {
+        stop();
+        store.close();
+      },
+    };
+  }),
+);
+
+export function partStore(session: SessionId, part: PartId) {
+  return partStores(`${session} ${part}`);
 }
 
 const KEPT_CHATS = 8;

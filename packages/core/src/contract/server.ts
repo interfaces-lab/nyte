@@ -18,6 +18,7 @@ import type {
   Owned,
   PageId,
   PartId,
+  PartView,
   Position,
   PrincipalId,
   ReceiptId,
@@ -156,6 +157,7 @@ export interface SessionAttachment {
   cursor(): ChangeCursor;
   activation(): Activation;
   read(head: HeadName, window: WindowSpec, resume: Resume | null): HeadWindow;
+  part(id: PartId): PartView | null;
   changesAfter(cursor: ChangeCursor): SessionChange;
   streaming(): readonly StreamingPart[];
   progress(): readonly PartProgress[];

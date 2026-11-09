@@ -36,12 +36,10 @@ export type { SessionsStore, SessionsSnapshot, SessionsWindow } from "./live-ses
 
 export type { HeadRows, HeadSnapshot, HeadStore } from "./live-head.ts";
 
+export type { PartSnapshot, PartStore } from "./live-part.ts";
+
 export type { Freshness, Live } from "./live.ts";
 
 export * from "./surface.ts";
 
-/**
- * The SDK for a client of a host in another process: `connect` without `open`, so
- * importing it never loads the host, its models or its store.
- */
 export const sdk = { connect };

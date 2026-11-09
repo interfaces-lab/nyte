@@ -587,7 +587,8 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
       return null;
     }
 
-    if (op === "head.read") await subscribed(`session/${decodeInput(op, input).session}`);
+    if (op === "head.read" || op === "part.read")
+      await subscribed(`session/${decodeInput(op, input).session}`);
 
     if (op === "sessions.read") await subscribed("host");
 

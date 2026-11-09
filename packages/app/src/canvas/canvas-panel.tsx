@@ -4,6 +4,7 @@ import type { ReactElement } from "react";
 import { canvas } from "@nyte-ai/plugin/canvas/schema";
 import type { CanvasRevision, CanvasState } from "@nyte-ai/plugin/canvas/schema";
 import type { BlobId, PartId, SessionId } from "@nyte-ai/sdk";
+import { Icon } from "@nyte-ai/ui/icon";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@nyte-ai/ui/select";
 import { Spinner } from "@nyte-ai/ui/spinner";
 import { Toggle } from "@nyte-ai/ui/toggle";
@@ -14,7 +15,7 @@ import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { formatTimeAgo } from "../lib/format.ts";
 import { CanvasFrame } from "./canvas-frame.tsx";
 import { connection } from "../data/connection.ts";
-import { chatStore } from "../data/chat-store.ts";
+import { partStore } from "../data/chat-store.ts";
 import { useWatchSelect } from "../data/watch-store.ts";
 import { useCanvasEditing } from "./canvas-activity.ts";
 import { useNowMinute } from "../lib/use-now-minute.ts";
@@ -78,13 +79,10 @@ export function CanvasPanel({
   readonly pinned: number | null;
   readonly onPin: (revision: number | null) => void;
 }): ReactElement {
-  const store = chatStore(sessionId);
+  const store = partStore(sessionId, part);
+  const view = useWatchSelect(store, (state) => state.value?.part);
 
-  const view = useWatchSelect(store, (state) =>
-    state.value === undefined
-      ? undefined
-      : (state.value.parts.find((candidate) => candidate.id === part) ?? null),
-  );
+  const staleSince = useWatchSelect(store, (state) => state.value?.staleSince ?? null);
 
   const error = useWatchSelect(store, (state) => state.error);
   const editing = useCanvasEditing(sessionId, part);
@@ -132,6 +130,15 @@ export function CanvasPanel({
     <section aria-label={state.title} {...props(styles.panel)}>
       <div {...props(workbenchStyles.toolbar, hairline.blockEnd, styles.toolbar)}>
         <span {...props(text.base, styles.title)}>{state.title}</span>
+        {staleSince !== null && (
+          <span role="status" {...props(text.sm, styles.editing)}>
+            <Icon name="clock" size="xs" />
+            {`Out of date since ${new Date(staleSince).toLocaleTimeString(undefined, {
+              hour: "numeric",
+              minute: "2-digit",
+            })}`}
+          </span>
+        )}
         {editing && (
           <span role="status" {...props(text.sm, styles.editing)}>
             <Spinner />

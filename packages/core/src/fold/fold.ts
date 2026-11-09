@@ -13,7 +13,6 @@ import type {
   PartId,
   PartStatus,
   PatchEvent,
-  Placement,
   Position,
   PrincipalId,
   RunId,
@@ -61,6 +60,7 @@ import {
   setTurn,
   toPartMessageId,
   touchRow,
+  transcriptRole,
   turnInfo,
   updateHead,
   updatePart,
@@ -708,11 +708,18 @@ function applyPart(draft: Draft, event: Logged<"part">): void {
           ? { ...part, status: { ...part.status, answer: event.answer } }
           : part,
       );
-    case "closed":
-      if (!draft.parts.has(id) || draft.messages.has(toPartMessageId(id))) return;
+    case "closed": {
+      const record = draft.parts.get(id);
+
+      if (
+        record === undefined ||
+        (transcriptRole(record.placement) !== null && draft.messages.has(toPartMessageId(id)))
+      )
+        return;
       dropPart(draft, id);
       draft.partViews = draft.partViews.filter((view) => view.id !== id);
       dropRow(draft, "parts", id);
+    }
   }
 }
 
@@ -855,13 +862,6 @@ function placeAt(
   const index = Math.min(Math.max(0, position), rest.length);
 
   return [...rest.slice(0, index), id, ...rest.slice(index)];
-}
-
-function transcriptRole(placement: Placement): "step" | "answer" | "note" | null {
-  if (placement.kind !== "transcript") return null;
-  const role = placement.role;
-
-  return role === "step" || role === "answer" || role === "note" ? role : null;
 }
 
 function sameEntries<K, V>(left: ReadonlyMap<K, V>, right: ReadonlyMap<K, V>): boolean {

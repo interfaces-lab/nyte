@@ -3,6 +3,7 @@ import type { PrincipalId, SessionId } from "@nyte-ai/schema";
 import { INDEX } from "../contract/fold.ts";
 import type { Kernel } from "../contract/kernel.ts";
 import type { PartProgress, SessionAttachment, StreamingPart } from "../contract/server.ts";
+import { partView } from "../fold/draft.ts";
 import { readUnsettledParts } from "../fold/reads.ts";
 import { changesAfter, readWindow } from "../fold/window.ts";
 
@@ -22,6 +23,11 @@ export function attachSession(
     },
     activation: () => hold.state().activation,
     read: (head, window, resume) => readWindow(hold.state(), head, window, resume),
+    part(id) {
+      const record = hold.state().parts.get(id);
+
+      return record === undefined ? null : partView(record);
+    },
     changesAfter: (cursor) => changesAfter(hold.state(), cursor),
     streaming: () =>
       readUnsettledParts(hold.state()).flatMap((part): StreamingPart[] => {

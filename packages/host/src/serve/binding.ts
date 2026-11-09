@@ -340,6 +340,18 @@ export function bindConnection(connection: Connection, options: BindingOptions):
         attachment.release();
       }
     },
+    "part.read": async ({ session: id, part }) => {
+      await session(id).info();
+      const attachment = wire.attach(id, principal);
+
+      try {
+        await attachment.ready();
+
+        return { seq: attachment.cursor().seq, part: attachment.part(part) };
+      } finally {
+        attachment.release();
+      }
+    },
     "head.see": async ({ session: id, head, commit }) => {
       await session(id).head(head).see(commit);
 

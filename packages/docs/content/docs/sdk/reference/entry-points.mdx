@@ -224,6 +224,7 @@ A `HostConnection` has:
 | Member                                     | What it does                                                                                                                                                       |
 | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `head(session, head, { tail })`            | A store of one head's last `tail` messages and the rows they need                                                                                                  |
+| `part(session, part)`                      | A store of one part by id, wherever it sits in the session, kept current from the session's changes                                                                |
 | `directory(window?)`                       | A store of the `sessions` table. `window` is `{ parents?, limit? }`, as for `sessions.read`                                                                        |
 | `clients()`                                | A store of the connected clients, a `Map` of `ClientRow` by client id                                                                                              |
 | `text(listener)`                           | Opens the text channel and calls `listener` with each `TextUpdate`. Returns the unsubscribe                                                                        |
@@ -236,11 +237,14 @@ A `HostConnection` has:
 | `release()`                                | Lets go of the connection                                                                                                                                          |
 
 Each store has `subscribe(listener)`, which returns the unsubscribe, `snapshot()` and `close()`.
-The head and session stores also have `freshness()`: `fresh` with the `seq` their rows are current
+The head, part and session stores also have `freshness()`: `fresh` with the `seq` their rows are current
 through, or `stale` while the socket is down or a read failed. A stale store keeps its rows and
 resumes from its seq once the socket is back.
 
-- A head or session store's `snapshot()` is `null` before the first read.
+- A head, part or session store's `snapshot()` is `null` before the first read.
+- A part store's snapshot is `{ part }`: the part's row, with its `placement`, or `null` when the
+  session has no such part. It reads the part again after the socket is back, instead of resuming
+  from its seq.
 - A head store's snapshot holds the head's `order`, `leadingPrompt`, `activation`, `catalog`, and
   `rows`, a `Map` per table keyed by row id.
 - A session store's snapshot holds the listed `ids` in order, each one's `SessionInfo` in `rows`,
