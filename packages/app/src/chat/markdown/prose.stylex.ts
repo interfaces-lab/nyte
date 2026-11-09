@@ -175,6 +175,7 @@ export const proseStyles = create({
   table: {
     width: "max-content",
     minWidth: "100%",
+    maxWidth: "100%",
     borderCollapse: "separate",
     borderSpacing: 0,
     fontSize: type.fontBase,
