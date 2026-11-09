@@ -11,7 +11,7 @@ themselves, so anything they do, your code can do.
 import { isPart, text } from "@nyte-ai/plugin/core";
 import { sdk } from "@nyte-ai/sdk";
 
-const host = await sdk.open({});
+const host = await sdk.open();
 const { session, receipt } = await host.sessions.start({ content: "Summarize this folder" });
 
 await receipt.settled();
@@ -28,7 +28,7 @@ await host.close();
 `isPart(message, text)` picks out the agent's text answers.
 
 The agent needs a model provider you're signed in to. If you signed in with the `nyte` terminal on
-this machine, `sdk.open({})` uses that sign-in. Otherwise,
+this machine, `sdk.open()` uses that sign-in. Otherwise,
 [Build an agent app](/docs/build/composition#build-the-chat) shows the login in code.
 
 ## Two ways in [#two-ways-in]

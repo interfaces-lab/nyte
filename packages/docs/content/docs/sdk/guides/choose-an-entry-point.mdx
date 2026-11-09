@@ -21,7 +21,7 @@ with a few extra members, so code written against `Connection` works with both. 
 ```ts title="host.ts"
 import { sdk } from "@nyte-ai/sdk";
 
-const host = await sdk.open({});
+const host = await sdk.open();
 const { receipt } = await host.sessions.start({ content: "Explain this repository" });
 
 await receipt.settled();
@@ -126,7 +126,7 @@ credential working.
 ```ts tab="host.ts"
 import { sdk } from "@nyte-ai/sdk";
 
-const host = await sdk.open({});
+const host = await sdk.open();
 const { code } = await host.principals.pair({ authority: new Set(["participant"]) });
 
 console.log("Pairing code:", code);

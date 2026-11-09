@@ -3,7 +3,7 @@ title: Examples
 description: Short programs that stream answers, add tools, answer approvals, stop runs and serve a host.
 ---
 
-Each example is a file you can run with `node`. Most open a host with `sdk.open({})`, which works in
+Each example is a file you can run with `node`. Most open a host with `sdk.open()`, which works in
 the current folder and needs a model you're signed in to;
 [Build an agent app](/docs/build/composition#build-the-chat) shows the sign-in.
 
@@ -68,11 +68,11 @@ import { sdk } from "@nyte-ai/sdk";
 import { openHost } from "@nyte-ai/sdk/client";
 import { print } from "./stream";
 
-const host = await sdk.open({});
+const host = await sdk.open();
 const token = crypto.randomUUID();
 
 const listener = await host.listen({
-  transport: { kind: "http", hostname: "127.0.0.1", port: 0 },
+  transport: { kind: "http" },
   auth: { kind: "token", token },
 });
 
@@ -103,11 +103,11 @@ import { sdk } from "@nyte-ai/sdk";
 import { openHost } from "@nyte-ai/sdk/client";
 import { print } from "./stream";
 
-const host = await sdk.open({});
+const host = await sdk.open();
 const token = crypto.randomUUID();
 
 const listener = await host.listen({
-  transport: { kind: "http", hostname: "127.0.0.1", port: 0 },
+  transport: { kind: "http" },
   auth: { kind: "token", token },
 });
 
@@ -176,11 +176,11 @@ import { approvalPrompt, openApprovals } from "@nyte-ai/plugin/approvals/schema"
 import { sdk } from "@nyte-ai/sdk";
 import { headView, openHost } from "@nyte-ai/sdk/client";
 
-const host = await sdk.open({});
+const host = await sdk.open();
 const token = crypto.randomUUID();
 
 const listener = await host.listen({
-  transport: { kind: "http", hostname: "127.0.0.1", port: 0 },
+  transport: { kind: "http" },
   auth: { kind: "token", token },
 });
 
@@ -253,7 +253,7 @@ or stops the run answering it.
 ```ts title="deadline.ts"
 import { sdk } from "@nyte-ai/sdk";
 
-const host = await sdk.open({});
+const host = await sdk.open();
 const { receipt } = await host.sessions.start({ content: "Find every flaky test" });
 
 const timer = setTimeout(() => void receipt.stop(), 5 * 60_000);
@@ -276,7 +276,7 @@ signed-in account's plan limits is used.
 ```ts title="usage.ts"
 import { sdk } from "@nyte-ai/sdk";
 
-const host = await sdk.open({});
+const host = await sdk.open();
 const { receipt } = await host.sessions.start({
   content: "Write a changelog entry for the last commit",
 });
@@ -333,7 +333,7 @@ copied in. Your checkout stays as it was.
 ```ts title="upgrade.ts"
 import { sdk } from "@nyte-ai/sdk";
 
-const host = await sdk.open({});
+const host = await sdk.open();
 const { receipt } = await host.sessions.start({
   content: "Upgrade the test runner and fix what breaks",
   isolation: "worktree",
@@ -353,7 +353,7 @@ Chats are independent, so `Promise.all` runs them side by side.
 import { isPart, text } from "@nyte-ai/plugin/core";
 import { sdk } from "@nyte-ai/sdk";
 
-const host = await sdk.open({});
+const host = await sdk.open();
 const questions = ["Where is auth handled?", "What does CI run?", "Which tests are slowest?"];
 
 const answers = await Promise.all(
@@ -381,11 +381,11 @@ await host.close();
 import { sdk } from "@nyte-ai/sdk";
 import { openHost } from "@nyte-ai/sdk/client";
 
-const host = await sdk.open({});
+const host = await sdk.open();
 const token = crypto.randomUUID();
 
 const listener = await host.listen({
-  transport: { kind: "http", hostname: "127.0.0.1", port: 0 },
+  transport: { kind: "http" },
   auth: { kind: "token", token },
 });
 
@@ -414,7 +414,7 @@ address.
 import process from "node:process";
 import { sdk } from "@nyte-ai/sdk";
 
-const host = await sdk.open({});
+const host = await sdk.open();
 
 await host.listen({
   transport: { kind: "http", port: 8787 },

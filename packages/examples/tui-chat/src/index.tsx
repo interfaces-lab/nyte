@@ -26,12 +26,12 @@ const palette = () => PALETTES[themeMode()];
 
 const TAIL = 200;
 
-const host = await sdk.open({});
+const host = await sdk.open();
 
 const token = crypto.randomUUID();
 
 const listener = await host.listen({
-  transport: { kind: "http", hostname: "127.0.0.1", port: 0 },
+  transport: { kind: "http" },
   auth: { kind: "token", token },
 });
 

@@ -76,7 +76,7 @@ export type OpenHostOptions = Omit<OpenOptions, "store" | "workspace" | "models"
   readonly fetchClientMetadata?: ClientMetadataFetch;
 };
 
-export async function openHost(options: OpenHostOptions): Promise<Host> {
+export async function openHost(options: OpenHostOptions = {}): Promise<Host> {
   const home = options.home ?? homedir();
   const workspace = options.workspace ?? { kind: "local", path: process.cwd() };
 

@@ -19,13 +19,13 @@ In a browser or React Native bundle, `@nyte-ai/sdk` resolves to a build without 
 ## sdk.open [#sdk-open]
 
 ```ts
-sdk.open(options: OpenHostOptions): Promise<Host>
+sdk.open(options?: OpenHostOptions): Promise<Host>
 ```
 
 Starts a host in this Node process and returns it. A `Host` is a
 [`Connection`](/docs/sdk/reference/connection) with all three authorities and
 [a few more members](/docs/sdk/reference/connection#host). Every option is optional, so
-`sdk.open({})` works.
+`sdk.open()` works.
 
 | Option             | Default                                                                   | What it sets                                                                    |
 | ------------------ | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
@@ -80,7 +80,7 @@ const report = await host.execution.advance(target);
 ### close [#close]
 
 `host.close()` closes the host's listeners, then the host, stops watching plugin files, and closes
-the store if the host opened it. `await using host = await sdk.open({})` calls it for you.
+the store if the host opened it. `await using host = await sdk.open()` calls it for you.
 
 ## host.listen [#host-listen]
 

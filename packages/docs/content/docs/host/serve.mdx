@@ -13,7 +13,7 @@ handles you have, or attach to its rows with
 import process from "node:process";
 import { sdk } from "@nyte-ai/sdk";
 
-const host = await sdk.open({});
+const host = await sdk.open();
 
 const listener = await host.listen({
   transport: { kind: "http", port: 8787 },
@@ -110,7 +110,7 @@ import { asId } from "@nyte-ai/schema";
 import { sdk } from "@nyte-ai/sdk";
 import { readUser } from "./auth";
 
-const host = await sdk.open({});
+const host = await sdk.open();
 
 await host.listen({
   transport: { kind: "http", port: 8787 },
@@ -218,7 +218,7 @@ mount it in a framework route, a Worker, or any server that works with `Request`
 import process from "node:process";
 import { sdk } from "@nyte-ai/sdk";
 
-const host = await sdk.open({});
+const host = await sdk.open();
 
 const listener = await host.listen({
   transport: { kind: "fetch" },
