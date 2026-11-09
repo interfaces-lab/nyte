@@ -64,7 +64,6 @@ export const composerStyles = create({
     position: "absolute",
     insetInline: 0,
     bottom: 0,
-    anchorName: conversation.composerDock,
     zIndex: layer.stickyContent,
     pointerEvents: "none",
   },
@@ -78,12 +77,14 @@ export const composerStyles = create({
     paddingBottom: conversation.composerInset,
     containerType: "inline-size",
   },
+  regionSideChat: { paddingInline: space.s2, paddingBottom: space.s2 },
   inputStack: { position: "relative", minWidth: 0, pointerEvents: "auto" },
   preComposerOverlay: {
     position: "absolute",
     insetInline: 0,
     bottom: `calc(100% + ${PILLS_ROW_OFFSET}px)`,
     zIndex: 1,
+    anchorName: conversation.composerTrays,
     display: "flex",
     flexDirection: "column",
     pointerEvents: "none",
@@ -237,6 +238,7 @@ export const composerStyles = create({
     paddingInline: `${space.s2_5} ${space.s2}`,
     borderRadius: radius.pill,
   },
+  frameSideChatCompact: { paddingInlineStart: space.s3 },
   frameFollowUpExpanded: { borderRadius: conversation.composerExpandedRadius },
   frameMessageEdit: { borderRadius: radius.card },
   frameDragging: {
@@ -406,8 +408,7 @@ export const composerStyles = create({
     letterSpacing: type.letterLg,
   },
   editorCompact: {
-    gridColumn: 2,
-    gridRow: 1,
+    gridArea: "editor",
     minWidth: 64,
     overflow: "clip",
     flexWrap: "nowrap",
@@ -503,8 +504,13 @@ export const composerStyles = create({
   layoutCompact: {
     display: "grid",
     gridTemplateColumns: `${control.heightMd} minmax(64px, 1fr) minmax(0, auto) auto`,
+    gridTemplateAreas: '"add editor model send"',
     alignItems: "center",
     gap: space.s2,
+  },
+  layoutSideChatCompact: {
+    gridTemplateColumns: "minmax(64px, 1fr) auto",
+    gridTemplateAreas: '"editor send"',
   },
   controls: {
     display: "flex",
@@ -515,7 +521,7 @@ export const composerStyles = create({
   controlsNewChat: { paddingInline: space.s3, paddingBlockEnd: space.s2 },
   controlsInset: { paddingInline: space.s2, paddingBlockEnd: space.s2 },
   controlsCompact: { display: "contents" },
-  addButtonCompact: { gridColumn: 1, gridRow: 1 },
+  addButtonCompact: { gridArea: "add" },
   pillButton: { borderRadius: radius.pill },
   addMenu: { width: 260, maxWidth: "calc(100vw - 24px)" },
   modelSlot: {
@@ -525,8 +531,7 @@ export const composerStyles = create({
     minWidth: 0,
   },
   modelSlotCompact: {
-    gridColumn: 3,
-    gridRow: 1,
+    gridArea: "model",
     minWidth: 0,
     maxWidth: 220,
     overflow: "clip",
@@ -697,5 +702,5 @@ export const composerStyles = create({
     whiteSpace: "nowrap",
   },
   sendActions: { display: "flex", alignItems: "center", gap: space.s2 },
-  sendCompact: { gridColumn: 4, gridRow: 1 },
+  sendCompact: { gridArea: "send" },
 });

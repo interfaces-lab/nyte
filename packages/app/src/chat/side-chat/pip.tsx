@@ -7,7 +7,7 @@ import type { KeyboardEvent, PointerEvent, ReactElement, ReactNode } from "react
 import { floatingSurfaceStyles } from "@nyte-ai/ui/styles/floating-surface.stylex";
 import { layer, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { occludes } from "../../components/overlay-occlusion.ts";
-import { conversation } from "../../theme/schema.stylex.ts";
+import { conversation, tray } from "../../theme/schema.stylex.ts";
 
 export type Corner = `${"top" | "bottom"}-${"start" | "end"}`;
 
@@ -55,9 +55,10 @@ const UNFOLD: Transition = { duration: 0.16, delay: 0.14, ease: "easeOut" };
 const styles = create({
   layer: {
     position: "absolute",
-    insetInline: 0,
+    insetInlineStart: `anchor(${conversation.composerTrays} start, 0px)`,
+    insetInlineEnd: `anchor(${conversation.composerTrays} end, 0px)`,
     insetBlockStart: 0,
-    insetBlockEnd: `anchor(${conversation.composerDock} top, 0px)`,
+    insetBlockEnd: `calc(anchor(${conversation.composerTrays} top, 0px) + min(anchor-size(${conversation.composerTrays} height, 0px), ${tray.gap}))`,
     pointerEvents: "none",
     containerType: "size",
     zIndex: layer.stickyContent,
@@ -65,21 +66,21 @@ const styles = create({
   card: {
     position: "absolute",
     display: "flex",
-    maxWidth: `calc(100% - ${space.s6})`,
-    maxHeight: `calc(100% - ${space.s6})`,
+    maxWidth: "100%",
+    maxHeight: `calc(100% - ${space.s3})`,
     overflow: "hidden",
     pointerEvents: "auto",
   },
   face: { position: "absolute", display: "flex", flexDirection: "column" },
   faceSize: (width: number, height: number) => ({
-    width: `min(${String(width)}px, calc(100cqw - ${space.s6}))`,
-    height: `min(${String(height)}px, calc(100cqh - ${space.s6}))`,
+    width: `min(${String(width)}px, 100cqw)`,
+    height: `min(${String(height)}px, calc(100cqh - ${space.s3}))`,
   }),
   pill: { display: "flex", flexShrink: 0, maxWidth: "100%" },
-  "top-start": { insetBlockStart: space.s3, insetInlineStart: space.s3 },
-  "top-end": { insetBlockStart: space.s3, insetInlineEnd: space.s3 },
-  "bottom-start": { insetBlockEnd: space.s3, insetInlineStart: space.s3 },
-  "bottom-end": { insetBlockEnd: space.s3, insetInlineEnd: space.s3 },
+  "top-start": { insetBlockStart: space.s3, insetInlineStart: 0 },
+  "top-end": { insetBlockStart: space.s3, insetInlineEnd: 0 },
+  "bottom-start": { insetBlockEnd: 0, insetInlineStart: 0 },
+  "bottom-end": { insetBlockEnd: 0, insetInlineEnd: 0 },
 });
 
 const pinned = create({
@@ -120,28 +121,13 @@ export function Pip({
 
   const settle = (next: Corner, velocity: Point): void => {
     const element = card.current;
-    const area = element?.parentElement?.getBoundingClientRect();
 
-    if (element == null || area === undefined) return;
-    const rect = element.getBoundingClientRect();
-    const anchorX = rect.left - x.get();
-    const anchorY = rect.top - y.get();
-
-    const insetX = corner.endsWith("start")
-      ? anchorX - area.left
-      : area.right - anchorX - rect.width;
-
-    const insetY = corner.startsWith("top")
-      ? anchorY - area.top
-      : area.bottom - anchorY - rect.height;
-
-    const nextX = next.endsWith("start") ? area.left + insetX : area.right - insetX - rect.width;
-
-    const nextY = next.startsWith("top") ? area.top + insetY : area.bottom - insetY - rect.height;
-
+    if (element === null) return;
+    const before = element.getBoundingClientRect();
     flushSync(() => setCorner(next));
-    x.set(rect.left - nextX);
-    y.set(rect.top - nextY);
+    const after = element.getBoundingClientRect();
+    x.set(x.get() + before.left - after.left);
+    y.set(y.get() + before.top - after.top);
     void animate(x, 0, { ...spring, velocity: velocity.x * 1000 });
     void animate(y, 0, { ...spring, velocity: velocity.y * 1000 });
   };

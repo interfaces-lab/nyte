@@ -557,6 +557,7 @@ function ConversationScreen(conversation: SessionConversationProps): ReactElemen
             )}
             {presentation === "side" && (
               <Composer
+                surface="side-chat"
                 sessionId={sessionId}
                 status={status}
                 pending={messages.queued}

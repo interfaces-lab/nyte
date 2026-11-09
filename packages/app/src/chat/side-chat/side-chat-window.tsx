@@ -14,7 +14,14 @@ import { nyte } from "../../contract/nyte.ts";
 import { addToChat, ADD_TO_CHAT_LABEL } from "../../references/add-to-chat.ts";
 import { chatStore } from "../../data/chat-store.ts";
 import { useWatchSelect } from "../../data/watch-store.ts";
+import type { ComposerDocumentState } from "../composer/composer-document.ts";
 import type { ComposerEditorHandle } from "../composer/composer-editor.tsx";
+import { ComposerFrame } from "../composer/composer-frame.tsx";
+import type {
+  ComposerMentionFiles,
+  ComposerSuggestionCatalog,
+} from "../composer/composer-suggestions.tsx";
+import { composerStyles } from "../composer/composer.stylex.ts";
 import { GRIP, Pip } from "./pip.tsx";
 import {
   archiveSideChat,
@@ -31,6 +38,15 @@ import type { SideChatShown } from "./side-chats.ts";
 import type { PaneId } from "../../panes/layout.ts";
 
 const SIZE = { width: 380, height: 520 };
+
+const NO_SUGGESTIONS: ComposerSuggestionCatalog = {
+  status: "ready",
+  data: { commands: [], skills: [] },
+};
+
+const NO_FILES: ComposerMentionFiles = { status: "ready", data: [] };
+
+const SIDE_CHAT_DIALOG = '[role="dialog"][aria-label="Side chat"]';
 
 const styles = create({
   pane: { flex: 1, display: "flex", flexDirection: "column", minHeight: 0, minWidth: 0 },
@@ -59,35 +75,18 @@ const styles = create({
     display: "flex",
     flexDirection: "column",
     justifyContent: "flex-end",
-    gap: space.s2,
     flex: 1,
-    padding: space.s3,
+    minWidth: 0,
+  },
+  about: {
+    display: "flex",
+    flexDirection: "column",
+    gap: space.s2,
+    paddingInline: space.s3,
+    paddingBlockEnd: space.s3,
   },
   note: { margin: 0, color: role.contentSecondary },
   error: { margin: 0, color: role.contentAccent },
-  field: {
-    display: "flex",
-    alignItems: "flex-end",
-    gap: space.s2,
-    paddingBlock: space.s2,
-    paddingInlineStart: space.s3,
-    paddingInlineEnd: space.s1_5,
-    borderRadius: radius.control,
-    backgroundColor: role.bgMuted,
-  },
-  input: {
-    flex: 1,
-    minWidth: 0,
-    margin: 0,
-    padding: 0,
-    borderStyle: "none",
-    outline: "none",
-    resize: "none",
-    backgroundColor: "transparent",
-    color: role.contentPrimary,
-    font: "inherit",
-    "::placeholder": { color: role.contentTertiary },
-  },
   starting: { display: "flex", alignItems: "center", gap: space.s2, color: role.contentTertiary },
   pill: {
     display: "flex",
@@ -225,6 +224,8 @@ export function SideChatWindow({
               conversation={conversation}
               inputRef={(handle) => {
                 sideInput.current = handle;
+
+                if (handle !== null) requestAnimationFrame(() => keepFocus(handle));
               }}
             />
           </div>
@@ -232,6 +233,15 @@ export function SideChatWindow({
       </Pip>
     </>
   );
+}
+
+function keepFocus(handle: ComposerEditorHandle): void {
+  const active = document.activeElement;
+
+  if (active !== null && active !== document.body && active.closest(SIDE_CHAT_DIALOG) === null)
+    return;
+
+  handle.focus({ preventScroll: true });
 }
 
 function SideChatBody({
@@ -251,74 +261,75 @@ function SideChatBody({
     return <Conversation key={shown.id} paneId={paneId} sessionId={shown.id} inputRef={inputRef} />;
   }
 
-  if (shown.kind === "starting") {
-    return (
-      <div {...props(styles.first)}>
-        <span {...props(text.sm, styles.starting)}>
-          <Spinner />
-          Starting the side chat
-        </span>
-      </div>
-    );
-  }
-
-  return <FirstQuestion parent={parent} error={shown.error} question={shown.question} />;
+  return (
+    <FirstQuestion
+      key={shown.kind === "new" ? shown.id : shown.kind}
+      parent={parent}
+      shown={shown}
+      inputRef={inputRef}
+    />
+  );
 }
 
 function FirstQuestion({
   parent,
-  error,
-  question,
+  shown,
+  inputRef,
 }: {
   readonly parent: SessionId;
-  readonly error: string | null;
-  readonly question: string;
+  readonly shown: Exclude<SideChatShown, { readonly kind: "chat" }>;
+  readonly inputRef: (handle: ComposerEditorHandle | null) => void;
 }): ReactElement {
-  const [draft, setDraft] = useState(question);
+  const starting = shown.kind === "starting";
 
-  const submit = (): void => {
-    if (draft.trim() !== "") void startSideChat(parent, draft.trim());
-  };
+  const [draft, setDraft] = useState<ComposerDocumentState>({
+    text: shown.question,
+    selectionStart: shown.question.length,
+    selectionEnd: shown.question.length,
+  });
+
+  const input = useRef<ComposerEditorHandle | null>(null);
+
+  useMountEffect(() => {
+    if (!starting) input.current?.focus({ preventScroll: true });
+  });
 
   return (
-    <form
-      {...props(styles.first)}
-      onSubmit={(event) => {
-        event.preventDefault();
-        submit();
-      }}
-    >
-      <p {...props(text.sm, styles.note)}>
-        Ask about this chat while it works. Side chats read and search, but don't edit files.
-      </p>
-      {error !== null && <p {...props(text.sm, styles.error)}>{error}</p>}
-      <div {...props(styles.field)}>
-        <textarea
-          // oxlint-disable-next-line jsx-a11y/no-autofocus -- opening a side chat is asking to type in it
-          autoFocus
-          aria-label="Side chat question"
-          rows={2}
-          value={draft}
+    <div {...props(styles.first)}>
+      <div {...props(styles.about)}>
+        {starting ? (
+          <span {...props(text.sm, styles.starting)}>
+            <Spinner />
+            Starting the side chat
+          </span>
+        ) : (
+          <p {...props(text.sm, styles.note)}>
+            Ask about this chat while it works. Side chats read and search, but don't edit files.
+          </p>
+        )}
+        {shown.kind === "new" && shown.error !== null && (
+          <p role="alert" {...props(text.sm, styles.error)}>
+            {shown.error}
+          </p>
+        )}
+      </div>
+      <div {...props(composerStyles.region, composerStyles.regionSideChat)}>
+        <ComposerFrame
+          surface="side-chat"
+          document={draft}
+          onDocumentChange={setDraft}
+          onSubmit={(submission) => startSideChat(parent, submission.text.trim())}
           placeholder="Ask on the side"
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key !== "Enter" || event.shiftKey) return;
-            event.preventDefault();
-            submit();
+          disabled={starting}
+          suggestionCatalog={NO_SUGGESTIONS}
+          mentionFiles={NO_FILES}
+          inputRef={(handle) => {
+            input.current = handle;
+            inputRef(handle);
           }}
-          {...props(text.sm, styles.input)}
-        />
-        <Button
-          type="submit"
-          size="xs"
-          variant="solid"
-          iconOnly
-          icon="arrow-up"
-          aria-label="Ask"
-          disabled={draft.trim() === ""}
         />
       </div>
-    </form>
+    </div>
   );
 }
 
@@ -390,8 +401,7 @@ function SideChatShortcut({
       event.preventDefault();
 
       const inside =
-        event.target instanceof Element &&
-        event.target.closest('[role="dialog"][aria-label="Side chat"]') !== null;
+        event.target instanceof Element && event.target.closest(SIDE_CHAT_DIALOG) !== null;
 
       if (inside) {
         onFold();

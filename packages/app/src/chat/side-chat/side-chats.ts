@@ -16,7 +16,12 @@ import type { ExcerptReference } from "../../references/message-references.ts";
  * A new one's `question` is the draft it opens with, the question back after a start failed.
  */
 export type SideChatShown =
-  | { readonly kind: "new"; readonly error: string | null; readonly question: string }
+  | {
+      readonly kind: "new";
+      readonly id: string;
+      readonly error: string | null;
+      readonly question: string;
+    }
   | { readonly kind: "starting"; readonly question: string }
   | { readonly kind: "chat"; readonly id: SessionId };
 
@@ -80,7 +85,7 @@ function sideChats(children: readonly SessionInfo[]): readonly SessionInfo[] {
 /** Opens `parent`'s window on a new side chat, starting it at once when there's a question. */
 export function openSideChat(parent: SessionId, question: string): Promise<void> {
   if (question.trim() === "") {
-    open(parent, { kind: "new", error: null, question: "" });
+    open(parent, newQuestion("", null));
 
     return Promise.resolve();
   }
@@ -100,12 +105,7 @@ export function summonSideChat(parent: SessionId): void {
 
   const newest = sideChats(childList(parent).value ?? []).at(-1);
 
-  open(
-    parent,
-    newest === undefined
-      ? { kind: "new", error: null, question: "" }
-      : { kind: "chat", id: newest.id },
-  );
+  open(parent, newest === undefined ? newQuestion("", null) : { kind: "chat", id: newest.id });
 }
 
 export function showSideChat(parent: SessionId, id: SessionId): void {
@@ -151,11 +151,11 @@ export async function startSideChat(parent: SessionId, question: string): Promis
       .catch(() => undefined);
     replaceShown(parent, starting, { kind: "chat", id });
   } catch (cause: unknown) {
-    replaceShown(parent, starting, {
-      kind: "new",
-      error: `Couldn't start the side chat: ${errorMessage(cause)}`,
-      question,
-    });
+    replaceShown(
+      parent,
+      starting,
+      newQuestion(question, `Couldn't start the side chat: ${errorMessage(cause)}`),
+    );
   }
 }
 
@@ -234,6 +234,10 @@ function messageLine(message: Message): string | null {
   if (showsText(message)) return `Assistant: ${message.state.markdown}`;
 
   return showsTool(message) ? `[${message.state.name}]` : null;
+}
+
+function newQuestion(question: string, error: string | null): SideChatShown {
+  return { kind: "new", id: crypto.randomUUID(), error, question };
 }
 
 function open(parent: SessionId, shown: SideChatShown): void {

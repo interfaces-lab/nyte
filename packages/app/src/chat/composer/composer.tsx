@@ -13,7 +13,7 @@ import { Button } from "@nyte-ai/ui/button";
 import { useCatalog } from "../../data/catalog.ts";
 import { useHostHealth } from "../../data/host.ts";
 import { useMentionFiles } from "../../data/files.ts";
-import { usePluginCatalog } from "../../data/plugins.ts";
+import { SIDECHAT_COMMAND, usePluginCatalog } from "../../data/plugins.ts";
 import { sessionActions } from "../../data/session-rows.ts";
 import { useSessionActivity, useSessionChoice } from "../../data/sessions.ts";
 import { connection } from "../../data/connection.ts";
@@ -25,6 +25,7 @@ import type { ComposerViewState } from "../../panes/session-view-state.ts";
 import type { ComposerDocumentState, ComposerSubmission } from "./composer-document.ts";
 import type { ComposerEditorHandle } from "./composer-editor.tsx";
 import { ComposerFrame } from "./composer-frame.tsx";
+import type { ComposerSurface } from "./composer-frame.tsx";
 import { selectedModelOption } from "./model-picker-state.ts";
 import { SessionModelChip } from "./composer-model-chip.tsx";
 import { ComposerQueue } from "./composer-queue.tsx";
@@ -110,6 +111,7 @@ export function Composer({
   floatingMount = null,
   active = false,
   steer,
+  surface = "follow-up",
 }: {
   sessionId: SessionId;
   status: RunStatus;
@@ -126,6 +128,7 @@ export function Composer({
   floatingMount?: HTMLDivElement | null;
   active?: boolean;
   steer?: { readonly session: SessionId; readonly title: string };
+  surface?: Exclude<ComposerSurface, "new-chat">;
 }): ReactElement {
   useCommitCount("render:composer");
   const runningMessage = useSetting(preferences.runningMessage);
@@ -197,7 +200,17 @@ export function Composer({
     editorRef.current?.focus({ preventScroll: true });
   }, [floatingMount, portalHost]);
 
-  const suggestionCatalog = composerSource(pluginCatalog.data, pluginCatalog.isError);
+  const suggestionCatalog = composerSource(
+    surface === "side-chat" && pluginCatalog.data !== undefined
+      ? {
+          ...pluginCatalog.data,
+          commands: pluginCatalog.data.commands.filter(
+            (command) => command.name !== SIDECHAT_COMMAND.name,
+          ),
+        }
+      : pluginCatalog.data,
+    pluginCatalog.isError,
+  );
 
   const mentions = useMentionFiles(folder, true);
   const mentionFiles = composerSource(mentions.data, mentions.isError);
@@ -669,7 +682,11 @@ export function Composer({
     <div ref={attachTranscriptDock} {...props(composerStyles.dock)}>
       <div
         data-composer-region
-        {...props(composerStyles.region, floating && composerStyles.regionFloating)}
+        {...props(
+          composerStyles.region,
+          floating && composerStyles.regionFloating,
+          surface === "side-chat" && composerStyles.regionSideChat,
+        )}
       >
         <div {...props(composerStyles.inputStack)}>
           <div {...props(composerStyles.preComposerOverlay)}>
@@ -775,7 +792,7 @@ export function Composer({
             </div>
           </div>
           <ComposerFrame
-            surface="follow-up"
+            surface={surface}
             document={
               questions?.document ?? {
                 text: currentViewState.draft,
@@ -872,7 +889,9 @@ export function Composer({
                   }
             }
           />
-          {!floating && <ComposerFooter sessionId={sessionId} active={active} />}
+          {!floating && surface === "follow-up" && (
+            <ComposerFooter sessionId={sessionId} active={active} />
+          )}
         </div>
       </div>
     </div>

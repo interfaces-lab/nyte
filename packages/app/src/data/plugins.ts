@@ -39,7 +39,7 @@ export const SIDECHAT_COMMAND = {
   side: "client",
   title: "Side Chat",
   description: "Ask in a side chat without interrupting this one",
-  takesText: true,
+  takesText: false,
   completes: false,
 } satisfies CommandInfo;
 

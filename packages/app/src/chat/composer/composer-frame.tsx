@@ -38,7 +38,7 @@ const DROP_PLACEHOLDER = "Drop here to attach…";
 
 const COMPACT_FRAME_WIDTH = 320;
 
-type ComposerSurface = "new-chat" | "follow-up";
+export type ComposerSurface = "new-chat" | "follow-up" | "side-chat";
 
 type ComposerGeometry = "new-chat" | "follow-up-compact" | "follow-up-expanded";
 
@@ -134,7 +134,7 @@ export function ComposerFrame({
   }));
 
   const commandsEnabled =
-    !answering && surface === "follow-up" && editing === undefined && attachments.length === 0;
+    !answering && surface !== "new-chat" && editing === undefined && attachments.length === 0;
 
   const suggestionMenu = useComposerSuggestions({
     editorRef: areaRef,
@@ -162,7 +162,7 @@ export function ComposerFrame({
   const hasSubmission = document.text.trim() !== "" || attachments.length > 0 || hasInstructionChip;
   const canSubmit = !disabled && !submitting && !attachmentBusy && hasSubmission;
   const messageEdit = editing?.kind === "message";
-  const collapsed = surface === "follow-up" && narrow && !focused && !messageEdit && !submitting;
+  const collapsed = surface !== "new-chat" && narrow && !focused && !messageEdit && !submitting;
 
   const geometry: ComposerGeometry =
     surface === "new-chat"
@@ -172,10 +172,12 @@ export function ComposerFrame({
         : "follow-up-compact";
 
   const compact = geometry === "follow-up-compact";
+  const sideChat = surface === "side-chat";
+  const label = sideChat ? "Side chat message" : "Message";
   const followUpExpanded = geometry === "follow-up-expanded";
 
   const followUpCard =
-    surface === "follow-up" &&
+    surface !== "new-chat" &&
     !collapsed &&
     (followUpExpanded ||
       attachments.length > 0 ||
@@ -347,7 +349,7 @@ export function ComposerFrame({
     <form
       data-composer-frame={surface}
       ref={frameRef}
-      aria-label="Message"
+      aria-label={label}
       onFocus={() => setFocused(true)}
       onBlur={(event) => setFocused(event.currentTarget.contains(event.relatedTarget))}
       onKeyDown={(event) => {
@@ -415,6 +417,7 @@ export function ComposerFrame({
         floating && composerStyles.frameFloating,
         geometry === "new-chat" && composerStyles.frameNewChat,
         compact && composerStyles.frameFollowUpCompact,
+        compact && sideChat && composerStyles.frameSideChatCompact,
         followUpCard && composerStyles.frameFollowUpExpanded,
         messageEdit && composerStyles.frameMessageEdit,
         dragging && composerStyles.frameDragging,
@@ -445,12 +448,14 @@ export function ComposerFrame({
           composerStyles.layout,
           geometry === "new-chat" && composerStyles.layoutNewChat,
           compact && composerStyles.layoutCompact,
+          compact && sideChat && composerStyles.layoutSideChatCompact,
         )}
       >
         <div {...props(composerStyles.editor, compact && composerStyles.editorCompact)}>
           <ComposerEditor
             ref={areaRef}
             inputRef={inputRef}
+            label={label}
             className={
               props(
                 composerStyles.input,
@@ -545,48 +550,57 @@ export function ComposerFrame({
             followUpExpanded && composerStyles.controlsInset,
           )}
         >
-          <Menu>
-            <MenuTrigger
-              render={
-                <Button
-                  iconOnly
-                  icon="plus"
-                  aria-label="Add to message"
-                  variant="outline"
-                  disabled={disabled || answering}
-                  xstyle={[composerStyles.pillButton, compact && composerStyles.addButtonCompact]}
+          {!sideChat && (
+            <>
+              <Menu>
+                <MenuTrigger
+                  render={
+                    <Button
+                      iconOnly
+                      icon="plus"
+                      aria-label="Add to message"
+                      variant="outline"
+                      disabled={disabled || answering}
+                      xstyle={[
+                        composerStyles.pillButton,
+                        compact && composerStyles.addButtonCompact,
+                      ]}
+                    />
+                  }
                 />
-              }
-            />
-            <MenuContent
-              xstyle={composerStyles.addMenu}
-              finalFocus={() => areaRef.current?.readElement()}
-            >
-              <MenuItem
-                icon={commandsEnabled ? "command" : "skills"}
-                meta="/"
-                onClick={() => suggestionMenu.insertTrigger("/")}
-              >
-                {commandsEnabled ? "Commands and skills" : "Skills"}
-              </MenuItem>
-              <MenuItem icon="more" meta="@" onClick={() => suggestionMenu.insertTrigger("@")}>
-                Mention Context
-              </MenuItem>
-              {canAttach && (
-                <>
-                  <MenuSeparator />
-                  <MenuItem icon="paperclip" onClick={() => fileInputRef.current?.click()}>
-                    Attach Files…
+                <MenuContent
+                  xstyle={composerStyles.addMenu}
+                  finalFocus={() => areaRef.current?.readElement()}
+                >
+                  <MenuItem
+                    icon={commandsEnabled ? "command" : "skills"}
+                    meta="/"
+                    onClick={() => suggestionMenu.insertTrigger("/")}
+                  >
+                    {commandsEnabled ? "Commands and skills" : "Skills"}
                   </MenuItem>
-                </>
-              )}
-            </MenuContent>
-          </Menu>
-          <span {...props(composerStyles.modelSlot, compact && composerStyles.modelSlotCompact)}>
-            <ComposerPicker value={editing?.kind === "message" ? undefined : picker}>
-              {model}
-            </ComposerPicker>
-          </span>
+                  <MenuItem icon="more" meta="@" onClick={() => suggestionMenu.insertTrigger("@")}>
+                    Mention Context
+                  </MenuItem>
+                  {canAttach && (
+                    <>
+                      <MenuSeparator />
+                      <MenuItem icon="paperclip" onClick={() => fileInputRef.current?.click()}>
+                        Attach Files…
+                      </MenuItem>
+                    </>
+                  )}
+                </MenuContent>
+              </Menu>
+              <span
+                {...props(composerStyles.modelSlot, compact && composerStyles.modelSlotCompact)}
+              >
+                <ComposerPicker value={editing?.kind === "message" ? undefined : picker}>
+                  {model}
+                </ComposerPicker>
+              </span>
+            </>
+          )}
           <span {...props(composerStyles.spacer, compact && composerStyles.spacerCompact)} />
           <span {...props(composerStyles.sendActions, compact && composerStyles.sendCompact)}>
             {busy && onAbort !== undefined && (
