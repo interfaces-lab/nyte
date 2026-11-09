@@ -1,4 +1,4 @@
-import { router, useFocusEffect } from "expo-router";
+import { useFocusEffect } from "expo-router";
 import { Stack } from "expo-router/stack";
 import { useCallback, useRef, useState } from "react";
 import { AppState, RefreshControl, ScrollView, View } from "react-native";
@@ -10,7 +10,9 @@ import type { SessionInfo } from "@nyte-ai/sdk";
 import { useHost } from "../connection/host-context.tsx";
 import { SessionRow } from "../chat/session-row.tsx";
 import { Composer } from "../chat/composer.tsx";
-import { WorkspacePicker } from "../chat/workspace-menu.tsx";
+import { workspaceMenu } from "../chat/workspace-menu.ts";
+import { useRegistryFolders } from "../chat/workspace-start.tsx";
+import { navigationMenuAction } from "../ui/navigation-menu.tsx";
 import {
   hasFailed,
   inProgress,
@@ -151,6 +153,9 @@ export function InboxScreen() {
 
   useMountEffect(() => () => clearTimeout(searchTimer.current));
 
+  const folders = useRegistryFolders();
+  const workspaces = workspaceMenu(folders, () => setWorkspaceEpoch((epoch) => epoch + 1));
+
   return (
     <View style={{ flex: 1 }}>
       <Stack.Screen options={{ title: "Inbox" }} />
@@ -162,18 +167,35 @@ export function InboxScreen() {
           onPress={() => searchBar.current?.focus()}
           separateBackground
         />
-        <Stack.Toolbar.View>
-          <View style={{ width: controls.touchTarget, height: controls.touchTarget }}>
-            <WorkspacePicker
-              toolbar
-              busy={creating}
-              onSettings={() => router.navigate("/settings")}
-              onWorkspaceChange={() => {
-                setWorkspaceEpoch((epoch) => epoch + 1);
-              }}
-            />
-          </View>
-        </Stack.Toolbar.View>
+        <Stack.Toolbar.Menu
+          icon="folder"
+          accessibilityLabel="Workspaces and settings"
+          disabled={creating}
+          separateBackground
+        >
+          <Stack.Toolbar.Menu inline title="Workspaces">
+            {workspaces.kind === "loading" ? (
+              <Stack.Toolbar.MenuAction disabled>Loading workspaces…</Stack.Toolbar.MenuAction>
+            ) : workspaces.kind === "failed" ? (
+              <Stack.Toolbar.MenuAction icon="arrow.clockwise" onPress={workspaces.retry}>
+                Retry workspaces
+              </Stack.Toolbar.MenuAction>
+            ) : workspaces.choices.length === 0 ? (
+              <Stack.Toolbar.MenuAction disabled>No folders available</Stack.Toolbar.MenuAction>
+            ) : (
+              workspaces.choices.map((choice) => (
+                <Stack.Toolbar.MenuAction
+                  key={choice.key}
+                  isOn={choice.selected}
+                  onPress={choice.choose}
+                >
+                  {choice.label}
+                </Stack.Toolbar.MenuAction>
+              ))
+            )}
+          </Stack.Toolbar.Menu>
+          {navigationMenuAction({ href: "/settings", icon: "gearshape", children: "Settings" })}
+        </Stack.Toolbar.Menu>
       </Stack.Toolbar>
       <Stack.SearchBar
         ref={searchBar}
