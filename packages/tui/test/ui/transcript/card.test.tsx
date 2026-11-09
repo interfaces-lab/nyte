@@ -1,7 +1,5 @@
 import { RGBA } from "@opentui/core";
-import type { TextChunk } from "@opentui/core";
 import { expect, test } from "bun:test";
-import { createSignal } from "solid-js";
 import { shellCard } from "../../../src/lib/tool-card.ts";
 import { CardView } from "../../../src/ui/transcript/card.tsx";
 import { ready } from "../../model/support.ts";
@@ -26,18 +24,19 @@ const card = shellCard(
 );
 
 test("a shell command takes its bash highlights once they land", async () => {
-  const [landed, setLanded] = createSignal(false);
-
-  const highlighted = (text: string): readonly TextChunk[] => [
-    { __isChunk: true, text: text.slice(0, 4), fg: KEYWORD },
-    { __isChunk: true, text: text.slice(4) },
-  ];
+  const landed = Promise.withResolvers<void>();
 
   await using app = await mount(
     ready(buildView((v) => v)),
     () => <CardView id="card" card={card} />,
     { width: 60, height: 4 },
-    { highlight: (text, filetype) => (landed() && filetype === "bash" ? highlighted(text) : null) },
+    {
+      highlight: async (_text, filetype) => {
+        await landed.promise;
+
+        return filetype === "bash" ? [[0, 4, "keyword"]] : [];
+      },
+    },
   );
 
   const echo = () =>
@@ -49,7 +48,8 @@ test("a shell command takes its bash highlights once they land", async () => {
   expect(app.captureCharFrame()).toContain("✓ ! echo kept");
   expect(echo()?.fg.equals(KEYWORD)).toBe(false);
 
-  setLanded(true);
+  landed.resolve();
+  await landed.promise;
   await app.renderOnce();
 
   expect(app.captureCharFrame()).toContain("✓ ! echo kept");

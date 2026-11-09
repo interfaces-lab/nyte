@@ -1,4 +1,3 @@
-import type { Dirent } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
@@ -26,59 +25,11 @@ export function directoryCompletionQuery(
   return { start, end: value.length, path: value.slice(start, cursor) };
 }
 
-export class DirectoryListing {
-  private generation = 0;
-  private cached:
-    | {
-        readonly directory: string;
-        readonly version: string;
-        readonly expires: number;
-        readonly entries: Promise<Dirent[]>;
-      }
-    | undefined;
-
-  clear(): void {
-    this.generation += 1;
-    this.cached = undefined;
-  }
-
-  async read(directory: string) {
-    const generation = this.generation;
-    const info = await stat(directory, { bigint: true });
-
-    if (generation !== this.generation) return readdir(directory, { withFileTypes: true });
-    const version = `${info.dev}:${info.ino}:${info.mtimeNs}:${info.ctimeNs}`;
-    const cached = this.cached;
-
-    if (
-      cached?.directory === directory &&
-      cached.version === version &&
-      cached.expires > Date.now()
-    ) {
-      return cached.entries;
-    }
-
-    const entries = readdir(directory, { withFileTypes: true });
-    const next = { directory, version, expires: Date.now() + 1000, entries };
-    this.cached = next;
-
-    try {
-      return await entries;
-    } catch (error) {
-      if (this.cached === next) this.clear();
-      throw error;
-    }
-  }
-}
-
-export async function directorySuggestions(
-  options: {
-    readonly path: string;
-    readonly cwd: string;
-    readonly home?: string;
-  },
-  listing = new DirectoryListing(),
-): Promise<string[]> {
+export async function directorySuggestions(options: {
+  readonly path: string;
+  readonly cwd: string;
+  readonly home?: string;
+}): Promise<string[]> {
   if (CONTROL_CHARACTERS.test(options.path)) return [];
   const path = /^(?:~|(?:\.\.\/)*\.\.)$/.test(options.path) ? `${options.path}/` : options.path;
   const split = path.lastIndexOf("/") + 1;
@@ -91,7 +42,7 @@ export async function directorySuggestions(
   );
 
   try {
-    const entries = await listing.read(directory);
+    const entries = await readdir(directory, { withFileTypes: true });
 
     const matches = await Promise.all(
       entries.map(async (entry) => {

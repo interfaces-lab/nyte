@@ -264,7 +264,7 @@ export async function refreshWorkspace(
 
   dispatch({ kind: "workspace", workspace: facts });
 
-  if (options === undefined || facts.mentions !== null || options.signal.aborted) return;
+  if (options === undefined || options.signal.aborted) return;
   const entries = await options.mentions.mentions(options.signal);
   const latest = read().facts.workspace;
 

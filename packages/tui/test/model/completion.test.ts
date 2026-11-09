@@ -13,7 +13,7 @@ import {
   nextCompletion,
   splice,
 } from "../../src/model/completion.ts";
-import type { CompletionModel, MentionFile } from "../../src/model/completion.ts";
+import type { CompletionModel, IndexedMention, MentionFile } from "../../src/model/completion.ts";
 
 const SOURCES = {
   commands: [
@@ -25,7 +25,10 @@ const SOURCES = {
   ),
 };
 
-function displays(query: string, files: readonly MentionFile[] = SOURCES.files): readonly string[] {
+function displays(
+  query: string,
+  files: readonly IndexedMention[] = SOURCES.files,
+): readonly string[] {
   return mentionSuggestions(query, files).map((file) => file.display);
 }
 

@@ -1,4 +1,4 @@
-import type { Renderable, SyntaxStyle, TextChunk } from "@opentui/core";
+import type { Renderable, SimpleHighlight, SyntaxStyle } from "@opentui/core";
 import type { JSX } from "@opentui/solid";
 import { createContext, useContext } from "solid-js";
 import type { Accessor } from "solid-js";
@@ -27,7 +27,7 @@ export interface Kit {
   ticker(intervalMs: number): Accessor<number>;
   now(): number;
   report(origin: FailureReport["origin"], error: unknown): void;
-  highlight(text: string, filetype: string): readonly TextChunk[] | null;
+  highlight(text: string, filetype: string): Promise<readonly SimpleHighlight[]>;
   diagram(source: string): Promise<Diagram>;
   blob(id: string): AsyncIterable<Uint8Array>;
   drawPart(message: PartMessage): Renderable | null;

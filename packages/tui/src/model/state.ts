@@ -16,7 +16,7 @@ import type { Freshness, HeadView, Health } from "@nyte-ai/sdk/client";
 import type { ResolvedSettings } from "../lib/settings-schema.ts";
 import type { Task } from "../lib/tasks.ts";
 import type { ThemeMode } from "../lib/theme.ts";
-import type { CompletionState, MentionFile } from "./completion.ts";
+import type { CompletionState, IndexedMention } from "./completion.ts";
 import type { Dialog } from "./dialogs/dialog.ts";
 import type { ListDialog } from "./dialogs/list.ts";
 import { NO_PARTS } from "./draft.ts";
@@ -104,7 +104,7 @@ export interface WorkspaceFacts {
   readonly cwd: string;
   readonly branch: string | null;
   readonly dirty: boolean;
-  readonly mentions: readonly MentionFile[] | null;
+  readonly mentions: readonly IndexedMention[] | null;
 }
 
 export interface TerminalFacts {

@@ -12,8 +12,6 @@ const MAX_DIAGRAM_LINES = 300;
 
 const MAX_DIAGRAM_CHARS = 100_000;
 
-const KEPT_DIAGRAMS = 64;
-
 export const DiagramRequestType = Type.Object({ id: Type.Integer(), source: Type.String() });
 
 const DiagramReplyType = Type.Union([
@@ -34,12 +32,10 @@ export function createDiagrams(): Diagrams {
   let worker: Worker | null = null;
   let sequence = 0;
   const waiting = new Map<number, PromiseWithResolvers<string>>();
-  const drawn = new Map<string, Promise<string>>();
 
   const fail = (cause: Error): void => {
     for (const pending of waiting.values()) pending.reject(cause);
     waiting.clear();
-    drawn.clear();
     worker = null;
   };
 
@@ -85,23 +81,7 @@ export function createDiagrams(): Diagrams {
   };
 
   return {
-    draw(source) {
-      const known = drawn.get(source);
-
-      if (known !== undefined) return known;
-      const drawing = render(source);
-
-      drawing.catch(() => drawn.delete(source));
-      drawn.set(source, drawing);
-
-      if (drawn.size > KEPT_DIAGRAMS) {
-        const [oldest] = drawn.keys();
-
-        if (oldest !== undefined) drawn.delete(oldest);
-      }
-
-      return drawing;
-    },
+    draw: render,
     dispose() {
       const running = worker;
 

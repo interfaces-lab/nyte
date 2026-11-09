@@ -7,7 +7,7 @@ import type { CliTheme } from "../lib/theme.ts";
 import { displayWidth } from "../lib/width.ts";
 import type { FailureReport } from "../model/state.ts";
 import { createDiagrams } from "../services/diagrams.ts";
-import { LabelSyntax } from "../services/label-syntax.ts";
+import { labelHighlights } from "../services/label-syntax.ts";
 import type { Kit } from "./context.tsx";
 import type { Tickers } from "./ticker.ts";
 
@@ -48,7 +48,6 @@ export function createKit(options: KitOptions): OwnedKit {
     ),
   );
 
-  const labels = new LabelSyntax();
   const diagrams = createDiagrams();
 
   return {
@@ -57,9 +56,7 @@ export function createKit(options: KitOptions): OwnedKit {
     ticker: (intervalMs) => options.tickers.ticker(intervalMs),
     now: () => options.tickers.now(),
     report: options.report,
-    highlight(text, filetype) {
-      return labels.chunks(text, filetype, syntax().normal, waitForLabel) ?? null;
-    },
+    highlight: labelHighlights,
     async diagram(source) {
       const text = await diagrams.draw(source);
       const lines = text.split("\n");
@@ -74,13 +71,6 @@ export function createKit(options: KitOptions): OwnedKit {
       diagrams.dispose();
     },
   };
-}
-
-function waitForLabel(): () => void {
-  const [landed, setLanded] = createSignal(false);
-  landed();
-
-  return () => setLanded(true);
 }
 
 function destroyPair(pair: SyntaxPair): void {

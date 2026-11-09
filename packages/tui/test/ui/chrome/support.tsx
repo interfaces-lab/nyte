@@ -33,7 +33,7 @@ export async function mount(
   const setup = await testRender(
     () => {
       const renderer = useRenderer();
-      const normal = SyntaxStyle.create(renderer.nativeScene);
+      const normal = SyntaxStyle.fromStyles({ keyword: { fg: "#ff0000" } }, renderer.nativeScene);
       const subtle = SyntaxStyle.create(renderer.nativeScene);
 
       onCleanup(() => {
@@ -51,7 +51,7 @@ export async function mount(
         ticker: () => () => 0,
         now: () => 0,
         report: () => undefined,
-        highlight: () => null,
+        highlight: async () => [],
         diagram: () => Promise.reject(new Error("chrome draws no diagrams")),
         blob: noBlob,
         drawPart: () => null,

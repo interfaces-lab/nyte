@@ -1,4 +1,5 @@
 import fuzzysort from "fuzzysort";
+import type { Prepared } from "fuzzysort";
 import type { CommandCompletion } from "@nyte-ai/sdk";
 import { completionTrigger, findCommandArgument } from "@nyte-ai/plugin/client/presentation";
 import { directoryCompletionQuery } from "../lib/directory-completion.ts";
@@ -21,6 +22,11 @@ export interface MentionFile {
   readonly path: string;
   readonly display: string;
   readonly label: string;
+}
+
+/** A workspace file the `@` list ranks, with its fuzzy-search targets prepared once with the list. */
+export interface IndexedMention extends MentionFile {
+  readonly search: { readonly display: Prepared; readonly label: Prepared };
 }
 
 export type CompletionToken =
@@ -56,7 +62,7 @@ export interface CompletionItem {
 
 interface CompletionSources {
   readonly commands: readonly SlashCommand[];
-  readonly files: readonly MentionFile[] | null;
+  readonly files: readonly IndexedMention[] | null;
 }
 
 type CompletionEdit =
@@ -84,8 +90,15 @@ export function explicitMentionQuery(query: string): boolean {
   return EXPLICIT_PATH.test(query);
 }
 
-export function indexedMention(cwd: string, entry: string): MentionFile {
-  return { path: `${cwd.replace(/\/+$/u, "")}/${entry}`, display: entry, label: baseName(entry) };
+export function indexedMention(cwd: string, entry: string): IndexedMention {
+  const label = baseName(entry);
+
+  return {
+    path: `${cwd.replace(/\/+$/u, "")}/${entry}`,
+    display: entry,
+    label,
+    search: { display: fuzzysort.prepare(entry), label: fuzzysort.prepare(label) },
+  };
 }
 
 export const CLOSED: CompletionState = { kind: "closed", dismissed: null };
@@ -164,7 +177,7 @@ function baseName(path: string): string {
 
 export function mentionSuggestions(
   query: string,
-  files: readonly MentionFile[],
+  files: readonly IndexedMention[],
 ): readonly MentionFile[] {
   if (query === "") return files.slice(0, MAX_MENTIONS);
   const needle = query.toLowerCase();
@@ -184,7 +197,11 @@ export function mentionSuggestions(
   const seen = new Set(prefixed.map((file) => file.path));
 
   const fuzzy = fuzzysort
-    .go(query, files, { keys: ["display", "label"], limit: MAX_MENTIONS, threshold: 0 })
+    .go(query, files, {
+      keys: [(file) => file.search.display, (file) => file.search.label],
+      limit: MAX_MENTIONS,
+      threshold: 0,
+    })
     .flatMap((result) => (seen.has(result.obj.path) ? [] : [result.obj]));
 
   return [...prefixed, ...fuzzy].slice(0, MAX_MENTIONS);
@@ -193,7 +210,7 @@ export function mentionSuggestions(
 function mentionItems(
   query: string,
   explicit: MentionFile | null,
-  files: readonly MentionFile[] | null,
+  files: readonly IndexedMention[] | null,
 ): readonly MentionFile[] {
   const ranked = files === null ? [] : mentionSuggestions(query, files);
 

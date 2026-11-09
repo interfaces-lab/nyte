@@ -56,7 +56,7 @@ export async function renderDialog(
     ticker: () => () => 0,
     now: () => 0,
     report: () => undefined,
-    highlight: () => null,
+    highlight: async () => [],
     diagram: () => Promise.reject(new Error("dialogs draw no diagrams")),
     blob: () => {
       throw new Error("dialogs read no blobs");

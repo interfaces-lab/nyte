@@ -1,6 +1,18 @@
-import type { TextChunk } from "@opentui/core";
+import { treeSitterToTextChunks } from "@opentui/core";
+import type { SimpleHighlight, TextChunk } from "@opentui/core";
 import type { JSX } from "@opentui/solid";
-import { For, Match, Show, Switch } from "solid-js";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  Index,
+  Match,
+  on,
+  onCleanup,
+  Show,
+  Switch,
+} from "solid-js";
 import type { Accessor } from "solid-js";
 import { useApp } from "../../app/context.tsx";
 import type { CardBody, HeadingChunk, ToolCardModel } from "../../lib/tool-card.ts";
@@ -33,13 +45,38 @@ function Panel(props: { readonly text: string; readonly error: boolean }): JSX.E
   );
 }
 
+/** A heading chunk; a code chunk asks for its highlights while it is mounted and colors itself once they land. */
 function Chunk(props: { readonly chunk: HeadingChunk }): JSX.Element {
   const { kit } = useApp();
+  const [ranges, setRanges] = createSignal<readonly SimpleHighlight[]>([]);
 
-  const highlighted = () => {
-    const { code, text } = props.chunk;
+  const code = createMemo(() => props.chunk.code);
+  const text = createMemo(() => props.chunk.text);
 
-    return code === undefined ? null : kit.highlight(text, code);
+  createEffect(
+    on([code, text], ([filetype, label]) => {
+      setRanges([]);
+
+      if (filetype === undefined) return;
+      let mounted = true;
+
+      onCleanup(() => {
+        mounted = false;
+      });
+      void kit.highlight(label, filetype).then((found) => {
+        if (mounted) setRanges(found);
+      });
+    }),
+  );
+
+  const highlighted = (): readonly TextChunk[] | null => {
+    const found = ranges();
+
+    return found.length === 0
+      ? null
+      : treeSitterToTextChunks(props.chunk.text, [...found], kit.syntax().normal, {
+          enabled: false,
+        });
   };
 
   return (
@@ -65,7 +102,7 @@ export function CardView(props: {
   return (
     <box id={props.id} flexDirection="column" width="100%">
       <text wrapMode="none" truncate>
-        <For each={props.card.heading}>{(chunk) => <Chunk chunk={chunk} />}</For>
+        <Index each={props.card.heading}>{(chunk) => <Chunk chunk={chunk()} />}</Index>
       </text>
       <Switch>
         <Match when={props.card.body.kind === "text" ? props.card.body : undefined}>
