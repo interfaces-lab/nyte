@@ -436,14 +436,19 @@ const RawBlock = Node.create({
   group: "block",
   atom: true,
   addAttributes: () => ({ kind: kept("html"), source: kept("") }),
-  renderHTML: ({ node }) => [
-    "pre",
-    {
-      "data-markdown-raw": String(node.attrs["kind"]),
-      class: css(props(text.code, markdownStyles.raw)),
-    },
-    String(node.attrs["source"]),
-  ],
+  renderHTML: ({ node }) => {
+    const source = String(node.attrs["source"]);
+    const comment = node.attrs["kind"] === "html" && /^<!--[\s\S]*-->\s*$/u.test(source);
+
+    return [
+      "pre",
+      {
+        "data-markdown-raw": comment ? "comment" : String(node.attrs["kind"]),
+        class: css(props(text.code, comment ? markdownStyles.comment : markdownStyles.raw)),
+      },
+      source,
+    ];
+  },
 });
 
 const RawInline = Node.create({

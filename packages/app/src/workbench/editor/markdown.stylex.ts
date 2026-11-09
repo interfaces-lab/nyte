@@ -25,6 +25,16 @@ export const markdownStyles = create({
     overflowWrap: "anywhere",
     userSelect: "text",
   },
+  comment: {
+    marginBlock: space.s1,
+    marginInline: 0,
+    color: role.contentQuaternary,
+    fontSize: type.fontXs,
+    lineHeight: type.leadingXs,
+    whiteSpace: "pre-wrap",
+    overflowWrap: "anywhere",
+    userSelect: "text",
+  },
   rawInline: {
     paddingInline: space.s0_5,
     borderRadius: radius.indicator,
