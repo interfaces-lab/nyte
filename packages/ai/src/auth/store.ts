@@ -8,6 +8,7 @@ import {
   renameSync,
   rmSync,
   statSync,
+  utimesSync,
   writeFileSync,
   writeSync,
 } from "node:fs";
@@ -34,6 +35,8 @@ const LOCK_TIMEOUT_MS = 30_000;
 const LOCK_RETRY_MS = 25;
 
 const LOCK_ABANDONED_MS = 2 * LOCK_TIMEOUT_MS;
+
+const LOCK_HEARTBEAT_MS = LOCK_ABANDONED_MS / 6;
 
 const RECOVERY_STALE_MS = 1_000;
 
@@ -136,16 +139,28 @@ function reclaimAbandonedLock(lockPath: string, owner: string): void {
   }
 }
 
-async function acquireLock(
-  lockPath: string,
-  signal: AbortSignal | undefined,
-): Promise<CredentialLock> {
-  const owner = lockOwner();
+function holdLock(lockPath: string, owner: string): CredentialLock {
+  const held = () => readOwner(lockPath) === owner;
 
-  const lock: CredentialLock = {
-    held: () => readOwner(lockPath) === owner,
+  const heartbeat = setInterval(() => {
+    if (!held()) return;
+    const now = new Date();
+
+    try {
+      utimesSync(lockPath, now, now);
+    } catch {
+      return;
+    }
+  }, LOCK_HEARTBEAT_MS);
+
+  heartbeat.unref();
+
+  return {
+    held,
     release: () => {
-      if (readOwner(lockPath) !== owner) return;
+      clearInterval(heartbeat);
+
+      if (!held()) return;
 
       try {
         rmSync(lockPath, { force: true });
@@ -154,42 +169,25 @@ async function acquireLock(
       }
     },
   };
+}
 
+async function acquireLock(
+  lockPath: string,
+  signal: AbortSignal | undefined,
+): Promise<CredentialLock> {
+  const owner = lockOwner();
   const deadline = Date.now() + LOCK_TIMEOUT_MS;
 
   for (;;) {
     signal?.throwIfAborted();
 
-    if (createLock(lockPath, owner)) return lock;
+    if (createLock(lockPath, owner)) return holdLock(lockPath, owner);
 
     if (Date.now() >= deadline) {
       throw new Error(`Timed out waiting for the credential lock at ${lockPath}`);
     }
 
     if (lockAbandoned(lockPath)) reclaimAbandonedLock(lockPath, owner);
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, LOCK_RETRY_MS);
-    });
-  }
-}
-
-async function publish(staging: string, path: string): Promise<void> {
-  const deadline = Date.now() + LOCK_TIMEOUT_MS;
-
-  for (;;) {
-    try {
-      renameSync(staging, path);
-      return;
-    } catch (error) {
-      const busy =
-        process.platform === "win32" &&
-        error instanceof Error &&
-        "code" in error &&
-        (error.code === "EPERM" || error.code === "EACCES" || error.code === "EBUSY");
-
-      if (!busy || Date.now() >= deadline) throw error;
-    }
-
     await new Promise<void>((resolve) => {
       setTimeout(resolve, LOCK_RETRY_MS);
     });
@@ -232,18 +230,41 @@ export class FileCredentialStore implements CredentialStore {
   }
 
   private async save(lock: CredentialLock, entries: Record<string, unknown>): Promise<void> {
-    if (!lock.held()) {
-      throw new Error(`Another process took over ${this.lockPath}; nothing was written`);
-    }
-
     const staging = `${this.path}.${process.pid}.tmp`;
 
     try {
       writeFileSync(staging, `${JSON.stringify(entries, null, 2)}\n`, { mode: 0o600 });
-      await publish(staging, this.path);
+      await this.publish(lock, staging);
     } catch (error) {
       rmSync(staging, { force: true });
       throw error;
+    }
+  }
+
+  private async publish(lock: CredentialLock, staging: string): Promise<void> {
+    const deadline = Date.now() + LOCK_TIMEOUT_MS;
+
+    for (;;) {
+      if (!lock.held()) {
+        throw new Error(`Another process took over ${this.lockPath}; nothing was written`);
+      }
+
+      try {
+        renameSync(staging, this.path);
+        return;
+      } catch (error) {
+        const busy =
+          process.platform === "win32" &&
+          error instanceof Error &&
+          "code" in error &&
+          (error.code === "EPERM" || error.code === "EACCES" || error.code === "EBUSY");
+
+        if (!busy || Date.now() >= deadline) throw error;
+      }
+
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, LOCK_RETRY_MS);
+      });
     }
   }
 

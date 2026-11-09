@@ -1,4 +1,4 @@
-import { spawn, execFile } from "node:child_process";
+import { spawn, execFile, execFileSync } from "node:child_process";
 import { once } from "node:events";
 import {
   mkdtempSync,
@@ -13,7 +13,7 @@ import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
 import { promisify } from "node:util";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { storedAccounts } from "./credential-fixture.ts";
 import { FileCredentialStore } from "../src/auth/store.ts";
 
@@ -29,6 +29,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   rmSync(home, { recursive: true, force: true });
 });
 
@@ -299,6 +300,78 @@ describe("file credential store", () => {
       "github-copilot": storedAccounts({ type: "api_key", key: "sibling" }),
     });
   });
+
+  test("keeps the lock through a refresh that outlasts the abandon age, so a waiting write lands after it", async () => {
+    vi.useFakeTimers();
+    const rotated = storedAccounts({ type: "oauth", access: "a", refresh: "rotated", expires: 1 });
+
+    const slow = new FileCredentialStore(authPath()).modify("anthropic", async () => {
+      await new Promise((resolve) => setTimeout(resolve, 62_000));
+      return rotated;
+    });
+    await vi.advanceTimersByTimeAsync(35_000);
+    const waiting = new FileCredentialStore(authPath()).modify("openai", async () =>
+      storedAccounts({ type: "api_key", key: "waiter" }),
+    );
+    await vi.advanceTimersByTimeAsync(28_000);
+
+    await expect(Promise.all([slow, waiting])).resolves.toBeDefined();
+    expect(storedJson()).toEqual({
+      anthropic: rotated,
+      openai: storedAccounts({ type: "api_key", key: "waiter" }),
+    });
+  });
+
+  test.skipIf(process.platform === "win32")(
+    "publishes nothing once another process takes the lock while this one is paused before its rename",
+    async () => {
+      const store = new FileCredentialStore(authPath());
+      await store.modify("anthropic", async () => storedAccounts({ type: "api_key", key: "T1" }));
+      const marker = join(home, "refreshed");
+      const staging = `${authPath()}.${process.pid}.tmp`;
+      execFileSync("mkfifo", [staging]);
+      const taker = spawn(
+        process.execPath,
+        [
+          "--input-type=module",
+          "-e",
+          `
+            import { existsSync, readFileSync, rmSync, utimesSync } from "node:fs";
+            const { FileCredentialStore } = await import(${JSON.stringify(STORE_URL)});
+            const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+            try {
+              while (!existsSync(${JSON.stringify(marker)})) await sleep(5);
+              await sleep(150);
+              const aged = new Date(Date.now() - 120_000);
+              utimesSync(${JSON.stringify(lockPath())}, aged, aged);
+              await new FileCredentialStore(${JSON.stringify(authPath())}).modify("openai", async () => ({
+                active: "default",
+                accounts: [{ id: "default", label: "Default", credential: { type: "api_key", key: "taker" } }],
+              }));
+            } finally {
+              rmSync(${JSON.stringify(marker)}, { force: true });
+              readFileSync(${JSON.stringify(staging)});
+            }
+          `,
+        ],
+        { stdio: "inherit" },
+      );
+      const exited = once(taker, "exit");
+
+      const paused = store.modify("anthropic", async () => {
+        writeFileSync(marker, "");
+        return storedAccounts({ type: "api_key", key: "T2" });
+      });
+
+      await expect(paused).rejects.toThrow("took over");
+      expect(await exited).toEqual([0, null]);
+      expect(storedJson()).toEqual({
+        anthropic: storedAccounts({ type: "api_key", key: "T1" }),
+        openai: storedAccounts({ type: "api_key", key: "taker" }),
+      });
+      expect(readdirSync(home)).toEqual(["auth.json"]);
+    },
+  );
 
   test("never publishes a file a reader can catch half-written", async () => {
     const store = new FileCredentialStore(authPath());
