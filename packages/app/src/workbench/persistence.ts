@@ -5,6 +5,7 @@ import type { ClientCapabilities } from "../contract/client-actions.ts";
 import { type Persisted, persisted, type StorageArea } from "../lib/storage.ts";
 import {
   FIRST_GROUP,
+  FOLLOW_BROWSE,
   MAXIMIZED_WORKBENCH_LAYOUT,
   SPLIT_LAYOUT,
   type WorkbenchSnapshot,
@@ -12,7 +13,6 @@ import {
   type WorkbenchViewState,
   workbenchTabAvailable,
 } from "./model.ts";
-import { workspaceFile } from "./paths.ts";
 import { DEFAULT_WIDTH } from "./width.ts";
 
 export type WorkbenchPersistence = Pick<
@@ -98,6 +98,12 @@ const persistedWorkbenchView = Type.Object({
   expanded: Type.Boolean(),
   maximized: Type.Boolean(),
   width: Type.Optional(Type.Number()),
+  browse: Type.Optional(
+    Type.Union([
+      Type.Object({ kind: Type.Literal("follow") }, strict),
+      Type.Object({ kind: Type.Literal("workspace"), id: idSchema<"workspace">() }, strict),
+    ]),
+  ),
 });
 
 const persistedWorkbenchSnapshot = Type.Object(
@@ -161,30 +167,16 @@ export function restoreSnapshot(
 ): WorkbenchSnapshot {
   if (persisted === undefined) return Object.freeze({ views: new Map() });
   const available = capabilities();
-  const keys = persisted.views.map((stored) => stored.key);
-
-  const placed = persisted.views.flatMap((stored) =>
-    stored.tabs.flatMap((tab, index) => {
-      if (
-        !workbenchTabAvailable({ kind: "project" }, tab.kind, available) ||
-        stored.tabs.findIndex((candidate) => candidate.id === tab.id) !== index
-      )
-        return [];
-      const restored = restoreTab(tab);
-
-      const view =
-        restored.kind === "file"
-          ? (workspaceFile(restored.path, keys)?.view ?? stored.key)
-          : stored.key;
-
-      return [{ view, tab: restored }];
-    }),
-  );
 
   return Object.freeze({
     views: new Map(
       persisted.views.map((stored): [string, WorkbenchViewState] => {
-        const tabs = placed.flatMap((entry) => (entry.view === stored.key ? [entry.tab] : []));
+        const tabs = stored.tabs.flatMap((tab, index) =>
+          workbenchTabAvailable({ kind: "project" }, tab.kind, available) &&
+          stored.tabs.findIndex((candidate) => candidate.id === tab.id) === index
+            ? [restoreTab(tab)]
+            : [],
+        );
 
         const active = tabs.some((tab) => tab.id === stored.active)
           ? stored.active
@@ -209,6 +201,7 @@ export function restoreSnapshot(
             layout: stored.maximized ? MAXIMIZED_WORKBENCH_LAYOUT : SPLIT_LAYOUT,
             width: stored.width === undefined ? DEFAULT_WIDTH : { pixels: stored.width },
             sidebars: [],
+            browse: stored.browse ?? FOLLOW_BROWSE,
           }),
         ];
       }),
@@ -235,6 +228,7 @@ export function persistable(snapshot: WorkbenchSnapshot): PersistedWorkbenchSnap
         expanded: view.expanded,
         maximized: view.layout.kind === "maximized",
         width: view.width.pixels,
+        browse: view.browse,
       };
     }),
   };

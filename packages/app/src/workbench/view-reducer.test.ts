@@ -1,5 +1,7 @@
 import { expect, test } from "vitest";
-import { DEFAULT_VIEW, EDITOR_SLOT } from "./model.ts";
+import { asId } from "@nyte-ai/schema";
+import { DEFAULT_VIEW, EDITOR_SLOT, FOLLOW_BROWSE } from "./model.ts";
+import type { WorkbenchBrowse } from "./model.ts";
 import { workbenchStripTabs } from "./selectors.ts";
 import { createFileTabStore } from "./editor/file-store.ts";
 import type { WorkbenchPersistence } from "./persistence.ts";
@@ -200,4 +202,29 @@ test.each([
   expect(store.getView("/workspace").tabs).toMatchObject([{ id: "files", kind: "editor" }]);
   store.dispatch("/workspace", { kind: "set-width", pixels: 640 });
   expect(workbenchPanelWidth(store.getView("/workspace").width, 2000)).toBe(640);
+});
+
+const other = { kind: "workspace", id: asId<"workspace">("other") } satisfies WorkbenchBrowse;
+
+test.each([
+  { from: FOLLOW_BROWSE, root: other, expected: other, same: false },
+  { from: other, root: FOLLOW_BROWSE, expected: FOLLOW_BROWSE, same: false },
+  { from: other, root: { ...other }, expected: other, same: true },
+  { from: FOLLOW_BROWSE, root: { kind: "follow" }, expected: FOLLOW_BROWSE, same: true },
+] satisfies {
+  from: WorkbenchBrowse;
+  root: WorkbenchBrowse;
+  expected: WorkbenchBrowse;
+  same: boolean;
+}[])("browse from $from.kind to $root.kind keeps tabs and layout", (row) => {
+  const start = reduceView(
+    { ...DEFAULT_VIEW, browse: row.from },
+    { kind: "add", tab: { id: "terminal", kind: "terminal", owner: { kind: "user" } } },
+  );
+
+  const next = reduceView(start, { kind: "browse", root: row.root });
+
+  expect(next.browse).toEqual(row.expected);
+  expect(next === start).toBe(row.same);
+  expect({ ...next, browse: start.browse }).toEqual(start);
 });

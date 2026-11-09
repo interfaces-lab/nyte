@@ -15,7 +15,7 @@ import {
   useRecordedChanges,
   useVcsChanges,
   useVcsSnapshot,
-  workspaceGit,
+  gitFor,
 } from "../../data/vcs.ts";
 import { useSessionRow } from "../../data/session-rows.ts";
 import { conversationTurns } from "../../chat/transcript/turns.ts";
@@ -49,6 +49,7 @@ import { changesViewed } from "../../diff/changes-viewed.ts";
 import type { ViewedState } from "../../diff/changes-viewed.ts";
 import type { WorkbenchChangesScope } from "../model.ts";
 import { nyte } from "../../contract/nyte.ts";
+import { useWorkbenchWorkspace } from "../workbench-workspace.tsx";
 import {
   changeRows,
   changeTotals,
@@ -145,18 +146,22 @@ function useStackSections(
   return stackSections(rows, manifest, snapshot, source);
 }
 
-async function revertFile(path: string, revision: string | undefined): Promise<string | undefined> {
+async function revertFile(
+  workspace: WorkspaceId | undefined,
+  path: string,
+  revision: string | undefined,
+): Promise<string | undefined> {
   if (revision === undefined) return "Refresh changes and try again.";
 
   try {
     const result = await (
-      await workspaceGit()
+      await gitFor(workspace)
     ).discard([path], {
       expect: asId<"git-revision">(revision),
     });
 
     if (result.kind === "stale") {
-      void refreshVcs();
+      void refreshVcs(workspace);
 
       return "Changes changed. Review them and try again.";
     }
@@ -220,7 +225,9 @@ function ChangesPanelView({
   const sessionOption =
     sessionChanges === undefined ? undefined : sessionScopeOption(sessionChanges);
 
-  const snapshot = useVcsSnapshot(visible);
+  const browsed = useWorkbenchWorkspace();
+  const gitWorkspace = browsed.kind === "ready" ? browsed.workspace.id : undefined;
+  const snapshot = useVcsSnapshot(gitWorkspace, visible);
   const filterInput = useRef<HTMLInputElement>(null);
   const stack = useRef<ChangesStackHandle>(null);
   const revertReturnRef = useRef<HTMLButtonElement | null>(null);
@@ -263,6 +270,7 @@ function ChangesPanelView({
   const vcsRequest = vcsRequestForScope(activeScope);
 
   const manifest = useVcsChanges(
+    gitWorkspace,
     repository === undefined ? undefined : vcsRequest,
     ignoreWhitespace,
     revision,
@@ -302,7 +310,7 @@ function ChangesPanelView({
         : (paths) => readRecordedPatches(workspace, recordedSource, paths, ignoreWhitespace)
       : vcsRequest === undefined
         ? undefined
-        : (paths) => readGitPatches(vcsRequest, paths, ignoreWhitespace);
+        : (paths) => readGitPatches(gitWorkspace, vcsRequest, paths, ignoreWhitespace);
 
   const identity = patchIdentity({ resolved, repository, ignoreWhitespace, rows });
 
@@ -312,7 +320,7 @@ function ChangesPanelView({
       : { ...identity, paths: stackOrder, read: readPatches };
 
   const patches = usePatchLoader(patchSource, preparedPaths);
-  const refresh = useMutation({ mutationFn: refreshVcs });
+  const refresh = useMutation({ mutationFn: () => refreshVcs(gitWorkspace) });
 
   const patchSnapshot = useSyncExternalStore(
     patches.subscribe,
@@ -386,7 +394,8 @@ function ChangesPanelView({
   const loadDiffFiles =
     expandable && root !== undefined
       ? createDiffFilesLoader({
-          readContents: async (input) => (await workspaceGit()).contents(input.path, input.scope),
+          readContents: async (input) =>
+            (await gitFor(gitWorkspace)).contents(input.path, input.scope),
           root,
           scope: { kind: "worktree" },
         })
@@ -412,7 +421,7 @@ function ChangesPanelView({
   const confirmRevert = async (target: RevertTarget): Promise<void> => {
     setReverting(true);
     setRevertError(undefined);
-    const failure = await revertFile(target.path, revision);
+    const failure = await revertFile(gitWorkspace, target.path, revision);
     setReverting(false);
 
     if (failure !== undefined) {
@@ -422,7 +431,7 @@ function ChangesPanelView({
     }
 
     changesViewed.clearViewed(viewedScopeId, target.path);
-    void refreshVcs();
+    void refreshVcs(gitWorkspace);
     setRevertTarget(undefined);
   };
 

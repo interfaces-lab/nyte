@@ -9,7 +9,9 @@ import {
 import { revealLabel } from "../../components/context-menu.ts";
 import { nyte } from "../../contract/nyte.ts";
 import { addFileToChat } from "../../references/add-to-chat.ts";
+import { FOLLOW_BROWSE } from "../model.ts";
 import type { EditorTarget, WorkbenchViewKey } from "../model.ts";
+import { workbench } from "../store.ts";
 import { fileActions, useFileTabs } from "./file-store.ts";
 import type { FileTab } from "./file-store.ts";
 
@@ -115,7 +117,10 @@ export function FileTabMenuItems({
       </ContextMenuItem>
       <ContextMenuItem
         disabled={file.external}
-        onClick={() => fileActions.reveal(viewKey, file.displayPath)}
+        onClick={() => {
+          workbench.dispatch(viewKey, { kind: "browse", root: FOLLOW_BROWSE });
+          fileActions.reveal(viewKey, file.displayPath);
+        }}
       >
         Reveal in Explorer
       </ContextMenuItem>

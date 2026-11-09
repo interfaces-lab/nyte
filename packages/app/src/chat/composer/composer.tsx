@@ -199,8 +199,8 @@ export function Composer({
 
   const suggestionCatalog = composerSource(pluginCatalog.data, pluginCatalog.isError);
 
-  const workspaceFiles = useMentionFiles(folder, true);
-  const mentionFiles = composerSource(workspaceFiles.data, workspaceFiles.isError);
+  const mentions = useMentionFiles(folder, true);
+  const mentionFiles = composerSource(mentions.data, mentions.isError);
   const latestViewState = useRef(currentViewState);
   const latestTarget = useRef(target);
 

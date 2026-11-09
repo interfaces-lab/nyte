@@ -4,32 +4,46 @@ import type {
   RestoreOutcome,
   TrashOutcome,
   TrashToken,
+  WorkspaceId,
   WriteOutcome,
 } from "@nyte-ai/sdk";
-import { workspaceFiles } from "../../data/files.ts";
+import { filesFor } from "../../data/files.ts";
 
-export async function createFile(path: string): Promise<WriteOutcome> {
-  return (await workspaceFiles()).write(path, "", { expect: "absent", parents: true });
+export async function createFile(
+  workspace: WorkspaceId | undefined,
+  path: string,
+): Promise<WriteOutcome> {
+  return (await filesFor(workspace)).write(path, "", { expect: "absent", parents: true });
 }
 
 export async function applyChange(
+  workspace: WorkspaceId | undefined,
   change: (batch: FileBatch) => FileBatch,
 ): Promise<string | undefined> {
-  const files = await workspaceFiles();
+  const files = await filesFor(workspace);
 
   return batchFailure(await (await change(files.batch()).apply()).settled());
 }
 
-export async function trashEntry(path: string): Promise<TrashOutcome> {
-  return (await workspaceFiles()).trash(path);
+export async function trashEntry(
+  workspace: WorkspaceId | undefined,
+  path: string,
+): Promise<TrashOutcome> {
+  return (await filesFor(workspace)).trash(path);
 }
 
-export async function restoreEntry(token: TrashToken): Promise<RestoreOutcome> {
-  return (await workspaceFiles()).restore(token);
+export async function restoreEntry(
+  workspace: WorkspaceId | undefined,
+  token: TrashToken,
+): Promise<RestoreOutcome> {
+  return (await filesFor(workspace)).restore(token);
 }
 
-export async function removeEntry(path: string): Promise<WriteOutcome> {
-  return (await workspaceFiles()).remove(path);
+export async function removeEntry(
+  workspace: WorkspaceId | undefined,
+  path: string,
+): Promise<WriteOutcome> {
+  return (await filesFor(workspace)).remove(path);
 }
 
 function batchFailure(outcome: BatchOutcome): string | undefined {

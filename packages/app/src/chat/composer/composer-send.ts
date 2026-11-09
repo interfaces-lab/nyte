@@ -18,7 +18,8 @@ import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { admitDraft } from "../../canvas/client-plugins.tsx";
 import { errorMessage } from "../../contract/errors.ts";
 import { CLIENT_COMMANDS, COMPACT_COMMAND, SIDECHAT_COMMAND } from "../../data/plugins.ts";
-import { workspaceFiles } from "../../data/files.ts";
+import { filesFor } from "../../data/files.ts";
+import { selectedWorkspaceId } from "../../data/workspaces.ts";
 import { connected } from "../../data/connection.ts";
 import { chatStore } from "../../data/chat-store.ts";
 import type { ComposerSubmission } from "./composer-document.ts";
@@ -56,7 +57,7 @@ export async function uploadComposerContent(content: ComposerContent): Promise<U
   if (!attached && only?.kind === "text" && rest.length === 0) return only.text;
 
   if (content.images.length === 0) return [...content.parts, ...content.files];
-  const files = await workspaceFiles();
+  const files = await filesFor(selectedWorkspaceId());
 
   const uploaded = await Promise.all(
     content.images.map(async (image, index): Promise<MessageFile> => {

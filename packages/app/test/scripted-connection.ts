@@ -1,6 +1,7 @@
 import { SdkError } from "@nyte-ai/sdk";
 import type {
   Connection,
+  DocumentsApi,
   GitApi,
   GitHubAccountApi,
   GitHubApi,
@@ -32,6 +33,7 @@ export interface ConnectionScript {
   readonly github?: Partial<GitHubAccountApi>;
   readonly git?: Partial<GitApi>;
   readonly workspaceGitHub?: Partial<GitHubApi>;
+  readonly documents?: Partial<DocumentsApi>;
 }
 
 export interface ScriptedSend {
@@ -284,6 +286,7 @@ export function scriptedConnection(script: ConnectionScript = {}): {
     principals: { list: refuse, pair: refuse, revoke: refuse },
     operations: { describe: refuse },
     github: { account: refuse, signIn: refuse, signOut: refuse, ...script.github },
+    documents: { read: refuse, bytes: refuse, write: refuse, watch: refused, ...script.documents },
     close: async () => undefined,
     [Symbol.asyncDispose]: async () => undefined,
   };

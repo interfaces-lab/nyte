@@ -8,13 +8,13 @@ import { Input, InputGroup } from "@nyte-ai/ui/input";
 import { Button } from "@nyte-ai/ui/button";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { Row } from "@nyte-ai/ui/row";
-import { useHostState } from "../data/host.ts";
 import { useWorkspaceSearch } from "../data/search.ts";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { workbench } from "../theme/schema.stylex.ts";
 import { useDebouncedValue } from "../lib/use-debounced-value.ts";
+import { useWorkbenchWorkspace } from "./workbench-workspace.tsx";
 
 interface SearchMatch {
   readonly line: number;
@@ -265,11 +265,15 @@ export function WorkspaceSearch({
   const debouncedInput = useDebouncedValue(input, 250);
   const waiting = hashKey([input]) !== hashKey([debouncedInput]);
 
+  const browsed = useWorkbenchWorkspace();
+  const workspace = browsed.kind === "ready" ? browsed.workspace : undefined;
+
   const search = useWorkspaceSearch(
+    workspace?.id,
     !active || query === "" || waiting ? undefined : debouncedInput,
   );
 
-  const root = useHostState().data.workspace?.path ?? "";
+  const root = workspace?.path ?? "";
 
   const state: SearchState =
     query === ""

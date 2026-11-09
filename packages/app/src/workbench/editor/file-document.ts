@@ -1,7 +1,7 @@
-import type { FileDocument, FileVersion, FormatOutcome, WriteOutcome } from "@nyte-ai/sdk";
+import type { Document, FileVersion, FormatOutcome, WriteOutcome } from "@nyte-ai/sdk";
 import { errorMessage } from "../../contract/errors.ts";
 
-type TextFile = Extract<FileDocument, { readonly kind: "text" }>;
+type TextFile = Extract<Document, { readonly kind: "text" }>;
 
 interface FileSaveInput {
   readonly path: string;

@@ -18,6 +18,7 @@ import { keys, queryClient } from "../../data/query-client.ts";
 import { installConnection } from "../../data/connection.ts";
 import { scriptedConnection } from "../../../test/scripted-connection.ts";
 import { ChangesCommitBar } from "./changes-commit-bar.tsx";
+import { WorkbenchWorkspaceContext } from "../workbench-workspace.tsx";
 import "../../theme/tokens.stylex.ts";
 import "../../theme/global.css";
 
@@ -145,19 +146,27 @@ function mount(root: Root): void {
   flushSync(() =>
     root.render(
       <QueryClientProvider client={queryClient}>
-        <ChangesCommitBar
-          scope={{ kind: "uncommitted" }}
-          branch={{
-            kind: "attached",
-            label: "fix/tab-close",
-            upstream: "origin/fix/tab-close",
-            ahead: 1,
-            behind: 0,
+        <WorkbenchWorkspaceContext
+          value={{
+            kind: "ready",
+            workspace: { id: WORKSPACE, path: "/srv/hello", name: "hello" },
+            isChatFolder: true,
           }}
-          revision="r1"
-          fileCount={3}
-          onOpenLink={(url) => opened.push(url)}
-        />
+        >
+          <ChangesCommitBar
+            scope={{ kind: "uncommitted" }}
+            branch={{
+              kind: "attached",
+              label: "fix/tab-close",
+              upstream: "origin/fix/tab-close",
+              ahead: 1,
+              behind: 0,
+            }}
+            revision="r1"
+            fileCount={3}
+            onOpenLink={(url) => opened.push(url)}
+          />
+        </WorkbenchWorkspaceContext>
       </QueryClientProvider>,
     ),
   );

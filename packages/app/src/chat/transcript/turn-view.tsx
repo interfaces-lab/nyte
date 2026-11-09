@@ -210,7 +210,7 @@ export function UserMessageView({
     element === null ? undefined : transcript.keep(element);
 
   const pluginCatalog = usePluginCatalog(useTranscriptScope()?.sessionId);
-  const workspaceFiles = useMentionFiles(useChatFolder(), edit !== undefined);
+  const mentions = useMentionFiles(useChatFolder(), edit !== undefined);
 
   const begin = (): void => {
     if (rowRef.current !== null) transcript.hold(rowRef.current);
@@ -418,7 +418,7 @@ export function UserMessageView({
               placeholder="Edit message"
               disabled={edit.saving}
               suggestionCatalog={composerSource(pluginCatalog.data, pluginCatalog.isError)}
-              mentionFiles={composerSource(workspaceFiles.data, workspaceFiles.isError)}
+              mentionFiles={composerSource(mentions.data, mentions.isError)}
               hasConversationContext
               attachments={edit.attachments}
               attachmentBusy={edit.attachmentReads !== 0}

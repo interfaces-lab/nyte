@@ -82,7 +82,7 @@ function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement
   const focused = usePaneFocused(paneId);
   const workspace = useChatFolder();
   const catalog = useCatalog();
-  const workspaceFiles = useMentionFiles(workspace, workspace !== undefined);
+  const mentions = useMentionFiles(workspace, workspace !== undefined);
   const workspaceCatalog = useWorkspaceCatalog(workspace?.id);
   const actions = usePaneActions();
   const viewStore = usePaneViewStateStore();
@@ -223,7 +223,7 @@ function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement
             mentionFiles={
               workspace === undefined
                 ? { status: "ready", data: [] }
-                : composerSource(workspaceFiles.data, workspaceFiles.isError)
+                : composerSource(mentions.data, mentions.isError)
             }
             attachments={attachments}
             attachmentBusy={attachmentReads !== 0}

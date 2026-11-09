@@ -117,7 +117,7 @@ function BranchMenu({
     mutationFn: async (name: string) => (await gitFor(workspace)).checkout({ name }),
     onSuccess: (outcome, name) => {
       if (outcome.kind === "applied") {
-        void refreshVcs();
+        void refreshVcs(workspace);
 
         return;
       }

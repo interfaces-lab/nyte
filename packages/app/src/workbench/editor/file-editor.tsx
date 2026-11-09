@@ -1,8 +1,9 @@
-import { DEFAULT_CODE_VIEW_LAYOUT } from "@pierre/diffs";
-import { Editor } from "@pierre/diffs/edit";
-import type { EditorOptions, EditorSearch, EditorSelection, EditorType } from "@pierre/diffs/edit";
-import { CodeView, EditProvider } from "@pierre/diffs/react";
-import type { CodeViewHandle, CodeViewItem } from "@pierre/diffs/react";
+import { DEFAULT_CODE_VIEW_LAYOUT } from "@nyte-ai/ui/diffs";
+import { Editor, resolveSearchShortcut } from "@nyte-ai/ui/diffs/edit";
+import type { EditorOptions, EditorSelection, EditorType } from "@nyte-ai/ui/diffs/edit";
+import type { CodeViewSearch, PostRenderPhase } from "@nyte-ai/ui/diffs";
+import { CodeView, EditProvider } from "@nyte-ai/ui/diffs/react";
+import type { CodeViewHandle, CodeViewItem } from "@nyte-ai/ui/diffs/react";
 import { create, props } from "@stylexjs/stylex";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -14,11 +15,12 @@ import {
   useSyncExternalStore,
 } from "react";
 import type { MouseEvent, ReactElement, ReactNode, Ref } from "react";
-import type { FileDocument, FileEvent } from "@nyte-ai/sdk";
+import type { Document } from "@nyte-ai/sdk";
 import { control, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { Button } from "@nyte-ai/ui/button";
 import type { ThemePreference } from "../../contract/bridge.ts";
 import { diffStyles } from "../../diff/diff.stylex.ts";
+import { applyDiffScopes } from "../../diff/diff-view.tsx";
 import { revealLabel, showContextMenu } from "../../components/context-menu.ts";
 import { nyte } from "../../contract/nyte.ts";
 import { addFileToChat, addsToChat } from "../../references/add-to-chat.ts";
@@ -34,24 +36,27 @@ import {
   PIERRE_HIGHLIGHTER_OPTIONS,
   PIERRE_TOKEN_CSS,
   PierreWorkerProvider,
-} from "../../lib/pierre-worker-provider.tsx";
+} from "@nyte-ai/ui/worker-pool";
 import { keys } from "../../data/query-client.ts";
 import { loadDeferred } from "../../lib/deferred.tsx";
 import type { DeferredRuntimes } from "../../lib/deferred-entries.ts";
-import { useSaveWorkspaceFile, useWorkspaceFile, workspaceFiles } from "../../data/files.ts";
+import { documentsApi, useDocument, useSaveDocument } from "../../data/documents.ts";
+import { filesFor } from "../../data/files.ts";
 import { formatBytes } from "../../lib/format.ts";
 import { useBlobUrl } from "../../lib/use-blob-url.ts";
-import { workspaceGit } from "../../data/vcs.ts";
+import { gitFor } from "../../data/vcs.ts";
 import { preferences, useSetting } from "../../preferences/index.ts";
+import { useAppearance } from "../../theme/appearance-store.ts";
 import { watchFamily } from "../../data/watch-store.ts";
-import { FindWidget } from "../find-widget.tsx";
-import type { FindWidgetHandle } from "../find-widget.tsx";
+import { EditorFind } from "./editor-find.tsx";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import type { WorkbenchViewKey } from "../model.ts";
+import { workspaceFile } from "../paths.ts";
+import { useWorkbenchWorkspace } from "../workbench-workspace.tsx";
 import { createFileDocument } from "./file-document.ts";
 import { fileActions } from "./file-store.ts";
 import { MarkdownDocument } from "./markdown-document.tsx";
@@ -59,9 +64,9 @@ import { opensAsMarkdown } from "./markdown-parse.ts";
 import { pdfQuery } from "./pdf-query.ts";
 import type { FileTab } from "./file-store.ts";
 
-type TextFile = Extract<FileDocument, { readonly kind: "text" }>;
+type TextFile = Extract<Document, { readonly kind: "text" }>;
 
-type SizedFile = Extract<FileDocument, { readonly size: number }>;
+type SizedFile = Extract<Document, { readonly size: number }>;
 
 interface Caret {
   readonly revision: number;
@@ -70,11 +75,7 @@ interface Caret {
   readonly lines?: { readonly start: number; readonly end: number };
 }
 
-const diskEvents = watchFamily((_connection, path: string): AsyncIterable<readonly FileEvent[]> =>
-  (async function* () {
-    yield* (await workspaceFiles()).watch({ paths: [path] });
-  })(),
-);
+const diskEvents = watchFamily((connection, path: string) => connection.documents.watch([path]));
 
 export interface FileEditorHandle {
   save(): Promise<void>;
@@ -115,7 +116,13 @@ export function editorViewOptions(input: {
     layout: EDITOR_LAYOUT,
     disableLineNumbers: !input.lineNumbers,
     overflow: input.wordWrap ? ("wrap" as const) : ("scroll" as const),
+    onPostRender: colorChanges,
+    searchOptions: { disableShortcuts: true },
   };
+}
+
+function colorChanges(...[node, , phase]: [HTMLElement, unknown, PostRenderPhase]): void {
+  if (phase !== "unmount") applyDiffScopes(node);
 }
 
 export function createEditor<EType extends EditorType>(
@@ -234,7 +241,7 @@ function DiskSync({ path }: { readonly path: string }): null {
   const queryClient = useQueryClient();
 
   useMountEffect(() => {
-    const queryKey = keys.workspaceFile(path);
+    const queryKey = keys.document(path);
     void queryClient.refetchQueries({ queryKey, exact: true, stale: true });
 
     return diskEvents(path).subscribe(
@@ -245,12 +252,8 @@ function DiskSync({ path }: { readonly path: string }): null {
   return null;
 }
 
-export function opensReadOnly(document: FileDocument): boolean {
-  return document.kind !== "missing" && document.scope === "external";
-}
-
 export function WorkspaceFileEditor(input: FileEditorProps): ReactElement {
-  const document = useWorkspaceFile(input.file.path);
+  const document = useDocument(input.file.path);
 
   return (
     <>
@@ -261,7 +264,7 @@ export function WorkspaceFileEditor(input: FileEditorProps): ReactElement {
 }
 
 function FileView(
-  input: FileEditorProps & { readonly document: ReturnType<typeof useWorkspaceFile> },
+  input: FileEditorProps & { readonly document: ReturnType<typeof useDocument> },
 ): ReactElement {
   const query = input.document;
   const retry = <Button onClick={() => void query.refetch()}>Retry</Button>;
@@ -280,15 +283,7 @@ function FileView(
 
   switch (document.kind) {
     case "text":
-      return (
-        <TextFileEditor
-          {...input}
-          key={opensReadOnly(document) ? document.version : "editable"}
-          document={document}
-          readOnly={opensReadOnly(document)}
-          reload={query.refetch}
-        />
-      );
+      return <TextFileEditor {...input} document={document} reload={query.refetch} />;
     case "image":
       return <FileImage key={document.version} active={input.active} document={document} />;
     case "pdf":
@@ -361,7 +356,7 @@ function FileImage(input: {
   const path = input.document.path;
 
   const url = useBlobUrl(["files", "bytes", path, input.document.version], async () =>
-    (await workspaceFiles()).bytes(path),
+    (await documentsApi()).bytes(path),
   );
 
   const [broken, setBroken] = useState(false);
@@ -430,7 +425,7 @@ function PdfDocument(input: {
     pdfQuery(
       path,
       input.document.version,
-      async () => (await workspaceFiles()).bytes(path),
+      async () => (await documentsApi()).bytes(path),
       runtime.openPdf,
     ),
   );
@@ -478,24 +473,20 @@ export function TextFileEditor({
   autoSave,
   onGoToLine,
   document,
-  readOnly,
   reload,
 }: FileEditorProps & {
   readonly document: TextFile;
-  readonly readOnly: boolean;
-  readonly reload: ReturnType<typeof useWorkspaceFile>["refetch"];
+  readonly reload: ReturnType<typeof useDocument>["refetch"];
 }): ReactElement {
   const { navigationRevision } = file;
 
   const [buffer] = useState(() =>
-    readOnly
-      ? createFileDocument(document)
-      : fileActions.buffer(viewKey, file.path, () => createFileDocument(document)),
+    fileActions.buffer(viewKey, file.path, () => createFileDocument(document)),
   );
 
   const snapshot = useSyncExternalStore(buffer.subscribe, buffer.getSnapshot, buffer.getSnapshot);
   const viewer = useRef<CodeViewHandle<undefined, undefined>>(null);
-  const [search, setSearch] = useState<EditorSearch>();
+  const [search, setSearch] = useState<CodeViewSearch>();
   const mac = nyte.platform === "darwin";
 
   const navigation = useRef({ active, revision: navigationRevision, target: file.target });
@@ -532,39 +523,52 @@ export function TextFileEditor({
     return lines !== undefined && addFileToChat(file, lines);
   };
 
-  const theme = useSetting(preferences.theme);
+  const theme = useAppearance().theme;
   const codeFont = useSetting(preferences.codeFont);
   const codeFontSize = useSetting(preferences.codeFontSize);
   const lineNumbers = useSetting(preferences.fileLineNumbers);
   const wordWrap = useSetting(preferences.fileWordWrap);
   const documentView = opensAsMarkdown(file.path) && !file.showSource;
-  const gitBlame = useSetting(preferences.fileGitBlame) && !readOnly && !documentView;
+  const browsed = useWorkbenchWorkspace();
+
+  const workspace =
+    browsed.kind === "ready" && workspaceFile(file.path, [browsed.workspace.path]) !== undefined
+      ? browsed.workspace.id
+      : undefined;
+
+  const gitBlame = useSetting(preferences.fileGitBlame) && workspace !== undefined && !documentView;
   const formatOnSave = useSetting(preferences.fileFormatOnSave);
-  const saveFile = useSaveWorkspaceFile();
+  const saveFile = useSaveDocument();
   const dirty = snapshot.contents !== snapshot.savedContents;
 
   const changeTracking = useLineChanges({
+    workspace,
     path: file.path,
     relative: file.displayPath,
     contents: snapshot.contents,
-    enabled: active && !readOnly && !documentView,
+    enabled: active && !documentView,
     line,
     reveal: (lineNumber) =>
       viewer.current?.scrollTo({ type: "line", id: file.path, lineNumber, align: "center" }),
+    viewer,
+  });
+
+  const latestPeekAt = useRef(changeTracking.peekAt);
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- latest peek for gutter clicks, which keeps the viewer's options stable
+  useLayoutEffect(() => {
+    latestPeekAt.current = changeTracking.peekAt;
   });
 
   const viewOptions = {
     ...editorViewOptions({ theme, lineNumbers, wordWrap }),
     unsafeCSS: `${EDITOR_CSS}\n${changeTracking.css}`,
-    onLineClick: (event: { readonly lineNumber: number }) =>
-      setCaret((current) => ({ ...current, line: event.lineNumber })),
     onLineNumberClick: (event: { readonly lineNumber: number }) =>
-      changeTracking.peekAt(event.lineNumber),
+      latestPeekAt.current(event.lineNumber),
   };
 
   const blame = useQuery({
     queryKey: ["files", "blame", file.path, snapshot.version],
-    queryFn: async () => (await workspaceGit()).blame(file.path),
+    queryFn: async () => (await gitFor(workspace)).blame(file.path),
     enabled: gitBlame && active && !dirty,
   });
 
@@ -572,7 +576,7 @@ export function TextFileEditor({
     {
       id: file.path,
       type: "file",
-      edit: !readOnly,
+      edit: true,
       file: {
         name: file.displayPath,
         contents: buffer.getSnapshot().contents,
@@ -582,13 +586,13 @@ export function TextFileEditor({
   ]);
 
   const save = async (): Promise<void> => {
-    if (readOnly) return;
     await buffer.save({
       write: (input) =>
         saveFile.mutateAsync({ path: input.path, contents: input.contents, expect: input.version }),
-      format: formatOnSave
-        ? async (input) => (await workspaceFiles()).format(input.path, input.contents)
-        : undefined,
+      format:
+        formatOnSave && workspace !== undefined
+          ? async (input) => (await filesFor(workspace)).format(input.path, input.contents)
+          : undefined,
     });
   };
 
@@ -662,7 +666,7 @@ export function TextFileEditor({
   }, [file.path, snapshot.contents]);
 
   const showTarget = (
-    editor: Pick<Editor, "focus" | "getText" | "getViewState" | "setSelections"> | undefined,
+    editor: Pick<Editor, "focus" | "getText" | "getViewState" | "setSelections">,
   ): void => {
     const request = navigation.current;
     const shown = request.target;
@@ -678,8 +682,6 @@ export function TextFileEditor({
       align: "center",
     });
     viewer.current?.setSelectedLines({ id: file.path, range });
-
-    if (editor === undefined) return;
     editor.focus({
       lineNumber: range.start,
       character: shown.kind === "lines" ? 0 : (shown.column ?? 1) - 1,
@@ -712,7 +714,6 @@ export function TextFileEditor({
   };
 
   const attachCurrentEditor = useEffectEvent(attachEditor);
-  const showCurrentTarget = useEffectEvent(showTarget);
 
   // oxlint-disable-next-line nyte-code/no-direct-effect -- applies line navigation to the imperative editor before paint
   useLayoutEffect(() => {
@@ -720,8 +721,7 @@ export function TextFileEditor({
     const editor = viewer.current?.getEditor(file.path);
 
     if (editor !== undefined) attachCurrentEditor(editor);
-    else if (readOnly) showCurrentTarget(undefined);
-  }, [active, file.path, file.target, navigationRevision, readOnly]);
+  }, [active, file.path, file.target, navigationRevision]);
 
   const discard = async (): Promise<void> => {
     if (buffer.getSnapshot().status.kind === "saving")
@@ -735,10 +735,10 @@ export function TextFileEditor({
   };
 
   const format = async (): Promise<void> => {
-    if (readOnly) return;
+    if (workspace === undefined) return;
     const current = buffer.getSnapshot();
 
-    const result = await (await workspaceFiles()).format(file.path, current.contents);
+    const result = await (await filesFor(workspace)).format(file.path, current.contents);
 
     if (result.kind === "formatted") buffer.edit(result.contents);
   };
@@ -754,9 +754,9 @@ export function TextFileEditor({
       : (event: MouseEvent<HTMLElement>): void => {
           event.preventDefault();
           void showContextMenu(contextMenu, event, [
-            !readOnly && { kind: "role", role: "cut", label: "Cut" },
+            { kind: "role", role: "cut", label: "Cut" },
             { kind: "role", role: "copy", label: "Copy" },
-            !readOnly && { kind: "role", role: "paste", label: "Paste" },
+            { kind: "role", role: "paste", label: "Paste" },
             { kind: "role", role: "selectAll", label: "Select All" },
             { kind: "separator" },
             caret.lines !== undefined && {
@@ -771,8 +771,12 @@ export function TextFileEditor({
             },
             { kind: "item", label: "Add File to Chat", run: () => addFileToChat(file) },
             { kind: "separator" },
-            !readOnly && { kind: "item", label: "Format Document", run: () => void format() },
-            !readOnly && {
+            workspace !== undefined && {
+              kind: "item",
+              label: "Format Document",
+              run: () => void format(),
+            },
+            {
               kind: "item",
               label: "Save",
               accelerator: "CmdOrCtrl+S",
@@ -785,7 +789,7 @@ export function TextFileEditor({
               label: "Copy Path",
               run: () => void navigator.clipboard.writeText(file.path),
             },
-            !readOnly && {
+            !file.external && {
               kind: "item",
               label: "Copy Relative Path",
               run: () => void navigator.clipboard.writeText(file.displayPath),
@@ -820,8 +824,7 @@ export function TextFileEditor({
         ? snapshot.status.message
         : "";
 
-  const statusVisible =
-    !documentView || gitBlame || readOnly || saveText !== "" || errorText !== "";
+  const statusVisible = !documentView || gitBlame || saveText !== "" || errorText !== "";
 
   const position =
     caret.lines === undefined || caret.lines.start === caret.lines.end
@@ -836,6 +839,20 @@ export function TextFileEditor({
       onKeyUp={readCaret}
       onPointerUp={readCaret}
       onKeyDown={(event) => {
+        const shortcut = resolveSearchShortcut(event.nativeEvent, mac);
+
+        if (!documentView && (shortcut === "find" || shortcut === "replace")) {
+          const next = viewer.current
+            ?.getInstance()
+            ?.openHeadlessSearch({ scope: { itemId: file.path }, mode: shortcut });
+
+          if (next === undefined) return;
+          event.preventDefault();
+          setSearch(next);
+
+          return;
+        }
+
         if (event.key === "F3" && event.altKey && !documentView) {
           event.preventDefault();
           changeTracking.step(event.shiftKey ? -1 : 1);
@@ -855,7 +872,6 @@ export function TextFileEditor({
           buffer={buffer}
           path={file.path}
           label={file.displayPath}
-          readOnly={readOnly}
           viewKey={viewKey}
         />
       ) : (
@@ -869,7 +885,6 @@ export function TextFileEditor({
                   historyMaxEntries: 200,
                   ownsVerticalViewport: true,
                   onAttach: attachEditor,
-                  onSearchChange: setSearch,
                   enabledSelectionAction: true,
                   renderSelectionAction: (context) =>
                     selectionAction(mac, () => {
@@ -879,32 +894,33 @@ export function TextFileEditor({
                 options={viewOptions}
                 className={props(diffStyles.patch, styles.code).className}
                 onItemEditChange={(event) => buffer.edit(event.file.contents)}
+                renderAnnotation={() =>
+                  changeTracking.peek !== undefined && (
+                    <ChangePeek
+                      {...changeTracking.peek}
+                      onStep={changeTracking.step}
+                      onRevert={() => {
+                        const change = changeTracking.peek?.change;
+
+                        if (change !== undefined)
+                          buffer.edit(revertChange(buffer.getSnapshot().contents, change));
+                        changeTracking.close();
+                      }}
+                      onClose={changeTracking.close}
+                    />
+                  )
+                }
               />
             </EditProvider>
           </PierreWorkerProvider>
-          {changeTracking.peek !== undefined && (
-            <ChangePeek
-              {...changeTracking.peek}
-              onStep={changeTracking.step}
-              onRevert={() => {
-                const change = changeTracking.peek?.change;
-
-                if (change !== undefined)
-                  buffer.edit(revertChange(buffer.getSnapshot().contents, change));
-                changeTracking.close();
-              }}
-              onClose={changeTracking.close}
-            />
-          )}
-          {search !== undefined && (
-            <EditorFind
-              search={search}
-              onClose={() => {
-                search.close();
-                viewer.current?.getEditor(file.path)?.focus();
-              }}
-            />
-          )}
+          <EditorFind
+            search={search}
+            onClose={() => {
+              search?.close();
+              setSearch(undefined);
+              viewer.current?.getEditor(file.path)?.focus();
+            }}
+          />
         </>
       )}
       <div
@@ -912,7 +928,6 @@ export function TextFileEditor({
         title={gitBlame ? blameText : undefined}
       >
         {gitBlame && <span {...props(styles.statusText)}>{blameText}</span>}
-        {readOnly && <span {...props(styles.statusText)}>Read-only: outside the workspace</span>}
         <span role="status" {...props(styles.statusText, styles.saveText)}>
           {saveText}
         </span>
@@ -939,43 +954,5 @@ export function TextFileEditor({
         )}
       </div>
     </div>
-  );
-}
-
-function EditorFind({
-  search,
-  onClose,
-}: {
-  readonly search: EditorSearch;
-  readonly onClose: () => void;
-}): ReactElement {
-  const snapshot = useSyncExternalStore(search.subscribe, search.getSnapshot);
-  const widget = useRef<FindWidgetHandle>(null);
-
-  useMountEffect(() => {
-    let revision = search.getSnapshot().openRevision;
-
-    return search.subscribe(() => {
-      const next = search.getSnapshot().openRevision;
-
-      if (next === revision) return;
-      revision = next;
-      widget.current?.focus();
-    });
-  });
-
-  return (
-    <FindWidget
-      ref={widget}
-      label="Find in file"
-      target={search}
-      initialText={snapshot.defaultQuery}
-      replace={{
-        target: search,
-        open: snapshot.mode === "replace",
-        onOpenChange: (open) => search.setMode(open ? "replace" : "find"),
-      }}
-      onClose={onClose}
-    />
   );
 }

@@ -13,6 +13,7 @@ import type {
   EditorGroupId,
   EditorTarget,
   KindTab,
+  WorkbenchBrowse,
   WorkbenchChangesScope,
   WorkbenchTab,
   WorkbenchTabId,
@@ -82,7 +83,8 @@ export type WorkbenchViewAction =
       readonly target: EditorTarget;
       readonly group: EditorGroupId;
     }
-  | { readonly kind: "focus-group"; readonly group: EditorGroupId };
+  | { readonly kind: "focus-group"; readonly group: EditorGroupId }
+  | { readonly kind: "browse"; readonly root: WorkbenchBrowse };
 
 type Side = "before" | "after";
 
@@ -218,6 +220,11 @@ export function reduceView(
         : activate(state, target.active);
     }
 
+    case "browse":
+      return (state.browse.kind === "workspace" ? state.browse.id : undefined) ===
+        (action.root.kind === "workspace" ? action.root.id : undefined)
+        ? state
+        : { ...state, browse: action.root };
     case "toggle-sidebar":
       return {
         ...state,

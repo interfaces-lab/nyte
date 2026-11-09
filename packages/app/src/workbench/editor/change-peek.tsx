@@ -1,16 +1,17 @@
-import { parseDiffFromFile } from "@pierre/diffs";
+import { parseDiffFromFile } from "@nyte-ai/ui/diffs";
+import type { CodeViewHandle } from "@nyte-ai/ui/diffs/react";
 import { create, props } from "@stylexjs/stylex";
 import { useQuery } from "@tanstack/react-query";
-import { useDeferredValue, useState } from "react";
-import type { ReactElement } from "react";
+import { useDeferredValue, useLayoutEffect, useState } from "react";
+import type { ReactElement, RefObject } from "react";
+import type { WorkspaceId } from "@nyte-ai/sdk";
 import { Button } from "@nyte-ai/ui/button";
-import { floatingSurfaceStyles } from "@nyte-ai/ui/styles/floating-surface.stylex";
+import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { nyte } from "../../contract/nyte.ts";
-import { useHostState } from "../../data/host.ts";
 import { gitFor } from "../../data/vcs.ts";
 import { useWatch } from "../../data/watch-store.ts";
 import { gitStatusWatch } from "../../data/watches.ts";
@@ -18,14 +19,16 @@ import { changeBarCss, lineChanges } from "./line-changes.ts";
 import type { LineChange } from "./line-changes.ts";
 
 export function useLineChanges(input: {
+  readonly workspace: WorkspaceId | undefined;
   readonly path: string;
   readonly relative: string;
   readonly contents: string;
   readonly enabled: boolean;
   readonly line: number;
   readonly reveal: (line: number) => void;
+  readonly viewer: RefObject<CodeViewHandle<undefined, undefined> | null>;
 }) {
-  const workspace = useHostState().data.workspace?.id;
+  const workspace = input.workspace;
 
   const status = useWatch(
     input.enabled && workspace !== undefined ? gitStatusWatch(workspace) : undefined,
@@ -74,6 +77,26 @@ export function useLineChanges(input: {
 
   const peeked = peekIndex === undefined ? undefined : exact?.changes[peekIndex];
 
+  const below =
+    peeked === undefined
+      ? undefined
+      : peeked.kind === "deleted"
+        ? peeked.start - 1
+        : peeked.start + peeked.added.length - 1;
+
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- places the open peek under its change in the imperative viewer before paint
+  useLayoutEffect(() => {
+    const viewer = input.viewer.current;
+    const item = viewer?.getItem(input.path);
+
+    if (viewer === null || item?.type !== "file") return;
+    viewer.updateItem({
+      ...item,
+      annotations: below === undefined ? [] : [{ lineNumber: below }],
+      version: (item.version ?? 0) + 1,
+    });
+  }, [below, input.path, input.viewer]);
+
   const step = (delta: 1 | -1): void => {
     if (exact === undefined || exact.changes.length === 0) return;
     const changes = exact.changes;
@@ -96,7 +119,10 @@ export function useLineChanges(input: {
         ? undefined
         : { change: peeked, index: peekIndex, count: exact.changes.length },
     step,
-    close: () => setOpened(undefined),
+    close: (): void => {
+      setOpened(undefined);
+      input.viewer.current?.getEditor(input.path)?.focus();
+    },
     peekAt: (line: number): void => {
       if (exact === undefined) return;
       const index = findChangeAt(exact.changes, line);
@@ -141,7 +167,7 @@ export function ChangePeek({
   return (
     <section
       aria-label={`Change ${String(index + 1)} of ${String(count)}`}
-      {...props(floatingSurfaceStyles.popup, styles.root)}
+      {...props(styles.root, hairline.controlRing)}
       onKeyDown={(event) => {
         if (event.key !== "Escape") return;
         event.stopPropagation();
@@ -150,15 +176,17 @@ export function ChangePeek({
     >
       <div {...props(styles.header)}>
         <span {...props(text.sm, styles.title)}>
-          {change.kind === "added" ? "Added" : change.kind === "deleted" ? "Deleted" : "Changed"}{" "}
-          line {change.start} · {index + 1} of {count}
+          Uncommitted{" "}
+          <span {...props(styles.count)}>
+            · {index + 1} of {count}
+          </span>
         </span>
         <Button
           size="2xs"
           iconOnly
           icon="arrow-up"
-          aria-label="Previous Change"
-          title={`Previous Change (${mac ? "⇧⌥F3" : "Shift+Alt+F3"})`}
+          aria-label="Previous change"
+          title={`Previous change (${mac ? "⇧⌥F3" : "Shift+Alt+F3"})`}
           disabled={count < 2}
           onClick={() => onStep(-1)}
         />
@@ -166,20 +194,20 @@ export function ChangePeek({
           size="2xs"
           iconOnly
           icon="arrow-down"
-          aria-label="Next Change"
-          title={`Next Change (${mac ? "⌥F3" : "Alt+F3"})`}
+          aria-label="Next change"
+          title={`Next change (${mac ? "⌥F3" : "Alt+F3"})`}
           disabled={count < 2}
           onClick={() => onStep(1)}
         />
         <Button size="2xs" onClick={onRevert}>
           Revert
         </Button>
-        <Button size="2xs" iconOnly icon="x" aria-label="Close" onClick={onClose} />
+        <Button size="2xs" iconOnly icon="x" aria-label="Close change peek" onClick={onClose} />
       </div>
       <pre {...props(text.code, styles.lines)}>
         {change.removed.map((line, offset) => (
           <span key={`-${String(offset)}`} {...props(surfaceTheme.red, styles.line, styles.tint)}>
-            {`- ${line}`}
+            {`− ${line}`}
           </span>
         ))}
         {change.added.map((line, offset) => (
@@ -194,16 +222,13 @@ export function ChangePeek({
 
 const styles = create({
   root: {
-    position: "absolute",
-    insetBlockStart: space.s2,
-    insetInlineEnd: space.s4,
-    zIndex: 2,
+    position: "relative",
     display: "flex",
     flexDirection: "column",
-    width: "min(520px, calc(100% - 32px))",
-    maxHeight: "50%",
+    marginInlineEnd: space.s3,
     borderRadius: radius.control,
     overflow: "hidden",
+    backgroundColor: role.bgElevated,
   },
   header: {
     display: "flex",
@@ -213,12 +238,12 @@ const styles = create({
     paddingInline: space.s2,
   },
   title: { flex: 1, minWidth: 0, color: role.contentSecondary },
+  count: { color: role.contentTertiary },
   lines: {
     margin: 0,
     overflow: "auto",
+    maxBlockSize: `calc(${type.leadingCode} * 16)`,
     paddingBlock: space.s1,
-    fontSize: type.fontXs,
-    lineHeight: type.leadingXs,
   },
   line: { display: "block", paddingInline: space.s2, whiteSpace: "pre" },
   tint: { backgroundColor: role.bgMutedTranslucent, color: role.contentAccent },

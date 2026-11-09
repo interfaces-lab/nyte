@@ -9,7 +9,10 @@ import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 import { Icon, PanelToggleIcon } from "@nyte-ai/ui/icon";
 import { Row } from "@nyte-ai/ui/row";
 import { Toggle } from "@nyte-ai/ui/toggle";
+import type { SelectedWorkspace } from "../contract/bridge.ts";
 import { useHostState } from "../data/host.ts";
+import { useWorkspaces } from "../data/workspaces.ts";
+import type { RailWorkspace } from "../data/workspaces.ts";
 import {
   clampWorkbenchWidthToBounds,
   WORKBENCH_CENTER_WIDTH_MIN,
@@ -28,6 +31,7 @@ import {
   workbenchShowsChat,
 } from "./model.ts";
 import type {
+  WorkbenchBrowse,
   WorkbenchScope,
   WorkbenchTab,
   WorkbenchViewKey,
@@ -38,6 +42,8 @@ import { shownWorkbenchTab, visibleTabs } from "./selectors.ts";
 import { useWorkbenchSnapshot, workbench } from "./store.ts";
 import type { ChangesTabPatch } from "./view-reducer.ts";
 import { launch, openUrl } from "./commands.ts";
+import { WorkbenchWorkspaceContext } from "./workbench-workspace.tsx";
+import type { WorkbenchWorkspace } from "./workbench-workspace.tsx";
 import { CompactRail, Rail } from "./rail.tsx";
 import { BrowserPanel } from "./browser/browser-panel";
 import { CanvasPanel } from "../canvas/canvas-panel.tsx";
@@ -83,6 +89,7 @@ function prefetchWorkbench(): () => void {
 function PanelContent({
   tab,
   viewKey,
+  chatFolder,
   visible,
   workspacePath,
   workspaceActive,
@@ -90,6 +97,7 @@ function PanelContent({
 }: {
   readonly tab: WorkbenchTab;
   readonly viewKey: WorkbenchViewKey;
+  readonly chatFolder: SelectedWorkspace | undefined;
   readonly visible: boolean;
   readonly workspacePath: string | null;
   readonly workspaceActive: boolean;
@@ -109,6 +117,7 @@ function PanelContent({
             <EditorPanel
               key={uiFontSize}
               viewKey={viewKey}
+              chatFolder={chatFolder}
               visible={visible}
               workspaceActive={workspaceActive}
               sidebarVisible={sidebarVisible}
@@ -216,7 +225,6 @@ function WorkbenchViewHost({
   current,
   scope,
   stageWidth,
-  workspaceName,
   capabilities,
 }: {
   readonly viewKey: WorkbenchViewKey;
@@ -224,9 +232,12 @@ function WorkbenchViewHost({
   readonly current: boolean;
   readonly scope: WorkbenchScope;
   readonly stageWidth: number;
-  readonly workspaceName: string | undefined;
   readonly capabilities: ClientCapabilities;
 }): ReactElement {
+  const selected = useHostState().data.workspace;
+  const chatFolder = scope.kind === "pathless" ? undefined : selected;
+  const workspace = browsedWorkspace(view.browse, chatFolder, useWorkspaces().data);
+
   const workspacePath = workspacePathForView(viewKey) ?? null;
   const [resizing, setResizing] = useState(false);
   const panelRef = useRef<HTMLElement | null>(null);
@@ -358,6 +369,7 @@ function WorkbenchViewHost({
         <PanelContent
           tab={tab}
           viewKey={viewKey}
+          chatFolder={chatFolder}
           visible={visible}
           workspacePath={workspacePath}
           workspaceActive={current}
@@ -368,78 +380,105 @@ function WorkbenchViewHost({
   };
 
   return (
-    <section
-      ref={attachPanel}
-      hidden={panelHidden}
-      aria-hidden={panelHidden}
-      inert={panelHidden ? true : undefined}
-      {...props(
-        workbenchStyles.panel,
-        panelVisible && hairline.inlineStart,
-        panelVisible && [workbenchStyles.panelOpen, workbenchStyles.panelWidth(view.width.pixels)],
-        !panelVisible && (compact ? workbenchStyles.railHostCompact : workbenchStyles.railHost),
-        panelVisible && maximized && workbenchStyles.panelOverlay,
-        panelHidden && workbenchStyles.panelHidden,
-      )}
-    >
-      {!panelVisible &&
-        current &&
-        (compact ? (
-          <CompactRail viewKey={viewKey} scope={scope} capabilities={capabilities} />
-        ) : (
-          <Rail
-            viewKey={viewKey}
-            view={view}
-            scope={scope}
-            workspaceName={workspaceName}
-            capabilities={capabilities}
-          />
-        ))}
-      <div
-        hidden={!panelVisible}
-        {...props(workbenchStyles.panelBody, !panelVisible && workbenchStyles.panelHidden)}
+    <WorkbenchWorkspaceContext value={workspace}>
+      <section
+        ref={attachPanel}
+        hidden={panelHidden}
+        aria-hidden={panelHidden}
+        inert={panelHidden ? true : undefined}
+        {...props(
+          workbenchStyles.panel,
+          panelVisible && hairline.inlineStart,
+          panelVisible && [
+            workbenchStyles.panelOpen,
+            workbenchStyles.panelWidth(view.width.pixels),
+          ],
+          !panelVisible && (compact ? workbenchStyles.railHostCompact : workbenchStyles.railHost),
+          panelVisible && maximized && workbenchStyles.panelOverlay,
+          panelHidden && workbenchStyles.panelHidden,
+        )}
       >
-        {panelVisible && !maximized && (
-          <div
-            role="separator"
-            tabIndex={0}
-            aria-label="Resize workbench"
-            aria-orientation="vertical"
-            aria-valuemin={Math.round((bounds.min / stageWidth) * 100)}
-            aria-valuemax={Math.round((bounds.max / stageWidth) * 100)}
-            aria-valuenow={Math.round((panelWidth / stageWidth) * 100)}
-            aria-valuetext={`${String(Math.round((panelWidth / stageWidth) * 100))}%`}
-            title="Drag to resize. Double-click to reset."
-            {...props(workbenchStyles.sash, resizing && workbenchStyles.sashActive)}
-            onKeyDown={resizeWithKeyboard}
-            onPointerDown={beginResize}
-            onPointerMove={moveResize}
-            onPointerUp={endResize}
-            onPointerCancel={endResize}
-            onDoubleClick={resetWidth}
-          />
-        )}
-        {editorTab !== undefined && renderSlot(editorTab, editorVisible)}
-        {panelTabs.map((tab) => renderSlot(tab, shownTab?.id === tab.id))}
-        {panelShown && shownTab === null && (
-          <div {...props(workbenchStyles.launcher)}>
-            {workbenchLaunchers(scope, capabilities).map((kind) => (
-              <div key={kind} {...props(workbenchStyles.launcherFrame)}>
-                <Row
-                  variant="nav"
-                  xstyle={workbenchStyles.launcherCard}
-                  onClick={() => launch(viewKey, kind)}
-                >
-                  <Icon name={WORKBENCH_KINDS[kind].icon} size="lg" />
-                  {WORKBENCH_KINDS[kind].label}
-                </Row>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </section>
+        {!panelVisible &&
+          current &&
+          (compact ? (
+            <CompactRail viewKey={viewKey} scope={scope} capabilities={capabilities} />
+          ) : (
+            <Rail
+              viewKey={viewKey}
+              view={view}
+              scope={scope}
+              workspace={chatFolder}
+              capabilities={capabilities}
+            />
+          ))}
+        <div
+          hidden={!panelVisible}
+          {...props(workbenchStyles.panelBody, !panelVisible && workbenchStyles.panelHidden)}
+        >
+          {panelVisible && !maximized && (
+            <div
+              role="separator"
+              tabIndex={0}
+              aria-label="Resize workbench"
+              aria-orientation="vertical"
+              aria-valuemin={Math.round((bounds.min / stageWidth) * 100)}
+              aria-valuemax={Math.round((bounds.max / stageWidth) * 100)}
+              aria-valuenow={Math.round((panelWidth / stageWidth) * 100)}
+              aria-valuetext={`${String(Math.round((panelWidth / stageWidth) * 100))}%`}
+              title="Drag to resize. Double-click to reset."
+              {...props(workbenchStyles.sash, resizing && workbenchStyles.sashActive)}
+              onKeyDown={resizeWithKeyboard}
+              onPointerDown={beginResize}
+              onPointerMove={moveResize}
+              onPointerUp={endResize}
+              onPointerCancel={endResize}
+              onDoubleClick={resetWidth}
+            />
+          )}
+          {editorTab !== undefined && renderSlot(editorTab, editorVisible)}
+          {panelTabs.map((tab) => renderSlot(tab, shownTab?.id === tab.id))}
+          {panelShown && shownTab === null && (
+            <div {...props(workbenchStyles.launcher)}>
+              {workbenchLaunchers(scope, capabilities).map((kind) => (
+                <div key={kind} {...props(workbenchStyles.launcherFrame)}>
+                  <Row
+                    variant="nav"
+                    xstyle={workbenchStyles.launcherCard}
+                    onClick={() => launch(viewKey, kind)}
+                  >
+                    <Icon name={WORKBENCH_KINDS[kind].icon} size="lg" />
+                    {WORKBENCH_KINDS[kind].label}
+                  </Row>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+    </WorkbenchWorkspaceContext>
   );
+}
+
+function browsedWorkspace(
+  browse: WorkbenchBrowse,
+  chatFolder: SelectedWorkspace | undefined,
+  records: readonly RailWorkspace[] | undefined,
+): WorkbenchWorkspace {
+  if (browse.kind === "follow")
+    return chatFolder === undefined
+      ? { kind: "none" }
+      : { kind: "ready", workspace: chatFolder, isChatFolder: true };
+
+  if (records === undefined) return { kind: "loading" };
+  const record = records.find((candidate) => candidate.id === browse.id);
+
+  if (record === undefined || !record.available) return { kind: "unavailable", id: browse.id };
+
+  return {
+    kind: "ready",
+    workspace: { id: record.id, path: record.path, name: record.name },
+    isChatFolder: record.path === chatFolder?.path,
+  };
 }
 
 export function Workbench({
@@ -447,7 +486,6 @@ export function Workbench({
 }: {
   readonly workspacePath: string | undefined;
 }): ReactElement {
-  const host = useHostState();
   const capabilities = clientCapabilities(nyte.host);
   const [stageWidth, setStageWidth] = useState(2 * WORKBENCH_CENTER_WIDTH_MIN);
   const viewKey = workbenchViewKey(workspacePath);
@@ -490,7 +528,6 @@ export function Workbench({
             current={current}
             scope={current ? workbenchScope(workspacePath) : { kind: "pathless" }}
             stageWidth={stageWidth}
-            workspaceName={host.data.workspace?.name}
             capabilities={capabilities}
           />
         );

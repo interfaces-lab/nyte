@@ -2,7 +2,6 @@ import { useQuery } from "@tanstack/react-query";
 import type { SearchFrame, SearchInput, WorkspaceId } from "@nyte-ai/sdk";
 import { keys } from "./query-client.ts";
 import { filesFor } from "./files.ts";
-import { useHostState } from "./host.ts";
 
 async function searchWorkspace(workspace: WorkspaceId | undefined, input: SearchInput) {
   const matches: Extract<SearchFrame, { readonly kind: "match" }>[] = [];
@@ -17,10 +16,11 @@ async function searchWorkspace(workspace: WorkspaceId | undefined, input: Search
   return { matches, truncated };
 }
 
-export function useWorkspaceSearch(input: SearchInput | undefined, enabled = true) {
-  const host = useHostState();
-  const workspace = host.data.workspace?.id;
-
+export function useWorkspaceSearch(
+  workspace: WorkspaceId | undefined,
+  input: SearchInput | undefined,
+  enabled = true,
+) {
   return useQuery({
     queryKey: keys.workspaceSearch(workspace ?? "", input),
     queryFn: () => {

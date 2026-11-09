@@ -24,7 +24,7 @@ import { openConversationLink } from "../../chat/markdown/external-link.ts";
 import type { HighlightToken } from "../../chat/markdown/highlight-code.ts";
 import { MermaidDiagram } from "../../chat/markdown/mermaid-diagram.tsx";
 import { codeBlockStyles, proseStyles } from "../../chat/markdown/prose.stylex.ts";
-import { workspaceFiles } from "../../data/files.ts";
+import { documentsApi } from "../../data/documents.ts";
 import { loadDeferred } from "../../lib/deferred.tsx";
 import { useBlobUrl } from "../../lib/use-blob-url.ts";
 import { fileFromUrl } from "../../references/message-references.ts";
@@ -51,7 +51,6 @@ interface MarkdownDocumentProps {
   readonly buffer: MarkdownBuffer;
   readonly path: string;
   readonly label: string;
-  readonly readOnly: boolean;
   readonly viewKey: WorkbenchViewKey;
 }
 
@@ -143,13 +142,11 @@ function createMarkdownSession(input: MarkdownDocumentProps) {
   const editor = new Editor({
     extensions: documentExtensions(base.href),
     content: parsed.content,
-    editable: !input.readOnly,
     injectCSS: false,
     editorProps: {
       attributes: {
         "aria-label": input.label,
         "aria-multiline": "true",
-        "aria-readonly": String(input.readOnly),
         class: props(proseStyles.root, styles.editor).className ?? "",
       },
     },
@@ -314,9 +311,7 @@ function ImageView(view: ReactNodeViewProps & { readonly base: string }): ReactE
 
 function WorkspaceImage(input: { readonly path: string; readonly alt: string }): ReactElement {
   const path = input.path;
-  const url = useBlobUrl(["files", "bytes", path], async () =>
-    (await workspaceFiles()).bytes(path),
-  );
+  const url = useBlobUrl(["files", "bytes", path], async () => (await documentsApi()).bytes(path));
 
   if (url.data === undefined)
     return <span {...props(styles.imageLabel)}>{input.alt || path.split("/").at(-1)}</span>;

@@ -13,13 +13,7 @@ import { keys } from "./query-client.ts";
 import { gitStatusWatch } from "./watches.ts";
 import { connected } from "./connection.ts";
 import { useWatch } from "./watch-store.ts";
-import { selectedWorkspaceId } from "./workspaces.ts";
-import { useHostState } from "./host.ts";
 import { queryClient } from "./query-client.ts";
-
-export function workspaceGit(): Promise<GitApi> {
-  return gitFor(selectedWorkspaceId());
-}
 
 export async function gitFor(workspace: WorkspaceId | undefined): Promise<GitApi> {
   if (workspace === undefined) throw new Error("Open a workspace to read its repository");
@@ -40,14 +34,12 @@ export function useGitRefs(workspace: WorkspaceId, enabled: boolean) {
 }
 
 export function useVcsChanges(
+  workspace: WorkspaceId | undefined,
   scope: GitScope | undefined,
   ignoreWhitespace: boolean,
   revision: string | undefined,
   enabled: boolean,
 ) {
-  const host = useHostState();
-  const workspace = host.data.workspace?.id;
-
   return useQuery<ChangeSet>({
     queryKey: keys.gitChanges(workspace, scope, ignoreWhitespace, revision),
     queryFn: async () => {
@@ -61,12 +53,10 @@ export function useVcsChanges(
 }
 
 export function useVcsLog(
+  workspace: WorkspaceId | undefined,
   input: { readonly limit: number; readonly cursor?: Cursor | undefined },
   enabled: boolean,
 ) {
-  const host = useHostState();
-  const workspace = host.data.workspace?.id;
-
   const status = useWatch(
     enabled && workspace !== undefined ? gitStatusWatch(workspace) : undefined,
   ).value;
@@ -123,11 +113,12 @@ async function firstPatches(
 }
 
 export async function readGitPatches(
+  workspace: WorkspaceId | undefined,
   scope: GitScope,
   paths: readonly string[],
   ignoreWhitespace: boolean,
 ): Promise<readonly PatchEntry[]> {
-  return firstPatches((await workspaceGit()).patches(scope, paths, { ignoreWhitespace }), paths);
+  return firstPatches((await gitFor(workspace)).patches(scope, paths, { ignoreWhitespace }), paths);
 }
 
 export async function readRecordedPatches(
@@ -144,21 +135,16 @@ export async function readRecordedPatches(
   );
 }
 
-export async function refreshVcs(): Promise<void> {
-  const workspace = selectedWorkspaceId();
-
+export async function refreshVcs(workspace: WorkspaceId | undefined): Promise<void> {
   if (workspace !== undefined) gitStatusWatch(workspace).retry();
   await Promise.all([
     queryClient.invalidateQueries({ queryKey: ["git"] }),
     queryClient.invalidateQueries({ queryKey: keys.mentionFiles(workspace), exact: true }),
-    queryClient.invalidateQueries({ queryKey: ["files", "document"] }),
+    queryClient.invalidateQueries({ queryKey: keys.documents }),
   ]);
 }
 
-export function useVcsSnapshot(enabled: boolean) {
-  const host = useHostState();
-  const workspace = host.data.workspace?.id;
-
+export function useVcsSnapshot(workspace: WorkspaceId | undefined, enabled: boolean) {
   return {
     data: useWatch(workspace === undefined ? undefined : gitStatusWatch(workspace), enabled).value,
   };

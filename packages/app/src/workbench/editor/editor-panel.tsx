@@ -4,6 +4,7 @@ import { create, props } from "@stylexjs/stylex";
 import { useEffect, useRef, useState } from "react";
 import type { ReactElement } from "react";
 import { worktreeFiles } from "./worktree-files.ts";
+import type { SelectedWorkspace } from "../../contract/bridge.ts";
 import { errorMessage } from "../../contract/errors.ts";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import {
@@ -21,14 +22,14 @@ import { Toggle } from "@nyte-ai/ui/toggle";
 import { nyte } from "../../contract/nyte.ts";
 import { preferences, useSetting, type Preference } from "../../preferences/index.ts";
 import { useVcsSnapshot } from "../../data/vcs.ts";
-import { useHostState } from "../../data/host.ts";
-import { useMentionFiles, useWorkspaceFile } from "../../data/files.ts";
+import { useDocument } from "../../data/documents.ts";
+import { useMentionFiles } from "../../data/files.ts";
 import { workbench } from "../../theme/schema.stylex.ts";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { EDITOR_SLOT, WORKBENCH_KINDS } from "../model.ts";
 import type { EditorGroupId, WorkbenchTabId, WorkbenchViewKey } from "../model.ts";
 import { FileBreadcrumbs } from "./file-breadcrumbs.tsx";
-import { opensReadOnly, WorkspaceFileEditor } from "./file-editor.tsx";
+import { WorkspaceFileEditor } from "./file-editor.tsx";
 import { EditorEmptyState } from "./editor-empty-state.tsx";
 import type { FileEditorHandle } from "./file-editor.tsx";
 import { fileActions, useFileTabs } from "./file-store.ts";
@@ -42,6 +43,8 @@ import { findSymbols } from "./outline.ts";
 import { EditorGroupView } from "./editor-groups.tsx";
 import { EditorTabs } from "./editor-tabs.tsx";
 import { SidePanel } from "../side-panel.tsx";
+import { workspaceFile } from "../paths.ts";
+import { useWorkbenchWorkspace } from "../workbench-workspace.tsx";
 
 const styles = create({
   panel: {
@@ -116,12 +119,14 @@ async function discardEdits(editor: FileEditorHandle | undefined): Promise<strin
 
 export function EditorPanel({
   viewKey,
+  chatFolder,
   visible,
   workspaceActive,
   sidebarVisible,
   onToggleSidebar,
 }: {
   readonly viewKey: WorkbenchViewKey;
+  readonly chatFolder: SelectedWorkspace | undefined;
   readonly visible: boolean;
   readonly workspaceActive: boolean;
   readonly sidebarVisible: boolean;
@@ -129,9 +134,10 @@ export function EditorPanel({
 }): ReactElement {
   const treeStatusTheme = useTreeStatusTheme();
   const shown = workspaceActive && visible;
-  const host = useHostState();
-  const files = useMentionFiles(host.data.workspace, shown);
-  const vcs = useVcsSnapshot(shown);
+  const browsed = useWorkbenchWorkspace();
+  const workspace = browsed.kind === "ready" ? browsed.workspace : undefined;
+  const files = useMentionFiles(workspace, shown && workspace !== undefined);
+  const vcs = useVcsSnapshot(workspace?.id, shown);
   const changes = vcs.data?.kind === "repository" ? worktreeFiles(vcs.data) : [];
 
   const tabs = useFileTabs(viewKey);
@@ -159,8 +165,12 @@ export function EditorPanel({
   const pendingFile = tabs.pendingClose;
   const panelRef = useRef<HTMLElement>(null);
   const closeOrigin = useRef<WorkbenchTabId | undefined>(undefined);
-  const activeDocument = useWorkspaceFile(activeFile?.path).data;
-  const readOnly = activeDocument !== undefined && opensReadOnly(activeDocument);
+  const activeDocument = useDocument(activeFile?.path).data;
+
+  const formats =
+    activeDocument?.kind === "text" &&
+    workspace !== undefined &&
+    workspaceFile(activeDocument.path, [workspace.path]) !== undefined;
 
   const unsaved = activeFile?.dirty === true;
 
@@ -439,15 +449,17 @@ export function EditorPanel({
                 >
                   Save File
                 </MenuItem>
-                <MenuItem
-                  layout="plain"
-                  disabled={activeDocument?.kind !== "text" || readOnly}
-                  onClick={() => {
-                    if (activeFile !== undefined) void editors.current.get(activeFile.id)?.format();
-                  }}
-                >
-                  Format Document
-                </MenuItem>
+                {formats && (
+                  <MenuItem
+                    layout="plain"
+                    onClick={() => {
+                      if (activeFile !== undefined)
+                        void editors.current.get(activeFile.id)?.format();
+                    }}
+                  >
+                    Format Document
+                  </MenuItem>
+                )}
                 <MenuSeparator inset />
                 <MenuItem
                   layout="plain"
@@ -460,7 +472,7 @@ export function EditorPanel({
                 </MenuItem>
                 <MenuItem
                   layout="plain"
-                  disabled={activeFile === undefined || readOnly}
+                  disabled={activeFile === undefined || activeFile.external}
                   onClick={() => {
                     if (activeFile !== undefined) copyPath(activeFile.displayPath);
                   }}
@@ -597,7 +609,8 @@ export function EditorPanel({
               <div {...props(styles.sidebarBody, sidebar !== "explorer" && styles.hidden)}>
                 <FilesExplorer
                   viewKey={viewKey}
-                  workspace={host.data.workspace}
+                  chatFolder={chatFolder}
+                  workspace={workspace}
                   files={files}
                   changes={changes}
                   outline={{ path: activeFile?.path, symbols }}

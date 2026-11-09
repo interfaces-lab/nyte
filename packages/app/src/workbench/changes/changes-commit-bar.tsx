@@ -11,6 +11,7 @@ import type {
   GitHubState,
   GitOutcome,
   GitRevision,
+  WorkspaceId,
 } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import { useGitHub, useGitHubAccountState, useGitHubState } from "../../account/github-account.ts";
@@ -28,7 +29,6 @@ import { Input } from "@nyte-ai/ui/input";
 import { openExternal } from "../../lib/open-external.ts";
 import { keys, queryClient } from "../../data/query-client.ts";
 import { gitFor, refreshVcs } from "../../data/vcs.ts";
-import { selectedWorkspaceId } from "../../data/workspaces.ts";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
@@ -37,6 +37,7 @@ import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import type { BranchReadout } from "./change-scopes.ts";
 import { ChangesPullRequest } from "./changes-pull-request.tsx";
 import type { WorkbenchChangesScope } from "../model.ts";
+import { useWorkbenchWorkspace } from "../workbench-workspace.tsx";
 import {
   COMMIT_ACTIONS,
   DEFAULT_COMMIT_ACTION,
@@ -318,6 +319,7 @@ interface RunOptions {
 }
 
 interface CommitRun {
+  readonly workspace: WorkspaceId | undefined;
   readonly action: CommitAction;
   readonly options: RunOptions;
   readonly revision: string;
@@ -334,7 +336,7 @@ async function runCommitAction(run: CommitRun): Promise<CommitBarResult> {
   const plan = commitActionPlan(run.action);
   let expect: GitRevision = asId<"git-revision">(run.revision);
   const reported: string[] = [];
-  const workspace = selectedWorkspaceId();
+  const workspace = run.workspace;
 
   const settle = (outcome: CommitBarResult): CommitBarResult =>
     reported.length === 0 ? outcome : { ...outcome, text: `${reported.join(" ")} ${outcome.text}` };
@@ -394,7 +396,7 @@ async function runCommitAction(run: CommitRun): Promise<CommitBarResult> {
       const outcome = pullRequestResultMessage(opened);
 
       if (outcome.tone === "success") {
-        void refreshVcs();
+        void refreshVcs(workspace);
         void queryClient.invalidateQueries({ queryKey: keys.githubState(workspace) });
       }
 
@@ -405,6 +407,18 @@ async function runCommitAction(run: CommitRun): Promise<CommitBarResult> {
   } catch (cause) {
     return settle(actionFailureMessage(cause));
   }
+}
+
+function primaryLabel(
+  action: CommitAction,
+  folder: string | undefined,
+  keepEllipsis: boolean,
+): string {
+  const label = commitActionLabel(action);
+  const bare = label.replace(/…$/u, "");
+  const named = folder === undefined ? bare : `${bare} in ${folder}`;
+
+  return keepEllipsis && label !== bare ? `${named}…` : named;
 }
 
 interface ChangesCommitBarProps {
@@ -422,8 +436,10 @@ export function ChangesCommitBar({
   fileCount,
   onOpenLink = openExternal,
 }: ChangesCommitBarProps): ReactElement {
-  const github = useGitHub();
-  const githubState = useGitHubState(github);
+  const browsed = useWorkbenchWorkspace();
+  const workspace = browsed.kind === "ready" ? browsed.workspace.id : undefined;
+  const github = useGitHub(workspace);
+  const githubState = useGitHubState(workspace, github);
   const account = useGitHubAccountState().data;
   const actions = commitActions(github !== undefined);
   const [message, setMessage] = useState("");
@@ -460,6 +476,7 @@ export function ChangesCommitBar({
     setInterrupted(undefined);
 
     const outcome = await runCommitAction({
+      workspace,
       action: chosen,
       options,
       revision,
@@ -567,7 +584,11 @@ export function ChangesCommitBar({
           loading={running}
           xstyle={styles.primary}
         >
-          {commitActionLabel(action).replace(/…$/, branchPrompt === undefined ? "…" : "")}
+          {primaryLabel(
+            action,
+            browsed.kind === "ready" && !browsed.isChatFolder ? browsed.workspace.name : undefined,
+            branchPrompt === undefined,
+          )}
         </SplitButton.Main>
         <Menu>
           <MenuTrigger

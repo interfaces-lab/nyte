@@ -51,12 +51,12 @@ export const keys = {
     live: boolean,
   ) => ["git", "recorded", workspace, source, live ? "live" : "settled"] as const,
   mentionFiles: (workspace: WorkspaceId | undefined) => ["files", "mentions", workspace] as const,
-  workspaceFile: (path: string) => ["files", "document", path] as const,
   workspaceSearch: (workspace: string, input: { readonly query: string } | undefined) =>
     ["files", "search", workspace, input] as const,
+  documents: ["documents"] as const,
+  document: (path: string | undefined) => ["documents", path] as const,
   browserHistory: (owner: string | null) => ["browser", "history", owner] as const,
   mermaid: (source: string) => ["mermaid", source] as const,
-  highlight: (language: string, code: string) => ["highlight", language, code] as const,
 };
 
 export const queryClient = new QueryClient({

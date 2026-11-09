@@ -4,7 +4,7 @@ import { nyte } from "../contract/nyte.ts";
 import { mentionsFolder } from "../references/message-references.ts";
 import type { ReferenceOpener } from "../references/reference-opener.tsx";
 import { fileActions } from "./editor/file-store.ts";
-import { matchingTab, WORKBENCH_KINDS } from "./model.ts";
+import { FOLLOW_BROWSE, matchingTab, WORKBENCH_KINDS } from "./model.ts";
 import type {
   KindInput,
   LaunchKind,
@@ -47,6 +47,7 @@ export function openChanges(
   scope: WorkbenchChangesScope,
   path: string | null,
 ): void {
+  workbench.dispatch(view, { kind: "browse", root: FOLLOW_BROWSE });
   workbench.dispatch(view, { kind: "open-changes", id: crypto.randomUUID(), scope, path });
 }
 
@@ -129,7 +130,11 @@ export function workbenchReferenceOpener(view: WorkbenchViewKey): ReferenceOpene
       case "file": {
         const file = reference.file;
 
-        if (mentionsFolder(file)) return () => fileActions.reveal(view, file.displayPath);
+        if (mentionsFolder(file))
+          return () => {
+            workbench.dispatch(view, { kind: "browse", root: FOLLOW_BROWSE });
+            fileActions.reveal(view, file.displayPath);
+          };
 
         const lines = reference.lines;
 

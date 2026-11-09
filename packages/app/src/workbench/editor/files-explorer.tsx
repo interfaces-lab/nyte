@@ -1,15 +1,16 @@
 import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
-import { FileTree, useFileTree } from "@pierre/trees/react";
+import { FileTree, useFileTree } from "@nyte-ai/ui/trees/react";
 import type {
   ContextMenuItem,
   ContextMenuOpenContext,
   FileTreeRenameEvent,
   FileTree as FileTreeModel,
-} from "@pierre/trees";
+} from "@nyte-ai/ui/trees";
 import { create, props } from "@stylexjs/stylex";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLayoutEffect, useRef, useState } from "react";
 import type { ReactElement } from "react";
+import type { WorkspaceId } from "@nyte-ai/sdk";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { Button } from "@nyte-ai/ui/button";
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@nyte-ai/ui/menu";
@@ -28,7 +29,7 @@ import { keys } from "../../data/query-client.ts";
 import { refreshVcs } from "../../data/vcs.ts";
 import type { MentionFile } from "../../data/files.ts";
 import type { SelectedWorkspace } from "../../contract/bridge.ts";
-import { PIERRE_TREE_CSS } from "../../lib/pierre-worker-provider.tsx";
+import { PIERRE_TREE_CSS } from "@nyte-ai/ui/worker-pool";
 import { fuzzyScore } from "../../lib/fuzzy-match.ts";
 import { addFileToChat } from "../../references/add-to-chat.ts";
 import { setTreeDrag } from "../../references/composer-file-drop.ts";
@@ -42,6 +43,9 @@ import {
   restoreEntry,
   trashEntry,
 } from "./file-operations.ts";
+import { workspaceFile } from "../paths.ts";
+import { useWorkbenchWorkspace } from "../workbench-workspace.tsx";
+import { ExplorerFolderMenu, ExplorerFolderState } from "./explorer-folder.tsx";
 import { FileOutline } from "./file-outline.tsx";
 import type { OutlineSymbol } from "./outline.ts";
 import { syncTreePaths } from "./tree-paths.ts";
@@ -51,10 +55,17 @@ import type { WorktreeFile } from "./worktree-files.ts";
 type Scope = "all" | "changed";
 
 /** A row the tree is naming: a new file or folder that doesn't exist on disk yet, under its placeholder. */
-type Naming = { readonly kind: "file" | "folder"; readonly placeholder: string } | undefined;
+type Naming =
+  | {
+      readonly kind: "file" | "folder";
+      readonly placeholder: string;
+      readonly workspace: WorkspaceId | undefined;
+    }
+  | undefined;
 
 export function FilesExplorer({
   viewKey,
+  chatFolder,
   workspace,
   files,
   changes,
@@ -63,6 +74,7 @@ export function FilesExplorer({
   onCopyPath,
 }: {
   readonly viewKey: WorkbenchViewKey;
+  readonly chatFolder: SelectedWorkspace | undefined;
   readonly workspace: SelectedWorkspace | undefined;
   readonly files: {
     readonly data: readonly MentionFile[] | undefined;
@@ -77,6 +89,7 @@ export function FilesExplorer({
   readonly onCopyPath: (path: string) => void;
 }): ReactElement {
   const queryClient = useQueryClient();
+  const browsed = useWorkbenchWorkspace();
   const tabs = useFileTabs(viewKey);
 
   const [selection, setSelection] = useState<{
@@ -94,7 +107,13 @@ export function FilesExplorer({
   const filter = listing.filter;
   const [naming, setNaming] = useState<Naming>();
   const pendingRename = useRef<string | undefined>(undefined);
-  const [confirming, setConfirming] = useState<{ readonly path: string; readonly name: string }>();
+
+  const [confirming, setConfirming] = useState<{
+    readonly workspace: WorkspaceId | undefined;
+    readonly path: string;
+    readonly name: string;
+  }>();
+
   const [itemHeight] = useState(treeItemHeight);
 
   const latest = useRef({ files: files.data, changes, naming, workspace });
@@ -111,10 +130,12 @@ export function FilesExplorer({
     return `${root.replace(/\/$/u, "")}/${relative.replace(/\/$/u, "")}`;
   };
 
-  const refresh = (): void => {
-    void queryClient.invalidateQueries({ queryKey: keys.mentionFiles(workspace?.id) });
-    void refreshVcs();
+  const refreshWorkspace = (id: WorkspaceId | undefined): void => {
+    void queryClient.invalidateQueries({ queryKey: keys.mentionFiles(id) });
+    void refreshVcs(id);
   };
+
+  const refresh = (): void => refreshWorkspace(latest.current.workspace?.id);
 
   const contextMenu = nyte.host.contextMenu;
   const revealPath = nyte.host.revealPath;
@@ -170,14 +191,19 @@ export function FilesExplorer({
 
     const placeholder = `${folder}${name}${kind === "folder" ? "/" : ""}`;
     model.add(placeholder);
-    setNaming({ kind, placeholder });
+    setNaming({ kind, placeholder, workspace: latest.current.workspace?.id });
     requestAnimationFrame(() => model.startRenaming(placeholder, { removeIfCanceled: true }));
   };
 
   const rename = async (event: FileTreeRenameEvent): Promise<void> => {
     const pending = latest.current.naming;
 
-    if (pending !== undefined && event.sourcePath === pending.placeholder) {
+    if (
+      pending !== undefined &&
+      event.sourcePath === pending.placeholder &&
+      event.isFolder === (pending.kind === "folder") &&
+      pending.workspace === latest.current.workspace?.id
+    ) {
       setNaming(undefined);
       await createEntry(pending.kind, event.destinationPath);
 
@@ -187,9 +213,9 @@ export function FilesExplorer({
     const from = bare(event.sourcePath);
     const to = bare(event.destinationPath);
 
-    const failure = await applyChange((batch) => batch.move({ path: from, to })).catch(
-      errorMessage,
-    );
+    const failure = await applyChange(latest.current.workspace?.id, (batch) =>
+      batch.move({ path: from, to }),
+    ).catch(errorMessage);
 
     if (failure !== undefined) {
       model.move(event.destinationPath, event.sourcePath);
@@ -213,8 +239,10 @@ export function FilesExplorer({
 
     const failure =
       kind === "folder"
-        ? await applyChange((batch) => batch.mkdir({ path: bare(path) })).catch(errorMessage)
-        : await createFile(target).then(
+        ? await applyChange(latest.current.workspace?.id, (batch) =>
+            batch.mkdir({ path: bare(path) }),
+          ).catch(errorMessage)
+        : await createFile(latest.current.workspace?.id, target).then(
             (outcome) =>
               outcome.kind === "saved" ? undefined : "A file with that name already exists.",
             errorMessage,
@@ -246,9 +274,9 @@ export function FilesExplorer({
         .find((candidate) => !taken.has(candidate)) ??
       `${stem} copy ${crypto.randomUUID().slice(0, 8)}${extension}`;
 
-    const failure = await applyChange((batch) => batch.copy({ path, to: copy })).catch(
-      errorMessage,
-    );
+    const failure = await applyChange(latest.current.workspace?.id, (batch) =>
+      batch.copy({ path, to: copy }),
+    ).catch(errorMessage);
 
     if (failure !== undefined) {
       toast.add({ type: "error", title: `Couldn't duplicate ${path}`, description: failure });
@@ -268,14 +296,15 @@ export function FilesExplorer({
   const remove = async (item: ContextMenuItem): Promise<void> => {
     const path = bare(item.path);
     const name = path.split("/").at(-1) ?? path;
+    const workspace = latest.current.workspace?.id;
 
-    const held = await trashEntry(path).then(
+    const held = await trashEntry(workspace, path).then(
       (outcome) => outcome,
       (cause: unknown) => ({ kind: "failed" as const, message: errorMessage(cause) }),
     );
 
     if (held.kind === "unavailable") {
-      setConfirming({ path, name });
+      setConfirming({ workspace, path, name });
 
       return;
     }
@@ -307,7 +336,7 @@ export function FilesExplorer({
         children: "Undo",
         onClick: () => {
           toast.close(id);
-          void restoreEntry(token).then(
+          void restoreEntry(workspace, token).then(
             (restored) => {
               if (restored.kind !== "restored")
                 toast.add({
@@ -333,15 +362,15 @@ export function FilesExplorer({
     });
   };
 
-  const removeForGood = async (path: string): Promise<void> => {
-    const failure = await removeEntry(path).then(
+  const removeForGood = async (workspace: WorkspaceId | undefined, path: string): Promise<void> => {
+    const failure = await removeEntry(workspace, path).then(
       (outcome) => (outcome.kind === "saved" ? undefined : `${path} changed.`),
       errorMessage,
     );
 
     if (failure !== undefined)
       toast.add({ type: "error", title: `Couldn't delete ${path}`, description: failure });
-    refresh();
+    refreshWorkspace(workspace);
   };
 
   const openRowMenu = (
@@ -478,7 +507,11 @@ export function FilesExplorer({
     if (model.startRenaming(path)) pendingRename.current = undefined;
   }, [model, files.data, scope, filter]);
 
-  const activePath = tabs.active?.external === false ? tabs.active.displayPath : undefined;
+  const activePath =
+    tabs.active === undefined || workspace === undefined
+      ? undefined
+      : workspaceFile(tabs.active.path, [workspace.path])?.relative;
+
   const followed = useRef<string | undefined>(undefined);
   // oxlint-disable-next-line nyte-code/no-direct-effect -- follows file activation without moving keyboard focus out of the editor
   useLayoutEffect(() => {
@@ -503,67 +536,83 @@ export function FilesExplorer({
   return (
     <div {...props(styles.explorer)}>
       <div {...props(styles.header)}>
-        <span {...props(styles.name)}>{workspace?.name ?? "Workspace"}</span>
-        <ToggleGroup
-          aria-label="Show"
-          value={[scope]}
-          onValueChange={(value) => {
-            const next = value[0];
+        <ExplorerFolderMenu viewKey={viewKey} chatFolder={chatFolder} browsed={browsed} />
+        {browsed.kind === "ready" && (
+          <ToggleGroup
+            aria-label="Show"
+            value={[scope]}
+            onValueChange={(value) => {
+              const next = value[0];
 
-            if (next === "all" || next === "changed") setSelection({ ...listing, scope: next });
-          }}
-        >
-          <Toggle value="all" size="2xs">
-            All
-          </Toggle>
-          <Toggle value="changed" size="2xs">
-            Changed {changes.length}
-          </Toggle>
-        </ToggleGroup>
-        <Menu>
-          <MenuTrigger
-            render={<Button iconOnly icon="more-horizontal" aria-label="Explorer Options" />}
-          />
-          <MenuContent align="end">
-            <MenuItem layout="plain" onClick={() => startNaming("file", "")}>
-              New File…
-            </MenuItem>
-            <MenuItem layout="plain" onClick={() => startNaming("folder", "")}>
-              New Folder…
-            </MenuItem>
-            <MenuSeparator />
-            <MenuItem layout="plain" onClick={refresh}>
-              Refresh Explorer
-            </MenuItem>
-            <MenuItem layout="plain" onClick={collapseFolders}>
-              Collapse Folders
-            </MenuItem>
-          </MenuContent>
-        </Menu>
-      </div>
-      <div {...props(styles.filter)}>
-        <InputGroup>
-          <Icon name="search" size="sm" />
-          <Input
-            aria-label="Filter files"
-            placeholder="Filter files"
-            value={filter}
-            onChange={(event) => setSelection({ ...listing, filter: event.target.value })}
-            onKeyDown={(event) => {
-              if (event.key === "Escape" && filter !== "") {
-                event.stopPropagation();
-                setSelection({ ...listing, filter: "" });
-              }
-
-              if (event.key === "ArrowDown") {
-                event.preventDefault();
-                model.focusFirstItem();
-              }
+              if (next === "all" || next === "changed") setSelection({ ...listing, scope: next });
             }}
-          />
-        </InputGroup>
+          >
+            <Toggle value="all" size="2xs">
+              All
+            </Toggle>
+            <Toggle value="changed" size="2xs">
+              Changed {changes.length}
+            </Toggle>
+          </ToggleGroup>
+        )}
+        {browsed.kind === "ready" && (
+          <Menu>
+            <MenuTrigger
+              render={
+                <Button
+                  iconOnly
+                  icon="more-horizontal"
+                  aria-label="Explorer Options"
+                  xstyle={styles.options}
+                />
+              }
+            />
+            <MenuContent align="end">
+              <MenuItem layout="plain" onClick={() => startNaming("file", "")}>
+                New File…
+              </MenuItem>
+              <MenuItem layout="plain" onClick={() => startNaming("folder", "")}>
+                New Folder…
+              </MenuItem>
+              <MenuSeparator />
+              <MenuItem layout="plain" onClick={refresh}>
+                Refresh Explorer
+              </MenuItem>
+              <MenuItem layout="plain" onClick={collapseFolders}>
+                Collapse Folders
+              </MenuItem>
+            </MenuContent>
+          </Menu>
+        )}
       </div>
-      {files.error !== null && (
+      {browsed.kind !== "ready" && (
+        <ExplorerFolderState viewKey={viewKey} chatFolder={chatFolder} browsed={browsed} />
+      )}
+      {browsed.kind === "ready" && (
+        <div {...props(styles.filter)}>
+          <InputGroup>
+            <Icon name="search" size="sm" />
+            <Input
+              aria-label="Filter files"
+              placeholder="Filter files"
+              value={filter}
+              onChange={(event) => setSelection({ ...listing, filter: event.target.value })}
+              onKeyDown={(event) => {
+                if (event.key === "Escape" && filter !== "") {
+                  event.stopPropagation();
+                  setSelection({ ...listing, filter: "" });
+                }
+
+                if (event.key === "ArrowDown") {
+                  event.preventDefault();
+                  model.focusFirstItem();
+                }
+              }}
+            />
+          </InputGroup>
+        </div>
+      )}
+      {browsed.kind === "ready" && files.error !== null && (
         <div role="alert" {...props(styles.empty)}>
           Could not load files. {files.error.message}
         </div>
@@ -573,7 +622,7 @@ export function FilesExplorer({
           No files match {filter}
         </div>
       )}
-      {scope === "changed" && changes.length === 0 && (
+      {browsed.kind === "ready" && scope === "changed" && changes.length === 0 && (
         <div role="status" {...props(styles.empty)}>
           No changes
         </div>
@@ -616,7 +665,11 @@ export function FilesExplorer({
             if (path !== null) model.startRenaming(path);
           }
         }}
-        {...props(workbenchStyles.treeTheme, styles.tree, unmatched && styles.hidden)}
+        {...props(
+          workbenchStyles.treeTheme,
+          styles.tree,
+          (unmatched || browsed.kind !== "ready") && styles.hidden,
+        )}
       />
       <FileOutline
         path={tabs.active?.displayPath}
@@ -639,10 +692,9 @@ export function FilesExplorer({
           if (!open) setConfirming(undefined);
         }}
         onConfirm={() => {
-          const path = confirming?.path;
           setConfirming(undefined);
 
-          if (path !== undefined) void removeForGood(path);
+          if (confirming !== undefined) void removeForGood(confirming.workspace, confirming.path);
         }}
       />
     </div>
@@ -695,22 +747,15 @@ const styles = create({
   explorer: { display: "flex", flexDirection: "column", flex: 1, minWidth: 0, minHeight: 0 },
   header: {
     display: "flex",
+    flexWrap: "wrap",
     alignItems: "center",
     gap: space.s2,
+    rowGap: space.s1,
     flexShrink: 0,
     paddingBlock: space.s1_5,
     paddingInline: space.s2_5,
   },
-  name: {
-    flex: 1,
-    minWidth: 0,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-    color: role.contentSecondary,
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
-  },
+  options: { marginInlineStart: "auto" },
   filter: { flexShrink: 0, paddingInline: space.s2, paddingBlockEnd: space.s1_5 },
   empty: {
     padding: space.s5,

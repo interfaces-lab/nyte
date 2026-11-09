@@ -1,7 +1,7 @@
 import { props } from "@stylexjs/stylex";
 import type { ReactElement, ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import type { GitStatus, SessionId, Usage } from "@nyte-ai/sdk";
+import type { GitStatus, SessionId, Usage, WorkspaceId } from "@nyte-ai/sdk";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
 import type { IconName } from "@nyte-ai/ui/icon";
@@ -9,6 +9,7 @@ import { Row } from "@nyte-ai/ui/row";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
+import type { SelectedWorkspace } from "../contract/bridge.ts";
 import type { ClientCapabilities } from "../contract/client-actions.ts";
 import { formatTokens, formatUsd } from "../lib/format.ts";
 import { chatStore } from "../data/chat-store.ts";
@@ -219,9 +220,11 @@ function BranchRow({
 }
 
 function ChangesRow({
+  workspace,
   head,
   onOpen,
 }: {
+  readonly workspace: WorkspaceId | undefined;
   readonly head: Repository;
   readonly onOpen: () => void;
 }): ReactElement {
@@ -229,6 +232,7 @@ function ChangesRow({
   const rows = workingRows(head, UNCOMMITTED);
 
   const manifest = useVcsChanges(
+    workspace,
     vcsRequestForScope(UNCOMMITTED),
     options.ignoreWhitespace,
     head.revision,
@@ -299,13 +303,13 @@ export function Rail({
   viewKey,
   view,
   scope,
-  workspaceName,
+  workspace,
   capabilities,
 }: {
   readonly viewKey: WorkbenchViewKey;
   readonly view: WorkbenchViewState;
   readonly scope: WorkbenchScope;
-  readonly workspaceName: string | undefined;
+  readonly workspace: SelectedWorkspace | undefined;
   readonly capabilities: ClientCapabilities;
 }): ReactElement {
   const selection = usePaneLayout(activeSelection, sameSelection);
@@ -313,7 +317,7 @@ export function Rail({
   const terminals = useTerminalRuntime();
   const files = useFileTabs(viewKey);
   const project = scope.kind === "project";
-  const vcs = useVcsSnapshot(project);
+  const vcs = useVcsSnapshot(workspace?.id, project);
   const head = project && vcs.data?.kind === "repository" ? vcs.data : undefined;
   const statusShown = sessionId !== undefined || head !== undefined;
   const rail = railModel({ view, scope, capabilities, repository: head !== undefined });
@@ -341,7 +345,11 @@ export function Rail({
             <BranchRow head={head} actions={sessionId === undefined ? collapse : undefined} />
           )}
           {head !== undefined && rail.changes && (
-            <ChangesRow head={head} onOpen={() => openChanges(viewKey, UNCOMMITTED, null)} />
+            <ChangesRow
+              workspace={workspace?.id}
+              head={head}
+              onOpen={() => openChanges(viewKey, UNCOMMITTED, null)}
+            />
           )}
         </section>
       )}
@@ -377,7 +385,7 @@ export function Rail({
       <section {...props(workbenchStyles.railSection)}>
         <div {...props(workbenchStyles.railHeading)}>
           <span {...props(workbenchStyles.railHeadingText)}>
-            {workspaceName === undefined ? "On This Mac" : `On ${workspaceName}`}
+            {workspace === undefined ? "On This Mac" : `On ${workspace.name}`}
           </span>
         </div>
         {rail.launchers.map((launcher) => (

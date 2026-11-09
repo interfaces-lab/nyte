@@ -274,7 +274,7 @@ const files: FilesApi = {
 };
 
 function History(): ReactElement {
-  const history = useVcsLog({ limit: 50 }, true);
+  const history = useVcsLog(useHostState().data.workspace?.id, { limit: 50 }, true);
 
   return (
     <output data-history>{history.data?.items.map((commit) => commit.subject).join("|")}</output>

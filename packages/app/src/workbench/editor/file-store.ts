@@ -1,7 +1,4 @@
-import type { FileDocument } from "@nyte-ai/sdk";
-import type { QueryClient } from "@tanstack/react-query";
 import { useSyncExternalStore } from "react";
-import { keys, queryClient } from "../../data/query-client.ts";
 import type { MessageReference } from "../../references/message-references.ts";
 import type {
   EditorDrop,
@@ -36,8 +33,6 @@ interface FileLocation {
   readonly path: string;
   readonly target?: FileTarget;
 }
-
-type FileScope = Exclude<FileDocument, { readonly kind: "missing" }>["scope"];
 
 type FileDraft = Pick<FileDocumentSnapshot, "contents" | "savedContents" | "version">;
 
@@ -183,10 +178,7 @@ function fileKey(key: WorkbenchViewKey, path: string): string {
  * opens a tab's file, by default the strip's, in a new group beside its own; `place` drops a tab
  * into a group or beside it.
  */
-export function createFileTabStore(
-  store: WorkbenchStore = workbench,
-  queries: QueryClient = queryClient,
-) {
+export function createFileTabStore(store: WorkbenchStore = workbench) {
   const navigations = new Map<WorkbenchTabId, FileNavigation>();
   const files = new Map<string, FileState>();
   const buffers = new Map<string, FileBuffer>();
@@ -197,7 +189,6 @@ export function createFileTabStore(
     {
       readonly revision: number;
       readonly source: WorkbenchViewState;
-      readonly scopes: readonly (FileScope | undefined)[];
       readonly view: FileTabs;
     }
   >();
@@ -224,19 +215,12 @@ export function createFileTabStore(
     for (const listener of listeners) listener();
   };
 
-  const documentScope = (path: string): FileScope | undefined => {
-    const document = queries.getQueryData<FileDocument>(keys.workspaceFile(path));
-
-    return document === undefined || document.kind === "missing" ? undefined : document.scope;
-  };
-
   const fileTabs = (key: WorkbenchViewKey): readonly FileTab[] =>
     store.getView(key).tabs.flatMap((tab) => {
       if (tab.kind !== "file") return [];
       const state = fileState(key, tab.path);
 
-      const inside =
-        documentScope(tab.path) === "external" ? undefined : workspaceFile(tab.path, [key]);
+      const inside = workspaceFile(tab.path, [key]);
 
       return [
         {
@@ -257,16 +241,7 @@ export function createFileTabStore(
     const workbenchView = store.getView(key);
     const cached = snapshots.get(key);
 
-    const scopes = workbenchView.tabs.map((tab) =>
-      tab.kind === "file" ? documentScope(tab.path) : undefined,
-    );
-
-    if (
-      cached?.revision === revision &&
-      cached.source === workbenchView &&
-      cached.scopes.every((scope, index) => scope === scopes[index])
-    )
-      return cached.view;
+    if (cached?.revision === revision && cached.source === workbenchView) return cached.view;
     const current = getRuntimeView(key);
     const tabs = fileTabs(key);
     const selected = activeEditorFile(workbenchView);
@@ -295,7 +270,7 @@ export function createFileTabStore(
       revealRevision: current.revealRevision,
     };
 
-    snapshots.set(key, { revision, source: workbenchView, scopes, view });
+    snapshots.set(key, { revision, source: workbenchView, view });
 
     return view;
   };
@@ -646,17 +621,10 @@ export function createFileTabStore(
       listeners.add(listener);
 
       const unsubscribe = store.subscribe(listener);
-      const prefix = keys.workspaceFile("");
-
-      const unwatch = queries.getQueryCache().subscribe((event) => {
-        if (event.query.queryKey[0] === prefix[0] && event.query.queryKey[1] === prefix[1])
-          listener();
-      });
 
       return () => {
         listeners.delete(listener);
         unsubscribe();
-        unwatch();
       };
     },
     actions,

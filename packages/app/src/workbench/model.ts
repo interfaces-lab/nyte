@@ -261,6 +261,12 @@ export interface EditorGroup {
 
 export const FIRST_GROUP: EditorGroupId = "first";
 
+export type WorkbenchBrowse =
+  | { readonly kind: "follow" }
+  | { readonly kind: "workspace"; readonly id: WorkspaceId };
+
+export const FOLLOW_BROWSE = Object.freeze({ kind: "follow" }) satisfies WorkbenchBrowse;
+
 export interface WorkbenchViewState {
   readonly tabs: readonly WorkbenchTab[];
   readonly active: WorkbenchTabId | null;
@@ -271,6 +277,7 @@ export interface WorkbenchViewState {
   readonly layout: WorkbenchLayout;
   readonly width: WorkbenchWidth;
   readonly sidebars: readonly string[];
+  readonly browse: WorkbenchBrowse;
 }
 
 export interface WorkbenchSnapshot {
@@ -287,6 +294,7 @@ export const DEFAULT_VIEW = Object.freeze({
   sidebars: Object.freeze([]),
   groups: Object.freeze([Object.freeze({ id: FIRST_GROUP, active: null })]),
   group: FIRST_GROUP,
+  browse: FOLLOW_BROWSE,
 }) satisfies WorkbenchViewState;
 
 export function activeEditorFile(view: WorkbenchViewState): KindTab<"file"> | undefined {

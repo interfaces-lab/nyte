@@ -27,6 +27,7 @@ import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { ChangeStats } from "../../components/change-stats.tsx";
 import { ChangesCommitBar, readsWorkingTree } from "./changes-commit-bar.tsx";
+import { useWorkbenchWorkspace } from "../workbench-workspace.tsx";
 import { changeRows, changeTotals } from "./changes-model.ts";
 import {
   commitScopeOptions,
@@ -145,6 +146,11 @@ const styles = create({
     borderRadius: radius.indicator,
     backgroundColor: role.bgMutedTranslucent,
   },
+  folderBadge: {
+    borderRadius: radius.pill,
+    backgroundColor: role.fillTertiary,
+    color: role.contentPrimary,
+  },
   branchCount: { flexShrink: 0, fontVariantNumeric: "tabular-nums" },
   spacer: { flex: 1, minWidth: 0 },
 });
@@ -250,7 +256,14 @@ function CommitScopeItems({
   readonly page: number;
 }): ReactElement {
   const [showNextPage, setShowNextPage] = useState(false);
-  const log = useVcsLog({ limit: COMMIT_PAGE_SIZE, cursor }, repository !== undefined);
+  const browsed = useWorkbenchWorkspace();
+
+  const log = useVcsLog(
+    browsed.kind === "ready" ? browsed.workspace.id : undefined,
+    { limit: COMMIT_PAGE_SIZE, cursor },
+    repository !== undefined,
+  );
+
   const commits = log.data?.items ?? [];
   const next = log.data?.next ?? null;
   const hasMore = next !== null && page < MAX_COMMIT_PAGES;
@@ -312,13 +325,29 @@ function branchDescription(branch: BranchReadout): string {
   }
 }
 
-function BranchReadoutChip({ branch }: { readonly branch: BranchReadout }): ReactElement {
-  const description = branchDescription(branch);
+function BranchReadoutChip({
+  branch,
+  folder,
+}: {
+  readonly branch: BranchReadout;
+  readonly folder: string | undefined;
+}): ReactElement {
+  const description =
+    folder === undefined ? branchDescription(branch) : `In ${folder}: ${branchDescription(branch)}`;
 
   return (
-    <span aria-label={description} title={description} {...props(text.sm, styles.branch)}>
-      <Icon name={branch.kind === "detached" ? "git" : "git-branch"} size="xs" />
-      <span {...props(styles.branchLabel)}>{branch.label}</span>
+    <span
+      aria-label={description}
+      title={description}
+      {...props(text.sm, styles.branch, folder !== undefined && styles.folderBadge)}
+    >
+      <Icon
+        name={folder !== undefined ? "folder" : branch.kind === "detached" ? "git" : "git-branch"}
+        size="xs"
+      />
+      <span {...props(styles.branchLabel)}>
+        {folder === undefined ? branch.label : `${folder} · ${branch.label}`}
+      </span>
       {branch.kind === "detached" && <span {...props(text.xs, styles.branchTag)}>detached</span>}
       {branch.kind === "unborn" && <span {...props(text.xs, styles.branchTag)}>no commits</span>}
       {branch.kind === "attached" && branch.ahead > 0 && (
@@ -385,6 +414,7 @@ export function ChangesToolbar({
   onOpenLink,
 }: ChangesToolbarProps): ReactElement {
   const [showAllTurns, setShowAllTurns] = useState(false);
+  const browsed = useWorkbenchWorkspace();
   const mac = nyte.platform === "darwin";
   const scopeKey = changesScopeValue(scope);
   const selectedTurnId = scope.kind === "turn" ? scope.turnId : undefined;
@@ -487,7 +517,14 @@ export function ChangesToolbar({
             </MenuRadioGroup>
           </MenuContent>
         </Menu>
-        {branch !== undefined && <BranchReadoutChip branch={branch} />}
+        {branch !== undefined && (
+          <BranchReadoutChip
+            branch={branch}
+            folder={
+              browsed.kind === "ready" && !browsed.isChatFolder ? browsed.workspace.name : undefined
+            }
+          />
+        )}
         <span {...props(styles.spacer)} />
         <Button
           iconOnly

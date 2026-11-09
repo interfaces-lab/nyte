@@ -2,7 +2,7 @@ import { tabPanes } from "../../test/panes.ts";
 import "../chat/transcript/transcript-render-counter.ts";
 import "../../test/window-bridge.ts";
 import "./panels.deferred.tsx";
-import { CodeView } from "@pierre/diffs/react";
+import { CodeView } from "@nyte-ai/ui/diffs/react";
 import { TooltipProvider } from "@nyte-ai/ui/tooltip";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, RouterContextProvider } from "@tanstack/react-router";
@@ -321,10 +321,9 @@ export async function run(): Promise<string> {
     },
   ] satisfies readonly WorkspaceInfo[]);
   queryClient.setQueryData(keys.mentionFiles(WORKSPACE.id), [FILE]);
-  queryClient.setQueryData(keys.workspaceFile(FILE.path), {
+  queryClient.setQueryData(keys.document(FILE.path), {
     kind: "text",
     path: FILE.path,
-    scope: "workspace",
     mime: "text/plain",
     contents: CONTENTS,
     version: asId<"file-version">("v1"),

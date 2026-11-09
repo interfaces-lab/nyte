@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import type { StorageArea } from "../lib/storage.ts";
-import { FIRST_GROUP } from "./model.ts";
+import { FIRST_GROUP, FOLLOW_BROWSE } from "./model.ts";
 import { createFileTabStore } from "./editor/file-store.ts";
 import { persistable, workbenchPersistence } from "./persistence.ts";
 import { createWorkbenchStore } from "./store.ts";
@@ -25,7 +25,14 @@ function memoryArea(raw: string | null) {
   return { area, writes };
 }
 
-function snapshot(version: 7 | 8, kind: "files" | "editor", active: string) {
+type StoredBrowse = { readonly kind: "follow" | "workspace"; readonly id?: string };
+
+function snapshot(
+  version: 7 | 8,
+  kind: "files" | "editor",
+  active: string,
+  browse: StoredBrowse | undefined,
+) {
   return {
     version,
     views: [
@@ -35,6 +42,7 @@ function snapshot(version: 7 | 8, kind: "files" | "editor", active: string) {
           { id: "files", kind },
           { id: "document-1", kind: "file", path: "/workspace/notes.md", preview: false },
           { id: "document-2", kind: "file", path: "/workspace/src/main.ts", preview: true },
+          { id: "document-3", kind: "file", path: "/other-workspace/notes.md", preview: false },
           {
             id: "canvas-1",
             kind: "canvas",
@@ -58,6 +66,7 @@ function snapshot(version: 7 | 8, kind: "files" | "editor", active: string) {
         expanded: true,
         maximized: true,
         width: 640,
+        browse,
       },
       {
         key: "/other-workspace",
@@ -70,17 +79,23 @@ function snapshot(version: 7 | 8, kind: "files" | "editor", active: string) {
   };
 }
 
+const browsed = { kind: "workspace", id: "workspace-2" } as const;
+
 test.each([
-  { version: 7, kind: "files", active: "files", writes: 1 },
-  { version: 7, kind: "files", active: "document-1", writes: 1 },
-  { version: 8, kind: "editor", active: "files", writes: 0 },
-  { version: 8, kind: "editor", active: "document-1", writes: 0 },
+  { version: 7, kind: "files", active: "files", writes: 1, browse: undefined },
+  { version: 7, kind: "files", active: "document-1", writes: 1, browse: undefined },
+  { version: 8, kind: "editor", active: "files", writes: 0, browse: undefined },
+  { version: 8, kind: "editor", active: "document-1", writes: 0, browse: browsed },
+  { version: 8, kind: "editor", active: "files", writes: 0, browse: FOLLOW_BROWSE },
 ] as const)(
-  "v$version restores $active without changing identities, documents or layout",
+  "v$version restores $active and browse $browse.kind without changing identities, documents or layout",
   (row) => {
-    const storage = memoryArea(JSON.stringify(snapshot(row.version, row.kind, row.active)));
+    const storage = memoryArea(
+      JSON.stringify(snapshot(row.version, row.kind, row.active, row.browse)),
+    );
+
     const persistence = workbenchPersistence(storage.area);
-    const expected = snapshot(8, "editor", row.active);
+    const expected = snapshot(8, "editor", row.active, row.browse);
 
     expect(persistence.get()).toEqual(expected);
     expect(persistence.get()).toEqual(expected);
@@ -97,6 +112,7 @@ test.each([
         { id: "files", kind: "editor" },
         { id: "document-1", kind: "file", path: "/workspace/notes.md", preview: false },
         { id: "document-2", kind: "file", path: "/workspace/src/main.ts", preview: true },
+        { id: "document-3", kind: "file", path: "/other-workspace/notes.md", preview: false },
         {
           id: "canvas-1",
           kind: "canvas",
@@ -120,12 +136,14 @@ test.each([
       expanded: true,
       layout: { kind: "maximized" },
       width: { pixels: 640 },
+      browse: row.browse ?? FOLLOW_BROWSE,
     });
     expect(store.getView("/other-workspace")).toMatchObject({
       active: "other-editor",
       tabs: [{ id: "other-editor", kind: "editor" }],
       expanded: false,
       layout: { kind: "split" },
+      browse: FOLLOW_BROWSE,
     });
     expect(storage.writes).toHaveLength(row.writes);
     expect(storage.area.getItem(KEY)).toBe(JSON.stringify(expected));
@@ -140,7 +158,13 @@ test.each([
 
     const written = persistable(store.getSnapshot());
     persistence.set(written);
-    expect(written).toMatchObject({ version: 8 });
+    expect(written).toMatchObject({
+      version: 8,
+      views: [
+        { key: "/workspace", browse: row.browse ?? FOLLOW_BROWSE },
+        { key: "/other-workspace", browse: FOLLOW_BROWSE },
+      ],
+    });
     expect(workbenchPersistence(storage.area).get()).toEqual(written);
     expect(storage.writes.at(-1)).toEqual({ key: KEY, value: JSON.stringify(written) });
   },
@@ -149,8 +173,15 @@ test.each([
 test.each([
   { name: "missing", raw: null },
   { name: "malformed JSON", raw: "{" },
-  { name: "v7 with an Editor tab", raw: JSON.stringify(snapshot(7, "editor", "files")) },
-  { name: "v8 with a Files tab", raw: JSON.stringify(snapshot(8, "files", "files")) },
+  {
+    name: "v7 with an Editor tab",
+    raw: JSON.stringify(snapshot(7, "editor", "files", undefined)),
+  },
+  { name: "v8 with a Files tab", raw: JSON.stringify(snapshot(8, "files", "files", undefined)) },
+  {
+    name: "v8 browsing a workspace without an id",
+    raw: JSON.stringify(snapshot(8, "editor", "files", { kind: "workspace" })),
+  },
   {
     name: "a strict tab with an unknown field",
     raw: JSON.stringify({
