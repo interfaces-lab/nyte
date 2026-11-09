@@ -1,14 +1,13 @@
 import React from "react";
 import jsxRuntime from "react/jsx-runtime";
 import { afterEach, describe, expect, it } from "vitest";
-import { compileCanvas } from "../src/canvas/canvas-compile.ts";
+import { LIBRARY_EXPORTS, compileCanvas } from "../src/canvas/canvas-compile.ts";
 import {
   CANVAS_CODE_LIMIT,
   CANVAS_GLOBAL,
   CANVAS_RUNTIME,
   CANVAS_SOURCE_LIMIT,
   KIT_SPECIFIER,
-  LIBRARY_EXPORTS,
   locateCanvasStack,
 } from "../src/canvas/canvas-protocol.ts";
 

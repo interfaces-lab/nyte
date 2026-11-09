@@ -9,12 +9,13 @@ import {
   JSX_RUNTIME_EXPORTS,
   KIT_EXPORTS,
   KIT_SPECIFIER,
-  LIBRARY_EXPORTS,
+  LIBRARY_VERSIONS,
   REACT_DOM_EXPORTS,
   REACT_EXPORTS,
   canvasFilesComment,
 } from "./canvas-protocol.ts";
 import type { CanvasFileSpan } from "./canvas-protocol.ts";
+import { CANVAS_LIBRARY_EXPORTS } from "./canvas-libraries.ts";
 
 export type CompileOutcome =
   | { readonly kind: "compiled"; readonly code: string; readonly runtime: number }
@@ -28,6 +29,10 @@ export type CompileError = {
 };
 
 export type CanvasFiles = Readonly<Record<string, string>>;
+
+export const LIBRARY_EXPORTS: Readonly<Record<string, readonly string[]>> = Object.fromEntries(
+  Object.entries(CANVAS_LIBRARY_EXPORTS).map(([name, names]) => [name, names.split(" ")]),
+);
 
 const EXTERNAL = new Map<string, { readonly value: string; readonly names: readonly string[] }>([
   ["react", { value: `globalThis.${CANVAS_GLOBAL}.react`, names: REACT_EXPORTS }],
@@ -46,7 +51,7 @@ const EXTERNAL = new Map<string, { readonly value: string; readonly names: reado
   ),
 ]);
 
-const RUNTIME_2 = new Set(["react-dom", ...Object.keys(LIBRARY_EXPORTS)]);
+const RUNTIME_2 = new Set(["react-dom", ...Object.keys(LIBRARY_VERSIONS)]);
 
 const IMPORTABLE = [...EXTERNAL.keys()]
   .filter((name) => name !== "react/jsx-runtime")

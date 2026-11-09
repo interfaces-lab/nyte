@@ -3,15 +3,16 @@ import { use } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { Sparkline } from "@nyte-ai/ui/chart";
 import { Icon } from "@nyte-ai/ui/icon";
+import { Meter as MeterControl } from "@nyte-ai/ui/meter";
 import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import type { Tint } from "@nyte-ai/ui/surface-theme";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
-import { motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
-import { InsetContext } from "./surface.tsx";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
+import { FlushCardContext } from "./surface.tsx";
 
-export type Tone = "neutral" | "info" | "success" | "warning" | "danger";
+type Tone = "neutral" | "info" | "success" | "warning" | "danger";
 
 const TONES = {
   neutral: null,
@@ -46,7 +47,6 @@ const chip = create({
   neutralDot: { backgroundColor: role.contentTertiary },
 });
 
-/** A short status in a soft wash of its tone; `dot` leads it with a status mark. */
 export function Badge({
   tone = "neutral",
   dot = false,
@@ -64,7 +64,6 @@ export function Badge({
   );
 }
 
-/** Up, down or flat, read from the sign the value is written with. */
 function direction(value: string | number): "up" | "down" | "flat" {
   const written = typeof value === "number" ? Math.sign(value) : value.trim().charAt(0);
 
@@ -75,10 +74,6 @@ function direction(value: string | number): "up" | "down" | "flat" {
   return "flat";
 }
 
-/**
- * A change against a baseline, coloured by whether it's good: up is good unless `invert`, as for a
- * cost. Numbers get their sign written for them.
- */
 export function Delta({
   value,
   invert = false,
@@ -136,7 +131,6 @@ const stat = create({
   toned: { color: role.contentAccent },
 });
 
-/** A labelled number: the label with its delta chip over a large tabular figure and its trend. */
 export function Stat({
   label,
   value,
@@ -174,45 +168,18 @@ export function Stat({
 }
 
 const meter = create({
-  root: { display: "flex", flexDirection: "column", gap: space.s1_5, minWidth: 0 },
   head: { display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: space.s3 },
-  label: {
-    minWidth: 0,
-    color: role.contentSecondary,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
+  label: { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  reading: {
+    display: "flex",
+    alignItems: "baseline",
+    gap: space.s1,
+    marginInlineStart: "auto",
     whiteSpace: "nowrap",
   },
-  value: { color: role.contentPrimary, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" },
   detail: { color: role.contentTertiary },
-  track: {
-    height: space.s1_5,
-    overflow: "hidden",
-    borderRadius: radius.pill,
-    backgroundColor: role.fillTertiary,
-  },
-  fill: (share: number) => ({
-    width: `${String(share * 100)}%`,
-    height: "100%",
-    borderRadius: radius.pill,
-    backgroundColor: role.chartSeries,
-    transitionProperty: "width",
-    transitionDuration: {
-      default: motion.durationSlow,
-      "@media (prefers-reduced-motion: reduce)": "0s",
-    },
-    transitionTimingFunction: motion.easeOutQuint,
-  }),
 });
 
-const METER_TONES = {
-  primary: surfaceTheme.blue,
-  success: intent.success,
-  warning: intent.warning,
-  danger: intent.danger,
-} as const;
-
-/** A share of a whole: label and percentage over a 6px rounded track; `detail` names the units. */
 export function Meter({
   value,
   max = 100,
@@ -226,32 +193,29 @@ export function Meter({
   readonly detail?: ReactNode;
   readonly tone?: "primary" | "success" | "warning" | "danger";
 }): ReactElement {
-  const share = max <= 0 ? 0 : Math.min(Math.max(value / max, 0), 1);
-  const percent = `${String(Math.round(share * 100))}%`;
-
   return (
-    <div
-      role="meter"
-      aria-valuenow={value}
-      aria-valuemin={0}
-      aria-valuemax={max}
-      aria-valuetext={percent}
-      aria-label={label ?? "Meter"}
-      {...props(meter.root)}
+    <MeterControl.Root
+      value={value}
+      max={max}
+      aria-label={label === undefined ? "Meter" : undefined}
     >
       {label === undefined && detail === undefined ? null : (
-        <div {...props(text.sm, meter.head)}>
-          <span {...props(meter.label)}>{label}</span>
-          <span {...props(meter.value)}>
-            {detail === undefined ? null : <span {...props(meter.detail)}>{detail} · </span>}
-            {percent}
+        <div {...props(meter.head)}>
+          {label === undefined ? null : (
+            <MeterControl.Label xstyle={meter.label}>{label}</MeterControl.Label>
+          )}
+          <span {...props(meter.reading)}>
+            {detail === undefined ? null : (
+              <span {...props(text.sm, meter.detail)}>{detail} ·</span>
+            )}
+            <MeterControl.Value />
           </span>
         </div>
       )}
-      <div {...props(METER_TONES[tone], meter.track)}>
-        <div {...props(meter.fill(share))} />
-      </div>
-    </div>
+      <MeterControl.Track>
+        <MeterControl.Indicator xstyle={tone === "primary" ? undefined : intent[tone]} />
+      </MeterControl.Track>
+    </MeterControl.Root>
   );
 }
 
@@ -294,17 +258,13 @@ const table = create({
   }),
 });
 
-export type Column = {
+type Column = {
   readonly key: string;
   readonly label: ReactNode;
   readonly align?: "start" | "end";
   readonly width?: number | string;
 };
 
-/**
- * Rows of facts. The edge cells sit on the content edge, so text lines up with the prose around the
- * table; inside a Card with no padding they move in to the card's 16px.
- */
 export function Table({
   columns,
   rows,
@@ -314,7 +274,7 @@ export function Table({
   readonly rows: readonly Readonly<Record<string, ReactNode>>[];
   readonly caption?: string;
 }): ReactElement {
-  const inset = use(InsetContext);
+  const inset = use(FlushCardContext);
 
   const edge = (index: number) => [
     index === 0 && (inset ? table.firstInset : table.first),
@@ -394,13 +354,12 @@ const list = create({
   },
 });
 
-/** Labelled facts, one per row: the label at the start, its value at the end, a hairline between. */
 export function KeyValue({
   items,
 }: {
   readonly items: readonly { readonly label: ReactNode; readonly value: ReactNode }[];
 }): ReactElement {
-  const inset = use(InsetContext);
+  const inset = use(FlushCardContext);
 
   return (
     <dl {...props(text.base, list.root)}>
@@ -432,7 +391,6 @@ const diff = create({
   painted: { backgroundColor: role.chartSeries },
 });
 
-/** Lines added and removed, with five blocks split between them as GitHub draws it. */
 export function DiffStat({
   added,
   removed,
@@ -442,6 +400,7 @@ export function DiffStat({
 }): ReactElement {
   const total = added + removed;
   const green = total === 0 ? 0 : Math.round((added / total) * DIFF_BLOCKS);
+
   const red =
     total === 0 ? 0 : Math.min(DIFF_BLOCKS - green, Math.round((removed / total) * DIFF_BLOCKS));
 
@@ -508,7 +467,6 @@ const bars = create({
   value: { color: role.contentSecondary, fontVariantNumeric: "tabular-nums", textAlign: "end" },
 });
 
-/** A ranked list: each label sits on a bar as long as its share of the largest value. */
 export function BarList({
   data,
   format = (value) => value.toLocaleString(),

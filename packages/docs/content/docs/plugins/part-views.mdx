@@ -71,6 +71,7 @@ A view runs in a sandboxed frame, not in Node, so it can import only:
 - `react`, `react/jsx-runtime` and `react-dom`
 - `nyte/canvas`, the component kit below
 - `three`, `d3-array`, `d3-scale`, `d3-shape`, `d3-hierarchy` and `d3-force`
+- nivo's chart packages, such as `@nivo/line`, `@nivo/heatmap` and `@nivo/treemap`. Pass `useNivoTheme()` from the kit to each chart so it follows the user's theme.
 - its own files, by relative path, inside the view's folder
 
 Import the part definition, or anything else, with `import type` only. The host strips type imports
@@ -97,6 +98,7 @@ fonts.
 | `BarList`, `Steps`, `Tracker`                                           | A ranked list, an ordered walk, one cell per run            |
 | `LineChart`, `BarChart`, `PieChart`                                     | Charts with axes and a readout                              |
 | `Sparkline`, `StackedBars`                                              | Small charts without axes                                   |
+| `useNivoTheme()`                                                        | Returns the kit's nivo `theme` and series `colors`          |
 | `Button`, `Checkbox`, `Switch`, `Slider`                                | Controls                                                    |
 | `Select`, `SelectTrigger`, `SelectValue`, `SelectContent`, `SelectItem` | A dropdown                                                  |
 | `ToggleGroup`, `Toggle`, `Tabs`                                         | Grouped choices and tabs                                    |

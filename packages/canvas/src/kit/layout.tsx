@@ -1,7 +1,9 @@
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement, ReactNode } from "react";
+import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
-import { role } from "@nyte-ai/ui/styles/vars.stylex";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 export type Gap = 0 | 1 | 2 | 3 | 4 | 6;
 
@@ -120,4 +122,135 @@ const divider = create({
 
 export function Divider(): ReactElement {
   return <hr {...props(divider.line)} />;
+}
+
+const SIDE_BY_SIDE = "@container (min-width: 600px)";
+
+const panes = create({
+  root: { containerType: "inline-size", minWidth: 0 },
+  grid: { position: "relative", display: "grid", minWidth: 0 },
+  layout: (columns: string, rows: string, areas: string) => ({
+    gridTemplateColumns: { default: "minmax(0, 1fr)", [SIDE_BY_SIDE]: columns },
+    gridTemplateRows: { default: "none", [SIDE_BY_SIDE]: rows },
+    gridTemplateAreas: { default: "none", [SIDE_BY_SIDE]: areas },
+  }),
+});
+
+export function Panes({
+  areas,
+  rows,
+  children,
+}: {
+  readonly areas: readonly string[];
+  readonly rows?: readonly (number | "auto")[];
+  readonly children?: ReactNode;
+}): ReactElement {
+  const columns = areas[0]?.trim().split(/\s+/u).length ?? 1;
+
+  return (
+    <div {...props(panes.root)}>
+      <div
+        {...props(
+          panes.grid,
+          hairline.startsAfter,
+          panes.layout(
+            `repeat(${String(columns)}, minmax(0, 1fr))`,
+            areas
+              .map((_row, index) => {
+                const height = rows?.[index] ?? "auto";
+
+                return height === "auto" ? "auto" : `${String(height)}px`;
+              })
+              .join(" "),
+            areas.map((row) => `"${row}"`).join(" "),
+          ),
+        )}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+const pane = create({
+  root: {
+    position: "relative",
+    display: "flex",
+    flexDirection: "column",
+    minWidth: 0,
+    minHeight: 0,
+  },
+  place: (area: string, height: string) => ({
+    gridArea: { default: "auto", [SIDE_BY_SIDE]: area },
+    height: { default: height, [SIDE_BY_SIDE]: "auto" },
+  }),
+  head: {
+    display: "flex",
+    alignItems: "center",
+    gap: space.s2,
+    flexShrink: 0,
+    minWidth: 0,
+    minHeight: space.s6,
+    paddingInline: space.s2,
+    backgroundColor: role.bgMutedTranslucent,
+    color: role.contentSecondary,
+  },
+  title: {
+    minWidth: 0,
+    fontWeight: type.weightMedium,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  actions: {
+    display: "flex",
+    alignItems: "center",
+    gap: space.s2,
+    flexShrink: 0,
+    marginInlineStart: "auto",
+    color: role.contentTertiary,
+  },
+  body: {
+    flexGrow: 1,
+    minWidth: 0,
+    minHeight: 0,
+    overflow: "hidden",
+    paddingBlock: space.s1_5,
+    paddingInline: space.s2,
+  },
+  flush: { padding: 0 },
+});
+
+export function Pane({
+  area,
+  title,
+  actions,
+  flush = false,
+  height,
+  children,
+}: {
+  readonly area: string;
+  readonly title?: ReactNode;
+  readonly actions?: ReactNode;
+  readonly flush?: boolean;
+  readonly height?: number;
+  readonly children?: ReactNode;
+}): ReactElement {
+  return (
+    <section
+      {...props(
+        pane.root,
+        hairline.endsAfter,
+        pane.place(area, height === undefined ? "auto" : `${String(height)}px`),
+      )}
+    >
+      {title === undefined && actions === undefined ? null : (
+        <header {...props(text.xs, pane.head, hairline.blockEnd)}>
+          <span {...props(pane.title)}>{title}</span>
+          {actions === undefined ? null : <span {...props(pane.actions)}>{actions}</span>}
+        </header>
+      )}
+      <div {...props(pane.body, flush && pane.flush)}>{children}</div>
+    </section>
+  );
 }

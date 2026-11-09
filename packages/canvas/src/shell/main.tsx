@@ -3,7 +3,7 @@ import "@nyte-ai/ui/styles/tokens.stylex";
 import React, { Component, StrictMode } from "react";
 import type { ComponentType, ErrorInfo, ReactElement, ReactNode } from "react";
 import jsxRuntime from "react/jsx-runtime";
-import { createPortal, flushSync } from "react-dom";
+import ReactDom from "react-dom";
 import { createRoot } from "react-dom/client";
 import { create, props } from "@stylexjs/stylex";
 import { applyDisplayMode, applyTint } from "@nyte-ai/ui/appearance";
@@ -116,7 +116,7 @@ Object.defineProperty(globalThis, CANVAS_GLOBAL, {
     runtime: CANVAS_RUNTIME,
     react: React,
     jsxRuntime,
-    reactDom: { createPortal, flushSync },
+    reactDom: ReactDom,
     kit,
     library,
   },

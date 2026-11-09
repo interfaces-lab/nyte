@@ -9,8 +9,7 @@ import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role, shadow, type } from "@nyte-ai/ui/styles/vars.stylex";
 
-/** True inside a Card with no padding, so a Table or KeyValue there keeps its edge cells off the frame. */
-export const InsetContext = createContext(false);
+export const FlushCardContext = createContext(false);
 
 const card = create({
   root: {
@@ -51,10 +50,6 @@ const card = create({
   4: { padding: space.s4 },
 });
 
-/**
- * A raised surface. The title sits inside the body instead of over a rule; a card with no padding
- * holds edge-to-edge content (a table, a list), so only there the header takes a rule.
- */
 export function Card({
   title,
   description,
@@ -84,7 +79,7 @@ export function Card({
         </header>
       ) : null}
       <div {...props(card.body, card[padding], titled && padding !== 0 && card.titled)}>
-        <InsetContext value={padding === 0}>{children}</InsetContext>
+        <FlushCardContext value={padding === 0}>{children}</FlushCardContext>
       </div>
     </section>
   );
@@ -110,7 +105,6 @@ const section = create({
   actions: { display: "flex", alignItems: "center", gap: space.s1, flexShrink: 0 },
 });
 
-/** A titled group: heading, an optional line under it and actions at the end, then the content. */
 export function Section({
   title,
   description,
@@ -174,7 +168,6 @@ const callout = create({
   body: { gridColumn: 2, minWidth: 0, color: role.contentSecondary },
 });
 
-/** A note in the reading flow: the tone's glyph on the first line, a tinted wash, no border. */
 export function Callout({
   tone = "info",
   title,
@@ -234,7 +227,6 @@ const code = create({
   },
 });
 
-/** Inline code, or a block in a quiet frame headed by the file it came from. */
 export function Code({
   block = false,
   title,

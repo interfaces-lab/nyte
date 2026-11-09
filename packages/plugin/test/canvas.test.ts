@@ -1,7 +1,7 @@
 import { isPart } from "@nyte-ai/core";
 import { expect, it } from "vitest";
 import canvasPlugin, { CANVAS_DESCRIPTION, canvas } from "../src/canvas/canvas.ts";
-import { KIT_EXPORTS, KIT_SPECIFIER, LIBRARY_EXPORTS } from "../src/canvas/canvas-protocol.ts";
+import { KIT_EXPORTS, KIT_SPECIFIER, LIBRARY_VERSIONS } from "../src/canvas/canvas-protocol.ts";
 import { fakeModels, open, until } from "./fake-models.ts";
 
 const first = `import { Text } from "${KIT_SPECIFIER}";\nexport default () => <Text>1</Text>;`;
@@ -129,7 +129,7 @@ it("describes the tool with every kit export, every import and the libraries", (
     `Imports: \`react\`, \`react-dom\` (\`createPortal\` and \`flushSync\` only), \`${KIT_SPECIFIER}\`, the canvas's own files`,
   );
 
-  for (const name of Object.keys(LIBRARY_EXPORTS))
+  for (const name of Object.keys(LIBRARY_VERSIONS))
     expect(CANVAS_DESCRIPTION).toContain(`\`${name}\` `);
   expect(CANVAS_DESCRIPTION).toContain("`eval` and `new Function` are unavailable");
 

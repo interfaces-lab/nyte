@@ -109,6 +109,19 @@ const theme = {
   axis: { ticks: { line: { strokeWidth: 0 } }, domain: { line: { strokeWidth: 0 } } },
   grid: { line: { stroke: role.strokeTertiary, strokeWidth: 1 } },
   crosshair: { line: { stroke: role.strokeSecondary, strokeWidth: 1, strokeOpacity: 1 } },
+  tooltip: {
+    container: {
+      paddingBlock: space.s1_5,
+      paddingInline: space.s2,
+      borderRadius: radius.control,
+      background: role.bgElevated,
+      boxShadow: shadow.shadowMdOutline,
+      color: role.contentPrimary,
+      fontFamily: type.fontSans,
+      fontSize: type.fontXs,
+      fontVariantNumeric: "tabular-nums",
+    },
+  },
 };
 
 const MARGIN = { top: 10, right: 12, bottom: 28, left: 48 };
@@ -121,6 +134,12 @@ function usePaint(): (tint: Tint) => string {
 }
 
 const tintAt = (index: number): Tint => HUES[index % HUES.length] ?? "blue";
+
+export function useNivoTheme(): { readonly theme: typeof theme; readonly colors: string[] } {
+  const paint = usePaint();
+
+  return { theme, colors: HUES.map(paint) };
+}
 
 type Measure = (label: string) => number;
 

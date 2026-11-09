@@ -1,4 +1,4 @@
-import { CANVAS_LIBRARIES } from "./canvas-libraries.ts";
+import { CANVAS_LIBRARY_VERSIONS } from "./canvas-libraries.ts";
 
 export const CANVAS_RUNTIME = 2;
 
@@ -68,23 +68,17 @@ export const JSX_RUNTIME_EXPORTS = ["Fragment", "jsx", "jsxs"] as const;
 
 export const REACT_DOM_EXPORTS = ["createPortal", "flushSync"] as const;
 
-export const LIBRARY_EXPORTS: Readonly<Record<string, readonly string[]>> = Object.fromEntries(
-  Object.entries(CANVAS_LIBRARIES).map(([name, library]) => [name, library.exports.split(" ")]),
-);
+export type CanvasLibrary = keyof typeof CANVAS_LIBRARY_VERSIONS;
 
-export type CanvasLibrary = keyof typeof CANVAS_LIBRARIES;
-
-const CANVAS_LIBRARY_NAMES = Object.keys(CANVAS_LIBRARIES).filter((name): name is CanvasLibrary =>
-  Object.hasOwn(CANVAS_LIBRARIES, name),
+const CANVAS_LIBRARY_NAMES = Object.keys(CANVAS_LIBRARY_VERSIONS).filter(
+  (name): name is CanvasLibrary => Object.hasOwn(CANVAS_LIBRARY_VERSIONS, name),
 );
 
 export function readCanvasLibrary(value: unknown): CanvasLibrary | undefined {
   return CANVAS_LIBRARY_NAMES.find((name) => name === value);
 }
 
-export const LIBRARY_VERSIONS: Readonly<Record<string, string>> = Object.fromEntries(
-  Object.entries(CANVAS_LIBRARIES).map(([name, library]) => [name, library.version]),
-);
+export const LIBRARY_VERSIONS: Readonly<Record<string, string>> = CANVAS_LIBRARY_VERSIONS;
 
 const FILES_COMMENT = /^\/\*nyte-canvas-files:(\[[^\n]*?\])\*\//u;
 
@@ -147,6 +141,9 @@ export const KIT = {
     '{ direction?: "row" | "column" = "column", gap?: 0 | 1 | 2 | 3 | 4 | 6 = 2 (×4 px), align?: "start" | "center" | "end" | "stretch", justify?: "start" | "center" | "end" | "between", wrap?: boolean, children }: flex layout',
   Grid: '{ columns?: number | "auto" = "auto", minWidth?: number = 160 (px, with "auto"), gap?: 0 | 1 | 2 | 3 | 4 | 6 = 2, children }: equal columns',
   Divider: "{}: a hairline",
+  Panes:
+    '{ areas: string[], rows?: (number | "auto")[], children: Pane[] }: panes split by hairlines, with no cards, for a dense dashboard. Each string in `areas` is a row of space-separated pane names, as in CSS `grid-template-areas`; `rows` gives each row a height in px. Below 600 px wide the panes stack in source order',
+  Pane: "{ area: string, title?: ReactNode, actions?: ReactNode, flush?: boolean, height?: number, children }: one pane of Panes, with a small header when it has a title or actions. `flush` drops the padding for a chart or list that runs to the edges; `height` is its height in px once the panes stack, which a chart that fills its pane needs",
   Heading: "{ level?: 1 | 2 | 3 = 2, children }",
   Text: '{ size?: "xs" | "sm" | "base" | "lg", tone?: "primary" | "secondary" | "tertiary", weight?: "normal" | "medium" | "semibold", mono?: boolean, truncate?: boolean, align?: "start" | "center" | "end", children }',
   Code: "{ block?: boolean, title?: string, children: string }: monospace, inline or a block; `title` heads a block with the file it came from",
@@ -186,6 +183,8 @@ export const KIT = {
     '{ data: Record<string, number | string>[], keys: (string | { key: string, label?: string, tint?: Tint })[], indexBy: string, height?: number = 240, layout?: "vertical" | "horizontal", mode?: "grouped" | "stacked" = "stacked", valueFormat?: (value: number) => string, legend?: boolean }: a full chart with axes and a readout with the total',
   PieChart:
     "{ data: { id: string, value: number, label?: string, tint?: Tint }[], height?: number = 240, donut?: boolean, valueFormat?: (value: number) => string, legend?: boolean }",
+  useNivoTheme:
+    "(): { theme, colors: string[] }: the kit charts' nivo theme and series colours for the user's theme, to pass to charts imported from `@nivo/*`",
   Button:
     '{ variant?: "solid" | "outline" | "ghost", pill?: boolean, size?: "2xs" | "xs" | "sm" | "md" | "lg" | "xl", tone?: "neutral" | "primary" | "success" | "warning" | "danger", loading?: boolean, disabled?: boolean, onClick, children }',
   Tabs: "Tabs.Root { value?, defaultValue?, onValueChange? } > Tabs.List { children: Tabs.Tab { value, children }[] } + Tabs.Panel { value, children }: segmented tabs, only to compare views of one subject",

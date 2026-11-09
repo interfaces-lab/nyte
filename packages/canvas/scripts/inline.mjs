@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile, readdir, writeFile } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { CANVAS_RUNTIME, LIBRARY_EXPORTS } from "@nyte-ai/plugin/canvas/protocol";
+import { CANVAS_RUNTIME, LIBRARY_VERSIONS } from "@nyte-ai/plugin/canvas/protocol";
 import { build } from "vite";
 
 const dist = fileURLToPath(new URL("../dist/", import.meta.url));
@@ -58,7 +58,7 @@ const inlined = html
 
 const libraries = {};
 
-for (const name of Object.keys(LIBRARY_EXPORTS)) {
+for (const name of Object.keys(LIBRARY_VERSIONS)) {
   const output = await build({
     configFile: fileURLToPath(new URL("../vite.libraries.config.ts", import.meta.url)),
     logLevel: "warn",

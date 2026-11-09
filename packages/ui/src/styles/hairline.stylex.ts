@@ -44,6 +44,28 @@ export const hairline = create({
         "linear-gradient(CanvasText, CanvasText) 1 / 0 calc(var(--_hairline-inline-end) * max(0, var(--_hairline-dir))) var(--_hairline-block-end) calc(var(--_hairline-inline-end) * max(0, -1 * var(--_hairline-dir))) / 0 stretch",
     },
   },
+  startsAfter: {
+    "::after": {
+      content: '""',
+      position: "absolute",
+      inset: 0,
+      borderBlockStartWidth: 1,
+      borderInlineStartWidth: 1,
+      borderColor: { default: role.strokeQuaternary, [media.forcedColors]: "CanvasText" },
+      pointerEvents: "none",
+    },
+  },
+  endsAfter: {
+    "::after": {
+      content: '""',
+      position: "absolute",
+      inset: 0,
+      borderBlockEndWidth: 1,
+      borderInlineEndWidth: 1,
+      borderColor: { default: role.strokeQuaternary, [media.forcedColors]: "CanvasText" },
+      pointerEvents: "none",
+    },
+  },
   ringAfter: {
     boxShadow: ELEVATION,
     "::after": {

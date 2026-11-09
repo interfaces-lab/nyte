@@ -2,11 +2,10 @@ import { readdir } from "node:fs/promises";
 import React from "react";
 import ReactDom from "react-dom";
 import jsxRuntime from "react/jsx-runtime";
-import { compileCanvas } from "@nyte-ai/plugin/core/canvas-compile";
+import { LIBRARY_EXPORTS, compileCanvas } from "@nyte-ai/plugin/core/canvas-compile";
 import {
   JSX_RUNTIME_EXPORTS,
   KIT_EXPORTS,
-  LIBRARY_EXPORTS,
   LIBRARY_VERSIONS,
   REACT_DOM_EXPORTS,
   REACT_EXPORTS,

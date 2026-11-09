@@ -63,10 +63,6 @@ const steps = create({
   },
 });
 
-/**
- * An ordered walk through a process: numbered markers on a rail, a title, the explanation and any
- * meta (a file link, a badge) under it. `status` marks done and current steps.
- */
 export function Steps({
   items,
 }: {
@@ -141,7 +137,6 @@ const tracker = create({
   idle: { backgroundColor: role.fillSecondary },
 });
 
-/** One cell per run, check or day, coloured by how it went; each names itself on hover. */
 export function Tracker({
   data,
   label,
@@ -210,7 +205,6 @@ const link = create({
   symbol: { color: role.contentTertiary, fontWeight: type.weightRegular },
 });
 
-/** A file in the workspace, drawn like the transcript's file mention and opened at a line. */
 export function FileLink({
   path,
   line,
@@ -236,7 +230,6 @@ const tabs = create({
   list: { width: "fit-content", maxWidth: "100%" },
 });
 
-/** Segmented tabs that hug their labels at the start, with the panel 12px under them. */
 export const Tabs = {
   Root: (rootProps: Omit<ComponentProps<typeof UiTabs.Root>, "variant" | "xstyle">) => (
     <UiTabs.Root {...rootProps} variant="segmented" xstyle={tabs.root} />
