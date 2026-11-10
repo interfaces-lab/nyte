@@ -22,7 +22,10 @@ serveHostThread({
     worker: new URL("./image-worker.js", import.meta.url),
     wasm: fileURLToPath(new URL("./photon_rs_bg.wasm", import.meta.url)),
   },
-  docs: Object.fromEntries(
-    Object.entries(pages).map(([path, text]) => [path.slice(DOCS.length), text]),
-  ),
+  docs: {
+    kind: "files",
+    files: Object.fromEntries(
+      Object.entries(pages).map(([path, text]) => [path.slice(DOCS.length), text]),
+    ),
+  },
 });

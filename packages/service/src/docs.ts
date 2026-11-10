@@ -9,8 +9,17 @@ import { hostDocsPath } from "./host-endpoint.ts";
 
 export type DocsFiles = Readonly<Record<string, string>>;
 
+/** A checkout's docs are read where they are; a compiled binary carries its own to write out. */
+export type DocsSource =
+  | { readonly kind: "folder"; readonly path: string }
+  | { readonly kind: "files"; readonly files: DocsFiles };
+
+export function checkoutDocsPath(): string {
+  return fileURLToPath(new URL("../../docs/content/docs", import.meta.url));
+}
+
 export function readCheckoutDocs(): DocsFiles {
-  const root = fileURLToPath(new URL("../../docs/content/docs/", import.meta.url));
+  const root = checkoutDocsPath();
 
   return Object.fromEntries(
     readdirSync(root, { recursive: true, withFileTypes: true })

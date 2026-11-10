@@ -21,7 +21,7 @@ import { dev, sdk } from "@nyte-ai/sdk";
 import type { Host } from "@nyte-ai/sdk";
 import { readConnectConfig } from "./connect-config.ts";
 import { docsPlugin, syncDocs } from "./docs.ts";
-import type { DocsFiles } from "./docs.ts";
+import type { DocsSource } from "./docs.ts";
 import { openFaultLog } from "./fault-log.ts";
 import { hostFaultsPath } from "./host-endpoint.ts";
 import { hostMessages } from "./host-thread.ts";
@@ -34,7 +34,7 @@ export interface HostWorkerRuntime {
   readonly codemode: Pick<CodemodeSandboxOptions, "workerUrl" | "wasm">;
   readonly images: NodeImagesOptions;
   readonly pluginImport?: PluginImport;
-  readonly docs: DocsFiles;
+  readonly docs: DocsSource;
 }
 
 interface Opened {
@@ -173,7 +173,9 @@ async function openLocalHost(
   if (process.env.NYTE_DEV_LOG !== undefined) dev.forward(process.env.NYTE_DEV_LOG, runtime.source);
   const preview = chromiumCanvasPreview(files);
   const clients = command.socket !== undefined;
-  const docs = await syncDocs(runtime.docs);
+
+  const docs =
+    runtime.docs.kind === "folder" ? runtime.docs.path : await syncDocs(runtime.docs.files);
 
   return sdk.open({
     plugins: [
