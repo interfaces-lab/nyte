@@ -247,9 +247,13 @@ export function SessionRowView({
             onValueChange={setDraftName}
             onBlur={commitRename}
             onKeyDown={(event) => {
+              if (event.key !== "Enter" && event.key !== "Escape") return;
+
               if (event.key === "Enter") commitRename();
 
               if (event.key === "Escape") setDraftName(undefined);
+
+              requestAnimationFrame(() => returnFocus.current?.focus());
             }}
           />
         </Row.Label>
@@ -299,6 +303,7 @@ export function SessionRowView({
     >
       {selected && <Row.Backdrop xstyle={styles.sessionSelection} />}
       <Row.Primary
+        ref={returnFocus}
         xstyle={unreachable && styles.sessionUnreachable}
         aria-current={selected ? "page" : undefined}
         onClick={(event) => onOpen(openIntent(event))}

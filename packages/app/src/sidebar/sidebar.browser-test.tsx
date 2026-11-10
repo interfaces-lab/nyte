@@ -382,10 +382,14 @@ async function doubleClickRenames(): Promise<void> {
   press(field, "Escape");
   await until(() => label("Quiet chat") !== undefined, "Escape to cancel");
   check(!updates.some((update) => update.includes("Something else")), "Escape saves nothing");
+  await painted();
+  check(document.activeElement === primary("Quiet chat"), "Escape returns focus to the row");
   const again = await startRename("Quiet chat");
   setValue(again, "Renamed chat");
   press(again, "Enter");
   await until(() => updates.includes('Quiet chat:{"name":"Renamed chat"}'), "the rename to save");
+  await painted();
+  check(document.activeElement === primary("Quiet chat"), "Enter returns focus to the row");
 }
 
 function archiveWorkingChat(): void {

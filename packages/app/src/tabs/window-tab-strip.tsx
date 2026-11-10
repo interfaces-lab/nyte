@@ -263,9 +263,13 @@ function TabView({
               onKeyDown={(event) => {
                 event.stopPropagation();
 
+                if (event.key !== "Enter" && event.key !== "Escape") return;
+
                 if (event.key === "Enter") commitRename();
 
                 if (event.key === "Escape") setRename(undefined);
+
+                requestAnimationFrame(() => returnFocus.current?.focus());
               }}
             />
           </span>
