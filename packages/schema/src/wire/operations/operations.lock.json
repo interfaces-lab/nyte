@@ -1,7 +1,7 @@
 {
-  "revision": 21,
+  "revision": 22,
   "operations": {
-    "connection.watch": "a3fc0d5a93907590",
+    "connection.watch": "17957128114e6a29",
     "connection.blob": "d661f9695af8afc2",
     "catalogs.read": "f19aae90f2575f24",
     "operations.describe": "b17e90a432520966",

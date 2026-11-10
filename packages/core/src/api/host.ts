@@ -1,4 +1,4 @@
-import type { Authority, HostView, PrincipalId } from "@nyte-ai/schema";
+import type { Authority, HostRoute, HostView, PrincipalId, TailnetStatus } from "@nyte-ai/schema";
 import type { HostState, HostViewFields } from "../contract/host.ts";
 import type { Kernel } from "../contract/kernel.ts";
 import { closable, coalesce, latest } from "../util/iterable.ts";
@@ -84,6 +84,7 @@ export function watchHost(
             projects: fields.projects,
             authority: input.authority,
             tailnet: input.authority.has("owner") ? fields.tailnet : undefined,
+            routes: hostRoutes(fields.tailnet),
           },
         };
       },
@@ -92,4 +93,15 @@ export function watchHost(
       },
     };
   });
+}
+
+function hostRoutes(tailnet: TailnetStatus | undefined): readonly HostRoute[] {
+  if (
+    tailnet?.state !== "running" ||
+    tailnet.https !== "available" ||
+    tailnet.dnsName === undefined
+  )
+    return [];
+
+  return [{ kind: "tailnet", url: `https://${tailnet.dnsName.replace(/\.$/u, "")}` }];
 }

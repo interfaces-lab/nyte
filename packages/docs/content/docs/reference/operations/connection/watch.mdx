@@ -487,6 +487,22 @@ Only the [errors every operation can raise](/docs/reference/operations#errors).
           "type": "string"
         }
       }
+    },
+    "routes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "url"],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "tailnet"
+          },
+          "url": {
+            "type": "string"
+          }
+        }
+      }
     }
   },
   "$defs": {

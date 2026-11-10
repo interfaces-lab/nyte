@@ -13,6 +13,13 @@ import type { Decoded, Schema } from "./schema.ts";
 import { SettingInfoType } from "./sessions.ts";
 import { nullable } from "./wire/nullable.ts";
 
+export const HostRouteType = Type.Object({
+  kind: Type.Literal("tailnet"),
+  url: Type.String(),
+});
+
+export type HostRoute = Decoded<typeof HostRouteType>;
+
 export const HostViewWireType = Type.Object({
   id: idSchema<"host">(),
   link: Type.Union([
@@ -55,6 +62,8 @@ export const HostViewWireType = Type.Object({
   authority: Type.Array(AuthorityType),
   principal: idSchema<"principal">(),
   tailnet: Type.Optional(TailnetStatusType),
+  /** Other addresses that reach this host. Sent to every authority, unlike `tailnet`; hosts before API revision 22 omit it. */
+  routes: Type.Optional(Type.Array(HostRouteType)),
 });
 
 export type HostViewWire = Decoded<typeof HostViewWireType>;

@@ -52,6 +52,8 @@ const LOG_CAP_BYTES = 1024 * 1024;
 
 const PARTICIPANT: ReadonlySet<Authority> = new Set<Authority>(["participant"]);
 
+const WEB_APP_ORIGINS = ["https://app.nyte.sh"];
+
 const settingsCheck = compile(TailnetSettingsType);
 
 const statusCheck = compile(TailnetStatusType);
@@ -125,7 +127,8 @@ export async function openTailnet(options: {
           ? `tailscale:node:${principal.node}`
           : `tailscale:user:${principal.userId}`,
       ),
-      authority: principal.owner ? TOKEN_AUTHORITY : PARTICIPANT,
+      authority:
+        principal.owner && request.headers.get("Origin") === null ? TOKEN_AUTHORITY : PARTICIPANT,
     };
   };
 
@@ -135,6 +138,7 @@ export async function openTailnet(options: {
     const listener = await listenFetch(options.host, {
       transport: { kind: "fetch" },
       auth: { kind: "custom", authorize },
+      origins: WEB_APP_ORIGINS,
       execution: { kind: "admit-only" },
     });
 

@@ -366,6 +366,7 @@ describe("watch", () => {
       defaultWorkspace: null,
       projects: [],
       authority,
+      routes: [],
     });
 
     kernel.host.update({ catalog: asId("g2") });
