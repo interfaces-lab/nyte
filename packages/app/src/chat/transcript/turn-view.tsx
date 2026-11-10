@@ -50,12 +50,9 @@ import {
   uploadComposerContent,
 } from "../composer/composer-send.ts";
 import { composerSource } from "../composer/composer-suggestions.tsx";
-import { ImagePreview } from "../markdown/image-preview.tsx";
-import { UserMessageText, messageFiles, messageImages } from "./message-content.tsx";
+import { BlobImage, UserMessageText, messageFiles, messageImages } from "./message-content.tsx";
 import type { MessageFile } from "./message-content.tsx";
 import { contentDraftText } from "../../references/message-references.ts";
-import { useBlobUrl } from "../../lib/use-blob-url.ts";
-import { connection } from "../../data/connection.ts";
 import { forkChat } from "../../data/session-actions.ts";
 import { ModelPicker } from "../composer/model-picker.tsx";
 import type { ModelPickerChange } from "../composer/model-picker.tsx";
@@ -138,12 +135,6 @@ function UserMessagePreview({
       )}
     </>
   );
-}
-
-function BlobImage({ file }: { file: MessageFile }): ReactElement | null {
-  const src = useBlobUrl(["blob", file.blob], () => connection().blob(file.blob)).data;
-
-  return src === undefined ? null : <ImagePreview src={src} name={file.name} />;
 }
 
 function UserMessageImages({ content }: { content: UserContent }): ReactElement | null {
@@ -422,6 +413,13 @@ export function UserMessageView({
               mentionFiles={composerSource(mentions.data, mentions.isError)}
               hasConversationContext
               attachments={edit.attachments}
+              keptFiles={edit.kept}
+              onKeptFileRemove={(file) =>
+                patchEdit((current) => ({
+                  ...current,
+                  kept: current.kept.filter((kept) => kept !== file),
+                }))
+              }
               attachmentBusy={edit.attachmentReads !== 0}
               attachmentError={edit.attachmentError}
               onFilesSelected={addFiles}

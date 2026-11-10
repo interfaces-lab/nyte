@@ -8,6 +8,8 @@ import type { CommandCompletion, Delivery } from "@nyte-ai/sdk";
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
+import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
+import { FileTypeIcon } from "@nyte-ai/ui/file-type-icon";
 import { nyte } from "../../contract/nyte.ts";
 import { clientActionAriaShortcut, clientActions } from "../../contract/client-actions.ts";
 import type { RunningMessagePreference } from "../../preferences/index.ts";
@@ -35,6 +37,8 @@ import type { MessageReference } from "../../references/message-references.ts";
 import { composerStyles } from "./composer.stylex.ts";
 import { ComposerPicker } from "./model-picker.tsx";
 import type { ComposerFile } from "../../references/composer-file-drop.ts";
+import { BlobImage } from "../transcript/message-content.tsx";
+import type { MessageFile } from "../transcript/message-content.tsx";
 
 const DROP_PLACEHOLDER = "Drop here to attach…";
 
@@ -81,6 +85,8 @@ interface ComposerFrameProps {
   mentionFiles: ComposerMentionFiles;
   hasConversationContext?: boolean;
   attachments?: readonly ComposerImageAttachment[];
+  keptFiles?: readonly MessageFile[];
+  onKeptFileRemove?: (file: MessageFile) => void;
   attachmentBusy?: boolean;
   attachmentError?: string;
   onFilesSelected?: (
@@ -115,6 +121,8 @@ export function ComposerFrame({
   mentionFiles,
   hasConversationContext = false,
   attachments = [],
+  keptFiles = [],
+  onKeptFileRemove,
   attachmentBusy = false,
   attachmentError,
   onFilesSelected,
@@ -138,8 +146,10 @@ export function ComposerFrame({
     editor: () => areaRef.current?.readElement(),
   }));
 
+  const attached = attachments.length > 0 || keptFiles.length > 0;
+
   const commandsEnabled =
-    !answering && surface !== "new-chat" && editing === undefined && attachments.length === 0;
+    !answering && surface !== "new-chat" && editing === undefined && !attached;
 
   const suggestionMenu = useComposerSuggestions({
     editorRef: areaRef,
@@ -164,7 +174,7 @@ export function ComposerFrame({
   };
 
   const hasInstructionChip = references.some((reference) => reference.kind !== "mention");
-  const hasSubmission = document.text.trim() !== "" || attachments.length > 0 || hasInstructionChip;
+  const hasSubmission = document.text.trim() !== "" || attached || hasInstructionChip;
   const canSubmit = !disabled && !submitting && !attachmentBusy && hasSubmission;
   const messageEdit = editing?.kind === "message";
   const collapsed = surface !== "new-chat" && narrow && !focused && !messageEdit && !submitting;
@@ -184,10 +194,7 @@ export function ComposerFrame({
   const followUpCard =
     surface !== "new-chat" &&
     !collapsed &&
-    (followUpExpanded ||
-      attachments.length > 0 ||
-      attachmentError !== undefined ||
-      editing !== undefined);
+    (followUpExpanded || attached || attachmentError !== undefined || editing !== undefined);
 
   const send = enterBehavior(
     editing?.kind === "queued"
@@ -294,7 +301,7 @@ export function ComposerFrame({
     );
 
   const attachmentList =
-    collapsed || attachments.length === 0 ? undefined : (
+    collapsed || !attached ? undefined : (
       <ul
         aria-label="Image attachments"
         {...props(
@@ -305,6 +312,35 @@ export function ComposerFrame({
           messageEdit && composerStyles.attachmentsMessageEdit,
         )}
       >
+        {keptFiles.map((file) => (
+          <li key={file.blob} {...props(surfaceTheme.gray, composerStyles.attachment)}>
+            {file.mime.startsWith("image/") ? (
+              <BlobImage file={file} compact={!messageEdit} />
+            ) : (
+              <span
+                title={file.name}
+                {...props(text.sm, hairline.controlRing, composerStyles.attachmentFile)}
+              >
+                <FileTypeIcon path={file.name} />
+                <span {...props(composerStyles.attachmentFileName)}>{file.name}</span>
+              </span>
+            )}
+            {onKeptFileRemove !== undefined && (
+              <span {...props(composerStyles.attachmentRemove)}>
+                <Button
+                  size="2xs"
+                  variant="solid"
+                  xstyle={composerStyles.pillButton}
+                  iconOnly
+                  icon="x"
+                  aria-label={`Remove ${file.name}`}
+                  disabled={disabled}
+                  onClick={() => onKeptFileRemove(file)}
+                />
+              </span>
+            )}
+          </li>
+        ))}
         {attachments.map((attachment) => (
           <li key={attachment.id} {...props(surfaceTheme.gray, composerStyles.attachment)}>
             <ImagePreview

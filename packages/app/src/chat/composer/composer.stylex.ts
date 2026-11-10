@@ -292,6 +292,18 @@ export const composerStyles = create({
       "@media (hover: none)": 1,
     },
   },
+  attachmentFile: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: space.s1_5,
+    maxWidth: 240,
+    paddingInline: space.s2,
+    paddingBlock: space.s1_5,
+    borderRadius: radius.control,
+    backgroundColor: role.fillTertiary,
+    color: role.contentPrimary,
+  },
+  attachmentFileName: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   attachmentRemove: {
     position: "absolute",
     insetBlockStart: 0,

@@ -1,6 +1,9 @@
 import type { ReactElement } from "react";
 import type { UserContent } from "@nyte-ai/sdk";
 import { ComposerReadOnly } from "../composer/composer-surface.tsx";
+import { ImagePreview } from "../markdown/image-preview.tsx";
+import { useBlobUrl } from "../../lib/use-blob-url.ts";
+import { connection } from "../../data/connection.ts";
 
 export type MessageFile = Extract<Exclude<UserContent, string>[number], { readonly kind: "file" }>;
 
@@ -24,4 +27,16 @@ export function messageFiles(content: UserContent): readonly MessageFile[] {
   if (typeof content === "string") return [];
 
   return content.flatMap((part) => (part.kind === "file" ? [part] : []));
+}
+
+export function BlobImage({
+  file,
+  compact,
+}: {
+  readonly file: MessageFile;
+  readonly compact?: boolean;
+}): ReactElement | null {
+  const src = useBlobUrl(["blob", file.blob], () => connection().blob(file.blob)).data;
+
+  return src === undefined ? null : <ImagePreview src={src} name={file.name} compact={compact} />;
 }
