@@ -1,5 +1,10 @@
 import type { Failure, FailureClass } from "@nyte-ai/schema";
-import type { Api, AssistantMessage, Model } from "@nyte-ai/schema/model";
+import type {
+  Api,
+  AssistantMessage,
+  AssistantMessageDiagnostic,
+  Model,
+} from "@nyte-ai/schema/model";
 
 const CONTEXT_WINDOW_PATTERNS = [
   /prompt (?:is )?too long/i,
@@ -266,4 +271,43 @@ export function retryCanHelp(failureClass: FailureClass): boolean {
       return _exhaustive;
     }
   }
+}
+
+const UNSENT = "provider_unsent";
+
+const UNSENT_CODES = new Set([
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "ECONNREFUSED",
+  "ENETUNREACH",
+  "EHOSTUNREACH",
+  "ENETDOWN",
+  "EADDRNOTAVAIL",
+  "UND_ERR_CONNECT_TIMEOUT",
+]);
+
+/**
+ * The diagnostic for an error whose cause chain proves the request never reached the provider:
+ * its name did not resolve or no connection opened. A reset or a timeout proves nothing, because
+ * the provider may already be answering, and charging for, the request.
+ */
+export function unsentDiagnostic(error: unknown): AssistantMessageDiagnostic | undefined {
+  const code = unsentCode(error);
+
+  return code === undefined
+    ? undefined
+    : { type: UNSENT, timestamp: Date.now(), details: { code } };
+}
+
+export function requestUnsent(message: AssistantMessage): boolean {
+  return message.diagnostics?.some((diagnostic) => diagnostic.type === UNSENT) ?? false;
+}
+
+function unsentCode(error: unknown): string | undefined {
+  if (!(error instanceof Error)) return undefined;
+
+  if ("code" in error && typeof error.code === "string" && UNSENT_CODES.has(error.code))
+    return error.code;
+
+  return unsentCode(error.cause);
 }

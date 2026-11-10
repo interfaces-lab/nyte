@@ -16,10 +16,15 @@ import type {
   Usage,
 } from "@nyte-ai/schema";
 import type { AssistantMessageEventStream } from "@nyte-ai/ai";
-import { abortableSleep, assistantRetryDelayMs, failedTransiently } from "@nyte-ai/ai/utils/retry";
+import {
+  abortableSleep,
+  assistantRetryDelayMs,
+  failedTransiently,
+  retryDelayMs,
+} from "@nyte-ai/ai/utils/retry";
 import type { RetryPolicy } from "@nyte-ai/ai/utils/retry";
 import { overflowsContext, stoppedShort } from "@nyte-ai/ai/utils/overflow";
-import { classifyAssistantFailure } from "@nyte-ai/ai/utils/failure";
+import { classifyAssistantFailure, requestUnsent } from "@nyte-ai/ai/utils/failure";
 
 export interface LoopRequest {
   readonly attempt: number;
@@ -58,9 +63,16 @@ export interface LoopInput {
   readonly source: MessageSource;
 }
 
+/** How long requests that provably never reached the provider keep retrying, and the longest gap between them. */
+export interface OutagePolicy {
+  readonly budgetMs: number;
+  readonly maxDelayMs: number;
+}
+
 export interface LoopConfig<P extends PreparedRequest = PreparedRequest> {
   readonly attempt: number;
   readonly retry: RetryPolicy;
+  readonly outage: OutagePolicy;
   ready(signal: AbortSignal): Promise<void>;
   prepareRequest(request: LoopRequest, signal: AbortSignal): Promise<Prepared<P>>;
   stream(prepared: P, signal: AbortSignal): Promise<LoopResponse>;
@@ -140,6 +152,7 @@ type Outcome =
       readonly kind: "failed";
       readonly failure: Failure;
       readonly retryable: boolean;
+      readonly unsent: boolean;
       readonly usage: Usage;
     }
   | { readonly kind: "unfinished" }
@@ -189,6 +202,8 @@ async function* run<P extends PreparedRequest>(
 ): AsyncGenerator<LoopEvent<P>, LoopEnd<P>> {
   let attempt = config.attempt;
   let retries = 0;
+  let outageStart: number | null = null;
+  let outageAttempts = 0;
   let overflowed = false;
 
   let overflow: { readonly failure: Failure; readonly response: FailedResponse<P> } | null = null;
@@ -240,6 +255,31 @@ async function* run<P extends PreparedRequest>(
         const { failure } = outcome;
         const response = { usage: outcome.usage, prepared };
 
+        if (outcome.retryable && outcome.unsent) {
+          outageStart ??= Date.now();
+
+          if (Date.now() - outageStart < config.outage.budgetMs) {
+            outageAttempts += 1;
+            attempt += 1;
+
+            const until =
+              Date.now() +
+              Math.min(retryDelayMs(config.retry, outageAttempts), config.outage.maxDelayMs);
+
+            yield { type: "turn_retry", attempt, until, failure, response };
+
+            const slept = await abortableSleep(until - Date.now(), signal).then(
+              () => true,
+              () => false,
+            );
+
+            if (!slept) return yield* end(STOPPED);
+            continue;
+          }
+
+          return yield* end({ reason: "failed", failure, response });
+        }
+
         const delay = outcome.retryable
           ? assistantRetryDelayMs(config.retry, retries + 1, failure.retryAfterMs)
           : null;
@@ -271,6 +311,8 @@ async function* run<P extends PreparedRequest>(
     }
 
     retries = 0;
+    outageStart = null;
+    outageAttempts = 0;
     overflowed = false;
     const { message, calls, usage } = outcome;
     yield { type: "message_end", message, usage };
@@ -350,6 +392,7 @@ async function* respond<P extends PreparedRequest>(
           kind: "failed",
           failure: classifyAssistantFailure(final),
           retryable: failedTransiently(final),
+          unsent: requestUnsent(final),
           usage,
         };
 

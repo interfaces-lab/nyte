@@ -1,6 +1,9 @@
 import type { Api, AssistantMessage, Model, Usage } from "../types.ts";
+import { appendAssistantMessageDiagnostic } from "../utils/diagnostics.ts";
 import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
+import { unsentDiagnostic } from "../utils/failure.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
+import { requestedRetryDelayMs } from "../utils/provider-retry.ts";
 
 export function emptyCost(): Usage["cost"] {
   return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
@@ -68,6 +71,17 @@ export function runAssistantStream(
       stripStreamingScratchState(output.content);
       output.stopReason = signal?.aborted ? "aborted" : "error";
       output.errorMessage = formatError(error);
+      const retryAfterMs = requestedRetryDelayMs(error);
+
+      if (retryAfterMs !== undefined)
+        appendAssistantMessageDiagnostic(output, {
+          type: "provider_retry_after",
+          timestamp: Date.now(),
+          details: { retryAfterMs },
+        });
+      const unsent = unsentDiagnostic(error);
+
+      if (unsent !== undefined) appendAssistantMessageDiagnostic(output, unsent);
       stream.push({ type: "error", reason: output.stopReason, error: output });
     }
 

@@ -37,6 +37,7 @@ import { attempt, load, put, requireSession, STALE } from "../store/session.ts";
 import { dev } from "../util/dev-log.ts";
 import { check, convertJsonSchema } from "../util/json-schema.ts";
 import { addUsage, ZERO_USAGE } from "../util/usage.ts";
+import type { OutagePolicy } from "./agent-loop.ts";
 
 interface Answered {
   readonly message: AssistantMessage;
@@ -62,6 +63,8 @@ export const RETRY_POLICY: RetryPolicy = {
   baseDelayMs: 2_000,
   maxAgentDelayMs: 60_000,
 };
+
+export const OUTAGE_POLICY: OutagePolicy = { budgetMs: 3_600_000, maxDelayMs: 30_000 };
 
 export function calculateUsage(message: AssistantMessage, model: Model<Api>): Usage {
   const reported = message.usage;

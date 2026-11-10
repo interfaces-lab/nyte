@@ -55,7 +55,14 @@ import type {
 import { compact, failLeftoverCompactions, readProviderCheckpoint } from "./compaction.ts";
 import { ABORTED, adopt, keepOpen, savedOpen, settledParts } from "./open-parts.ts";
 import type { OpenPart } from "./open-parts.ts";
-import { calculateUsage, charge, providerContext, requestEvent, RETRY_POLICY } from "./request.ts";
+import {
+  calculateUsage,
+  charge,
+  OUTAGE_POLICY,
+  providerContext,
+  requestEvent,
+  RETRY_POLICY,
+} from "./request.ts";
 import { executeCall } from "./tool-runner.ts";
 import type { ToolIntent } from "./tool-runner.ts";
 import { estimateTranscriptTokens, requestBody } from "./transcript.ts";
@@ -165,6 +172,7 @@ async function turn(
   const config: LoopConfig<TurnRequest> = {
     attempt: state.attempt,
     retry: RETRY_POLICY,
+    outage: OUTAGE_POLICY,
     ready: (waiting) => unpaused(kernel, waiting),
 
     async prepareRequest(asked) {

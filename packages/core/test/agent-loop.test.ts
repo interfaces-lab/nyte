@@ -1,5 +1,6 @@
 import { createAssistantMessageEventStream } from "@nyte-ai/ai/utils/event-stream";
 import type { AssistantMessageEventStream } from "@nyte-ai/ai/utils/event-stream";
+import { unsentDiagnostic } from "@nyte-ai/ai/utils/failure";
 import { asId } from "@nyte-ai/schema";
 import type { ModelInfo, ToolOutcome, Usage } from "@nyte-ai/schema";
 import type { AssistantMessage } from "@nyte-ai/schema/model";
@@ -20,7 +21,16 @@ type Reply = {
   readonly content?: AssistantMessage["content"];
   readonly stopReason?: "stop" | "length" | "toolUse";
   readonly error?: string;
+  readonly unsent?: boolean;
 };
+
+const OFFLINE = "fetch failed: getaddrinfo ENOTFOUND api.example.com";
+
+const NEVER_LEFT = unsentDiagnostic(
+  new TypeError("fetch failed", {
+    cause: Object.assign(new Error("getaddrinfo ENOTFOUND"), { code: "ENOTFOUND" }),
+  }),
+);
 
 interface Seen {
   readonly requests: LoopRequest[];
@@ -113,7 +123,12 @@ function streamReply(reply: Reply | undefined): AssistantMessageEventStream {
     stream.push({
       type: "error",
       reason: "error",
-      error: { ...partial, stopReason: "error", errorMessage: reply.error },
+      error: {
+        ...partial,
+        stopReason: "error",
+        errorMessage: reply.error,
+        diagnostics: reply.unsent === true && NEVER_LEFT !== undefined ? [NEVER_LEFT] : undefined,
+      },
     });
 
     return stream;
@@ -163,6 +178,7 @@ function scripted(
   const config: LoopConfig = {
     attempt: 1,
     retry: { enabled: true, maxRetries: 2, baseDelayMs: 1, maxAgentDelayMs: 5 },
+    outage: { budgetMs: 1_000, maxDelayMs: 2 },
     ready: async () => undefined,
     async prepareRequest(request) {
       seen.requests.push(request);
@@ -452,6 +468,71 @@ describe("agentLoop", () => {
       failure: { class: "rate_limit", retryAfterMs: 200 },
     });
     expect(beyond.seen.requests).toHaveLength(1);
+  });
+
+  it.each([
+    [
+      "a request that never left retries past maxRetries",
+      { error: OFFLINE, unsent: true },
+      "done",
+      5,
+    ],
+    [
+      "a connection reset after the request was sent stops at maxRetries",
+      { error: "fetch failed: read ECONNRESET" },
+      "failed",
+      3,
+    ],
+  ])("%s", async (_name, reply: Reply, reason, requests) => {
+    const { config, seen } = scripted([reply, reply, reply, reply, { content: [said("Whole.")] }]);
+
+    expect((await collect(config)).end.reason).toBe(reason);
+    expect(seen.requests).toHaveLength(requests);
+  });
+
+  it("fails a request that never left once the outage outlasts its budget", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+
+    try {
+      const offline = { error: OFFLINE, unsent: true };
+
+      const base = scripted([
+        ...Array.from({ length: 10 }, () => offline),
+        { content: [said("Whole.")] },
+      ]);
+
+      const config: LoopConfig = {
+        ...base.config,
+        async stream(prepared, signal) {
+          vi.setSystemTime(Date.now() + 400);
+
+          return base.config.stream(prepared, signal);
+        },
+      };
+
+      expect((await collect(config)).end).toMatchObject({
+        reason: "failed",
+        failure: { class: "network" },
+      });
+      expect(base.seen.requests).toHaveLength(4);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops during an outage wait", async () => {
+    const { config, seen } = scripted([{ error: OFFLINE, unsent: true }], {
+      retry: { enabled: true, maxRetries: 2, baseDelayMs: 10_000, maxAgentDelayMs: 60_000 },
+      outage: { budgetMs: 3_600_000, maxDelayMs: 30_000 },
+    });
+
+    const controller = new AbortController();
+    const loop = agentLoop(config, controller.signal);
+
+    for await (const event of loop) if (event.type === "turn_retry") controller.abort();
+
+    expect(await loop.result()).toEqual({ reason: "stopped", response: null });
+    expect(seen.requests).toHaveLength(1);
   });
 
   it("fails exhausted credit at once, though the provider answers it with 429", async () => {

@@ -55,29 +55,35 @@ function validateServerRetryDelayMs(
   return delayMs;
 }
 
-function getRetryDelayMs(
-  error: ProviderError,
-  retryIndex: number,
-  maxRetryDelayMs: number | undefined,
-): number {
+/** The wait a provider error's `retry-after-ms` or `retry-after` header asks for, never negative. */
+export function requestedRetryDelayMs(error: unknown): number | undefined {
+  if (!carriesHttpStatus(error)) return undefined;
   const retryAfterMs = error.headers?.get("retry-after-ms");
 
   if (retryAfterMs) {
     const value = Number.parseFloat(retryAfterMs);
 
-    if (Number.isFinite(value))
-      return validateServerRetryDelayMs(value, maxRetryDelayMs, error.message);
+    if (Number.isFinite(value)) return Math.max(0, value);
   }
 
   const retryAfter = error.headers?.get("retry-after");
 
-  if (retryAfter) {
-    const seconds = Number.parseFloat(retryAfter);
-    const delayMs = Number.isNaN(seconds) ? Date.parse(retryAfter) - Date.now() : seconds * 1000;
+  if (!retryAfter) return undefined;
+  const seconds = Number.parseFloat(retryAfter);
+  const delayMs = Number.isNaN(seconds) ? Date.parse(retryAfter) - Date.now() : seconds * 1000;
 
-    if (Number.isFinite(delayMs))
-      return validateServerRetryDelayMs(delayMs, maxRetryDelayMs, error.message);
-  }
+  return Number.isFinite(delayMs) ? Math.max(0, delayMs) : undefined;
+}
+
+function getRetryDelayMs(
+  error: ProviderError,
+  retryIndex: number,
+  maxRetryDelayMs: number | undefined,
+): number {
+  const requested = requestedRetryDelayMs(error);
+
+  if (requested !== undefined)
+    return validateServerRetryDelayMs(requested, maxRetryDelayMs, error.message);
 
   const exponentialDelay = Math.min(0.5 * 2 ** retryIndex, 8) * 1000;
 
