@@ -193,20 +193,16 @@ Run these steps from `packages/connect-broker`. `wrangler` is a dev dependency o
    pnpm exec wrangler d1 create nyte-connect
    ```
 
-3. Apply the migrations:
+3. Set each secret from [Configuration](#configuration) with `pnpm exec wrangler secret put <NAME>`.
+4. Deploy:
 
    ```sh
-   pnpm exec wrangler d1 migrations apply nyte-connect --remote
+   pnpm run deploy
    ```
 
-4. Set each secret from [Configuration](#configuration) with `pnpm exec wrangler secret put <NAME>`.
-5. Deploy:
+`pnpm run deploy` builds the Worker and hashes the bundle, `wrangler.jsonc` and the migrations. When the live version already carries that hash as its tag, it stops. Otherwise it runs the typecheck and tests, applies pending migrations, and deploys with the hash as the tag. The Deploy broker workflow runs it on every push to `main`, with the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` repository secrets. A deploy restarts every relay, so desktops reconnect.
 
-   ```sh
-   pnpm exec wrangler deploy
-   ```
-
-Apply migration `0003_environment_objects` and deploy in one go. Between the two, links fail, because each side writes columns the other lacks. The migration moves devices, policy and presence into the relays. Desktops keep their links, but devices aren't copied, so phones enroll again.
+A migration and the code that needs it must land together. Between the two, requests that touch the changed tables fail.
 
 For `wrangler dev`, copy `.dev.vars.example` to `.dev.vars`, which git ignores, and fill in the secrets it lists.
 
