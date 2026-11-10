@@ -89,7 +89,11 @@ colorSchemeQuery.addEventListener("change", refresh);
 
 subscribeSystemTransparency(refresh);
 
-const platformPending = document.readyState === "loading";
+/**
+ * The desktop preload marks the platform on DOMContentLoaded. That fires after this module runs,
+ * since module scripts run once readyState is already "interactive", so wait for the mark itself.
+ */
+const platformPending = document.documentElement.dataset["platform"] === undefined;
 
 if (platformPending) window.addEventListener("DOMContentLoaded", refresh, { once: true });
 
