@@ -16,7 +16,7 @@ import { toast } from "@nyte-ai/ui/toast";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { create, props } from "@stylexjs/stylex";
 import { useMutation } from "@tanstack/react-query";
-import { useState } from "react";
+import { useId, useState } from "react";
 import type { ClipboardEvent, FormEvent, ReactElement } from "react";
 import { Type } from "typebox";
 import type { Static } from "typebox";
@@ -398,7 +398,15 @@ function VariableEditor({
     event.preventDefault();
     setSubmitted(true);
 
-    if (kept.some((row) => row.issues.name !== undefined || row.issues.value !== undefined)) return;
+    if (kept.some((row) => row.issues.name !== undefined || row.issues.value !== undefined)) {
+      const form = event.currentTarget;
+
+      requestAnimationFrame(() =>
+        form.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus(),
+      );
+
+      return;
+    }
 
     onSave(
       Object.fromEntries([
@@ -534,6 +542,10 @@ function PairRow({
   readonly onPaste: (event: ClipboardEvent<HTMLInputElement>) => void;
   readonly onChange: (pair: Pair) => void;
 }): ReactElement {
+  const id = useId();
+  const nameIssueId = `${id}-name-issue`;
+  const valueIssueId = `${id}-value-issue`;
+
   return (
     <>
       <Input
@@ -544,6 +556,7 @@ function PairRow({
         spellCheck={false}
         autoComplete="off"
         aria-invalid={nameIssue !== undefined}
+        aria-describedby={nameIssue === undefined ? undefined : nameIssueId}
         xstyle={styles.code}
         onPaste={onPaste}
         onValueChange={(name) => onChange({ ...pair, name })}
@@ -556,6 +569,7 @@ function PairRow({
             spellCheck={false}
             autoComplete="off"
             aria-invalid={valueIssue !== undefined}
+            aria-describedby={valueIssue === undefined ? undefined : valueIssueId}
             xstyle={styles.code}
             onChange={(event) => onChange({ ...pair, value: event.target.value })}
           />
@@ -569,6 +583,7 @@ function PairRow({
           spellCheck={false}
           autoComplete="off"
           aria-invalid={valueIssue !== undefined}
+          aria-describedby={valueIssue === undefined ? undefined : valueIssueId}
           xstyle={styles.code}
           onValueChange={(value) => onChange({ ...pair, value })}
         />
@@ -591,8 +606,8 @@ function PairRow({
       )}
       {(nameIssue !== undefined || valueIssue !== undefined) && (
         <>
-          <Issue text={nameIssue} />
-          <Issue text={valueIssue} />
+          <Issue id={nameIssueId} text={nameIssue} />
+          <Issue id={valueIssueId} text={valueIssue} />
           <span />
           {removable && <span />}
         </>
@@ -601,8 +616,18 @@ function PairRow({
   );
 }
 
-function Issue({ text: message }: { readonly text: string | undefined }): ReactElement {
-  return <span {...props(intent.danger, text.sm, styles.issue)}>{message}</span>;
+function Issue({
+  id,
+  text: message,
+}: {
+  readonly id: string;
+  readonly text: string | undefined;
+}): ReactElement {
+  return (
+    <span id={id} {...props(intent.danger, text.sm, styles.issue)}>
+      {message}
+    </span>
+  );
 }
 
 function pairIssues(
