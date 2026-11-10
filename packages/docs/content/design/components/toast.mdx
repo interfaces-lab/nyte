@@ -172,20 +172,20 @@ Each state accepts a string or an options object. `success` and `error` also acc
 `ToastOptions` types `toast.add` options. `toast.add` sets their `data`.
 `toast.update` accepts partial options without `id` or `transitionStatus`.
 
-| Option             | Type                                    | Description                                                                  |
-| ------------------ | --------------------------------------- | ---------------------------------------------------------------------------- |
-| `title`            | `ReactNode`                             |                                                                              |
-| `type`             | `string`                                | `"success"`, `"error"`, `"warning"` show icons. `"loading"` shows a spinner. |
-| `description`      | `ReactNode`                             |                                                                              |
-| `id`               | `string`                                | Generated when omitted.                                                      |
-| `timeout`          | `number`                                | Auto-close milliseconds. Defaults to provider. `0` stays open.               |
-| `actionProps`      | `ComponentPropsWithoutRef<"button">`    |                                                                              |
-| `onClose`          | `() => void`                            | Runs on every close.                                                         |
-| `onRemove`         | `() => void`                            | Runs after exit animation.                                                   |
-| `priority`         | `"low" \| "high"`                       | Polite or urgent. Defaults to `"low"`.                                       |
-| `data`             | `Data`                                  |                                                                              |
-| `positionerProps`  | `ToastOptions<Data>["positionerProps"]` | Unused by `Toaster`.                                                         |
-| `transitionStatus` | `"starting" \| "ending"`                | `toast.add` overwrites with `"starting"`. Unavailable in `toast.update`.     |
+| Option             | Type                                 | Description                                                                  |
+| ------------------ | ------------------------------------ | ---------------------------------------------------------------------------- |
+| `title`            | `ReactNode`                          |                                                                              |
+| `type`             | `string`                             | `"success"`, `"error"`, `"warning"` show icons. `"loading"` shows a spinner. |
+| `description`      | `ReactNode`                          |                                                                              |
+| `id`               | `string`                             | Generated when omitted.                                                      |
+| `timeout`          | `number`                             | Auto-close milliseconds. Defaults to `5000`. `0` stays open.                 |
+| `actionProps`      | `ComponentPropsWithoutRef<"button">` |                                                                              |
+| `onClose`          | `() => void`                         | Runs on every close.                                                         |
+| `onRemove`         | `() => void`                         | Runs after exit animation.                                                   |
+| `priority`         | `"low" \| "high"`                    | Polite or urgent. Defaults to `"low"`.                                       |
+| `data`             | `ToastData`                          | `at` and `count`, stamped by `toast.add`.                                    |
+| `positionerProps`  | `ToastOptions["positionerProps"]`    | Unused by `ToastStack`.                                                      |
+| `transitionStatus` | `"starting" \| "ending"`             | `toast.add` overwrites with `"starting"`. Unavailable in `toast.update`.     |
 
 ## Accessibility
 

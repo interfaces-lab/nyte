@@ -12,8 +12,8 @@ use [Preview card](/design/preview-card).
 
 ## Usage
 
-- Pass the control to `TooltipTrigger` through `render`. Give the control its own `aria-label`,
-  because the tooltip does not name it.
+- Pass the control to `TooltipTrigger` through `render`. Name icon-only controls with `aria-label`;
+  visible text names text-labeled controls. The tooltip does not supply the accessible name.
 - An icon-only [Button](/design/button) also sets its label as the native `title`. Pass
   `title={undefined}` so only one tooltip appears.
 - Pass `shortcut` as one string per key, not label text.

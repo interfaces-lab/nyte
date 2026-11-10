@@ -305,7 +305,7 @@ const radii = [
     handle: "radius.control",
     token: "--nyte-shape-control",
     value: radius.control,
-    use: "Menu items, autocomplete rows, chart tooltips",
+    use: "Menu items, autocomplete rows, chart tooltips, toasts",
   },
   {
     handle: "radius.card",
@@ -317,7 +317,7 @@ const radii = [
     handle: "radius.surface",
     token: "--nyte-shape-surface",
     value: radius.surface,
-    use: "Floating surfaces, toasts",
+    use: "Floating surfaces",
   },
   {
     handle: "radius.pill",
@@ -460,7 +460,7 @@ const textStyles = [
     size: "--nyte-font-size-xs",
     leading: "--nyte-line-height-xs",
     tracking: "--nyte-letter-spacing-base",
-    use: "Tooltips, chart labels, composer chips",
+    use: "Chart labels, composer chips",
   },
   {
     name: "sm",
@@ -468,7 +468,7 @@ const textStyles = [
     size: "--nyte-font-size-sm",
     leading: "--nyte-line-height-sm",
     tracking: "--nyte-letter-spacing-base",
-    use: "Small buttons, field hints, sidebars",
+    use: "Small buttons, field hints, sidebars, tooltips",
   },
   {
     name: "baseCompact",
@@ -535,7 +535,7 @@ export function TypeScale() {
         <div key={item.name} {...props(styles.typeRow)}>
           <p {...props(item.style, styles.typeSample)}>Every session is a tree of commits</p>
           <div {...props(styles.typeMeta)}>
-            <code>text.{item.name}</code>
+            <code>{`text${item.name.startsWith("[") ? "" : "."}${item.name}`}</code>
             <Value>
               {atDefaultSize(declaredToken(item.size).value)} /{" "}
               {atDefaultSize(declaredToken(item.leading).value)}
@@ -582,13 +582,13 @@ const shadows = [
     handle: "shadow.shadowMdOutline",
     token: "--nyte-shadow-md-outline",
     value: shadow.shadowMdOutline,
-    use: "Tooltips, toasts: a drop plus a hairline",
+    use: "Tooltips: a drop plus a hairline",
   },
   {
     handle: "shadow.shadowLg",
     token: "--nyte-shadow-lg",
     value: shadow.shadowLg,
-    use: "Floating surfaces, select popups",
+    use: "Floating surfaces, select popups, toasts",
   },
   { handle: "shadow.shadowXl", token: "--nyte-shadow-xl", value: shadow.shadowXl, use: "Dialogs" },
 ] as const;
@@ -641,13 +641,13 @@ const easings = [
     handle: "easeOut",
     token: "--nyte-easing-out",
     value: motion.easeOut,
-    use: "Buttons, menus, popovers, rows",
+    use: "Buttons, rows",
   },
   {
     handle: "easeOutQuint",
     token: "--nyte-easing-out-quint",
     value: motion.easeOutQuint,
-    use: "Menus, select, the command palette",
+    use: "Menus, popovers, select, the command palette",
   },
   {
     handle: "easeInOutStrong",
