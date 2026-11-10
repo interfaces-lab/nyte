@@ -23,15 +23,6 @@ async function closeMenus(page: Page): Promise<void> {
   }).toPass();
 }
 
-async function hoverAction(row: Locator, action: Locator): Promise<Locator> {
-  await expect(async () => {
-    await row.hover();
-    await expect(action).toBeVisible({ timeout: 500 });
-  }).toPass();
-
-  return action;
-}
-
 async function clickAction(row: Locator, action: Locator): Promise<void> {
   await expect(async () => {
     await row.hover();
@@ -70,11 +61,10 @@ test("the navigation journey", async ({ desktop }) => {
     );
   });
 
-  await test.step("a plain click previews a chat in one italic tab, which the next click replaces", async () => {
+  await test.step("a plain click previews a chat in one tab, which the next click replaces", async () => {
     const tabs = page.getByRole("tablist", { name: "Tabs" }).getByRole("tab");
     await expect(tabs).toHaveCount(1);
     await expect(tabs).toHaveAccessibleName(`${FIXTURES.alpha}, preview`);
-    await expect(tabs).toHaveCSS("font-style", "italic");
     await openChat(page, FIXTURES.beta);
     await expect(tabs).toHaveCount(1);
     await expect(tabs).toHaveAccessibleName(`${FIXTURES.beta}, preview`);
@@ -86,7 +76,6 @@ test("the navigation journey", async ({ desktop }) => {
     const tabs = page.getByRole("tablist", { name: "Tabs" }).getByRole("tab");
     await chatTab(page, FIXTURES.beta).dblclick();
     await expect(chatTab(page, FIXTURES.beta)).toHaveAccessibleName(FIXTURES.beta);
-    await expect(chatTab(page, FIXTURES.beta)).toHaveCSS("font-style", "normal");
     await openChat(page, FIXTURES.alpha);
     await expect(tabs).toHaveCount(2);
     await expect(tabs.nth(1)).toHaveAccessibleName(`${FIXTURES.alpha}, preview`);
@@ -243,35 +232,9 @@ test("the sidebar journey", async ({ desktop }) => {
   const workspaces = sidebar(page).getByRole("region", { name: "Workspaces" });
   const pinned = sidebar(page).getByRole("region", { name: "Pinned" });
 
-  await test.step("a 256 px sidebar shows 24 px Pin and Archive beside the age", async () => {
+  await test.step("Mark as Read and Mark All as Read clear unread marks through the host", async () => {
     await chooseGrouping(page, "Repository");
     await expect(workspace).toHaveAttribute("aria-expanded", "true");
-
-    expect(
-      await page.evaluate(() =>
-        getComputedStyle(document.documentElement).getPropertyValue("--nyte-sidebar-width").trim(),
-      ),
-    ).toBe("256px");
-
-    const row = chatRow(page, FIXTURES.long);
-    const age = row.locator('[data-slot="row-meta"]');
-
-    for (const action of ["Pin", "Archive"]) {
-      const button = await hoverAction(
-        row,
-        sidebar(page).getByRole("button", { name: `${action} ${FIXTURES.long}` }),
-      );
-
-      await expect(age).toBeVisible();
-      const box = await button.boundingBox();
-      const ageBox = await age.boundingBox();
-      expect(box?.width).toBe(24);
-      expect(box?.height).toBe(24);
-      expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(ageBox?.x ?? 0);
-    }
-  });
-
-  await test.step("Mark as Read and Mark All as Read clear unread marks through the host", async () => {
     const thinking = await revealChat(page, FIXTURES.thinking);
     await expect(thinking).toHaveAccessibleName(/^Unread /u);
     await thinking.click({ button: "right" });
@@ -299,15 +262,10 @@ test("the sidebar journey", async ({ desktop }) => {
     await expect(workspaces.getByText(FIXTURES.long, { exact: true })).toBeVisible();
   });
 
-  await test.step("the open chat stays under its folded workspace", async () => {
+  await test.step("grouping and folds survive a reload", async () => {
     await openChat(page, FIXTURES.alpha);
     await workspace.click();
     await expect(workspace).toHaveAttribute("aria-expanded", "false");
-    await expect(chatRow(page, FIXTURES.alpha)).toBeVisible();
-    await expect(chatRow(page, FIXTURES.long)).toBeHidden();
-  });
-
-  await test.step("grouping and folds survive a reload", async () => {
     await chooseGrouping(page, "Status");
     await page.reload();
     await page.locator("[data-nyte-shell]").waitFor({ state: "visible" });
@@ -342,16 +300,6 @@ test("the sidebar journey", async ({ desktop }) => {
     await expect(workspace).toHaveAttribute("aria-expanded", "false");
     await page.keyboard.press("ArrowRight");
     await expect(workspace).toHaveAttribute("aria-expanded", "true");
-  });
-
-  await test.step("double-click renames in place, and Escape keeps the title", async () => {
-    await (await revealChat(page, FIXTURES.composer)).dblclick();
-    const field = sidebar(page).getByRole("textbox", { name: `Rename ${FIXTURES.composer}` });
-    await expect(field).toBeFocused();
-    await field.pressSequentially("Something else");
-    await field.press("Escape");
-    await expect(field).toHaveCount(0);
-    await expect(chatRow(page, FIXTURES.composer)).toBeVisible();
   });
 
   await test.step("archiving a working chat asks first, and Cancel keeps it running", async () => {

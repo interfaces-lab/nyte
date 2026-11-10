@@ -289,7 +289,7 @@ function hotFunctions(
     .slice(0, 12);
 }
 
-test("switching between long chats paints the last message quickly", async ({
+test("measures how long switching between long chats takes to paint the last message", async ({
   desktop,
 }, testInfo) => {
   if (output === undefined) return;

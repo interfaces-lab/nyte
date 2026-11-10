@@ -8,7 +8,6 @@ import { afterEach, test, vi } from "vitest";
 import { FileModelsStore, type Models } from "@nyte-ai/ai";
 import { UsageScanWorker } from "@nyte-ai/host/usage-scan";
 import { localDay } from "@nyte-ai/host/store-usage";
-import { CALL_INPUT_SCHEMAS } from "../shared/ipc-inputs.ts";
 import { socketTest, testDesktop } from "./fixtures/desktop-host.ts";
 
 const folders: string[] = [];
@@ -64,20 +63,6 @@ socketTest(
     }
   },
 );
-
-test("usage windows reject invalid, reversed and extra input", () => {
-  for (const input of [
-    { sinceDay: null, untilDay: "bad" },
-    { sinceDay: null, untilDay: "2026-02-30" },
-    { sinceDay: "2026-09-03", untilDay: "2026-09-02" },
-    { sinceDay: null, untilDay: "2026-09-02", extra: true },
-  ])
-    assert.throws(() => CALL_INPUT_SCHEMAS["host.usage"].Parse(input));
-  assert.deepEqual(
-    CALL_INPUT_SCHEMAS["host.usage"].Parse({ sinceDay: null, untilDay: "2026-09-02" }),
-    { sinceDay: null, untilDay: "2026-09-02" },
-  );
-});
 
 test("the bundled worker serves scans, handles repeated reads and closes pending work", async () => {
   const home = await histories();

@@ -229,6 +229,7 @@ test("the build configuration must be canonical HTTPS with a bare Clerk host", (
     ["MAIN_VITE_NYTE_CONNECT_ORIGIN", "https://user@connect.nyte.test"],
     ["MAIN_VITE_NYTE_CONNECT_ORIGIN", ""],
     ["MAIN_VITE_NYTE_CLERK_PUBLISHABLE_KEY", "sk_test_secret"],
+    ["MAIN_VITE_NYTE_CLERK_FRONTEND_API_HOST", "clerk.other.test"],
     ["MAIN_VITE_NYTE_CLERK_FRONTEND_API_HOST", "https://clerk.nyte.test"],
     ["MAIN_VITE_NYTE_CLERK_FRONTEND_API_HOST", "clerk.nyte.test:8443"],
     ["MAIN_VITE_NYTE_CLERK_FRONTEND_API_HOST", "clerk.nyte.test/path"],

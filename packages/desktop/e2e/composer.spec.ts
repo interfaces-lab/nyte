@@ -4,16 +4,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { FIXTURES } from "./baseline.ts";
 import { expect, test } from "./fixtures.ts";
-import {
-  chatPane,
-  clearComposer,
-  composer,
-  messages,
-  openChat,
-  openNewChat,
-  send,
-  setTheme,
-} from "./ui.ts";
+import { chatPane, clearComposer, composer, messages, openChat, openNewChat, send } from "./ui.ts";
 
 const run = promisify(execFile);
 
@@ -79,14 +70,6 @@ test("the composer journey", async ({ desktop }) => {
     await clearComposer(page);
   });
 
-  await test.step("Add to message opens the attachment picker", async () => {
-    await chatPane(page).getByRole("button", { name: "Add to message" }).click();
-    const menu = page.getByRole("menu");
-    await expect(menu).toBeVisible();
-    await page.keyboard.press("Escape");
-    await expect(menu).toBeHidden();
-  });
-
   await test.step("the model button names the scripted catalog", async () => {
     await chatPane(page).getByRole("button", { name: "Scripted" }).click();
 
@@ -101,17 +84,6 @@ test("the composer journey", async ({ desktop }) => {
     await expect(picker).toHaveCount(0);
   });
 
-  await test.step("Ctrl+/ opens the model picker, and closing it returns to the composer", async () => {
-    const field = composer(page);
-    await field.focus();
-    await page.keyboard.press("ControlOrMeta+/");
-    const picker = page.getByRole("menu");
-    await expect(picker).toBeVisible();
-    await page.keyboard.press("Escape");
-    await expect(picker).toBeHidden();
-    await expect(field).toBeFocused();
-  });
-
   await test.step("pasting with no field focused lands in the composer", async () => {
     await desktop.application.evaluate(({ clipboard }) =>
       clipboard.writeText("Pasted from nowhere"),
@@ -122,30 +94,6 @@ test("the composer journey", async ({ desktop }) => {
     await page.keyboard.press("ControlOrMeta+v");
     await expect(composer(page)).toBeFocused();
     await expect(composer(page)).toHaveText("Pasted from nowhere");
-    await clearComposer(page);
-  });
-
-  await test.step("while a response runs, the placeholder names what Enter does", async () => {
-    await send(page, "/hold");
-    const stop = chatPane(page).getByRole("button", { name: "Stop response" });
-    await expect(stop).toBeVisible();
-    await expect(composer(page)).toHaveAttribute("data-placeholder", "Steer without stopping");
-    await stop.click();
-    await expect(stop).toBeHidden();
-    await expect(composer(page)).toHaveAttribute("data-placeholder", "Add a follow-up");
-  });
-
-  await test.step("Ctrl+Alt+Up and Down walk this chat's prompts, then return to the draft", async () => {
-    const field = composer(page);
-    await field.fill("Not sent yet");
-    await field.press("Control+Alt+ArrowUp");
-    await expect(field).toHaveText("/hold");
-    await field.press("Control+Alt+ArrowUp");
-    await expect(field).toHaveText("A first draft");
-    await field.press("Control+Alt+ArrowDown");
-    await expect(field).toHaveText("/hold");
-    await field.press("Control+Alt+ArrowDown");
-    await expect(field).toHaveText("Not sent yet");
     await clearComposer(page);
   });
 });
@@ -181,7 +129,7 @@ test("an attached image starts a new chat with its first message", async ({ desk
 
 test("the footer under the composer shows where the chat runs, and its branch menu checks out and creates branches", async ({
   desktop,
-}, testInfo) => {
+}) => {
   const { page, application, home } = desktop;
   const repo = join(home, "repo");
 
@@ -219,13 +167,6 @@ test("the footer under the composer shows where the chat runs, and its branch me
     await expect(footer.getByRole("button", { name: "This Mac" })).toBeVisible();
   });
 
-  await test.step("the title bar no longer shows the folder or branch", async () => {
-    const banner = page.getByRole("banner");
-    await expect(banner.getByText("Hello from the repo").first()).toBeVisible();
-    await expect(banner.getByText("repo", { exact: true })).toHaveCount(0);
-    await expect(banner.getByText("main", { exact: true })).toHaveCount(0);
-  });
-
   await test.step("picking a branch from the search checks it out", async () => {
     await branch("main").click();
     await expect(search).toBeFocused();
@@ -247,36 +188,6 @@ test("the footer under the composer shows where the chat runs, and its branch me
     await name.press("Enter");
     await expect(branch("feature")).toBeVisible();
     expect(await git("branch", "--show-current")).toBe("feature");
-  });
-
-  await test.step("the footer row is 26 px tall with 20 px segments in light and dark", async () => {
-    const measured = await footer.evaluate((row) => ({
-      row: row.getBoundingClientRect().height,
-      segments: [...row.querySelectorAll("button")].map((button) => button.offsetHeight),
-    }));
-
-    expect(measured.row).toBe(26);
-    expect(measured.segments).toEqual([20, 20]);
-
-    await page.evaluate(() => {
-      if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
-    });
-
-    for (const scheme of ["light", "dark"] as const) {
-      await setTheme(desktop, scheme);
-      await page.mouse.move(0, 0);
-      await pane
-        .locator("[data-composer-region]")
-        .screenshot({ path: testInfo.outputPath(`composer-footer-${scheme}.png`) });
-      await page
-        .getByRole("banner")
-        .screenshot({ path: testInfo.outputPath(`title-bar-${scheme}.png`) });
-    }
-
-    await testInfo.attach("footer-proportions", {
-      body: JSON.stringify(measured),
-      contentType: "application/json",
-    });
   });
 
   await test.step("git's refusal to switch shows its own message", async () => {

@@ -2,11 +2,11 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { describe, expect, test } from "vitest";
+import { expect, test } from "vitest";
 
 const desktop = fileURLToPath(new URL("../", import.meta.url));
 
-function packaging({ local = "" }: { local?: string } = {}) {
+function packaging(local: string) {
   return spawnSync(process.execPath, ["--input-type=module"], {
     cwd: desktop,
     encoding: "utf8",
@@ -38,26 +38,32 @@ function installerName(stdout: string): string {
   return names.productName;
 }
 
-describe("update packaging", () => {
-  test("production updates from GitHub releases with Apple signing enabled", () => {
-    const result = packaging();
-    expect(result.status, result.stderr).toBe(0);
-    installerName(result.stdout);
-    expect(JSON.parse(result.stdout)).toMatchObject({
-      appId: "ai.nyte.desktop",
-      publish: { provider: "github", owner: "interfaces-lab", repo: "nyte" },
-      mac: { hardenedRuntime: true, forceCodeSigning: true },
-    });
-  });
+test("production updates signed from GitHub releases, and local packages keep a separate identity updating from localhost", () => {
+  const names = new Set<string>();
 
-  test("local packages persist a separate identity and update from localhost", () => {
-    const result = packaging({ local: "1" });
+  for (const row of [
+    {
+      local: "",
+      expected: {
+        appId: "ai.nyte.desktop",
+        publish: { provider: "github", owner: "interfaces-lab", repo: "nyte" },
+        mac: { hardenedRuntime: true, forceCodeSigning: true },
+      },
+    },
+    {
+      local: "1",
+      expected: {
+        appId: "ai.nyte.desktop.update-test",
+        publish: { provider: "generic", url: "http://localhost:8917" },
+        mac: { notarize: false },
+      },
+    },
+  ]) {
+    const result = packaging(row.local);
     expect(result.status, result.stderr).toBe(0);
-    expect(installerName(result.stdout)).not.toBe(installerName(packaging().stdout));
-    expect(JSON.parse(result.stdout)).toMatchObject({
-      appId: "ai.nyte.desktop.update-test",
-      publish: { provider: "generic", url: "http://localhost:8917" },
-      mac: { notarize: false },
-    });
-  });
+    names.add(installerName(result.stdout));
+    expect(JSON.parse(result.stdout), `NYTE_UPDATE_TEST=${row.local}`).toMatchObject(row.expected);
+  }
+
+  expect(names.size).toBe(2);
 });

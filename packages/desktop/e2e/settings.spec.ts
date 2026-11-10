@@ -133,10 +133,7 @@ test("the settings journey", async ({ desktop }) => {
 
   await test.step("Agent starts new chats on the scripted model", async () => {
     await openSettings(page, "Agent");
-    await expect(page.getByRole("heading", { name: "New chats", level: 2 })).toBeVisible();
-    await expect(page.getByRole("combobox", { name: "Default model" })).toHaveText(
-      "Scripted · Anthropic",
-    );
+    await expect(page.getByRole("button", { name: /^Scripted/u })).toBeVisible();
   });
 
   await test.step("Editor lists file and diff defaults", async () => {

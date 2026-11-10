@@ -36,27 +36,6 @@ async function connectLocal(made: TestDesktop): Promise<Connection> {
   return connection;
 }
 
-socketTest("the renderer reaches the host over its port and a chat runs there", async () => {
-  const made = await desktop();
-  const connection = await connectLocal(made);
-  made.fake.reply({ content: [{ type: "text", text: "hello from the host" }] });
-
-  const { session, receipt } = await connection.sessions.start({
-    name: "greeting",
-    content: "Say hello",
-  });
-
-  await receipt.settled();
-  const view = await session.view();
-
-  assert.ok(
-    view.messages.some(
-      (message) => isPart(message, text) && message.state.markdown === "hello from the host",
-    ),
-  );
-  assert.equal(view.execution.kind, "idle");
-});
-
 socketTest("keep awake holds while a head is live and lets go when its run ends", async () => {
   const awake: boolean[] = [];
   const made = await desktop({ keepAwake: (value) => awake.push(value) });

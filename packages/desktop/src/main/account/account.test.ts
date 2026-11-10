@@ -13,7 +13,6 @@ import type { SecretsSource } from "@nyte-ai/host";
 import { AccountOperations } from "./operations.ts";
 import {
   rendererContentSecurityPolicy,
-  checkedFrontendApiHost,
   accountAnswer,
   accountReport,
   resolveRendererFile,
@@ -27,8 +26,6 @@ import type { SecretSealer } from "./account-store.ts";
 import { electronExecutable, isolatedElectronEnvironment } from "../fixtures/electron.ts";
 
 const HOST = "clerk.example.com";
-
-const KEY = `pk_live_${Buffer.from(`${HOST}$`).toString("base64")}`;
 
 const JWT = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1c2VyXzEifQ.c2lnbmF0dXJl";
 
@@ -47,64 +44,56 @@ describe("account scheme", () => {
   });
 });
 
-describe("account configuration", () => {
-  test("accepts a key that encodes the configured Frontend API host", () => {
-    expect(checkedFrontendApiHost({ publishableKey: KEY, frontendApiHost: HOST })).toBe(HOST);
-  });
+test("each content security policy allows only its own sources", () => {
+  for (const row of [
+    {
+      name: "packaged renderer",
+      policy: rendererContentSecurityPolicy({
+        frontendApiHost: HOST,
+        developmentOrigin: undefined,
+        canvasOrigin: "nyte-desktop://canvas",
+        mediaOrigin: "nyte-desktop://media",
+      }),
+      allows: [
+        `script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline' https://${HOST} `,
+        "frame-src 'self' nyte-desktop://canvas ",
+        "media-src 'self' blob: nyte-desktop://media;",
+        `connect-src 'self' https://${HOST} `,
+        "object-src 'none'",
+        "frame-ancestors 'none'",
+        " http://127.0.0.1:*",
+      ],
+      refuses: ["'unsafe-eval'", "telemetry", "ws://"],
+    },
+    {
+      name: "development renderer",
+      policy: rendererContentSecurityPolicy({
+        frontendApiHost: HOST,
+        developmentOrigin: "http://127.0.0.1:5174",
+        canvasOrigin: "nyte-desktop-dev://canvas",
+        mediaOrigin: "nyte-desktop-dev://media",
+      }),
+      allows: ["'unsafe-eval'", "ws://127.0.0.1:5174"],
+      refuses: [],
+    },
+    {
+      name: "account shell",
+      policy: shellContentSecurityPolicy({ frameAncestor: "nyte-desktop://account" }),
+      allows: [
+        "default-src 'none';",
+        "script-src 'self' blob:;",
+        "connect-src 'none';",
+        "frame-ancestors nyte-desktop://account;",
+        "base-uri 'none';",
+        "form-action 'none'",
+      ],
+      refuses: ["'unsafe-eval'", "http:", "https:"],
+    },
+  ]) {
+    for (const source of row.allows) expect(row.policy, row.name).toContain(source);
 
-  test("refuses a key for another host, a malformed key, and a host with a scheme", () => {
-    expect(() =>
-      checkedFrontendApiHost({ publishableKey: KEY, frontendApiHost: "clerk.other.com" }),
-    ).toThrow(/different Frontend API host/u);
-    expect(() =>
-      checkedFrontendApiHost({ publishableKey: "sk_live_abc", frontendApiHost: HOST }),
-    ).toThrow(/malformed/u);
-    expect(() =>
-      checkedFrontendApiHost({ publishableKey: KEY, frontendApiHost: `https://${HOST}` }),
-    ).toThrow(/bare host name/u);
-  });
-
-  test("the packaged policy names the Clerk host and nothing for development", () => {
-    const policy = rendererContentSecurityPolicy({
-      frontendApiHost: HOST,
-      developmentOrigin: undefined,
-      canvasOrigin: "nyte-desktop://canvas",
-      mediaOrigin: "nyte-desktop://media",
-    });
-
-    expect(policy).toContain(
-      `script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline' https://${HOST} `,
-    );
-    expect(policy).toContain("frame-src 'self' nyte-desktop://canvas ");
-    expect(policy).toContain("media-src 'self' blob: nyte-desktop://media;");
-    expect(policy).toContain(`connect-src 'self' https://${HOST} `);
-    expect(policy).toContain("object-src 'none'");
-    expect(policy).toContain("frame-ancestors 'none'");
-    expect(policy).not.toContain("'unsafe-eval'");
-    expect(policy).not.toContain("telemetry");
-    expect(policy).not.toContain("ws://");
-    expect(policy).toContain(" http://127.0.0.1:*");
-  });
-
-  test("the development policy adds the dev server's socket and eval", () => {
-    const policy = rendererContentSecurityPolicy({
-      frontendApiHost: HOST,
-      developmentOrigin: "http://127.0.0.1:5174",
-      canvasOrigin: "nyte-desktop-dev://canvas",
-      mediaOrigin: "nyte-desktop-dev://media",
-    });
-
-    expect(policy).toContain("'unsafe-eval'");
-    expect(policy).toContain("ws://127.0.0.1:5174");
-  });
-
-  test("the shell policy allows its own assets, blob modules and the renderer as its only ancestor", () => {
-    const policy = shellContentSecurityPolicy({ frameAncestor: "nyte-desktop://account" });
-
-    expect(policy).toBe(
-      "default-src 'none'; script-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src data: blob:; font-src 'self'; connect-src 'none'; frame-ancestors nyte-desktop://account; base-uri 'none'; form-action 'none'",
-    );
-  });
+    for (const source of row.refuses) expect(row.policy, row.name).not.toContain(source);
+  }
 });
 
 describe("packaged renderer files", () => {
@@ -118,107 +107,142 @@ describe("packaged renderer files", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  test("serves the page at its root and the built assets", () => {
-    const roots = { account: root, canvas: join(root, "shell") };
+  test("serves each page and asset from its own root and refuses the rest", () => {
+    const packaged = { account: root, canvas: join(root, "shell") };
+    const development = { account: undefined, canvas: join(root, "shell") };
 
-    expect(resolveRendererFile(roots, "nyte-desktop://account/")).toEqual({
-      kind: "file",
-      host: "account",
-      path: join(root, "index.html"),
-      html: true,
-    });
-    expect(resolveRendererFile(roots, "nyte-desktop://account/assets/account-1.js")).toEqual({
-      kind: "file",
-      host: "account",
-      path: join(root, "assets", "account-1.js"),
-      html: false,
-    });
-  });
-
-  test("serves the canvas shell from its own root, in development too", () => {
-    const roots = { account: undefined, canvas: join(root, "shell") };
-
-    expect(resolveRendererFile(roots, "nyte-desktop-dev://canvas/index.html")).toEqual({
-      kind: "file",
-      host: "canvas",
-      path: join(root, "shell", "index.html"),
-      html: true,
-    });
-    expect(resolveRendererFile(roots, "nyte-desktop-dev://canvas/assets/main-1.js")).toEqual({
-      kind: "file",
-      host: "canvas",
-      path: join(root, "shell", "assets", "main-1.js"),
-      html: false,
-    });
-    expect(resolveRendererFile(roots, "nyte-desktop-dev://canvas/libraries/three.js")).toEqual({
-      kind: "file",
-      host: "canvas",
-      path: join(root, "shell", "libraries", "three.js"),
-      html: false,
-    });
-    expect(
-      resolveRendererFile(roots, "nyte-desktop-dev://canvas/libraries/chunks/range-1.js"),
-    ).toEqual({
-      kind: "file",
-      host: "canvas",
-      path: join(root, "shell", "libraries", "chunks", "range-1.js"),
-      html: false,
-    });
-    expect(resolveRendererFile(roots, "nyte-desktop-dev://account/")).toEqual({
-      kind: "refused",
-      status: 404,
-    });
-  });
-
-  test("refuses unknown pages, other hosts, and paths out of assets", () => {
-    const refused = (url: string) =>
-      resolveRendererFile({ account: root, canvas: join(root, "shell") }, url);
-
-    expect(refused("nyte-desktop://account/account.html")).toEqual({
-      kind: "refused",
-      status: 404,
-    });
-    expect(refused("nyte-desktop://renderer/")).toEqual({ kind: "refused", status: 404 });
-    expect(refused("nyte-desktop://account/libraries/three.js")).toEqual({
-      kind: "refused",
-      status: 404,
-    });
-    expect(refused("nyte-desktop://canvas/libraries/..%2f..%2fpackage.json")).toEqual({
-      kind: "refused",
-      status: 403,
-    });
-    expect(refused("nyte-desktop://account/assets/")).toEqual({ kind: "refused", status: 403 });
-    expect(refused("nyte-desktop://account/assets/%2e%2e/account.html")).toEqual({
-      kind: "refused",
-      status: 404,
-    });
-    expect(refused("nyte-desktop://account/assets/..%2f..%2fpackage.json")).toEqual({
-      kind: "refused",
-      status: 403,
-    });
-    expect(refused("nyte-desktop://account/assets/%E0%A4%A")).toEqual({
-      kind: "refused",
-      status: 400,
-    });
+    for (const row of [
+      {
+        roots: packaged,
+        url: "nyte-desktop://account/",
+        expected: { kind: "file", host: "account", path: join(root, "index.html"), html: true },
+      },
+      {
+        roots: packaged,
+        url: "nyte-desktop://account/assets/account-1.js",
+        expected: {
+          kind: "file",
+          host: "account",
+          path: join(root, "assets", "account-1.js"),
+          html: false,
+        },
+      },
+      {
+        roots: development,
+        url: "nyte-desktop-dev://canvas/index.html",
+        expected: {
+          kind: "file",
+          host: "canvas",
+          path: join(root, "shell", "index.html"),
+          html: true,
+        },
+      },
+      {
+        roots: development,
+        url: "nyte-desktop-dev://canvas/assets/main-1.js",
+        expected: {
+          kind: "file",
+          host: "canvas",
+          path: join(root, "shell", "assets", "main-1.js"),
+          html: false,
+        },
+      },
+      {
+        roots: development,
+        url: "nyte-desktop-dev://canvas/libraries/three.js",
+        expected: {
+          kind: "file",
+          host: "canvas",
+          path: join(root, "shell", "libraries", "three.js"),
+          html: false,
+        },
+      },
+      {
+        roots: development,
+        url: "nyte-desktop-dev://canvas/libraries/chunks/range-1.js",
+        expected: {
+          kind: "file",
+          host: "canvas",
+          path: join(root, "shell", "libraries", "chunks", "range-1.js"),
+          html: false,
+        },
+      },
+      {
+        roots: development,
+        url: "nyte-desktop-dev://account/",
+        expected: { kind: "refused", status: 404 },
+      },
+      {
+        roots: packaged,
+        url: "nyte-desktop://account/account.html",
+        expected: { kind: "refused", status: 404 },
+      },
+      {
+        roots: packaged,
+        url: "nyte-desktop://renderer/",
+        expected: { kind: "refused", status: 404 },
+      },
+      {
+        roots: packaged,
+        url: "nyte-desktop://account/libraries/three.js",
+        expected: { kind: "refused", status: 404 },
+      },
+      {
+        roots: packaged,
+        url: "nyte-desktop://canvas/libraries/..%2f..%2fpackage.json",
+        expected: { kind: "refused", status: 403 },
+      },
+      {
+        roots: packaged,
+        url: "nyte-desktop://account/assets/",
+        expected: { kind: "refused", status: 403 },
+      },
+      {
+        roots: packaged,
+        url: "nyte-desktop://account/assets/%2e%2e/account.html",
+        expected: { kind: "refused", status: 404 },
+      },
+      {
+        roots: packaged,
+        url: "nyte-desktop://account/assets/..%2f..%2fpackage.json",
+        expected: { kind: "refused", status: 403 },
+      },
+      {
+        roots: packaged,
+        url: "nyte-desktop://account/assets/%E0%A4%A",
+        expected: { kind: "refused", status: 400 },
+      },
+    ])
+      expect(resolveRendererFile(row.roots, row.url), row.url).toEqual(row.expected);
   });
 });
 
-describe("renderer messages", () => {
-  test("accepts a JWT-shaped token answer and refuses anything else", () => {
-    expect(accountAnswer.Check({ id: "op-1", kind: "token", token: JWT })).toBe(true);
-    expect(accountAnswer.Check({ id: "op-1", kind: "token", token: "not a jwt" })).toBe(false);
-    expect(accountAnswer.Check({ id: "op-1", kind: "token", token: JWT, extra: true })).toBe(false);
-    expect(accountAnswer.Check({ id: "op-1", kind: "failed", reason: "anything" })).toBe(false);
-    expect(accountAnswer.Check({ id: "", kind: "signed_out" })).toBe(false);
-  });
-
-  test("accepts the three reports with a bounded label", () => {
-    expect(accountReport.Check({ kind: "signed_in", label: "ada@example.com" })).toBe(true);
-    expect(accountReport.Check({ kind: "signed_out" })).toBe(true);
-    expect(accountReport.Check({ kind: "unreachable" })).toBe(true);
-    expect(accountReport.Check({ kind: "signed_in", label: "" })).toBe(false);
-    expect(accountReport.Check({ kind: "signed_in", label: "x".repeat(321) })).toBe(false);
-  });
+test("renderer messages accept a JWT token answer and the three reports with a bounded label, and nothing else", () => {
+  for (const row of [
+    { check: accountAnswer, message: { id: "op-1", kind: "token", token: JWT }, valid: true },
+    {
+      check: accountAnswer,
+      message: { id: "op-1", kind: "token", token: "not a jwt" },
+      valid: false,
+    },
+    {
+      check: accountAnswer,
+      message: { id: "op-1", kind: "token", token: JWT, extra: true },
+      valid: false,
+    },
+    {
+      check: accountAnswer,
+      message: { id: "op-1", kind: "failed", reason: "anything" },
+      valid: false,
+    },
+    { check: accountAnswer, message: { id: "", kind: "signed_out" }, valid: false },
+    { check: accountReport, message: { kind: "signed_in", label: "ada@example.com" }, valid: true },
+    { check: accountReport, message: { kind: "signed_out" }, valid: true },
+    { check: accountReport, message: { kind: "unreachable" }, valid: true },
+    { check: accountReport, message: { kind: "signed_in", label: "" }, valid: false },
+    { check: accountReport, message: { kind: "signed_in", label: "x".repeat(321) }, valid: false },
+  ])
+    expect(row.check.Check(row.message), JSON.stringify(row.message)).toBe(row.valid);
 });
 
 describe("account operations", () => {

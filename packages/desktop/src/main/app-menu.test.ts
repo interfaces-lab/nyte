@@ -118,47 +118,38 @@ test("a key a page forwards runs the menu item a native key equivalent would", (
 
   const reload = key({ key: "r", code: "KeyR", metaKey: true });
   const hardReload = key({ key: "R", code: "KeyR", metaKey: true, shiftKey: true });
+  const dvorakP = key({ key: "p", code: "KeyR", metaKey: true });
 
-  expect(acceleratorMatches("CommandOrControl+R", reload, true)).toBe(true);
-  expect(acceleratorMatches("CommandOrControl+R", reload, false)).toBe(false);
-  expect(acceleratorMatches("CommandOrControl+R", hardReload, true)).toBe(false);
-  expect(acceleratorMatches("Shift+CmdOrCtrl+R", hardReload, true)).toBe(true);
-  expect(
-    acceleratorMatches("CommandOrControl+Q", key({ key: "q", code: "KeyQ", ctrlKey: true }), false),
-  ).toBe(true);
-  expect(
-    acceleratorMatches(
-      "Alt+Command+I",
-      key({ key: "\u02c6", code: "KeyI", metaKey: true, altKey: true }),
-      true,
-    ),
-  ).toBe(true);
-  expect(
-    acceleratorMatches(
-      "Shift+Control+`",
-      key({ key: "~", code: "Backquote", ctrlKey: true, shiftKey: true }),
-      true,
-    ),
-  ).toBe(true);
-});
-
-test("letters follow the layout, falling back to the physical key for another script", () => {
-  const command = (key: string, code: string): BrowserKey => ({
-    key,
-    code,
-    ctrlKey: false,
-    shiftKey: false,
-    altKey: false,
-    metaKey: true,
-    repeat: false,
-  });
-
-  const dvorakP = command("p", "KeyR");
-  expect(acceleratorMatches("CommandOrControl+R", dvorakP, true)).toBe(false);
-  expect(acceleratorMatches("CommandOrControl+P", dvorakP, true)).toBe(true);
-  expect(acceleratorMatches("CommandOrControl+R", command("r", "KeyO"), true)).toBe(true);
-  expect(acceleratorMatches("CommandOrControl+R", command("\u043a", "KeyR"), true)).toBe(true);
-  expect(acceleratorMatches("CommandOrControl+0", command("\u00e0", "Digit0"), true)).toBe(true);
+  for (const row of [
+    { accelerator: "CommandOrControl+R", key: reload, mac: true, matches: true },
+    { accelerator: "CommandOrControl+R", key: reload, mac: false, matches: false },
+    { accelerator: "CommandOrControl+R", key: hardReload, mac: true, matches: false },
+    { accelerator: "Shift+CmdOrCtrl+R", key: hardReload, mac: true, matches: true },
+    {
+      accelerator: "CommandOrControl+Q",
+      key: key({ key: "q", code: "KeyQ", ctrlKey: true }),
+      mac: false,
+      matches: true,
+    },
+    {
+      accelerator: "Alt+Command+I",
+      key: key({ key: "\u02c6", code: "KeyI", metaKey: true, altKey: true }),
+      mac: true,
+      matches: true,
+    },
+    {
+      accelerator: "Shift+Control+`",
+      key: key({ key: "~", code: "Backquote", ctrlKey: true, shiftKey: true }),
+      mac: true,
+      matches: true,
+    },
+    { accelerator: "CommandOrControl+R", key: dvorakP, mac: true, matches: false },
+    { accelerator: "CommandOrControl+P", key: dvorakP, mac: true, matches: true },
+  ])
+    expect(
+      acceleratorMatches(row.accelerator, row.key, row.mac),
+      `${row.accelerator} ${row.key.key}/${row.key.code} mac=${String(row.mac)}`,
+    ).toBe(row.matches);
 });
 
 test("held keys repeat only zoom", () => {

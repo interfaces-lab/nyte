@@ -68,12 +68,6 @@ function divider(page: Page): Locator {
   return messages(page).getByText("New messages below", { exact: true });
 }
 
-function promptRow(page: Page, text: string): Locator {
-  return messages(page)
-    .locator("[data-row-key^='prompt:']")
-    .filter({ has: page.getByText(text, { exact: true }) });
-}
-
 async function scrollUpTo(page: Page, target: Locator): Promise<void> {
   const log = messages(page);
   await expect(async () => {
@@ -88,22 +82,9 @@ test("the unread journey", async ({ desktop }) => {
   const log = messages(page);
   const stop = chatPane(page).getByRole("button", { name: "Stop response" });
 
-  await test.step("a chat with unread replies opens at the end with the divider above them", async () => {
+  await test.step("leaving the chat and coming back clears the divider", async () => {
     await openChat(page, FIXTURES.unread);
     await expect(log.getByText(LATEST_UNREAD, { exact: true })).toBeInViewport();
-    await scrollUpTo(page, divider(page));
-    const prompt = await promptRow(page, FIRST_UNREAD).boundingBox();
-    const line = await divider(page).boundingBox();
-    expect(prompt?.y ?? Infinity).toBeLessThan(line?.y ?? 0);
-  });
-
-  await test.step("scroll to bottom returns to the end and focuses the composer", async () => {
-    await page.getByRole("button", { name: "Scroll to bottom" }).click();
-    await expect(composer(page)).toBeFocused();
-    await expect(log.getByText(LATEST_UNREAD, { exact: true })).toBeInViewport();
-  });
-
-  await test.step("leaving the chat and coming back clears the divider", async () => {
     await openChat(page, FIXTURES.alpha);
     await openChat(page, FIXTURES.unread);
     await scrollUpTo(page, log.getByText(FIRST_UNREAD, { exact: true }));

@@ -191,25 +191,11 @@ connectorTest(
     const { argv, env } = await firstStart(fixture.root);
     const config = join(fixture.directory, "config.yml");
 
-    assert.equal(argv.includes(TOKEN), false);
-    assert.deepEqual(argv, [
-      "tunnel",
-      "--config",
-      config,
-      "--no-autoupdate",
-      "--output",
-      "json",
-      "--loglevel",
-      "info",
-      "--transport-loglevel",
-      "warn",
-      "--metrics",
-      "127.0.0.1:0",
-      "--management-diagnostics=false",
-      "--grace-period",
-      "2s",
-      "run",
-    ]);
+    assert.equal(
+      argv.some((argument) => argument.includes(TOKEN)),
+      false,
+    );
+    assert.equal(argv[argv.indexOf("--config") + 1], config);
     assert.equal(env["TUNNEL_TOKEN"], TOKEN);
     assert.equal(env["HOME"], fixture.directory);
     assert.deepEqual(

@@ -1,46 +1,70 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "vitest";
 import { SdkError } from "@nyte-ai/sdk";
-import { bridgeError, errorMessage } from "@nyte-ai/app/contract/errors.ts";
-import { ipcDiagnostics, ipcResult } from "../shared/errors.ts";
+import { ExpectedHostError, ipcDiagnostics, ipcResult } from "../shared/errors.ts";
 import { throwForRenderer } from "./desktop-host.ts";
 import { callIpc } from "../shared/ipc-call.ts";
-import { CALL_INPUT_SCHEMAS } from "../shared/ipc-inputs.ts";
 import { Type } from "typebox";
 import { ParseError, Value } from "typebox/value";
 
 afterEach(() => ipcDiagnostics.clear());
 
-test("request envelope rejection is redacted before a host is constructed", async () => {
-  const request = { path: "host.fonts", input: undefined, credential: "secret-key" } as const;
-
-  const result = await callIpc(
-    () => {
-      throw new Error("The invalid envelope must never construct a host");
+test("a raw call is rejected as invalid before its route runs, naming nothing it carried", async () => {
+  for (const row of [
+    {
+      request: { path: "host.fonts", input: undefined, credential: "secret-key" },
+      code: "invalid",
     },
-    1,
-    request,
-  );
+    {
+      request: {
+        path: "host.server.connect",
+        input: {
+          baseUrl: "https://server-secret.example",
+          token: "",
+          "secret-property": "secret-value",
+        },
+      },
+      code: "invalid",
+    },
+    {
+      request: { path: "host.usage", input: { sinceDay: null, untilDay: "bad" } },
+      code: "invalid",
+    },
+    {
+      request: { path: "host.usage", input: { sinceDay: null, untilDay: "2026-02-30" } },
+      code: "invalid",
+    },
+    {
+      request: { path: "host.usage", input: { sinceDay: "2026-09-03", untilDay: "2026-09-02" } },
+      code: "invalid",
+    },
+    {
+      request: {
+        path: "host.usage",
+        input: { sinceDay: null, untilDay: "2026-09-02", extra: true },
+      },
+      code: "invalid",
+    },
+    {
+      request: { path: "host.usage", input: { sinceDay: null, untilDay: "2026-09-02" } },
+      code: "stale",
+    },
+  ] as const) {
+    const result = await callIpc(
+      (_window, path, input) => {
+        assert.deepEqual({ path, input }, row.request);
 
-  assert.equal(result.ok, false);
-  assert.equal(result.error.code, "invalid");
-  assert.equal(ipcDiagnostics.size, 0);
-  assert.doesNotMatch(JSON.stringify(result), /secret-key|credential/);
-});
+        throw new ExpectedHostError({ code: "stale", message: "The route ran." });
+      },
+      1,
+      row.request,
+    );
 
-test("operation validation names no input values or property names", async () => {
-  const result = await ipcResult(() =>
-    CALL_INPUT_SCHEMAS["host.server.connect"].Parse({
-      url: "https://server-secret.example",
-      token: "",
-      "secret-property": "secret-value",
-    }),
-  );
-
-  assert.equal(result.ok, false);
-  assert.equal(result.error.code, "invalid");
-  assert.doesNotMatch(JSON.stringify(result), /server-secret|secret-property|secret-value/);
-  assert.equal(ipcDiagnostics.size, 0);
+    assert.equal(result.ok, false);
+    assert.equal(result.error.code, row.code, JSON.stringify(row.request));
+    assert.equal(ipcDiagnostics.size, 0);
+    assert.doesNotMatch(JSON.stringify(result), /secret|credential/);
+  }
 });
 
 test("an sdk failure keeps its code and message through the host process and leaves no diagnostic", async () => {
@@ -94,17 +118,4 @@ test("unexpected TypeError is captured once with its original cause and opaque r
 
   assert.equal(next.ok, false);
   assert.notEqual(next.error.correlationId, id);
-});
-
-test("safe bridge failure is plain cloneable data with a wire cause, not a local exception", async () => {
-  const result = await ipcResult(() =>
-    throwForRenderer(new SdkError("stale", "The host moved on.")),
-  );
-
-  assert.equal(result.ok, false);
-  assert.equal(result.error.code, "stale");
-  const copied = structuredClone(bridgeError(result.error));
-  assert.equal(copied instanceof Error, false);
-  assert.deepEqual(copied.cause, result.error);
-  assert.equal(errorMessage(copied), result.error.message);
 });

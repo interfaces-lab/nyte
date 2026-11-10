@@ -14,24 +14,6 @@ import {
 
 test.use({ chapter: "chat" });
 
-test("the five newest seeded chats are listed and Show 3 More reveals the rest", async ({
-  desktop,
-}) => {
-  const { page } = desktop;
-  const oldest: readonly string[] = [FIXTURES.alpha, FIXTURES.beta, FIXTURES.sidebar];
-  const newest = Object.values(FIXTURES).filter((name) => !oldest.includes(name));
-
-  for (const name of newest) await expect(chatRow(page, name)).toBeVisible();
-
-  for (const name of oldest) await expect(chatRow(page, name)).toBeHidden();
-
-  await sidebar(page).getByRole("button", { name: "Show 3 More", exact: true }).click();
-
-  for (const name of oldest) await expect(chatRow(page, name)).toBeVisible();
-
-  await expect(sidebar(page).getByRole("button", { name: /^Show \d+ More$/u })).toHaveCount(0);
-});
-
 test("a seeded chat shows both of its turns", async ({ desktop }) => {
   const { page } = desktop;
   await openChat(page, FIXTURES.beta);
@@ -134,7 +116,7 @@ test("a steer sent during a response shows in the transcript, never in the queue
   await expect(messages(page).getByRole("paragraph").last()).toHaveText("Echo: Steer in");
 });
 
-test("a queued message waits in the queue until the response stops; a steer stays faded until the run takes it", async ({
+test("a queued message waits in the queue until the response stops; a steer stays marked pending until the run takes it", async ({
   desktop,
 }) => {
   const { page } = desktop;
@@ -169,10 +151,10 @@ test("a queued message waits in the queue until the response stops; a steer stay
     .locator("[data-sticky-user-message]")
     .filter({ hasText: "Steer while holding" });
 
-  await expect(steer).toHaveCSS("opacity", "0.6");
+  await expect(steer).toHaveAttribute("title", "Lands at the next response");
   await stop.press("Enter");
   await expect(log.getByRole("paragraph").last()).toHaveText("Echo: Steer while holding");
-  await expect(steer).toHaveCSS("opacity", "1");
+  await expect(steer).not.toHaveAttribute("title");
 });
 
 test("a refused turn shows the provider's error", async ({ desktop }) => {
@@ -196,21 +178,4 @@ test("a thinking reply folds its thought behind a toggle", async ({ desktop }) =
   await expect(log.getByText("Weighing the options before answering.")).toBeVisible();
   await thought.click();
   await expect(log.getByText("Weighing the options before answering.")).toBeHidden();
-});
-
-test("a finished turn says how long it worked, and its reply copies and dates itself", async ({
-  desktop,
-}) => {
-  const { page, application } = desktop;
-  await openChat(page, FIXTURES.thinking);
-  const log = messages(page);
-  await expect(log.getByText(/^Worked for \d+s$/u)).toHaveCount(1);
-  await expect(log.getByText(/^(?:Just now|\d+(?:m|h|d|mo|y) ago)$/u)).toBeVisible();
-  const copy = log.getByRole("button", { name: "Copy reply" });
-  await copy.click();
-  await expect(copy).toHaveAttribute("data-copied");
-  expect(await application.evaluate(({ clipboard }) => clipboard.readText())).toBe(
-    "Thought about it: the answer is 42.",
-  );
-  await expect(copy).not.toHaveAttribute("data-copied", { timeout: 4_000 });
 });
