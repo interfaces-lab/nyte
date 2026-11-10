@@ -158,7 +158,7 @@ function findDoc(path: string): DocPage | undefined {
 }
 
 function formatDocPath(url: string): string {
-  return url.replace(/^\/docs\/?/u, "") || "index";
+  return url.replace(/^\/docs\/?/u, "") || "/docs";
 }
 
 function plain(text: string): string {
