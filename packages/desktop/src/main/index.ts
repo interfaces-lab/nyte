@@ -13,6 +13,7 @@ import {
 } from "electron";
 import { randomUUID } from "node:crypto";
 import { macOSTrafficLightPosition } from "./traffic-lights.ts";
+import { macOSWindowChrome, windowBackgroundColor } from "./window-chrome.ts";
 import { mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
@@ -42,12 +43,12 @@ import type { CanvasPreviewer } from "@nyte-ai/plugin/core/canvas-preview";
 import { APP_MENU_COMMAND_CHANNEL, APP_MENU_READY_CHANNEL } from "../shared/app-menu.ts";
 import {
   applicationMenuTemplate,
+  applyViewCommand,
   createMenuCommandDelivery,
   menuItemForKey,
   menuItemRepeats,
   performMenuRole,
 } from "./app-menu.ts";
-import type { ViewCommand } from "./app-menu.ts";
 import { safeExternalUrl } from "./native/external-url.ts";
 import { Alerts } from "./alerts.ts";
 import { BrowserSurfaces } from "./browser/browser.ts";
@@ -117,31 +118,6 @@ let canvasShell: string;
 let previewCanvas: CanvasPreviewer;
 
 let previewsOpen = new AbortController();
-
-function macOSWindowChrome(): Partial<Electron.BrowserWindowConstructorOptions> {
-  const options: Partial<Electron.BrowserWindowConstructorOptions> = {
-    acceptFirstMouse: true,
-    hasShadow: true,
-    titleBarOverlay: true,
-    titleBarStyle: "hidden",
-    trafficLightPosition: macOSTrafficLightPosition(1),
-  };
-
-  if (!nativeTheme.shouldUseHighContrastColors) {
-    options.vibrancy = "sidebar";
-    options.visualEffectState = "active";
-  }
-
-  return options;
-}
-
-function windowBackgroundColor(): string {
-  if (process.platform !== "darwin" || nativeTheme.shouldUseHighContrastColors) {
-    return nativeTheme.shouldUseDarkColors ? "#1b1b1b" : "#ffffff";
-  }
-
-  return nativeTheme.shouldUseDarkColors ? "#40000000" : "#00ffffff";
-}
 
 const updateTest = app.isPackaged && app.getName() === "Nyte Update Test";
 
@@ -269,32 +245,6 @@ const openWith = createOpenWith({
   open: (opening) => createWindow(undefined, opening),
   failed: (path, message) => dialog.showErrorBox(`Couldn't open ${basename(path)}`, message),
 });
-
-function applyViewCommand(contents: Electron.WebContents, command: ViewCommand): void {
-  switch (command) {
-    case "toggle-devtools":
-      contents.toggleDevTools();
-
-      return;
-    case "zoom-reset":
-      contents.setZoomLevel(0);
-
-      return;
-    case "zoom-in":
-      contents.setZoomLevel(contents.getZoomLevel() + 0.5);
-
-      return;
-    case "zoom-out":
-      contents.setZoomLevel(contents.getZoomLevel() - 0.5);
-
-      return;
-    default: {
-      const _exhaustive: never = command;
-
-      return _exhaustive;
-    }
-  }
-}
 
 let updates: Awaited<ReturnType<typeof registerUpdates>> | undefined;
 

@@ -15,6 +15,32 @@ export type ViewCommand = Extract<
   "toggle-devtools" | "zoom-reset" | "zoom-in" | "zoom-out"
 >;
 
+export function applyViewCommand(contents: WebContents, command: ViewCommand): void {
+  switch (command) {
+    case "toggle-devtools":
+      contents.toggleDevTools();
+
+      return;
+    case "zoom-reset":
+      contents.setZoomLevel(0);
+
+      return;
+    case "zoom-in":
+      contents.setZoomLevel(contents.getZoomLevel() + 0.5);
+
+      return;
+    case "zoom-out":
+      contents.setZoomLevel(contents.getZoomLevel() - 0.5);
+
+      return;
+    default: {
+      const _exhaustive: never = command;
+
+      return _exhaustive;
+    }
+  }
+}
+
 export function applicationMenuTemplate(options: {
   platform: NodeJS.Platform;
   name: string;

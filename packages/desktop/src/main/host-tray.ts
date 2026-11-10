@@ -53,7 +53,6 @@ export function createHostTray(options: HostTrayOptions): HostTray {
   icon.setTemplateImage(true);
   const tray = new Tray(icon);
   const appIcon = nativeImage.createFromPath(resourcePath("icon.png"));
-  const headerIcons = new Map<HostStatus, NativeImage>();
   let reading: HostReading = { status: "stopped", issues: [] };
   let open = false;
   let probing: Promise<void> | undefined;
@@ -74,19 +73,12 @@ export function createHostTray(options: HostTrayOptions): HostTray {
     return probing;
   };
 
-  const headerIcon = (status: HostStatus): NativeImage => {
-    const found = headerIcons.get(status);
-
-    if (found !== undefined) return found;
-    const made = badgedIcon(appIcon, STATUS_COLORS[status]);
-    headerIcons.set(status, made);
-
-    return made;
-  };
-
   const show = async (): Promise<void> => {
     await refresh();
-    const menu = Menu.buildFromTemplate(items(options, reading, headerIcon(reading.status)));
+
+    const menu = Menu.buildFromTemplate(
+      items(options, reading, badgedIcon(appIcon, STATUS_COLORS[reading.status])),
+    );
     menu.once("menu-will-show", () => {
       open = true;
     });
