@@ -226,7 +226,10 @@ test("signing out cancels a login read started before it, so the old login never
   const found = probe(client);
   const staleRefresh = found.query.refetch();
   await found.auth.mutateAsync("signOut");
-  staleRead.resolve(ready);
+  staleRead.resolve({
+    kind: "ready",
+    account: { login: "hubot", name: undefined, avatarUrl: undefined },
+  });
   await staleRefresh;
   assert.deepEqual(probe(client).query.data, ready);
   await probe(client).query.refetch();

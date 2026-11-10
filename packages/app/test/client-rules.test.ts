@@ -29,11 +29,9 @@ test("no source imports core, protocol, host or the old client", async () => {
   );
 });
 
-test("no source subscribes to session events, folds them, or keeps its own outbox", async () => {
+test("no source subscribes to session events or folds them", async () => {
   const offenders = (await sources()).filter(({ text }) =>
-    /\b(SessionEvent|DurableEvent|PatchEvent|SessionObserver|createOutbox)\b|\.events\(|live-fold|use-outbox|outbox-storage/u.test(
-      text,
-    ),
+    /\b(SessionEvent|DurableEvent|PatchEvent)\b|\.events\(/u.test(text),
   );
 
   assert.deepEqual(

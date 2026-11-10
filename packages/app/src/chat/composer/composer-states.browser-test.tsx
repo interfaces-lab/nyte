@@ -37,6 +37,7 @@ import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../../theme/tokens.stylex.ts";
 import "../../theme/global.css";
 import { installScripted, scriptedConnection } from "../../../test/scripted-connection.ts";
+import { enterBehavior } from "./composer-keys.ts";
 import { COMPLETED, USAGE, endedTurn, sessionRow } from "../../../test/view-fixtures.ts";
 import { preferences } from "../../preferences/index.ts";
 import { Composer } from "./composer.tsx";
@@ -321,7 +322,7 @@ async function editQueuedMessage({
   );
   const sendTitle = button("Send message")?.title ?? "";
   check(
-    sendTitle === "Update (Enter) · Steer Instead (Ctrl+Enter)",
+    sendTitle === enterBehavior({ kind: "editing-queued", delivery: "queue" }, false).title,
     `send button reads "${sendTitle}"`,
   );
 

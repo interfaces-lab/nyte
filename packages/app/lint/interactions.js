@@ -45,6 +45,7 @@ const nonControls = new Set(["div", "span", "li", "img", "section", "p"]);
 
 const dragHandles = new Map([
   ["packages/ui/src/slider.tsx", new Set(["control"])],
+  ["packages/app/src/chat/composer/reasoning-steps.tsx", new Set(["steps"])],
   ["packages/app/src/sidebar/sidebar-pane.tsx", new Set(["handle"])],
   ["packages/app/src/chat/side-chat/side-chat-window.tsx", new Set(["header", "pill"])],
   ["packages/app/src/chat/images/image-markup.tsx", new Set(["drawing"])],

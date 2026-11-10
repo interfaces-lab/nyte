@@ -8,7 +8,7 @@ import { createModels, InMemoryCredentialStore, InMemoryModelsStore } from "@nyt
 import { localGitHubAccount, localProvider, sqliteStore } from "@nyte-ai/host";
 import { fakeModels, lastUserText, testModel, titleReply } from "@nyte-ai/bench";
 import { sdk } from "@nyte-ai/sdk";
-import { ARCHIVED_SESSION_COUNT, E2E_PORT, E2E_TOKEN, README_LINE } from "./address.ts";
+import { E2E_PORT, E2E_TOKEN, README_LINE } from "./address.ts";
 
 const { models } = fakeModels({
   id: "echo",
@@ -98,16 +98,6 @@ const host = await sdk.open({
   workspace: { kind: "local", path: cwd },
   home: cwd,
 });
-
-for (let index = 1; index <= ARCHIVED_SESSION_COUNT; index += 1) {
-  const { session, receipt } = await host.sessions.start({
-    name: `Archived chat ${String(index)}`,
-    content: "Archive me",
-  });
-
-  await receipt.settled();
-  await session.update({ archived: true });
-}
 
 const listener = await host.listen({
   transport: { kind: "http", hostname: "127.0.0.1", port: E2E_PORT },

@@ -104,19 +104,27 @@ describe("extendPace", () => {
 });
 
 describe("chunkLength", () => {
-  test("cuts after the last whitespace inside the budget", () => {
-    expect(chunkLength("The pacer reveals whole words only.", 22)).toBe(18);
-  });
-
-  test("cuts a long token at a word boundary", () => {
-    expect(chunkLength("https://example.com/some/really/long/path", 26)).toBe(25);
-  });
-
-  test("never splits an emoji cluster", () => {
-    expect(chunkLength("👩‍👩‍👧‍👦".repeat(5), 24)).toBe(22);
-  });
-
-  test("never splits a letter from its combining mark", () => {
-    expect(chunkLength("e\u0301".repeat(30), 25)).toBe(24);
+  test.each([
+    {
+      name: "cuts after the last whitespace inside the budget",
+      text: "The pacer reveals whole words only.",
+      budget: 22,
+      expected: 18,
+    },
+    {
+      name: "cuts a long token at a word boundary",
+      text: "https://example.com/some/really/long/path",
+      budget: 26,
+      expected: 25,
+    },
+    { name: "never splits an emoji cluster", text: "👩‍👩‍👧‍👦".repeat(5), budget: 24, expected: 22 },
+    {
+      name: "never splits a letter from its combining mark",
+      text: "e\u0301".repeat(30),
+      budget: 25,
+      expected: 24,
+    },
+  ])("$name", (row) => {
+    expect(chunkLength(row.text, row.budget)).toBe(row.expected);
   });
 });

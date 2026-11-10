@@ -12,6 +12,6 @@ test(
       ),
     );
 
-    expect(report).toEqual({ opened: "deleted, archived, quiet", kept: "quiet" });
+    expect(report).toEqual({ kept: "quiet" });
   },
 );

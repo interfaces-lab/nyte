@@ -81,25 +81,19 @@ test("reports only properties outside each component's contract", () => {
   );
 });
 
-test("names the owned concern, the rejected properties, and the way out", () => {
-  const padded = message(">Padded<");
-
-  expect(padded).toContain("<Button> owns its spacing and colours");
-  expect(padded).toContain("paddingInline and backgroundColor (from styles.padded)");
-  expect(padded).toContain("Choose its look with variant, size, tone, iconOnly, and pill");
-  expect(padded).toContain("packages/ui/src/button.tsx");
+test.each<{ readonly needle: string; readonly fix: string }>([
+  { needle: ">Padded<", fix: "<Button> owns its spacing and colours" },
+  { needle: ">Padded<", fix: "paddingInline and backgroundColor (from styles.padded)" },
+  { needle: ">Padded<", fix: "Choose its look with variant, size, tone, iconOnly, and pill" },
+  { needle: ">Padded<", fix: "packages/ui/src/button.tsx" },
+  { needle: ">Typed<", fix: "fontSize, lineHeight, and letterSpacing (from text.sm)" },
+  { needle: ">Classed<", fix: "<Button> takes no className" },
+  { needle: ">Inline<", fix: "<Button> takes no style" },
+  { needle: ">Inline<", fix: "Place it through xstyle, which takes" },
+])("$needle names $fix", (row) => {
+  expect(message(row.needle)).toContain(row.fix);
 });
 
-test("reads shared text styles and leaves component hooks, host parts, and bare rows alone", () => {
-  expect(message(">Typed<")).toContain("fontSize, lineHeight, and letterSpacing (from text.sm)");
-  expect(message(">Hooks<")).toBe("");
-  expect(message(`variant="bare"`)).toBe("");
-  expect(message(">Host<")).toBe("");
-});
-
-test("rejects className and style, which would skip the contract", () => {
-  expect(message(">Classed<")).toContain("<Button> takes no className");
-  expect(message(">Inline<")).toContain("<Button> takes no style");
-  expect(message(">Inline<")).toContain("Place it through xstyle, which takes");
-  expect(message(">HostClassed<")).toBe("");
+test.each([">Hooks<", `variant="bare"`, ">Host<", ">HostClassed<"])("leaves %s alone", (needle) => {
+  expect(message(needle)).toBe("");
 });

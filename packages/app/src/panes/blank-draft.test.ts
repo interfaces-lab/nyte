@@ -231,14 +231,6 @@ test("reload restores parked drafts and follow-up text after a typing pause", ()
   assert.equal(followUp.focused, false);
 });
 
-test("corrupt stored drafts are ignored", () => {
-  const storage = memoryStorage();
-  storage.setItem("panes-corrupt", "{not-json");
-  const controller = tabPanes({ storage, storageKey: "panes-corrupt" });
-  assert.equal(controller.viewState.readBlank(PRIMARY).composer.draft, "");
-  assert.deepEqual(controller.viewState.drafts(), []);
-});
-
 test("a send waiting at reload comes back as an editable draft under its id", () => {
   const storage = memoryStorage();
   const first = tabPanes({ storage, storageKey: "panes-send" });

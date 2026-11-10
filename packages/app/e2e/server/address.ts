@@ -19,6 +19,4 @@ export function pairingLink(token: string): string {
   return `${E2E_ORIGIN}/pair#host=${encodeURIComponent(E2E_ORIGIN)}&token=${encodeURIComponent(token)}`;
 }
 
-export const ARCHIVED_SESSION_COUNT = 22;
-
 export const README_LINE = "The workspace reached the browser.";

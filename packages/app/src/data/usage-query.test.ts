@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { afterEach, test, vi } from "vitest";
+import { afterEach, onTestFinished, test, vi } from "vitest";
 import { QueryObserver } from "@tanstack/react-query";
 import { asId } from "@nyte-ai/schema";
 import type { HostBridge, UsageSnapshot, UsageWindow } from "../contract/bridge.ts";
@@ -7,7 +7,6 @@ import { installBridge } from "../contract/nyte.ts";
 import { queryClient } from "./query-client.ts";
 import { usageReportOptions } from "./usage.ts";
 import { USAGE_RANGES, usageWindow } from "../settings/usage-view.ts";
-import { USAGE_STALE_AFTER_MS } from "./usage.ts";
 import { createWebBridge } from "../web/bridge.ts";
 
 const readUsage = vi.fn<NonNullable<HostBridge["usage"]>>();
@@ -89,36 +88,30 @@ afterEach(() => {
   readUsage.mockReset();
 });
 
-const stale = { updatedAt: Date.now() - USAGE_STALE_AFTER_MS * 10 };
-
-test("reopening shows a fresh cached read without re-reading", () => {
-  queryClient.setQueryData(usageReportOptions(WINDOW).queryKey, {
-    window: WINDOW,
-    report: recorded,
+test("reopening shows a fresh cached read without re-reading, and re-reads it an hour later", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  onTestFinished(() => {
+    vi.useRealTimers();
   });
+  vi.setSystemTime(Date.parse("2026-09-02T15:00:00"));
+  queryClient.setQueryData(usageReportOptions(WINDOW).queryKey, { window: WINDOW, report: empty });
 
-  const observer = openUsage();
-  assert.equal(observer.getCurrentResult().isFetching, false);
-  assert.equal(observer.getCurrentResult().isSuccess, true);
-  assert.deepEqual(observer.getCurrentResult().data, { window: WINDOW, report: recorded });
+  const fresh = openUsage();
+  assert.equal(fresh.getCurrentResult().isFetching, false);
+  assert.equal(fresh.getCurrentResult().isSuccess, true);
+  assert.deepEqual(fresh.getCurrentResult().data, { window: WINDOW, report: empty });
   assert.equal(readUsage.mock.calls.length, 0);
-});
 
-test("reopening re-reads a stale cached read", async () => {
-  queryClient.setQueryData(
-    usageReportOptions(WINDOW).queryKey,
-    { window: WINDOW, report: empty },
-    stale,
-  );
+  vi.setSystemTime(Date.parse("2026-09-02T16:00:00"));
   const load = Promise.withResolvers<UsageSnapshot>();
   readUsage.mockReturnValueOnce(load.promise);
 
-  const observer = openUsage();
-  assert.equal(observer.getCurrentResult().isFetching, true);
-  assert.deepEqual(observer.getCurrentResult().data?.report, empty);
+  const stale = openUsage();
+  assert.equal(stale.getCurrentResult().isFetching, true);
+  assert.deepEqual(stale.getCurrentResult().data?.report, empty);
   load.resolve(recorded);
-  await vi.waitFor(() => assert.equal(observer.getCurrentResult().isFetching, false));
-  assert.deepEqual(observer.getCurrentResult().data?.report, recorded);
+  await vi.waitFor(() => assert.equal(stale.getCurrentResult().isFetching, false));
+  assert.deepEqual(stale.getCurrentResult().data?.report, recorded);
   assert.equal(readUsage.mock.calls.length, 1);
 });
 

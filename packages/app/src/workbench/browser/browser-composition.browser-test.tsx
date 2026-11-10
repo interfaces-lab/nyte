@@ -1,9 +1,17 @@
+import "../../../test/window-bridge.ts";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import { useState } from "react";
 import type { ReactElement } from "react";
 import { AddressField } from "./browser-address-field.tsx";
+import { FindBar } from "./browser-find.tsx";
 import "../../theme/tokens.stylex.ts";
+
+declare global {
+  interface Window {
+    readonly __nyteFinds: readonly string[];
+  }
+}
 
 const HISTORY = [
   { url: "http://127.0.0.1:3000/", title: "Dev server", visitedAt: 2, visits: 1 },
@@ -56,8 +64,10 @@ function input(field: HTMLInputElement, text: string, isComposing: boolean): voi
   );
 }
 
-function key(field: HTMLInputElement, name: string): void {
-  field.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: name }));
+function key(field: HTMLInputElement, name: string, isComposing: boolean): void {
+  field.dispatchEvent(
+    new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: name, isComposing }),
+  );
 }
 
 function selection(field: HTMLInputElement): string {
@@ -65,6 +75,56 @@ function selection(field: HTMLInputElement): string {
 }
 
 export async function run(): Promise<string> {
+  await find();
+  await address();
+
+  return "passed";
+}
+
+async function find(): Promise<void> {
+  let closed = 0;
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  flushSync(() =>
+    root.render(
+      <FindBar
+        surface="page"
+        ref={null}
+        onClose={() => {
+          closed += 1;
+        }}
+      />,
+    ),
+  );
+  const field = container.querySelector("input");
+
+  if (field === null) throw new Error("The find field did not render");
+  await nextFrame();
+
+  input(field, "ㄱ", true);
+  input(field, "가", true);
+  key(field, "Enter", true);
+  key(field, "Escape", true);
+  check(window.__nyteFinds.length === 0, `Composing searched: ${window.__nyteFinds.join()}`);
+  check(closed === 0, "Escape during composition closed find");
+
+  field.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "가" }));
+  check(window.__nyteFinds.join() === "가", `The finished text: ${window.__nyteFinds.join()}`);
+
+  await nextFrame();
+  input(field, "가n", false);
+  check(window.__nyteFinds.length === 2, "Typing after the composition did not search");
+
+  await nextFrame();
+  key(field, "Escape", false);
+  check(closed === 1, "Escape did not close find");
+
+  flushSync(() => root.unmount());
+  container.remove();
+}
+
+async function address(): Promise<void> {
   const container = document.createElement("div");
   document.body.append(container);
   flushSync(() => createRoot(container).render(<Harness />));
@@ -94,9 +154,9 @@ export async function run(): Promise<string> {
   await nextFrame();
   input(field, "exam", false);
   check(selection(field) === "example.com/path [4, 16]", `No completion: ${selection(field)}`);
-  key(field, "Tab");
+  key(field, "Tab", false);
   await nextFrame();
-  key(field, "Enter");
+  key(field, "Enter", false);
   check(
     opened.join() === "http://example.com/path",
     `Enter after Tab opened ${opened.join() || "nothing"}`,
@@ -104,14 +164,12 @@ export async function run(): Promise<string> {
 
   field.focus();
   await nextFrame();
-  key(field, "Escape");
+  key(field, "Escape", false);
   check(dismissed === 0 && document.activeElement === field, "Escape left before closing the list");
   await nextFrame();
-  key(field, "Escape");
+  key(field, "Escape", false);
   check(
     dismissed === 1 && document.activeElement !== field,
     "The second Escape did not hand the keyboard back",
   );
-
-  return "passed";
 }

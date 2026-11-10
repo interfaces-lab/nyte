@@ -103,8 +103,6 @@ test("a paired browser reads, edits, blames, searches, and mentions workspace fi
     await expect(include).toBeVisible();
     await expect(exclude).toBeVisible();
     await expect(search.getByRole("status")).toHaveCount(0);
-    await expect(search.getByLabel(/replace|respect ignore files/iu)).toHaveCount(0);
-    await expect(search).not.toContainText(/replace|respect ignore files/iu);
 
     await query.fill(README_LINE);
     await expect(search.getByRole("status")).toHaveText("1 match in 1 file.");

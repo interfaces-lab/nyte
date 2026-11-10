@@ -39,72 +39,27 @@ const writing: Message = {
   status: { kind: "live", run: null },
 };
 
-test.each([calling, running])("an open $state.phase call names its activity", (message) => {
-  expect(readActivity({ messages: [message] }, "/workspace")).toBe("Reading live.ts");
-});
+const latest: ToolMessage = {
+  ...running,
+  id: asId<"message">("latest"),
+  part: asId<"part">("latest"),
+  state: { ...running.state, class: { kind: "shell", command: "pnpm test" } },
+};
 
-test("the latest open call wins over earlier activity", () => {
-  const latest: ToolMessage = {
-    ...running,
-    id: asId<"message">("latest"),
-    part: asId<"part">("latest"),
-    state: { ...running.state, class: { kind: "shell", command: "pnpm test" } },
-  };
-
-  expect(readActivity({ messages: [running, writing, latest] }, "/workspace")).toBe(
-    "Running pnpm test",
-  );
-});
-
-test.each([
-  { kind: "waiting", run: asId<"run">("run"), on: { kind: "part", part: asId<"part">("input") } },
-  { kind: "waiting", run: asId<"run">("run"), on: { kind: "timer", until: 10 } },
-  { kind: "settled", commit: asId<"commit">("committed"), endedAt: 10 },
-] satisfies readonly ToolMessage["status"][])(
-  "an open call with $kind status still names its running activity",
-  (status) => {
-    expect(readActivity({ messages: [{ ...running, status }, writing] }, "/workspace")).toBe(
-      "Reading live.ts",
-    );
+const failed = {
+  ...read,
+  id: asId<"message">("failed"),
+  part: asId<"part">("failed"),
+  state: {
+    ...call,
+    phase: "settled",
+    outcome: { kind: "failed", message: "exit 1" },
+    changes: null,
   },
-);
+} satisfies ToolMessage;
 
-test.each(["provider", "aborted"] as const)(
-  "an open call interrupted by %s falls back to live response text",
-  (failureClass) => {
-    const failed: ToolMessage = {
-      ...running,
-      status: { kind: "failed", run: null, failure: { class: failureClass, message: "Stopped" } },
-    };
-
-    expect(readActivity({ messages: [writing, failed] }, "/workspace")).toBe("Writing a response");
-  },
-);
-
-test("settled outcomes do not displace thinking or writing", () => {
-  const failed = {
-    ...read,
-    id: asId<"message">("failed"),
-    part: asId<"part">("failed"),
-    state: {
-      ...call,
-      phase: "settled",
-      outcome: { kind: "failed", message: "exit 1" },
-      changes: null,
-    },
-  } satisfies ToolMessage;
-
-  expect(readActivity({ messages: [writing, read, failed] }, "/workspace")).toBe(
-    "Writing a response",
-  );
-  expect(
-    readActivity({ messages: [{ ...writing, partKind: "thinking" }, read, failed] }, "/workspace"),
-  ).toBe("Thinking");
-  expect(readActivity({ messages: [read, failed] }, "/workspace")).toBeUndefined();
-});
-
-test("unknown tool states cannot masquerade as open tool activity", () => {
-  const states: readonly Json[] = [
+const unknown = (
+  [
     null,
     false,
     42,
@@ -115,34 +70,109 @@ test("unknown tool states cannot masquerade as open tool activity", () => {
     { ...call, phase: "unknown" },
     { ...call, phase: "running", progress: null, class: { kind: "unknown" } },
     { ...call, phase: "running", progress: "invalid" },
-  ];
-  const unknown = states.map((state, index) => ({
-    ...running,
-    id: asId<"message">(`unknown-${String(index)}`),
-    part: asId<"part">(`unknown-${String(index)}`),
-    state,
-  }));
+  ] satisfies readonly Json[]
+).map((state, index) => ({
+  ...running,
+  id: asId<"message">(`unknown-${String(index)}`),
+  part: asId<"part">(`unknown-${String(index)}`),
+  state,
+}));
 
-  expect(readActivity({ messages: [running, ...unknown] }, "/workspace")).toBe("Reading live.ts");
-  expect(readActivity({ messages: [...unknown, writing] }, "/workspace")).toBe(
-    "Writing a response",
-  );
-  expect(readActivity({ messages: [writing, ...unknown] }, "/workspace")).toBeUndefined();
-});
+const settled = Array.from({ length: 200 }, (_, index) =>
+  settledTool(
+    `done-${String(index)}`,
+    { kind: "shell", command: "pnpm check" },
+    "Output\n".repeat(1_000),
+  ),
+);
 
-test("a running call remains discoverable behind many settled tool outputs", () => {
-  const settled = Array.from({ length: 200 }, (_, index) =>
-    settledTool(
-      `done-${String(index)}`,
-      { kind: "shell", command: "pnpm check" },
-      "Output\n".repeat(1_000),
-    ),
-  );
-
-  expect(readActivity({ messages: [calling, ...settled] }, "/workspace")).toBe("Reading live.ts");
-  expect(readActivity({ messages: [writing, ...settled] }, "/workspace")).toBe(
-    "Writing a response",
-  );
+test.each<{
+  readonly name: string;
+  readonly messages: SessionView["messages"];
+  readonly expected: string | undefined;
+}>([
+  ...[calling, running].map((message) => ({
+    name: `an open ${message.state.phase} call names its activity`,
+    messages: [message],
+    expected: "Reading live.ts",
+  })),
+  {
+    name: "the latest open call wins over earlier activity",
+    messages: [running, writing, latest],
+    expected: "Running pnpm test",
+  },
+  ...(
+    [
+      {
+        kind: "waiting",
+        run: asId<"run">("run"),
+        on: { kind: "part", part: asId<"part">("input") },
+      },
+      { kind: "waiting", run: asId<"run">("run"), on: { kind: "timer", until: 10 } },
+      { kind: "settled", commit: asId<"commit">("committed"), endedAt: 10 },
+    ] satisfies readonly ToolMessage["status"][]
+  ).map((status) => ({
+    name: `an open call with ${status.kind} status still names its running activity`,
+    messages: [{ ...running, status }, writing],
+    expected: "Reading live.ts",
+  })),
+  ...(["provider", "aborted"] as const).map((failureClass) => ({
+    name: `an open call interrupted by ${failureClass} falls back to live response text`,
+    messages: [
+      writing,
+      {
+        ...running,
+        status: {
+          kind: "failed" as const,
+          run: null,
+          failure: { class: failureClass, message: "Stopped" },
+        },
+      },
+    ],
+    expected: "Writing a response",
+  })),
+  {
+    name: "a settled outcome does not displace writing",
+    messages: [writing, read, failed],
+    expected: "Writing a response",
+  },
+  {
+    name: "a settled outcome does not displace thinking",
+    messages: [{ ...writing, partKind: "thinking" }, read, failed],
+    expected: "Thinking",
+  },
+  {
+    name: "settled outcomes alone name no activity",
+    messages: [read, failed],
+    expected: undefined,
+  },
+  {
+    name: "unknown tool states cannot hide an open call",
+    messages: [running, ...unknown],
+    expected: "Reading live.ts",
+  },
+  {
+    name: "unknown tool states cannot hide live response text",
+    messages: [...unknown, writing],
+    expected: "Writing a response",
+  },
+  {
+    name: "unknown tool states cannot masquerade as open tool activity",
+    messages: [writing, ...unknown],
+    expected: undefined,
+  },
+  {
+    name: "a running call remains discoverable behind many settled tool outputs",
+    messages: [calling, ...settled],
+    expected: "Reading live.ts",
+  },
+  {
+    name: "live response text remains discoverable behind many settled tool outputs",
+    messages: [writing, ...settled],
+    expected: "Writing a response",
+  },
+])("$name", (row) => {
+  expect(readActivity({ messages: row.messages }, "/workspace")).toBe(row.expected);
 });
 
 test("replacing a message snapshot refreshes its activity as the call settles and resumes", () => {

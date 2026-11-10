@@ -36,14 +36,13 @@ VITE_NYTE_CLERK_PUBLISHABLE_KEY= NYTE_E2E_PORT=5287 pnpm --dir packages/app e2e
 
 ## How it works
 
-`server/start.ts` serves the built app and a host on `127.0.0.1:5181`. The host keeps its store in memory and works in a temporary Git workspace with one commit. It seeds 22 archived chats. Its provider answers `Echo: <message>` without a network. The message `Start an agent.` starts one subagent, `Map the core`. Outside CI, Playwright reuses a server already running on that port.
+`server/start.ts` serves the built app and a host on `127.0.0.1:5181`. The host keeps its store in memory and works in a temporary Git workspace with one commit. Its provider answers `Echo: <message>` without a network. The message `Start an agent.` starts one subagent, `Map the core`. Outside CI, Playwright reuses a server already running on that port.
 
 The specs in `web/` cover:
 
 - Pairing links, reloads and wrong tokens.
 - Startup from a saved connection, including one whose host is unreachable.
 - A first chat, and a child chat opening in the pane.
-- The Inbox's Archived shelf.
 - A terminal on the host's Home folder.
 - A workspace journey that reads, edits, blames, searches and mentions files in the seeded workspace.
 

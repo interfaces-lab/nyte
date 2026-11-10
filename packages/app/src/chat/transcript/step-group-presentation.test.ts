@@ -81,36 +81,65 @@ function summary(messages: readonly StepMessage[]) {
   return settled.kind === "summary" ? settled : undefined;
 }
 
-test("a step whose calls all succeeded keeps its verb", () => {
-  assert.deepEqual(summary([shell("pnpm test", SUCCESS), shell("pnpm lint", SUCCESS)]), {
-    kind: "summary",
+test.each<{
+  readonly name: string;
+  readonly messages: readonly StepMessage[];
+  readonly verb: string;
+  readonly detail: string | undefined;
+}>([
+  {
+    name: "a step whose calls all succeeded keeps its verb",
+    messages: [shell("pnpm test", SUCCESS), shell("pnpm lint", SUCCESS)],
     verb: "Ran",
     detail: "2 commands",
-  });
-});
-
-test("a step that lost a call tallies each outcome instead of claiming a verb", () => {
-  assert.equal(
-    summary([shell("pnpm test", SUCCESS), shell("pnpm lint", SUCCESS), shell("rm -rf /", DENIED)])
-      ?.verb,
-    "2 commands succeeded, 1 failed",
-  );
-
-  const mixed = summary([
-    call({ kind: "read", path: "/w/a.ts" }, SUCCESS),
-    shell("pnpm test", EXIT),
-    shell("pnpm build", STOPPED),
-    shell("sleep 1", STOPPED),
-  ]);
-
-  assert.equal(mixed?.verb, "1 file read, 1 failed, 2 stopped");
-  assert.equal(mixed?.detail, undefined);
-});
-
-test("a step whose every call failed or stopped never merges the two", () => {
-  assert.equal(summary([shell("a", EXIT), shell("b", STOPPED)])?.verb, "1 call failed, 1 stopped");
-  assert.equal(summary([shell("a", EXIT), shell("b", DENIED)])?.verb, "2 calls failed");
-  assert.equal(summary([shell("a", STOPPED), shell("b", STOPPED)])?.verb, "2 calls stopped");
+  },
+  {
+    name: "a step that lost a call tallies each outcome instead of claiming a verb",
+    messages: [shell("pnpm test", SUCCESS), shell("pnpm lint", SUCCESS), shell("rm -rf /", DENIED)],
+    verb: "2 commands succeeded, 1 failed",
+    detail: undefined,
+  },
+  {
+    name: "a step with mixed calls tallies every outcome",
+    messages: [
+      call({ kind: "read", path: "/w/a.ts" }, SUCCESS),
+      shell("pnpm test", EXIT),
+      shell("pnpm build", STOPPED),
+      shell("sleep 1", STOPPED),
+    ],
+    verb: "1 file read, 1 failed, 2 stopped",
+    detail: undefined,
+  },
+  {
+    name: "a step whose every call failed or stopped never merges the two",
+    messages: [shell("a", EXIT), shell("b", STOPPED)],
+    verb: "1 call failed, 1 stopped",
+    detail: undefined,
+  },
+  {
+    name: "a denial counts as a failure",
+    messages: [shell("a", EXIT), shell("b", DENIED)],
+    verb: "2 calls failed",
+    detail: undefined,
+  },
+  {
+    name: "a step whose every call stopped says so",
+    messages: [shell("a", STOPPED), shell("b", STOPPED)],
+    verb: "2 calls stopped",
+    detail: undefined,
+  },
+  {
+    name: "a finished step counts each path once",
+    messages: [
+      call({ kind: "read", path: "/w/a.ts" }, SUCCESS),
+      call({ kind: "read", path: "/w/a.ts" }, SUCCESS),
+      call({ kind: "list", path: "/w" }, SUCCESS),
+    ],
+    verb: "Explored",
+    detail: "1 directory, 1 file",
+  },
+])("$name", (row) => {
+  assert.deepEqual(summary(row.messages), { kind: "summary", verb: row.verb, detail: row.detail });
 });
 
 test("a live step counts its calls under the group's verb, which only climbs", () => {
@@ -143,19 +172,6 @@ test("a live step leaves failed calls out of its counts until it settles", () =>
 
   assert.equal(liveLine(steps), "Exploring a.ts");
   assert.equal(summary(steps)?.verb, "1 file read, 1 failed");
-});
-
-test("a finished step counts each path once", () => {
-  const read = { kind: "read", path: "/w/a.ts" } as const;
-
-  assert.deepEqual(
-    summary([
-      call(read, SUCCESS),
-      call(read, SUCCESS),
-      call({ kind: "list", path: "/w" }, SUCCESS),
-    ]),
-    { kind: "summary", verb: "Explored", detail: "1 directory, 1 file" },
-  );
 });
 
 test("a live step without calls is thinking, and once it settles it reads as a thought, never as planning", () => {

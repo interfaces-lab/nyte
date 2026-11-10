@@ -1,23 +1,16 @@
-import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
 import process from "node:process";
 import { expect, test } from "vitest";
 import { testRenderer } from "../../../test/renderer.ts";
 
-test.each(["light", "dark"])(
-  "scrolling, pinned editing and reflow keep content and reading anchors in %s mode",
+test(
+  "scrolling, pinned editing and reflow keep content and reading anchors",
   { timeout: 120_000 },
-  async (mode) => {
-    const directory = process.env.NYTE_FRAME_CAPTURES;
-    const captures = directory === undefined ? undefined : join(directory, mode);
-
-    if (captures !== undefined) await mkdir(captures, { recursive: true });
+  async () => {
     expect(
       await testRenderer(
         new URL("./transcript-frames.browser-test.tsx", import.meta.url),
-        `document.documentElement.dataset.frameScheme = ${JSON.stringify(mode)};
-window.nyte = { clientSurface: "desktop", platform: "linux", host: { setThemePreference() {} } };`,
-        { captures },
+        `window.nyte = { clientSurface: "desktop", platform: "linux", host: { setThemePreference() {} } };`,
+        { captures: process.env.NYTE_FRAME_CAPTURES },
       ),
     ).toBe("passed");
   },

@@ -30,7 +30,9 @@ async function storedConnection(page: Page): Promise<string | null> {
   return page.evaluate(() => localStorage.getItem("nyte:connection"));
 }
 
-test("a pairing link opens the shell and leaves no token in the address bar", async ({ page }) => {
+test("a pairing link opens the shell, leaves no token in the address bar, and survives a reload", async ({
+  page,
+}) => {
   const errors = collectErrors(page);
   await watchForConnectForm(page);
   await page.addInitScript(() => {
@@ -45,13 +47,6 @@ test("a pairing link opens the shell and leaves no token in the address bar", as
   expect(await page.evaluate(() => String(history.length))).toBe(
     await page.evaluate(() => sessionStorage.getItem("pairing-history-length")),
   );
-  expect(errors).toEqual({ pageErrors: [], consoleErrors: [] });
-});
-
-test("a reload keeps the paired connection", async ({ page }) => {
-  const errors = collectErrors(page);
-  await watchForConnectForm(page);
-  await pair(page);
 
   await page.reload();
 

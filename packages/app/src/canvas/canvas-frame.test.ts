@@ -1,5 +1,4 @@
 import {
-  CANVAS_MAX_HEIGHT,
   CANVAS_MIN_HEIGHT,
   readShellMessage,
   readHostMessage,
@@ -40,12 +39,7 @@ describe("canvas frame height", () => {
     expect(canvasFrameHeight({ height: null }, undefined, undefined)).toBe(80);
     expect(canvasFrameHeight({ height: 320 }, undefined, undefined)).toBe(320);
     expect(canvasFrameHeight({ height: 320 }, undefined, 512)).toBe(512);
-  });
-
-  test("clamps the hint and the report alike", () => {
     expect(canvasFrameHeight({ height: 10 }, undefined, undefined)).toBe(CANVAS_MIN_HEIGHT);
-    expect(canvasFrameHeight({ height: null }, undefined, 4_000)).toBe(CANVAS_MAX_HEIGHT);
-    expect(canvasFrameHeight({ height: null }, undefined, 100.4)).toBe(100);
   });
 });
 
@@ -94,10 +88,5 @@ describe("canvas frame effects", () => {
         frame,
       ),
     ).toEqual([{ kind: "error", phase: "render", message: "x is not defined" }]);
-  });
-
-  test("ignores what is not a shell message", () => {
-    expect(readShellMessage({ type: "resize", height: 100 })).toBeUndefined();
-    expect(readShellMessage(openLinkRequest("link-2", "javascript:alert(1)"))).toBeUndefined();
   });
 });

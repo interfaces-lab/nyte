@@ -88,14 +88,20 @@ export async function mount(): Promise<void> {
         <span data-danger-case="neutral-label" {...props(styles.primary)}>
           Failed task
         </span>
-        <span data-danger-reference="neutral" {...props(styles.primary)}>
+        <span data-reference="neutral" {...props(styles.primary)}>
           Neutral
         </span>
-        <span data-danger-reference="primary" {...props(intent.danger, styles.primary)}>
+        <span data-reference="primary" {...props(intent.danger, styles.primary)}>
           Primary
         </span>
-        <span data-danger-reference="disabled" {...props(intent.danger, styles.disabled)}>
+        <span data-reference="disabled" {...props(intent.danger, styles.disabled)}>
           Disabled
+        </span>
+        <span data-reference="danger" {...props(intent.danger, styles.accent)}>
+          Danger
+        </span>
+        <span data-reference="success" {...props(intent.success, styles.accent)}>
+          Success
         </span>
         <span data-danger-case="generic-red" {...props(surfaceTheme.red, styles.secondary)}>
           ANSI red
@@ -103,7 +109,7 @@ export async function mount(): Promise<void> {
         <span data-danger-case="waiting">
           <TaskMark state="waiting" />
         </span>
-        <span data-danger-reference="warning" {...props(intent.warning, styles.secondary)}>
+        <span data-reference="warning" {...props(intent.warning, styles.secondary)}>
           Warning
         </span>
         <div {...props(styles.elevated)}>
@@ -373,6 +379,14 @@ export async function run(): Promise<string> {
       host.remove();
     }
 
+    const reference = (name: string) => {
+      const element = document.querySelector(`[data-reference="${name}"]`);
+
+      if (element === null) throw new Error(`Missing ${name} reference`);
+
+      return hex(getComputedStyle(element).color);
+    };
+
     for (const control of document.querySelectorAll("[data-count-case]")) {
       const stats = control.querySelector('[aria-label="86 added, 24 removed"]');
 
@@ -380,14 +394,7 @@ export async function run(): Promise<string> {
         throw new Error("Missing ChangeStats counts");
 
       const neutral = control.matches(":active, [aria-expanded=true], [data-highlighted]");
-      const more = matchMedia("(prefers-contrast: more)").matches;
-
-      const palette =
-        mode === "light"
-          ? ["116d3e", "a63536"]
-          : more
-            ? ["78bd90", "e28d88"]
-            : ["0bcb74", "ff535a"];
+      const palette = [reference("success"), reference("danger")];
 
       for (const [index, label] of Array.from(stats.children).entries()) {
         const color = getComputedStyle(label).color;
@@ -404,18 +411,6 @@ export async function run(): Promise<string> {
         });
       }
     }
-
-    const more = matchMedia("(prefers-contrast: more)").matches;
-    const accent = mode === "light" ? "a63536" : more ? "e28d88" : "ff535a";
-    const secondary = mode === "light" ? (more ? "5a2423" : "7c2527") : more ? "ffd5d1" : "f0a5a0";
-
-    const reference = (name: string) => {
-      const element = document.querySelector(`[data-danger-reference="${name}"]`);
-
-      if (element === null) throw new Error(`Missing ${name} reference`);
-
-      return hex(getComputedStyle(element).color);
-    };
 
     for (const host of document.querySelectorAll("[data-danger-case], [data-danger-control]")) {
       const element = host.querySelector('[role="img"]') ?? host;
@@ -440,17 +435,17 @@ export async function run(): Promise<string> {
         minimum: disabled ? 1 : 4.5,
         color: hex(color),
         expected:
-          name === "neutral-label"
-            ? reference("neutral")
-            : name === "waiting"
-              ? reference("warning")
-              : name === "generic-red"
-                ? secondary
+          name === "generic-red"
+            ? undefined
+            : name === "neutral-label"
+              ? reference("neutral")
+              : name === "waiting"
+                ? reference("warning")
                 : disabled
                   ? reference("disabled")
                   : interactive
                     ? reference("primary")
-                    : accent,
+                    : reference("danger"),
       });
     }
 

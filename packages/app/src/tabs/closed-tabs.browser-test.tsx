@@ -62,7 +62,6 @@ export async function run(): Promise<string> {
     if (tab !== undefined) windowTabs.dispatch({ kind: "close-tab", tabId: tab.id });
   }
 
-  const opened = closedChats().join(", ");
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
@@ -84,5 +83,5 @@ export async function run(): Promise<string> {
   flushSync(() => root.unmount());
   container.remove();
 
-  return JSON.stringify({ opened, kept });
+  return JSON.stringify({ kept });
 }

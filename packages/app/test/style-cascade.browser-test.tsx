@@ -6,7 +6,9 @@ import { Button } from "@nyte-ai/ui/button";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { row } from "@nyte-ai/ui/styles/schema.stylex";
 import { appearance, role, type } from "@nyte-ai/ui/styles/vars.stylex";
+import { composerStyles } from "../src/chat/composer/composer.stylex.ts";
 import { applyFocusModality, applyTransparency } from "../src/theme/appearance.ts";
+import { trayStyles } from "../src/theme/tray.stylex.ts";
 import "../src/theme/tokens.stylex.ts";
 import "../src/theme/global.css";
 
@@ -119,6 +121,17 @@ export async function run(): Promise<string> {
           </p>
           <div id="scope" {...props(surfaceTheme.custom)} />
           <div id="row" {...props(app.row)} />
+          <div id="dock" {...props(composerStyles.dock)}>
+            <section id="tray" {...props(trayStyles.surface)}>
+              <div {...props(trayStyles.header)}>1 Queued Message</div>
+              <div {...props(trayStyles.list)}>
+                <div id="queued" {...props(composerStyles.queueRow)}>
+                  Queued text
+                </div>
+              </div>
+            </section>
+            <div id="composer" {...props(composerStyles.frame)} />
+          </div>
         </>,
       ),
     );
@@ -188,6 +201,24 @@ export async function run(): Promise<string> {
 
       if (!same && reason !== undefined)
         failures.push(`role.${name} is allowlisted as scheme-independent (${reason}) but differs`);
+    }
+
+    const fill = (id: string) => getComputedStyle(element(id)).backgroundColor;
+
+    for (const mode of ["light", "dark"] as const) {
+      applyDisplayMode(mode);
+      const tray = fill("tray");
+
+      if (mode === "dark" && tray === fill("dock"))
+        failures.push(`dark: the tray is the page behind it (${tray})`);
+
+      if (tray !== fill("composer"))
+        failures.push(
+          `${mode}: the tray ${tray} and composer ${fill("composer")} are two surfaces`,
+        );
+
+      if (fill("queued") === tray)
+        failures.push(`${mode}: a resting queued row fills over its tray`);
     }
 
     for (const mode of ["light", "dark"] as const) {

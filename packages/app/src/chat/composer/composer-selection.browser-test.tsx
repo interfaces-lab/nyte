@@ -246,8 +246,14 @@ export async function run(): Promise<string> {
         const frameBounds = frame.getBoundingClientRect();
 
         if (variant.name === "compact") {
-          check(area.clientHeight === 38, "Single-line draft stays compact");
-          check(frameBounds.height === 40, "Compact padding preserves the pill height");
+          check(
+            area.clientHeight === Number.parseFloat(getComputedStyle(area).minHeight),
+            "Single-line draft stays compact",
+          );
+          check(
+            frameBounds.height === Number.parseFloat(getComputedStyle(frame).minHeight),
+            "Compact padding preserves the pill height",
+          );
         }
 
         const [firstLine = "", ...laterLines] = text.split("\n");
@@ -380,10 +386,17 @@ export async function run(): Promise<string> {
           document.body.append(outside);
           outside.focus();
           await paint();
-          check(frame.getBoundingClientRect().height === 40, "Blur clips a narrow multiline draft");
+          const clipped = frame.getBoundingClientRect().height;
+          check(
+            clipped === Number.parseFloat(getComputedStyle(frame).minHeight),
+            "Blur clips a narrow multiline draft",
+          );
           flushSync(() => editor.focus());
           await paint();
-          check(frame.getBoundingClientRect().height > 40, "Focus restores the expanded draft");
+          check(
+            frame.getBoundingClientRect().height > clipped,
+            "Focus restores the expanded draft",
+          );
           outside.remove();
         }
       }

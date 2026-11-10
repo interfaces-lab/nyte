@@ -157,10 +157,9 @@ function beforePaint(action: () => void, observe: () => void): Promise<void> {
 }
 
 export async function run(): Promise<string> {
-  const mode = document.documentElement.dataset.frameScheme === "dark" ? "dark" : "light";
-  applyDisplayMode(mode);
-  const foreground = mode === "dark" ? "#eee" : "#111";
-  const background = mode === "dark" ? "#111" : "#fff";
+  applyDisplayMode("light");
+  const foreground = "#111";
+  const background = "#fff";
   document.body.style.backgroundColor = background;
   queryClient.clear();
   queryClient.setQueryData(keys.mentionFiles(undefined), []);

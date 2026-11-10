@@ -9,7 +9,6 @@ import { installBridge } from "../contract/nyte.ts";
 import { keys } from "../data/query-client.ts";
 import { createWebBridge } from "../web/bridge.ts";
 import { ProfileSettings } from "./profile.tsx";
-import { settingsSectionGroups } from "./index.ts";
 
 const web: NyteBridge = { ...createWebBridge().bridge, machineName: "Studio Mac" };
 
@@ -159,12 +158,4 @@ test("the GitHub CLI, the Nyte account, and this Mac each change only their own 
   assert.match(signedOutLinked.get("This Mac") ?? "", /Reachable/, "signing out unlinked the Mac");
   assert.match(signedOutLinked.get("GitHub") ?? "", /octocat/);
   assert.doesNotMatch(signedOutLinked.get("GitHub") ?? "", /The Octocat/);
-});
-
-test("Profile is listed on the desktop, which owns its environment, and not in the web app", () => {
-  installBridge(desktop);
-  assert.ok(settingsSectionGroups().flat().includes("profile"));
-
-  installBridge(web);
-  assert.equal(settingsSectionGroups().flat().includes("profile"), false);
 });

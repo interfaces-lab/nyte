@@ -152,13 +152,21 @@ export async function run(): Promise<string> {
 
     render([tab("short", "A"), tab("long", "A long title ".repeat(10))]);
 
-    const [short, long] = [...container.querySelectorAll('[role="tab"]')].map(
-      (item) => item.parentElement?.parentElement?.getBoundingClientRect().width ?? 0,
+    const boxes = [...container.querySelectorAll('[role="tab"]')].map(
+      (item) => item.parentElement?.parentElement,
     );
 
-    if (short === undefined || long === undefined) throw new Error("Missing sized tabs");
+    const [short, long] = boxes.map((box) => box?.getBoundingClientRect().width ?? 0);
+    const longBox = boxes.at(1);
+
+    if (short === undefined || long === undefined || longBox === null || longBox === undefined)
+      throw new Error("Missing sized tabs");
+    const cap = Number.parseFloat(getComputedStyle(longBox).maxWidth);
     check(short >= 72 && short < 120, `A short title's tab is ${String(short)} px wide`);
-    check(long === 280, `A long title's tab is ${String(long)} px wide`);
+    check(
+      long === cap,
+      `A long title's tab is ${String(long)} px wide, not capped at ${String(cap)} px`,
+    );
 
     const scroller = container.querySelector('[role="tablist"] > [role="presentation"]');
 

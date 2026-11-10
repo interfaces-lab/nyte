@@ -282,9 +282,8 @@ function watch(host: HTMLElement) {
         const duration = element.style.getPropertyValue("--sd-duration");
         seen.add(duration);
 
-        if (duration === "150ms") fresh ??= animationStyle(element);
-
         if (duration === "0ms") settled ??= animationStyle(element);
+        else fresh ??= animationStyle(element);
       }
 
       fadingMax = Math.max(fadingMax, targets.length);
@@ -426,7 +425,7 @@ async function burst(host: HTMLElement, draw: Draw, streaming: boolean) {
   const spansAfterEnd = host.querySelectorAll(FADES).length;
   await draw("", false);
 
-  return { steps, fullTextMs, spansAfterEnd, ...watcher.report() };
+  return { steps, fullText: BURST.length, fullTextMs, spansAfterEnd, ...watcher.report() };
 }
 
 async function mount(host: HTMLElement, draw: Draw, final: string) {

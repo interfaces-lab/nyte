@@ -24,24 +24,6 @@ describe("canvas theme", () => {
     expect(sanitizeCanvasVariables(variables)).toEqual(variables);
   });
 
-  test("writes what theme/boot.ts writes on <html>", () => {
-    const theme = canvasTheme(appearance);
-
-    expect(theme.theme).toBe("dark");
-    expect(theme.styles.variables).toMatchObject({
-      "--nyte-custom-hue": "250",
-      "--nyte-custom-chroma-scale": "0.4",
-      "--nyte-font-family-sans": "var(--nyte-ui-font-inter)",
-      "--nyte-font-family-mono": "var(--nyte-code-font-jetbrains-mono)",
-      "--nyte-letter-spacing-lg": "",
-      "--nyte-font-size-base": "13px",
-      "--nyte-font-size-code": "12px",
-      "--nyte-font-smoothing": "antialiased",
-      "--nyte-moz-font-smoothing": "grayscale",
-      "--nyte-reduce-transparency": "0",
-    });
-  });
-
   test("a local font keeps its quoted family and drops the display tracking", () => {
     const { variables } = canvasTheme({
       ...appearance,

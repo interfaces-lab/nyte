@@ -16,8 +16,8 @@ window.nyte = {
 };
 `;
 
-test("find waits for a finished composition, and Escape hands back the keyboard", async () => {
+test("find and the address field wait for a finished composition, an accepted completion opens its page, and Escape hands back the keyboard", async () => {
   expect(
-    await testRenderer(new URL("./browser-find.browser-test.tsx", import.meta.url), setup),
+    await testRenderer(new URL("./browser-composition.browser-test.tsx", import.meta.url), setup),
   ).toBe("passed");
 }, 60_000);
