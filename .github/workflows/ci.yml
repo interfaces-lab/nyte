@@ -21,13 +21,14 @@ env:
   TURBO_TEAM: ${{ vars.TURBO_TEAM }}
 
 # GitHub-hosted runners are free for this public repository; Blacksmith bills per minute, so
-# only release builds use it. A push to main runs only the check job, since most changes land
+# only release builds use it. A push to main runs only the checks, since most changes land
 # there directly: pull requests test what they change, and the nightly run tests everything
-# on main, on macOS as well.
+# on main, on macOS as well. The test jobs wait for plan, not check, so a lint or format
+# failure does not hide the test results.
 jobs:
-  check:
+  plan:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 10
     outputs:
       filter: ${{ steps.plan.outputs.filter }}
       tests: ${{ steps.plan.outputs.tests }}
@@ -41,8 +42,6 @@ jobs:
           fetch-depth: 0
           filter: blob:none
       - uses: ./.github/actions/setup
-        with:
-          bun: "true"
       - name: Plan the test jobs
         id: plan
         env:
@@ -69,6 +68,15 @@ jobs:
             }
             console.log(`unit_matrix=${JSON.stringify({ include })}`);
           ' "$RUNNER_TEMP/packages.json" >> "$GITHUB_OUTPUT"
+
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+        with:
+          bun: "true"
       - run: pnpm sdk:check
       - run: pnpm format
       - run: pnpm lint
@@ -76,8 +84,8 @@ jobs:
       - run: pnpm operations
 
   binary:
-    needs: check
-    if: needs.check.outputs.tests == 'true'
+    needs: plan
+    if: needs.plan.outputs.tests == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -92,11 +100,11 @@ jobs:
 
   unit:
     name: unit (${{ matrix.os }})
-    needs: check
-    if: needs.check.outputs.tests == 'true'
+    needs: plan
+    if: needs.plan.outputs.tests == 'true'
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.check.outputs.unit_matrix) }}
+      matrix: ${{ fromJSON(needs.plan.outputs.unit_matrix) }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     defaults:
@@ -114,7 +122,7 @@ jobs:
       - name: Run unit tests
         timeout-minutes: 35
         env:
-          FILTER: ${{ needs.check.outputs.filter }}
+          FILTER: ${{ needs.plan.outputs.filter }}
         run: |
           display=""
           if [ "$RUNNER_OS" = Linux ]; then display="xvfb-run --auto-servernum"; fi
@@ -124,8 +132,8 @@ jobs:
   # `timed` depends on `web` in the config, so it runs afterwards on one worker.
   e2e-web:
     name: e2e web
-    needs: check
-    if: needs.check.outputs.web == 'true'
+    needs: plan
+    if: needs.plan.outputs.web == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -153,8 +161,8 @@ jobs:
 
   # The packages as npm installs them; the release runs the same pair before it publishes.
   sdk:
-    needs: check
-    if: needs.check.outputs.sdk == 'true'
+    needs: plan
+    if: needs.plan.outputs.sdk == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -167,8 +175,8 @@ jobs:
 
   e2e-desktop:
     name: e2e desktop (${{ matrix.shard }})
-    needs: check
-    if: needs.check.outputs.desktop == 'true'
+    needs: plan
+    if: needs.plan.outputs.desktop == 'true'
     strategy:
       fail-fast: false
       matrix:
