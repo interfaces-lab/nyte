@@ -20,8 +20,8 @@ not edits.
 
 1. `packages/ui/src` and the `exports` in `packages/ui/package.json`.
 2. The installed `@base-ui/react` types.
-3. `content/base-ui-reference/`, generated from Base UI's upstream `master`, which can be newer
-   than the installed version.
+3. `content/base-ui-reference/`, generated from the pinned Base UI release with wording
+   corrections owned by the generator. The installed types still take precedence.
 4. The existing pages. Every recorded defect came from trusting one over the source.
 
 ## Scope

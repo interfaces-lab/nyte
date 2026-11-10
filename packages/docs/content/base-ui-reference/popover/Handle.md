@@ -28,5 +28,3 @@ function close(): void;
 Closes the popover.
 
 This method should only be called in an event handler or an effect (not during rendering).
-
-## External Types

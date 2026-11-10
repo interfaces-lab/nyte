@@ -36,5 +36,3 @@ function close(): void;
 Closes the dialog.
 
 This method should only be called in an event handler or an effect (not during rendering).
-
-## External Types

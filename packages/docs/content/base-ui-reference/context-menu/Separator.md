@@ -9,3 +9,9 @@ Renders a `<div>` element.
 | className   | `string \| ((state: SeparatorState) => string \| undefined)`                           | -              | CSS class applied to the element, or a function that&#xA;returns a class based on the component's state.                                                                                      |
 | style       | `React.CSSProperties \| ((state: SeparatorState) => React.CSSProperties \| undefined)` | -              | Style applied to the element, or a function that&#xA;returns a style object based on the component's state.                                                                                   |
 | render      | `ReactElement \| ((props: HTMLProps, state: SeparatorState) => ReactElement)`          | -              | Allows you to replace the component's HTML element&#xA;with a different tag, or compose it with another component. Accepts a `ReactElement` or a function that returns the element to render. |
+
+**Separator Data Attributes:**
+
+| Attribute        | Type                         | Description                                 |
+| :--------------- | :--------------------------- | :------------------------------------------ |
+| data-orientation | `'horizontal' \| 'vertical'` | Indicates the orientation of the separator. |

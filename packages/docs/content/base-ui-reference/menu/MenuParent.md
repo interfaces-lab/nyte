@@ -6,5 +6,3 @@ type MenuParent =
   | { type: 'nested-context-menu'; context: ContextMenuRootContext; menuContext: MenuRootContext }
   | { type: undefined };
 ```
-
-## External Types

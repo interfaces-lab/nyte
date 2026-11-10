@@ -7,5 +7,3 @@ type AutocompleteFilterOptions = {
   locale?: Intl.LocalesArgument;
 };
 ```
-
-## External Types

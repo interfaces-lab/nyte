@@ -28,5 +28,3 @@ function close(): void;
 Closes the preview card.
 
 This method should only be called in an event handler or an effect (not during rendering).
-
-## External Types

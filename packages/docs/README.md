@@ -75,6 +75,6 @@ pnpm exec turbo typecheck --filter=@nyte-ai/web
 pnpm --dir packages/docs check:base-ui
 ```
 
-`check:base-ui` fails when the vendored Base UI reference pages are stale. Run `pnpm --dir packages/docs sync:base-ui` to update them.
+`check:base-ui` fails when the vendored Base UI reference pages are stale. Run `pnpm --dir packages/docs sync:base-ui` to update them. The generator's `BASE_UI_REF` must match the installed `@base-ui/react` release. Keep wording corrections in the generator so a sync preserves them.
 
 Read [AGENTS.md](AGENTS.md) before changing the site.

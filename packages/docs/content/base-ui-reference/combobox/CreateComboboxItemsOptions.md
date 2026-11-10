@@ -19,5 +19,3 @@ type CreateComboboxItemsOptions<
   getLabel: (item: Item) => string;
 };
 ```
-
-## External Types

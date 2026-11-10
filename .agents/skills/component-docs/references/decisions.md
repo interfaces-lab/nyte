@@ -36,5 +36,3 @@ using their text.
   belongs in the docs package's `typecheck` script, which CI runs. It can't judge union
   completeness or example order.
 - Foundations pages have no contract.
-- `check:base-ui` compares against upstream `master`, so it fails for reasons unrelated to our
-  pages.
