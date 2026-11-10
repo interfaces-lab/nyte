@@ -1,9 +1,12 @@
-import { statSync } from "node:fs";
-import type { Stats } from "node:fs";
-import { stat } from "node:fs/promises";
+import { access, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import process from "node:process";
+import { fault } from "@nyte-ai/core";
 import type { Cursor, HeadInfo, JobView, Paged, ParentFilter, WorkspaceId } from "@nyte-ai/schema";
+import { hostRetirePath, processAlive } from "./host-endpoint.ts";
+import type { Supervisor } from "./host-thread.ts";
 
-const CHECK_MS = 60_000;
+const CHECK_MS = 10_000;
 
 interface Activity {
   readonly sessions: {
@@ -22,35 +25,29 @@ interface SessionHeads {
   readonly heads: readonly Pick<HeadInfo, "execution">[];
 }
 
-/**
- * Calls `replace` once `buildFile` has changed identity (inode or mtime) since this call and
- * nothing runs on `host`. Checks every minute until it calls `replace` or the returned stop runs.
- * A `buildFile` missing at the start is never followed.
- */
-export function replaceOutdatedHost(
-  host: Activity,
-  buildFile: string,
-  replace: () => void,
-): () => void {
-  const first = statSync(buildFile, { throwIfNoEntry: false });
+export interface RetireRequest {
+  consumed(): Promise<boolean>;
+  withdraw(): Promise<void>;
+}
 
-  if (first === undefined) return () => undefined;
-  const started = identity(first);
+export function retireOnRequest(
+  host: Activity,
+  supervisor: Supervisor | null,
+  retire: () => void,
+): () => void {
+  if (supervisor === null) return () => undefined;
   let stopped = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
 
   const check = async (): Promise<void> => {
-    const now = await stat(buildFile).then(identity, () => null);
+    const asked = await liveRequests(supervisor);
 
-    if (now !== null && now !== started) {
-      const idle = hostIdle(await listSessions(host), await listJobs(host));
+    if (asked.length > 0 && hostIdle(await listSessions(host), await listJobs(host)) && !stopped) {
+      stopped = true;
+      await Promise.all(asked.map((path) => rm(path, { force: true })));
+      retire();
 
-      if (idle && !stopped) {
-        stopped = true;
-        replace();
-
-        return;
-      }
+      return;
     }
 
     schedule();
@@ -58,7 +55,14 @@ export function replaceOutdatedHost(
 
   const schedule = (): void => {
     if (stopped) return;
-    timer = setTimeout(() => void check().catch(schedule), CHECK_MS);
+    timer = setTimeout(
+      () =>
+        void check().catch((error: unknown) => {
+          fault("host", "retire check failed", { error: String(error) });
+          schedule();
+        }),
+      CHECK_MS,
+    );
   };
 
   schedule();
@@ -66,6 +70,23 @@ export function replaceOutdatedHost(
   return () => {
     stopped = true;
     clearTimeout(timer);
+  };
+}
+
+export async function requestRetire(supervisor: Supervisor): Promise<RetireRequest> {
+  const folder = hostRetirePath();
+  const path = join(folder, String(process.pid));
+
+  await mkdir(folder, { recursive: true, mode: 0o700 });
+  await writeFile(path, supervisor, { mode: 0o600 });
+
+  return {
+    consumed: () =>
+      access(path).then(
+        () => false,
+        () => true,
+      ),
+    withdraw: () => rm(path, { force: true }),
   };
 }
 
@@ -83,8 +104,26 @@ export function hostIdle(
   return !running && jobs.every((job) => job.state.kind !== "running");
 }
 
-function identity(stats: Stats): string {
-  return `${String(stats.ino)}:${String(stats.mtimeMs)}`;
+async function liveRequests(supervisor: Supervisor): Promise<readonly string[]> {
+  const folder = hostRetirePath();
+  const names = await readdir(folder).catch(() => []);
+
+  const requests = await Promise.all(
+    names.map(async (name) => {
+      const path = join(folder, name);
+      const pid = Number(name);
+
+      if (!(Number.isSafeInteger(pid) && pid > 0 && processAlive(pid))) {
+        await rm(path, { force: true });
+
+        return null;
+      }
+
+      return (await readFile(path, "utf8").catch(() => null)) === supervisor ? path : null;
+    }),
+  );
+
+  return requests.filter((path) => path !== null);
 }
 
 async function listSessions(host: Activity): Promise<readonly SessionHeads[]> {

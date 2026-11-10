@@ -118,6 +118,7 @@ export function startHostRuntime(options: HostRuntimeOptions): HostRuntime {
     async close() {
       withdraw();
       link.close();
+      await hostProcess.close();
       await desktop.close();
       client.release();
     },

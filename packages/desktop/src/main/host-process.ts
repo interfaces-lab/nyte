@@ -1,6 +1,8 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import type { HostProcess } from "@nyte-ai/app/contract/bridge.ts";
 import { serial } from "@nyte-ai/schema/serial";
+import { requestRetire } from "@nyte-ai/service/outdated-host";
+import type { RetireRequest } from "@nyte-ai/service/outdated-host";
 import { dialog } from "electron";
 import type { BrowserWindow, MessageBoxOptions } from "electron";
 import { runningWork } from "../shared/update-activity.ts";
@@ -24,6 +26,7 @@ export interface HostProcessFollower {
   /** Asks in a dialog that names the running work, then restarts or stops the host. */
   confirm(action: ConfirmedAction, window: BrowserWindow | undefined): Promise<void>;
   start(): Promise<void>;
+  close(): Promise<void>;
 }
 
 export function followHostProcess(options: {
@@ -36,6 +39,12 @@ export function followHostProcess(options: {
   const reads = serial();
   let state: HostProcess = { kind: "offline" };
   let restarting = false;
+  let retire: RetireRequest | null = null;
+
+  const withdraw = async (): Promise<void> => {
+    await retire?.withdraw();
+    retire = null;
+  };
 
   const set = (next: HostProcess): void => {
     if (JSON.stringify(next) === JSON.stringify(state)) return;
@@ -61,6 +70,9 @@ export function followHostProcess(options: {
       }
 
       set({ kind: update, version: link.version, startedAt });
+
+      if (update === "stale") retire = await requestRetire("launchd");
+      else await withdraw();
     });
 
   const restart = async (): Promise<void> => {
@@ -92,6 +104,7 @@ export function followHostProcess(options: {
     async start() {
       await options.agent.start();
     },
+    close: () => reads.run(withdraw),
   };
 }
 

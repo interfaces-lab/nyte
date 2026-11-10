@@ -10,6 +10,7 @@
     "./host-endpoint": "./src/host-endpoint.ts",
     "./host-thread": "./src/host-thread.ts",
     "./host-worker": "./src/host-worker.ts",
+    "./outdated-host": "./src/outdated-host.ts",
     "./serve-host": "./src/serve-host.ts"
   },
   "scripts": {

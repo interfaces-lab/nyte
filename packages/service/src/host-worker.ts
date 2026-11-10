@@ -26,7 +26,7 @@ import { openFaultLog } from "./fault-log.ts";
 import { hostFaultsPath } from "./host-endpoint.ts";
 import { hostMessages } from "./host-thread.ts";
 import type { HostCommand, HostReport } from "./host-thread.ts";
-import { replaceOutdatedHost } from "./outdated-host.ts";
+import { retireOnRequest } from "./outdated-host.ts";
 import { portConflict, probePort } from "./port.ts";
 import { Sharing } from "./sharing.ts";
 
@@ -158,10 +158,7 @@ async function open(
 
     sharing.start();
 
-    const unfollow =
-      command.buildFile === undefined
-        ? () => undefined
-        : replaceOutdatedHost(host, command.buildFile, replaced);
+    const unfollow = retireOnRequest(host, command.supervisor, replaced);
 
     return {
       address: listener.address,

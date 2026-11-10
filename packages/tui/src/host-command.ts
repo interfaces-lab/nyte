@@ -1,19 +1,17 @@
-import process from "node:process";
 import { hostFilePath, hostLockPath, hostLogPath } from "@nyte-ai/service/host-endpoint";
 import type { RunningHost } from "@nyte-ai/service/host-endpoint";
 import { serveHost } from "@nyte-ai/service/serve-host";
 import type { HostListening } from "@nyte-ai/service/serve-host";
 import { CliError } from "./cli/errors.ts";
 import type { Output } from "./cli/output.ts";
-import { compiled } from "./compiled.ts";
 import { HOST_WORKER } from "./host-thread.ts";
 
 /**
  * Serves the store on 127.0.0.1 until `signal` aborts, publishing the URL and token in `host.json`
  * for clients to attach to. stdout gets the URL, or with `--json` one listening line; where it
  * listens goes to stderr. With `--log` the listening line goes to the host log instead of stdout.
- * With `--supervised`, which only `ensureHost` passes, a compiled host stops once `nyte` is updated
- * and nothing runs, for its client to start the new build. Throws a `conflict` when another host
+ * With `--supervised`, which only `ensureHost` passes, the host retires once a newer `nyte` asks
+ * and nothing runs, and that `nyte` starts its own build. Throws a `conflict` when another host
  * already serves this home.
  */
 export async function hostCommand(
@@ -26,7 +24,7 @@ export async function hostCommand(
   const served = await serveHost({
     entry: HOST_WORKER,
     log: options.log,
-    buildFile: compiled && options.supervised ? process.execPath : undefined,
+    supervisor: options.supervised ? "nyte" : null,
     whenTaken: "exit",
     signal,
     output: { write: (text) => output.result(text) },

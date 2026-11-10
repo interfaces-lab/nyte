@@ -1,4 +1,5 @@
-import { readFile, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,8 +11,9 @@ import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Compile } from "typebox/compile";
 import { afterEach, expect, it, vi } from "vitest";
-import { hostFaultsPath, hostFilePath, publishHost } from "../src/host-endpoint.ts";
-import { hostIdle, replaceOutdatedHost } from "../src/outdated-host.ts";
+import { hostFaultsPath, hostFilePath, hostRetirePath, publishHost } from "../src/host-endpoint.ts";
+import type { Supervisor } from "../src/host-thread.ts";
+import { hostIdle, requestRetire, retireOnRequest } from "../src/outdated-host.ts";
 import { serveHost } from "../src/serve-host.ts";
 import type { Served } from "../src/serve-host.ts";
 
@@ -65,6 +67,7 @@ function start(scene: Scene, name: string, whenTaken: "wait" | "exit"): Host {
     entry: ENTRY,
     log: false,
     whenTaken,
+    supervisor: null,
     signal: stop.signal,
     output: { write: (text) => void lines.push(text) },
     listening: (host) => `${JSON.stringify({ type: "listening", ...host })}\n`,
@@ -273,6 +276,7 @@ it("a host thread that dies after listening leaves its faults and its death in t
       entry: new URL("./fixtures/fault-host.ts", import.meta.url),
       log: false,
       whenTaken: "exit",
+      supervisor: null,
       signal: new AbortController().signal,
       output: { write: () => undefined },
       listening: () => "",
@@ -290,27 +294,25 @@ it("a host thread that dies after listening leaves its faults and its death in t
   expect(lines[1]).toMatch(/^\d{4}-\d\d-\d\dT[\d:.]+Z \[host\] stopped \{"error":"Error: boom/u);
 });
 
-it("a host whose build file is replaced stops serving, withdraws host.json and writes no fault", async () => {
+it("a supervised host asked to retire stops serving, withdraws host.json and writes no fault", async () => {
   const home = await mkdtemp(join(tmpdir(), "nyte-serve-host-"));
   folders.push(home);
   vi.stubEnv("HOME", home);
   vi.stubEnv("NYTE_HOME", home);
-  const build = join(home, "nyte");
-  await writeFile(build, "old build");
   const lines: string[] = [];
 
   const served = serveHost({
     entry: new URL("./fixtures/replace-host.ts", import.meta.url),
     log: false,
     whenTaken: "exit",
-    buildFile: build,
+    supervisor: "nyte",
     signal: new AbortController().signal,
     output: { write: (text) => void lines.push(text) },
     listening: () => "listening",
   });
 
   await vi.waitFor(() => expect(lines).toEqual(["listening"]), { timeout: 10_000, interval: 25 });
-  await replaceFile(build, "new build");
+  await requestRetire("nyte");
 
   expect(await served).toEqual({ kind: "stopped" });
   expect(await readFile(hostFilePath(), "utf8").catch(() => "none")).toBe("none");
@@ -388,89 +390,125 @@ it("only a live or retrying run or a running job, terminals included, keeps a ho
   ).toEqual(idleCases.map((row) => ({ name: row.name, idle: row.idle })));
 });
 
-it("an outdated host is replaced at the first minute it is idle, and not before", async () => {
-  const home = await mkdtemp(join(tmpdir(), "nyte-outdated-host-"));
-  folders.push(home);
-  const build = join(home, "nyte");
-  await writeFile(build, "old build");
-  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-  let jobs: readonly JobView[] = [];
-  let checks = 0;
-  let replaced = 0;
+type Asker = "this process" | "a dead process";
 
-  const host = {
-    sessions: { list: async () => ({ items: [], next: null }) },
-    workspaces: { list: async () => [{ id: asId<"workspace">("home") }] },
-    workspace: () => ({
-      jobs: {
-        list: async () => {
-          checks += 1;
+const RUNNING_JOB: JobView = {
+  id: asId("job"),
+  command: "pnpm dev",
+  title: "pnpm dev",
+  session: null,
+  pty: null,
+  state: { kind: "running" },
+  startedAt: 0,
+  endedAt: null,
+  tail: "",
+  foreground: false,
+};
 
-          return jobs;
-        },
-      },
-      job: () => ({ idle: async () => false }),
-    }),
-  };
+const retireCases: readonly {
+  readonly name: string;
+  readonly supervisor: Supervisor | null;
+  readonly asker: Asker;
+  readonly asks: Supervisor;
+  readonly busy: boolean;
+  readonly retired: number;
+  readonly left: readonly Asker[];
+}[] = [
+  {
+    name: "an idle host asked by a live process of its kind",
+    supervisor: "nyte",
+    asker: "this process",
+    asks: "nyte",
+    busy: false,
+    retired: 1,
+    left: [],
+  },
+  {
+    name: "a busy host",
+    supervisor: "nyte",
+    asker: "this process",
+    asks: "nyte",
+    busy: true,
+    retired: 0,
+    left: ["this process"],
+  },
+  {
+    name: "a request from a dead process",
+    supervisor: "nyte",
+    asker: "a dead process",
+    asks: "nyte",
+    busy: false,
+    retired: 0,
+    left: [],
+  },
+  {
+    name: "a request of the other kind",
+    supervisor: "launchd",
+    asker: "this process",
+    asks: "nyte",
+    busy: false,
+    retired: 0,
+    left: ["this process"],
+  },
+  {
+    name: "a host with no supervisor",
+    supervisor: null,
+    asker: "this process",
+    asks: "nyte",
+    busy: false,
+    retired: 0,
+    left: ["this process"],
+  },
+];
 
-  const stop = replaceOutdatedHost(host, build, () => {
-    replaced += 1;
-  });
+it("a host retires only when it is idle and a live process of its supervisor's kind asks", async () => {
+  const dead = spawnSync(process.execPath, ["-e", ""]).pid;
 
-  await vi.advanceTimersByTimeAsync(60_000);
-  await sleep(50);
-  const unchanged = { checks, replaced };
+  const outcomes: { readonly name: string; readonly retired: number; readonly left: Asker[] }[] =
+    [];
 
-  await replaceFile(build, "new build");
+  for (const row of retireCases) {
+    const home = await mkdtemp(join(tmpdir(), "nyte-retire-"));
+    folders.push(home);
+    vi.stubEnv("NYTE_HOME", home);
 
-  jobs = [
-    {
-      id: asId("job"),
-      command: "pnpm dev",
-      title: "pnpm dev",
-      session: null,
-      pty: null,
-      state: { kind: "running" },
-      startedAt: 0,
-      endedAt: null,
-      tail: "",
-      foreground: false,
-    },
-  ];
+    if (row.asker === "this process") await requestRetire(row.asks);
+    else {
+      await mkdir(hostRetirePath(), { recursive: true });
+      await writeFile(join(hostRetirePath(), String(dead)), row.asks);
+    }
 
-  const minute = async (): Promise<{ readonly checks: number; readonly replaced: number }> => {
-    const before = checks;
-    await vi.advanceTimersByTimeAsync(60_000);
-    await until(() => checks > before);
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    let retired = 0;
 
-    return { checks, replaced };
-  };
+    const host = {
+      sessions: { list: async () => ({ items: [], next: null }) },
+      workspaces: { list: async () => [{ id: asId<"workspace">("home") }] },
+      workspace: () => ({ jobs: { list: async () => (row.busy ? [RUNNING_JOB] : []) } }),
+    };
 
-  const busy = [await minute(), await minute()];
+    const stop = retireOnRequest(host, row.supervisor, () => {
+      retired += 1;
+    });
 
-  jobs = [];
-  await vi.advanceTimersByTimeAsync(59_999);
-  await sleep(50);
-  const early = replaced;
-  await vi.advanceTimersByTimeAsync(1);
-  await until(() => replaced > 0);
-  stop();
+    const scheduled = vi.getTimerCount();
+    await vi.advanceTimersByTimeAsync(10_000);
+    await until(() => retired > 0 || vi.getTimerCount() === scheduled);
+    stop();
+    vi.useRealTimers();
+    const left = await readdir(hostRetirePath());
 
-  expect({ unchanged, busy, early, replaced }).toEqual({
-    unchanged: { checks: 0, replaced: 0 },
-    busy: [
-      { checks: 1, replaced: 0 },
-      { checks: 2, replaced: 0 },
-    ],
-    early: 0,
-    replaced: 1,
-  });
+    outcomes.push({
+      name: row.name,
+      retired,
+      left: left.map((name) => (name === String(dead) ? "a dead process" : "this process")),
+    });
+  }
+
+  expect(outcomes).toEqual(
+    retireCases.map((row) => ({ name: row.name, retired: row.retired, left: row.left })),
+  );
 });
-
-async function replaceFile(path: string, text: string): Promise<void> {
-  await writeFile(`${path}.next`, text);
-  await rename(`${path}.next`, path);
-}
 
 async function until(done: () => boolean): Promise<void> {
   for (let tries = 0; !done(); tries++) {

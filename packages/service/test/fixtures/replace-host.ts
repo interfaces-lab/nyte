@@ -1,12 +1,18 @@
-import { statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { createServer } from "node:http";
+import { join } from "node:path";
 import { parentPort } from "node:worker_threads";
 import { Type } from "typebox";
 import { Compile } from "typebox/compile";
+import { hostRetirePath } from "../../src/host-endpoint.ts";
 
 const messages = Compile(
   Type.Union([
-    Type.Object({ kind: Type.Literal("local"), port: Type.Integer(), buildFile: Type.String() }),
+    Type.Object({
+      kind: Type.Literal("local"),
+      port: Type.Integer(),
+      supervisor: Type.Enum(["launchd", "nyte"]),
+    }),
     Type.Object({ kind: Type.Literal("stop") }),
   ]),
 );
@@ -31,8 +37,8 @@ parent.on("message", (received: unknown) => {
     return;
   }
 
-  const build = received.buildFile;
-  const started = statSync(build).ino;
+  const supervisor = received.supervisor;
+  const folder = hostRetirePath();
 
   server.listen(received.port, "127.0.0.1", () => {
     const address = server.address();
@@ -41,7 +47,9 @@ parent.on("message", (received: unknown) => {
     parent.postMessage({ kind: "listening", address: `http://127.0.0.1:${String(address.port)}` });
 
     const follow = setInterval(() => {
-      if (statSync(build).ino === started) return;
+      const names = existsSync(folder) ? readdirSync(folder) : [];
+
+      if (!names.some((name) => readFileSync(join(folder, name), "utf8") === supervisor)) return;
       clearInterval(follow);
       close("replaced");
     }, 25);

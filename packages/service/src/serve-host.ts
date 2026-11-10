@@ -20,7 +20,7 @@ import {
 } from "./host-endpoint.ts";
 import type { RunningHost } from "./host-endpoint.ts";
 import { OWN_TOKEN_AUTHORITY, startHostThread } from "./host-thread.ts";
-import type { HostWorkerEntry } from "./host-thread.ts";
+import type { HostWorkerEntry, Supervisor } from "./host-thread.ts";
 import { portConflict, probePort } from "./port.ts";
 
 interface Output {
@@ -38,8 +38,7 @@ export interface ServeHostOptions {
   readonly entry: HostWorkerEntry;
   readonly log: boolean;
   readonly tailnet?: string;
-  /** The file this host was started from. Once it changes and nothing runs, the host stops so its supervisor starts the new build; absent, it never does. */
-  readonly buildFile?: string;
+  readonly supervisor: Supervisor | null;
   readonly signal: AbortSignal;
   readonly output: Output;
   readonly listening: (host: HostListening) => string;
@@ -139,7 +138,7 @@ async function serveClaimed(
     socket,
     tailnet: options.tailnet,
     workspace: homedir(),
-    buildFile: options.buildFile,
+    supervisor: options.supervisor,
   });
 
   const port = Number(new URL(thread.address).port);

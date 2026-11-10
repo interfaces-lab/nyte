@@ -52,6 +52,10 @@ export function hostDocsPath(env: Readonly<Record<string, string | undefined>> =
   return join(hostStateDirectory(env), "docs");
 }
 
+export function hostRetirePath(env: Readonly<Record<string, string | undefined>> = process.env) {
+  return join(hostStateDirectory(env), "retire");
+}
+
 function hostStateDirectory(env: Readonly<Record<string, string | undefined>>): string {
   return env["NYTE_HOME"] ?? join(homedir(), ".nyte");
 }
@@ -63,13 +67,6 @@ export async function findRunningHost(path: string): Promise<RunningHost | null>
   if (host === null || !processAlive(host.pid)) return null;
 
   return (await hostAnswers(host.url)) ? host : null;
-}
-
-/** Whether `path` names a host whose process is alive, without asking the host anything. */
-export async function hostProcessRunning(path: string): Promise<boolean> {
-  const host = await readHostFile(path);
-
-  return host !== null && processAlive(host.pid);
 }
 
 /** Whether anything answers HTTP at `url` within a second. */
@@ -139,7 +136,7 @@ async function readJson(path: string): Promise<unknown> {
   }
 }
 
-function processAlive(pid: number): boolean {
+export function processAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
 

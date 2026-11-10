@@ -37,10 +37,6 @@ export interface HostUpdateProbe {
 
 export type HostUpdate = "current" | "stale" | "offline";
 
-/**
- * A host on another build reads as stale. The app never restarts it: a host replaces itself once
- * its build is updated and nothing runs on it.
- */
 export function readHostUpdate(probe: HostUpdateProbe): HostUpdate {
   if (probe.link.kind !== "connected") return "offline";
 

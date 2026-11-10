@@ -7,6 +7,10 @@ import { Compile } from "typebox/compile";
 
 const PortType = Type.Integer({ minimum: 0, maximum: 65_535 });
 
+const SupervisorType = Type.Enum(["launchd", "nyte"]);
+
+export type Supervisor = Static<typeof SupervisorType>;
+
 const HostCommandType = Type.Object({
   kind: Type.Literal("local"),
   port: PortType,
@@ -15,8 +19,7 @@ const HostCommandType = Type.Object({
   socket: Type.Optional(Type.String()),
   tailnet: Type.Optional(Type.String()),
   workspace: Type.Optional(Type.String()),
-  /** The file the host's build was started from. Once it changes and nothing runs, the host closes and reports `replaced`; absent, it never does. */
-  buildFile: Type.Optional(Type.String()),
+  supervisor: Type.Union([SupervisorType, Type.Null()]),
 });
 
 export type HostCommand = Static<typeof HostCommandType>;
