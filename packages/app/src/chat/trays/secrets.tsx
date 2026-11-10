@@ -1,14 +1,15 @@
 import { create, props } from "@stylexjs/stylex";
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import type { ReactElement } from "react";
 import type { SecretDays } from "@nyte-ai/plugin/secret/schema";
 import type { SessionId } from "@nyte-ai/sdk";
 import { Button, ButtonLink } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
-import { Input } from "@nyte-ai/ui/input";
+import { Input, InputGroup } from "@nyte-ai/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@nyte-ai/ui/select";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
+import { intent } from "@nyte-ai/ui/surface-theme";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { openExternal } from "../../lib/open-external.ts";
@@ -33,19 +34,28 @@ const styles = create({
     paddingBlock: space.s3,
     paddingInline: tray.paddingInline,
   },
-  heading: { display: "flex", flexDirection: "column", gap: space.s1 },
-  kind: {
+  group: { display: "flex", flexDirection: "column", gap: space.s1 },
+  body: { display: "flex", flexDirection: "column", gap: space.s2 },
+  heading: {
     display: "flex",
+    flexWrap: "wrap",
+    alignItems: "center",
+    columnGap: space.s2,
+    rowGap: space.s1,
+  },
+  page: { marginInlineStart: "auto" },
+  title: {
+    display: "flex",
+    flex: "1 1 auto",
     alignItems: "center",
     gap: space.s1_5,
+    minWidth: 0,
     margin: 0,
-    color: role.contentSecondary,
+    color: role.contentPrimary,
+    fontWeight: type.weightSemibold,
   },
-  kindLabel: { flex: 1 },
-  title: { margin: 0, color: role.contentPrimary, fontWeight: type.weightMedium },
+  glyph: { display: "inline-flex", color: role.contentTertiary },
   secondary: { margin: 0, color: role.contentSecondary, textWrap: "pretty" },
-  entry: { display: "flex", alignItems: "center", gap: space.s1_5 },
-  input: { flex: 1, minWidth: 0 },
   footer: {
     display: "flex",
     flexWrap: "wrap",
@@ -53,7 +63,7 @@ const styles = create({
     justifyContent: "space-between",
     gap: space.s2,
   },
-  actions: { display: "flex", alignItems: "center", gap: space.s2 },
+  actions: { display: "flex", alignItems: "center", gap: space.s2, marginInlineStart: "auto" },
   lifetime: { display: "inline-flex", alignItems: "center", gap: space.s1_5 },
   caution: { display: "inline-flex", color: role.contentTertiary },
 });
@@ -84,7 +94,9 @@ function SecretCard({
   const saveSecret = useSaveSecret();
   const dismiss = useDismissSecret();
   const request = target.request;
+  const input = useRef<HTMLInputElement>(null);
   const [value, setValue] = useState("");
+  const [missing, setMissing] = useState(false);
   const [revealed, setRevealed] = useState(false);
   const [days, setDays] = useState<SecretDays>(1);
   const blocked = disabled || saveSecret.isPending || saveSecret.isSuccess || dismiss.isPending;
@@ -92,7 +104,16 @@ function SecretCard({
   const page = request.url === null ? null : URL.parse(request.url);
 
   const save = (): void => {
-    if (!blocked && value.trim() !== "") saveSecret.mutate({ target, value, days });
+    if (blocked) return;
+
+    if (value.trim() === "") {
+      setMissing(true);
+      input.current?.focus();
+
+      return;
+    }
+
+    saveSecret.mutate({ target, value, days });
   };
 
   return (
@@ -108,113 +129,124 @@ function SecretCard({
         dismiss.mutate(target);
       }}
     >
-      <div {...props(styles.heading)}>
-        <p {...props(text.sm, styles.kind)}>
-          <Icon name="key" size="sm" />
-          <span {...props(styles.kindLabel)}>Secret</span>
-        </p>
-        <h2 id={`${id}-title`} {...props(text.base, styles.title)}>
-          {request.label}
-        </h2>
-        <p {...props(text.sm, styles.secondary)}>{request.reason}</p>
-        {target.origin !== undefined && (
-          <p {...props(text.sm, styles.secondary)}>Asked by {target.origin}</p>
-        )}
-      </div>
-      {page !== null && (
-        <div>
-          <ButtonLink
-            href={page.href}
-            target="_blank"
-            rel="noreferrer"
-            variant="outline"
-            size="sm"
-            onClick={(event) => {
-              event.preventDefault();
-              openExternal(page.href);
-            }}
-          >
-            Open {page.host}
-          </ButtonLink>
+      <div {...props(styles.body)}>
+        <div {...props(styles.group)}>
+          <div {...props(styles.heading)}>
+            <h2 id={`${id}-title`} {...props(text.base, styles.title)}>
+              <span {...props(styles.glyph)}>
+                <Icon name="key" size="sm" />
+              </span>
+              {request.label}
+            </h2>
+            {page !== null && (
+              <ButtonLink
+                href={page.href}
+                target="_blank"
+                rel="noreferrer"
+                size="xs"
+                icon="globe"
+                xstyle={styles.page}
+                onClick={(event) => {
+                  event.preventDefault();
+                  openExternal(page.href);
+                }}
+              >
+                Open {page.host}
+              </ButtonLink>
+            )}
+          </div>
+          <p id={`${id}-reason`} {...props(text.sm, styles.secondary)}>
+            {request.reason}
+          </p>
+          {target.origin !== undefined && (
+            <p {...props(text.sm, styles.secondary)}>Asked by {target.origin}</p>
+          )}
         </div>
-      )}
-      <div {...props(styles.entry)}>
-        <Input
-          autoFocus
-          aria-labelledby={`${id}-title`}
-          type={revealed ? "text" : "password"}
-          placeholder={`Paste the ${request.label}`}
-          value={value}
-          spellCheck={false}
-          autoComplete="off"
-          autoCorrect="off"
-          autoCapitalize="off"
-          data-1p-ignore
-          data-lpignore="true"
-          data-bwignore
-          disabled={blocked}
-          xstyle={styles.input}
-          onValueChange={setValue}
-          onKeyDown={(event) => {
-            if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
-            event.preventDefault();
-            save();
-          }}
-        />
-        <Toggle
-          iconOnly
-          icon="eye"
-          aria-label={`Show ${request.label}`}
-          pressed={revealed}
-          onPressedChange={setRevealed}
-        />
-      </div>
-      <p {...props(text.sm, styles.secondary)}>
-        Saved to a private file. The agent gets its path, and only commands it runs can read it.
-      </p>
-      <div {...props(styles.footer)}>
-        <Button
-          size="sm"
-          aria-keyshortcuts="Escape"
-          disabled={blocked}
-          onClick={() => dismiss.mutate(target)}
-        >
-          Decline
-        </Button>
-        <div {...props(styles.actions)}>
-          <Select
-            items={LIFETIMES.map((option) => ({ value: option.days, label: option.label }))}
-            value={days}
+        <InputGroup aria-invalid={missing}>
+          <Input
+            ref={input}
+            autoFocus
+            aria-labelledby={`${id}-title`}
+            aria-describedby={`${missing ? `${id}-missing ` : ""}${id}-reason ${id}-note`}
+            aria-invalid={missing}
+            type={revealed ? "text" : "password"}
+            placeholder="Paste it here"
+            value={value}
+            spellCheck={false}
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            data-1p-ignore
+            data-lpignore="true"
+            data-bwignore
+            disabled={blocked}
             onValueChange={(next) => {
-              const picked = LIFETIMES.find((option) => option.days === next);
-
-              if (picked !== undefined) setDays(picked.days);
+              setValue(next);
+              setMissing(false);
             }}
-          >
-            <SelectTrigger aria-label="When to Delete" disabled={blocked}>
-              <SelectValue>{() => <LifetimeLabel days={days} />}</SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {LIFETIMES.map((option) => (
-                <SelectItem key={option.label} value={option.days} label={option.label}>
-                  <LifetimeLabel days={option.days} />
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button
+            onKeyDown={(event) => {
+              if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+              event.preventDefault();
+              save();
+            }}
+          />
+          <Toggle
+            iconOnly
             size="sm"
-            variant="solid"
-            loading={saveSecret.isPending}
-            disabled={blocked || value.trim() === ""}
-            onClick={save}
+            icon="eye"
+            aria-label={`Show ${request.label}`}
+            pressed={revealed}
+            disabled={blocked}
+            onPressedChange={setRevealed}
+          />
+        </InputGroup>
+        <div {...props(styles.group)}>
+          {missing && (
+            <p id={`${id}-missing`} {...props(text.sm, intent.danger, styles.secondary)}>
+              Paste the {request.label} first.
+            </p>
+          )}
+          <p id={`${id}-note`} {...props(text.sm, styles.secondary)}>
+            Saved to a private file only the agent's commands can read.
+          </p>
+        </div>
+      </div>
+      <div {...props(styles.footer)}>
+        <Select
+          items={LIFETIMES.map((option) => ({ value: option.days, label: option.label }))}
+          value={days}
+          onValueChange={(next) => {
+            const picked = LIFETIMES.find((option) => option.days === next);
+
+            if (picked !== undefined) setDays(picked.days);
+          }}
+        >
+          <SelectTrigger aria-label="Delete after" disabled={blocked}>
+            <SelectValue>{() => <LifetimeLabel days={days} />}</SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            {LIFETIMES.map((option) => (
+              <SelectItem key={option.label} value={option.days} label={option.label}>
+                <LifetimeLabel days={option.days} />
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <div {...props(styles.actions)}>
+          <Button
+            aria-keyshortcuts="Escape"
+            disabled={blocked}
+            onClick={() => dismiss.mutate(target)}
           >
+            Decline
+          </Button>
+          <Button variant="solid" loading={saveSecret.isPending} disabled={blocked} onClick={save}>
             Save
           </Button>
         </div>
       </div>
       {error !== null && (
-        <p role="alert" {...props(text.sm, styles.secondary)}>
+        <p role="alert" {...props(text.sm, intent.danger, styles.secondary)}>
           {error.message}
         </p>
       )}
