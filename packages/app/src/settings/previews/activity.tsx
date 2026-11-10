@@ -6,6 +6,7 @@ import { create, props } from "@stylexjs/stylex";
 import { use, type ReactElement } from "react";
 import { AppIcon } from "../../components/app-icon.ts";
 import { WorkspaceRow } from "../../sidebar/sidebar-lists.tsx";
+import { ChatCardGroup } from "../../components/chat-card.tsx";
 import { SessionRowView } from "../../sidebar/sidebar-rows.tsx";
 import { sidebarStyles } from "../../sidebar/sidebar.stylex.ts";
 import { sidebar } from "../../theme/schema.stylex.ts";
@@ -38,28 +39,30 @@ export function ActivityPreview({
           onArchiveAll={undefined}
           onRemove={() => undefined}
         >
-          <div {...props(sidebarStyles.section)}>
-            <SessionRowView
-              session={previewChat("asking", ASKING, 60_000)}
-              selected={false}
-              draggable={false}
-              unreachable={false}
-              showUpdated
-              mark="waiting"
-              unread={false}
-              ask={undefined}
-            />
-            <SessionRowView
-              session={previewChat("notes", "Update release notes", 3 * 3_600_000)}
-              selected={false}
-              draggable={false}
-              unreachable={false}
-              showUpdated
-              mark="done"
-              unread={false}
-              ask={undefined}
-            />
-          </div>
+          <ChatCardGroup placement="row">
+            <div {...props(sidebarStyles.section)}>
+              <SessionRowView
+                session={previewChat("asking", ASKING, 60_000)}
+                selected={false}
+                draggable={false}
+                unreachable={false}
+                showUpdated
+                mark="waiting"
+                unread={false}
+                ask={undefined}
+              />
+              <SessionRowView
+                session={previewChat("notes", "Update release notes", 3 * 3_600_000)}
+                selected={false}
+                draggable={false}
+                unreachable={false}
+                showUpdated
+                mark="done"
+                unread={false}
+                ask={undefined}
+              />
+            </div>
+          </ChatCardGroup>
         </WorkspaceRow>
       </div>
       <div {...props(styles.desktop)}>

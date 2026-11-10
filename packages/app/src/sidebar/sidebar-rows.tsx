@@ -14,11 +14,10 @@ import { Input } from "@nyte-ai/ui/input";
 import { MenuItem } from "@nyte-ai/ui/menu";
 import { Row } from "@nyte-ai/ui/row";
 import { intent } from "@nyte-ai/ui/surface-theme";
-import { PreviewCard } from "@nyte-ai/ui/preview-card";
 import { props } from "@stylexjs/stylex";
 import { useRef, useState } from "react";
 import type { MouseEvent, ReactElement } from "react";
-import { ChatCardContent, ChatCardTrigger } from "../components/chat-card.tsx";
+import { ChatCardTrigger } from "../components/chat-card.tsx";
 import { ChatMenuItems } from "../components/chat-menu.tsx";
 import { formatTimeAgo } from "../lib/format.ts";
 import { draftPreviewText } from "../references/message-references.ts";
@@ -362,13 +361,12 @@ export function SessionRowView({
 
   return (
     <>
-      <PreviewCard>
-        <ContextMenu>
-          <ContextMenuTrigger render={<ChatCardTrigger render={row} />} />
-          <ContextMenuContent aria-label={`Options for ${title}`}>{menuItems}</ContextMenuContent>
-        </ContextMenu>
-        <ChatCardContent placement="row" label={title} sessions={[session.id]} />
-      </PreviewCard>
+      <ContextMenu>
+        <ContextMenuTrigger
+          render={<ChatCardTrigger card={{ label: title, sessions: [session.id] }} render={row} />}
+        />
+        <ContextMenuContent aria-label={`Options for ${title}`}>{menuItems}</ContextMenuContent>
+      </ContextMenu>
       {confirming === "delete" && (
         <ConfirmDialog
           open

@@ -1,10 +1,16 @@
 import { create, props } from "@stylexjs/stylex";
+import { createContext, use, useState } from "react";
 import type { ComponentProps, ReactElement, ReactNode } from "react";
 import type { SessionId } from "@nyte-ai/sdk";
 import { Icon, IconSwap } from "@nyte-ai/ui/icon";
 import type { IconName } from "@nyte-ai/ui/icon";
 import { MenuItem } from "@nyte-ai/ui/menu";
-import { PreviewCardContent, PreviewCardTrigger } from "@nyte-ai/ui/preview-card";
+import {
+  createPreviewCardHandle,
+  PreviewCard,
+  PreviewCardContent,
+  PreviewCardTrigger,
+} from "@nyte-ai/ui/preview-card";
 import { Row } from "@nyte-ai/ui/row";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { row, space } from "@nyte-ai/ui/styles/schema.stylex";
@@ -58,29 +64,72 @@ const styles = create({
   footer: { paddingInline: row.paddingInlineMd, paddingBlockEnd: space.s1 },
 });
 
-export function ChatCardTrigger(trigger: ComponentProps<typeof PreviewCardTrigger>): ReactElement {
-  return <PreviewCardTrigger delay={OPEN_DELAY_MS} closeDelay={CLOSE_DELAY_MS} {...trigger} />;
-}
-
-export function ChatCardContent({
-  placement,
-  label,
-  sessions,
-  footer,
-}: {
-  readonly placement: keyof typeof PLACEMENTS;
+type ChatCard = {
   readonly label: string;
   readonly sessions: readonly SessionId[];
   readonly footer?: ReactNode;
+};
+
+const ChatCardHandle = createContext<
+  ReturnType<typeof createPreviewCardHandle<ChatCard>> | undefined
+>(undefined);
+
+export function ChatCardGroup({
+  placement,
+  children,
+}: {
+  readonly placement: keyof typeof PLACEMENTS;
+  readonly children: ReactNode;
+}): ReactElement {
+  const [handle] = useState(createPreviewCardHandle<ChatCard>);
+
+  return (
+    <ChatCardHandle value={handle}>
+      {children}
+      <PreviewCard handle={handle}>
+        {({ payload }) =>
+          payload !== undefined && <ChatCardContent placement={placement} card={payload} />
+        }
+      </PreviewCard>
+    </ChatCardHandle>
+  );
+}
+
+export function ChatCardTrigger({
+  card,
+  ...trigger
+}: Omit<
+  ComponentProps<typeof PreviewCardTrigger>,
+  "handle" | "payload" | "delay" | "closeDelay"
+> & {
+  readonly card: ChatCard;
+}): ReactElement {
+  return (
+    <PreviewCardTrigger
+      handle={use(ChatCardHandle)}
+      payload={card}
+      delay={OPEN_DELAY_MS}
+      closeDelay={CLOSE_DELAY_MS}
+      {...trigger}
+    />
+  );
+}
+
+function ChatCardContent({
+  placement,
+  card,
+}: {
+  readonly placement: keyof typeof PLACEMENTS;
+  readonly card: ChatCard;
 }): ReactElement {
   return (
     <PreviewCardContent {...PLACEMENTS[placement]} xstyle={styles.card}>
-      {sessions.length === 0 ? (
-        <div {...props(text.base, styles.title)}>{label}</div>
+      {card.sessions.length === 0 ? (
+        <div {...props(text.base, styles.title)}>{card.label}</div>
       ) : (
-        sessions.map((sessionId) => <ChatBlock key={sessionId} sessionId={sessionId} />)
+        card.sessions.map((sessionId) => <ChatBlock key={sessionId} sessionId={sessionId} />)
       )}
-      {footer !== undefined && <div {...props(styles.footer)}>{footer}</div>}
+      {card.footer !== undefined && <div {...props(styles.footer)}>{card.footer}</div>}
     </PreviewCardContent>
   );
 }

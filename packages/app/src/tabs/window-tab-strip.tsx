@@ -15,11 +15,10 @@ import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 import { Input } from "@nyte-ai/ui/input";
 import { Kbd } from "@nyte-ai/ui/kbd";
 import { Tabs } from "@nyte-ai/ui/tabs";
-import { PreviewCard } from "@nyte-ai/ui/preview-card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { sessionTitle } from "@nyte-ai/plugin/client/presentation";
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
-import { ChatCardContent, ChatCardTrigger } from "../components/chat-card.tsx";
+import { ChatCardGroup, ChatCardTrigger } from "../components/chat-card.tsx";
 import { ChatMenuItems } from "../components/chat-menu.tsx";
 import { TaskMark } from "../components/task-mark.tsx";
 import { useSessionRow } from "../data/session-rows.ts";
@@ -162,6 +161,7 @@ function TabView({
   const focusedChat = tab.sessions.at(0);
   const [rename, setRename] = useState<TabRename | undefined>();
   const [menuOpen, setMenuOpen] = useState(false);
+  const returnFocus = useRef<HTMLButtonElement>(null);
 
   const commitRename = (): void => {
     if (rename === undefined) return;
@@ -199,61 +199,56 @@ function TabView({
           />
         }
       >
-        <PreviewCard>
-          <ChatCardTrigger
-            render={
-              <Tabs.Tab
-                variant="bare"
-                value={tab.id}
-                aria-label={`${tab.tooltip}${unread ? ", unread" : ""}${tab.preview ? ", preview" : ""}`}
-                aria-keyshortcuts={MOVE_SHORTCUTS}
-                onKeyDown={(event) => {
-                  const step = readMoveStep(event);
-                  const target = position + step;
-
-                  if (step === 0 || target < 0 || target >= strip.tabs.length) return;
-                  event.preventDefault();
-                  const element = event.currentTarget;
-
-                  strip.onReorder(
-                    strip.tabs
-                      .map((entry) => entry.id)
-                      .filter((id) => id !== tab.id)
-                      .toSpliced(target, 0, tab.id),
-                    tab.id,
-                  );
-                  requestAnimationFrame(() => element.focus());
-                }}
-                xstyle={[stripStyles.tabButton, !closable && stripStyles.tabButtonUnclosable]}
-              />
-            }
-          >
-            <span {...props(stripStyles.glyph)}>
-              {mark === undefined ? tab.glyph : <TaskMark state={mark.state} unread={unread} />}
-            </span>
-            <span {...props(stripStyles.label, unread && stripStyles.labelUnread)}>
-              {tab.title}
-            </span>
-            {tab.split !== undefined && (
-              <span {...props(stripStyles.splitMark)}>
-                <Icon name={tab.split === "down" ? "split-down" : "split-right"} size="xs" />
-              </span>
-            )}
-          </ChatCardTrigger>
-          <ChatCardContent
-            placement="tab"
-            label={tab.tooltip}
-            sessions={tab.sessions}
-            footer={
+        <ChatCardTrigger
+          card={{
+            label: tab.tooltip,
+            sessions: tab.sessions,
+            footer:
               digit === undefined ? undefined : (
                 <span {...props(stripStyles.keys)}>
                   <Kbd keys={[strip.mac ? "⌘" : "Ctrl"]} held={modifierHeld} />
                   <Kbd keys={[digit]} held={held.digit === digit} />
                 </span>
-              )
-            }
-          />
-        </PreviewCard>
+              ),
+          }}
+          render={
+            <Tabs.Tab
+              ref={returnFocus}
+              variant="bare"
+              value={tab.id}
+              aria-label={`${tab.tooltip}${unread ? ", unread" : ""}${tab.preview ? ", preview" : ""}`}
+              aria-keyshortcuts={MOVE_SHORTCUTS}
+              onKeyDown={(event) => {
+                const step = readMoveStep(event);
+                const target = position + step;
+
+                if (step === 0 || target < 0 || target >= strip.tabs.length) return;
+                event.preventDefault();
+                const element = event.currentTarget;
+
+                strip.onReorder(
+                  strip.tabs
+                    .map((entry) => entry.id)
+                    .filter((id) => id !== tab.id)
+                    .toSpliced(target, 0, tab.id),
+                  tab.id,
+                );
+                requestAnimationFrame(() => element.focus());
+              }}
+              xstyle={[stripStyles.tabButton, !closable && stripStyles.tabButtonUnclosable]}
+            />
+          }
+        >
+          <span {...props(stripStyles.glyph)}>
+            {mark === undefined ? tab.glyph : <TaskMark state={mark.state} unread={unread} />}
+          </span>
+          <span {...props(stripStyles.label, unread && stripStyles.labelUnread)}>{tab.title}</span>
+          {tab.split !== undefined && (
+            <span {...props(stripStyles.splitMark)}>
+              <Icon name={tab.split === "down" ? "split-down" : "split-right"} size="xs" />
+            </span>
+          )}
+        </ChatCardTrigger>
         {rename !== undefined && !menuOpen && (
           <span {...props(stripStyles.rename)}>
             <Input
@@ -388,56 +383,58 @@ export function WindowTabStrip(strip: WindowTabStripProps): ReactElement {
   };
 
   return (
-    <Tabs.Root
-      value={activeTabId}
-      xstyle={stripStyles.strip}
-      onValueChange={(tabId) => strip.onActivate(tabId)}
-    >
-      <Tabs.List aria-label="Tabs" xstyle={stripStyles.list}>
-        <div ref={listRef} role="presentation" {...props(stripStyles.scroller)}>
-          <SortableList
-            ids={tabs.map((tab) => tab.id)}
-            listRef={listRef}
-            onPick={strip.onActivate}
-            onReorder={strip.onReorder}
-          >
-            {tabs.map((tab, position) => (
-              <SortableItem key={tab.id} id={tab.id} xstyle={stripStyles.slot}>
-                <TabItem
-                  tab={tab}
-                  position={position}
-                  active={tab.id === activeTabId}
-                  closable={tabs.length > 1}
-                  othersClosable={tabs.length > 1}
-                  rightClosable={position < tabs.length - 1}
-                  held={held}
-                  strip={strip}
-                  closeAndFocusSelected={closeAndFocusSelected}
+    <ChatCardGroup placement="tab">
+      <Tabs.Root
+        value={activeTabId}
+        xstyle={stripStyles.strip}
+        onValueChange={(tabId) => strip.onActivate(tabId)}
+      >
+        <Tabs.List aria-label="Tabs" xstyle={stripStyles.list}>
+          <div ref={listRef} role="presentation" {...props(stripStyles.scroller)}>
+            <SortableList
+              ids={tabs.map((tab) => tab.id)}
+              listRef={listRef}
+              onPick={strip.onActivate}
+              onReorder={strip.onReorder}
+            >
+              {tabs.map((tab, position) => (
+                <SortableItem key={tab.id} id={tab.id} xstyle={stripStyles.slot}>
+                  <TabItem
+                    tab={tab}
+                    position={position}
+                    active={tab.id === activeTabId}
+                    closable={tabs.length > 1}
+                    othersClosable={tabs.length > 1}
+                    rightClosable={position < tabs.length - 1}
+                    held={held}
+                    strip={strip}
+                    closeAndFocusSelected={closeAndFocusSelected}
+                  />
+                </SortableItem>
+              ))}
+            </SortableList>
+            <RevealSelected key={activeTabId} list={listRef} />
+          </div>
+        </Tabs.List>
+        <span {...props(stripStyles.control)}>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  iconOnly
+                  icon="plus"
+                  aria-label="New tab"
+                  title={undefined}
+                  onClick={strip.onNewTab}
                 />
-              </SortableItem>
-            ))}
-          </SortableList>
-          <RevealSelected key={activeTabId} list={listRef} />
-        </div>
-      </Tabs.List>
-      <span {...props(stripStyles.control)}>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                iconOnly
-                icon="plus"
-                aria-label="New tab"
-                title={undefined}
-                onClick={strip.onNewTab}
-              />
-            }
-          />
-          <TooltipContent shortcut={clientActionKeys(clientActions.newTab, mac)}>
-            New Tab
-          </TooltipContent>
-        </Tooltip>
-      </span>
-    </Tabs.Root>
+              }
+            />
+            <TooltipContent shortcut={clientActionKeys(clientActions.newTab, mac)}>
+              New Tab
+            </TooltipContent>
+          </Tooltip>
+        </span>
+      </Tabs.Root>
+    </ChatCardGroup>
   );
 }

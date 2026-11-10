@@ -14,7 +14,6 @@ export const settingsActionPages = {
   "appearance-settings": "appearance",
   "model-settings": "providers",
   "profile-settings": "profile",
-  settings: "general",
 } as const satisfies Partial<Record<ClientAction["id"], SettingsSection>>;
 
 export const actionIcons = {
@@ -28,5 +27,5 @@ export const actionIcons = {
   "customize-settings": "customize",
   "reload-window": "refresh",
   search: "search",
-  settings: SETTINGS_PAGES[settingsActionPages.settings].icon,
+  settings: "settings",
 } as const satisfies Record<IconActionId, IconName>;

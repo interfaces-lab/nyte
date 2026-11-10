@@ -8,6 +8,7 @@ import type { GitStatus, WorkspaceInfo } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import { SessionRow } from "../sidebar/sidebar-rows.tsx";
+import { ChatCardGroup } from "./chat-card.tsx";
 import { PaneControllerProvider } from "../panes/pane-context.tsx";
 import type { PaneController } from "../panes/pane-controller.ts";
 import { SessionDndProvider } from "../panes/session-dnd.tsx";
@@ -77,15 +78,17 @@ function Stage({ panes }: { readonly panes: PaneController }): ReactElement {
     <QueryClientProvider client={queryClient}>
       <PaneControllerProvider controller={panes}>
         <SessionDndProvider>
-          <div style={{ width: 240 }}>
-            <SessionRow
-              session={chat}
-              selected={false}
-              draggable
-              unreachable={false}
-              showUpdated={false}
-            />
-          </div>
+          <ChatCardGroup placement="row">
+            <div style={{ width: 240 }}>
+              <SessionRow
+                session={chat}
+                selected={false}
+                draggable
+                unreachable={false}
+                showUpdated={false}
+              />
+            </div>
+          </ChatCardGroup>
         </SessionDndProvider>
       </PaneControllerProvider>
       <div style={{ display: "flex", width: 600, height: 40, marginTop: 40 }}>

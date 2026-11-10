@@ -6,6 +6,7 @@ import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import { WorkspaceRow } from "../../sidebar/sidebar-lists.tsx";
+import { ChatCardGroup } from "../../components/chat-card.tsx";
 import { SessionRowView } from "../../sidebar/sidebar-rows.tsx";
 import { sidebarStyles } from "../../sidebar/sidebar.stylex.ts";
 import { UserMessageView } from "../../chat/transcript/turn-view.tsx";
@@ -43,21 +44,23 @@ export function WindowPreview(): ReactElement {
           onArchiveAll={undefined}
           onRemove={() => undefined}
         >
-          <div {...props(sidebarStyles.section)}>
-            {[ACTIVE, OTHER].map((session) => (
-              <SessionRowView
-                key={session.id}
-                session={session}
-                selected={session.id === ACTIVE.id}
-                draggable={false}
-                unreachable={false}
-                showUpdated
-                mark="done"
-                unread={false}
-                ask={undefined}
-              />
-            ))}
-          </div>
+          <ChatCardGroup placement="row">
+            <div {...props(sidebarStyles.section)}>
+              {[ACTIVE, OTHER].map((session) => (
+                <SessionRowView
+                  key={session.id}
+                  session={session}
+                  selected={session.id === ACTIVE.id}
+                  draggable={false}
+                  unreachable={false}
+                  showUpdated
+                  mark="done"
+                  unread={false}
+                  ask={undefined}
+                />
+              ))}
+            </div>
+          </ChatCardGroup>
         </WorkspaceRow>
       </div>
       <div {...props(styles.card)}>

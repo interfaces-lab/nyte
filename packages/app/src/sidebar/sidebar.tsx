@@ -31,13 +31,14 @@ import { sessionActions, useRootRows } from "../data/session-rows.ts";
 import { groupByWorkspace, localSessions } from "../data/session-list.ts";
 import { useChats } from "../chats/index.ts";
 import { chatWindow, unreadOnHost, useChatWindow } from "../window/index.ts";
-import type { SettingsSection } from "../settings/index.ts";
+import { firstSettingsSection, type SettingsSection } from "../settings/index.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
 import { SidebarFooter } from "../account/account-footer.tsx";
 import { folderPicker } from "../panes/open-workspace.tsx";
 import { SearchPalette } from "./search-palette.tsx";
-import { actionIcons, settingsActionPages } from "./action-icons.ts";
+import { actionIcons } from "./action-icons.ts";
 import { shellActions, useOverlays, useStagePage } from "../tabs/shell-state.ts";
+import { ChatCardGroup } from "../components/chat-card.tsx";
 import { SidebarContent } from "./sidebar-content.tsx";
 import { WorkspaceControls } from "./sidebar-filter.tsx";
 import {
@@ -411,175 +412,180 @@ export function Sidebar(): ReactElement {
 
   return (
     <aside {...props(styles.rail)}>
-      <SidebarContent>
-        {activeSessionId !== undefined && (
-          <NeighbourWarm
-            key={[activeSessionId, ...neighbours].join(" ")}
-            active={activeSessionId}
-            neighbours={neighbours}
-          />
-        )}
-        <div {...props(styles.primaryActions)}>
-          <NewChatRow
-            listsDrafts={showDrafts && (flat || rowPlaces.includes(openPlace))}
-            paletteOpen={paletteOpen}
-            mac={mac}
-          />
-
-          <SearchPalette
-            open={paletteOpen}
-            recentSessions={listed?.map(({ session }) => session)}
-            onOpenChange={shellActions.setSearchOpen}
-            onOpenSession={(sessionId) => windowTabs.openChat(sessionId, "permanent")}
-            onNewChat={() => panes.newChat()}
-            onOpenFolder={openFolder}
-            onOpenHome={
-              open === undefined
-                ? undefined
-                : () => {
-                    shellActions.showWorkspace();
-                    void nyte.host.closeWorkspace();
-                  }
-            }
-            onOpenSettings={openSettings}
-            onOpenCustomize={() => shellActions.openCustomize(paneSessionId)}
-            trigger={
-              <Row variant="nav" xstyle={styles.navRow}>
-                <Row.Leading xstyle={styles.navLeading}>
-                  <Icon name={actionIcons[clientActions.search.id]} size="sm" />
-                </Row.Leading>
-                <Row.Label>Search</Row.Label>
-                <span {...props(styles.shortcutSlot)}>
-                  <Kbd keys={clientActionKeys(clientActions.search, mac)} />
-                </span>
-              </Row>
-            }
-          />
-
-          <Row
-            variant="nav"
-            selected={page?.kind === "customize"}
-            aria-haspopup="dialog"
-            aria-current={page?.kind === "customize" ? "page" : undefined}
-            xstyle={styles.navRow}
-            onClick={() => shellActions.openCustomize(paneSessionId)}
-          >
-            <Row.Leading xstyle={styles.navLeading}>
-              <Icon name={actionIcons[clientActions.customize.id]} size="sm" />
-            </Row.Leading>
-            <Row.Label>Customize</Row.Label>
-          </Row>
-
-          <Row
-            variant="nav"
-            data-sidebar-return
-            aria-keyshortcuts={clientActionAriaShortcut(clientActions.settings, mac)}
-            render={
-              <Link
-                to="/settings/$section"
-                params={{ section: settingsActionPages.settings }}
-                preload="render"
-              />
-            }
-            xstyle={styles.navRow}
-          >
-            <Row.Leading xstyle={styles.navLeading}>
-              <Icon name={actionIcons[clientActions.settings.id]} size="sm" />
-            </Row.Leading>
-            <Row.Label>Settings</Row.Label>
-            <Icon name="chevron-right" size="sm" />
-          </Row>
-        </div>
-
-        <div data-nyte-scrollport onKeyDown={moveSidebarFocus} {...props(styles.scroll)}>
-          {projectsOn && (
-            <ProjectsSection
-              projects={projects}
-              selected={
-                page?.kind === "project"
-                  ? page.projectId
-                  : activeSessionId === undefined || paneSession === undefined
-                    ? undefined
-                    : coordinatedProject(paneSession)
-              }
+      <ChatCardGroup placement="row">
+        <SidebarContent>
+          {activeSessionId !== undefined && (
+            <NeighbourWarm
+              key={[activeSessionId, ...neighbours].join(" ")}
+              active={activeSessionId}
+              neighbours={neighbours}
             />
           )}
-          {pinned.length > 0 && <PinnedSection rows={pinned} context={context} />}
-          <section aria-label={flat ? "Chats" : "Workspaces"} {...props(styles.section)}>
-            <Collapsible.Root
-              open={collectionExpanded}
-              onOpenChange={setCollectionExpanded}
-              data-sidebar-group=""
-              {...props(styles.section)}
-            >
-              <div {...props(styles.sectionHeader)}>
-                <Collapsible.Trigger
-                  data-sidebar-header=""
-                  aria-controls={workspaceCollectionID}
-                  xstyle={[styles.sectionToggle, focus.ringInset]}
-                >
-                  <span {...props(styles.sectionLabel)}>{flat ? "Chats" : "Workspaces"}</span>
-                  <Collapsible.Chevron xstyle={styles.sectionChevron} />
-                </Collapsible.Trigger>
-                <WorkspaceControls
-                  value={view}
-                  homeVisible={homeVisible}
-                  onHomeVisibleChange={preferences.homeVisible.set}
-                  filterDisabled={workspaceGroups === undefined}
-                  onChange={preferences.sidebarView.set}
-                  onOpenFolder={openFolder}
-                  onCollapseAll={() =>
-                    flat ? setCollectionExpanded(false) : preferences.sidebarFolded.set(rowPlaces)
-                  }
-                />
-              </div>
+          <div {...props(styles.primaryActions)}>
+            <NewChatRow
+              listsDrafts={showDrafts && (flat || rowPlaces.includes(openPlace))}
+              paletteOpen={paletteOpen}
+              mac={mac}
+            />
 
-              <Collapsible.Panel id={workspaceCollectionID} {...props(styles.workspaceCollection)}>
-                {unreachable !== undefined && (
-                  <div role="status" {...props(text.base, styles.quiet, styles.sessionQuiet)}>
-                    {unreachable}
-                  </div>
-                )}
-                {flat ? (
-                  <ChatsList
-                    listId={`${sessionListId}-chats`}
-                    listed={listed}
-                    hold={hold}
-                    context={context}
+            <SearchPalette
+              open={paletteOpen}
+              recentSessions={listed?.map(({ session }) => session)}
+              onOpenChange={shellActions.setSearchOpen}
+              onOpenSession={(sessionId) => windowTabs.openChat(sessionId, "permanent")}
+              onNewChat={() => panes.newChat()}
+              onOpenFolder={openFolder}
+              onOpenHome={
+                open === undefined
+                  ? undefined
+                  : () => {
+                      shellActions.showWorkspace();
+                      void nyte.host.closeWorkspace();
+                    }
+              }
+              onOpenSettings={openSettings}
+              onOpenCustomize={() => shellActions.openCustomize(paneSessionId)}
+              trigger={
+                <Row variant="nav" xstyle={styles.navRow}>
+                  <Row.Leading xstyle={styles.navLeading}>
+                    <Icon name={actionIcons[clientActions.search.id]} size="sm" />
+                  </Row.Leading>
+                  <Row.Label>Search</Row.Label>
+                  <span {...props(styles.shortcutSlot)}>
+                    <Kbd keys={clientActionKeys(clientActions.search, mac)} />
+                  </span>
+                </Row>
+              }
+            />
+
+            <Row
+              variant="nav"
+              selected={page?.kind === "customize"}
+              aria-haspopup="dialog"
+              aria-current={page?.kind === "customize" ? "page" : undefined}
+              xstyle={styles.navRow}
+              onClick={() => shellActions.openCustomize(paneSessionId)}
+            >
+              <Row.Leading xstyle={styles.navLeading}>
+                <Icon name={actionIcons[clientActions.customize.id]} size="sm" />
+              </Row.Leading>
+              <Row.Label>Customize</Row.Label>
+            </Row>
+
+            <Row
+              variant="nav"
+              data-sidebar-return
+              aria-keyshortcuts={clientActionAriaShortcut(clientActions.settings, mac)}
+              render={
+                <Link
+                  to="/settings/$section"
+                  params={{ section: firstSettingsSection() }}
+                  preload="render"
+                />
+              }
+              xstyle={styles.navRow}
+            >
+              <Row.Leading xstyle={styles.navLeading}>
+                <Icon name={actionIcons[clientActions.settings.id]} size="sm" />
+              </Row.Leading>
+              <Row.Label>Settings</Row.Label>
+              <Icon name="chevron-right" size="sm" />
+            </Row>
+          </div>
+
+          <div data-nyte-scrollport onKeyDown={moveSidebarFocus} {...props(styles.scroll)}>
+            {projectsOn && (
+              <ProjectsSection
+                projects={projects}
+                selected={
+                  page?.kind === "project"
+                    ? page.projectId
+                    : activeSessionId === undefined || paneSession === undefined
+                      ? undefined
+                      : coordinatedProject(paneSession)
+                }
+              />
+            )}
+            {pinned.length > 0 && <PinnedSection rows={pinned} context={context} />}
+            <section aria-label={flat ? "Chats" : "Workspaces"} {...props(styles.section)}>
+              <Collapsible.Root
+                open={collectionExpanded}
+                onOpenChange={setCollectionExpanded}
+                data-sidebar-group=""
+                {...props(styles.section)}
+              >
+                <div {...props(styles.sectionHeader)}>
+                  <Collapsible.Trigger
+                    data-sidebar-header=""
+                    aria-controls={workspaceCollectionID}
+                    xstyle={[styles.sectionToggle, focus.ringInset]}
+                  >
+                    <span {...props(styles.sectionLabel)}>{flat ? "Chats" : "Workspaces"}</span>
+                    <Collapsible.Chevron xstyle={styles.sectionChevron} />
+                  </Collapsible.Trigger>
+                  <WorkspaceControls
+                    value={view}
+                    homeVisible={homeVisible}
+                    onHomeVisibleChange={preferences.homeVisible.set}
+                    filterDisabled={workspaceGroups === undefined}
+                    onChange={preferences.sidebarView.set}
+                    onOpenFolder={openFolder}
+                    onCollapseAll={() =>
+                      flat ? setCollectionExpanded(false) : preferences.sidebarFolded.set(rowPlaces)
+                    }
                   />
-                ) : (
-                  <>
-                    {folders}
-                    {server.data !== undefined &&
-                      server.data.kind !== "none" &&
-                      cloudFailure !== undefined && (
-                        <WorkspaceRow
-                          name="Cloud"
-                          path={server.data.baseUrl}
-                          available={false}
-                          unavailableDetail="server unavailable"
-                          active={false}
-                          expanded={!cloudCollapsed}
-                          onExpandedChange={(next) => setCloudCollapsed(!next)}
-                          onNewChat={undefined}
-                          onArchiveAll={undefined}
-                          onRemove={() => void nyte.host.server.disconnect()}
-                        >
-                          <div
-                            role="status"
-                            {...props(text.base, styles.quiet, styles.sessionQuiet)}
+                </div>
+
+                <Collapsible.Panel
+                  id={workspaceCollectionID}
+                  {...props(styles.workspaceCollection)}
+                >
+                  {unreachable !== undefined && (
+                    <div role="status" {...props(text.base, styles.quiet, styles.sessionQuiet)}>
+                      {unreachable}
+                    </div>
+                  )}
+                  {flat ? (
+                    <ChatsList
+                      listId={`${sessionListId}-chats`}
+                      listed={listed}
+                      hold={hold}
+                      context={context}
+                    />
+                  ) : (
+                    <>
+                      {folders}
+                      {server.data !== undefined &&
+                        server.data.kind !== "none" &&
+                        cloudFailure !== undefined && (
+                          <WorkspaceRow
+                            name="Cloud"
+                            path={server.data.baseUrl}
+                            available={false}
+                            unavailableDetail="server unavailable"
+                            active={false}
+                            expanded={!cloudCollapsed}
+                            onExpandedChange={(next) => setCloudCollapsed(!next)}
+                            onNewChat={undefined}
+                            onArchiveAll={undefined}
+                            onRemove={() => void nyte.host.server.disconnect()}
                           >
-                            {cloudFailure}
-                          </div>
-                        </WorkspaceRow>
-                      )}
-                  </>
-                )}
-              </Collapsible.Panel>
-            </Collapsible.Root>
-          </section>
-        </div>
-      </SidebarContent>
+                            <div
+                              role="status"
+                              {...props(text.base, styles.quiet, styles.sessionQuiet)}
+                            >
+                              {cloudFailure}
+                            </div>
+                          </WorkspaceRow>
+                        )}
+                    </>
+                  )}
+                </Collapsible.Panel>
+              </Collapsible.Root>
+            </section>
+          </div>
+        </SidebarContent>
+      </ChatCardGroup>
 
       <SidebarFooter onOpenSettings={openSettings} />
       {archivingAll !== undefined && (
