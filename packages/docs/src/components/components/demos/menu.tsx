@@ -41,14 +41,14 @@ export function MenuDemo() {
         </MenuGroup>
         <MenuSeparator />
         <MenuSub>
-          <MenuSubTrigger icon="bolt" value={effort}>
+          <MenuSubTrigger icon="bolt" value={effort.charAt(0).toUpperCase() + effort.slice(1)}>
             Effort
           </MenuSubTrigger>
           <MenuSubContent>
             <MenuRadioGroup value={effort} onValueChange={setEffort}>
-              <MenuRadioItem value="low">low</MenuRadioItem>
-              <MenuRadioItem value="medium">medium</MenuRadioItem>
-              <MenuRadioItem value="high">high</MenuRadioItem>
+              <MenuRadioItem value="low">Low</MenuRadioItem>
+              <MenuRadioItem value="medium">Medium</MenuRadioItem>
+              <MenuRadioItem value="high">High</MenuRadioItem>
             </MenuRadioGroup>
           </MenuSubContent>
         </MenuSub>

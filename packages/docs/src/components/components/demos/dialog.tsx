@@ -6,10 +6,10 @@ import { useState } from "react";
 export function DialogDemo() {
   return (
     <Dialog.Root>
-      <Dialog.Trigger render={<Button variant="outline">Rename Session</Button>} />
+      <Dialog.Trigger render={<Button variant="outline">Rename session</Button>} />
       <Dialog.Popup>
         <Dialog.Header>
-          <Dialog.Title>Rename Session</Dialog.Title>
+          <Dialog.Title>Rename session</Dialog.Title>
           <Dialog.Description>
             The name shows in the sidebar and in the window title.
           </Dialog.Description>
@@ -35,13 +35,13 @@ export function AlertDialogDemo() {
       <AlertDialog.Trigger
         render={
           <Button variant="solid" tone="danger">
-            Delete Chat
+            Delete chat
           </Button>
         }
       />
       <AlertDialog.Popup>
         <AlertDialog.Header>
-          <AlertDialog.Title>Delete Chat</AlertDialog.Title>
+          <AlertDialog.Title>Delete chat</AlertDialog.Title>
           <AlertDialog.Description>
             The history tree and every head under it are removed. This cannot be undone.
           </AlertDialog.Description>
@@ -51,7 +51,7 @@ export function AlertDialogDemo() {
           <AlertDialog.Close
             render={
               <Button variant="solid" tone="danger">
-                Delete Chat
+                Delete chat
               </Button>
             }
           />
@@ -67,13 +67,13 @@ export function ConfirmDialogDemo() {
   return (
     <>
       <Button variant="solid" tone="danger" onClick={() => setOpen(true)}>
-        Delete Chat
+        Delete chat
       </Button>
       <ConfirmDialog
         open={open}
-        title="Delete Chat"
-        confirmLabel="Delete Chat"
-        description="The chat and its history are removed."
+        title="Delete chat"
+        confirmLabel="Delete chat"
+        description="This permanently deletes the chat and its entire history. You can't undo this."
         onOpenChange={setOpen}
         onConfirm={() => setOpen(false)}
       />

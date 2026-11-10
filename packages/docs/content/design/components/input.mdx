@@ -30,9 +30,22 @@ import { Input, InputGroup } from "@nyte-ai/ui/input";
 </Preview>
 
 ```tsx
-<Input placeholder="Chat name" aria-label="Chat name" />
-<Input variant="quiet" type="password" placeholder="Paste your API key" aria-label="API key" />
-<Input placeholder="Server URL" aria-label="Server URL" aria-invalid defaultValue="not-a-url" />
+<Input placeholder="Release notes" aria-label="Chat name" />
+<Input
+  variant="quiet"
+  type="password"
+  aria-label="API key"
+  aria-describedby="api-key-help"
+/>
+<p id="api-key-help">Paste an API key from your provider.</p>
+<Input
+  placeholder="https://example.com"
+  aria-label="Server URL"
+  aria-invalid
+  aria-describedby="server-url-error"
+  defaultValue="not-a-url"
+/>
+<p id="server-url-error">Enter a complete URL, such as https://example.com.</p>
 ```
 
 ### In a group
@@ -44,11 +57,11 @@ import { Input, InputGroup } from "@nyte-ai/ui/input";
 ```tsx
 <InputGroup>
   <Icon name="search" size="xs" />
-  <Input placeholder="Search" aria-label="Search workspace" />
+  <Input placeholder="README.md" aria-label="Search workspace" />
 </InputGroup>
 <InputGroup variant="quiet">
   <Icon name="search" size="sm" />
-  <Input placeholder="Search models" aria-label="Search models" />
+  <Input placeholder="Claude" aria-label="Search models" />
 </InputGroup>
 ```
 

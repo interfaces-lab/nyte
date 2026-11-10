@@ -8,10 +8,7 @@ import { SpecimenTile } from "./tile";
 
 const sectionNotes = new Map([
   ["Foundations", "Colour, shape, space, type, elevation, and motion, drawn from the live tokens."],
-  [
-    "Components",
-    "Every import path in the package, rendered live. Each page covers usage, anatomy, examples, props, and accessibility.",
-  ],
+  ["Components", "Browse the component reference and try the live examples."],
 ]);
 
 export function DesignLanding({ page }: { page: DocPage }) {

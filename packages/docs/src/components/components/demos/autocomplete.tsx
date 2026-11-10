@@ -42,7 +42,7 @@ export function AutocompleteDemo() {
     >
       <AutocompleteTrigger aria-label="Model">{model}</AutocompleteTrigger>
       <AutocompleteContent>
-        <AutocompleteInput aria-label="Search models" placeholder="Search models" />
+        <AutocompleteInput aria-label="Search models" placeholder="Claude" />
         <AutocompleteList>
           {(group: ModelGroup, index: number) => (
             <AutocompleteGroup key={group.label} items={group.items}>
@@ -58,7 +58,9 @@ export function AutocompleteDemo() {
             </AutocompleteGroup>
           )}
         </AutocompleteList>
-        <AutocompleteEmpty>No models match</AutocompleteEmpty>
+        <AutocompleteEmpty>
+          {`No models match “${search}”. Try another name or clear the search.`}
+        </AutocompleteEmpty>
       </AutocompleteContent>
     </Autocomplete>
   );

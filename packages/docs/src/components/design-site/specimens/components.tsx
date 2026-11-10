@@ -263,9 +263,11 @@ function CommandSpecimen() {
         value={query}
         onValueChange={setQuery}
       >
-        <Command.Input aria-label="Search commands" placeholder="Search commands" />
+        <Command.Input aria-label="Search commands" placeholder="Open folder" />
         <Command.List>
-          <Command.Empty>No commands match "{query}"</Command.Empty>
+          <Command.Empty>
+            {`No commands match “${query}”. Try another name or clear the search.`}
+          </Command.Empty>
           <Command.Group heading="Commands">
             {matches.map((command) => (
               <Command.Item
@@ -328,10 +330,10 @@ function IconSpecimen() {
 function InputSpecimen() {
   return (
     <div {...props(styles.stack)}>
-      <Input placeholder="Chat name" aria-label="Chat name" />
+      <Input placeholder="Release notes" aria-label="Chat name" />
       <InputGroup>
         <Icon name="search" size="xs" />
-        <Input placeholder="Search" aria-label="Search workspace" />
+        <Input placeholder="README.md" aria-label="Search workspace" />
       </InputGroup>
     </div>
   );
@@ -514,7 +516,7 @@ function TabsSpecimen() {
 function TextareaSpecimen() {
   return (
     <div {...props(styles.stack)}>
-      <Textarea placeholder="System prompt" aria-label="System prompt" />
+      <Textarea placeholder="Answer in concise sentences." aria-label="System prompt" />
     </div>
   );
 }
@@ -530,8 +532,9 @@ function ToastSpecimen() {
         onClick={() =>
           toast.add({
             type: "error",
-            title: "Could not reach the server",
-            description: "The request timed out after 30 seconds.",
+            title: "Couldn’t confirm the save",
+            description:
+              "The request timed out. Check whether your changes were saved before saving again.",
           })
         }
       >

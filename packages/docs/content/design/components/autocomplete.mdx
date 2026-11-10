@@ -103,7 +103,7 @@ const [search, setSearch] = useState("");
 >
   <AutocompleteTrigger aria-label="Model">{model}</AutocompleteTrigger>
   <AutocompleteContent>
-    <AutocompleteInput aria-label="Search models" placeholder="Search models" />
+    <AutocompleteInput aria-label="Search models" placeholder="Claude" />
     <AutocompleteList>
       {(group: ModelGroup, index: number) => (
         <AutocompleteGroup key={group.label} items={group.items}>
@@ -119,7 +119,7 @@ const [search, setSearch] = useState("");
         </AutocompleteGroup>
       )}
     </AutocompleteList>
-    <AutocompleteEmpty>No models match</AutocompleteEmpty>
+    <AutocompleteEmpty>No models match. Try another search.</AutocompleteEmpty>
   </AutocompleteContent>
 </Autocomplete>;
 ```
@@ -144,7 +144,7 @@ you.
     inputValue={search}
     onInputValueChange={setSearch}
   >
-    <AutocompleteInput variant="inline" aria-label="Search models" placeholder="Search models" />
+    <AutocompleteInput variant="inline" aria-label="Search models" placeholder="Claude" />
     <MenuSeparator />
     <AutocompleteList variant="inline">
       {(option: ModelOption) => (

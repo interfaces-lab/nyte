@@ -54,7 +54,7 @@ export function ButtonStatesDemo() {
         Solid pill
       </Button>
       <Button variant="outline" disabled disabledReason="No changes to save">
-        Save Changes
+        Save changes
       </Button>
       <Button variant="solid" icon="arrow-up" disabled>
         Send
@@ -67,7 +67,7 @@ export function ButtonGroupDemo() {
   return (
     <SplitButton.Root>
       <SplitButton.Main variant="solid" tone="primary">
-        Commit and Push
+        Commit and push
       </SplitButton.Main>
       <Menu>
         <MenuTrigger

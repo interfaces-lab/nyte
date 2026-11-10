@@ -42,10 +42,10 @@ A cancellable modal that takes focus. For a required response, use
 
 ```tsx
 <Dialog.Root>
-  <Dialog.Trigger render={<Button variant="outline">Rename Session</Button>} />
+  <Dialog.Trigger render={<Button variant="outline">Rename session</Button>} />
   <Dialog.Popup>
     <Dialog.Header>
-      <Dialog.Title>Rename Session</Dialog.Title>
+      <Dialog.Title>Rename session</Dialog.Title>
       <Dialog.Description>
         The name shows in the sidebar and in the window title.
       </Dialog.Description>
@@ -69,7 +69,7 @@ const [open, setOpen] = useState(false);
 
 <Dialog.Root open={open} onOpenChange={setOpen}>
   <Dialog.Popup>
-    <Dialog.Title>Rename Session</Dialog.Title>
+    <Dialog.Title>Rename session</Dialog.Title>
     <form
       onSubmit={async (event) => {
         event.preventDefault();

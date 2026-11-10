@@ -31,8 +31,9 @@ export function ToastDemo() {
         onClick={() =>
           toast.add({
             type: "error",
-            title: "Could not reach the server",
-            description: "The request timed out after 30 seconds.",
+            title: "Couldn’t confirm the save",
+            description:
+              "The request timed out. Check whether your changes were saved before saving again.",
           })
         }
       >

@@ -52,9 +52,13 @@ const matches = commands.filter((command) =>
     value={query}
     onValueChange={setQuery}
   >
-    <Command.Input aria-label="Search" placeholder="Search…" trailing={<Kbd keys={["⌘", "K"]} />} />
+    <Command.Input
+      aria-label="Search"
+      placeholder="Open settings"
+      trailing={<Kbd keys={["⌘", "K"]} />}
+    />
     <Command.List>
-      <Command.Empty>No commands match "{query}"</Command.Empty>
+      <Command.Empty>No commands match "{query}". Try another search.</Command.Empty>
       <Command.Group heading="Commands">
         {matches.map((command) => (
           <Command.Item

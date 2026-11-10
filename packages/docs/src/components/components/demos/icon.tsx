@@ -30,10 +30,10 @@ export function PanelToggleIconDemo() {
 export function SplitPreviewIconDemo() {
   return (
     <>
-      <Button iconOnly aria-label="Split Right">
+      <Button iconOnly aria-label="Split right">
         <SplitPreviewIcon side="right" />
       </Button>
-      <Button iconOnly aria-label="Split Down">
+      <Button iconOnly aria-label="Split down">
         <SplitPreviewIcon side="down" />
       </Button>
     </>
