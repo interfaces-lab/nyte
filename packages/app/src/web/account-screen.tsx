@@ -10,11 +10,13 @@ import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { Loader } from "@nyte-ai/ui/loader";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { create, props } from "@stylexjs/stylex";
-import { useId, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { AccountScope, accountAppearance } from "../account/appearance.tsx";
+import { ConnectionStatus } from "../components/connection-list.tsx";
 import { connectionProblem, hostChanged } from "../data/connection.ts";
+import { useNowMinute } from "../lib/use-now-minute.ts";
 import type { Connection } from "./bridge.ts";
 import {
   accountRoute,
@@ -46,7 +48,7 @@ const styles = create({
     backgroundColor: role.bgMutedTranslucent,
   },
   leading: { color: role.contentSecondary },
-  disabledRow: { color: role.contentDisabled },
+  offlineRow: { color: role.contentSecondary },
   wrap: {
     overflow: "visible",
     overflowWrap: "anywhere",
@@ -54,7 +56,40 @@ const styles = create({
     whiteSpace: "normal",
   },
   status: { margin: 0, color: role.contentSecondary, textAlign: "center" },
+  problem: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: space.s3,
+  },
 });
+
+const RELIST_MS = 15_000;
+
+type Listing =
+  | { readonly kind: "loading" }
+  | { readonly kind: "listed"; readonly environments: readonly EnvironmentSummary[] }
+  | { readonly kind: "failed"; readonly problem: string };
+
+const AGES = [
+  ["day", 86_400_000],
+  ["hour", 3_600_000],
+  ["minute", 60_000],
+] as const;
+
+const RELATIVE = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+
+function desktopStatus(environment: EnvironmentSummary, now: number): string {
+  if (environment.online) return "Online";
+
+  if (environment.lastSeenAt === null) return "Offline";
+  const elapsed = Math.max(0, now - environment.lastSeenAt);
+  const age = AGES.find(([, size]) => elapsed >= size);
+
+  return age === undefined
+    ? "Offline · seen just now"
+    : `Offline · seen ${RELATIVE.format(-Math.round(elapsed / age[1]), age[0])}`;
+}
 
 function DesktopList({
   environments,
@@ -65,9 +100,9 @@ function DesktopList({
   readonly environments: readonly EnvironmentSummary[];
   readonly connecting: string | undefined;
   readonly disabled: boolean;
-  readonly onPick: (environment: EnvironmentSummary, role: DeviceRole) => void;
+  readonly onPick: (environment: EnvironmentSummary) => void;
 }): ReactElement {
-  const labelId = useId();
+  const now = useNowMinute();
 
   return (
     <div {...props(styles.list)}>
@@ -76,38 +111,25 @@ function DesktopList({
           key={environment.id}
           size="lg"
           interactive={environment.online}
-          xstyle={!environment.online && styles.disabledRow}
+          xstyle={!environment.online && styles.offlineRow}
         >
           <Row.Primary
             disabled={!environment.online || disabled}
-            onClick={() => onPick(environment, "controller")}
+            onClick={() => onPick(environment)}
           >
             <Row.Leading xstyle={environment.online && styles.leading}>
               <Icon name="laptop" size="md" />
             </Row.Leading>
             <Row.Body>
-              <Row.Label id={`${labelId}-${environment.id}`} xstyle={styles.wrap}>
-                {environment.name}
-              </Row.Label>
-              <Row.Description>{environment.online ? "Online" : "Offline"}</Row.Description>
+              <Row.Label xstyle={styles.wrap}>{environment.name}</Row.Label>
+              <Row.Description>
+                <ConnectionStatus tone={environment.online ? "on" : "off"}>
+                  {desktopStatus(environment, now)}
+                </ConnectionStatus>
+              </Row.Description>
             </Row.Body>
           </Row.Primary>
-          <Row.Meta>
-            {connecting === environment.id ? (
-              <Loader />
-            ) : (
-              environment.online && (
-                <Button
-                  size="xs"
-                  disabled={disabled}
-                  aria-describedby={`${labelId}-${environment.id}`}
-                  onClick={() => onPick(environment, "owner")}
-                >
-                  Connect as Admin
-                </Button>
-              )
-            )}
-          </Row.Meta>
+          <Row.Meta>{connecting === environment.id && <Loader />}</Row.Meta>
         </Row>
       ))}
     </div>
@@ -137,7 +159,7 @@ function AccountFlow({
   });
 
   const [manual, setManual] = useState(false);
-  const [environments, setEnvironments] = useState<readonly EnvironmentSummary[]>();
+  const [listing, setListing] = useState<Listing>({ kind: "loading" });
   const [problem, setProblem] = useState<string>();
   const [changed, setChanged] = useState<{ environment: EnvironmentSummary; role: DeviceRole }>();
   const [signOutFailed, setSignOutFailed] = useState(false);
@@ -167,9 +189,12 @@ function AccountFlow({
     try {
       listed = (await broker.listEnvironments({ signal })).environments;
 
-      if (!signal.aborted) setEnvironments(listed);
+      if (!signal.aborted) setListing({ kind: "listed", environments: listed });
     } catch (cause) {
-      if (!signal.aborted) setProblem(accountProblem(cause));
+      if (!signal.aborted)
+        setListing((current) =>
+          current.kind === "listed" ? current : { kind: "failed", problem: accountProblem(cause) },
+        );
     }
 
     if (!signal.aborted) setProgress(undefined);
@@ -281,13 +306,23 @@ function AccountFlow({
       work.current?.abort();
       const controller = new AbortController();
       work.current = controller;
-      void refresh(controller.signal);
+      void broker.listEnvironments({ signal: controller.signal }).then(
+        (listed) => {
+          if (!controller.signal.aborted)
+            setListing({ kind: "listed", environments: listed.environments });
+        },
+        () => undefined,
+      );
     };
 
     window.addEventListener("focus", relist, { signal: listening.signal });
     document.addEventListener("visibilitychange", relist, { signal: listening.signal });
+    const timer = setInterval(relist, RELIST_MS);
 
-    return () => listening.abort();
+    return () => {
+      clearInterval(timer);
+      listening.abort();
+    };
   });
 
   const pick = async ({
@@ -459,18 +494,30 @@ function AccountFlow({
   return (
     <WebPage
       title="Choose a Desktop"
-      description={
-        environments?.length === 0
-          ? "Turn on remote access in Nyte on your desktop to see it here."
-          : email
-      }
+      description={email}
       busy={progress !== undefined}
       status={progress}
       footer={
         <>
+          {manualButton}
+          <Button size="sm" disabled={progress !== undefined} onClick={() => void leave(true)}>
+            Sign Out
+          </Button>
+        </>
+      }
+    >
+      {listing.kind === "listed" && listing.environments.length === 0 && (
+        <p {...props(styles.status)}>
+          No desktops are linked to this account. In Nyte on your desktop, open Settings › Server
+          and link it.
+        </p>
+      )}
+      {listing.kind === "failed" && (
+        <div role="alert" {...props(styles.problem)}>
+          <p {...props(styles.status)}>{listing.problem}</p>
           <Button
             size="sm"
-            icon="refresh"
+            variant="outline"
             disabled={progress !== undefined}
             onClick={() => {
               work.current?.abort();
@@ -479,21 +526,16 @@ function AccountFlow({
               void refresh(controller.signal);
             }}
           >
-            Refresh
+            Try Again
           </Button>
-          {manualButton}
-          <Button size="sm" disabled={progress !== undefined} onClick={() => void leave(true)}>
-            Sign Out
-          </Button>
-        </>
-      }
-    >
-      {environments !== undefined && environments.length > 0 && (
+        </div>
+      )}
+      {listing.kind === "listed" && listing.environments.length > 0 && (
         <DesktopList
-          environments={environments}
+          environments={listing.environments}
           connecting={connecting}
           disabled={progress !== undefined}
-          onPick={(environment, role) => void pick({ environment, role, repair: false })}
+          onPick={(environment) => void pick({ environment, role: "controller", repair: false })}
         />
       )}
       {changed !== undefined && (
@@ -576,6 +618,9 @@ export function AccountScreen({ config, onConnected }: AccountScreenProps): Reac
       publishableKey={config.publishableKey}
       telemetry={false}
       appearance={accountAppearance}
+      localization={{
+        signIn: { start: { subtitleCombined: "Use the account your desktop is linked to." } },
+      }}
     >
       <AccountBoundary config={config} onConnected={onConnected} />
     </ClerkProvider>
