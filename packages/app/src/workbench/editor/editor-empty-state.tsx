@@ -77,7 +77,12 @@ export function EditorEmptyState({
               if (event.key === "ArrowDown" || event.key === "ArrowUp") {
                 event.preventDefault();
                 const step = event.key === "ArrowDown" ? 1 : -1;
-                setHighlight((active + step + matches.length) % matches.length);
+                const next = (active + step + matches.length) % matches.length;
+                setHighlight(next);
+
+                document
+                  .getElementById(`${id}-match-${next}`)
+                  ?.scrollIntoView({ block: "nearest" });
               }
 
               if (event.key === "Enter") onOpen(matches[active]);
