@@ -1,5 +1,5 @@
 import { toast } from "@nyte-ai/ui/toast";
-import type { HostEvent, HostRestart } from "../contract/bridge.ts";
+import type { HostEvent, HostProcess } from "../contract/bridge.ts";
 import type { AlertState } from "../contract/desktop-settings.ts";
 import { errorMessage } from "../contract/errors.ts";
 import { keys, queryClient } from "../data/query-client.ts";
@@ -19,9 +19,9 @@ import { windowTabs } from "../tabs/window-tabs.ts";
 
 export function useHostEvents(): void {
   useMountEffect(() => {
-    const showHostRestart = followHostRestart();
+    const showHostProcess = followHostProcess();
 
-    void nyte.host.hostRestart?.state().then(showHostRestart);
+    void nyte.host.hostProcess?.state().then(showHostProcess);
 
     const unsubscribe = nyte.host.onEvent((event) => {
       switch (event.kind) {
@@ -46,8 +46,9 @@ export function useHostEvents(): void {
           queryClient.setQueryData(keys.updateChannel, event.channel);
 
           return;
-        case "host_restart_changed":
-          showHostRestart(event.restart);
+        case "host_process_changed":
+          queryClient.setQueryData(keys.hostProcess, event.state);
+          showHostProcess(event.state);
 
           return;
         case "settings_changed":
@@ -107,20 +108,11 @@ export function useHostEvents(): void {
 
 const HOST_RESTART = "host-restart";
 
-function followHostRestart(): (state: HostRestart) => void {
+function followHostProcess(): (state: HostProcess) => void {
   let restarting = false;
 
   const restart = (): void => {
-    restarting = true;
-    toast.add({
-      id: HOST_RESTART,
-      type: "loading",
-      timeout: 0,
-      title: "Restarting Nyte Host…",
-      description: undefined,
-      actionProps: undefined,
-    });
-    void nyte.host.hostRestart?.run().catch((cause: unknown) => {
+    void nyte.host.hostProcess?.restart().catch((cause: unknown) => {
       restarting = false;
       toast.add({
         id: HOST_RESTART,
@@ -135,7 +127,19 @@ function followHostRestart(): (state: HostRestart) => void {
 
   return (state) => {
     switch (state.kind) {
-      case "needed":
+      case "restarting":
+        restarting = true;
+        toast.add({
+          id: HOST_RESTART,
+          type: "loading",
+          timeout: 0,
+          title: "Restarting Nyte Host…",
+          description: undefined,
+          actionProps: undefined,
+        });
+
+        return;
+      case "stale":
         restarting = false;
         toast.add({
           id: HOST_RESTART,

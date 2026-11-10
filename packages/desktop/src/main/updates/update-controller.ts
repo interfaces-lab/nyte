@@ -1,6 +1,7 @@
 import type { UpdateState } from "@nyte-ai/app/contract/bridge.ts";
 import type { MessageBoxOptions } from "electron";
 import type { AppUpdater } from "electron-updater";
+import { runningWork } from "../../shared/update-activity.ts";
 import type { DesktopUpdateActivity } from "../../shared/update-activity.ts";
 
 const RELAUNCH_CLEANUP_TIMEOUT_MS = 10_000;
@@ -168,16 +169,6 @@ export function createUpdateController({
       if (state.kind === "downloading") set({ ...state, percent });
     },
   };
-}
-
-function runningWork(activity: Extract<DesktopUpdateActivity, { readonly kind: "busy" }>): string {
-  const count = (total: number, noun: string): string[] =>
-    total === 0 ? [] : [`${total} ${noun}${total === 1 ? "" : "s"}`];
-
-  return [
-    ...count(activity.taskCount, "running task"),
-    ...count(activity.terminalCommandCount, "terminal command"),
-  ].join(" and ");
 }
 
 function errorMessage(cause: unknown): string {

@@ -73,7 +73,7 @@ import { ExpectedHostError, retainDiagnostic } from "../shared/errors.ts";
 import { DESKTOP_APP_IDS } from "../shared/host-agent-job.ts";
 import { throwForRenderer } from "../host/desktop-host.ts";
 import type { DesktopHost } from "../host/desktop-host.ts";
-import { bridgeHostPort, hostRestart, startHostRuntime } from "./host-runtime.ts";
+import { bridgeHostPort, startHostRuntime } from "./host-runtime.ts";
 import { createHostTray } from "./host-tray.ts";
 import type { HostTray } from "./host-tray.ts";
 import { clientActions } from "@nyte-ai/app/contract/client-actions.ts";
@@ -385,9 +385,11 @@ const mainCalls: CallTable = {
 
     return updates.setChannel(channel);
   },
-  "host.hostRestart.state": async () =>
-    hostRuntime === undefined ? { kind: "offline" } : hostRestart(hostRuntime.link.state),
-  "host.hostRestart.run": async () => hostRuntime?.agent.restart(),
+  "host.hostProcess.state": async () => hostRuntime?.hostProcess.state() ?? { kind: "offline" },
+  "host.hostProcess.restart": async () => hostRuntime?.hostProcess.restart(),
+  "host.hostProcess.confirm": async (window, { action }) =>
+    hostRuntime?.hostProcess.confirm(action, windows.get(window)?.window),
+  "host.hostProcess.start": async () => hostRuntime?.hostProcess.start(),
   "host.bundledCli": async () =>
     inspectBundledCli({
       resources: process.resourcesPath,
@@ -466,9 +468,9 @@ function startHost(): DesktopHost {
     badge: (count) => alerts.badge(count),
     linkChanged: (state) => {
       hostTray?.refresh();
-      emitHostEvent({ kind: "host_restart_changed", restart: hostRestart(state) });
       openWith.reachable(state.kind === "connected");
     },
+    hostProcessChanged: (state) => emitHostEvent({ kind: "host_process_changed", state }),
     registrationChanged: () => hostTray?.refresh(),
   });
 

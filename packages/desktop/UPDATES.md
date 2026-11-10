@@ -10,7 +10,9 @@ Packaged apps check 30 seconds after startup, then every six hours on the stable
 - The check or the download failed.
 - The new version is ready, with **Restart to Update** and **Later**. If tasks or terminal commands are running, the dialog names them and defaults to **Later**.
 
-Before relaunch, Nyte gives its host up to 10 seconds to close sessions and terminals cleanly.
+Updating restarts the host. Nyte's host is a background job that outlives the app, so after an update the new app finds it still on the old build and restarts it once, right after it connects. That is why the dialog warns about running tasks. The app restarts only the host it registered itself: a host that another install or `nyte host` serves keeps running, and so does one that is still on another build after the restart. **Settings > Server** shows either as **Newer host available** with **Restart Host…**, next to the host's version, its uptime and **Stop Host…**.
+
+On nightly, an update that installs on quit restarts the host the next time you open Nyte.
 
 Squirrel.Mac installs only an update signed with the same Developer ID as the running app. Production macOS builds therefore need Developer ID signing and notarization through electron-builder's Apple credentials.
 

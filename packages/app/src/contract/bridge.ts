@@ -415,9 +415,11 @@ export type UpdateState =
   | { readonly kind: "installing"; readonly version: string }
   | { readonly kind: "failed"; readonly version: string; readonly message: string };
 
-export type HostRestart =
-  | { readonly kind: "current" }
-  | { readonly kind: "needed"; readonly version: string }
+/** This machine's host against the app's build. `stale` runs another build until it restarts. */
+export type HostProcess =
+  | { readonly kind: "current"; readonly version: string; readonly startedAt: number | null }
+  | { readonly kind: "stale"; readonly version: string; readonly startedAt: number | null }
+  | { readonly kind: "restarting" }
   | { readonly kind: "offline" };
 
 export type BundledCli =
@@ -433,7 +435,7 @@ export type BundledCli =
 export type HostEvent =
   | { kind: "update_changed"; state: UpdateState }
   | { kind: "update_channel_changed"; channel: UpdateChannel }
-  | { kind: "host_restart_changed"; restart: HostRestart }
+  | { kind: "host_process_changed"; state: HostProcess }
   | { kind: "settings_changed"; settings: HostSettings }
   | { kind: "workspace_opened"; workspace: SelectedWorkspace }
   | { kind: "workspace_trust_required"; path: string }
@@ -546,9 +548,12 @@ export interface HostBridge {
     channel(): Promise<UpdateChannel>;
     setChannel(input: { readonly channel: UpdateChannel }): Promise<UpdateChannel>;
   };
-  readonly hostRestart?: {
-    state(): Promise<HostRestart>;
-    run(): Promise<void>;
+  readonly hostProcess?: {
+    state(): Promise<HostProcess>;
+    restart(): Promise<void>;
+    /** Asks first, naming the running work, then restarts or stops the host. */
+    confirm(input: { readonly action: "restart" | "stop" }): Promise<void>;
+    start(): Promise<void>;
   };
   readonly bundledCli?: () => Promise<BundledCli>;
   server: {

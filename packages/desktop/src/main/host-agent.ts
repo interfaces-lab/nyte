@@ -16,12 +16,21 @@ const execute = promisify(execFile);
 
 export type AgentRegistration = Electron.LoginItemSettings["status"];
 
+export interface ServingHost {
+  readonly pid: number;
+  /** The job this app registered, not a host another install or `nyte host` serves. */
+  readonly own: boolean;
+}
+
 export interface HostAgent {
   readonly label: string;
   start(): Promise<AgentRegistration>;
   registration(): Promise<AgentRegistration>;
   pid(): Promise<number | null>;
+  serving(): Promise<ServingHost | null>;
   restart(): Promise<void>;
+  /** Stops the job and keeps it stopped until `start`, which every launch of the app calls. */
+  stop(): Promise<void>;
 }
 
 export interface HostAgentOptions {
@@ -39,6 +48,17 @@ export function hostAgent(options: HostAgentOptions): HostAgent {
   if (process.platform !== "darwin") return detachedHost(options);
 
   return options.packaged ? loginItemAgent(options) : developmentAgent(options);
+}
+
+/** When `ps` says the process started, or null where there is no `ps` or no such process. */
+export async function processStarted(pid: number): Promise<number | null> {
+  const printed = await execute("ps", ["-o", "lstart=", "-p", String(pid)], {
+    env: { ...process.env, LC_ALL: "C" },
+  }).catch(() => null);
+
+  const started = printed === null ? Number.NaN : Date.parse(printed.stdout.trim());
+
+  return Number.isNaN(started) ? null : started;
 }
 
 export function processAlive(pid: number): boolean {
@@ -70,7 +90,11 @@ function loginItemAgent(options: HostAgentOptions): HostAgent {
     },
     registration,
     pid: () => launchdPid(job.label),
+    serving: () => servingHost(options.nyteHome, job.label),
     restart: () => replaceHost(options, job.label),
+    async stop() {
+      app.setLoginItemSettings({ ...service, openAtLogin: false });
+    },
   };
 }
 
@@ -113,9 +137,13 @@ function developmentAgent(options: HostAgentOptions): HostAgent {
     start,
     registration: async () => ((await loaded()) ? "enabled" : "not-registered"),
     pid: () => launchdPid(label),
+    serving: () => servingHost(options.nyteHome, label),
     async restart() {
       await start();
       await replaceHost(options, label);
+    },
+    async stop() {
+      await execute("launchctl", ["bootout", target(label)]).catch(() => undefined);
     },
   };
 }
@@ -130,6 +158,12 @@ async function replaceHost(options: HostAgentOptions, label: string): Promise<vo
   }
 
   await kickstart(label);
+}
+
+async function servingHost(nyteHome: string, label: string): Promise<ServingHost | null> {
+  const pid = await servedPid(nyteHome);
+
+  return pid === null ? null : { pid, own: pid === (await launchdPid(label)) };
 }
 
 const RunningHostType = Type.Object({ pid: Type.Integer() });
@@ -171,18 +205,28 @@ function detachedHost(options: HostAgentOptions): HostAgent {
     return "enabled";
   };
 
+  const stop = async (): Promise<void> => {
+    const running = await pid();
+
+    if (running !== null) process.kill(running, "SIGTERM");
+    await stopped(pid);
+  };
+
   return {
     label,
     start,
     registration: async () => (process.platform === "win32" ? "not-found" : "enabled"),
     pid,
-    async restart() {
+    async serving() {
       const running = await pid();
 
-      if (running !== null) process.kill(running, "SIGTERM");
-      await stopped(pid);
+      return running === null ? null : { pid: running, own: true };
+    },
+    async restart() {
+      await stop();
       await start();
     },
+    stop,
   };
 }
 

@@ -14,15 +14,18 @@ import { hostAgent } from "./host-agent.ts";
 import type { AgentRegistration, HostAgent } from "./host-agent.ts";
 import type { HostConnection } from "@nyte-ai/sdk/client";
 import type { CanvasPreviewer } from "@nyte-ai/plugin/core/canvas-preview";
-import type { HostRestart } from "@nyte-ai/app/contract/bridge.ts";
+import type { HostProcess } from "@nyte-ai/app/contract/bridge.ts";
 import type { BrowserAgent } from "../shared/browser-agent.ts";
 import { offerAppActions, openAppClient } from "../shared/host-client.ts";
 import { HostLink } from "./host-link.ts";
 import type { HostLinkState } from "./host-link.ts";
+import { followHostProcess } from "./host-process.ts";
+import type { HostProcessFollower } from "./host-process.ts";
 
 export interface HostRuntime {
   readonly agent: HostAgent;
   readonly link: HostLink;
+  readonly hostProcess: HostProcessFollower;
   readonly client: HostConnection;
   readonly desktop: DesktopHost;
   close(): Promise<void>;
@@ -42,6 +45,7 @@ export type HostRuntimeOptions = Pick<
   readonly preview: CanvasPreviewer;
   previewSignal(): AbortSignal;
   readonly linkChanged?: (state: HostLinkState) => void;
+  readonly hostProcessChanged?: (state: HostProcess) => void;
   readonly registrationChanged?: (registration: AgentRegistration) => void;
 };
 
@@ -59,7 +63,18 @@ export function startHostRuntime(options: HostRuntimeOptions): HostRuntime {
 
   const socket = join(options.nyteHome, "host.sock");
 
-  const link = new HostLink(socket, (state) => options.linkChanged?.(state));
+  const link = new HostLink(socket, (state) => {
+    options.linkChanged?.(state);
+    hostProcess.linkChanged();
+  });
+
+  const hostProcess = followHostProcess({
+    agent,
+    appVersion: app.getVersion(),
+    link: () => link.state,
+    activity: () => desktop.updateActivity(),
+    changed: (state) => options.hostProcessChanged?.(state),
+  });
 
   void agent.start().then(
     (registration) => {
@@ -97,6 +112,7 @@ export function startHostRuntime(options: HostRuntimeOptions): HostRuntime {
   return {
     agent,
     link,
+    hostProcess,
     client,
     desktop,
     async close() {
@@ -125,12 +141,6 @@ function mainPortEnd(port: MessagePortMain): PortEnd {
     post: (message) => port.postMessage(message),
     close: () => port.close(),
   };
-}
-
-export function hostRestart(state: HostLinkState): HostRestart {
-  if (state.kind !== "connected") return { kind: "offline" };
-
-  return state.compatible ? { kind: "current" } : { kind: "needed", version: state.version };
 }
 
 function announce(registration: AgentRegistration): void {

@@ -6,9 +6,14 @@ test.use({ chapter: "settings" });
 test("the settings journey", async ({ desktop }) => {
   const { page } = desktop;
 
-  await test.step("the settings list opens on General and the sidebar swaps to it", async () => {
+  await test.step("the settings list opens on Server, its first page, and the sidebar swaps to it", async () => {
     await sidebar(page).getByRole("link", { name: "Settings", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "General", level: 1 })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Server", level: 1 })).toBeVisible();
+    await expect(
+      settingsNav(page).getByRole("link", { name: "Server", exact: true }),
+    ).toHaveAttribute("aria-current", "page");
+    await expect(page.getByText("Nyte Host", { exact: true })).toBeVisible();
+    await expect(page.getByText(/^Version \S+ · Running/u)).toBeVisible();
     const names = await settingsNav(page).getByRole("link").allInnerTexts();
     expect(names.filter((name) => name !== "Usage")).toEqual([
       "Settings",

@@ -4,7 +4,7 @@ import { operationsDigest } from "@nyte-ai/sdk";
 import type { Health } from "@nyte-ai/sdk/client";
 import { currentLive, subscribeLive } from "./connection.ts";
 import { keys } from "./query-client.ts";
-import type { HostState, UpdateState } from "../contract/bridge.ts";
+import type { HostProcess, HostState, UpdateState } from "../contract/bridge.ts";
 import { nyte } from "../contract/nyte.ts";
 import { hostWatch } from "./watches.ts";
 import { useWatchSelect } from "./watch-store.ts";
@@ -28,6 +28,14 @@ export function useUpdateState() {
   return useQuery({
     queryKey: keys.updates,
     queryFn: async (): Promise<UpdateState> => nyte.host.updates?.state() ?? { kind: "idle" },
+  });
+}
+
+export function useHostProcess() {
+  return useQuery({
+    queryKey: keys.hostProcess,
+    queryFn: async (): Promise<HostProcess> =>
+      (await nyte.host.hostProcess?.state()) ?? { kind: "offline" },
   });
 }
 

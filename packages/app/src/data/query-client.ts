@@ -8,6 +8,7 @@ export const keys = {
   hostSettings: ["host-settings"] as const,
   updates: ["updates"] as const,
   updateChannel: ["updates", "channel"] as const,
+  hostProcess: ["host-process"] as const,
   bundledCli: ["bundled-cli"] as const,
   workspaces: ["workspaces"] as const,
   workspaceCatalog: (workspace: WorkspaceId | undefined) =>

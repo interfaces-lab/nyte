@@ -142,9 +142,11 @@ const bridge = {
       channel: none("host.updates.channel"),
       setChannel: object("host.updates.setChannel"),
     },
-    hostRestart: {
-      state: none("host.hostRestart.state"),
-      run: none("host.hostRestart.run"),
+    hostProcess: {
+      state: none("host.hostProcess.state"),
+      restart: none("host.hostProcess.restart"),
+      confirm: object("host.hostProcess.confirm"),
+      start: none("host.hostProcess.start"),
     },
     bundledCli: none("host.bundledCli"),
     server: {
