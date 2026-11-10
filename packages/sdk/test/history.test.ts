@@ -11,8 +11,10 @@ import type { HeadView } from "../src/head-view.ts";
 import { pagedViews } from "../src/history.ts";
 import { openHost } from "../src/host-connection.ts";
 import { createSendJournal } from "../src/journal.ts";
+import { unsentSends } from "../src/unsent.ts";
+import type { UnsentSends } from "../src/unsent.ts";
 import { pushed } from "../src/watch.ts";
-import { BASE, TOKEN_SECRET, served } from "./served.ts";
+import { BASE, TOKEN_SECRET, readOperation, served } from "./served.ts";
 import type { Served } from "./served.ts";
 
 const cleanups: (() => Promise<void>)[] = [];
@@ -25,7 +27,12 @@ function users(view: Pick<SessionView, "messages">) {
   return view.messages.flatMap((message) => (message.kind === "user" ? [message.content] : []));
 }
 
-async function rowViews(host: Served, session: Session, tail: number) {
+async function rowViews(
+  host: Served,
+  session: Session,
+  tail: number,
+  unsent: UnsentSends | null = null,
+) {
   const listener = await listen(host.host, {
     transport: { kind: "http" },
     auth: { kind: "token", token: TOKEN_SECRET },
@@ -48,14 +55,25 @@ async function rowViews(host: Served, session: Session, tail: number) {
         const emit = (): void => {
           const snapshot = store.snapshot();
 
-          if (snapshot !== null) sink.next(headView(snapshot));
+          if (snapshot === null) return;
+
+          if (unsent === null) {
+            sink.next(headView(snapshot));
+
+            return;
+          }
+
+          const freshness = store.freshness();
+          sink.next(
+            unsent.lay(headView(snapshot), freshness.kind === "fresh" ? freshness.seq : null),
+          );
         };
 
-        const stop = store.subscribe(emit);
+        const stops = [store.subscribe(emit), unsent?.subscribe(emit)];
         emit();
 
         return () => {
-          stop();
+          for (const stop of stops) stop?.();
           store.close();
         };
       }),
@@ -240,6 +258,88 @@ function label(message: SessionView["messages"][number]) {
 
   return isPart(message, text) ? message.state.markdown : message.partKind;
 }
+
+it("never pages an edit's unsent row: an edit of the running prompt shows once after it lands under its own id", async () => {
+  const host = await served();
+  cleanups.push(() => host.close());
+
+  const connection = await connect({
+    url: BASE,
+    credentials: { kind: "token", token: TOKEN_SECRET },
+    fetch: host.fetch,
+    journal: createSendJournal(),
+  });
+
+  cleanups.push(() => connection.close());
+  host.fake.reply(
+    { content: [{ type: "text", text: "Working." }], hold: true },
+    { content: [{ type: "text", text: "Working again." }], hold: true },
+  );
+  const { session, receipt } = await connection.sessions.start({ content: "Draft." });
+  await receipt.landed();
+
+  const views = await rowViews(
+    host,
+    session,
+    40,
+    unsentSends(connection, session.id, session.name),
+  );
+
+  const iterator = views[Symbol.asyncIterator]();
+  const shown: HeadView[] = [];
+
+  const following = (async () => {
+    for (;;) {
+      const step = await iterator.next();
+
+      if (step.done === true) return;
+      shown.push(step.value);
+    }
+  })();
+
+  const latest = () => users(shown.at(-1) ?? { messages: [] });
+  const answer = Promise.withResolvers<void>();
+
+  host.intercept(async (request, forward) => {
+    const response = await forward(request);
+
+    if (readOperation(request) === "head.send") await answer.promise;
+
+    return response;
+  });
+
+  try {
+    await expect.poll(latest).toEqual(["Draft."]);
+
+    const revision = shown.at(-1)?.revision;
+    assert(revision !== null && revision !== undefined);
+
+    const edit = session.send("Edit.", {
+      replace: receipt.message,
+      running: "stop",
+      expect: revision,
+    });
+
+    await expect
+      .poll(() =>
+        shown
+          .at(-1)
+          ?.messages.some(
+            (message) =>
+              message.kind === "user" &&
+              message.id !== receipt.message &&
+              message.status.kind !== "unsent",
+          ),
+      )
+      .toBe(true);
+    answer.resolve();
+    await (await edit).landed();
+    await expect.poll(latest).toEqual(["Edit."]);
+  } finally {
+    await iterator.return?.();
+    await following;
+  }
+});
 
 it("refreshes a retained leading prompt from the host's newer record of the same prompt", async () => {
   const main: HeadName = asId("main");

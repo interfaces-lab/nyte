@@ -37,7 +37,12 @@ export function pagedViews<V extends Pageable = SessionView>(
       const before = shown?.messages ?? [];
       const kept =
         first === undefined ? -1 : before.findIndex((message) => message.id === first.id);
-      pages = kept < 0 ? [] : before.slice(0, kept);
+      pages =
+        kept < 0
+          ? []
+          : before
+              .slice(0, kept)
+              .filter((message) => message.kind !== "user" || message.status.kind !== "unsent");
       leadingPrompt = shown?.leadingPrompt ?? null;
       const paged = new Set(pages.map((message) => message.turn));
       turns = (shown?.turns ?? []).filter((turn) => paged.has(turn.id));
