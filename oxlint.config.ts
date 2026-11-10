@@ -483,6 +483,11 @@ export default defineConfig({
       rules: { "nyte-design/no-raw-colors": "off" },
     },
     {
+      /** Not Nyte's surface: the stand-in app a Design Canvas frame runs declares its own colours. */
+      files: ["packages/lab/src/design-canvas/northstar.tsx"],
+      rules: { "nyte-design/no-raw-colors": "off" },
+    },
+    {
       /** Not Nyte's surface: a studio film is rendered to video, so its look is fixed values. */
       files: ["packages/lab/src/studio/films/**"],
       rules: { "nyte-design/no-raw-colors": "off" },
