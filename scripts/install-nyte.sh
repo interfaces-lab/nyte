@@ -2,6 +2,10 @@
 # `pnpm install:tui`: puts the nyte built from this checkout where your terminal runs it.
 set -eu
 cd "$(dirname "$0")/.."
+# A nightly version, as `install:desktop` stamps, so the build follows the nightly channel and sorts above the installed one.
+run=$(date -u +%H%M%S | sed 's/^0*//')
+version=${NYTE_RELEASE_VERSION:-$(GITHUB_RUN_NUMBER="${run:-1}" node scripts/release-version.mjs resolve --nightly | sed 's/^version=//')}
+NYTE_RELEASE_VERSION="$version" pnpm exec turbo build --filter=@nyte-ai/tui
 folder="$HOME/.nyte/bin"
 staged="$folder/.nyte-$$"
 mkdir -p "$folder"

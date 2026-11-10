@@ -6,7 +6,7 @@
     "postinstall": "node scripts/icons.mjs",
     "build": "turbo build --filter=@nyte-ai/tui --filter=@nyte-ai/desktop",
     "build:tui": "turbo build --filter=@nyte-ai/tui",
-    "install:tui": "turbo build --filter=@nyte-ai/tui && sh scripts/install-nyte.sh",
+    "install:tui": "sh scripts/install-nyte.sh",
     "install:desktop": "pnpm --dir packages/desktop install:local",
     "package": "turbo package --filter=@nyte-ai/tui --filter=@nyte-ai/desktop",
     "package:tui": "turbo package --filter=@nyte-ai/tui",
