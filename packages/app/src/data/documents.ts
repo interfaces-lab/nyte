@@ -14,7 +14,6 @@ export function useDocument(path: string | undefined) {
       path === undefined
         ? skipToken
         : async () => (await documentsApi()).read(path, { as: "document" }),
-    staleTime: 1_000,
   });
 }
 

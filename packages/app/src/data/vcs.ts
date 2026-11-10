@@ -140,7 +140,6 @@ export async function refreshVcs(workspace: WorkspaceId | undefined): Promise<vo
   await Promise.all([
     queryClient.invalidateQueries({ queryKey: ["git"] }),
     queryClient.invalidateQueries({ queryKey: keys.mentionFiles(workspace), exact: true }),
-    queryClient.invalidateQueries({ queryKey: keys.documents }),
   ]);
 }
 

@@ -70,7 +70,6 @@ export function useGitHubRepository(
       workspace === undefined
         ? undefined
         : readStored(localArea(), lastRepositoryKey(workspace), GitHubRepositoryType, undefined),
-    staleTime: 30_000,
   });
 
   return repository.data ?? undefined;
