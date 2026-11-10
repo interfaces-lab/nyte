@@ -336,7 +336,7 @@ export const sessionCases = {
   ),
   JournalEntrySchema: sample(
     JournalEntrySchema,
-    { id: receipt, session, head, content: "hi", options: sendOptions, at: 1 },
+    { id: receipt, host, session, head, content: "hi", options: sendOptions, at: 1 },
     { id: receipt, session },
   ),
   SettingOutcomeSchema: sample(
