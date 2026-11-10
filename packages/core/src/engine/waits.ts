@@ -39,7 +39,7 @@ import {
   wokenIndex,
 } from "../store/wait-index.ts";
 import type { Indexed } from "../store/wait-index.ts";
-import { dev } from "../util/dev-log.ts";
+import { dev, fault } from "../util/dev-log.ts";
 import type { StoreConnection } from "../contract/store.ts";
 
 const LOST: JobEnd = { kind: "lost" };
@@ -374,7 +374,7 @@ export function createWaitRegistry(
       if (resumer !== undefined) resumer.resume();
       else
         void rerunAction(session, call).catch((error: unknown) =>
-          dev("waits", "rerun failed", { call, error: String(error) }),
+          fault("waits", "rerun failed", { call, error: String(error) }),
         );
     },
     onReceipt(session, id, listener) {

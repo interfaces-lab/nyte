@@ -8,7 +8,7 @@ import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Compile } from "typebox/compile";
 import { afterEach, expect, it, vi } from "vitest";
-import { hostFilePath, publishHost } from "../src/host-endpoint.ts";
+import { hostFaultsPath, hostFilePath, publishHost } from "../src/host-endpoint.ts";
 import { serveHost } from "../src/serve-host.ts";
 import type { Served } from "../src/serve-host.ts";
 
@@ -256,4 +256,32 @@ it.each(cases)("$name", { timeout: 30_000 }, async (scenario) => {
   vi.stubEnv("NYTE_HOME", home);
 
   expect(await scenario.run({ hosts: [], olderBuild: undefined })).toEqual(scenario.expected);
+});
+
+it("a host thread that dies after listening leaves its faults and its death in the fault log", async () => {
+  const home = await mkdtemp(join(tmpdir(), "nyte-serve-host-"));
+  folders.push(home);
+  vi.stubEnv("HOME", home);
+  vi.stubEnv("NYTE_HOME", home);
+
+  await expect(
+    serveHost({
+      entry: new URL("./fixtures/fault-host.ts", import.meta.url),
+      log: false,
+      whenTaken: "exit",
+      signal: new AbortController().signal,
+      output: { write: () => undefined },
+      listening: () => "",
+    }),
+  ).rejects.toThrow("The host stopped: boom");
+
+  const lines = (await readFile(hostFaultsPath(), "utf8"))
+    .split("\n")
+    .filter((line) => line !== "");
+
+  expect(lines).toHaveLength(2);
+  expect(lines[0]).toMatch(
+    /^\d{4}-\d\d-\d\dT[\d:.]+Z \[lease\] lost \{"what":"main","reason":"lapsed"\}$/u,
+  );
+  expect(lines[1]).toMatch(/^\d{4}-\d\d-\d\dT[\d:.]+Z \[host\] stopped \{"error":"Error: boom/u);
 });

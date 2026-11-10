@@ -1,4 +1,4 @@
-import { dev } from "../util/dev-log.ts";
+import { fault } from "../util/dev-log.ts";
 
 export interface Lease {
   readonly signal: AbortSignal;
@@ -21,7 +21,7 @@ export function holdLease(
   };
 
   const lose = (reason: string): void => {
-    dev("lease", "lost", { what, reason });
+    fault("lease", "lost", { what, reason });
     stop();
     lost.abort();
   };
@@ -46,7 +46,7 @@ export function holdLease(
           renewed = Date.now();
         },
         (error) => {
-          dev("lease", "renewal failed", {
+          fault("lease", "renewal failed", {
             what,
             error: error instanceof Error ? error.message : String(error),
           });

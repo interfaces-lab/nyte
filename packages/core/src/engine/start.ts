@@ -19,7 +19,7 @@ import {
   STALE,
 } from "../store/session.ts";
 import type { Found, Inbox } from "../store/session.ts";
-import { dev } from "../util/dev-log.ts";
+import { fault } from "../util/dev-log.ts";
 import { readmitDeciding } from "./admission.ts";
 import { listSessionWaits } from "./waits.ts";
 
@@ -79,7 +79,7 @@ export async function recoverStarts(kernel: Kernel, session: SessionId): Promise
   };
 
   void releaseStart(kernel, context, session).catch((error: unknown) =>
-    dev("start", "recovery failed", {
+    fault("start", "recovery failed", {
       session,
       error: error instanceof Error ? error.message : String(error),
     }),

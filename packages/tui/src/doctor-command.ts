@@ -4,7 +4,7 @@ import { access, readdir, readFile, realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { delimiter, join } from "node:path";
 import process from "node:process";
-import { findRunningHost, hostFilePath } from "@nyte-ai/service/host-endpoint";
+import { findRunningHost, hostFaultsPath, hostFilePath } from "@nyte-ai/service/host-endpoint";
 import type { RunningHost } from "@nyte-ai/service/host-endpoint";
 import { CliError } from "./cli/errors.ts";
 import { formatRows } from "./cli/format.ts";
@@ -78,7 +78,7 @@ export async function doctorCommand(args: readonly string[], output: Output): Pr
 
 /** Runs every check. Changes nothing and starts no host: without one, the host check says so and providers go unchecked. */
 export async function runDoctor(mode: Mode): Promise<DoctorReport> {
-  const [binary, path, update, home, secrets, hostChecks, crashes] = await Promise.all([
+  const [binary, path, update, home, secrets, hostChecks, crashes, faults] = await Promise.all([
     checkBinary(),
     checkPath(),
     checkUpdate(),
@@ -86,6 +86,7 @@ export async function runDoctor(mode: Mode): Promise<DoctorReport> {
     checkSecrets(),
     checkHostAndProviders(),
     checkCrashes(),
+    checkFaults(),
   ]);
 
   const checks = [
@@ -97,6 +98,7 @@ export async function runDoctor(mode: Mode): Promise<DoctorReport> {
     ...hostChecks,
     checkTerminal(mode.tty.stdout),
     crashes,
+    faults,
   ];
 
   const summary = { ok: 0, warn: 0, fail: 0, skip: 0 };
@@ -139,9 +141,10 @@ export function renderDoctor(report: DoctorReport, presentation: Presentation): 
   ];
 }
 
-/** Counts tui.log entries from the last week. Each entry starts with an ISO time. */
-export async function recentCrashes(home: string, now = Date.now()): Promise<number> {
-  const log = await readFile(join(home, "logs", "tui.log"), "utf8").catch(() => "");
+/** Counts the entries in the logs at `paths` from the last week. Each entry starts with an ISO time; a missing log counts none. */
+export async function recentEntries(paths: readonly string[], now = Date.now()): Promise<number> {
+  const logs = await Promise.all(paths.map((path) => readFile(path, "utf8").catch(() => "")));
+  const log = logs.join("\n");
 
   return [...log.matchAll(/^(\d{4}-\d\d-\d\dT[\d:.]+Z) \[/gmu)].filter(
     ([, time]) => now - Date.parse(time ?? "") < CRASH_WINDOW_MS,
@@ -364,7 +367,7 @@ function checkTerminal(stdoutTerminal: boolean): DoctorCheck {
 }
 
 async function checkCrashes(): Promise<DoctorCheck> {
-  const crashes = await recentCrashes(nyteHome());
+  const crashes = await recentEntries([join(nyteHome(), "logs", "tui.log")]);
 
   return crashes === 0
     ? ok("crashes", "none in the last 7 days")
@@ -372,6 +375,21 @@ async function checkCrashes(): Promise<DoctorCheck> {
         id: "crashes",
         status: "warn",
         detail: `${crashes} in ${tilde(join(nyteHome(), "logs", "tui.log"))} in the last 7 days`,
+        fix: "nyte triage",
+      };
+}
+
+/** Reads the rotated generation too, so a rotation doesn't hide a recent fault. */
+async function checkFaults(): Promise<DoctorCheck> {
+  const log = hostFaultsPath();
+  const faults = await recentEntries([log, `${log}.1`]);
+
+  return faults === 0
+    ? ok("faults", "none in the last 7 days")
+    : {
+        id: "faults",
+        status: "warn",
+        detail: `${faults} in ${tilde(log)} in the last 7 days`,
         fix: "nyte triage",
       };
 }

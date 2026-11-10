@@ -21,7 +21,7 @@ import { commit } from "../fold/commit.ts";
 import { JOBS, jobRef } from "../store/refs.ts";
 import { load, MAIN, put, readSession } from "../store/session.ts";
 import { clipText } from "../util/clip.ts";
-import { dev } from "../util/dev-log.ts";
+import { dev, fault } from "../util/dev-log.ts";
 import { closable } from "../util/iterable.ts";
 import { followedTrace, traceparent } from "../util/trace.ts";
 import { send } from "./admission.ts";
@@ -479,7 +479,7 @@ async function spawn(
       ? {
           orphaned: () =>
             void process.stop().catch((error: unknown) => {
-              dev("jobs", "orphan stop failed", { job: id, error: String(error) });
+              fault("jobs", "orphan stop failed", { job: id, error: String(error) });
             }),
         }
       : null,

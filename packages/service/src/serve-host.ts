@@ -5,8 +5,10 @@ import { dirname, join } from "node:path";
 import process from "node:process";
 import { setTimeout as sleep } from "node:timers/promises";
 import { tryLockFile } from "@nyte-ai/connect/host";
+import { openFaultLog } from "./fault-log.ts";
 import {
   findRunningHost,
+  hostFaultsPath,
   hostFilePath,
   hostLockPath,
   hostLogPath,
@@ -169,7 +171,16 @@ async function serveClaimed(
         ),
       ]);
 
-      if (stopped !== null) throw new Error(`The host stopped: ${stopped.message}`);
+      if (stopped !== null) {
+        openFaultLog(hostFaultsPath())({
+          at: Date.now(),
+          area: "host",
+          message: "stopped",
+          data: JSON.stringify({ error: stopped.stack ?? stopped.message }),
+        });
+
+        throw new Error(`The host stopped: ${stopped.message}`);
+      }
 
       return { kind: "stopped" };
     } finally {

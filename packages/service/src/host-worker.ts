@@ -4,6 +4,7 @@ import { parentPort } from "node:worker_threads";
 import { registerBunOAuthFlows } from "@nyte-ai/ai/bun-oauth";
 import { files } from "@nyte-ai/canvas/shell-files";
 import { ConnectRuntime, hostShare, machineName } from "@nyte-ai/connect/host";
+import { fault } from "@nyte-ai/core";
 import { TOKEN } from "@nyte-ai/core/server";
 import type { PluginImport } from "@nyte-ai/host";
 import { chromiumCanvasPreview } from "@nyte-ai/host/canvas-preview";
@@ -21,6 +22,8 @@ import type { Host } from "@nyte-ai/sdk";
 import { readConnectConfig } from "./connect-config.ts";
 import { docsPlugin, syncDocs } from "./docs.ts";
 import type { DocsFiles } from "./docs.ts";
+import { openFaultLog } from "./fault-log.ts";
+import { hostFaultsPath } from "./host-endpoint.ts";
 import { hostMessages } from "./host-thread.ts";
 import type { HostCommand, HostReport } from "./host-thread.ts";
 import { portConflict, probePort } from "./port.ts";
@@ -44,6 +47,7 @@ export function serveHostThread(runtime: HostWorkerRuntime): void {
 
   if (port === null) throw new Error("The host worker must run on a worker thread.");
 
+  fault.listen(openFaultLog(hostFaultsPath()));
   registerBunOAuthFlows();
 
   const report = (message: HostReport): void => port.postMessage(message);

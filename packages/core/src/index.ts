@@ -149,9 +149,9 @@ export { processEnvironment } from "./util/process-environment.ts";
 
 export { bashProperties } from "./builtins/environment.ts";
 
-export { dev } from "./util/dev-log.ts";
+export { dev, fault } from "./util/dev-log.ts";
 
-export type { DevRow } from "./util/dev-log.ts";
+export type { DevRow, Fault } from "./util/dev-log.ts";
 
 export {
   clearSpans,

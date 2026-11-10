@@ -47,7 +47,7 @@ import {
   readSession,
 } from "../store/session.ts";
 import type { Found } from "../store/session.ts";
-import { dev } from "../util/dev-log.ts";
+import { dev, fault } from "../util/dev-log.ts";
 import type { StoreConnection } from "../contract/store.ts";
 
 const RENEW_MS = 10_000;
@@ -227,7 +227,7 @@ async function failStep(
   head: HeadName,
   cause: unknown,
 ): Promise<AdvanceReport> {
-  dev("execution", "step failed", { session, head, error: formatError(cause) });
+  fault("execution", "step failed", { session, head, error: formatError(cause) });
   const live = await liveRun(kernel.store, session, head);
 
   if (live === null || kernel.executionState.driving.has(live.record.view.id)) throw cause;
@@ -382,7 +382,7 @@ export function driveInProcess(kernel: Kernel, coverage: ExecutionCoverage): Own
       .catch((error) => {
         const failed = (failures.get(key) ?? 0) + 1;
         failures.set(key, failed);
-        dev("execution", "advance failed", { session, head, error: formatError(error) });
+        fault("execution", "advance failed", { session, head, error: formatError(error) });
         stepAt(session, head, Date.now() + retryDelayMs(ADVANCE_RETRY, failed));
       })
       .finally(() => {
@@ -429,7 +429,7 @@ export function driveInProcess(kernel: Kernel, coverage: ExecutionCoverage): Own
         } while (cursor !== undefined && !closed);
       }
     } catch (error) {
-      dev("execution", "sweep failed", { error: formatError(error) });
+      fault("execution", "sweep failed", { error: formatError(error) });
     } finally {
       sweeping = false;
     }
@@ -445,7 +445,7 @@ export function driveInProcess(kernel: Kernel, coverage: ExecutionCoverage): Own
       do {
         cursor = (await repair(kernel, { cursor, limit: PAGE })).next ?? undefined;
       } while (cursor !== undefined && !closed);
-    })().catch((error) => dev("execution", "repair failed", { error: formatError(error) }));
+    })().catch((error) => fault("execution", "repair failed", { error: formatError(error) }));
 
   let closing: Promise<void> | null = null;
 
@@ -500,7 +500,7 @@ async function renewIdle(kernel: Kernel): Promise<void> {
           ? null
           : claimNow(kernel, entry.session, entry.head);
       })
-      .catch((error) => dev("execution", "renewal failed", { name, error: formatError(error) }));
+      .catch((error) => fault("execution", "renewal failed", { name, error: formatError(error) }));
 }
 
 async function claimNow(

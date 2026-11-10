@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { recentCrashes, renderDoctor, type DoctorReport } from "../src/doctor-command.ts";
+import { recentEntries, renderDoctor, type DoctorReport } from "../src/doctor-command.ts";
 import { holdsSecrets, readShareable, secretFilesIn } from "../src/secrets.ts";
 
 const SECRETS = [
@@ -61,9 +61,38 @@ describe("doctor", () => {
           "",
         ].join("\n"),
       );
-      expect(await recentCrashes(home, now)).toBe(1);
+      expect(await recentEntries([join(home, "logs", "tui.log")], now)).toBe(1);
       await writeFile(join(home, "logs", "tui.log"), "");
-      expect(await recentCrashes(home, now)).toBe(0);
+      expect(await recentEntries([join(home, "logs", "tui.log")], now)).toBe(0);
+    } finally {
+      await rm(home, { recursive: true, force: true });
+    }
+  });
+
+  test("counts host faults from the last 7 days across the log and its rotated file", async () => {
+    const home = await mkdtemp(join(tmpdir(), "nyte-doctor-"));
+
+    try {
+      const now = Date.parse("2026-06-10T12:00:00.000Z");
+      const log = join(home, "logs", "host-faults.log");
+      await Bun.write(
+        log,
+        [
+          '2026-06-10T11:00:00.000Z [lease] lost {"what":"main","reason":"lapsed"}',
+          '2026-06-09T08:00:00.000Z [presence] beat failed {"error":"SQLITE_BUSY"}',
+          "",
+        ].join("\n"),
+      );
+      await Bun.write(
+        `${log}.1`,
+        [
+          '2026-05-01T08:00:00.000Z [host] stopped {"error":"Error: old"}',
+          '2026-06-08T08:00:00.000Z [host] stopped {"error":"Error: boom"}',
+          "",
+        ].join("\n"),
+      );
+      expect(await recentEntries([log, `${log}.1`], now)).toBe(3);
+      expect(await recentEntries([join(home, "logs", "missing.log")], now)).toBe(0);
     } finally {
       await rm(home, { recursive: true, force: true });
     }

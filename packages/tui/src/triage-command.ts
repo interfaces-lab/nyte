@@ -6,6 +6,7 @@ import { basename, join } from "node:path";
 import { createInterface } from "node:readline";
 import process from "node:process";
 import type { Json } from "@nyte-ai/sdk";
+import { hostFaultsPath } from "@nyte-ai/service/host-endpoint";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Compile } from "typebox/compile";
@@ -230,6 +231,7 @@ function systemText(): string {
 async function planBundle(report: DoctorReport, problem: string): Promise<readonly BundleFile[]> {
   const logs = join(nyteHome(), "logs");
   const tuiLog = join(logs, "tui.log");
+  const faultLog = hostFaultsPath();
   const problems = report.summary.fail;
 
   const initLogs = existsSync(logs)
@@ -250,6 +252,15 @@ async function planBundle(report: DoctorReport, problem: string): Promise<readon
             name: "tui.log",
             detail: `last ${LOG_LINES} lines, redacted`,
             text: async () => tail(await readShareable(tuiLog), LOG_LINES),
+          },
+        ]
+      : []),
+    ...(existsSync(faultLog)
+      ? [
+          {
+            name: "host-faults.log",
+            detail: `last ${LOG_LINES} lines, redacted`,
+            text: async () => tail(await readShareable(faultLog), LOG_LINES),
           },
         ]
       : []),

@@ -1,7 +1,7 @@
 export const TRIAGE_PLAYBOOK = `You are helping someone whose Nyte install misbehaves. You run in a folder nyte triage prepared:
 
 - doctor.json: the output of \`nyte doctor --json\` from just now.
-- tui.log and init.log, when present: the last lines of Nyte's logs, already redacted.
+- tui.log, host-faults.log and init.log, when present: the last lines of Nyte's logs, already redacted.
 - system.txt: OS, architecture, terminal, shell and versions.
 - problem.txt, when present: what the person says is wrong.
 

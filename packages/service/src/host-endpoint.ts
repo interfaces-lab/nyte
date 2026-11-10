@@ -43,6 +43,11 @@ export function hostLogPath(env: Readonly<Record<string, string | undefined>> = 
   return join(hostStateDirectory(env), "logs", "host.log");
 }
 
+/** The host's own record of the failures that can leave a run stuck. `host.log` can be launchd's stdout, which the host cannot rotate, so this is a separate file. */
+export function hostFaultsPath(env: Readonly<Record<string, string | undefined>> = process.env) {
+  return join(hostStateDirectory(env), "logs", "host-faults.log");
+}
+
 export function hostDocsPath(env: Readonly<Record<string, string | undefined>> = process.env) {
   return join(hostStateDirectory(env), "docs");
 }

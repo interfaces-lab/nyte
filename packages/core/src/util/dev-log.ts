@@ -8,11 +8,21 @@ export interface DevRow {
   readonly data: string;
 }
 
+/** A failure after which a run can be stuck or work lost; `data` is its fields as JSON. */
+export interface Fault {
+  readonly at: number;
+  readonly area: string;
+  readonly message: string;
+  readonly data: string;
+}
+
 const NOOP: Sink = () => undefined;
 
 const CONSOLE: Sink = (line) => console.error(line);
 
 let tap: ((area: string, message: string, json: string) => void) | undefined;
+
+let faults: ((fault: Fault) => void) | undefined;
 
 const FLUSH_MS = 100;
 
@@ -123,6 +133,28 @@ dev.forward = (url: string, source: string): (() => void) => {
 
     if (timer !== undefined) clearTimeout(timer);
     flush();
+  };
+};
+
+/** Reports a failure through `dev`, and to the listener `fault.listen` installed. Never throws. */
+export function fault(area: string, message: string, data?: Record<string, unknown>): void {
+  dev(area, message, data);
+
+  if (faults === undefined) return;
+
+  try {
+    const json = data === undefined ? "{}" : JSON.stringify(data, replacer);
+    faults({ at: Date.now(), area, message, data: json });
+  } catch {
+    return;
+  }
+}
+
+fault.listen = (listener: (fault: Fault) => void): (() => void) => {
+  faults = listener;
+
+  return () => {
+    if (faults === listener) faults = undefined;
   };
 };
 

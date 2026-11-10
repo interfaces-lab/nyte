@@ -4,7 +4,7 @@ import type { Member, Presence } from "../contract/presence.ts";
 import { envelope } from "../contract/records.ts";
 import type { StoreConnection } from "../contract/store.ts";
 import { PROCESSES, processRef } from "../store/refs.ts";
-import { dev } from "../util/dev-log.ts";
+import { fault } from "../util/dev-log.ts";
 
 export const BEAT_MS = 5_000;
 
@@ -51,7 +51,7 @@ export async function openPresence(
 
   const revoke = (): void => {
     if (revocation.signal.aborted) return;
-    dev("presence", "revoked", { instance: input.instance });
+    fault("presence", "revoked", { instance: input.instance });
     clearInterval(timer);
     revocation.abort();
   };
@@ -86,7 +86,7 @@ export async function openPresence(
       revision = outcome.revisions[0];
       wrote();
     } catch (error) {
-      dev("presence", "beat failed", {
+      fault("presence", "beat failed", {
         error: error instanceof Error ? error.message : String(error),
       });
     } finally {
