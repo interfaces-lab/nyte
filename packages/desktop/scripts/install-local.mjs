@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { createReadStream, existsSync, readFileSync } from "node:fs";
+import { createReadStream, existsSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import { homedir } from "node:os";
@@ -45,6 +45,13 @@ if (channel !== "nightly") {
 const version = nightlyVersion();
 
 console.log(`Building Nyte ${version} to replace ${installed}.`);
+
+/** Each run packages a new ~200 MB archive; only the one this run serves is worth keeping. */
+const dist = join(desktop, "dist");
+
+for (const name of existsSync(dist) ? readdirSync(dist) : []) {
+  if (/^Nyte-.+-mac-arm64\.zip(?:\.blockmap)?$/u.test(name)) rmSync(join(dist, name));
+}
 
 packageBuild();
 
@@ -179,7 +186,16 @@ function packageBuild() {
   for (let attempt = 1; ; attempt += 1) {
     const status = spawnSync(
       "node",
-      ["scripts/build.mjs", "--package", "--publish", "never", "--mac", "zip", "--arm64"],
+      [
+        "scripts/build.mjs",
+        ...process.argv.slice(2).filter((argument) => argument === "--warn-budgets"),
+        "--package",
+        "--publish",
+        "never",
+        "--mac",
+        "zip",
+        "--arm64",
+      ],
       { cwd: desktop, env: { ...process.env, NYTE_RELEASE_VERSION: version }, stdio: "inherit" },
     ).status;
 
