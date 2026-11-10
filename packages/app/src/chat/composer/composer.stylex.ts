@@ -322,6 +322,12 @@ export const composerStyles = create({
   attachmentError: {
     color: role.contentSecondary,
   },
+  attachmentStatus: {
+    display: "flex",
+    alignItems: "center",
+    gap: space.s1_5,
+    color: role.contentSecondary,
+  },
   attachmentErrorInset: { marginInline: space.s3 },
   attachmentErrorNewChat: { marginBlockStart: space.s2_5 },
   attachmentErrorInsetCompact: { marginInline: space.s0_5 },

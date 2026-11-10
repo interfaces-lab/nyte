@@ -8,6 +8,7 @@ import type { CommandCompletion, Delivery } from "@nyte-ai/sdk";
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
+import { Loader } from "@nyte-ai/ui/loader";
 import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 import { FileTypeIcon } from "@nyte-ai/ui/file-type-icon";
 import { nyte } from "../../contract/nyte.ts";
@@ -367,6 +368,25 @@ export function ComposerFrame({
       </ul>
     );
 
+  const attachmentStatus =
+    collapsed || !attachmentBusy ? undefined : (
+      <div
+        role="status"
+        {...props(
+          text.sm,
+          composerStyles.attachmentStatus,
+          composerStyles.attachmentErrorInset,
+          surface === "new-chat" &&
+            attachments.length === 0 &&
+            composerStyles.attachmentErrorNewChat,
+          compact && composerStyles.attachmentErrorInsetCompact,
+        )}
+      >
+        <Loader />
+        Reading attachments…
+      </div>
+    );
+
   const attachmentAlert =
     collapsed || attachmentError === undefined ? undefined : (
       <div
@@ -487,6 +507,7 @@ export function ComposerFrame({
       )}
       {editingIndicator}
       {attachmentList}
+      {attachmentStatus}
       {attachmentAlert}
       <div
         {...props(
