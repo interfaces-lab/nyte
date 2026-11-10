@@ -80,6 +80,7 @@ const styles = create({
       default: "var(--toast-frontmost-height, var(--toast-height))",
       "[data-expanded]": "var(--toast-height)",
     },
+    interpolateSize: "numeric-only",
     overflow: "clip",
     pointerEvents: "auto",
     borderRadius: radius.control,
