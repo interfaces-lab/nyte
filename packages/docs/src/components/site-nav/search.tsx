@@ -30,16 +30,25 @@ interface Result {
 }
 
 function parseResults(value: unknown): Result[] {
-  if (!Array.isArray(value)) return [];
-  const results: Result[] = [];
-  for (const entry of value) {
-    if (typeof entry !== "object" || entry === null) continue;
-    const { id, type, content, url } = entry;
-    if (typeof id !== "string" || typeof content !== "string" || typeof url !== "string") continue;
-    if (type !== "page" && type !== "heading" && type !== "text") continue;
-    results.push({ id, type, content, url });
-  }
-  return results;
+  if (!Array.isArray(value)) throw new Error("Search returned an invalid response.");
+
+  return value.map((entry: unknown): Result => {
+    if (typeof entry !== "object" || entry === null)
+      throw new Error("Search returned an invalid result.");
+    if (
+      !("id" in entry) ||
+      typeof entry.id !== "string" ||
+      !("content" in entry) ||
+      typeof entry.content !== "string" ||
+      !("url" in entry) ||
+      typeof entry.url !== "string" ||
+      !("type" in entry) ||
+      (entry.type !== "page" && entry.type !== "heading" && entry.type !== "text")
+    )
+      throw new Error("Search returned an invalid result.");
+
+    return { id: entry.id, type: entry.type, content: entry.content, url: entry.url };
+  });
 }
 
 const { VITE_ALGOLIA_APP_ID: appId, VITE_ALGOLIA_SEARCH_KEY: searchKey } = import.meta.env;
@@ -53,17 +62,11 @@ const algolia =
     : null;
 
 async function searchSite(query: string, signal: AbortSignal): Promise<Result[]> {
-  if (algolia) {
-    try {
-      return parseResults(await algolia.search(query));
-    } catch {
-      return [];
-    }
-  }
+  if (algolia) return parseResults(await algolia.search(query));
 
-  const body: unknown = await fetch(`/api/search?query=${encodeURIComponent(query)}`, { signal })
-    .then((response) => (response.ok ? response.json() : null))
-    .catch(() => null);
+  const response = await fetch(`/api/search?query=${encodeURIComponent(query)}`, { signal });
+  if (!response.ok) throw new Error(`Search request failed (HTTP ${response.status}).`);
+  const body: unknown = await response.json();
 
   return parseResults(body);
 }
@@ -128,29 +131,52 @@ export function SearchDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  return (
+    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+      <Dialog.Popup aria-label="Search" xstyle={styles.popup}>
+        <SearchContent onClose={() => onOpenChange(false)} />
+      </Dialog.Popup>
+    </Dialog.Root>
+  );
+}
+
+type SearchState =
+  | { status: "idle" | "pending" | "error" }
+  | { status: "ready"; query: string; results: Result[] };
+
+function SearchContent({ onClose }: { readonly onClose: () => void }) {
   const [query, setQuery] = useState("");
-  const [response, setResponse] = useState<{ query: string; results: Result[] } | null>(null);
+  const [response, setResponse] = useState<SearchState>({ status: "idle" });
   const [active, setActive] = useState(0);
   const router = useRouter();
   const listId = useId();
   const trimmed = query.trim();
-  const results = trimmed === "" ? [] : (response?.results ?? []);
+  const results = response.status === "ready" && response.query === trimmed ? response.results : [];
   const pending = useRef<AbortController | null>(null);
+
+  useMountEffect(() => () => pending.current?.abort());
 
   const search = (value: string) => {
     setQuery(value);
     const next = value.trim();
-    if (next === trimmed) return;
     pending.current?.abort();
     pending.current = null;
-    if (next === "") return;
+    setActive(0);
+    if (next === "") {
+      setResponse({ status: "idle" });
+      return;
+    }
+    setResponse({ status: "pending" });
     const controller = new AbortController();
     const timer = setTimeout(async () => {
-      const found = await searchSite(next, controller.signal);
+      try {
+        const found = await searchSite(next, controller.signal);
 
-      if (controller.signal.aborted) return;
-      setResponse({ query: next, results: found });
-      setActive(0);
+        if (controller.signal.aborted) return;
+        setResponse({ status: "ready", query: next, results: found });
+      } catch {
+        if (!controller.signal.aborted) setResponse({ status: "error" });
+      }
     }, 89);
     controller.signal.addEventListener("abort", () => clearTimeout(timer));
     pending.current = controller;
@@ -167,69 +193,90 @@ export function SearchDialog({
       const target = results[active];
       if (!target) return;
       event.preventDefault();
-      onOpenChange(false);
+      onClose();
       const next = splitHref(target.url);
       const onOtherHost = router.buildLocation(next).external;
       void router.navigate({ ...next, reloadDocument: onOtherHost });
     }
   };
 
+  const message =
+    response.status === "pending"
+      ? `Searching for “${trimmed}”…`
+      : response.status === "error"
+        ? "Search couldn’t load. Check your connection, then retry the search."
+        : response.status === "ready" && results.length === 0
+          ? `No results for “${trimmed}”. Try another term or clear the search.`
+          : "";
+
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog.Popup aria-label="Search" xstyle={styles.popup}>
-        <Input
-          autoFocus
-          variant="bare"
-          className="min-h-12 px-4 text-[15px]"
-          placeholder="Search docs"
-          aria-label="Search"
-          aria-controls={listId}
-          value={query}
-          onKeyDown={onKeyDown}
-          onValueChange={search}
-        />
-        {results.length > 0 ? (
-          <ul
-            id={listId}
-            className="max-h-90 overflow-y-auto border-t border-border-subtle p-2"
-            role="listbox"
+    <>
+      <Input
+        autoFocus
+        variant="bare"
+        className="min-h-12 px-4 text-[15px]"
+        placeholder="install"
+        aria-label="Search"
+        aria-controls={listId}
+        value={query}
+        onKeyDown={onKeyDown}
+        onValueChange={search}
+      />
+      {results.length > 0 ? (
+        <ul
+          id={listId}
+          className="max-h-90 overflow-y-auto border-t border-border-subtle p-2"
+          role="listbox"
+        >
+          {results.map((result, index) => (
+            <li key={result.id} role="option" aria-selected={index === active}>
+              <Link
+                {...splitHref(result.url)}
+                data-type={result.type}
+                className="flex flex-col gap-0.5 rounded-lg px-3 py-2 text-sm/5 not-data-[type=page]:pl-6 not-data-[type=page]:text-muted-foreground hover:bg-fill-hover data-active:bg-fill-selected data-[type=page]:font-medium"
+                data-active={index === active || undefined}
+                onClick={onClose}
+                onMouseEnter={() => setActive(index)}
+              >
+                <span>
+                  <Highlighted content={result.content} />
+                </span>
+                {result.type === "page" && (
+                  <small className="text-xs/5 text-muted-foreground">{result.url}</small>
+                )}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <div
+        className={
+          message === ""
+            ? "sr-only"
+            : "border-t border-border-subtle px-4 py-6 text-center text-sm text-muted-foreground"
+        }
+      >
+        <p role="status">{message}</p>
+        {response.status === "error" ? (
+          <button
+            type="button"
+            className="mt-3 cursor-pointer font-medium text-foreground underline underline-offset-4"
+            onClick={() => search(query)}
           >
-            {results.map((result, index) => (
-              <li key={result.id} role="option" aria-selected={index === active}>
-                <Link
-                  {...splitHref(result.url)}
-                  data-type={result.type}
-                  className="flex flex-col gap-0.5 rounded-lg px-3 py-2 text-sm/5 not-data-[type=page]:pl-6 not-data-[type=page]:text-muted-foreground hover:bg-fill-hover data-active:bg-fill-selected data-[type=page]:font-medium"
-                  data-active={index === active || undefined}
-                  onClick={() => onOpenChange(false)}
-                  onMouseEnter={() => setActive(index)}
-                >
-                  <span>
-                    <Highlighted content={result.content} />
-                  </span>
-                  {result.type === "page" && (
-                    <small className="text-xs/5 text-muted-foreground">{result.url}</small>
-                  )}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        ) : response?.query === trimmed && trimmed !== "" ? (
-          <div className="border-t border-border-subtle px-4 py-6 text-center text-sm text-muted-foreground">
-            No results. Try a function or ref name.
-          </div>
+            Retry search
+          </button>
         ) : null}
-        {algolia ? (
-          <a
-            href="https://www.algolia.com/?utm_medium=referral&utm_source=nyte-docs"
-            target="_blank"
-            rel="noreferrer"
-            className="border-t border-border-subtle px-4 py-2 text-right text-xs/5 text-muted-foreground hover:text-foreground"
-          >
-            Search by Algolia
-          </a>
-        ) : null}
-      </Dialog.Popup>
-    </Dialog.Root>
+      </div>
+      {algolia ? (
+        <a
+          href="https://www.algolia.com/?utm_medium=referral&utm_source=nyte-docs"
+          target="_blank"
+          rel="noreferrer"
+          className="border-t border-border-subtle px-4 py-2 text-right text-xs/5 text-muted-foreground hover:text-foreground"
+        >
+          Search by Algolia
+        </a>
+      ) : null}
+    </>
   );
 }

@@ -37,16 +37,16 @@ export function Hero5() {
             </FactWord>{" "}
             for building AI-driven{" "}
             <FactWord
-              href="/docs/build/desktop"
-              above="Native-feeling UIs"
-              below="Runs on desktop & terminal"
+              href="/docs/build/composition"
+              above="Web and terminal UIs"
+              below="Build with your framework"
               tint="[--tint:#e3dcff]"
             >
-              desktop apps
+              apps
             </FactWord>{" "}
             with{" "}
             <FactWord
-              href="/docs/build/deployment"
+              href="/docs/host/deploy"
               above="Multi-deployment"
               below="From laptops to edge, to cloud"
               tint="[--tint:#c8f3ff]"
@@ -55,7 +55,7 @@ export function Hero5() {
             </FactWord>{" "}
             and{" "}
             <FactWord
-              href="/docs/models"
+              href="/docs/sdk/guides/models-and-sign-in"
               above="Claude Opus"
               below="Qwen3"
               tint="[--tint:#ffd6e8]"

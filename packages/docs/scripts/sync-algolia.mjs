@@ -16,20 +16,37 @@ if (site === undefined || appId === undefined || writeKey === undefined) {
   process.exit(2);
 }
 
-const response = await fetch(new URL("/api/search-records", site));
+if (!URL.canParse(site)) {
+  console.error("Use an absolute site URL, such as https://nyte.sh.");
+  process.exit(2);
+}
+
+const response = await fetch(new URL("/api/search-records", site)).catch(() => {
+  console.error(
+    "Couldn’t load search records. Check the site URL and your connection, then rerun sync:algolia.",
+  );
+  process.exit(1);
+});
 
 if (!response.ok) {
-  console.error(`${response.url} answered ${response.status}`);
+  console.error(
+    `Couldn’t load search records (HTTP ${response.status}). Check that the site serves /api/search-records, then rerun sync:algolia.`,
+  );
   process.exit(1);
 }
 
-const documents = await response.json();
+const documents = await response.json().catch(() => {
+  console.error(
+    "The site returned invalid search records. Check that /api/search-records serves JSON, then rerun sync:algolia.",
+  );
+  process.exit(1);
+});
 
 try {
   await sync(algoliasearch(appId, writeKey), { indexName, documents });
 } catch (cause) {
   console.error(
-    `Algolia refused the sync: ${cause instanceof Error ? cause.message : String(cause)}`,
+    `Algolia sync failed: ${cause instanceof Error ? cause.message : String(cause)}. Check ALGOLIA_APP_ID, ALGOLIA_WRITE_KEY write access, and ALGOLIA_INDEX. Inspect the index before running sync:algolia again; the sync may have changed it.`,
   );
   process.exit(1);
 }

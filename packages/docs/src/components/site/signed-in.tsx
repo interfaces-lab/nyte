@@ -27,12 +27,12 @@ export function SignedIn() {
   return (
     <div className="flex flex-col items-start gap-3">
       <h1 className="text-[34px] leading-[1.15] font-medium tracking-[-0.03em] text-balance text-foreground">
-        {failed ? "Sign-in didn’t finish" : "Signed in"}
+        {failed ? "Sign-in didn’t finish" : "Finish signing in"}
       </h1>
       <p className="max-w-[640px] text-[17px] leading-[1.65] tracking-[-0.01em] text-pretty text-muted-foreground">
         {failed
           ? "Return to Nyte to see what went wrong and try again."
-          : "You can close this tab and return to Nyte."}
+          : "Open Nyte to finish signing in. Close this tab after Nyte confirms you’re signed in."}
       </p>
       {deepLink !== undefined && (
         <a

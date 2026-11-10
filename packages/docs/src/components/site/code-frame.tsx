@@ -1,5 +1,6 @@
 import { FileTypeIcon } from "@nyte-ai/ui/file-type-icon";
 import { Tabs } from "@nyte-ai/ui/tabs";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { create } from "@stylexjs/stylex";
 import { glyphs } from "~/lib/glyphs";
 import { createContext, use, useRef, useState, useSyncExternalStore } from "react";
@@ -61,7 +62,10 @@ const styles = create({
 
 export function CodeFrame({ title, icon: _icon, children, className, ...props }: CodeFrameProps) {
   const body = useRef<HTMLPreElement>(null);
-  const [copied, setCopied] = useState(false);
+  const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "error">("idle");
+  const reset = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  useMountEffect(() => () => clearTimeout(reset.current));
 
   const code = (
     <div className="doc-code-body">
@@ -71,15 +75,30 @@ export function CodeFrame({ title, icon: _icon, children, className, ...props }:
       <button
         type="button"
         className="doc-code-copy"
-        aria-label={copied ? "Copied" : "Copy code"}
+        aria-label={copyStatus === "copied" ? "Copied" : "Copy code"}
         onClick={async () => {
-          await navigator.clipboard.writeText(body.current?.textContent ?? "");
-          setCopied(true);
-          setTimeout(() => setCopied(false), 1300);
+          clearTimeout(reset.current);
+          try {
+            await navigator.clipboard.writeText(body.current?.textContent ?? "");
+            setCopyStatus("copied");
+            reset.current = setTimeout(() => setCopyStatus("idle"), 1300);
+          } catch {
+            setCopyStatus("error");
+          }
         }}
       >
-        {copied ? <IconCheckmark1Small size={14} /> : <IconClipboard size={14} />}
+        {copyStatus === "copied" ? <IconCheckmark1Small size={14} /> : <IconClipboard size={14} />}
       </button>
+      <p
+        role="status"
+        className={copyStatus === "error" ? "px-4 py-3 text-sm text-muted-foreground" : "sr-only"}
+      >
+        {copyStatus === "error"
+          ? "Couldn’t copy code. Select the code and copy it manually."
+          : copyStatus === "copied"
+            ? "Code copied."
+            : ""}
+      </p>
     </div>
   );
 

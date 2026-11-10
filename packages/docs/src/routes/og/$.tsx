@@ -14,7 +14,11 @@ export const Route = createFileRoute("/og/$")({
           ? findPage(`/${splat.slice(0, -"/image.png".length)}`)
           : undefined;
 
-        if (!page) return new Response("Not found", { status: 404 });
+        if (!page)
+          return new Response(
+            "Page image not found. Find a page path in /llms.txt, then request /og/<path>/image.png (for example, /og/docs/image.png).",
+            { status: 404 },
+          );
 
         if (page.url === designRoute)
           return new ImageResponse(<LandingCard page={page} />, {

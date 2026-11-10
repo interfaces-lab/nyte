@@ -79,7 +79,7 @@ case "$arch" in
 	arm64 | aarch64) arch=arm64 ;;
 	x86_64) arch=x64 ;;
 	*)
-		echo "nyte install: no prebuilt binary for ${arch}." >&2
+		echo "nyte install: no prebuilt binary for ${arch}. See supported platforms at https://nyte.sh/docs#terminal" >&2
 		exit 1
 		;;
 esac
@@ -97,7 +97,7 @@ else
 	final_url=$(curl -fsSLI -o /dev/null -w '%{url_effective}' "https://github.com/${REPO}/releases/latest")
 	tag=${final_url##*/}
 	if [ -z "$tag" ] || [ "$tag" = "latest" ]; then
-		echo "nyte install: could not find the latest release." >&2
+		echo "nyte install: could not find the latest release. Check https://github.com/${REPO}/releases, then retry or use --version <version>." >&2
 		exit 1
 	fi
 fi
@@ -115,12 +115,13 @@ curl -fsSL -o "${tmp}/${asset}.tar.gz.sha256" "${base_url}/${asset}.tar.gz.sha25
 cd "$tmp"
 if command -v sha256sum >/dev/null 2>&1; then
 	sha256sum -c "${asset}.tar.gz.sha256" >/dev/null
+	echo "Checksum verified."
 elif command -v shasum >/dev/null 2>&1; then
 	shasum -a 256 -c "${asset}.tar.gz.sha256" >/dev/null
+	echo "Checksum verified."
 else
-	echo "nyte install: neither sha256sum nor shasum found, skipping verification." >&2
+	echo "nyte install: neither sha256sum nor shasum found; continuing without checksum verification. Install either tool and rerun to verify the download." >&2
 fi
-echo "Checksum ok."
 
 tar -xzf "${asset}.tar.gz"
 
@@ -131,14 +132,14 @@ if [ -d docs ]; then
 	# Refuse redirected docs destinations before copying or replacing the executable.
 	for directory in "${install_dir}/../share" "${install_dir}/../share/nyte" "$docs_parent"; do
 		if [ -L "$directory" ]; then
-			echo "nyte install: docs destination is a symlink: ${directory}." >&2
+			echo "nyte install: docs destination is a symlink: ${directory}. Inspect the destination or choose another NYTE_INSTALL_DIR, then rerun." >&2
 			exit 1
 		fi
 	done
 	if [ -e "${docs_parent}/docs" ] || [ -L "${docs_parent}/docs" ]; then
 		docs_links=$(find "${docs_parent}/docs" -type l -print)
 		if [ -n "$docs_links" ]; then
-			echo "nyte install: docs destination contains symlinks: ${docs_parent}/docs." >&2
+			echo "nyte install: docs destination contains symlinks: ${docs_parent}/docs. Inspect the destination or choose another NYTE_INSTALL_DIR, then rerun." >&2
 			exit 1
 		fi
 	fi

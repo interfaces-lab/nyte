@@ -20,7 +20,7 @@ export function CopyCommand({ command }: { command: string }) {
           status === "failed" ? "shrink-0 font-sans text-[12px] text-foreground" : "sr-only"
         }
       >
-        {status === "copied" ? "Copied" : status === "failed" ? "Copy failed" : null}
+        {status === "copied" ? "Copied" : status === "failed" ? "Copy manually" : null}
       </span>
       <button
         type="button"

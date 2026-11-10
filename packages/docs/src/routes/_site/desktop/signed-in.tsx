@@ -5,7 +5,7 @@ import { pageHead } from "~/lib/seo";
 export const Route = createFileRoute("/_site/desktop/signed-in")({
   head: () =>
     pageHead({
-      title: "Signed in",
+      title: "Return to Nyte",
       description: "Return to Nyte to finish signing in.",
       noindex: true,
     }),
