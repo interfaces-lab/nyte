@@ -2,5 +2,5 @@
 node = "26"
 go = "1.27"
 pnpm = "latest"
-bun = "latest"
+bun = "1.4.4"
 "npm:wrangler" = "4"

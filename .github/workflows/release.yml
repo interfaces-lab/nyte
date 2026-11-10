@@ -68,6 +68,7 @@ jobs:
       sha: ${{ steps.commit.outputs.sha }}
       cli: ${{ steps.targets.outputs.cli }}
       desktop: ${{ steps.targets.outputs.desktop }}
+      bun: ${{ steps.bun.outputs.version }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -76,6 +77,13 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 26
+      # setup-bun's bun-version-file does not read mise.toml.
+      - id: bun
+        name: Read the Bun version
+        run: |
+          version=$(sed -n 's/^bun = "\(.*\)"$/\1/p' mise.toml)
+          [ -n "$version" ] || { echo "::error::mise.toml has no bun = \"<version>\" line."; exit 1; }
+          echo "version=$version" | tee -a "$GITHUB_OUTPUT"
       - id: targets
         name: Choose the release targets
         env:
@@ -146,7 +154,7 @@ jobs:
           cache: pnpm
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: ${{ needs.version.outputs.bun }}
       - name: Check account configuration
         env:
           NYTE_CLERK_FRONTEND_API_HOST: ${{ vars.NYTE_CLERK_FRONTEND_API_HOST }}
@@ -207,7 +215,7 @@ jobs:
           cache-dependency-path: packages/tailnet/go.sum
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: ${{ needs.version.outputs.bun }}
       - run: pnpm install --frozen-lockfile
       - name: Install Linux test dependencies
         run: |
@@ -259,7 +267,7 @@ jobs:
           cache-dependency-path: packages/tailnet/go.sum
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: ${{ needs.version.outputs.bun }}
       - run: pnpm install --frozen-lockfile
       - run: pnpm build:tui
       - name: Sign and notarize nyte and nyte-tailnet
@@ -342,7 +350,7 @@ jobs:
           cache-dependency-path: packages/tailnet/go.sum
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: ${{ needs.version.outputs.bun }}
       - run: pnpm install --frozen-lockfile
       - name: Check account configuration
         shell: bash
@@ -466,7 +474,7 @@ jobs:
           cache: pnpm
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: ${{ needs.version.outputs.bun }}
       - run: pnpm install --frozen-lockfile
       - name: Write the release version into the packages
         run: node scripts/release-version.mjs prepare "$RELEASE_VERSION"

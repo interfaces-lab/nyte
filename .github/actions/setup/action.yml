@@ -21,10 +21,18 @@ runs:
       with:
         go-version-file: packages/tailnet/go.mod
         cache-dependency-path: packages/tailnet/go.sum
+    # setup-bun's bun-version-file does not read mise.toml.
+    - id: bun
+      if: inputs.bun == 'true'
+      shell: bash
+      run: |
+        version=$(sed -n 's/^bun = "\(.*\)"$/\1/p' mise.toml)
+        [ -n "$version" ] || { echo "::error::mise.toml has no bun = \"<version>\" line."; exit 1; }
+        echo "version=$version" >> "$GITHUB_OUTPUT"
     - if: inputs.bun == 'true'
       uses: oven-sh/setup-bun@v2
       with:
-        bun-version: latest
+        bun-version: ${{ steps.bun.outputs.version }}
     - shell: bash
       run: pnpm install --frozen-lockfile
     - if: inputs.test-dependencies == 'true' && runner.os == 'Linux'
