@@ -31,7 +31,7 @@ A command can still print a secret it receives, for example with `printenv`, and
 
 ## When an agent asks for a key [#agent-requests]
 
-An agent that needs a key asks for it, and a tray opens above the composer with what it's for and, when the agent gave one, a button to the page where you get it. Paste the key and click **Save**. Nyte writes it to a file only you can read, in `~/.nyte/secrets` on the machine where the agent's commands run, and tells the agent the file's path. The key itself never appears in the chat, and the agent reads it only inside the commands that need it.
+An agent that needs a key asks for it, and a tray opens above the composer with what it's for and, when the agent gave one, a button to the page where you get it. Paste the key and click **Save**. Nyte writes it to a file only you can read, in `~/.nyte/secrets` on the machine where the agent's commands run, and tells the agent the file's path. Nyte sends the path, not the key, to the agent and instructs it to read the key only inside commands that need it. A tool or command can still expose the value in chat. If that happens, delete the saved file and rotate the key with its provider.
 
 The file is deleted after 24 hours. Pick 3, 7 or 30 days, or **Never delete**, in the tray before you save. Nyte deletes expired files when a chat starts in that folder, and hourly while one is open. **Decline**, or Escape, tells the agent you said no.
 

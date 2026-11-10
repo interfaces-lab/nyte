@@ -29,9 +29,13 @@ Then check that it connects:
 nyte mcp list
 ```
 
-`list` gives the servers up to 15 seconds to connect, then prints each one's state and tool count.
-It exits 1 when an entry is invalid or an enabled server isn't connected, so scripts can rely on it.
-`--json` prints the same as JSON.
+`list` needs an already-running host; it does not start one. If none is running, start `nyte host`
+in another terminal. It gives the current folder's servers up to 15 seconds to connect, then prints
+each one's state and tool count. It exits 1 when a listed entry is invalid or an enabled server
+isn't connected. `--json` prints the same as JSON.
+
+If the host hasn't opened this folder, `list` shows only user-scope servers. Open `nyte` in the
+folder and [trust it](/docs/configure/trust) before checking its project servers.
 
 ## Edit mcp.json [#mcp-json]
 
@@ -213,33 +217,34 @@ override when there is one.
 
 ## nyte mcp reference [#cli]
 
-| Command                                             | What it does                               |
-| --------------------------------------------------- | ------------------------------------------ |
-| `nyte mcp add <name> [options] --url <url>`         | Adds a server reached over HTTP            |
-| `nyte mcp add <name> [options] -- <command> [args]` | Adds a server Nyte starts as a command     |
-| `nyte mcp remove <name> [--local]`                  | Removes a server. Its sign-in stays        |
-| `nyte mcp list [--json]`                            | Connects every server and prints its state |
-| `nyte mcp login [<name>]`                           | Signs in to a server                       |
-| `nyte mcp logout <name>`                            | Deletes a server's sign-in                 |
+| Command                                             | What it does                                          |
+| --------------------------------------------------- | ----------------------------------------------------- |
+| `nyte mcp add <name> [options] --url <url>`         | Adds a server reached over HTTP                       |
+| `nyte mcp add <name> [options] -- <command> [args]` | Adds a server Nyte starts as a command                |
+| `nyte mcp remove <name> [--local]`                  | Removes a server. Its sign-in stays                   |
+| `nyte mcp list [--json]`                            | Prints this folder's MCP connections and their states |
+| `nyte mcp login [<name>]`                           | Signs in to a server                                  |
+| `nyte mcp logout <name>`                            | Deletes a server's sign-in                            |
 
 Options for `add`:
 
-| Option                           | Applies to | What it does                             |
-| -------------------------------- | ---------- | ---------------------------------------- |
-| `--local`, `-l`                  | Both       | Writes to this folder's `.nyte/mcp.json` |
-| `--description <text>`           | Both       | Sets `description`                       |
-| `--exposure <exposure>`          | Both       | Sets `exposure`                          |
-| `--env KEY=VALUE`                | Command    | Adds to `env`. Repeat for more           |
-| `--cwd <dir>`                    | Command    | Sets `cwd`                               |
-| `--header KEY=VALUE`             | URL        | Adds to `headers`. Repeat for more       |
-| `--bearer-token-env-var <NAME>`  | URL        | Sends `Authorization: Bearer ${NAME}`    |
-| `--oauth-client-id <id>`         | URL        | Sets `oauth.clientId`                    |
-| `--oauth-client-secret <secret>` | URL        | Sets `oauth.clientSecret`                |
-| `--oauth-callback-port <port>`   | URL        | Sets `oauth.callbackPort`                |
-| `--oauth-client-name <name>`     | URL        | Sets `oauth.clientName`                  |
+| Option                           | Applies to | What it does                                                   |
+| -------------------------------- | ---------- | -------------------------------------------------------------- |
+| `--local`, `-l`                  | Both       | Writes to this folder's `.nyte/mcp.json`                       |
+| `--force`                        | Both       | Replaces an existing entry with this name in the selected file |
+| `--description <text>`           | Both       | Sets `description`                                             |
+| `--exposure <exposure>`          | Both       | Sets `exposure`                                                |
+| `--env KEY=VALUE`                | Command    | Adds to `env`. Repeat for more                                 |
+| `--cwd <dir>`                    | Command    | Sets `cwd`                                                     |
+| `--header KEY=VALUE`             | URL        | Adds to `headers`. Repeat for more                             |
+| `--bearer-token-env-var <NAME>`  | URL        | Sends `Authorization: Bearer ${NAME}`                          |
+| `--oauth-client-id <id>`         | URL        | Sets `oauth.clientId`                                          |
+| `--oauth-client-secret <secret>` | URL        | Sets `oauth.clientSecret`                                      |
+| `--oauth-callback-port <port>`   | URL        | Sets `oauth.callbackPort`                                      |
+| `--oauth-client-name <name>`     | URL        | Sets `oauth.clientName`                                        |
 
-`add` replaces a server of the same name in the file it writes, and refuses a config that would be
-invalid.
+`add` refuses an existing name unless you pass `--force` to replace that entry in the selected
+file. It refuses a config that would be invalid.
 
 ## From the SDK [#sdk]
 

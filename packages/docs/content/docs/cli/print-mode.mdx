@@ -31,8 +31,9 @@ git diff --staged | nyte -p
 nyte -p < prompt.md
 ```
 
-When you give a prompt, `nyte` doesn't read stdin. To send instructions and piped input together,
-put both on stdin. An empty prompt exits with 1 and the code `input_empty`.
+If you give both a prompt argument and nonempty piped or file input, `nyte` rejects the command.
+To send instructions and piped input together, put both on stdin. An empty prompt exits with 2
+and the reason `missing_input`.
 
 ## Continue a chat [#continue]
 
@@ -51,16 +52,12 @@ later chats.
 
 ## Output [#output]
 
-The answer streams to stdout. stderr gets the name of each tool the agent calls, then a last line
-with the chat and how it ended, and the command that opens it:
+The answer streams to stdout. stderr gets the name of each tool the agent calls, then a receipt
+with **Completed**, the session id and the command that opens the chat. On failure, stderr gets
+the error, any available details and suggested recovery commands instead.
 
-```txt
-session <session-id> · completed
-open in a terminal: nyte --session=<session-id>
-```
-
-On failure the last line is `error: <message>` instead. `--quiet` drops the tool names, so stderr
-carries only the outcome.
+`--quiet` drops the tool names. Startup progress, such as starting a host, can still appear on
+stderr.
 
 To open the chat later and see everything the agent did, run the printed command in a terminal.
 
@@ -72,53 +69,71 @@ To open the chat later and see everything the agent did, run the printed command
 {"type":"text","text":"The last commit "}
 {"type":"tool","name":"read"}
 {"type":"text","text":"renames the config loader."}
-{"type":"result","kind":"completed","code":"completed","session":"<session-id>","next":{"argv":["nyte","--session=<session-id>"],"command":"nyte --session=<session-id>"}}
+{"type":"result","outcome":"completed","session":"<session-id>","next":[{"command":"nyte -p '--session=<session-id>' '<PROMPT>'","argv":["nyte","-p","--session=<session-id>","<PROMPT>"],"when":"Send a follow-up in place of <PROMPT>"},{"command":"nyte '--session=<session-id>'","argv":["nyte","--session=<session-id>"],"when":"Open the chat in a terminal"}]}
 ```
 
-| `type`   | Fields                                                 |
-| -------- | ------------------------------------------------------ |
-| `text`   | `text`: the next piece of the answer                   |
-| `tool`   | `name`: a tool the agent called. Absent with `--quiet` |
-| `result` | The last line. See below                               |
+| `type`   | Fields                                                       |
+| -------- | ------------------------------------------------------------ |
+| `text`   | `text`: the next piece of the answer                         |
+| `tool`   | `name`: a tool the agent called. Absent with `--quiet`       |
+| `result` | The final stdout record, emitted only when the run completes |
 
-Concatenate every `text` to get the full answer. The `result` line is always last, even when
-`nyte` fails before the chat starts:
+Concatenate every `text` to get the full answer. A successful `result` has these fields:
 
-| Field     | What it holds                                                              |
-| --------- | -------------------------------------------------------------------------- |
-| `kind`    | `completed`, `aborted`, `failed`, `cancelled` or `input-required`          |
-| `code`    | A finer reason. See [result codes](#result-codes)                          |
-| `session` | The chat's id. Absent if no chat started                                   |
-| `message` | What went wrong, when `kind` is `failed`                                   |
-| `signal`  | `SIGINT`, `SIGTERM` or `SIGHUP`, when a signal cancelled the run           |
-| `next`    | The command that opens the chat, as `argv` and as a shell-quoted `command` |
+| Field     | What it holds                                                                        |
+| --------- | ------------------------------------------------------------------------------------ |
+| `outcome` | `completed`                                                                          |
+| `session` | The chat's id                                                                        |
+| `next`    | Suggested commands as an array, each with `command`, `argv` and a `when` description |
+
+A run that fails, is stopped or needs input does not emit a `result`. Failure reports are JSON
+objects on the final line of stderr, after any startup progress:
+
+| Field     | What it holds                                                                                     |
+| --------- | ------------------------------------------------------------------------------------------------- |
+| `status`  | `action_required` when input or a human step is needed; otherwise `error`                         |
+| `reason`  | An [error reason](#result-codes), such as `input_required` or `run_failed`                        |
+| `message` | What happened                                                                                     |
+| `next`    | Suggested recovery commands in the same array shape as a result's `next`. Absent when none apply  |
+| `data`    | Details specific to the error, such as `session`, `questions` or `remote`. Absent when none apply |
+
+Check the exit code as well as the records: a cleanup failure can follow a completed `result`,
+and forced termination can prevent the final report from being written.
 
 ## Exit codes [#exit-codes]
 
-| Code  | `kind`           | Meaning                                                                         |
-| ----- | ---------------- | ------------------------------------------------------------------------------- |
-| `0`   | `completed`      | The agent finished                                                              |
-| `1`   | `failed`         | The run failed, or `nyte` couldn't start it                                     |
-| `2`   | `input-required` | The agent asked you a question. `nyte` stopped the run. Open the chat to answer |
-| `130` | `aborted`        | The run was stopped from elsewhere, for example from another client             |
-| `130` | `cancelled`      | You pressed Ctrl+C. `SIGTERM` exits with `143` and `SIGHUP` with `129`          |
+| Code  | Meaning                                                                                                |
+| ----- | ------------------------------------------------------------------------------------------------------ |
+| `0`   | The run completed                                                                                      |
+| `1`   | The run failed, another client stopped it, its outcome is unknown, or another non-usage error occurred |
+| `2`   | Invalid arguments or missing input, including when the agent asks a question                           |
+| `130` | Cancellation, including Ctrl+C (`SIGINT`)                                                              |
+| `143` | `SIGTERM`                                                                                              |
+| `129` | `SIGHUP`                                                                                               |
 
-A signal stops the agent's run before `nyte` exits, so nothing keeps working after your script
-moves on.
+When the agent asks a question, `nyte` stops the run. Use the suggested follow-up command to
+answer, or open the saved chat in a terminal.
 
-## Result codes [#result-codes]
+A signal asks the host to stop the run. Nyte waits briefly for confirmation, but can exit while
+the host is still stopping it. The cancellation report's `data.remote` can be `stopping` or
+`unknown`; open the saved chat to check before retrying actions in those states.
 
-| `code`            | When                                                                                  |
-| ----------------- | ------------------------------------------------------------------------------------- |
-| `completed`       | The agent finished                                                                    |
-| `aborted`         | The run was stopped from elsewhere                                                    |
-| `input_required`  | The agent asked a question                                                            |
-| `local_cancelled` | A signal cancelled the run                                                            |
-| `run_failed`      | The run failed, for example because the provider returned an error                    |
-| `delivery_failed` | Streaming broke, or the answer changed after `nyte` printed part of it. Open the chat |
-| `input_empty`     | No prompt was given and stdin was empty                                               |
-| `startup_failed`  | `nyte` couldn't start: a bad flag, no usable model, an unknown session id             |
-| `cleanup_failed`  | The run ended but `nyte` couldn't shut down cleanly                                   |
+## Error reasons [#result-codes]
+
+Common reasons in a JSON error report:
+
+| `reason`                                                 | When                                                                                                 |
+| -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `missing_input`                                          | A prompt or another required input, such as a usable model credential, is missing                    |
+| `input_required`                                         | The agent asked a question. `data.questions` holds the questions and choices                         |
+| `run_stopped`                                            | Another client stopped the run                                                                       |
+| `canceled`                                               | The command was canceled. `data.remote`, when present, reports what Nyte knows about the run's state |
+| `run_failed`                                             | The run failed. `data.failure` gives the class and `data.remoteMessage` gives the underlying message |
+| `unknown_outcome`                                        | Nyte lost track of the run, which may still be running. Open the chat before retrying                |
+| `unknown_command`, `unknown_option`, `invalid_arguments` | The command or its arguments are invalid                                                             |
+| `not_found`                                              | A named model, session or other resource could not be found                                          |
+| `network_error`                                          | Nyte could not reach the host                                                                        |
+| `failed`, `internal_error`                               | Another failure occurred, including startup or cleanup failure. Read `message` and any `next` steps  |
 
 ## Examples [#examples]
 
@@ -128,15 +143,19 @@ Review staged changes before committing:
 { echo "Review this diff. List bugs only."; git diff --staged; } | nyte -p -q > review.md
 ```
 
-Check the outcome in a script:
+Check the outcome in a script, using `jq` to read any suggested recovery commands. Capture stderr
+separately because run errors are reported there, not in a stdout `result`:
 
 ```sh
-nyte -p --json "Run the tests and fix any failure" > run.jsonl
-status=$?
+status=0
+nyte -p --json "Run the tests and fix any failure" > run.jsonl 2> run.stderr || status=$?
 if [ "$status" -eq 2 ]; then
-  echo "The agent has a question. Open the chat:"
-  tail -n 1 run.jsonl | jq -r '.next.command'
+  echo "Input is needed. Suggested commands:"
+  tail -n 1 run.stderr | jq -r '.next[]?.command'
+elif [ "$status" -ne 0 ]; then
+  cat run.stderr >&2
 fi
+exit "$status"
 ```
 
 Ask a follow-up in the same chat:

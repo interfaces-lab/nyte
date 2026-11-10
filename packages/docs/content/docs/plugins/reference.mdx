@@ -64,8 +64,8 @@ reason, or with `refused` or `failed`.
 ## Registries [#registries]
 
 `contribute` in the plugin object and `api.contribute` share the same keys. Each registry keys its
-items by one field. When two plugins add an item with the same key, the later one replaces the
-earlier one and the host reports a warning.
+items by one field. When two core plugins add an item with the same key, the later one replaces the
+earlier one and the host reports a warning, except for part kinds, where the first one wins.
 
 ### Core registries [#core-registries]
 
@@ -83,6 +83,10 @@ earlier one and the host reports a warning.
 
 ### Client registries [#client-registries]
 
+Each client plugin has its own registries. Its `list()` and derive functions don't see other
+plugins' items. When several plugins have a renderer for the same part kind, the first one with a
+framework the client supports wins.
+
 | Registry      | Item                            | Keyed by                |
 | ------------- | ------------------------------- | ----------------------- |
 | `renderers`   | [`Renderer`](#renderer)         | Part kind and framework |
@@ -92,11 +96,11 @@ earlier one and the host reports a warning.
 
 ### Registry methods [#registry-methods]
 
-| Method        | What it does                                               |
-| ------------- | ---------------------------------------------------------- |
-| `add(item)`   | Adds an item. Returns a function that removes it           |
-| `add(derive)` | Adds a derive function. Returns a function that removes it |
-| `list()`      | Every item in the registry now, from every plugin          |
+| Method        | What it does                                                      |
+| ------------- | ----------------------------------------------------------------- |
+| `add(item)`   | Adds an item. Returns a function that removes it                  |
+| `add(derive)` | Adds a derive function. Returns a function that removes it        |
+| `list()`      | Every item now: from all core plugins, or only this client plugin |
 
 The settings registry's `add(definition)` returns a handle with `get()`, `set(value)` and `watch()`.
 It also has:
@@ -110,8 +114,8 @@ Items added through `api.contribute` go away when the plugin unloads.
 
 ### Derived items [#derive]
 
-A derive function edits the registry after every plugin's plain items are in. It gets a draft of the
-registry and the other registries:
+A derive function gets a draft of the registry and the other registries. On the host, it runs after
+every plugin's plain items are in. In a client, it sees only its own plugin's items and registries:
 
 ```ts title="use-pnpm.ts"
 import type { Plugin } from "@nyte-ai/plugin/core";
@@ -139,8 +143,11 @@ This changes the `bash` tool's description and keeps everything else about it.
 | `wrap(id, wrap)` | Replaces an item with `wrap(item)`, if it exists |
 | `ids()`          | Every key in the draft                           |
 
-Derive functions run in the order they were added. One that throws leaves the draft as it was and is
-reported. Call `api.reload()` when something a derive function reads has changed.
+Derive functions run in the order they were added. On the host, one that throws leaves the draft as
+it was and is reported. Call `api.reload()` when something a derive function reads has changed.
+
+In a client, derive functions run when `list()` is called. An error propagates to that caller instead
+of being caught and reported by the registry. `api.reload()` does nothing in a client.
 
 ## Items [#items]
 
@@ -187,11 +194,14 @@ A `SYSTEM.md` prompt file replaces every section.
 
 ### ModelContextPolicy [#model-context]
 
-| Field           | What it is                                                                       |
-| --------------- | -------------------------------------------------------------------------------- |
-| `model`         | The model, as `{ provider, id }`                                                 |
-| `contextWindow` | Its context window, in tokens                                                    |
-| `compactAt`     | The token count past which the chat compacts. Default: 80% of the context window |
+| Field           | What it is                                   |
+| --------------- | -------------------------------------------- |
+| `model`         | The model, as `{ provider, id }`             |
+| `contextWindow` | Its context window, in tokens                |
+| `compactAt`     | The token count past which the chat compacts |
+
+All three fields are required. Without a contributed policy, the host uses the model's catalog
+context window and a compaction threshold of 80% of that window.
 
 ### Skill [#skill]
 
@@ -262,7 +272,8 @@ A client plugin's way to draw a part kind.
 
 ## Storage [#storage]
 
-`api.storage` keeps JSON values for your plugin. Other plugins can't read them.
+`api.storage` keeps JSON values for your plugin. On the host, its methods namespace values by plugin
+id. Core plugins run as trusted host code, so this is not a security boundary between plugins.
 
 | Method            | What it does                                                |
 | ----------------- | ----------------------------------------------------------- |

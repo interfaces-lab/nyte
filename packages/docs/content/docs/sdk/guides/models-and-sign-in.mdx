@@ -81,9 +81,10 @@ prompt.close();
 `method: { kind: "key" }` asks for an API key with a `paste` step instead of a browser sign-in.
 
 The browser can be on a different machine from the host, such as a phone connected to a server.
-Pass `browser: "elsewhere"` to get a device code the user enters from any browser, or
-`browser: "host"` when the browser runs on the host's machine. Without it, a provider that offers
-both asks with a `choose` step.
+Pass `browser: "elsewhere"` to select the provider's remote flow: it may use a device code or ask for
+a code to paste back. Use `browser: "host"` when the browser runs on the host's machine. Neither
+option launches a browser; your client shows or opens the URL from an `open` step. Without the
+option, a provider that offers both flows asks with a `choose` step.
 
 The host saves the login, and every client of that host uses it.
 

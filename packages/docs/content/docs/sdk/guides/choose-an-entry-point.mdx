@@ -114,8 +114,8 @@ The other options:
 | `journal` | Keeps unsent messages across restarts. See [Send messages](/docs/sdk/guides/send-messages#retries-are-already-handled) |
 | `fetch`   | Replaces the global `fetch`, for a proxy or a test                                                                     |
 
-The listener token grants full access to the host. Keep it on machines you control, and never put it
-in a `VITE_*` or `NEXT_PUBLIC_*` variable.
+By default, the listener token grants participant and owner authority, not maintenance authority.
+Keep it on machines you control, and never put it in a `VITE_*` or `NEXT_PUBLIC_*` variable.
 
 ### Give each device its own credential
 
@@ -123,10 +123,9 @@ Pairing gives a device its own token, so you never copy the listener token onto 
 one-time code, and the device trades it for a token. Revoking that device later leaves every other
 credential working.
 
-```ts tab="host.ts"
-import { sdk } from "@nyte-ai/sdk";
+Add this after `host.listen` in the host process above:
 
-const host = await sdk.open();
+```ts tab="host.ts"
 const { code } = await host.principals.pair({ authority: new Set(["participant"]) });
 
 console.log("Pairing code:", code);
@@ -142,12 +141,21 @@ const connection = await sdk.connect({
   credentials: { kind: "pairing", code: process.argv[2] ?? "" },
 });
 
-await writeFile("credential.json", JSON.stringify(connection.credential));
+await writeFile("credential.json", JSON.stringify(connection.credential), {
+  mode: 0o600,
+  flag: "wx",
+});
+await connection.close();
 ```
 
-Run `host.ts`, then `node device.ts <code>` on the device. After pairing, `connection.credential` is
-`{ kind: "token", token }`. Pass it as `credentials` next time. `pair` also returns `expiresAt`, when
-the code stops working.
+Keep the host process and its listener running. Set the device's `url` to the listener's reachable
+HTTPS address, then run `node device.ts <code>` on the device. After pairing,
+`connection.credential` is `{ kind: "token", token }`. Pass it as `credentials` next time. `pair` also
+returns `expiresAt`, when the code stops working.
+
+The file is created with owner-only permissions on POSIX systems. `flag: "wx"` refuses to overwrite
+an existing file, whose permissions may differ. In an app, keep the token in the platform's
+credential store instead.
 
 `host.principals.list()` lists the principals that can connect, paired devices among them.
 `host.principals.revoke(id)` revokes one and closes its live connections.

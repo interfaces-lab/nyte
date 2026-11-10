@@ -25,7 +25,7 @@ Everything you send through your account passes through Nyte's relay. It isn't e
 
 ### From a terminal [#terminal]
 
-On a machine without the desktop app, `nyte account` links it to your account and turns sharing on. The machine's host shares it for as long as the host runs, so it stays shared after you press Ctrl-C.
+On a machine without the desktop app, `nyte account` links it to your account and turns sharing on. The command exits once sharing is on; the machine stays shared for as long as its host runs.
 
 ```sh
 nyte account
@@ -75,27 +75,27 @@ Where the address and token come from depends on how that host serves:
 
 ## Stop or remove access [#stop]
 
-| Action                                 | Result                                                                                                     |
-| -------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| Turn off **Remote access**             | Account devices are refused until you turn it back on. The link and the device list stay.                  |
-| Sign out of Nyte on the desktop        | Remote access doesn't change. The link, its devices and the **Remote access** setting stay as they were.   |
-| **Unlink This Mac**                    | The computer leaves the account and every account device loses access. Link again to come back.            |
-| **Revoke** next to an account device   | That device loses access right away, and the Nyte sign-in it used ends. It must sign in again to return.   |
-| Sign out of Nyte on the device         | Disconnects the device and asks Nyte to remove its access.                                                 |
-| Turn off **Serve over Tailscale**      | The computer leaves the tailnet until you turn it back on. It stays signed in.                             |
-| **Remove** next to a paired device     | That device can no longer connect through the tunnel.                                                      |
-| **Remove Tunnel**                      | Nyte forgets the hostname and tunnel token, and every paired device loses access.                          |
-| **Stop Sharing** next to **This Mac**  | Tailscale and Cloudflare Tunnel stop serving and **Remote access** turns off. Chats already running go on. |
+| Action                                | Result                                                                                                     |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Turn off **Remote access**            | Account devices are refused until you turn it back on. The link and the device list stay.                  |
+| Sign out of Nyte on the desktop       | Remote access doesn't change. The link, its devices and the **Remote access** setting stay as they were.   |
+| **Unlink This Mac**                   | The computer leaves the account and every account device loses access. Link again to come back.            |
+| **Revoke** next to an account device  | That device loses access right away, and the Nyte sign-in it used ends. It must sign in again to return.   |
+| Sign out of Nyte on the device        | Disconnects the device and asks Nyte to remove its access.                                                 |
+| Turn off **Serve over Tailscale**     | The computer leaves the tailnet until you turn it back on. It stays signed in.                             |
+| **Remove** next to a paired device    | That device can no longer connect through the tunnel.                                                      |
+| **Remove Tunnel**                     | Nyte forgets the hostname and tunnel token, and every paired device loses access.                          |
+| **Stop Sharing** next to **This Mac** | Tailscale and Cloudflare Tunnel stop serving and **Remote access** turns off. Chats already running go on. |
 
 ## Troubleshooting [#troubleshooting]
 
-| What you see                                  | What to do                                                                                                                                                       |
-| --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Devices can't see a linked Mac                | Turn on **Remote access**. It starts off.                                                                                                                        |
-| The computer isn't listed, or doesn't answer  | Wake it. Check that Nyte is open with **Remote access** on.                                                                                                      |
-| **Offline** next to **Remote access**         | The computer can't reach Nyte to verify itself, so it refuses devices. Check its internet connection.                                                            |
-| **Not reachable** next to **Remote access**   | Another Nyte connection replaced this one. Turn **Remote access** off, then on again.                                                                            |
-| **Account disabled**                          | The Nyte account is locked or disabled, so every device is refused.                                                                                              |
-| **Pair** for the tunnel is greyed out         | The tunnel hasn't connected yet. Wait for **Connected**.                                                                                                         |
-| The token is refused                          | The device was removed, or its pairing code expired unused. Click **Pair** on the computer and use the new code. A revoked account device has to sign in again.  |
-| **Different host**, with **Pair as New Host** | The address answered as a different computer. Pair again only if you reinstalled Nyte or reset its profile on that computer.                                     |
+| What you see                                  | What to do                                                                                                                                                      |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Devices can't see a linked Mac                | Turn on **Remote access**. It starts off.                                                                                                                       |
+| The computer isn't listed, or doesn't answer  | Wake it. Check that Nyte is open with **Remote access** on.                                                                                                     |
+| **Offline** next to **Remote access**         | The computer can't reach Nyte to verify itself, so it refuses devices. Check its internet connection.                                                           |
+| **Not reachable** next to **Remote access**   | Another Nyte connection replaced this one. Turn **Remote access** off, then on again.                                                                           |
+| **Account disabled**                          | The account is locked or disabled. [Contact Nyte](/privacy#operator) to ask about restoring access.                                                             |
+| **Pair** for the tunnel is greyed out         | The tunnel hasn't connected yet. Wait for **Connected**.                                                                                                        |
+| The token is refused                          | The device was removed, or its pairing code expired unused. Click **Pair** on the computer and use the new code. A revoked account device has to sign in again. |
+| **Different host**, with **Pair as New Host** | The address answered as a different computer. Pair again only if you reinstalled Nyte or reset its profile on that computer.                                    |

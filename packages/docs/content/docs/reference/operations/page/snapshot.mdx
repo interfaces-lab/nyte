@@ -8,9 +8,10 @@ revision. Each node has a `ref` to act on, a role, an accessible name, and wheth
 
 ## When to call it
 
-Before acting on a page: [`page.click`](/docs/reference/operations/page/click),
-[`page.type`](/docs/reference/operations/page/type) and the other actions take a node's `ref`, and the
-snapshot's `revision` as `expect`.
+Before acting on a node, read its `ref` from a snapshot. [`page.click`](/docs/reference/operations/page/click)
+and [`page.type`](/docs/reference/operations/page/type) also accept the snapshot's `revision` as
+optional `expect` to reject a stale document. [`page.press`](/docs/reference/operations/page/press)
+and [`page.scroll`](/docs/reference/operations/page/scroll) accept node refs but do not accept `expect`.
 
 ## Access
 

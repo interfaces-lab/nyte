@@ -3,11 +3,15 @@ title: projects.create
 description: Creates a project in a workspace with the models, instructions, skills, MCP servers and shared docs its chats use.
 ---
 
-Creates a project in a registered workspace and returns it as stored. A project has one lead chat,
-which is the first top-level chat started in it, and its `brief` is that chat's system prompt.
-`until` is `{ "kind": "standing" }` for work that never ends, or a goal. `worker` names the model
-the lead starts units on; without it, units run on the lead's model. The new project reaches every
-client in the host view's `projects`.
+Creates a project in a registered workspace and returns it as stored. A project has one coordinator
+chat, which is the first top-level chat started in it. `models.coordinator` and `models.agents`
+choose the initial models for that chat and its subagents. Either value can be `null` to use the
+host's default model, unless the start supplies `configuration.model`; a null agents model does not
+inherit the coordinator's model.
+
+`instructions` and the named `skills` join each chat's system prompt. `disabledMcp` names MCP
+servers to leave out, and `disabledDocs` names shared docs or context files to leave out. The new
+project reaches every client in the host view's `projects`.
 
 ## When to call it
 
@@ -26,15 +30,17 @@ Request body:
 {
   "input": {
     "name": "Bug Fix and Polish",
-    "brief": "Sol writes each fix in its own worktree. Read nyte-styles first.",
-    "until": { "kind": "standing" },
     "workspace": "9dee0b6e-42c2-4ec2-be3a-cf6ff4dcacd2",
-    "worker": { "provider": "openai-codex", "id": "gpt-6.1-sol" }
+    "models": { "coordinator": null, "agents": null },
+    "instructions": "Keep fixes small and verify each change.",
+    "skills": [],
+    "disabledMcp": [],
+    "disabledDocs": []
   }
 }
 ```
 
-Response: the project, with `lead` null until its first chat starts.
+Response: the project, with `coordinator` null until its first chat starts.
 
 ## Errors
 

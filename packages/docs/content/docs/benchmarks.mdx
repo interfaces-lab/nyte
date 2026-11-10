@@ -17,7 +17,7 @@ Each harness is measured as it ships, in an empty project with no skills, MCP se
 
 ## Harness speed [#speed]
 
-How much time Nyte itself adds to a turn. The run swaps the model for a scripted one that answers at once and has it read a one-line file, so what's left is Nyte: taking the message, building each request, running the tool call and saving the answer.
+How much time Nyte itself adds to a turn. The run swaps the model for a scripted one that answers at once and has it read a one-line file. Harness time excludes measured model-streaming and tool-execution time: it covers taking the message, building each request, dispatching the tool call and saving the answer.
 
 <HarnessOverhead />
 
@@ -39,8 +39,8 @@ Nyte Bench runs Nyte on [DeepSWE](https://deepswe.datacurve.ai/) tasks: feature 
 
 ### Read it carefully [#caveats]
 
-- **The task sets differ.** eve-bench runs 12 DeepSWE tasks it doesn't name. Nyte runs tasks drawn from DeepSWE v1.1 with a fixed seed. The rows share a model, a time limit and a verifier, but not their tasks, so compare them as separate measurements, not as a ranking.
-- **Overlapping intervals are ties.** Each line is a 95% interval from resampling whole tasks. When two lines overlap, the run can't tell those harnesses apart.
+- **The task sets differ.** eve-bench runs 12 DeepSWE tasks it doesn't name. The published Nyte run uses three named DeepSWE v1.1 tasks, with one attempt per task. The rows share a model, a time limit and a verifier, but not their tasks, so compare them as separate measurements, not as a ranking.
+- **Overlapping intervals do not establish a tie.** Each line is a 95% interval from resampling whole tasks within one run. Overlap is not evidence of equal performance, and differing task sets prevent a controlled ranking.
 - **Few tasks give wide intervals.** More tasks narrow an interval. More attempts on the same tasks barely do.
 - **The machines differ.** Nyte's runs use DeepSWE's x86 images under emulation on Apple silicon, so a slow test suite eats more of the 20 minutes than it would in eve-bench's sandboxes.
 
@@ -51,11 +51,11 @@ Each attempt follows DeepSWE v1.1:
 1. The task's image starts with no network. Nyte runs on this machine and sends every command into the container, so builds and tests use the task's toolchain.
 2. Nyte gets the task's instruction as its first message, on `anthropic/claude-sonnet-5-5` with high reasoning, and has 20 minutes, eve-bench's limit.
 3. The task's collect command turns Nyte's commits into a patch.
-4. The task's verifier applies that patch in a fresh container and runs the held-out tests. An attempt resolves only when every graded test passes. A crash or a timeout counts as a failure.
+4. The task's verifier applies that patch in a fresh container and runs the held-out tests. An attempt resolves when the verifier returns a reward of 1. The collected patch is graded even if the agent fails or times out; those conditions are recorded separately rather than automatically overriding the reward.
 
 Web search and fetch are off, as they are in eve-bench, so the model can't look up an upstream fix. Cost is the providers' list price for every request, including the chat title.
 
-You need Docker and a Nyte login for the model's provider. Clone DeepSWE, then run Nyte Bench from a Nyte checkout:
+You need Docker and a Nyte login for the model's provider. Clone DeepSWE, then run Nyte Bench from a Nyte checkout. This default command selects 12 tasks with a fixed seed and runs three attempts per task; it does not reproduce the published run's selection:
 
 ```sh
 git clone https://github.com/datacurve-ai/deep-swe /tmp/deep-swe
@@ -63,6 +63,8 @@ pnpm --dir packages/nyte-bench deepswe --dataset /tmp/deep-swe/tasks --out /tmp/
 ```
 
 It writes `results.jsonl`, one line per attempt, and `summary.json` in the shape this page reads.
+
+The published Nyte run used Nyte revision `171cb754c` and DeepSWE dataset commit `0b9fabbb63b9104d678fe965e1632f2dd9eaa2ea`. Its named tasks were `ink-grid-box-layout`, `kysely-window-grouping-helpers` and `yjs-map-conflict-detection`, with one attempt each. Use repeated `--task <id>` options and `--attempts 1` to select those tasks rather than the defaults.
 
 ## Capabilities [#capabilities]
 

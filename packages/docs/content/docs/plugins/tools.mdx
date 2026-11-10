@@ -103,27 +103,29 @@ the user first.
 - `"never"`: the call ends as `interrupted` instead of running again. Pick it for anything that
   sends, pays or deploys.
 
-For finer control inside `execute`, `invocation.memo(name, compute)` stores a value the first time
-and returns the stored value when the call runs again.
+For finer control inside `execute`, `invocation.memo(name, compute)` stores the result of `compute`
+and returns that stored value when the call runs again. If the host stops after `compute` finishes
+but before the result is stored, `compute` can run again. Keep it safe to repeat; `memo` doesn't make
+an external action happen exactly once.
 
 ## What a call can use [#invocation]
 
 The second argument to `execute` is the `ToolInvocation`.
 
-| Member                | What it is                                                              |
-| --------------------- | ----------------------------------------------------------------------- |
-| `env`                 | The chat's environment: `cwd`, `files` and `exec`                       |
-| `session`             | The chat, for example to create a part with `session.parts.create`      |
-| `sdk`                 | A connection to the host, the same API SDK code uses                    |
-| `workspace`           | The chat's workspace                                                    |
-| `signal`              | Aborts when the user stops the run                                      |
-| `progress(update)`    | Reports `{ text?, fraction?, detail? }` while the call runs             |
-| `tools`               | `execute` another tool, `list` the chat's tools, see which are `loaded` |
-| `foreground`          | Starts a command the user can send to the background                    |
-| `wait(target)`        | Waits for a part answer, a job, a run or a timer, across host restarts  |
-| `memo(name, compute)` | Computes a value once per call, even across restarts                    |
-| `now()`               | The time, the same on a replay                                          |
-| `run`, `call`, `head` | Ids of the run, the call and the branch it runs on                      |
+| Member                | What it is                                                                   |
+| --------------------- | ---------------------------------------------------------------------------- |
+| `env`                 | The chat's environment: `cwd`, `files` and `exec`                            |
+| `session`             | The chat, for example to create a part with `session.parts.create`           |
+| `sdk`                 | A connection to the host, the same API SDK code uses                         |
+| `workspace`           | The chat's workspace                                                         |
+| `signal`              | Aborts when the user stops the run                                           |
+| `progress(update)`    | Reports `{ text?, fraction?, detail? }` while the call runs                  |
+| `tools`               | `execute` another tool, `list` the chat's tools, see which are `loaded`      |
+| `foreground`          | Starts a command the user can send to the background                         |
+| `wait(target)`        | Waits for a part answer, a job, a run or a timer, across host restarts       |
+| `memo(name, compute)` | Reuses a stored value across restarts; may compute again before it is stored |
+| `now()`               | The time, the same on a replay                                               |
+| `run`, `call`, `head` | Ids of the run, the call and the branch it runs on                           |
 
 ## Who can call the tool [#exposure]
 

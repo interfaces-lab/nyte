@@ -46,10 +46,13 @@ you.
 | `parent`        | Makes this chat a child of another                                                                                                          |
 | `configuration` | Model, thinking level, agent and settings for the chat                                                                                      |
 | `prompt`        | Adds a layer to the system prompt, or replaces it                                                                                           |
-| `isolation`     | `"worktree"` runs the chat in a new git worktree, removed with the chat                                                                     |
+| `isolation`     | `"worktree"` runs the chat in a new git worktree                                                                                            |
 | `contextFiles`  | `false` reads no context files, such as `AGENTS.md`, for this chat, for good                                                                |
 | `side`          | `true` starts a side chat of `parent`, which never reports to it                                                                            |
 | `project`       | Starts the chat as the [project](/docs/sdk/reference/connection#projects)'s coordinator. A child chat is in its parent's project without it |
+
+When you remove a chat with `isolation: "worktree"`, the host keeps the worktree folder if it has
+uncommitted changes, and keeps its branch if it has new commits.
 
 [Send messages](/docs/sdk/guides/send-messages#start-a-chat-with-its-first-message) covers `start`
 in depth.
@@ -128,7 +131,8 @@ The guides cover these in use:
 | `abandoned` | `"keep"`, or `{ summarize: { instructions? } }` to summarize the replaced messages                                                                                  |
 | `position`  | With `replace` on a queued message: `{ kind: "last" }` moves it to the end of the queue, `{ kind: "before", message }` ahead of another. Absent, it keeps its place |
 
-`move` takes `running`, `abandoned` and `expect` with the same meanings.
+`move` takes `running`, `abandoned` and `expect` with the same meanings, but its `running` default
+is `"refuse"`. Pass `running: "stop"` to stop a live run before moving.
 
 `content` is a string, or a list of blocks: `text`, `file` (an uploaded blob), `reference` (a
 workspace file by path), `skill` and `excerpt`.
@@ -193,7 +197,8 @@ A part is a message with typed state that a plugin defines, such as a question c
 | `answer({ signal? })`        | `Promise<...>`        | Waits for the action that answers the part and returns it, or `null`                                               |
 | `close()`                    | `Promise<void>`       | Closes the part                                                                                                    |
 
-A part's current state is a row of its session's `parts` table, so a view or a head store carries
-it. Pass `version` to `update` to change the state only if nobody else changed it since that
-version.
+A transcript part's current state is in its `kind: "part"` row in the session's `messages` table.
+Parts outside the transcript, such as modals, are rows in the `parts` table. A view or a head store
+carries those rows. Pass `version` to `update` to change the state only if nobody else changed it
+since that version.
 A built-in part can't be closed from a client; that throws `SdkError("denied")`.

@@ -11,9 +11,8 @@ Moving to another workspace answers `busy` with the live runs while any run is l
 `unknown-workspace` when the workspace isn't registered. After a move, the session's environment
 detaches, its plugins reload, and a worktree it ran in is released.
 
-`project` moves the session into a project, or out of one with `null`. The project must work in the
-session's folder, or the folder its worktree came from, and not be archived. A top-level chat that
-joins a project with no lead becomes its lead in the same write. A project's lead can't leave it.
+This operation does not change project membership. Select `project` when calling
+[`sessions.start`](/docs/reference/operations/sessions/start).
 
 ## When to call it
 

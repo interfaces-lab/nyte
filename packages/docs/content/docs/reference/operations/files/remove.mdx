@@ -3,13 +3,15 @@ title: files.remove
 description: Removes a file, optionally only if it still has the expected version.
 ---
 
-Removes a file. With `expect`, only if it still has that version. It answers `saved` with the
-version it removed, or `stale` when `expect` doesn't match, with `current` `null` when nothing is
-there.
+Permanently removes a file without creating a trash token; `files.restore` cannot undo it. The
+built-in local provider also removes folders recursively. With `expect`, removal happens only if
+the path still has that version. It answers `saved` with the version it removed, or `stale` when
+`expect` doesn't match, with `current` `null` when nothing is there.
 
 ## When to call it
 
-From a delete action in a file tree or editor.
+After confirming permanent deletion. Prefer [`files.trash`](/docs/reference/operations/files/trash)
+for a delete action that offers undo.
 
 ## Access
 

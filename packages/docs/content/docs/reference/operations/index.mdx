@@ -17,23 +17,30 @@ the schema, or a field the schema doesn't name, fails with `invalid`.
 
 How the host answers depends on the operation's kind:
 
-| Kind      | Answer                                                                                              |
-| --------- | --------------------------------------------------------------------------------------------------- |
-| `query`   | One JSON value. Reads, and waits that end with a value                                              |
-| `command` | One JSON value. Changes something                                                                   |
-| `receipt` | One JSON value naming a receipt for work that settles later                                         |
-| `watch`   | Server-sent events, one `data:` line per frame, the current value first                             |
-| `stream`  | Server-sent events of JSON frames, or bytes for `connection.blob`, `files.bytes` and `page.capture` |
+| Kind      | Answer                                                            |
+| --------- | ----------------------------------------------------------------- |
+| `query`   | One JSON value. Reads, and waits that end with a value            |
+| `command` | One JSON value. Changes something                                 |
+| `receipt` | One JSON value naming a receipt for work that settles later       |
+| `watch`   | Server-sent events, one `data:` line per frame                    |
+| `stream`  | Server-sent events of JSON frames, raw bytes or framed job output |
 
-A byte stream answers `application/octet-stream`, with `X-Nyte-Mime` and `Content-Length` when
-known. `job.output` answers framed bytes instead: each frame is one tag byte (`0` for output
-bytes, `1` for a JSON control frame), a four-byte big-endian length, then the payload.
+State watches normally send the current state first. [`files.watch`](/docs/reference/operations/files/watch)
+and [`documents.watch`](/docs/reference/operations/documents/watch) send changes only, without an
+initial listing or file contents.
 
-`files.write`, `files.upload` and `job.write` take bytes: send them as the body, and the JSON input
-as base64url in the `X-Nyte-Input` header.
+`connection.blob`, `files.bytes`, `documents.bytes` and `page.capture` answer raw bytes as
+`application/octet-stream`, with `X-Nyte-Mime` and `Content-Length` when known. `job.output` answers
+framed bytes instead: each frame is one tag byte (`0` for output bytes, `1` for a JSON control
+frame), a four-byte big-endian length, then the payload.
 
-A stream that fails ends with an `event: error` frame carrying the error. Closing the request ends
-any watch or stream and stops waiting on any wait.
+`files.write`, `files.upload`, `documents.write` and `job.write` take bytes: send them as the body,
+and the JSON input as base64url in the `X-Nyte-Input` header. These uploads answer only over HTTP.
+
+An SSE stream that fails ends with an `event: error` frame carrying the error. `job.output` sends a
+JSON control frame with `{ kind: "error", error }`; raw byte-stream failures error the response body,
+without an SSE frame. A failure before streaming begins answers the ordinary JSON error response.
+Closing the request ends any watch or stream and stops waiting on any wait.
 
 There are no watch operations for heads, sessions or parts. A client reads those as rows over the
 host WebSocket.
@@ -94,14 +101,14 @@ to `head.read` or `sessions.read` as `resume`.
 
 ## The declaration
 
-| Field      | Meaning                                                                                                                                                                                       |
-| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Kind       | How the host answers, as above                                                                                                                                                                |
-| Authority  | What the caller's principal needs: `participant`, `owner` or `maintenance`                                                                                                                    |
-| Scope      | What the input names: the host as a whole, one `session`, or one `workspace`                                                                                                                  |
-| Capability | The workspace capability it needs, `files`, `git`, `github` or `browser`, or none                                                                                                             |
-| Recovery   | `replay`: resending the same input with the same id returns the first result. `never`: don't resend after a lost answer, since it may already have acted. None: the row makes neither promise |
-| Wait       | Yes when the call blocks until something happens, and is safe to call again after a lost connection                                                                                           |
+| Field      | Meaning                                                                                                                                                                                                                                    |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Kind       | How the host answers, as above                                                                                                                                                                                                             |
+| Authority  | What the caller's principal needs: `participant`, `owner` or `maintenance`                                                                                                                                                                 |
+| Scope      | What the input names: the host as a whole, one `session`, or one `workspace`                                                                                                                                                               |
+| Capability | The workspace capability it needs, `files`, `git`, `github` or `browser`, or none                                                                                                                                                          |
+| Recovery   | `replay`: resending the same input with the same operation id returns the first result while its replay state is retained. `never`: don't resend after a lost answer, since it may already have acted. None: the row makes neither promise |
+| Wait       | Yes when the call blocks until something happens, and is safe to call again after a lost connection                                                                                                                                        |
 
 [Shared concepts](/docs/sdk/reference/shared-concepts#authority) lists what each authority covers.
 A workspace operation that needs a capability fails with `denied` or `unavailable` when the
@@ -132,3 +139,8 @@ ways:
 Each page lists the errors particular to its operation. Many operations answer an expected result
 as an outcome with a `kind` instead of failing, such as `busy` or `stale`; those are part of the
 output schema.
+
+For recovery steps, see [Error handling](/docs/sdk/reference/errors). After a lost answer, check the
+operation's `Recovery` declaration and retention limits before retrying. For `replay`, reuse the
+same operation or receipt id, not the WebSocket call id. Do not automatically resend a `never`
+operation. A `timeout` does not prove the target did nothing: it may still act.

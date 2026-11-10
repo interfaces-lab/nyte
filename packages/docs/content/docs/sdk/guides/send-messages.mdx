@@ -36,7 +36,7 @@ Everything except `content` is optional:
 | `parent`        | Makes this a child of another session                                              |
 | `configuration` | Model, thinking level, agent and settings for the chat                             |
 | `prompt`        | Adds a layer to the system prompt, or replaces it                                  |
-| `isolation`     | `"worktree"` runs the chat in a new git worktree, removed with the chat            |
+| `isolation`     | `"worktree"` runs the chat in a new git worktree                                   |
 | `contextFiles`  | `false` reads no `AGENTS.md`, `CLAUDE.md` or similar files for this chat, for good |
 
 Pass `id` when a draft already has one, or when you retry after your own process restarted. The same
@@ -44,6 +44,8 @@ id with the same input returns the same start. Different input under a taken id 
 `SdkError("invalid")`.
 
 `isolation: "worktree"` throws `SdkError("unavailable")` when the workspace isn't a git repository.
+When you remove the chat, the host keeps the worktree folder if it has uncommitted changes, and
+keeps its branch if it has new commits.
 
 ## Send to a chat
 

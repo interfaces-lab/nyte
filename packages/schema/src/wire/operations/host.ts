@@ -295,7 +295,7 @@ export const HOST_OPERATIONS = {
   },
   "workspaces.cleanWorktrees": {
     ...OWNER,
-    summary: "Removes leftover worktrees with no changes and returns how many it cleaned.",
+    summary: "Cleans eligible worktrees through their provider and returns how many it cleaned.",
     kind: "command",
     input: NO_INPUT,
     output: WorktreeCleanupSchema,

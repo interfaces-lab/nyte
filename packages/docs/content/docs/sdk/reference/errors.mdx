@@ -28,17 +28,17 @@ class SdkError extends Error {
 
 ## Codes [#codes]
 
-| Code              | HTTP | It means                                                 | What to do                                                       |
-| ----------------- | ---- | -------------------------------------------------------- | ---------------------------------------------------------------- |
-| `unauthenticated` | 401  | The credential is missing, wrong or revoked              | Ask for a new token, or pair the device again                    |
-| `denied`          | 403  | The credential is valid, but this call isn't allowed     | Use a credential with more authority. Retrying won't help        |
-| `unknown`         | 404  | The id names nothing on this host                        | Forget the saved id                                              |
-| `invalid`         | 400  | The input is wrong                                       | Fix the input from `issues`. The same input fails again          |
-| `stale`           | 409  | What you based the call on has changed                   | Read again, then decide whether to repeat the call               |
-| `unavailable`     | 503  | The host, the connection or the feature can't be reached | Wait and retry, or hide the feature if this host doesn't have it |
-| `internal`        | 500  | The host hit a bug                                       | Report it with the `message` and `correlation`                   |
-| `not_supported`   | 501  | The client asked to act never declared the action        | Ask a client that declares it                                    |
-| `timeout`         | 504  | The client asked to act didn't answer in time            | Retry, or tell the user the other client didn't answer           |
+| Code              | HTTP | It means                                                 | What to do                                                                         |
+| ----------------- | ---- | -------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `unauthenticated` | 401  | The credential is missing, wrong or revoked              | Ask for a new token, or pair the device again                                      |
+| `denied`          | 403  | The credential is valid, but this call isn't allowed     | Use a credential with more authority. Retrying won't help                          |
+| `unknown`         | 404  | The id names nothing on this host                        | Forget the saved id                                                                |
+| `invalid`         | 400  | The input is wrong                                       | Fix the input from `issues`. The same input fails again                            |
+| `stale`           | 409  | What you based the call on has changed                   | Read again, then decide whether to repeat the call                                 |
+| `unavailable`     | 503  | The host, the connection or the feature can't be reached | Check [whether a retry is safe](#retry-safely), or hide a missing feature          |
+| `internal`        | 500  | The host hit a bug                                       | Report it with the `message` and `correlation`                                     |
+| `not_supported`   | 501  | The client asked to act never declared the action        | Ask a client that declares it                                                      |
+| `timeout`         | 504  | The client asked to act didn't answer in time            | Check whether the client acted before repeating; see [safe retries](#retry-safely) |
 
 The HTTP column is the status a listener answers with, for code that calls the
 [HTTP API](/docs/sdk/reference/connection#http-api) without the SDK. The response body is the same
@@ -112,7 +112,8 @@ Either the host can't be reached right now, or the thing you asked for doesn't e
 
 Over `sdk.connect`, the SDK already retries the calls where a retry is safe: watches reconnect,
 waits such as `receipt.settled()` try again, and `send` resends under the same receipt id. Other
-calls throw `unavailable` to you. Retry them after a delay, or show that the host is offline.
+calls throw `unavailable` to you. Their outcome may be unknown: a delay or a restored connection
+doesn't make them safe to repeat. Follow the [safe retry rules](#retry-safely).
 
 Over `openHost`, the stores keep their rows, go stale, and resume once the socket is back, and
 `health` shows `retrying` with the error. `call` and `perform` wait while the connection is
@@ -127,13 +128,25 @@ reports it in `health` when the runtime has no `WebSocket` and you passed no `so
 
 A `client.perform` waited longer than its `timeoutMs` for the target client's answer. The wait
 starts when the request reaches the front of the target's queue, and is 10 seconds by default and
-30 at most. The host doesn't tell the target, which may still act.
+30 at most. The host doesn't tell the target, which may still act. Check what happened before
+repeating the action; a timeout doesn't cancel it.
 
 ### internal [#internal]
 
 The host failed in a way it didn't expect. Over the network, the host replaces the original error
-with `The host failed to answer.` and a fresh `correlation` id. Retrying may work, but the bug
-stays.
+with `The host failed to answer.` and a fresh `correlation` id. Report both. The action may already
+have taken effect, so follow the [safe retry rules](#retry-safely).
+
+## Retry safely [#retry-safely]
+
+A lost connection, `timeout` or `internal` error doesn't prove that the host or another client did
+nothing. A change may have completed before its reply was lost.
+
+Retry only a read, an action you know is safe to repeat, or an operation with documented replay
+protection using the same id and input. For other changes, inspect the resulting state. Repeat only
+if you can establish that the first attempt didn't take effect and can't still do so. If you can't,
+tell the user the outcome is unknown instead of repeating the action. This includes `client.perform`
+actions and commands such as `page.click`, which could act twice if you repeat them.
 
 ## Handle an error [#handle-an-error]
 

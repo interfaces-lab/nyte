@@ -54,9 +54,10 @@ checked. When a check, a login or a listing changes the catalog, `catalog` in
 [`watch()`](#watch) changes, and you call `list()` again.
 
 `login` takes `{ provider, method, label?, browser? }`. `method` is `{ kind: "oauth" }` or
-`{ kind: "key" }`. `browser: "host"` opens the sign-in page on the host machine, and
-`browser: "elsewhere"` uses a code you copy, for a host you reach over SSH or the network. Without
-it, the provider may ask with a `choose` step.
+`{ kind: "key" }`. `browser: "host"` selects the provider's flow for a browser on the host machine;
+`browser: "elsewhere"` selects its remote flow, which may use a device code or ask for a pasted
+code. Without it, the provider may ask with a `choose` step. These options don't launch a browser:
+your client must show or open the URL from an `open` step.
 
 A `Login` has two methods:
 

@@ -4,8 +4,8 @@ description: Streams the host's state, including its model catalog, each time it
 ---
 
 Streams the host's state: its name, platform and version, the catalog generation, loaded plugins
-and their issues, settings, part views, the default workspace, and the caller's principal and
-authority. The first frame is the current state; another follows each time any of it changes.
+and their issues, settings, part views, the default workspace, projects, and the caller's principal
+and authority. The first frame is the current state; another follows each time any of it changes.
 
 ## When to call it
 
@@ -27,7 +27,7 @@ Request body:
 {}
 ```
 
-First frame, with `plugins`, `settings` and `views` shortened to empty lists:
+First frame, with `plugins`, `settings`, `views` and `projects` shortened to empty lists:
 
 ```json
 {
@@ -41,6 +41,7 @@ First frame, with `plugins`, `settings` and `views` shortened to empty lists:
   "settings": [],
   "views": [],
   "defaultWorkspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "projects": [],
   "authority": ["participant", "owner"],
   "principal": "token"
 }

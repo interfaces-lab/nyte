@@ -5,7 +5,7 @@ description: Lists the commands and skills a new chat in the workspace would off
 
 Lists the commands and skills a new chat in the workspace would offer, before any chat exists:
 those of the plugins its first message would load. Project plugins and skills appear only once the
-folder is trusted.
+folder is trusted. It also lists the workspace's shared `docs` and `contextFiles`.
 
 ## When to call it
 
@@ -27,7 +27,7 @@ Request body:
 Response, with each list shortened to empty:
 
 ```json
-{ "commands": [], "skills": [] }
+{ "commands": [], "skills": [], "docs": [], "contextFiles": [] }
 ```
 
 ## Errors

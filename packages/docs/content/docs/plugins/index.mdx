@@ -31,10 +31,10 @@ Save that file and type `/hello` in any chat. The import is type-only, so the fi
 
 Plugins run on one of two sides.
 
-| Side   | Type                                                        | Runs                       | Can add                                                                                         |
-| ------ | ----------------------------------------------------------- | -------------------------- | ----------------------------------------------------------------------------------------------- |
-| Core   | `Plugin` from `@nyte-ai/plugin/core` (`Plugin<"core">`)     | On the host, once per chat | Tools, prompt sections, agents, skills, search providers, parts, commands, settings, core hooks |
-| Client | `Plugin` from `@nyte-ai/plugin/client` (`Plugin<"client">`) | In a client, once per app  | Renderers, commands, settings, keybindings, client hooks                                        |
+| Side   | Type                                   | Runs                       | Can add                                                                                         |
+| ------ | -------------------------------------- | -------------------------- | ----------------------------------------------------------------------------------------------- |
+| Core   | `Plugin` from `@nyte-ai/plugin/core`   | On the host, once per chat | Tools, prompt sections, agents, skills, search providers, parts, commands, settings, core hooks |
+| Client | `Plugin` from `@nyte-ai/plugin/client` | In a client, once per app  | Renderers, commands, settings, keybindings, client hooks                                        |
 
 The host runs the agent, so almost everything is a core plugin. The rest of this section is about
 core plugins unless a page says otherwise.

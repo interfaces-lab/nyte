@@ -3,11 +3,15 @@ title: project.update
 description: Edits a project's settings or archives it. Its chats read the change from their next request.
 ---
 
-Edits a project's `name`, `brief`, `until`, `worker` or `archived` flag by compare-and-set and
-returns the project as stored. A field left out keeps its value; `worker` of `null` runs units on
-the lead's model. A patch that changes nothing succeeds without writing. An edited brief reaches the
-project's chats from their next request. `lead`, `workspace`, `id` and `createdAt` are the host's
-and can't be patched.
+Edits a project's `name`, `models`, `instructions`, `skills`, `disabledMcp`, `disabledDocs` or
+`archived` flag by compare-and-set and returns the project as stored. A field left out keeps its
+value. A patch that changes nothing succeeds without writing. `coordinator`, `workspace`, `id` and
+`createdAt` can't be patched.
+
+When supplied, `models` includes both `coordinator` and `agents`. Either can be `null` to use the
+host's default model, not the other model. These select initial models for future chats; they don't
+reconfigure existing chats. Instructions and resource choices reach the project's chats from their
+next request.
 
 ## When to call it
 
@@ -24,7 +28,10 @@ Request body:
 ```json
 {
   "project": "5f0c6a1e-3b2d-4c7e-8f9a-1b2c3d4e5f60",
-  "patch": { "brief": "Read nyte-styles and better-ui before any UI fix.", "worker": null }
+  "patch": {
+    "instructions": "Read nyte-styles and better-ui before any UI fix.",
+    "models": { "coordinator": null, "agents": null }
+  }
 }
 ```
 
@@ -33,7 +40,7 @@ Response: the project as stored after the edit.
 ## Errors
 
 - `unknown` when no project has the id.
-- `invalid` when the patch names a field it can't set, such as `lead`.
+- `invalid` when the patch names a field it can't set, such as `coordinator`.
 - `stale` when the project kept changing under eight tries.
 
 {/* generated:start */}

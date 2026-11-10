@@ -5,13 +5,17 @@ description: Forgets a workspace and removes every session on it.
 
 Unregisters a workspace and removes every session on it or on one of its worktrees, archived ones
 too, with each session's children. It answers `busy` with the sessions that still have a live run,
-and removes nothing, and `missing` when no workspace has the id. Forgetting leaves the folder and its
-files alone.
+and removes nothing, and `missing` when no workspace has the id.
+
+Forgetting a source workspace leaves its own folder and files alone. Removing sessions also releases
+their managed worktrees: the local provider may remove their folders and delete branches that still
+point to their original base commit. It keeps folders with uncommitted changes and branches whose
+commit has moved from that base.
 
 ## When to call it
 
-When the user removes a workspace from the list. Stop its running sessions first; the removed
-sessions can't be restored.
+When the user removes a workspace from the list. Confirm removal first: its sessions can't be
+restored, and managed worktrees may be removed. Stop its running sessions before calling it.
 
 ## Access
 

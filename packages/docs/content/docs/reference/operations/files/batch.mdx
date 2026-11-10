@@ -10,18 +10,24 @@ it applies the entries in order. A `put` takes its contents as a string, or as a
 what [`files.move`](/docs/reference/operations/files/move),
 [`files.copy`](/docs/reference/operations/files/copy) and
 [`files.mkdir`](/docs/reference/operations/files/mkdir) do, with `path` as the source and `to` as
-the destination; any answer other than `done` stops the batch as `partial`.
+the destination; any answer other than `done` stops the batch as `partial`. A `remove` entry
+permanently deletes its path without creating a trash token.
 
 The outcome comes from [`receipt.settled`](/docs/reference/operations/receipt/settled) with
 `session` `null`: `applied` with a snapshot and the paths written, `stale`, `partial` with what was
 applied, what remains and why it stopped, or `stopped` with what was applied before a
-[`receipt.stop`](/docs/reference/operations/receipt/stop).
+[`receipt.stop`](/docs/reference/operations/receipt/stop). `partial` and `stopped` leave changes
+already applied in place; stopping does not roll them back. A `put` naming a missing blob settles
+`partial`, with `reason` identifying the blob, earlier successful entries in `applied`, and the
+failed entry included in `remaining`.
 
 ## When to call it
 
-To apply a multi-file change, such as accepting a suggested refactor. Pass `id` to retry safely: the
-same id and entries return the same receipt. This host process keeps the most recent batch
-receipts.
+To apply a multi-file change, such as accepting a suggested refactor. Include permanent removals in
+the change review before applying it. Pass `id` so a retry with the same workspace and entries
+returns the same receipt while the host retains it. This host process keeps the most recent 256
+batch receipts; after eviction or a host restart, inspect the files before resubmitting, since the
+batch may run again.
 
 ## Access
 
@@ -42,7 +48,11 @@ Request body:
       "contents": "export const today = () => new Date(Date.now());\n",
       "expect": "4b7d9f1a3c5e7b9d1f3a5c7e9b1d3f5a7c9e1b3d5f7a9c1e3b5d7f9a1c3e5b7d"
     },
-    { "kind": "remove", "path": "src/old-date.ts" }
+    {
+      "kind": "remove",
+      "path": "src/old-date.ts",
+      "expect": "2c4e6a8b0d1f3a5c7e9b1d3f5a7c9e1b3d5f7a9c1e3b5d7f9a1c3e5b7d9f1a3c"
+    }
   ]
 }
 ```
@@ -56,7 +66,6 @@ Response:
 ## Errors
 
 - `invalid` when the receipt id was used for different input.
-- `unknown` when a `put` names a blob the host doesn't have: `No blob has the id <id>.`
 - `unavailable` or `denied` when the workspace doesn't offer files.
 
 {/* generated:start */}

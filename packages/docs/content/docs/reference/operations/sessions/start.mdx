@@ -18,8 +18,9 @@ covers each input.
 it with every retry: the same id with the same input returns the same start.
 
 `project` starts the chat in a project. A child starts in its parent's project without it, and a
-side chat in none. The first top-level chat in a project with no lead becomes its lead, in the same
-commit. A project that is archived, or works in another folder, is refused as `invalid`.
+side chat in none. The first top-level chat in a project becomes its coordinator in the same commit.
+A further top-level start in that project is refused as `invalid`; send to its existing coordinator
+instead. A project that is archived, or works in another folder, is also refused as `invalid`.
 
 ## Access
 

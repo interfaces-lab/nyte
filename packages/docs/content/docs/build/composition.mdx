@@ -112,7 +112,8 @@ if (providers.find((provider) => provider.id === "openai-codex")?.credential ===
 
 const chosen = await host.models.setDefault({ provider: "openai-codex", id: "{{modelId}}" });
 
-if (chosen.kind !== "set") throw new Error("That model isn't in your account's catalog.");
+if (chosen.kind !== "set")
+  throw new Error("Unknown model. Choose a provider and model id from host.models.list().");
 
 const listener = await host.listen({
   // No port: the OS picks a free one, and the line below prints it.
@@ -290,7 +291,8 @@ if (providers.find((provider) => provider.id === "openai-codex")?.credential ===
 
 const chosen = await host.models.setDefault({ provider: "openai-codex", id: "{{modelId}}" });
 
-if (chosen.kind !== "set") throw new Error("That model isn't in your account's catalog.");
+if (chosen.kind !== "set")
+  throw new Error("Unknown model. Choose a provider and model id from host.models.list().");
 
 const listener = await host.listen({
   // No port: the OS picks a free one, and the line below prints it.
@@ -470,7 +472,8 @@ if (providers.find((provider) => provider.id === "openai-codex")?.credential ===
 
 const chosen = await host.models.setDefault({ provider: "openai-codex", id: "{{modelId}}" });
 
-if (chosen.kind !== "set") throw new Error("That model isn't in your account's catalog.");
+if (chosen.kind !== "set")
+  throw new Error("Unknown model. Choose a provider and model id from host.models.list().");
 
 const listener = await host.listen({
   // No port: the OS picks a free one, and the line below prints it.
@@ -645,7 +648,8 @@ if (providers.find((provider) => provider.id === "openai-codex")?.credential ===
 
 const chosen = await host.models.setDefault({ provider: "openai-codex", id: "{{modelId}}" });
 
-if (chosen.kind !== "set") throw new Error("That model isn't in your account's catalog.");
+if (chosen.kind !== "set")
+  throw new Error("Unknown model. Choose a provider and model id from host.models.list().");
 
 const listener = await host.listen({
   // No port: the OS picks a free one, and the line below prints it.
@@ -824,7 +828,8 @@ if (providers.find((provider) => provider.id === "openai-codex")?.credential ===
 
 const chosen = await host.models.setDefault({ provider: "openai-codex", id: "{{modelId}}" });
 
-if (chosen.kind !== "set") throw new Error("That model isn't in your account's catalog.");
+if (chosen.kind !== "set")
+  throw new Error("Unknown model. Choose a provider and model id from host.models.list().");
 
 const listener = await host.listen({
   // No port: the OS picks a free one, and the line below prints it.
@@ -1003,7 +1008,8 @@ if (providers.find((provider) => provider.id === "openai-codex")?.credential ===
 
 const chosen = await host.models.setDefault({ provider: "openai-codex", id: "{{modelId}}" });
 
-if (chosen.kind !== "set") throw new Error("That model isn't in your account's catalog.");
+if (chosen.kind !== "set")
+  throw new Error("Unknown model. Choose a provider and model id from host.models.list().");
 
 const listener = await host.listen({
   // No port: the OS picks a free one, and the line below prints it.

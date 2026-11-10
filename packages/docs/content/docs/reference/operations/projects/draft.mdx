@@ -4,15 +4,17 @@ description: Drafts a project's name, instructions, skills, MCP servers and shar
 ---
 
 Reads the workspace's skills, shared docs and MCP servers, sends them with `goal` to `model` in one
-request, and returns a setup in the shape `projects.create` takes. The model picks what to turn on;
-the host keeps only skills, servers and docs the workspace has, and lists the rest in `disabledMcp`
-and `disabledDocs`. Context files such as `AGENTS.md` stay on. Nothing is saved, the request belongs
-to no session, and no session's usage counts it.
+request, and returns suggested `name`, `instructions`, `skills`, `disabledMcp` and `disabledDocs`.
+The host keeps only skills the workspace has and puts its unselected MCP servers and shared docs in
+`disabledMcp` and `disabledDocs`. Context files such as `AGENTS.md` stay on. Nothing is saved, the
+request belongs to no session, and no session's usage counts it.
 
 ## When to call it
 
 From a "New Project" form, after the person writes a goal and before `projects.create`, so they can
-check the draft first. Call it again for a new draft.
+check the draft first. Combine the draft with the chosen `workspace` and `models`, then pass that
+object as [`projects.create`](/docs/reference/operations/projects/create)'s `input`. The draft alone
+is not a complete create input. Call it again for a new draft.
 
 ## Access
 

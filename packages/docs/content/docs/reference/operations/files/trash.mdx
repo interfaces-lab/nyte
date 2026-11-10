@@ -7,9 +7,11 @@ Deletes a file or folder into a hold and answers its `token`, which `files.resto
 to put it back. The local provider holds it in the repository's shared git folder, so it is out of
 the tree, git status and builds, and moves there in one rename whatever its size. Holds last until
 the host process ends; the next start clears them. It answers `unavailable` when the provider keeps
-no hold, such as outside a git repository or when that folder is on another disk; delete with
-`files.remove` instead. `stale` when nothing is at the path, `invalid` for the workspace root or a
-path outside it, `busy` when a file under it is open elsewhere.
+no hold, such as outside a git repository or when that folder is on another disk. Leave the item
+unchanged unless the user confirms permanent deletion with
+[`files.remove`](/docs/reference/operations/files/remove); that fallback cannot be undone with
+`files.restore`. `stale` when nothing is at the path, `invalid` for the workspace root or a path
+outside it, `busy` when a file under it is open elsewhere.
 
 ## When to call it
 

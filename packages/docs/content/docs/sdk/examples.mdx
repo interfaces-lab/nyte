@@ -66,7 +66,7 @@ export async function print(live: HostConnection, session: Session, receipt: Sen
 ```ts tab="answer.ts"
 import { sdk } from "@nyte-ai/sdk";
 import { openHost } from "@nyte-ai/sdk/client";
-import { print } from "./stream";
+import { print } from "./stream.ts";
 
 const host = await sdk.open();
 const token = crypto.randomUUID();
@@ -101,7 +101,7 @@ import process from "node:process";
 import { createInterface } from "node:readline/promises";
 import { sdk } from "@nyte-ai/sdk";
 import { openHost } from "@nyte-ai/sdk/client";
-import { print } from "./stream";
+import { print } from "./stream.ts";
 
 const host = await sdk.open();
 const token = crypto.randomUUID();
@@ -432,8 +432,9 @@ const connection = await sdk.connect({
 });
 ```
 
-Set `NYTE_TOKEN` to the same secret of at least 16 characters in both. The token grants full access
-to the host; to give each device its own revocable credential, use
+Set `NYTE_TOKEN` to the same secret of at least 16 characters in both. By default, the token grants
+participant and owner authority, not maintenance authority. Keep it on machines you control. To
+give each device its own revocable credential, use
 [pairing](/docs/sdk/guides/choose-an-entry-point#give-each-device-its-own-credential).
 
 [Build an agent app](/docs/build/composition#build-the-chat) puts a host behind a chat page in Vite,

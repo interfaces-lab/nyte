@@ -1,11 +1,15 @@
 ---
 title: workspaces.cleanWorktrees
-description: Removes leftover worktrees with no changes and returns how many it cleaned.
+description: Cleans eligible worktrees through their provider and returns how many it cleaned.
 ---
 
-Removes leftover git worktrees that chats ran in. A worktree is cleaned when it has been idle for
-the `worktrees.idleDays` setting, or when more worktrees exist than `worktrees.maxCount` allows,
-and none of its sessions has a live run. It answers how many it removed.
+Asks each eligible git worktree's provider to clean it. A worktree is eligible when it has been idle
+for the `worktrees.idleDays` setting, or when more worktrees exist than `worktrees.maxCount` allows,
+and none of its sessions has a live run. `cleaned` counts worktrees whose provider reported cleanup,
+not the files or folders removed.
+
+The built-in local provider removes recognized ignored generated folders, such as `node_modules`
+and build caches. It keeps the worktree and its branch, and does not require a clean git status.
 
 ## When to call it
 

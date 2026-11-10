@@ -138,13 +138,18 @@ hooks: {
 ```
 
 A core handler has 5 seconds, or 5 minutes for `before_compaction`. Waiting in a decide hook with
-`wait` doesn't count against it. A client handler's `signal` aborts after 5 seconds.
+`wait` doesn't count against it.
 
-When a handler throws or runs out of time:
+When a core handler throws or runs out of time:
 
 - an observe hook reports the error and the next handler runs
 - a transform hook fails the step it was changing
 - a decide hook counts as `{ action: "error" }`
+
+A client handler's `signal` aborts after 5 seconds, but the client still waits for the handler to
+finish. Honor the signal to stop work. An observe handler that throws is reported and the next
+handler runs. An error from `before_submit` rejects `beforeSubmit()` instead of becoming an
+`{ action: "error" }` decision; handle that rejection in your client.
 
 ## Add a hook while running [#dynamic]
 

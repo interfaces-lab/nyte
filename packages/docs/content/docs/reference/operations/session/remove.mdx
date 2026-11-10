@@ -3,16 +3,18 @@ title: session.remove
 description: Deletes a session.
 ---
 
-Deletes a session and its history. It answers `busy` with the live runs while any run is live, and
-`has-children` with the ids of its child sessions while it has any. Removing also stops the
-session's running jobs and closes the browser pages it held. A chat that ran in its own worktree
-removes the worktree, keeping the folder while it holds uncommitted changes and the branch once it
-has commits.
+Permanently deletes a session and its history; there is no restore operation. It answers `busy`
+with the live runs while any run is live, and `has-children` with the ids of its child sessions while
+it has any. Removing also stops the session's running jobs and releases the browser pages it held.
+Removing a chat that ran in its own worktree also releases that worktree when no sessions use it.
+The local provider may remove the folder; it keeps folders with uncommitted changes and deletes the
+branch only if it still points to its original base commit.
 
 ## When to call it
 
-From a delete action. Stop the session with [`session.stop`](/docs/reference/operations/session/stop)
-and remove its children first.
+After confirming permanent deletion. For a reversible hide action, archive with
+[`session.update`](/docs/reference/operations/session/update) instead. Stop the session with
+[`session.stop`](/docs/reference/operations/session/stop) and remove its children first.
 
 ## Access
 
