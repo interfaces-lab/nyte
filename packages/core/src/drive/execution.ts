@@ -756,6 +756,11 @@ async function drive(
   const unrenew = (): void => renewal.lease.stop();
   closing.addEventListener("abort", unrenew, { once: true });
 
+  const closed = Promise.withResolvers<null>();
+  const resolveClosed = (): void => closed.resolve(null);
+  if (closing.aborted) resolveClosed();
+  else closing.addEventListener("abort", resolveClosed, { once: true });
+
   const turned = kernel.turn
     .run({
       session,
@@ -771,15 +776,11 @@ async function drive(
     .finally(() => {
       unrenew();
       closing.removeEventListener("abort", unrenew);
+      closing.removeEventListener("abort", resolveClosed);
       kernel.executionState.driving.delete(run.id);
     });
 
-  const closed = new Promise<null>((resolve) => {
-    if (closing.aborted) resolve(null);
-    else closing.addEventListener("abort", () => resolve(null), { once: true });
-  });
-
-  const ended = await Promise.race([turned, closed]);
+  const ended = await Promise.race([turned, closed.promise]);
 
   if (ended === null && kernel.presence !== null)
     kernel.executionState.undrained.add(leaseRef(session, head));
