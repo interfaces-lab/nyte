@@ -61,7 +61,10 @@ export function createFileDocument(document: TextFile, draft?: string) {
         ...snapshot,
         contents,
         revision: snapshot.revision + 1,
-        status: snapshot.status.kind === "saved" ? { kind: "idle" } : snapshot.status,
+        status:
+          snapshot.status.kind === "saved" || snapshot.status.kind === "error"
+            ? { kind: "idle" }
+            : snapshot.status,
       });
     },
     observeDisk(next: TextFile): void {
@@ -102,12 +105,6 @@ export function createFileDocument(document: TextFile, draft?: string) {
         };
 
         const formatted = await operations.format?.(input);
-
-        if (formatted?.kind === "unavailable") {
-          publish({ ...snapshot, status: { kind: "error", message: formatted.reason } });
-
-          return;
-        }
 
         if (snapshot.revision !== captured.revision) {
           publish({ ...snapshot, status: { kind: "idle" } });

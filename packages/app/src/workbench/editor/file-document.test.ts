@@ -69,21 +69,22 @@ test("formatting does not overwrite edits made while the formatter was running",
   });
 });
 
-test("formatter failure keeps the draft and does not write unformatted text", async () => {
+test("formatter failure still saves the unformatted draft", async () => {
   const buffer = createFileDocument(document, "draft");
-  let writes = 0;
+  const written: string[] = [];
   await buffer.save({
     format: async () => ({ kind: "unavailable", reason: "No formatter" }),
-    write: async () => {
-      writes += 1;
+    write: async (input) => {
+      written.push(input.contents);
 
       return { kind: "saved", version: v2 };
     },
   });
-  expect(writes).toBe(0);
+  expect(written).toEqual(["draft"]);
   expect(buffer.getSnapshot()).toMatchObject({
     contents: "draft",
-    status: { kind: "error", message: "No formatter" },
+    savedContents: "draft",
+    status: { kind: "saved" },
   });
 });
 
