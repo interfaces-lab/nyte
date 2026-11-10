@@ -85,8 +85,11 @@ function PrivacyPage() {
         Our website and service providers process technical information such as IP addresses,
         request times, browser or device information, and error or security events to deliver the
         service, diagnose failures, and limit abuse. Authentication uses cookies or locally stored
-        session credentials. The desktop and mobile apps use operating-system credential storage for
-        persistent sign-in and connection credentials.
+        session credentials. The desktop app encrypts persistent Nyte account sign-in credentials in
+        a local account file using a key stored in <code>~/.nyte/secret.key</code>. Tokens for
+        connections to another host are stored unencrypted in the owner-only file{" "}
+        <code>~/.nyte/server.json</code>, not the operating system's credential store. The mobile
+        app uses operating-system secure storage for connection credentials.
       </p>
 
       <h2 id="providers">Service providers</h2>
