@@ -30,6 +30,7 @@ import { accountConfig } from "./account-config.ts";
 import { AccountScreen } from "./account-screen.tsx";
 import { DesktopFrame } from "./desktop-frame.tsx";
 import { LinkScreen } from "./link-screen.tsx";
+import { followRoutes } from "./routes.ts";
 import {
   displayAddress,
   forgetConnection,
@@ -85,7 +86,11 @@ function mountApp(
     connect: () =>
       open()
         .then(loadLocalResources)
-        .then(() => recordFirstFrame(connection.url, installedConnection().hostId)),
+        .then(() => {
+          const hostId = installedConnection().hostId;
+          recordFirstFrame(connection.url, hostId);
+          followRoutes(hostId);
+        }),
     showError: (retry) => {
       mount(
         <StartupFailure

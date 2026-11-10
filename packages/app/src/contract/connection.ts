@@ -2,7 +2,7 @@ import type { CredentialSource, HostId } from "@nyte-ai/sdk";
 
 export interface HostEndpoint {
   readonly url: string;
-  readonly credentials: Extract<CredentialSource, { readonly kind: "token" | "pairing" }>;
+  readonly credentials: CredentialSource;
   readonly expect?: { readonly hostId: HostId };
   readonly mediaOrigin?: string;
 }

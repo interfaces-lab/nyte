@@ -11,6 +11,7 @@ import { workspaceName } from "../data/workspaces.ts";
 import { connectHost } from "../data/connection.ts";
 import type { HostEndpoint } from "../contract/connection.ts";
 import { requestFolderPath } from "./add-folder.tsx";
+import { directRoute, holdRoute, noteDirect } from "./routes.ts";
 
 export interface Connection {
   readonly url: string;
@@ -28,6 +29,8 @@ export interface WebBridge {
   connect(connection: Connection, options?: ConnectOptions): Promise<HostId>;
 }
 
+const DIRECT_MS = 4_000;
+
 const NOT_CONNECTED = "The app is not connected to a server.";
 
 const SERVER = "Change servers from the connect screen.";
@@ -44,6 +47,64 @@ function browserPlatform(): NodeJS.Platform {
   if (/Win/i.test(name)) return "win32";
 
   return "linux";
+}
+
+async function openEndpoint(
+  next: HostEndpoint,
+  signal: AbortSignal | undefined,
+): Promise<SdkConnection> {
+  const establishing = new AbortController();
+  const stop = (): void => establishing.abort(signal?.reason);
+
+  if (signal?.aborted === true) stop();
+  signal?.addEventListener("abort", stop, { once: true });
+
+  try {
+    return await connectHost(next, {
+      fetch: (resource, init) =>
+        fetch(resource, {
+          ...init,
+          credentials: "omit",
+          signal:
+            init?.signal == null
+              ? establishing.signal
+              : AbortSignal.any([establishing.signal, init.signal]),
+        }),
+    });
+  } finally {
+    signal?.removeEventListener("abort", stop);
+  }
+}
+
+async function openDirect(
+  options: ConnectOptions | undefined,
+): Promise<{ readonly endpoint: HostEndpoint; readonly opened: SdkConnection } | undefined> {
+  const hostId = options?.expect;
+
+  if (hostId === undefined) return undefined;
+  const url = await directRoute(hostId);
+
+  if (url === undefined) return undefined;
+
+  const endpoint: HostEndpoint = {
+    url,
+    credentials: { kind: "custom", headers: () => ({}) },
+    expect: { hostId },
+  };
+
+  const deadline = AbortSignal.timeout(DIRECT_MS);
+
+  const signal =
+    options?.signal === undefined ? deadline : AbortSignal.any([options.signal, deadline]);
+
+  return openEndpoint(endpoint, signal).then(
+    (opened) => ({ endpoint, opened }),
+    () => {
+      if (options?.signal?.aborted !== true) holdRoute(hostId);
+
+      return undefined;
+    },
+  );
 }
 
 function webPageUrl(url: string): string | undefined {
@@ -190,29 +251,22 @@ export function createWebBridge(): WebBridge {
   return {
     bridge,
     connect: async ({ url, token }, options) => {
-      const next: HostEndpoint = {
+      const chosen: HostEndpoint = {
         url,
         credentials: { kind: "token", token },
         ...(options?.expect === undefined ? {} : { expect: { hostId: options.expect } }),
       };
 
-      let connecting = true;
+      const direct = await openDirect(options);
+      const next = direct?.endpoint ?? chosen;
+      const opened = direct?.opened ?? (await openEndpoint(chosen, options?.signal));
 
-      const opened = await connectHost(next, {
-        fetch: (resource, init) =>
-          fetch(resource, {
-            ...init,
-            credentials: "omit",
-            signal: connecting ? (options?.signal ?? init?.signal) : init?.signal,
-          }),
-      });
-
-      connecting = false;
       await connection?.close();
       connection = opened;
       endpoint = next;
-      relay = options?.relay;
+      relay = direct === undefined ? options?.relay : undefined;
       selected = undefined;
+      noteDirect(direct !== undefined);
 
       return opened.hostId;
     },
