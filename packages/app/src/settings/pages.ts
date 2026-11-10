@@ -306,6 +306,11 @@ export function settingsSectionGroups(
   return groups;
 }
 
+/** Where Settings opens: the first page its sidebar lists for this client. */
+export function firstSettingsSection(): SettingsSection {
+  return settingsSectionGroups().flat()[0] ?? "general";
+}
+
 export function showsSettingsSection(value: string): value is SettingsSection {
   return namesSettingsPage(value) && available(SETTINGS_PAGES[value].needs);
 }

@@ -32,7 +32,12 @@ import type { DesktopWindow } from "../contract/desktop-window.ts";
 import { CustomizeSurface } from "../customize/customize.tsx";
 import { openWindowInEditor } from "../commands/window-commands.ts";
 import { ProjectOverview } from "../projects/project-overview.tsx";
-import { showsSettingsSection, rememberWorkspaceHref, SettingsSurface } from "../settings/index.ts";
+import {
+  firstSettingsSection,
+  showsSettingsSection,
+  rememberWorkspaceHref,
+  SettingsSurface,
+} from "../settings/index.ts";
 
 const styles = create({
   loadError: {
@@ -230,7 +235,7 @@ export const settingsRoute = createRoute({
       if (!showsSettingsSection(section)) {
         throw redirect({
           to: "/settings/$section",
-          params: { section: "general" },
+          params: { section: firstSettingsSection() },
           replace: true,
         });
       }

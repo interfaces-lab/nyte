@@ -10,9 +10,9 @@ import { focusNextPane, splitPanes } from "../panes/pane-context.tsx";
 import { nyte } from "../contract/nyte.ts";
 import { keys, queryClient } from "../data/query-client.ts";
 import { commitHostWorkspace } from "../data/workspaces.ts";
+import { firstSettingsSection } from "../settings/pages.ts";
 import { closeSettings } from "../settings/return.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
-import { settingsActionPages } from "../sidebar/action-icons.ts";
 import { launch } from "../workbench/commands.ts";
 import { fileActions } from "../workbench/editor/file-store.ts";
 import { opensAsMarkdown } from "../workbench/editor/markdown-parse.ts";
@@ -159,7 +159,7 @@ export function runWindowCommand(router: RegisteredRouter, command: AppMenuActio
       if (!settingsOpen(router))
         void router.navigate({
           to: "/settings/$section",
-          params: { section: settingsActionPages.settings },
+          params: { section: firstSettingsSection() },
         });
 
       return true;

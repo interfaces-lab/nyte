@@ -22,7 +22,7 @@ import { nyte } from "../contract/nyte.ts";
 import { openExternal } from "../lib/open-external.ts";
 import { useUpdateState } from "../data/host.ts";
 import { updateLabel } from "../contract/update-label.ts";
-import { closeSettings, type SettingsSection } from "../settings/index.ts";
+import { closeSettings, firstSettingsSection, type SettingsSection } from "../settings/index.ts";
 import { useSettingsOpen } from "../tabs/use-settings-open.ts";
 import { useConnectAction, useConnectView } from "./connect-view.ts";
 import { useGitHubAccountState, useGitHubAuth } from "./github-account.ts";
@@ -165,7 +165,7 @@ export function SidebarFooter({
           )}
           pressed={settingsOpen}
           onPressedChange={(pressed) =>
-            pressed ? onOpenSettings("general") : closeSettings(router)
+            pressed ? onOpenSettings(firstSettingsSection()) : closeSettings(router)
           }
         />
       </div>

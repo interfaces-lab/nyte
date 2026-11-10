@@ -5,7 +5,11 @@ import type { Transition } from "motion/react";
 import { useLayoutEffect, useRef, useState } from "react";
 import type { ReactElement, ReactNode, RefObject } from "react";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
-import { SettingsNavigation, type SettingsSection } from "../settings/index.ts";
+import {
+  firstSettingsSection,
+  SettingsNavigation,
+  type SettingsSection,
+} from "../settings/index.ts";
 import { sidebarStyles as styles } from "./sidebar.stylex.ts";
 
 const INSTANT: Transition = { duration: 0 };
@@ -39,7 +43,7 @@ export function SidebarContent({ children }: { readonly children: ReactNode }): 
   const settingsOpen = openSection !== undefined;
   const contentRef = useRef<HTMLElement>(null);
   const [transition, setTransition] = useState(INSTANT);
-  const [section, setSection] = useState<SettingsSection>("general");
+  const [section, setSection] = useState<SettingsSection>(firstSettingsSection);
 
   if (openSection !== undefined && openSection !== section) setSection(openSection);
 
