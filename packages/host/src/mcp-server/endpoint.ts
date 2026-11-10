@@ -34,6 +34,7 @@ import {
   namesOperation,
 } from "@nyte-ai/protocol";
 import type { CallName } from "@nyte-ai/protocol";
+import { findScope } from "../local/files.ts";
 import { bindConnection } from "../serve/binding.ts";
 import type { CallBinding } from "../serve/binding.ts";
 import type { McpGrant, McpGrants } from "./grants.ts";
@@ -267,6 +268,10 @@ async function run(
     throw new SdkError("denied", `${tool.operation} needs ${row.authority} authority.`);
 
   const target = isJsonObject(value) ? value.session : undefined;
+  const path = isJsonObject(value) ? value.path : undefined;
+
+  if (typeof path === "string")
+    await confine(bound.connection, isJsonObject(value) ? value.workspace : undefined, path);
 
   if (tool.access === "write" && typeof target === "string") {
     const owner = (await bound.connection.session(asId<"session">(target)).info()).mcp?.grant;
@@ -279,6 +284,30 @@ async function run(
   }
 
   return callOperation(bound.binding, tool.operation, value, signal);
+}
+
+/** A workspace without a local folder has no root to check against, so its paths are denied. */
+async function confine(
+  connection: Connection,
+  workspace: Json | undefined,
+  path: string,
+): Promise<void> {
+  const target =
+    typeof workspace === "string"
+      ? (await connection.workspace(asId<"workspace">(workspace)).info()).target
+      : null;
+
+  if (
+    target?.kind === "local" &&
+    "path" in target &&
+    (await findScope(target.path, path)) === "workspace"
+  )
+    return;
+
+  throw new SdkError(
+    "denied",
+    `${path} isn't inside this workspace, so MCP tools may not reach it.`,
+  );
 }
 
 async function callOperation<N extends CallName>(

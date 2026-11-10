@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
-import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import process from "node:process";
 import { Type } from "typebox";
 import type { Static, TSchema } from "typebox";
@@ -11,7 +11,7 @@ import { openApprovals, PERMISSIONS } from "@nyte-ai/plugin/approvals/schema";
 import { memoryStore } from "@nyte-ai/core/store";
 import type { Host, Listener } from "@nyte-ai/core";
 import { afterEach, describe, expect, it } from "vitest";
-import { openHost } from "../src/index.ts";
+import { localProvider, openHost } from "../src/index.ts";
 import { fetchClientMetadata } from "../src/mcp-server/client-metadata.ts";
 import type { ClientMetadataFetch } from "../src/mcp-server/client-metadata.ts";
 import { chatOnly, fakeModels } from "./fixtures/fake-models.ts";
@@ -70,15 +70,21 @@ afterEach(async () => {
 async function open(options?: {
   readonly fetchDocument?: ClientMetadataFetch;
   readonly models?: FakeModels;
+  readonly folder?: string;
 }): Promise<Opened> {
-  const home = await realpath(await mkdtemp(join(tmpdir(), "nyte-mcp-server-")));
-  cleanups.push(() => rm(home, { recursive: true, force: true }));
+  const home = await folder("nyte-mcp-server-");
 
   const host = await openHost({
     store: memoryStore(),
     models: (options?.models ?? fakeModels()).models,
-    plugins: [chatOnly, tools],
-    workspace: { kind: "chat-only", locator: null },
+    plugins:
+      options?.folder === undefined
+        ? [chatOnly, tools]
+        : [chatOnly, { id: "local", environment: localProvider({ home }) }, tools],
+    workspace:
+      options?.folder === undefined
+        ? { kind: "chat-only", locator: null }
+        : { kind: "local", path: options.folder },
     home,
     fetchClientMetadata: options?.fetchDocument,
   });
@@ -94,6 +100,13 @@ async function open(options?: {
   });
 
   return { host, http, local };
+}
+
+async function folder(prefix: string): Promise<string> {
+  const path = await realpath(await mkdtemp(join(tmpdir(), prefix)));
+  cleanups.push(() => rm(path, { recursive: true, force: true }));
+
+  return path;
 }
 
 async function eventually<T>(check: () => Promise<readonly T[]>): Promise<readonly T[]> {
@@ -682,6 +695,53 @@ describe.skipIf(process.platform === "win32")("the MCP server", () => {
     );
 
     expect(refreshed.status).toBe(400);
+  });
+
+  it("confines a grant's file paths to the workspace folder", async () => {
+    const workspace = await folder("nyte-mcp-workspace-");
+    const outside = await folder("nyte-mcp-outside-");
+    await writeFile(join(workspace, "inside.txt"), "Inside.\n");
+    await writeFile(join(outside, "secret.txt"), "Secret.\n");
+    await symlink(outside, join(workspace, "linked"), "dir");
+    await symlink(join(outside, "gone.txt"), join(workspace, "dangling"));
+    const opened = await open({ folder: workspace });
+
+    const id = (await opened.host.workspaces.list()).find(
+      (entry) => entry.target.kind === "local",
+    )?.id;
+
+    const tokens = await signIn(opened, { kind: "read-only" });
+    const inside = expect.objectContaining({ kind: "text", contents: "Inside.\n" });
+    const denied = expect.stringMatching(/isn't inside this workspace/);
+
+    const rows = [
+      { tool: "files_read", path: "inside.txt", outcome: inside },
+      { tool: "files_read", path: join(workspace, "inside.txt"), outcome: inside },
+      { tool: "files_read", path: "absent.txt", outcome: { kind: "missing", path: "absent.txt" } },
+      { tool: "files_read", path: join(outside, "secret.txt"), outcome: denied },
+      { tool: "files_read", path: join("..", basename(outside), "secret.txt"), outcome: denied },
+      { tool: "files_read", path: join("linked", "secret.txt"), outcome: denied },
+      { tool: "files_read", path: join("linked", "absent.txt"), outcome: denied },
+      { tool: "files_stat", path: "dangling", outcome: denied },
+    ];
+
+    const outcomes = await Promise.all(
+      rows.map(async (row) => {
+        const called = await read(
+          await rpc(opened.http, tokens.access, "tools/call", {
+            name: row.tool,
+            arguments: { workspace: id, path: row.path },
+          }),
+          CALLED,
+        );
+
+        const text = called.result.content[0]?.text ?? "";
+
+        return called.result.isError === true ? text : JSON.parse(text);
+      }),
+    );
+
+    expect(outcomes).toEqual(rows.map((row) => row.outcome));
   });
 
   it("refuses an MCP token on every other route", async () => {

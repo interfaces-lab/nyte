@@ -334,12 +334,33 @@ export async function writeDocument(
   return { kind: "saved", version: hashVersion(bytes) };
 }
 
-async function findScope(root: string, path: string): Promise<"workspace" | "external"> {
-  const inside = relative(await realpath(root), await realpath(path));
+/** A relative `path` resolves against the root's real path. */
+export async function findScope(root: string, path: string): Promise<"workspace" | "external"> {
+  const real = await realpath(root);
+  const inside = relative(real, await resolveRealPath(isAbsolute(path) ? path : join(real, path)));
 
   return inside === ".." || inside.startsWith(`..${sep}`) || isAbsolute(inside)
     ? "external"
     : "workspace";
+}
+
+/**
+ * A missing path lands under the real path of its nearest existing ancestor, and a dangling
+ * link under its target's, so a missing file is judged where it would be created.
+ */
+async function resolveRealPath(path: string): Promise<string> {
+  const real = await realpath(path).catch(missing);
+
+  if (real !== null) return real;
+  const link = await lstat(path).catch(missing);
+
+  if (link?.isSymbolicLink() === true) {
+    const target = await readlink(path);
+
+    return resolveRealPath(isAbsolute(target) ? target : join(dirname(path), target));
+  }
+
+  return join(await resolveRealPath(dirname(path)), basename(path));
 }
 
 export async function readHead(path: string): Promise<Buffer> {
