@@ -156,35 +156,6 @@ describe("OpenAI Responses terminal event handling", () => {
     expect(result2.result.stopReason).toBe("length");
   });
 
-  it("finalizes completed terminal events as stop and separates cached token usage", async () => {
-    const result2 = await run([
-      {
-        type: "response.completed",
-        sequence_number: 0,
-        response: {
-          id: "resp_completed",
-          status: "completed",
-          usage: {
-            input_tokens: 20,
-            output_tokens: 7,
-            total_tokens: 27,
-            input_tokens_details: { cached_tokens: 2, cache_write_tokens: 3 },
-          },
-        },
-      },
-    ]);
-    expect(result2.result.responseId).toBe("resp_completed");
-    expect(result2.result.stopReason).toBe("stop");
-    expect(result2.result.rawStopReason).toBe("completed");
-    expect(result2.result.usage).toMatchObject({
-      input: 15,
-      output: 7,
-      cacheRead: 2,
-      cacheWrite: 3,
-      totalTokens: 27,
-    });
-  });
-
   it("preserves an incomplete content_filter reason as a non-retryable error", async () => {
     const result2 = await run([incomplete("content_filter")]);
     expect(result2.result.stopReason).toBe("error");
@@ -198,7 +169,7 @@ describe("OpenAI Responses terminal event handling", () => {
     async (type) => {
       const usage = {
         input_tokens: 100,
-        input_tokens_details: { cached_tokens: 30, cache_write_tokens: 0 },
+        input_tokens_details: { cached_tokens: 30, cache_write_tokens: 10 },
         output_tokens: 50,
         output_tokens_details: { reasoning_tokens: 20 },
         total_tokens: 150,
@@ -225,13 +196,13 @@ describe("OpenAI Responses terminal event handling", () => {
         pricedModel,
       );
       expect(result2.result.usage).toEqual({
-        input: 70,
+        input: 60,
         output: 50,
         cacheRead: 30,
-        cacheWrite: 0,
+        cacheWrite: 10,
         reasoning: 20,
         totalTokens: 150,
-        cost: { input: 140, output: 200, cacheRead: 180, cacheWrite: 0, total: 520 },
+        cost: { input: 120, output: 200, cacheRead: 180, cacheWrite: 0, total: 500 },
       });
       expect(result2.result.responseId).toBe("resp_usage");
       if (type === "response.failed") {
@@ -240,6 +211,7 @@ describe("OpenAI Responses terminal event handling", () => {
         expect(result2.kinds).not.toContain("done");
       } else {
         expect(result2.result.stopReason).toBe("stop");
+        expect(result2.result.rawStopReason).toBe("completed");
         expect(result2.kinds).toContain("done");
       }
     },

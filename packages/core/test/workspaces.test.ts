@@ -301,15 +301,7 @@ describe("workspaces", () => {
     expect(attempts).toBe(failed + 1);
   });
 
-  it("rejects an unknown session's activation instead of resolving it (E6, P4)", async () => {
-    const { kernel } = await world();
-
-    await expect(kernel.plugins.runtime(asId("nobody")).ready).rejects.toMatchObject({
-      code: "unknown",
-    });
-  });
-
-  it("serves capabilities: files and git available, git writes gated by their own rows, browser unsupported, unavailable or unsupported when nothing attaches", async () => {
+  it("serves capabilities: files and git available, git writes gated by their own rows, browser unsupported, unavailable or unsupported when nothing attaches, and git unsupported for a provider without it", async () => {
     const { kernel, host, provider, workspace } = await world();
     const handle = host.workspace(workspace);
     const files = await handle.files();
@@ -364,12 +356,12 @@ describe("workspaces", () => {
     ]);
 
     expect(await host.workspace(sandbox).git()).toMatchObject({ kind: "unsupported" });
-  });
 
-  it("answers git unsupported for a provider without git", async () => {
-    const { host, workspace } = await world({ git: false });
+    const gitless = await world({ git: false });
 
-    expect(await host.workspace(workspace).git()).toMatchObject({ kind: "unsupported" });
+    expect(await gitless.host.workspace(gitless.workspace).git()).toMatchObject({
+      kind: "unsupported",
+    });
   });
 
   it("applies wraps in order and lazily, a wrap's browser served as the capability", async () => {

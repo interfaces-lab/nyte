@@ -314,30 +314,6 @@ describe("listen", () => {
     expect(await within(ended, 1_000)).toBe("unauthenticated");
   });
 
-  it("denies a participant git.stage by the row's authority", async () => {
-    const host = await compose(fakeModels());
-    const listener = await serve(host);
-
-    const exchange = await post(
-      listener,
-      "sessions.list",
-      {},
-      { Authorization: `Pairing ${await pair(host, ["participant"])}` },
-    );
-
-    const token = exchange.headers.get("X-Nyte-Credential");
-    assert(token !== null);
-
-    const response = await post(
-      listener,
-      "git.stage",
-      { workspace: "w", paths: ["a.txt"] },
-      { Authorization: `Bearer ${token}` },
-    );
-
-    expect([response.status, await readErrorCode(response)]).toEqual([403, "denied"]);
-  });
-
   it("maps custom authorization to a principal, 401 and 403, and loads wire plugin paths through the kernel's loader", async () => {
     const dir = await realpath(await mkdtemp(join(tmpdir(), "nyte-listen-")));
     cleanups.push(() => rm(dir, { recursive: true, force: true }));

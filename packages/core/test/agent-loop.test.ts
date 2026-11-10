@@ -426,7 +426,7 @@ describe("agentLoop", () => {
     expect(end).toMatchObject({ reason: "failed", failure: { message: "Invalid API key" } });
   });
 
-  it("retries a retryable failure at the next attempt after turn_retry, then succeeds", async () => {
+  it("retries a retryable failure at the next attempt after turn_retry, carrying the failed request's model info so the turn can charge it, then succeeds (D6)", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], shouldAdvanceTime: true });
 
     try {
@@ -438,7 +438,11 @@ describe("agentLoop", () => {
       const { events, end } = await collect(config);
       const retry = events.find((event) => event.type === "turn_retry");
 
-      expect(retry).toMatchObject({ attempt: 2, failure: { class: "overloaded" } });
+      expect(retry).toMatchObject({
+        attempt: 2,
+        failure: { class: "overloaded" },
+        response: { usage: { total: 1 }, prepared: { info: INFO } },
+      });
       expect(seen.requests.map((request) => request.attempt)).toEqual([1, 2]);
       expect(end.reason).toBe("done");
     } finally {
@@ -609,23 +613,6 @@ describe("agentLoop", () => {
     });
     expect(kinds(events)).not.toContain("turn_retry");
     expect(seen.requests).toHaveLength(1);
-  });
-
-  it("carries the failed request's model info on turn_retry, so the turn can charge it (D6)", async () => {
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], shouldAdvanceTime: true });
-
-    try {
-      const { config } = scripted([
-        { content: [said("Half")], error: "503 Service Unavailable" },
-        { content: [said("Whole.")] },
-      ]);
-
-      const retry = (await collect(config)).events.find((event) => event.type === "turn_retry");
-
-      expect(retry).toMatchObject({ response: { usage: { total: 1 }, prepared: { info: INFO } } });
-    } finally {
-      vi.useRealTimers();
-    }
   });
 });
 

@@ -162,68 +162,74 @@ test.each([
   assert.equal(result.summary.models[0]?.turns, 1);
 });
 
-test.each(["message", "request"])("deduplicates copied %s-only identities", async (identity) => {
-  const configDir = await fixture();
-
-  const blocks = [record("same", 1), record("same", 40), record("same", 40)].map(
-    (value, index) => ({
+test.each([
+  {
+    identities: "copied message-only identities",
+    records: [record("same", 1), record("same", 40), record("same", 40)].map((value, index) => ({
       ...value,
-      requestId: identity === "message" ? [undefined, "", " \t"][index] : value.requestId,
-      message: {
-        ...value.message,
-        id: identity === "request" ? [undefined, "", " \t"][index] : value.message.id,
-      },
-    }),
-  );
-
-  const file = await history(configDir, "a.jsonl", blocks);
-  await copyFile(file, join(configDir, "projects", "copy.jsonl"));
-  const result = await readClaudeCodeUsage({ window: allTime, models, configDir });
-  assert.equal(result.kind, "ready");
-
-  if (result.kind !== "ready") return;
-  assert.equal(result.summary.models[0]?.turns, 1);
-  assert.equal(result.summary.total.input, 100);
-  assert.equal(result.summary.total.output, 40);
-});
-
-test("namespaces partial identities and preserves complete tuples", async () => {
+      requestId: [undefined, "", " \t"][index],
+    })),
+    copied: true,
+    turns: 1,
+    input: 100,
+    output: 40,
+    total: 230,
+  },
+  {
+    identities: "copied request-only identities",
+    records: [record("same", 1), record("same", 40), record("same", 40)].map((value, index) => ({
+      ...value,
+      message: { ...value.message, id: [undefined, "", " \t"][index] },
+    })),
+    copied: true,
+    turns: 1,
+    input: 100,
+    output: 40,
+    total: 230,
+  },
+  {
+    identities: "partial identities, namespaced, beside complete tuples",
+    records: [
+      { ...record("same"), requestId: undefined, message: { ...record().message, id: "same" } },
+      { ...record("same"), message: { ...record().message, id: undefined } },
+      { ...record("same"), message: { ...record().message, id: "same" } },
+      { ...record("same"), message: { ...record().message, id: "different" } },
+      { ...record("different"), message: { ...record().message, id: "same" } },
+      { ...record("c"), message: { ...record().message, id: "a:b" } },
+      { ...record("b:c"), message: { ...record().message, id: "a" } },
+    ],
+    copied: false,
+    turns: 7,
+    input: 700,
+    output: 140,
+    total: 1470,
+  },
+  {
+    identities: "copied records without either nonblank identity",
+    records: [undefined, "", " \t"].map((id) => ({
+      ...record(),
+      requestId: id,
+      message: { ...record().message, id },
+    })),
+    copied: true,
+    turns: 6,
+    input: 600,
+    output: 120,
+    total: 1260,
+  },
+])("counts each identity once: $identities", async (row) => {
   const configDir = await fixture();
-  const full = record("same");
-  await history(configDir, "a.jsonl", [
-    { ...full, requestId: undefined, message: { ...full.message, id: "same" } },
-    { ...full, message: { ...full.message, id: undefined } },
-    { ...full, message: { ...full.message, id: "same" } },
-    { ...full, message: { ...full.message, id: "different" } },
-    { ...full, requestId: "different", message: { ...full.message, id: "same" } },
-    { ...full, requestId: "c", message: { ...full.message, id: "a:b" } },
-    { ...full, requestId: "b:c", message: { ...full.message, id: "a" } },
-  ]);
+  const file = await history(configDir, "a.jsonl", row.records);
+
+  if (row.copied) await copyFile(file, join(configDir, "projects", "copy.jsonl"));
   const result = await readClaudeCodeUsage({ window: allTime, models, configDir });
   assert.equal(result.kind, "ready");
 
   if (result.kind !== "ready") return;
-  assert.equal(result.summary.models[0]?.turns, 7);
-  assert.equal(result.summary.total.total, 1470);
-});
-
-test("records without either nonblank identity remain independent", async () => {
-  const configDir = await fixture();
-  const full = record();
-
-  const records = [undefined, "", " \t"].map((id) => ({
-    ...full,
-    requestId: id,
-    message: { ...full.message, id },
-  }));
-
-  const file = await history(configDir, "a.jsonl", records);
-  await copyFile(file, join(configDir, "projects", "copy.jsonl"));
-  const result = await readClaudeCodeUsage({ window: allTime, models, configDir });
-  assert.equal(result.kind, "ready");
-
-  if (result.kind !== "ready") return;
-  assert.equal(result.summary.models[0]?.turns, 6);
+  assert.equal(result.summary.models[0]?.turns, row.turns);
+  assert.equal(result.summary.total.input, row.input);
+  assert.equal(result.summary.total.output, row.output);
+  assert.equal(result.summary.total.total, row.total);
 });
 
 test("reported nonnegative costs, including zero, override estimates without inventing breakdowns", async () => {
@@ -260,58 +266,51 @@ test.each([-1, "2", null])(
   },
 );
 
-test("unknown, fuzzy, wrong-provider and ambiguous matches retain unpriced tokens", async () => {
-  const configDir = await fixture();
+const matches = ["unknown", "claude-test", "wrong-provider", model.id].map((id) => {
+  const value = record(id);
+  value.message.model = id;
 
-  const entries = ["unknown", "claude-test", "wrong-provider", model.id].map((id) => {
-    const value = record(id);
-    value.message.model = id;
-
-    return value;
-  });
-
-  await history(configDir, "a.jsonl", [...entries, entries[0]]);
-
-  const result = await readClaudeCodeUsage({
-    window: allTime,
-    configDir,
-    models: {
-      getModels: () => [
-        model,
-        { ...model, cost: { ...model.cost, input: 8 } },
-        { ...model, id: "wrong-provider", provider: "other" },
-      ],
-    },
-  });
-
-  assert.equal(result.kind, "ready");
-
-  if (result.kind !== "ready") return;
-  assert.equal(result.unpricedRecords, 4);
-  assert.equal(result.summary.total.total, 840);
-  assert.equal(result.summary.total.cost.total, 0);
-  assert.equal(result.summary.models.length, 4);
+  return value;
 });
 
-test("an empty catalog retains all tokens and model rows without inventing prices", async () => {
+test.each([
+  {
+    catalog: "unknown, fuzzy, wrong-provider and ambiguous matches",
+    records: [...matches, matches[0]],
+    models: [
+      model,
+      { ...model, cost: { ...model.cost, input: 8 } },
+      { ...model, id: "wrong-provider", provider: "other" },
+    ],
+    unpriced: 4,
+    rows: 4,
+    total: 840,
+  },
+  {
+    catalog: "an empty catalog",
+    records: [record(), record(), matches[0]],
+    models: [],
+    unpriced: 2,
+    rows: 2,
+    total: 420,
+  },
+])("retains unpriced tokens and model rows without inventing prices: $catalog", async (row) => {
   const configDir = await fixture();
-  const unknown = record("unknown");
-  unknown.message.model = "unknown";
-  await history(configDir, "a.jsonl", [record(), record(), unknown]);
+  await history(configDir, "a.jsonl", row.records);
 
   const result = await readClaudeCodeUsage({
     window: allTime,
-    models: { getModels: () => [] },
     configDir,
+    models: { getModels: () => row.models },
   });
 
   assert.equal(result.kind, "ready");
 
   if (result.kind !== "ready") return;
-  assert.equal(result.unpricedRecords, 2);
-  assert.equal(result.summary.models.length, 2);
-  assert.equal(result.summary.total.total, 420);
+  assert.equal(result.unpricedRecords, row.unpriced);
+  assert.equal(result.summary.total.total, row.total);
   assert.equal(result.summary.total.cost.total, 0);
+  assert.equal(result.summary.models.length, row.rows);
 });
 
 test("aggregates many turns into model rows and computes totals from those rows", async () => {

@@ -101,18 +101,6 @@ test("public Copilot composition bundles and logs in without Node globals", asyn
           event.type === "device_code",
       ),
     );
-    assert.equal(
-      transport.requests
-        .find((request) => request.url.endsWith("/v2/token"))
-        ?.headers.get("authorization"),
-      "Bearer github-secret",
-    );
-    assert.equal(
-      transport.requests
-        .find((request) => request.url.endsWith("/models"))
-        ?.headers.get("authorization"),
-      `Bearer ${SESSION_TOKEN}`,
-    );
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

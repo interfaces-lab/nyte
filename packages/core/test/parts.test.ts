@@ -3,7 +3,6 @@ import { asId, asSeq, SdkError, standard } from "@nyte-ai/schema";
 import type { Awaitable, Infer, Json, PartId, SessionId } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { assert, describe, expect, it } from "vitest";
-import { runStep } from "../src/engine/durable.ts";
 import { createPartDefinitions } from "../src/engine/part-definitions.ts";
 import { viewHead } from "../src/fold/view.ts";
 import {
@@ -553,46 +552,6 @@ describe("parts", () => {
     await settleAnswersFrom(waiting.kernel);
 
     expect(await pending).toEqual({ action: "answer", input: { choice: "yes" } });
-  });
-
-  it("publishes the durable winner: a cold host's second act after FIRST settled a parked call answers FIRST everywhere (D6 audit 4)", async () => {
-    const first = await setup();
-    const cold = await setup({ store: first.kernel.store });
-    const other = await setup({ store: first.kernel.store });
-    const { session } = await first.host.sessions.start({ content: "Hi." });
-
-    const part = await session.parts.create(question, {
-      state: { title: "Deploy?", choices: ["FIRST", "SECOND"] },
-      placement: { kind: "modal" },
-    });
-
-    const parked = await runStep(first.kernel, {
-      session: session.id,
-      head: main,
-      run: null,
-      call: asId("wait-call"),
-      kind: "hook",
-      replay: "safe",
-      intent: { test: true },
-      part: null,
-      signal: new AbortController().signal,
-      body: async (durable) => durable.wait({ kind: "part", part: part.id }),
-      settle: async () => ({ result: null, updates: [] }),
-      decode: () => null,
-    });
-
-    expect(parked.kind).toBe("parked");
-    await part.act("answer", { choice: "FIRST" });
-
-    const second = cold.host.session(session.id).part(part.id);
-    const winner = { action: "answer", input: { choice: "FIRST" } };
-
-    expect(await second.act("answer", { choice: "SECOND" })).toEqual({
-      kind: "ok",
-      output: undefined,
-    });
-    expect(await second.answer()).toEqual(winner);
-    expect(await other.host.session(session.id).part(part.id).answer()).toEqual(winner);
   });
 
   it("answers null after another host closes the part, dropping the answer held here (D6 audit 4)", async () => {

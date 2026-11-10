@@ -1,10 +1,10 @@
-import { asId, SdkError, standard } from "@nyte-ai/schema";
+import { SdkError, standard } from "@nyte-ai/schema";
 import type { Json } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { assert, describe, expect, it } from "vitest";
 import { hostIdentity } from "../src/compose.ts";
-import { definePart, isPart, text } from "../src/index.ts";
-import { decodePartRecord, partRef, hostIdentityRef, memoryStore, runRef } from "../src/store.ts";
+import { isPart, text } from "../src/index.ts";
+import { hostIdentityRef, memoryStore, runRef } from "../src/store.ts";
 import type { Plugin, PluginApi, ToolDefinition } from "../src/index.ts";
 import { chatOnly, composed, fakeModels, open } from "./fake-models.ts";
 import { label, until } from "../src/harness.ts";
@@ -20,103 +20,7 @@ const echo: ToolDefinition<{ readonly text: string }> = {
 
 const echoing: Plugin<"core"> = { id: "echoing", contribute: { tools: [echo] } };
 
-const ask = definePart({
-  kind: "test/ask",
-  state: standard(Type.Object({ prompt: Type.String() })),
-  actions: { answer: { input: standard(Type.Object({ choice: Type.String() })) } },
-  fallback: (state, { id }) => `Ask ${id}: ${state.prompt}`,
-});
-
 describe("composeHost", () => {
-  it("takes a modal answer a cold host gave before the run parked from the part record, which keeps it (§48i, ADV B N2)", async () => {
-    const store = memoryStore();
-    const fake = fakeModels();
-    let release: () => void = () => undefined;
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-
-    const asking: ToolDefinition<{ readonly prompt: string }> = {
-      name: "ask",
-      description: "Ask the user.",
-      parameters: standard(Type.Object({ prompt: Type.String() })),
-      class: () => ({ kind: "custom", label: "Asking" }),
-      replay: "safe",
-      async execute(args, invocation) {
-        const part = await invocation.session.parts.create(ask, {
-          state: args,
-          placement: { kind: "modal" },
-        });
-        await gate;
-        const outcome = await invocation.wait({ kind: "part", part: part.id });
-        const input = outcome.kind === "part" ? outcome.answer?.input : null;
-        const choice =
-          typeof input === "object" &&
-          input !== null &&
-          "choice" in input &&
-          typeof input.choice === "string"
-            ? input.choice
-            : "none";
-
-        return { content: [{ kind: "text", text: choice }] };
-      },
-    };
-
-    const plugin: Plugin<"core"> = { id: "asker", contribute: { parts: [ask], tools: [asking] } };
-
-    fake.reply(
-      { content: [{ type: "toolCall", id: "q", name: "ask", arguments: { prompt: "Ship?" } }] },
-      { content: [{ type: "text", text: "Shipping." }] },
-    );
-
-    await using warm = await open(fake, { store, plugins: [plugin] });
-    const { session, receipt } = await warm.sessions.start({ content: "Ask." });
-    const asked = await until(async () =>
-      (await session.view()).parts.find((part) => part.partKind === ask.kind),
-    );
-
-    await using cold = await open(fakeModels(), {
-      store,
-      plugins: [plugin],
-      execution: { kind: "admit-only" },
-    });
-
-    expect(await cold.session(session.id).part(asked.id).act("answer", { choice: "yes" })).toEqual({
-      kind: "ok",
-      output: undefined,
-    });
-
-    const connection = await store.open();
-    const kept = decodePartRecord(
-      await connection.objects.get(
-        (await connection.refs.get(partRef(session.id, asked.id)))?.target ?? asId("none"),
-      ),
-    );
-
-    expect(kept?.status).toMatchObject({
-      kind: "live",
-      answer: { action: "answer", input: { choice: "yes" } },
-    });
-
-    release();
-    const end = await receipt.settled();
-
-    assert(end.kind === "completed");
-    expect(fake.requests).toHaveLength(2);
-    expect(fake.requests[1]?.context.messages.at(-1)).toMatchObject({
-      role: "toolResult",
-      content: [{ type: "text", text: "yes" }],
-    });
-
-    const after = decodePartRecord(
-      await connection.objects.get(
-        (await connection.refs.get(partRef(session.id, asked.id)))?.target ?? asId("none"),
-      ),
-    );
-
-    expect(after?.status).toEqual(kept?.status);
-  });
-
   it("resolves a fresh session's effective configuration at creation, with nothing selected (§48c)", async () => {
     await using host = await open(fakeModels());
     const { session } = await host.sessions.start({ content: "Hi." });
@@ -200,26 +104,6 @@ describe("composeHost", () => {
     expect(host.kernel.sessions.activation(session.id)).toEqual({ kind: "active" });
   });
 
-  it("serves the host view: plugins and settings", async () => {
-    await using host = await open(fakeModels());
-    await host.sessions.start({ content: "Hi." });
-    const iterator = host.watch()[Symbol.asyncIterator]();
-    const first = await iterator.next();
-    await iterator.return?.();
-
-    assert(first.done !== true);
-    const view = first.value;
-
-    expect(view.id).toBe(host.hostId);
-    expect(view.settings.map((setting) => setting.id)).toContain("skills.paths");
-    expect(view.plugins.map((plugin) => [plugin.id, plugin.source])).toEqual(
-      expect.arrayContaining([
-        ["system-prompt", "builtin"],
-        ["chat-only", "inline"],
-      ]),
-    );
-  });
-
   it("seeds HostView.plugins at open and merges the runtimes' live issues later", async () => {
     let api: PluginApi<"core"> | undefined;
 
@@ -254,6 +138,7 @@ describe("composeHost", () => {
     ];
 
     assert(first.done !== true);
+    expect(first.value.id).toBe(host.hostId);
     expect(first.value.plugins).toEqual(seeded);
 
     await host.sessions.start({ content: "Hi." });

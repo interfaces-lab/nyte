@@ -45,41 +45,68 @@ describe("codec", () => {
     expect(decodeOutput("connection.blob", "aGk=")).toEqual(Uint8Array.of(104, 105));
   });
 
-  it("rejects an unknown input field at any depth with its path", () => {
-    const top = invalid(() => decodeInput("session.info", { session, extra: 1 }));
-    const nested = invalid(() =>
-      decodeInput("head.move", {
-        session,
-        head,
-        position: { kind: "start", id: "x" },
-        options: { running: "stop", fast: true },
-      }),
-    );
-    const listed = invalid(() =>
-      decodeInput("files.batch", {
-        workspace,
-        entries: [
-          { kind: "remove", path: "a.ts" },
-          { kind: "put", path: "b.ts", contents: "x", mode: 1 },
-        ],
-      }),
-    );
-
-    expect(top).toMatchObject({ code: "invalid" });
-    expect(top.issues.map((issue) => issue.path)).toEqual([["extra"]]);
-    expect(nested.issues.map((issue) => issue.path)).toEqual([
-      ["position", "id"],
-      ["options", "fast"],
-    ]);
-    expect(listed.issues.map((issue) => issue.path)).toEqual([["entries", 1, "mode"]]);
+  it.each([
+    {
+      name: "an unknown top-level field",
+      decode: () => decodeInput("session.info", { session, extra: 1 }),
+      issues: [{ path: ["extra"] }],
+    },
+    {
+      name: "unknown nested fields",
+      decode: () =>
+        decodeInput("head.move", {
+          session,
+          head,
+          position: { kind: "start", id: "x" },
+          options: { running: "stop", fast: true },
+        }),
+      issues: [{ path: ["position", "id"] }, { path: ["options", "fast"] }],
+    },
+    {
+      name: "an unknown field in a list entry",
+      decode: () =>
+        decodeInput("files.batch", {
+          workspace,
+          entries: [
+            { kind: "remove", path: "a.ts" },
+            { kind: "put", path: "b.ts", contents: "x", mode: 1 },
+          ],
+        }),
+      issues: [{ path: ["entries", 1, "mode"] }],
+    },
+    {
+      name: "a missing required field",
+      decode: () => decodeInput("head.send", { session, head }),
+      issues: [{ path: [], message: expect.stringContaining("content") }],
+    },
+  ])("rejects $name with each issue's path", (row) => {
+    expect(invalid(row.decode)).toMatchObject({
+      code: "invalid",
+      issues: row.issues.map((issue) => ({ severity: "error", ...issue })),
+    });
   });
 
-  it("rejects an input failing its schema with the schema's issues", () => {
-    const error = invalid(() => decodeInput("head.send", { session, head }));
+  it.each([
+    {
+      name: "an exact configuration",
+      configuration: {
+        kind: "exact",
+        model: { provider: "anthropic", id: "claude" },
+        thinking: "low",
+        agent: null,
+        settings: { "core/x": { nested: [1, "two", null, true] } },
+        settingsVersion: "v1",
+      },
+    },
+    { name: "a configuration patch", configuration: { thinking: "high" } },
+  ])("takes $name on sessions.start whole", (row) => {
+    const input = {
+      id: session,
+      configuration: row.configuration,
+      content: [{ kind: "text", text: "Hi." }],
+    };
 
-    expect(error.code).toBe("invalid");
-    expect(error.issues.length).toBeGreaterThan(0);
-    expect(error.issues[0]).toMatchObject({ severity: "error" });
+    expect(decodeInput("sessions.start", input)).toEqual(input);
   });
 
   it("accepts any JSON where a schema takes JSON, and a record's keys", () => {

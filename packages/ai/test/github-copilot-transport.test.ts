@@ -566,6 +566,15 @@ describe("GitHub Copilot chat completions reasoning state", () => {
       continuation: "go",
       expected: { role: "assistant", content: "answer", reasoning_opaque: "late-state" },
     },
+    {
+      name: "reasoning text without opaque state is not replayed",
+      chunks: [
+        { choices: [{ delta: { reasoning_text: "thoughts" } }] },
+        { choices: [{ delta: { content: "answer" }, finish_reason: "stop" }] },
+      ],
+      continuation: "go",
+      expected: { role: "assistant", content: "answer" },
+    },
   ];
 
   test.each(opaqueReplayCases)("$name", async (input) => {
@@ -597,22 +606,6 @@ describe("GitHub Copilot chat completions reasoning state", () => {
     );
     assert.equal(conflicting.result.stopReason, "error");
     assert.match(conflicting.result.errorMessage ?? "", /multiple reasoning_opaque/);
-  });
-
-  test("does not replay reasoning text without opaque state", async () => {
-    const first = await exchange(
-      [user("hello", 0)],
-      [
-        { choices: [{ delta: { reasoning_text: "thoughts" } }] },
-        { choices: [{ delta: { content: "answer" }, finish_reason: "stop" }] },
-      ],
-    );
-    const second = await exchange(
-      [user("hello", 0), first.result, user("go", 1)],
-      [{ choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] }],
-    );
-    const assistant = messageWithRole(second.body, "assistant");
-    assert.deepEqual(assistant, { role: "assistant", content: "answer" });
   });
 
   test("declares vision requests", async () => {

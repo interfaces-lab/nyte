@@ -1,5 +1,5 @@
 import { asId, standard } from "@nyte-ai/schema";
-import type { CallId, JobView, Json, OutputFrame, SessionId } from "@nyte-ai/schema";
+import type { CallId, JobId, JobView, Json, OutputFrame, SessionId } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { assert, describe, expect, it, vi } from "vitest";
 import { createHost } from "../src/api/connection.ts";
@@ -548,50 +548,49 @@ describe("jobs", () => {
     });
   });
 
-  it("settles a wait on a job this instance does not hold as lost when another kernel loads it", async () => {
-    const { kernel, host, provider, workspace } = await world();
-    const { session } = await host.sessions.start({ workspace, content: "Hi." });
-    const job = await host
-      .workspace(workspace)
+  it.each([
+    {
+      name: "settles a wait on a job this instance does not hold as lost when another kernel loads it",
+      observe: (second: Kernel) => loadWaits(second),
+      expected: (job: JobId) => ({
+        waiting: null,
+        waits: [{ kind: "job", job, end: { kind: "lost" } }],
+      }),
+      woken: true,
+    },
+    {
+      name: "leaves a wait on a job this instance does not hold parked when another kernel sees a commit",
+      observe: (second: Kernel) => second.waits.refresh(),
+      expected: () => ({ waits: [] }),
+      woken: false,
+    },
+  ])("$name", async (row) => {
+    const built = await world();
+
+    const session = (
+      await built.host.sessions.start({ workspace: built.workspace, content: "Hi." })
+    ).session;
+
+    const job = await built.host
+      .workspace(built.workspace)
       .jobs.start({ command: "make", session: session.id });
+
     const call: CallId = asId("c1");
 
     await parkOn(
-      kernel,
+      built.kernel,
       session.id,
       call,
       async (durable) => (await durable.wait({ kind: "job", job: job.id })).kind,
     );
 
-    const second = kernelOver(kernel.store, provider);
+    const second = kernelOver(built.kernel.store, built.provider);
     const woken: string[] = [];
     second.wakes.subscribe((woke, head) => woken.push(`${woke}/${head}`));
-    await loadWaits(second);
+    await row.observe(second);
 
-    expect(await readCall(second, session.id, call)).toMatchObject({
-      waiting: null,
-      waits: [{ kind: "job", job: job.id, end: { kind: "lost" } }],
-    });
-    expect(woken).toEqual([`${session.id}/${main}`]);
-  });
-  it("leaves a wait on a job this instance does not hold parked when another kernel sees a commit", async () => {
-    const { kernel, host, provider, workspace } = await world();
-    const { session } = await host.sessions.start({ workspace, content: "Hi." });
-    const job = await host
-      .workspace(workspace)
-      .jobs.start({ command: "make", session: session.id });
-    const call: CallId = asId("c1");
-
-    await parkOn(
-      kernel,
-      session.id,
-      call,
-      async (durable) => (await durable.wait({ kind: "job", job: job.id })).kind,
-    );
-
-    await kernelOver(kernel.store, provider).waits.refresh();
-
-    expect(await readCall(kernel, session.id, call)).toMatchObject({ waits: [] });
+    expect(await readCall(built.kernel, session.id, call)).toMatchObject(row.expected(job.id));
+    expect(woken).toEqual(row.woken ? [`${session.id}/${main}`] : []);
   });
 
   it("answers a step's recorded job as lost after a restart, spawning nothing again (B F1, P1)", async () => {

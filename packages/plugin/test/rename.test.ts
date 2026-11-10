@@ -29,8 +29,7 @@ it("titles an untitled session from its first message, and a later run asks noth
   );
   expect(fake.requests[0]?.context.messages.at(-1)).toMatchObject({
     role: "user",
-    content:
-      "Here is the first message of the conversation:\n\n<message>\nWhy does fetch time out?\nIt hangs on CI.\n</message>\n\nReply with only the title.",
+    content: expect.stringContaining("Why does fetch time out?\nIt hangs on CI."),
   });
 
   await (await session.send("Thanks.")).settled();

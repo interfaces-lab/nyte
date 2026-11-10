@@ -173,48 +173,45 @@ describe("credentialStore", () => {
     });
   });
 
-  it("calls key() only once a record exists: not for read or list of an empty store (§50b)", async () => {
-    let reads = 0;
+  it.each([
+    { store: "an empty store (§50b)", seeded: false, listed: [], absent: "p", use: "modify" },
+    {
+      store: "a store holding another provider's record (§55)",
+      seeded: true,
+      listed: [{ providerId: "p", type: "api_key", id: "default", label: "Default", active: true }],
+      absent: "q",
+      use: "read",
+    },
+  ])(
+    "never calls key() to list or to read a provider without a record in $store, and calls it once to $use one",
+    async (row) => {
+      const store = memoryStore();
 
-    const credentials = credentialStore(memoryStore(), {
-      key: async () => {
-        reads += 1;
+      if (row.seeded)
+        await credentialStore(store, key(5)).modify("p", async () =>
+          storedAccounts({ type: "api_key", key: "k" }),
+        );
+      let reads = 0;
 
-        return new Uint8Array(32).fill(5);
-      },
-    });
+      const credentials = credentialStore(store, {
+        key: async () => {
+          reads += 1;
 
-    expect(await credentials.read("p")).toBeUndefined();
-    expect(await credentials.list()).toEqual([]);
-    expect(reads).toBe(0);
-    await credentials.modify("p", async () => storedAccounts({ type: "api_key", key: "k" }));
+          return new Uint8Array(32).fill(5);
+        },
+      });
 
-    expect(reads).toBe(1);
-  });
-
-  it("never calls key() to list, nor to read a provider without a record, while other records exist (§55)", async () => {
-    const store = memoryStore();
-    await credentialStore(store, key(5)).modify("p", async () =>
-      storedAccounts({ type: "api_key", key: "k" }),
-    );
-    let reads = 0;
-
-    const credentials = credentialStore(store, {
-      key: async () => {
-        reads += 1;
-
-        return new Uint8Array(32).fill(5);
-      },
-    });
-
-    expect(await credentials.list()).toEqual([
-      { providerId: "p", type: "api_key", id: "default", label: "Default", active: true },
-    ]);
-    expect(await credentials.read("q")).toBeUndefined();
-    expect(reads).toBe(0);
-    expect(await credentials.read("p")).toEqual(storedAccounts({ type: "api_key", key: "k" }));
-    expect(reads).toBe(1);
-  });
+      expect(await credentials.list()).toEqual(row.listed);
+      expect(await credentials.read(row.absent)).toBeUndefined();
+      expect(reads).toBe(0);
+      expect(
+        row.use === "modify"
+          ? await credentials.modify("p", async () => storedAccounts({ type: "api_key", key: "k" }))
+          : await credentials.read("p"),
+      ).toEqual(storedAccounts({ type: "api_key", key: "k" }));
+      expect(reads).toBe(1);
+    },
+  );
 
   it("seals a secret under the key and opens it only with that key", async () => {
     const sealed = await sealSecret(key(1), "client.token");

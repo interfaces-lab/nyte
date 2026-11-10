@@ -270,22 +270,24 @@ test("message conversion keeps text, tool calls, grouped image results, and the 
   });
 });
 
-test("unknown OpenAI-compatible endpoints default to non-strict tools", async () => {
-  const { body } = await exchange({ tools: [ping], chunks: [stopped] });
-  const request = JSON.parse(body);
-  expect(request).not.toHaveProperty("tools.0.function.strict");
-  expect(request).toMatchObject({
-    tools: [{ function: { parameters: { required: ["required"] } } }],
-  });
-});
-
-test("catalog strict-mode metadata keeps strict tools", async () => {
-  const { body } = await exchange({
-    tools: [ping],
-    chunks: [stopped],
+test.each([
+  {
+    name: "unknown OpenAI-compatible endpoints default to non-strict tools",
+    compat: undefined,
+    request: { tools: [{ function: { parameters: { required: ["required"] } } }] },
+    absent: "tools.0.function.strict",
+  },
+  {
+    name: "catalog strict-mode metadata keeps strict tools",
     compat: { supportsStrictMode: true },
-  });
-  expect(JSON.parse(body)).toMatchObject({
-    tools: [{ function: { strict: true, parameters: { required: ["required", "optional"] } } }],
-  });
+    request: {
+      tools: [{ function: { strict: true, parameters: { required: ["required", "optional"] } } }],
+    },
+    absent: undefined,
+  },
+])("$name", async (input) => {
+  const exchanged = await exchange({ tools: [ping], chunks: [stopped], compat: input.compat });
+  const request: unknown = JSON.parse(exchanged.body);
+  expect(request).toMatchObject(input.request);
+  if (input.absent !== undefined) expect(request).not.toHaveProperty(input.absent);
 });

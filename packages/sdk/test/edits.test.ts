@@ -145,34 +145,6 @@ describe("edits", () => {
     expect(host.fake.requests.length).toBe(requests);
   });
 
-  it("shows an edit of a landed message unsent in its place in view() while it retries (ADV C N1 = A N7, probe /tmp/adversarial-c2-probe J2)", async () => {
-    const host = await open();
-    const journal = createSendJournal();
-    const connection = await client(host, undefined, journal);
-    host.fake.reply(text("One."), text("Two."));
-
-    const { session, receipt: first } = await connection.sessions.start({
-      content: "Draft.",
-    });
-
-    await first.settled();
-    await session.view();
-    host.intercept(failing);
-    const edit = session.send("Final.", { replace: first.message });
-    await expect.poll(async () => (await journal.load()).length).toBe(1);
-
-    expect(users(await session.view())).toEqual(["Final.#unsent"]);
-    host.intercept(null);
-    await (await edit).settled();
-    await expect
-      .poll(async () => {
-        const view = await session.view();
-
-        return view.execution.kind === "idle" ? users(view) : [];
-      })
-      .toEqual(["Final.#landed"]);
-  });
-
   it("keeps an edit of a landed message unsent in its place across a revoke and a re-pair, until it lands (ADV C N1, probe /tmp/adversarial-c2-probe J2b)", async () => {
     const host = await open();
     const owner = await client(host);

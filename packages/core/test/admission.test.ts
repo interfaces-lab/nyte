@@ -1,7 +1,6 @@
 import { asId } from "@nyte-ai/schema";
-import type { Authority, CommitId, Message, QueuedMessage } from "@nyte-ai/schema";
+import type { CommitId, Message, QueuedMessage } from "@nyte-ai/schema";
 import { assert, describe, expect, it } from "vitest";
-import { TOKEN } from "../src/server.ts";
 import { decodeInboxRecord, inboxRef, memoryStore } from "../src/store.ts";
 import type { Session } from "../src/index.ts";
 import {
@@ -558,22 +557,5 @@ describe("admission", () => {
       kind: "pending-input",
       messages: [edit.message, queued.message],
     });
-  });
-
-  it("denies an operation the connection's principal lacks authority for", async () => {
-    const { kernel } = await setup();
-    const authority: ReadonlySet<Authority> = new Set(["participant"]);
-
-    const connection = kernel.handles.connection({
-      principal: TOKEN,
-      authority,
-      credential: { kind: "token", token: "t" },
-      origin: null,
-    });
-
-    await expect(connection.settings.apply("theme", "dark")).rejects.toMatchObject({
-      code: "denied",
-    });
-    expect((await connection.sessions.start({ content: "Hi." })).session.id).toBeTypeOf("string");
   });
 });

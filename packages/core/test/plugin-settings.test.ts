@@ -127,7 +127,7 @@ describe("settings", () => {
     expect((await host.sessions.start({ content: "Hi." })).session.id).not.toBe(session.id);
   });
 
-  it("announces a client's configure of a session-scope setting to watchers and the catalog", async () => {
+  it("announces a client's configure of a session-scope setting to watchers and the catalog, and reads a plugin's own set back from the session's configuration", async () => {
     let handle: Setting<unknown> | undefined;
 
     const { session } = await loaded(
@@ -159,29 +159,6 @@ describe("settings", () => {
       expect.objectContaining({ id: "volume", value: 6, from: "session" }),
     ]);
     await values.return?.();
-  });
-
-  it("reads a session-scope value from the session's configuration", async () => {
-    let handle: Setting<unknown> | undefined;
-
-    const { session } = await loaded(
-      [
-        {
-          id: "mixer",
-          activate(api) {
-            handle = api.contribute.settings.add({ ...volume, scope: "session" });
-          },
-        },
-      ],
-      {
-        resolveConfiguration: async ({ selected, patch }) => ({
-          ...configuration,
-          settings: { ...selected?.settings, ...patch?.settings },
-        }),
-      },
-    );
-
-    assert(handle !== undefined);
     await handle.set(5);
 
     expect(await handle.get()).toBe(5);

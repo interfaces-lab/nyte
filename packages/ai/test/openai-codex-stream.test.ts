@@ -308,7 +308,44 @@ describe("openai-codex streaming", () => {
     expect(capturedBody).toMatchObject({ prompt_cache_key: clampedSessionId });
   });
 
-  it("preserves gpt-5.5 xhigh reasoning effort from simple options", async () => {
+  it.each([
+    {
+      name: "preserves gpt-5.5 xhigh reasoning effort from simple options",
+      model: {
+        ...CODEX_MODEL,
+        id: "gpt-5.5",
+        name: "GPT-5.5",
+        thinkingLevelMap: { xhigh: "xhigh" },
+      },
+      send: (model: Model<"openai-codex-responses">) =>
+        streamSimple(model, normalizeContext(TEXT_CONTEXT), {
+          apiKey: mockToken(),
+          reasoning: "xhigh",
+          transport: "sse",
+        }),
+      effort: "xhigh",
+    },
+    {
+      name: "uses the model capability map for minimal reasoning",
+      model: {
+        ...CODEX_MODEL,
+        id: "model-with-minimal-reasoning",
+        thinkingLevelMap: { minimal: "low" },
+      },
+      send: (model: Model<"openai-codex-responses">) =>
+        stream(model, normalizeContext(TEXT_CONTEXT), {
+          apiKey: mockToken(),
+          reasoningEffort: "minimal",
+          transport: "sse",
+        }),
+      effort: "low",
+    },
+  ] satisfies {
+    name: string;
+    model: Model<"openai-codex-responses">;
+    send: (model: Model<"openai-codex-responses">) => { result: () => Promise<unknown> };
+    effort: string;
+  }[])("$name", async (input) => {
     let requestedPayload: unknown;
     vi.stubGlobal(
       "fetch",
@@ -317,20 +354,12 @@ describe("openai-codex streaming", () => {
         return sseResponse();
       }),
     );
-    const model = {
-      ...CODEX_MODEL,
-      id: "gpt-5.5",
-      name: "GPT-5.5",
-      thinkingLevelMap: { xhigh: "xhigh" },
-    } satisfies Model<"openai-codex-responses">;
 
-    await streamSimple(model, normalizeContext(TEXT_CONTEXT), {
-      apiKey: mockToken(),
-      reasoning: "xhigh",
-      transport: "sse",
-    }).result();
+    await input.send(input.model).result();
 
-    expect(requestedPayload).toMatchObject({ reasoning: { effort: "xhigh", summary: "auto" } });
+    expect(requestedPayload).toMatchObject({
+      reasoning: { effort: input.effort, summary: "auto" },
+    });
   });
 
   it("forwards required tool choice", async () => {
@@ -402,30 +431,6 @@ describe("openai-codex streaming", () => {
         { type: "function", name: "strict", strict: true },
       ],
     });
-  });
-
-  it("uses the model capability map for minimal reasoning", async () => {
-    let requestedPayload: unknown;
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (_input: string | URL, init?: RequestInit) => {
-        requestedPayload = decodeCodexRequestBody(init?.body);
-        return sseResponse();
-      }),
-    );
-    const model = {
-      ...CODEX_MODEL,
-      id: "model-with-minimal-reasoning",
-      thinkingLevelMap: { minimal: "low" },
-    } satisfies Model<"openai-codex-responses">;
-
-    await stream(model, normalizeContext(TEXT_CONTEXT), {
-      apiKey: mockToken(),
-      reasoningEffort: "minimal",
-      transport: "sse",
-    }).result();
-
-    expect(requestedPayload).toMatchObject({ reasoning: { effort: "low", summary: "auto" } });
   });
 
   it.each([

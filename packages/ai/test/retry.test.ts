@@ -32,46 +32,68 @@ function fauxAssistantMessage(
   };
 }
 
-const openAIExplicitRetryMessage =
-  "An error occurred while processing your request. You can retry your request, or contact us through our help center at help.openai.com if the error persists. Please include the request ID req_******** in your message.";
-const nvidiaNIMResourceExhaustedMessage =
-  "ResourceExhausted: Worker local total request limit reached (288/48)";
-const bunFetchSocketClosedMessage =
-  "The socket connection was closed unexpectedly. For more information, pass `verbose: true` in the second argument to fetch()";
-const openAIResponsesEarlyEofMessage =
-  "OpenAI Responses stream ended before a terminal response event";
-const wrappedDnsLookupError =
-  "The pending stream has been canceled (caused by: getaddrinfo ENOTFOUND bedrock-runtime.us-east-1.amazonaws.com)";
-const azurePeakLoadError =
-  "The system is currently experiencing high demand and cannot process your request. Your request exceeds the maximum usage size allowed during peak load. For improved capacity reliability, consider switching to Provisioned Throughput.";
-
 function errorMessage(text: string): AssistantMessage {
   return fauxAssistantMessage("", { stopReason: "error", errorMessage: text });
 }
 
-describe("provider retry classification", () => {
-  test("retries provider overload, rate limiting, and explicit retry guidance (#9669, #9627)", () => {
-    assert.equal(failedTransiently(errorMessage(openAIExplicitRetryMessage)), true);
-    assert.equal(failedTransiently(errorMessage(nvidiaNIMResourceExhaustedMessage)), true);
-    assert.equal(failedTransiently(errorMessage(azurePeakLoadError)), true);
-    assert.equal(failedTransiently(errorMessage("520 status code (no body)")), true);
-  });
-
-  test("retries DNS failures, socket drops, and streams that end before a terminal event", () => {
-    assert.equal(failedTransiently(errorMessage(wrappedDnsLookupError)), true);
-    assert.equal(failedTransiently(errorMessage(bunFetchSocketClosedMessage)), true);
-    assert.equal(failedTransiently(errorMessage(openAIResponsesEarlyEofMessage)), true);
-  });
-
-  test("does not retry quota exhaustion or a message that did not fail", () => {
-    assert.equal(failedTransiently(errorMessage("429 quota exceeded")), false);
-    assert.equal(
-      failedTransiently(
-        errorMessage('429 {"type":"error","error":{"type":"extra_usage_out_of_credits"}}'),
+describe("provider retry classification (#9669, #9627)", () => {
+  test.each([
+    {
+      name: "explicit retry guidance",
+      message: errorMessage(
+        "An error occurred while processing your request. You can retry your request, or contact us through our help center at help.openai.com if the error persists. Please include the request ID req_******** in your message.",
       ),
-      false,
-    );
-    assert.equal(failedTransiently(fauxAssistantMessage("not an error")), false);
+      transient: true,
+    },
+    {
+      name: "provider resource exhaustion",
+      message: errorMessage("ResourceExhausted: Worker local total request limit reached (288/48)"),
+      transient: true,
+    },
+    {
+      name: "peak load overload",
+      message: errorMessage(
+        "The system is currently experiencing high demand and cannot process your request. Your request exceeds the maximum usage size allowed during peak load. For improved capacity reliability, consider switching to Provisioned Throughput.",
+      ),
+      transient: true,
+    },
+    {
+      name: "a 520 with no body",
+      message: errorMessage("520 status code (no body)"),
+      transient: true,
+    },
+    {
+      name: "a DNS failure",
+      message: errorMessage(
+        "The pending stream has been canceled (caused by: getaddrinfo ENOTFOUND bedrock-runtime.us-east-1.amazonaws.com)",
+      ),
+      transient: true,
+    },
+    {
+      name: "a socket drop",
+      message: errorMessage(
+        "The socket connection was closed unexpectedly. For more information, pass `verbose: true` in the second argument to fetch()",
+      ),
+      transient: true,
+    },
+    {
+      name: "a stream that ends before a terminal event",
+      message: errorMessage("OpenAI Responses stream ended before a terminal response event"),
+      transient: true,
+    },
+    { name: "quota exhaustion", message: errorMessage("429 quota exceeded"), transient: false },
+    {
+      name: "running out of extra usage credits",
+      message: errorMessage('429 {"type":"error","error":{"type":"extra_usage_out_of_credits"}}'),
+      transient: false,
+    },
+    {
+      name: "a message that did not fail",
+      message: fauxAssistantMessage("not an error"),
+      transient: false,
+    },
+  ])("classifies $name as transient: $transient", (input) => {
+    assert.equal(failedTransiently(input.message), input.transient);
   });
 });
 
@@ -79,24 +101,34 @@ describe("retryAssistantCall", () => {
   const disabled: RetryPolicy = { enabled: false, maxRetries: 3, baseDelayMs: 0 };
   const enabled: RetryPolicy = { enabled: true, maxRetries: 3, baseDelayMs: 0 };
 
-  test("does not retry an aborted message", async () => {
-    const produce = vi.fn(async () => fauxAssistantMessage("", { stopReason: "aborted" }));
-    const onRetryScheduled = vi.fn();
-    const res = await retryAssistantCall(produce, enabled, undefined, { onRetryScheduled });
-    assert.equal(res.stopReason, "aborted");
-    assert.equal(produce.mock.calls.length, 1);
-    assert.equal(onRetryScheduled.mock.calls.length, 0);
-  });
-
-  test("does not retry a non-retryable error (quota/billing)", async () => {
-    const produce = vi.fn(async () => errorMessage("insufficient_quota"));
+  test.each([
+    {
+      name: "an aborted message",
+      message: fauxAssistantMessage("", { stopReason: "aborted" }),
+      policy: enabled,
+      stopReason: "aborted",
+    },
+    {
+      name: "a non-retryable error (quota/billing)",
+      message: errorMessage("insufficient_quota"),
+      policy: enabled,
+      stopReason: "error",
+    },
+    {
+      name: "a transient error when policy is disabled",
+      message: errorMessage("terminated"),
+      policy: disabled,
+      stopReason: "error",
+    },
+  ])("does not retry $name", async (input) => {
+    const produce = vi.fn(async () => input.message);
     const onRetryScheduled = vi.fn();
     const onRetryFinished = vi.fn();
-    const res = await retryAssistantCall(produce, enabled, undefined, {
+    const res = await retryAssistantCall(produce, input.policy, undefined, {
       onRetryScheduled,
       onRetryFinished,
     });
-    assert.equal(res.stopReason, "error");
+    assert.equal(res.stopReason, input.stopReason);
     assert.equal(produce.mock.calls.length, 1);
     assert.equal(onRetryScheduled.mock.calls.length, 0);
     assert.equal(onRetryFinished.mock.calls.length, 0);
@@ -190,20 +222,6 @@ describe("retryAssistantCall", () => {
     assert.equal(res.stopReason, "aborted");
     assert.equal(produce.mock.calls.length, 2);
     assert.deepEqual(onRetryFinished.mock.calls.at(-1), [false, 1]);
-  });
-
-  test("does not retry when policy is disabled", async () => {
-    const produce = vi.fn(async () => errorMessage("terminated"));
-    const onRetryScheduled = vi.fn();
-    const onRetryFinished = vi.fn();
-    const res = await retryAssistantCall(produce, disabled, undefined, {
-      onRetryScheduled,
-      onRetryFinished,
-    });
-    assert.equal(res.stopReason, "error");
-    assert.equal(produce.mock.calls.length, 1);
-    assert.equal(onRetryScheduled.mock.calls.length, 0);
-    assert.equal(onRetryFinished.mock.calls.length, 0);
   });
 
   test("emits onRetryAttemptStart after backoff before each retried call, then onRetryFinished(true)", async () => {

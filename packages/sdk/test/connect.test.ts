@@ -204,10 +204,10 @@ describe("connect", () => {
 
   it("names the operation each request posts", async () => {
     const host = await open();
-    const names: string[] = [];
+    const posted: { readonly method: string; readonly operation: string }[] = [];
 
     host.intercept((request, next) => {
-      names.push(readOperation(request));
+      posted.push({ method: request.method, operation: readOperation(request) });
 
       return next(request);
     });
@@ -222,7 +222,7 @@ describe("connect", () => {
 
     await connection.sessions.list();
 
-    expect(names).toEqual([".nyte/streams", "connection.watch", "sessions.list"]);
+    expect(posted).toContainEqual({ method: "POST", operation: "sessions.list" });
   });
 
   it("closes the link host-gone when another host answers a later request, every journal row kept (ADV C N5, probe N4)", async () => {

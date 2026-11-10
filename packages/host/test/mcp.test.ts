@@ -364,7 +364,7 @@ it("stops a sign-in at once when its steps end, so the next one can start", asyn
     new Promise((resolve) => setTimeout(() => resolve("still running"), 300)),
   ]);
 
-  expect(next).not.toMatchObject({ value: { reason: "A sign-in to slow is already running." } });
+  expect(next).toBe("still running");
   await second.return?.();
   await hub.close();
   silent.closeAllConnections();

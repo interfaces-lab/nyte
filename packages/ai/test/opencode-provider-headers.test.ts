@@ -1,7 +1,15 @@
 import { normalizeContext } from "@nyte-ai/schema/model";
 import { describe, expect, it } from "vitest";
 import { withOpenCodeSessionHeader } from "../src/providers/opencode-headers.ts";
-import type { Api, AssistantMessage, Model, ProviderStreams, StreamOptions } from "../src/types.ts";
+import type {
+  Api,
+  AssistantMessage,
+  Model,
+  ProviderHeaders,
+  ProviderStreams,
+  SimpleStreamOptions,
+  StreamOptions,
+} from "../src/types.ts";
 import { AssistantMessageEventStream } from "../src/utils/event-stream.ts";
 
 const model: Model<Api> = {
@@ -57,29 +65,43 @@ function recordingStreams(capture: (options: StreamOptions | undefined) => void)
 }
 
 describe("OpenCode provider headers", () => {
-  it.each(["stream", "streamSimple"] as const)(
-    "maps sessionId for %s requests even without cache retention",
-    (method) => {
-      let captured: StreamOptions | undefined;
-      const streams = withOpenCodeSessionHeader(
-        recordingStreams((options) => {
-          captured = options;
-        }),
-      );
-
-      streams[method](model, context, { sessionId: "conversation-1", cacheRetention: "none" });
-
-      expect(captured?.headers).toEqual({ "x-opencode-session": "conversation-1" });
-    },
-  );
-
-  it.each([
+  it.each<{
+    name: string;
+    method: "stream" | "streamSimple";
+    options: SimpleStreamOptions;
+    expected: ProviderHeaders;
+  }>([
     {
-      headers: { "X-OpenCode-Session": "caller-value" },
+      name: "maps sessionId for stream requests even without cache retention",
+      method: "stream",
+      options: { sessionId: "conversation-1", cacheRetention: "none" },
+      expected: { "x-opencode-session": "conversation-1" },
+    },
+    {
+      name: "maps sessionId for streamSimple requests even without cache retention",
+      method: "streamSimple",
+      options: { sessionId: "conversation-1", cacheRetention: "none" },
+      expected: { "x-opencode-session": "conversation-1" },
+    },
+    {
+      name: "preserves a case-insensitive caller override",
+      method: "streamSimple",
+      options: { sessionId: "generated-value", headers: { "X-OpenCode-Session": "caller-value" } },
       expected: { "X-OpenCode-Session": "caller-value" },
     },
-    { headers: { "X-OpenCode-Session": null }, expected: { "X-OpenCode-Session": null } },
-  ] as const)("preserves a case-insensitive caller override", ({ headers, expected }) => {
+    {
+      name: "preserves a case-insensitive caller removal",
+      method: "streamSimple",
+      options: { sessionId: "generated-value", headers: { "X-OpenCode-Session": null } },
+      expected: { "X-OpenCode-Session": null },
+    },
+    {
+      name: "does not fabricate a session header when sessionId is absent",
+      method: "streamSimple",
+      options: { headers: { "x-custom": "value" } },
+      expected: { "x-custom": "value" },
+    },
+  ])("$name", (input) => {
     let captured: StreamOptions | undefined;
     const streams = withOpenCodeSessionHeader(
       recordingStreams((options) => {
@@ -87,21 +109,8 @@ describe("OpenCode provider headers", () => {
       }),
     );
 
-    streams.streamSimple(model, context, { sessionId: "generated-value", headers });
+    streams[input.method](model, context, input.options);
 
-    expect(captured?.headers).toEqual(expected);
-  });
-
-  it("does not fabricate a session header when sessionId is absent", () => {
-    let captured: StreamOptions | undefined;
-    const streams = withOpenCodeSessionHeader(
-      recordingStreams((options) => {
-        captured = options;
-      }),
-    );
-
-    streams.streamSimple(model, context, { headers: { "x-custom": "value" } });
-
-    expect(captured?.headers).toEqual({ "x-custom": "value" });
+    expect(captured?.headers).toEqual(input.expected);
   });
 });

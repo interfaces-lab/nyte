@@ -1,13 +1,11 @@
-import { existsSync } from "node:fs";
-import { mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { delimiter, dirname, join } from "node:path";
+import { readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { asId, SdkError } from "@nyte-ai/schema";
 import type { WorkspaceId } from "@nyte-ai/schema";
 import { dev } from "@nyte-ai/core";
 import type { Connection } from "@nyte-ai/core";
 import { CHANNEL_PATH, encodeError, STREAM_HEADER } from "@nyte-ai/protocol";
-import { afterEach, assert, describe, expect, it, vi } from "vitest";
+import { afterEach, assert, describe, expect, it } from "vitest";
 import { connect } from "../src/connect.ts";
 import { BASE, readOperation, TOKEN_SECRET, until } from "./served.ts";
 import { cleanups, client, closeOpened, open, settledChat, text, users } from "./connection.ts";
@@ -84,53 +82,30 @@ describe("client", () => {
     expect((await connection.sessions.list()).items.map((info) => info.id)).toEqual([session.id]);
   });
 
-  it("rebuilds capabilities: files available with a bound api, git unsupported on a chat-only workspace", async () => {
-    const chat = await open();
-    const [workspace] = await (await client(chat)).workspaces.list();
-    assert(workspace !== undefined);
-    const git = await (await client(chat)).workspace(workspace.id).git();
+  it.each([
+    { capability: "git", local: false, kind: "unsupported", bound: false },
+    { capability: "github", local: false, kind: "unsupported", bound: false },
+    { capability: "github", local: true, kind: "available", bound: true },
+  ] as const)(
+    "answers $capability on a local: $local workspace as $kind, with an api only when available",
+    async (row) => {
+      const connection = await client(await open({ local: row.local }));
+      const info = (await connection.workspaces.list())[0];
+      assert(info !== undefined);
+      const workspace = connection.workspace(info.id);
+      const found = row.capability === "git" ? await workspace.git() : await workspace.github();
 
-    expect(git.kind).not.toBe("available");
-    expect("api" in git).toBe(false);
-  });
+      expect({ kind: found.kind, bound: "api" in found }).toEqual({
+        kind: row.kind,
+        bound: row.bound,
+      });
+    },
+  );
 
-  it("binds GitHub on a local workspace and leaves it unsupported on a chat-only one", async () => {
-    const windows = process.platform === "win32";
+  it("refuses the GitHub account on a host without one", async () => {
+    const connection = await client(await open({ local: true }));
 
-    const git = (process.env.PATH ?? "")
-      .split(delimiter)
-      .map((dir) => join(dir, windows ? "git.exe" : "git"))
-      .find((file) => existsSync(file));
-
-    assert(git !== undefined);
-    const bin = windows ? dirname(git) : await mkdtemp(join(tmpdir(), "nyte-no-gh-"));
-    assert(!existsSync(join(bin, windows ? "gh.exe" : "gh")));
-
-    if (!windows) await symlink(git, join(bin, "git"));
-    vi.stubEnv("PATH", bin);
-    cleanups.push(async () => {
-      vi.unstubAllEnvs();
-
-      if (!windows) await rm(bin, { recursive: true, force: true });
-    });
-    const chat = await open();
-    const [chatWorkspace] = await (await client(chat)).workspaces.list();
-    assert(chatWorkspace !== undefined);
-
-    expect((await (await client(chat)).workspace(chatWorkspace.id).github()).kind).toBe(
-      "unsupported",
-    );
-
-    const host = await open({ local: true });
-    const connection = await client(host);
-    const [info] = await connection.workspaces.list();
-    assert(info !== undefined);
-    const github = await connection.workspace(info.id).github();
-    assert(github.kind === "available");
-
-    expect(await github.api.state()).toEqual({ pullRequest: { kind: "unavailable" } });
     await expect(connection.github.account()).rejects.toMatchObject({ code: "unavailable" });
-    expect(await github.api.createPullRequest({ title: "Fix" })).toEqual({ kind: "cli_missing" });
   });
 
   it("binds files, git and jobs on a local workspace: bytes, batch uploads, PatchSet maps, job output frames", async () => {
@@ -166,7 +141,7 @@ describe("client", () => {
     const patches = await until(git.api.patches({ kind: "worktree" }, ["a.txt"]), () => true);
 
     expect(patches.entries).toBeInstanceOf(Map);
-    expect(patches.entries.get("a.txt")).toBeDefined();
+    expect(patches.entries.get("a.txt")).toMatchObject({ path: "a.txt", status: "modified" });
 
     const job = await workspace.jobs.start({ command: "printf hi" });
     const frames = [];

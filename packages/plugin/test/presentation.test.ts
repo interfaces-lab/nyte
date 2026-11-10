@@ -41,44 +41,49 @@ function cutOff(failure: "aborted" | "network"): PartStatus {
   return { kind: "failed", run: asId("run"), failure: { class: failure, message: "" } };
 }
 
-it("reads an open call cut off by its run as stopped or interrupted, never failed", () => {
-  expect(toolStatus({ state: running(READ), status: cutOff("aborted") })).toEqual({
-    tense: "none",
-    tone: "stopped",
-    word: "Stopped",
-  });
-
-  expect(toolStatus({ state: running(READ), status: cutOff("network") })).toEqual({
-    tense: "none",
-    tone: "stopped",
-    word: "Interrupted",
-  });
-});
-
-it("reads a settled call by its outcome whatever happened to the run", () => {
-  const ok = settled({ kind: "ok", content: [], output: null, parts: [] });
-
-  expect(toolStatus({ state: ok, status: cutOff("network") }).tone).toBe("success");
-  expect(toolStatus({ state: settled({ kind: "failed", message: "boom" }), status: live })).toEqual(
-    { tense: "none", tone: "failure", word: "Failed" },
-  );
-  expect(
-    toolStatus({ state: settled({ kind: "rejected", reason: "no" }), status: live }).word,
-  ).toBe("Blocked");
-});
-
-it("asks for input while the run waits on the part", () => {
-  const status: PartStatus = {
-    kind: "waiting",
-    run: asId("run"),
-    on: { kind: "part", part: asId("part") },
-  };
-
-  expect(toolStatus({ state: running(READ), status })).toEqual({
-    tense: "running",
-    tone: "attention",
-    word: "Needs input",
-  });
+it.each([
+  {
+    name: "an open call whose run was aborted as stopped",
+    state: running(READ),
+    status: cutOff("aborted"),
+    expected: { tense: "none", tone: "stopped", word: "Stopped" },
+  },
+  {
+    name: "an open call whose run lost the network as interrupted",
+    state: running(READ),
+    status: cutOff("network"),
+    expected: { tense: "none", tone: "stopped", word: "Interrupted" },
+  },
+  {
+    name: "a settled call by its outcome even when the run was cut off",
+    state: settled({ kind: "ok", content: [], output: null, parts: [] }),
+    status: cutOff("network"),
+    expected: { tone: "success" },
+  },
+  {
+    name: "a failed call as failed",
+    state: settled({ kind: "failed", message: "boom" }),
+    status: live,
+    expected: { tense: "none", tone: "failure", word: "Failed" },
+  },
+  {
+    name: "a rejected call as blocked",
+    state: settled({ kind: "rejected", reason: "no" }),
+    status: live,
+    expected: { word: "Blocked" },
+  },
+  {
+    name: "an open call the run waits on as needing input",
+    state: running(READ),
+    status: {
+      kind: "waiting",
+      run: asId("run"),
+      on: { kind: "part", part: asId("part") },
+    } satisfies PartStatus,
+    expected: { tense: "running", tone: "attention", word: "Needs input" },
+  },
+])("reads $name", (row) => {
+  expect(toolStatus({ state: row.state, status: row.status })).toMatchObject(row.expected);
 });
 
 it("joins a settled call's text content and skips empty text", () => {

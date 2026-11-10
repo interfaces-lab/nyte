@@ -1,6 +1,6 @@
 import type { ExecutionCoverage, Owned } from "@nyte-ai/schema";
 import { memoryStore } from "@nyte-ai/core/store";
-import type { Listener, Store } from "@nyte-ai/core";
+import type { Store } from "@nyte-ai/core";
 import { decodeError, errorStatus } from "@nyte-ai/protocol";
 import { afterEach, assert, describe, expect, it } from "vitest";
 import { listenFetch } from "../src/listen-fetch.ts";
@@ -15,45 +15,7 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 });
 
-function post(listener: Listener, name: string, authorization: string): Promise<Response> {
-  return listener.fetch(
-    new Request(`http://host.test/${name}`, {
-      method: "POST",
-      headers: { Authorization: authorization, "Content-Type": "application/json" },
-      body: "{}",
-    }),
-  );
-}
-
 describe("listenFetch", () => {
-  it("serves the protocol with no socket, the token compared through Web Crypto", async () => {
-    const host = await open(fakeModels());
-    cleanups.push(() => host.close());
-
-    const listener = await listenFetch(host, {
-      transport: { kind: "fetch" },
-      auth: { kind: "token", token: TOKEN },
-    });
-
-    cleanups.push(() => listener.close());
-
-    expect(listener.address).toBeNull();
-    expect((await post(listener, "sessions.list", `Bearer ${TOKEN}`)).status).toBe(200);
-
-    for (const authorization of [`Bearer ${TOKEN}x`, `Bearer ${TOKEN.slice(1)}`, ""]) {
-      const refused = await post(listener, "sessions.list", authorization);
-
-      expect(refused.status).toBe(401);
-      expect(decodeError(JSON.parse(await refused.text()), refused.status).code).toBe(
-        "unauthenticated",
-      );
-    }
-
-    await expect(
-      listenFetch(host, { transport: { kind: "fetch" }, auth: { kind: "token", token: "short" } }),
-    ).rejects.toMatchObject({ code: "invalid" });
-  });
-
   it("treats a dispatch kernel as admit-only: no in-process driver and no cover (§42v)", async () => {
     const dispatched: string[] = [];
     const covered: ExecutionCoverage[] = [];

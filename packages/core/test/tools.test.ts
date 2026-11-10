@@ -368,10 +368,21 @@ describe("tool calls", () => {
     await step;
   });
 
-  it("settles stopped when the run's signal aborts or the part's stop action runs", async () => {
+  it("settles stopped when the run's signal aborts or the part's stop action runs, a stop wired built-in whatever else registers its kind", async () => {
     const started: string[] = [];
     const slow = slowTool(started);
     const { kernel, host } = await setup({ plugins: [toolPlugin([slow])] });
+    const wired = kernel.partDefinitions.get(tool.kind);
+
+    expect(wired?.owner).toBeNull();
+    expect(wired?.definition).not.toBe(tool);
+    expect(wired?.definition).toHaveProperty("onAction");
+
+    for (const definition of [definePart({ ...tool }), tool])
+      kernel.partDefinitions.register(definition, "parts")();
+
+    expect(kernel.partDefinitions.get(tool.kind)).toBe(wired);
+
     const { session } = await host.sessions.start({ content: "Hi." });
     const run = await liveRun(kernel, session.id);
     const controller = new AbortController();
@@ -406,41 +417,7 @@ describe("tool calls", () => {
     });
     expect(await stopped).toEqual({ kind: "stopped" });
     expect((await toolPart(session, "s2")).state).toMatchObject({ outcome: { kind: "stopped" } });
-  });
-
-  it("keeps the stop-wired tool built-in whatever else registers its kind", async () => {
-    const started: string[] = [];
-    const { kernel, host } = await setup({ plugins: [toolPlugin([slowTool(started)])] });
-    const wired = kernel.partDefinitions.get(tool.kind);
-
-    expect(wired?.owner).toBeNull();
-    expect(wired?.definition).not.toBe(tool);
-    expect(wired?.definition).toHaveProperty("onAction");
-
-    for (const definition of [definePart({ ...tool }), tool])
-      kernel.partDefinitions.register(definition, "parts")();
-
-    expect(kernel.partDefinitions.get(tool.kind)).toBe(wired);
-
-    const { session } = await host.sessions.start({ content: "Hi." });
-    const run = await liveRun(kernel, session.id);
-
-    const running = call(kernel, {
-      session: session.id,
-      run,
-      call: "t1",
-      name: "slow",
-      args: { text: "x" },
-    });
-
-    await until(() => (started.includes("t1") ? true : undefined));
-
-    expect(await session.part(asId("t1")).act("stop", {})).toEqual({
-      kind: "ok",
-      output: undefined,
-    });
-    expect(await running).toEqual({ kind: "stopped" });
-    expect((await readCall(kernel, session.id, "t1")).result).toEqual({ kind: "stopped" });
+    expect((await readCall(kernel, session.id, "s2")).result).toEqual({ kind: "stopped" });
   });
 
   it("opens a tool part only with its step record, so a crash between them leaves no part a re-run cannot find (bench durable-tool-replay)", async () => {

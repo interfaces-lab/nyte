@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { asId } from "@nyte-ai/schema";
 import { assert, describe, expect, it } from "vitest";
 import { createHost } from "../src/api/connection.ts";
@@ -195,29 +194,6 @@ describe("resources", () => {
     expect(disk.watchers.size).toBe(2);
     expect(await session.remove()).toEqual({ kind: "removed" });
     expect(disk.watchers.size).toBe(0);
-  });
-
-  it("keeps scans, the home's files and file batches on the kernel's state, in no module table (audit D4-D5 #6, D6 #2)", async () => {
-    const { kernel, host, workspace } = await world({ disk: seeded(), home: "/home/ada" });
-    const { session } = await host.sessions.start({ workspace, content: "Hi." });
-    const files = await host.workspace(workspace).files();
-    assert(files.kind === "available");
-    const receipt = await files.api.batch().put({ path: "a.md", contents: "a" }).apply();
-
-    await scanResources(kernel, session.id);
-    expect(kernel.workspaceState.scans.has(session.id)).toBe(true);
-    expect(kernel.workspaceState.home).not.toBeNull();
-    expect(kernel.workspaceState.held.get(receipt.id)?.receipt).toBe(receipt);
-
-    for (const file of [
-      "env/workspaces.ts",
-      "extend/resources.ts",
-      "engine/batches.ts",
-      "env/environment.ts",
-    ])
-      expect(readFileSync(new URL(`../src/${file}`, import.meta.url), "utf8")).not.toMatch(
-        /new WeakMap<Kernel/,
-      );
   });
 
   it("gives a chat-only workspace, whose provider serves no files, no resources and a successful activation (§59)", async () => {

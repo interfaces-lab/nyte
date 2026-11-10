@@ -391,8 +391,7 @@ describe("OpenAI Codex OAuth", () => {
     );
   });
 
-  test("does not write token refresh failures to stderr", async () => {
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+  test("reports the status and the provider's message when a token refresh fails", async () => {
     stubFetch(async () => {
       return new Response(
         JSON.stringify({
@@ -421,7 +420,6 @@ describe("OpenAI Codex OAuth", () => {
       ),
       /OpenAI Codex token refresh failed \(401\).*Could not validate your token/,
     );
-    assert.equal(consoleError.mock.calls.length, 0);
   });
 
   test("falls back to the pasted redirect URL when the fixed callback port, registered with OpenAI and maybe held by the Codex CLI, is taken", async () => {

@@ -239,33 +239,6 @@ describe("plugin reload (D4)", () => {
     expect(first.kernel.plugins.host.map((plugin) => plugin.id)).toEqual(["next"]);
   });
 
-  it("E E7 (runtime side) + D D13: a failed attach rejects ready with its own error and shows failed; no plugin activates on a null env", async () => {
-    const reads: unknown[] = [];
-
-    let failing = false;
-
-    const { kernel, host } = await controlled(async () => {
-      if (failing) throw new Error("The disk is gone.");
-
-      return env;
-    });
-
-    kernel.plugins.host = [{ id: "reader", activate: (api) => void reads.push(api.env) }];
-
-    const { session } = await host.sessions.start({ content: "Hi." });
-    failing = true;
-    reads.splice(0);
-    await kernel.environments.detach(session.id);
-    await Promise.allSettled([kernel.plugins.reload(session.id)]);
-
-    await expect(kernel.plugins.runtime(session.id).ready).rejects.toThrow("The disk is gone.");
-    expect((await session.info()).activation).toEqual({
-      kind: "failed",
-      message: "The disk is gone.",
-    });
-    expect(reads).toEqual([]);
-  });
-
   it("3.5 / E E6 (P4): an unknown session's ready rejects unknown and leaves no runtime", async () => {
     const { kernel } = await setup();
     const ids = Array.from({ length: 50 }, () => asId<"session">(crypto.randomUUID()));

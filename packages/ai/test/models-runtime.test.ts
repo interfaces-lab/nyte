@@ -177,7 +177,7 @@ describe("Models runtime", () => {
 
     expect(models.getModels().map((m) => m.id)).toEqual(["m1"]);
     expect(models.getModels("broken")).toEqual([]);
-    expect(() => models.getProvider("broken")?.getModels()).toThrow("boom");
+    expect(models.getProviders().map((provider) => provider.id)).toEqual(["broken", "ok"]);
   });
 
   it("refresh() updates every configured dynamic provider and reports failures", async () => {

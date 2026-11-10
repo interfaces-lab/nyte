@@ -202,17 +202,6 @@ describe("localFiles", () => {
     expect(await files.remove("r.txt")).toEqual({ kind: "stale", current: null });
   });
 
-  it("leaves batch and upload to core", async () => {
-    const files = localFiles(await folder());
-
-    await expect(files.batch().put({ path: "a", contents: "a" }).apply()).rejects.toMatchObject({
-      code: "unavailable",
-    });
-    await expect(files.upload((async function* () {})())).rejects.toMatchObject({
-      code: "unavailable",
-    });
-  });
-
   it("scans in pages, honouring .gitignore unless asked, and stops at the limit", async () => {
     const root = await folder();
     await writeFile(join(root, ".gitignore"), "ignored/\n*.log\n");

@@ -289,27 +289,6 @@ describe("environment tools", () => {
     expect(readText(await call("bash", { command: "false" }))).toBe("no\n[exit code 1]");
   });
 
-  it("publishes a running shell call's output tail as its part's progress", async () => {
-    const { kernel, session, provider } = await sessionFiles({ plugins: [environmentPlugin] });
-    const call = await tools(kernel, session.id);
-    const progress: (string | undefined)[] = [];
-
-    kernel.bus.subscribe(session.id, (event) => {
-      if (event.kind === "patch" && "progress" in event && event.part === "call-1")
-        progress.push(event.progress.text);
-    });
-    provider.script = (process) => {
-      process.emit("one\n");
-      void until(() => (progress.length > 0 ? true : undefined)).then(() => {
-        process.emit("two\n");
-        process.exit(0);
-      });
-    };
-
-    expect(readText(await call("bash", { command: "count" }))).toBe("one\ntwo\n[exit code 0]");
-    expect(progress).toEqual(["one", "one\ntwo"]);
-  });
-
   it("runs a shell command as a job of its session and call, listed until it exits, with no exit report", async () => {
     const { kernel, host, workspace, session, provider } = await sessionFiles({
       plugins: [environmentPlugin],
@@ -442,15 +421,12 @@ describe("environment tools", () => {
   it("names the workspace root in the cwd prompt section", async () => {
     const { kernel, session } = await sessionFiles({ plugins: [environmentPlugin] });
 
-    expect(kernel.plugins.runtime(session.id).registries.prompt.list()).toEqual(
-      expect.arrayContaining([
-        {
-          id: "cwd",
-          order: 100,
-          text: "The workspace root is /work/project. Tool paths are relative to it.",
-        },
-      ]),
-    );
+    const cwd = kernel.plugins
+      .runtime(session.id)
+      .registries.prompt.list()
+      .find((section) => section.id === "cwd");
+
+    expect(cwd?.text).toContain("/work/project.");
   });
 });
 
@@ -486,62 +462,73 @@ describe("shell progress", () => {
     return { session, running, process, progress, at };
   }
 
-  it("publishes the first output at once, then at most one tail per 80 ms while output keeps coming", async () => {
-    const { running, process, progress, at } = await shell();
+  it.each([
+    {
+      name: "publishes the first output at once, then at most one tail per 80 ms while output keeps coming",
+      steps: [
+        { emit: ["a\n"], at: 0 },
+        { emit: ["b\n", "c\n"], at: 30 },
+        { emit: ["d\n"], at: 100 },
+        { emit: ["e\n"], at: 300 },
+      ],
+      output: "a\nb\nc\nd\ne\n[exit code 0]",
+      published: [
+        [0, "a"],
+        [80, "a\nb\nc\nd"],
+        [160, "a\nb\nc\nd\ne"],
+      ],
+    },
+    {
+      name: "publishes sparse output as it arrives",
+      steps: [
+        { emit: ["one\n"], at: 100 },
+        { emit: ["two\n"], at: 250 },
+        { emit: ["three\n"], at: 400 },
+      ],
+      output: "one\ntwo\nthree\n[exit code 0]",
+      published: [
+        [0, "one"],
+        [100, "one\ntwo"],
+        [250, "one\ntwo\nthree"],
+      ],
+    },
+    {
+      name: "publishes pending output when the command exits between updates",
+      steps: [
+        { emit: ["a\n"], at: 10 },
+        { emit: ["b\n"], at: 20 },
+      ],
+      output: "a\nb\n[exit code 0]",
+      published: [
+        [0, "a"],
+        [20, "a\nb"],
+      ],
+    },
+    {
+      name: "shows a character split across chunks only once it is whole",
+      steps: [
+        { emit: [Uint8Array.of(0x61, 0xe2)], at: 10 },
+        { emit: [Uint8Array.of(0x82, 0xac, 0x0a)], at: 100 },
+      ],
+      output: "a\u20ac\n[exit code 0]",
+      published: [
+        [0, "a"],
+        [80, "a\u20ac"],
+      ],
+    },
+  ])("$name, and nothing after it exits", async (row) => {
+    const shelled = await shell();
 
-    process.emit("a\n");
-    await at(0);
-    process.emit("b\n");
-    process.emit("c\n");
-    await at(30);
-    process.emit("d\n");
-    await at(100);
-    process.emit("e\n");
-    await at(300);
-    process.exit(0);
+    for (const step of row.steps) {
+      for (const chunk of step.emit) shelled.process.emit(chunk);
+      await shelled.at(step.at);
+    }
 
-    expect(readText(await running)).toBe("a\nb\nc\nd\ne\n[exit code 0]");
-    expect(progress).toEqual([
-      [0, "a"],
-      [80, "a\nb\nc\nd"],
-      [160, "a\nb\nc\nd\ne"],
-    ]);
-  });
+    shelled.process.exit(0);
 
-  it("publishes sparse output as it arrives", async () => {
-    const { running, process, progress, at } = await shell();
-
-    process.emit("one\n");
-    await at(100);
-    process.emit("two\n");
-    await at(250);
-    process.emit("three\n");
-    await at(400);
-    process.exit(0);
-
-    expect(readText(await running)).toBe("one\ntwo\nthree\n[exit code 0]");
-    expect(progress).toEqual([
-      [0, "one"],
-      [100, "one\ntwo"],
-      [250, "one\ntwo\nthree"],
-    ]);
-  });
-
-  it("publishes pending output when the command exits between updates, and nothing after", async () => {
-    const { running, process, progress, at } = await shell();
-
-    process.emit("a\n");
-    await at(10);
-    process.emit("b\n");
-    await at(20);
-    process.exit(0);
-
-    expect(readText(await running)).toBe("a\nb\n[exit code 0]");
-    await at(200);
-    expect(progress).toEqual([
-      [0, "a"],
-      [20, "a\nb"],
-    ]);
+    expect(readText(await shelled.running)).toBe(row.output);
+    await vi.advanceTimersByTimeAsync(200);
+    expect(shelled.progress).toEqual(row.published);
   });
 
   it("publishes pending output when a stopped command ends, and nothing after the call settles", async () => {
@@ -578,22 +565,6 @@ describe("shell progress", () => {
     expect(progress).toEqual([
       [0, "watching"],
       [20, "watching\nchanged"],
-    ]);
-  });
-
-  it("shows a character split across chunks only once it is whole", async () => {
-    const { running, process, progress, at } = await shell();
-
-    process.emit(Uint8Array.of(0x61, 0xe2));
-    await at(10);
-    process.emit(Uint8Array.of(0x82, 0xac, 0x0a));
-    await at(100);
-    process.exit(0);
-
-    expect(readText(await running)).toBe("a\u20ac\n[exit code 0]");
-    expect(progress).toEqual([
-      [0, "a"],
-      [80, "a\u20ac"],
     ]);
   });
 });

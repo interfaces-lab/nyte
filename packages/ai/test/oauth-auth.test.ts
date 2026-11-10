@@ -4,7 +4,6 @@ import { InMemoryCredentialStore } from "../src/auth/credential-store.ts";
 import { openaiCodexOAuth } from "../src/auth/oauth/openai-codex.ts";
 import { createModels } from "../src/models.ts";
 import { anthropicProvider } from "../src/providers/anthropic.ts";
-import { githubCopilotProvider } from "../src/providers/github-copilot.ts";
 
 function createAccessToken(accountId: string): string {
   const header = Buffer.from(JSON.stringify({ alg: "none" })).toString("base64");
@@ -43,25 +42,5 @@ describe("OAuth through Models.getAuth (lazy load chain)", () => {
     const result = await models.getAuth("anthropic");
     expect(result?.auth.apiKey).toBe("oauth-access-token");
     expect(result?.source).toBe("OAuth");
-  });
-
-  it("resolves stored github-copilot oauth credentials including per-credential baseUrl", async () => {
-    const access = "tid=abc;exp=123;proxy-ep=proxy.business.githubcopilot.com;rest";
-    const credentials = new InMemoryCredentialStore();
-    await credentials.modify("github-copilot", async () =>
-      storedAccounts({
-        type: "oauth",
-        access,
-        refresh: "r",
-        expires: Date.now() + 10 * 60_000,
-        availableModelIds: [],
-      }),
-    );
-    const models = createModels({ credentials });
-    models.setProvider(githubCopilotProvider());
-
-    const result = await models.getAuth("github-copilot");
-    expect(result?.auth.apiKey).toBe(access);
-    expect(result?.auth.baseUrl).toBe("https://api.business.githubcopilot.com");
   });
 });

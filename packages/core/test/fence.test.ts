@@ -260,49 +260,6 @@ describe("the stop fence (ADV round 2)", () => {
 });
 
 describe("move receipts and summary guards (ADV F-2)", () => {
-  it("settles a move whose process died after its set, when the move is replayed (F-2 1, N1)", async () => {
-    const memory = await memoryStore().open();
-    let crashed = false;
-
-    const store = hooked(memory, async (updates, inner) => {
-      if (crashed) throw new Error("The host crashed.");
-      const outcome = await inner.set(updates);
-
-      crashed = updates
-        .flatMap((update) => update.events ?? [])
-        .some((event) => event.kind === "head" && event.reason === "moved");
-
-      return outcome;
-    });
-
-    const a = await setup({ store, execution: { kind: "admit-only" } });
-    const { session, receipt: base } = await a.host.sessions.start({ content: "Base." });
-    await landing(a.kernel, session.id, main, [base.message], null);
-    const next = await session.send("Next.");
-    await landing(a.kernel, session.id, main, [next.message], null);
-    const { tip, nodes } = await session.tree();
-    const id = asId<"receipt">("crash");
-
-    await expect(move(a.kernel, session.id, main, tip, { id })).rejects.toThrow(
-      "The host crashed.",
-    );
-
-    const b = await setup({ store: memory, execution: { kind: "admit-only" } });
-    const replay = await move(b.kernel, session.id, main, tip, { id });
-    const landed = await memory.refs.get(headRef(session.id, main));
-    const moved = {
-      kind: "moved",
-      revision: landed?.revision,
-      position: { kind: "commit", id: nodes[0]?.id },
-      summary: null,
-      handback: "Next.",
-    };
-
-    expect(await replay.status()).toEqual({ kind: "settled", outcome: moved });
-    expect(await replay.settled()).toEqual(moved);
-    expect(landed?.target).toBe(nodes[0]?.id);
-  });
-
   it("refuses a summary move whose head got pending input while it summarised (F-2 2, N2)", async () => {
     const entered = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();

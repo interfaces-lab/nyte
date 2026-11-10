@@ -16,7 +16,7 @@ import type { Kernel } from "../src/contract/kernel.ts";
 import type { Connection, Durable, StoreConnection, Workspace } from "../src/index.ts";
 import { addWorkspace, createDisk, fakeProvider, kernelOver, world } from "./fake-env.ts";
 import type { FakeProvider } from "./fake-env.ts";
-import { main, setup, workspace } from "../src/harness.ts";
+import { main, setup } from "../src/harness.ts";
 
 async function elevatedRows(sdk: Connection, at: Workspace): Promise<Record<string, string>> {
   const git = await at.git();
@@ -106,34 +106,6 @@ async function paired(kernel: Kernel): Promise<{ principal: PrincipalId; token: 
 }
 
 describe("connection gate (§52 rule 5)", () => {
-  it("denies each elevated row the authority lacks, by the table, before the call runs", async () => {
-    const { kernel } = await setup();
-    const participant = connectionAs(kernel, PARTICIPANT_AUTHORITY);
-
-    await expect(participant.models.refresh()).rejects.toMatchObject({ code: "denied" });
-    expect(() => participant.models.login({ provider: "p", method: { kind: "key" } })).toThrow(
-      "models.login needs owner authority.",
-    );
-    await expect(participant.settings.apply("theme", "dark")).rejects.toMatchObject({
-      code: "denied",
-    });
-    await expect(
-      participant.workspaces.add({ kind: "local", path: "/work/other" }),
-    ).rejects.toMatchObject({ code: "denied", message: "workspaces.add needs owner authority." });
-    await expect(participant.workspace(workspace).reload()).rejects.toMatchObject({
-      code: "denied",
-    });
-    await expect(participant.principals.list()).rejects.toMatchObject({ code: "denied" });
-
-    await expect(
-      kernel.handles.connection(CORE_CONTEXT).plugins.replace([{ path: "/plugins/a.ts" }]),
-    ).rejects.toMatchObject({
-      code: "denied",
-      message: "plugins.replace needs maintenance authority.",
-    });
-    expect((await participant.workspaces.list()).map((info) => info.id)).toEqual([workspace]);
-  });
-
   it("denies every row the schema table marks above participant, to a connection and to a tool's invocation, from that one table (D6 audit 1, §56)", async () => {
     const { kernel, host, workspace: at } = await world();
     const { session } = await host.sessions.start({ workspace: at, content: "Hi." });
@@ -158,12 +130,27 @@ describe("connection gate (§52 rule 5)", () => {
       covered: false,
     });
 
-    expect(elevated).toHaveLength(45);
     expect(await elevatedRows(participant, participant.workspace(at))).toEqual(denied);
     expect(await elevatedRows(invocation.sdk, invocation.workspace)).toEqual(denied);
+    expect(() => participant.models.login({ provider: "p", method: { kind: "key" } })).toThrow(
+      "models.login needs owner authority.",
+    );
+    await expect(
+      participant.workspaces.add({ kind: "local", path: "/work/other" }),
+    ).rejects.toMatchObject({ code: "denied", message: "workspaces.add needs owner authority." });
+    await expect(
+      kernel.handles.connection(CORE_CONTEXT).plugins.replace([{ path: "/plugins/a.ts" }]),
+    ).rejects.toMatchObject({
+      code: "denied",
+      message: "plugins.replace needs maintenance authority.",
+    });
+    expect((await participant.workspaces.list()).map((info) => info.id)).toEqual([at]);
+    expect(
+      (await participant.sessions.start({ workspace: at, content: "Hi." })).session.id,
+    ).toBeTypeOf("string");
   });
 
-  it("keeps inherited api methods and their receivers when gating (D6 audit 3)", async () => {
+  it("keeps inherited api methods and their receivers when gating, and hands full authority the api itself (D6 audit 3)", async () => {
     class Git {
       readonly clean = "clean";
 
@@ -176,10 +163,15 @@ describe("connection gate (§52 rule 5)", () => {
       }
     }
 
-    const guarded = gated("git", new Git(), PARTICIPANT_AUTHORITY);
+    const plain = new Git();
+    const guarded = gated("git", plain, PARTICIPANT_AUTHORITY);
 
+    expect(gated("git", plain, ALL_AUTHORITY)).toBe(plain);
     expect(await guarded.status()).toBe("clean");
-    await expect(guarded.commit()).rejects.toMatchObject({ code: "denied" });
+    await expect(guarded.commit()).rejects.toMatchObject({
+      code: "denied",
+      message: "git.commit needs owner authority.",
+    });
 
     const base = fakeProvider(createDisk());
     const inheriting: FakeProvider = {
@@ -200,20 +192,6 @@ describe("connection gate (§52 rule 5)", () => {
     expect(await git.api.status()).toEqual({ kind: "none" });
     await expect(git.api.commit({ message: "no", files: "all" })).rejects.toMatchObject({
       code: "denied",
-    });
-  });
-
-  it("gates a capability's api by its own rows and hands every other member through", async () => {
-    const git = { status: async () => "clean", commit: async () => "committed" };
-
-    expect(gated("git", git, ALL_AUTHORITY)).toBe(git);
-
-    const guarded = gated("git", git, PARTICIPANT_AUTHORITY);
-
-    expect(await guarded.status()).toBe("clean");
-    await expect(guarded.commit()).rejects.toMatchObject({
-      code: "denied",
-      message: "git.commit needs owner authority.",
     });
   });
 

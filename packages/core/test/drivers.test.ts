@@ -16,15 +16,26 @@ function counting(store: StoreConnection): {
   readonly store: StoreConnection;
   readonly lists: string[];
   readonly sets: string[];
+  readonly pending: Parameters<StoreConnection["sessions"]["pending"]>[0][];
 } {
   const lists: string[] = [];
   const sets: string[] = [];
+  const pending: Parameters<StoreConnection["sessions"]["pending"]>[0][] = [];
 
   return {
     lists,
     sets,
+    pending,
     store: {
       ...store,
+      sessions: {
+        ...store.sessions,
+        pending(input) {
+          pending.push(input);
+
+          return store.sessions.pending(input);
+        },
+      },
       refs: {
         ...store.refs,
         list(prefix) {
@@ -157,8 +168,10 @@ describe("coverage (§42a, §42t)", () => {
     await host.sessions.start({ content: "Hi." });
     recorded.lists.length = 0;
     recorded.sets.length = 0;
+    recorded.pending.length = 0;
     const owned = await host.execution.cover({ kind: "sessions", sessions: [covered.id] });
 
+    expect(recorded.pending).toEqual([{ kind: "call", sessions: [covered.id] }]);
     expect(recorded.lists).toEqual([]);
     expect(recorded.sets).toEqual([]);
     await owned.close();

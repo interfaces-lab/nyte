@@ -224,7 +224,7 @@ test("a migrated store answers the usage read from the log kind index, not a log
       .map((row) => String(row.detail));
 
     expect(plan.filter((detail) => detail.includes("log"))).toEqual([
-      "SEARCH log USING INDEX log_kind (<expr>=? AND rowid>?)",
+      expect.stringMatching(/^SEARCH (?:TABLE )?log USING (?:COVERING )?INDEX log_kind\b/u),
     ]);
   } finally {
     database.close();

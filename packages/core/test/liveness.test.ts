@@ -186,45 +186,6 @@ describe("liveness across instances (D2)", () => {
     expect(woken).toContain(main);
   });
 
-  it("2.1 (E E1): a child's end on an instance holding none of the parent's waits settles the parked call and wakes the parent", async () => {
-    const store = await memoryStore().open();
-    const p = await setup({ store, execution: { kind: "admit-only" } });
-    const dispatched: string[] = [];
-
-    const c = await setup({
-      store,
-      execution: {
-        kind: "dispatch",
-        dispatch: async ({ session, head }) => {
-          dispatched.push(`${session}/${head}`);
-        },
-      },
-    });
-
-    const { session: parent } = await p.host.sessions.start({ content: "Hi." });
-    const { session: child } = await p.host.sessions.start({ parent: parent.id, content: "Hi." });
-    const run = await startRun(p.kernel, child.id, main, { kind: "continuation", from: "wake" });
-    const call: CallId = asId("task");
-
-    expect(
-      await park(p.kernel, parent.id, call, { kind: "run", session: child.id, run: run.id }),
-    ).toEqual({
-      kind: "parked",
-    });
-
-    await endRun(c.kernel, child.id, run.id, completed);
-    await until(() => (dispatched.length > 0 ? true : undefined));
-
-    expect(dispatched).toContain(`${parent.id}/${main}`);
-    expect(await record(store, callRef(parent.id, call), decodeCallRecord)).toMatchObject({
-      waiting: null,
-      waits: [{ kind: "run", run: run.id, end: completed }],
-    });
-    expect((await c.host.session(parent.id).view()).messages.map((entry) => entry.id)).toEqual([
-      parent.id,
-    ]);
-  });
-
   it("2.2 (E E2) + C2: repair settles a wait whose target ended unseen, then reports and wakes the parent head", async () => {
     const store = await memoryStore().open();
     const p = await setup({ store, execution: { kind: "admit-only" } });
@@ -356,46 +317,6 @@ describe("liveness across instances (D2)", () => {
     expect(await session.run(first.input.run.id).settled()).toEqual(completed);
   });
 
-  it("F7 (A F7): revising an input that landed meanwhile edits it instead of throwing stale", async () => {
-    let land: (() => Promise<unknown>) | null = null;
-
-    const { kernel, host } = await setup({
-      execution: { kind: "admit-only" },
-      plugins: [
-        {
-          id: "gate",
-          hooks: {
-            async before_send() {
-              const pending = land;
-              land = null;
-              await pending?.();
-
-              return { action: "continue" };
-            },
-          },
-        },
-      ],
-    });
-
-    const { session, receipt: draft } = await host.sessions.start({ content: "Draft." });
-    land = () => landing(kernel, session.id, main, [draft.message], null);
-    const edited = await session.send("Draft v2.", { replace: draft.message });
-
-    expect(edited.message).not.toBe(draft.message);
-    expect((await session.view()).messages.map((entry) => entry.id)).toEqual([edited.message]);
-  });
-
-  it("F12 (A F12): a stop of a run another instance drives leaves no run entry here", async () => {
-    const store = await memoryStore().open();
-    const a = await setup({ store, execution: { kind: "admit-only" } });
-    const b = await setup({ store, execution: { kind: "admit-only" } });
-    const { session } = await b.host.sessions.start({ content: "Hi." });
-    const run = await startRun(b.kernel, session.id, main, { kind: "continuation", from: "wake" });
-
-    expect(await stopRun(a.kernel, session.id, run.id)).toEqual({ kind: "requested" });
-    expect(a.kernel.runs.signal(run.id)).toBeNull();
-  });
-
   it("5.6 (F F1): a duplicate move with the same id replays the first receipt and moves once", async () => {
     const store = await memoryStore().open();
     const { kernel, host } = await setup({ store, execution: { kind: "admit-only" } });
@@ -447,7 +368,7 @@ describe("liveness across instances (D2)", () => {
     );
   });
 
-  it("audit 1 (2.1): a cold child end offers its outcome to an any([job, run]) wait without judging the job", async () => {
+  it("audit 1 (2.1, E E1): a cold child end offers its outcome to an any([job, run]) wait without judging the job, settling the call and waking the parent without a report", async () => {
     const { kernel, host, provider, workspace } = await world();
     const { session: parent } = await host.sessions.start({ workspace, content: "Hi." });
     const { session: child } = await host.sessions.start({ parent: parent.id, content: "Hi." });
@@ -477,9 +398,12 @@ describe("liveness across instances (D2)", () => {
       waits: [{ kind: "run", run: run.id, end: completed }],
     });
     expect(woken).toContain(`${parent.id}/${main}`);
+    expect((await host.session(parent.id).view()).messages.map((entry) => entry.id)).toEqual([
+      parent.id,
+    ]);
   });
 
-  it("audit 3 (A F7): a revise that finds its target landed runs before_send once", async () => {
+  it("audit 3 (A F7): a revise that finds its target landed edits it under a new id, running before_send once", async () => {
     let landNow: (() => Promise<unknown>) | null = null;
     let seen = 0;
 
@@ -511,12 +435,13 @@ describe("liveness across instances (D2)", () => {
     const edited = await session.send("Fixed", { replace: draft.message });
 
     expect(seen).toBe(1);
+    expect(edited.message).not.toBe(draft.message);
     expect((await session.view()).messages).toMatchObject([
       { id: edited.message, content: "Fixed:1" },
     ]);
   });
 
-  it("audit 4 (A F12): a cold move or edit that fences a run another instance drives leaves no run entry here", async () => {
+  it("audit 4 (A F12): a cold stop, move or edit that fences a run another instance drives leaves no run entry here", async () => {
     const store = await memoryStore().open();
     const a = await setup({ store, execution: { kind: "admit-only" } });
     const b = await setup({ store, execution: { kind: "admit-only" } });
@@ -545,5 +470,13 @@ describe("liveness across instances (D2)", () => {
     await endRun(b.kernel, session.id, edited.id, { kind: "stopped" });
 
     expect(a.kernel.runs.signal(edited.id)).toBeNull();
+
+    const stopped = await startRun(b.kernel, session.id, main, {
+      kind: "continuation",
+      from: "wake",
+    });
+
+    expect(await stopRun(a.kernel, session.id, stopped.id)).toEqual({ kind: "requested" });
+    expect(a.kernel.runs.signal(stopped.id)).toBeNull();
   });
 });

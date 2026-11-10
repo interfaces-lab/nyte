@@ -81,45 +81,45 @@ async function captureAnthropicRequest(input: {
 }
 
 describe("Anthropic eager tool input streaming compatibility", () => {
-  it("sends per-tool eager_input_streaming by default", async () => {
+  it.each([
+    {
+      name: "sends per-tool eager_input_streaming by default",
+      compat: undefined,
+      tools: [tool],
+      beta: null,
+      body: { tools: [{ name: "lookup", eager_input_streaming: true }] },
+      absent: undefined,
+    },
+    {
+      name: "uses the legacy fine-grained tool streaming beta when eager tool input streaming is disabled",
+      compat: { supportsEagerToolInputStreaming: false },
+      tools: [tool],
+      beta: "fine-grained-tool-streaming-2025-05-14",
+      body: { tools: [{ name: "lookup" }] },
+      absent: "tools.0.eager_input_streaming",
+    },
+    {
+      name: "does not send the legacy fine-grained tool streaming beta when there are no tools",
+      compat: { supportsEagerToolInputStreaming: false },
+      tools: undefined,
+      beta: null,
+      body: {
+        model: "claude-opus-4-8",
+        messages: [{ role: "user", content: "Use the tool" }],
+      },
+      absent: "tools",
+    },
+  ])("$name", async (input) => {
     const request = await captureAnthropicRequest({
+      compat: input.compat,
       context: {
         messages: [{ role: "user", content: "Use the tool", timestamp: Date.now() }],
-        tools: [tool],
+        tools: input.tools,
       },
     });
 
-    expect(request.headers.get("anthropic-beta")).toBeNull();
-    expect(request.body).toMatchObject({
-      tools: [{ name: "lookup", eager_input_streaming: true }],
-    });
-  });
-
-  it("uses the legacy fine-grained tool streaming beta when eager tool input streaming is disabled", async () => {
-    const request = await captureAnthropicRequest({
-      compat: { supportsEagerToolInputStreaming: false },
-      context: {
-        messages: [{ role: "user", content: "Use the tool", timestamp: Date.now() }],
-        tools: [tool],
-      },
-    });
-
-    expect(request.headers.get("anthropic-beta")).toBe("fine-grained-tool-streaming-2025-05-14");
-    expect(request.body).toMatchObject({ tools: [{ name: "lookup" }] });
-    expect(request.body).not.toHaveProperty("tools.0.eager_input_streaming");
-  });
-
-  it("does not send the legacy fine-grained tool streaming beta when there are no tools", async () => {
-    const request = await captureAnthropicRequest({
-      compat: { supportsEagerToolInputStreaming: false },
-      context: { messages: [{ role: "user", content: "Use the tool", timestamp: Date.now() }] },
-    });
-
-    expect(request.headers.get("anthropic-beta")).toBeNull();
-    expect(request.body).toMatchObject({
-      model: "claude-opus-4-8",
-      messages: [{ role: "user", content: "Use the tool" }],
-    });
-    expect(request.body).not.toHaveProperty("tools");
+    expect(request.headers.get("anthropic-beta")).toBe(input.beta);
+    expect(request.body).toMatchObject(input.body);
+    if (input.absent !== undefined) expect(request.body).not.toHaveProperty(input.absent);
   });
 });

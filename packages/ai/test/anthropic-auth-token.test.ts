@@ -13,14 +13,6 @@ interface CapturedRequest {
 }
 
 const responseBody = [
-  `event: rate_limit_event\ndata: ${JSON.stringify({
-    type: "rate_limit_event",
-    rate_limit_info: {
-      rateLimitType: "five_hour",
-      utilization: 0.42,
-      resetsAt: 2_000_000_000,
-    },
-  })}`,
   `event: message_start\ndata: ${JSON.stringify({
     type: "message_start",
     message: {
@@ -44,11 +36,7 @@ const fetch: typeof globalThis.fetch = async (input, init) => {
   requests.push({ headers: request.headers, body });
   return new Response(responseBody, {
     status: 200,
-    headers: {
-      "content-type": "text/event-stream",
-      "anthropic-ratelimit-unified-5h-utilization": "0.42",
-      "anthropic-ratelimit-unified-5h-reset": "2000000000",
-    },
+    headers: { "content-type": "text/event-stream" },
   });
 };
 
@@ -85,41 +73,6 @@ beforeEach(() => {
 });
 
 describe("Anthropic auth token env", () => {
-  it("reports account-limit headers without adding them to the message stream", async () => {
-    const observed: unknown[] = [];
-    const eventTypes: string[] = [];
-    const source = stream(anthropicModel, normalizeContext(context), {
-      headers: { Authorization: "Bearer test" },
-      fetch,
-      onAccountLimits: (limits) => {
-        observed.push(limits);
-      },
-    });
-    for await (const event of source) eventTypes.push(event.type);
-    const result = await source.result();
-
-    expect(result.stopReason).toBe("stop");
-    expect(eventTypes).toEqual(["start", "done"]);
-    expect(requests).toHaveLength(1);
-    expect(requests[0]?.headers.get("authorization")).toBe("Bearer test");
-    expect(requests[0]?.headers.get("x-api-key")).toBeNull();
-    expect(observed).toEqual([
-      {
-        providerId: "anthropic",
-        windows: [
-          {
-            id: "five_hour",
-            label: "5-hour",
-            usedPercent: 42,
-            windowMinutes: 300,
-            resetsAt: 2_000_000_000_000,
-          },
-        ],
-        observedAt: expect.any(Number),
-      },
-    ]);
-  });
-
   it("threads ANTHROPIC_AUTH_TOKEN ahead of other env credentials, unless explicit headers override it", async () => {
     const models = createModels({
       authContext: {

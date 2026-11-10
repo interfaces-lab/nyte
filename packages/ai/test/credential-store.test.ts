@@ -408,7 +408,10 @@ describe("file credential store", () => {
     await once(reader, "exit");
 
     const parsed: unknown = JSON.parse(report);
-    expect(parsed).toEqual({ reads: expect.any(Number), partial: 0 });
+    expect(parsed).toEqual({
+      reads: expect.toSatisfy((reads: number) => reads > 0),
+      partial: 0,
+    });
   });
 
   test("releases the lock when the write fails", async () => {

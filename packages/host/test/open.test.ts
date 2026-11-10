@@ -341,36 +341,6 @@ describe("openHost", () => {
     expect(refused.headers.get("X-Nyte-Host")).toBe(host.hostId);
   });
 
-  it("reads no secrets key across open, listen, models.list() and the identity route", async () => {
-    const home = await folder();
-    let reads = 0;
-
-    await using host = await openHost({
-      store: memoryStore(),
-      plugins: [chatOnly],
-      workspace: { kind: "chat-only", locator: null },
-      home,
-      secrets: {
-        key: async () => {
-          reads += 1;
-
-          return new Uint8Array(32);
-        },
-      },
-    });
-
-    await using listener = await host.listen({
-      transport: { kind: "fetch" },
-      auth: { kind: "token", token: TOKEN },
-    });
-
-    expect((await host.models.list()).providers.length).toBeGreaterThan(0);
-    expect(
-      (await listener.fetch(new Request("http://host.test/.nyte/identity?nonce=n1"))).status,
-    ).toBe(200);
-    expect(reads).toBe(0);
-  });
-
   it("with a credential stored, reads no secrets key at open, listen, models.list() or the identity route; a chat's first turn and its title request read it once (§55)", async () => {
     const home = await folder();
     const store = memoryStore();
@@ -426,14 +396,14 @@ describe("openHost", () => {
     expect(reads).toBe(1);
   });
 
-  it("reloads plugin files when one lands in the watched directory, and withdraws a failure once the file loads", async () => {
+  it("reloads plugin files when one lands in a watched directory created after the host opened, and withdraws a failure once the file loads", async () => {
     const home = await folder();
     const dir = join(home, ".nyte", "plugins");
-    await mkdir(dir, { recursive: true });
     await using host = await open(home);
     const before = await firstView(host);
 
     expect(before.plugins.some((row) => row.id === "hot")).toBe(false);
+    await mkdir(dir, { recursive: true });
 
     const landed = await rewriteUntil(
       host,

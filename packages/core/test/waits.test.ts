@@ -468,7 +468,7 @@ describe("waits as store facts", () => {
     ).toBeNull();
   });
 
-  it("keeps an early answer on the part when a step takes it: a cold answer() returns it and a later act does not replace it (ADV B N2)", async () => {
+  it("keeps an early answer on the part when a step takes it: a cold answer() returns it and a later act does not replace it, even on the host that acted (ADV B N2, D6 audit 4)", async () => {
     const { kernel, host } = await setup();
     const cold = await setup({ store: kernel.store });
     const { session } = await host.sessions.start({ content: "Hi." });
@@ -497,6 +497,7 @@ describe("waits as store facts", () => {
       kind: "ok",
       output: undefined,
     });
+    expect(await cold.host.session(session.id).part(part.id).answer()).toEqual(early);
     expect(
       await waitStep(kernel, {
         session: session.id,

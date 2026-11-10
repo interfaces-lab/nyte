@@ -303,18 +303,21 @@ test("unknown event and content variants do not interrupt known content", async 
   assert.equal(result.stopReason, "stop");
   assert.deepEqual(result.content, [{ type: "text", text: "answer" }]);
   assert.deepEqual(
-    limits.map((value) => value.windows),
+    limits.map((value) => ({ providerId: value.providerId, windows: value.windows })),
     [
-      [
-        {
-          id: "five_hour",
-          label: "5-hour",
-          usedPercent: 50,
-          windowMinutes: 300,
-          resetsAt: 1790898600000,
-        },
-        { id: "seven_day", label: "Weekly", usedPercent: 16, windowMinutes: 10080 },
-      ],
+      {
+        providerId: "anthropic",
+        windows: [
+          {
+            id: "five_hour",
+            label: "5-hour",
+            usedPercent: 50,
+            windowMinutes: 300,
+            resetsAt: 1790898600000,
+          },
+          { id: "seven_day", label: "Weekly", usedPercent: 16, windowMinutes: 10080 },
+        ],
+      },
     ],
   );
 });

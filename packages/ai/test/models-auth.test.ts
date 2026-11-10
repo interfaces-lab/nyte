@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import { storedAccounts } from "./credential-fixture.ts";
 import { InMemoryCredentialStore } from "../src/auth/credential-store.ts";
-import type { ApiKeyAuth, CredentialStore, OAuthCredential } from "../src/auth/types.ts";
+import type {
+  ApiKeyAuth,
+  CredentialStore,
+  OAuthCredential,
+  ProviderAuth,
+} from "../src/auth/types.ts";
 import { createModels } from "../src/models.ts";
 import {
   testModel,
@@ -535,43 +540,48 @@ describe("Models runtime auth", () => {
     expect(modifies).toBe(0);
   });
 
-  it("wraps credential store failures in ModelsError", async () => {
-    const readFailing: CredentialStore = {
-      read: async () => {
-        throw new Error("disk on fire");
+  it.each<{ name: string; credentials?: CredentialStore; auth: ProviderAuth }>([
+    {
+      name: "a credential store read failure",
+      credentials: {
+        read: async () => {
+          throw new Error("disk on fire");
+        },
+        list: async () => [],
+        modify: async () => undefined,
+        delete: async () => {},
       },
-      list: async () => [],
-      modify: async () => undefined,
-      delete: async () => {},
-    };
-    const models = createModels({ credentials: readFailing });
-    models.setProvider(testProvider({ id: "p1", auth: { apiKey: envKeyAuth("env-key") } }));
-    await expect(models.getAuth("p1")).rejects.toMatchObject({ code: "auth" });
-
-    const modifyFailing: CredentialStore = {
-      read: async () => storedAccounts({ type: "oauth", access: "old", refresh: "r", expires: 0 }),
-      list: async () => [
-        { providerId: "p1", type: "oauth", id: "default", label: "Default", active: true },
-      ],
-      modify: async () => {
-        throw new Error("disk on fire");
+      auth: { apiKey: envKeyAuth("env-key") },
+    },
+    {
+      name: "a credential store modify failure",
+      credentials: {
+        read: async () =>
+          storedAccounts({ type: "oauth", access: "old", refresh: "r", expires: 0 }),
+        list: async () => [
+          { providerId: "p1", type: "oauth", id: "default", label: "Default", active: true },
+        ],
+        modify: async () => {
+          throw new Error("disk on fire");
+        },
+        delete: async () => {},
       },
-      delete: async () => {},
-    };
-    const oauthModels = createModels({ credentials: modifyFailing });
-    oauthModels.setProvider(testProvider({ id: "p1", auth: { oauth: testOAuth() } }));
-    await expect(oauthModels.getAuth("p1")).rejects.toMatchObject({ code: "auth" });
-  });
-
-  it("wraps api-key auth failures in ModelsError", async () => {
-    const failing: ApiKeyAuth = {
-      name: "Failing",
-      resolve: async () => {
-        throw new Error("nope");
+      auth: { oauth: testOAuth() },
+    },
+    {
+      name: "an api-key auth failure",
+      auth: {
+        apiKey: {
+          name: "Failing",
+          resolve: async () => {
+            throw new Error("nope");
+          },
+        },
       },
-    };
-    const models = createModels();
-    models.setProvider(testProvider({ id: "p1", auth: { apiKey: failing } }));
+    },
+  ])("wraps $name in ModelsError", async (input) => {
+    const models = createModels({ credentials: input.credentials });
+    models.setProvider(testProvider({ id: "p1", auth: input.auth }));
     await expect(models.getAuth("p1")).rejects.toMatchObject({ code: "auth" });
   });
 

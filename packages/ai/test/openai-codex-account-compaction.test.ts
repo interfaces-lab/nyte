@@ -293,43 +293,47 @@ describe("Codex V2 compaction", () => {
     ]);
   });
 
-  test("keeps the newest 64k tokens, middle-truncating only the boundary message", async () => {
+  test.each<{ name: string; messages: Context["messages"]; retained: unknown[] }>([
+    {
+      name: "keeps the newest 64k tokens, middle-truncating only the boundary message",
+      messages: [
+        { role: "user", content: "discard", timestamp: 1 },
+        { role: "user", content: "middle1234", timestamp: 2 },
+        { role: "user", content: "n".repeat(63_998 * 4), timestamp: 3 },
+      ],
+      retained: [
+        retainedUser("midd…1 tokens truncated…1234"),
+        retainedUser("n".repeat(63_998 * 4)),
+      ],
+    },
+    {
+      name: "UTF-8 boundary truncation does not split characters",
+      messages: [
+        { role: "user", content: "😀😀😀😀😀", timestamp: 1 },
+        { role: "user", content: "n".repeat(63_997 * 4), timestamp: 2 },
+      ],
+      retained: [retainedUser("😀…2 tokens truncated…😀"), retainedUser("n".repeat(63_997 * 4))],
+    },
+    {
+      name: "an image boundary retains later parts, while text-only boundaries retain earlier parts",
+      messages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "earlier" }, image, { type: "text", text: "keep" }],
+          timestamp: 1,
+        },
+        { role: "user", content: "n".repeat(63_999 * 4), timestamp: 2 },
+      ],
+      retained: [retainedUser("keep"), retainedUser("n".repeat(63_999 * 4))],
+    },
+  ])("$name", async (input) => {
     await using server = await serve((response) => response.end(sse(itemDone(), completed())));
     const result = await compactOpenAICodexContext(
       server.model,
-      {
-        messages: [
-          { role: "user", content: "discard", timestamp: 1 },
-          { role: "user", content: "middle1234", timestamp: 2 },
-          { role: "user", content: "n".repeat(63_998 * 4), timestamp: 3 },
-        ],
-      },
+      { messages: input.messages },
       { apiKey },
     );
-    assert.deepEqual(result.data, [
-      retainedUser("midd…1 tokens truncated…1234"),
-      retainedUser("n".repeat(63_998 * 4)),
-      checkpoint,
-    ]);
-  });
-
-  test("UTF-8 boundary truncation does not split characters", async () => {
-    await using server = await serve((response) => response.end(sse(itemDone(), completed())));
-    const result = await compactOpenAICodexContext(
-      server.model,
-      {
-        messages: [
-          { role: "user", content: "😀😀😀😀😀", timestamp: 1 },
-          { role: "user", content: "n".repeat(63_997 * 4), timestamp: 2 },
-        ],
-      },
-      { apiKey },
-    );
-    assert.deepEqual(result.data, [
-      retainedUser("😀…2 tokens truncated…😀"),
-      retainedUser("n".repeat(63_997 * 4)),
-      checkpoint,
-    ]);
+    assert.deepEqual(result.data, [...input.retained, checkpoint]);
   });
 
   test("charges images atomically and never backfills an oversized boundary with older users", async () => {
@@ -367,29 +371,6 @@ describe("Codex V2 compaction", () => {
           : expected,
       );
     }
-  });
-
-  test("an image boundary retains later parts, while text-only boundaries retain earlier parts", async () => {
-    await using server = await serve((response) => response.end(sse(itemDone(), completed())));
-    const result = await compactOpenAICodexContext(
-      server.model,
-      {
-        messages: [
-          {
-            role: "user",
-            content: [{ type: "text", text: "earlier" }, image, { type: "text", text: "keep" }],
-            timestamp: 1,
-          },
-          { role: "user", content: "n".repeat(63_999 * 4), timestamp: 2 },
-        ],
-      },
-      { apiKey },
-    );
-    assert.deepEqual(result.data, [
-      retainedUser("keep"),
-      retainedUser("n".repeat(63_999 * 4)),
-      checkpoint,
-    ]);
   });
 
   test("repeated image-heavy compaction keeps charging retained images", async () => {

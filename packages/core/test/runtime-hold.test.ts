@@ -6,7 +6,7 @@ import type { Kernel } from "../src/contract/kernel.ts";
 import type { Plugin, ToolDefinition } from "../src/index.ts";
 import { world } from "./fake-env.ts";
 import { fakeModels, open } from "./fake-models.ts";
-import { main, until } from "../src/harness.ts";
+import { until } from "../src/harness.ts";
 
 const nothing = standard(Type.Object({}));
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -104,27 +104,6 @@ describe("runtime hold (ADV D-2 N1, N2, N4; E-2 N3)", () => {
       ]);
     });
 
-  it("D N1 control: the same gate rejects the call without a reload", async () => {
-    const fake = fakeModels();
-    const seen: string[] = [];
-    const provider: Plugin<"core"> = { id: "provider", contribute: { tools: [echo] } };
-
-    fake.reply(
-      { content: [{ type: "toolCall", id: "c1", name: "echo", arguments: {} }] },
-      { content: [{ type: "text", text: "Done." }] },
-    );
-
-    await using host = await open(fake, { plugins: [provider, gate(seen)] });
-    const { receipt: started } = await host.sessions.start({ content: "Go." });
-    await started.settled();
-    const result = fake.requests[1]?.context.messages.find((m) => m.role === "toolResult");
-
-    expect(seen).toEqual(["before_tool:echo"]);
-    expect(result?.role === "toolResult" ? result.content : null).toEqual([
-      { type: "text", text: "The tool call was rejected: The user declined." },
-    ]);
-  });
-
   it("D N1 (run_ended mid-reload): a run ending while its session reloads is observed by the runtime it ran on", async () => {
     const fake = fakeModels();
     const seen: string[] = [];
@@ -164,38 +143,6 @@ describe("runtime hold (ADV D-2 N1, N2, N4; E-2 N3)", () => {
 
     expect(seen.filter((entry) => entry.endsWith(":assistant"))).toEqual(["runtime1:assistant"]);
     expect(await requestSteps(host.kernel, session.id)).toEqual(["assistant:15"]);
-  });
-
-  it("D #3: a held runtime keeps its handlers after a reload until it is released", async () => {
-    const fixture = await world({
-      plugins: [
-        {
-          id: "stamp",
-          hooks: {
-            after_tool: (outcome) => ({ ...outcome, content: [{ kind: "text", text: "OLD" }] }),
-          },
-        },
-      ],
-    });
-
-    const { session } = await fixture.host.sessions.start({
-      workspace: fixture.workspace,
-      content: "Hi.",
-    });
-    const old = fixture.kernel.plugins.runtime(session.id);
-    await old.ready;
-    const release = old.hold();
-    await fixture.kernel.plugins.reload(session.id);
-    await sleep(20);
-
-    const result = await old.hooks.transform(
-      "after_tool",
-      { kind: "ok", content: [], output: null, parts: [] },
-      { session: session.id, head: main, run: null, principal: asId("local") },
-    );
-
-    release();
-    expect(result.kind === "ok" ? result.content : null).toEqual([{ kind: "text", text: "OLD" }]);
   });
 
   it("D N4a: a failed compaction summary is charged as a compaction request", async () => {

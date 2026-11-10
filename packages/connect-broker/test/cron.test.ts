@@ -40,9 +40,14 @@ describe("the scheduled sweep", () => {
 
   it("drops expired replay and rate rows but keeps live ones", async () => {
     await harness.link({ userId: "user_alice" });
-    expect((await harness.rows("proof_replays")).length).toBeGreaterThan(0);
+    const replays = await harness.rows("proof_replays");
+    const rates = await harness.rows("rate_limits");
+
+    expect(replays).not.toEqual([]);
+    expect(rates).not.toEqual([]);
     await harness.sweep();
-    expect((await harness.rows("proof_replays")).length).toBeGreaterThan(0);
+    expect(await harness.rows("proof_replays")).toEqual(replays);
+    expect(await harness.rows("rate_limits")).toEqual(rates);
 
     harness.clock.offsetMs = 2 * 86_400_000;
     await harness.sweep();

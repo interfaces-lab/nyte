@@ -246,30 +246,7 @@ describe("directory", () => {
     ).toEqual([true, true]);
   });
 
-  it("loads a plugin fresh when a helper its activate imported changes", async () => {
-    const dir = await folder();
-    await mkdir(join(dir, "lazy"));
-    await writeFile(
-      join(dir, "lazy", "index.mjs"),
-      'export default { id: "lazy", async activate() { await import("./helper.mjs"); } };\n',
-    );
-    await writeFile(join(dir, "lazy", "helper.mjs"), "export const value = 1;\n");
-
-    expect(
-      await inNode(`
-        const loader = createPluginLoader({ dirs: async () => [] });
-        const first = (await loader.directory(${JSON.stringify(dir)})).loaded[0]?.plugin;
-        await first.activate();
-        const steady = (await loader.directory(${JSON.stringify(dir)})).loaded[0]?.plugin;
-        await writeFile(${JSON.stringify(join(dir, "lazy", "helper.mjs"))}, 'export const value = 2;\\n');
-        const after = (await loader.directory(${JSON.stringify(dir)})).loaded[0]?.plugin;
-        loader.close();
-        console.log(JSON.stringify([steady === first, after !== first]));
-      `),
-    ).toEqual([true, true]);
-  });
-
-  it("loads a plugin fresh after a failed edit is reverted, and tracks what its activate imports", async () => {
+  it("loads a plugin fresh after a failed edit is reverted, keeps it while nothing its activate imported changes, and loads it fresh when that does", async () => {
     const dir = await folder();
     const entry = join(dir, "lazy", "index.mjs");
 
@@ -289,12 +266,13 @@ describe("directory", () => {
         await writeFile(${JSON.stringify(entry)}, ${JSON.stringify(source)});
         const reverted = (await loader.directory(${JSON.stringify(dir)})).loaded[0]?.plugin;
         await reverted.activate();
+        const steady = (await loader.directory(${JSON.stringify(dir)})).loaded[0]?.plugin;
         await writeFile(${JSON.stringify(join(dir, "lazy", "helper.mjs"))}, 'export const value = 2;\\n');
         const after = (await loader.directory(${JSON.stringify(dir)})).loaded[0]?.plugin;
         loader.close();
-        console.log(JSON.stringify([broken.failed.length, reverted !== first, after !== reverted]));
+        console.log(JSON.stringify([broken.failed.length, reverted !== first, steady === reverted, after !== reverted]));
       `),
-    ).toEqual([1, true, true]);
+    ).toEqual([1, true, true, true]);
   });
 
   it("follows symlinked plugin files and folders inside the directory, not ones pointing outside", async () => {

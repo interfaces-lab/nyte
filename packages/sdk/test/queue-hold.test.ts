@@ -105,8 +105,11 @@ describe("revising a queued message", () => {
     expect((await third.settled()).kind).toBe("completed");
     expect(prompts()).toEqual(["First.", "Second, edited.", "Third."]);
   });
+});
 
-  it("answers sent once the message started, and leaves its run going", async () => {
+it.each(["revise", "hold"] as const)(
+  "answers a %s sent once the message started, and leaves its run going",
+  async (method) => {
     const { host, connection, pause, prompts } = await setup();
     const first = pause("First.");
     const running = pause("Second.");
@@ -116,7 +119,11 @@ describe("revising a queued message", () => {
     first.open.resolve();
     await running.reached.promise;
 
-    expect(await session.revise(second.message, "Second, edited.")).toEqual({ kind: "sent" });
+    expect(
+      method === "revise"
+        ? await session.revise(second.message, "Second, edited.")
+        : await session.hold(second.message),
+    ).toEqual({ kind: "sent" });
 
     running.open.resolve();
 
@@ -126,8 +133,8 @@ describe("revising a queued message", () => {
       ["Second.", "landed"],
     ]);
     expect(prompts()).toEqual(["First.", "Second."]);
-  });
-});
+  },
+);
 
 describe("holding a queued message", () => {
   it("keeps it and the messages behind it waiting through a revise, until the scope holding it ends", async () => {
@@ -205,27 +212,6 @@ describe("holding a queued message", () => {
 
     expect((await second.settled()).kind).toBe("completed");
     expect(prompts()).toEqual(["First.", "Second, edited."]);
-  });
-
-  it("answers sent once the message started, and leaves its run going", async () => {
-    const { host, connection, pause } = await setup();
-    const first = pause("First.");
-    const running = pause("Second.");
-    const { session } = await connection.sessions.start({ content: "First." });
-    await first.reached.promise;
-    const second = await session.send("Second.", { delivery: "queue" });
-    first.open.resolve();
-    await running.reached.promise;
-
-    expect(await session.hold(second.message)).toEqual({ kind: "sent" });
-
-    running.open.resolve();
-
-    expect((await second.settled()).kind).toBe("completed");
-    expect(statuses(await host.view(session.id))).toEqual([
-      ["First.", "landed"],
-      ["Second.", "landed"],
-    ]);
   });
 
   it("loses the hold as sent when a renewal finds the message started", async () => {

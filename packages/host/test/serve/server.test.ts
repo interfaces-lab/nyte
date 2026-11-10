@@ -294,14 +294,6 @@ describe("handler", () => {
     expect(await readError(large)).toMatchObject({ code: "invalid" });
   });
 
-  it("exposes X-Nyte-Host to an allowed origin", async () => {
-    const { handler } = await served();
-    const listed = await post(handler, "sessions.list", {}, { Origin: "https://app.nyte.dev" });
-
-    expect(HOST_HEADER).toBe("X-Nyte-Host");
-    expect(listed.headers.get("Access-Control-Expose-Headers")).toContain(HOST_HEADER);
-  });
-
   it("answers CORS for the allowed origins and denies the rest", async () => {
     const { handler } = await served();
 
@@ -326,6 +318,7 @@ describe("handler", () => {
     expect(listed.headers.get("Access-Control-Allow-Origin")).toBe("https://app.nyte.dev");
     expect(listed.headers.get("Access-Control-Expose-Headers")).toContain("X-Nyte-Version");
     expect(listed.headers.get("Access-Control-Expose-Headers")).toContain("X-Nyte-Mime");
+    expect(listed.headers.get("Access-Control-Expose-Headers")).toContain(HOST_HEADER);
     expect(foreign.status).toBe(403);
     expect(same.status).toBe(200);
     expect(same.headers.get("Access-Control-Allow-Origin")).toBeNull();

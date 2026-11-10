@@ -121,45 +121,6 @@ describe("turn findings (CORE-DIET D3)", () => {
     ).not.toContain("marker");
   });
 
-  it("fails the request, not the loop, when compaction throws: the overflowed response's parts fail (D4)", async () => {
-    const fake = fakeModels();
-
-    const failing: Plugin<"core"> = {
-      id: "failing",
-      hooks: {
-        before_compaction: () => {
-          throw new Error("The compactor is down.");
-        },
-      },
-    };
-
-    fake.reply(
-      { content: [{ type: "text", text: "First answer." }] },
-      {
-        content: [{ type: "text", text: "Streamed before the overflow." }],
-        error: "prompt is too long: 213462 tokens > 200000 maximum",
-      },
-    );
-
-    await using host = await open(fake, { plugins: [failing] });
-    const { session, receipt: started } = await host.sessions.start({ content: "First?" });
-    await started.settled();
-    const end = await (await session.send("Second?")).settled();
-
-    expect(end).toMatchObject({ kind: "failed", failure: { class: "runner" } });
-
-    const second = (await session.view()).messages.find(
-      (message) => message.kind === "user" && message.content === "Second?",
-    );
-
-    assert(
-      second?.kind === "user" && second.status.kind === "landed" && second.status.run !== null,
-    );
-    expect(await storedStatus(host.kernel, session.id, `${second.status.run}:a1:0`)).toMatchObject({
-      kind: "failed",
-    });
-  });
-
   it("leaves a stop that lands while a retry is landing to its fence: no overwrite, no retrying after stopping, the response still charged once (D5; audit D2 item 2)", async () => {
     const fake = fakeModels();
     const observed: number[] = [];
@@ -356,7 +317,7 @@ describe("turn findings (CORE-DIET D3)", () => {
     expect(observed).toEqual(charged);
   });
 
-  it("charges and observes a terminal failure, and an overflow whose recovery preparation throws, on the request's runtime (D3b, audit 2 item 1)", async () => {
+  it("charges and observes a terminal failure, and an overflow whose recovery preparation throws, on the request's runtime, failing the request and its parts, not the loop (D3b, D4, audit 2 item 1)", async () => {
     const fake = fakeModels();
     const observed: string[] = [];
 
@@ -379,6 +340,7 @@ describe("turn findings (CORE-DIET D3)", () => {
         usage: { input: 90, output: 9 },
       },
       {
+        content: [{ type: "text", text: "Streamed before the overflow." }],
         error: "prompt is too long: 213462 tokens > 200000 maximum",
         usage: { input: 40, output: 4 },
       },
@@ -407,6 +369,9 @@ describe("turn findings (CORE-DIET D3)", () => {
     );
 
     expect(await storedStatus(host.kernel, session.id, `${runs[0]}:a1:0`)).toMatchObject({
+      kind: "failed",
+    });
+    expect(await storedStatus(host.kernel, session.id, `${runs[1]}:a1:0`)).toMatchObject({
       kind: "failed",
     });
   });

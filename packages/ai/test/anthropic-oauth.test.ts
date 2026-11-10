@@ -385,27 +385,28 @@ describe("Anthropic OAuth callback server", () => {
     },
   );
 
-  test.each(LOGIN_METHODS)("rejects mismatched manual state for $method", async ({ method }) => {
-    const codes = stubTokenExchange(tokens);
-    await assert.rejects(
-      startLogin(async () => "code=manual-code&state=other", neverAbortedSignal, method).credential,
-      { message: "OAuth state mismatch" },
-    );
-    assert.deepEqual(codes, []);
-  });
-
-  test.each(LOGIN_METHODS)("propagates $method manual prompt failures", async ({ method }) => {
-    const codes = stubTokenExchange(tokens);
-    await assert.rejects(
-      startLogin(
-        async () => {
+  test.each(
+    LOGIN_METHODS.flatMap((login) => [
+      {
+        name: "rejects mismatched manual state",
+        method: login.method,
+        prompt: async (): Promise<string> => "code=manual-code&state=other",
+        message: "OAuth state mismatch",
+      },
+      {
+        name: "propagates manual prompt failures",
+        method: login.method,
+        prompt: async (): Promise<string> => {
           throw new Error("prompt cancelled");
         },
-        neverAbortedSignal,
-        method,
-      ).credential,
-      { message: "prompt cancelled" },
-    );
+        message: "prompt cancelled",
+      },
+    ]),
+  )("$name for $method", async (input) => {
+    const codes = stubTokenExchange(tokens);
+    await assert.rejects(startLogin(input.prompt, neverAbortedSignal, input.method).credential, {
+      message: input.message,
+    });
     assert.deepEqual(codes, []);
   });
 });

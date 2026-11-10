@@ -154,16 +154,20 @@ describe("execution", () => {
     const { host, script } = await setup({ execution: { kind: "admit-only" } });
     await settledChat(host, script);
     const { session, receipt } = await host.sessions.start({ content: "Go." });
+    const other = (await host.sessions.start({ content: "Go." })).session;
+    const owed = [session.id, other.id].toSorted().map((id) => ({ session: id, head: main }));
 
     expect((await session.view()).messages[0]).toMatchObject({
       status: { kind: "pending", covered: false },
     });
-    expect(await host.execution.repair({ limit: 10 })).toEqual({
-      runnable: [{ session: session.id, head: main }],
-      next: null,
-    });
-    expect(await host.execution.repair({ limit: 1 })).toEqual({
-      runnable: [{ session: session.id, head: main }],
+    expect(await host.execution.repair({ limit: 10 })).toEqual({ runnable: owed, next: null });
+
+    const first = await host.execution.repair({ limit: 1 });
+    assert(first.next !== null);
+
+    expect(first.runnable).toEqual(owed.slice(0, 1));
+    expect(await host.execution.repair({ cursor: first.next, limit: 1 })).toEqual({
+      runnable: owed.slice(1),
       next: null,
     });
 
@@ -172,7 +176,10 @@ describe("execution", () => {
     await step;
 
     expect(await receipt.settled()).toEqual(completed);
-    expect(await host.execution.repair({ limit: 10 })).toEqual({ runnable: [], next: null });
+    expect(await host.execution.repair({ limit: 10 })).toEqual({
+      runnable: [{ session: other.id, head: main }],
+      next: null,
+    });
   });
 
   it("drives a queued input end to end in process", async () => {
@@ -367,16 +374,6 @@ describe("execution", () => {
 
     await driver.close();
 
-    expect(await kernel.store.refs.get(leaseRef(session.id, main))).toBeNull();
-  });
-
-  it("releases the lease of an advance run with no coverage open", async () => {
-    const { kernel, host, script } = await setup();
-    const session = await settledChat(host, script);
-
-    expect(await host.execution.advance({ session: session.id, head: main })).toEqual({
-      kind: "idle",
-    });
     expect(await kernel.store.refs.get(leaseRef(session.id, main))).toBeNull();
   });
 

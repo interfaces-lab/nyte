@@ -10,7 +10,6 @@ import {
 import { OPERATIONS } from "@nyte-ai/schema";
 import {
   PUBLIC_RELAY_BEARER,
-  PUBLIC_RELAY_METHODS,
   RELAY_CHUNK_BYTES,
   RELAY_FRAME_CHARS,
   RELAY_OPERATIONS,
@@ -71,57 +70,43 @@ describe("public relay targets", () => {
     expect(RELAY_RESPONSE_HEADER_NAMES).toContain(CHANNEL_HEADER.toLowerCase());
   });
 
-  it("forwards each operation, the discovery routes, and the device release", () => {
-    for (const name of RELAY_OPERATIONS)
-      expect(target(`/${name}`)).toEqual({ kind: "api", environmentId, path: `/${name}` });
-    const nonce = new URLSearchParams({ nonce: crypto.randomUUID() }).toString();
-
-    expect(target(`/.nyte/identity?${nonce}`)).toEqual({
-      kind: "discovery",
-      environmentId,
-      path: `/.nyte/identity?${nonce}`,
-    });
-    expect(target("/.nyte/describe")).toEqual({
-      kind: "discovery",
-      environmentId,
-      path: "/.nyte/describe",
-    });
-    expect(target("/_nyte/connect/device")).toEqual({
-      kind: "release",
-      environmentId,
-      path: "/_nyte/connect/device",
-    });
-  });
-
-  it("carries the host's socket: the ticket as an operation, a ticketed upgrade as a socket", () => {
-    expect(target("/.nyte/ws/ticket")).toEqual({
+  it.each([
+    {
+      name: "each operation",
+      paths: [...RELAY_OPERATIONS].map((operation) => `/${operation}`),
       kind: "api",
-      environmentId,
-      path: "/.nyte/ws/ticket",
-    });
-    expect(target("/.nyte/ws?ticket=0b5c6a7e-1f2d-4e3c-9a8b-7c6d5e4f3a2b")).toEqual({
+      bearer: "active",
+    },
+    {
+      name: "the identity route",
+      paths: [
+        `/.nyte/identity?${new URLSearchParams({ nonce: crypto.randomUUID() })}`,
+        "/.nyte/identity?nonce=n1",
+      ],
+      kind: "discovery",
+      bearer: "none",
+    },
+    { name: "the describe route", paths: ["/.nyte/describe"], kind: "discovery", bearer: "none" },
+    {
+      name: "the device release",
+      paths: ["/_nyte/connect/device"],
+      kind: "release",
+      bearer: "reserved-or-active",
+    },
+    { name: "the socket ticket", paths: ["/.nyte/ws/ticket"], kind: "api", bearer: "active" },
+    {
+      name: "a ticketed socket upgrade",
+      paths: ["/.nyte/ws?ticket=0b5c6a7e-1f2d-4e3c-9a8b-7c6d5e4f3a2b", "/.nyte/ws?ticket=t1"],
       kind: "socket",
-      environmentId,
-      path: "/.nyte/ws?ticket=0b5c6a7e-1f2d-4e3c-9a8b-7c6d5e4f3a2b",
-    });
-    expect(PUBLIC_RELAY_METHODS.socket).toEqual(["GET"]);
-  });
+      bearer: "none",
+    },
+  ])("forwards $name as a $kind target asking a $bearer bearer", (row) => {
+    const found = row.paths.map(target);
 
-  it("asks a bearer of every target but the discovery routes and the ticketed socket", () => {
-    const bearers = [
-      "/sessions.list",
-      "/.nyte/identity?nonce=n1",
-      "/.nyte/describe",
-      "/_nyte/connect/device",
-      "/.nyte/ws/ticket",
-      "/.nyte/ws?ticket=t1",
-    ].map((path) => {
-      const found = target(path);
-
-      return found === undefined ? undefined : PUBLIC_RELAY_BEARER[found.kind];
-    });
-
-    expect(bearers).toEqual(["active", "none", "none", "reserved-or-active", "active", "none"]);
+    expect(found).toEqual(row.paths.map((path) => ({ kind: row.kind, environmentId, path })));
+    expect(
+      found.map((entry) => (entry === undefined ? undefined : PUBLIC_RELAY_BEARER[entry.kind])),
+    ).toEqual(row.paths.map(() => row.bearer));
   });
 
   it.each([

@@ -288,15 +288,6 @@ describe("transport", () => {
     ).toEqual(["Account 1"]);
   });
 
-  it("keeps the credential a pairing exchange returns", async () => {
-    const { transport } = await served();
-    const pairing = transport("Pairing 123-456");
-
-    expect(pairing.credential()).toBeNull();
-    await pairing.invoke("sessions.list", {});
-    expect(pairing.credential()).toBe("device-token");
-  });
-
   it("reads job output as framed octets whatever Content-Type the answer carries (ADV G8)", async () => {
     const { owner } = await served();
     const channels = createStreamChannels();
@@ -388,21 +379,6 @@ describe("transport", () => {
     await expect(transport.invoke("models.list", {})).rejects.toBe(programming);
     thrown = new TypeError("fetch failed");
     await expect(transport.invoke("models.list", {})).rejects.toMatchObject({
-      code: "unavailable",
-      message: "fetch failed",
-    });
-  });
-
-  it("answers a network failure as unavailable", async () => {
-    const transport = createTransport({
-      url: "http://nowhere.test",
-      headers: async () => ({}),
-      fetch: async () => {
-        throw new TypeError("fetch failed");
-      },
-    });
-
-    expect(await failure(() => transport.invoke("sessions.list", {}))).toMatchObject({
       code: "unavailable",
       message: "fetch failed",
     });

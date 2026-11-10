@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { memoryStore } from "@nyte-ai/core/store";
@@ -49,17 +49,14 @@ async function catalogSkills(home: string) {
 }
 
 describe("skill discovery", () => {
-  it("reads folded, literal, quoted and malformed descriptions, including Nyte's own skills", async () => {
+  it("reads folded, literal, quoted and malformed descriptions", async () => {
     const home = await folder();
-    const repository = join(import.meta.dirname, "../../..");
 
-    for (const name of ["nyte-styles", "verify-nyte"])
-      await put(
-        home,
-        `.agents/skills/${name}/SKILL.md`,
-        await readFile(join(repository, `.agents/skills/${name}/SKILL.md`), "utf8"),
-      );
-
+    await put(
+      home,
+      ".agents/skills/clipped/SKILL.md",
+      '---\nname: clipped\ndescription: >\n  Use when: a line holds "quotes",\n  it\'s `code` and wraps.\npaths:\n  - "packages/*/src/**/*.ts"\n---\n',
+    );
     await put(
       home,
       ".agents/skills/folded/SKILL.md",
@@ -83,6 +80,11 @@ describe("skill discovery", () => {
 
     expect(await catalogSkills(home)).toEqual([
       {
+        name: "clipped",
+        description: 'Use when: a line holds "quotes", it\'s `code` and wraps.',
+        location: "/.agents/skills/clipped/SKILL.md",
+      },
+      {
         name: "folded",
         description: "One line continued.",
         location: "/.agents/skills/folded/SKILL.md",
@@ -98,21 +100,9 @@ describe("skill discovery", () => {
         location: "/.agents/skills/malformed/SKILL.md",
       },
       {
-        name: "nyte-styles",
-        description:
-          "How Nyte styles UI: the StyleX token system in packages/ui/src/styles, the cascade layers, built-in dark mode, appearance inputs, type and spacing scales, and the authoring invariants components follow. Use before writing or reviewing any StyleX `create()` in packages/ui, app, canvas, lab, or desktop renderer; when adding or changing a token, role, theme, or base.css rule; or when a style \"doesn't apply\", looks different in dark mode, or ignores an appearance setting. Not for the public site's visual direction.",
-        location: "/.agents/skills/nyte-styles/SKILL.md",
-      },
-      {
         name: "quoted",
         description: "Quoted: kept.",
         location: "/.agents/skills/quoted/SKILL.md",
-      },
-      {
-        name: "verify-nyte",
-        description:
-          "Verify Nyte's Electron desktop, terminal client, or web app through the existing Playwright and compiled-binary QA runners. Use to reproduce a visible bug, identify where it starts, fix it within the requested scope, and replay the same journey before claiming it works.",
-        location: "/.agents/skills/verify-nyte/SKILL.md",
       },
     ]);
   });

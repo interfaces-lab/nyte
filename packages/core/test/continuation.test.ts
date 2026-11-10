@@ -52,8 +52,7 @@ describe("continuing a cut-off response", () => {
       status: { kind: "failed", failure: { class: "overloaded" } },
     });
 
-    const instruction =
-      "user:The previous response was interrupted. Continue from where you left off without repeating completed content.";
+    const instruction = expect.stringMatching(/^user:.*interrupted/);
 
     expect(fake.requests).toHaveLength(2);
     expect(sent(fake, 1)).toEqual(["system", "user:Go.", "assistant:First half", instruction]);
@@ -119,7 +118,7 @@ describe("continuing a cut-off response", () => {
       "system",
       "user:Go.",
       "assistant:A partia",
-      "user:The previous response was interrupted. Continue from where you left off without repeating completed content.",
+      expect.stringMatching(/^user:.*interrupted/),
     ]);
   });
 });

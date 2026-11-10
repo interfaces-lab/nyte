@@ -166,54 +166,6 @@ describe("turn", () => {
     expect(settledText((await session.view()).messages)).toEqual(["Rested."]);
   });
 
-  it("runs each request's hooks on the session's current runtime: a reload between two requests of one run takes effect", async () => {
-    const fake = fakeModels();
-    const seen: number[] = [];
-    let activations = 0;
-    let reload = async (): Promise<void> => undefined;
-
-    const reloading: ToolDefinition<Infer<typeof nothing>> = {
-      name: "reload",
-      description: "Reload the session's plugins.",
-      parameters: nothing,
-      class: () => ({ kind: "custom", label: "Reloading" }),
-      replay: "safe",
-      async execute() {
-        await reload();
-
-        return { content: [{ kind: "text", text: "reloaded" }] };
-      },
-    };
-
-    const counted: Plugin<"core"> = {
-      id: "counted",
-      contribute: { tools: [reloading] },
-      activate(api) {
-        activations += 1;
-        const activation = activations;
-
-        api.hook("before_request", (request) => {
-          seen.push(activation);
-
-          return request;
-        });
-      },
-    };
-
-    fake.reply(
-      { content: [{ type: "toolCall", id: "call-1", name: "reload", arguments: {} }] },
-      { content: [{ type: "text", text: "Done." }] },
-    );
-
-    await using host = await open(fake, { plugins: [counted] });
-    const id = asId<"session">("chat");
-    reload = () => host.kernel.plugins.reload(id);
-
-    const { receipt: first } = await host.sessions.start({ id, content: "Go." });
-    expect((await first.settled()).kind).toBe("completed");
-    expect(seen).toEqual([1, 2]);
-  });
-
   it("namespaces call ids by run and response, replays the provider's own ids, and leaves nested calls out", async () => {
     const fake = fakeModels();
     const gated: string[] = [];
@@ -555,7 +507,7 @@ describe("turn", () => {
     ).toEqual(["call_1", "call_2", "dup", "dup_4", "call_1", "call_2", "dup", "dup_4"]);
   });
 
-  it("owes every call of a response once it settles: a host that stops before the first call runs leaves the next host the whole batch, the response charged once", async () => {
+  it("owes every call of a response once it settles: a host that stops before the first call runs leaves the next host the whole batch, run in response order rather than by call id, the response charged once", async () => {
     const fake = fakeModels();
     const shared = memoryStore();
     const backing = await shared.open();
@@ -583,8 +535,9 @@ describe("turn", () => {
     fake.reply(
       {
         content: [
-          { type: "toolCall", id: "a", name: "echo", arguments: { text: "one" } },
-          { type: "toolCall", id: "b", name: "echo", arguments: { text: "two" } },
+          { type: "toolCall", id: "z", name: "echo", arguments: { text: "one" } },
+          { type: "toolCall", id: "a", name: "echo", arguments: { text: "two" } },
+          { type: "toolCall", id: "m", name: "echo", arguments: { text: "three" } },
         ],
       },
       { content: [{ type: "text", text: "Done." }] },
@@ -618,6 +571,7 @@ describe("turn", () => {
     expect(echoed).toEqual([
       expect.objectContaining({ kind: "ok", content: [{ kind: "text", text: "echo: one" }] }),
       expect.objectContaining({ kind: "ok", content: [{ kind: "text", text: "echo: two" }] }),
+      expect.objectContaining({ kind: "ok", content: [{ kind: "text", text: "echo: three" }] }),
     ]);
     expect(fake.requests).toHaveLength(2);
   });

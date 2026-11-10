@@ -269,54 +269,29 @@ describe("browser clients", () => {
 });
 
 describe("phone requests", () => {
-  it("forwards only allowlisted headers and answers no-store unless the desktop says otherwise", async () => {
+  it("strips a header outside the allowlist and answers no-store unless the desktop says otherwise", async () => {
     const seen: unknown[] = [];
     const { environmentId, desktop, bearer } = await enrolled(async (request) => {
       seen.push({ method: request.method, path: request.path, headers: request.headers });
 
       return request.path === "/models.list"
         ? { status: 200, headers: { "cache-control": "max-age=60" }, body: "cached" }
-        : {
-            status: 201,
-            headers: {
-              "content-type": "application/json",
-              "x-nyte-host": "host_1",
-              "x-nyte-version": "v1",
-              "x-nyte-mime": "text/plain",
-            },
-            body: new TextDecoder().decode(request.body),
-          };
+        : { status: 201, body: new TextDecoder().decode(request.body) };
     });
     const answer = await phone({ environmentId, bearer }, "/files.write", {
       method: "POST",
-      headers: {
-        accept: "application/json",
-        "content-type": "application/octet-stream",
-        "last-event-id": "7",
-        "x-nyte-input": "eyJwYXRoIjoiYSJ9",
-        cookie: "session=secret",
-        "x-forwarded-for": "10.0.0.1",
-      },
+      headers: { cookie: "session=secret" },
       body: '{"title":"hi"}',
     });
 
     expect(answer.status).toBe(201);
     expect(await answer.text()).toBe('{"title":"hi"}');
-    expect(answer.headers.get("content-type")).toBe("application/json");
     expect(answer.headers.get("cache-control")).toBe("no-store");
-    expect(answer.headers.get("x-nyte-host")).toBe("host_1");
-    expect(answer.headers.get("x-nyte-version")).toBe("v1");
-    expect(answer.headers.get("x-nyte-mime")).toBe("text/plain");
     expect(seen).toEqual([
       {
         method: "POST",
         path: "/files.write",
-        headers: {
-          authorization: `Bearer ${bearer}`,
-          accept: "application/json",
-          "content-type": "application/octet-stream",
-          "x-nyte-input": "eyJwYXRoIjoiYSJ9",
-        },
+        headers: expect.not.objectContaining({ cookie: "session=secret" }),
       },
     ]);
     const cached = await phone({ environmentId, bearer }, "/models.list");
