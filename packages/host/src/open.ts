@@ -78,18 +78,14 @@ export type OpenHostOptions = Omit<OpenOptions, "store" | "workspace" | "models"
 };
 
 export async function openHost(options: OpenHostOptions = {}): Promise<Host> {
-  const home = options.home ?? homedir();
-  const workspace = options.workspace ?? { kind: "local", path: process.cwd() };
-
-  if (options.store !== undefined)
-    return composeOpen(options, { home, workspace, store: options.store, owned: null });
-  const owned = await defaultStore(home, options.onStoreMigration);
+  const opened = new AsyncDisposableStack();
 
   try {
-    return await composeOpen(options, { home, workspace, store: owned, owned });
-  } catch (cause) {
-    await owned.close().catch(() => undefined);
-    throw cause;
+    return await composeOpen(options, opened);
+  } catch (error) {
+    await opened.disposeAsync().catch(() => undefined);
+
+    throw error;
   }
 }
 
@@ -100,16 +96,15 @@ async function defaultStore(home: string, onMigrate?: () => void): Promise<Store
   return sqliteStore({ path, onMigrate });
 }
 
-async function composeOpen(
-  options: OpenHostOptions,
-  input: {
-    readonly home: string;
-    readonly workspace: WorkspaceTarget;
-    readonly store: Store;
-    readonly owned: Store | null;
-  },
-): Promise<Host> {
-  const { home, workspace, store, owned } = input;
+/** Defers the release of each thing it starts on `opened`, which runs them newest first and each at most once: when a later step throws, or when the returned host closes. A store the caller gave is never deferred, so it stays open. */
+async function composeOpen(options: OpenHostOptions, opened: AsyncDisposableStack): Promise<Host> {
+  const home = options.home ?? homedir();
+  const workspace = options.workspace ?? { kind: "local", path: process.cwd() };
+
+  const store =
+    options.store ??
+    opened.adopt(await defaultStore(home, options.onStoreMigration), (owned) => owned.close());
+
   const secrets = options.secrets ?? defaultSecrets(home);
   const description = hostDescription();
   let server: ServerHost | null = null;
@@ -171,7 +166,6 @@ async function composeOpen(
   ];
 
   let projectDirs: () => Promise<readonly string[]> = async () => [];
-  const documentsClosed = new AbortController();
 
   const media =
     options.documents === undefined && usesLocalProvider ? createMediaLinks() : undefined;
@@ -180,6 +174,10 @@ async function composeOpen(
     dirs: async () => [join(home, ".nyte", "plugins"), ...(await projectDirs())],
     import: options.pluginImport,
   });
+
+  opened.defer(() => loader.close());
+  const documentsClosed = new AbortController();
+  opened.defer(() => documentsClosed.abort());
 
   const host = await composeHost({
     ...options,
@@ -199,20 +197,16 @@ async function composeOpen(
     home,
     description,
     ...(settings.seed === null ? {} : { seed: settings.seed }),
-    ...(owned === null ? {} : { poll: STORE_POLL_MS }),
+    ...(options.store === undefined ? { poll: STORE_POLL_MS } : {}),
     member: {
       label: options.label ?? "nyte",
       pid: process.pid,
       capabilities: given.some((plugin) => plugin.id === browserTools.id) ? [browserTools.id] : [],
     },
     revoked: options.onRevoked,
-  }).catch((error: unknown) => {
-    loader.close();
-    documentsClosed.abort();
-
-    throw error;
   });
 
+  opened.defer(() => host.close());
   server = host.server;
 
   projectDirs = async () =>
@@ -232,9 +226,6 @@ async function composeOpen(
 
   dev("open", "host", { home, seedIds: Object.keys(settings.seed?.settings ?? {}).length });
 
-  const listeners = new Set<Listener>();
-  let identity: ReturnType<typeof identitySigner> | null = null;
-
   const tailnet = await openTailnet({
     host,
     home,
@@ -242,11 +233,20 @@ async function composeOpen(
     version: description.version,
   });
 
+  opened.defer(() => tailnet.close());
+
   const mcpServer = openMcpServer({
     server: host.server,
     home,
     version: description.version,
     fetchClientMetadata: options.fetchClientMetadata,
+  });
+
+  const listeners = new Set<Listener>();
+  let identity: ReturnType<typeof identitySigner> | null = null;
+
+  opened.defer(async () => {
+    for (const listener of listeners) await listener.close();
   });
 
   const attach = async (listenOptions: ListenOptions): Promise<Listener> => {
@@ -268,14 +268,7 @@ async function composeOpen(
   let closing: Promise<void> | null = null;
 
   const close = (): Promise<void> => {
-    closing ??= (async () => {
-      for (const listener of listeners) await listener.close();
-      await tailnet.close();
-      await host.close();
-      documentsClosed.abort();
-      loader.close();
-      await owned?.close();
-    })();
+    closing ??= opened.disposeAsync();
 
     return closing;
   };

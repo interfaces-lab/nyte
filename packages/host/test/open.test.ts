@@ -10,7 +10,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { nyteProviders } from "@nyte-ai/ai";
 import { storedAccounts } from "./stored-accounts.ts";
 import { createModels } from "@nyte-ai/ai/models";
-import { credentialStore, defaultSecrets, localProvider, openHost } from "../src/index.ts";
+import {
+  credentialStore,
+  defaultSecrets,
+  localProvider,
+  openHost,
+  sqliteStore,
+  storePath,
+} from "../src/index.ts";
 import { chatOnly, fakeModels } from "./fixtures/fake-models.ts";
 
 const folders: string[] = [];
@@ -546,6 +553,55 @@ describe("openHost", () => {
     });
     expect(touched).toBe(0);
   });
+
+  it.each([
+    { store: "a store the caller gave", given: true },
+    { store: "the default store", given: false },
+  ])(
+    "rejects with the failing step's own error and leaves no process on $store, which then opens and closes cleanly",
+    async (row) => {
+      const home = await folder();
+      const unreadable = join(home, ".nyte", "tailnet.json");
+      await mkdir(unreadable, { recursive: true });
+      const memory = memoryStore();
+      let closes = 0;
+
+      const given: Store = {
+        open: () => memory.open(),
+        close: async () => {
+          closes += 1;
+        },
+      };
+
+      const open = () =>
+        openHost({
+          models: fakeModels().models,
+          plugins: [chatOnly],
+          workspace: { kind: "chat-only", locator: null },
+          home,
+          store: row.given ? given : undefined,
+        });
+
+      const processes = async () => {
+        const store = row.given ? memory : sqliteStore({ path: storePath(home) });
+        const refs = await (await store.open()).refs.list("processes/");
+        await store.close();
+
+        return refs;
+      };
+
+      await expect(open()).rejects.toMatchObject({ code: "EISDIR" });
+      expect(await processes()).toEqual([]);
+
+      await rm(unreadable, { recursive: true });
+      const host = await open();
+
+      expect(await processes()).toHaveLength(1);
+      await host.close();
+      expect(await processes()).toEqual([]);
+      expect(closes).toBe(0);
+    },
+  );
 });
 
 function guardFile(reason: string): string {
