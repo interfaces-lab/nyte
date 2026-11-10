@@ -19,6 +19,13 @@ function wrangler(args, output) {
   return run("pnpm", ["exec", "wrangler", ...args], output);
 }
 
+if (!process.env.CLOUDFLARE_API_TOKEN) {
+  console.error(
+    "Set CLOUDFLARE_API_TOKEN to a Cloudflare API token for this deploy: Edit Cloudflare Workers, plus D1 Edit.",
+  );
+  process.exit(1);
+}
+
 wrangler(["deploy", "--dry-run", "--outdir", "dist"], "ignore");
 
 const migrations = readdirSync(`${broker}migrations`)
@@ -52,4 +59,4 @@ run("pnpm", ["test"]);
 
 wrangler(["d1", "migrations", "apply", DATABASE, "--remote"]);
 
-wrangler(["deploy", "--tag", tag, "--message", process.env.GITHUB_SHA ?? "local"]);
+wrangler(["deploy", "--tag", tag, "--message", run("git", ["rev-parse", "HEAD"], "pipe").trim()]);

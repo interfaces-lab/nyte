@@ -197,10 +197,10 @@ Run these steps from `packages/connect-broker`. `wrangler` is a dev dependency o
 4. Deploy:
 
    ```sh
-   pnpm run deploy
+   CLOUDFLARE_API_TOKEN=<token> pnpm run deploy
    ```
 
-`pnpm run deploy` builds the Worker and hashes the bundle, `wrangler.jsonc` and the migrations. When the live version already carries that hash as its tag, it stops. Otherwise it runs the typecheck and tests, applies pending migrations, and deploys with the hash as the tag. The Deploy broker workflow runs it on every push to `main`, with the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` repository secrets. A deploy restarts every relay, so desktops reconnect.
+`pnpm run deploy` builds the Worker and hashes the bundle, `wrangler.jsonc` and the migrations. When the live version already carries that hash as its tag, it stops. Otherwise it runs the typecheck and tests, applies pending migrations, and deploys with the hash as the tag. It refuses to run without `CLOUDFLARE_API_TOKEN`, so every deploy uses a token given for it rather than a stored login: create one from the Edit Cloudflare Workers template with D1 Edit added, and let it expire. A deploy restarts every relay, so desktops reconnect.
 
 A migration and the code that needs it must land together. Between the two, requests that touch the changed tables fail.
 
