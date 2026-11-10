@@ -17,27 +17,6 @@ function lineIndex(frame: string, text: string): number {
   return frame.split("\n").findIndex((line) => line.includes(text));
 }
 
-const everySchedule = buildView((v) =>
-  v
-    .turn("t1", (t) => t.user("hi").tool("bash", { running: true }), { run: "r1" })
-    .pending("asked for later", { schedule: { kind: "next-turn", reason: "requested" } })
-    .pending(
-      "when idle",
-      { schedule: { kind: "next-turn", reason: "idle" } },
-      { delivery: "queue" },
-    )
-    .pending("after the run", { schedule: { kind: "next-turn", reason: "run-ended" } })
-    .pending("ride along", { schedule: { kind: "attached" } })
-    .pending("nobody runs this", {
-      schedule: { kind: "next-turn", reason: "requested" },
-      covered: false,
-    })
-    .unsent("on its way", { delivery: "queue" })
-    .unsent("trying again", { retrying: { at: 5_000, reason: "offline" } })
-    .report({ child: "s9" }, "all done")
-    .live(),
-);
-
 const three = buildView((v) =>
   v
     .turn("t1", (t) => t.user("hi").text("ok").ended("completed"))
@@ -49,21 +28,6 @@ const three = buildView((v) =>
 );
 
 describe("labels", () => {
-  test("each row reads where core scheduled it, not how it was sent", async () => {
-    await using app = await mount(ready(everySchedule), () => <QueueRows />, SIZE);
-    const frame = app.captureCharFrame();
-
-    expect(findRow(frame, "asked for later")).toContain("queued");
-    expect(findRow(frame, "when idle")).toContain("next");
-    expect(findRow(frame, "after the run")).toContain("after this run");
-    expect(findRow(frame, "ride along")).toContain("attached");
-    expect(findRow(frame, "nobody runs this")).toContain("waiting for a host");
-    expect(findRow(frame, "on its way")).toContain("sending…");
-    expect(findRow(frame, "trying again")).toContain("retrying · offline");
-    expect(findRow(frame, "trying again")).toContain("ctrl+q pending");
-    expect(frame).not.toContain("all done");
-  });
-
   test("a narrow row sheds its hint, then its label, to keep twelve columns of text", async () => {
     const one = buildView((v) =>
       v

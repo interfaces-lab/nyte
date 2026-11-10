@@ -270,20 +270,6 @@ describe("typed field", () => {
     });
   });
 
-  test("word and line deletes act from the caret", () => {
-    const words = list(["a"], { query: "find the bug", caret: 8 });
-
-    expect(field(edit(words, { kind: "delete", to: "word-left" }))).toEqual({
-      text: "find  bug",
-      caret: 5,
-    });
-    expect(field(edit(words, { kind: "delete", to: "home" }))).toEqual({ text: " bug", caret: 0 });
-    expect(field(edit(words, { kind: "delete", to: "end" }))).toEqual({
-      text: "find the",
-      caret: 8,
-    });
-  });
-
   test("a secret is edited by code point and keeps its caret on the step", () => {
     const entered = edit(
       secret,

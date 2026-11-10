@@ -5,44 +5,34 @@ import { join } from "node:path";
 import { recentEntries, renderDoctor, type DoctorReport } from "../src/doctor-command.ts";
 import { holdsSecrets, readShareable, secretFilesIn } from "../src/secrets.ts";
 
-const SECRETS = [
-  "auth.json",
-  "mcp-auth.json",
-  "identity.key",
-  "connect.json",
-  "host.json",
-  "secret.key",
-  "secret.sealed",
-  "anything.key",
+const FILES: readonly (readonly [string, boolean])[] = [
+  ["auth.json", true],
+  ["mcp-auth.json", true],
+  ["identity.key", true],
+  ["connect.json", true],
+  ["host.json", true],
+  ["secret.key", true],
+  ["secret.sealed", true],
+  ["anything.key", true],
+  ["tui.log", false],
+  ["init-20260601-120000.log", false],
+  ["doctor.json", false],
+  ["settings.json", false],
+  ["nyte.db", false],
+  ["logs", false],
 ];
 
-describe("secret files", () => {
-  test("every secret file is refused by name, wherever it is", async () => {
-    for (const name of SECRETS) {
-      expect(holdsSecrets(name)).toBe(true);
-      expect(holdsSecrets(`/home/ada/.nyte/${name}`)).toBe(true);
+test.each(FILES)("%s holds secrets: %p", async (name, secret) => {
+  expect(holdsSecrets(name)).toBe(secret);
+  expect(holdsSecrets(`/home/ada/.nyte/${name}`)).toBe(secret);
+  expect(secretFilesIn([name])).toEqual(secret ? [name] : []);
 
-      const refused = await readShareable(`/nonexistent/${name}`).then(
-        () => "read",
-        (error: unknown) => String(error),
-      );
+  const refused = await readShareable(`/nonexistent/${name}`).then(
+    () => "read",
+    (error: unknown) => String(error),
+  );
 
-      expect(refused).toMatch(/holds secrets/u);
-    }
-  });
-
-  test("logs and reports are readable", () => {
-    for (const name of ["tui.log", "init-20260601-120000.log", "doctor.json", "settings.json"]) {
-      expect(holdsSecrets(name)).toBe(false);
-    }
-  });
-
-  test("secretFilesIn picks secrets out of a directory listing", () => {
-    expect(secretFilesIn(["nyte.db", "auth.json", "logs", "identity.key"])).toEqual([
-      "auth.json",
-      "identity.key",
-    ]);
-  });
+  expect(/holds secrets/u.test(refused)).toBe(secret);
 });
 
 describe("doctor", () => {

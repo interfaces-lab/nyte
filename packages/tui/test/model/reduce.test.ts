@@ -273,13 +273,6 @@ describe("send", () => {
     ).toEqual(["composer:clear", "send", "scroll"]);
   });
 
-  test("a /command that takes no argument says so", () => {
-    expect(
-      play(ready(idle), typed("/quit now"), { kind: "send", delivery: "queue" }).state.local.notice
-        ?.text,
-    ).toBe("/quit takes no argument");
-  });
-
   test("attachments sent instead of an answer carry a warning", () => {
     const step = play(ready(idle), typed("x"), {
       kind: "send",

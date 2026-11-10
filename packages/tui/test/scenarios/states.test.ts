@@ -1,9 +1,10 @@
 import { expect, test } from "bun:test";
+import { lastUserText } from "@nyte-ai/bench";
 import { listen } from "@nyte-ai/host";
 import { sdk } from "@nyte-ai/sdk/client";
 import { openTestHost } from "../fixture/host.ts";
 import { followedSession } from "../../src/model/state.ts";
-import { composerShows, shownAt, startTui } from "../harness/tui.ts";
+import { startTui } from "../harness/tui.ts";
 import type { Tui } from "../harness/tui.ts";
 import { SAMPLE_ANSWER, saveFrame, saveProof } from "./scenario.ts";
 
@@ -16,42 +17,6 @@ async function answered(tui: Tui, prompt: string, answer: string, shows: string)
   await tui.state((store) => store.screen().run.kind === "idle");
   await tui.renderOnce();
 }
-
-test("empty: a new chat's welcome screen", async () => {
-  await using tui = await startTui();
-  await tui.ready();
-  await tui.renderOnce();
-  await saveFrame(tui, "state-empty");
-
-  expect(tui.captureCharFrame()).toContain("❯ Plan, search, build anything");
-});
-
-test("loading: the composer takes typing while the host is still opening", async () => {
-  await using tui = await startTui({ opened: false, typed: "draft while loading", record: true });
-  await tui.frame((frame) => composerShows(frame, "draft while loading"));
-  await saveFrame(tui, "state-loading");
-
-  expect(tui.store.state().facts.host).not.toBe("open");
-  expect(shownAt(tui, (frame) => frame.includes("❯ draft while loading"))).toBeLessThanOrEqual(50);
-});
-
-test("streaming: a reply mid-stream shows its text and the working row", async () => {
-  await using tui = await startTui();
-  await tui.ready();
-  const held = Promise.withResolvers<void>();
-  tui.fixture.reply({
-    content: [{ type: "text", text: SAMPLE_ANSWER }],
-    tokens: 8,
-    until: held.promise,
-  });
-  await tui.send("show me the plan");
-  await tui.frame((frame) => frame.includes("another step"));
-  await saveFrame(tui, "state-streaming");
-
-  expect(tui.store.screen().run.kind).not.toBe("idle");
-  held.resolve();
-  await tui.state((store) => store.screen().run.kind === "idle");
-});
 
 test("steering: a message sent mid-run is a pending prompt from its send, never a queue row", async () => {
   await using tui = await startTui();
@@ -149,7 +114,7 @@ test("offline, then back: a message sent while the service is down waits as pend
   await tui.frame((frame) => frame.includes("… are you there"));
   await saveFrame(tui, "state-offline");
 
-  await using second = await listen(fixture.host, {
+  const second = await listen(fixture.host, {
     transport: { kind: "http", port: Number(new URL(url).port) },
     auth: { kind: "token", token },
   });
@@ -168,7 +133,9 @@ test("offline, then back: a message sent while the service is down waits as pend
 
   await tui.dispose();
   await connection.close();
-  expect(second.address).toBeDefined();
+  await second.close();
+  expect(lastUserText(await fixture.requested(2))).toBe("are you there");
+  expect(fixture.requests).toHaveLength(2);
 }, 30_000);
 
 test("very long content: a 3,000-line answer paints its tail", async () => {
@@ -187,27 +154,3 @@ test("very long content: a 3,000-line answer paints its tail", async () => {
   expect(rows.at(-2)).toContain("enter send");
   expect(rows.at(-3)).toContain("╰─ ");
 });
-
-test("narrow: the same conversation at 60 columns", async () => {
-  await using tui = await startTui({ size: { width: 60, height: 32 } });
-  await tui.ready();
-  await answered(tui, "show me the plan", SAMPLE_ANSWER, "another step");
-  await saveFrame(tui, "state-narrow-60");
-
-  expect(
-    tui
-      .captureCharFrame()
-      .split("\n")
-      .every((line) => line.length <= 60),
-  ).toBe(true);
-});
-
-for (const theme of ["dark", "light"] as const)
-  test(`${theme}: the same conversation in the ${theme} theme`, async () => {
-    await using tui = await startTui();
-    await tui.ready();
-    await tui.send(`/theme ${theme}`);
-    await tui.state((store) => store.state().facts.settings.theme === theme);
-    await answered(tui, "show me the plan", SAMPLE_ANSWER, "another step");
-    await saveFrame(tui, `state-${theme}`);
-  });

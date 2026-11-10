@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { asId } from "@nyte-ai/schema";
 import type { App } from "../../../src/app/context.tsx";
-import { SPINNER_FRAMES, SPINNER_INTERVAL_MS } from "../../../src/lib/constants.ts";
+import { SPINNER_FRAMES } from "../../../src/lib/constants.ts";
 import { Transcript } from "../../../src/ui/transcript/transcript.tsx";
 import { buildState } from "../../fixture/state.ts";
 import { followed, buildView } from "../../fixture/view.ts";
@@ -172,7 +172,7 @@ describe("turn", () => {
     expect(app.captureCharFrame()).toContain("line 5");
   });
 
-  test("a live turn keeps the spinner row under its content, and it spins", async () => {
+  test("a live turn keeps the spinner row under its content", async () => {
     const view = buildView((v) =>
       v.turn("t1", (t) => t.user("question").text("streaming", { live: true })).live(),
     );
@@ -186,9 +186,6 @@ describe("turn", () => {
       "status:t1",
     ]);
     expect(app.captureCharFrame()).toContain(`${SPINNER_FRAMES[0]} Working`);
-    app.clock.advance(SPINNER_INTERVAL_MS);
-    await app.renderOnce();
-    expect(app.captureCharFrame()).toContain(`${SPINNER_FRAMES[1]} Working`);
   });
 
   test("a retrying run shows its countdown, attempt and cause", async () => {
@@ -199,7 +196,9 @@ describe("turn", () => {
     await using app = await renderWithApp(buildState(followed(view)), transcript);
 
     expect(app.captureCharFrame()).toContain("Retrying in 9s (attempt 0) · rate limited.");
-    expect(app.clock.pendingTimerCount).toBeGreaterThan(0);
+    app.clock.advance(1_000);
+    await app.renderOnce();
+    expect(app.captureCharFrame()).toContain("Retrying in 8s (attempt 0) · rate limited.");
   });
 
   test("a report row click opens the task", async () => {

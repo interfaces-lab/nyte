@@ -16,211 +16,258 @@ const ESC = "chat.interrupt";
 
 const CTRL_C = "chat.quit";
 
-function at(spec: TableSpec, command: ChatCommand) {
-  return interactionsFor(tableInput(spec))[command];
+type Interaction = Interactions[ChatCommand];
+
+type Check = (interaction: Interaction) => void;
+
+function is(expected: Interaction): Check {
+  return (interaction) => expect(interaction).toEqual(expected);
 }
 
-describe("blocked", () => {
-  test("Enter refuses with the reason and hides its hint", () => {
-    expect(at({ blocked: "switching", draft: "hi" }, ENTER)).toEqual({
+function does(expected: Interaction["intent"]): Check {
+  return (interaction) => expect(interaction.intent).toEqual(expected);
+}
+
+interface Subset {
+  readonly intent: Partial<NonNullable<Interaction["intent"]>>;
+  readonly label?: string;
+  readonly hidden?: boolean;
+}
+
+function like(expected: Subset): Check {
+  return (interaction) => expect(interaction).toMatchObject(expected);
+}
+
+const CASES: readonly (readonly [string, TableSpec, ChatCommand, Check])[] = [
+  [
+    "blocked: Enter refuses with the reason and hides its hint",
+    { blocked: "switching", draft: "hi" },
+    ENTER,
+    is({
       intent: { kind: "refuse", reason: "Opening the chat. Your draft is saved here." },
       label: "send",
       hidden: true,
-    });
-  });
-
-  test("Ctrl+Enter refuses the same way", () => {
-    expect(at({ blocked: "switching", draft: "hi" }, CTRL_ENTER).intent).toEqual({
-      kind: "refuse",
-      reason: "Opening the chat. Your draft is saved here.",
-    });
-  });
-
-  test("Esc cancels authentication", () => {
-    expect(at({ blocked: "authenticating" }, ESC)).toMatchObject({
-      intent: { kind: "cancel-auth" },
-      label: "cancel authentication",
-    });
-  });
-
-  test("Esc passes otherwise and opens nothing while blocked", () => {
-    expect(at({ blocked: "switching" }, ESC).intent).toEqual({ kind: "noop" });
-  });
-
-  test("Ctrl+C passes: it clears a draft typed while blocked instead of quitting", () => {
-    expect(at({ blocked: "switching", draft: "keep" }, CTRL_C).intent).toEqual({
-      kind: "clear-draft",
-    });
-    expect(at({ blocked: "switching" }, CTRL_C).intent).toEqual({ kind: "quit" });
-  });
-});
-
-describe("completion", () => {
-  test("Enter accepts", () => {
-    expect(at({ completion: "slash", draft: "/re" }, ENTER)).toMatchObject({
+    }),
+  ],
+  [
+    "blocked: Ctrl+Enter refuses the same way",
+    { blocked: "switching", draft: "hi" },
+    CTRL_ENTER,
+    does({ kind: "refuse", reason: "Opening the chat. Your draft is saved here." }),
+  ],
+  [
+    "blocked: Esc cancels authentication",
+    { blocked: "authenticating" },
+    ESC,
+    like({ intent: { kind: "cancel-auth" }, label: "cancel authentication" }),
+  ],
+  [
+    "blocked: Esc passes otherwise and opens nothing while blocked",
+    { blocked: "switching" },
+    ESC,
+    does({ kind: "noop" }),
+  ],
+  [
+    "blocked: Ctrl+C clears a draft typed while blocked instead of quitting",
+    { blocked: "switching", draft: "keep" },
+    CTRL_C,
+    does({ kind: "clear-draft" }),
+  ],
+  [
+    "blocked: Ctrl+C on an empty draft quits",
+    { blocked: "switching" },
+    CTRL_C,
+    does({ kind: "quit" }),
+  ],
+  [
+    "completion: Enter accepts",
+    { completion: "slash", draft: "/re" },
+    ENTER,
+    like({
       intent: { kind: "completion", action: { kind: "accept", alternate: null } },
       hidden: true,
-    });
-  });
-
-  test("Enter on /cd passes, so the typed path runs", () => {
-    expect(at({ completion: "cd", draft: "/cd sr" }, ENTER).intent).toEqual({
-      kind: "send",
-      delivery: "queue",
-    });
-  });
-
-  test("Ctrl+Enter on a skill accepts, then sends with the alternate delivery", () => {
-    expect(
-      at({ completion: "skill", draft: "/re", run: "working", followUp: "steer" }, CTRL_ENTER)
-        .intent,
-    ).toEqual({
-      kind: "completion",
-      action: { kind: "accept", alternate: "queue" },
-    });
-  });
-
-  test("Ctrl+Enter on a non-skill does nothing, so the half-typed token is not sent", () => {
-    expect(at({ completion: "slash", draft: "/re", run: "working" }, CTRL_ENTER).intent).toEqual({
-      kind: "noop",
-    });
-  });
-
-  test("Ctrl+Enter on /cd passes, so the typed path runs", () => {
-    expect(at({ completion: "cd", draft: "/cd sr", run: "working" }, CTRL_ENTER).intent).toEqual({
-      kind: "send",
-      delivery: "queue",
-    });
-  });
-
-  test("an empty menu only closes: Enter sends, Tab and the arrows do nothing", () => {
-    expect(at({ completion: "empty", draft: "/zz" }, ENTER).intent).toEqual({
-      kind: "send",
-      delivery: "queue",
-    });
-    expect(at({ completion: "empty", draft: "/zz" }, "completion.close").intent).toEqual({
-      kind: "completion",
-      action: { kind: "close" },
-    });
-
-    for (const command of ["completion.fill", "completion.next", "completion.page.up"] as const)
-      expect(at({ completion: "empty", draft: "/zz" }, command).intent).toBeNull();
-  });
-
-  test("Esc closes the menu", () => {
-    expect(at({ completion: "slash", draft: "/re", run: "working" }, ESC).intent).toEqual({
-      kind: "completion",
-      action: { kind: "close" },
-    });
-  });
-
-  test("Ctrl+C passes", () => {
-    expect(at({ completion: "slash", draft: "/re" }, CTRL_C).intent).toEqual({
-      kind: "clear-draft",
-    });
-  });
-});
-
-describe("shell running", () => {
-  test("Enter and Ctrl+Enter refuse a prompt and a ! command, keeping the draft", () => {
-    for (const key of [ENTER, CTRL_ENTER] as const) {
-      expect(at({ shell: true, draft: "next" }, key).intent).toEqual({
-        kind: "refuse",
-        reason: "A local command is running. Wait or press Esc; your draft is kept.",
-      });
-      expect(at({ shell: true, draft: "!ls" }, key).intent).toEqual({
-        kind: "refuse",
-        reason: "A local command is running. Esc stops it; your draft is kept.",
-      });
-    }
-  });
-
-  test("a /command still runs", () => {
-    expect(at({ shell: true, draft: "/usage" }, ENTER).intent).toEqual({
-      kind: "send",
-      delivery: "queue",
-    });
-  });
-
-  test("Esc stops the command", () => {
-    expect(at({ shell: true }, ESC)).toMatchObject({
-      intent: { kind: "stop-shell" },
-      label: "stop command",
-    });
-  });
-
-  test("Ctrl+C stops the command, without a second hint", () => {
-    expect(at({ shell: true, draft: "x" }, CTRL_C)).toMatchObject({
-      intent: { kind: "stop-shell" },
-      hidden: true,
-    });
-  });
-});
-
-describe("editing a queued message", () => {
-  test("Enter saves with the message's own delivery", () => {
-    expect(at({ editing: "queue", draft: "fixed" }, ENTER)).toMatchObject({
-      intent: { kind: "save-edit", delivery: "queue" },
-      label: "save",
-    });
-  });
-
-  test("Enter on an empty draft refuses instead of saving nothing", () => {
-    expect(at({ editing: "queue" }, ENTER).intent).toMatchObject({ kind: "refuse" });
-  });
-
-  test("Ctrl+Enter saves as a steer", () => {
-    expect(at({ editing: "queue", draft: "fixed" }, CTRL_ENTER).intent).toEqual({
-      kind: "save-edit",
-      delivery: "steer",
-    });
-  });
-
-  test("Esc cancels the edit", () => {
-    expect(at({ editing: "steer", run: "working" }, ESC)).toMatchObject({
-      intent: { kind: "cancel-edit" },
-      label: "cancel edit",
-    });
-  });
-
-  test("Ctrl+C clears a draft, else cancels the edit (never quits)", () => {
-    expect(at({ editing: "steer", draft: "x" }, CTRL_C).intent).toEqual({ kind: "clear-draft" });
-    expect(at({ editing: "steer" }, CTRL_C).intent).toEqual({ kind: "cancel-edit" });
-  });
-});
-
-describe("shell draft", () => {
-  test("Enter runs `!` locally, sending its output with the next prompt", () => {
-    expect(at({ draft: "!ls" }, ENTER)).toEqual({
+    }),
+  ],
+  [
+    "completion: Enter on /cd passes, so the typed path runs",
+    { completion: "cd", draft: "/cd sr" },
+    ENTER,
+    does({ kind: "send", delivery: "queue" }),
+  ],
+  [
+    "completion: Ctrl+Enter on a skill accepts, then sends with the alternate delivery",
+    { completion: "skill", draft: "/re", run: "working", followUp: "steer" },
+    CTRL_ENTER,
+    does({ kind: "completion", action: { kind: "accept", alternate: "queue" } }),
+  ],
+  [
+    "completion: Ctrl+Enter on a non-skill does nothing, so the half-typed token is not sent",
+    { completion: "slash", draft: "/re", run: "working" },
+    CTRL_ENTER,
+    does({ kind: "noop" }),
+  ],
+  [
+    "completion: Ctrl+Enter on /cd passes, so the typed path runs",
+    { completion: "cd", draft: "/cd sr", run: "working" },
+    CTRL_ENTER,
+    does({ kind: "send", delivery: "queue" }),
+  ],
+  [
+    "completion: Enter on an empty menu sends",
+    { completion: "empty", draft: "/zz" },
+    ENTER,
+    does({ kind: "send", delivery: "queue" }),
+  ],
+  [
+    "completion: an empty menu only closes",
+    { completion: "empty", draft: "/zz" },
+    "completion.close",
+    does({ kind: "completion", action: { kind: "close" } }),
+  ],
+  [
+    "completion: Tab does nothing on an empty menu",
+    { completion: "empty", draft: "/zz" },
+    "completion.fill",
+    does(null),
+  ],
+  [
+    "completion: Down does nothing on an empty menu",
+    { completion: "empty", draft: "/zz" },
+    "completion.next",
+    does(null),
+  ],
+  [
+    "completion: Page Up does nothing on an empty menu",
+    { completion: "empty", draft: "/zz" },
+    "completion.page.up",
+    does(null),
+  ],
+  [
+    "completion: Esc closes the menu",
+    { completion: "slash", draft: "/re", run: "working" },
+    ESC,
+    does({ kind: "completion", action: { kind: "close" } }),
+  ],
+  [
+    "completion: Ctrl+C passes",
+    { completion: "slash", draft: "/re" },
+    CTRL_C,
+    does({ kind: "clear-draft" }),
+  ],
+  [
+    "shell running: Enter refuses a prompt, keeping the draft",
+    { shell: true, draft: "next" },
+    ENTER,
+    does({
+      kind: "refuse",
+      reason: "A local command is running. Wait or press Esc; your draft is kept.",
+    }),
+  ],
+  [
+    "shell running: Enter refuses a ! command, keeping the draft",
+    { shell: true, draft: "!ls" },
+    ENTER,
+    does({
+      kind: "refuse",
+      reason: "A local command is running. Esc stops it; your draft is kept.",
+    }),
+  ],
+  [
+    "shell running: Ctrl+Enter refuses a prompt, keeping the draft",
+    { shell: true, draft: "next" },
+    CTRL_ENTER,
+    does({
+      kind: "refuse",
+      reason: "A local command is running. Wait or press Esc; your draft is kept.",
+    }),
+  ],
+  [
+    "shell running: Ctrl+Enter refuses a ! command, keeping the draft",
+    { shell: true, draft: "!ls" },
+    CTRL_ENTER,
+    does({
+      kind: "refuse",
+      reason: "A local command is running. Esc stops it; your draft is kept.",
+    }),
+  ],
+  [
+    "shell running: a /command still runs",
+    { shell: true, draft: "/usage" },
+    ENTER,
+    does({ kind: "send", delivery: "queue" }),
+  ],
+  [
+    "shell running: Esc stops the command",
+    { shell: true },
+    ESC,
+    like({ intent: { kind: "stop-shell" }, label: "stop command" }),
+  ],
+  [
+    "shell running: Ctrl+C stops the command, without a second hint",
+    { shell: true, draft: "x" },
+    CTRL_C,
+    like({ intent: { kind: "stop-shell" }, hidden: true }),
+  ],
+  [
+    "editing a queued message: Enter saves with the message's own delivery",
+    { editing: "queue", draft: "fixed" },
+    ENTER,
+    like({ intent: { kind: "save-edit", delivery: "queue" }, label: "save" }),
+  ],
+  [
+    "editing a queued message: Enter on an empty draft refuses instead of saving nothing",
+    { editing: "queue" },
+    ENTER,
+    like({ intent: { kind: "refuse" } }),
+  ],
+  [
+    "editing a queued message: Ctrl+Enter saves as a steer",
+    { editing: "queue", draft: "fixed" },
+    CTRL_ENTER,
+    does({ kind: "save-edit", delivery: "steer" }),
+  ],
+  [
+    "editing a queued message: Esc cancels the edit",
+    { editing: "steer", run: "working" },
+    ESC,
+    like({ intent: { kind: "cancel-edit" }, label: "cancel edit" }),
+  ],
+  [
+    "editing a queued message: Ctrl+C clears a draft",
+    { editing: "steer", draft: "x" },
+    CTRL_C,
+    does({ kind: "clear-draft" }),
+  ],
+  [
+    "editing a queued message: Ctrl+C on an empty draft cancels the edit, never quits",
+    { editing: "steer" },
+    CTRL_C,
+    does({ kind: "cancel-edit" }),
+  ],
+  [
+    "shell draft: Enter runs `!` locally, sending its output with the next prompt",
+    { draft: "!ls" },
+    ENTER,
+    is({
       intent: { kind: "run-shell", command: "ls", include: true },
       label: "run locally",
       hidden: false,
-    });
-  });
-
-  test("Enter runs `!!` privately", () => {
-    expect(at({ draft: "!!ls" }, ENTER)).toMatchObject({
-      intent: { kind: "run-shell", command: "ls", include: false },
-      label: "run privately",
-    });
-  });
-
-  test("Ctrl+Enter passes", () => {
-    expect(at({ draft: "!ls" }, CTRL_ENTER).intent).toEqual({ kind: "noop" });
-  });
-
-  test("Esc passes", () => {
-    expect(at({ draft: "!ls", run: "working" }, ESC).intent).toEqual({ kind: "stop-run" });
-  });
-
-  test("Ctrl+C passes", () => {
-    expect(at({ draft: "!ls" }, CTRL_C).intent).toEqual({ kind: "clear-draft" });
-  });
-});
-
-describe("question open", () => {
-  test("Enter with plain text answers the question", () => {
-    expect(at({ question: "head", run: "waiting", draft: "Green" }, ENTER)).toEqual({
+    }),
+  ],
+  [
+    "shell draft: Enter runs `!!` privately",
+    { draft: "!!ls" },
+    ENTER,
+    like({ intent: { kind: "run-shell", command: "ls", include: false }, label: "run privately" }),
+  ],
+  ["shell draft: Ctrl+Enter passes", { draft: "!ls" }, CTRL_ENTER, does({ kind: "noop" })],
+  ["shell draft: Esc passes", { draft: "!ls", run: "working" }, ESC, does({ kind: "stop-run" })],
+  ["shell draft: Ctrl+C passes", { draft: "!ls" }, CTRL_C, does({ kind: "clear-draft" })],
+  [
+    "question open: Enter with plain text answers the question",
+    { question: "head", run: "waiting", draft: "Green" },
+    ENTER,
+    is({
       intent: {
         kind: "answer",
         session: asId("s1"),
@@ -230,256 +277,265 @@ describe("question open", () => {
       },
       label: "answer",
       hidden: false,
-    });
-  });
-
-  test("Enter answers a child's question too", () => {
-    expect(at({ question: "child", draft: "Green" }, ENTER).intent).toMatchObject({
-      kind: "answer",
-      session: "s9",
-    });
-  });
-
-  test("Enter with attachments sends a steer with a warning", () => {
-    expect(
-      at({ question: "head", run: "waiting", draft: "see", attachment: true }, ENTER).intent,
-    ).toMatchObject({
-      kind: "send",
-      delivery: "steer",
-      warning: expect.stringContaining("Attachments"),
-    });
-  });
-
-  test("Enter on an empty draft reopens the picker", () => {
-    expect(at({ question: "head", run: "waiting" }, ENTER).intent).toEqual({
-      kind: "open-question",
-    });
-  });
-
-  test("Enter with a /command runs it rather than answering", () => {
-    expect(at({ question: "head", run: "waiting", draft: "/model" }, ENTER).intent).toEqual({
-      kind: "send",
-      delivery: "steer",
-    });
-  });
-
-  test("Ctrl+Enter with a message sends a steer", () => {
-    expect(
-      at({ question: "head", run: "waiting", draft: "also", followUp: "steer" }, CTRL_ENTER).intent,
-    ).toEqual({
-      kind: "send",
-      delivery: "steer",
-    });
-  });
-
-  test("Esc stops the run", () => {
-    expect(at({ question: "head", run: "waiting" }, ESC).intent).toEqual({ kind: "stop-run" });
-  });
-
-  test("Esc passes when nothing runs", () => {
-    expect(at({ question: "child" }, ESC).intent).toMatchObject({ kind: "escape-tree" });
-  });
-
-  test("Ctrl+C passes", () => {
-    expect(at({ question: "head", run: "waiting" }, CTRL_C).intent).toEqual({ kind: "quit" });
-  });
-});
-
-describe("busy", () => {
-  test("Enter with a message follows the setting: steer", () => {
-    expect(at({ run: "working", draft: "fix it", followUp: "steer" }, ENTER)).toMatchObject({
-      intent: { kind: "send", delivery: "steer" },
-      label: "steer",
-    });
-  });
-
-  test("Enter with a message follows the setting: queue, and the hint says so", () => {
-    const interactions = interactionsFor(
-      tableInput({ run: "working", draft: "fix it", followUp: "queue" }),
-    );
-
-    expect(interactions[ENTER].intent).toEqual({ kind: "send", delivery: "queue" });
-    expect(interactions[ENTER].label).toBe("queue");
-  });
-
-  test("Enter on an empty draft promotes the first row a host covers", () => {
-    expect(
-      at(
-        {
-          run: "working",
-          followUp: "queue",
-          queue: [
-            { id: "m1", place: "uncovered" },
-            { id: "m2", place: "next-turn" },
-          ],
-        },
-        ENTER,
-      ),
-    ).toMatchObject({ intent: { kind: "promote", message: asId("m2") }, label: "send now" });
-  });
-
-  test("Enter on an empty draft with nothing to promote does nothing", () => {
-    expect(at({ run: "working", queue: [{ id: "m1", place: "sending" }] }, ENTER).intent).toEqual({
-      kind: "noop",
-    });
-  });
-
-  test("Ctrl+Enter sends with the other delivery", () => {
-    expect(at({ run: "working", draft: "x", followUp: "steer" }, CTRL_ENTER)).toMatchObject({
-      intent: { kind: "send", delivery: "queue" },
-      label: "queue",
-    });
-    expect(at({ run: "working", draft: "x", followUp: "queue" }, CTRL_ENTER).intent).toEqual({
-      kind: "send",
-      delivery: "steer",
-    });
-  });
-
-  test("Ctrl+Enter without a message is hidden", () => {
-    expect(at({ run: "working" }, CTRL_ENTER)).toMatchObject({
-      intent: { kind: "noop" },
-      hidden: true,
-    });
-  });
-
-  test("Esc stops the run", () => {
-    expect(at({ run: "retrying" }, ESC)).toMatchObject({
-      intent: { kind: "stop-run" },
-      label: "stop",
-    });
-  });
-
-  test("Ctrl+C passes", () => {
-    expect(at({ run: "working", draft: "x" }, CTRL_C).intent).toEqual({ kind: "clear-draft" });
-  });
-});
-
-describe("idle", () => {
-  test("Enter with a message sends", () => {
-    expect(at({ draft: "hello" }, ENTER)).toEqual({
-      intent: { kind: "send", delivery: "queue" },
-      label: "send",
-      hidden: false,
-    });
-  });
-
-  test("Enter on an empty draft promotes a waiting row", () => {
-    expect(at({ queue: [{ id: "m3", place: "next-turn" }] }, ENTER).intent).toEqual({
-      kind: "promote",
-      message: asId("m3"),
-    });
-  });
-
-  test("Enter on an empty draft is a no-op that still shows `enter send`", () => {
-    expect(at({}, ENTER)).toEqual({ intent: { kind: "noop" }, label: "send", hidden: false });
-  });
-
-  test("Ctrl+Enter sends like Enter, without a hint", () => {
-    expect(at({ draft: "hello" }, CTRL_ENTER)).toEqual({
-      intent: { kind: "send", delivery: "queue" },
-      label: "send",
-      hidden: true,
-    });
-  });
-
-  test("Esc with a message refuses to open the tree", () => {
-    expect(at({ draft: "hello" }, ESC)).toMatchObject({ intent: { kind: "refuse" }, hidden: true });
-  });
-
-  test("Esc on an empty draft arms the double-press tree", () => {
-    expect(at({}, ESC)).toMatchObject({ intent: { kind: "escape-tree" }, label: "tree (twice)" });
-  });
-
-  test("Ctrl+C clears a draft, whitespace included", () => {
-    expect(at({ draft: "  " }, CTRL_C)).toMatchObject({
-      intent: { kind: "clear-draft" },
-      label: "clear draft",
-    });
-  });
-
-  test("Ctrl+C on an empty draft quits", () => {
-    expect(at({}, CTRL_C)).toMatchObject({ intent: { kind: "quit" }, label: "quit" });
-  });
-});
-
-describe("other commands", () => {
-  test("Up steps history only from the first wrapped row", () => {
-    expect(at({ draft: "a\nb", row: "first" }, "chat.history.previous").intent).toEqual({
-      kind: "history",
-      direction: "previous",
-    });
-    expect(at({ draft: "a\nb\nc", row: "middle" }, "chat.history.previous").intent).toBeNull();
-  });
-
-  test("Down on an empty draft with tasks opens the task list", () => {
-    expect(at({ tasks: 2 }, "chat.history.next")).toMatchObject({
+    }),
+  ],
+  [
+    "question open: Enter answers a child's question too",
+    { question: "child", draft: "Green" },
+    ENTER,
+    like({ intent: { kind: "answer", session: asId("s9") } }),
+  ],
+  [
+    "question open: Enter with attachments sends a steer with a warning",
+    { question: "head", run: "waiting", draft: "see", attachment: true },
+    ENTER,
+    like({
+      intent: { kind: "send", delivery: "steer", warning: expect.stringContaining("Attachments") },
+    }),
+  ],
+  [
+    "question open: Enter on an empty draft reopens the picker",
+    { question: "head", run: "waiting" },
+    ENTER,
+    does({ kind: "open-question" }),
+  ],
+  [
+    "question open: Enter with a /command runs it rather than answering",
+    { question: "head", run: "waiting", draft: "/model" },
+    ENTER,
+    does({ kind: "send", delivery: "steer" }),
+  ],
+  [
+    "question open: Ctrl+Enter with a message sends a steer",
+    { question: "head", run: "waiting", draft: "also", followUp: "steer" },
+    CTRL_ENTER,
+    does({ kind: "send", delivery: "steer" }),
+  ],
+  [
+    "question open: Esc stops the run",
+    { question: "head", run: "waiting" },
+    ESC,
+    does({ kind: "stop-run" }),
+  ],
+  [
+    "question open: Esc passes when nothing runs",
+    { question: "child" },
+    ESC,
+    like({ intent: { kind: "escape-tree" } }),
+  ],
+  [
+    "question open: Ctrl+C passes",
+    { question: "head", run: "waiting" },
+    CTRL_C,
+    does({ kind: "quit" }),
+  ],
+  [
+    "busy: Enter with a message follows the setting: steer",
+    { run: "working", draft: "fix it", followUp: "steer" },
+    ENTER,
+    like({ intent: { kind: "send", delivery: "steer" }, label: "steer" }),
+  ],
+  [
+    "busy: Enter with a message follows the setting: queue, and the hint says so",
+    { run: "working", draft: "fix it", followUp: "queue" },
+    ENTER,
+    is({ intent: { kind: "send", delivery: "queue" }, label: "queue", hidden: false }),
+  ],
+  [
+    "busy: Enter on an empty draft promotes the first row a host covers",
+    {
+      run: "working",
+      followUp: "queue",
+      queue: [
+        { id: "m1", place: "uncovered" },
+        { id: "m2", place: "next-turn" },
+      ],
+    },
+    ENTER,
+    like({ intent: { kind: "promote", message: asId("m2") }, label: "send now" }),
+  ],
+  [
+    "busy: Enter on an empty draft with nothing to promote does nothing",
+    { run: "working", queue: [{ id: "m1", place: "sending" }] },
+    ENTER,
+    does({ kind: "noop" }),
+  ],
+  [
+    "busy: Ctrl+Enter queues when the setting steers",
+    { run: "working", draft: "x", followUp: "steer" },
+    CTRL_ENTER,
+    like({ intent: { kind: "send", delivery: "queue" }, label: "queue" }),
+  ],
+  [
+    "busy: Ctrl+Enter steers when the setting queues",
+    { run: "working", draft: "x", followUp: "queue" },
+    CTRL_ENTER,
+    does({ kind: "send", delivery: "steer" }),
+  ],
+  [
+    "busy: Ctrl+Enter without a message is hidden",
+    { run: "working" },
+    CTRL_ENTER,
+    like({ intent: { kind: "noop" }, hidden: true }),
+  ],
+  [
+    "busy: Esc stops the run",
+    { run: "retrying" },
+    ESC,
+    like({ intent: { kind: "stop-run" }, label: "stop" }),
+  ],
+  ["busy: Ctrl+C passes", { run: "working", draft: "x" }, CTRL_C, does({ kind: "clear-draft" })],
+  [
+    "idle: Enter with a message sends",
+    { draft: "hello" },
+    ENTER,
+    is({ intent: { kind: "send", delivery: "queue" }, label: "send", hidden: false }),
+  ],
+  [
+    "idle: Enter on an empty draft promotes a waiting row",
+    { queue: [{ id: "m3", place: "next-turn" }] },
+    ENTER,
+    does({ kind: "promote", message: asId("m3") }),
+  ],
+  [
+    "idle: Enter on an empty draft is a no-op that still shows `enter send`",
+    {},
+    ENTER,
+    is({ intent: { kind: "noop" }, label: "send", hidden: false }),
+  ],
+  [
+    "idle: Ctrl+Enter sends like Enter, without a hint",
+    { draft: "hello" },
+    CTRL_ENTER,
+    is({ intent: { kind: "send", delivery: "queue" }, label: "send", hidden: true }),
+  ],
+  [
+    "idle: Esc with a message refuses to open the tree",
+    { draft: "hello" },
+    ESC,
+    like({ intent: { kind: "refuse" }, hidden: true }),
+  ],
+  [
+    "idle: Esc on an empty draft arms the double-press tree",
+    {},
+    ESC,
+    like({ intent: { kind: "escape-tree" }, label: "tree (twice)" }),
+  ],
+  [
+    "idle: Ctrl+C clears a draft, whitespace included",
+    { draft: "  " },
+    CTRL_C,
+    like({ intent: { kind: "clear-draft" }, label: "clear draft" }),
+  ],
+  [
+    "idle: Ctrl+C on an empty draft quits",
+    {},
+    CTRL_C,
+    like({ intent: { kind: "quit" }, label: "quit" }),
+  ],
+  [
+    "Up steps history from the first wrapped row",
+    { draft: "a\nb", row: "first" },
+    "chat.history.previous",
+    does({ kind: "history", direction: "previous" }),
+  ],
+  [
+    "Up leaves a middle wrapped row to the textarea",
+    { draft: "a\nb\nc", row: "middle" },
+    "chat.history.previous",
+    does(null),
+  ],
+  [
+    "Down on an empty draft with tasks opens the task list",
+    { tasks: 2 },
+    "chat.history.next",
+    like({
       intent: {
         kind: "open",
         dialog: { kind: "list", purpose: { kind: "tasks", section: "active" } },
       },
       label: "view tasks",
       hidden: false,
-    });
-    expect(at({ tasks: 2, browsing: true }, "chat.history.next").intent).toEqual({
-      kind: "history",
-      direction: "next",
-    });
-  });
-
-  test("Ctrl+Q opens the queue on its first row, or says it is empty", () => {
-    expect(at({ queue: [{ id: "m4", place: "next-turn" }] }, "chat.queue.open").intent).toEqual({
+    }),
+  ],
+  [
+    "Down while browsing history steps history even with tasks",
+    { tasks: 2, browsing: true },
+    "chat.history.next",
+    does({ kind: "history", direction: "next" }),
+  ],
+  [
+    "Ctrl+Q opens the queue on its first row",
+    { queue: [{ id: "m4", place: "next-turn" }] },
+    "chat.queue.open",
+    does({
       kind: "open",
       dialog: { kind: "list", purpose: { kind: "queue", message: asId("m4") } },
-    });
-    expect(at({}, "chat.queue.open").intent).toMatchObject({
-      kind: "refuse",
-      reason: "Nothing is queued",
-    });
-  });
+    }),
+  ],
+  [
+    "Ctrl+Q says an empty queue is empty",
+    {},
+    "chat.queue.open",
+    like({ intent: { kind: "refuse", reason: "Nothing is queued" } }),
+  ],
+  [
+    "Ctrl+K opens the palette",
+    {},
+    "chat.commands.open",
+    like({ intent: { kind: "open" }, label: "help" }),
+  ],
+  ["Ctrl+K is off while blocked", { blocked: "switching" }, "chat.commands.open", does(null)],
+  ["completion keys are off without a completion", {}, "completion.next", does(null)],
+  [
+    "completion keys are on while a completion is open",
+    { completion: "slash", draft: "/re" },
+    "completion.next",
+    does({ kind: "completion", action: { kind: "move", by: 1 } }),
+  ],
+  [
+    "completion accept is off for /cd",
+    { completion: "cd", draft: "/cd sr" },
+    "completion.accept",
+    does(null),
+  ],
+  [
+    "scroll keys scroll the transcript",
+    {},
+    "chat.scroll.page.up",
+    does({ kind: "scroll", to: "page-up" }),
+  ],
+  [
+    "scroll keys give way to the completion menu",
+    { completion: "slash", draft: "/re" },
+    "chat.scroll.page.up",
+    does(null),
+  ],
+  ["the textarea's own keys are never ours", { draft: "x" }, "composer.newline", does(null)],
+  [
+    "a dialog gets its own keys, forwarded by name",
+    { dialog: true },
+    "picker.next",
+    does({ kind: "dialog", command: { kind: "key", name: "picker.next" } }),
+  ],
+  ["a dialog takes Enter from the composer", { dialog: true, draft: "x" }, ENTER, does(null)],
+];
 
-  test("Ctrl+K opens the palette unless blocked", () => {
-    expect(at({}, "chat.commands.open")).toMatchObject({ intent: { kind: "open" }, label: "help" });
-    expect(at({ blocked: "switching" }, "chat.commands.open").intent).toBeNull();
-  });
+test.each(CASES)("%s", (_name, spec, command, check) => {
+  check(interactionsFor(tableInput(spec))[command]);
+});
 
-  test("completion keys are on only while a completion is open", () => {
-    expect(at({}, "completion.next").intent).toBeNull();
-    expect(at({ completion: "slash", draft: "/re" }, "completion.next").intent).toEqual({
-      kind: "completion",
-      action: { kind: "move", by: 1 },
-    });
-    expect(at({ completion: "cd", draft: "/cd sr" }, "completion.accept").intent).toBeNull();
-  });
+test("a text panel closes on Ctrl+C as well as Esc", () => {
+  const panel: Dialog = {
+    kind: "text",
+    id: "x",
+    title: "Plugins",
+    body: { kind: "ready", lines: [] },
+    scroll: 0,
+  };
 
-  test("scroll keys give way to the completion menu", () => {
-    expect(at({}, "chat.scroll.page.up").intent).toEqual({ kind: "scroll", to: "page-up" });
-    expect(at({ completion: "slash", draft: "/re" }, "chat.scroll.page.up").intent).toBeNull();
-  });
-
-  test("the textarea's own keys are never ours", () => {
-    expect(at({ draft: "x" }, "composer.newline").intent).toBeNull();
-  });
-
-  test("a dialog gets its own keys, forwarded by name", () => {
-    expect(at({ dialog: true }, "picker.next").intent).toEqual({
-      kind: "dialog",
-      command: { kind: "key", name: "picker.next" },
-    });
-    expect(at({ dialog: true, draft: "x" }, ENTER).intent).toBeNull();
-  });
-
-  test("a text panel closes on Ctrl+C as well as Esc", () => {
-    const panel: Dialog = {
-      kind: "text",
-      id: "x",
-      title: "Plugins",
-      body: { kind: "ready", lines: [] },
-      scroll: 0,
-    };
-
-    expect(dialogKeys(panel)).toContain("tree.close");
-    expect(reduceDialog(panel, { kind: "key", name: "tree.close" }).dialog).toBeNull();
-  });
+  expect(dialogKeys(panel)).toContain("tree.close");
+  expect(reduceDialog(panel, { kind: "key", name: "tree.close" }).dialog).toBeNull();
 });
 
 const RUNS = ["idle", "working", "waiting", "retrying"] as const;

@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { DARK_THEME } from "../../src/lib/theme.ts";
 import type { Task } from "../../src/lib/tasks.ts";
 import { NO_PARTS } from "../../src/model/draft.ts";
+import type { State } from "../../src/model/state.ts";
 import { Screen } from "../../src/ui/screen.tsx";
 import { followed, buildView } from "../fixture/view.ts";
 import { blank, play, ready, typed } from "../model/support.ts";
@@ -27,14 +28,20 @@ function row(frame: string, text: string): number {
 }
 
 describe("screen", () => {
-  test("starting shows the welcome with a spinner, and no loading line", async () => {
-    await using app = await mount(blank(), () => <Screen />);
+  test.each([
+    [
+      "starting shows the welcome with a spinner, and no loading line",
+      blank(),
+      ["for files", "loading", "Loading"],
+    ],
+    ["an empty session shows the welcome", ready(empty), []],
+  ] satisfies [string, State, string[]][])("%s", async (_name, state, absent) => {
+    await using app = await mount(state, () => <Screen />);
     const frame = app.captureCharFrame();
 
     expect(frame).toContain("Welcome to Nyte");
-    expect(frame).not.toContain("for files");
-    expect(frame).not.toContain("loading");
-    expect(frame).not.toContain("Loading");
+
+    for (const text of absent) expect(frame).not.toContain(text);
   });
 
   test("queue rows sit above the composer, the notice under its rule, the hints last", async () => {
@@ -51,12 +58,6 @@ describe("screen", () => {
     expect(rule).toBeGreaterThan(prompt);
     expect(row(frame, "Nothing to stop")).toBeGreaterThan(rule);
     expect(row(frame, "enter send")).toBe(lines.findLastIndex((line) => line.trim() !== ""));
-  });
-
-  test("an empty session shows the welcome", async () => {
-    await using app = await mount(ready(empty), () => <Screen />);
-
-    expect(app.captureCharFrame()).toContain("Welcome to Nyte");
   });
 
   test("completion takes the slot under the composer", async () => {

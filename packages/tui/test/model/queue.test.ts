@@ -2,58 +2,71 @@ import { asId } from "@nyte-ai/schema";
 import { describe, expect, test } from "bun:test";
 import { promptMessages } from "../../src/lib/view-helpers.ts";
 import { placeLabel, queuedCount, queueRows } from "../../src/model/queue.ts";
-import type { ScheduleSpec } from "../fixture/view.ts";
+import type { ScheduleSpec, ViewBuilder } from "../fixture/view.ts";
 import { followed, buildView } from "../fixture/view.ts";
 
-function label(schedule: ScheduleSpec, covered = true): string | null {
-  const view = buildView((v) =>
+function pending(schedule: ScheduleSpec, covered = true) {
+  return (v: ViewBuilder) =>
     v
       .turn("t1", (t) => t.user("go"))
       .live()
-      .pending("x", { schedule, covered }, { delivery: "queue" }),
-  );
-
-  const [row] = queueRows(followed(view), null);
-
-  return row === undefined ? null : placeLabel(row.place);
+      .pending("x", { schedule, covered }, { delivery: "queue" });
 }
 
-describe("labels follow the schedule, never the delivery", () => {
-  test("a steer scheduled for the next turn is labelled by its schedule", () => {
-    const view = buildView((v) =>
+const LABELS: readonly (readonly [string, (v: ViewBuilder) => ViewBuilder, string, boolean])[] = [
+  [
+    "a steer scheduled for the next turn is labelled by its schedule",
+    (v) =>
       v.live("r1").pending("use tabs", { schedule: { kind: "next-turn", reason: "run-ended" } }),
-    );
+    "after this run",
+    true,
+  ],
+  [
+    "a message asked for later reads queued",
+    pending({ kind: "next-turn", reason: "requested" }),
+    "queued",
+    true,
+  ],
+  [
+    "a message for when idle reads next",
+    pending({ kind: "next-turn", reason: "idle" }),
+    "next",
+    true,
+  ],
+  [
+    "a message for after the run reads after this run",
+    pending({ kind: "next-turn", reason: "run-ended" }),
+    "after this run",
+    true,
+  ],
+  ["an attached message reads attached", pending({ kind: "attached" }), "attached", true],
+  [
+    "a pending message no host covers waits for a host",
+    pending({ kind: "next-turn", reason: "requested" }, false),
+    "waiting for a host",
+    true,
+  ],
+  [
+    "an unsent message is sending",
+    (v) => v.unsent("a", { delivery: "queue" }).live("run-1"),
+    "sending…",
+    false,
+  ],
+  [
+    "an unsent message retrying shows its reason",
+    (v) => v.unsent("b", { retrying: { at: 9_000, reason: "offline" } }).live("run-1"),
+    "retrying · offline",
+    false,
+  ],
+];
 
-    const [row] = queueRows(followed(view), null);
+describe("labels follow the schedule, never the delivery", () => {
+  test.each(LABELS)("%s", (_name, build, label, withdrawable) => {
+    const rows = queueRows(followed(buildView(build)), null);
 
-    expect(row === undefined ? null : placeLabel(row.place)).toBe("after this run");
-  });
-
-  test.each([
-    [{ kind: "next-turn", reason: "requested" }, "queued"],
-    [{ kind: "next-turn", reason: "idle" }, "next"],
-    [{ kind: "next-turn", reason: "run-ended" }, "after this run"],
-    [{ kind: "attached" }, "attached"],
-  ] satisfies [ScheduleSpec, string][])("%o reads %s", (schedule, expected) => {
-    expect(label(schedule)).toBe(expected);
-  });
-
-  test("a pending message no host covers waits for a host", () => {
-    expect(label({ kind: "next-turn", reason: "requested" }, false)).toBe("waiting for a host");
-  });
-
-  test("an unsent message is sending, or retrying with its reason", () => {
-    const view = buildView((v) =>
-      v
-        .unsent("a", { delivery: "queue" })
-        .unsent("b", { retrying: { at: 9_000, reason: "offline" } })
-        .live("run-1"),
-    );
-
-    const rows = queueRows(followed(view), null);
-
-    expect(rows.map((row) => placeLabel(row.place))).toEqual(["sending…", "retrying · offline"]);
-    expect(rows.map((row) => row.withdrawable)).toEqual([false, false]);
+    expect(rows.map((row) => [placeLabel(row.place), row.withdrawable])).toEqual([
+      [label, withdrawable],
+    ]);
   });
 });
 

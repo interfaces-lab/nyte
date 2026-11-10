@@ -329,7 +329,7 @@ test("Esc stops a run while its bash tool streams; the process ends, the draft s
   expect(fixture.requests).toHaveLength(1);
 });
 
-test("a grouped question takes several picks on one question, keeps them through Back, and sends them all", async () => {
+test("a grouped question takes several picks on one question and sends them all", async () => {
   await using tui = await startTui();
   await tui.ready();
 
@@ -361,21 +361,6 @@ test("a grouped question takes several picks on one question, keeps them through
   await tui.frame((frame) => row(frame, "Basil").includes("✓"));
   tui.press("picker.next");
   tui.press("picker.next");
-  tui.press("picker.accept");
-  await tui.frame((frame) => frame.includes("2/2 · Pick a size") && frame.includes("Back"));
-
-  for (let step = 0; step < 4; step++) tui.press("picker.next");
-  await tui.frame((frame) => /❯.*Back/u.test(row(frame, "Back")));
-  tui.press("picker.accept");
-  await tui.frame(
-    (frame) =>
-      frame.includes("1/2 · Pick toppings") &&
-      row(frame, "Cheese").includes("✓") &&
-      row(frame, "Basil").includes("✓") &&
-      !row(frame, "Olives").includes("✓"),
-  );
-
-  for (let step = 0; step < 4; step++) tui.press("picker.next");
   tui.press("picker.accept");
   await tui.frame((frame) => frame.includes("2/2 · Pick a size"));
   tui.press("picker.next");

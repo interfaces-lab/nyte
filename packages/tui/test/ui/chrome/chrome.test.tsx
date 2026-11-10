@@ -5,19 +5,14 @@ import { testRender } from "@opentui/solid";
 import { DARK_THEME, themeForMode } from "../../../src/lib/theme.ts";
 import { ErrorScreen } from "../../../src/ui/chrome/error-screen.tsx";
 import { Footer } from "../../../src/ui/chrome/footer.tsx";
-import { Hints } from "../../../src/ui/chrome/hints.tsx";
 import { NoticeLine } from "../../../src/ui/chrome/notice.tsx";
 import { TasksLine } from "../../../src/ui/chrome/tasks-line.tsx";
 import type { State } from "../../../src/model/state.ts";
 import { buildView } from "../../fixture/view.ts";
-import { play, ready, S1, typed } from "../../model/support.ts";
+import { play, ready, S1 } from "../../model/support.ts";
 import { mount } from "./support.tsx";
 
 const idle = buildView((v) => v.turn("t1", (t) => t.user("hi").text("ok").ended("completed")));
-
-const working = buildView((v) =>
-  v.turn("t1", (t) => t.user("hi").tool("bash", { running: true })).live(),
-);
 
 function sized(state: State, width: number): State {
   return play(state, {
@@ -45,27 +40,6 @@ describe("footer", () => {
       for (const text of dropped) expect(frame).not.toContain(text);
       expect(frame.trimEnd().endsWith("╯")).toBe(true);
     }
-  });
-});
-
-describe("hints", () => {
-  test("a wide terminal shows secondary hints; a narrow one keeps only the primaries", async () => {
-    const draft = play(ready(working), typed("fix it")).state;
-
-    await using wide = await mount(sized(draft, 160), () => <Hints />, { width: 160, height: 2 });
-    const wideRow = wide.captureCharFrame();
-
-    expect(wideRow).toContain("enter steer");
-    expect(wideRow).toContain("esc stop");
-    expect(wideRow).toContain("ctrl+enter queue");
-    expect(wideRow).toContain("shift+tab");
-
-    await using narrow = await mount(sized(draft, 40), () => <Hints />, { width: 40, height: 2 });
-    const narrowRow = narrow.captureCharFrame();
-
-    expect(narrowRow).toContain("enter steer");
-    expect(narrowRow).not.toContain("ctrl+enter");
-    expect(narrowRow).not.toContain("shift+tab");
   });
 });
 

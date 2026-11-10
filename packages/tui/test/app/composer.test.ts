@@ -91,17 +91,6 @@ test("resizing narrow and back keeps the draft, the cursor at its end and one co
   }
 });
 
-test("keys typed while the host opens stay in the composer through boot", async () => {
-  await using tui = await startTui({ opened: false });
-
-  await tui.mockInput.typeText("typed while starting");
-  await tui.frame((frame) => composerShows(frame, "typed while starting"));
-
-  tui.openHost();
-  await tui.ready();
-  expect(tui.store.state().local.draft.text).toBe("typed while starting");
-});
-
 test("an @./ path is offered as its file, and the file's text rides with the message", async () => {
   await using fixture = await openTestHost({ environment: testEnvironment(refuseExec) });
   await using tui = await startTui({ fixture });

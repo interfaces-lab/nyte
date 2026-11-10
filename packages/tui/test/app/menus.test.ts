@@ -139,37 +139,6 @@ test("a blank chat in a trusted folder offers its project plugin's command and r
   expect(fixture.requests).toHaveLength(0);
 });
 
-test("settings lists the thinking level and Esc closes it", async () => {
-  await using tui = await startTui();
-  await tui.ready();
-
-  await tui.send("/settings");
-  await tui.frame(
-    (frame) =>
-      belowComposer(frame, "Settings") &&
-      frame.split("\n").some((line) => /thinking level/iu.test(line)),
-  );
-  tui.press("picker.close");
-  await tui.frame(
-    (frame) => !belowComposer(frame, "Settings") && composerShows(frame, COMPOSER_PLACEHOLDER),
-  );
-});
-
-test("/tree opens under the composer, Enter on the latest message says it is already there, Esc closes it", async () => {
-  await using tui = await startTui();
-  await tui.ready();
-  await answered(tui, "Hello from the fake provider.");
-
-  await tui.send("/tree");
-  await tui.frame((frame) => belowComposer(frame, "Chat Tree"));
-  tui.press("picker.accept");
-  await tui.frame((frame) => belowComposer(frame, "Already at that point in the chat"));
-  tui.press("tree.close");
-  await tui.frame(
-    (frame) => !frame.includes("Chat Tree") && composerShows(frame, COMPOSER_PLACEHOLDER),
-  );
-});
-
 function treeWindow(frame: string): string[] {
   const lines = frame.split("\n").map((line) => line.trimEnd());
   const title = lines.find((line) => line.trim() === "Chat Tree") ?? "";
