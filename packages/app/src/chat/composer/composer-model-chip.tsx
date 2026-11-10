@@ -23,31 +23,11 @@ export function SessionModelChip({
   const current = selected?.option;
   const thinkingLevel = choice?.thinking;
 
-  const handleChange = (change: ModelPickerChange) => {
-    switch (change.kind) {
-      case "model":
-        configure.mutate({
-          model: { provider: change.option.provider, id: change.option.id },
-          thinking: change.thinkingLevel,
-        });
-
-        return;
-      case "thinking":
-        configure.mutate({ thinking: change.thinkingLevel });
-
-        return;
-      case "fast":
-        if (current !== undefined)
-          configure.mutate({ model: modelRefFor(current, change.enabled) });
-
-        return;
-      default: {
-        const _exhaustive: never = change;
-
-        return _exhaustive;
-      }
-    }
-  };
+  const handleChange = (change: ModelPickerChange) =>
+    configure.mutate({
+      model: modelRefFor(change.option, change.fast),
+      thinking: change.thinkingLevel,
+    });
 
   return (
     <>

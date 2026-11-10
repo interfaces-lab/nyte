@@ -1,4 +1,4 @@
-import { typed } from "@nyte-ai/schema/model";
+import { MODEL_THINKING_LEVELS, typed } from "@nyte-ai/schema/model";
 import { Type } from "typebox";
 import type { ThemePreference } from "../contract/bridge.ts";
 import { DEFAULT_SESSION_VIEW, SessionViewSchema } from "./session-view.ts";
@@ -34,6 +34,15 @@ export const preferences = {
     { key: "nyte:startup-destination:v1" },
     Type.Enum(["new-chat", "last-session"]),
     "new-chat",
+  ),
+  /** Each model's own effort and Fast, by model key, so picking a model brings them back. */
+  modelSettings: definePreference(
+    { key: "nyte:model-settings:v1" },
+    Type.Record(
+      Type.String(),
+      Type.Object({ thinking: Type.Enum([...MODEL_THINKING_LEVELS]), fast: Type.Boolean() }),
+    ),
+    {},
   ),
   runningMessage: definePreference(
     { key: "nyte:running-message:v1" },

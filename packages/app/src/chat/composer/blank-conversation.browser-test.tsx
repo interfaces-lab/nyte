@@ -247,7 +247,10 @@ async function checkSends(): Promise<string> {
     );
 
     choose.click();
-    await until(() => document.querySelector("[role='menu']"), "the model menu");
+    await until(
+      () => document.querySelector("[role='dialog'][aria-label='Model']"),
+      "the model picker",
+    );
 
     return failures.length === 0 ? "passed" : failures.join("\n");
   } finally {

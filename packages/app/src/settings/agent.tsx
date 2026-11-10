@@ -1,10 +1,9 @@
-import { props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
-import { NewChatsSection } from "./models-settings.tsx";
-import { hostSetting } from "../preferences/index.ts";
-import { useCatalog } from "../data/catalog.ts";
-import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
-import { NumberRow, SelectRow, SettingsSection, SwitchRow } from "./rows.tsx";
+import { ModelPicker } from "../chat/composer/model-picker.tsx";
+import { modelRefFor, selectedModelOption } from "../chat/composer/model-picker-state.ts";
+import { hostSetting, preferences, useSetting } from "../preferences/index.ts";
+import { useCatalog, useSetPreference } from "../data/catalog.ts";
+import { NumberRow, SelectRow, SettingsRow, SettingsSection, SwitchRow } from "./rows.tsx";
 
 const CACHE_WARMING = [
   { value: "off", label: "Off" },
@@ -14,39 +13,55 @@ const CACHE_WARMING = [
 
 export function AgentSettings(): ReactElement {
   const catalog = useCatalog();
-  const defaults = catalog.data?.defaults;
+  const setPreference = useSetPreference();
+  const saved = useSetting(preferences.modelSettings);
+  const selected = selectedModelOption(catalog.data?.models ?? [], catalog.data?.defaults?.model);
+  const listed = catalog.data?.models.some((option) => option.listed) ?? false;
 
   return (
-    <>
-      {catalog.data !== undefined && defaults !== undefined && (
-        <NewChatsSection catalog={catalog.data} defaults={defaults} />
-      )}
-      {catalog.isError && (
-        <p role="alert" {...props(settingsPatterns.sectionDescription)}>
-          Couldn&rsquo;t load the model catalog. Try again.
-        </p>
-      )}
-      <SettingsSection title="Context" description="Applies to chats started after the change">
-        <SwitchRow
-          setting={hostSetting("autoCompaction")}
-          title="Automatic compaction"
-          description="Summarize older turns when a chat nears the model's context limit"
+    <SettingsSection description="Applies to chats started after the change">
+      <SettingsRow
+        title="Model"
+        controlWidth="wide"
+        description={
+          catalog.isError
+            ? "Couldn't load the model catalog. Try again"
+            : catalog.data !== undefined && !listed
+              ? "Connect a provider in Providers to choose one"
+              : "New chats start on this model. Switch per chat from the composer"
+        }
+      >
+        <ModelPicker
+          catalog={catalog.data}
+          current={selected?.option}
+          thinkingLevel={selected === undefined ? undefined : saved[selected.option.key]?.thinking}
+          fast={selected?.fast === true}
+          loading={catalog.isPending || setPreference.isPending}
+          onChange={(change) => {
+            if (setPreference.isPending) return;
+            setPreference.mutate(modelRefFor(change.option, change.fast));
+          }}
         />
-        <NumberRow
-          setting={hostSetting("compactionKeepRecentTokens")}
-          title="Recent context kept"
-          description="Tokens kept word for word when older turns are summarized"
-          min={5_000}
-          max={100_000}
-          step={5_000}
-        />
-        <SelectRow
-          setting={hostSetting("cacheWarming")}
-          title="Prompt cache warming"
-          description="Refresh the prompt cache before it expires, when that is expected to save money"
-          options={CACHE_WARMING}
-        />
-      </SettingsSection>
-    </>
+      </SettingsRow>
+      <SwitchRow
+        setting={hostSetting("autoCompaction")}
+        title="Automatic compaction"
+        description="Summarize older turns when a chat nears the model's context limit"
+      />
+      <NumberRow
+        setting={hostSetting("compactionKeepRecentTokens")}
+        title="Recent context kept"
+        description="Tokens kept word for word when older turns are summarized"
+        min={5_000}
+        max={100_000}
+        step={5_000}
+      />
+      <SelectRow
+        setting={hostSetting("cacheWarming")}
+        title="Prompt cache warming"
+        description="Refresh the prompt cache before it expires, when that is expected to save money"
+        options={CACHE_WARMING}
+      />
+    </SettingsSection>
   );
 }

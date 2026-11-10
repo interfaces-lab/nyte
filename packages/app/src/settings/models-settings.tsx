@@ -19,10 +19,9 @@ import {
 } from "@nyte-ai/ui/menu";
 import { Input } from "@nyte-ai/ui/input";
 import { Switch } from "@nyte-ai/ui/switch";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@nyte-ai/ui/select";
 import { AGENT_PROVIDERS, modelIcon, providerIcon } from "../chat/composer/model-picker-state.ts";
 import { nyte } from "../contract/nyte.ts";
-import type { DesktopCatalog, DesktopModelOption, ProviderStatus } from "../data/catalog.ts";
+import type { DesktopModelOption, ProviderStatus } from "../data/catalog.ts";
 import {
   useCatalog,
   useCatalogGeneration,
@@ -38,12 +37,8 @@ import { cancelLogin, startLogin, useLoginAttempt } from "../account/login-attem
 import { modelsSettingsStyles as styles } from "./models-settings.stylex.ts";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
-import { SettingsRow } from "./rows.tsx";
-import { settingsStyles } from "./settings.stylex.ts";
 import { BrowserSignInPanel, DeviceCodePanel } from "../account/sign-in-panels.tsx";
 import { formatTokens } from "../lib/format.ts";
-
-type CatalogDefaults = NonNullable<DesktopCatalog["defaults"]>;
 
 const popularProviders = [
   { id: "opencode-go", description: "Low-cost subscription for everyday use", recommended: true },
@@ -180,71 +175,6 @@ function modelSummary(provider: ProviderStatus, models: readonly DesktopModelOpt
       : `${shown} of ${models.length} models shown`;
 
   return favorites === 0 ? count : `${count} \u00b7 ${favorites} starred`;
-}
-
-export function NewChatsSection({
-  catalog,
-  defaults,
-}: {
-  catalog: DesktopCatalog;
-  defaults: CatalogDefaults;
-}): ReactElement {
-  const setPreference = useSetPreference();
-  const providerNames = new Map(catalog.providers.map((provider) => [provider.id, provider.name]));
-  const listed = catalog.models.filter((option) => option.listed);
-
-  const chosen = catalog.models.find(
-    (option) => option.provider === defaults.model.provider && option.id === defaults.model.id,
-  );
-
-  const candidates = chosen !== undefined && !chosen.listed ? [chosen, ...listed] : listed;
-
-  const modelOptions = candidates.map((option) => ({
-    value: option.key,
-    label: `${option.name} · ${providerNames.get(option.provider) ?? option.provider}`,
-  }));
-
-  return (
-    <section {...props(settingsPatterns.section)}>
-      <div {...props(settingsPatterns.sectionHeader)}>
-        <h2 {...props(settingsPatterns.sectionTitle)}>New chats</h2>
-      </div>
-      <div {...props(settingsPatterns.group)}>
-        <SettingsRow
-          title="Model"
-          controlWidth="wide"
-          description={
-            listed.length === 0
-              ? "Connect a provider below to choose one"
-              : "New chats start on this model. Switch per chat from the composer"
-          }
-        >
-          <Select
-            items={modelOptions}
-            value={chosen?.key ?? ""}
-            disabled={candidates.length === 0}
-            onValueChange={(key) => {
-              const option = candidates.find((candidate) => candidate.key === key);
-
-              if (option === undefined || setPreference.isPending) return;
-              setPreference.mutate({ provider: option.provider, id: option.id });
-            }}
-          >
-            <SelectTrigger aria-label="Default model" xstyle={settingsStyles.valueField}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {modelOptions.map((option) => (
-                <SelectItem key={option.value} value={option.value} label={option.label}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </SettingsRow>
-      </div>
-    </section>
-  );
 }
 
 function ApiKeyForm({

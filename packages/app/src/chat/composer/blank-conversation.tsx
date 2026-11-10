@@ -257,29 +257,15 @@ function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement
                 fast={selected?.fast === true}
                 open={pickerOpen}
                 onOpenChange={setPickerOpen}
-                onChange={(change) => {
-                  if (change.kind === "model") {
-                    const model = { provider: change.option.provider, id: change.option.id };
-                    updateViewState((state) => ({
-                      ...state,
-                      choice: { model, thinking: undefined },
-                    }));
-
-                    return;
-                  }
-
-                  if (current === undefined) return;
-                  const fast = change.kind === "fast" ? change.enabled : selected?.fast === true;
-
+                onChange={(change) =>
                   updateViewState((state) => ({
                     ...state,
                     choice: {
-                      model: modelRefFor(current, fast),
-                      thinking:
-                        change.kind === "thinking" ? change.thinkingLevel : state.choice?.thinking,
+                      model: modelRefFor(change.option, change.fast),
+                      thinking: change.thinkingLevel,
                     },
-                  }));
-                }}
+                  }))
+                }
               />
             }
           />

@@ -220,7 +220,7 @@ async function typeWhileRecalling(editor: HTMLElement): Promise<void> {
 }
 
 async function openModelPicker(editor: HTMLElement): Promise<void> {
-  const menu = () => document.querySelector("[role='menu']");
+  const menu = () => document.querySelector("[role='dialog'][aria-label='Model']");
 
   const trigger = editor
     .closest("[data-composer-frame]")

@@ -1,4 +1,4 @@
-import type { ModelRef } from "@nyte-ai/sdk";
+import type { ModelRef, ProviderUsage } from "@nyte-ai/sdk";
 import type { ModelThinkingLevel } from "@nyte-ai/schema/model";
 import { MODEL_THINKING_LEVELS } from "@nyte-ai/schema/model";
 import type { DesktopCatalog, DesktopModelOption, ProviderStatus } from "../../data/catalog.ts";
@@ -128,6 +128,23 @@ export function supportedThinkingLevel(
   return levels[0] ?? "off";
 }
 
+export function usageLine(
+  usage: readonly ProviderUsage[] | undefined,
+  option: DesktopModelOption,
+): string | undefined {
+  const provider = usage?.find((entry) => entry.provider === option.provider);
+
+  if (provider?.state.kind !== "ready" || provider.state.stale) return undefined;
+
+  const fullest = provider.state.limits
+    .filter((limit) => limit.limit > 0)
+    .toSorted((a, b) => b.used / b.limit - a.used / a.limit)[0];
+
+  if (fullest === undefined) return undefined;
+
+  return `${provider.name} · ${fullest.label} limit ${String(Math.round((fullest.used / fullest.limit) * 100))}% used`;
+}
+
 interface TriggerLabel {
   readonly name: string;
   readonly detail: string | undefined;
@@ -195,7 +212,7 @@ export function pickerGroups(
   return favorites.length === 0
     ? providers
     : [
-        { id: "favorites", label: "Favorites", disconnected: false, options: favorites },
+        { id: "favorites", label: "Starred", disconnected: false, options: favorites },
         ...providers,
       ];
 }

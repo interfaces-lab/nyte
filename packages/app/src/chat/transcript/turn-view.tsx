@@ -315,33 +315,14 @@ export function UserMessageView({
         thinkingLevel={edit.thinkingLevel}
         fast={edit.fast}
         disabled={edit.saving}
-        onChange={(change: ModelPickerChange) => {
-          switch (change.kind) {
-            case "model":
-              setEdit({
-                ...edit,
-                model: change.option,
-                thinkingLevel: change.thinkingLevel,
-                fast: false,
-              });
-
-              return;
-            case "thinking":
-              setEdit({ ...edit, thinkingLevel: change.thinkingLevel });
-
-              return;
-            case "fast":
-              setEdit({ ...edit, fast: change.enabled });
-
-              return;
-
-            default: {
-              const _exhaustive: never = change;
-
-              return _exhaustive;
-            }
-          }
-        }}
+        onChange={(change: ModelPickerChange) =>
+          setEdit({
+            ...edit,
+            model: change.option,
+            thinkingLevel: change.thinkingLevel,
+            fast: change.fast,
+          })
+        }
       />
     );
 
