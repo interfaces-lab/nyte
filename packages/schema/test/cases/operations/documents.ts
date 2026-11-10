@@ -1,6 +1,6 @@
-import { OPERATIONS } from "../../src/index.ts";
-import { fileVersion, operation } from "./fixtures.ts";
-import type { Case } from "./fixtures.ts";
+import { OPERATIONS } from "../../../src/index.ts";
+import { fileVersion, operation } from "../fixtures.ts";
+import type { Case } from "../fixtures.ts";
 
 export const documentOperations = {
   "documents.read input": operation(

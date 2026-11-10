@@ -1,6 +1,7 @@
 import { asId } from "@nyte-ai/schema";
 import {
   AdvanceReportSchema,
+  ProjectDraftSchema,
   ProjectInfoSchema,
   AgentInfoSchema,
   AuthoritySchema,
@@ -108,6 +109,15 @@ const project = {
   disabledDocs: ["project:payments.md"],
   archived: false,
   createdAt: 1,
+} as const;
+
+const draft = {
+  name: "Settings polish",
+  instructions:
+    "Only change the settings screens and their stories.\nRun pnpm check before you report.",
+  skills: ["nyte-styles"],
+  disabledMcp: ["linear"],
+  disabledDocs: ["project:release-notes.md"],
 } as const;
 
 export const sessionCases = {
@@ -310,6 +320,7 @@ export const sessionCases = {
     { ok: "no" },
   ),
   ProjectInfoSchema: sample(ProjectInfoSchema, project, { ...project, name: "" }),
+  ProjectDraftSchema: sample(ProjectDraftSchema, draft, { ...draft, name: "x".repeat(81) }),
   HostViewWireSchema: sample(
     HostViewWireSchema,
     {

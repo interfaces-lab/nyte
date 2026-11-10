@@ -9,7 +9,6 @@ import {
   OutputFrameType,
   PartStatusSchema,
   RunEndType,
-  SendOptionsSchema,
   SeqSchema,
   SeqType,
   SessionEventSchema,
@@ -46,7 +45,6 @@ import {
   call,
   part,
   cursor,
-  configuration,
   runEnd,
   sessionInfo,
   catalog,
@@ -55,7 +53,7 @@ import {
 import type { Case } from "./cases/fixtures.ts";
 import { basicCases } from "./cases/basics.ts";
 import { githubCases } from "./cases/github.ts";
-import { operations } from "./cases/operations.ts";
+import { operations } from "./cases/operations/index.ts";
 import { sessionCases } from "./cases/session.ts";
 import { workspaceCases } from "./cases/workspace.ts";
 
@@ -101,6 +99,68 @@ const factories = {
   ),
 } satisfies Record<string, Case>;
 
+const waiting: SessionEvent = {
+  seq: asSeq(30),
+  at: 1,
+  head: null,
+  kind: "part",
+  part,
+  change: "waiting",
+  call,
+};
+
+const answered: PartStatus = {
+  kind: "live",
+  run: null,
+  answer: { action: "answer", input: { choice: "yes" } },
+};
+
+const namespaced: ToolInfo = {
+  ...catalog.tools[0],
+  name: "linear_search",
+  owner: "mcp",
+  namespace: "mcp/linear",
+};
+
+const challenge: IdentityChallenge = {
+  hostId: asId("h1"),
+  nonce: "n1",
+  signature: "sig",
+  publicKey: "key",
+};
+
+function roundTrip<T>(schema: Schema<T>, value: NoInfer<T>, bad: Json): Case {
+  return { schema, good: JSON.parse(JSON.stringify(value)), bad, decoded: value };
+}
+
+const variants = {
+  "SessionEventSchema with a part waiting on a call (§42ac)": roundTrip(
+    SessionEventSchema,
+    waiting,
+    { ...waiting, call: 7 },
+  ),
+  "PartStatusSchema live with an early answer (§48i)": roundTrip(PartStatusSchema, answered, {
+    ...answered,
+    answer: { input: null },
+  }),
+  "ToolInfoSchema with a null namespace (§48d)": roundTrip(ToolInfoSchema, catalog.tools[0], {
+    name: namespaced.name,
+    owner: namespaced.owner,
+    description: namespaced.description,
+    parameters: namespaced.parameters,
+    output: namespaced.output,
+    exposure: namespaced.exposure,
+  }),
+  "ToolInfoSchema with a named namespace (§48d)": roundTrip(ToolInfoSchema, namespaced, {
+    ...namespaced,
+    namespace: 7,
+  }),
+  "IdentityChallengeSchema with its host id (§43k)": roundTrip(IdentityChallengeSchema, challenge, {
+    ...challenge,
+    hostId: 1,
+  }),
+} satisfies Record<string, Case>;
+
 const wire = new URL("../src/", import.meta.url);
 
 describe("wire schemas", () => {
@@ -128,7 +188,7 @@ describe("wire schemas", () => {
     expect(missing).toEqual([]);
   });
 
-  it.each(Object.entries({ ...cases, ...factories }))(
+  it.each(Object.entries({ ...cases, ...factories, ...variants }))(
     "%s validates, rejects and emits loadable JSON Schema",
     async (_name, { schema, good, bad, decoded }) => {
       const json = schema["~standard"].jsonSchema.input({ target: "draft-2020-12" });
@@ -188,92 +248,10 @@ describe("wire schemas", () => {
     expect(new Set(all.map((event) => event.kind)).size).toBe(Object.keys(events).length);
   });
 
-  it("round-trips a part waiting event through JSON and rejects one without a call id (§42ac)", async () => {
-    const event: SessionEvent = {
-      seq: asSeq(30),
-      at: 1,
-      head: null,
-      kind: "part",
-      part,
-      change: "waiting",
-      call,
-    };
-
-    const wire: unknown = JSON.parse(JSON.stringify(event));
-
-    expect(await SessionEventSchema["~standard"].validate(wire)).toEqual({ value: event });
-    expect(
-      (await SessionEventSchema["~standard"].validate({ ...event, call: 7 })).issues?.length,
-    ).toBeGreaterThan(0);
-  });
-
-  it("round-trips a live part status holding an early answer and rejects an answer without an action (§48i)", async () => {
-    const status: PartStatus = {
-      kind: "live",
-      run: null,
-      answer: { action: "answer", input: { choice: "yes" } },
-    };
-
-    const wire: unknown = JSON.parse(JSON.stringify(status));
-
-    expect(await PartStatusSchema["~standard"].validate(wire)).toEqual({ value: status });
-    expect(
-      (await PartStatusSchema["~standard"].validate({ ...status, answer: { input: null } })).issues
-        ?.length,
-    ).toBeGreaterThan(0);
-  });
-
-  it("round-trips a tool's namespace through JSON, null or named, and rejects one that is neither (§48d)", async () => {
-    const named: ToolInfo = {
-      ...catalog.tools[0],
-      name: "linear_search",
-      owner: "mcp",
-      namespace: "mcp/linear",
-    };
-
-    for (const info of [catalog.tools[0], named]) {
-      const wire: unknown = JSON.parse(JSON.stringify(info));
-
-      expect(await ToolInfoSchema["~standard"].validate(wire)).toEqual({ value: info });
-    }
-
-    const unnamed = {
-      name: named.name,
-      owner: named.owner,
-      description: named.description,
-      parameters: named.parameters,
-      output: named.output,
-      exposure: named.exposure,
-    };
-
-    expect((await ToolInfoSchema["~standard"].validate(unnamed)).issues?.length).toBeGreaterThan(0);
-    expect(
-      (await ToolInfoSchema["~standard"].validate({ ...named, namespace: 7 })).issues?.length,
-    ).toBeGreaterThan(0);
-  });
-
-  it("round-trips an identity challenge with its host id and rejects one without it (§43k)", async () => {
-    const challenge: IdentityChallenge = {
-      hostId: asId("h1"),
-      nonce: "n1",
-      signature: "sig",
-      publicKey: "key",
-    };
-
-    const wire: unknown = JSON.parse(JSON.stringify(challenge));
-
-    expect(await IdentityChallengeSchema["~standard"].validate(wire)).toEqual({ value: challenge });
-    expect(
-      (await IdentityChallengeSchema["~standard"].validate({ ...challenge, hostId: 1 })).issues
-        ?.length,
-    ).toBeGreaterThan(0);
-  });
-
-  it("keeps an exact configuration whole where a patch is also accepted", async () => {
-    expect(await SendOptionsSchema["~standard"].validate({ configuration })).toEqual({
-      value: { configuration },
-    });
-    expect(isJson({ a: [1, null, { b: "c" }] })).toBe(true);
-    expect(isJson(undefined)).toBe(false);
+  it.each([
+    { value: { a: [1, null, { b: "c" }] }, json: true },
+    { value: undefined, json: false },
+  ])("isJson reads $value as JSON: $json", (row) => {
+    expect(isJson(row.value)).toBe(row.json);
   });
 });
