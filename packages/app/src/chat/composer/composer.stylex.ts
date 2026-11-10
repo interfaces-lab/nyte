@@ -539,6 +539,12 @@ export const composerStyles = create({
   controlsNewChat: { paddingInline: space.s3, paddingBlockEnd: space.s2 },
   controlsInset: { paddingInline: space.s2, paddingBlockEnd: space.s2 },
   controlsCompact: { display: "contents" },
+  /** Add rests on the fill a ghost button shows on hover; hovering stacks one step up. */
+  addButton: {
+    display: "inline-flex",
+    borderRadius: radius.pill,
+    backgroundColor: role.fillTertiary,
+  },
   addButtonCompact: { gridArea: "add" },
   pillButton: { borderRadius: radius.pill },
   addMenu: { width: 260, maxWidth: "calc(100vw - 24px)" },

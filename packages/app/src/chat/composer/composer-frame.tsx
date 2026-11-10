@@ -619,21 +619,21 @@ export function ComposerFrame({
           {!sideChat && (
             <>
               <Menu>
-                <MenuTrigger
-                  render={
-                    <Button
-                      iconOnly
-                      icon="plus"
-                      aria-label="Add to message"
-                      variant="outline"
-                      disabled={disabled || answering}
-                      xstyle={[
-                        composerStyles.pillButton,
-                        compact && composerStyles.addButtonCompact,
-                      ]}
-                    />
-                  }
-                />
+                <span
+                  {...props(composerStyles.addButton, compact && composerStyles.addButtonCompact)}
+                >
+                  <MenuTrigger
+                    render={
+                      <Button
+                        iconOnly
+                        icon="plus"
+                        aria-label="Add to message"
+                        disabled={disabled || answering}
+                        xstyle={composerStyles.pillButton}
+                      />
+                    }
+                  />
+                </span>
                 <MenuContent
                   xstyle={composerStyles.addMenu}
                   finalFocus={() => areaRef.current?.readElement()}
