@@ -373,7 +373,13 @@ function Pill({
 
   return (
     <div {...props(styles.pill)}>
-      <Button {...GRIP} size="sm" pill icon={working ? undefined : "bubble-question"} onClick={onOpen}>
+      <Button
+        {...GRIP}
+        size="sm"
+        pill
+        icon={working ? undefined : "bubble-question"}
+        onClick={onOpen}
+      >
         {working && <Spinner />}
         <span {...props(styles.pillTitle)}>{title}</span>
         {head?.unread === true && <span aria-label="New reply" {...props(styles.dot)} />}
