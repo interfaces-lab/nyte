@@ -111,10 +111,11 @@ function LayoutTab({
   const pane = input.pane;
   const visible = input.visible;
 
-  const focus = (): void => {
-    if (store.getSnapshot().focus[0] === pane) return;
+  const activate = (): boolean => {
+    if (store.getSnapshot().focus[0] === pane) return false;
     store.dispatch({ kind: "focus", pane });
-    store.requestFocus(pane);
+
+    return true;
   };
 
   return (
@@ -128,8 +129,12 @@ function LayoutTab({
         zoomed && sessionScreenStyles.layoutTabZoomed,
       )}
       style={boxStyle(box, PANE_GAP)}
-      onPointerDown={focus}
-      onFocusCapture={focus}
+      onPointerDown={() => {
+        if (activate()) store.requestFocus(pane);
+      }}
+      onFocusCapture={() => {
+        activate();
+      }}
     >
       {renderTab(input)}
     </div>
