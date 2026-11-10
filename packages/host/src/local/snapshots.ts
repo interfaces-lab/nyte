@@ -1,16 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import {
-  copyFile,
-  lstat,
-  mkdir,
-  open,
-  readFile,
-  readlink,
-  rename,
-  rm,
-  writeFile,
-} from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { lstat, mkdir, open, readFile, readlink, rename, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { asId, SdkError } from "@nyte-ai/schema";
 import type {
@@ -35,10 +24,10 @@ import {
   textEntry,
 } from "./patch.ts";
 import type { Changed } from "./patch.ts";
+import { snapshotIndex } from "./snapshot-index.ts";
+import type { Repository } from "./snapshot-index.ts";
 import { decodeText } from "./text.ts";
 import { WALK_LIMIT, walkTree } from "./tree.ts";
-
-type Repository = { readonly root: string; readonly gitDir: string; readonly prefix: string };
 
 type Manifest = Readonly<Record<string, string>>;
 
@@ -88,7 +77,7 @@ const KEEP_TRIES = 3;
 
 const CHUNK = 64 * 1024;
 
-/** Returns content-addressed snapshots of an environment's tree, so equal trees are equal ids whichever run took them. `before(run)` is taken once per run in this process and answered again after; `after(run)` is taken on every call. In a repository (`git`, default `git` on the PATH), a snapshot writes the environment's part of the worktree, tracked and untracked files that are not ignored, into a temporary index seeded from the real one (`GIT_INDEX_FILE`, `git add -A`, `git write-tree --prefix` for a workspace below the root; the real index is never touched) and keeps the tree reachable for good from the hidden ref `refs/nyte/kept`, a tree of generation trees `g000000`, `g000001`, ... that each hold up to 1,000 snapshot trees named by their hash (only the newest generation and the root are rewritten, in the background after a snapshot of a tree this process has not kept, so a snapshot costs two git spawns: `add` and `write-tree`; the per-tree refs `refs/nyte/snapshots/<tree>` of earlier versions all fold into it and go); the id is `git:<tree>`. The repository is looked up once. Without a repository it walks the tree as `localFiles.scan` does (up to `limit` entries, default 50 000), stores each file's bytes up to 1 MiB once under `<store>/objects/<sha256>` (a larger file is hashed, not stored; a file whose size, mtime and inode did not move is not re-read) and the tree, `{ incomplete, files }` (whether the walk stopped short, at its limit or at an unreadable directory, and the manifest of paths to content hashes), under `<store>/trees/<sha256 of it>.json`; the id is `tree:<hash>`. `diff(from, to)` answers the `ChangeSet` between two snapshots of one kind (empty, without running git, when they are equal; `git diff-tree -r -M --name-status`/`--numstat`, or the two manifests compared, an exact-content move a rename; the empty id `""` is the empty tree), its `revision` `to`; a path only an incomplete side lacks is neither added nor deleted but `modified` with an `unknown` stat; `patches(from, to, paths, options)` answers one `PatchEntry` per path the comparison reports, a text one carrying its unified diff as `localGit`'s do (`git diff` between the trees, read as `localGit.patches` reads: a path past 1 MiB `too-large`, one whose read fails `failed`, the others fine), or, between manifests, from the stored contents with the line diff, a text entry's digest its patch's so it moves with `ignoreWhitespace` (`too-large` for a file not stored, `binary` for one not text, `failed { reason: "incomplete" }` for a path only an incomplete side lacks). Snapshots of two kinds do not compare: `SdkError("invalid")`. */
+/** Returns content-addressed snapshots of an environment's tree, so equal trees are equal ids whichever run took them. `before(run)` is taken once per run in this process and answered again after; `after(run)` is taken on every call. In a repository (`git`, default `git` on the PATH), a snapshot writes the environment's part of the worktree, tracked and untracked files that are not ignored, into an index seeded from a copy of the real one (`GIT_INDEX_FILE`, `git add -A`, `git write-tree --prefix` for a workspace below the root; the real index is never touched), kept between snapshots under `<store>/indexes` so `add` only does work for what moved since the last one and seeded again whenever keeping it could give another tree than a fresh copy (`snapshotIndex`), and keeps the tree reachable for good from the hidden ref `refs/nyte/kept`, a tree of generation trees `g000000`, `g000001`, ... that each hold up to 1,000 snapshot trees named by their hash (only the newest generation and the root are rewritten, in the background after a snapshot of a tree this process has not kept, so a snapshot costs two git spawns: `add` and `write-tree`, and a `git config` when it seeds the index; the per-tree refs `refs/nyte/snapshots/<tree>` of earlier versions all fold into it and go); the id is `git:<tree>`. The repository is looked up once. Without a repository it walks the tree as `localFiles.scan` does (up to `limit` entries, default 50 000), stores each file's bytes up to 1 MiB once under `<store>/objects/<sha256>` (a larger file is hashed, not stored; a file whose size, mtime and inode did not move is not re-read) and the tree, `{ incomplete, files }` (whether the walk stopped short, at its limit or at an unreadable directory, and the manifest of paths to content hashes), under `<store>/trees/<sha256 of it>.json`; the id is `tree:<hash>`. `diff(from, to)` answers the `ChangeSet` between two snapshots of one kind (empty, without running git, when they are equal; `git diff-tree -r -M --name-status`/`--numstat`, or the two manifests compared, an exact-content move a rename; the empty id `""` is the empty tree), its `revision` `to`; a path only an incomplete side lacks is neither added nor deleted but `modified` with an `unknown` stat; `patches(from, to, paths, options)` answers one `PatchEntry` per path the comparison reports, a text one carrying its unified diff as `localGit`'s do (`git diff` between the trees, read as `localGit.patches` reads: a path past 1 MiB `too-large`, one whose read fails `failed`, the others fine), or, between manifests, from the stored contents with the line diff, a text entry's digest its patch's so it moves with `ignoreWhitespace` (`too-large` for a file not stored, `binary` for one not text, `failed { reason: "incomplete" }` for a path only an incomplete side lacks). Snapshots of two kinds do not compare: `SdkError("invalid")`. */
 export function localSnapshots(
   env: ExecutionEnv,
   options: { readonly store: string; readonly git?: string; readonly limit?: number },
@@ -124,15 +113,21 @@ export function localSnapshots(
       "rev-parse",
       "--show-toplevel",
       "--absolute-git-dir",
+      "--git-common-dir",
       "--show-prefix",
     ]).catch(() => null);
 
     if (ran === null || ran.code !== 0) return null;
-    const [root, gitDir, prefix = ""] = ran.stdout.toString("utf8").split("\n");
+    const [root, gitDir, commonDir, prefix = ""] = ran.stdout.toString("utf8").split("\n");
 
-    return root === undefined || gitDir === undefined
+    return root === undefined || gitDir === undefined || commonDir === undefined
       ? null
-      : { root: resolve(root), gitDir: resolve(gitDir), prefix };
+      : {
+          root: resolve(root),
+          gitDir: resolve(gitDir),
+          commonDir: resolve(env.cwd, commonDir),
+          prefix,
+        };
   };
 
   const repository = (): Promise<Repository | null> => {
@@ -141,6 +136,8 @@ export function localSnapshots(
     return repositoryLookup;
   };
 
+  const index = snapshotIndex(env.cwd, options.store, git);
+
   const checked = async (ran: Ran): Promise<string> => {
     if (ran.code !== 0) throw new SdkError("unavailable", ran.stderr.trim() || "git failed");
 
@@ -148,26 +145,8 @@ export function localSnapshots(
   };
 
   const gitSnapshot = async (repo: Repository): Promise<SnapshotId> => {
-    const write = async (seeded: boolean): Promise<Ran> => {
-      const index = join(tmpdir(), `nyte-index-${randomUUID()}`);
-
-      try {
-        if (seeded) await copyFile(join(repo.gitDir, "index"), index).catch(() => undefined);
-        const indexEnv = { GIT_INDEX_FILE: index };
-        await checked(await git(env.cwd, ["add", "-A", "--", "."], { env: indexEnv }));
-
-        return await git(
-          repo.root,
-          repo.prefix === "" ? ["write-tree"] : ["write-tree", `--prefix=${repo.prefix}`],
-          { env: indexEnv },
-        );
-      } finally {
-        await rm(index, { force: true });
-      }
-    };
-
-    const first = await write(true);
-    const tree = await checked(first.code === 0 ? first : await write(false));
+    const first = await index.write(repo);
+    const tree = await checked(first.code === 0 ? first : await index.writeEmpty(repo));
     const id = asId<"snapshot">(`git:${tree}`);
 
     if (fresh.includes(tree) || keptTrees.has(tree)) return id;
