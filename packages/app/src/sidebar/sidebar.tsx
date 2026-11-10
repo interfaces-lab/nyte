@@ -26,7 +26,7 @@ import {
   useWorkspaces,
   type RailWorkspace,
 } from "../data/workspaces.ts";
-import { useHostState, useServerState } from "../data/host.ts";
+import { useHostHealth, useHostState, useServerState } from "../data/host.ts";
 import { sessionActions, useRootRows } from "../data/session-rows.ts";
 import { groupByWorkspace, localSessions } from "../data/session-list.ts";
 import { useChats } from "../chats/index.ts";
@@ -136,6 +136,17 @@ export function Sidebar(): ReactElement {
       : groupByWorkspace(roots, railWorkspaces);
 
   const server = useServerState();
+  const health = useHostHealth();
+
+  const unreachable =
+    workspaceGroups !== undefined
+      ? undefined
+      : health?.kind === "retrying"
+        ? "Can't load chats. Retrying…"
+        : health?.kind === "blocked"
+          ? health.error.message
+          : undefined;
+
   const forgetWorkspace = useForgetWorkspace();
   const chats = useChats((directory) => directory);
   const unread = useChatWindow((snapshot) => snapshot.unread);
@@ -524,6 +535,11 @@ export function Sidebar(): ReactElement {
               </div>
 
               <Collapsible.Panel id={workspaceCollectionID} {...props(styles.workspaceCollection)}>
+                {unreachable !== undefined && (
+                  <div role="status" {...props(text.base, styles.quiet, styles.sessionQuiet)}>
+                    {unreachable}
+                  </div>
+                )}
                 {flat ? (
                   <ChatsList
                     listId={`${sessionListId}-chats`}
