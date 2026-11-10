@@ -1,4 +1,11 @@
-import { API_MIN_REVISION, API_REVISION, isJson, isJsonObject, SdkError } from "@nyte-ai/schema";
+import {
+  API_MIN_REVISION,
+  API_REVISION,
+  isJson,
+  isJsonObject,
+  SdkError,
+  SOCKET_LIMITS,
+} from "@nyte-ai/schema";
 import type {
   ClientInfo,
   EventFrame,
@@ -7,7 +14,7 @@ import type {
   TextFrame,
   WelcomeFrame,
 } from "@nyte-ai/schema";
-import { errors, events, results, texts, welcomes } from "./frame-checks.ts";
+import { errors, events, fragments, results, texts, welcomes } from "./frame-checks.ts";
 import { decodeError } from "./wire.ts";
 
 export interface SocketLike {
@@ -51,19 +58,53 @@ export async function openHostSocket(input: {
   const textListeners = new Set<(frame: TextFrame) => void>();
   const greeted = Promise.withResolvers<WelcomeFrame>();
   const ended = Promise.withResolvers<SocketClosed>();
+  const pieces: string[] = [];
+  let held = 0;
   let calls = 0;
 
   greeted.promise.catch(() => undefined);
 
-  socket.addEventListener("message", (message) => {
-    const value = typeof message.data === "string" ? readJson(message.data) : undefined;
-
+  const read = (value: Json | undefined): void => {
     if (welcomes.Check(value)) greeted.resolve(value);
     else if (results.Check(value)) settle(value.id, value.output, null);
     else if (errors.Check(value)) settle(value.id, null, decodeError(value.error));
     else if (isJsonObject(value) && events.Check(value))
       for (const listener of eventListeners) listener(value);
     else if (texts.Check(value)) for (const listener of textListeners) listener(value);
+  };
+
+  socket.addEventListener("message", (message) => {
+    const value = typeof message.data === "string" ? readJson(message.data) : undefined;
+
+    if (!fragments.Check(value)) {
+      read(value);
+
+      return;
+    }
+
+    held += value.text.length;
+
+    if (held > SOCKET_LIMITS.backlogBytes) {
+      pieces.length = 0;
+      socket.close(1000, "Fragments passed the backlog limit.");
+
+      return;
+    }
+
+    pieces.push(value.text);
+
+    if (!value.last) return;
+    const joined = readJson(pieces.join(""));
+    pieces.length = 0;
+    held = 0;
+
+    if (joined === undefined) {
+      socket.close(1000, "Fragments joined to no frame.");
+
+      return;
+    }
+
+    read(joined);
   });
 
   socket.addEventListener("close", (event) => {

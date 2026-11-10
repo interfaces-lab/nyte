@@ -157,13 +157,15 @@ Because streamed text has its own channel, it can't use up the event channel's b
 
 Both channels share one WebSocket per connection, at `/.nyte/ws`. Every message is a JSON text frame tagged `{ "c": "e" }` for the event channel or `{ "c": "t" }` for the text channel. The host keeps one send queue per channel and always drains the event queue first. Queued text for one part merges.
 
+An event-channel frame larger than `maxFrameBytes` goes out as fragments, `{ c: "e", type: "fragment", text, last }`, to a client whose hello names revision 23 or later. The client joins the `text` of each fragment through the one marked `last` and reads the result as the frame. The fragments of one frame are never interleaved with another event-channel frame.
+
 A Node, React Native or Electron client sends its credential on the upgrade request. A browser can't set headers on an upgrade, so it first trades its credential for a one-time ticket with `POST /.nyte/ws/ticket` and passes the ticket as `?ticket=`.
 
 Request and response operations also stay on plain HTTP, so a script can call one with `curl`. The event and text channels have no SSE form, because a one-way stream can't carry `client.reply`.
 
 ## Slow consumers
 
-The host never skips an event it has queued for a connection. When a connection's queued event bytes pass the host's `backlogBytes`, the host closes the connection with the reason `backlog`. The client reconnects and resumes. An event larger than `maxFrameBytes` also closes the connection, with the reason `oversize`, because skipping the event would leave a gap.
+The host never skips an event it has queued for a connection. When a connection's queued event bytes pass the host's `backlogBytes`, the host closes the connection with the reason `backlog`. The client reconnects and resumes. An event larger than `maxFrameBytes` also closes the connection of a client older than revision 23, with the reason `oversize`, because skipping the event would leave a gap. A newer client gets it as fragments. After repeated closes for size, the client waits longer before each reconnect, though its welcomes reset the delay for an ordinary drop.
 
 The text channel works differently. The host merges its appends. When they still pass the budget, the host drops the queued text, closes the text channel alone and sends `{ c: "t", type: "closed" }`. The client calls `text.open` again and receives the live suffix again.
 

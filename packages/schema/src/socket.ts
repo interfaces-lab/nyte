@@ -106,6 +106,15 @@ export const EventFrameType = Type.Object({
 
 export type EventFrame = Decoded<typeof EventFrameType>;
 
+export const FragmentFrameType = Type.Object({
+  c: Type.Literal("e"),
+  type: Type.Literal("fragment"),
+  text: Type.String(),
+  last: Type.Boolean(),
+});
+
+export type FragmentFrame = Decoded<typeof FragmentFrameType>;
+
 export const PerformEventType = Type.Object({
   scope: Type.String(),
   seq: Type.Integer({ minimum: 1 }),
@@ -149,6 +158,7 @@ export const HostFrameType = Type.Union([
   ResultFrameType,
   ErrorFrameType,
   EventFrameType,
+  FragmentFrameType,
   TextFrameType,
 ]);
 

@@ -24,11 +24,13 @@ export function hello(
   apiMinRevision = 1,
   actions: readonly string[] = [],
   name = "socket-test",
+  apiRevision?: number,
 ): Json {
   return {
     c: "e",
     type: "hello",
     api_min_revision: apiMinRevision,
+    ...(apiRevision === undefined ? {} : { api_revision: apiRevision }),
     client: {
       kind: "other",
       name,

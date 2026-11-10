@@ -7,8 +7,11 @@ import {
   asId,
   backgroundRowKey,
   compile,
+  isJson,
+  isJsonObject,
   SessionChangeType,
   SessionsChangeType,
+  SOCKET_LIMITS,
   TextFrameType,
   withJson,
 } from "@nyte-ai/schema";
@@ -26,6 +29,7 @@ import { completed, createServerHost, livePart, publishPatch, setup } from "@nyt
 import { decodeOutput, openDirectoryStore, openSessionStore } from "@nyte-ai/protocol";
 import type { DirectoryStore, SessionStore } from "@nyte-ai/protocol";
 import { WebSocket } from "ws";
+import type { RawData } from "ws";
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import { sqliteStore } from "../src/sqlite.ts";
 import { fakeModels } from "./fixtures/fake-models.ts";
@@ -181,6 +185,45 @@ async function send(host: Composed, fake: FakeModels, session: SessionId, text: 
   fake.reply({ content: [{ type: "text", text: `Re: ${text.slice(0, 20)}` }] });
 
   return host.session(session).head(main).send(text);
+}
+
+const FRAGMENTS = hello(1, [], "socket-test", 23);
+
+async function measured(listener: Listener) {
+  const client = await connect(listener, FRAGMENTS);
+  const sizes: number[] = [];
+
+  client.socket.on("message", (data: RawData) =>
+    sizes.push(
+      Array.isArray(data) ? data.reduce((sum, part) => sum + part.byteLength, 0) : data.byteLength,
+    ),
+  );
+
+  return { client, sizes };
+}
+
+function joinFragments(frames: readonly JsonSchema[]): JsonSchema[] {
+  let held = "";
+
+  return frames.flatMap((frame) => {
+    if (frame.type !== "fragment") return [frame];
+    held += typeof frame.text === "string" ? frame.text : "";
+
+    if (frame.last !== true) return [];
+    const value: unknown = JSON.parse(held);
+    held = "";
+
+    return isJson(value) && isJsonObject(value) ? [value] : [];
+  });
+}
+
+async function readJoined(client: Client, session: SessionId) {
+  const call = client.start("head.read", { session, head: main, window: WINDOW });
+  await client.until((frame) => frame.type === "fragment" && frame.last === true);
+  const answer = joinFragments(client.frames).find((frame) => frame.id === call.id);
+  assert(answer?.type === "result" && answer.output !== undefined);
+
+  return openSessionStore(decodeOutput("head.read", answer.output)).snapshot();
 }
 
 describe("the host's WebSocket", () => {
@@ -525,6 +568,74 @@ describe("the host's WebSocket", () => {
 
     expect(await raw.closing()).toEqual({ code: 1008, reason: "backlog" });
   }, 60_000);
+
+  it("closes an older client's connection with oversize when an answer passes maxFrameBytes", async () => {
+    const fake = fakeModels();
+    const host = await compose(fake);
+    const listener = await serve(host);
+    const session = await startSession(host, fake);
+    await (await send(host, fake, session, "x".repeat(1_200_000))).settled();
+    const client = await connect(listener);
+
+    client.start("head.read", { session, head: main, window: WINDOW });
+
+    expect(await client.closed).toEqual({ code: 1009, reason: "oversize" });
+  }, 30_000);
+
+  it.each([
+    { name: "plain text", text: "x".repeat(1_200_000) },
+    { name: "quotes", text: '"'.repeat(1_200_000) },
+    { name: "three-byte characters", text: "漢".repeat(1_200_000) },
+    { name: "surrogate pairs", text: "😀".repeat(600_000) },
+    { name: "backslashes and newlines", text: 'a\\"\n漢😀'.repeat(200_000) },
+  ])(
+    "sends an answer over maxFrameBytes to a revision 23 client as fragments within the limit that join to the whole text: $name",
+    async (entry) => {
+      const fake = fakeModels();
+      const host = await compose(fake);
+      const listener = await serve(host);
+      const session = await startSession(host, fake);
+      await (await send(host, fake, session, entry.text)).settled();
+      const measuring = await measured(listener);
+
+      const snapshot = await readJoined(measuring.client, session);
+
+      expect(
+        Array.from(snapshot.rows.messages.values()).some(
+          (row) => row.kind === "user" && row.content === entry.text,
+        ),
+      ).toBe(true);
+      expect(Math.max(...measuring.sizes)).toBeLessThanOrEqual(SOCKET_LIMITS.maxFrameBytes);
+      expect(measuring.client.socket.readyState).toBe(WebSocket.OPEN);
+    },
+    30_000,
+  );
+
+  it("fragments a pushed change over maxFrameBytes and sends it before the change that follows", async () => {
+    const fake = fakeModels();
+    const host = await compose(fake);
+    const listener = await serve(host);
+    const session = await startSession(host, fake);
+    const measuring = await measured(listener);
+    await measuring.client.call("events.subscribe", { scopes: [`session/${session}`] });
+    const big = `big ${"x".repeat(1_200_000)}`;
+    await (await send(host, fake, session, big)).settled();
+    await (await send(host, fake, session, "small one")).settled();
+    await measuring.client.until(
+      (frame) => frame.kind === "change" && JSON.stringify(frame).includes("small one"),
+    );
+
+    const changed = joinFragments(measuring.client.frames).filter(
+      (frame) => frame.kind === "change",
+    );
+
+    const first = (needle: string): number =>
+      changed.findIndex((frame) => JSON.stringify(frame).includes(needle));
+
+    expect(first(big)).toBeGreaterThanOrEqual(0);
+    expect(first(big)).toBeLessThan(first("small one"));
+    expect(Math.max(...measuring.sizes)).toBeLessThanOrEqual(SOCKET_LIMITS.maxFrameBytes);
+  }, 30_000);
 
   it("closes 1008 with a reason that names the side to update when the revisions don't overlap", async () => {
     const host = await compose(fakeModels());

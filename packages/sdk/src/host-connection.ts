@@ -157,6 +157,7 @@ function superviseHost(address: string, options: HostOptions, registry: Registry
   let health: Health = { kind: "connecting" };
   let holders = 1;
   let attempt = 0;
+  let sizeCloses = 0;
   let generation = 0;
   let released = false;
   let declared = "[]";
@@ -321,11 +322,18 @@ function superviseHost(address: string, options: HostOptions, registry: Registry
       return;
     }
 
+    const closed = seen.closed;
+
+    sizeCloses =
+      closed !== null &&
+      (closed.code === 1009 || (closed.code === 1008 && closed.reason === "backlog"))
+        ? sizeCloses + 1
+        : 0;
     schedule(error);
   };
 
   const schedule = (error: SdkError): void => {
-    const delay = retryDelay(attempt);
+    const delay = retryDelay(attempt + sizeCloses);
     attempt += 1;
     retryTimer = setTimeout(() => void connect(), delay);
     show({ kind: "retrying", attempt, at: Date.now() + delay, error });

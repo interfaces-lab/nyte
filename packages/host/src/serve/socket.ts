@@ -19,6 +19,7 @@ import type {
   Authority,
   CallFrame,
   ClientId,
+  FragmentFrame,
   HelloFrame,
   Json,
   PrincipalId,
@@ -130,7 +131,10 @@ type EventOut =
 type Outbox = {
   event(frame: EventOut): void;
   text(entry: TextEntry): void;
+  acceptFragments(): void;
 };
+
+type Outgoing = { readonly text: string; readonly bytes: number };
 
 type Subscription = {
   readonly attachment: SessionAttachment | null;
@@ -160,6 +164,16 @@ const PING_MS = 30_000;
 const MISSED_PONGS = 3;
 
 const HIGH_WATER = 64 * 1024;
+
+const FRAGMENT_REVISION = 23;
+
+const FRAGMENT_ENVELOPE_BYTES = 1024;
+
+const MAX_JSON_BYTES_PER_UNIT = 3;
+
+const PIECE_UNITS = Math.floor(
+  (SOCKET_LIMITS.maxFrameBytes - FRAGMENT_ENVELOPE_BYTES) / MAX_JSON_BYTES_PER_UNIT,
+);
 
 const hellos = compile(withJson(HelloFrameType));
 
@@ -512,6 +526,8 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
       return;
     }
 
+    if (value.api_revision !== undefined && value.api_revision >= FRAGMENT_REVISION)
+      outbox.acceptFragments();
     const id = asId<"client">(crypto.randomUUID());
 
     const membership = clients.join({
@@ -680,11 +696,12 @@ function openOutbox(
   close: (code: number, reason: string) => void,
   textClosing: () => void,
 ): Outbox {
-  const events: { readonly text: string; readonly bytes: number }[] = [];
+  const events: Outgoing[] = [];
   const texts = new Map<string, Queued>();
   let eventBytes = 0;
   let textBytes = 0;
   let textClosed = false;
+  let fragments = false;
   let open = true;
 
   const shut = (code: number, reason: string): void => {
@@ -741,14 +758,18 @@ function openOutbox(
       const text = JSON.stringify(frame);
       const bytes = Buffer.byteLength(text);
 
-      if (bytes > SOCKET_LIMITS.maxFrameBytes) {
+      const oversize = bytes > SOCKET_LIMITS.maxFrameBytes;
+
+      if (oversize && !fragments) {
         shut(1009, "oversize");
 
         return;
       }
 
-      events.push({ text, bytes });
-      eventBytes += bytes;
+      for (const outgoing of oversize ? fragment(text) : [{ text, bytes }]) {
+        events.push(outgoing);
+        eventBytes += outgoing.bytes;
+      }
 
       if (eventBytes > SOCKET_LIMITS.backlogBytes) {
         shut(1008, "backlog");
@@ -782,7 +803,34 @@ function openOutbox(
 
       pump();
     },
+    acceptFragments() {
+      fragments = true;
+    },
   };
+}
+
+function fragment(text: string): Outgoing[] {
+  const pieces: string[] = [];
+  let start = 0;
+
+  while (start < text.length) {
+    const end = Math.min(start + PIECE_UNITS, text.length);
+    const unit = text.charCodeAt(end - 1);
+    const stop = end < text.length && unit >= 0xd800 && unit <= 0xdbff ? end - 1 : end;
+    pieces.push(text.slice(start, stop));
+    start = stop;
+  }
+
+  return pieces.map((piece, index) => {
+    const framed = JSON.stringify({
+      c: "e",
+      type: "fragment",
+      text: piece,
+      last: index === pieces.length - 1,
+    } satisfies FragmentFrame);
+
+    return { text: framed, bytes: Buffer.byteLength(framed) };
+  });
 }
 
 function textCost(entry: TextEntry): number {

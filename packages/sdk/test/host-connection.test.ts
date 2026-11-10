@@ -264,6 +264,24 @@ describe("a head store", () => {
     await until(connection, "open");
     await matchesRead(connection, store, session);
   });
+
+  it("opens a head whose window passes maxFrameBytes with its whole message, and the connection stays open", async () => {
+    const served = await serve();
+    const session = await startSession(served);
+    const text = "x".repeat(1_200_000);
+    await send(served, session, text);
+    const connection = attach(served.listener);
+    await until(connection, "open");
+    const kinds: Health["kind"][] = [];
+    connection.health.subscribe(() => kinds.push(connection.health.snapshot().kind));
+    const store = watched(connection, session);
+
+    await vi.waitFor(() => expect(store.freshness().kind).toBe("fresh"), { timeout: 10_000 });
+    const messages = Array.from(store.snapshot()?.rows.messages.values() ?? []);
+
+    expect(messages.some((row) => row.kind === "user" && row.content === text)).toBe(true);
+    expect(kinds.filter((kind) => kind !== "open")).toEqual([]);
+  }, 30_000);
 });
 
 describe("a reconnect", () => {
@@ -286,6 +304,46 @@ describe("a reconnect", () => {
       await until(connection, "open");
     }
   });
+
+  it("waits longer before each retry of a host that welcomes it and then closes for size", async () => {
+    const served = await serve();
+    const session = await startSession(served);
+    await send(served, session, "x".repeat(1_200_000));
+
+    const connection = attach(served.listener, (request) => {
+      const socket = global(request);
+      const send = socket.send.bind(socket);
+
+      return Object.assign(socket, {
+        send(data: string) {
+          send(data.replace(`"api_revision":${API_REVISION},`, ""));
+        },
+      });
+    });
+
+    await until(connection, "open");
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    cleanups.push(async () => {
+      vi.useRealTimers();
+    });
+    const waits: number[] = [];
+
+    connection.health.subscribe(() => {
+      const health = connection.health.snapshot();
+
+      if (health.kind === "retrying") waits.push(health.at - Date.now());
+    });
+    watched(connection, session);
+
+    for (const close of [1, 2, 3]) {
+      await vi.waitFor(() => expect(waits).toHaveLength(close), { timeout: 10_000 });
+      vi.advanceTimersByTime(waits.at(-1) ?? 0);
+    }
+
+    expect(waits[1]).toBeGreaterThan(waits[0] ?? Infinity);
+    expect(waits[2]).toBeGreaterThan(waits[1] ?? Infinity);
+    expect(waits[2]).toBeGreaterThan(1_000);
+  }, 30_000);
 
   it("keeps one socket when a health listener wakes the connection as it starts retrying", async () => {
     const served = await serve();

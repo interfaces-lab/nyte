@@ -1,5 +1,12 @@
 import { fileURLToPath } from "node:url";
-import { errors, events, results, texts, welcomes } from "@nyte-ai/protocol/frame-checks";
+import {
+  errors,
+  events,
+  fragments,
+  results,
+  texts,
+  welcomes,
+} from "@nyte-ai/protocol/frame-checks";
 import {
   activations,
   clientRows,
@@ -14,7 +21,7 @@ const RUNTIME_IMPORT = /^import \{ (\w+) \} from "(typebox\/\w+)"$/u;
 
 /** Each checks module's exports. A module that gains an export missing here fails the build: its importers find no such export in the generated module. */
 const CHECKS = {
-  "frame-checks.ts": { welcomes, results, errors, events, texts },
+  "frame-checks.ts": { welcomes, results, errors, events, texts, fragments },
   "event-checks.ts": { sessionChanges, sessionsChanges, activations, clientRows, performs },
 } as const;
 

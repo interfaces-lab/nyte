@@ -2,6 +2,7 @@ import {
   compile,
   ErrorFrameType,
   EventFrameType,
+  FragmentFrameType,
   ResultFrameType,
   TextFrameType,
   WelcomeFrameType,
@@ -25,3 +26,5 @@ export const errors = checkOnly(compile(withJson(ErrorFrameType)));
 export const events = checkOnly(compile(withJson(EventFrameType)));
 
 export const texts = checkOnly(compile(withJson(TextFrameType)));
+
+export const fragments = checkOnly(compile(withJson(FragmentFrameType)));
