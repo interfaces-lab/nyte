@@ -25,7 +25,13 @@ export async function run(
   },
 ): Promise<Ran> {
   await processEnvironment();
-  const resolved = process.platform === "win32" ? ((await findExecutable(file)) ?? file) : file;
+
+  const resolved =
+    file === "git"
+      ? await gitExecutable()
+      : process.platform === "win32"
+        ? ((await findExecutable(file)) ?? file)
+        : file;
 
   return new Promise((resolve, reject) => {
     const child = spawnCommand(resolved, args, {
@@ -42,9 +48,10 @@ export async function run(
     let size = 0;
     let truncated = false;
 
-    child.on("error", (error) =>
-      reject(new SdkError("unavailable", `Cannot run ${file}: ${error.message}`)),
-    );
+    child.on("error", (error) => {
+      if (file === "git") gitLookup = undefined;
+      reject(new SdkError("unavailable", `Cannot run ${file}: ${error.message}`));
+    });
     child.stdout?.on("data", (chunk: Buffer) => {
       if (truncated) return;
       size += chunk.byteLength;
@@ -71,6 +78,27 @@ export async function run(
     );
     child.stdin?.end(options.input);
   });
+}
+
+let gitLookup: Promise<string> | undefined;
+
+/** The `git` a shell would run, found once: its path on the PATH, so a spawn skips the PATH walk, and on macOS the developer directory's git behind the `/usr/bin/git` xcrun shim (`xcrun -f git`), so it skips the shim's own lookup. The bare name when neither is found; a failed spawn finds it again. */
+function gitExecutable(): Promise<string> {
+  gitLookup ??= findGit();
+
+  return gitLookup;
+}
+
+async function findGit(): Promise<string> {
+  const found = await findExecutable("git");
+
+  if (found === null) return "git";
+
+  if (process.platform !== "darwin" || found !== "/usr/bin/git") return found;
+  const ran = await run("/usr/bin/xcrun", ["-f", "git"], { cwd: "/" }).catch(() => null);
+  const real = ran?.code === 0 ? ran.stdout.toString("utf8").trim() : "";
+
+  return real !== "" && isAbsolute(real) && (await executable(real)) ? real : found;
 }
 
 export function spawnCommand(
