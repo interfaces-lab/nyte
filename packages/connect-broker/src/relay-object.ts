@@ -278,9 +278,13 @@ export class EnvironmentRelay extends DurableObject<Env> implements EnvironmentA
 
   #sockets(): Socket[] {
     return this.ctx.getWebSockets().flatMap((socket) => {
+      if (socket.readyState !== OPEN) return [];
       const attachment = readAttachment(socket);
 
-      return attachment === undefined || socket.readyState !== OPEN ? [] : [{ socket, attachment }];
+      if (attachment !== undefined) return [{ socket, attachment }];
+      this.#close(socket, "invalid");
+
+      return [];
     });
   }
 
