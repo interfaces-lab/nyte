@@ -8,7 +8,6 @@ process.env.TMPDIR = "/tmp";
 
 export default defineConfig({
   testDir: import.meta.dirname,
-  testIgnore: "stores/**",
   outputDir: resolve(import.meta.dirname, "test-results"),
   forbidOnly: CI,
   retries: CI ? 2 : 0,

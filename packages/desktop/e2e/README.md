@@ -51,8 +51,6 @@ Each launch starts its own host, and the app finds it the way it does in product
 
 Closing a chapter's desktop fails if any process of Electron's tree is still running 5 s after it quits, or if its host outlives the job's bootout. The host's log and the scripted catalog's `NYTE_E2E_*` lines join the launch's output.
 
-`stores/` is a separate suite with its own `stores/playwright.config.ts`. This config skips it.
-
 ## Chapters
 
 | File | Covers |
