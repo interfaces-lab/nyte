@@ -77,6 +77,7 @@ export type CredentialSourceWire = Decoded<typeof CredentialSourceWireType>;
 
 export const JournalEntryType = Type.Object({
   id: idSchema<"receipt">(),
+  host: idSchema<"host">(),
   session: idSchema<"session">(),
   head: idSchema<"head">(),
   content: UserContentType,

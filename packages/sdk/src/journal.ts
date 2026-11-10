@@ -2,6 +2,7 @@ import { asId, SdkError } from "@nyte-ai/schema";
 import type {
   Disposer,
   HeadName,
+  HostId,
   JournalEntry,
   Message,
   QueuedMessage,
@@ -15,7 +16,7 @@ import type { Rows } from "./rows.ts";
 import { backoff, retryDelay } from "./rows.ts";
 
 export interface JournalLoop {
-  send(entry: JournalEntry): Promise<Sent>;
+  send(entry: Omit<JournalEntry, "host">): Promise<Sent>;
   replay(entries: readonly JournalEntry[]): void;
   unsent(session: SessionId, head: HeadName): readonly QueuedMessage[];
   landed(session: SessionId, head: HeadName, view: Landed, seq: number): void;
@@ -48,7 +49,7 @@ export function createSendJournal(): RequestJournal {
   };
 }
 
-export function journalLoop(rows: Rows, journal: RequestJournal): JournalLoop {
+export function journalLoop(rows: Rows, journal: RequestJournal, host: HostId): JournalLoop {
   const held = new Map<string, Held>();
   const tails = new Map<string, Promise<void>>();
   const shown = new Map<string, number>();
@@ -152,13 +153,14 @@ export function journalLoop(rows: Rows, journal: RequestJournal): JournalLoop {
   };
 
   return {
-    async send(entry) {
+    async send(unhosted) {
+      const entry = { ...unhosted, host };
       await journal.put(entry);
 
       return hold(entry);
     },
     replay(entries) {
-      for (const entry of entries)
+      for (const entry of entries.filter((entry) => entry.host === host))
         hold(entry).catch((error: unknown) =>
           dev("sdk", "replay failed", {
             receipt: entry.id,

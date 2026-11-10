@@ -20,6 +20,7 @@ function memory() {
 function entry(id: string, at: number): JournalEntry {
   return {
     id: asId<"receipt">(id),
+    host: asId<"host">("host-1"),
     session: asId<"session">("session-1"),
     head: asId<"head">("main"),
     content: [{ kind: "text", text: `message ${id}` }],

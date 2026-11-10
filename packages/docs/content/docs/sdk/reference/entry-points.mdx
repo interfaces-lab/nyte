@@ -172,9 +172,10 @@ interface RequestJournal {
 }
 ```
 
-`connect` calls `load` once and resends what it returns. `send` calls `put` before the request. It
-calls `remove` once a view of the head shows the message, or when the send fails with an error it
-doesn't retry. A `JournalEntry` is plain JSON, so any key-value store works.
+`connect` calls `load` once and resends the entries written for the host that answered. `send` calls
+`put` before the request. It calls `remove` once a view of the head shows the message, or when the
+send fails with an error it doesn't retry. A `JournalEntry` is plain JSON, so any key-value store
+works.
 
 ## pagedViews [#paged-views]
 

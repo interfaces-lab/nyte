@@ -47,7 +47,7 @@ export function createClient(transport: Transport, context: ClientContext): Conn
 
   const bound: Bound = {
     rows,
-    journal: journalLoop(rows, context.journal),
+    journal: journalLoop(rows, context.journal, context.hostId),
     seen: new Map(),
   };
 

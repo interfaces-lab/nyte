@@ -266,12 +266,14 @@ describe("client send journal", () => {
 
   it("returns from connect before replaying the journal, which lands once the link is back", async () => {
     const host = await open();
-    const session = await settledChat(host, await client(host));
+    const opened = await client(host);
+    const session = await settledChat(host, opened);
     host.fake.reply(text("Replayed."));
     const journal = createSendJournal();
 
     await journal.put({
       id: asId<"receipt">(crypto.randomUUID()),
+      host: opened.hostId,
       session: session.id,
       head: asId<"head">("main"),
       content: "Journaled.",
@@ -305,6 +307,36 @@ describe("client send journal", () => {
 
     expect(users(landed)).toEqual(["Hi.", "Journaled."]);
     expect(await journal.load()).toEqual([]);
+  });
+
+  it("replays only the entries written for the host that answered, and keeps the others journaled", async () => {
+    const host = await open();
+    const session = await settledChat(host, await client(host));
+    host.fake.reply(text("Elsewhere."), text("Here."));
+    const journal = createSendJournal();
+
+    const elsewhere = {
+      id: asId<"receipt">(crypto.randomUUID()),
+      host: asId<"host">("another-host"),
+      session: session.id,
+      head: asId<"head">("main"),
+      content: "Elsewhere.",
+      options: {},
+      at: Date.now(),
+    };
+
+    await journal.put(elsewhere);
+    const connection = await client(host, journal);
+    await (await connection.session(session.id).send("Here.")).settled();
+
+    expect(users(await host.view(session.id))).toEqual(["Hi.", "Here."]);
+    await expect
+      .poll(async () => {
+        await connection.session(session.id).view();
+
+        return journal.load();
+      })
+      .toEqual([elsewhere]);
   });
 
   it("does not retry a send whose answer body fails mid-read: only the fetch call failing is link loss", async () => {
@@ -438,13 +470,15 @@ describe("client send journal", () => {
 
   it("holds every journaled entry at connect, all shown unsent before the first lands, then delivers them in order (ADV C 4, probe P5)", async () => {
     const host = await open();
-    const session = await settledChat(host, await client(host));
+    const opened = await client(host);
+    const session = await settledChat(host, opened);
     host.fake.reply(text("One answer."), text("Two answer."));
     const journal = createSendJournal();
 
     for (const content of ["One.", "Two."])
       await journal.put({
         id: asId<"receipt">(crypto.randomUUID()),
+        host: opened.hostId,
         session: session.id,
         head: asId<"head">("main"),
         content,
