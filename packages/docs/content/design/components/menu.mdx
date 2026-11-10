@@ -14,6 +14,8 @@ Actions opened from a button. For a control showing the current choice, use [Sel
 - `MenuItem` and `MenuRadioItem` close on click. `MenuCheckboxItem` and `MenuSwitchItem` stay open.
   `closeOnClick` changes either.
 - For a searchable palette under a scrim, use [Command](/design/command).
+- To search a menu, wrap `Menu` in `MenuFilterProvider`, put `MenuInput` in the popup, and put the
+  items in `MenuList`. The input keeps focus while the arrow keys move the highlight.
 
 ## Anatomy
 
@@ -40,6 +42,22 @@ Actions opened from a button. For a control showing the current choice, use [Sel
     </MenuSub>
   </MenuContent>
 </Menu>
+```
+
+A searchable menu adds three parts:
+
+```tsx
+<MenuFilterProvider>
+  <Menu>
+    <MenuTrigger />
+    <MenuContent>
+      <MenuInput aria-label="Search" />
+      <MenuList>
+        <MenuItem />
+      </MenuList>
+    </MenuContent>
+  </Menu>
+</MenuFilterProvider>
 ```
 
 ## Examples
@@ -118,7 +136,7 @@ function SessionMenu() {
 The styled popup and row parts take `xstyle`, `className`, and `style`. `className` and `style`
 accept plain values or functions of the underlying Base UI part's state. See [Theming](/design/theming).
 
-`Menu`, `MenuTrigger`, `MenuRadioGroup`, `MenuGroup`, and `MenuSub`
+`Menu`, `MenuTrigger`, `MenuRadioGroup`, `MenuGroup`, `MenuSub`, and `MenuFilterProvider`
 pass through Base UI unstyled.
 
 The reference tables below come from Base UI, MIT, © Material-UI SAS.
@@ -244,11 +262,28 @@ Accepts `onItemHighlighted` as described for `Menu`.
 
 Takes `icon`, `leading`, and `layout` as `MenuItem` does.
 
-| Prop    | Type        | Description                |
-| ------- | ----------- | -------------------------- |
-| `value` | `ReactNode` | Choice before the chevron. |
+| Prop    | Type        | Description                       |
+| ------- | ----------- | --------------------------------- |
+| `value` | `ReactNode` | Choice before the chevron.        |
+| `meta`  | `ReactNode` | Replaces `value` and the chevron. |
 
 <include>../../base-ui-reference/menu/SubmenuTrigger.md</include>
+
+### MenuFilterProvider
+
+<include>../../base-ui-reference/menu/FilterProvider.md</include>
+
+### MenuInput
+
+A bare input with no padding or icon. Place it in a row of your own.
+
+<include>../../base-ui-reference/menu/Input.md</include>
+
+### MenuList
+
+Grows to fill the popup and scrolls.
+
+<include>../../base-ui-reference/menu/List.md</include>
 
 ### MenuItemBody
 

@@ -4,7 +4,12 @@ description: "More about a trigger, shown on hover or keyboard focus"
 ---
 
 ```ts title="Import"
-import { PreviewCard, PreviewCardContent, PreviewCardTrigger } from "@nyte-ai/ui/preview-card";
+import {
+  createPreviewCardHandle,
+  PreviewCard,
+  PreviewCardContent,
+  PreviewCardTrigger,
+} from "@nyte-ai/ui/preview-card";
 ```
 
 A card with more about its trigger. For one line, use [Tooltip](/design/tooltip).
@@ -12,6 +17,7 @@ A card with more about its trigger. For one line, use [Tooltip](/design/tooltip)
 ## Usage
 
 - Keep essential content available without the card.
+- Give a list of triggers one card through a handle. A root per item opens a card per item, and they stack while the pointer crosses the list.
 
 ## Anatomy
 
@@ -78,6 +84,7 @@ const styles = create({
 ```tsx
 const styles = create({
   snippet: {
+    margin: 0,
     maxHeight: 240,
     overflowY: "auto",
     color: role.contentSecondary,
@@ -90,10 +97,33 @@ const styles = create({
 
 <PreviewCard>
   <PreviewCardTrigger render={chip} />
-  <PreviewCardContent side="top" xstyle={styles.snippet}>
-    {snippet}
+  <PreviewCardContent side="top">
+    <pre {...props(styles.snippet)}>{snippet}</pre>
   </PreviewCardContent>
 </PreviewCard>;
+```
+
+### One card for a list
+
+```tsx
+import {
+  createPreviewCardHandle,
+  PreviewCard,
+  PreviewCardContent,
+  PreviewCardTrigger,
+} from "@nyte-ai/ui/preview-card";
+import { useState } from "react";
+
+const [handle] = useState(createPreviewCardHandle<string>);
+
+<>
+  {chats.map((chat) => (
+    <PreviewCardTrigger key={chat} handle={handle} payload={chat} render={<Row />} />
+  ))}
+  <PreviewCard handle={handle}>
+    {({ payload }) => <PreviewCardContent side="right">{payload}</PreviewCardContent>}
+  </PreviewCard>
+</>;
 ```
 
 ### Controlled
@@ -115,7 +145,7 @@ const [open, setOpen] = useState(false);
 `PreviewCardContent` takes `xstyle`, `className`, and `style`. Its `className` and `style` accept
 plain values or functions of popup state. See [Theming](/design/theming).
 
-`PreviewCard` and `PreviewCardTrigger` pass through Base UI unstyled. No handle factory is exported.
+`PreviewCard` and `PreviewCardTrigger` pass through Base UI unstyled. `createPreviewCardHandle` is Base UI's `PreviewCard.createHandle`.
 
 The reference tables below come from Base UI, MIT, © Material-UI SAS.
 

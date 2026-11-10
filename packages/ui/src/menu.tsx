@@ -3,6 +3,8 @@ import { create, defaultMarker, props, when } from "@stylexjs/stylex";
 import { controlRoot } from "./styles/control.stylex.ts";
 import type { ComponentProps, ReactElement, ReactNode } from "react";
 
+import { focus } from "./styles/a11y.stylex.ts";
+
 import { floatingSurfaceStyles } from "./styles/floating-surface.stylex.ts";
 import {
   glyph,
@@ -134,6 +136,34 @@ export const menuStyles = create({
     whiteSpace: "nowrap",
   },
   indicator: { display: "flex" },
+  input: {
+    boxSizing: "border-box",
+    flex: 1,
+    minWidth: 0,
+    height: row.heightMd,
+    margin: 0,
+    padding: 0,
+    borderStyle: "none",
+    borderRadius: 0,
+    backgroundColor: "transparent",
+    color: role.contentPrimary,
+    fontFamily: type.fontSans,
+    fontSize: {
+      default: type.fontBase,
+      "@media (pointer: coarse)": `max(16px, ${type.fontBase})`,
+    },
+    lineHeight: type.leadingBase,
+    "::placeholder": { color: role.contentTertiary },
+  },
+  list: {
+    display: "flex",
+    flexDirection: "column",
+    flex: "1 1 auto",
+    minHeight: 0,
+    overflowY: "auto",
+    overscrollBehavior: "contain",
+    outline: "none",
+  },
   body: { minHeight: 0, overflowY: "auto", overscrollBehavior: "contain" },
   footer: { flexShrink: 0 },
   separator: {
@@ -291,6 +321,40 @@ export const MenuGroup = MenuPrimitive.Group;
 export const MenuRadioGroup = MenuPrimitive.RadioGroup;
 
 export const MenuSub = MenuPrimitive.SubmenuRoot;
+
+export const MenuFilterProvider = MenuPrimitive.FilterProvider;
+
+/** The search field of a filtered menu: a bare input that keeps focus while the arrows move the highlight. */
+export function MenuInput({
+  xstyle,
+  className,
+  style,
+  ...rest
+}: StyledProps<MenuPrimitive.Input.Props, Restyle<"MenuInput">>): ReactElement {
+  return (
+    <MenuPrimitive.Input
+      data-slot="menu-input"
+      {...mergeStyleProps(props(menuStyles.input, focus.ringInset, xstyle), className, style)}
+      {...rest}
+    />
+  );
+}
+
+/** Holds a filtered menu's items, so the input and other content can share the popup. */
+export function MenuList({
+  xstyle,
+  className,
+  style,
+  ...rest
+}: StyledProps<MenuPrimitive.List.Props, Restyle<"MenuList">>): ReactElement {
+  return (
+    <MenuPrimitive.List
+      data-slot="menu-list"
+      {...mergeStyleProps(props(menuStyles.list, xstyle), className, style)}
+      {...rest}
+    />
+  );
+}
 
 export function MenuContent({
   side = "bottom",
@@ -588,13 +652,14 @@ export function MenuSubTrigger({
   layout,
   icon,
   leading,
+  meta,
   xstyle,
   className,
   style,
   children,
   ...rest
 }: StyledProps<MenuPrimitive.SubmenuTrigger.Props, Restyle<"MenuSubTrigger">> &
-  Omit<MenuItemBodyProps, "meta"> & {
+  MenuItemBodyProps & {
     readonly value?: ReactNode;
   }): ReactElement {
   return (
@@ -612,10 +677,12 @@ export function MenuSubTrigger({
         leading={leading}
         layout={layout}
         meta={
-          <>
-            {value !== undefined && <span {...props(menuStyles.submenuValue)}>{value}</span>}
-            <Icon name="chevron-right" size="2xs" />
-          </>
+          meta ?? (
+            <>
+              {value !== undefined && <span {...props(menuStyles.submenuValue)}>{value}</span>}
+              <Icon name="chevron-right" size="2xs" />
+            </>
+          )
         }
       >
         {children}

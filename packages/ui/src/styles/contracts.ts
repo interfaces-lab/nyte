@@ -261,6 +261,8 @@ export const restyleContracts = {
   TooltipContent: popup("packages/ui/src/tooltip.tsx", ["side", "tint"]),
   MenuContent: popup(menu),
   MenuSubContent: popup(menu),
+  MenuInput: sized(menu),
+  MenuList: placed(menu),
   MenuItem: placed(menu, ["variant", "layout"]),
   MenuLinkItem: placed(menu, ["variant", "layout"]),
   MenuRadioItem: placed(menu, ["layout"]),

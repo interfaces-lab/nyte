@@ -45,6 +45,8 @@ export const PreviewCard = PreviewCardPrimitive.Root;
 
 export const PreviewCardTrigger = PreviewCardPrimitive.Trigger;
 
+export const createPreviewCardHandle = PreviewCardPrimitive.createHandle;
+
 export function PreviewCardContent({
   anchor,
   side,
