@@ -32,6 +32,8 @@ void serveHost({
   log: args.includes("--log"),
   whenTaken: "wait",
   tailnet,
+  /** Electron answers a stat inside app.asar with a new inode each time, so the packaged host follows the bundle's executable, which an update replaces with the rest of the bundle. */
+  buildFile: import.meta.url.includes("/app.asar/") ? process.execPath : undefined,
   signal: stop.signal,
   output: { write: (text) => void process.stdout.write(text) },
   listening: (host) => `${JSON.stringify({ type: "listening", ...host })}\n`,

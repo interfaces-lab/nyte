@@ -65,6 +65,13 @@ export async function findRunningHost(path: string): Promise<RunningHost | null>
   return (await hostAnswers(host.url)) ? host : null;
 }
 
+/** Whether `path` names a host whose process is alive, without asking the host anything. */
+export async function hostProcessRunning(path: string): Promise<boolean> {
+  const host = await readHostFile(path);
+
+  return host !== null && processAlive(host.pid);
+}
+
 /** Whether anything answers HTTP at `url` within a second. */
 export async function hostAnswers(url: string): Promise<boolean> {
   return fetch(new URL("/.nyte/describe", url), { signal: AbortSignal.timeout(1_000) }).then(

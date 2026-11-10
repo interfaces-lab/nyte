@@ -26,6 +26,7 @@ import { openFaultLog } from "./fault-log.ts";
 import { hostFaultsPath } from "./host-endpoint.ts";
 import { hostMessages } from "./host-thread.ts";
 import type { HostCommand, HostReport } from "./host-thread.ts";
+import { replaceOutdatedHost } from "./outdated-host.ts";
 import { portConflict, probePort } from "./port.ts";
 import { Sharing } from "./sharing.ts";
 
@@ -60,6 +61,18 @@ export function serveHostThread(runtime: HostWorkerRuntime): void {
       .catch(() => undefined)
       .then(() => report({ kind: "revoked" }));
 
+  const replaced = (): void => {
+    const closing = opening.then((opened) => opened?.close());
+    opening = closing.then(
+      () => null,
+      () => null,
+    );
+    void closing.then(
+      () => report({ kind: "replaced" }),
+      (cause: unknown) => report({ kind: "failed", message: failureMessage(cause) }),
+    );
+  };
+
   port.on("message", (message) => {
     if (!hostMessages.Check(message)) {
       report({
@@ -71,7 +84,7 @@ export function serveHostThread(runtime: HostWorkerRuntime): void {
     }
 
     if (message.kind !== "stop") {
-      opening = open(message, runtime, revoked).then(
+      opening = open(message, runtime, revoked, replaced).then(
         (opened) => {
           report({ kind: "listening", address: opened.address });
 
@@ -100,6 +113,7 @@ async function open(
   command: HostCommand,
   runtime: HostWorkerRuntime,
   revoked: () => void,
+  replaced: () => void,
 ): Promise<Opened> {
   if (command.socket !== undefined) void completeShellEnvironment();
   let shell: string | null = null;
@@ -144,9 +158,15 @@ async function open(
 
     sharing.start();
 
+    const unfollow =
+      command.buildFile === undefined
+        ? () => undefined
+        : replaceOutdatedHost(host, command.buildFile, replaced);
+
     return {
       address: listener.address,
       close: async () => {
+        unfollow();
         await sharing.close();
         await connect.close();
         await host.close();

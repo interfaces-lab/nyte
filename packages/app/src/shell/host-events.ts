@@ -1,7 +1,6 @@
 import { toast } from "@nyte-ai/ui/toast";
 import type { HostEvent, HostProcess } from "../contract/bridge.ts";
 import type { AlertState } from "../contract/desktop-settings.ts";
-import { errorMessage } from "../contract/errors.ts";
 import { keys, queryClient } from "../data/query-client.ts";
 import { commitHostWorkspace } from "../data/workspaces.ts";
 import { nyte } from "../contract/nyte.ts";
@@ -111,20 +110,6 @@ const HOST_RESTART = "host-restart";
 function followHostProcess(): (state: HostProcess) => void {
   let restarting = false;
 
-  const restart = (): void => {
-    void nyte.host.hostProcess?.restart().catch((cause: unknown) => {
-      restarting = false;
-      toast.add({
-        id: HOST_RESTART,
-        type: "error",
-        timeout: 0,
-        title: "Couldn't restart Nyte Host",
-        description: errorMessage(cause),
-        actionProps: { children: "Try Again", onClick: restart },
-      });
-    });
-  };
-
   return (state) => {
     switch (state.kind) {
       case "restarting":
@@ -141,14 +126,7 @@ function followHostProcess(): (state: HostProcess) => void {
         return;
       case "stale":
         restarting = false;
-        toast.add({
-          id: HOST_RESTART,
-          type: "warning",
-          timeout: 0,
-          title: "Nyte Host needs a restart",
-          description: `It runs Nyte ${state.version}. Running chats pause and resume.`,
-          actionProps: { children: "Restart", onClick: restart },
-        });
+        toast.close(HOST_RESTART);
 
         return;
       case "offline":

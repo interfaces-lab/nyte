@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { readHostStatus, readHostUpdate } from "./host-status.ts";
-import type { HostProbe, HostReading, HostUpdate, HostUpdateProbe } from "./host-status.ts";
+import type { HostLinkState } from "./host-link.ts";
+import type { HostProbe, HostReading, HostUpdate } from "./host-status.ts";
 
 const rows: readonly (readonly [string, HostProbe, HostReading])[] = [
   [
@@ -52,71 +53,28 @@ test("the host status comes from the process, the registration and the connectio
 
 const APP = "0.0.29";
 
-const updates: readonly (readonly [string, Omit<HostUpdateProbe, "appVersion">, HostUpdate])[] = [
+const updates: readonly (readonly [string, HostLinkState, HostUpdate])[] = [
+  ["a host on the app's build", { kind: "connected", version: APP, compatible: true }, "current"],
   [
-    "the app's own host on the app's build",
-    { link: { kind: "connected", version: APP, compatible: true }, own: true, restarted: false },
-    "current",
-  ],
-  [
-    "the app's own host still on the build before an update",
-    {
-      link: { kind: "connected", version: "0.0.28", compatible: false },
-      own: true,
-      restarted: false,
-    },
-    "restart",
+    "a host still on the build before an update",
+    { kind: "connected", version: "0.0.28", compatible: false },
+    "stale",
   ],
   [
     "an older version whose operations happen to match",
-    {
-      link: { kind: "connected", version: "0.0.28", compatible: true },
-      own: true,
-      restarted: false,
-    },
-    "restart",
+    { kind: "connected", version: "0.0.28", compatible: true },
+    "stale",
   ],
   [
     "the same version with other operations",
-    { link: { kind: "connected", version: APP, compatible: false }, own: true, restarted: false },
-    "restart",
-  ],
-  [
-    "still on another build after this launch restarted it",
-    {
-      link: { kind: "connected", version: "0.0.28", compatible: true },
-      own: true,
-      restarted: true,
-    },
+    { kind: "connected", version: APP, compatible: false },
     "stale",
   ],
-  [
-    "a host another install serves",
-    {
-      link: { kind: "connected", version: "0.0.28", compatible: false },
-      own: false,
-      restarted: false,
-    },
-    "stale",
-  ],
-  [
-    "another install's host on the app's build",
-    { link: { kind: "connected", version: APP, compatible: true }, own: false, restarted: false },
-    "current",
-  ],
-  [
-    "a host still connecting",
-    { link: { kind: "connecting" }, own: true, restarted: false },
-    "offline",
-  ],
-  [
-    "a host that stopped answering",
-    { link: { kind: "unreachable", message: "gone" }, own: true, restarted: true },
-    "offline",
-  ],
+  ["a host still connecting", { kind: "connecting" }, "offline"],
+  ["a host that stopped answering", { kind: "unreachable", message: "gone" }, "offline"],
 ];
 
-test("an update restarts the app's own host once, and any other stale host waits", () => {
-  for (const [name, probe, update] of updates)
-    assert.equal(readHostUpdate({ ...probe, appVersion: APP }), update, name);
+test("a host on another build reads as stale, and the app never restarts it", () => {
+  for (const [name, link, update] of updates)
+    assert.equal(readHostUpdate({ link, appVersion: APP }), update, name);
 });

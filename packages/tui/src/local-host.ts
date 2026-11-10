@@ -12,6 +12,7 @@ import {
   hostFilePath,
   hostLockPath,
   hostLogPath,
+  hostProcessRunning,
 } from "@nyte-ai/service/host-endpoint";
 import { CliError } from "./cli/errors.ts";
 import { printable } from "./cli/format.ts";
@@ -32,6 +33,11 @@ const HOST_START_MS = 20_000;
 
 const HOST_POLL_MS = 100;
 
+const HOST_WATCH_MS = 2_000;
+
+/** How long no host serves before this command starts one, so the desktop's launch agent restarts its own host first. */
+const HOST_GONE_MS = 5_000;
+
 /**
  * `progress` hears the phase of a wait the person would otherwise sit through in silence, such as
  * starting a host. One-shot commands pass `Output.progress`; the full-screen TUI passes nothing,
@@ -43,7 +49,7 @@ export async function connectHost(
 ): Promise<HostSession> {
   switch (source.kind) {
     case "local":
-      return attachHost(await ensureHost(progress));
+      return keepHost(await attachHost(await ensureHost(progress)));
     case "attached":
       return attachHost(source.endpoint);
     default: {
@@ -62,7 +68,7 @@ async function ensureHost(progress?: (phase: string) => void): Promise<LocalEndp
   progress?.("Starting a Nyte host…");
   const command = selfCommand();
 
-  const child = spawn(command[0], [...command.slice(1), "host", "--log"], {
+  const child = spawn(command[0], [...command.slice(1), "host", "--log", "--supervised"], {
     cwd: homedir(),
     detached: true,
     stdio: "ignore",
@@ -89,6 +95,44 @@ async function ensureHost(progress?: (phase: string) => void): Promise<LocalEndp
   throw new Error(
     `The Nyte host didn't start within ${String(HOST_START_MS / 1000)} s. See ${hostLogPath()}.`,
   );
+}
+
+/**
+ * Starts a host, once each time the one this session attached to is gone: it stopped for an update,
+ * or crashed. The connection's own reconnect reaches the new host, which keeps the saved address.
+ */
+function keepHost(session: HostSession): HostSession {
+  const stop = new AbortController();
+
+  void watchHost(stop.signal);
+
+  return {
+    ...session,
+    async close() {
+      stop.abort();
+      await session.close();
+    },
+  };
+}
+
+async function watchHost(signal: AbortSignal): Promise<void> {
+  const path = hostFilePath();
+  let gone: number | null = null;
+  let armed = true;
+
+  while (!signal.aborted) {
+    await sleep(HOST_WATCH_MS, undefined, { ref: false, signal }).catch(() => undefined);
+
+    if (signal.aborted) return;
+    const serving = (await hostProcessRunning(path)) || hostLockHeld();
+    gone = serving ? null : (gone ?? Date.now());
+    armed ||= serving;
+
+    if (armed && gone !== null && Date.now() - gone >= HOST_GONE_MS) {
+      armed = false;
+      await ensureHost().catch(() => undefined);
+    }
+  }
 }
 
 /**

@@ -1,14 +1,17 @@
-import { readFile, mkdtemp, rm } from "node:fs/promises";
+import { readFile, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
 import { setTimeout as sleep } from "node:timers/promises";
+import { asId } from "@nyte-ai/schema";
+import type { Execution, JobView, RunView } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Compile } from "typebox/compile";
 import { afterEach, expect, it, vi } from "vitest";
 import { hostFaultsPath, hostFilePath, publishHost } from "../src/host-endpoint.ts";
+import { hostIdle, replaceOutdatedHost } from "../src/outdated-host.ts";
 import { serveHost } from "../src/serve-host.ts";
 import type { Served } from "../src/serve-host.ts";
 
@@ -27,6 +30,7 @@ const hostFiles = Compile(Type.Object({ url: Type.String() }));
 const folders: string[] = [];
 
 afterEach(async () => {
+  vi.useRealTimers();
   vi.unstubAllEnvs();
   await Promise.all(folders.splice(0).map((path) => rm(path, { recursive: true, force: true })));
 });
@@ -285,3 +289,192 @@ it("a host thread that dies after listening leaves its faults and its death in t
   );
   expect(lines[1]).toMatch(/^\d{4}-\d\d-\d\dT[\d:.]+Z \[host\] stopped \{"error":"Error: boom/u);
 });
+
+it("a host whose build file is replaced stops serving, withdraws host.json and writes no fault", async () => {
+  const home = await mkdtemp(join(tmpdir(), "nyte-serve-host-"));
+  folders.push(home);
+  vi.stubEnv("HOME", home);
+  vi.stubEnv("NYTE_HOME", home);
+  const build = join(home, "nyte");
+  await writeFile(build, "old build");
+  const lines: string[] = [];
+
+  const served = serveHost({
+    entry: new URL("./fixtures/replace-host.ts", import.meta.url),
+    log: false,
+    whenTaken: "exit",
+    buildFile: build,
+    signal: new AbortController().signal,
+    output: { write: (text) => void lines.push(text) },
+    listening: () => "listening",
+  });
+
+  await vi.waitFor(() => expect(lines).toEqual(["listening"]), { timeout: 10_000, interval: 25 });
+  await replaceFile(build, "new build");
+
+  expect(await served).toEqual({ kind: "stopped" });
+  expect(await readFile(hostFilePath(), "utf8").catch(() => "none")).toBe("none");
+  expect(await readFile(hostFaultsPath(), "utf8").catch(() => "none")).toBe("none");
+});
+
+const RUN: RunView = {
+  id: asId("run"),
+  head: asId("main"),
+  startedAt: 0,
+  attempt: 1,
+  origin: { kind: "input", message: asId("message") },
+};
+
+const running = { state: { kind: "running" }, pty: null } as const;
+
+const terminal = { columns: 80, rows: 24, shell: "/bin/zsh" };
+
+const idleCases: readonly {
+  readonly name: string;
+  readonly execution: Execution;
+  readonly jobs: readonly Pick<JobView, "state" | "pty">[];
+  readonly idle: boolean;
+}[] = [
+  {
+    name: "a live run",
+    execution: { kind: "live", run: RUN, phase: "responding", stopping: false },
+    jobs: [],
+    idle: false,
+  },
+  {
+    name: "a retrying run",
+    execution: { kind: "retrying", run: RUN, until: 0, reason: "overloaded" },
+    jobs: [],
+    idle: false,
+  },
+  {
+    name: "a run waiting on the user",
+    execution: { kind: "waiting", run: RUN, on: { kind: "part", part: asId("part") } },
+    jobs: [],
+    idle: true,
+  },
+  {
+    name: "a run waiting on a timer",
+    execution: { kind: "waiting", run: RUN, on: { kind: "timer", until: 0 } },
+    jobs: [],
+    idle: true,
+  },
+  {
+    name: "a running job",
+    execution: { kind: "idle", lastRun: null },
+    jobs: [running],
+    idle: false,
+  },
+  {
+    name: "a terminal, even at its prompt",
+    execution: { kind: "idle", lastRun: null },
+    jobs: [{ ...running, pty: terminal }],
+    idle: false,
+  },
+  {
+    name: "nothing",
+    execution: { kind: "idle", lastRun: null },
+    jobs: [{ state: { kind: "exited", code: 0, reason: "exited" }, pty: null }],
+    idle: true,
+  },
+];
+
+it("only a live or retrying run or a running job, terminals included, keeps a host from being replaced", () => {
+  expect(
+    idleCases.map((row) => ({
+      name: row.name,
+      idle: hostIdle([{ heads: [{ execution: row.execution }] }], row.jobs),
+    })),
+  ).toEqual(idleCases.map((row) => ({ name: row.name, idle: row.idle })));
+});
+
+it("an outdated host is replaced at the first minute it is idle, and not before", async () => {
+  const home = await mkdtemp(join(tmpdir(), "nyte-outdated-host-"));
+  folders.push(home);
+  const build = join(home, "nyte");
+  await writeFile(build, "old build");
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  let jobs: readonly JobView[] = [];
+  let checks = 0;
+  let replaced = 0;
+
+  const host = {
+    sessions: { list: async () => ({ items: [], next: null }) },
+    workspaces: { list: async () => [{ id: asId<"workspace">("home") }] },
+    workspace: () => ({
+      jobs: {
+        list: async () => {
+          checks += 1;
+
+          return jobs;
+        },
+      },
+      job: () => ({ idle: async () => false }),
+    }),
+  };
+
+  const stop = replaceOutdatedHost(host, build, () => {
+    replaced += 1;
+  });
+
+  await vi.advanceTimersByTimeAsync(60_000);
+  await sleep(50);
+  const unchanged = { checks, replaced };
+
+  await replaceFile(build, "new build");
+
+  jobs = [
+    {
+      id: asId("job"),
+      command: "pnpm dev",
+      title: "pnpm dev",
+      session: null,
+      pty: null,
+      state: { kind: "running" },
+      startedAt: 0,
+      endedAt: null,
+      tail: "",
+      foreground: false,
+    },
+  ];
+
+  const minute = async (): Promise<{ readonly checks: number; readonly replaced: number }> => {
+    const before = checks;
+    await vi.advanceTimersByTimeAsync(60_000);
+    await until(() => checks > before);
+
+    return { checks, replaced };
+  };
+
+  const busy = [await minute(), await minute()];
+
+  jobs = [];
+  await vi.advanceTimersByTimeAsync(59_999);
+  await sleep(50);
+  const early = replaced;
+  await vi.advanceTimersByTimeAsync(1);
+  await until(() => replaced > 0);
+  stop();
+
+  expect({ unchanged, busy, early, replaced }).toEqual({
+    unchanged: { checks: 0, replaced: 0 },
+    busy: [
+      { checks: 1, replaced: 0 },
+      { checks: 2, replaced: 0 },
+    ],
+    early: 0,
+    replaced: 1,
+  });
+});
+
+async function replaceFile(path: string, text: string): Promise<void> {
+  await writeFile(`${path}.next`, text);
+  await rename(`${path}.next`, path);
+}
+
+async function until(done: () => boolean): Promise<void> {
+  for (let tries = 0; !done(); tries++) {
+    if (tries > 200) throw new Error("Timed out waiting for a check.");
+    await sleep(10);
+  }
+}

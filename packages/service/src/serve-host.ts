@@ -38,6 +38,8 @@ export interface ServeHostOptions {
   readonly entry: HostWorkerEntry;
   readonly log: boolean;
   readonly tailnet?: string;
+  /** The file this host was started from. Once it changes and nothing runs, the host stops so its supervisor starts the new build; absent, it never does. */
+  readonly buildFile?: string;
   readonly signal: AbortSignal;
   readonly output: Output;
   readonly listening: (host: HostListening) => string;
@@ -137,6 +139,7 @@ async function serveClaimed(
     socket,
     tailnet: options.tailnet,
     workspace: homedir(),
+    buildFile: options.buildFile,
   });
 
   const port = Number(new URL(thread.address).port);

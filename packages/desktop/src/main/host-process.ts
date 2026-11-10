@@ -36,7 +36,6 @@ export function followHostProcess(options: {
   const reads = serial();
   let state: HostProcess = { kind: "offline" };
   let restarting = false;
-  let restarted = false;
 
   const set = (next: HostProcess): void => {
     if (JSON.stringify(next) === JSON.stringify(state)) return;
@@ -51,23 +50,12 @@ export function followHostProcess(options: {
       const serving = link.kind === "connected" ? await options.agent.serving() : null;
       const startedAt = serving === null ? null : await processStarted(serving.pid);
 
-      const update = readHostUpdate({
-        link,
-        appVersion: options.appVersion,
-        own: serving?.own ?? false,
-        restarted,
-      });
+      const update = readHostUpdate({ link, appVersion: options.appVersion });
 
       if (restarting || link !== options.link()) return;
 
       if (update === "offline" || link.kind !== "connected") {
         set({ kind: "offline" });
-
-        return;
-      }
-
-      if (update === "restart") {
-        void restart().catch(() => undefined);
 
         return;
       }
@@ -78,7 +66,6 @@ export function followHostProcess(options: {
   const restart = async (): Promise<void> => {
     if (restarting) return;
     restarting = true;
-    restarted = true;
     set({ kind: "restarting" });
 
     try {

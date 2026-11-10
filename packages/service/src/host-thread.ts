@@ -15,6 +15,8 @@ const HostCommandType = Type.Object({
   socket: Type.Optional(Type.String()),
   tailnet: Type.Optional(Type.String()),
   workspace: Type.Optional(Type.String()),
+  /** The file the host's build was started from. Once it changes and nothing runs, the host closes and reports `replaced`; absent, it never does. */
+  buildFile: Type.Optional(Type.String()),
 });
 
 export type HostCommand = Static<typeof HostCommandType>;
@@ -31,6 +33,7 @@ const HostReportType = Type.Union([
   Type.Object({ kind: Type.Literal("listening"), address: Type.String() }),
   Type.Object({ kind: Type.Literal("failed"), message: Type.String() }),
   Type.Object({ kind: Type.Literal("revoked") }),
+  Type.Object({ kind: Type.Literal("replaced") }),
   Type.Object({ kind: Type.Literal("closed") }),
 ]);
 
@@ -60,6 +63,7 @@ function launch(
   entry: HostWorkerEntry,
   command: HostCommand,
   revoked: () => void,
+  replaced: () => void,
   failed: (cause: Error) => void,
 ) {
   const worker = new Worker(entry);
@@ -102,6 +106,11 @@ function launch(
         void worker.terminate().then(revoked);
 
         return;
+      case "replaced":
+        leaving = true;
+        replaced();
+
+        return;
       case "closed":
         leaving = true;
         closed.resolve();
@@ -138,11 +147,13 @@ export async function startHostThread(
     if (!stopping) ended.reject(cause);
   };
 
+  const replaced = (): void => ended.resolve();
+
   const reopen = (): void => {
     if (stopping) return;
     const port = Number(new URL(current.address).port);
 
-    void launch(entry, { ...command, port }, reopen, failed).then(
+    void launch(entry, { ...command, port }, reopen, replaced, failed).then(
       (running) => {
         current = running;
 
@@ -152,7 +163,7 @@ export async function startHostThread(
     );
   };
 
-  current = await launch(entry, command, reopen, failed);
+  current = await launch(entry, command, reopen, replaced, failed);
 
   return {
     address: current.address,

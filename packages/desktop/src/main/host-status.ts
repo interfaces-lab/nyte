@@ -33,23 +33,18 @@ export function readHostStatus(probe: HostProbe): HostReading {
 export interface HostUpdateProbe {
   readonly link: HostLinkState;
   readonly appVersion: string;
-  /** The process that serves is the job this app registered, not another install's host. */
-  readonly own: boolean;
-  /** This launch already restarted the host. */
-  readonly restarted: boolean;
 }
 
-export type HostUpdate = "current" | "restart" | "stale" | "offline";
+export type HostUpdate = "current" | "stale" | "offline";
 
 /**
- * Updating restarts the host: an app that finds its own job on another build restarts it, once
- * per launch. A host another install serves, or one still on another build after that restart,
- * stays up and reads as stale.
+ * A host on another build reads as stale. The app never restarts it: a host replaces itself once
+ * its build is updated and nothing runs on it.
  */
 export function readHostUpdate(probe: HostUpdateProbe): HostUpdate {
   if (probe.link.kind !== "connected") return "offline";
 
   if (probe.link.compatible && probe.link.version === probe.appVersion) return "current";
 
-  return probe.own && !probe.restarted ? "restart" : "stale";
+  return "stale";
 }
