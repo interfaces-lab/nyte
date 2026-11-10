@@ -148,6 +148,8 @@ function applyChange(held: Held, change: SessionChange, part: PartId): Held | nu
   const row = held.row;
 
   if (message?.kind !== "part") return { seq, row };
+
+  if (message.elided === true) return null;
   const state = message.state;
 
   if (row?.placement.kind !== "transcript" || !isJson(state)) return null;

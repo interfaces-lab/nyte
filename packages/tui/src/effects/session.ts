@@ -3,6 +3,7 @@ import type {
   Configuration,
   ModelCatalogView,
   ModelRef,
+  PartId,
   SessionId,
   SessionInfo,
   Thinking,
@@ -190,6 +191,32 @@ export async function loadEarlier(
   const followed = context.scope.followed;
 
   if (followed?.id === effect.session) await followed.port.earlier(HISTORY_PAGE);
+}
+
+export async function readWholeTools(
+  effect: { readonly session: SessionId; readonly parts: readonly PartId[] },
+  context: HandlerContext,
+): Promise<void> {
+  const followed = context.scope.followed;
+
+  if (followed?.id !== effect.session) return;
+
+  const states = await Promise.all(
+    effect.parts.map(async (part) => ({
+      part,
+      state: await followed.port.toolState(part, followed.controller.signal),
+    })),
+  );
+
+  if (followed.controller.signal.aborted) return;
+
+  context.dispatch({
+    kind: "whole-tools",
+    session: effect.session,
+    states: new Map(
+      states.flatMap((read) => (read.state === null ? [] : [[read.part, read.state]])),
+    ),
+  });
 }
 
 export async function watchHost(context: HandlerContext): Promise<void> {

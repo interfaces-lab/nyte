@@ -33,6 +33,14 @@ const OUTSIDE = new Map([
     "contract/parts.ts#thinking",
     "Only its `kind`, a part kind stored in every part record; renaming it is a store migration.",
   ],
+  [
+    "contract/parts.ts#tool",
+    "Only its `kind`, a part kind stored in every part record; renaming it is a store migration.",
+  ],
+  [
+    "contract/parts.ts#compaction",
+    "Only its `kind`, a part kind stored in every part record; renaming it is a store migration.",
+  ],
   ["contract/records.ts#STORED_RECORD_TYPES", VALIDATES],
   ["store/log.ts#decodeObject", "JSON.parse of the checkpoint body."],
   [
@@ -49,6 +57,10 @@ const OUTSIDE = new Map([
     "Zero background work, the only correct count for a head the fold creates.",
   ],
   ["util/dev-log.ts#dev", "Logs; returns nothing."],
+  [
+    "util/clip.ts#excerptText",
+    "Cuts a part row's state, which a checkpoint stores as the part's own; decoding cuts it again.",
+  ],
   [
     "util/usage.ts#addUsage",
     "Sums path usage, which a checkpoint doesn't store: decoding sums it again.",
@@ -67,6 +79,10 @@ const OUTSIDE = new Map([
   [
     "@nyte-ai/schema#isJsonObject",
     "Tells a JSON object from other JSON; a change would break every reader of stored JSON.",
+  ],
+  [
+    "@nyte-ai/schema#ToolContentType",
+    "Finds the result texts a part row cuts, which a checkpoint stores as the part's own; decoding cuts them again.",
   ],
   [
     "@nyte-ai/schema#ToolClassType",

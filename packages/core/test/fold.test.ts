@@ -15,6 +15,7 @@ import type {
   Usage,
 } from "@nyte-ai/schema";
 import { describe, expect, it } from "vitest";
+import { partView } from "../src/fold/draft.ts";
 import { emptyFold, fold } from "../src/fold/fold.ts";
 import { readView } from "../src/fold/window.ts";
 import type { FoldState } from "../src/contract/fold.ts";
@@ -840,4 +841,86 @@ describe("fold", () => {
     expect(readView(after, main).execution).toMatchObject({ kind: "idle", lastRun: { id: "r1" } });
     expect(readView(after, main).turns).toEqual(before.turns);
   });
+
+  const long = `${"a".repeat(5_000)}${"z".repeat(5_000)}`;
+
+  const material = { provider: "test", api: "responses", model: "model", data: { blob: long } };
+
+  const compacted = { summary: null, material, tokensBefore: 900, usage: null };
+
+  it.each([
+    {
+      name: "a tool's long result",
+      part: "call1",
+      events: toolResult(long),
+      row: {
+        outcome: {
+          content: [
+            {
+              kind: "text",
+              text: expect.stringMatching(
+                /^a+\n\n\[… 8,0\d\d characters cut from the middle\]\n\nz+$/,
+              ),
+            },
+          ],
+        },
+      },
+      elided: true,
+      whole: { outcome: { content: [{ kind: "text", text: long }] } },
+    },
+    {
+      name: "a tool's short result",
+      part: "call1",
+      events: toolResult("export {};"),
+      row: { outcome: { content: [{ kind: "text", text: "export {};" }] } },
+      elided: undefined,
+      whole: { outcome: { content: [{ kind: "text", text: "export {};" }] } },
+    },
+    {
+      name: "a compaction's material",
+      part: "r1:1:0",
+      events: [created("r1:1:0", "compaction", "note", "r1", compacted)],
+      row: { material: { ...material, data: null } },
+      elided: true,
+      whole: compacted,
+    },
+  ])("bounds the row of $name and keeps its part whole", ({ part, events, row, elided, whole }) => {
+    const state = play(
+      emptyFold({ session, principal: ada }),
+      opened(main),
+      admitted("m1"),
+      landed("m1", "c1", "r1"),
+      userCommit("c1", "m1", null),
+      started("r1", "m1", 0),
+      ...events,
+    );
+
+    const message = readView(state, main).messages.find((entry) => entry.id === part);
+    const record = state.parts.get(asId(part));
+
+    expect(message).toMatchObject({ kind: "part", state: row });
+    expect(message?.kind === "part" ? message.elided : null).toBe(elided);
+    expect(record === undefined ? null : partView(record).state).toMatchObject(whole);
+  });
 });
+
+function toolResult(text: string): readonly DurableEvent[] {
+  return [
+    created("call1", "tool", "step", "r1", {
+      call: "call1",
+      name: "read",
+      args: { path: "src/a.ts" },
+      class: read,
+      phase: "calling",
+    }),
+    {
+      head: main,
+      kind: "call",
+      call: asId("call1"),
+      part: asId("call1"),
+      change: "settled",
+      outcome: { ...outcome, content: [{ kind: "text", text }] },
+      changes: null,
+    },
+  ];
+}

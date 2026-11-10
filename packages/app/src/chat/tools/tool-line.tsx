@@ -27,6 +27,7 @@ import { fileFromUrl } from "../../references/message-references.ts";
 import { useReferenceOpener } from "../../references/reference-opener.tsx";
 import { activityStyles } from "../transcript/activity.stylex.ts";
 import { ToolOutputText, excerptText, outputExcerpt } from "./tool-output.tsx";
+import { useWholeToolState } from "./whole-tool-state.ts";
 
 type LineToolClass = Extract<ToolClass, { readonly kind: "read" | "list" | "custom" }>;
 
@@ -227,7 +228,7 @@ export function ToolLineView({
   const [hovered, setHovered] = useState(false);
   const status = toolStatus(message);
   const running = status.tense === "running";
-  const { state } = message;
+  const state = useWholeToolState(message, expanded);
 
   const raw = running
     ? state.phase === "running"

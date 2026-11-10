@@ -28,6 +28,8 @@ import { hint, joinHints, Note, Panel, useRowCap } from "./panel.tsx";
 
 const NO_DISCLOSURES: ReadonlySet<string> = new Set();
 
+const NO_WHOLE_TOOLS: TranscriptLocal["wholeTools"] = new Map();
+
 function AgentTranscript(props: {
   readonly task: Extract<Task, { kind: "agent" }>;
   readonly dialog: InspectorDialog;
@@ -43,6 +45,7 @@ function AgentTranscript(props: {
       window: { kind: "tail" },
       toolOutput: "expanded",
       disclosures: NO_DISCLOSURES,
+      wholeTools: NO_WHOLE_TOOLS,
     };
 
     return deriveTranscript(props.task.view ?? null, [], local);

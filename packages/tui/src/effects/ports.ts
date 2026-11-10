@@ -26,6 +26,7 @@ import type {
   SettingOutcome,
   SubmitDraft,
   Thinking,
+  ToolPartState,
   TreeView,
   UserContent,
   WorkspaceCatalogView,
@@ -137,6 +138,7 @@ export interface SessionPort {
   ): Promise<"revised" | "landed-first" | "gone">;
   stopRun(run: RunId): Promise<"stopped" | "missing">;
   answer(part: PartId, answers: QuestionAnswers): Promise<boolean>;
+  toolState(part: PartId, signal: AbortSignal): Promise<ToolPartState | null>;
   approve(part: PartId, decision: ApprovalDecision): Promise<string | null>;
   move(position: Position, options: MoveOptions): Promise<MoveOutcome>;
   tree(): Promise<TreeView>;

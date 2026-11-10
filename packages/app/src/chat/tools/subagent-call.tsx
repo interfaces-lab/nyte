@@ -1,6 +1,7 @@
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { create, props } from "@stylexjs/stylex";
 import type { StyleXStyles } from "@stylexjs/stylex";
+import { useState } from "react";
 import type { ReactElement } from "react";
 import type { MessageSource, SessionId, ToolClass, UserContent } from "@nyte-ai/sdk";
 import {
@@ -9,6 +10,7 @@ import {
   taskEnded,
   taskLabel,
   toolNoun,
+  toolOutput,
   toolStatus,
   toolVerbs,
 } from "@nyte-ai/plugin/client/presentation";
@@ -44,6 +46,8 @@ import { proseStyles } from "../markdown/prose.stylex.ts";
 import { openJobOutput } from "./job-output.ts";
 import { subagentCallStyles } from "./subagent-call.stylex.ts";
 import { ToolOutcome, toolLineStyles } from "./tool-line.tsx";
+import { excerptText, outputExcerpt } from "./tool-output.tsx";
+import { useWholeToolState } from "./whole-tool-state.ts";
 import { useCommitCount } from "../../lib/work-counts.ts";
 
 type DelegateToolClass = Extract<ToolClass, { readonly kind: "delegate" }>;
@@ -310,12 +314,17 @@ export function SubagentGroupView({
 export function SubagentLineView({
   toolClass,
   message,
-  output,
 }: {
   readonly toolClass: DelegateToolClass;
   readonly message: ToolMessage;
-  readonly output: string;
 }): ReactElement {
+  const [open, setOpen] = useState(false);
+  const state = useWholeToolState(message, open);
+
+  const output = excerptText(
+    outputExcerpt(state.phase === "running" ? (state.progress?.text ?? "") : toolOutput(state)),
+  );
+
   const status = toolStatus(message);
   const running = status.tense === "running";
   const session = useTranscriptScope()?.sessionId;
@@ -384,7 +393,7 @@ export function SubagentLineView({
   if (!expandable) return line;
 
   return (
-    <Collapsible.Root xstyle={toolLineStyles.root}>
+    <Collapsible.Root open={open} onOpenChange={setOpen} xstyle={toolLineStyles.root}>
       {line}
       <Collapsible.Panel data-tool-body role="region" aria-label="Result">
         <div data-nyte-scrollport {...props(lineStyles.output)}>

@@ -23,13 +23,35 @@ export const transcriptHandlers = {
     const local = state.local.transcript;
     const toolOutput = local.toolOutput === "expanded" ? "collapsed" : "expanded";
 
+    const next = withNotice(
+      withLocal(state, { transcript: { ...local, toolOutput, wholeTools: new Map() } }),
+      `Output ${toolOutput}`,
+      "info",
+      now,
+    );
+
+    const session = followedSession(state);
+
+    const parts = (session?.view?.messages ?? []).flatMap((message) =>
+      message.kind === "part" && message.partKind === "tool" && message.elided === true
+        ? [message.part]
+        : [],
+    );
+
+    return toolOutput === "collapsed" || session === null || parts.length === 0
+      ? stay(next)
+      : { state: next, effects: [{ kind: "read-whole-tools", session: session.id, parts }] };
+  },
+  "whole-tools": (state, msg) => {
+    const local = state.local.transcript;
+
+    if (followedSession(state)?.id !== msg.session || local.toolOutput === "collapsed")
+      return stay(state);
+
     return stay(
-      withNotice(
-        withLocal(state, { transcript: { ...local, toolOutput } }),
-        `Output ${toolOutput}`,
-        "info",
-        now,
-      ),
+      withLocal(state, {
+        transcript: { ...local, wholeTools: new Map([...local.wholeTools, ...msg.states]) },
+      }),
     );
   },
   "toggle-disclosure": (state, msg) => {

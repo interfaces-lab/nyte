@@ -54,6 +54,7 @@ import {
   partView,
   pendingTurn,
   putPart,
+  rowState,
   setCatalogId,
   setChanges,
   setMessage,
@@ -775,7 +776,7 @@ function create(
     part: id,
     partKind: event.partKind,
     role,
-    state: event.state,
+    ...rowState(event.partKind, event.state),
     version: event.version,
     status,
   });

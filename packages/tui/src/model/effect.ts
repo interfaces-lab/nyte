@@ -37,6 +37,11 @@ export type Effect =
     }
   | { readonly kind: "follow"; readonly target: SessionId | "new"; readonly announce: boolean }
   | { readonly kind: "load-earlier"; readonly session: SessionId }
+  | {
+      readonly kind: "read-whole-tools";
+      readonly session: SessionId;
+      readonly parts: readonly PartId[];
+    }
   | { readonly kind: "see"; readonly session: SessionId; readonly commit: CommitId }
   | { readonly kind: "send"; readonly submission: Submission; readonly delivery: Delivery }
   | {

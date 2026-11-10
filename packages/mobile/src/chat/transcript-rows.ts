@@ -14,7 +14,14 @@ import type {
 import type { HeadView } from "@nyte-ai/sdk/client";
 
 export type ActivityPart =
-  | { kind: "tool"; id: string; state: ToolPartState; status: PartStatus }
+  | {
+      kind: "tool";
+      id: string;
+      part: PartId;
+      state: ToolPartState;
+      elided?: true;
+      status: PartStatus;
+    }
   | { kind: "thinking"; id: string; text: string; streaming: boolean };
 
 type UserMessage = Extract<Message, { kind: "user" }>;
@@ -123,7 +130,14 @@ function messageRow(message: Message): ChatRow | undefined {
 
 function activityPart(message: Message): ActivityPart | undefined {
   if (isPart(message, tool))
-    return { kind: "tool", id: message.id, state: message.state, status: message.status };
+    return {
+      kind: "tool",
+      id: message.id,
+      part: message.part,
+      state: message.state,
+      elided: message.elided,
+      status: message.status,
+    };
 
   if (isPart(message, thinking))
     return {

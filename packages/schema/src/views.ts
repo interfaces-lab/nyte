@@ -88,6 +88,7 @@ export const MessageType = Type.Union([
     partKind: Type.String(),
     role: Type.Enum(["step", "answer", "note"]),
     state: Type.Unknown(),
+    elided: Type.Optional(Type.Literal(true)),
     version: Type.Number(),
     status: PartStatusType,
   }),

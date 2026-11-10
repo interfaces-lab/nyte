@@ -51,7 +51,7 @@ import { decodeObject } from "../store/log.ts";
 import { STORE_VERSION } from "../store/migrations.ts";
 import { dev } from "../util/dev-log.ts";
 import { FOLD_CODE } from "./code.ts";
-import { emptyStamps, awaitsSettlement } from "./draft.ts";
+import { emptyStamps, awaitsSettlement, partRow } from "./draft.ts";
 import { sumUsage } from "./paths.ts";
 
 const REPLAY_EVENTS = 1_024;
@@ -307,7 +307,10 @@ export function encodeFoldCheckpoint(state: FoldState): string | null {
 
   const partStates = new Set(
     Array.from(index.messages.values()).flatMap((item) =>
-      item.kind === "part" && index.parts.get(item.part)?.state === item.state ? [item.id] : [],
+      item.kind === "part" &&
+      (item.elided === true || index.parts.get(item.part)?.state === item.state)
+        ? [item.id]
+        : [],
     ),
   );
 
@@ -402,7 +405,7 @@ export function decodeFoldCheckpoint(
     const part = parts.get(item.part);
 
     if (part === undefined) return null;
-    messages.set(id, { ...item, state: part.state });
+    messages.set(id, partRow(item, part.state));
   }
 
   const paths = new Map<HeadName, Path>();

@@ -93,6 +93,7 @@ export function Timeline({
       />
       <ToolActivitySheet
         open={activity.open}
+        session={sessionId}
         parts={activity.parts}
         delegateNames={delegateNames}
         onClose={activity.close}

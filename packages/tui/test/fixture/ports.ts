@@ -9,6 +9,7 @@ import type {
   SessionInfo,
   SessionView,
   SubmitDraft,
+  ToolPartState,
   UserContent,
   WorkspaceCatalogView,
   WorkspaceCommandOutcome,
@@ -52,6 +53,7 @@ export interface FakeSession extends SessionPort {
   };
   withdrawResult: "withdrawn" | "landed-first" | "gone";
   answerResult: boolean | Error;
+  readonly toolStates: Map<string, ToolPartState>;
   commandResult: CommandOutcome | null;
 }
 
@@ -158,6 +160,7 @@ function fakeSession(id: string): FakeSession {
     withdrawResult: "withdrawn",
     answerResult: true,
     commandResult: null,
+    toolStates: new Map(),
     push: (view) => views.push({ view, freshness: FRESH }),
     end: (failure) => (failure === null ? views.close() : views.fail(new Error(failure))),
     pushTasks: (list) => tasks.push(list),
@@ -197,6 +200,7 @@ function fakeSession(id: string): FakeSession {
 
       return session.answerResult;
     },
+    toolState: async (part) => session.toolStates.get(part) ?? null,
     approve: async () => null,
     async move(position, options) {
       calls.move.push({ position, options });

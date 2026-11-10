@@ -13,6 +13,8 @@ import { liveRun, setTurn, updatePart } from "./draft.ts";
 
 const TOOL_CLASS = compile(ToolClassType);
 
+const SUMMARY_PATHS = 100;
+
 /** Applies a call event to the fold. An intent switches the call's part, opened in the same write with the call's name, args and class, to running. */
 export function applyCall(draft: Draft, event: Logged<"call">): void {
   const call = draft.calls.get(event.call);
@@ -144,11 +146,12 @@ function summarise(
 
   const entry = summary.byClass[kind];
   const touched = ["path" in tool ? [tool.path] : [], changes?.paths ?? []].flat();
+  const kept = new Set(entry.paths);
 
-  const paths = [
-    ...entry.paths,
-    ...[...new Set(touched)].filter((path) => !entry.paths.includes(path)),
-  ];
+  const paths = [...entry.paths, ...[...new Set(touched)].filter((path) => !kept.has(path))].slice(
+    0,
+    SUMMARY_PATHS,
+  );
 
   return {
     ...summary,

@@ -1,3 +1,4 @@
+import { tabPanes, PRIMARY } from "../../../test/panes.ts";
 import "../../../test/window-bridge.ts";
 import { asId } from "@nyte-ai/schema";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
@@ -5,6 +6,11 @@ import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import "../../theme/tokens.stylex.ts";
 import type { ToolMessage } from "@nyte-ai/plugin/client/presentation";
+import { installConnection } from "../../data/connection.ts";
+import { PaneControllerProvider } from "../../panes/pane-context.tsx";
+import { scriptedConnection } from "../../../test/scripted-connection.ts";
+import { sessionView } from "../../../test/view-fixtures.ts";
+import { TranscriptProvider } from "../transcript/transcript.tsx";
 import { ToolCallView } from "./tool-call.tsx";
 
 function check(condition: boolean, message: string): void {
@@ -41,6 +47,86 @@ const message: ToolMessage = {
     changes: null,
   },
 };
+
+const SESSION = asId<"session">("elided");
+
+const WHOLE = `head ${"x".repeat(10_000)} tail`;
+
+const elided: ToolMessage = {
+  ...message,
+  id: asId<"message">("tool-2"),
+  part: asId<"part">("tool-2"),
+  elided: true,
+  state: {
+    ...message.state,
+    phase: "settled",
+    outcome: {
+      kind: "ok",
+      content: [{ kind: "text", text: "head […] tail" }],
+      output: null,
+      parts: [],
+    },
+    changes: null,
+  },
+};
+
+const scripted = scriptedConnection({
+  views: new Map([
+    [
+      SESSION,
+      [
+        sessionView({
+          parts: [
+            {
+              id: elided.part,
+              partKind: "tool",
+              placement: { kind: "transcript", role: "step" },
+              state: {
+                ...elided.state,
+                outcome: {
+                  kind: "ok",
+                  content: [{ kind: "text", text: WHOLE }],
+                  output: null,
+                  parts: [],
+                },
+              },
+              version: 1,
+              status: elided.status,
+              owner: null,
+            },
+          ],
+        }),
+      ],
+    ],
+  ]),
+});
+
+installConnection(scripted.connection, scripted.live);
+
+async function readsElidedRowWhole(host: HTMLElement): Promise<void> {
+  const root = createRoot(host);
+
+  try {
+    flushSync(() =>
+      root.render(
+        <PaneControllerProvider controller={tabPanes()}>
+          <TranscriptProvider paneId={PRIMARY} sessionId={SESSION}>
+            <ToolCallView message={elided} cwd="/repo" density="compact" />
+          </TranscriptProvider>
+        </PaneControllerProvider>,
+      ),
+    );
+    const trigger = host.querySelector("button");
+    check(trigger !== null, "The elided row expands");
+    trigger?.click();
+    await frame();
+    await frame();
+    const text = host.querySelector('[aria-label="Tool output"]')?.textContent ?? "";
+    check(text.includes(WHOLE), "The open elided row draws its part's whole text");
+  } finally {
+    root.unmount();
+  }
+}
 
 export async function run(): Promise<string> {
   applyDisplayMode("light");
@@ -81,6 +167,8 @@ export async function run(): Promise<string> {
     await frame();
     const whole = region?.textContent ?? "";
     check(whole.length > 4_000_000, `Show more draws ${String(whole.length)} characters`);
+    root.unmount();
+    await readsElidedRowWhole(host);
 
     return "passed";
   } finally {

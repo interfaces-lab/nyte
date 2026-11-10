@@ -53,7 +53,7 @@ import {
 } from "./local.ts";
 import { createScope } from "./scope.ts";
 import type { HandlerContext, LocalHandlerContext, RunnerContext, Scope } from "./scope.ts";
-import { follow, loadEarlier, openNew } from "./session.ts";
+import { follow, loadEarlier, openNew, readWholeTools } from "./session.ts";
 import { submit } from "./submit.ts";
 
 export interface Runner {
@@ -168,6 +168,7 @@ const ROUTES: Routes = {
     effect.target === "new" ? openNew(context) : follow(effect.target, effect.announce, context),
   ),
   "load-earlier": host(loadEarlier),
+  "read-whole-tools": host(readWholeTools),
   see: host((effect, context) => context.ports.host.session(effect.session).see(effect.commit)),
   send: host((effect, context) => submit(effect.submission, effect.delivery, context)),
   revise: host(revise),

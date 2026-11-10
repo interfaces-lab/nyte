@@ -1,5 +1,5 @@
 import { asId } from "@nyte-ai/schema";
-import type { SessionId, SessionInfo } from "@nyte-ai/schema";
+import type { PartId, PartView, SessionId, SessionInfo } from "@nyte-ai/schema";
 import { headView, openHost, streamText, unsentSends, withStreamedText } from "@nyte-ai/sdk/client";
 import type {
   HeadStore,
@@ -76,6 +76,40 @@ export function chatViews(
       },
     };
   });
+}
+
+export async function readPart(
+  live: HostConnection,
+  session: SessionId,
+  part: PartId,
+  signal: AbortSignal,
+): Promise<PartView | null> {
+  const snapshots = liveValues((changed) => {
+    const store = live.part(session, part);
+    const stop = store.subscribe(changed);
+
+    return {
+      read: () => store.snapshot(),
+      close() {
+        stop();
+        store.close();
+      },
+    };
+  });
+
+  if (signal.aborted) return null;
+  const iterator = snapshots[Symbol.asyncIterator]();
+  const aborted = new Promise<null>((resolve) => {
+    signal.addEventListener("abort", () => resolve(null), { once: true });
+  });
+
+  try {
+    const step = await Promise.race([iterator.next(), aborted]);
+
+    return step === null || step.done === true ? null : step.value.part;
+  } finally {
+    void iterator.return?.();
+  }
 }
 
 export function sessionLists(

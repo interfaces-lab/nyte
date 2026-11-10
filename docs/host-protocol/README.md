@@ -69,6 +69,8 @@ The host sends a turn row once a message on a head's path belongs to that turn. 
 
 Branches share history, so a message or turn can sit on several heads' paths. Each head's path is an order over the session's message rows.
 
+A part's message row may carry a cut view of the part's state, such as an excerpt of a long tool result, and marks it `elided: true`; `part.read` returns the whole part.
+
 Some rows are per principal, such as `unread` and `seenThrough`. The host projects them for the principal the connection holds. The seq that stamps them is the seq of the `seen` event, which is in the log like any other event.
 
 ### The window

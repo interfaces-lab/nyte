@@ -11,6 +11,7 @@ import type {
   SessionId,
   SessionInfo,
   SettingInfo,
+  ToolPartState,
   WorkspaceCatalogView,
   WorkspaceId,
 } from "@nyte-ai/sdk";
@@ -188,6 +189,11 @@ export type Fact =
     }
   | { readonly kind: "settings"; readonly settings: ResolvedSettings }
   | { readonly kind: "tasks"; readonly session: SessionId; readonly tasks: readonly Task[] }
+  | {
+      readonly kind: "whole-tools";
+      readonly session: SessionId;
+      readonly states: ReadonlyMap<PartId, ToolPartState>;
+    }
   | { readonly kind: "workspace"; readonly workspace: WorkspaceFacts }
   | { readonly kind: "shell-job"; readonly job: ShellJob }
   | { readonly kind: "terminal"; readonly terminal: TerminalFacts }

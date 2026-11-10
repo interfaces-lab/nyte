@@ -1,5 +1,4 @@
 import type { ReactElement } from "react";
-import { toolOutput } from "@nyte-ai/plugin/client/presentation";
 import { QUESTION_TOOL } from "@nyte-ai/plugin/question/schema";
 import type { ToolMessage } from "@nyte-ai/plugin/client/presentation";
 import type { ToolCallDensity } from "../../preferences/index.ts";
@@ -8,7 +7,6 @@ import { QuestionCallView } from "./question-call.tsx";
 import { ShellCallView } from "./shell-call.tsx";
 import { SubagentLineView } from "./subagent-call.tsx";
 import { ToolLineView } from "./tool-line.tsx";
-import { excerptText, outputExcerpt } from "./tool-output.tsx";
 
 export function ToolCallView({
   message,
@@ -24,17 +22,7 @@ export function ToolCallView({
 
   switch (toolClass.kind) {
     case "delegate":
-      return (
-        <SubagentLineView
-          toolClass={toolClass}
-          message={message}
-          output={excerptText(
-            outputExcerpt(
-              state.phase === "running" ? (state.progress?.text ?? "") : toolOutput(state),
-            ),
-          )}
-        />
-      );
+      return <SubagentLineView toolClass={toolClass} message={message} />;
     case "shell":
       return <ShellCallView message={message} toolClass={toolClass} cwd={cwd} density={density} />;
     case "edit":

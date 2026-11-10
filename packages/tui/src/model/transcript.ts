@@ -78,7 +78,7 @@ export function deriveTranscript(
   shells: readonly ShellJob[],
   local: TranscriptLocal,
 ): TranscriptModel {
-  const timed = view === null ? [] : turnRows(view);
+  const timed = view === null ? [] : turnRows(withWholeTools(view, local));
 
   const jobs = shells.toSorted(
     (left, right) => left.startedAt - right.startedAt || left.id.localeCompare(right.id),
@@ -117,6 +117,19 @@ export function deriveTranscript(
     toolOutput: local.toolOutput,
     disclosures: local.disclosures,
     reportsHeld: view?.reportsHeld ?? false,
+  };
+}
+
+function withWholeTools(view: HeadView, local: TranscriptLocal): HeadView {
+  if (local.toolOutput === "collapsed" || local.wholeTools.size === 0) return view;
+
+  return {
+    ...view,
+    messages: view.messages.map((message) => {
+      const state = message.kind === "part" ? local.wholeTools.get(message.part) : undefined;
+
+      return state === undefined ? message : { ...message, state };
+    }),
   };
 }
 

@@ -9,6 +9,7 @@ import type {
   SettingInfo,
   Thinking,
   ModelRef,
+  ToolPartState,
   WorkspaceCatalogView,
   WorkspaceId,
 } from "@nyte-ai/sdk";
@@ -249,6 +250,8 @@ export interface TranscriptLocal {
   readonly window: WindowStart;
   readonly toolOutput: "collapsed" | "expanded";
   readonly disclosures: ReadonlySet<string>;
+  /** Whole states of tool parts whose rows carry a cut view, read while output is expanded. */
+  readonly wholeTools: ReadonlyMap<PartId, ToolPartState>;
 }
 
 export interface Submission {
@@ -304,6 +307,7 @@ export function initialState(bootstrap: Bootstrap): State {
         window: { kind: "tail" },
         toolOutput: "collapsed",
         disclosures: new Set(),
+        wholeTools: new Map(),
       },
       submissions: [],
       settlingTrust: [],

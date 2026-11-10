@@ -10,6 +10,7 @@ const LOCAL: TranscriptLocal = {
   window: { kind: "tail" },
   toolOutput: "collapsed",
   disclosures: new Set(),
+  wholeTools: new Map(),
 };
 
 function turnsIn(model: TranscriptModel): readonly TurnModel[] {

@@ -1,6 +1,6 @@
 import { homedir } from "node:os";
 import { mountClientPlugins } from "@nyte-ai/plugin/client/mount";
-import { asId, SdkError } from "@nyte-ai/schema";
+import { asId, compile, SdkError, ToolPartStateType, withJson } from "@nyte-ai/schema";
 import { mapped } from "@nyte-ai/protocol";
 import { followTrace, pagedViews, traced, tracePaints } from "@nyte-ai/sdk/client";
 import type { HeadView, HostConnection } from "@nyte-ai/sdk/client";
@@ -16,10 +16,13 @@ import {
   chatViews,
   healthUpdates,
   openChat,
+  readPart,
   sessionLists,
   whenOpen,
 } from "../live-host.ts";
 import type { ChatUpdate, HostPort, PluginsPort, SessionPort, WorkspacePort } from "./ports.ts";
+
+const TOOL_STATE = compile(withJson(ToolPartStateType));
 
 export function hostPort(
   host: Connection,
@@ -390,6 +393,11 @@ function sessionPort(
       const outcome = await session.part(part).act("answer", { answers });
 
       return outcome.kind === "ok";
+    },
+    async toolState(part, signal) {
+      const view = await readPart(live, session.id, part, signal);
+
+      return view !== null && TOOL_STATE.Check(view.state) ? view.state : null;
     },
     async approve(part, decision) {
       const outcome = await session.part(part).act(decision, {});

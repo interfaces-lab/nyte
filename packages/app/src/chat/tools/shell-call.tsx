@@ -31,6 +31,7 @@ import { moveToBackground } from "./shell-background.ts";
 import { terminalText } from "./terminal-text.ts";
 import { ToolOutcome, toolLineStyles } from "./tool-line.tsx";
 import { useTranscriptScope } from "../transcript/transcript.tsx";
+import { useWholeToolState } from "./whole-tool-state.ts";
 
 type ShellToolClass = Extract<ToolClass, { readonly kind: "shell" }>;
 
@@ -467,7 +468,7 @@ export function ShellCallView({
   const status = toolStatus(message);
   const running = status.tense === "running";
   const [open, setOpen] = useState(false);
-  const { state } = message;
+  const state = useWholeToolState(message, open);
   const sessionId = useTranscriptScope()?.sessionId;
   const task = useTask(sessionId, { kind: "job", call: state.call });
   const job = task?.kind === "job" ? task.job : undefined;

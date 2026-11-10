@@ -1,8 +1,11 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "bun:test";
+import type { Plugin, ToolDefinition } from "@nyte-ai/core";
+import { standard } from "@nyte-ai/schema";
 import { MouseButtons } from "@opentui/core/testing";
 import { createSignal } from "solid-js";
+import { Type } from "typebox";
 import { exitText } from "../../src/app/main.tsx";
 import type { Store } from "../../src/app/store.ts";
 import { COMPOSER_PLACEHOLDER } from "../../src/lib/constants.ts";
@@ -252,4 +255,40 @@ test("OSC 7501: a run starting reports working once however often the screen red
   expect(app.terminal.statuses.slice(before)).toEqual([
     encode({ state: "working", title: null, msg: "Working" }),
   ]);
+});
+
+test("Ctrl+O shows a long tool result whole, read from its part past the row's excerpt", async () => {
+  const lines = Array.from(
+    { length: 60 },
+    (_, index) => `row ${String(index).padStart(2, "0")} ${"-".repeat(40)}`,
+  );
+
+  const long = {
+    name: "long",
+    description: "Print many lines.",
+    parameters: standard(Type.Object({})),
+    class: () => ({ kind: "custom", label: "Printing" }),
+    replay: "safe",
+    execute: async () => ({ content: [{ kind: "text", text: lines.join("\n") }] }),
+  } satisfies ToolDefinition<object>;
+
+  const tools: Plugin<"core"> = { id: "long", contribute: { tools: [long] } };
+  await using fixture = await openTestHost({ plugins: [tools] });
+  await using app = await startTui({ fixture, size: { width: 100, height: 120 } });
+  await app.ready();
+  fixture.reply(
+    {
+      content: [{ type: "toolCall", id: "call-long", name: "long", arguments: {} }],
+      stopReason: "toolUse",
+    },
+    { content: [{ type: "text", text: "Printed." }] },
+  );
+
+  await app.send("print");
+  await app.frame((frame) => frame.includes("Printed."));
+  app.press("chat.tools.toggle");
+
+  const whole = await app.frame((frame) => frame.includes(lines[20] ?? ""));
+
+  expect(whole).not.toContain("characters cut");
 });

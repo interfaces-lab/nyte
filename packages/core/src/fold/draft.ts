@@ -1,4 +1,4 @@
-import { asId, backgroundRowKey, compile } from "@nyte-ai/schema";
+import { asId, backgroundRowKey, compile, ToolContentType } from "@nyte-ai/schema";
 import type {
   BackgroundItem,
   BackgroundRow,
@@ -29,11 +29,25 @@ import type {
   Table,
   Touched,
 } from "../contract/fold.ts";
-import { text, thinking } from "../contract/parts.ts";
+import { compaction, text, thinking, tool } from "../contract/parts.ts";
 import type { PartRecord } from "../contract/records.ts";
 import { NO_BACKGROUND, START } from "../store/session.ts";
+import { excerptText } from "../util/clip.ts";
+
+type PartMessage = Extract<Message, { readonly kind: "part" }>;
 
 const SIGNED = compile(Type.Object({ signature: Type.Unknown() }));
+
+const TOOL_RESULT = compile(
+  Type.Object({
+    phase: Type.Literal("settled"),
+    outcome: Type.Object({ kind: Type.Literal("ok"), content: Type.Array(ToolContentType) }),
+  }),
+);
+
+const COMPACTION_MATERIAL = compile(
+  Type.Object({ material: Type.Object({ data: Type.Unknown() }) }),
+);
 
 export const IDLE: Execution = { kind: "idle", lastRun: null };
 
@@ -75,12 +89,10 @@ export function updatePart(
     const message = draft.messages.get(toPartMessageId(id));
 
     if (message?.kind === "part")
-      setMessage(draft, {
-        ...message,
-        state: next.state,
-        version: next.version,
-        status: next.status,
-      });
+      setMessage(
+        draft,
+        partRow({ ...message, version: next.version, status: next.status }, next.state),
+      );
 
     return;
   }
@@ -90,6 +102,53 @@ export function updatePart(
   if (index < 0) return;
   draft.partViews = draft.partViews.with(index, partView(next));
   touchRow(draft, "parts", id);
+}
+
+/**
+ * A part's state as its transcript row carries it: a tool's long result texts as excerpts and a
+ * compaction's provider material without its data. `part.read` returns the whole state.
+ */
+export function rowState(
+  partKind: string,
+  state: unknown,
+): { readonly state: unknown; readonly elided?: true } {
+  if (partKind === tool.kind && TOOL_RESULT.Check(state)) {
+    const outcome = state.outcome;
+
+    const content = outcome.content.map((item) =>
+      item.kind === "text" && excerptText(item.text) !== item.text
+        ? { ...item, text: excerptText(item.text) }
+        : item,
+    );
+
+    if (content.every((item, index) => item === outcome.content[index])) return { state };
+
+    return { state: { ...state, outcome: { ...outcome, content } }, elided: true };
+  }
+
+  if (
+    partKind === compaction.kind &&
+    COMPACTION_MATERIAL.Check(state) &&
+    state.material.data !== null
+  )
+    return { state: { ...state, material: { ...state.material, data: null } }, elided: true };
+
+  return { state };
+}
+
+export function partRow(message: PartMessage, state: unknown): PartMessage {
+  return {
+    id: message.id,
+    turn: message.turn,
+    at: message.at,
+    kind: "part",
+    part: message.part,
+    partKind: message.partKind,
+    role: message.role,
+    ...rowState(message.partKind, state),
+    version: message.version,
+    status: message.status,
+  };
 }
 
 export function putPart(draft: Draft, record: PartRecord): void {

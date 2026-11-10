@@ -19,6 +19,7 @@ import { GlassButton } from "../ui/glass-button.tsx";
 import { delegateName } from "./delegate-names.ts";
 import { Markdown } from "./markdown.tsx";
 import type { ActivityPart, ChatRow } from "./transcript-rows.ts";
+import { useWholeToolState } from "./use-whole-tool-state.ts";
 
 export function useActivitySheet(rows: readonly ChatRow[]) {
   const [selected, setSelected] = useState<Extract<ChatRow, { kind: "activity" }>>();
@@ -226,15 +227,19 @@ type Destination = { kind: "file"; path: string } | { kind: "session"; id: Sessi
 
 function ActivityDetail({
   part,
+  session,
+  open,
   delegateNames,
   onOpen,
 }: {
   part: ActivityPart;
+  session: SessionId;
+  open: boolean;
   delegateNames: ReadonlyMap<SessionId, string>;
   onOpen: (destination: Destination) => void;
 }) {
   const state = activityState(part, delegateNames);
-  const tool = part.kind === "tool" ? part.state : undefined;
+  const tool = useWholeToolState(session, part.kind === "tool" ? part : undefined, open);
   const progress = tool?.phase === "running" ? tool.progress?.text : undefined;
   const output = tool?.phase === "settled" ? readOutput(tool.outcome) : undefined;
 
@@ -288,6 +293,7 @@ function ActivityDetail({
 
 export function ToolActivitySheet({
   open,
+  session,
   parts,
   delegateNames,
   onClose,
@@ -295,6 +301,7 @@ export function ToolActivitySheet({
   onOpenSession,
 }: {
   open: boolean;
+  session: SessionId;
   parts: readonly ActivityPart[];
   delegateNames: ReadonlyMap<SessionId, string>;
   onClose: () => void;
@@ -340,6 +347,7 @@ export function ToolActivitySheet({
                 </html.div>
                 <LegendList
                   data={parts}
+                  extraData={open}
                   keyExtractor={(part) => part.id}
                   getItemType={(part) => part.kind}
                   estimatedItemSize={180}
@@ -349,6 +357,8 @@ export function ToolActivitySheet({
                   renderItem={({ item }) => (
                     <ActivityDetail
                       part={item}
+                      session={session}
+                      open={open}
                       delegateNames={delegateNames}
                       onOpen={(destination) => {
                         setPending(destination);
