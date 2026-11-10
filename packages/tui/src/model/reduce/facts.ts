@@ -318,25 +318,30 @@ function firstView(state: State, now: number): Step {
       "info",
       now,
     );
-  const saved = next.local.drafts[session.id];
 
-  if (saved === undefined || next.local.draft.text !== "") return deliverShells(next);
+  return andThen(restoreDraft(next, session.id), deliverShells);
+}
+
+export function restoreDraft(state: State, session: SessionId): Step {
+  const saved = state.local.drafts[session];
+
+  if (saved === undefined || state.local.draft.text !== "") return stay(state);
 
   const drafts = Object.fromEntries(
-    Object.entries(next.local.drafts).filter(([key]) => key !== session.id),
+    Object.entries(state.local.drafts).filter(([key]) => key !== session),
   );
 
   const edits = Object.fromEntries(
-    Object.entries(next.local.edits).filter(([key]) => key !== session.id),
+    Object.entries(state.local.edits).filter(([key]) => key !== session),
   );
 
-  const restored = withLocal(next, {
+  const restored = withLocal(state, {
     drafts,
     edits,
-    editing: next.local.edits[session.id] ?? null,
+    editing: state.local.edits[session] ?? null,
   });
 
-  return andThen(setDraft(restored, saved), deliverShells);
+  return setDraft(restored, saved);
 }
 
 function unansweredRequest(

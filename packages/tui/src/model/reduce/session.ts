@@ -22,6 +22,7 @@ import {
 import type { SomeHandlers, Step } from "../step.ts";
 import { followUpDelivery } from "../table-input.ts";
 import { openDialog, push } from "./dialogs.ts";
+import { restoreDraft } from "./facts.ts";
 
 const HELD_BY_EFFECT: ReadonlyMap<string, PendingOp["kind"]> = new Map([
   ["follow", "switch"],
@@ -311,8 +312,12 @@ export const sessionHandlers = {
 
     return stay(msg.notice === null ? next : withLocal(next, { notice: msg.notice }));
   },
-  "effect-failed": (state, msg, now) =>
-    stay(withNotice(released(state, msg.effect), `error: ${msg.message}`, "error", now)),
+  "effect-failed": (state, msg, now) => {
+    const next = withNotice(released(state, msg.effect), `error: ${msg.message}`, "error", now);
+    const chat = next.facts.chat;
+
+    return msg.effect === "follow" && chat !== null ? restoreDraft(next, chat.id) : stay(next);
+  },
   inform: (state, msg, now) => stay(withNotice(state, msg.text, msg.tone, now)),
   "trust-loaded": (current, msg, now, reduce) => {
     const state = msg.ask === "always" ? current : trustSettled(current, msg.workspace);

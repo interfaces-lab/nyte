@@ -100,14 +100,22 @@ export async function follow(
   context: HandlerContext,
 ): Promise<void> {
   const { ports, dispatch, read, scope } = context;
-  scope.followed?.controller.abort();
   const controller = new AbortController();
   const stopOnDispose = (): void => controller.abort();
   context.signal.addEventListener("abort", stopOnDispose, { once: true });
+  scope.following = controller;
   const port = ports.host.session(id);
-  const info = await port.info();
 
-  if (controller.signal.aborted) return;
+  const info = await port.info().catch((error: unknown) => {
+    context.signal.removeEventListener("abort", stopOnDispose);
+    throw error;
+  });
+
+  if (controller.signal.aborted || scope.following !== controller) {
+    context.signal.removeEventListener("abort", stopOnDispose);
+    return;
+  }
+  scope.followed?.controller.abort();
 
   const configurator = new SessionConfigurator({
     configure: (patch) => port.configure(configurePatch(patch)),

@@ -20,6 +20,7 @@ interface LoginChannel {
 
 export interface Scope {
   followed: Followed | null;
+  following: AbortController | null;
   starting: { readonly id: SessionId; readonly done: Promise<boolean> } | null;
   previous: SessionId | null;
   launchFolder: Promise<WorkspaceId> | null;
@@ -52,6 +53,7 @@ export interface LocalHandlerContext extends Omit<HandlerContext, "ports"> {
 export function createScope(): Scope {
   return {
     followed: null,
+    following: null,
     starting: null,
     previous: null,
     launchFolder: null,
