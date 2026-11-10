@@ -33,6 +33,7 @@ import type { ReaderInput, TranscriptMode } from "./transcript-mode.ts";
 import type { RowLayout } from "./transcript-rows.ts";
 import {
   distanceFromEnd,
+  frameHasInput,
   navigates,
   navigatesUp,
   scrollsWithin,
@@ -359,10 +360,14 @@ export function TranscriptContent({
           const previous = scrolled.current;
           const height = scroll.scrollHeight;
           scrolled.current = { offset, height };
+          const upward = offset < previous.offset && height >= previous.height;
+
+          if (upward && mode.current.kind === "following" && frameHasInput(scroll))
+            input.current = { at: performance.now(), upward, pressed: input.current.pressed };
           mode.current = nextMode(mode.current, {
             kind: "scrolled",
             distance: height - scroll.clientHeight - offset,
-            upward: offset < previous.offset && height >= previous.height,
+            upward,
             reader: steeringUp(input.current, performance.now()),
           });
         }

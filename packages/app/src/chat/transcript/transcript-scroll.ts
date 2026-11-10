@@ -46,6 +46,19 @@ export function syncSticky(viewport: HTMLElement, content: HTMLElement): void {
   setDataState(viewport, "topFade", scrolled && active === undefined);
 }
 
+/**
+ * Wheel and touch inside an embedded frame never reach the viewport's listeners, but the scroll
+ * they chain out still moves it. A hovered or focused frame is the only place that input can be.
+ */
+export function frameHasInput(viewport: HTMLElement): boolean {
+  const active = document.activeElement;
+
+  return (
+    viewport.querySelector("iframe:hover") !== null ||
+    (active instanceof HTMLIFrameElement && viewport.contains(active))
+  );
+}
+
 export function scrollsWithin(target: EventTarget | null, root: HTMLElement): boolean {
   const node = target instanceof HTMLElement ? target : null;
 
