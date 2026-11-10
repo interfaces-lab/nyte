@@ -12,6 +12,8 @@ interface UpdateDependencies {
   updater: Pick<AppUpdater, "checkForUpdates" | "downloadUpdate" | "quitAndInstall">;
   currentVersion: string;
   activity: () => Promise<DesktopUpdateActivity>;
+  /** Asks before a restart would lose what the windows hold; false keeps the app running. */
+  confirmQuit: () => boolean;
   beforeInstall: () => Promise<void>;
   cleanupTimeoutMs?: number;
   publish: (state: UpdateState) => void;
@@ -28,6 +30,7 @@ export function createUpdateController({
   updater,
   currentVersion,
   activity,
+  confirmQuit,
   beforeInstall,
   cleanupTimeoutMs = RELAUNCH_CLEANUP_TIMEOUT_MS,
   publish,
@@ -98,7 +101,7 @@ export function createUpdateController({
       noLink: true,
     });
 
-    if (response !== 0 || state.kind !== "ready") return;
+    if (response !== 0 || state.kind !== "ready" || !confirmQuit()) return;
     set({ kind: "installing", version });
     log("relaunch-requested", { fromVersion: currentVersion, targetVersion: version });
     let timeout: NodeJS.Timeout | undefined;

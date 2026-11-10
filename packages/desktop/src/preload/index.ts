@@ -15,6 +15,7 @@ import {
   MACHINE_NAME_ARGUMENT,
   TERMINAL_NOTIFICATION_CHANNEL,
   THEME_PREFERENCE_CHANNEL,
+  UNSAVED_EDITS_CHANNEL,
   VIEWING_CHANNEL,
   WINDOW_FULLSCREEN_CHANNEL,
   WINDOW_ID_ARGUMENT,
@@ -202,6 +203,7 @@ const bridge = {
       viewing: (session) => ipcRenderer.send(VIEWING_CHANNEL, session),
       notify: (input) => ipcRenderer.send(TERMINAL_NOTIFICATION_CHANNEL, input),
     },
+    setUnsavedEdits: (held) => ipcRenderer.send(UNSAVED_EDITS_CHANNEL, held),
     onEvent(listener: (event: HostEvent) => void) {
       const wrapped = (_event: Electron.IpcRendererEvent, event: HostEvent): void => {
         listener(event);

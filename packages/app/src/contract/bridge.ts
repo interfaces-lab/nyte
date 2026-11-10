@@ -585,6 +585,8 @@ export interface HostBridge {
   }) => Promise<number | undefined>;
   readonly browser?: BrowserBridge;
   readonly attention?: AttentionBridge;
+  /** Whether this window holds unsaved editor edits, so closing or leaving it asks first. */
+  readonly setUnsavedEdits?: (held: boolean) => void;
   onEvent(listener: (event: HostEvent) => void): Disposer;
 }
 

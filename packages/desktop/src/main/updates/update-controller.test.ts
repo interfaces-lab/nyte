@@ -39,6 +39,7 @@ function setup({
     },
     currentVersion: "0.0.2",
     activity: async () => activity,
+    confirmQuit: () => true,
     beforeInstall: async () => {
       events.push("cleanup");
       await cleanup();

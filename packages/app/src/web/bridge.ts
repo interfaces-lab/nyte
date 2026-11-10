@@ -49,6 +49,10 @@ function browserPlatform(): NodeJS.Platform {
   return "linux";
 }
 
+function keepUnsavedEdits(event: BeforeUnloadEvent): void {
+  event.preventDefault();
+}
+
 async function openEndpoint(
   next: HostEndpoint,
   signal: AbortSignal | undefined,
@@ -240,6 +244,10 @@ export function createWebBridge(): WebBridge {
       confirmExternal: async ({ url }) =>
         window.confirm(`Open external website?\n\n${url}`) ? "open" : "cancel",
       pathForFile: () => "",
+      setUnsavedEdits: (held) => {
+        if (held) window.addEventListener("beforeunload", keepUnsavedEdits);
+        else window.removeEventListener("beforeunload", keepUnsavedEdits);
+      },
       onEvent: (listener) => {
         listeners.add(listener);
 

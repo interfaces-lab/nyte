@@ -14,6 +14,7 @@ import { activeTab, tabPlace } from "./tabs/model.ts";
 import { activeSelection } from "./panes/pane-layout.ts";
 import { workspacePathForView } from "./workbench/paths.ts";
 import { workbench } from "./workbench/store.ts";
+import { watchUnsavedEdits } from "./workbench/editor/file-store.ts";
 import { reattachShells } from "./workbench/terminal/terminal-store.ts";
 import { watchClientPlugins } from "./canvas/client-plugins.tsx";
 import { paceTranscripts } from "./data/chat-store.ts";
@@ -80,6 +81,7 @@ export function App({ appIcon, router }: { appIcon: string; router: AppRouter })
   useClientPlugins();
   useViewedChat();
   useSavedShells();
+  useMountEffect(() => watchUnsavedEdits((held) => nyte.host.setUnsavedEdits?.(held)));
   useMountEffect(() => {
     const frame = requestAnimationFrame(() => {
       performance.mark("nyte:shell-ready");

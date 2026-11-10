@@ -24,6 +24,8 @@ export const VIEWING_CHANNEL = "nyte:viewing";
 
 export const TERMINAL_NOTIFICATION_CHANNEL = "nyte:terminal-notification";
 
+export const UNSAVED_EDITS_CHANNEL = "nyte:unsaved-edits";
+
 export const CANVAS_SHELL_ARGUMENT = "--nyte-canvas-shell";
 
 export const MACHINE_NAME_ARGUMENT = "--nyte-machine-name";
@@ -154,6 +156,7 @@ export type DesktopBridge = {
         | "contextMenu"
         | "browser"
         | "attention"
+        | "setUnsavedEdits"
       >
     >;
 };

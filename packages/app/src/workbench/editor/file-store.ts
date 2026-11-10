@@ -620,6 +620,7 @@ export function createFileTabStore(store: WorkbenchStore = workbench) {
 
   return {
     getView,
+    unsaved: (): boolean => [...files.values()].some((file) => file.draft !== undefined),
     subscribe: (listener: () => void): (() => void) => {
       listeners.add(listener);
 
@@ -637,6 +638,19 @@ export function createFileTabStore(store: WorkbenchStore = workbench) {
 const fileStore = createFileTabStore();
 
 export const fileActions = fileStore.actions;
+
+/** Reports whether this window holds unsaved edits whenever that changes. A window starts with none. */
+export function watchUnsavedEdits(report: (held: boolean) => void): () => void {
+  let held = false;
+
+  return fileStore.subscribe(() => {
+    const next = fileStore.unsaved();
+
+    if (next === held) return;
+    held = next;
+    report(next);
+  });
+}
 
 export function useFileTabs(viewKey: WorkbenchViewKey): FileTabs {
   const view = (): FileTabs => fileStore.getView(viewKey);

@@ -29,6 +29,7 @@ import {
   MAIN_OPERATION_PATHS,
   TERMINAL_NOTIFICATION_CHANNEL,
   THEME_PREFERENCE_CHANNEL,
+  UNSAVED_EDITS_CHANNEL,
   VIEWING_CHANNEL,
   WINDOW_FULLSCREEN_CHANNEL,
   WINDOW_ID_ARGUMENT,
@@ -49,6 +50,7 @@ import {
   menuItemRepeats,
   performMenuRole,
 } from "./app-menu.ts";
+import { createUnsavedEdits } from "./unsaved-edits.ts";
 import { safeExternalUrl } from "./native/external-url.ts";
 import { Alerts } from "./alerts.ts";
 import { BrowserSurfaces } from "./browser/browser.ts";
@@ -91,6 +93,7 @@ import {
   decodeBrowserFocus,
   terminalNotice,
   themePreference,
+  unsavedEditsHeld,
   viewedChat,
 } from "../shared/ipc-inputs.ts";
 
@@ -236,6 +239,14 @@ const alerts = new Alerts(() => settings, {
     if (entry !== undefined) reveal(entry);
   },
   send: (window, event) => send(window, HOST_EVENT_CHANNEL, event),
+});
+
+const unsavedEdits = createUnsavedEdits((options, id) => {
+  const window = id === undefined ? undefined : windows.get(id)?.window;
+
+  return window === undefined
+    ? dialog.showMessageBoxSync(options)
+    : dialog.showMessageBoxSync(window, options);
 });
 
 const openWith = createOpenWith({
@@ -535,6 +546,12 @@ function registerIpc(): void {
     if (terminalNotice.Check(notice)) alerts.terminal(event.sender.id, notice);
   });
 
+  ipcMain.on(UNSAVED_EDITS_CHANNEL, (event, held) => {
+    senderWindow(event);
+
+    if (unsavedEditsHeld.Check(held)) unsavedEdits.report(event.sender.id, held);
+  });
+
   ipcMain.on(BROWSER_FOCUS_CHANNEL, (event, message) => {
     senderWindow(event);
 
@@ -660,6 +677,7 @@ function createWindow(windowId: string = randomUUID(), opening?: DesktopWindowOp
   const releaseRendererWork = (): void => {
     desktopHost?.releaseWindow(id);
     alerts.reloading(id);
+    unsavedEdits.report(id, false);
   };
 
   created.webContents.on("render-process-gone", releaseRendererWork);
@@ -721,7 +739,13 @@ function createWindow(windowId: string = randomUUID(), opening?: DesktopWindowOp
   if (opening?.workspace !== undefined) desktopHost?.seedWorkspace(id, opening.workspace);
   void created.loadURL(rendererUrl);
 
-  created.on("close", () => {
+  created.on("close", (event) => {
+    if (!quitting && !unsavedEdits.mayClose(id)) {
+      event.preventDefault();
+
+      return;
+    }
+
     const bounds = created.getNormalBounds();
 
     launchState.setWindow({
@@ -747,6 +771,7 @@ function createWindow(windowId: string = randomUUID(), opening?: DesktopWindowOp
     browserSurfaces.releaseWindow(id);
     desktopHost?.closeWindow(id);
     alerts.release(id);
+    unsavedEdits.report(id, false);
 
     if (windows.size === 0) {
       previewsOpen.abort();
@@ -789,6 +814,12 @@ function showHostTray(): void {
 }
 
 let quitting = false;
+
+function confirmQuit(): boolean {
+  quitting ||= unsavedEdits.mayQuit();
+
+  return quitting;
+}
 
 const SHUTDOWN_LIMIT_MS = 5_000;
 
@@ -895,6 +926,7 @@ if (!hasSingleInstanceLock) {
         publishChannel: (channel) => broadcast({ kind: "update_channel_changed", channel }),
         item: updateItem,
         activity: () => startedHost().updateActivity(),
+        confirmQuit,
         beforeRelaunch: () => {
           quitting = true;
 
@@ -929,10 +961,10 @@ if (!hasSingleInstanceLock) {
   });
 
   app.on("before-quit", (event) => {
-    quitting = true;
-
     if (shutDown) return;
     event.preventDefault();
+
+    if (!confirmQuit()) return;
     void shutdown().then(() => {
       if (updates?.installOnQuit() !== true) app.quit();
     });

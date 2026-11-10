@@ -18,12 +18,14 @@ const NIGHTLY_UPDATE_INTERVAL_MS = 60 * 60_000;
 export async function registerUpdates({
   item,
   activity,
+  confirmQuit,
   beforeRelaunch,
   publish,
   publishChannel,
 }: {
   readonly item: MenuItem;
   readonly activity: () => Promise<DesktopUpdateActivity>;
+  readonly confirmQuit: () => boolean;
   readonly beforeRelaunch: () => Promise<void>;
   readonly publish: (state: UpdateState) => void;
   readonly publishChannel: (channel: UpdateChannel) => void;
@@ -103,6 +105,7 @@ export async function registerUpdates({
     updater: autoUpdater,
     currentVersion: app.getVersion(),
     activity,
+    confirmQuit,
     beforeInstall: beforeRelaunch,
     publish: (state) => {
       item.label = updateLabel(state);
@@ -138,7 +141,7 @@ export async function registerUpdates({
     const startup = setTimeout(() => void check(), 30_000);
     startup.unref();
     schedule();
-    app.once("before-quit", () => {
+    app.once("will-quit", () => {
       clearTimeout(startup);
       clearInterval(periodic);
     });

@@ -308,6 +308,8 @@ export const viewedChat = Compile(
   Type.Union([Type.String({ minLength: 1, maxLength: 256 }), Type.Null()]),
 );
 
+export const unsavedEditsHeld = Compile(Type.Boolean());
+
 export const terminalNotice = Compile(
   strict({
     title: Type.String({ maxLength: TERMINAL_NOTICE_LIMITS.title }),
