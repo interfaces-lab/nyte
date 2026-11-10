@@ -6,7 +6,7 @@
   "scripts": {
     "clean": "rm -rf node_modules .turbo .output .source .tanstack",
     "build": "node ../../scripts/icons.mjs && vite build",
-    "colors:audit": "node scripts/audit-nyte-colors.mjs",
+    "colors:audit": "pnpm --dir ../ui check:tokens",
     "check:base-ui": "node scripts/sync-base-ui-reference.mjs --check",
     "sync:base-ui": "node scripts/sync-base-ui-reference.mjs",
     "sync:algolia": "node scripts/sync-algolia.mjs",
