@@ -1,12 +1,12 @@
 import { props } from "@stylexjs/stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
-import { useQuery } from "@tanstack/react-query";
 import { Fragment, useRef, useState } from "react";
-import type { ReactElement } from "react";
+import type { ReactElement, RefObject } from "react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { Button } from "@nyte-ai/ui/button";
 import { loadDeferred, readDeferred } from "../../lib/deferred.tsx";
 import type { DeferredRuntimes } from "../../lib/deferred-entries.ts";
+import type { CodeStream } from "./highlight-code.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { useCopyConfirmation } from "../../components/copy-confirmation.ts";
 import { codeBlockStyles } from "./prose.stylex.ts";
@@ -82,13 +82,28 @@ function rememberHighlight(value: HighlightedCode): void {
 
 function highlightLines(
   runtime: DeferredRuntimes["highlight"],
+  stream: RefObject<CodeStream | undefined>,
   code: string,
   language: string,
   streaming: boolean,
 ): readonly string[] | undefined {
-  if (streaming) return runtime.highlightOpenCode(code, language);
+  const open = stream.current;
 
-  const lines = runtime.highlightCode(code, language);
+  if (streaming) {
+    const lines = open === undefined ? undefined : runtime.streamCode(open, code);
+
+    if (lines !== undefined) return lines;
+    open?.tokenizer.dispose();
+    stream.current = runtime.openCodeStream(language);
+
+    return stream.current === undefined ? undefined : runtime.streamCode(stream.current, code);
+  }
+
+  stream.current = undefined;
+
+  const lines =
+    (open === undefined ? undefined : runtime.finishCode(open, code)) ??
+    runtime.highlightCode(code, language);
 
   if (lines !== undefined) rememberHighlight({ code, language, lines });
 
@@ -98,28 +113,27 @@ function highlightLines(
 function HighlightedCode({
   code,
   language,
-  nearViewport,
+  runtime,
   streaming,
 }: {
   code: string;
   language: string;
-  nearViewport: boolean;
+  runtime: DeferredRuntimes["highlight"] | undefined;
   streaming: boolean;
 }): ReactElement {
-  const cached = streaming ? undefined : cachedHighlight(code, language);
+  const stream = useRef<CodeStream | undefined>(undefined);
 
-  const { data: runtime } = useQuery({
-    queryKey: ["deferred", "highlight"],
-    queryFn: () => loadDeferred("highlight"),
-    initialData: () => readDeferred("highlight"),
-    enabled: nearViewport && language !== "" && cached === undefined,
+  useMountEffect(() => () => {
+    stream.current?.tokenizer.dispose();
+    stream.current = undefined;
   });
 
   const lines =
-    cached?.lines ??
-    (nearViewport && runtime !== undefined
-      ? highlightLines(runtime, code, language, streaming)
-      : undefined);
+    (streaming ? undefined : cachedHighlight(code, language)?.lines) ??
+    (runtime === undefined
+      ? undefined
+      : // oxlint-disable-next-line react/refs -- feeding the same code twice adds nothing, so a repeated or discarded render stays correct
+        highlightLines(runtime, stream, code, language, streaming));
 
   if (lines === undefined) return <code>{code}</code>;
 
@@ -147,6 +161,7 @@ export function CodeBlock({
   const language = lang.trim().toLowerCase().split(/\s+/u)[0] ?? "";
   const figure = useRef<HTMLElement>(null);
   const [nearViewport, setNearViewport] = useState(false);
+  const [runtime, setRuntime] = useState(() => readDeferred("highlight"));
   const confirmation = useCopyConfirmation();
   const copied = confirmation.copied;
 
@@ -160,6 +175,8 @@ export function CodeBlock({
         if (!entries.some((entry) => entry.isIntersecting)) return;
         setNearViewport(true);
         observer.disconnect();
+
+        if (language !== "") void loadDeferred("highlight").then(setRuntime, () => undefined);
       },
       { rootMargin: "300px" },
     );
@@ -195,7 +212,7 @@ export function CodeBlock({
           <HighlightedCode
             code={code}
             language={language}
-            nearViewport={nearViewport}
+            runtime={nearViewport ? runtime : undefined}
             streaming={streaming}
           />
         </pre>

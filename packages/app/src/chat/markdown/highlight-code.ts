@@ -9,8 +9,6 @@ const HTML_ESCAPES = new Map([
   ['"', "&quot;"],
 ]);
 
-const OPEN_STREAMS = 4;
-
 function escapeHtml(text: string): string {
   return text.replaceAll(/[&<>"]/gu, (character) => HTML_ESCAPES.get(character) ?? character);
 }
@@ -19,15 +17,6 @@ export interface HighlightToken {
   readonly content: string;
   readonly style: string;
 }
-
-interface OpenStream {
-  readonly language: Lang;
-  readonly tokenizer: StreamTokenizer;
-  lines: readonly string[];
-  fed: string;
-}
-
-const openStreams: OpenStream[] = [];
 
 function tokenOptions(language: Lang) {
   return {
@@ -52,45 +41,52 @@ export function highlightCode(code: string, language: string): readonly string[]
   return highlightTokens(code, language)?.map(lineHtml);
 }
 
-export function highlightOpenCode(code: string, language: string): readonly string[] | undefined {
-  if (!isSupportedLanguage(language) || code.includes("\r")) return undefined;
+/** Tokenizes one code fence while it streams; `streamCode` feeds what each call appended. */
+export interface CodeStream {
+  readonly tokenizer: StreamTokenizer;
+  lines: readonly string[];
+  fed: string;
+}
 
-  const stream = claimStream(code, language);
+export function openCodeStream(language: string): CodeStream | undefined {
+  if (!isSupportedLanguage(language)) return undefined;
 
-  stream.lines = stream.lines.concat(
-    stream.tokenizer
-      .pushCode(code.slice(stream.fed.length))
-      .map((line) => lineHtml(styleLine(line))),
-  );
+  return { tokenizer: new StreamTokenizer(tokenOptions(language)), lines: [], fed: "" };
+}
+
+/** Answers the lines so far, the unfinished last one plain, or undefined when `code` doesn't extend what was fed. */
+export function streamCode(stream: CodeStream, code: string): readonly string[] | undefined {
+  const added = appended(stream, code);
+
+  if (added === undefined) return undefined;
+
+  stream.lines = stream.lines.concat(stream.tokenizer.pushCode(added).map(themedLineHtml));
   stream.fed = code;
 
   return stream.lines.concat(escapeHtml(code.slice(code.lastIndexOf("\n") + 1)));
 }
 
-function claimStream(code: string, language: Lang): OpenStream {
-  const found = openStreams.findLast(
-    (stream) => stream.language === language && code.startsWith(stream.fed),
-  );
+/** Ends the stream with its last line, or answers undefined when `code` doesn't extend what was fed. */
+export function finishCode(stream: CodeStream, code: string): readonly string[] | undefined {
+  const added = appended(stream, code);
 
-  if (found !== undefined) {
-    openStreams.splice(openStreams.indexOf(found), 1);
-    openStreams.push(found);
+  if (added === undefined) {
+    stream.tokenizer.dispose();
 
-    return found;
+    return undefined;
   }
 
-  if (openStreams.length >= OPEN_STREAMS) openStreams.shift()?.tokenizer.dispose();
+  return stream.lines.concat(
+    stream.tokenizer.pushCode(added).map(themedLineHtml),
+    stream.tokenizer.end().map(themedLineHtml),
+  );
+}
 
-  const stream = {
-    language,
-    tokenizer: new StreamTokenizer(tokenOptions(language)),
-    lines: [],
-    fed: "",
-  };
+function appended(stream: CodeStream, code: string): string | undefined {
+  if (!code.startsWith(stream.fed)) return undefined;
+  const added = code.slice(stream.fed.length);
 
-  openStreams.push(stream);
-
-  return stream;
+  return added.includes("\r") ? undefined : added;
 }
 
 function styleLine(line: readonly ThemedToken[]): readonly HighlightToken[] {
@@ -106,4 +102,8 @@ function lineHtml(line: readonly HighlightToken[]): string {
   return line
     .map((token) => `<span style="${escapeHtml(token.style)}">${escapeHtml(token.content)}</span>`)
     .join("");
+}
+
+function themedLineHtml(line: readonly ThemedToken[]): string {
+  return lineHtml(styleLine(line));
 }
