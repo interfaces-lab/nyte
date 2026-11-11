@@ -38,6 +38,8 @@ export type HeldToast = Pick<
 
 const AT_ANCHOR = "translate(12px, -16px) scale(0.92)";
 
+const WIDTH = `min(${toastSize.width}, calc(100vw - 2 * ${space.s4}))`;
+
 const COLLAPSED =
   "translateX(var(--toast-swipe-movement-x)) translateY(calc(var(--toast-swipe-movement-y) + var(--toast-index) * var(--_peek))) scale(var(--_scale))";
 
@@ -48,9 +50,7 @@ const styles = create({
   viewport: {
     position: "fixed",
     zIndex: layer.toast,
-    insetBlockStart: `calc(anchor(bottom, ${space.s3}) + ${space.s1})`,
-    insetInlineEnd: `anchor(end, ${space.s4})`,
-    width: `min(${toastSize.width}, calc(100vw - 2 * ${space.s4}))`,
+    width: WIDTH,
     marginBlock: 0,
     marginInline: 0,
     padding: 0,
@@ -59,22 +59,26 @@ const styles = create({
     fontFamily: type.fontSans,
   },
   anchored: (anchor: string) => ({ positionAnchor: anchor }),
+  placed: {
+    insetBlockStart: `calc(anchor(bottom, ${space.s3}) + ${space.s1})`,
+    insetInlineEnd: `anchor(end, ${space.s4})`,
+    positionTryFallbacks: "flip-inline",
+    positionTryOrder: "most-inline-size",
+  },
   hidden: { display: "none" },
   root: {
     "--nyte-hairline-elevation": shadow.shadowLg,
     "--_gap": space.s2,
     "--_peek": space.s2,
     "--_scale": "max(0, 1 - var(--toast-index) * 0.05)",
-    position: "absolute",
-    insetBlockStart: 0,
-    insetInlineEnd: 0,
+    position: "fixed",
     zIndex: "calc(100 - var(--toast-index))",
     boxSizing: "border-box",
     width: "max-content",
     minWidth: toastSize.minWidth,
     maxWidth: {
-      default: `calc(100% - min(1, var(--toast-index)) * (100% - ${toastSize.minWidth}))`,
-      "[data-expanded]": "100%",
+      default: `calc(${WIDTH} - min(1, var(--toast-index)) * (${WIDTH} - ${toastSize.minWidth}))`,
+      "[data-expanded]": WIDTH,
     },
     height: {
       default: "var(--toast-frontmost-height, var(--toast-height))",
@@ -245,7 +249,7 @@ function CopyButton({ value }: { readonly value: string }): ReactElement {
   );
 }
 
-function ToastCards(): ReactElement[] {
+function ToastCards({ anchor }: { readonly anchor: string | undefined }): ReactElement[] {
   return useToasts().map((item) => {
     const copy = item.type === "error" ? copyText(item.title, item.description) : undefined;
     const count = item.data?.count ?? 1;
@@ -256,7 +260,13 @@ function ToastCards(): ReactElement[] {
         toast={item}
         swipeDirection={["up", "right"]}
         data-slot="toast"
-        {...props(styles.root, styles.bridge, hairline.ringAfter)}
+        {...props(
+          styles.root,
+          styles.placed,
+          anchor !== undefined && styles.anchored(anchor),
+          styles.bridge,
+          hairline.ringAfter,
+        )}
       >
         <Toast.Content {...props(styles.content)}>
           <ToastGlyph type={item.type} />
@@ -433,11 +443,12 @@ export function ToastStack({
         data-slot="toast-viewport"
         {...props(
           styles.viewport,
+          styles.placed,
           anchor !== undefined && styles.anchored(anchor),
           hidden && styles.hidden,
         )}
       >
-        <ToastCards />
+        <ToastCards anchor={anchor} />
       </Toast.Viewport>
     </Toast.Portal>
   );
