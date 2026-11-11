@@ -164,6 +164,9 @@ settings:
 
 catalogs:
   default:
+    '@hona/strobe':
+      specifier: 0.28.0
+      version: 0.28.0
     '@typescript/native':
       specifier: npm:typescript@7.1.0-beta
       version: 7.1.0-beta
@@ -727,6 +730,9 @@ importers:
       '@fontsource-variable/jetbrains-mono':
         specifier: ^5.3.0
         version: 5.3.0
+      '@hona/strobe':
+        specifier: 'catalog:'
+        version: 0.28.0
       '@nyte-ai/ai':
         specifier: workspace:*
         version: link:../ai
@@ -1681,6 +1687,9 @@ importers:
       '@babel/preset-typescript':
         specifier: ^8.0.7
         version: 8.0.7(@babel/core@8.1.0)
+      '@hona/strobe':
+        specifier: 'catalog:'
+        version: 0.28.0
       '@nyte-ai/bench':
         specifier: workspace:*
         version: link:../bench
@@ -3594,6 +3603,40 @@ packages:
     peerDependenciesMeta:
       '@modelcontextprotocol/sdk':
         optional: true
+
+  '@hona/strobe-darwin-arm64@0.28.0':
+    resolution: {integrity: sha512-zv10Kv1eYtJC8aVxcqOFdwxkBNQ4JWbo95+7dHxboFhf+zR6h4foV2VEmaSpHb59vSPFn29/OTTpkQD8UVg9pA==}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@hona/strobe-darwin-x64@0.28.0':
+    resolution: {integrity: sha512-8EsxZu6i/HfwUhfGqPdbyvPuK4PMHV23R6fVk0s60CB72VSsstl92PMY5REtEOE6nDysF1azsPs/myUVFzDlKw==}
+    cpu: [x64]
+    os: [darwin]
+
+  '@hona/strobe-linux-arm64@0.28.0':
+    resolution: {integrity: sha512-n/C0mRzvNcVUntBmCUes7j21N0Y25sGCgy/r53D/WZStysn/QVfOzCWtkkPjZ09TJ8MDY4bIOk7WPdV5s/fMgA==}
+    cpu: [arm64]
+    os: [linux]
+
+  '@hona/strobe-linux-x64@0.28.0':
+    resolution: {integrity: sha512-G+z9vgn0OwF/K3tKx3QGpAI+GML1O2XJUGjorIYLQ0wmgi6G6FnKCb8Zk/hcKTdUxp5VNsElibPsd7JEGfrQvA==}
+    cpu: [x64]
+    os: [linux]
+
+  '@hona/strobe-win32-arm64@0.28.0':
+    resolution: {integrity: sha512-rHPNY0+XO+3dTaZO9r0gKWoWPr4aHNhZC6KNX5kIvJbJ2/QuEUyEJmzFkvSlx68ixl5rbg3lBGB2tO7YNOvotg==}
+    cpu: [arm64]
+    os: [win32]
+
+  '@hona/strobe-win32-x64@0.28.0':
+    resolution: {integrity: sha512-kZJ9l/lZ7zneU2NVj7p1WmSifVrWwRQFzIOw3MfEjaC1TqGD2+w0JFCNuzYCp7j8irtRC/OM7W5/9fLjGy/kxQ==}
+    cpu: [x64]
+    os: [win32]
+
+  '@hona/strobe@0.28.0':
+    resolution: {integrity: sha512-5JzZqIMxeiLR5encQ1e+tCZl8zlkN+QGHAga/e+WOm2rk9m1Ep4bDy0oWUiPynhha45X9luOlJxoxs+8T5bJXg==}
+    hasBin: true
 
   '@hono/node-server@2.1.0':
     resolution: {integrity: sha512-XovyyCCnBzW+zKu+z/zq8hwNs4KOR5rEMAOxo2f40Q5xoOI37IMm6MIg2COOUtUApo0i6850MTBKH2u4QLGIqg==}
@@ -16090,6 +16133,33 @@ snapshots:
       - supports-color
       - utf-8-validate
 
+  '@hona/strobe-darwin-arm64@0.28.0':
+    optional: true
+
+  '@hona/strobe-darwin-x64@0.28.0':
+    optional: true
+
+  '@hona/strobe-linux-arm64@0.28.0':
+    optional: true
+
+  '@hona/strobe-linux-x64@0.28.0':
+    optional: true
+
+  '@hona/strobe-win32-arm64@0.28.0':
+    optional: true
+
+  '@hona/strobe-win32-x64@0.28.0':
+    optional: true
+
+  '@hona/strobe@0.28.0':
+    optionalDependencies:
+      '@hona/strobe-darwin-arm64': 0.28.0
+      '@hona/strobe-darwin-x64': 0.28.0
+      '@hona/strobe-linux-arm64': 0.28.0
+      '@hona/strobe-linux-x64': 0.28.0
+      '@hona/strobe-win32-arm64': 0.28.0
+      '@hona/strobe-win32-x64': 0.28.0
+
   '@hono/node-server@2.1.0(hono@4.13.1)':
     dependencies:
       hono: 4.13.1
@@ -25956,10 +26026,6 @@ snapshots:
   powershell-utils@0.1.0: {}
 
   powershell-utils@0.2.1: {}
-
-  preact-render-to-string@6.6.5(preact@10.29.8):
-    dependencies:
-      preact: 10.29.8(preact-render-to-string@6.6.5)
 
   preact-render-to-string@6.6.5(preact@11.0.0-beta.0):
     dependencies:

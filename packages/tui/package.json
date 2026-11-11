@@ -39,6 +39,7 @@
   "devDependencies": {
     "@babel/core": "^8.1.0",
     "@babel/preset-typescript": "^8.0.7",
+    "@hona/strobe": "catalog:",
     "@nyte-ai/bench": "workspace:*",
     "@nyte-ai/core": "workspace:*",
     "@nyte-ai/host": "workspace:*",
