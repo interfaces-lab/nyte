@@ -20,6 +20,14 @@ export const usageStyles = create({
   },
   spend: { flex: "2 1 320px", gap: space.s4 },
   chart: { flexGrow: 1 },
+  chartFrame: {
+    display: "flex",
+    flexDirection: "column",
+    flexGrow: 1,
+    minWidth: 0,
+    transitionProperty: "opacity",
+    transitionDuration: motion.durationNormal,
+  },
   superseded: {
     opacity: 0.6,
     transitionProperty: "opacity",
@@ -27,20 +35,13 @@ export const usageStyles = create({
   },
   limits: { flex: "1 1 280px", gap: space.s4 },
 
-  spendHead: {
-    display: "flex",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: space.s3,
-  },
-  spendTitle: { display: "flex", flexDirection: "column", gap: space.s0_5, minWidth: 0 },
+  spendHead: { display: "flex", flexDirection: "column", gap: space.s0_5, minWidth: 0 },
   spendFacts: {
     display: "flex",
-    flexDirection: "column",
-    alignItems: "flex-end",
-    gap: space.s1,
-    paddingTop: space.s0_5,
-    textAlign: "end",
+    flexWrap: "wrap",
+    columnGap: space.s3,
+    rowGap: space.s0_5,
+    whiteSpace: "nowrap",
   },
   caption: {
     margin: 0,
@@ -53,6 +54,7 @@ export const usageStyles = create({
     fontWeight: type.weightSemibold,
     lineHeight: type.leading3xl,
     letterSpacing: "-0.02em",
+    whiteSpace: "nowrap",
   },
   fact: {
     ...figure,

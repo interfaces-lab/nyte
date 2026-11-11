@@ -7,7 +7,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { intent, surfaceTheme, type Tint } from "@nyte-ai/ui/surface-theme";
 import { props } from "@stylexjs/stylex";
-// oxlint-disable-next-line no-restricted-imports -- the compiler widens deriveUsage/deriveTools to every later call that reads them, so a limits refetch would re-derive the report
+// oxlint-disable-next-line no-restricted-imports -- the compiler widens deriveUsage/deriveTools to every later call that reads them, so an axis switch or fetch-state change would re-derive the report
 import { useMemo, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { Deferred } from "../lib/deferred.tsx";
@@ -32,6 +32,7 @@ import {
   USAGE_RANGES,
   windowLabel,
   type AccountLimits,
+  type LimitMeter,
   type UsageDerived,
   type UsageRange,
   type UsageRow,
@@ -219,7 +220,7 @@ function SpendCard({
   if (usage === undefined || rows === undefined) {
     return (
       <section aria-busy="true" aria-label="Spend" {...props(styles.card, styles.spend)}>
-        <span {...props(styles.spendTitle)}>
+        <span {...props(styles.spendHead)}>
           <Bone width={132} height={10} />
           <Bone width={112} height={26} />
         </span>
@@ -228,11 +229,13 @@ function SpendCard({
     );
   }
 
-  const surface = props(styles.card, styles.spend, superseded && styles.superseded);
-
   if (empty !== undefined) {
     return (
-      <section aria-busy={superseded} aria-label="Spend" {...surface}>
+      <section
+        aria-busy={superseded}
+        aria-label="Spend"
+        {...props(styles.card, styles.spend, superseded && styles.superseded)}
+      >
         {empty}
       </section>
     );
@@ -243,17 +246,15 @@ function SpendCard({
   const format = usage.measure === "cost" ? formatUsd : formatTokens;
 
   return (
-    <section aria-busy={superseded} aria-label="Spend" {...surface}>
+    <section aria-busy={superseded} aria-label="Spend" {...props(styles.card, styles.spend)}>
       <div {...props(styles.spendHead)}>
-        <span {...props(styles.spendTitle)}>
-          <span {...props(text.sm, styles.caption)}>
-            {usage.measure === "cost" ? "Spent" : "Used"} · {spanLabel(usage.from, usage.to)}
-          </span>
-          <span {...props(styles.amount)}>
-            {usage.measure === "cost"
-              ? formatUsd(usage.totals.cost)
-              : `${formatTokens(usage.totals.tokens)} tokens`}
-          </span>
+        <span {...props(text.sm, styles.caption)}>
+          {usage.measure === "cost" ? "Spent" : "Used"} · {spanLabel(usage.from, usage.to)}
+        </span>
+        <span {...props(styles.amount)}>
+          {usage.measure === "cost"
+            ? formatUsd(usage.totals.cost)
+            : `${formatTokens(usage.totals.tokens)} tokens`}
         </span>
         <span {...props(styles.spendFacts)}>
           {change !== undefined && (
@@ -272,26 +273,26 @@ function SpendCard({
           <span {...props(text.sm, styles.fact)}>{describeTotals(usage.totals)}</span>
         </span>
       </div>
-      <Deferred entry="charts" fallback={<Bone width="100%" height={SPEND_CHART_HEIGHT} grow />}>
-        {({ BarChart }) => (
-          <BarChart
-            xstyle={styles.chart}
-            label={`${usage.measure === "cost" ? "Spend" : "Tokens"} per ${usage.grain}`}
-            series={layers.series}
-            buckets={layers.buckets}
-            format={format}
-          />
-        )}
-      </Deferred>
+      <div {...props(styles.chartFrame, superseded && styles.superseded)}>
+        <Deferred entry="charts" fallback={<Bone width="100%" height={SPEND_CHART_HEIGHT} grow />}>
+          {({ BarChart }) => (
+            <BarChart
+              xstyle={styles.chart}
+              label={`${usage.measure === "cost" ? "Spend" : "Tokens"} per ${usage.grain}`}
+              series={layers.series}
+              buckets={layers.buckets}
+              format={format}
+            />
+          )}
+        </Deferred>
+      </div>
     </section>
   );
 }
 
-function LimitsCard({
-  limits,
-}: {
-  readonly limits: ReturnType<typeof useAccountLimits>;
-}): ReactElement | null {
+function LimitsCard(): ReactElement | null {
+  const limits = useAccountLimits();
+
   const accounts = limits.data
     ?.map((usage) => deriveAccount(usage, limits.dataUpdatedAt))
     .filter((account) => account !== null);
@@ -370,51 +371,57 @@ function AccountLimitRows({
           {account.message}
         </p>
       )}
-      {account.meters.map((meter) => {
-        const tier = limitTier(meter.used);
+      {account.meters.map((meter) => (
+        <LimitMeterRow key={meter.key} title={title} meter={meter} />
+      ))}
+    </div>
+  );
+}
 
-        return (
-          <div key={meter.key} {...props(styles.limitRow)}>
-            <span aria-hidden="true" {...props(text.sm, styles.limitLabel)}>
-              {meter.label}
-            </span>
-            <Meter.Root
-              value={meter.used}
-              aria-label={`${title} ${meter.label}`}
-              getAriaValueText={() => `${String(meter.used)}% used. ${meter.resetsAt}`}
-              xstyle={styles.limitMeter}
-            >
-              <Meter.Track xstyle={surfaceTheme.gray}>
-                <Meter.Indicator
-                  xstyle={
-                    tier === "calm" ? undefined : tier === "warm" ? intent.warning : intent.danger
-                  }
-                />
-              </Meter.Track>
-            </Meter.Root>
-            <span
-              aria-hidden="true"
-              {...props(
-                text.sm,
-                tier === "warm" && intent.warning,
-                tier === "hot" && intent.danger,
-                styles.limitValue,
-                tier !== "calm" && styles.meterHot,
-              )}
-            >
-              {String(meter.used)}%
-            </span>
-            <Tooltip>
-              <TooltipTrigger
-                render={<span aria-hidden="true" {...props(text.sm, styles.limitReset)} />}
-              >
-                {meter.resetsIn}
-              </TooltipTrigger>
-              <TooltipContent>{meter.resetsAt}</TooltipContent>
-            </Tooltip>
-          </div>
-        );
-      })}
+function LimitMeterRow({
+  title,
+  meter,
+}: {
+  readonly title: string;
+  readonly meter: LimitMeter;
+}): ReactElement {
+  const tier = limitTier(meter.used);
+
+  return (
+    <div {...props(styles.limitRow)}>
+      <span aria-hidden="true" {...props(text.sm, styles.limitLabel)}>
+        {meter.label}
+      </span>
+      <Meter.Root
+        value={meter.used}
+        aria-label={`${title} ${meter.label}`}
+        getAriaValueText={() => `${String(meter.used)}% used. ${meter.resetsAt}`}
+        xstyle={styles.limitMeter}
+      >
+        <Meter.Track xstyle={surfaceTheme.gray}>
+          <Meter.Indicator
+            xstyle={tier === "calm" ? undefined : tier === "warm" ? intent.warning : intent.danger}
+          />
+        </Meter.Track>
+      </Meter.Root>
+      <span
+        aria-hidden="true"
+        {...props(
+          text.sm,
+          tier === "warm" && intent.warning,
+          tier === "hot" && intent.danger,
+          styles.limitValue,
+          tier !== "calm" && styles.meterHot,
+        )}
+      >
+        {String(meter.used)}%
+      </span>
+      <Tooltip>
+        <TooltipTrigger render={<span aria-hidden="true" {...props(text.sm, styles.limitReset)} />}>
+          {meter.resetsIn}
+        </TooltipTrigger>
+        <TooltipContent>{meter.resetsAt}</TooltipContent>
+      </Tooltip>
     </div>
   );
 }
@@ -531,14 +538,8 @@ export function UsageSettings(): ReactElement {
     refresh: refreshHistory,
   } = useUsageReport(requested);
 
-  const limits = useAccountLimits();
   const report = read?.report;
   const shown = read?.window ?? requested;
-
-  const refresh = () => {
-    refreshHistory();
-    void limits.refetch({ cancelRefetch: false });
-  };
 
   const usage = useMemo(
     () => (read === undefined ? undefined : deriveUsage(read.report, read.window)),
@@ -548,7 +549,7 @@ export function UsageSettings(): ReactElement {
   const tools = useMemo(() => (report === undefined ? undefined : deriveTools(report)), [report]);
 
   const refreshButton = (
-    <Button variant="outline" loading={isFetching || limits.isFetching} onClick={refresh}>
+    <Button variant="outline" loading={isFetching} onClick={refreshHistory}>
       Refresh Usage
     </Button>
   );
@@ -559,7 +560,7 @@ export function UsageSettings(): ReactElement {
         <div role="alert" {...props(styles.card)}>
           <Empty title="Couldn't read usage" body={error.message} action={refreshButton} />
         </div>
-        <LimitsCard limits={limits} />
+        <LimitsCard />
       </div>
     );
   }
@@ -597,7 +598,7 @@ export function UsageSettings(): ReactElement {
         <Notice
           alert
           action={
-            <Button variant="text" onClick={refresh}>
+            <Button variant="text" onClick={refreshHistory}>
               Refresh Usage
             </Button>
           }
@@ -636,7 +637,7 @@ export function UsageSettings(): ReactElement {
             )
           }
         />
-        <LimitsCard limits={limits} />
+        <LimitsCard />
       </div>
 
       {(empty === undefined || tools?.some((row) => row.share > 0) === true) && (
