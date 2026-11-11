@@ -7,6 +7,7 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { HOST_EVENT_CHANNEL } from "../src/shared/ipc.ts";
 import { expect, test } from "./fixtures.ts";
+import { messages, openNewChat, send } from "./ui.ts";
 
 test.use({ chapter: "browser" });
 
@@ -561,4 +562,31 @@ test("the integrated browser journey", async ({ desktop }) => {
       .toContainEqual({ url: remembered, loading: false, title: "Remembered page" });
     await expect.poll(visits).toBe(1);
   });
+});
+
+test("an agent captures a page that no Browser tab shows", async ({ desktop }) => {
+  await using cleanup = new AsyncDisposableStack();
+
+  const server = createServer((_request, response) => {
+    response.writeHead(200, { "Content-Type": "text/html" });
+    response.end(
+      "<!doctype html><html><head><title>Agent page</title></head><body>Agent page</body></html>",
+    );
+  });
+
+  cleanup.defer(async () => {
+    server.closeAllConnections();
+    await new Promise<void>((resolveClose) => server.close(() => resolveClose()));
+  });
+  await new Promise<void>((resolveListen) => server.listen(0, "127.0.0.1", resolveListen));
+  const address = Value.Parse(Type.Object({ port: Type.Number() }), server.address());
+  const { page } = desktop;
+
+  await openNewChat(page);
+  await send(page, `/browse http://127.0.0.1:${String(address.port)}/`);
+
+  const reply = messages(page).getByText(/^Viewport /);
+  await expect(reply).toBeVisible({ timeout: 30_000 });
+  await expect(reply).not.toContainText('"0x0"');
+  await expect(reply).toContainText("Capture returned an image.");
 });

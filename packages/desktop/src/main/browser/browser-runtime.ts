@@ -1,4 +1,4 @@
-import type { WebContents } from "electron";
+import type { NativeImage, WebContents } from "electron";
 import type {
   BrowserActionFailure,
   BrowserActionResult,
@@ -368,6 +368,10 @@ const MAX_SNAPSHOT_NODES = 500;
 const CONSOLE_RING_SIZE = 200;
 
 const CAPTURE_SCALE = 0.5;
+
+const CAPTURE_ATTEMPTS = 5;
+
+const CAPTURE_RETRY_MS = 16;
 
 const CLOSED = { kind: "failed", failure: { kind: "closed" } } as const;
 
@@ -853,7 +857,7 @@ export async function performCapture(contents: WebContents): Promise<Uint8Array 
   if (contents.isDestroyed()) return undefined;
 
   try {
-    const image = await contents.capturePage(undefined, { stayHidden: true });
+    const image = await capturePageRetrying(contents, CAPTURE_ATTEMPTS);
 
     if (image.isEmpty()) return undefined;
     const size = image.getSize();
@@ -863,6 +867,22 @@ export async function performCapture(contents: WebContents): Promise<Uint8Array 
     return new Uint8Array(image.resize({ width: w, height: h }).toPNG());
   } catch {
     return undefined;
+  }
+}
+
+/**
+ * A page that was hidden has no frame for its first capture and Electron answers
+ * `UnknownVizError`; one comes within a frame or two, so the capture tries again.
+ */
+async function capturePageRetrying(contents: WebContents, attempts: number): Promise<NativeImage> {
+  try {
+    return await contents.capturePage(undefined, { stayHidden: true });
+  } catch (error) {
+    if (attempts <= 1 || !(error instanceof Error) || error.message !== "UnknownVizError")
+      throw error;
+    await sleep(CAPTURE_RETRY_MS);
+
+    return capturePageRetrying(contents, attempts - 1);
   }
 }
 

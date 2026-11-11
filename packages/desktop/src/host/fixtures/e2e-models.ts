@@ -180,6 +180,56 @@ function surveyReply(request: Request): Reply | undefined {
   };
 }
 
+const BROWSE_PROMPT = "/browse ";
+
+/** `/browse <url>` opens the page, reads its viewport and captures it, then reports what came back. */
+function browseReply(request: Request): Reply | undefined {
+  const first = request.context.messages.find((message) => message.role === "user");
+
+  if (first?.role !== "user") return undefined;
+  const opening = contentText(first.content, "");
+
+  if (!opening.startsWith(BROWSE_PROMPT)) return undefined;
+  const title = titleReply(request);
+
+  if (title !== null) return { content: [{ type: "text", text: title }] };
+
+  const results = request.context.messages.flatMap((message) =>
+    message.role === "toolResult" ? [message] : [],
+  );
+
+  const steps: readonly Block[] = [
+    {
+      type: "toolCall",
+      id: "browse-open",
+      name: "browser_open",
+      arguments: { url: opening.slice(BROWSE_PROMPT.length).trim() },
+    },
+    {
+      type: "toolCall",
+      id: "browse-viewport",
+      name: "browser_evaluate",
+      arguments: { expression: "`${String(innerWidth)}x${String(innerHeight)}`" },
+    },
+    { type: "toolCall", id: "browse-capture", name: "browser_capture", arguments: {} },
+  ];
+
+  const next = steps[results.length];
+
+  if (next !== undefined) return { content: [next] };
+  const viewport = results[1]?.content.flatMap((part) => (part.type === "text" ? [part.text] : []));
+  const captured = results[2] !== undefined && !results[2].isError;
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: `Viewport ${viewport?.join("") ?? "unknown"}. ${captured ? "Capture returned an image." : `Capture failed: ${lastToolText(request)}`}`,
+      },
+    ],
+  };
+}
+
 function ciChat(request: Request): boolean {
   const first = request.context.messages.find((message) => message.role === "user");
 
@@ -237,7 +287,7 @@ export function e2eAnswers(input: E2eAnswerOptions): (request: Request) => Reply
   });
 
   return (request) => {
-    const rendering = renderReply(request);
+    const rendering = renderReply(request) ?? browseReply(request);
 
     if (rendering !== undefined) return rendering;
     const scripted = ci(request);

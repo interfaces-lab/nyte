@@ -219,6 +219,11 @@ export class SurfaceAgent implements BrowserAgent {
     );
   }
 
+  /**
+   * A page no panel shows is hidden, and a hidden view has no frame to capture. Showing and
+   * hiding it in the same task readies a frame without ever painting it on screen, as VS Code's
+   * integrated browser does.
+   */
   async capture(
     input: Parameters<BrowserAgent["capture"]>[0],
   ): ReturnType<BrowserAgent["capture"]> {
@@ -226,7 +231,14 @@ export class SurfaceAgent implements BrowserAgent {
 
     if (surface === undefined) return undefined;
 
-    return this.#operate(surface, performCapture);
+    return this.#operate(surface, (contents) => {
+      if (!surface.view.getVisible()) {
+        surface.view.setVisible(true);
+        surface.view.setVisible(false);
+      }
+
+      return performCapture(contents);
+    });
   }
 
   release(input: Parameters<BrowserAgent["release"]>[0]): void {
