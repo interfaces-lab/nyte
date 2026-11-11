@@ -8,6 +8,8 @@ import {
   WelcomeFrameType,
   withJson,
 } from "@nyte-ai/schema";
+import type { Json } from "@nyte-ai/schema";
+import { Type } from "typebox";
 
 /**
  * The socket's frame validators, checked on every frame. The compiled binary's build replaces this
@@ -19,7 +21,9 @@ function checkOnly<V extends { readonly Check: unknown }>(validator: V): Pick<V,
 
 export const welcomes = checkOnly(compile(withJson(WelcomeFrameType)));
 
-export const results = checkOnly(compile(withJson(ResultFrameType)));
+export const results = checkOnly(
+  compile(Type.Object({ ...ResultFrameType.properties, output: Type.Unsafe<Json>({}) })),
+);
 
 export const errors = checkOnly(compile(withJson(ErrorFrameType)));
 
