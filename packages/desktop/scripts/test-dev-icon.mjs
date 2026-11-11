@@ -17,7 +17,7 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import electronPath from "electron";
-import { ACCOUNT_SCHEMES } from "../src/shared/account/scheme.ts";
+import { DEVELOPMENT_ACCOUNT_SCHEME } from "../src/shared/account/scheme.ts";
 
 await test(
   "macOS dev bundle icon and cache",
@@ -84,7 +84,7 @@ await test(
       assert.equal(plist.CFBundleIdentifier, "ai.nyte.desktop.dev");
       assert.equal(plist.CFBundleIconFile, "icon.icns");
       assert.deepEqual(plist.CFBundleURLTypes, [
-        { CFBundleURLName: "Nyte Account", CFBundleURLSchemes: [ACCOUNT_SCHEMES.development] },
+        { CFBundleURLName: "Nyte Account", CFBundleURLSchemes: [DEVELOPMENT_ACCOUNT_SCHEME] },
       ]);
       assert.deepEqual(
         readFileSync(join(bundle, "Contents/Resources", plist.CFBundleIconFile)),

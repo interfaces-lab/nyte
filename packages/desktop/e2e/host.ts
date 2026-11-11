@@ -8,11 +8,8 @@ import { Value } from "typebox/value";
 import type { ModelRef } from "@nyte-ai/schema";
 import { dev } from "@nyte-ai/core";
 import { sdk } from "@nyte-ai/sdk";
-import {
-  DESKTOP_APP_IDS,
-  developmentHostAgentJob,
-  hostAgentPlist,
-} from "../src/shared/host-agent-job.ts";
+import { PACKAGED_BUILDS } from "../src/shared/desktop-builds.ts";
+import { developmentHostAgentJob, hostAgentPlist } from "../src/shared/host-agent-job.ts";
 import type { HostAgentJob } from "../src/shared/host-agent-job.ts";
 import { e2eAnswers } from "../src/host/fixtures/e2e-models.ts";
 import { POLISH_MODEL, polishModel, serveScriptedModel } from "./polish-fixture.ts";
@@ -59,7 +56,7 @@ export async function startE2eHost(options: E2eHostOptions): Promise<E2eHost> {
   cleanup.defer(() => endpoint.close());
   await signIn(options.home, endpoint.origin);
 
-  const label = `${DESKTOP_APP_IDS.production}.e2e.${String(process.pid)}.${String(Date.now())}`;
+  const label = `${PACKAGED_BUILDS.production.appId}.e2e.${String(process.pid)}.${String(Date.now())}`;
 
   const environment = {
     ...options.environment,

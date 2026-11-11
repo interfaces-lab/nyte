@@ -73,7 +73,7 @@ import { readConnectConfig } from "../shared/connect-config.ts";
 import type { ConnectConfig } from "../shared/connect-config.ts";
 import { adoptStagedCli, inspectBundledCli, installCli, stageCli } from "./native/cli.ts";
 import { ExpectedHostError, retainDiagnostic } from "../shared/errors.ts";
-import { DESKTOP_APP_IDS } from "../shared/host-agent-job.ts";
+import { findPackagedBuild } from "../shared/desktop-builds.ts";
 import { throwForRenderer } from "../host/desktop-host.ts";
 import type { DesktopHost } from "../host/desktop-host.ts";
 import { bridgeHostPort, startHostRuntime } from "./host-runtime.ts";
@@ -122,24 +122,22 @@ let previewCanvas: CanvasPreviewer;
 
 let previewsOpen = new AbortController();
 
-const updateTest = app.isPackaged && app.getName() === "Nyte Update Test";
+const build = app.isPackaged ? findPackagedBuild(app.getName()) : null;
 
-app.setName(updateTest ? "Nyte Update Test" : app.isPackaged ? "Nyte" : "Nyte (Dev)");
+app.setName(build?.name ?? "Nyte (Dev)");
 
 app.setPath(
   "userData",
   app.commandLine.getSwitchValue("user-data-dir") ||
-    join(
-      app.getPath("appData"),
-      updateTest ? "Nyte Update Test" : app.isPackaged ? "Nyte" : "Nyte Dev",
-    ),
+    join(app.getPath("appData"), build?.name ?? "Nyte Dev"),
 );
 
-if (updateTest) process.env["NYTE_HOME"] = join(app.getPath("userData"), "nyte");
+if (build?.homeInUserData === true)
+  process.env["NYTE_HOME"] = join(app.getPath("userData"), "nyte");
 
 const launchState = new LaunchStateStore(join(app.getPath("userData"), "launch-state.json"));
 
-const home = updateTest ? app.getPath("userData") : homedir();
+const home = build?.homeInUserData === true ? app.getPath("userData") : homedir();
 
 const nyteHome = process.env["NYTE_HOME"] ?? join(home, ".nyte");
 
@@ -404,7 +402,7 @@ async function installStagedCli(staged: Promise<string>): Promise<void> {
 
 function startHost(): DesktopHost {
   const runtime = startHostRuntime({
-    appId: updateTest ? DESKTOP_APP_IDS.updateTest : DESKTOP_APP_IDS.production,
+    build,
     home,
     nyteHome,
     connect: new ConnectRuntime({
@@ -418,7 +416,7 @@ function startHost(): DesktopHost {
     agent: browserSurfaces.agent,
     preview: (request, signal) => previewCanvas(request, signal),
     previewSignal: () => previewsOpen.signal,
-    mediaOrigin: mediaOrigin(accountScheme({ packaged: app.isPackaged, updateTest })),
+    mediaOrigin: mediaOrigin(accountScheme(build)),
     emitHostEvent,
     keepAwake,
     settingsChanged: (next) => {
@@ -447,7 +445,7 @@ function createAccount(config: ConnectConfig | undefined): AccountSession | unde
     try {
       session = registerAccount({
         publishableKey: config.clerk.publishableKey,
-        scheme: accountScheme({ packaged: app.isPackaged, updateTest }),
+        scheme: accountScheme(build),
         window: (id) => (id === undefined ? currentWindow() : windows.get(id))?.window,
         onChange: () => desktopHost?.accountChanged(),
         store: new AccountStore({
@@ -844,7 +842,7 @@ if (!hasSingleInstanceLock) {
   app.quit();
 } else {
   const config = readConnectConfig(import.meta.env);
-  const scheme = accountScheme({ packaged: app.isPackaged, updateTest });
+  const scheme = accountScheme(build);
 
   const shellRoot = app.isPackaged
     ? join(process.resourcesPath, "canvas")

@@ -11,6 +11,8 @@ import {
   developmentHostAgentJob,
   hostAgentPlist,
 } from "../shared/host-agent-job.ts";
+import { PACKAGED_BUILDS } from "../shared/desktop-builds.ts";
+import type { PackagedBuild } from "../shared/desktop-builds.ts";
 
 const execute = promisify(execFile);
 
@@ -34,10 +36,9 @@ export interface HostAgent {
 }
 
 export interface HostAgentOptions {
-  readonly appId: string;
+  readonly build: PackagedBuild | null;
   readonly home: string;
   readonly nyteHome: string;
-  readonly packaged: boolean;
   readonly appPath: string;
   readonly executable: string;
   readonly entry: string;
@@ -45,9 +46,10 @@ export interface HostAgentOptions {
 }
 
 export function hostAgent(options: HostAgentOptions): HostAgent {
-  if (process.platform !== "darwin") return detachedHost(options);
+  if (process.platform !== "darwin" || options.build?.host === "detached")
+    return detachedHost(options);
 
-  return options.packaged ? loginItemAgent(options) : developmentAgent(options);
+  return options.build === null ? developmentAgent(options) : loginItemAgent(options);
 }
 
 /** When `ps` says the process started, or null where there is no `ps` or no such process. */
@@ -73,7 +75,7 @@ export function processAlive(pid: number): boolean {
 
 function loginItemAgent(options: HostAgentOptions): HostAgent {
   const job = bundledHostAgentJob({
-    appId: options.appId,
+    appId: appId(options),
     executable: basename(options.executable),
   });
 
@@ -99,7 +101,7 @@ function loginItemAgent(options: HostAgentOptions): HostAgent {
 }
 
 function developmentAgent(options: HostAgentOptions): HostAgent {
-  const label = options.label ?? `${options.appId}.dev.host`;
+  const label = options.label ?? `${appId(options)}.dev.host`;
   const path = join(options.home, "Library", "LaunchAgents", `${label}.plist`);
 
   const job = developmentHostAgentJob({
@@ -176,7 +178,7 @@ async function servedPid(nyteHome: string): Promise<number | null> {
 }
 
 function detachedHost(options: HostAgentOptions): HostAgent {
-  const label = options.label ?? `${options.appId}.host`;
+  const label = options.label ?? `${appId(options)}.host`;
   const pid = (): Promise<number | null> => servedPid(options.nyteHome);
 
   const start = async (): Promise<AgentRegistration> => {
@@ -188,7 +190,7 @@ function detachedHost(options: HostAgentOptions): HostAgent {
       [
         options.entry,
         "--log",
-        ...(options.packaged ? [] : ["--tailnet", developmentTailnet(options)]),
+        ...(options.build === null ? ["--tailnet", developmentTailnet(options)] : []),
       ],
       {
         detached: true,
@@ -233,6 +235,10 @@ function detachedHost(options: HostAgentOptions): HostAgent {
 async function stopped(pid: () => Promise<number | null>): Promise<void> {
   for (let attempt = 0; attempt < 50 && (await pid()) !== null; attempt++)
     await new Promise((resolve) => setTimeout(resolve, 100));
+}
+
+function appId(options: HostAgentOptions): string {
+  return (options.build ?? PACKAGED_BUILDS.production).appId;
 }
 
 function developmentTailnet(options: HostAgentOptions): string {

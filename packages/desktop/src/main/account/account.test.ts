@@ -19,6 +19,7 @@ import {
   shellContentSecurityPolicy,
 } from "../../shared/account/policy.ts";
 import { accountScheme } from "../../shared/account/scheme.ts";
+import { findPackagedBuild } from "../../shared/desktop-builds.ts";
 import { createSignInKeeper } from "./account-keeper.ts";
 import { AccountCancelled } from "@nyte-ai/connect/host";
 import { AccountStore } from "./account-store.ts";
@@ -37,10 +38,11 @@ function sequence(): () => string {
 
 describe("account scheme", () => {
   test("each build registers its own callback scheme", () => {
-    expect(accountScheme({ packaged: false, updateTest: false })).toBe("nyte-desktop-dev");
-    expect(accountScheme({ packaged: false, updateTest: true })).toBe("nyte-desktop-dev");
-    expect(accountScheme({ packaged: true, updateTest: false })).toBe("nyte-desktop");
-    expect(accountScheme({ packaged: true, updateTest: true })).toBe("nyte-desktop-test");
+    expect(
+      [null, ...["Nyte", "Nyte Update Test", "Nyte Bench"].map(findPackagedBuild)].map(
+        accountScheme,
+      ),
+    ).toEqual(["nyte-desktop-dev", "nyte-desktop", "nyte-desktop-test", "nyte-desktop-bench"]);
   });
 });
 

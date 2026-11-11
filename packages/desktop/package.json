@@ -19,7 +19,8 @@
     "grid": "playwright test --config e2e/playwright.config.ts e2e/grid.spec.ts --workers=1 --retries=0 --reporter=list",
     "grid:diff": "node e2e/grid/diff.ts",
     "package": "node scripts/build.mjs --package --publish never",
-    "package:app": "node scripts/build.mjs --package --dir"
+    "package:app": "node scripts/build.mjs --package --dir",
+    "package:bench": "NYTE_DESKTOP_BUILD='Nyte Bench' node scripts/build.mjs --package --dir"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.317",

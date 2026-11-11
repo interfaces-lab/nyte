@@ -4,23 +4,17 @@ import { join } from "node:path";
 import { sign } from "@electron/osx-sign";
 import { Arch } from "electron-builder";
 import type { AfterPackContext, Configuration, MacConfiguration } from "electron-builder";
-import { ACCOUNT_SCHEMES } from "./src/shared/account/scheme.ts";
-import {
-  bundledHostAgentJob,
-  DESKTOP_APP_IDS,
-  hostAgentPlist,
-} from "./src/shared/host-agent-job.ts";
+import { findPackagedBuild, PACKAGED_BUILDS } from "./src/shared/desktop-builds.ts";
+import { bundledHostAgentJob, hostAgentPlist } from "./src/shared/host-agent-job.ts";
 import packageMetadata from "./package.json" with { type: "json" };
 
-const updateTest = process.env["NYTE_UPDATE_TEST"] === "1";
+const build = findPackagedBuild(
+  process.env["NYTE_DESKTOP_BUILD"] || PACKAGED_BUILDS.production.name,
+);
 
 const version = process.env["NYTE_RELEASE_VERSION"] ?? packageMetadata.version;
 
 const nightly = version.includes("-nightly.");
-
-const productName = updateTest ? "Nyte Update Test" : "Nyte";
-
-const appId = updateTest ? DESKTOP_APP_IDS.updateTest : DESKTOP_APP_IDS.production;
 
 const CLI = [
   { from: "../tui/dist/nyte", to: "nyte" },
@@ -109,7 +103,7 @@ async function bundleHostAgent(context: AfterPackContext): Promise<void> {
   if (context.electronPlatformName !== "darwin") return;
 
   const job = bundledHostAgentJob({
-    appId,
+    appId: build.appId,
     executable: context.packager.appInfo.productFilename,
   });
 
@@ -234,24 +228,25 @@ const mac = {
 } satisfies MacConfiguration;
 
 export default {
-  appId,
-  productName,
-  executableName: productName,
-  extraMetadata: { name: productName, productName, version },
+  appId: build.appId,
+  productName: build.name,
+  executableName: build.name,
+  extraMetadata: { name: build.name, productName: build.name, version },
   artifactName: "Nyte-${version}-${os}-${arch}.${ext}",
   protocols: {
-    name: productName,
-    schemes: [updateTest ? ACCOUNT_SCHEMES.updateTest : ACCOUNT_SCHEMES.production],
+    name: build.name,
+    schemes: [build.accountScheme],
   },
-  publish: updateTest
-    ? { provider: "generic", url: "http://localhost:8917" }
-    : {
-        provider: "github",
-        owner: "interfaces-lab",
-        repo: "nyte",
-        releaseType: nightly ? "prerelease" : "release",
-        channel: nightly ? "nightly" : "latest",
-      },
+  publish:
+    build === PACKAGED_BUILDS.updateTest
+      ? { provider: "generic", url: "http://localhost:8917" }
+      : {
+          provider: "github",
+          owner: "interfaces-lab",
+          repo: "nyte",
+          releaseType: nightly ? "prerelease" : "release",
+          channel: nightly ? "nightly" : "latest",
+        },
   directories: { output: "dist", buildResources: "build" },
   files: ["out/**/*", "package.json", "!**/node_modules/@anthropic-ai/claude-agent-sdk-*/**/*"],
   asarUnpack: ["node_modules/@lydell/**/*", "node_modules/@anthropic-ai/claude-agent-sdk*/**/*"],
@@ -260,7 +255,7 @@ export default {
     { from: "../app/dist", to: "app" },
     { from: "../canvas/dist/shell", to: "canvas" },
   ],
-  mac: updateTest ? { ...mac, notarize: false } : mac,
+  mac: build === PACKAGED_BUILDS.production ? mac : { ...mac, notarize: false },
   dmg: {
     contents: [
       { x: 130, y: 220, type: "file" },
@@ -276,8 +271,8 @@ export default {
   linux: {
     target: ["AppImage"],
     category: "Development",
-    executableName: productName,
+    executableName: build.name,
     extraResources: CLI,
   },
-  win: { target: ["nsis"], executableName: productName },
+  win: { target: ["nsis"], executableName: build.name },
 } satisfies Configuration;

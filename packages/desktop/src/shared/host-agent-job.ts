@@ -1,10 +1,5 @@
 import { basename } from "node:path";
 
-export const DESKTOP_APP_IDS = {
-  production: "ai.nyte.desktop",
-  updateTest: "ai.nyte.desktop.update-test",
-} as const;
-
 export interface HostAgentJob {
   readonly label: string;
   readonly program: { readonly kind: "bundle" | "path"; readonly path: string };

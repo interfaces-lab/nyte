@@ -9,7 +9,7 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { openSecret, sealSecret } from "@nyte-ai/host/credentials";
 import { ACCOUNT_CHANNELS } from "../../shared/account/protocol.ts";
-import { ACCOUNT_HOST, ACCOUNT_SCHEMES } from "../../shared/account/scheme.ts";
+import { ACCOUNT_HOST, DEVELOPMENT_ACCOUNT_SCHEME } from "../../shared/account/scheme.ts";
 import { registerAccount } from "../account/account.ts";
 import { AccountCancelled } from "@nyte-ai/connect/host";
 import { AccountStore } from "../account/account-store.ts";
@@ -146,7 +146,7 @@ async function run(): Promise<void> {
   const origin = `http://127.0.0.1:${address.port}`;
 
   process.env.ELECTRON_RENDERER_URL = origin;
-  const scheme = ACCOUNT_SCHEMES.development;
+  const scheme = DEVELOPMENT_ACCOUNT_SCHEME;
   const rendererUrl = registerRenderer({
     scheme,
     frontendApiHost: "clerk.example.com",

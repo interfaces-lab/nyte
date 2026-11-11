@@ -21,6 +21,7 @@ import { HostLink } from "./host-link.ts";
 import type { HostLinkState } from "./host-link.ts";
 import { followHostProcess } from "./host-process.ts";
 import type { HostProcessFollower } from "./host-process.ts";
+import type { PackagedBuild } from "../shared/desktop-builds.ts";
 
 export interface HostRuntime {
   readonly agent: HostAgent;
@@ -35,7 +36,7 @@ export type HostRuntimeOptions = Pick<
   DesktopHostDependencies,
   "emitHostEvent" | "keepAwake" | "settingsChanged" | "alert" | "badge" | "mediaOrigin"
 > & {
-  readonly appId: string;
+  readonly build: PackagedBuild | null;
   readonly home: string;
   readonly nyteHome: string;
   readonly connect: ConnectRuntime;
@@ -51,14 +52,13 @@ export type HostRuntimeOptions = Pick<
 
 export function startHostRuntime(options: HostRuntimeOptions): HostRuntime {
   const agent = hostAgent({
-    appId: options.appId,
+    build: options.build,
     home: options.home,
     nyteHome: options.nyteHome,
-    packaged: app.isPackaged,
     appPath: app.getAppPath(),
     executable: process.execPath,
     entry: fileURLToPath(options.hostEntry),
-    label: app.isPackaged ? undefined : process.env["NYTE_DESKTOP_HOST_LABEL"],
+    label: options.build === null ? process.env["NYTE_DESKTOP_HOST_LABEL"] : undefined,
   });
 
   const socket = join(options.nyteHome, "host.sock");
