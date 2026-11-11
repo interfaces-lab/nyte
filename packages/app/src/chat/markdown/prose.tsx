@@ -448,11 +448,17 @@ const urlTransform: UrlTransform = (url, key, node) =>
 
 const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
 
+const REFERENCE_DEFINITION = /^ {0,3}\[[^\]]+\]:/mu;
+
+const RECENT_SPLITS = 8;
+
+const recentSplits: { readonly input: string; readonly blocks: readonly string[] }[] = [];
+
 function splitMarkdown(markdown: string): string[] {
   const source = markdown.includes("\r") ? markdown.replaceAll(/\r\n?/gu, "\n") : markdown;
-  const blocks = parseMarkdownIntoBlocks(source);
+  const blocks = splitBlocks(source);
 
-  if (blocks.length === 0) return blocks;
+  if (blocks.length === 0) return [];
 
   const settled = blocks.slice(0, -1);
 
@@ -460,6 +466,44 @@ function splitMarkdown(markdown: string): string[] {
     ...settled,
     remend(source.slice(settled.reduce((length, block) => length + block.length, 0))),
   ];
+}
+
+/** Streamdown returns one block for the whole input when `/\[\^[\w-]+\]/` matches anywhere, code included. */
+function splitBlocks(source: string): readonly string[] {
+  if (REFERENCE_DEFINITION.test(source)) return parseMarkdownIntoBlocks(source);
+
+  const index = recentSplits.findLastIndex((split) => source.startsWith(split.input));
+  const previous = recentSplits[index];
+
+  if (previous?.input === source) return previous.blocks;
+
+  const kept =
+    previous?.blocks.slice(
+      0,
+      previous.blocks.slice(0, -2).findLastIndex((block) => block.endsWith("\n\n")) + 1,
+    ) ?? [];
+
+  const rest = source.slice(kept.reduce((length, block) => length + block.length, 0));
+  const withoutFootnoteMarkers = rest.replaceAll("[^", "[\u2060");
+  let start = 0;
+
+  const blocks = [
+    ...kept,
+    ...parseMarkdownIntoBlocks(withoutFootnoteMarkers).map((block) => {
+      const end = start + block.length;
+      const piece = rest.slice(start, end);
+      start = end;
+
+      return piece;
+    }),
+  ];
+
+  if (index !== -1) recentSplits.splice(index, 1);
+  recentSplits.push({ input: source, blocks });
+
+  if (recentSplits.length > RECENT_SPLITS) recentSplits.shift();
+
+  return blocks;
 }
 
 function subscribeReducedMotion(onChange: () => void): () => void {
