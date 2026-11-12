@@ -55,7 +55,7 @@ import { safeExternalUrl } from "./native/external-url.ts";
 import { Alerts } from "./alerts.ts";
 import { BrowserSurfaces } from "./browser/browser.ts";
 import { BrowserHistoryStore } from "./browser/browser-history.ts";
-import { showContextMenu } from "./native/context-menu.ts";
+import { showContextMenu, showEditableMenu } from "./native/context-menu.ts";
 import { callIpc, callTable } from "../shared/ipc-call.ts";
 import type { CallRoute } from "../shared/ipc-call.ts";
 import { localFonts } from "./native/fonts.ts";
@@ -720,19 +720,7 @@ function createWindow(windowId: string = randomUUID(), opening?: DesktopWindowOp
 
     return { action: "deny" };
   });
-  created.webContents.on("context-menu", (_event, params) => {
-    if (!params.isEditable) return;
-    Menu.buildFromTemplate([
-      { role: "undo", enabled: params.editFlags.canUndo },
-      { role: "redo", enabled: params.editFlags.canRedo },
-      { type: "separator" },
-      { role: "cut", enabled: params.editFlags.canCut },
-      { role: "copy", enabled: params.editFlags.canCopy },
-      { role: "paste", enabled: params.editFlags.canPaste },
-      { type: "separator" },
-      { role: "selectAll", enabled: params.editFlags.canSelectAll },
-    ]).popup({ window: created, frame: params.frame ?? undefined });
-  });
+  created.webContents.on("context-menu", (_event, params) => showEditableMenu(created, params));
   created.webContents.on("will-attach-webview", (event) => event.preventDefault());
   created.webContents.on("will-navigate", (event, url) => {
     if (url !== created.webContents.getURL()) event.preventDefault();
