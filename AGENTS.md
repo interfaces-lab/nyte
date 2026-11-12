@@ -41,6 +41,7 @@
 
 ## Live desktop diagnostics
 
+- Sessions run in the host, so quitting the desktop app (`pnpm install:desktop`) doesn't stop yours.
 - To attach Playwright to a running desktop app, use `chromium.connectOverCDP(endpoint, { noDefaults: true })`. Without `noDefaults`, Playwright applies light-mode media emulation while attached, so a window that follows the system theme flashes light until the connection closes. The option also keeps focus and the other media preferences as they were.
 - Don't emulate a colour scheme or reduced motion on the user's live window unless asked; use an isolated test context for those cases.
 
