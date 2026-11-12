@@ -580,14 +580,26 @@ interface OpeningFrame {
   readonly fullscreen: boolean;
 }
 
-function openingFrame(): OpeningFrame {
-  const saved = launchState.window();
+function openingFrame(windowId: string): OpeningFrame {
+  const own = launchState.frame(windowId);
 
-  if (saved === undefined)
+  if (own !== undefined && onScreen(own.bounds)) return own;
+  const last = launchState.window();
+
+  if (last === undefined)
     return { bounds: { width: 1280, height: 800 }, maximized: false, fullscreen: false };
-  const { bounds } = saved;
 
-  const shown = screen
+  if (own === undefined && windows.size === 0 && onScreen(last.bounds)) return last;
+
+  return {
+    bounds: { width: last.bounds.width, height: last.bounds.height },
+    maximized: false,
+    fullscreen: false,
+  };
+}
+
+function onScreen(bounds: Electron.Rectangle): boolean {
+  return screen
     .getAllDisplays()
     .some(
       ({ workArea }) =>
@@ -596,14 +608,6 @@ function openingFrame(): OpeningFrame {
         bounds.y < workArea.y + workArea.height &&
         bounds.y + bounds.height > workArea.y,
     );
-
-  if (windows.size === 0 && shown) return saved;
-
-  return {
-    bounds: { width: bounds.width, height: bounds.height },
-    maximized: false,
-    fullscreen: false,
-  };
 }
 
 const FIRST_FRAME_LIMIT_MS = 4_000;
@@ -613,7 +617,7 @@ const FIRST_FRAME_LIMIT_MS = 4_000;
  * workspace is seeded before it loads, so every load of it shows the folder.
  */
 function createWindow(windowId: string = randomUUID(), opening?: DesktopWindowOpen): NyteWindow {
-  const frame = openingFrame();
+  const frame = openingFrame(windowId);
   const kept = launchState.windows();
 
   if (!kept.includes(windowId)) launchState.setWindows([...kept, windowId]);
@@ -746,7 +750,7 @@ function createWindow(windowId: string = randomUUID(), opening?: DesktopWindowOp
 
     const bounds = created.getNormalBounds();
 
-    launchState.setWindow({
+    launchState.setWindow(windowId, {
       bounds: {
         x: Math.round(bounds.x),
         y: Math.round(bounds.y),

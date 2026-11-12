@@ -23,6 +23,7 @@ const stateSchema = Type.Object({
   theme: themeSource,
   window: Type.Optional(windowFrame),
   windows: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
+  frames: Type.Optional(Type.Record(Type.String({ minLength: 1 }), windowFrame)),
 });
 
 const launchState = Compile(stateSchema);
@@ -64,16 +65,28 @@ export class LaunchStateStore {
     return this.#state.windows ?? [];
   }
 
+  frame(windowId: string): WindowFrame | undefined {
+    return this.#state.frames?.[windowId];
+  }
+
   setTheme(theme: ThemeSource): void {
     this.#write({ ...this.#state, theme });
   }
 
-  setWindow(window: WindowFrame): void {
-    this.#write({ ...this.#state, window });
+  setWindow(windowId: string, window: WindowFrame): void {
+    this.#write({
+      ...this.#state,
+      window,
+      frames: { ...this.#state.frames, [windowId]: window },
+    });
   }
 
   setWindows(windows: readonly string[]): void {
-    this.#write({ ...this.#state, windows: [...windows] });
+    const frames = Object.fromEntries(
+      Object.entries(this.#state.frames ?? {}).filter(([windowId]) => windows.includes(windowId)),
+    );
+
+    this.#write({ ...this.#state, windows: [...windows], frames });
   }
 
   #write(next: LaunchState): void {
