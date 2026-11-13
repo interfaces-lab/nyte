@@ -23,6 +23,7 @@ import type {
   Page,
   Workspace,
 } from "@nyte-ai/core";
+import { mapped } from "@nyte-ai/protocol";
 import type { OperationInput } from "@nyte-ai/protocol";
 import { resolveCapability } from "./capability.ts";
 import { loginHandle } from "./login.ts";
@@ -288,29 +289,6 @@ function jobHandle(rows: Rows, workspace: WorkspaceId, job: JobId, key: JobKey |
 
 function patchSet(wire: PatchSetWire): PatchSet {
   return { revision: wire.revision, entries: new Map(Object.entries(wire.entries)) };
-}
-
-function mapped<T, U>(source: AsyncIterable<T>, map: (value: T) => U): AsyncIterable<U> {
-  return {
-    [Symbol.asyncIterator]() {
-      const iterator = source[Symbol.asyncIterator]();
-
-      return {
-        async next(): Promise<IteratorResult<U>> {
-          const next = await iterator.next();
-
-          return next.done === true
-            ? { done: true, value: undefined }
-            : { done: false, value: map(next.value) };
-        },
-        async return(): Promise<IteratorResult<U>> {
-          await iterator.return?.();
-
-          return { done: true, value: undefined };
-        },
-      };
-    },
-  };
 }
 
 /** Browsers reject a streamed request body over HTTP/1.1, which local hosts speak, so an upload sends its bytes whole. */

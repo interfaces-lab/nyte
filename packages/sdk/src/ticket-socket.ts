@@ -1,6 +1,6 @@
 import { isJson, isJsonObject, SdkError, SOCKET_PATH, TICKET_PATH } from "@nyte-ai/schema";
 import type { SocketLike } from "@nyte-ai/protocol";
-import { hostUrl } from "./host-connection.ts";
+import { globalWebSocket, hostUrl } from "./host-connection.ts";
 import type { OpenSocket, SocketRequest } from "./host-connection.ts";
 
 type Listener = (event: {
@@ -8,8 +8,6 @@ type Listener = (event: {
   readonly code: number;
   readonly reason: string;
 }) => void;
-
-type UrlSocket = new (url: string) => SocketLike;
 
 export function ticketSocket(
   options: { readonly fetch?: (url: string, init?: RequestInit) => Promise<Response> } = {},
@@ -48,10 +46,7 @@ async function dialWithTicket(
 
   if (typeof ticket !== "string" || ticket === "")
     throw new SdkError("invalid", "The host answered no socket ticket.");
-  const Socket: unknown = globalThis.WebSocket;
-
-  if (!urlSocketClass(Socket))
-    throw new SdkError("not_supported", "This runtime has no WebSocket; pass a socket factory.");
+  const Socket = globalWebSocket();
   url.searchParams.set("ticket", ticket);
 
   return new Socket(url.href);
@@ -105,10 +100,4 @@ function deferredSocket(open: () => Promise<SocketLike>): SocketLike {
       listeners.set(type, known);
     },
   };
-}
-
-function urlSocketClass(value: unknown): value is UrlSocket {
-  if (typeof value !== "function") return false;
-
-  return "CONNECTING" in value;
 }

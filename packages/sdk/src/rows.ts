@@ -8,7 +8,7 @@ import type {
   RequestOptions,
 } from "@nyte-ai/schema";
 import { closable, dev } from "@nyte-ai/core/client";
-import { decodeOutput, encodeInput } from "@nyte-ai/protocol";
+import { decodeOutput, encodeInput, linkLost } from "@nyte-ai/protocol";
 import type {
   ByteName,
   CallName,
@@ -324,7 +324,12 @@ function through<T, U>(
         async next(): Promise<IteratorResult<U>> {
           for (;;) {
             if (signal.aborted) return DONE;
-            const next = await iterator.next();
+
+            const next = await iterator.next().catch((cause: unknown) => {
+              signal.removeEventListener("abort", stop);
+
+              throw cause;
+            });
 
             if (next.done === true) {
               signal.removeEventListener("abort", stop);
@@ -372,10 +377,6 @@ function hostGone(transport: Transport, error: unknown): boolean {
     error.hostId !== null &&
     error.hostId !== pinned
   );
-}
-
-function linkLost(error: unknown): error is SdkError {
-  return error instanceof SdkError && error.code === "unavailable";
 }
 
 export function retryDelay(attempts: number): number {

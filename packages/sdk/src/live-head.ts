@@ -35,7 +35,29 @@ export interface HeadStore extends Live<HeadSnapshot | null> {
   close(): void;
 }
 
-type Held = { readonly store: SessionStore; activation: Activation };
+type Held = {
+  readonly store: SessionStore;
+  activation: Activation;
+  built: readonly MessageId[] | null;
+};
+
+type Table = keyof SessionRows;
+
+const TABLES: readonly Table[] = [
+  "messages",
+  "turns",
+  "parts",
+  "changes",
+  "catalog",
+  "heads",
+  "settings",
+  "usage",
+  "background",
+];
+
+const EVERY_TABLE: ReadonlySet<Table> = new Set(TABLES);
+
+const NO_TABLE: ReadonlySet<Table> = new Set();
 
 const EMPTY_CATALOG: SessionCatalogView = {
   commands: [],
@@ -60,13 +82,14 @@ export function openHeadStore(
   let stop: (() => void) | null = null;
   let pending: SessionChange[] = [];
   let reading = false;
+  let heard: Activation | null = null;
   let wanted: CatalogId | null = null;
 
   const stale = (error: SdkError | null): void => {
     if (freshness.stale(error)) listeners.notify();
   };
 
-  const settle = (live: HostSocket, current: Held): void => {
+  const settle = (live: HostSocket, current: Held, touched: ReadonlySet<Table>): void => {
     if (current.store.stale) {
       stale(null);
       void read(live);
@@ -74,7 +97,7 @@ export function openHeadStore(
       return;
     }
 
-    const next = rebuild(input.head, current, snapshot, resolveCatalog(live, current));
+    const next = rebuild(input.head, current, snapshot, resolveCatalog(live, current), touched);
     const moved = freshness.fresh(current.store.seq);
 
     if (next === snapshot && !moved) return;
@@ -94,7 +117,7 @@ export function openHeadStore(
       wanted = id;
       catalogs.read(id).then(
         () => {
-          if (socket === live && held === current && !reading) settle(live, current);
+          if (socket === live && held === current && !reading) settle(live, current, NO_TABLE);
         },
         (error) => {
           if (wanted === id) wanted = null;
@@ -109,6 +132,7 @@ export function openHeadStore(
 
   const read = async (live: HostSocket): Promise<void> => {
     reading = true;
+    heard = null;
 
     try {
       const subscribing = subscribe();
@@ -128,18 +152,19 @@ export function openHeadStore(
 
       if (socket !== live) return;
 
-      if (held === null)
-        held = { store: openSessionStore(window), activation: window.live.activation };
+      const activation = heard ?? window.live.activation;
+
+      if (held === null) held = { store: openSessionStore(window), activation, built: null };
       else {
         held.store.resume(window);
-        held.activation = window.live.activation;
+        held.activation = activation;
       }
 
       reading = false;
       retries.reset();
 
       for (const change of pending.splice(0)) held.store.apply(change);
-      settle(live, held);
+      settle(live, held, EVERY_TABLE);
     } catch (error) {
       if (socket !== live) return;
       stale(asSdkError(error));
@@ -153,10 +178,12 @@ export function openHeadStore(
     if (event.scope !== `session/${input.session}`) return;
 
     if (event.kind === "live" && activations.Check(event.activation)) {
+      heard = event.activation;
+
       if (held === null) return;
       held.activation = event.activation;
 
-      if (!reading) settle(live, held);
+      if (!reading) settle(live, held, NO_TABLE);
 
       return;
     }
@@ -170,7 +197,7 @@ export function openHeadStore(
     }
 
     held.store.apply(event);
-    settle(live, held);
+    settle(live, held, new Set(TABLES.filter((table) => event.tables[table] !== undefined)));
   };
 
   const leave = join(`session/${input.session}`, {
@@ -209,12 +236,17 @@ function rebuild(
   current: Held,
   previous: HeadSnapshot | null,
   catalog: SessionCatalogView,
+  touched: ReadonlySet<Table>,
 ): HeadSnapshot {
   const source = current.store.snapshot();
-  const rows = keepTables(source.rows, previous?.rows);
+  const rows = keepTables(source.rows, previous?.rows, touched);
 
   const order =
-    previous !== null && sameJson(previous.order, source.order) ? previous.order : source.order;
+    previous !== null && (current.built === source.order || sameJson(previous.order, source.order))
+      ? previous.order
+      : source.order;
+
+  current.built = source.order;
 
   const activation =
     previous !== null && sameJson(previous.activation, current.activation)
@@ -234,17 +266,29 @@ function rebuild(
   return { head, order, leadingPrompt: source.leadingPrompt, activation, rows, catalog };
 }
 
-function keepTables(source: SessionRows, previous: HeadRows | undefined): HeadRows {
+/** Keeps the previous table for each table `touched` leaves out, so a table's identity changes only when its rows do. */
+function keepTables(
+  source: SessionRows,
+  previous: HeadRows | undefined,
+  touched: ReadonlySet<Table>,
+): HeadRows {
+  const keep = <Row>(
+    table: Table,
+    rows: ReadonlyMap<string, Row>,
+    held: ReadonlyMap<string, Row> | undefined,
+  ): ReadonlyMap<string, Row> =>
+    held !== undefined && !touched.has(table) ? held : keepRows(rows, held);
+
   const next: HeadRows = {
-    messages: keepRows(source.messages, previous?.messages),
-    turns: keepRows(source.turns, previous?.turns),
-    parts: keepRows(source.parts, previous?.parts),
-    changes: keepRows(source.changes, previous?.changes),
-    catalog: keepRows(source.catalog, previous?.catalog),
-    heads: keepRows(source.heads, previous?.heads),
-    settings: keepRows(source.settings, previous?.settings),
-    usage: keepRows(source.usage, previous?.usage),
-    background: keepRows(source.background, previous?.background),
+    messages: keep("messages", source.messages, previous?.messages),
+    turns: keep("turns", source.turns, previous?.turns),
+    parts: keep("parts", source.parts, previous?.parts),
+    changes: keep("changes", source.changes, previous?.changes),
+    catalog: keep("catalog", source.catalog, previous?.catalog),
+    heads: keep("heads", source.heads, previous?.heads),
+    settings: keep("settings", source.settings, previous?.settings),
+    usage: keep("usage", source.usage, previous?.usage),
+    background: keep("background", source.background, previous?.background),
   };
 
   if (previous === undefined) return next;

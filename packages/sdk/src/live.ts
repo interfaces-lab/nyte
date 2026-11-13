@@ -89,18 +89,42 @@ export function keepRows<Row>(
   previous: ReadonlyMap<string, Row> | undefined,
 ): ReadonlyMap<string, Row> {
   if (previous === undefined) return new Map(source);
+  let rows: Map<string, Row> | null = null;
+  let unchanged = 0;
+
+  for (const entry of source) {
+    const held = previous.get(entry[0]);
+
+    const kept =
+      held !== undefined && (held === entry[1] || sameJson(held, entry[1])) ? held : entry[1];
+
+    if (rows === null && kept === held) {
+      unchanged += 1;
+      continue;
+    }
+
+    rows ??= heldRows(source, previous, unchanged);
+    rows.set(entry[0], kept);
+  }
+
+  if (rows !== null) return rows;
+
+  return source.size === previous.size ? previous : heldRows(source, previous, source.size);
+}
+
+function heldRows<Row>(
+  source: ReadonlyMap<string, Row>,
+  previous: ReadonlyMap<string, Row>,
+  count: number,
+): Map<string, Row> {
   const rows = new Map<string, Row>();
-  let changed = source.size !== previous.size;
 
-  source.forEach((row, key) => {
-    const held = previous.get(key);
-    const kept = held !== undefined && (held === row || sameJson(held, row)) ? held : row;
+  for (const entry of source) {
+    if (rows.size === count) break;
+    rows.set(entry[0], previous.get(entry[0]) ?? entry[1]);
+  }
 
-    if (kept !== held) changed = true;
-    rows.set(key, kept);
-  });
-
-  return changed ? rows : previous;
+  return rows;
 }
 
 export function sameJson<T>(left: T, right: T): boolean {

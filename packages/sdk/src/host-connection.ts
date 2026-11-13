@@ -25,6 +25,7 @@ import type {
   SocketLike,
 } from "@nyte-ai/protocol";
 import { catalogCache } from "./catalogs.ts";
+import { credentialHeaders } from "./connect.ts";
 import { performs } from "./event-checks.ts";
 import { openClientsStore } from "./live-clients.ts";
 import type { ClientsStore } from "./live-clients.ts";
@@ -97,7 +98,7 @@ export interface HostConnection {
   offer(action: ActionDeclaration, handler: ActionHandler): Disposer;
 }
 
-type Owned = { readonly connection: HostConnection; hold(): void };
+type Owned = { readonly connection: HostConnection; hold(credentials: HostCredentials): void };
 
 type Registry = { named(host: HostId): void; closed(): void };
 
@@ -117,7 +118,7 @@ export function openHost(address: string, options: HostOptions): HostConnection 
   const known = hosts.get(dialed.get(address) ?? address);
 
   if (known !== undefined) {
-    known.hold();
+    known.hold(options.credentials);
 
     return known.connection;
   }
@@ -154,6 +155,7 @@ function superviseHost(address: string, options: HostOptions, registry: Registry
   const texts = new Set<(update: TextUpdate) => void>();
   const offers = new Map<string, Offered>();
   let subscribed = new Map<string, Promise<void>>();
+  let credentials = options.credentials;
   let health: Health = { kind: "connecting" };
   let holders = 1;
   let attempt = 0;
@@ -179,6 +181,7 @@ function superviseHost(address: string, options: HostOptions, registry: Registry
     Array.from(offers.values(), (offered) => offered.action);
 
   const connect = async (): Promise<void> => {
+    if (released) return;
     generation += 1;
     const mine = generation;
     clearTimeout(retryTimer);
@@ -197,7 +200,7 @@ function superviseHost(address: string, options: HostOptions, registry: Registry
     const seen: Attempt = { opened: false, refusal: null, closed: null };
 
     try {
-      const headers = await credentialHeaders(options.credentials);
+      const headers = await credentialHeaders(credentials);
 
       if (mine !== generation) return;
 
@@ -228,7 +231,8 @@ function superviseHost(address: string, options: HostOptions, registry: Registry
     } catch (error) {
       if (mine !== generation) return;
 
-      if (!seen.opened) seen.refusal = await loginStatus(address, options);
+      if (!seen.opened)
+        seen.refusal = await loginStatus(address, credentials, options.fetch ?? fetch);
 
       if (mine === generation) failed(asSdkError(error), seen);
     }
@@ -264,7 +268,7 @@ function superviseHost(address: string, options: HostOptions, registry: Registry
   };
 
   const welcomed = (socket: HostSocket, welcome: WelcomeFrame): void => {
-    if (current !== socket) return;
+    if (current !== socket || released) return;
     host = welcome.host_id;
     registry.named(host);
     attempt = 0;
@@ -493,24 +497,33 @@ function superviseHost(address: string, options: HostOptions, registry: Registry
 
   return {
     connection,
-    hold() {
+    hold(next) {
       holders += 1;
+
+      const same =
+        next.kind === "token"
+          ? credentials.kind === "token" && credentials.token === next.token
+          : credentials.kind === "custom" && credentials.headers === next.headers;
+
+      if (same) return;
+      credentials = next;
+      attempt = 0;
+      const socket = current;
+      current = null;
+
+      for (const entry of joined) entry.attachment.detach();
+      socket?.close();
+      void connect();
     },
   };
 }
 
-export async function credentialHeaders(
+async function loginStatus(
+  address: string,
   credentials: HostCredentials,
-): Promise<Readonly<Record<string, string>>> {
-  if (credentials.kind === "custom") return credentials.headers();
-
-  return { Authorization: `Bearer ${credentials.token}` };
-}
-
-async function loginStatus(address: string, options: HostOptions): Promise<number | null> {
-  const send = options.fetch ?? fetch;
-
-  const response = await credentialHeaders(options.credentials)
+  send: (url: string, init?: RequestInit) => Promise<Response>,
+): Promise<number | null> {
+  const response = await credentialHeaders(credentials)
     .then((headers) =>
       send(hostUrl(address, "/clients.read", "http"), {
         method: "POST",
@@ -540,21 +553,27 @@ export function hostUrl(address: string, path: string, scheme: "http" | "ws"): s
   return url.href;
 }
 
-type HeaderSocket = new (
+type SocketClass = new (
   url: string,
-  init: { readonly headers: Readonly<Record<string, string>> },
+  init?: { readonly headers: Readonly<Record<string, string>> },
 ) => SocketLike;
 
 function openGlobalSocket(request: SocketRequest): SocketLike {
+  const Socket = globalWebSocket();
+
+  return new Socket(request.url, { headers: request.headers });
+}
+
+export function globalWebSocket(): SocketClass {
   const Socket: unknown = globalThis.WebSocket;
 
   if (!webSocketClass(Socket))
     throw new SdkError("not_supported", "This runtime has no WebSocket; pass a socket factory.");
 
-  return new Socket(request.url, { headers: request.headers });
+  return Socket;
 }
 
-function webSocketClass(value: unknown): value is HeaderSocket {
+function webSocketClass(value: unknown): value is SocketClass {
   if (typeof value !== "function") return false;
 
   return "CONNECTING" in value;

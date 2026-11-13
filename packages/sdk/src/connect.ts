@@ -21,7 +21,7 @@ export async function connect(options: ConnectOptions): Promise<Connection> {
   const transport = createTransport({
     url: options.url,
     fetch: send,
-    headers: () => readCredentialHeaders(credentials, transport.credential() ?? kept ?? null),
+    headers: () => credentialHeaders(credentials, transport.credential() ?? kept ?? null),
   });
 
   if (options.expect !== undefined) await verifyIdentity(options.url, send, options.expect.hostId);
@@ -74,9 +74,10 @@ async function openClient(
   });
 }
 
-async function readCredentialHeaders(
+/** Returns the headers a credential sends; a pairing code sends the device token it was traded for once there is one. */
+export async function credentialHeaders(
   credentials: CredentialSource,
-  device: string | null,
+  device: string | null = null,
 ): Promise<Readonly<Record<string, string>>> {
   if (credentials.kind === "custom") return credentials.headers();
 
