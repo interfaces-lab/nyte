@@ -35,6 +35,7 @@ import {
 } from "../store/session.ts";
 import { send } from "./admission.ts";
 import { FENCED, stopRun } from "./fence.ts";
+import { callPhase } from "./call-phase.ts";
 import { waitFor } from "./waits.ts";
 import type { StoreConnection } from "../contract/store.ts";
 import { clipText } from "../util/clip.ts";
@@ -230,14 +231,14 @@ async function abandonedCalls(
   return found.flatMap(({ ref, call }): readonly RefUpdate[] => {
     if (call === null || call.record.run !== run) return [];
 
-    if (call.record.kind === "intent")
-      return [{ name: ref.name, target: null, expect: ref.revision }];
-
-    return call.record.result === null &&
-      call.record.waiting === null &&
-      call.record.waits.length > 0
-      ? [{ name: wokenIndex(session, call.record.id), target: null }]
-      : [];
+    switch (callPhase(call.record).kind) {
+      case "intended":
+        return [{ name: ref.name, target: null, expect: ref.revision }];
+      case "woken":
+        return [{ name: wokenIndex(session, call.record.id), target: null }];
+      default:
+        return [];
+    }
   });
 }
 

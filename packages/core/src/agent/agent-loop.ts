@@ -69,6 +69,28 @@ export interface OutagePolicy {
   readonly maxDelayMs: number;
 }
 
+export interface FailedResponse<P extends PreparedRequest = PreparedRequest> {
+  readonly usage: Usage;
+  readonly prepared: P;
+}
+
+/** A response that finished: its message, the tool calls in it, and what it cost. */
+export interface SettledResponse<P extends PreparedRequest = PreparedRequest> {
+  readonly message: AssistantMessage;
+  readonly calls: readonly ModelToolCall[];
+  readonly usage: Usage;
+  readonly prepared: P;
+}
+
+/** A request the loop makes again: the attempt it becomes, when it is sent, why, and the response that failed, which the caller charges. */
+export interface LoopRetry<P extends PreparedRequest = PreparedRequest> {
+  readonly attempt: number;
+  readonly until: number;
+  readonly failure: Failure;
+  readonly response: FailedResponse<P>;
+}
+
+/** What the loop asks of its caller and tells it. `agentLoop` calls these in the order a run happens and awaits each before its next step, so what one writes is stored before the next step reads; the loop itself never touches the store. `blockUpdated` is the one synchronous member, since it runs once per streamed delta. */
 export interface LoopConfig<P extends PreparedRequest = PreparedRequest> {
   readonly attempt: number;
   readonly retry: RetryPolicy;
@@ -76,26 +98,12 @@ export interface LoopConfig<P extends PreparedRequest = PreparedRequest> {
   ready(signal: AbortSignal): Promise<void>;
   prepareRequest(request: LoopRequest, signal: AbortSignal): Promise<Prepared<P>>;
   stream(prepared: P, signal: AbortSignal): Promise<LoopResponse>;
-  readonly tools: {
-    execute(call: ModelToolCall, signal: AbortSignal): Promise<ToolResult>;
-  };
-
-  settleResponse(
-    response: {
-      readonly message: AssistantMessage;
-      readonly calls: readonly ModelToolCall[];
-      readonly usage: Usage;
-      readonly prepared: P;
-    },
-    signal: AbortSignal,
-  ): Promise<void>;
-
+  blockStarted(kind: "text" | "thinking" | "toolCall", index: number): Promise<void>;
+  blockUpdated(event: AssistantMessageEvent): void;
+  retrying(retry: LoopRetry<P>): Promise<void>;
+  settleResponse(response: SettledResponse<P>, signal: AbortSignal): Promise<void>;
+  readonly tools: { execute(call: ModelToolCall, signal: AbortSignal): Promise<ToolResult> };
   boundary(signal: AbortSignal): Promise<readonly LoopInput[]>;
-}
-
-export interface FailedResponse<P extends PreparedRequest = PreparedRequest> {
-  readonly usage: Usage;
-  readonly prepared: P;
 }
 
 export type LoopEnd<P extends PreparedRequest = PreparedRequest> =
@@ -107,38 +115,6 @@ export type LoopEnd<P extends PreparedRequest = PreparedRequest> =
       readonly failure: Failure;
       readonly response: FailedResponse<P> | null;
     };
-
-export type LoopEvent<P extends PreparedRequest = PreparedRequest> =
-  | { readonly type: "turn_start"; readonly attempt: number }
-  | {
-      readonly type: "message_start";
-      readonly kind: "text" | "thinking" | "toolCall";
-      readonly index: number;
-    }
-  | { readonly type: "message_update"; readonly event: AssistantMessageEvent }
-  | { readonly type: "message_end"; readonly message: AssistantMessage; readonly usage: Usage }
-  | {
-      readonly type: "turn_retry";
-      readonly attempt: number;
-      readonly until: number;
-      readonly failure: Failure;
-      readonly response: FailedResponse<P>;
-    }
-  | { readonly type: "tool_start"; readonly call: ModelToolCall }
-  | { readonly type: "tool_end"; readonly call: ModelToolCall; readonly result: ToolResult }
-  | {
-      readonly type: "turn_end";
-      readonly message: AssistantMessage;
-      readonly calls: readonly ModelToolCall[];
-      readonly usage: Usage;
-    }
-  | { readonly type: "loop_end"; readonly end: LoopEnd<P> };
-
-interface LoopStream<P extends PreparedRequest = PreparedRequest> extends AsyncIterable<
-  LoopEvent<P>
-> {
-  result(): Promise<LoopEnd<P>>;
-}
 
 type Outcome =
   | {
@@ -174,32 +150,11 @@ export const INTERRUPTED: Failure = {
   message: "The response was interrupted before it finished.",
 };
 
-export function agentLoop<P extends PreparedRequest>(
+/** Runs one run's requests in order: prepare, stream, settle the response, run its tool calls one by one, land what arrived at the boundary, and go again until the model is done, a call parks, the run stops or a request fails past its retries. */
+export async function agentLoop<P extends PreparedRequest>(
   config: LoopConfig<P>,
   signal: AbortSignal,
-): LoopStream<P> {
-  const events = run(config, signal);
-  const ended = Promise.withResolvers<LoopEnd<P>>();
-  ended.promise.catch(() => undefined);
-
-  return {
-    async *[Symbol.asyncIterator]() {
-      try {
-        ended.resolve(yield* events);
-      } catch (error) {
-        ended.reject(error);
-
-        throw error;
-      }
-    },
-    result: () => ended.promise,
-  };
-}
-
-async function* run<P extends PreparedRequest>(
-  config: LoopConfig<P>,
-  signal: AbortSignal,
-): AsyncGenerator<LoopEvent<P>, LoopEnd<P>> {
+): Promise<LoopEnd<P>> {
   let attempt = config.attempt;
   let retries = 0;
   let outageStart: number | null = null;
@@ -210,11 +165,9 @@ async function* run<P extends PreparedRequest>(
 
   for (;;) {
     const next = overflow === null ? attempt : attempt + 1;
-    yield { type: "turn_start", attempt: next };
     await config.ready(signal);
 
-    if (signal.aborted)
-      return yield* end({ reason: "stopped", response: overflow?.response ?? null });
+    if (signal.aborted) return { reason: "stopped", response: overflow?.response ?? null };
 
     const prepared = await config.prepareRequest(
       { attempt: next, overflow: overflow?.failure ?? null },
@@ -222,34 +175,31 @@ async function* run<P extends PreparedRequest>(
     );
 
     if (prepared.kind === "failed")
-      return yield* end({
-        reason: "failed",
-        failure: prepared.failure,
-        response: overflow?.response ?? null,
-      });
+      return { reason: "failed", failure: prepared.failure, response: overflow?.response ?? null };
 
     if (overflow !== null) {
       attempt = next;
-      yield { type: "turn_retry", attempt, until: Date.now(), ...overflow };
+      await config.retrying({ attempt, until: Date.now(), ...overflow });
       overflow = null;
     }
 
-    const outcome = yield* respond(config, prepared, signal);
+    const outcome = await respond(config, prepared, signal);
 
     switch (outcome.kind) {
       case "stopped":
-        return yield* end({ reason: "stopped", response: { usage: outcome.usage, prepared } });
+        return { reason: "stopped", response: { usage: outcome.usage, prepared } };
       case "unfinished":
-        return yield* end({ reason: "failed", failure: UNFINISHED, response: null });
+        return { reason: "failed", failure: UNFINISHED, response: null };
       case "interrupted":
         attempt += 1;
-        yield {
-          type: "turn_retry",
+
+        await config.retrying({
           attempt,
           until: Date.now(),
           failure: INTERRUPTED,
           response: { usage: outcome.usage, prepared },
-        };
+        });
+
         continue;
       case "failed": {
         const { failure } = outcome;
@@ -266,18 +216,18 @@ async function* run<P extends PreparedRequest>(
               Date.now() +
               Math.min(retryDelayMs(config.retry, outageAttempts), config.outage.maxDelayMs);
 
-            yield { type: "turn_retry", attempt, until, failure, response };
+            await config.retrying({ attempt, until, failure, response });
 
             const slept = await abortableSleep(until - Date.now(), signal).then(
               () => true,
               () => false,
             );
 
-            if (!slept) return yield* end(STOPPED);
+            if (!slept) return STOPPED;
             continue;
           }
 
-          return yield* end({ reason: "failed", failure, response });
+          return { reason: "failed", failure, response };
         }
 
         const delay = outcome.retryable
@@ -285,25 +235,25 @@ async function* run<P extends PreparedRequest>(
           : null;
 
         if (delay === null || retries >= config.retry.maxRetries)
-          return yield* end({ reason: "failed", failure, response });
+          return { reason: "failed", failure, response };
         retries += 1;
         attempt += 1;
         const until = Date.now() + delay;
-        yield { type: "turn_retry", attempt, until, failure, response };
+        await config.retrying({ attempt, until, failure, response });
 
         const slept = await abortableSleep(until - Date.now(), signal).then(
           () => true,
           () => false,
         );
 
-        if (!slept) return yield* end(STOPPED);
+        if (!slept) return STOPPED;
         continue;
       }
 
       case "overflow":
         overflow = { failure: outcome.failure, response: { usage: outcome.usage, prepared } };
 
-        if (overflowed) return yield* end({ reason: "failed", ...overflow });
+        if (overflowed) return { reason: "failed", ...overflow };
         overflowed = true;
         continue;
       case "done":
@@ -315,22 +265,17 @@ async function* run<P extends PreparedRequest>(
     outageAttempts = 0;
     overflowed = false;
     const { message, calls, usage } = outcome;
-    yield { type: "message_end", message, usage };
     await config.settleResponse({ message, calls, usage, prepared }, signal);
     let parked = false;
 
     for (const call of calls) {
-      if (signal.aborted) return yield* end(STOPPED);
-      yield { type: "tool_start", call };
+      if (signal.aborted) return STOPPED;
       const result = await config.tools.execute(call, signal);
-      yield { type: "tool_end", call, result };
 
       if (result.kind === "parked") parked = true;
     }
 
-    yield { type: "turn_end", message, calls, usage };
-
-    if (parked) return yield* end({ reason: "parked", usage });
+    if (parked) return { reason: "parked", usage };
     const landed = await config.boundary(signal);
 
     const asked = landed.some(
@@ -341,15 +286,15 @@ async function* run<P extends PreparedRequest>(
         input.source.kind === "answer",
     );
 
-    if (calls.length === 0 && !asked) return yield* end({ reason: "done", usage });
+    if (calls.length === 0 && !asked) return { reason: "done", usage };
   }
 }
 
-async function* respond<P extends PreparedRequest>(
+async function respond<P extends PreparedRequest>(
   config: LoopConfig<P>,
   prepared: P,
   signal: AbortSignal,
-): AsyncGenerator<LoopEvent<P>, Outcome> {
+): Promise<Outcome> {
   const response = await config.stream(prepared, signal);
   let final: AssistantMessage | null = null;
 
@@ -358,13 +303,13 @@ async function* respond<P extends PreparedRequest>(
       case "start":
         break;
       case "text_start":
-        yield { type: "message_start", kind: "text", index: event.contentIndex };
+        await config.blockStarted("text", event.contentIndex);
         break;
       case "thinking_start":
-        yield { type: "message_start", kind: "thinking", index: event.contentIndex };
+        await config.blockStarted("thinking", event.contentIndex);
         break;
       case "toolcall_start":
-        yield { type: "message_start", kind: "toolCall", index: event.contentIndex };
+        await config.blockStarted("toolCall", event.contentIndex);
         break;
       case "done":
         final = event.message;
@@ -373,7 +318,7 @@ async function* respond<P extends PreparedRequest>(
         final = event.error;
         break;
       default:
-        yield { type: "message_update", event };
+        config.blockUpdated(event);
     }
   }
 
@@ -415,14 +360,6 @@ function failCutOffCalls(message: AssistantMessage): AssistantMessage {
       block.type === "toolCall" ? { ...block, argumentsError: CUT_OFF } : block,
     ),
   };
-}
-
-async function* end<P extends PreparedRequest>(
-  loopEnd: LoopEnd<P>,
-): AsyncGenerator<LoopEvent<P>, LoopEnd<P>> {
-  yield { type: "loop_end", end: loopEnd };
-
-  return loopEnd;
 }
 
 function buildContextOverflowFailure(message: AssistantMessage): Failure {

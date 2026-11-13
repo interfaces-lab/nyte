@@ -43,6 +43,7 @@ import type { CallRecord, PartRecord } from "../contract/records.ts";
 import type { Durable, ToolDefinition, ToolInvocation } from "../contract/tools.ts";
 import type { ExecutionEnv } from "../contract/workspace.ts";
 import { anotherChatLive, ownedChanges, readAttributedPaths } from "../env/session-changes.ts";
+import { callPhase } from "../engine/call-phase.ts";
 import { signalsPark, parkStep, runStep } from "../engine/durable.ts";
 import { startJob } from "../engine/jobs.ts";
 import { publishPatch } from "../engine/runs.ts";
@@ -92,6 +93,8 @@ export type ToolIntent = Static<typeof ToolIntentType>;
 
 export interface OwedCall {
   readonly record: CallRecord;
+
+  /** The call, its `before_tool` call or a call nested in it is in the `parked` phase; recovery leaves it to the wake that unparks it. */
   readonly parked: boolean;
 }
 
@@ -200,7 +203,7 @@ export async function executeCall(
   }
 }
 
-/** Returns the calls a run still owes, opened ones first and then its intents in the order the model asked. A run's tool calls, the calls nested in them and each one's `before_tool` call carry the run's id at their head, so a call that names another run there is skipped without reading its record. */
+/** Returns the calls a run still owes: its tool calls and intents short of `settled` that no other call of the run encloses, opened ones first and then its intents in the order the model asked. A run's tool calls, the calls nested in them and each one's `before_tool` call carry the run's id at their head, so a call that names another run there is skipped without reading its record. */
 export async function owedCalls(
   store: StoreConnection,
   session: SessionId,
@@ -212,33 +215,37 @@ export async function owedCalls(
 
       return !RUN_PREFIX.test(call) || call.startsWith(`${run}:`);
     })
-  ).filter((record) => record.run === run && record.kind !== "action");
+  )
+    .filter((record) => record.run === run && record.kind !== "action")
+    .map((record) => ({ record, phase: callPhase(record) }));
 
-  const ids = new Set(records.map(stripHookPrefix));
-  const parked = new Set<string>();
+  const ids = new Set(records.map((entry) => stripHookPrefix(entry.record)));
 
-  for (const record of records)
-    if (record.waiting !== null && record.result === null)
-      for (const id of [stripHookPrefix(record), ...enclosingCalls(stripHookPrefix(record))])
-        parked.add(id);
+  const parked = new Set(
+    records.flatMap((entry) => {
+      const id = stripHookPrefix(entry.record);
 
-  const owes = (record: CallRecord): boolean =>
-    record.result === null && !enclosingCalls(record.id).some((id) => ids.has(id));
+      return entry.phase.kind === "parked" ? [id, ...enclosingCalls(id)] : [];
+    }),
+  );
 
-  const opened = records.filter((record) => record.kind === "tool" && owes(record));
+  const owed = records.filter(
+    (entry) =>
+      entry.phase.kind !== "settled" && !enclosingCalls(entry.record.id).some((id) => ids.has(id)),
+  );
 
-  const unopened = records
-    .flatMap((record) =>
-      record.kind === "intent" && owes(record) && toolIntents.Check(record.intent)
-        ? [{ record, position: record.intent.position }]
+  const intended = owed
+    .flatMap((entry) =>
+      entry.phase.kind === "intended" && toolIntents.Check(entry.record.intent)
+        ? [{ record: entry.record, position: entry.record.intent.position }]
         : [],
     )
     .toSorted((left, right) => left.position - right.position);
 
-  return [...opened, ...unopened.map((entry) => entry.record)].map((record) => ({
-    record,
-    parked: parked.has(record.id),
-  }));
+  return [
+    ...owed.flatMap((entry) => (entry.record.kind === "tool" ? [entry.record] : [])),
+    ...intended.map((entry) => entry.record),
+  ].map((record) => ({ record, parked: parked.has(record.id) }));
 }
 
 export async function readToolInput(
@@ -246,7 +253,7 @@ export async function readToolInput(
   session: SessionId,
   record: CallRecord,
 ): Promise<ToolInput | null> {
-  if (record.kind === "intent") {
+  if (callPhase(record).kind === "intended") {
     if (!toolIntents.Check(record.intent)) return null;
     const { position: _position, ...input } = record.intent;
 
@@ -420,8 +427,12 @@ async function plan(
   if (gated.kind === "parked") return PARKED;
   const gate = gated.kind === "done" ? gated.value : CONTINUE;
 
-  if (where.signal.aborted && (await readCall(kernel.store, session, call))?.record.kind !== "tool")
-    return { kind: "settle", outcome: STOPPED, args: where.args, class: proposed.class };
+  if (where.signal.aborted) {
+    const found = await readCall(kernel.store, session, call);
+
+    if (found === null || callPhase(found.record).kind === "intended")
+      return { kind: "settle", outcome: STOPPED, args: where.args, class: proposed.class };
+  }
 
   if (gate.action === "reject")
     return {

@@ -125,7 +125,7 @@ A client finds the host with `findRunningHost`: read `host.json`, check the pid,
 | Clock | Value | Where |
 | --- | --- | --- |
 | Presence beat; a peer is dead after | 5 s; 20 s unchanged while this process wrote within 10 s | `core/src/engine/presence.ts` |
-| Head lease; renewed every | 30 s; 10 s | `engine/durable.ts`, `drive/execution.ts` |
+| Head lease; renewed every | 30 s; 10 s | `LEASE_MS`, `RENEW_MS` in `engine/durable.ts` |
 | Driver sweep for owed work | 5 s | `drive/execution.ts` |
 | Store poll for another process's commits | 500 ms, one `PRAGMA data_version` when idle | `host/src/open.ts`, `core/src/watch/watch.ts` |
 | A fold nobody holds lingers | 30 s | `watch/watch.ts` |

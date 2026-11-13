@@ -9,10 +9,10 @@ import { agentLoop } from "../src/agent/agent-loop.ts";
 import type {
   LoopConfig,
   LoopEnd,
-  LoopEvent,
   LoopInput,
   LoopRequest,
   LoopResponse,
+  LoopRetry,
 } from "../src/agent/agent-loop.ts";
 import { dev } from "../src/util/dev-log.ts";
 import { testModel } from "./fake-models.ts";
@@ -200,6 +200,9 @@ function scripted(
       };
     },
     stream: async () => respondWith(streamReply(queue.shift())),
+    blockStarted: async () => undefined,
+    blockUpdated: () => undefined,
+    retrying: async () => undefined,
     tools: {
       async execute(toolCall) {
         seen.executed.push(toolCall.name);
@@ -218,21 +221,61 @@ function scripted(
 async function collect(
   config: LoopConfig,
   signal: AbortSignal = new AbortController().signal,
-): Promise<{ readonly events: readonly LoopEvent[]; readonly end: LoopEnd }> {
-  const loop = agentLoop(config, signal);
-  const events: LoopEvent[] = [];
+): Promise<{
+  readonly steps: readonly string[];
+  readonly retries: readonly LoopRetry[];
+  readonly end: LoopEnd;
+}> {
+  const steps: string[] = [];
+  const retries: LoopRetry[] = [];
 
-  for await (const event of loop) events.push(event);
+  const end = await agentLoop(
+    {
+      ...config,
+      async prepareRequest(request, preparing) {
+        steps.push("prepareRequest");
 
-  return { events, end: await loop.result() };
+        return config.prepareRequest(request, preparing);
+      },
+      async blockStarted(kind, index) {
+        steps.push("blockStarted");
+        await config.blockStarted(kind, index);
+      },
+      blockUpdated(event) {
+        steps.push("blockUpdated");
+        config.blockUpdated(event);
+      },
+      async retrying(retry) {
+        steps.push("retrying");
+        retries.push(retry);
+        await config.retrying(retry);
+      },
+      async settleResponse(response, settling) {
+        steps.push("settleResponse");
+        await config.settleResponse(response, settling);
+      },
+      tools: {
+        async execute(toolCall, executing) {
+          const result = await config.tools.execute(toolCall, executing);
+          steps.push(`execute:${toolCall.name}:${result.kind}`);
+
+          return result;
+        },
+      },
+      async boundary(landing) {
+        steps.push("boundary");
+
+        return config.boundary(landing);
+      },
+    },
+    signal,
+  );
+
+  return { steps, retries, end };
 }
 
-function kinds(events: readonly LoopEvent[]): readonly string[] {
-  return events.map((event) =>
-    event.type === "tool_start" || event.type === "tool_end"
-      ? `${event.type}:${event.call.name}`
-      : event.type,
-  );
+function unblocked(steps: readonly string[]): readonly string[] {
+  return steps.filter((step) => !step.startsWith("block"));
 }
 
 function landed(...deliveries: readonly LoopInput["delivery"][]): readonly LoopInput[] {
@@ -244,18 +287,17 @@ function landed(...deliveries: readonly LoopInput["delivery"][]): readonly LoopI
 }
 
 describe("agentLoop", () => {
-  it("runs a single turn to done: block events, message_end, turn_end, loop_end", async () => {
+  it("runs a single turn to done: prepare, the blocks, settle, then the boundary", async () => {
     const { config, seen } = scripted([{ content: [said("Hello.")] }]);
-    const { events, end } = await collect(config);
+    const { steps, end } = await collect(config);
 
-    expect(kinds(events)).toEqual([
-      "turn_start",
-      "message_start",
-      "message_update",
-      "message_update",
-      "message_end",
-      "turn_end",
-      "loop_end",
+    expect(steps).toEqual([
+      "prepareRequest",
+      "blockStarted",
+      "blockUpdated",
+      "blockUpdated",
+      "settleResponse",
+      "boundary",
     ]);
     expect(end).toEqual({ reason: "done", usage: { ...NONE, output: 1, total: 1 } });
     expect(seen.requests.map((request) => request.attempt)).toEqual([1]);
@@ -267,14 +309,18 @@ describe("agentLoop", () => {
       { content: [said("Done.")] },
     ]);
 
-    const { events, end } = await collect(config);
+    const { steps, end } = await collect(config);
 
     expect(seen.executed).toEqual(["read", "write"]);
-    expect(kinds(events).filter((kind) => kind.startsWith("tool_"))).toEqual([
-      "tool_start:read",
-      "tool_end:read",
-      "tool_start:write",
-      "tool_end:write",
+    expect(unblocked(steps)).toEqual([
+      "prepareRequest",
+      "settleResponse",
+      "execute:read:ok",
+      "execute:write:ok",
+      "boundary",
+      "prepareRequest",
+      "settleResponse",
+      "boundary",
     ]);
     expect(seen.requests.map((request) => request.attempt)).toEqual([1, 1]);
     expect(end.reason).toBe("done");
@@ -324,17 +370,13 @@ describe("agentLoop", () => {
       },
     });
 
-    const { events, end } = await collect(config);
+    const { steps, end } = await collect(config);
 
-    expect(
-      events.flatMap((event) =>
-        event.type === "tool_end" ? [[event.call.name, event.result.kind]] : [],
-      ),
-    ).toEqual([
-      ["wait", "parked"],
-      ["read", "ok"],
+    expect(unblocked(steps).slice(-3)).toEqual([
+      "settleResponse",
+      "execute:wait:parked",
+      "execute:read:ok",
     ]);
-    expect(kinds(events).slice(-2)).toEqual(["turn_end", "loop_end"]);
     expect(end).toEqual({ reason: "parked", usage: { ...NONE, output: 1, total: 1 } });
     expect([boundaries, seen.requests.length]).toEqual([0, 1]);
   });
@@ -353,11 +395,11 @@ describe("agentLoop", () => {
       },
     });
 
-    const { events, end } = await collect(config, controller.signal);
+    const { steps, end } = await collect(config, controller.signal);
 
     expect(seen.executed).toEqual(["first"]);
     expect(end).toEqual({ reason: "stopped", response: null });
-    expect(events.at(-1)).toEqual({ type: "loop_end", end: { reason: "stopped", response: null } });
+    expect(steps.at(-1)).toBe("execute:first:ok");
   });
 
   it("ends stopped when the signal aborts mid-stream, through the stream's own aborted end", async () => {
@@ -365,25 +407,19 @@ describe("agentLoop", () => {
 
     const { config, seen } = scripted([], {
       stream: async (_prepared, signal) => respondWith(abortable(signal)),
+      blockUpdated: () => controller.abort(),
       settleResponse: async () => {
         throw new Error("No response finished.");
       },
     });
 
-    const loop = agentLoop(config, controller.signal);
-    const events: LoopEvent[] = [];
+    const { steps, end } = await collect(config, controller.signal);
 
-    for await (const event of loop) {
-      events.push(event);
-
-      if (event.type === "message_update") controller.abort();
-    }
-
-    expect(await loop.result()).toMatchObject({
+    expect(end).toMatchObject({
       reason: "stopped",
       response: { usage: { output: 1 } },
     });
-    expect(kinds(events)).not.toContain("message_end");
+    expect(steps).not.toContain("settleResponse");
     expect(seen.requests).toHaveLength(1);
   });
 
@@ -418,15 +454,15 @@ describe("agentLoop", () => {
     expect(continued.seen.requests).toHaveLength(1);
   });
 
-  it("fails on a stream error that is not retried, without message_end", async () => {
+  it("fails on a stream error that is not retried, without settling a response", async () => {
     const { config } = scripted([{ content: [said("Half")], error: "Invalid API key" }]);
-    const { events, end } = await collect(config);
+    const { steps, end } = await collect(config);
 
-    expect(kinds(events)).not.toContain("message_end");
+    expect(steps).not.toContain("settleResponse");
     expect(end).toMatchObject({ reason: "failed", failure: { message: "Invalid API key" } });
   });
 
-  it("retries a retryable failure at the next attempt after turn_retry, carrying the failed request's model info so the turn can charge it, then succeeds (D6)", async () => {
+  it("retries a retryable failure at the next attempt after retrying, carrying the failed request's model info so the turn can charge it, then succeeds (D6)", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], shouldAdvanceTime: true });
 
     try {
@@ -435,10 +471,9 @@ describe("agentLoop", () => {
         { content: [said("Whole.")] },
       ]);
 
-      const { events, end } = await collect(config);
-      const retry = events.find((event) => event.type === "turn_retry");
+      const { retries, end } = await collect(config);
 
-      expect(retry).toMatchObject({
+      expect(retries[0]).toMatchObject({
         attempt: 2,
         failure: { class: "overloaded" },
         response: { usage: { total: 1 }, prepared: { info: INFO } },
@@ -458,11 +493,10 @@ describe("agentLoop", () => {
     });
 
     const started = Date.now();
-    const { events, end } = await collect(within.config);
-    const retry = events.find((event) => event.type === "turn_retry");
+    const { retries, end } = await collect(within.config);
 
-    expect(retry).toMatchObject({ failure: { class: "rate_limit", retryAfterMs: 200 } });
-    expect(retry?.type === "turn_retry" ? retry.until - started : 0).toBeGreaterThanOrEqual(200);
+    expect(retries[0]).toMatchObject({ failure: { class: "rate_limit", retryAfterMs: 200 } });
+    expect((retries[0]?.until ?? 0) - started).toBeGreaterThanOrEqual(200);
     expect(end.reason).toBe("done");
 
     const beyond = scripted([{ error: limited }, { content: [said("Whole.")] }]);
@@ -525,17 +559,18 @@ describe("agentLoop", () => {
   });
 
   it("stops during an outage wait", async () => {
+    const controller = new AbortController();
+
     const { config, seen } = scripted([{ error: OFFLINE, unsent: true }], {
       retry: { enabled: true, maxRetries: 2, baseDelayMs: 10_000, maxAgentDelayMs: 60_000 },
       outage: { budgetMs: 3_600_000, maxDelayMs: 30_000 },
+      retrying: async () => controller.abort(),
     });
 
-    const controller = new AbortController();
-    const loop = agentLoop(config, controller.signal);
-
-    for await (const event of loop) if (event.type === "turn_retry") controller.abort();
-
-    expect(await loop.result()).toEqual({ reason: "stopped", response: null });
+    expect((await collect(config, controller.signal)).end).toEqual({
+      reason: "stopped",
+      response: null,
+    });
     expect(seen.requests).toHaveLength(1);
   });
 
@@ -562,7 +597,7 @@ describe("agentLoop", () => {
       { error: overflow },
     ]);
 
-    const { events, end } = await collect(config);
+    const { steps, end } = await collect(config);
 
     expect(
       seen.requests.map((request) => [request.attempt, request.overflow?.class ?? null]),
@@ -570,11 +605,11 @@ describe("agentLoop", () => {
       [1, null],
       [2, "context_window"],
     ]);
-    expect(kinds(events).slice(0, 4)).toEqual([
-      "turn_start",
-      "turn_start",
-      "turn_retry",
-      "message_start",
+    expect(steps.slice(0, 4)).toEqual([
+      "prepareRequest",
+      "prepareRequest",
+      "retrying",
+      "blockStarted",
     ]);
     expect(end.reason).toBe("done");
 
@@ -604,14 +639,14 @@ describe("agentLoop", () => {
       },
     });
 
-    const { events, end } = await collect(config);
+    const { steps, end } = await collect(config);
 
     expect(end).toEqual({
       reason: "failed",
       failure: { class: "provider", message: "The response ended without a result." },
       response: null,
     });
-    expect(kinds(events)).not.toContain("turn_retry");
+    expect(steps).not.toContain("retrying");
     expect(seen.requests).toHaveLength(1);
   });
 });

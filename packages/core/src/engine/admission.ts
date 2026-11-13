@@ -50,6 +50,7 @@ import { dev } from "../util/dev-log.ts";
 import { admitted, buildMessage, pendingReceipt } from "./admission-writes.ts";
 import type { MessageRecord } from "./admission-writes.ts";
 import { holdSummary, summarizedMove } from "./branch-summary.ts";
+import { callPhase } from "./call-phase.ts";
 import { resolveHeadConfiguration } from "./contributions.ts";
 import { fence, finishFence } from "./fence.ts";
 import { freezeMentions } from "./mentions.ts";
@@ -850,7 +851,7 @@ async function decideBeforeSend(
   if (submission.replace === message) {
     const found = await readCall(kernel.store, session, call);
 
-    if (found !== null && found.record.result !== null)
+    if (found !== null && callPhase(found.record).kind === "settled")
       await commit(kernel, [
         { name: callRef(session, call), target: null, expect: found.ref.revision },
       ]);

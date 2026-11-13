@@ -21,8 +21,9 @@ import { partRef } from "../store/refs.ts";
 import { load, put, readCall } from "../store/session.ts";
 import { waitIndex, wokenIndex } from "../store/wait-index.ts";
 import { dev } from "../util/dev-log.ts";
+import { callPhase } from "./call-phase.ts";
 import { holdLease } from "./lease.ts";
-import { lapsed, readParkedWait, runWait, waitingOn } from "./waits.ts";
+import { lapsed, readParkedWait, runWait, WAIT_STOPPED, waitingOn } from "./waits.ts";
 import type { StoreConnection } from "../contract/store.ts";
 
 export type ActionIntent = {
@@ -41,7 +42,11 @@ interface Place {
   readonly signal: AbortSignal;
 }
 
-const STOPPED: WaitOutcome = { kind: "stopped" };
+/** How long a lease holds without renewal. A head's lease and an action rerun's reservation both lapse after it. */
+export const LEASE_MS = 30_000;
+
+/** How often a lease's holder renews it: three times within one lease. */
+export const RENEW_MS = LEASE_MS / 3;
 
 const parkedExecutions = new WeakSet<Durable>();
 
@@ -51,16 +56,19 @@ class Parked extends Error {
   }
 }
 
+/** Whether an error is the throw that ends a parked step's body. A `catch` between a body and `runStep` re-throws it so the body stops at the park. */
 export function signalsPark(error: unknown): boolean {
   return error instanceof Parked;
 }
 
+/** Ends a durable step's body because it parked. `runStep` reads the park from `parkedExecutions` before it looks at what the body returned or threw, so a `catch` that swallows `Parked` cannot turn a park into a result; it only lets the body run on past the park. */
 export function parkStep(durable: Durable): never {
   parkedExecutions.add(durable);
 
   throw new Parked();
 }
 
+/** Runs a durable call to an outcome, opening it unless it is already open; what it does with the record it finds follows `CallPhase`. */
 export async function runStep<T>(
   kernel: Kernel,
   input: {
@@ -94,7 +102,7 @@ export async function runStep<T>(
   const { opening, run } = input;
 
   const opened = await changeCall(kernel, { session, call, run }, async (current) => {
-    if (current !== null && current.kind !== "intent") {
+    if (current !== null && callPhase(current).kind !== "intended") {
       record = current;
 
       return null;
@@ -120,7 +128,7 @@ export async function runStep<T>(
 
   const settle = async (ended: StepEnd<T>) => {
     const written = await changeCall(kernel, { session, call, run }, async (current) => {
-      if (current === null || current.result !== null) return null;
+      if (current === null || callPhase(current).kind === "settled") return null;
       const settled = await input.settle(ended);
 
       return {
@@ -134,15 +142,18 @@ export async function runStep<T>(
   };
 
   dev("durable", "step", { session, call, kind: input.kind });
+  const phase = callPhase(record);
 
-  if (record.result !== null) {
-    dev("durable", "replayed", { session, call });
+  switch (phase.kind) {
+    case "settled":
+      dev("durable", "replayed", { session, call });
 
-    return { kind: "done", value: read(record.result) };
-  }
-
-  if (!opened.wrote && record.replay === "never") {
-    return { kind: "interrupted", value: await settle({ kind: "interrupted" }) };
+      return { kind: "done", value: read(phase.result) };
+    case "opened":
+    case "parked":
+    case "woken":
+      if (!opened.wrote && phase.replay === "never")
+        return { kind: "interrupted", value: await settle({ kind: "interrupted" }) };
   }
 
   const writes: Promise<unknown>[] = [];
@@ -195,7 +206,7 @@ export async function runAction(
 
         const lease = rerun
           ? holdLease(`re-run ${input.call}`, () => renewRerun(kernel, input.session, input.call), {
-              every: LEASE_MS / 3,
+              every: RENEW_MS,
               lapse: LEASE_MS,
             })
           : null;
@@ -276,7 +287,9 @@ export async function runAction(
 
 async function renewRerun(kernel: Kernel, session: SessionId, call: CallId): Promise<boolean> {
   const renewed = await changeCall(kernel, { session, call, run: null }, async (current) =>
-    current === null || current.result !== null || current.reran?.holder !== kernel.instance
+    current === null ||
+    callPhase(current).kind === "settled" ||
+    current.reran?.holder !== kernel.instance
       ? null
       : {
           record: { ...current, reran: { ...current.reran, expiresAt: Date.now() + LEASE_MS } },
@@ -291,25 +304,32 @@ export async function reserveRerun(
   session: SessionId,
   call: CallId,
 ): Promise<boolean> {
-  const reserved = await changeCall(kernel, { session, call, run: null }, async (current) =>
-    current === null ||
-    current.result !== null ||
-    current.waiting !== null ||
-    ((current.reran?.waits ?? 0) === current.waits.length && !lapsed(kernel, current))
-      ? null
-      : {
-          record: {
-            ...current,
-            reran: {
-              waits: current.waits.length,
-              holder: kernel.instance,
-              expiresAt: Date.now() + LEASE_MS,
-            },
-          },
-        },
-  );
+  const reserved = await changeCall(kernel, { session, call, run: null }, async (current) => {
+    if (current === null) return null;
+    const phase = callPhase(current).kind;
 
-  return reserved.wrote || (reserved.record?.result ?? null) !== null;
+    if (
+      phase === "settled" ||
+      phase === "parked" ||
+      ((current.reran?.waits ?? 0) === current.waits.length && !lapsed(kernel, current))
+    )
+      return null;
+
+    return {
+      record: {
+        ...current,
+        reran: {
+          waits: current.waits.length,
+          holder: kernel.instance,
+          expiresAt: Date.now() + LEASE_MS,
+        },
+      },
+    };
+  });
+
+  return (
+    reserved.wrote || (reserved.record !== null && callPhase(reserved.record).kind === "settled")
+  );
 }
 
 export async function openAction(
@@ -409,10 +429,10 @@ function createDurable(
         await changeCall(kernel, place, async (current) =>
           current === null || current.waits.length !== index || current.waiting !== null
             ? null
-            : { record: { ...current, waits: [...current.waits, STOPPED] } },
+            : { record: { ...current, waits: [...current.waits, WAIT_STOPPED] } },
         );
 
-        return STOPPED;
+        return WAIT_STOPPED;
       }
 
       const early =
@@ -612,5 +632,3 @@ function readOwnEntry(
 ): Json | undefined {
   return entries !== undefined && Object.hasOwn(entries, key) ? entries[key] : undefined;
 }
-
-export const LEASE_MS = 30_000;

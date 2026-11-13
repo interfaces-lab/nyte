@@ -22,7 +22,7 @@ import type { ExecutionState, Kernel, LandedInput } from "../contract/kernel.ts"
 import { decodeLease, decodeRunRecord } from "../contract/records.ts";
 import type { RunRecord, SessionRecord } from "../contract/records.ts";
 import { landing, selectRunStart } from "../engine/admission.ts";
-import { LEASE_MS } from "../engine/durable.ts";
+import { LEASE_MS, RENEW_MS } from "../engine/durable.ts";
 import { stopRequested } from "../engine/fence.ts";
 import { holdLease } from "../engine/lease.ts";
 import { recoverMoves } from "../engine/move.ts";
@@ -50,8 +50,6 @@ import type { Found } from "../store/session.ts";
 import { dev, fault } from "../util/dev-log.ts";
 import type { StoreConnection } from "../contract/store.ts";
 
-const RENEW_MS = 10_000;
-
 const PAGE = 100;
 
 const ADVANCE_RETRY = { baseDelayMs: 1_000, maxAgentDelayMs: 60_000 } as const;
@@ -60,8 +58,6 @@ const ADVANCE_RETRY = { baseDelayMs: 1_000, maxAgentDelayMs: 60_000 } as const;
 const MAX_TIMER_MS = 2 ** 31 - 1;
 
 type Refused = Extract<AdvanceReport, { readonly kind: "busy" | "fenced" }>;
-
-const FENCED: Refused = { kind: "fenced" };
 
 export function createExecutionState(): ExecutionState {
   return {
@@ -744,7 +740,7 @@ function holdHead(kernel: Kernel, session: SessionId, head: HeadName) {
 
   return {
     lease,
-    refused: (): Refused | null => refused ?? (lease.signal.aborted ? FENCED : null),
+    refused: (): Refused | null => refused ?? (lease.signal.aborted ? { kind: "fenced" } : null),
   };
 }
 

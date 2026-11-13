@@ -23,6 +23,7 @@ import type { CallRecord, JobRecord, RunRecord } from "../contract/records.ts";
 import { changeCall, commit } from "../watch/commit.ts";
 import type { CallChange } from "../watch/commit.ts";
 import { readRunEnd } from "../watch/reads.ts";
+import { callPhase } from "./call-phase.ts";
 import { storedAnswer } from "../store/parts.ts";
 import { callRef, jobRef, partRef, runRef } from "../store/refs.ts";
 import { load, put, readCall } from "../store/session.ts";
@@ -42,9 +43,11 @@ import type { Indexed } from "../store/wait-index.ts";
 import { dev, fault } from "../util/dev-log.ts";
 import type { StoreConnection } from "../contract/store.ts";
 
-const LOST: JobEnd = { kind: "lost" };
+/** The end of a job whose process is gone without recording one. */
+export const LOST: JobEnd = { kind: "lost" };
 
-const STOPPED: WaitOutcome = { kind: "stopped" };
+/** The outcome of a wait that its call's or its run's stop ended. */
+export const WAIT_STOPPED: WaitOutcome = { kind: "stopped" };
 
 export function createWaitRegistry(
   kernel: Kernel,
@@ -70,11 +73,12 @@ export function createWaitRegistry(
           );
 
           const still = others.flatMap((found) => {
-            const waited = found?.record;
+            if (found === null) return [];
+            const phase = callPhase(found.record);
 
-            return waited === undefined || waited.result !== null || waited.waiting === null
-              ? []
-              : [{ call: waited.id, on: waitingOn(waited.waiting, waited.partial) }];
+            return phase.kind === "parked"
+              ? [{ call: found.record.id, on: waitingOn(phase.waiting, found.record.partial) }]
+              : [];
           });
 
           return {
@@ -310,7 +314,7 @@ export function createWaitRegistry(
 
       await Promise.all(
         (found?.record.parked ?? []).map(async (call) =>
-          end(session, (await readCall(kernel.store, session, call))?.record ?? null, STOPPED),
+          end(session, (await readCall(kernel.store, session, call))?.record ?? null, WAIT_STOPPED),
         ),
       );
     },
@@ -322,7 +326,7 @@ export function createWaitRegistry(
         ...nested.map((ref) => load(kernel.store, ref, decodeCallRecord)),
       ]);
 
-      await Promise.all(records.map((found) => end(session, found?.record ?? null, STOPPED)));
+      await Promise.all(records.map((found) => end(session, found?.record ?? null, WAIT_STOPPED)));
     },
     async tick(now) {
       const due: Promise<boolean>[] = [];
@@ -348,14 +352,16 @@ export function createWaitRegistry(
           if (woken === null) return;
           const record = (await readCall(kernel.store, woken.session, woken.call))?.record ?? null;
 
+          const phase = record === null ? null : callPhase(record).kind;
+
           const owed =
             record !== null &&
-            record.result === null &&
+            phase !== "settled" &&
             (record.run === null ||
               (await kernel.store.refs.get(runRef(woken.session, record.run))) !== null);
 
           if (!owed) await commit(kernel, [{ name: ref.name, target: null, expect: ref.revision }]);
-          else if (record.waiting === null) wake(kernel, woken.session, record);
+          else if (phase !== "parked") wake(kernel, woken.session, record);
         }),
       );
 
@@ -363,7 +369,10 @@ export function createWaitRegistry(
         [...resumers.values()].map(async (resumer) => {
           const found = await readCall(kernel.store, resumer.session, resumer.call);
 
-          if (found !== null && (found.record.result !== null || lapsed(kernel, found.record)))
+          if (
+            found !== null &&
+            (callPhase(found.record).kind === "settled" || lapsed(kernel, found.record))
+          )
             resumer.resume();
         }),
       );
@@ -461,9 +470,10 @@ export async function jobOutcome(kernel: Kernel, id: JobId): Promise<JobEnd | nu
   return found.record.instance === kernel.instance || kernel.presence === null ? LOST : null;
 }
 
+/** Wakes a call that is not parked: an action whose rerun lapsed reruns here, and a run's woken call wakes its head. */
 function wake(kernel: Kernel, session: SessionId, record: CallRecord): void {
   if (record.head === null && lapsed(kernel, record)) kernel.waits.rerun(session, record.id);
-  else if (record.head !== null && record.waits.length > 0 && record.result === null)
+  else if (record.head !== null && callPhase(record).kind === "woken")
     kernel.wakes.notify(session, record.head);
 }
 
@@ -601,14 +611,17 @@ export async function runWait(
 }
 
 export function readParkedWait(session: SessionId, record: CallRecord | null): ParkedWait | null {
-  if (record === null || record.result !== null || record.waiting === null) return null;
+  if (record === null) return null;
+  const phase = callPhase(record);
+
+  if (phase.kind !== "parked") return null;
 
   return {
     session,
     head: record.head,
     run: record.run,
     call: record.id,
-    target: record.waiting,
+    target: phase.waiting,
     partial: record.partial,
     index: record.waits.length,
   };
@@ -627,10 +640,13 @@ function formatWaitKey(session: SessionId, call: CallId): string {
   return `${session}/${call}`;
 }
 
+/** Whether an action's rerun was reserved by another process that stopped renewing it before the call parked or settled. */
 export function lapsed(kernel: Kernel, record: CallRecord): boolean {
+  const phase = callPhase(record).kind;
+
   return (
-    record.result === null &&
-    record.waiting === null &&
+    phase !== "settled" &&
+    phase !== "parked" &&
     record.reran !== null &&
     record.reran.waits === record.waits.length &&
     record.reran.holder !== kernel.instance &&

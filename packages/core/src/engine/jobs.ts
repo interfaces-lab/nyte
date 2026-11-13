@@ -26,7 +26,7 @@ import { closable } from "../util/iterable.ts";
 import { followedTrace, traceparent } from "../util/trace.ts";
 import { send } from "./admission.ts";
 import { recordAcquisition, recordedAcquisition } from "./durable.ts";
-import { readJob, waitFor } from "./waits.ts";
+import { LOST, readJob, waitFor } from "./waits.ts";
 
 const TAIL_BYTES = 4096;
 
@@ -39,8 +39,6 @@ const ORPHAN_MS = 60_000;
 const ENDED_KEPT = 32;
 
 const ENDED_JOB_MS = 60 * 60_000;
-
-const LOST: JobEnd = { kind: "lost" };
 
 export function createJobTable(kernel: Kernel): JobTable {
   const entries = new Map<JobId, JobEntry>();
@@ -239,7 +237,7 @@ export function jobHandle(kernel: Kernel, id: JobId): Job {
       async check() {
         const entry = kernel.jobs.get(id);
 
-        if (entry === undefined) return { value: { kind: "lost" } };
+        if (entry === undefined) return { value: LOST };
         const state = entry.view.state;
 
         return state.kind === "running" ? null : { value: state };
@@ -634,7 +632,7 @@ async function pump(kernel: Kernel, id: JobId, process: Job, output: JobOutput):
     }
   } catch {}
 
-  const end = await process.settled().catch((): JobEnd => ({ kind: "lost" }));
+  const end = await process.settled().catch(() => LOST);
 
   await endJob(kernel, id, end).catch((error: unknown) => {
     dev("jobs", "end not recorded", { job: id, end: end.kind, error });
