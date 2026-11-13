@@ -1,7 +1,7 @@
 import { create, props } from "@stylexjs/stylex";
 import { TooltipProvider } from "@nyte-ai/ui/tooltip";
 import { Matches, useRouter } from "@tanstack/react-router";
-import { useEffectEvent, useRef, useSyncExternalStore } from "react";
+import { useEffectEvent, useRef, useState, useSyncExternalStore } from "react";
 import { AboutDialog } from "./about-dialog.tsx";
 import type { ReactElement } from "react";
 import { WorkspaceDialogHost } from "../panes/open-workspace.tsx";
@@ -18,7 +18,8 @@ import { ToastProvider } from "@nyte-ai/ui/toast";
 import { Titlebar } from "./titlebar.tsx";
 import { PaneControllerProvider } from "../panes/pane-context.tsx";
 import { SessionDndProvider } from "../panes/session-dnd.tsx";
-import { useHostRelease } from "../data/host.ts";
+import { useHostProcess, useHostBuildMismatch } from "../data/host.ts";
+import { useHostProcessAction } from "../environments/host-process.tsx";
 import { startupConnection } from "../data/startup.ts";
 import type { StartupProblem } from "../data/startup.ts";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
@@ -144,16 +145,33 @@ function ConnectionFailure(): ReactElement | null {
 }
 
 function ReleaseNotice(): ReactElement | null {
-  const release = useHostRelease();
+  const mismatch = useHostBuildMismatch();
+  const hostProcess = nyte.host.hostProcess;
+  const restarting = useHostProcess().data?.kind === "restarting";
+  const act = useHostProcessAction();
+  const [dismissed, setDismissed] = useState<string>();
 
-  if (release === undefined) return null;
+  if (mismatch === undefined || mismatch.operations === dismissed) return null;
 
   return (
     <div role="status" {...props(styles.connectionFailure)}>
       <span>
-        This host runs Nyte {release.version}, another release than this app. Update both to see
-        everything.
+        {hostProcess === undefined
+          ? "This host runs a different build of Nyte than this app, so some features may not work. Update Nyte on the host."
+          : "Nyte Host is running a different build than this app, so some features may not work."}
       </span>
+      {hostProcess !== undefined && (
+        <Button
+          variant="outline"
+          loading={act.isPending || restarting}
+          onClick={() => act.mutate("restart")}
+        >
+          Restart Host…
+        </Button>
+      )}
+      <Button variant="ghost" onClick={() => setDismissed(mismatch.operations)}>
+        Dismiss
+      </Button>
     </div>
   );
 }

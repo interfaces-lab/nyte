@@ -82,20 +82,15 @@ export function useHostHealth(): Health | undefined {
   return useSyncExternalStore(subscribeHealth, readHealth, readHealth);
 }
 
-export function useHostRelease(): { readonly version: string } | undefined {
+export function useHostBuildMismatch(): { readonly operations: string } | undefined {
   const operations = useWatchSelect(hostWatch("host"), (state) => state.value?.operations);
-  const version = useWatchSelect(hostWatch("host"), (state) => state.value?.version);
 
   const own = useQuery({
     queryKey: keys.clientOperations,
     queryFn: operationsDigest,
   }).data;
 
-  return operations !== undefined &&
-    operations !== null &&
-    own !== undefined &&
-    operations !== own &&
-    version !== undefined
-    ? { version }
+  return operations !== undefined && operations !== null && own !== undefined && operations !== own
+    ? { operations }
     : undefined;
 }
