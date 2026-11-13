@@ -49,6 +49,7 @@
 
 - `pnpm dev:live [directory]` runs this checkout's TUI against the installed `nyte host` (`NYTE_BINARY` overrides the binary). The checkout only renders; host, store and core changes need `pnpm install:tui` or `pnpm dev:tui`.
 - Agents run it only with an isolated `HOME` and `NYTE_HOME`, as the TUI's QA service does.
+- Under an isolated `HOME`, `mise` refuses to run. Resolve node first with `mise which node` and put its folder on `PATH`.
 
 ## Branches and commits
 
