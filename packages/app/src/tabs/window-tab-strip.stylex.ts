@@ -36,13 +36,14 @@ export const stripStyles = create({
     animationTimeline: "scroll(self inline)",
     animationTimingFunction: "linear",
     animationFillMode: "both",
+    WebkitAppRegion: "no-drag",
   },
   slot: {
     display: "flex",
     flex: "none",
     minWidth: tab.minWidth,
     maxWidth: tab.maxWidth,
-    WebkitAppRegion: "no-drag",
+    WebkitAppRegion: "initial",
   },
   tab: {
     "--_close-opacity": {
