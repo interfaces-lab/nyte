@@ -89,11 +89,14 @@ const base = {
 
 const streams = new Map<SessionId, ViewStream>();
 
+let changes = 1;
+
 installScripted(scriptedConnection({ views: streams }));
 let shown: ReadonlySet<SessionId> = new Set();
 
 paceTranscripts(() => shown);
 
+/** Each view carries the next seq, as each change from a host does: a chat store publishes only when its rows or its seq move, and a draw of the same text awaits that. */
 function answerView(session: SessionId, markdown: string, live: boolean): SessionView {
   const answer: Message = {
     id: asId<"message">(`${session}-answer`),
@@ -110,7 +113,9 @@ function answerView(session: SessionId, markdown: string, live: boolean): Sessio
       : { kind: "settled", commit: asId<"commit">(`${session}-answer`), endedAt: 1 },
   };
 
-  return { ...base, messages: [answer] };
+  changes += 1;
+
+  return { ...base, seq: asSeq(changes), messages: [answer] };
 }
 
 function Answer({ session }: { readonly session: SessionId }): ReactElement | null {
