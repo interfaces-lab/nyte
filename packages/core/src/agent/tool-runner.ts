@@ -141,6 +141,8 @@ interface LiveCall {
 
 const HOOK = "hook:before_tool:";
 
+const RUN_PREFIX = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}:/u;
+
 const STEP: Placement = { kind: "transcript", role: "step" };
 
 const PARKED = { kind: "parked" } as const;
@@ -198,14 +200,19 @@ export async function executeCall(
   }
 }
 
+/** Returns the calls a run still owes, opened ones first and then its intents in the order the model asked. A run's tool calls, the calls nested in them and each one's `before_tool` call carry the run's id at their head, so a call that names another run there is skipped without reading its record. */
 export async function owedCalls(
   store: StoreConnection,
   session: SessionId,
   run: RunId,
 ): Promise<readonly OwedCall[]> {
-  const records = (await readCalls(store, session)).filter(
-    (record) => record.run === run && record.kind !== "action",
-  );
+  const records = (
+    await readCalls(store, session, (id) => {
+      const call = id.startsWith(HOOK) ? id.slice(HOOK.length) : id;
+
+      return !RUN_PREFIX.test(call) || call.startsWith(`${run}:`);
+    })
+  ).filter((record) => record.run === run && record.kind !== "action");
 
   const ids = new Set(records.map(stripHookPrefix));
   const parked = new Set<string>();

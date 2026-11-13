@@ -38,6 +38,7 @@ import { FENCED, stopRun } from "./fence.ts";
 import { waitFor } from "./waits.ts";
 import type { StoreConnection } from "../contract/store.ts";
 import { clipText } from "../util/clip.ts";
+import { fault } from "../util/dev-log.ts";
 
 export async function newRun(
   store: StoreConnection,
@@ -90,6 +91,7 @@ export function begin(kernel: Kernel, session: SessionId, view: RunView): void {
   });
 }
 
+/** Retires a run in one set, then tells who waits on it. The run is gone by the time its report goes to a parent, so a report that fails is logged and the head's pending messages still wake it. */
 export async function endRun(
   kernel: Kernel,
   session: SessionId,
@@ -206,7 +208,10 @@ export async function endRun(
 
   const woke = await kernel.waits.runEnded(session, run, ended.end);
 
-  if (!woke && ended.parent !== null) await deliverChildReport(kernel, session, run, ended.end);
+  if (!woke && ended.parent !== null)
+    await deliverChildReport(kernel, session, run, ended.end).catch((error: unknown) =>
+      fault("runs", "child report not delivered", { session, run, error: String(error) }),
+    );
 
   if (ended.pending.length > 0) kernel.wakes.notify(session, ended.head);
 }

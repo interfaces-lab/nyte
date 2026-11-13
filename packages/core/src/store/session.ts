@@ -323,12 +323,20 @@ export async function readCall(
   return load(store, await store.refs.get(callRef(session, call)), decodeCallRecord);
 }
 
+/** Reads a session's calls, or only those whose id `reads` accepts, told from the ref's name before its record is read. */
 export async function readCalls(
   store: StoreConnection,
   session: SessionId,
+  reads?: (call: string) => boolean,
 ): Promise<readonly CallRecord[]> {
-  const refs = await store.refs.list(`${sessionRef(session)}/calls/`);
-  const calls = await Promise.all(refs.map((ref) => load(store, ref, decodeCallRecord)));
+  const prefix = `${sessionRef(session)}/calls/`;
+  const refs = await store.refs.list(prefix);
+
+  const calls = await Promise.all(
+    refs
+      .filter((ref) => reads === undefined || reads(ref.name.slice(prefix.length)))
+      .map((ref) => load(store, ref, decodeCallRecord)),
+  );
 
   return calls.flatMap((call) => (call === null ? [] : [call.record]));
 }

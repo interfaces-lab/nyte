@@ -58,6 +58,7 @@ export type SessionIndexEntry =
       readonly session: SessionId;
     };
 
+/** Returns the index entry a ref's record gives, or null for one the index does not hold. A receipt stored under another id points at the receipt that settles and is never settled itself, so it is never pending work. */
 export function projectSessionIndex(name: string, object: Json | null): SessionIndexEntry | null {
   const ref = sessionIndexRef(name);
 
@@ -85,10 +86,13 @@ export function projectSessionIndex(name: string, object: Json | null): SessionI
         ? { kind: "inbox", session: ref.session }
         : null;
     }
-    case "receipt":
-      return decodeReceiptRecord(object)?.outcome === null
+    case "receipt": {
+      const record = decodeReceiptRecord(object);
+
+      return record?.outcome === null && name.endsWith(`/${record.id}`)
         ? { kind: "receipt", session: ref.session }
         : null;
+    }
     case "call":
       return decodeCallRecord(object)?.result === null
         ? { kind: "call", session: ref.session }

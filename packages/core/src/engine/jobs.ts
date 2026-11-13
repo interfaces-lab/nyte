@@ -19,7 +19,7 @@ import { decodeJobRecord } from "../contract/records.ts";
 import type { JobRecord } from "../contract/records.ts";
 import { commit } from "../fold/commit.ts";
 import { JOBS, jobRef } from "../store/refs.ts";
-import { load, MAIN, put, readSession } from "../store/session.ts";
+import { attempt, load, MAIN, put, readSession, STALE } from "../store/session.ts";
 import { clipText } from "../util/clip.ts";
 import { dev, fault } from "../util/dev-log.ts";
 import { closable } from "../util/iterable.ts";
@@ -510,8 +510,8 @@ async function spawn(
   void pump(kernel, id, process, output);
 }
 
-async function recordJobEnd(kernel: Kernel, id: JobId, end: JobEnd): Promise<boolean> {
-  for (;;) {
+function recordJobEnd(kernel: Kernel, id: JobId, end: JobEnd): Promise<boolean> {
+  return attempt(`Ending job ${id}`, async () => {
     const found = await readJob(kernel.store, id);
 
     if (found === null || found.record.end !== null) return false;
@@ -519,13 +519,13 @@ async function recordJobEnd(kernel: Kernel, id: JobId, end: JobEnd): Promise<boo
     const outcome = await commit(kernel, [
       {
         name: jobRef(id),
-        target: await put(kernel.store, "job", { ...found.record, end }),
+        target: await put(kernel.store, "job", { ...found.record, end, endedAt: Date.now() }),
         expect: found.ref.revision,
       },
     ]);
 
-    if (outcome.kind === "set") return true;
-  }
+    return outcome.kind === "set" ? true : STALE;
+  });
 }
 
 export async function reapJobs(kernel: Kernel): Promise<void> {

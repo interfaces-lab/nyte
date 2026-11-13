@@ -56,6 +56,9 @@ const PAGE = 100;
 
 const ADVANCE_RETRY = { baseDelayMs: 1_000, maxAgentDelayMs: 60_000 } as const;
 
+/** The longest delay a timer takes; a longer one fires after 1 ms. A timer set to it fires early, finds nothing due and is set again. */
+const MAX_TIMER_MS = 2 ** 31 - 1;
+
 type Refused = Extract<AdvanceReport, { readonly kind: "busy" | "fenced" }>;
 
 const FENCED: Refused = { kind: "fenced" };
@@ -346,7 +349,7 @@ export function driveInProcess(kernel: Kernel, coverage: ExecutionCoverage): Own
 
         if (due.size > 0) schedule(Math.min(...due));
       },
-      Math.max(0, next - Date.now()),
+      Math.min(MAX_TIMER_MS, Math.max(0, next - Date.now())),
     );
   };
 
@@ -402,7 +405,7 @@ export function driveInProcess(kernel: Kernel, coverage: ExecutionCoverage): Own
         retries.delete(retry);
         step(session, head);
       },
-      Math.max(0, until - Date.now()),
+      Math.min(MAX_TIMER_MS, Math.max(0, until - Date.now())),
     );
 
     retries.add(retry);
@@ -582,6 +585,7 @@ async function releaseNow(kernel: Kernel, session: SessionId, head: HeadName): P
   await commit(kernel, [{ name, target: null, expect: mine }]);
 }
 
+/** Brings a live run nobody drives to where it can be driven or ended. A stop that lands while its owed calls resume fences every call not yet opened, which stay runnable, so the run ends as stopped rather than resuming them again. */
 async function settleLive(
   kernel: Kernel,
   session: SessionId,
@@ -624,6 +628,13 @@ async function settleLive(
     )?.record;
 
     if (record === undefined) return null;
+
+    if (record.stopping) {
+      await endRun(kernel, session, run, { kind: "stopped" });
+
+      return null;
+    }
+
     const held = await holding(kernel.store, session, record);
 
     if (held !== null) return held;
