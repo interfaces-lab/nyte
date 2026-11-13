@@ -14,11 +14,10 @@ package's AGENTS.md.
 - Tests follow the Testing section of the root `AGENTS.md`. Here, packaging, installer, IPC validation, credential and store tests are contracts: one table across channels, not one test per channel.
 - Test IPC through the raw message the renderer sends (channel and payload), not through a typed client.
 - Browser pages are native `WebContentsView`s and composite above every DOM layer.
-  A floating surface that can overlap a page must carry a `data-slot` in the app's
-  overlay occlusion list (the slots `overlayCovers` watches), or it renders behind the page.
-  `@nyte-ai/ui` popups already do; app-owned surfaces such as the tray and the drag
-  overlay set their own. Nothing registers by ref. Before touching browser panels,
-  read the integrated-browser skill.
+  A floating surface that can overlap a page must count for the app's overlay occlusion
+  (`overlayCovers`), or it renders behind the page: a portal popup by a `data-slot` in
+  `OVERLAY_SELECTOR`, anything outside a portal by registering with `occludes`. Before adding
+  one or touching browser panels, read the integrated-browser skill.
 - Renderer geometry sits on the design scale, and colors come from tokens; the lint
   reports both with the fix. Do not widen the design-scale lint's scale
   to fit a value: use a step, or name the measurement in the app theme schema.

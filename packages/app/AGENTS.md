@@ -4,7 +4,7 @@ Load the nyte-styles skill before writing StyleX, and read the ui package's AGEN
 a shared component.
 
 Each source folder owns one concept and sits in a layer; a folder never imports one above it.
-`pnpm layers` checks this; when it fails it names the doc that lists what each folder owns. Load
+`pnpm layers` checks this; when it fails it prints the rule and the fix. Load
 the naming skill before adding a folder.
 
 ## Priorities
