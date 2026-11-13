@@ -64,7 +64,7 @@ What follows from them:
 
 Each step names the file to open. Paths are under `packages/`.
 
-**1. The client sends.** A composer calls `session.send`. In the SDK that is the send journal: `journalLoop.send` in `sdk/src/send/journal.ts` writes the message to the client's journal first, queues it behind the previous send on the same head, and posts `head.send`. The journal is why a message typed offline is sent once the host is back, and it retries `unavailable` and `stale` until the link closes. `withUnsent` lays journaled messages over the view until the host's rows show them.
+**1. The client sends.** A composer calls `session.send`. In the SDK that is the send journal: `journalLoop.send` in `sdk/src/send/journal.ts` writes the message to the client's journal first, queues it behind the previous send on the same head, and posts `head.send`. The journal is why a message typed offline is sent once the host is back, and it retries `unavailable` and `stale` until the link closes. Each client keeps it where a restart finds it, keyed by host and receipt id: the app in `localStorage` (`app/src/data/send-journal.ts`), the TUI in files under the home (`tui/src/send-journal.ts`), mobile in MMKV; the next `connect` to that host resends what is left, and a resend under the same receipt id is a replay, so two windows that load one entry send it once. An entry older than a day is sent only if the host already has its receipt (`receipt.status`); otherwise it stays journaled and drawn as an unsent row whose retry reason says it waited too long, listed by `unsentSends(...).expired()`, until `resend` sends it again or `receipt.stop` removes it. `withUnsent` lays journaled messages over the view until the host's rows show them.
 
 **2. It crosses as an HTTP request.** `createTransport` in `protocol/src/client/transport.ts` encodes the input against the operation's schema and posts it. Every client holds two connections to its host, and this is the first: `sdk.connect` (`sdk/src/connection/`), which carries calls, the host-view watch and the journal over HTTP. The second is `openHost` (`sdk/src/live/host-connection.ts`), one WebSocket that carries what the host pushes.
 
@@ -88,7 +88,7 @@ Each step names the file to open. Paths are under `packages/`.
 
 **12. The client draws.** Each client adapts a `live.chat` store. The app does it in `app/src/data/chat-store.ts`, pages history over it and paces text per frame (`paced-text.ts`); the transcript patches the one row that changed. The TUI does it in `tui/src/live-host.ts` and dispatches a `view` message to its reducer. Mobile does it in `mobile/src/connection/live.ts`.
 
-**13. The run ends in one set.** `endRun` in `core/src/engine/runs.ts` deletes the run, writes the head's last run, settles the receipts of the messages it landed, and fails any part still live. The journal drops its entry once a view contains the message. A child session's answer is then sent to its parent as an attached message.
+**13. The run ends in one set.** `endRun` in `core/src/engine/runs.ts` deletes the run, writes the head's last run, settles the receipts of the messages it landed, fails any part still live, and for a child session reserves its answer as a `report` receipt `<run>:report` under the parent. The journal drops its entry once a view contains the message. A wait that takes the end deletes the report in the set that takes it; otherwise `deliverReport` (`engine/reports.ts`) admits it to the parent as an attached message under that receipt id, and `recover` delivers one a crash left reserved. A job's end reserves its report the same way.
 
 A reconnect skips most of this. The SDK keeps its rows and seq, subscribes again, and resumes: `head.read` with `resume: { seq, from }` answers with the rows that changed and the window's order.
 
@@ -139,6 +139,7 @@ Core's layers are in [core-structure.md](core-structure.md); the two that matter
 | `retire/<pid>` | A client's request that an older host retire, with its supervisor kind | `requestRetire`; the host checks every 10 s and retires when idle |
 | `nyte.db` | The store | The host |
 | `secret.key` | The key that seals credentials, mode 0600 | First open |
+| `journal/<host and receipt>.json` | One message a `nyte` command sent and the host hasn't shown yet, mode 0600 | `fileJournal`, by rename; removed once a view shows the message |
 
 A client finds the host with `findRunningHost`: read `host.json`, check the pid, and ask the address, which must answer with the host header. A host that finds the lock held stands by (the desktop's) or exits (a TUI's). A `nyte` that finds no host starts one only while nobody holds the lock.
 
@@ -153,11 +154,11 @@ What happens when something cuts across a run, and the function that decides it.
 | The person looks elsewhere | The run goes on. Unread is commits after the principal's `seenThrough`, and a chat is seen only while shown in a focused window | Each client's mark-seen, then `advanceSeen` in `core/src/watch/seen.ts` | No |
 | History changes under a run | Editing a landed message rewinds the branch and fences the live run in one set. Moving to another branch and forking refuse while the chat is busy | `engine/admission.ts`, `engine/stop.ts`, `engine/move.ts`, `engine/fork.ts` | No |
 | The run waits on a person | An approval parks with no timeout and survives a restart. The first answer wins; a second gets "already answered", one after Stop gets "no longer waiting". A question waits 1 min, then the run goes on and a late answer arrives as a message | `plugin/src/approvals/approvals.ts`, `plugin/src/question/question.ts` | Mobile shows a waiting approval and cannot answer it |
-| The link drops | The socket reconnects from 1 s doubling to 30 s and resumes from its seq. Sends are journaled and sent again; Stop and an approval's answer are not | `sdk/src/live/host-connection.ts`, `sdk/src/send/journal.ts` | Mobile alone keeps its journal on disk |
+| The link drops | The socket reconnects from 1 s doubling to 30 s and resumes from its seq; a path that dies silently is found in 15 s while a call waits and 40 s when idle. Sends are journaled and sent again; Stop and an approval's answer are not | `protocol/src/client/socket-client.ts`, `sdk/src/live/host-connection.ts`, `sdk/src/send/journal.ts` | No |
 | The model fails | A retryable error shows retrying with its reason and a countdown. Otherwise the run ends failed with the message. A context that is too long compacts once, then fails | `core/src/agent/agent-loop.ts`, `endRun` | No |
-| The client goes away | The run goes on. On return the client reads the tail and shows unread | Nothing decides it: that is the rule | A message still unsent is lost, except on mobile |
+| The client goes away | The run goes on. On return the client reads the tail and shows unread, and a message it had not delivered is sent from its journal | Nothing decides the first: that is the rule. `sdk/src/send/journal.ts` | No |
 | The host stops | Told to stop: the command is killed, its call settles interrupted, and the run resumes in about 100 ms on the next host. Killed: the run looks live for 20 s, then the call settles interrupted and the run resumes | `service/src/outdated-host.ts`, `engine/presence.ts`, `recover` in `drive/execution.ts`, `reapJobs` in `engine/jobs.ts` | No |
-| The chat changes elsewhere | Another client's rows arrive like any others. A subagent's report starts a run in its parent only if the parent's last run completed. Delete is refused while a run is live | `core/src/api/session.ts` | The app closes a chat deleted elsewhere; the TUI keeps showing it |
+| The chat changes elsewhere | Another client's rows arrive like any others. A subagent's report starts a run in its parent only if the parent's last run completed. Delete is refused while a run is live | `core/src/api/session.ts` | The app closes a chat deleted elsewhere. The TUI's store goes stale with `unknown`, and the TUI does not yet act on it |
 
 ## Clocks
 
@@ -172,9 +173,10 @@ What happens when something cuts across a run, and the function that decides it.
 | Hook budget | 5 s a handler, 300 s for `before_compaction` | `extend/hooks.ts` |
 | Idle plugin runtime closed after; sweep | 10 min; 60 s | `core/src/compose.ts` |
 | Client hold on a queued message | 20 s, renewed every 5 s | `contract/session.ts`, `api/hold.ts` |
+| A journaled message is no longer sent unasked after | 24 h | `EXPIRES_MS` in `sdk/src/send/journal.ts` |
 | Push gather; shortest time between pushes | 8 ms; 33 ms | `host/src/serve/socket.ts` |
 | Socket ping; closed after | 30 s; 3 missed pongs | `serve/socket.ts` |
-| Stream channel ping | 15 s | `serve/stream-server.ts` |
+| Stream channel ping; the client counts it lost after | 15 s; 45 s without a byte | `serve/stream-server.ts`, `protocol/src/client/stream-client.ts` |
 | Socket ticket | 30 s, one socket | `serve/listen-fetch.ts` |
 | Frame limit; event backlog | 1 MiB; 8 MiB | `schema/src/socket.ts` |
 | Client action timeout | 10 s default, 30 s at most, 16 waiting | `serve/clients.ts` |
@@ -182,8 +184,10 @@ What happens when something cuts across a run, and the function that decides it.
 | Cleanup of unreferenced objects | 30 s after open, then hourly, objects over 1 h old | `store/compaction.ts` |
 | MCP reconnect | 1 s doubling to 30 s; reset after 30 s connected | `mcp-client/hub.ts` |
 | Job output kept | 1 MiB ring | `local/process/jobs.ts` |
-| Socket reconnect | 1 s doubling to 30 s, with jitter | `sdk/src/live/store.ts` |
-| HTTP retry | 50 ms, then 250 ms doubling to 10 s, no jitter | `sdk/src/connection/rows.ts` |
+| Socket reconnect | 1 s doubling to 30 s, with jitter; `retry()` skips the wait | `socketRetryDelay` in `sdk/src/live/store.ts` |
+| Socket open; probe after quiet; lost after a probe | 10 s; 30 s idle, 5 s while a call or the welcome is owed; 10 s without a frame, 2 s for `retry()` | `protocol/src/client/socket-client.ts` |
+| HTTP call timeout | 30 s for a query or a receipt; none for commands, streams, watches, uploads and waits | `protocol/src/client/transport.ts` |
+| HTTP retry | 50 ms, then 250 ms doubling to 10 s, no jitter | `httpRetryDelay` in `sdk/src/connection/rows.ts` |
 | Chat tail on open | 40 in the app (240 reopening), 200 in the TUI and on mobile | each client |
 | Host stop grace; `nyte host` exit deadline | 10 s; 12 s | `service/src/host-thread.ts`, `tui/src/host-command.ts` |
 
@@ -201,7 +205,8 @@ What a new feature should not do: put a field on a row that changes at a differe
 
 ## Correct, and surprising
 
-- **Two connections, two retry curves.** `sdk.connect` retries HTTP from 50 ms without jitter; `openHost` reconnects the socket from 1 s with jitter. Both functions are named `retryDelay`.
+- **Two connections, two retry curves.** `sdk.connect` retries HTTP from 50 ms without jitter (`httpRetryDelay` in `rows.ts`): a retry is one request. `openHost` redials the socket from 1 s with jitter (`socketRetryDelay`): a redial is a resume of every scope, and a host restart drops every client at once. Neither waits on the other's health.
+- **The client finds a dead link itself.** The host pings every 30 s, but no WebSocket API shows a ping to the page, so the socket asks the host a call (`events.unsubscribe` with no scopes) after a quiet spell and counts itself lost when nothing comes back. An idle client sends two probes a minute, as often as the host pings.
 - **Two things are called `openHost`.** `@nyte-ai/host` exports the one that composes a host in this process; `@nyte-ai/sdk/client` exports the one that opens a socket to a host.
 - **An `unavailable` is usually an answer, not an outage.** More than sixty host paths answer it on purpose. Only a transport that failed, or an answer with `retry` set, counts as a lost link (`linkLost`). The host sets `retry` on the answers that mean come back later: a listener that is closed, a host that disconnected its clients, and a host still opening. The client reads the field, never the message.
 - **A change can arrive at a seq the client already holds.** A job's, a child's or a page's state, and a session's activation, change without a log event, and ride the seq they joined. Stores drop only a change older than their seq.
@@ -222,7 +227,7 @@ What a new feature should not do: put a field on a row that changes at a differe
 
 These are real and not fixed. Each names what it would take.
 
-- **A child's or a job's report is not durable.** It is a second write after the run ends, with a random receipt id and no recovery. A crash between the two loses it. It needs a deterministic id and a step in `recover`.
+- **A `task` child can reach its parent twice.** A child that ends before its parent's `task` parks the wait has its report delivered and its answer returned by `task`, and a child stopped with its parent reports its stopped end. Holding a child's report until the call that started it settles would cover both.
 - **A migration loads the whole store into memory.**
 - **Pointer receipts written before the index stopped counting them stay in `pending_work`** until a migration rebuilds the index. They cost a sweep visit each, as before.
 - **Search walks the session index when a name is rare.** `sessions.read` with `query` matches a lower-cased name column in activity order until `limit` match, about half a millisecond at 5,000 chats. Pinned chats read from their own index whatever the count. A trigram index would make search independent of the count.
@@ -233,10 +238,11 @@ These are real and not fixed. Each names what it would take.
 - **A command outlives a host that was killed.** Its process group is reparented and keeps running while its call reads interrupted and the run resumes, so the model may start it again beside the orphan. Nothing in a client can stop it. Fixing it means storing the pid, group and start time on the job and killing a group whose holder is dead.
 - **A killed host's run looks live for 20 s** on the next host, and a Stop in that window shows stopping for as long. The wait is the presence lapse; shortening it for a process on the same machine whose pid is gone means changing the takeover fence.
 - **Stop waits for a tool that ignores its abort signal**, and the queue waits behind it. The built-in command and MCP tools honour the signal; a plugin's tool may not.
-- **A half-open link is never noticed.** Nothing on the client times out, so a path that dies silently leaves it open and fresh, with Stop and send pending.
-- **An unsent message is lost when the app or the TUI quits.** Their journals are in memory; mobile's is on disk.
+- **A command over HTTP has no deadline.** A query or a receipt fails after 30 s unanswered, but the host runs some commands for as long as they take, so a Stop sent into a dead path stays pending until the person presses it again.
+- **An expired journal entry has no screen.** After a day unsent it is kept and shown as the row a failing send gets, whose text says it is retrying. `unsentSends(...).expired()`, `resend` and the receipt's `stop` are there for a client to offer send and remove.
+- **A version mismatch is read from the socket's close reason.** The host closes with 1008 and a sentence, and the client matches its first words. A typed frame before the close needs a revision that both sides can rely on.
 - **Mobile cannot answer an approval.** It shows that the run waits.
-- **The TUI keeps showing a chat that was deleted or archived elsewhere.** A head store gets no event when its chat is removed.
+- **The TUI and mobile keep showing a chat that was deleted elsewhere.** Their head store now goes stale with `unknown`; neither acts on it, and neither reads `archived`.
 - **A resume resends the window's order** when nothing moved: 1.6 KB of ids a chat, the largest part of a reconnect.
 - **The HTTP stream channel wraps base64 in JSON in SSE.** A frame kind without the inner layers needs a revision bump.
 - **A stalled git remote or formatter hangs its call.** `git push`, `blame` and the formatter run have no timeout.
