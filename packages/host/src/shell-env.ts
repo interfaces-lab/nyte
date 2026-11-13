@@ -102,19 +102,27 @@ function readLoginShellEnvironment({
       settled = true;
       clearTimeout(timer);
       child.stdout.destroy();
-      child.kill("SIGKILL");
 
       resolve(loaded);
     };
 
-    const timer = setTimeout(() => finish(undefined), timeoutMs);
+    const abandon = (): void => {
+      try {
+        if (child.pid === undefined) child.kill("SIGKILL");
+        else process.kill(-child.pid, "SIGKILL");
+      } catch {}
+
+      finish(undefined);
+    };
+
+    const timer = setTimeout(abandon, timeoutMs);
     child.on("error", () => finish(undefined));
-    child.stdout.on("error", () => finish(undefined));
+    child.stdout.on("error", abandon);
     child.stdout.on("data", (chunk: Buffer) => {
       bytes += chunk.byteLength;
 
       if (bytes > OUTPUT_LIMIT) {
-        finish(undefined);
+        abandon();
 
         return;
       }

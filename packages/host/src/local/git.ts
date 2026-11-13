@@ -38,6 +38,8 @@ import { decodeText } from "./text.ts";
 
 type Repo = Extract<GitStatus, { readonly kind: "repository" }>;
 
+type DiffRange = { readonly args: readonly string[]; readonly untracked: boolean };
+
 const PATCH_BATCH = 32;
 
 const LOG_DEFAULT = 50;
@@ -175,10 +177,7 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
     return ran.code === 0 ? ran.stdout.toString("utf8").trim() : null;
   };
 
-  const resolveRange = async (
-    root: string,
-    scope: GitScope,
-  ): Promise<{ readonly args: readonly string[]; readonly untracked: boolean }> => {
+  const resolveRange = async (root: string, scope: GitScope): Promise<DiffRange> => {
     const head = async () => (await resolves(root, "HEAD")) ?? (await empty(root));
 
     switch (scope.kind) {
@@ -215,11 +214,9 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
 
   const listChanged = async (
     repo: Repository,
-    scope: GitScope,
+    range: DiffRange,
     current: Repo,
   ): Promise<readonly Changed[]> => {
-    const range = await resolveRange(repo.root, scope);
-
     const ran = await git(repo.root, [
       "diff",
       "--name-status",
@@ -249,7 +246,7 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
     const range = await resolveRange(repo.root, scope);
 
     const [changed, numstat] = await Promise.all([
-      listChanged(repo, scope, current),
+      listChanged(repo, range, current),
       git(repo.root, [
         "diff",
         "--numstat",
@@ -284,9 +281,10 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
     ignoreWhitespace: boolean | undefined,
   ): Promise<PatchSet> => {
     const { root } = repo;
+    const range = await resolveRange(root, scope);
 
     const changed = new Map(
-      (await listChanged(repo, scope, current)).map((file) => [file.path, file]),
+      (await listChanged(repo, range, current)).map((file) => [file.path, file]),
     );
 
     const wanted = [...new Set(paths)].flatMap((path) => {
@@ -295,7 +293,6 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
       return file === undefined ? [] : [file];
     });
 
-    const range = await resolveRange(root, scope);
     const entries = new Map<string, PatchEntry & { readonly fresh: boolean }>();
 
     const read = async (files: readonly Changed[], limit: number): Promise<Ran> =>
@@ -481,7 +478,9 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
 
       const from = into(
         repo,
-        (await listChanged(repo, scope, current)).find((file) => file.path === path)?.from ?? path,
+        (await listChanged(repo, await resolveRange(root, scope), current)).find(
+          (file) => file.path === path,
+        )?.from ?? path,
       );
 
       const at = into(repo, path);

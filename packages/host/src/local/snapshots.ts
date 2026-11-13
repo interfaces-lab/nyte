@@ -75,9 +75,11 @@ const GENERATION = 1_000;
 
 const KEEP_TRIES = 3;
 
+const STORE_CONCURRENCY = 32;
+
 const CHUNK = 64 * 1024;
 
-/** Returns content-addressed snapshots of an environment's tree, so equal trees are equal ids whichever run took them. `before(run)` is taken once per run in this process and answered again after; `after(run)` is taken on every call. In a repository (`git`, default `git` on the PATH), a snapshot writes the environment's part of the worktree, tracked and untracked files that are not ignored, into an index seeded from a copy of the real one (`GIT_INDEX_FILE`, `git add -A`, `git write-tree --prefix` for a workspace below the root; the real index is never touched), kept between snapshots under `<store>/indexes` so `add` only does work for what moved since the last one and seeded again whenever keeping it could give another tree than a fresh copy (`snapshotIndex`), and keeps the tree reachable for good from the hidden ref `refs/nyte/kept`, a tree of generation trees `g000000`, `g000001`, ... that each hold up to 1,000 snapshot trees named by their hash (only the newest generation and the root are rewritten, in the background after a snapshot of a tree this process has not kept, so a snapshot costs two git spawns: `add` and `write-tree`, and a `git config` when it seeds the index; the per-tree refs `refs/nyte/snapshots/<tree>` of earlier versions all fold into it and go); the id is `git:<tree>`. The repository is looked up once. Without a repository it walks the tree as `localFiles.scan` does (up to `limit` entries, default 50 000), stores each file's bytes up to 1 MiB once under `<store>/objects/<sha256>` (a larger file is hashed, not stored; a file whose size, mtime and inode did not move is not re-read) and the tree, `{ incomplete, files }` (whether the walk stopped short, at its limit or at an unreadable directory, and the manifest of paths to content hashes), under `<store>/trees/<sha256 of it>.json`; the id is `tree:<hash>`. `diff(from, to)` answers the `ChangeSet` between two snapshots of one kind (empty, without running git, when they are equal; `git diff-tree -r -M --name-status`/`--numstat`, or the two manifests compared, an exact-content move a rename; the empty id `""` is the empty tree), its `revision` `to`; a path only an incomplete side lacks is neither added nor deleted but `modified` with an `unknown` stat; `patches(from, to, paths, options)` answers one `PatchEntry` per path the comparison reports, a text one carrying its unified diff as `localGit`'s do (`git diff` between the trees, read as `localGit.patches` reads: a path past 1 MiB `too-large`, one whose read fails `failed`, the others fine), or, between manifests, from the stored contents with the line diff, a text entry's digest its patch's so it moves with `ignoreWhitespace` (`too-large` for a file not stored, `binary` for one not text, `failed { reason: "incomplete" }` for a path only an incomplete side lacks). Snapshots of two kinds do not compare: `SdkError("invalid")`. */
+/** Returns content-addressed snapshots of an environment's tree, so equal trees are equal ids whichever run took them. `before(run)` is taken once per run in this process and answered again after; `after(run)` is taken on every call. In a repository (`git`, default `git` on the PATH), a snapshot writes the environment's part of the worktree, tracked and untracked files that are not ignored, into an index seeded from a copy of the real one (`GIT_INDEX_FILE`, `git add -A`, `git write-tree --prefix` for a workspace below the root; the real index is never touched), kept between snapshots under `<store>/indexes` so `add` only does work for what moved since the last one and seeded again whenever keeping it could give another tree than a fresh copy (`snapshotIndex`), and keeps the tree reachable for good from the hidden ref `refs/nyte/kept`, a tree of generation trees `g000000`, `g000001`, ... that each hold up to 1,000 snapshot trees named by their hash (only the newest generation and the root are rewritten, in the background whenever a snapshot finds trees this process has not kept yet, so a snapshot costs two git spawns: `add` and `write-tree`, and a `git config` when it seeds the index, a second one on the first seed only when git reads a config file outside the ones `snapshotIndex` always watches; the per-tree refs `refs/nyte/snapshots/<tree>` of earlier versions all fold into it and go); the id is `git:<tree>`. The repository is looked up once. Without a repository it walks the tree as `localFiles.scan` does (up to `limit` entries, default 50 000), stores each file's bytes up to 1 MiB once under `<store>/objects/<sha256>` (a larger file is hashed, not stored; a file whose size, mtime and inode did not move is not re-read) and the tree, `{ incomplete, files }` (whether the walk stopped short, at its limit or at an unreadable directory, and the manifest of paths to content hashes), under `<store>/trees/<sha256 of it>.json`; the id is `tree:<hash>`. `diff(from, to)` answers the `ChangeSet` between two snapshots of one kind (empty, without running git, when they are equal; `git diff-tree -r -M --name-status`/`--numstat`, or the two manifests compared, an exact-content move a rename; the empty id `""` is the empty tree), its `revision` `to`; a path only an incomplete side lacks is neither added nor deleted but `modified` with an `unknown` stat; `patches(from, to, paths, options)` answers one `PatchEntry` per path the comparison reports, a text one carrying its unified diff as `localGit`'s do (`git diff` between the trees, read as `localGit.patches` reads: a path past 1 MiB `too-large`, one whose read fails `failed`, the others fine), or, between manifests, from the stored contents with the line diff, a text entry's digest its patch's so it moves with `ignoreWhitespace` (`too-large` for a file not stored, `binary` for one not text, `failed { reason: "incomplete" }` for a path only an incomplete side lacks). Snapshots of two kinds do not compare: `SdkError("invalid")`. */
 export function localSnapshots(
   env: ExecutionEnv,
   options: { readonly store: string; readonly git?: string; readonly limit?: number },
@@ -149,17 +151,17 @@ export function localSnapshots(
     const tree = await checked(first.code === 0 ? first : await index.writeEmpty(repo));
     const id = asId<"snapshot">(`git:${tree}`);
 
-    if (fresh.includes(tree) || keptTrees.has(tree)) return id;
-    fresh.push(tree);
-    keeping ??= keepTrees(repo).finally(() => {
-      keeping = undefined;
-    });
+    if (!fresh.includes(tree) && !keptTrees.has(tree)) fresh.push(tree);
+
+    if (fresh.length > 0) keeping ??= keepTrees(repo);
 
     return id;
   };
 
   const keepTrees = async (repo: Repository): Promise<void> => {
-    for (let tries = 0; fresh.length > 0 && tries < KEEP_TRIES; tries += 1) {
+    let failures = 0;
+
+    while (fresh.length > 0 && failures < KEEP_TRIES) {
       const taken = fresh.splice(0);
       let landed = false;
 
@@ -169,8 +171,13 @@ export function localSnapshots(
         dev("snapshots", "keep failed", { error: String(error) });
       }
 
-      if (!landed) fresh.unshift(...taken);
+      if (!landed) {
+        fresh.unshift(...taken);
+        failures += 1;
+      }
     }
+
+    keeping = undefined;
   };
 
   const rewriteKept = async (repo: Repository, taken: readonly string[]): Promise<boolean> => {
@@ -320,18 +327,16 @@ export function localSnapshots(
 
       if (frame.kind !== "entries") continue;
 
-      for (const entry of frame.entries) {
-        if (entry.kind === "directory") continue;
+      const files = frame.entries.flatMap((entry) => (entry.kind === "directory" ? [] : [entry]));
 
-        const hash = await storeEntry(
-          options.store,
-          join(env.cwd, entry.path),
-          entry.kind,
-          stamps,
-        ).catch(() => null);
+      for (let start = 0; start < files.length; start += STORE_CONCURRENCY)
+        await Promise.all(
+          files.slice(start, start + STORE_CONCURRENCY).map(async (entry) => {
+            const hash = await storeEntry(options.store, env.cwd, entry, stamps).catch(() => null);
 
-        if (hash !== null) manifest[entry.path] = hash;
-      }
+            if (hash !== null) manifest[entry.path] = hash;
+          }),
+        );
     }
 
     const text = JSON.stringify({
@@ -524,19 +529,26 @@ export function localSnapshots(
   };
 }
 
+/** The stamp is the walk's `lstat`, taken before the read, so a file that moves in between is read again next time. */
 async function storeEntry(
   store: string,
-  path: string,
-  kind: "file" | "symlink",
+  root: string,
+  entry: {
+    readonly path: string;
+    readonly kind: "file" | "symlink";
+    readonly size: number;
+    readonly mtimeMs: number;
+    readonly ino: number;
+  },
   stamps: Map<string, { readonly stamp: string; readonly hash: string }>,
 ): Promise<string> {
-  const stats = await lstat(path);
-  const stamp = `${kind}:${stats.size}:${stats.mtimeMs}:${stats.ino}`;
+  const path = join(root, entry.path);
+  const stamp = `${entry.kind}:${entry.size}:${entry.mtimeMs}:${entry.ino}`;
   const known = stamps.get(path);
 
   if (known?.stamp === stamp) return known.hash;
 
-  if (kind === "symlink") {
+  if (entry.kind === "symlink") {
     const target = new TextEncoder().encode(await readlink(path));
     const hash = sha256(target);
     await keep(join(store, "objects", hash), target);
@@ -545,7 +557,7 @@ async function storeEntry(
     return hash;
   }
 
-  if (stats.size > PATCH_LIMIT) {
+  if (entry.size > PATCH_LIMIT) {
     const hash = await hashFile(path);
     stamps.set(path, { stamp, hash });
 

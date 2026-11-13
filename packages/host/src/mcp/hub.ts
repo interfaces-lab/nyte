@@ -30,6 +30,8 @@ const WATCH_DELAY_MS = 100;
 
 const LINGER_MS = 30_000;
 
+const HEALTHY_MS = 30_000;
+
 const UNTRUSTED: McpChange = {
   kind: "invalid",
   message: "Project servers need a trusted folder on this machine.",
@@ -161,6 +163,7 @@ function hub(input: {
     let ended = false;
     let delay = 1000;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let healthy: ReturnType<typeof setTimeout> | undefined;
     const attempted = Promise.withResolvers<void>();
     let attempting: Promise<void> | null = attempted.promise;
 
@@ -189,6 +192,7 @@ function hub(input: {
     };
 
     const drop = (message: string): void => {
+      clearTimeout(healthy);
       const previous = client;
       client = null;
       void retire(previous);
@@ -253,7 +257,6 @@ function hub(input: {
         };
 
         client = next;
-        delay = 1000;
         next.onNotification("notifications/tools/list_changed", async () => {
           try {
             await refresh();
@@ -263,6 +266,13 @@ function hub(input: {
           }
         });
         await refresh();
+
+        if (client === next) {
+          healthy = setTimeout(() => {
+            delay = 1000;
+          }, HEALTHY_MS);
+          healthy.unref();
+        }
       } catch (error) {
         if (client === next) client = null;
         await retire(next);
@@ -327,6 +337,7 @@ function hub(input: {
         ended = true;
         attempt();
         clearTimeout(timer);
+        clearTimeout(healthy);
         const previous = client;
         client = null;
         await Promise.all([retire(previous), retire(opening)]);

@@ -26,10 +26,15 @@ const holds = new Map<TrashToken, { readonly held: string; readonly original: st
 
 const purged = new Set<string>();
 
+/** Judges each path where its real parent folder puts it, so a symlinked folder cannot lead out of `root`, while a symlink entry itself still moves and copies as a link. */
 export function localTransfers(root: string): Transfers {
-  const inside = (path: string): Inside => {
+  const inside = async (path: string): Promise<Inside> => {
     const target = resolve(root, path);
-    const within = relative(root, target);
+
+    const within = relative(
+      await realpath(root),
+      join(await nearestReal(dirname(target)), basename(target)),
+    );
 
     if (within === "") return { kind: "invalid", reason: "root" };
 
@@ -44,8 +49,8 @@ export function localTransfers(root: string): Transfers {
     to: string,
     kind: "move" | "copy",
   ): Promise<TransferOutcome> => {
-    const source = inside(from);
-    const target = inside(to);
+    const source = await inside(from);
+    const target = await inside(to);
 
     if (source.kind === "invalid") return source;
 
@@ -95,7 +100,7 @@ export function localTransfers(root: string): Transfers {
     move: (from, to) => transfer(from, to, "move"),
     copy: (from, to) => transfer(from, to, "copy"),
     async mkdir(path) {
-      const target = inside(path);
+      const target = await inside(path);
 
       if (target.kind === "invalid") return target;
       const existing = await lstat(target.path).catch(missing);
@@ -119,7 +124,7 @@ export function localTransfers(root: string): Transfers {
       return { kind: "done" };
     },
     async trash(path): Promise<TrashOutcome> {
-      const target = inside(path);
+      const target = await inside(path);
 
       if (target.kind === "invalid") return target;
       const entry = await lstat(target.path).catch(missing);

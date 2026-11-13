@@ -5,11 +5,15 @@ import { basename, dirname, join, sep } from "node:path";
 import type { Disposer } from "@nyte-ai/schema";
 import ignore from "ignore";
 
-type TreeEntry = {
-  readonly path: string;
-  readonly kind: "file" | "directory" | "symlink";
-  readonly size: number | null;
-};
+type TreeEntry =
+  | { readonly path: string; readonly kind: "directory"; readonly size: null }
+  | {
+      readonly path: string;
+      readonly kind: "file" | "symlink";
+      readonly size: number;
+      readonly mtimeMs: number;
+      readonly ino: number;
+    };
 
 export type WalkFrame =
   | { readonly kind: "entries"; readonly entries: readonly TreeEntry[] }
@@ -144,7 +148,9 @@ export async function* walkTree(
         if (kind === "directory") return { path, kind, size: null };
         const stats = await lstat(join(root, path)).catch(() => null);
 
-        return stats === null ? null : { path, kind, size: stats.size };
+        return stats === null
+          ? null
+          : { path, kind, size: stats.size, mtimeMs: stats.mtimeMs, ino: stats.ino };
       }),
     );
 

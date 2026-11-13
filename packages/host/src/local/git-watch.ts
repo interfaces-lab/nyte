@@ -189,5 +189,7 @@ function movesStatus(path: string): boolean {
 function pathInside(cwd: string, dir: string): string | null {
   const inside = relative(cwd, dir);
 
-  return inside.startsWith("..") || isAbsolute(inside) ? null : inside.split(sep).join("/");
+  return inside === ".." || inside.startsWith(`..${sep}`) || isAbsolute(inside)
+    ? null
+    : inside.split(sep).join("/");
 }

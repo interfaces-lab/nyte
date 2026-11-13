@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import nodeModule from "node:module";
-import { isAbsolute, join, relative } from "node:path";
+import { isAbsolute, join, relative, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { SdkError } from "@nyte-ai/schema";
 import type { ValidationIssue } from "@nyte-ai/schema";
@@ -354,5 +354,5 @@ function fitsCorePlugin(value: unknown): value is Plugin<"core"> {
 function inside(root: string, path: string): boolean {
   const within = relative(root, path);
 
-  return within !== "" && !within.startsWith("..") && !isAbsolute(within);
+  return within !== "" && within !== ".." && !within.startsWith(`..${sep}`) && !isAbsolute(within);
 }

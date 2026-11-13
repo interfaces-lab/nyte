@@ -144,6 +144,8 @@ export function snapshotIndex(cwd: string, store: string, git: Git): SnapshotInd
   const watchConfig = async (
     repo: Repository,
   ): Promise<{ readonly watched: readonly string[]; readonly stamp: string } | null> => {
+    if (watched.length === 0) watched = watchedFiles(repo, cwd, "");
+
     for (let tries = 0; tries < SEED_TRIES; tries += 1) {
       const stamp = await stampFiles(watched);
       const listed = await git(repo.root, ["config", "-z", "--list", "--show-origin"]);

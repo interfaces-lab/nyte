@@ -7,7 +7,7 @@ import type { PluginStorage } from "@nyte-ai/core";
 import type { McpWorkspace } from "@nyte-ai/core/server";
 import type { McpOAuthConfig } from "@nyte-ai/schema";
 import type { McpServerEntry } from "./config.ts";
-import { createAuthProvider, oauthKey, oauthStore } from "./oauth.ts";
+import { createAuthProvider, oauthKey } from "./oauth.ts";
 import type { McpOAuthSettings } from "./oauth.ts";
 
 export type McpConnector = (
@@ -46,7 +46,8 @@ export const connectServer: McpConnector = (entry, context) => {
     headers,
     authProvider: createAuthProvider({
       serverUrl: transport.url,
-      store: oauthStore(context.secrets, oauthKey(entry.name, transport.url)),
+      secrets: context.secrets,
+      key: oauthKey(entry.name, transport.url),
       settings: () => oauthSettings(transport.oauth, entry.name),
       onChallenge: context.challenged,
     }),

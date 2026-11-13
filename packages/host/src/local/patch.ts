@@ -275,7 +275,10 @@ export function parseNumstat(output: string): ReadonlyMap<string, LineStat> {
     const token = tokens[index] ?? "";
 
     if (token === "") continue;
-    const [added = "", removed = "", path = ""] = token.split("\t");
+    const fields = token.split("\t");
+    const added = fields[0] ?? "";
+    const removed = fields[1] ?? "";
+    const path = fields.slice(2).join("\t");
     let name = path;
 
     if (path === "") {

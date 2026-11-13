@@ -83,21 +83,30 @@ export function oauthStore(secrets: PluginStorage["secrets"], key: string): McpO
   };
 }
 
+const refreshes = new WeakMap<PluginStorage["secrets"], Map<string, Promise<void>>>();
+
 export function createAuthProvider(input: {
   readonly serverUrl: string;
-  readonly store: McpOAuthStateStore;
+  readonly secrets: PluginStorage["secrets"];
+  readonly key: string;
   readonly settings: () => McpOAuthSettings;
   onChallenge(challenge: OAuthChallenge): void;
 }): AuthProvider {
-  const { serverUrl, store } = input;
-  let refreshing: Promise<void> | undefined;
+  const serverUrl = input.serverUrl;
+  const store = oauthStore(input.secrets, input.key);
+  const refreshing = refreshes.get(input.secrets) ?? new Map<string, Promise<void>>();
+  refreshes.set(input.secrets, refreshing);
 
   const refresh = (
     stale: string | undefined,
     fetch: McpFetch = globalThis.fetch,
     challenge?: OAuthChallenge,
   ): Promise<void> => {
-    refreshing ??= (async () => {
+    const running = refreshing.get(input.key);
+
+    if (running !== undefined) return running;
+
+    const started = (async () => {
       const state = await store.load();
 
       if (state?.tokens?.access_token !== stale) return;
@@ -122,16 +131,16 @@ export function createAuthProvider(input: {
       });
 
       if (result === "REDIRECT") throw new McpOAuthAuthorizationRequiredError();
-    })().finally(() => {
-      refreshing = undefined;
-    });
+    })().finally(() => refreshing.delete(input.key));
 
-    return refreshing;
+    refreshing.set(input.key, started);
+
+    return started;
   };
 
   return {
     async token() {
-      await refreshing?.catch(() => undefined);
+      await refreshing.get(input.key)?.catch(() => undefined);
       const state = await store.load();
       const token = state?.tokens?.access_token;
 
