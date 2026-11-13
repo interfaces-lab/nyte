@@ -10,12 +10,16 @@ const CHUNK_BYTES = 48 * 1024;
 
 const DEFLATE_MIN_BYTES = 16 * 1024;
 
+/** A cancel can overtake the start it cancels, which travels on another request, so a channel remembers this many ids it was asked to cancel before their start; a start for one of them ends at once. */
+const CANCELLED_LIMIT = 256;
+
 export function createStreamChannels() {
   type Channel = {
     readonly connection: Connection;
     readonly signal: AbortSignal;
     readonly deflate: boolean;
     readonly streams: Map<string, AbortController>;
+    readonly cancelled: Set<string>;
     readonly push: (frame: StreamFrame, signal: AbortSignal) => Promise<void>;
   };
 
@@ -71,6 +75,7 @@ export function createStreamChannels() {
         signal: controller.signal,
         deflate,
         streams,
+        cancelled: new Set(),
         push: (frame, signal) =>
           buffer.write(encoder.encode(`data: ${JSON.stringify(frame)}\n\n`), signal),
       });
@@ -98,6 +103,8 @@ export function createStreamChannels() {
       serve: (signal: AbortSignal) => Promise<Response>,
     ): Promise<Response> {
       const channel = owned(channelId, connection);
+
+      if (channel.cancelled.delete(streamId)) return new Response(null, { status: 202 });
 
       if (channel.streams.has(streamId))
         throw new SdkError("invalid", "The stream identifier is already in use.");
@@ -169,7 +176,20 @@ export function createStreamChannels() {
       return new Response(null, { status: 202 });
     },
     cancel(connection: Connection, channelId: string, streamId: string): void {
-      owned(channelId, connection).streams.get(streamId)?.abort();
+      const channel = owned(channelId, connection);
+      const stream = channel.streams.get(streamId);
+
+      if (stream !== undefined) {
+        stream.abort();
+
+        return;
+      }
+
+      channel.cancelled.add(streamId);
+      const oldest = channel.cancelled.values().next();
+
+      if (channel.cancelled.size > CANCELLED_LIMIT && oldest.done !== true)
+        channel.cancelled.delete(oldest.value);
     },
   };
 }

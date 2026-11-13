@@ -635,22 +635,53 @@ export function bindConnection(connection: Connection, options: BindingOptions):
   };
 }
 
-async function* jobChanges(lists: AsyncIterable<readonly JobView[]>): AsyncIterable<JobsChange> {
-  let previous: readonly JobView[] | null = null;
+/** Returning it returns the jobs watch at once, even while a `next()` waits on the watch. */
+function jobChanges(lists: AsyncIterable<readonly JobView[]>): AsyncIterable<JobsChange> {
+  return {
+    [Symbol.asyncIterator]() {
+      const iterator = lists[Symbol.asyncIterator]();
+      const pending: JobsChange[] = [];
+      let previous: readonly JobView[] | null = null;
 
-  for await (const jobs of lists) {
-    if (previous === null) yield { kind: "jobs", jobs };
-    else {
-      const kept = new Set(jobs.map((job) => job.id));
-      const unmoved = new Set(previous);
+      return {
+        async next() {
+          for (;;) {
+            const change = pending.shift();
 
-      for (const job of previous) if (!kept.has(job.id)) yield { kind: "forgotten", id: job.id };
+            if (change !== undefined) return { done: false, value: change };
+            const next = await iterator.next();
 
-      for (const job of jobs) if (!unmoved.has(job)) yield { kind: "job", job };
-    }
+            if (next.done === true) return { done: true, value: undefined };
+            const jobs = next.value;
+            const before = previous;
+            previous = jobs;
 
-    previous = jobs;
-  }
+            if (before === null) {
+              pending.push({ kind: "jobs", jobs });
+              continue;
+            }
+
+            const kept = new Set(jobs.map((job) => job.id));
+            const unmoved = new Set(before);
+
+            pending.push(
+              ...before.flatMap((job): JobsChange[] =>
+                kept.has(job.id) ? [] : [{ kind: "forgotten", id: job.id }],
+              ),
+              ...jobs.flatMap((job): JobsChange[] =>
+                unmoved.has(job) ? [] : [{ kind: "job", job }],
+              ),
+            );
+          }
+        },
+        async return() {
+          await iterator.return?.();
+
+          return { done: true, value: undefined };
+        },
+      };
+    },
+  };
 }
 
 async function* readChunks(body: ReadableStream<Uint8Array> | null): AsyncGenerator<Uint8Array> {
