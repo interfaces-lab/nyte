@@ -32,6 +32,7 @@ Each concept has one name. Code uses the term, and users see the UI word where i
 | pane tab | One thing a pane in the layout shows: a chat or a panel. Its `content.kind` names the module that owns it. | Tab | stack, editor group, bare `tab` |
 | composer | The input editor with its trays, chips and queue. | | input |
 | draft | Unsent composer content. | Draft | for core's fold index |
+| send journal | A client's record of messages it sent that the host hasn't shown yet, resent on the next connect. An entry older than a day the host never saw is expired: still shown unsent, no longer sent on its own. See `createSendJournal`. | | |
 | image markup | Pen strokes and shapes in source-image pixels, flattened into a copy when added to a chat. | Markup | annotation, drawing (for the feature) |
 | warm | Hold a session's live watch before it opens, so opening it reuses that watch. | | preload, prefetch, prime |
 | hot set | The sessions kept warm or mounted, capped by count. | | cache (unqualified) |

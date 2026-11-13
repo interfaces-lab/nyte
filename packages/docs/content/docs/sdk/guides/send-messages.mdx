@@ -111,8 +111,16 @@ Only connection failures are retried. Any other error, such as a hook refusing t
 `send` and removes the message from the view.
 
 Unsent messages are kept in memory, so they survive a dropped connection but not a restart of your
-process. To survive one, pass `journal` to `connect`: an object with `load`, `put` and `remove`
-over storage you own. On the next `connect`, the SDK resends every entry `load` returns.
+process. To survive one, pass `journal: createSendJournal(storage)` to `connect`, where `storage`
+reads, writes and removes text under a key in storage you own, such as `localStorage` or a folder.
+On the next `connect` to the same host, the SDK resends what is left under each message's id, so
+a message the host already has is not sent twice, even when two clients load it.
+
+A message is sent on its own for a day. After that the SDK sends it only if the host already has
+it; otherwise the message stays in the view as `unsent`, its `retrying` reason saying it waited
+more than a day, and `send` rejects with `SdkError("timeout")`. `unsentSends(...).expired()` lists
+these messages so you can offer to send each again (`resend(id)`) or remove it
+(`session.receipt(id).stop()`).
 
 To keep the id yourself, pass it. The same id with the same content returns the first send's
 receipt:

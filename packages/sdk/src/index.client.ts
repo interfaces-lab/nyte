@@ -2,6 +2,8 @@ import { connect } from "./connection/connect.ts";
 
 export { createSendJournal } from "./send/journal.ts";
 
+export type { JournalStorage } from "./send/journal.ts";
+
 export { openHost } from "./live/host-connection.ts";
 
 export { ticketSocket } from "./live/ticket-socket.ts";

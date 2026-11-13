@@ -4,6 +4,8 @@ import { connect } from "./connection/connect.ts";
 
 export { createSendJournal } from "./send/journal.ts";
 
+export type { JournalStorage } from "./send/journal.ts";
+
 export * from "./surface.ts";
 
 export const sdk = {

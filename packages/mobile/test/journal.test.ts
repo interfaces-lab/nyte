@@ -1,19 +1,20 @@
 import { asId } from "@nyte-ai/schema";
+import { createSendJournal } from "@nyte-ai/sdk";
 import type { JournalEntry } from "@nyte-ai/sdk";
 import { describe, expect, it } from "vitest";
-import { createJournal } from "../src/connection/journal.ts";
+import { journalStorage } from "../src/connection/journal.ts";
 
 function memory() {
   const values = new Map<string, string>();
 
   return {
     values,
-    storage: {
+    storage: journalStorage({
       getString: (key: string) => values.get(key),
       set: (key: string, value: string) => void values.set(key, value),
       remove: (key: string) => values.delete(key),
       getAllKeys: () => [...values.keys()],
-    },
+    }),
   };
 }
 
@@ -29,10 +30,10 @@ function entry(id: string, at: number): JournalEntry {
   };
 }
 
-describe("createJournal", () => {
+describe("the MMKV send journal", () => {
   it("loads what it put, oldest first, until each is removed", async () => {
     const { storage } = memory();
-    const journal = createJournal(storage, "route-a");
+    const journal = createSendJournal(storage);
 
     await journal.put(entry("second", 2));
     await journal.put(entry("first", 1));
@@ -44,29 +45,19 @@ describe("createJournal", () => {
 
   it("survives a new journal over the same storage, as after a restart", async () => {
     const { storage } = memory();
-    await createJournal(storage, "route-a").put(entry("kept", 1));
+    await createSendJournal(storage).put(entry("kept", 1));
 
-    expect(await createJournal(storage, "route-a").load()).toEqual([entry("kept", 1)]);
-  });
-
-  it("keeps routes apart, and leaves keys it does not own alone", async () => {
-    const { storage, values } = memory();
-    values.set("nyte.other", "untouched");
-    await createJournal(storage, "route-a").put(entry("a", 1));
-    await createJournal(storage, "route-ab").put(entry("ab", 1));
-
-    expect((await createJournal(storage, "route-a").load()).map((item) => item.id)).toEqual(["a"]);
-    expect(values.get("nyte.other")).toBe("untouched");
+    expect(await createSendJournal(storage).load()).toEqual([entry("kept", 1)]);
   });
 
   it("drops an entry that no longer reads as one", async () => {
     const { storage, values } = memory();
-    const journal = createJournal(storage, "route-a");
+    const journal = createSendJournal(storage);
     await journal.put(entry("good", 1));
-    values.set(JSON.stringify(["route-a", "bad"]), JSON.stringify({ id: "bad" }));
-    values.set(JSON.stringify(["route-a", "torn"]), "{");
+    values.set("bad", JSON.stringify({ id: "bad" }));
+    values.set("torn", "{");
 
     expect((await journal.load()).map((item) => item.id)).toEqual(["good"]);
-    expect([...values.keys()]).toEqual([JSON.stringify(["route-a", "good"])]);
+    expect([...values.keys()]).toEqual([JSON.stringify(["host-1", "good"])]);
   });
 });

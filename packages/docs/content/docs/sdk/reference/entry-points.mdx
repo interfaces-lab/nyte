@@ -161,11 +161,24 @@ differs, the error says the host's identity key changed and to pair again.
 ## createSendJournal [#create-send-journal]
 
 ```ts
-createSendJournal(): RequestJournal
+createSendJournal(storage?: JournalStorage): RequestJournal
 ```
 
-The in-memory journal `connect` uses when you pass none. Messages in it survive a dropped
-connection but not a restart. To keep them across restarts, pass your own `RequestJournal`:
+Without `storage`, the in-memory journal `connect` uses when you pass none: messages in it survive
+a dropped connection but not a restart. With `storage`, they survive a restart too. Each message is
+one key, so every write and removal stands alone, and several clients, of one host or of several,
+can share one storage:
+
+```ts
+interface JournalStorage {
+  read(): Awaitable<Iterable<readonly [key: string, text: string]>>;
+  write(key: string, text: string): Awaitable<void>;
+  remove(key: string): Awaitable<void>;
+}
+```
+
+`load` reads every key, removes the ones whose text isn't an entry, and returns the rest oldest
+first. A journal is a `RequestJournal`, which you can also write yourself:
 
 ```ts
 interface RequestJournal {
@@ -178,7 +191,9 @@ interface RequestJournal {
 `connect` calls `load` once and resends the entries written for the host that answered. `send` calls
 `put` before the request. It calls `remove` once a view of the head shows the message, or when the
 send fails with an error it doesn't retry. A `JournalEntry` is plain JSON, so any key-value store
-works.
+works. An entry older than a day is resent only if the host already has its receipt; otherwise it
+stays journaled and shown as `unsent` until `unsentSends(...).resend(id)` sends it again or
+`session.receipt(id).stop()` removes it.
 
 ## pagedViews [#paged-views]
 
@@ -230,21 +245,21 @@ owner authority, and the URL stops answering after 15 minutes unused. See
 
 A `HostConnection` has:
 
-| Member                                     | What it does                                                                                                                                                       |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `head(session, head, { tail })`            | A store of one head's last `tail` messages and the rows they need                                                                                                  |
-| `chat(session, head, { tail, unsent? })`   | A store of the view a client draws: the head's view with `unsent`'s sends and streamed text laid in. See [chat store](#chat-store)                                 |
-| `part(session, part)`                      | A store of one part by id, wherever it sits in the session, kept current from the session's changes                                                                |
-| `directory(window?)`                       | A store of the `sessions` table. `window` is `{ parents?, limit? }`, as for `sessions.read`                                                                        |
-| `clients()`                                | A store of the connected clients, a `Map` of `ClientRow` by client id                                                                                              |
-| `text(listener)`                           | Opens the text channel and calls `listener` with each `TextUpdate`. Returns the unsubscribe                                                                        |
-| `call(name, input)`                        | Calls any query, command or receipt operation over the socket                                                                                                      |
-| `perform(client, action, input, options?)` | Asks another client to perform an action it declared, with `client.perform`. `options` is `{ timeoutMs? }`                                                         |
-| `offer(action, handler)`                   | Declares `{ name, summary, input }` in this client's hello, reconnecting to do so, and answers each request with `handler(input, requester)`. Returns the disposer |
-| `health`                                   | A store of `connecting`, `open`, `retrying` with the next attempt's time, or `blocked` with reason `auth`, `version` or `offline`                                  |
-| `retry()`                                  | Dials again now, with the backoff reset, when the connection is `retrying` or `blocked`                                                                            |
-| `hostId`                                   | The host's id once its welcome arrived, else `null`                                                                                                                |
-| `release()`                                | Lets go of the connection                                                                                                                                          |
+| Member                                     | What it does                                                                                                                                                                                                                                                                            |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `head(session, head, { tail })`            | A store of one head's last `tail` messages and the rows they need                                                                                                                                                                                                                       |
+| `chat(session, head, { tail, unsent? })`   | A store of the view a client draws: the head's view with `unsent`'s sends and streamed text laid in. See [chat store](#chat-store)                                                                                                                                                      |
+| `part(session, part)`                      | A store of one part by id, wherever it sits in the session, kept current from the session's changes                                                                                                                                                                                     |
+| `directory(window?)`                       | A store of the `sessions` table. `window` is `{ parents?, limit? }`, as for `sessions.read`                                                                                                                                                                                             |
+| `clients()`                                | A store of the connected clients, a `Map` of `ClientRow` by client id                                                                                                                                                                                                                   |
+| `text(listener)`                           | Opens the text channel and calls `listener` with each `TextUpdate`. Returns the unsubscribe                                                                                                                                                                                             |
+| `call(name, input)`                        | Calls any query, command or receipt operation over the socket                                                                                                                                                                                                                           |
+| `perform(client, action, input, options?)` | Asks another client to perform an action it declared, with `client.perform`. `options` is `{ timeoutMs? }`                                                                                                                                                                              |
+| `offer(action, handler)`                   | Declares `{ name, summary, input }` in this client's hello, reconnecting to do so, and answers each request with `handler(input, requester)`. Returns the disposer                                                                                                                      |
+| `health`                                   | A store of `connecting`, `open`, `retrying` with the next attempt's time, or `blocked` with reason `auth`, `version` or `offline`. A socket that stops answering leaves `open` within 15 s while a call waits, and within 40 s while idle                                               |
+| `retry()`                                  | Dials again now, with the backoff reset, when the connection is `retrying` or `blocked`. When it is `open`, sends the host one small call, keeps the socket if anything comes back, and dials again if nothing does within 2 s. Call it on foreground, focus or the network coming back |
+| `hostId`                                   | The host's id once its welcome arrived, else `null`                                                                                                                                                                                                                                     |
+| `release()`                                | Lets go of the connection                                                                                                                                                                                                                                                               |
 
 Each store has `subscribe(listener)`, which returns the unsubscribe, `snapshot()` and `close()`.
 The head, part and session stores also have `freshness()`: `fresh` with the `seq` their rows are current
@@ -287,7 +302,7 @@ The chat store is built from these helpers, which you can use on their own:
 | `headView(snapshot)`                     | Builds a `HeadView`, a `SessionView` without `seq`, from a head store's snapshot               |
 | `streamText(texts, update)`              | Keeps the latest streamed text and tool progress of each part in a `StreamedText` map          |
 | `withStreamedText(view, texts)`          | Lays the streamed text over a `HeadView`                                                       |
-| `unsentSends(connection, session, head)` | The sends still in an `sdk.connect` connection's journal. `lay(view, seq)` adds them to a view |
+| `unsentSends(connection, session, head)` | The sends still in an `sdk.connect` connection's journal. `lay(view, seq)` adds them to a view; `expired()` lists the ones older than a day that are no longer sent on their own, and `resend(id)` sends one again |
 
 [Render a session](/docs/sdk/guides/render-a-session) shows a head store in use.
 

@@ -1,12 +1,18 @@
 import { asId } from "@nyte-ai/schema";
 import type { SessionView } from "@nyte-ai/schema";
+import type { Session } from "@nyte-ai/core";
 import { decodeInput } from "@nyte-ai/protocol";
 import { afterEach, assert, describe, expect, it } from "vitest";
 import { createSendJournal } from "../src/send/journal.ts";
+import type { JournalStorage } from "../src/send/journal.ts";
+import { unsentSends } from "../src/send/unsent.ts";
 import { readOperation } from "./served.ts";
+import type { Served } from "./served.ts";
 import { client, closeOpened, open, queued, settledChat, text, users } from "./connection.ts";
 
 afterEach(closeOpened);
+
+const MAIN = asId<"head">("main");
 
 describe("client send journal", () => {
   it("keeps a send journaled and shown unsent while the link is down, and lands it once on the next connect", async () => {
@@ -572,6 +578,244 @@ it("leaves a send the host admitted but never answered to the clipped prompt tha
   expect(landed.messages.map((message) => message.kind)).toEqual(["part", "part"]);
   expect(landed.leadingPrompt?.id).toBe(clipped.leadingPrompt?.id);
 });
+
+interface Quit {
+  readonly host: Served;
+  readonly storage: JournalStorage;
+  readonly stored: Map<string, string>;
+  readonly session: Session;
+}
+
+interface Restart {
+  readonly name: string;
+  /** What the client that quit leaves in the storage. */
+  readonly quit: (left: Quit) => Promise<void>;
+  /** Clients that start over the storage at once, as windows do after a reload. */
+  readonly windows: number;
+  /** Whether they start against another host than the one the message was sent to. */
+  readonly elsewhere: boolean;
+  /** `head.send` requests they make. */
+  readonly sends: number;
+  /** User messages the host the message was sent to holds once they settle. */
+  readonly users: readonly string[];
+  /** How each window draws the message, or `null` when it does not reach the chat's host. */
+  readonly shown: "landed" | "expired" | null;
+  /** What the person then does with an expired message. */
+  readonly choice?: "remove" | "send again";
+}
+
+const restarts: readonly Restart[] = [
+  {
+    name: "a message typed while the host was down, then the client quit, lands once on the next start",
+    quit: (left) => quitSending(left, "Typed offline.", "dropped"),
+    windows: 1,
+    elsewhere: false,
+    sends: 1,
+    users: ["Hi.", "Typed offline."],
+    shown: "landed",
+  },
+  {
+    name: "a message the host admitted before the quit, its answer lost, reconciles to one landed row",
+    quit: (left) => quitSending(left, "Landed first.", "admitted"),
+    windows: 1,
+    elsewhere: false,
+    sends: 1,
+    users: ["Hi.", "Landed first."],
+    shown: "landed",
+  },
+  {
+    name: "two windows that load one entry send it once, and both drop it",
+    quit: (left) => quitSending(left, "Typed offline.", "dropped"),
+    windows: 2,
+    elsewhere: false,
+    sends: 2,
+    users: ["Hi.", "Typed offline."],
+    shown: "landed",
+  },
+  {
+    name: "an entry older than a day that the host never saw stays unsent, is not sent, and is removed on request",
+    quit: async (left) => {
+      await quitSending(left, "Stale.", "dropped");
+      await age(left.storage);
+    },
+    windows: 1,
+    elsewhere: false,
+    sends: 0,
+    users: ["Hi."],
+    shown: "expired",
+    choice: "remove",
+  },
+  {
+    name: "an entry older than a day that the host never saw lands once when sent again",
+    quit: async (left) => {
+      await quitSending(left, "Stale.", "dropped");
+      await age(left.storage);
+    },
+    windows: 1,
+    elsewhere: false,
+    sends: 0,
+    users: ["Hi."],
+    shown: "expired",
+    choice: "send again",
+  },
+  {
+    name: "an entry older than a day that the host already admitted reconciles to its landed row",
+    quit: async (left) => {
+      await quitSending(left, "Stale, but landed.", "admitted");
+      await age(left.storage);
+    },
+    windows: 1,
+    elsewhere: false,
+    sends: 1,
+    users: ["Hi.", "Stale, but landed."],
+    shown: "landed",
+  },
+  {
+    name: "a client of another host over the same storage never sends it, and keeps it",
+    quit: (left) => quitSending(left, "For the first host.", "dropped"),
+    windows: 1,
+    elsewhere: true,
+    sends: 0,
+    users: ["Hi."],
+    shown: null,
+  },
+];
+
+describe("a send journal over storage that outlives the client", () => {
+  for (const row of restarts) it(row.name, () => restart(row));
+});
+
+async function restart(row: Restart): Promise<void> {
+  const host = await open();
+  const session = await settledChat(host, await client(host));
+  const stored = new Map<string, string>();
+
+  const storage: JournalStorage = {
+    read: () => [...stored],
+    write: (key, value) => void stored.set(key, value),
+    remove: (key) => void stored.delete(key),
+  };
+
+  await row.quit({ host, storage, stored, session });
+  expect(stored.size).toBe(1);
+  const reached = row.elsewhere ? await open() : host;
+  let posts = 0;
+
+  reached.intercept((request, next) => {
+    if (readOperation(request) === "head.send") posts += 1;
+
+    return next(request);
+  });
+
+  const windows = await Promise.all(
+    Array.from({ length: row.windows }, () => client(reached, createSendJournal(storage))),
+  );
+
+  if (row.shown === null) await new Promise((resolve) => setTimeout(resolve, 300));
+  const views: SessionView[] = [];
+
+  for (const window of windows) {
+    if (row.shown === null) break;
+    const shown = row.shown;
+    const expired = unsentSends(window, session.id, MAIN);
+
+    const settled = await viewWhen(
+      () => window.session(session.id).view(),
+      (view) => view.execution.kind === "idle" && drawn(view, expired.expired()) === shown,
+    );
+
+    views.push(settled);
+    expect(
+      [...settled.messages, ...settled.queue].filter((message) => message.kind === "user"),
+    ).toHaveLength(row.users.length + (shown === "expired" ? 1 : 0));
+  }
+
+  expect(posts).toBe(row.sends);
+  expect(users(await host.view(session.id))).toEqual(row.users);
+  await expect.poll(() => stored.size).toBe(row.shown === "landed" ? 0 : 1);
+
+  if (row.shown !== "expired") return;
+  const [window] = windows;
+  const [stale] = views;
+  assert(window !== undefined && stale !== undefined);
+  const sends = unsentSends(window, session.id, MAIN);
+  const [id] = sends.expired();
+  assert(id !== undefined);
+
+  expect(stale.queue.find((message) => message.id === id)?.status).toEqual({
+    kind: "unsent",
+    attempts: 0,
+    retrying: { at: expect.any(Number), reason: "it waited more than a day" },
+  });
+
+  if (row.choice === "remove") {
+    expect(await window.session(session.id).receipt(asId<"receipt">(id)).stop()).toEqual({
+      kind: "missing",
+    });
+    expect(stored.size).toBe(0);
+    expect(sends.expired()).toEqual([]);
+    expect(drawn(await window.session(session.id).view(), [])).toBe("landed");
+    expect(posts).toBe(0);
+
+    return;
+  }
+
+  await sends.resend(id);
+
+  await viewWhen(
+    () => window.session(session.id).view(),
+    (view) => view.execution.kind === "idle" && drawn(view, sends.expired()) === "landed",
+  );
+
+  expect(posts).toBe(1);
+  expect(users(await host.view(session.id))).toEqual([...row.users, "Stale."]);
+  await expect.poll(() => stored.size).toBe(0);
+}
+
+/** Sends `content` from a client over `left.storage` whose request the host never answers, admitted first or `dropped` on the way, and closes the client as a quit does. */
+async function quitSending(
+  left: Quit,
+  content: string,
+  fate: "admitted" | "dropped",
+): Promise<void> {
+  const reached = Promise.withResolvers<void>();
+  left.host.fake.reply(text("Answered."));
+
+  left.host.intercept(async (request, next) => {
+    if (readOperation(request) !== "head.send") return next(request);
+
+    if (fate === "admitted") await next(request);
+    reached.resolve();
+
+    throw new TypeError("fetch failed");
+  });
+
+  const leaving = await client(left.host, createSendJournal(left.storage));
+  const sending = leaving.session(left.session.id).send(content);
+  await reached.promise;
+  await leaving.close();
+  await expect(sending).rejects.toMatchObject({ code: "unavailable" });
+  left.host.intercept(null);
+}
+
+/** Moves every stored entry's send time back past the day a journal sends on its own. */
+async function age(storage: JournalStorage): Promise<void> {
+  const journal = createSendJournal(storage);
+
+  for (const entry of await journal.load())
+    await journal.put({ ...entry, at: entry.at - 24 * 60 * 60 * 1000 - 1 });
+}
+
+/** How the chat's last user message stands: landed, or unsent and among `expired`; anything else is `null`. */
+function drawn(view: SessionView, expired: readonly string[]): "landed" | "expired" | null {
+  const last = [...view.messages, ...view.queue].findLast((message) => message.kind === "user");
+
+  if (last?.kind !== "user") return null;
+
+  if (last.status.kind === "landed") return "landed";
+
+  return last.status.kind === "unsent" && expired.includes(last.id) ? "expired" : null;
+}
 
 async function viewWhen(
   read: () => Promise<SessionView>,

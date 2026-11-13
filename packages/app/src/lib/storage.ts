@@ -41,7 +41,7 @@ export function removeStored(area: StorageArea | undefined, key: string): void {
   guardWrite(() => area.removeItem(key));
 }
 
-function guardWrite(write: () => void): void {
+export function guardWrite(write: () => void): void {
   try {
     write();
   } catch {

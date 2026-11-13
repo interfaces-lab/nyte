@@ -1,50 +1,22 @@
-import { JournalEntrySchema } from "@nyte-ai/schema";
-import type { JournalEntry, RequestJournal } from "@nyte-ai/sdk";
+import type { JournalStorage } from "@nyte-ai/sdk";
 
-export interface JournalStorage {
+/** The MMKV calls the send journal uses, over an instance that holds nothing else. */
+export interface KeyValues {
   getString(key: string): string | undefined;
   set(key: string, value: string): void;
   remove(key: string): boolean;
   getAllKeys(): string[];
 }
 
-export function createJournal(storage: JournalStorage, prefix: string): RequestJournal {
-  const encodeKey = (id: string) => JSON.stringify([prefix, id]);
-  const head = `${JSON.stringify([prefix]).slice(0, -1)},`;
-
+export function journalStorage(values: KeyValues): JournalStorage {
   return {
-    async load() {
-      const entries: JournalEntry[] = [];
+    read: () =>
+      values.getAllKeys().flatMap((key) => {
+        const text = values.getString(key);
 
-      for (const key of storage.getAllKeys().filter((key) => key.startsWith(head))) {
-        const text = storage.getString(key);
-        const entry = text === undefined ? null : parseEntry(text);
-
-        if (entry === null) storage.remove(key);
-        else entries.push(entry);
-      }
-
-      return entries.sort((left, right) => left.at - right.at);
-    },
-    async put(entry) {
-      storage.set(encodeKey(entry.id), JSON.stringify(entry));
-    },
-    async remove(id) {
-      storage.remove(encodeKey(id));
-    },
+        return text === undefined ? [] : [[key, text] as const];
+      }),
+    write: (key, text) => values.set(key, text),
+    remove: (key) => void values.remove(key),
   };
-}
-
-function parseEntry(text: string): JournalEntry | null {
-  let value: unknown;
-
-  try {
-    value = JSON.parse(text);
-  } catch {
-    return null;
-  }
-
-  const result = JournalEntrySchema["~standard"].validate(value);
-
-  return result instanceof Promise || result.issues !== undefined ? null : result.value;
 }

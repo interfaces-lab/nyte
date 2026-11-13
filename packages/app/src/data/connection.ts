@@ -4,6 +4,7 @@ import type { ConnectOptions, Connection, CredentialSource } from "@nyte-ai/sdk"
 import { mediaLink, openHost, ticketSocket } from "@nyte-ai/sdk/client";
 import type { HostConnection, OpenSocket } from "@nyte-ai/sdk/client";
 import type { ConnectionProblem, HostEndpoint } from "../contract/connection.ts";
+import { localJournal } from "./send-journal.ts";
 
 let installed: Connection | undefined;
 
@@ -22,7 +23,6 @@ let liveReady = firstLive.promise;
 export async function connectHost(
   endpoint: HostEndpoint,
   options: {
-    readonly journal?: ConnectOptions["journal"];
     readonly fetch?: ConnectOptions["fetch"];
     readonly socket?: OpenSocket;
     readonly remember?: (credential: CredentialSource) => void;
@@ -32,7 +32,7 @@ export async function connectHost(
     url: endpoint.url,
     credentials: endpoint.credentials,
     ...(endpoint.expect === undefined ? {} : { expect: endpoint.expect }),
-    ...(options.journal === undefined ? {} : { journal: options.journal }),
+    journal: localJournal(),
     ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
   });
 

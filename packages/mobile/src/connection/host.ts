@@ -1,4 +1,4 @@
-import { sdk, SdkError } from "@nyte-ai/sdk";
+import { createSendJournal, sdk, SdkError } from "@nyte-ai/sdk";
 import type { Connection as HostConnection } from "@nyte-ai/sdk";
 import { fetch } from "expo/fetch";
 import { deleteItemAsync, getItemAsync, setItemAsync } from "expo-secure-store";
@@ -6,7 +6,7 @@ import { createMMKV } from "react-native-mmkv";
 import { displayAddress, type Connection, type SavedConnection } from "./connection.ts";
 import { classifyConnectFailure, type ConnectFailure } from "./connect-copy.ts";
 import { createConnectionStore } from "./connection-store.ts";
-import { createJournal } from "./journal.ts";
+import { journalStorage } from "./journal.ts";
 import { openLiveHost } from "./live.ts";
 import type { LiveHost } from "./live.ts";
 import { createPinStore, pinRoute } from "./pins.ts";
@@ -30,7 +30,7 @@ export const connectionStore = createConnectionStore(
 
 const pins = createPinStore({ read: getItemAsync, write: setItemAsync }, deviceCrypto);
 
-const journals = createMMKV({ id: "nyte.journal" });
+const journal = journalStorage(createMMKV({ id: "nyte.journal" }));
 
 function hostFetch(saved: SavedConnection): typeof globalThis.fetch {
   return saved.kind === "managed"
@@ -77,7 +77,7 @@ export async function verifyHost(input: {
   const connecting = sdk.connect({
     url: saved.connection.url,
     credentials: { kind: "token", token: saved.connection.token },
-    journal: createJournal(journals, JSON.stringify(route)),
+    journal: createSendJournal(journal),
     fetch: hostFetch(saved),
     expect: pinned,
   });

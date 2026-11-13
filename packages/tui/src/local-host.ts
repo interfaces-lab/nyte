@@ -21,6 +21,7 @@ import { printable } from "./cli/format.ts";
 import { selfCommand } from "./compiled.ts";
 import { hostFailure } from "./host-socket.ts";
 import { supersedes } from "./releases.ts";
+import { fileJournal } from "./send-journal.ts";
 import { VERSION } from "./version.ts";
 
 export type HostSource =
@@ -159,7 +160,11 @@ function hostLockHeld(): boolean {
 /** A host that answers and refuses is reported with its wire error; one that never answers (`unavailable`) is `network_error`, its cause in a detail row. */
 async function attachHost(endpoint: LocalEndpoint): Promise<HostSession> {
   const connection = await sdk
-    .connect({ url: endpoint.url, credentials: { kind: "token", token: endpoint.token } })
+    .connect({
+      url: endpoint.url,
+      credentials: { kind: "token", token: endpoint.token },
+      journal: fileJournal(),
+    })
     .catch((cause: unknown) => {
       if (cause instanceof SdkError && cause.code !== "unavailable")
         hostFailure(`attach to the host at ${endpoint.url}`)(cause);

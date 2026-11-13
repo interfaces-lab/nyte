@@ -7,10 +7,11 @@ import type {
   JournalEntry,
   Json,
   PrincipalId,
+  ReceiptId,
   SessionId,
 } from "@nyte-ai/schema";
 import { dev, followTrace, holdMessage, traced } from "@nyte-ai/core/client";
-import type { Connection, Head, PluginFile, RequestJournal, Session } from "@nyte-ai/core";
+import type { Connection, Head, PluginFile, Receipt, RequestJournal, Session } from "@nyte-ai/core";
 import type { Transport } from "@nyte-ai/protocol";
 import { watchHost, withUnsent } from "./watch.ts";
 import { journalLoop } from "../send/journal.ts";
@@ -196,7 +197,7 @@ function sessionHandle(bound: Bound, session: SessionId): Session {
       remove: (name, options) => rows.call("heads.remove", { session, name, options }),
     },
     run: (id) => runHandle(rows, session, id),
-    receipt: (id) => receiptHandle(rows, session, id, (outcome): unknown => outcome),
+    receipt: (id) => journaledReceipt(bound, session, id),
     info: () => rows.call("session.info", { session }),
     update: (patch) => rows.call("session.update", { session, patch }),
     remove: () => rows.call("session.remove", { session }),
@@ -217,6 +218,20 @@ function sessionHandle(bound: Bound, session: SessionId): Session {
       },
     },
     part: (id) => partHandle(rows, session, id, null),
+  };
+}
+
+/** A receipt whose `stop` also removes an expired send the journal still shows under its id, which the host has never seen and answers `missing` for. */
+function journaledReceipt(bound: Bound, session: SessionId, id: ReceiptId): Receipt<unknown> {
+  const receipt = receiptHandle(bound.rows, session, id, (outcome): unknown => outcome);
+
+  return {
+    ...receipt,
+    async stop() {
+      if (await bound.journal.discard(session, asId<"message">(id))) return { kind: "missing" };
+
+      return receipt.stop();
+    },
   };
 }
 
