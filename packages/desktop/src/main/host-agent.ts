@@ -163,7 +163,7 @@ async function servedPid(nyteHome: string): Promise<number | null> {
   return host !== null && processAlive(host.pid) ? host.pid : null;
 }
 
-/** `restart` starts the new host without waiting for the old one to exit: it stands by on the host lock (`whenTaken: "wait"`) and serves once the old one is gone. */
+/** `restart` starts the new host without waiting for the old one to exit: it stands by on the host lock (`whenTaken: "wait"`) and serves once the old one is gone. No job of this app's runs the host, so none is `own` and none starts again after it retires; this app's own host stands by only during `restart`. */
 function detachedHost(options: HostAgentOptions): HostAgent {
   const label = options.label ?? `${appId(options)}.host`;
   const pid = (): Promise<number | null> => servedPid(options.nyteHome);
@@ -212,7 +212,7 @@ function detachedHost(options: HostAgentOptions): HostAgent {
     async serving() {
       const running = await pid();
 
-      return running === null ? null : { pid: running, own: true };
+      return running === null ? null : { pid: running, own: false };
     },
     async restart() {
       await stop();

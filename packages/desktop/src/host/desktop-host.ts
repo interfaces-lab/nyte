@@ -33,15 +33,17 @@ import { DEFAULT_DESKTOP_SETTINGS } from "@nyte-ai/app/contract/desktop-settings
 import type { DesktopSettings } from "@nyte-ai/app/contract/desktop-settings.ts";
 import type { DesktopUpdateActivity } from "../shared/update-activity.ts";
 import { desktopSettings } from "./host-settings.ts";
-import { ExpectedHostError, retainDiagnostic } from "../shared/errors.ts";
+import { ExpectedHostError } from "../shared/errors.ts";
 import { callTable } from "../shared/ipc-call.ts";
+import type { HostLink } from "./host-link.ts";
 import type { RemoteAccessPlugins } from "./connections/remote-access-plugin.ts";
 import { ServerSettingsStore } from "./connections/server-settings.ts";
 import type { SavedServer } from "./connections/server-settings.ts";
 
 export interface DesktopHostDependencies {
   readonly home: string;
-  open(): Promise<Connection>;
+  /** Main's one link to the host: the connection calls go over and the host view this follows. */
+  readonly link: Pick<HostLink, "connection" | "follow">;
   readonly client: Pick<HostConnection, "call" | "directory">;
   readonly usageScan?: UsageScanReader;
   readonly remoteAccessPlugins?: RemoteAccessPlugins;
@@ -112,38 +114,6 @@ function pause(ms: number, signal: AbortSignal): Promise<void> {
     const timer = setTimeout(wake, ms);
     signal.addEventListener("abort", wake, { once: true });
   });
-}
-
-async function follow<T>(
-  open: () => AsyncIterable<T>,
-  apply: (value: T) => void,
-  signal: AbortSignal,
-): Promise<void> {
-  let wait = WATCH_RETRY_MS;
-
-  while (!signal.aborted) {
-    const values = open()[Symbol.asyncIterator]();
-
-    const stop = (): void => {
-      void values.return?.();
-    };
-
-    signal.addEventListener("abort", stop, { once: true });
-
-    try {
-      for (let next = await values.next(); next.done !== true; next = await values.next()) {
-        wait = WATCH_RETRY_MS;
-        apply(next.value);
-      }
-    } catch (cause) {
-      retainDiagnostic({ correlationId: "desktop-host-watch", cause });
-    } finally {
-      signal.removeEventListener("abort", stop);
-    }
-
-    await pause(wait, signal);
-    wait = Math.min(wait * 2, WATCH_RETRY_CAP_MS);
-  }
 }
 
 const SERVER_PROBLEMS = {
@@ -224,7 +194,6 @@ async function probeServer(url: string, token: string) {
 export class DesktopHost {
   readonly #deps: DesktopHostDependencies;
   readonly #connect: ConnectRuntime;
-  #opened: Promise<Connection>;
   readonly #usageScan: UsageScanReader;
   readonly #servers: ServerSettingsStore;
   readonly #selections = new Map<HostWindow, SelectedWorkspace>();
@@ -261,45 +230,24 @@ export class DesktopHost {
         onChange: () => this.remoteChanged(),
       });
 
-    this.#opened = this.#begin();
+    this.#followView();
   }
 
-  #begin(): Promise<Connection> {
-    const opened = this.#deps.open();
-    opened.then(
-      (connection) => this.#followView(connection),
-      () => undefined,
-    );
+  #followView(): void {
+    const stop = this.#deps.link.follow((view) => {
+      const tailnet = JSON.stringify(view.tailnet ?? null);
 
-    return opened;
-  }
+      if (this.#tailnet !== undefined && this.#tailnet !== tailnet) this.#remoteChanged();
+      this.#tailnet = tailnet;
+      this.#settings = desktopSettings(view);
+      this.#deps.settingsChanged?.(this.#settings);
+      this.#followRows();
+      this.#holdAwake();
 
-  #ready(): Promise<Connection> {
-    return this.#opened.catch((cause: unknown) => {
-      if (this.#closing !== undefined) throw cause;
-      this.#opened = this.#begin();
-
-      return this.#opened;
+      if (this.#seen !== undefined) this.#attend();
     });
-  }
 
-  #followView(opened: Connection): void {
-    void follow(
-      () => opened.watch(),
-      (view) => {
-        const tailnet = JSON.stringify(view.tailnet ?? null);
-
-        if (this.#tailnet !== undefined && this.#tailnet !== tailnet) this.#remoteChanged();
-        this.#tailnet = tailnet;
-        this.#settings = desktopSettings(view);
-        this.#deps.settingsChanged?.(this.#settings);
-        this.#followRows();
-        this.#holdAwake();
-
-        if (this.#seen !== undefined) this.#attend();
-      },
-      this.#watching.signal,
-    );
+    this.#watching.signal.addEventListener("abort", stop, { once: true });
   }
 
   #followRows(): void {
@@ -393,7 +341,7 @@ export class DesktopHost {
 
   readonly #handlers: CallTable = {
     "host.endpoint": async () => {
-      const connection = await this.#ready();
+      const connection = await this.#deps.link.connection();
 
       return {
         url: HOST_PORT_ORIGIN,
@@ -515,7 +463,7 @@ export class DesktopHost {
 
   /** The host's available local folders. */
   async localWorkspaces(): Promise<readonly SelectedWorkspace[]> {
-    const host = await this.#ready();
+    const host = await this.#deps.link.connection();
 
     return (await host.workspaces.list()).flatMap((workspace) =>
       workspace.availability.kind === "available" &&
@@ -550,16 +498,14 @@ export class DesktopHost {
       this.#holdAwake();
       this.#remind([]);
       await this.#connect.close().catch(() => undefined);
-      const opened = await this.#opened.catch(() => undefined);
       await this.#usageScan.close();
-      await opened?.close();
     })();
 
     return this.#closing;
   }
 
   async updateActivity(): Promise<DesktopUpdateActivity> {
-    const opened = await this.#opened.catch(() => undefined);
+    const opened = await this.#deps.link.connection().catch(() => undefined);
     const rows = opened === undefined ? [] : await listSessions(opened);
     const terminalCommandCount = opened === undefined ? 0 : await busyTerminals(opened);
 
@@ -577,7 +523,7 @@ export class DesktopHost {
   }
 
   async #selectChatFolder(window: HostWindow, session: string): Promise<void> {
-    const host = await this.#ready();
+    const host = await this.#deps.link.connection();
 
     const info = await host
       .session(asId<"session">(session))
@@ -618,7 +564,7 @@ export class DesktopHost {
   }
 
   async #registerWorkspace(path: string, trust = false): Promise<RegisterWorkspaceOutcome> {
-    const host = await this.#ready();
+    const host = await this.#deps.link.connection();
     const seen = await host.workspaces.inspect({ kind: "local", path });
     const added = await host.workspaces.add(seen.target, { expect: { identity: seen.identity } });
 

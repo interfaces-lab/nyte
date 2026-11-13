@@ -5,7 +5,7 @@ import { app, clipboard, Menu, nativeImage, shell, Tray } from "electron";
 import type { MenuItemConstructorOptions, NativeImage } from "electron";
 import { processAlive } from "@nyte-ai/service/host-endpoint";
 import type { HostAgent } from "./host-agent.ts";
-import type { HostLink } from "./host-link.ts";
+import type { HostLink } from "../host/host-link.ts";
 import { readHostStatus } from "./host-status.ts";
 import type { HostIssue, HostReading, HostStatus } from "./host-status.ts";
 

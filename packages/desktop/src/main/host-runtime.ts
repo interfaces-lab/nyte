@@ -17,18 +17,29 @@ import type { CanvasPreviewer } from "@nyte-ai/plugin/core/canvas-preview";
 import type { HostProcess } from "@nyte-ai/app/contract/bridge.ts";
 import type { BrowserAgent } from "../shared/browser-agent.ts";
 import { offerAppActions, openAppClient } from "../shared/host-client.ts";
-import { HostLink } from "./host-link.ts";
-import type { HostLinkState } from "./host-link.ts";
+import type { DialSocket } from "../shared/host-port.ts";
+import { HostLink } from "../host/host-link.ts";
+import type { HostLinkState } from "../host/host-link.ts";
+import { socketDial, socketFetch } from "./host-socket.ts";
 import { followHostProcess } from "./host-process.ts";
 import type { HostProcessFollower } from "./host-process.ts";
 import type { PackagedBuild } from "../shared/desktop-builds.ts";
 
+/** How main reaches `host.sock`: one request, or one WebSocket. Each window's port is served over it. */
+export interface HostRoute {
+  readonly fetch: (request: Request) => Promise<Response>;
+  readonly dial: DialSocket;
+}
+
 export interface HostRuntime {
   readonly agent: HostAgent;
+  readonly route: HostRoute;
   readonly link: HostLink;
   readonly hostProcess: HostProcessFollower;
   readonly client: HostConnection;
   readonly desktop: DesktopHost;
+  /** The machine woke: main dials the host now instead of waiting out a backoff, and tells every window the host process again, which has each window's socket do the same. */
+  resume(): void;
   close(): Promise<void>;
 }
 
@@ -62,8 +73,11 @@ export function startHostRuntime(options: HostRuntimeOptions): HostRuntime {
   });
 
   const socket = join(options.nyteHome, "host.sock");
+  const route: HostRoute = { fetch: socketFetch(socket), dial: socketDial(socket) };
+  const client = openAppClient({ socket, version: app.getVersion() });
 
-  const link = new HostLink(socket, (state) => {
+  const link = new HostLink(route.fetch, (state) => {
+    if (state.kind === "connected") client.retry();
     options.linkChanged?.(state);
     hostProcess.linkChanged();
   });
@@ -84,7 +98,6 @@ export function startHostRuntime(options: HostRuntimeOptions): HostRuntime {
     (cause: unknown) => dialog.showErrorBox("Nyte couldn't start its host", describe(cause)),
   );
   link.start();
-  const client = openAppClient({ socket, version: app.getVersion() });
 
   const withdraw = offerAppActions(client, {
     agent: options.agent,
@@ -94,7 +107,7 @@ export function startHostRuntime(options: HostRuntimeOptions): HostRuntime {
 
   const desktop = new DesktopHost({
     home: options.home,
-    open: () => link.connect(),
+    link,
     client,
     usageScan: new UsageScanWorker(options.home, options.usageWorker),
     remoteAccessPlugins: {
@@ -111,10 +124,17 @@ export function startHostRuntime(options: HostRuntimeOptions): HostRuntime {
 
   return {
     agent,
+    route,
     link,
     hostProcess,
     client,
     desktop,
+    resume() {
+      link.retry();
+      client.retry();
+      desktop.resume();
+      options.hostProcessChanged?.(hostProcess.state());
+    },
     async close() {
       withdraw();
       link.close();
@@ -125,9 +145,9 @@ export function startHostRuntime(options: HostRuntimeOptions): HostRuntime {
   };
 }
 
-export function bridgeHostPort(link: HostLink): MessagePortMain {
+export function bridgeHostPort(route: HostRoute): MessagePortMain {
   const channel = new MessageChannelMain();
-  servePort(mainPortEnd(channel.port1), link.fetch, link.dial);
+  servePort(mainPortEnd(channel.port1), route.fetch, route.dial);
 
   return channel.port2;
 }

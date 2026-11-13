@@ -30,7 +30,7 @@ launchd, or the first `nyte` that finds no host
          listens on host.sock (owner, no token) and 127.0.0.1:<port> (Bearer)
          children: MCP servers, ptys and commands, the tailnet sidecar
 
-desktop main ── host.sock ──► host      three connections, plus one proxied per window
+desktop main ── host.sock ──► host      two connections, plus one proxied per window
 renderer ── MessagePort ──► desktop main ── host.sock ──► host
 nyte (TUI) ── TCP + token ──► host
 phone ── tailnet, tunnel or LAN ──► host
@@ -136,7 +136,7 @@ Core's layers are in [core-structure.md](core-structure.md); the two that matter
 | `host.json` | `{ url, token, pid, socket }` of the serving host | `publishHost`, by rename, after it listens; removed first on stop and on retire |
 | `host-address.json` | The port and token, so they survive a restart and clients resume | Every start |
 | `host.sock` | The local socket; the one route that answers `local` operations | The worker; a stale one is replaced only if nothing answers on it |
-| `retire/<pid>` | A client's request that an older host retire, with its supervisor kind | `requestRetire`; the host checks every 10 s and retires when idle |
+| `retire/<pid>` | A client's request that an older host retire, with its supervisor kind | `requestRetire`, by a client whose version supersedes the host's; the host checks every 10 s and retires when idle |
 | `nyte.db` | The store | The host |
 | `secret.key` | The key that seals credentials, mode 0600 | First open |
 | `journal/<host and receipt>.json` | One message a `nyte` command sent and the host hasn't shown yet, mode 0600 | `fileJournal`, by rename; removed once a view shows the message |
@@ -190,6 +190,7 @@ What happens when something cuts across a run, and the function that decides it.
 | HTTP retry | 50 ms, then 250 ms doubling to 10 s, no jitter | `httpRetryDelay` in `sdk/src/connection/rows.ts` |
 | Chat tail on open | 40 in the app (240 reopening), 200 in the TUI and on mobile | each client |
 | Host stop grace; `nyte host` exit deadline | 10 s; 12 s | `service/src/host-thread.ts`, `tui/src/host-command.ts` |
+| Desktop main's redial of `host.sock` | 100 ms, 250 ms, 500 ms, then every 1 s; a wake skips the wait | `HostLink` in `desktop/src/host/host-link.ts` |
 
 ## The wire's size
 
@@ -218,6 +219,7 @@ What a new feature should not do: put a field on a row that changes at a differe
 - **Context files are read on every model request**, 34 file reads for a shallow folder, so an edit to `AGENTS.md` reaches the next request of a running turn.
 - **The local provider does no containment on reads and writes.** A path outside the workspace is used as given and reported as `scope`. Moves, copies, `mkdir` and trash do refuse to leave the folder, by real path.
 - **A terminal at its prompt counts as running.** An outdated host with one open does not retire.
+- **Only a newer build retires a host.** The dev, production and bench builds share `~/.nyte`. A desktop app asks the host to retire only when its version supersedes the host's by semver (`supersedes` in `service/src/outdated-host.ts`) and its own host takes over: launchd starts its job again, or the job stands by on the lock (`retiresHost` in `desktop/src/main/host-status.ts`). The bench build, whose host no job of its own runs, never asks. A host on the same version with other operations stays until the person restarts it from the host build notice.
 - **`nyte host` runs on Bun and cannot open a pty.** Terminals open on the desktop app's host.
 - **The Durable Object runs the SQLite migration dialect.** Its table list is SQLite's, and a row is capped at 2 MB.
 - **Regenerating `identity.key` makes every pinned client pair again.** The host keeps its id, which lives in the store, but `expect` pins the key, so each client gets `stale` until it saves the new one.
@@ -233,8 +235,6 @@ These are real and not fixed. Each names what it would take.
 - **Search walks the session index when a name is rare.** `sessions.read` with `query` matches a lower-cased name column in activity order until `limit` match, about half a millisecond at 5,000 chats. Pinned chats read from their own index whatever the count. A trigram index would make search independent of the count.
 - **A client newer than its host gets `invalid` for a filter the host does not know.** A phone at revision 25 against a Mac at 24 shows no search results and no older pinned chats until the Mac updates.
 - **A client cannot tell which session a text frame belongs to.** Every open chat store takes every part streaming on the socket into its text map. A frame for a part its view doesn't hold notifies no one, but its entry stays until the store closes. A session on the frame would let the store drop it.
-- **Desktop main keeps two host-view streams**, one in `HostLink` and one in `DesktopHost`, each with its own retry loop.
-- **Two desktop builds on one home can retire each other's host.** The dev, production and bench builds share `~/.nyte`, and each files a retire request when the serving host's version or operations differ from its own.
 - **A command outlives a host that was killed.** Its process group is reparented and keeps running while its call reads interrupted and the run resumes, so the model may start it again beside the orphan. Nothing in a client can stop it. Fixing it means storing the pid, group and start time on the job and killing a group whose holder is dead.
 - **A killed host's run looks live for 20 s** on the next host, and a Stop in that window shows stopping for as long. The wait is the presence lapse; shortening it for a process on the same machine whose pid is gone means changing the takeover fence.
 - **Stop waits for a tool that ignores its abort signal**, and the queue waits behind it. The built-in command and MCP tools honour the signal; a plugin's tool may not.

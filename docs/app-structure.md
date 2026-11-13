@@ -71,8 +71,8 @@ Outside `src/`, `dev/` holds the account-footer test page, served at `/dev/accou
 
 | Folder | Runs in | Holds |
 | --- | --- | --- |
-| `main/` | Electron main | Startup, the host link and runtime, the app menu and tray, canvas preview and the renderer protocol. Subfolders: `account/`, `browser/` for the workbench browser's pages, picker, agent tools and adblock, `native/` for CLI install, the context menu, external links and fonts, and `updates/`. |
-| `host/` | Electron main | `DesktopHost`, main's handle on the host, with desktop settings. `connections/` holds the Cloudflare tunnel, remote access and server settings. |
+| `main/` | Electron main | Startup, the host runtime, the app menu and tray, canvas preview and the renderer protocol. Subfolders: `account/`, `browser/` for the workbench browser's pages, picker, agent tools and adblock, `native/` for CLI install, the context menu, external links and fonts, and `updates/`. |
+| `host/` | Electron main | `DesktopHost`, main's handle on the host, with desktop settings, and `HostLink`, main's one link to it. `connections/` holds the Cloudflare tunnel, remote access and server settings. |
 | `workers/` | The host process and worker threads | `nyte-host.ts`, the host process entry, the host thread, and the code mode, image and usage workers |
 | `shared/` | Both | IPC and host message types, settings shapes and the account protocol |
 | `preload/` | Preload scripts | The window bridge, and the browser page and canvas preview preloads |

@@ -120,6 +120,35 @@ socketTest("with pause on sleep off, a suspend leaves the stream running", async
   assert.equal(made.fake.requests.length, 1);
 });
 
+socketTest(
+  "a host that answers only after main started still reaches main: its settings arrive and its live run counts as running work",
+  async () => {
+    const seen: boolean[] = [];
+
+    const made = await desktop(
+      { settingsChanged: (settings) => seen.push(settings.blockAds) },
+      { reachable: false },
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    made.reachable(true);
+    const finish = Promise.withResolvers<void>();
+    made.fake.reply({ content: [{ type: "text", text: "working" }], until: finish.promise });
+    const { receipt } = await made.served.sessions.start({ name: "work", content: "Work" });
+    await vi.waitFor(() => assert.equal(made.fake.requests.length, 1));
+
+    await vi.waitFor(() => assert.equal(seen.at(-1), true), { timeout: 5_000 });
+    assert.deepEqual(await made.host.updateActivity(), {
+      kind: "busy",
+      taskCount: 1,
+      terminalCommandCount: 0,
+    });
+
+    finish.resolve();
+    await receipt.settled();
+  },
+);
+
 socketTest("the desktop's settings reach main from the host view", async () => {
   const seen: boolean[] = [];
   const made = await desktop({ settingsChanged: (settings) => seen.push(settings.blockAds) });

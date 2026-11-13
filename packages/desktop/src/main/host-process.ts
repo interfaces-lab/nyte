@@ -9,8 +9,8 @@ import { runningWork } from "../shared/update-activity.ts";
 import type { DesktopUpdateActivity } from "../shared/update-activity.ts";
 import { processStarted } from "./host-agent.ts";
 import type { HostAgent } from "./host-agent.ts";
-import type { HostLinkState } from "./host-link.ts";
-import { readHostUpdate } from "./host-status.ts";
+import type { HostLinkState } from "../host/host-link.ts";
+import { readHostUpdate, retiresHost } from "./host-status.ts";
 
 /** How long a restart reads as restarting before the link's own state shows again. */
 const RESTART_LIMIT_MS = 30_000;
@@ -58,8 +58,8 @@ export function followHostProcess(options: {
       const link = options.link();
       const serving = link.kind === "connected" ? await options.agent.serving() : null;
       const startedAt = serving === null ? null : await processStarted(serving.pid);
-
       const update = readHostUpdate({ link, appVersion: options.appVersion });
+      const job = update === "stale" ? await options.agent.pid() : null;
 
       if (restarting || link !== options.link()) return;
 
@@ -71,7 +71,8 @@ export function followHostProcess(options: {
 
       set({ kind: update, version: link.version, startedAt });
 
-      if (update === "stale") retire = await requestRetire("launchd");
+      if (retiresHost({ link, appVersion: options.appVersion, serving, job }))
+        retire = await requestRetire("launchd");
       else await withdraw();
     });
 

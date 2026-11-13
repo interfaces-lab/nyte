@@ -58,7 +58,8 @@ export function useHostEvents(): void {
           queryClient.setQueryData(keys.hostProcess, event.state);
           showHostProcess(event.state);
 
-          if (event.state.kind === "current") currentLive()?.retry();
+          if (event.state.kind === "current" || event.state.kind === "stale")
+            currentLive()?.retry();
 
           return;
         case "settings_changed":

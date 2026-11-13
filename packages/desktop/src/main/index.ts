@@ -564,7 +564,7 @@ function registerIpc(): void {
     senderWindow(event);
 
     if (typeof nonce !== "string" || hostRuntime === undefined) return;
-    event.sender.postMessage(HOST_PORT_CHANNEL, nonce, [bridgeHostPort(hostRuntime.link)]);
+    event.sender.postMessage(HOST_PORT_CHANNEL, nonce, [bridgeHostPort(hostRuntime.route)]);
   });
 
   ipcMain.handle(CALL_CHANNEL, async (event, request: CallRequest) => {
@@ -844,7 +844,7 @@ if (!hasSingleInstanceLock) {
     scheme,
     frontendApiHost: config?.clerk.frontendApiHost,
     shellRoot,
-    host: () => hostRuntime?.link.fetch,
+    host: () => hostRuntime?.route.fetch,
   });
   canvasShell = canvasShellUrl(scheme);
   previewCanvas = offscreenCanvasPreviewer(
@@ -876,7 +876,7 @@ if (!hasSingleInstanceLock) {
 
     desktopHost = startHost();
     powerMonitor.on("suspend", () => desktopHost?.suspend());
-    powerMonitor.on("resume", () => desktopHost?.resume());
+    powerMonitor.on("resume", () => hostRuntime?.resume());
 
     const menu = Menu.buildFromTemplate(
       applicationMenuTemplate({
