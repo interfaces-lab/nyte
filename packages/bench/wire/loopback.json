@@ -82,9 +82,7 @@
         "streamed-text p90 bytes": 191,
         "overhead ratio": 6.34
       },
-      "sequence": [
-        "http head.send"
-      ]
+      "sequence": ["http head.send"]
     },
     "S2": {
       "title": "tool turn",
@@ -168,9 +166,7 @@
         "tool call bytes": 8521,
         "tool call messages": 4
       },
-      "sequence": [
-        "http head.send"
-      ]
+      "sequence": ["http head.send"]
     },
     "S3": {
       "title": "cold open, newest screen",

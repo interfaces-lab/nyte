@@ -297,11 +297,11 @@ through.
 
 The chat store is built from these helpers, which you can use on their own:
 
-| Helper                                   | What it does                                                                                   |
-| ---------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `headView(snapshot)`                     | Builds a `HeadView`, a `SessionView` without `seq`, from a head store's snapshot               |
-| `streamText(texts, update)`              | Keeps the latest streamed text and tool progress of each part in a `StreamedText` map          |
-| `withStreamedText(view, texts)`          | Lays the streamed text over a `HeadView`                                                       |
+| Helper                                   | What it does                                                                                                                                                                                                       |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `headView(snapshot)`                     | Builds a `HeadView`, a `SessionView` without `seq`, from a head store's snapshot                                                                                                                                   |
+| `streamText(texts, update)`              | Keeps the latest streamed text and tool progress of each part in a `StreamedText` map                                                                                                                              |
+| `withStreamedText(view, texts)`          | Lays the streamed text over a `HeadView`                                                                                                                                                                           |
 | `unsentSends(connection, session, head)` | The sends still in an `sdk.connect` connection's journal. `lay(view, seq)` adds them to a view; `expired()` lists the ones older than a day that are no longer sent on their own, and `resend(id)` sends one again |
 
 [Render a session](/docs/sdk/guides/render-a-session) shows a head store in use.
