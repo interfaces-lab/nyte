@@ -173,7 +173,7 @@ export function createRows(transport: Transport, link: Link): Rows {
           dev("sdk", "wait retrying", { name, attempts });
           await backoff(
             link,
-            retryDelay(attempts),
+            httpRetryDelay(attempts),
             options?.signal === undefined
               ? link.signal
               : AbortSignal.any([link.signal, options.signal]),
@@ -293,7 +293,7 @@ function resumable<N extends OperationName>(
           attempts += 1;
           dev("sdk", "watch reconnecting", { name, attempts });
           link.lost();
-          await backoff(link, retryDelay(attempts), signal);
+          await backoff(link, httpRetryDelay(attempts), signal);
         }
       },
       close() {
@@ -382,7 +382,7 @@ function hostGone(transport: Transport, error: unknown): boolean {
 /**
  * Paces the HTTP link's retries: a journaled send, a `wait` call, a watch reopening. 50 ms, then 250 ms doubling to 10 s, with no jitter. Each retry is one request, not a redial and a resume, and the usual failure is a blip (a pooled connection the host closed, a listener restarting) that the next request gets past, so it starts almost at once. It has no jitter because `backoff` ends every wait as soon as any request gets through and the link reports itself connected, so the waits end together anyway. The socket paces its redials with `socketRetryDelay`.
  */
-export function retryDelay(attempts: number): number {
+export function httpRetryDelay(attempts: number): number {
   return attempts <= 1
     ? FIRST_DELAY_MS
     : Math.min(BASE_DELAY_MS * 2 ** (attempts - 2), MAX_DELAY_MS);

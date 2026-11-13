@@ -15,7 +15,7 @@ import { dev } from "@nyte-ai/core/client";
 import type { RequestJournal } from "@nyte-ai/core";
 import type { OperationOutput } from "@nyte-ai/protocol";
 import type { Rows } from "../connection/rows.ts";
-import { backoff, retryDelay } from "../connection/rows.ts";
+import { backoff, httpRetryDelay } from "../connection/rows.ts";
 import { parsed } from "../connection/receipts.ts";
 
 /**
@@ -185,7 +185,7 @@ export function journalLoop(rows: Rows, journal: RequestJournal, host: HostId): 
         }
 
         current.attempts += 1;
-        const delay = retryDelay(current.attempts);
+        const delay = httpRetryDelay(current.attempts);
         dev("sdk", "send retrying", { receipt: id, attempts: current.attempts, delay });
         current.retrying = { at: Date.now() + delay, reason: error.message };
         changed();
