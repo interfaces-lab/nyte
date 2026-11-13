@@ -52,7 +52,8 @@ import type {
   McpHubFactory,
   PageTable,
 } from "./contract/workspace.ts";
-import { createExecutionState, dispatchHead, driveInProcess } from "./drive/execution.ts";
+import { dispatchHead } from "./drive/dispatch.ts";
+import { createExecutionState, driveInProcess } from "./drive/execution.ts";
 import { createChildTable } from "./engine/children.ts";
 import { createJobTable, jobHandle } from "./engine/jobs.ts";
 import { openPresence } from "./engine/presence.ts";

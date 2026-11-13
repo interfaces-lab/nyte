@@ -31,7 +31,8 @@
 - **Continuations.** `attach` never starts a run, except a child or job report, or a late answer to a part, on an idle head whose last run completed.
 - **Idempotent IDs.** A reused receipt or session id with the same digest replays; a different digest throws. Ids created inside a durable call are recorded in `CallRecord.acquisitions`. Tool call ids are `${run}:${requests}:${providerId}`.
 - **Replace.** An inbox target is revised in place. A landed target rewinds the head, fences the live run and admits the new message in one `set`.
-- **Run fence.** Writes for a run fence on `live/<id>`. A stop sets `stopping`, deletes `live/<id>` and fails open parts in one `set`.
+- **Run fence.** Writes for a run fence on `live/<id>`. A stop sets `stopping`, deletes `live/<id>` and fails open parts in one `set`. A run's call settles only while `runs/<id>` exists.
+- **Bounded stop.** A stopped run ends 3 s after its signal aborts whether or not its turn or a resumed call returned; its open calls settle stopped first. Whatever still runs is left running and can no longer write to the run.
 - **Only `endRun` retires a run**, in one `set`: deletes `runs/<id>` and `live/<id>`, writes `lastRun`, settles receipts, fails live parts unless completed, and reserves a child's report.
 - **Reports are reserved, not sent.** A child's run or a job reserves its report as a `report` receipt in the set that ends it. A wait that takes the end deletes it in the same set; admission adopts it under its own id, so a second delivery replays; `recover` delivers what a crash left.
 - **Head lease.** One process advances a head, holding `leases/<head>` (30 s, renewed every 10 s). Claims compare `holder` and `instance`.

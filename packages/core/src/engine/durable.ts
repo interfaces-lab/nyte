@@ -17,7 +17,7 @@ import type { CallRecord } from "../contract/records.ts";
 import type { Durable } from "../contract/tools.ts";
 import { changeCall } from "../watch/commit.ts";
 import { storedAnswer } from "../store/parts.ts";
-import { partRef } from "../store/refs.ts";
+import { partRef, runRef } from "../store/refs.ts";
 import { load, put, readCall } from "../store/session.ts";
 import { waitIndex, wokenIndex } from "../store/wait-index.ts";
 import { dev } from "../util/dev-log.ts";
@@ -126,19 +126,12 @@ export async function runStep<T>(
     return value;
   };
 
-  const settle = async (ended: StepEnd<T>) => {
-    const written = await changeCall(kernel, { session, call, run }, async (current) => {
-      if (current === null || callPhase(current).kind === "settled") return null;
-      const settled = await input.settle(ended);
+  const settle = async (ended: StepEnd<T>): Promise<T> => {
+    const written = await settleCall(kernel, { session, call, run }, () => input.settle(ended));
 
-      return {
-        record: { ...current, result: settled.result, waiting: null, partial: [] },
-        updates: settled.updates,
-        index: { add: [], drop: wokenDrop(session, current) },
-      };
-    });
-
-    return read(written.record?.result ?? null);
+    return written.fenced && opening !== undefined
+      ? opening.fenced
+      : read(written.record?.result ?? null);
   };
 
   dev("durable", "step", { session, call, kind: input.kind });
@@ -179,6 +172,25 @@ export async function runStep<T>(
   dev("durable", "settled", { session, call });
 
   return { kind: "done", value };
+}
+
+/** Writes `call`'s result and the updates `settle` gives in one set, unless the call is gone or already settled, and answers the record the call is left with. A run's call settles only while the run's record exists: once the run ended, the set is `fenced` and writes nothing. */
+export function settleCall(
+  kernel: Kernel,
+  scope: { readonly session: SessionId; readonly call: CallId; readonly run: RunId | null },
+  settle: () => Promise<{ readonly result: Json; readonly updates: readonly RefUpdate[] }>,
+): Promise<{ readonly record: CallRecord | null; readonly fenced: boolean }> {
+  return changeCall(kernel, scope, async (current) => {
+    if (current === null || callPhase(current).kind === "settled") return null;
+    const settled = await settle();
+
+    return {
+      record: { ...current, result: settled.result, waiting: null, partial: [] },
+      updates: settled.updates,
+      index: { add: [], drop: wokenDrop(scope.session, current) },
+      fences: scope.run === null ? [] : [runRef(scope.session, scope.run)],
+    };
+  });
 }
 
 export async function runAction(

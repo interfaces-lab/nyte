@@ -267,13 +267,14 @@ export function runHandle(kernel: Kernel, session: SessionId, id: RunId): Run {
   };
 }
 
+/** Publishes a streamed change to a part of `run`, unless the run is fenced or this process no longer holds it: a stream or a tool that outlives its run's end publishes nothing. */
 export function publishPatch(
   kernel: Kernel,
   session: SessionId,
   run: RunId,
   patch: PatchEvent,
 ): void {
-  if (kernel.runs.fenced(run)) return;
+  if (kernel.runs.signal(run) === null || kernel.runs.fenced(run)) return;
   kernel.bus.publish(session, patch);
 }
 

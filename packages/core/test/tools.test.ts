@@ -2,6 +2,7 @@ import { asId, asSeq, standard } from "@nyte-ai/schema";
 import type { Json, ToolOutcome } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { assert, describe, expect, it } from "vitest";
+import { endRun } from "../src/engine/runs.ts";
 import { LOCAL, definePart, text, tool } from "../src/index.ts";
 import { callRef, memoryStore, partRef } from "../src/store.ts";
 import type { Kernel } from "../src/contract/kernel.ts";
@@ -15,6 +16,7 @@ import {
   liveRun,
   call,
   readCall,
+  scripted,
   toolPart,
 } from "./tool-support.ts";
 
@@ -191,6 +193,85 @@ describe("tool calls", () => {
     ).toEqual(rewritten);
     expect((await readCall(kernel, session.id, "a1")).result).toEqual(rewritten);
     expect((await toolPart(session, "a1")).state).toMatchObject({ outcome: rewritten });
+  });
+
+  it("writes nothing for a tool that returns after its run ended: no result, no part, no after_tool, no snapshot", async () => {
+    const release = Promise.withResolvers<void>();
+    const running = Promise.withResolvers<void>();
+    const taken: string[] = [];
+    const transformed: string[] = [];
+
+    let started = "";
+
+    const late = {
+      ...echo,
+      name: "late",
+      execute: async (args: { readonly text: string }, invocation) => {
+        running.resolve();
+        await release.promise;
+        started = await invocation.foreground.start({ command: "make" }).then(
+          () => "started",
+          (error: unknown) => (error instanceof Error ? error.message : String(error)),
+        );
+
+        return { content: [{ kind: "text", text: args.text }] };
+      },
+    } satisfies ToolDefinition<{ text: string }>;
+
+    const { kernel, host } = await setup({
+      snapshots: scripted(taken),
+      plugins: [
+        {
+          ...toolPlugin([late]),
+          hooks: {
+            after_tool: (outcome) => {
+              transformed.push(outcome.kind);
+
+              return outcome;
+            },
+          },
+        },
+      ],
+    });
+
+    const { session } = await host.sessions.start({ content: "Hi." });
+    const run = await liveRun(kernel, session.id);
+
+    const stop = new AbortController();
+
+    const pending = call(kernel, {
+      session: session.id,
+      run,
+      call: "l1",
+      name: "late",
+      args: { text: "too late" },
+      signal: stop.signal,
+    });
+
+    await running.promise;
+    stop.abort();
+    await endRun(kernel, session.id, run, { kind: "stopped" });
+    const tail = await kernel.store.refs.tail(session.id);
+    const jobs = (await kernel.store.refs.list("jobs/")).length;
+    const snapshots = taken.length;
+    release.resolve();
+
+    expect(await pending).toEqual({ kind: "stopped" });
+    expect({
+      tail: await kernel.store.refs.tail(session.id),
+      result: (await readCall(kernel, session.id, "l1")).result,
+      transformed,
+      snapshots: taken.length,
+      jobs: (await kernel.store.refs.list("jobs/")).length,
+      started,
+    }).toEqual({
+      tail,
+      result: null,
+      transformed: [],
+      snapshots,
+      jobs,
+      started: "Call l1 was stopped.",
+    });
   });
 
   it("keys nested tools.execute calls and replays them when the step re-runs", async () => {

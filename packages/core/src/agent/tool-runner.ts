@@ -6,6 +6,7 @@ import {
   idSchema,
   isJson,
   JsonType,
+  SdkError,
   ModelRefType,
   ToolOutcomeType,
   withJson,
@@ -107,7 +108,7 @@ type Plan = { readonly args: Json; readonly class: ToolClass } & (
   | { readonly kind: "settle"; readonly outcome: ToolOutcome }
 );
 
-interface Settled {
+export interface Settled {
   readonly outcome: ToolOutcome;
   readonly files: readonly FileChange[] | null;
   readonly thread: readonly FileChange[] | null;
@@ -360,6 +361,8 @@ async function perform(
           }
         : async () => planned.outcome,
     async settle(ended) {
+      if ((await kernel.store.refs.get(runRef(session, run))) === null)
+        return { result: STOPPED, updates: [] };
       concluded ??= conclude(kernel, where, ended, before, planned.class);
       const settled = await concluded;
 
@@ -719,10 +722,11 @@ function fileChanges(set: ChangeSet): readonly FileChange[] {
   });
 }
 
-async function settlement(
+/** The updates that settle a tool call's part with `settled`'s outcome and file changes, in one set with its result. */
+export async function settlement(
   kernel: Kernel,
-  where: Where,
-  planned: Plan,
+  where: Pick<Where, "session" | "head" | "run" | "call" | "name">,
+  planned: Pick<Plan, "args" | "class">,
   settled: Settled,
   before: ToolBaseline | null,
 ): Promise<readonly RefUpdate[]> {
@@ -958,7 +962,10 @@ export function createInvocation(
       });
     },
     foreground: {
-      start: (job) => startJob(kernel, context.origin, input.workspace, { ...job, session }, true),
+      start: (job) =>
+        signal.aborted
+          ? Promise.reject(new SdkError("unavailable", `Call ${call} was stopped.`))
+          : startJob(kernel, context.origin, input.workspace, { ...job, session }, true),
       release: () => kernel.jobs.release(session, call),
       released: input.released ?? new AbortController().signal,
     },

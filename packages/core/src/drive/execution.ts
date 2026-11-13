@@ -50,6 +50,7 @@ import {
 import type { Found } from "../store/session.ts";
 import { dev, fault } from "../util/dev-log.ts";
 import type { StoreConnection } from "../contract/store.ts";
+import { endOverdue, OVERDUE, outlasting } from "./stop-grace.ts";
 
 const PAGE = 100;
 
@@ -608,6 +609,8 @@ async function settleLive(
     const resumed = await resume(kernel, session, head, run);
 
     if (resumed.refused !== null) return resumed.refused;
+
+    if (resumed.overdue) return endOverdue(kernel, session, head, run);
     await endRun(kernel, session, run, { kind: "stopped" });
 
     return null;
@@ -629,6 +632,7 @@ async function settleLive(
     if (record === undefined) return null;
 
     if (record.stopping) {
+      if (resumed.overdue) return endOverdue(kernel, session, head, run);
       await endRun(kernel, session, run, { kind: "stopped" });
 
       return null;
@@ -663,18 +667,22 @@ async function resume(
   session: SessionId,
   head: HeadName,
   run: RunId,
-): Promise<{ readonly refused: Refused | null; readonly unreadable: readonly string[] }> {
+): Promise<{
+  readonly refused: Refused | null;
+  readonly unreadable: readonly string[];
+  readonly overdue: boolean;
+}> {
   const renewal = holdHead(kernel, session, head);
-
+  const stopped = kernel.runs.start(session, run).signal;
   const signal = AbortSignal.any([
-    kernel.runs.start(session, run).signal,
+    stopped,
     renewal.lease.signal,
     kernel.executionState.closing.signal,
   ]);
-
   const runtime = kernel.plugins.runtime(session);
   const release = runtime.hold();
   const unreadable: string[] = [];
+  let overdue = false;
 
   try {
     await runtime.ready;
@@ -689,7 +697,7 @@ async function resume(
         continue;
       }
 
-      await executeCall(kernel, {
+      const called = executeCall(kernel, {
         session,
         head,
         run,
@@ -707,6 +715,11 @@ async function resume(
         },
         signal,
       });
+
+      if ((await outlasting(kernel, session, run, stopped, called)) === OVERDUE) {
+        overdue = true;
+        break;
+      }
     }
   } finally {
     renewal.lease.stop();
@@ -717,7 +730,7 @@ async function resume(
 
   if (refused !== null) kernel.runs.end(run);
 
-  return { refused, unreadable };
+  return { refused, unreadable, overdue };
 }
 
 async function runnableCalls(
@@ -756,12 +769,8 @@ async function drive(
   kernel.executionState.driving.set(run.id, session);
   const closing = kernel.executionState.closing.signal;
   const renewal = holdHead(kernel, session, head);
-
-  const signal = AbortSignal.any([
-    kernel.runs.start(session, run.id).signal,
-    closing,
-    renewal.lease.signal,
-  ]);
+  const stopped = kernel.runs.start(session, run.id).signal;
+  const signal = AbortSignal.any([stopped, closing, renewal.lease.signal]);
 
   const unrenew = (): void => renewal.lease.stop();
   closing.addEventListener("abort", unrenew, { once: true });
@@ -790,7 +799,13 @@ async function drive(
       kernel.executionState.driving.delete(run.id);
     });
 
-  const ended = await Promise.race([turned, closed.promise]);
+  const ended = await outlasting(
+    kernel,
+    session,
+    run.id,
+    stopped,
+    Promise.race([turned, closed.promise]),
+  );
 
   if (ended === null && kernel.presence !== null)
     kernel.executionState.undrained.add(leaseRef(session, head));
@@ -801,6 +816,12 @@ async function drive(
     kernel.runs.end(run.id);
 
     return refused;
+  }
+
+  if (ended === OVERDUE) {
+    unrenew();
+
+    return endOverdue(kernel, session, head, run.id);
   }
 
   if (ended === null || (closing.aborted && !stopping)) return null;
@@ -941,48 +962,4 @@ function failed(cause: unknown): RunEnd {
 
 function formatError(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
-}
-
-const DISPATCH_RETRIES = 3;
-
-const DISPATCH_BACKOFF_MS = 50;
-
-export function dispatchHead(
-  kernel: Kernel,
-  execution: Extract<Kernel["execution"], { readonly kind: "dispatch" }>,
-  session: SessionId,
-  head: HeadName,
-): void {
-  const pending = kernel.executionState.pending;
-  const key = JSON.stringify([session, head]);
-
-  if (pending.has(key)) {
-    pending.set(key, true);
-
-    return;
-  }
-
-  pending.set(key, false);
-
-  void (async () => {
-    for (let tries = 0; tries <= DISPATCH_RETRIES; tries += 1) {
-      if (tries > 0)
-        await new Promise((resolve) => setTimeout(resolve, DISPATCH_BACKOFF_MS * 2 ** tries));
-      dev("execution", "dispatch", { session, head, tries });
-
-      const dispatched = await Promise.resolve()
-        .then(() => execution.dispatch({ session, head }))
-        .then(
-          () => true,
-          () => false,
-        );
-
-      if (dispatched) break;
-    }
-
-    const again = pending.get(key) === true;
-    pending.delete(key);
-
-    if (again) dispatchHead(kernel, execution, session, head);
-  })();
 }
