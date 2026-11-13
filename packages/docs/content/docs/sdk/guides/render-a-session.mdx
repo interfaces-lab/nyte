@@ -71,8 +71,8 @@ done with the host. In a browser, pass `socket: ticketSocket()`, since a page ca
 a WebSocket.
 
 `live.directory({ parents: { kind: "roots" } })` is the same kind of store for the `sessions`
-table: its snapshot holds the listed `ids` in order, each one's `SessionInfo` in `rows`, and each
-session's live `Activation` in `activations`.
+table: its snapshot holds the listed `ids` in order and each one's `SessionInfo` in `rows`, whose
+`activation` is the session's live one.
 
 ## Draw the messages
 

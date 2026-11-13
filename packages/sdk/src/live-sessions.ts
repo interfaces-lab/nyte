@@ -1,8 +1,7 @@
-import { isJsonObject } from "@nyte-ai/schema";
-import type { Activation, Json, SessionId, SessionInfo, SessionsChange } from "@nyte-ai/schema";
+import type { SessionId, SessionInfo, SessionsChange } from "@nyte-ai/schema";
 import { asSdkError, openDirectoryStore } from "@nyte-ai/protocol";
 import type { DirectoryStore, HostSocket, OperationInput, SocketEvent } from "@nyte-ai/protocol";
-import { activations, sessionsChanges } from "./event-checks.ts";
+import { sessionsChanges } from "./event-checks.ts";
 import { freshnessCell, keepRows, listenerSet, readRetries, request, sameJson } from "./live.ts";
 import type { Freshness, Join, Live } from "./live.ts";
 
@@ -11,7 +10,6 @@ export type SessionsWindow = Omit<OperationInput<"sessions.read">, "resume">;
 export interface SessionsSnapshot {
   readonly ids: readonly SessionId[];
   readonly rows: ReadonlyMap<string, SessionInfo>;
-  readonly activations: ReadonlyMap<string, Activation>;
 }
 
 export interface SessionsStore extends Live<SessionsSnapshot | null> {
@@ -22,7 +20,6 @@ export interface SessionsStore extends Live<SessionsSnapshot | null> {
 export function openSessions(window: SessionsWindow, join: Join): SessionsStore {
   const listeners = listenerSet();
   let store: DirectoryStore | null = null;
-  let live: ReadonlyMap<string, Activation> = new Map();
   let snapshot: SessionsSnapshot | null = null;
   const freshness = freshnessCell();
   const retries = readRetries();
@@ -33,7 +30,7 @@ export function openSessions(window: SessionsWindow, join: Join): SessionsStore 
   let reading = false;
 
   const settle = (current: DirectoryStore): void => {
-    const next = rebuild(current, live, snapshot);
+    const next = rebuild(current, snapshot);
     const moved = freshness.fresh(current.seq);
 
     if (next === snapshot && !moved) return;
@@ -75,17 +72,7 @@ export function openSessions(window: SessionsWindow, join: Join): SessionsStore 
   };
 
   const receive = (event: SocketEvent): void => {
-    if (event.scope !== "host") return;
-
-    if (event.kind === "live" && event.activations !== undefined) {
-      live = readActivations(event.activations);
-
-      if (store !== null && !reading) settle(store);
-
-      return;
-    }
-
-    if (event.kind !== "change" || !sessionsChanges.Check(event)) return;
+    if (event.scope !== "host" || event.kind !== "change" || !sessionsChanges.Check(event)) return;
 
     if (reading || store === null) {
       pending.push(event);
@@ -129,35 +116,12 @@ export function openSessions(window: SessionsWindow, join: Join): SessionsStore 
   };
 }
 
-function readActivations(value: Json): ReadonlyMap<string, Activation> {
-  if (!isJsonObject(value)) return new Map();
-
-  return new Map(
-    Object.entries(value).flatMap((entry) => {
-      const activation = entry[1];
-
-      return activations.Check(activation) ? [[entry[0], activation] as const] : [];
-    }),
-  );
-}
-
-function rebuild(
-  current: DirectoryStore,
-  live: ReadonlyMap<string, Activation>,
-  previous: SessionsSnapshot | null,
-): SessionsSnapshot {
+function rebuild(current: DirectoryStore, previous: SessionsSnapshot | null): SessionsSnapshot {
   const source = current.snapshot();
   const rows = keepRows(source.rows, previous?.rows);
-  const held = keepRows(live, previous?.activations);
   const ids = previous !== null && sameJson(previous.ids, source.ids) ? previous.ids : source.ids;
 
-  if (
-    previous !== null &&
-    rows === previous.rows &&
-    held === previous.activations &&
-    ids === previous.ids
-  )
-    return previous;
+  if (previous !== null && rows === previous.rows && ids === previous.ids) return previous;
 
-  return { ids, rows, activations: held };
+  return { ids, rows };
 }

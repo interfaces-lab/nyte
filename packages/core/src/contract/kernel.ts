@@ -217,8 +217,6 @@ export interface PluginHost {
 export interface SessionDirectory {
   activation(session: SessionId): Activation;
 
-  activations(): ReadonlyMap<SessionId, Activation>;
-
   setActivation(session: SessionId, activation: Activation): void;
 
   forget(session: SessionId): void;

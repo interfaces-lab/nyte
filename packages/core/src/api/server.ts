@@ -54,11 +54,6 @@ export function createServerHost(kernel: Kernel): ServerHost {
       },
       attach: (session, principal) => attachSession(kernel, session, principal),
       sessions: (principal) => sessionChanges(kernel, principal),
-      activations: () => kernel.sessions.activations(),
-      onActivation: (listener) =>
-        kernel.bus.subscribeAll((_session, event) => {
-          if (event.kind === "activation") listener();
-        }),
     },
   };
 }

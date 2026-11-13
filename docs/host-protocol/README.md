@@ -86,9 +86,9 @@ A client attaches to a scope in two steps, in this order:
 1. Subscribe. The client asks for the scope's events. From then on, every change in the scope reaches the client in seq order on the connection's event channel.
 2. Read. The client reads the rows it wants, such as a head's window or the `sessions` table. The answer carries the `seq` the rows are current through.
 
-A client may pipeline the two and send the read right behind the subscribe, without waiting for the subscribe's answer. The host handles a connection's frames in arrival order, and a read waits for any subscribe to its scope sent earlier on the same connection.
+A client may pipeline the two and send the read right behind the subscribe, without waiting for the subscribe's answer. The host starts a connection's calls in arrival order and answers each when it is done, so answers can come back in another order. A read waits for any subscribe to its scope sent earlier on the same connection.
 
-Events can arrive before the read's answer. The client holds them and applies the answer. Then it applies every held and later event whose seq is above the answer's. The answer already contains any event at or below its seq, so the client skips that event. Applying an event twice would do no harm anyway, because an event carries whole rows, not patches.
+Events can arrive before the read's answer. The client holds them and applies the answer. Then it applies every held and later event whose seq is at or above the answer's. The answer already contains any event below its seq, so the client skips that event. An event at the answer's seq may carry a row that changed without a new seq, and applying an event twice does no harm, because an event carries whole rows, not patches. The host sends every change it has gathered through an answer's seq before the answer.
 
 If a client reads first and subscribes second, it loses every change between the two. The model shows the trace with `SubscribeBeforeRead` turned off.
 
@@ -132,12 +132,12 @@ Everything the host pushes has one shape:
 | Kind | Scope | Carries |
 | --- | --- | --- |
 | `change` | `session/<id>`, `host` | `tables: { [table]: { upsert: Row[], drop: Id[] } }`, holding only the tables the change touched. A session change also carries `paths: { head, after, ids }[]`, where each moved head's order is unchanged through `after` and then continues with `ids`. `after: null` replaces the whole order. |
-| `live` | `session/<id>`, `host` | In a session scope, the session's activation. In the host scope, either the connected clients or every session's activation, as two separate events. |
+| `live` | `session/<id>`, `host` | In a session scope, the session's activation. In the host scope, the connected clients. A session's row in the `sessions` table carries its activation, and the host sends the row again when the activation changes. |
 | `status` | `host` | The host's version, `startedAt`, listeners, and the tailnet's status for an owner |
 | `perform` | `client/<id>` | `call`, `requester` with the requesting client's id and principal, `action`, `input` |
 | `performed` | `host` | `call`, the target, and the outcome: performed, refused, failed or timeout |
 
-One log event produces one `change` event at that seq, carrying every row it touched across tables. Some bus events never reach the log: a child's, job's or page's state. Each produces a `change` at the seq it joined, carrying only the rows it touched and never the rows that seq already sent.
+A `change` carries every row touched since the connection's last change for that scope, across tables, at the seq it reaches. The host gathers a session's changes before it pushes them: 8 ms after the first unsent one, and 33 ms after its last push at the earliest. A burst of log events is then one change with each row once, where one change per event would send a finished part's row when it stops streaming and again when it settles. A client older than revision 23 gets one change per log event, because several gathered into one frame could pass `maxFrameBytes` and it takes no fragments. Some bus events never reach the log: a child's, job's or page's state, and a session's activation. Each produces a `change` at the seq it joined, carrying only the rows it touched and never the rows that seq already sent.
 
 A client applies a `change` by replacing each upserted row and deleting each dropped id. There is no field-level patching and no splicing by position.
 
@@ -145,7 +145,7 @@ A client applies a `change` by replacing each upserted row and deleting each dro
 
 A connection has an event channel and a text channel.
 
-The event channel carries requests, their answers and every event above. The seqs apply to this channel. On one connection, the events of one scope arrive in seq order with no gaps, or the connection closes.
+The event channel carries requests, their answers and every event above. The seqs apply to this channel. On one connection, the events of one scope arrive in seq order and miss no row, or the connection closes. Seqs can skip, since one change may cover several log events.
 
 The text channel carries what a model is streaming:
 
@@ -153,7 +153,7 @@ The text channel carries what a model is streaming:
 - `{ part, run, version, append }` for what the part streams next
 - `{ part, run, progress }` for a tool's progress
 
-None of it is durable, so none of it has a seq. When a client opens the text channel, the host sends the whole live suffix of every part streaming in the sessions the client subscribes to, then sends appends as they come. The host may merge queued appends for one part into a longer append, and it never reorders them. A part's row in `parts` holds its text as of the last durable write, and its `version` tells the client where the live suffix starts.
+None of it is durable, so none of it has a seq. When a client opens the text channel, the host sends the whole live suffix of every part streaming in the sessions the client subscribes to, then sends appends. Streamed text is gathered with the session's changes, so a model that streams a delta every few milliseconds reaches a client as about thirty appends a second. The host may also merge queued appends for one part into a longer append, and it never reorders them. A part's row in `parts` holds its text as of the last durable write, and its `version` tells the client where the live suffix starts.
 
 Because streamed text has its own channel, it can't use up the event channel's byte budget, and a slow consumer of a fast model never loses a durable change.
 
@@ -165,13 +165,15 @@ A Node, React Native or Electron client sends its credential on the upgrade requ
 
 Request and response operations also stay on plain HTTP, so a script can call one with `curl`. The event and text channels have no SSE form, because a one-way stream can't carry `client.reply`.
 
+The host compresses for a client that reached it off loopback, and never on loopback, where bytes cost nothing and compression costs CPU. The socket negotiates permessage-deflate with one context for the connection, which is what makes small frames cheap: their ids and field names repeat. A JSON answer of 1 KiB or more over HTTP is gzipped when the request accepts it. A frame of 1 KiB or more on the HTTP stream channel is deflated for a client that opened the channel asking for it. `pnpm --dir packages/bench bench:wire` measures all of it; `--remote` addresses the host off loopback.
+
 ## Slow consumers
 
 The host never skips an event it has queued for a connection. When a connection's queued event bytes pass the host's `backlogBytes`, the host closes the connection with the reason `backlog`. The client reconnects and resumes. An event larger than `maxFrameBytes` also closes the connection of a client older than revision 23, with the reason `oversize`, because skipping the event would leave a gap. A newer client gets it as fragments. After repeated closes for size, the client waits longer before each reconnect, though its welcomes reset the delay for an ordinary drop.
 
 The text channel works differently. The host merges its appends. When they still pass the budget, the host drops the queued text, closes the text channel alone and sends `{ c: "t", type: "closed" }`. The client calls `text.open` again and receives the live suffix again.
 
-The host advertises both limits in its welcome.
+The host advertises both limits in its welcome. Three limits are not in the welcome. A hello is at most 4 KiB. A frame the client sends is at most `maxFrameBytes`, where the same call over HTTP may carry 8 MiB. A socket ticket lasts 30 s and opens one socket.
 
 ## Versions
 

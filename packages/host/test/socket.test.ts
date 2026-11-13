@@ -620,6 +620,7 @@ describe("the host's WebSocket", () => {
     await measuring.client.call("events.subscribe", { scopes: [`session/${session}`] });
     const big = `big ${"x".repeat(1_200_000)}`;
     await (await send(host, fake, session, big)).settled();
+    await measuring.client.until((frame) => frame.type === "fragment" && frame.last === true);
     await (await send(host, fake, session, "small one")).settled();
     await measuring.client.until(
       (frame) => frame.kind === "change" && JSON.stringify(frame).includes("small one"),
@@ -789,7 +790,7 @@ describe("the host scope", () => {
     expect(store.snapshot()).toEqual(openDirectoryStore(fresh.read).snapshot());
   });
 
-  it("sends host subscribers the host's status and the sessions' activations whole on subscribe", async () => {
+  it("sends host subscribers the host's status whole on subscribe", async () => {
     const listener = await serve(await compose(fakeModels()));
     const client = await connect(listener);
     await client.call("events.subscribe", { scopes: ["host"] });
@@ -804,11 +805,6 @@ describe("the host scope", () => {
       startedAt: expect.any(Number),
       listeners: [listener.address],
       tailnet: null,
-    });
-    expect(client.frames.find((frame) => frame.activations !== undefined)).toMatchObject({
-      scope: "host",
-      seq: null,
-      kind: "live",
     });
   });
 });

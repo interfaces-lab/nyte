@@ -157,7 +157,7 @@ What is wrong with the code this lands in, with the principle each breaks, and w
 | `packages/app/src/data/session-rows.ts:338-343` | Merges `view.heads` over `listed.heads` per session. | Split ownership | Yes, in the client step |
 | `packages/host/src/sqlite-workers.ts:120` | `Value.Check` on every worker reply; a worker thread in the same process is not a trust boundary. 46% of main-thread time under directory load. | Boundary discipline | No. Out of scope; the re-list that drives it goes away, which removes most of the calls |
 | `packages/core/src/fold/commit.ts:103` | `changeCall` serialized per call while settlements CAS the head tip. | Separate before serializing shared state | Fixed this session |
-| `packages/protocol/src/stream-channel.ts` | Base64 envelopes at 1.33× with no compression. | Explain the number | No. Transport work for the host step |
+| The HTTP stream channel's envelopes | Base64 at 1.33×, around SSE that is itself around JSON. A chunk of 1 KiB or more is deflated first for a client off loopback; a smaller one is not. | Explain the number | No. A frame kind without the inner SSE and the base64 needs a revision bump |
 
 The sketch deletes the first four before adding anything.
 

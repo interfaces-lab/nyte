@@ -133,10 +133,6 @@ export interface WireHost {
   attach(session: SessionId, principal: PrincipalId): SessionAttachment;
 
   sessions(principal: PrincipalId): AsyncIterable<SessionsChange>;
-
-  activations(): ReadonlyMap<SessionId, Activation>;
-
-  onActivation(listener: () => void): Disposer;
 }
 
 export interface StreamingPart {

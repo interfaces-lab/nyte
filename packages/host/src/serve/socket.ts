@@ -7,7 +7,6 @@ import {
   compile,
   HELLO_MAX_BYTES,
   HelloFrameType,
-  isJson,
   OPERATIONS,
   SdkError,
   SOCKET_LIMITS,
@@ -39,7 +38,9 @@ import {
   decodeInput,
   encodeError,
   namesOperation,
+  readJson,
 } from "@nyte-ai/protocol";
+import { Type } from "typebox";
 import type { RawData, WebSocket } from "ws";
 import type { TailnetControl } from "../tailnet.ts";
 import { bindConnection } from "./binding.ts";
@@ -113,14 +114,6 @@ type EventOut =
       readonly type: "event";
       readonly scope: "host";
       readonly seq: null;
-      readonly kind: "live";
-      readonly activations: { readonly [session: string]: Activation };
-    }
-  | {
-      readonly c: "e";
-      readonly type: "event";
-      readonly scope: "host";
-      readonly seq: null;
       readonly kind: "status";
       readonly version: string;
       readonly startedAt: number;
@@ -165,6 +158,12 @@ const MISSED_PONGS = 3;
 
 const HIGH_WATER = 64 * 1024;
 
+/** How long a session's first unsent change waits for the ones right behind it, so a burst of events goes out as one change with each row once. */
+const GATHER_MS = 8;
+
+/** The shortest time between two pushes of a session's changes and streamed text: a fast model's deltas reach a client as about thirty frames a second. */
+const PUSH_MS = 33;
+
 const FRAGMENT_REVISION = 23;
 
 const FRAGMENT_ENVELOPE_BYTES = 1024;
@@ -177,8 +176,16 @@ const PIECE_UNITS = Math.floor(
 
 const hellos = compile(withJson(HelloFrameType));
 
-const calls = compile(withJson(CallFrameType));
+/** A call frame's `input` is checked against its operation's schema when it is decoded, so the frame check takes it as it parsed. */
+const calls = compile(
+  Type.Object({ ...CallFrameType.properties, input: Type.Optional(Type.Unsafe<Json>({})) }),
+);
 
+/**
+ * Serves one client's socket: the hello, its calls, and what its subscribed scopes push.
+ *
+ * A session's changes and streamed text are gathered before they are pushed: `GATHER_MS` after the first unsent one, and `PUSH_MS` after the last push at the earliest, so a burst of events is one change with each row once and a fast model's deltas are a few appends. Every answer goes out behind what was gathered, so an answer read at a seq follows every change through that seq. A client that takes no fragments gets each change as it happens, since several gathered into one frame could pass `maxFrameBytes`.
+ */
 export function serveSession(socket: WebSocket, peer: SocketPeer): void {
   const binding = bindConnection(peer.connection, {
     server: peer.server,
@@ -207,7 +214,36 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
 
   const subscriptions = new Map<string, Subscription>();
   const joining = new Map<string, Promise<void>>();
+  const unsent = new Set<() => void>();
+  let pushing: ReturnType<typeof setTimeout> | null = null;
+  let pushed = 0;
+  let gathers = false;
   let textOpen = false;
+
+  const push = (): void => {
+    if (pushing !== null) clearTimeout(pushing);
+    pushing = null;
+
+    if (unsent.size === 0) return;
+    pushed = Date.now();
+    const sends = [...unsent];
+    unsent.clear();
+
+    for (const send of sends) send();
+  };
+
+  const gather = (send: () => void): void => {
+    if (!gathers) {
+      send();
+
+      return;
+    }
+
+    unsent.add(send);
+
+    if (pushing !== null || closed) return;
+    pushing = setTimeout(push, Math.max(GATHER_MS, pushed + PUSH_MS - Date.now()));
+  };
 
   const outbox = openOutbox(socket, close, () => {
     textOpen = false;
@@ -325,7 +361,7 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
       stream(subscription);
     };
 
-    const unsubscribe = attachment.subscribe(changed);
+    const unsubscribe = attachment.subscribe(() => gather(changed));
 
     const subscription: Subscription = {
       attachment,
@@ -333,6 +369,7 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
       progress: new Map(),
       release() {
         unsubscribe();
+        unsent.delete(changed);
         attachment.release();
       },
     };
@@ -386,16 +423,6 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
 
     const listeners = sharedListeners(peer.server);
 
-    const activations = (): void =>
-      outbox.event({
-        c: "e",
-        type: "event",
-        scope: "host",
-        seq: null,
-        kind: "live",
-        activations: Object.fromEntries(peer.server.wire.activations()),
-      });
-
     const status = (): void =>
       outbox.event({
         c: "e",
@@ -417,12 +444,10 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
       kind: "live",
       clients: clients.rows(),
     });
-    activations();
     status();
 
     const stops = [
       clients.observe((event) => outbox.event(event)),
-      peer.server.wire.onActivation(activations),
       listeners.observe(status),
       peer.tailnet?.subscribe(status) ?? (() => undefined),
     ];
@@ -526,8 +551,11 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
       return;
     }
 
-    if (value.api_revision !== undefined && value.api_revision >= FRAGMENT_REVISION)
+    if (value.api_revision !== undefined && value.api_revision >= FRAGMENT_REVISION) {
       outbox.acceptFragments();
+      gathers = true;
+    }
+
     const id = asId<"client">(crypto.randomUUID());
 
     const membership = clients.join({
@@ -562,6 +590,7 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
 
     try {
       const output = await dispatch(frame.op, frame.input ?? {}, flight.signal);
+      push();
       outbox.event({ c: "e", type: "result", id: frame.id, output });
     } catch (error) {
       outbox.event({ c: "e", type: "error", id: frame.id, error: encodeError(asSdkError(error)) });
@@ -676,6 +705,9 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
   socket.once("close", () => {
     closed = true;
     clearInterval(heartbeat);
+
+    unsent.clear();
+    push();
     peer.signal.removeEventListener("abort", revoked);
 
     for (const flight of flights) flight.abort(new SdkError("unavailable", "The socket closed."));
@@ -875,16 +907,6 @@ function rawText(data: RawData): string {
   if (data instanceof ArrayBuffer) return Buffer.from(data).toString("utf8");
 
   return data.toString("utf8");
-}
-
-function readJson(text: string): Json | undefined {
-  try {
-    const value: unknown = JSON.parse(text);
-
-    return isJson(value) ? value : undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 function truncate(reason: string): string {

@@ -733,7 +733,6 @@ function createSessionDirectory(bus: SessionBus): SessionDirectory {
 
   return {
     activation: (session) => activations.get(session) ?? INACTIVE,
-    activations: () => activations,
     setActivation(session, activation) {
       activations.set(session, activation);
       bus.publish(session, { ...now(), kind: "activation", activation });

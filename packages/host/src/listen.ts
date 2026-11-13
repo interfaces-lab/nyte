@@ -6,6 +6,8 @@ import { connect } from "node:net";
 import { dirname } from "node:path";
 import process from "node:process";
 import type { Duplex } from "node:stream";
+import { promisify } from "node:util";
+import { gzip } from "node:zlib";
 import { SdkError, SOCKET_LIMITS, SOCKET_PATH } from "@nyte-ai/schema";
 import type { ListenOptions, Listener } from "@nyte-ai/core";
 import type { ServedHost } from "@nyte-ai/core/server";
@@ -19,6 +21,11 @@ import type { MediaLinks } from "./local/media.ts";
 import { serveSession } from "./serve/socket.ts";
 import type { SocketPeer } from "./serve/socket.ts";
 import type { TailnetControl } from "./tailnet.ts";
+
+/** The smallest JSON answer worth gzipping for a client off loopback; a smaller one would grow. */
+const GZIP_MIN_BYTES = 1024;
+
+const compress = promisify(gzip);
 
 export type HostListenOptions = ListenOptions & {
   readonly tailnet?: TailnetControl;
@@ -138,7 +145,7 @@ async function serveNode(
   let origin = "";
 
   const server = createServer({ noDelay: true }, (incoming, outgoing) => {
-    void respond(incoming, outgoing, { scheme, origin }, fetch, responses);
+    void respond(incoming, outgoing, { scheme, origin }, fetch, responses, deflates(incoming));
   });
 
   server.on("upgrade", (incoming: IncomingMessage, socket: Duplex, head: Buffer) => {
@@ -151,9 +158,16 @@ async function serveNode(
         return;
       }
 
-      (deflates(incoming) ? deflating : plain).handleUpgrade(incoming, socket, head, (opened) =>
-        serveSession(opened, peer),
-      );
+      let upgraded = false;
+
+      socket.once("close", () => {
+        if (!upgraded) peer.leave();
+      });
+
+      (deflates(incoming) ? deflating : plain).handleUpgrade(incoming, socket, head, (opened) => {
+        upgraded = true;
+        serveSession(opened, peer);
+      });
     });
   });
 
@@ -296,6 +310,7 @@ async function respond(
   origin: { readonly scheme: "http" | "https"; readonly origin: string },
   fetch: (request: Request) => Promise<Response>,
   responses: Set<ServerResponse>,
+  crossing: boolean,
 ): Promise<void> {
   const controller = new AbortController();
   responses.add(outgoing);
@@ -318,7 +333,40 @@ async function respond(
     return;
   }
 
-  await write(await fetch(request), outgoing);
+  const response = await fetch(request);
+
+  if (!incoming.complete) outgoing.setHeader("Connection", "close");
+
+  await write(
+    crossing && /\bgzip\b/u.test(String(incoming.headers["accept-encoding"] ?? ""))
+      ? await gzipped(response)
+      : response,
+    outgoing,
+  );
+}
+
+/** Returns a JSON answer of `GZIP_MIN_BYTES` or more gzipped, and any other response as it is: an event stream or an octet stream is written as it comes, which a compressor would hold back. */
+async function gzipped(response: Response): Promise<Response> {
+  if (
+    response.body === null ||
+    response.headers.has("Content-Encoding") ||
+    response.headers.get("Content-Type") !== "application/json"
+  )
+    return response;
+  const body = new Uint8Array(await response.arrayBuffer());
+  const headers = new Headers(response.headers);
+
+  if (body.byteLength < GZIP_MIN_BYTES)
+    return new Response(body, { status: response.status, headers });
+  headers.set("Content-Encoding", "gzip");
+  headers.append("Vary", "Accept-Encoding");
+  headers.delete("Content-Length");
+  const packed = await compress(body);
+
+  return new Response(new Uint8Array(packed.buffer, packed.byteOffset, packed.byteLength), {
+    status: response.status,
+    headers,
+  });
 }
 
 function readRequest(
@@ -349,22 +397,29 @@ function readRequest(
   return new Request(url.href, { method, headers, signal, ...body });
 }
 
+/** Cancelling the body discards the rest of it instead of destroying the socket, so the response still reaches the client; `respond` closes a connection whose body never ended once that response is written. */
 function streamBody(incoming: IncomingMessage): ReadableStream<Uint8Array> {
+  let cancelled = false;
+
   return new ReadableStream<Uint8Array>({
     start(controller) {
       incoming.on("data", (chunk: Buffer) => {
+        if (cancelled) return;
         controller.enqueue(new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength));
 
         if ((controller.desiredSize ?? 0) <= 0) incoming.pause();
       });
-      incoming.on("end", () => controller.close());
+      incoming.on("end", () => {
+        if (!cancelled) controller.close();
+      });
       incoming.on("error", (error) => controller.error(error));
     },
     pull() {
       incoming.resume();
     },
     cancel() {
-      incoming.destroy();
+      cancelled = true;
+      incoming.resume();
     },
   });
 }

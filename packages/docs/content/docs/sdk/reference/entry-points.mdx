@@ -253,8 +253,7 @@ resumes from its seq once the socket is back.
   from its seq.
 - A head store's snapshot holds the head's `order`, `leadingPrompt`, `activation`, `catalog`, and
   `rows`, a `Map` per table keyed by row id.
-- A session store's snapshot holds the listed `ids` in order, each one's `SessionInfo` in `rows`,
-  and every session's `activation` by id in `activations`.
+- A session store's snapshot holds the listed `ids` in order and each one's `SessionInfo` in `rows`.
 
 These helpers come with it:
 

@@ -20,9 +20,8 @@ principal. Each change arrives as
 every session row that changed and a drop for every session removed, whatever window the client
 reads. The client derives a list's order from its rows: filter by `parent`, sort by
 `lastActivityAt` descending then id, and take the limit; seed it with
-[`sessions.read`](/docs/reference/operations/sessions/read). Three live facts arrive whole on subscribe and on
-every change: `{ kind: "live", clients }`, `{ kind: "live", activations }`, each session's
-activation by id, and `{ kind: "status", version, startedAt, listeners, tailnet }`, where
+[`sessions.read`](/docs/reference/operations/sessions/read). Two live facts arrive whole on subscribe and on
+every change: `{ kind: "live", clients }` and `{ kind: "status", version, startedAt, listeners, tailnet }`, where
 `listeners` are the addresses the host listens on and `tailnet` is the embedded node's status, or
 null without one or for a principal without `owner` authority.
 
