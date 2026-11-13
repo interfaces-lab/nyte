@@ -46,7 +46,7 @@ Vitest fake time pauses A's heartbeat while B keeps its own presence writable an
 
 ## Coverage and sync record
 
-Last confirmed product code at `d142cf6dd8cbddcda21866cd2a795dd33abdb475` on `main`.
+Last confirmed product code at `9a6fab0fd942ca0e44073bef4f61b675c8e589e9` on `main`.
 
 | Source and function | Covered behavior |
 | --- | --- |
@@ -63,7 +63,7 @@ Last confirmed product code at `d142cf6dd8cbddcda21866cd2a795dd33abdb475` on `ma
 `check.mjs` prints the output of this command as a re-review notice:
 
 ```sh
-git log --oneline d142cf6dd8cbddcda21866cd2a795dd33abdb475..HEAD -- packages/core/src/compose.ts packages/core/src/contract/presence.ts packages/core/src/engine/presence.ts packages/core/src/drive/execution.ts packages/core/src/watch/commit.ts packages/core/src/store/log.ts packages/core/src/store/refs.ts packages/host/src/store/sqlite.ts
+git log --oneline 9a6fab0fd942ca0e44073bef4f61b675c8e589e9..HEAD -- packages/core/src/compose.ts packages/core/src/contract/presence.ts packages/core/src/engine/presence.ts packages/core/src/drive/execution.ts packages/core/src/watch/commit.ts packages/core/src/store/log.ts packages/core/src/store/refs.ts packages/host/src/store/sqlite.ts
 ```
 
 History output is not a gate. Unrelated edits do not prevent TLC from running. An unavailable history range is a notice too. Review uncommitted changes separately; this log cannot show them.
