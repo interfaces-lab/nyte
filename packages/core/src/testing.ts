@@ -8,7 +8,7 @@ export { publishPatch } from "./engine/runs.ts";
 
 export { checkPlugins } from "./extend/plugin-runtime.ts";
 
-export { pollStore, publishSet } from "./fold/watch.ts";
+export { pollStore, publishSet } from "./watch/watch.ts";
 
 export { completed, livePart, main, setup } from "./harness.ts";
 
@@ -18,4 +18,4 @@ export { decodeFoldCheckpoint, encodeFoldCheckpoint } from "./fold/checkpoint.ts
 
 export { emptyFold, fold } from "./fold/fold.ts";
 
-export { readView } from "./fold/window.ts";
+export { readView } from "./watch/window.ts";

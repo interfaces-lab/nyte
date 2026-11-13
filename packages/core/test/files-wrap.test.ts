@@ -3,7 +3,7 @@ import type { Json, SessionId, ToolOutcome } from "@nyte-ai/schema";
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import { executeCall } from "../src/agent/tool-runner.ts";
 import { environmentPlugin } from "../src/builtins/environment.ts";
-import { EMPTY_SNAPSHOT } from "../src/engine/batches.ts";
+import { EMPTY_SNAPSHOT } from "../src/env/batches.ts";
 import { ALL_AUTHORITY, LOCAL } from "../src/index.ts";
 import { decodeReceiptRecord, receiptRef } from "../src/store.ts";
 import type { Kernel } from "../src/contract/kernel.ts";

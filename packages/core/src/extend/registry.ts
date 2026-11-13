@@ -34,7 +34,7 @@ import type {
   SettingsRegistry,
 } from "../contract/plugin.ts";
 import { sendNow } from "../engine/admission.ts";
-import { commit } from "../fold/commit.ts";
+import { commit } from "../watch/commit.ts";
 import { encodeCatalog } from "../store/catalogs.ts";
 import { catalogRef } from "../store/refs.ts";
 import { attempt, load, MAIN, put, readRefExpectation, STALE } from "../store/session.ts";

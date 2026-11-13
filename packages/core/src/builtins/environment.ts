@@ -4,7 +4,7 @@ import { Type } from "typebox";
 import type { Plugin } from "../contract/plugin.ts";
 import type { ToolDefinition } from "../contract/tools.ts";
 import type { FilesApi } from "../contract/workspace.ts";
-import { attachFile } from "../env/attach.ts";
+import { attachFile } from "./attach-file.ts";
 import { CLIP_CHARS, clipText } from "../util/clip.ts";
 import { textDigest } from "../util/content.ts";
 import { lineDiff } from "../util/line-diff.ts";

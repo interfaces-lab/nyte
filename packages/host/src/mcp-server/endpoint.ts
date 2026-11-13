@@ -34,7 +34,7 @@ import {
   namesOperation,
 } from "@nyte-ai/protocol";
 import type { CallName } from "@nyte-ai/protocol";
-import { findScope } from "../local/files.ts";
+import { findScope } from "../local/files/files.ts";
 import { bindConnection } from "../serve/binding.ts";
 import type { CallBinding } from "../serve/binding.ts";
 import type { McpGrant, McpGrants } from "./grants.ts";

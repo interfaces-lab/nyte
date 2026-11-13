@@ -8,7 +8,7 @@ import { serial } from "@nyte-ai/schema/serial";
 import type { McpAccess, McpGrantView } from "@nyte-ai/schema";
 import type { OperationInput, OperationOutput } from "@nyte-ai/protocol";
 import { parseJson } from "@nyte-ai/protocol";
-import { readErrorCode } from "../local/tree.ts";
+import { readErrorCode } from "../fs-errors.ts";
 import { MCP_TOKEN_PREFIX } from "./token.ts";
 
 export interface McpOwner {

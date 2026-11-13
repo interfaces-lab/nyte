@@ -17,7 +17,7 @@ import type { Kernel } from "../contract/kernel.ts";
 import type { Job, JobEntry, JobOutput, Jobs, JobTable } from "../contract/workspace.ts";
 import { decodeJobRecord } from "../contract/records.ts";
 import type { JobRecord } from "../contract/records.ts";
-import { commit } from "../fold/commit.ts";
+import { commit } from "../watch/commit.ts";
 import { JOBS, jobRef } from "../store/refs.ts";
 import { attempt, load, MAIN, put, readSession, STALE } from "../store/session.ts";
 import { clipText } from "../util/clip.ts";

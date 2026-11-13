@@ -37,8 +37,8 @@ import { forkSession } from "../engine/fork.ts";
 import { completeSessionCommand, runCommand } from "../extend/registry.ts";
 import { configure } from "../extend/settings.ts";
 import { isolateWorkspace, releaseWorktree } from "../env/worktrees.ts";
-import { backgroundItems, countBackground } from "../fold/background.ts";
-import { commit } from "../fold/commit.ts";
+import { backgroundItems, countBackground } from "../watch/background.ts";
+import { commit } from "../watch/commit.ts";
 import { headRef, seenRef, sessionRef, workspaceRef } from "../store/refs.ts";
 import {
   attempt,

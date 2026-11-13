@@ -6,13 +6,13 @@ EXTENDS Naturals
 \* AppendProcessFence: openPresence.store.refs.set,
 \* packages/core/src/engine/presence.ts:103-108.
 \* DeleteProcessOnClaim: claimNow,
-\* packages/core/src/drive/execution.ts:532-547.
+\* packages/core/src/drive/execution.ts:541-556.
 CONSTANTS AppendProcessFence, DeleteProcessOnClaim
 
 \* Verification cut, NOT a combined read/put/claim action: B and C have
 \* independently finished claimNow's earlier awaits and prepared updates for
 \* the same lease revision and dead A process revision, both called 1 here.
-\* claimNow, packages/core/src/drive/execution.ts:508-547; holder,
+\* claimNow, packages/core/src/drive/execution.ts:509-556; holder,
 \* packages/core/src/engine/presence.ts:126-141. All B/C presence refs exist.
 \* A can be paused between its synchronous wrapper and its SQL transaction.
 \* A's own callbacks cannot interleave there, but B/C are other OS processes.
@@ -20,28 +20,28 @@ Contenders == {"B", "C"}
 
 VARIABLES
   \* SQLite process ref revision, 0 means absent. connect.refs.set,
-  \* packages/host/src/sqlite.ts:405-432; processRef,
-  \* packages/core/src/store/refs.ts:96-99.
+  \* packages/host/src/store/sqlite.ts:510-542; processRef,
+  \* packages/core/src/store/refs.ts:113-115.
   processRevision,
   \* Lease target's instance. Only one lease CAS succeeds in this cut, so
   \* owner = A also encodes the expected lease revision 1. claimNow,
-  \* packages/core/src/drive/execution.ts:532-545.
+  \* packages/core/src/drive/execution.ts:541-554.
   leaseOwner,
   \* Each prepared claim's SQL call position, not its caller's held map.
-  \* claimNow, packages/core/src/drive/execution.ts:532-563;
-  \* connect.refs.set, packages/host/src/sqlite.ts:392-470.
+  \* claimNow, packages/core/src/drive/execution.ts:541-573;
+  \* connect.refs.set, packages/host/src/store/sqlite.ts:495-607.
   claimPC,
   \* A's AbortController.signal.aborted. revoke / store.refs.set / beat,
   \* packages/core/src/engine/presence.ts:52-57,78-87,103-114.
   revoked,
   \* A's current synchronous turn before SQL starts. store.refs.set / beat,
   \* packages/core/src/engine/presence.ts:78-83,103-108;
-  \* connect.refs.set, packages/host/src/sqlite.ts:392-396.
+  \* connect.refs.set, packages/host/src/store/sqlite.ts:495-501.
   turn,
   \* A's one publication: wrapper, transaction, await continuation. The
   \* publication stands for a head/ref update passed through commit and the
   \* presence wrapper, not an immutable objects.put. commit,
-  \* packages/core/src/fold/commit.ts:49-68; openPresence.store.refs.set,
+  \* packages/core/src/watch/commit.ts:55-75; openPresence.store.refs.set,
   \* packages/core/src/engine/presence.ts:103-116.
   writePC,
   \* Whether A's pending RefUpdate.fences includes processRef(A).
@@ -49,7 +49,7 @@ VARIABLES
   \* packages/core/src/engine/presence.ts:106-108.
   writeFence,
   \* A's pending set outcome, read only after the await. connect.refs.set,
-  \* packages/host/src/sqlite.ts:405-410,467-470; store.refs.set,
+  \* packages/host/src/store/sqlite.ts:510-516,598-601; store.refs.set,
   \* packages/core/src/engine/presence.ts:106-114.
   writeOutcome,
   \* A's one beat: invocation, SQL, await continuation. beat,
@@ -57,17 +57,17 @@ VARIABLES
   beatPC,
   \* The heartbeat's pending SQL result. beat,
   \* packages/core/src/engine/presence.ts:83-87;
-  \* connect.refs.set, packages/host/src/sqlite.ts:413-432.
+  \* connect.refs.set, packages/host/src/store/sqlite.ts:518-542.
   beatOutcome,
   \* History witness, not product state: a successful A publication at
-  \* connect.refs.set COMMIT, packages/host/src/sqlite.ts:467-470, whose
+  \* connect.refs.set COMMIT, packages/host/src/store/sqlite.ts:598-601, whose
   \* lease had already changed via claimNow,
-  \* packages/core/src/drive/execution.ts:532-547.
+  \* packages/core/src/drive/execution.ts:541-556.
   stalePublication
 
 \* Initial cut described above. A registered at revision 1 via openPresence,
 \* packages/core/src/engine/presence.ts:39-48; A owns the existing lease
-\* written by claimNow, packages/core/src/drive/execution.ts:532-563.
+\* written by claimNow, packages/core/src/drive/execution.ts:541-573.
 Init ==
   /\ processRevision = 1
   /\ leaseOwner = "A"
@@ -83,9 +83,9 @@ Init ==
 
 \* One BEGIN IMMEDIATE..COMMIT/ROLLBACK, including ALL updates, not a
 \* read followed by a later delete. claimNow's prepared array,
-\* packages/core/src/drive/execution.ts:532-547; admits / fenceNames,
-\* packages/core/src/store/log.ts:5-14; connect.refs.set,
-\* packages/host/src/sqlite.ts:396-470. B/C's own fences always exist.
+\* packages/core/src/drive/execution.ts:541-556; admits / fenceNames,
+\* packages/core/src/store/log.ts:13-23; connect.refs.set,
+\* packages/host/src/store/sqlite.ts:501-607. B/C's own fences always exist.
 ClaimTransaction(c) ==
   /\ claimPC[c] = "sql"
   /\ LET accepted == leaseOwner = "A"
@@ -109,7 +109,7 @@ BeginWrite ==
                  writeOutcome, beatPC, beatOutcome, stalePublication>>
 
 \* One publication transaction: fence checked and ref/log changes committed
-\* together. connect.refs.set, packages/host/src/sqlite.ts:396-470.
+\* together. connect.refs.set, packages/host/src/store/sqlite.ts:501-607.
 \* No other expectations reject this chosen publication. This includes an
 \* unconditional RefUpdate, a stronger adversary than a stale target CAS.
 WriteTransaction ==
@@ -145,8 +145,8 @@ BeginBeat ==
 
 \* One raw heartbeat SQL transaction. beat,
 \* packages/core/src/engine/presence.ts:83; admits,
-\* packages/core/src/store/log.ts:5-10; connect.refs.set,
-\* packages/host/src/sqlite.ts:413-432. Revision 2 is a fresh unequal token.
+\* packages/core/src/store/log.ts:13-19; connect.refs.set,
+\* packages/host/src/store/sqlite.ts:518-542. Revision 2 is a fresh unequal token.
 BeatTransaction ==
   /\ beatPC = "sql" /\ turn = "beat"
   /\ beatOutcome' = IF processRevision = 1 THEN "set" ELSE "stale"
@@ -167,15 +167,15 @@ ReplyBeat ==
                  writeFence, writeOutcome, beatOutcome, stalePublication>>
 
 \* Union of beat / store.refs.set, packages/core/src/engine/presence.ts:78-116,
-\* and claimNow, packages/core/src/drive/execution.ts:532-547, through
-\* connect.refs.set, packages/host/src/sqlite.ts:392-470. Terminal states and
+\* and claimNow, packages/core/src/drive/execution.ts:541-556, through
+\* connect.refs.set, packages/host/src/store/sqlite.ts:495-607. Terminal states and
 \* indefinitely paused actors are allowed; no fairness or liveness claim.
 Next == (\E c \in Contenders : ClaimTransaction(c))
         \/ BeginWrite \/ WriteTransaction \/ ReplyWrite
         \/ BeginBeat \/ BeatTransaction \/ ReplyBeat
 
 \* A publication that COMMITs after another process's takeover is forbidden.
-\* COMMIT: connect.refs.set, packages/host/src/sqlite.ts:467-470;
-\* takeover: claimNow, packages/core/src/drive/execution.ts:532-547.
+\* COMMIT: connect.refs.set, packages/host/src/store/sqlite.ts:598-601;
+\* takeover: claimNow, packages/core/src/drive/execution.ts:541-556.
 NoStalePublication == ~stalePublication
 =============================================================================

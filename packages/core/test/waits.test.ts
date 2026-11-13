@@ -21,7 +21,7 @@ import { failedParts } from "../src/store/parts.ts";
 import type { Kernel } from "../src/contract/kernel.ts";
 import type { ActionContext, ActionOutput, Durable, ToolDefinition } from "../src/index.ts";
 import type { CallRecord } from "../src/store.ts";
-import { commit } from "../src/fold/commit.ts";
+import { commit } from "../src/watch/commit.ts";
 import { put } from "../src/store/session.ts";
 import { main, setup, startRun, until } from "../src/harness.ts";
 import { toolPlugin } from "./tool-support.ts";

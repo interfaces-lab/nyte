@@ -1,8 +1,8 @@
 import { SdkError } from "@nyte-ai/schema";
 import type { Host, OpenOptions } from "@nyte-ai/core";
-import { connect } from "./connect.ts";
+import { connect } from "./connection/connect.ts";
 
-export { createSendJournal } from "./journal.ts";
+export { createSendJournal } from "./send/journal.ts";
 
 export * from "./surface.ts";
 

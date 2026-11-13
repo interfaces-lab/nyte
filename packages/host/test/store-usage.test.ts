@@ -6,7 +6,7 @@ import { afterEach, expect, test } from "vitest";
 import { envelope } from "@nyte-ai/core/store";
 import { asId } from "@nyte-ai/schema";
 import type { DurableEvent, Usage } from "@nyte-ai/schema";
-import { sqliteStore } from "../src/sqlite.ts";
+import { sqliteStore } from "../src/store/sqlite.ts";
 import {
   USAGE_EVENTS,
   foldUsage,
@@ -16,7 +16,7 @@ import {
   shiftDay,
   type UsageCell,
   type UsageRecord,
-} from "../src/store-usage.ts";
+} from "../src/usage/store.ts";
 
 const folders: string[] = [];
 

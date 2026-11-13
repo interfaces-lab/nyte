@@ -8,9 +8,14 @@ import { listen } from "@nyte-ai/host";
 import { chatOnly, fakeModels } from "@nyte-ai/bench";
 import type { FakeModels } from "@nyte-ai/bench";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { openHost } from "../src/host-connection.ts";
-import type { Health, HostConnection, OpenSocket, SocketRequest } from "../src/host-connection.ts";
-import type { HeadStore } from "../src/live-head.ts";
+import { openHost } from "../src/live/host-connection.ts";
+import type {
+  Health,
+  HostConnection,
+  OpenSocket,
+  SocketRequest,
+} from "../src/live/host-connection.ts";
+import type { HeadStore } from "../src/live/head.ts";
 
 const TOKEN = "a-token-of-at-least-16";
 

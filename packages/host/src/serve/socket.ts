@@ -42,7 +42,7 @@ import {
 } from "@nyte-ai/protocol";
 import { Type } from "typebox";
 import type { RawData, WebSocket } from "ws";
-import type { TailnetControl } from "../tailnet.ts";
+import type { TailnetControl } from "./tailnet.ts";
 import { bindConnection } from "./binding.ts";
 import { sharedClients } from "./clients.ts";
 import type { HostEvent, PerformEvent } from "./clients.ts";

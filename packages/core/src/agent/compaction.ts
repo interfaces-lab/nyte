@@ -41,9 +41,9 @@ import { decodePartRecord, decodeRunRecord } from "../contract/records.ts";
 import type { PartRecord } from "../contract/records.ts";
 import { resolveHeadConfiguration } from "../engine/contributions.ts";
 import { modelInfo } from "../extend/models.ts";
-import { commit } from "../fold/commit.ts";
+import { commit } from "../watch/commit.ts";
 import { walkCommitPath } from "../fold/paths.ts";
-import { withFold } from "../fold/reads.ts";
+import { withFold } from "../watch/reads.ts";
 import { failedParts, settling } from "../store/parts.ts";
 import { headRef, partRef, runRef, sessionRef } from "../store/refs.ts";
 import {

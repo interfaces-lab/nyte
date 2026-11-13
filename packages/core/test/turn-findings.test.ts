@@ -6,7 +6,7 @@ import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import { requestBody } from "../src/agent/transcript.ts";
 import { createPluginRuntime } from "../src/extend/plugin-runtime.ts";
 import { toolSource } from "../src/extend/registry.ts";
-import { publishSet } from "../src/fold/watch.ts";
+import { publishSet } from "../src/watch/watch.ts";
 import { compaction, isPart } from "../src/index.ts";
 import { decodePartRecord, envelope, memoryStore, partRef } from "../src/store.ts";
 import type { Kernel } from "../src/contract/kernel.ts";

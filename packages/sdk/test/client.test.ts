@@ -6,7 +6,7 @@ import { dev } from "@nyte-ai/core";
 import type { Connection } from "@nyte-ai/core";
 import { CHANNEL_PATH, encodeError, STREAM_HEADER } from "@nyte-ai/protocol";
 import { afterEach, assert, describe, expect, it } from "vitest";
-import { connect } from "../src/connect.ts";
+import { connect } from "../src/connection/connect.ts";
 import { BASE, readOperation, TOKEN_SECRET, until } from "./served.ts";
 import { cleanups, client, closeOpened, open, settledChat, text, users } from "./connection.ts";
 

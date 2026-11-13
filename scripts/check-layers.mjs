@@ -50,6 +50,7 @@ const ENTRIES = [
       ["contract"],
       ["store"],
       ["fold"],
+      ["watch"],
       ["engine"],
       ["env"],
       ["extend"],

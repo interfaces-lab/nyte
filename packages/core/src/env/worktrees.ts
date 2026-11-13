@@ -4,7 +4,7 @@ import { Type } from "typebox";
 import type { Kernel } from "../contract/kernel.ts";
 import type { Plugin, SettingDefinition } from "../contract/plugin.ts";
 import type { WorkspaceRecord } from "../contract/records.ts";
-import { commit } from "../fold/commit.ts";
+import { commit } from "../watch/commit.ts";
 import { workspaceRef } from "../store/refs.ts";
 import { attempt, listSessionRecords, liveRuns, put, STALE } from "../store/session.ts";
 import { readSetting } from "../store/setting-layers.ts";

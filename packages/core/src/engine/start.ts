@@ -5,8 +5,8 @@ import { CORE_CONTEXT, PARTICIPANT_AUTHORITY } from "../contract/host.ts";
 import type { ConnectionContext } from "../contract/host.ts";
 import type { Kernel } from "../contract/kernel.ts";
 import type { SessionRecord } from "../contract/records.ts";
-import { commit } from "../fold/commit.ts";
-import { withFold } from "../fold/reads.ts";
+import { commit } from "../watch/commit.ts";
+import { withFold } from "../watch/reads.ts";
 import { releaseParts } from "../store/parts.ts";
 import { inboxRef, sessionRef } from "../store/refs.ts";
 import {

@@ -3,8 +3,8 @@ import type { SessionView } from "@nyte-ai/schema";
 import { isPart, text as textPart } from "@nyte-ai/core";
 import type { Connection, Session } from "@nyte-ai/core";
 import { parseSse, readStreamFrame } from "@nyte-ai/protocol";
-import { connect } from "../src/connect.ts";
-import { createSendJournal } from "../src/journal.ts";
+import { connect } from "../src/connection/connect.ts";
+import { createSendJournal } from "../src/send/journal.ts";
 import { BASE, TOKEN_SECRET, served } from "./served.ts";
 import type { Served } from "./served.ts";
 

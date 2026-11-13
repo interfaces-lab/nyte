@@ -33,7 +33,7 @@ import type {
 import { createJobs, jobHandle } from "../engine/jobs.ts";
 import { discardSession } from "../engine/start.ts";
 import { cleanWorktrees } from "./worktrees.ts";
-import { commit } from "../fold/commit.ts";
+import { commit } from "../watch/commit.ts";
 import { endedRunRef, parseSessionRef, runRef, workspaceRef } from "../store/refs.ts";
 import {
   attempt,

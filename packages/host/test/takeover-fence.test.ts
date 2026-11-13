@@ -4,7 +4,7 @@ import { composeServer, main } from "@nyte-ai/core/testing";
 import { SdkError } from "@nyte-ai/schema";
 import type { RefUpdate, SetOutcome } from "@nyte-ai/schema";
 import { afterEach, assert, expect, it, vi } from "vitest";
-import { sqliteStore } from "../src/sqlite.ts";
+import { sqliteStore } from "../src/store/sqlite.ts";
 import { chatOnly, fakeModels } from "./fixtures/fake-models.ts";
 
 const steps = [

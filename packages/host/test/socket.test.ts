@@ -31,7 +31,7 @@ import type { DirectoryStore, SessionStore } from "@nyte-ai/protocol";
 import { WebSocket } from "ws";
 import type { RawData } from "ws";
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
-import { sqliteStore } from "../src/sqlite.ts";
+import { sqliteStore } from "../src/store/sqlite.ts";
 import { fakeModels } from "./fixtures/fake-models.ts";
 import type { FakeModels } from "./fixtures/fake-models.ts";
 import { rawConnect } from "./fixtures/raw-socket.ts";

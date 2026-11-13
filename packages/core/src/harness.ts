@@ -16,7 +16,7 @@ import { createHost } from "./api/connection.ts";
 import { createHostState } from "./api/host.ts";
 import { createKernel } from "./compose.ts";
 import { begin, newRun } from "./engine/runs.ts";
-import { publishSet } from "./fold/watch.ts";
+import { publishSet } from "./watch/watch.ts";
 import { envelope, leaseRef, memoryStore, partRef, trustRef, workspaceRef } from "./store.ts";
 import type { Kernel, TurnDriver } from "./contract/kernel.ts";
 import type {

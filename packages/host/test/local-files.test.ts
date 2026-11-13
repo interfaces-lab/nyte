@@ -18,9 +18,9 @@ import { asId } from "@nyte-ai/schema";
 import type { FileEvent, ScanFrame, SearchFrame, SearchInput } from "@nyte-ai/schema";
 import { afterEach, assert, describe, expect, it } from "vitest";
 import { localFiles } from "../src/index.ts";
-import type { LocalFiles } from "../src/local/files.ts";
+import type { LocalFiles } from "../src/local/files/files.ts";
 import { sha256 } from "../src/hash.ts";
-import { WALK_LIMIT, walkTree } from "../src/local/tree.ts";
+import { WALK_LIMIT, walkTree } from "../src/local/files/tree.ts";
 
 const folders: string[] = [];
 

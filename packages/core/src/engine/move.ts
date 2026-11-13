@@ -13,9 +13,9 @@ import type {
 import type { Kernel } from "../contract/kernel.ts";
 import type { CommitRecord } from "../contract/records.ts";
 import type { Receipt } from "../contract/session.ts";
-import { commit } from "../fold/commit.ts";
+import { commit } from "../watch/commit.ts";
 import { walkCommitPath } from "../fold/paths.ts";
-import { withFold } from "../fold/reads.ts";
+import { withFold } from "../watch/reads.ts";
 import { headRef, inboxRef, receiptRef } from "../store/refs.ts";
 import {
   attempt,

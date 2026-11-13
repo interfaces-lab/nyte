@@ -2,7 +2,7 @@ import { asId } from "@nyte-ai/schema";
 import type { SessionView } from "@nyte-ai/schema";
 import { decodeInput } from "@nyte-ai/protocol";
 import { afterEach, assert, describe, expect, it } from "vitest";
-import { createSendJournal } from "../src/journal.ts";
+import { createSendJournal } from "../src/send/journal.ts";
 import { readOperation } from "./served.ts";
 import { client, closeOpened, open, queued, settledChat, text, users } from "./connection.ts";
 

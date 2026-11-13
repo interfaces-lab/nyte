@@ -25,7 +25,7 @@ import type {
   PageHolder,
   SnapshotsApi,
 } from "../contract/workspace.ts";
-import { applyBatch } from "../engine/batches.ts";
+import { applyBatch } from "./batches.ts";
 import { workspaceRef } from "../store/refs.ts";
 import { listSessionRecords, load, requireSession } from "../store/session.ts";
 import { wrapBrowser } from "./browser.ts";

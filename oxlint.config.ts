@@ -442,7 +442,7 @@ export default defineConfig({
       },
     },
     {
-      files: ["packages/host/src/local/jobs.ts"],
+      files: ["packages/host/src/local/process/jobs.ts"],
       rules: {
         "eslint/no-restricted-imports": ["error", { patterns: uiLibraryImports }],
       },

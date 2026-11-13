@@ -3,7 +3,7 @@ import { memoryStore } from "@nyte-ai/core/store";
 import type { Store } from "@nyte-ai/core";
 import { decodeError, errorStatus } from "@nyte-ai/protocol";
 import { afterEach, assert, describe, expect, it } from "vitest";
-import { listenFetch } from "../src/listen-fetch.ts";
+import { listenFetch } from "../src/serve/listen-fetch.ts";
 import { fakeModels, open } from "./fixtures/fake-models.ts";
 import { endless } from "./endless.ts";
 

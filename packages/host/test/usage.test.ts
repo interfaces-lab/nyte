@@ -16,14 +16,14 @@ import { dirname, join } from "node:path";
 import process from "node:process";
 import { afterEach, test, vi } from "vitest";
 import type { Models } from "@nyte-ai/ai";
-import { emptyUsageSummary } from "../src/usage-summary.ts";
+import { emptyUsageSummary } from "../src/usage/summary.ts";
 import {
   createUsageScanCaches,
   loadUsageScanCaches,
   readClaudeCodeUsage,
   saveUsageScanCaches,
-} from "../src/usage.ts";
-import type { UsageWindow } from "../src/usage-types.ts";
+} from "../src/usage/local-history.ts";
+import type { UsageWindow } from "../src/usage/types.ts";
 
 const model: ReturnType<Models["getModels"]>[number] = {
   id: "claude-test-20260101",

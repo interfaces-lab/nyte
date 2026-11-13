@@ -7,11 +7,11 @@ import manifest from "../package.json" with { type: "json" };
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 const ENTRIES = [
-  "src/listen-fetch.ts",
-  "src/durable-object.ts",
+  "src/serve/listen-fetch.ts",
+  "src/store/durable-object.ts",
   "src/providers.ts",
-  "src/credentials.ts",
-  "src/identity.ts",
+  "src/keys/credentials.ts",
+  "src/keys/identity.ts",
 ];
 
 const SPECIFIER = /^(?:import|export)\s(?!type\s)[^;]*?from\s+"([^"]+)"|^import\s+"([^"]+)"/gm;

@@ -6,7 +6,7 @@ import type { Attached, Kernel, RegistrySet } from "../contract/kernel.ts";
 import type { PluginApi, Registries, RuntimeCall, RuntimeVerdict } from "../contract/plugin.ts";
 import type { Session } from "../contract/session.ts";
 import type { Resources } from "../contract/workspace.ts";
-import { commit } from "../fold/commit.ts";
+import { commit } from "../watch/commit.ts";
 import { kvRef } from "../store/refs.ts";
 import { openText, sealText } from "../store/secrets.ts";
 import { put, readKv, requireSession } from "../store/session.ts";

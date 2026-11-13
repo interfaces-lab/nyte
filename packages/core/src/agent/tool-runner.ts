@@ -46,12 +46,12 @@ import { anotherChatLive, ownedChanges, readAttributedPaths } from "../env/sessi
 import { signalsPark, parkStep, runStep } from "../engine/durable.ts";
 import { startJob } from "../engine/jobs.ts";
 import { publishPatch } from "../engine/runs.ts";
-import { hiddenOwners, missingCapabilities, onlyNyteAppHas } from "../engine/surface.ts";
+import { hiddenOwners, missingCapabilities, onlyNyteAppHas } from "./capabilities.ts";
 import { loadedTools } from "./transcript.ts";
 import { toolSource } from "../extend/registry.ts";
-import { commit } from "../fold/commit.ts";
+import { commit } from "../watch/commit.ts";
 import { changesEvents } from "../fold/changes.ts";
-import { withFold } from "../fold/reads.ts";
+import { withFold } from "../watch/reads.ts";
 import { settling } from "../store/parts.ts";
 import { partRef, runRef } from "../store/refs.ts";
 import {

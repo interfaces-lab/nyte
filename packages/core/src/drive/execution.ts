@@ -33,8 +33,8 @@ import { BEAT_MS } from "../engine/presence.ts";
 import { recoverStarts } from "../engine/start.ts";
 import { crashLooping, interruption, parkedFailure } from "../engine/interruptions.ts";
 import { earliestWake, loadWaits } from "../engine/waits.ts";
-import { commit } from "../fold/commit.ts";
-import { withFold } from "../fold/reads.ts";
+import { commit } from "../watch/commit.ts";
+import { withFold } from "../watch/reads.ts";
 import { leaseRef, runRef } from "../store/refs.ts";
 import {
   coveredSessions,

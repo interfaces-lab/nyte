@@ -12,7 +12,7 @@ import type { Setting, SettingDefinition } from "../contract/plugin.ts";
 import { collectContributions } from "../engine/contributions.ts";
 import { WORKSPACE_TRUST } from "../env/trust.ts";
 import { dropScans, readTrust, trustChanged } from "../env/workspaces.ts";
-import { commit } from "../fold/commit.ts";
+import { commit } from "../watch/commit.ts";
 import { headRef, kvRef, sessionRef } from "../store/refs.ts";
 import { sealText } from "../store/secrets.ts";
 import {

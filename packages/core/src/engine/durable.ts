@@ -15,7 +15,7 @@ import type { Kernel, StepEnd, StepOutcome } from "../contract/kernel.ts";
 import { decodePartRecord } from "../contract/records.ts";
 import type { CallRecord } from "../contract/records.ts";
 import type { Durable } from "../contract/tools.ts";
-import { changeCall } from "../fold/commit.ts";
+import { changeCall } from "../watch/commit.ts";
 import { storedAnswer } from "../store/parts.ts";
 import { partRef } from "../store/refs.ts";
 import { load, put, readCall } from "../store/session.ts";

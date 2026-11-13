@@ -6,7 +6,7 @@ import type { PromptSection } from "../contract/plugin.ts";
 import { decodePromptRecord } from "../contract/records.ts";
 import type { PromptRecord } from "../contract/records.ts";
 import type { Resources } from "../contract/workspace.ts";
-import { commit } from "../fold/commit.ts";
+import { commit } from "../watch/commit.ts";
 import { promptRef } from "../store/refs.ts";
 import { attempt, load, put, readRefExpectation, STALE } from "../store/session.ts";
 

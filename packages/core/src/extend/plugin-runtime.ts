@@ -34,7 +34,7 @@ import type {
   RegistryDraft,
 } from "../contract/plugin.ts";
 import type { ExecutionEnv, Resources } from "../contract/workspace.ts";
-import { RESERVED_PART_KINDS } from "../engine/part-definitions.ts";
+import { RESERVED_PART_KINDS } from "./part-definitions.ts";
 import { coveredHere, requireSession } from "../store/session.ts";
 import { callable } from "../util/callable.ts";
 import { dev } from "../util/dev-log.ts";

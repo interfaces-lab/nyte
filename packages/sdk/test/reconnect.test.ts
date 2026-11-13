@@ -2,7 +2,7 @@ import { asId, SdkError } from "@nyte-ai/schema";
 import type { Json } from "@nyte-ai/schema";
 import { createTransport } from "@nyte-ai/protocol";
 import { afterEach, expect, it, vi } from "vitest";
-import { createLink, createRows } from "../src/rows.ts";
+import { createLink, createRows } from "../src/connection/rows.ts";
 
 afterEach(() => vi.useRealTimers());
 

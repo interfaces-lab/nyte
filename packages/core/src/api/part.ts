@@ -30,8 +30,8 @@ import {
   runAction,
 } from "../engine/durable.ts";
 import type { ActionIntent } from "../engine/durable.ts";
-import { RESERVED_PART_KINDS } from "../engine/part-definitions.ts";
-import { commit } from "../fold/commit.ts";
+import { RESERVED_PART_KINDS } from "../extend/part-definitions.ts";
+import { commit } from "../watch/commit.ts";
 import { release, settle, storedAnswer } from "../store/parts.ts";
 import { headRef, partRef } from "../store/refs.ts";
 import {

@@ -35,7 +35,7 @@ import { branchSummary, compaction, text, thinking, tool } from "../contract/par
 import { decodeRunRecord } from "../contract/records.ts";
 import type { CommitRecord, PartRecord } from "../contract/records.ts";
 import { walkCommitPath } from "../fold/paths.ts";
-import { withFold } from "../fold/reads.ts";
+import { withFold } from "../watch/reads.ts";
 import { modelImage } from "./images.ts";
 import { THOUGHTS } from "./open-parts.ts";
 import { runRef } from "../store/refs.ts";
@@ -45,7 +45,7 @@ import type { StoreConnection } from "../contract/store.ts";
 import { scanResources } from "../extend/resources.ts";
 import { projectSections } from "./project-prompt.ts";
 import { settleSystemPrompt, systemSections } from "./prompt-sections.ts";
-import { hiddenOwners } from "../engine/surface.ts";
+import { hiddenOwners } from "./capabilities.ts";
 import { toolSource } from "../extend/registry.ts";
 
 interface Step {

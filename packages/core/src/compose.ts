@@ -56,8 +56,8 @@ import { createExecutionState, dispatchHead, driveInProcess } from "./drive/exec
 import { createChildTable } from "./engine/children.ts";
 import { createJobTable, jobHandle } from "./engine/jobs.ts";
 import { openPresence } from "./engine/presence.ts";
-import { createPartDefinitions } from "./engine/part-definitions.ts";
-import { createConnectionRegistry } from "./engine/principals.ts";
+import { createPartDefinitions } from "./extend/part-definitions.ts";
+import { createConnectionRegistry } from "./api/principals.ts";
 import { stopStart } from "./engine/start.ts";
 import { createWaitRegistry } from "./engine/waits.ts";
 import { createPageTable } from "./env/browser.ts";
@@ -79,8 +79,8 @@ import { reportUserPluginFailures, userPluginFolder } from "./extend/plugin-fold
 import { closeWatches, forgetScans, resourcesPlugin, watchHome } from "./extend/resources.ts";
 import { settingInfos } from "./extend/setting-definitions.ts";
 import { createSettingsApi } from "./extend/settings.ts";
-import { createBus } from "./fold/bus.ts";
-import { createFoldCache, createLogPublisher, pollStore } from "./fold/watch.ts";
+import { createBus } from "./watch/bus.ts";
+import { createFoldCache, createLogPublisher, pollStore } from "./watch/watch.ts";
 import { createModelState } from "./store/model-state.ts";
 import { createPartTable } from "./store/parts.ts";
 import { hostIdentityRef, kvRef } from "./store/refs.ts";

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { createShellStream } from "../src/local/shell-integration/stream.ts";
-import type { ShellState } from "../src/local/shell-integration/stream.ts";
+import { createShellStream } from "../src/local/process/shell-integration/stream.ts";
+import type { ShellState } from "../src/local/process/shell-integration/stream.ts";
 
 const nonce = "0123456789abcdef".repeat(4);
 

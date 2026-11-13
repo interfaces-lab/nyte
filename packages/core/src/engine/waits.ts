@@ -20,9 +20,9 @@ import {
   decodeRunRecord,
 } from "../contract/records.ts";
 import type { CallRecord, JobRecord, RunRecord } from "../contract/records.ts";
-import { changeCall, commit } from "../fold/commit.ts";
-import type { CallChange } from "../fold/commit.ts";
-import { readRunEnd } from "../fold/reads.ts";
+import { changeCall, commit } from "../watch/commit.ts";
+import type { CallChange } from "../watch/commit.ts";
+import { readRunEnd } from "../watch/reads.ts";
 import { storedAnswer } from "../store/parts.ts";
 import { callRef, jobRef, partRef, runRef } from "../store/refs.ts";
 import { load, put, readCall } from "../store/session.ts";

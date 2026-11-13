@@ -1,8 +1,8 @@
 import { asId } from "@nyte-ai/schema";
 import type { HeadRow, Message, TurnInfo } from "@nyte-ai/schema";
 import { expect, it } from "vitest";
-import { headView } from "../src/head-view.ts";
-import type { HeadRows, HeadSnapshot } from "../src/live-head.ts";
+import { headView } from "../src/view/head-view.ts";
+import type { HeadRows, HeadSnapshot } from "../src/live/head.ts";
 
 const MAIN = asId<"head">("main");
 

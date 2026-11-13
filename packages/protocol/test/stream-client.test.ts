@@ -1,8 +1,13 @@
 import type { Json } from "@nyte-ai/schema";
 import { expect, it, vi } from "vitest";
-import { parseJson } from "../src/json.ts";
-import { CANCEL_PATH, CHANNEL_HEADER, CHANNEL_PATH, STREAM_HEADER } from "../src/stream-channel.ts";
-import { createStreamClient } from "../src/stream-client.ts";
+import { parseJson } from "../src/wire/json.ts";
+import {
+  CANCEL_PATH,
+  CHANNEL_HEADER,
+  CHANNEL_PATH,
+  STREAM_HEADER,
+} from "../src/wire/stream-channel.ts";
+import { createStreamClient } from "../src/client/stream-client.ts";
 
 it("cancels a stream the client lets go of, never one the host ended", async () => {
   const encoder = new TextEncoder();

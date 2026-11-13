@@ -9,7 +9,7 @@ import type { ValidationIssue } from "@nyte-ai/schema";
 import { dev } from "@nyte-ai/core";
 import type { Plugin, PluginDirectory } from "@nyte-ai/core";
 import { sha256 } from "../hash.ts";
-import { readErrorCode } from "../local/tree.ts";
+import { readErrorCode } from "../fs-errors.ts";
 
 const EXTENSIONS = [".ts", ".mts", ".js", ".mjs"];
 

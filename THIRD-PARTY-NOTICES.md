@@ -400,7 +400,7 @@ SOFTWARE.
 
 - Repository: https://github.com/pingdotgg/t3code
 - The SQLite reader and checkpoint workers, large-parameter statement cache
-  bypass, and connection tuning in `packages/host/src/sqlite*.ts` are adapted
+  bypass, and connection tuning in `packages/host/src/store/sqlite*.ts` are adapted
   from `bf8ffe81a63c82d3de5fbaa9991fd5f30034a452`.
 - Homepage: https://t3.codes
 
@@ -487,7 +487,7 @@ SOFTWARE.
 ## Visual Studio Code (`microsoft/vscode`)
 
 - Repository: https://github.com/microsoft/vscode
-- What: the zsh and bash startup scripts in `packages/host/src/local/shell-integration`
+- What: the zsh and bash startup scripts in `packages/host/src/local/process/shell-integration`
   adapt portions of VS Code's shell integration scripts at tag `1.105.1`; the
   folder's `UPSTREAM.md` lists them.
 

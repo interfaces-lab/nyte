@@ -7,7 +7,7 @@ import type { Hunk, PatchEntry, RunId } from "@nyte-ai/schema";
 import type { ExecutionEnv } from "@nyte-ai/core";
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import { localExec, localFiles, localSnapshots } from "../src/index.ts";
-import { findExecutable } from "../src/local/command.ts";
+import { findExecutable } from "../src/local/process/command.ts";
 
 const hasGit = (await findExecutable("git")) !== null;
 

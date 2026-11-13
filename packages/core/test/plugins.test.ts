@@ -5,7 +5,7 @@ import { systemPromptPlugin } from "../src/builtins/system-prompt.ts";
 import { toolSource } from "../src/extend/registry.ts";
 import { LOCAL, text } from "../src/index.ts";
 import type { Plugin, PluginApi } from "../src/index.ts";
-import { attachSession } from "../src/api/attach.ts";
+import { attachSession } from "../src/api/session-attachment.ts";
 import { main, setup, until } from "../src/harness.ts";
 import { memoryStore } from "../src/store.ts";
 import { world } from "./fake-env.ts";

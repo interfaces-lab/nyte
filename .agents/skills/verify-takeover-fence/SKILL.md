@@ -6,10 +6,10 @@ paths:
   - "packages/core/src/contract/presence.ts"
   - "packages/core/src/engine/presence.ts"
   - "packages/core/src/drive/execution.ts"
-  - "packages/core/src/fold/commit.ts"
+  - "packages/core/src/watch/commit.ts"
   - "packages/core/src/store/log.ts"
   - "packages/core/src/store/refs.ts"
-  - "packages/host/src/sqlite.ts"
+  - "packages/host/src/store/sqlite.ts"
   - "packages/host/test/takeover-fence.test.ts"
 ---
 
@@ -50,20 +50,20 @@ Last confirmed product code at `d142cf6dd8cbddcda21866cd2a795dd33abdb475` on `ma
 
 | Source and function | Covered behavior |
 | --- | --- |
-| `packages/core/src/compose.ts:355-372`, `composeKernel` | Member-enabled kernels use `presence.store`. The test exercises this wiring. |
+| `packages/core/src/compose.ts:355-411`, `composeKernel` | Member-enabled kernels use `presence.store`. The test exercises this wiring. |
 | `packages/core/src/engine/presence.ts:39-57,78-116`, `openPresence`, `beat`, `revoke`, `store.refs.set` | Registration, heartbeat CAS, automatic process fences and delayed local revocation. |
 | `packages/core/src/engine/presence.ts:126-141`, `holder`; `packages/core/src/contract/presence.ts:10-14`, `Holder` | Prepared claims use the process revision from `dead`. The test reaches that result with a controlled clock; the model starts after it. |
-| `packages/core/src/drive/execution.ts:145-193,473-475,500-563`, `advance`, `claim`, `claimNow` | The test's public path reaches the real claim. Lease acquisition and dead-process deletion share one update array. |
-| `packages/core/src/fold/commit.ts:49-68`, `commit` | Claim publication uses `kernel.store.refs.set`. |
-| `packages/core/src/store/log.ts:5-14`, `admits`, `fenceNames` | Revision expectations and existence of fence refs decide admission. |
-| `packages/core/src/store/refs.ts:92-99`, `leaseRef`, `processRef` | Lease and process refs use distinct keys. |
-| `packages/host/src/sqlite.ts:392-470`, `connect.refs.set` | Fence checks, expectations, ref changes and events share one `BEGIN IMMEDIATE` transaction. |
+| `packages/core/src/drive/execution.ts:149-199,482-486,509-573`, `advance`, `claim`, `claimNow` | The test's public path reaches the real claim. Lease acquisition and dead-process deletion share one update array. |
+| `packages/core/src/watch/commit.ts:55-75`, `commit` | Claim publication uses `kernel.store.refs.set`. |
+| `packages/core/src/store/log.ts:13-23`, `admits`, `fenceNames` | Revision expectations and existence of fence refs decide admission. |
+| `packages/core/src/store/refs.ts:107-115`, `leaseRef`, `processRef` | Lease and process refs use distinct keys. |
+| `packages/host/src/store/sqlite.ts:495-607`, `connect.refs.set` | Fence checks, expectations, ref changes and events share one `BEGIN IMMEDIATE` transaction. The transaction is one synchronous attempt under `writeLock`, which retries a busy `BEGIN` off the event loop and never awaits inside the attempt. |
 | `packages/host/test/takeover-fence.test.ts`, `schedules`, `transactionGate`, parameterized behavior test | The implementation check and its controllable scheduler. |
 
 `check.mjs` prints the output of this command as a re-review notice:
 
 ```sh
-git log --oneline d142cf6dd8cbddcda21866cd2a795dd33abdb475..HEAD -- packages/core/src/compose.ts packages/core/src/contract/presence.ts packages/core/src/engine/presence.ts packages/core/src/drive/execution.ts packages/core/src/fold/commit.ts packages/core/src/store/log.ts packages/core/src/store/refs.ts packages/host/src/sqlite.ts
+git log --oneline d142cf6dd8cbddcda21866cd2a795dd33abdb475..HEAD -- packages/core/src/compose.ts packages/core/src/contract/presence.ts packages/core/src/engine/presence.ts packages/core/src/drive/execution.ts packages/core/src/watch/commit.ts packages/core/src/store/log.ts packages/core/src/store/refs.ts packages/host/src/store/sqlite.ts
 ```
 
 History output is not a gate. Unrelated edits do not prevent TLC from running. An unavailable history range is a notice too. Review uncommitted changes separately; this log cannot show them.
@@ -89,8 +89,8 @@ The real-code test was run independently against these temporary product edits:
 | Temporary edit | Result |
 | --- | --- |
 | Remove `name` from the appended fences in `presence.ts:107`. | 10 of 42 schedules fail. |
-| Remove the dead-process deletion from the claim array in `execution.ts:543-545`. | 19 of 42 schedules fail. |
-| Filter out names beginning `processes/` downstream in `fenceNames`, `store/log.ts:14`. | 10 of 42 schedules fail. |
+| Remove the dead-process deletion from the claim array in `execution.ts:552-554`. | 19 of 42 schedules fail. |
+| Filter out names beginning `processes/` downstream in `fenceNames`, `store/log.ts:22`. | 10 of 42 schedules fail. |
 
 Each failure reads `A publication` where `B publication` must remain stored. One failing order is A passing its wrapper check, B committing takeover and its publication, then A's SQL write overwriting it. These are behavior failures, not source-drift notices. The design runner still succeeds while the downstream source defect is present, as expected for a separate design check.
 

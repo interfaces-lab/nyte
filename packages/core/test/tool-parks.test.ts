@@ -1,7 +1,7 @@
 import { asId, asSeq, standard } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
-import { pollStore } from "../src/fold/watch.ts";
+import { pollStore } from "../src/watch/watch.ts";
 import { definePart } from "../src/index.ts";
 import { decodePartRecord, envelope, memoryStore, partRef } from "../src/store.ts";
 import type { StoreConnection, ToolDefinition } from "../src/index.ts";

@@ -7,13 +7,13 @@ import type { WorkspaceTarget } from "@nyte-ai/schema";
 import type { EnvironmentProvider, ExecutionEnv } from "@nyte-ai/core";
 import { sha256 } from "../hash.ts";
 import { pluginFilesIn } from "../plugins/loader.ts";
-import { localFiles } from "./files.ts";
-import { localGit } from "./git.ts";
-import { localGitHub } from "./github.ts";
+import { localFiles } from "./files/files.ts";
+import { localGit } from "./git/git.ts";
+import { localGitHub } from "./git/github.ts";
 import { folderIdentity } from "./identity.ts";
-import { localExec } from "./jobs.ts";
-import { localSnapshots } from "./snapshots.ts";
-import { localWorktrees } from "./worktrees.ts";
+import { localExec } from "./process/jobs.ts";
+import { localSnapshots } from "./snapshots/snapshots.ts";
+import { localWorktrees } from "./git/worktrees.ts";
 
 const ROOT_SOURCES = [".nyte/SYSTEM.md", ".nyte/APPEND_SYSTEM.md", ".nyte/mcp.json"];
 

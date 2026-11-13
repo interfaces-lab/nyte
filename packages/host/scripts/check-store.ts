@@ -26,7 +26,7 @@ import {
 import type { RecordKind } from "@nyte-ai/core/store";
 import { compile, isJsonObject, SessionEventType, withJson } from "@nyte-ai/schema";
 import type { Json } from "@nyte-ai/schema";
-import { storePath } from "../src/sqlite.ts";
+import { storePath } from "../src/store/sqlite.ts";
 
 type Decode = (object: Json | null) => object | null;
 

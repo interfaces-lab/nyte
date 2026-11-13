@@ -178,7 +178,6 @@ function sessionsStore(source: LiveSource<readonly SessionInfo[]>): SessionsStor
             : {
                 ids: latest.map((row) => row.id),
                 rows: new Map(latest.map((row) => [row.id, row])),
-                activations: new Map(),
               };
       }
 

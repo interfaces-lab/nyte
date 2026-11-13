@@ -9,7 +9,7 @@ import {
   createPrincipals,
   gated,
   redeemPairing,
-} from "../src/engine/principals.ts";
+} from "../src/api/principals.ts";
 import { ALL_AUTHORITY } from "../src/index.ts";
 import { hostPrincipalsRef, memoryStore } from "../src/store.ts";
 import type { Kernel } from "../src/contract/kernel.ts";

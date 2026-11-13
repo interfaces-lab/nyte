@@ -6,7 +6,7 @@ import type { Plugin, Resources } from "@nyte-ai/core";
 import { memoryStore } from "@nyte-ai/core/store";
 import { assert, afterEach, describe, expect, it } from "vitest";
 import { localProvider, openHost } from "../src/index.ts";
-import { findExecutable } from "../src/local/command.ts";
+import { findExecutable } from "../src/local/process/command.ts";
 import { fakeModels } from "./fixtures/fake-models.ts";
 
 const hasGit = (await findExecutable("git")) !== null;

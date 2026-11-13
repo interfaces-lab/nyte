@@ -97,7 +97,7 @@ export type {
 
 export { holdMessage } from "./api/hold.ts";
 
-export { changesSince, readWindow } from "./fold/window.ts";
+export { changesSince, readWindow } from "./watch/window.ts";
 
 export type {
   FoldCheckpoint,
@@ -141,9 +141,9 @@ export type {
   WorktreeRemoval,
 } from "./contract/workspace.ts";
 
-export { attachFile } from "./env/attach.ts";
+export { attachFile } from "./builtins/attach-file.ts";
 
-export { onlyNyteAppHas } from "./engine/surface.ts";
+export { onlyNyteAppHas } from "./agent/capabilities.ts";
 
 export { processEnvironment } from "./util/process-environment.ts";
 

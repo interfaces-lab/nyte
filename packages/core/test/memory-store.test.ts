@@ -1,9 +1,9 @@
 import type { RefUpdate } from "@nyte-ai/schema";
 import { assert, describe, expect, it } from "vitest";
-import { publishSet } from "../src/fold/watch.ts";
+import { publishSet } from "../src/watch/watch.ts";
 import { dev } from "../src/index.ts";
 import { memoryStore, sessionRef } from "../src/store.ts";
-import { commit } from "../src/fold/commit.ts";
+import { commit } from "../src/watch/commit.ts";
 import type { StoreConnection } from "../src/index.ts";
 import { attempt, STALE } from "../src/store/session.ts";
 import { main, setup, until } from "../src/harness.ts";

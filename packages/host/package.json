@@ -18,21 +18,21 @@
   "exports": {
     ".": "./src/index.ts",
     "./canvas-preview": "./src/canvas-preview.ts",
-    "./credentials": "./src/credentials.ts",
-    "./durable-object": "./src/durable-object.ts",
-    "./identity": "./src/identity.ts",
+    "./credentials": "./src/keys/credentials.ts",
+    "./durable-object": "./src/store/durable-object.ts",
+    "./identity": "./src/keys/identity.ts",
     "./images": "./src/images/node.ts",
     "./image-worker": "./src/images/worker.ts",
-    "./listen-fetch": "./src/listen-fetch.ts",
+    "./listen-fetch": "./src/serve/listen-fetch.ts",
     "./open": "./src/open.ts",
     "./providers": "./src/providers.ts",
-    "./secrets": "./src/secrets.ts",
+    "./secrets": "./src/keys/secrets.ts",
     "./shell-env": "./src/shell-env.ts",
-    "./usage": "./src/usage.ts",
-    "./store-usage": "./src/store-usage.ts",
-    "./usage-service": "./src/usage-service.ts",
-    "./usage-scan": "./src/usage-scan.ts",
-    "./usage-worker": "./src/usage-worker.ts"
+    "./usage": "./src/usage/local-history.ts",
+    "./store-usage": "./src/usage/store.ts",
+    "./usage-service": "./src/usage/scanner.ts",
+    "./usage-scan": "./src/usage/scan-worker.ts",
+    "./usage-worker": "./src/usage/worker.ts"
   },
   "publishConfig": {
     "exports": {
@@ -45,16 +45,16 @@
         "import": "./dist/src/canvas-preview.js"
       },
       "./credentials": {
-        "types": "./dist/src/credentials.d.ts",
-        "import": "./dist/src/credentials.js"
+        "types": "./dist/src/keys/credentials.d.ts",
+        "import": "./dist/src/keys/credentials.js"
       },
       "./durable-object": {
-        "types": "./dist/src/durable-object.d.ts",
-        "import": "./dist/src/durable-object.js"
+        "types": "./dist/src/store/durable-object.d.ts",
+        "import": "./dist/src/store/durable-object.js"
       },
       "./identity": {
-        "types": "./dist/src/identity.d.ts",
-        "import": "./dist/src/identity.js"
+        "types": "./dist/src/keys/identity.d.ts",
+        "import": "./dist/src/keys/identity.js"
       },
       "./images": {
         "types": "./dist/src/images/node.d.ts",
@@ -65,8 +65,8 @@
         "import": "./dist/src/images/worker.js"
       },
       "./listen-fetch": {
-        "types": "./dist/src/listen-fetch.d.ts",
-        "import": "./dist/src/listen-fetch.js"
+        "types": "./dist/src/serve/listen-fetch.d.ts",
+        "import": "./dist/src/serve/listen-fetch.js"
       },
       "./open": {
         "types": "./dist/src/open.d.ts",
@@ -77,32 +77,32 @@
         "import": "./dist/src/providers.js"
       },
       "./secrets": {
-        "types": "./dist/src/secrets.d.ts",
-        "import": "./dist/src/secrets.js"
+        "types": "./dist/src/keys/secrets.d.ts",
+        "import": "./dist/src/keys/secrets.js"
       },
       "./shell-env": {
         "types": "./dist/src/shell-env.d.ts",
         "import": "./dist/src/shell-env.js"
       },
       "./usage": {
-        "types": "./dist/src/usage.d.ts",
-        "import": "./dist/src/usage.js"
+        "types": "./dist/src/usage/local-history.d.ts",
+        "import": "./dist/src/usage/local-history.js"
       },
       "./store-usage": {
-        "types": "./dist/src/store-usage.d.ts",
-        "import": "./dist/src/store-usage.js"
+        "types": "./dist/src/usage/store.d.ts",
+        "import": "./dist/src/usage/store.js"
       },
       "./usage-service": {
-        "types": "./dist/src/usage-service.d.ts",
-        "import": "./dist/src/usage-service.js"
+        "types": "./dist/src/usage/scanner.d.ts",
+        "import": "./dist/src/usage/scanner.js"
       },
       "./usage-scan": {
-        "types": "./dist/src/usage-scan.d.ts",
-        "import": "./dist/src/usage-scan.js"
+        "types": "./dist/src/usage/scan-worker.d.ts",
+        "import": "./dist/src/usage/scan-worker.js"
       },
       "./usage-worker": {
-        "types": "./dist/src/usage-worker.d.ts",
-        "import": "./dist/src/usage-worker.js"
+        "types": "./dist/src/usage/worker.d.ts",
+        "import": "./dist/src/usage/worker.js"
       }
     },
     "access": "public",

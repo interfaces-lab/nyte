@@ -1,25 +1,25 @@
-export * from "./client.ts";
+export * from "./client/transport.ts";
 
-export * from "./codec.ts";
+export * from "./operations/codec.ts";
 
-export * from "./declarations.ts";
+export * from "./operations/declarations.ts";
 
-export * from "./stream-channel.ts";
+export * from "./wire/stream-channel.ts";
 
-export * from "./wire.ts";
+export * from "./wire/wire.ts";
 
-export * from "./session-store.ts";
+export * from "./client/session-store.ts";
 
-export * from "./directory-store.ts";
+export * from "./client/directory-store.ts";
 
-export * from "./socket-client.ts";
+export * from "./client/socket-client.ts";
 
-export { parseJson, readJson } from "./json.ts";
+export { parseJson, readJson } from "./wire/json.ts";
 
-export { streamBuffer } from "./stream-buffer.ts";
+export { streamBuffer } from "./wire/stream-buffer.ts";
 
-export { createStreamClient, linkLost } from "./stream-client.ts";
+export { createStreamClient, linkLost } from "./client/stream-client.ts";
 
-export { abortable, mapped } from "./streams.ts";
+export { abortable, mapped } from "./wire/streams.ts";
 
-export { operationsDigest } from "./digest.ts";
+export { operationsDigest } from "./operations/digest.ts";

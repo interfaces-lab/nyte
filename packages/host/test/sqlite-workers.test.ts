@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { setTimeout } from "node:timers/promises";
 import { afterEach, expect, it } from "vitest";
-import { sqliteWorkers } from "../src/sqlite-workers.ts";
+import { sqliteWorkers } from "../src/store/sqlite-workers.ts";
 
 const folders: string[] = [];
 

@@ -4,7 +4,7 @@ import type { Project, Projects } from "../contract/host.ts";
 import type { Kernel } from "../contract/kernel.ts";
 import { decodeProjectRecord, decodeWorkspaceRecord } from "../contract/records.ts";
 import type { ProjectRecord } from "../contract/records.ts";
-import { commit } from "../fold/commit.ts";
+import { commit } from "../watch/commit.ts";
 import { PROJECTS, projectRef, workspaceRef } from "../store/refs.ts";
 import { attempt, load, put, readSession, STALE } from "../store/session.ts";
 import type { Found } from "../store/session.ts";

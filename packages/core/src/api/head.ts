@@ -23,11 +23,11 @@ import { reviseQueued, send, sendNow } from "../engine/admission.ts";
 import { leaseHold, releaseHold } from "../engine/holds.ts";
 import { move } from "../engine/move.ts";
 import { configure } from "../extend/settings.ts";
-import { commit } from "../fold/commit.ts";
+import { commit } from "../watch/commit.ts";
 import { walkCommitPath } from "../fold/paths.ts";
-import { withFold } from "../fold/reads.ts";
-import { advanceSeen } from "../fold/seen.ts";
-import { historyHead, viewHead } from "../fold/view.ts";
+import { withFold } from "../watch/reads.ts";
+import { advanceSeen } from "../watch/seen.ts";
+import { historyHead, viewHead } from "../watch/view.ts";
 import { headRef, promptRef, sessionRef } from "../store/refs.ts";
 import {
   attempt,

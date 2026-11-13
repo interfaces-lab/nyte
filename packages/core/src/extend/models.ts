@@ -31,7 +31,7 @@ import type {
 } from "../contract/kernel.ts";
 import type { ModelContextPolicy, SettingDefinition } from "../contract/plugin.ts";
 import type { Refusal } from "../engine/contributions.ts";
-import { commit } from "../fold/commit.ts";
+import { commit } from "../watch/commit.ts";
 import {
   MODEL_PREFERENCE,
   modelListingRef,

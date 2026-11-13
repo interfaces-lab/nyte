@@ -15,7 +15,7 @@ import {
   statusCode,
   withInputHeader,
 } from "../src/index.ts";
-import { parseJson } from "../src/json.ts";
+import { parseJson } from "../src/wire/json.ts";
 import { endless } from "./endless.ts";
 
 type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;

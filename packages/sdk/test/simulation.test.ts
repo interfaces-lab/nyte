@@ -1,6 +1,6 @@
 import { fakeModels, lastUserText, simulate, titleReply } from "@nyte-ai/bench";
 import { expect, it, vi } from "vitest";
-import { openHost } from "../src/host-connection.ts";
+import { openHost } from "../src/live/host-connection.ts";
 
 it("updates sidebar rows live: a chat another client starts appears, its title lands, and its next message moves it above an older chat", async () => {
   const fake = fakeModels({

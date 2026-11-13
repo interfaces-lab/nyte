@@ -26,7 +26,7 @@ import {
   trustRef,
   trustTarget,
 } from "./refs.ts";
-import { headBackground } from "./head-background.ts";
+import { headBackground } from "./head-background-migration.ts";
 import { orderedSessionIndex, sessionIndex, sessionSeqs } from "./session-index-steps.ts";
 import { waitIndex, wokenIndex } from "./wait-index.ts";
 import { projectCoordinators } from "./project-migration.ts";

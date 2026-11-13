@@ -7,7 +7,7 @@ import { runStep } from "../src/engine/durable.ts";
 import { jobHandle } from "../src/engine/jobs.ts";
 import { loadWaits } from "../src/engine/waits.ts";
 import { workspaceHandle } from "../src/env/workspaces.ts";
-import { viewHead } from "../src/fold/view.ts";
+import { viewHead } from "../src/watch/view.ts";
 import { LOCAL, definePart } from "../src/index.ts";
 import { callRef, decodeCallRecord, memoryStore } from "../src/store.ts";
 import type { Kernel } from "../src/contract/kernel.ts";

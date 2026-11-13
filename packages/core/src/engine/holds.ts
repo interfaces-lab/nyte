@@ -1,7 +1,7 @@
 import type { HeadName, HoldLease, MessageId, SessionId } from "@nyte-ai/schema";
 import { HOLD_MS } from "../contract/session.ts";
 import type { Kernel } from "../contract/kernel.ts";
-import { commit } from "../fold/commit.ts";
+import { commit } from "../watch/commit.ts";
 import { inboxRef } from "../store/refs.ts";
 import {
   attempt,

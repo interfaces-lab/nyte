@@ -11,10 +11,10 @@ const COVERED_FILES = [
   "packages/core/src/contract/presence.ts",
   "packages/core/src/engine/presence.ts",
   "packages/core/src/drive/execution.ts",
-  "packages/core/src/fold/commit.ts",
+  "packages/core/src/watch/commit.ts",
   "packages/core/src/store/log.ts",
   "packages/core/src/store/refs.ts",
-  "packages/host/src/sqlite.ts",
+  "packages/host/src/store/sqlite.ts",
 ];
 const here = new URL(".", import.meta.url).pathname;
 const root = resolve(here, "../../..");

@@ -39,7 +39,7 @@ import type {
   OperationOutput,
 } from "@nyte-ai/protocol";
 import type { McpOwner } from "../mcp-server/grants.ts";
-import type { TailnetControl } from "../tailnet.ts";
+import type { TailnetControl } from "./tailnet.ts";
 import { sharedClients } from "./clients.ts";
 
 export type BindingRequest = {
