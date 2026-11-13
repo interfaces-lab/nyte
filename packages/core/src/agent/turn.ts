@@ -53,7 +53,7 @@ import type {
   PreparedRequest,
 } from "./agent-loop.ts";
 import { compact, failLeftoverCompactions, readProviderCheckpoint } from "./compaction.ts";
-import { ABORTED, adopt, keepOpen, savedOpen, settledParts } from "./open-parts.ts";
+import { ABORTED, adopt, keepOpen, savedOpen, settledParts, THOUGHTS } from "./open-parts.ts";
 import type { OpenPart } from "./open-parts.ts";
 import {
   calculateUsage,
@@ -107,8 +107,6 @@ interface RunChange {
 const ANSWER: Placement = { kind: "transcript", role: "answer" };
 
 const STEP: Placement = { kind: "transcript", role: "step" };
-
-const THOUGHTS = "\n\n";
 
 const STOPPED: RunEnd = { kind: "stopped" };
 

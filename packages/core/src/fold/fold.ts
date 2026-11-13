@@ -29,6 +29,7 @@ import type {
   FoldInput,
   FoldRun,
   FoldState,
+  HeadPair,
   Index,
   Logged,
 } from "../contract/fold.ts";
@@ -128,7 +129,12 @@ export function emptyFold(input: {
   };
 }
 
-export function fold(state: FoldState, event: SessionEvent | PatchEvent): FoldState {
+/** Folds `event` into `state`. `pair` is the ref of the head a commit or head event moved, as the store holds it: the head carries its revision while its tip is that ref's target, and none otherwise. */
+export function fold(
+  state: FoldState,
+  event: SessionEvent | PatchEvent,
+  pair: HeadPair | null = null,
+): FoldState {
   const draft = open(state, event.kind !== "patch");
 
   if (event.kind === "patch") {
@@ -136,9 +142,20 @@ export function fold(state: FoldState, event: SessionEvent | PatchEvent): FoldSt
   } else {
     if (event.seq !== 0) draft.seq = event.seq;
     apply(draft, event);
+    applyPair(draft, event, pair);
   }
 
   return finish(state, draft);
+}
+
+function applyPair(draft: Draft, event: SessionEvent, pair: HeadPair | null): void {
+  const name = event.kind === "commit" || event.kind === "head" ? event.head : null;
+  const head = name === null ? undefined : draft.heads.get(name);
+
+  if (pair === null || name === null || head === undefined) return;
+  const revision = readPositionCommit(head.info.tip) === pair.tip ? pair.revision : null;
+
+  if (head.revision !== revision) updateHead(draft, name, (current) => ({ ...current, revision }));
 }
 
 function open(state: FoldState, durable: boolean): Draft {

@@ -37,6 +37,7 @@ import type { CommitRecord, PartRecord } from "../contract/records.ts";
 import { walkCommitPath } from "../fold/paths.ts";
 import { withFold } from "../fold/reads.ts";
 import { modelImage } from "./images.ts";
+import { THOUGHTS } from "./open-parts.ts";
 import { runRef } from "../store/refs.ts";
 import { load, readPositionCommit, requireSession, START } from "../store/session.ts";
 import { check } from "../util/json-schema.ts";
@@ -76,8 +77,6 @@ interface Group {
 
 type Settled = Extract<ToolPartState, { readonly phase: "settled" }>;
 
-const THOUGHTS = "\n\n";
-
 const SUMMARISED =
   "The earlier conversation was summarised to fit the context window. The summary:";
 
@@ -89,12 +88,19 @@ const CONTINUE =
 
 const projections = new WeakMap<object, CommitId>();
 
+const summaries = new WeakSet<Message>();
+
 const IMAGE_CACHE_CHARS = 64 * 1024 * 1024;
 
 const imageCache = new WeakMap<Kernel, Map<BlobId, readonly (TextContent | ImageContent)[]>>();
 
 export function projectedCommit(message: Message): CommitId | null {
   return projections.get(message) ?? null;
+}
+
+/** Whether the transcript projected `message` from a compaction's summary. */
+export function projectsSummary(message: Message): boolean {
+  return summaries.has(message);
 }
 
 export async function requestBody(
@@ -347,9 +353,12 @@ function readCompactions(steps: readonly Step[]): {
   for (const step of [...steps].reverse()) {
     const body = step.record.body;
 
-    if (body.kind !== "compaction" || removed.has(step.commit)) continue;
+    if (body.kind !== "compaction") continue;
+    const replaced = removed.has(step.commit);
 
-    for (const replaced of body.replaces) removed.add(replaced);
+    for (const commit of body.replaces) removed.add(commit);
+
+    if (replaced) continue;
 
     const anchor =
       steps.find((other) => body.replaces.includes(other.commit))?.commit ?? step.commit;
@@ -434,15 +443,19 @@ async function conversation(
   const continueAfter = (cut: Group): void =>
     push({ role: "user", content: CONTINUE, timestamp: cut.at }, cut.commit);
 
-  const calls = steps.flatMap((step) => (step.part?.partKind === "tool" ? [step.part.id] : []));
+  const calls = new Set<string>(
+    steps.flatMap((step) => (step.part?.partKind === "tool" ? [step.part.id] : [])),
+  );
 
   const visit = async (step: Step): Promise<void> => {
     for (const compacted of anchors.get(step.commit) ?? []) {
       await flush();
       const summary = await readCompactionSummary(compacted);
 
-      if (summary !== null)
-        push({ role: "user", content: summary, timestamp: compacted.record.at }, compacted.commit);
+      if (summary === null) continue;
+      const message: Message = { role: "user", content: summary, timestamp: compacted.record.at };
+      summaries.add(message);
+      push(message, compacted.commit);
     }
 
     const body = step.record.body;
@@ -472,7 +485,7 @@ async function conversation(
 
     if (
       part.partKind === "tool" &&
-      calls.some((other) => other !== part.id && part.id.startsWith(`${other}:`))
+      [...part.id.matchAll(/:/g)].some((colon) => calls.has(part.id.slice(0, colon.index)))
     )
       return;
 

@@ -64,7 +64,12 @@ import { excerptText } from "../util/clip.ts";
 import { extractUserText } from "../util/text.ts";
 import { charge, complete, requestEvent, rideRef } from "./request.ts";
 import { ZERO_USAGE } from "../util/usage.ts";
-import { estimateTranscriptTokens, projectedCommit, requestBody } from "./transcript.ts";
+import {
+  estimateTranscriptTokens,
+  projectedCommit,
+  projectsSummary,
+  requestBody,
+} from "./transcript.ts";
 import type { StoreConnection } from "../contract/store.ts";
 
 type Answer =
@@ -698,7 +703,8 @@ function splitTranscriptForCompaction(
   while (start < body.length && body[start]?.role === "toolResult") start += 1;
   const summarise = body.slice(0, start);
 
-  if (!summarise.some((message) => projectedCommit(message) !== null)) return null;
+  if (!summarise.some((message) => projectedCommit(message) !== null && !projectsSummary(message)))
+    return null;
 
   return { summarise, keep: body.slice(start) };
 }

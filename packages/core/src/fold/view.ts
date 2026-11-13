@@ -11,7 +11,7 @@ import type {
 import { INDEX } from "../contract/fold.ts";
 import type { Kernel } from "../contract/kernel.ts";
 import { readCatalog } from "../store/catalogs.ts";
-import { findLeadingPrompt, showMessage } from "./project.ts";
+import { findLeadingPrompt } from "./project.ts";
 import { readView } from "./window.ts";
 
 const EMPTY_CATALOG: SessionCatalogView = {
@@ -69,7 +69,7 @@ export async function historyHead(
     if (folded === undefined || path === undefined || end < 0 || input.limit <= 0)
       return { messages: [], leadingPrompt: null, turns: [] };
     const start = Math.max(0, end - input.limit);
-    const page = messages.slice(start, end).map(showMessage);
+    const page = messages.slice(start, end);
 
     const positions = [
       ...new Set(page.flatMap((message) => path.turnAt.get(message.turn) ?? [])),

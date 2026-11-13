@@ -202,7 +202,11 @@ export function foldCheckpointing(
     if (!restored || state.seq <= kept.seq || streaming()) return null;
 
     for (const head of state.heads.values())
-      if (head.info.execution.kind !== "idle" || head.live.length > 0) return null;
+      if (
+        head.info.execution.kind !== "idle" ||
+        head.live.some((part) => state[INDEX].unsettled.has(part))
+      )
+        return null;
 
     return state;
   };

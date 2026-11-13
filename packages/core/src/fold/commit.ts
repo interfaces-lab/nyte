@@ -14,9 +14,9 @@ import { put, readCall, readRefExpectation } from "../store/session.ts";
 import { dev } from "../util/dev-log.ts";
 import { publishSet } from "./watch.ts";
 
-export type RunScope = { readonly session: SessionId; readonly run: RunId };
+type RunScope = { readonly session: SessionId; readonly run: RunId };
 
-export interface CallScope {
+interface CallScope {
   readonly session: SessionId;
   readonly call: CallId;
   readonly run: RunId | null;

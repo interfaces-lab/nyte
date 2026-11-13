@@ -123,9 +123,7 @@ export function createFoldCache(kernel: Feeds): FoldCache {
           return restored.seq;
         },
         ({ event, head }) => {
-          const folded = fold(entry.state, event);
-          const name = movedHead(event);
-          const next = head === null || name === null ? folded : withPair(folded, name, head);
+          const next = fold(entry.state, event, head);
 
           if (next === entry.state) return;
           entry.state = next;
@@ -144,7 +142,11 @@ export function createFoldCache(kernel: Feeds): FoldCache {
         ready = true;
         checkpoints.settle();
       },
-      () => undefined,
+      () => {
+        entry.feed.dispose();
+
+        if (entries.get(session) === entry) entries.delete(session);
+      },
     );
 
     return entry;
@@ -373,8 +375,23 @@ function trackStreams(bus: SessionBus): LiveStreams {
   const streams = new Map<SessionId, Map<PartId, LiveStream>>();
 
   bus.subscribeAll((session, event) => {
-    const parts = streams.get(session) ?? new Map<PartId, LiveStream>();
-    streams.set(session, parts);
+    if (event.kind === "part" && event.change === "created") {
+      if (event.partKind !== "text" && event.partKind !== "thinking" && event.partKind !== "tool")
+        return;
+      const created = streams.get(session) ?? new Map<PartId, LiveStream>();
+      streams.set(session, created);
+      created.set(event.part, {
+        run: event.run,
+        markdown: readStateMarkdown(event.state),
+        progress: null,
+      });
+
+      return;
+    }
+
+    const parts = streams.get(session);
+
+    if (parts === undefined) return;
 
     if (event.kind === "patch") {
       const current = parts.get(event.part);
@@ -394,13 +411,7 @@ function trackStreams(bus: SessionBus): LiveStreams {
     const current =
       event.kind === "part" || event.kind === "call" ? parts.get(event.part) : undefined;
 
-    if (event.kind === "part" && event.change === "created")
-      parts.set(event.part, {
-        run: event.run,
-        markdown: readStateMarkdown(event.state),
-        progress: null,
-      });
-    else if (event.kind === "part" && event.change === "updated" && current !== undefined)
+    if (event.kind === "part" && event.change === "updated" && current !== undefined)
       parts.set(event.part, {
         ...current,
         markdown: readStateMarkdown(event.state),
@@ -426,6 +437,7 @@ function trackStreams(bus: SessionBus): LiveStreams {
   return streams;
 }
 
+/** Opens `session`'s feed: the fold restored by `restore`, then the log past it, then the bus in seq order, reading the log over any gap. A read that fails releases only the items it held that are still in order and drops those past the gap, so a failing store never starts another read; the log keeps them for the next bus event or `sync`. */
 function openFoldFeed(
   kernel: Feeds,
   streams: LiveStreams,
@@ -469,23 +481,26 @@ function openFoldFeed(
     }
   };
 
-  const release = (): void => {
+  const release = (failed: boolean): void => {
     const waiting = held ?? [];
     held = null;
 
-    for (const item of waiting) accept(item);
+    for (const item of waiting)
+      if (!failed || item.event.kind === "patch" || item.event.seq <= through + 1) accept(item);
   };
 
   const read = (waiting: FeedItem[]): Promise<void> => {
     held = waiting;
 
-    reading = (async () => {
-      try {
-        await readPast();
-      } finally {
-        release();
-      }
-    })();
+    reading = readPast().then(
+      () => release(false),
+      (error) => {
+        mark = undefined;
+        release(true);
+
+        throw error;
+      },
+    );
 
     return reading;
   };
@@ -516,46 +531,52 @@ function openFoldFeed(
   const unsubscribe = kernel.bus.subscribe(session, (event, head) => accept({ event, head }));
 
   const ready = (async () => {
-    try {
-      through = await restore();
+    through = await restore();
+
+    if (!open) return;
+    await readPast();
+    await linkStoredChildren(kernel, session, children);
+
+    if (!open) return;
+
+    const seed = { seq: asSeq(0), at: Date.now() };
+
+    const events: SessionEvent[] = [
+      {
+        ...seed,
+        head: null,
+        kind: "activation",
+        activation: kernel.sessions.activation(session),
+      },
+      ...backgroundItems(kernel, session).map(({ head, item }): SessionEvent => ({
+        ...seed,
+        head,
+        kind: "background",
+        item,
+      })),
+    ];
+
+    for (const event of events) deliver({ event, head: null });
+  })().then(
+    () => {
+      release(false);
 
       if (!open) return;
-      await readPast();
-      await linkStoredChildren(kernel, session, children);
 
-      if (!open) return;
+      for (const [part, live] of streams.get(session) ?? []) {
+        if (live.markdown !== null)
+          push({ event: { kind: "patch", part, markdown: live.markdown }, head: null });
 
-      const seed = { seq: asSeq(0), at: Date.now() };
+        if (live.progress !== null)
+          push({ event: { kind: "patch", part, progress: live.progress }, head: null });
+      }
+    },
+    (error) => {
+      release(true);
 
-      const events: SessionEvent[] = [
-        {
-          ...seed,
-          head: null,
-          kind: "activation",
-          activation: kernel.sessions.activation(session),
-        },
-        ...backgroundItems(kernel, session).map(({ head, item }): SessionEvent => ({
-          ...seed,
-          head,
-          kind: "background",
-          item,
-        })),
-      ];
-
-      for (const event of events) deliver({ event, head: null });
-    } finally {
-      release();
-
-      if (open)
-        for (const [part, live] of streams.get(session) ?? []) {
-          if (live.markdown !== null)
-            push({ event: { kind: "patch", part, markdown: live.markdown }, head: null });
-
-          if (live.progress !== null)
-            push({ event: { kind: "patch", part, progress: live.progress }, head: null });
-        }
-    }
-  })();
+      throw error;
+    },
+  );
 
   reading = ready;
 
@@ -574,6 +595,7 @@ function openFoldFeed(
       return held === null ? read([]) : reading;
     },
     async refresh() {
+      await ready.catch(() => undefined);
       const reached = await kernel.store.commitMark?.();
       let cursor = through;
 

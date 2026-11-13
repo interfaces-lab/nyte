@@ -10,9 +10,9 @@ import { commit } from "../fold/commit.ts";
 import { promptRef } from "../store/refs.ts";
 import { attempt, load, put, readRefExpectation, STALE } from "../store/session.ts";
 
-export type SystemSection = { readonly id: string; readonly text: string };
+type SystemSection = { readonly id: string; readonly text: string };
 
-export type SystemPrompt = {
+type SystemPrompt = {
   readonly head: SystemMessage | null;
   readonly updates: ReadonlyMap<CommitId, readonly SystemMessage[]>;
 };

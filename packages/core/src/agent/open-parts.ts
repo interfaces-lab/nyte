@@ -18,6 +18,9 @@ interface PartContext {
 
 export const ABORTED: Failure = { class: "aborted", message: "The run was stopped." };
 
+/** The separator between merged thoughts in a thinking part's markdown; a thought's signature records its length without it. */
+export const THOUGHTS = "\n\n";
+
 type ThoughtSignature = {
   readonly length: number;
   readonly signature: string | null;
