@@ -39,7 +39,7 @@ mkdir -p "$dir" && printf %s "$NYTE_SECRET_VALUE" > "$dir/$2" && printf %s "$HOM
 
 const REMOVE_DIRECTORIES = 'cd "$HOME/.nyte/secrets" 2>/dev/null || exit 0; rm -rf -- "$@"';
 
-const saved: SettingDefinition<SavedSecrets> = {
+const savedSetting: SettingDefinition<SavedSecrets> = {
   id: SAVED_SECRETS,
   label: "Saved secrets",
   schema: savedSecrets,
@@ -337,7 +337,12 @@ async function sweep(api: PluginApi<"core">): Promise<void> {
 /** @category plugins */
 export default {
   id: "secrets",
-  contribute: { parts: [secret], tools: [request], commands: [save, remove], settings: [saved] },
+  contribute: {
+    parts: [secret],
+    tools: [request],
+    commands: [save, remove],
+    settings: [savedSetting],
+  },
   activate(api) {
     const run = (): void => void sweep(api).catch(() => undefined);
     const timer = setInterval(run, SWEEP_MS);
