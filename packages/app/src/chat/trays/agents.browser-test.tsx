@@ -291,6 +291,14 @@ async function until(read: () => boolean, what: string): Promise<void> {
   }
 }
 
+function agentsPill(scope: ParentNode): HTMLButtonElement {
+  const found = scope.querySelector<HTMLButtonElement>("button[aria-description^='Agents']");
+
+  if (found === null) throw new Error("No agents pill");
+
+  return found;
+}
+
 function button(scope: ParentNode, name: string): HTMLButtonElement {
   const found = [...scope.querySelectorAll("button")].find(
     (candidate) =>
@@ -423,8 +431,9 @@ export async function run(): Promise<string> {
   );
   await new Promise((resolve) => window.setTimeout(resolve, 500));
 
-  await record(container, () => button(container, "Agents").click(), "list");
+  await record(container, () => agentsPill(container).click(), "list");
   await new Promise((resolve) => window.setTimeout(resolve, 500));
+
   const opened = await record(
     container,
     () => button(container, "Open Map the core").click(),
@@ -448,7 +457,7 @@ export async function run(): Promise<string> {
     return `Switching agents showed an empty tray: ${JSON.stringify(switched)}`;
 
   await record(container, () => button(container, "Close agents").click(), "none");
-  await record(container, () => button(container, "Agents").click(), "list");
+  await record(container, () => agentsPill(container).click(), "list");
   await record(container, () => button(container, "Open Map the core").click(), "chat:core");
   button(container, "Open as full chat").click();
   await until(() => {

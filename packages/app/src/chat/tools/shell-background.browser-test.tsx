@@ -278,7 +278,7 @@ export async function run(): Promise<string> {
     failures.push("a step moved to the background loses the link to its job");
 
   if (pill instanceof HTMLElement) pill.click();
-  await until(() => button(stage, "Stop Terminal"), "the tray's Stop Terminal");
+  await until(() => button(stage, `Stop ${COMMAND}`), "the terminal row's Stop");
 
   if (!pill.isConnected || pill.getAttribute("aria-expanded") !== "true")
     failures.push("the terminals chip does not stay pressed while its list is open");
@@ -294,7 +294,7 @@ export async function run(): Promise<string> {
 
   if (pill instanceof HTMLElement) pill.click();
   await until(
-    () => (button(stage, "Stop Terminal") === undefined ? true : null),
+    () => (button(stage, `Stop ${COMMAND}`) === undefined ? true : null),
     "the chip to close the list",
   );
 

@@ -6,9 +6,13 @@ import type { ReactElement, ReactNode, Ref, RefObject } from "react";
 import { Icon } from "@nyte-ai/ui/icon";
 import type { IconName } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
-import { glyph, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { glyph, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { taskEnded, taskLabel } from "@nyte-ai/plugin/client/presentation";
+import type { TaskState } from "@nyte-ai/plugin/client/presentation";
+import type { Task } from "../../chats/index.ts";
 import { tray } from "../../theme/schema.stylex.ts";
 import { trayStyles } from "../../theme/tray.stylex.ts";
+import { TaskGlyph } from "./task-list.tsx";
 import { occludes } from "../../components/overlay-occlusion.ts";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
@@ -16,25 +20,33 @@ import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 const TRAY_TRANSITION = { duration: 0.15, ease: [0.16, 1, 0.3, 1] } as const;
 
 export const trayParts = create({
-  root: {
-    position: "relative",
-    minWidth: 0,
-    display: { default: "block", ":empty": "none" },
-  },
+  root: { display: "contents" },
+  placed: { order: -1 },
   presence: { display: "contents" },
-  pills: { display: "flex", alignItems: "center", flexWrap: "wrap", gap: space.s1_5 },
   pillCount: { fontVariantNumeric: "tabular-nums" },
-  pillIndicator: {
+  pillMark: {
     display: "grid",
     placeItems: "center",
     flexShrink: 0,
     width: glyph.md,
     height: glyph.md,
+    marginInlineStart: `calc(-1 * ${space.s0_5})`,
   },
-  listHeight: (height: number) => ({ maxHeight: Math.min(260, height) }),
-  row: {
-    minHeight: tray.rowHeight,
-    "--_row-padding-inline": `calc(${tray.paddingInline} - ${tray.rowInset})`,
+  pillFrame: {
+    position: "relative",
+    display: "inline-flex",
+    width: "fit-content",
+    borderRadius: radius.pill,
+  },
+  pillOpen: {
+    "::after": {
+      content: '""',
+      position: "absolute",
+      inset: 0,
+      borderRadius: "inherit",
+      boxShadow: `inset 0 0 0 1px ${role.strokePrimary}`,
+      pointerEvents: "none",
+    },
   },
   notice: {
     paddingBlock: space.s2,
@@ -52,20 +64,19 @@ export function useTrayRoot(viewport: HTMLElement | null) {
 
   // oxlint-disable-next-line nyte-code/no-direct-effect -- measures the tray against the viewport before paint
   useLayoutEffect(() => {
-    if (root === null || viewport === null) return undefined;
+    const row = root?.parentElement;
+
+    if (row === null || row === undefined || viewport === null) return undefined;
 
     const measure = (): void => {
       setAvailableHeight(
-        Math.max(
-          0,
-          root.getBoundingClientRect().bottom - viewport.getBoundingClientRect().top - 44,
-        ),
+        Math.max(0, row.getBoundingClientRect().bottom - viewport.getBoundingClientRect().top - 44),
       );
     };
 
     measure();
     const observer = new ResizeObserver(measure);
-    observer.observe(root);
+    observer.observe(row);
     observer.observe(viewport);
 
     return () => observer.disconnect();
@@ -74,48 +85,88 @@ export function useTrayRoot(viewport: HTMLElement | null) {
   return { root, ref: setRoot, availableHeight };
 }
 
+function pillState(tasks: readonly Task[]): TaskState {
+  const states = tasks.map((task) => task.state);
+
+  if (states.some((state) => state === "working" || state === "retrying" || state === "background"))
+    return "working";
+
+  if (states.includes("waiting")) return "waiting";
+
+  return states.includes("failed") ? "failed" : "done";
+}
+
+export function pillCounts(tasks: readonly Task[]): string {
+  const going = tasks.filter((task) => !taskEnded(task.state)).length;
+  const failed = tasks.filter((task) => task.state === "failed").length;
+  const done = tasks.length - going - failed;
+
+  return [
+    `${String(going)} active`,
+    ...(done === 0 ? [] : [`${String(done)} ${taskLabel("done").toLowerCase()}`]),
+    ...(failed === 0 ? [] : [`${String(failed)} ${taskLabel("failed").toLowerCase()}`]),
+  ].join(", ");
+}
+
 export function TrayPill({
-  label,
+  icon,
+  title,
+  description,
+  tasks,
+  expanded,
   controls,
   ref,
   onClick,
-  children,
 }: {
-  readonly label: string;
+  readonly icon: IconName;
+  readonly title: string;
+  readonly description: string;
+  readonly tasks: readonly Task[];
+  readonly expanded: boolean;
   readonly controls?: string;
   readonly ref?: Ref<HTMLButtonElement>;
   readonly onClick: () => void;
-  readonly children: ReactNode;
 }): ReactElement {
+  const state = pillState(tasks);
+
   return (
-    <div {...props(trayParts.pills)}>
+    <span {...props(trayParts.pillFrame, expanded && trayParts.pillOpen)}>
       <Button
         ref={ref}
         variant="outline"
         pill
         size="sm"
-        aria-description={label}
+        title={title}
+        aria-description={description}
         aria-controls={controls}
-        aria-expanded={false}
+        aria-expanded={expanded}
         onClick={onClick}
       >
-        {children}
+        <Icon name={icon} size="sm" label={title} />
+        <span {...props(trayParts.pillCount)}>{String(tasks.length)}</span>
+        {state !== "done" && (
+          <span {...props(trayParts.pillMark)}>
+            <TaskGlyph state={state} job={tasks.some((task) => task.kind === "job")} />
+          </span>
+        )}
       </Button>
-    </div>
+    </span>
   );
 }
 
 export function TrayIconAction({
   icon,
   label,
+  loading = false,
   onClick,
 }: {
   readonly icon: IconName;
   readonly label: string;
+  readonly loading?: boolean;
   readonly onClick: () => void;
 }): ReactElement {
   return (
-    <Button iconOnly aria-label={label} onClick={onClick}>
+    <Button iconOnly aria-label={label} loading={loading} onClick={onClick}>
       <Icon name={icon} />
     </Button>
   );
@@ -198,7 +249,7 @@ export function Tray({
               : { opacity: 0, y: 4, scale: 0.99, pointerEvents: "none" }
           }
           transition={reducedMotion ? { duration: 0 } : TRAY_TRANSITION}
-          {...props(trayStyles.surface, xstyle)}
+          {...props(trayStyles.surface, trayParts.placed, xstyle)}
           onKeyDown={(event) => {
             if (onClose === undefined || event.key !== "Escape" || event.defaultPrevented) return;
             event.preventDefault();
