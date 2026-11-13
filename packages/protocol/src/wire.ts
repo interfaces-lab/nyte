@@ -107,20 +107,38 @@ export function sseFrames(
   });
 }
 
-/** Parses a server-sent event stream into each frame's JSON data; comments and any other field are skipped, and an `error` event throws the `SdkError` it carries. Returning early cancels the stream. */
+/** Parses a server-sent event stream into each frame's JSON data; comments and any other field are skipped, and an `error` event throws the `SdkError` it carries. Returning early cancels the stream. Each chunk is read once: a `\n` that starts a chunk ends the `\r` that ended the last one, and a lone line break that ends a chunk waits for the next, so a line break or blank line split between two chunks reads as it would whole. */
 export async function* parseSse(stream: ReadableStream<Uint8Array>): AsyncGenerator<Json> {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
-  let buffer = "";
+  const pending: string[] = [];
+  let afterReturn = false;
+  let held = "";
 
   try {
     for (;;) {
       const read = await reader.read();
-      buffer += read.done ? decoder.decode() : decoder.decode(read.value, { stream: true });
-      const blocks = buffer.replace(/\r\n?/g, "\n").split("\n\n");
-      buffer = read.done ? "" : (blocks.pop() ?? "");
+      const decoded = read.done ? decoder.decode() : decoder.decode(read.value, { stream: true });
 
-      for (const block of blocks) {
+      const text =
+        held +
+        (afterReturn && decoded.startsWith("\n") ? decoded.slice(1) : decoded).replace(
+          /\r\n?/g,
+          "\n",
+        );
+
+      if (decoded !== "") afterReturn = decoded.endsWith("\r");
+      held = !read.done && text.endsWith("\n") && !text.endsWith("\n\n") ? "\n" : "";
+      const blocks = text.slice(0, text.length - held.length).split("\n\n");
+      pending.push(blocks.shift() ?? "");
+
+      if (blocks.length === 0 && !read.done) continue;
+      const complete = [pending.join(""), ...blocks];
+      pending.length = 0;
+
+      if (!read.done) pending.push(complete.pop() ?? "");
+
+      for (const block of complete) {
         const frame = parseEventBlock(block);
 
         if (frame !== null) yield frame.data;
@@ -238,34 +256,36 @@ export async function* parseOutputFrames(
   const reader = stream.getReader();
   const decoder = new TextDecoder();
   let buffer: Uint8Array = new Uint8Array(0);
+  let offset = 0;
 
   try {
     for (;;) {
       const read = await reader.read();
 
       if (read.done) {
-        if (buffer.byteLength > 0)
+        if (offset < buffer.byteLength)
           throw new SdkError("internal", "The output stream ended mid-frame.");
 
         return;
       }
 
-      buffer = joined(buffer, read.value);
+      buffer = joined(buffer.subarray(offset), read.value);
+      offset = 0;
 
-      while (buffer.byteLength >= 5) {
-        const length = new DataView(buffer.buffer, buffer.byteOffset, 5).getUint32(1);
+      while (buffer.byteLength - offset >= 5) {
+        const length = new DataView(buffer.buffer, buffer.byteOffset + offset, 5).getUint32(1);
+        const start = offset + 5;
 
-        if (buffer.byteLength < 5 + length) break;
-        const tag = buffer[0];
-        const payload = buffer.slice(5, 5 + length);
-        buffer = buffer.slice(5 + length);
+        if (buffer.byteLength < start + length) break;
+        const tag = buffer[offset];
+        offset = start + length;
 
         if (tag === DATA) {
-          yield { kind: "bytes", data: payload };
+          yield { kind: "bytes", data: buffer.slice(start, offset) };
           continue;
         }
 
-        const control = decodeControl(parseJson(decoder.decode(payload)));
+        const control = decodeControl(parseJson(decoder.decode(buffer.subarray(start, offset))));
 
         if (control !== null) yield control;
       }

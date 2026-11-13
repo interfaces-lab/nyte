@@ -1,7 +1,6 @@
 import {
   API_MIN_REVISION,
   API_REVISION,
-  isJson,
   isJsonObject,
   SdkError,
   SOCKET_LIMITS,
@@ -15,6 +14,7 @@ import type {
   WelcomeFrame,
 } from "@nyte-ai/schema";
 import { errors, events, fragments, results, texts, welcomes } from "./frame-checks.ts";
+import { readJson } from "./json.ts";
 import { decodeError } from "./wire.ts";
 
 export interface SocketLike {
@@ -61,6 +61,7 @@ export async function openHostSocket(input: {
   const pieces: string[] = [];
   let held = 0;
   let calls = 0;
+  let lost: SdkError | null = null;
 
   greeted.promise.catch(() => undefined);
 
@@ -110,14 +111,14 @@ export async function openHostSocket(input: {
   socket.addEventListener("close", (event) => {
     const closed = { code: event.code, reason: event.reason };
 
-    const failure = new SdkError(
+    lost = new SdkError(
       "unavailable",
       closed.reason === "" ? `The host closed the socket (${closed.code}).` : closed.reason,
     );
 
-    greeted.reject(failure);
+    greeted.reject(lost);
 
-    for (const entry of waiting.values()) entry.reject(failure);
+    for (const entry of waiting.values()) entry.reject(lost);
     waiting.clear();
     ended.resolve(closed);
   });
@@ -153,6 +154,7 @@ export async function openHostSocket(input: {
     welcome: greeted.promise,
     closed: ended.promise,
     call(op, value) {
+      if (lost !== null) return Promise.reject(lost);
       calls += 1;
       const id = String(calls);
 
@@ -177,14 +179,4 @@ export async function openHostSocket(input: {
     },
     close: () => socket.close(1000, "done"),
   };
-}
-
-function readJson(text: string): Json | undefined {
-  try {
-    const value: unknown = JSON.parse(text);
-
-    return isJson(value) ? value : undefined;
-  } catch {
-    return undefined;
-  }
 }

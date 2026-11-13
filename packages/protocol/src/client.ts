@@ -17,7 +17,7 @@ import {
   parseSse,
   withInputHeader,
 } from "./wire.ts";
-import { createStreamClient } from "./stream-client.ts";
+import { createStreamClient, hostAnswer } from "./stream-client.ts";
 
 /** Describes where a transport sends requests, the headers each carries (credentials, read again per request), and the `fetch` it uses. */
 export type TransportOptions = {
@@ -29,7 +29,7 @@ export type TransportOptions = {
 /** Returns a byte reader over a response body: its size from `Content-Length` and its mime from `X-Nyte-Mime` when the host sent them (§40w), and the file version the host read when it sent one (`X-Nyte-Version`, §40h). */
 export type ResponseReader = ByteReader & { readonly version?: FileVersion };
 
-/** Returns the low-level client, one primitive per wire shape: `invoke` (JSON in and out), `frames` (a stream row's event-stream JSON frames), `output` (`job.output`'s framed octets as byte, `gap` and `exit` frames), `bytes` (an octet answer as a reader), `upload` (bytes as the body, the input in `X-Nyte-Input`; its signal aborts the request), `credential` (the `X-Nyte-Credential` a pairing exchange returned, §40j) and `host` (the `X-Nyte-Host` of the first response that carried one, error answers included, §43j; a later response naming another host throws `stale` with that host's id, its answer unread); only a `TypeError` from `fetch` is `unavailable`, any other exception reaching the caller as thrown (§47m); `return()` on a `frames` or `output` iterator aborts its request and resolves at once (§40x); every error answer is rethrown as the `SdkError` it encodes. */
+/** Returns the low-level client, one primitive per wire shape: `invoke` (JSON in and out), `frames` (a stream row's event-stream JSON frames), `output` (`job.output`'s framed octets as byte, `gap` and `exit` frames), `bytes` (an octet answer as a reader), `upload` (bytes as the body, the input in `X-Nyte-Input`; its signal aborts the request), `credential` (the `X-Nyte-Credential` a pairing exchange returned, §40j) and `host` (the `X-Nyte-Host` of the first response that carried one, error answers included, §43j; a later response naming another host throws `stale` with that host's id, its answer unread); only a `TypeError` from `fetch` is `unavailable`, any other exception reaching the caller as thrown (§47m); `return()` on a `frames` or `output` iterator aborts its request and resolves at once (§40x); every error answer is rethrown as the `SdkError` it encodes, and `linkLost` tells an operation's answer from a failure of the link. */
 export type Transport = {
   invoke(name: OperationName, input: Json, options?: RequestOptions): Promise<Json>;
   frames(name: OperationName, input: Json): AsyncIterable<Json>;
@@ -59,6 +59,7 @@ export function createTransport(options: TransportOptions): Transport {
   const post = async (
     name: string,
     init: { readonly headers: Readonly<Record<string, string>> } & Omit<RequestInit, "headers">,
+    operation = false,
   ): Promise<Response> => {
     const headers = { ...(await options.headers()), ...init.headers };
     let response: Response;
@@ -86,8 +87,9 @@ export function createTransport(options: TransportOptions): Transport {
     credential = response.headers.get("X-Nyte-Credential") ?? credential;
 
     if (response.ok) return response;
+    const error = decodeError(jsonOrText(await response.text()), response.status);
 
-    throw decodeError(jsonOrText(await response.text()), response.status);
+    throw operation && answered !== null ? hostAnswer(error) : error;
   };
 
   const json = (input: Json, headers?: Readonly<Record<string, string>>) => ({
@@ -108,22 +110,22 @@ export function createTransport(options: TransportOptions): Transport {
           controller.abort();
         }
       }
-      const response = await post(name, { ...json(input), signal: request?.signal });
+      const response = await post(name, { ...json(input), signal: request?.signal }, true);
 
       return parseJson(await response.text());
     },
     frames(name, input) {
       return cancellable(async function* (signal) {
-        yield* parseSse(await stream(name, input, signal));
+        yield* answering(await stream(name, input, signal), parseSse);
       });
     },
     output(input) {
       return cancellable(async function* (signal) {
-        yield* parseOutputFrames(await stream("job.output", input, signal));
+        yield* answering(await stream("job.output", input, signal), parseOutputFrames);
       });
     },
     async bytes(name, input, request) {
-      const response = await post(name, { ...json(input), signal: request?.signal });
+      const response = await post(name, { ...json(input), signal: request?.signal }, true);
       const length = response.headers.get("Content-Length");
       const version = response.headers.get("X-Nyte-Version");
       const body: ReadableStream<Uint8Array> | null = response.body;
@@ -152,10 +154,11 @@ export function createTransport(options: TransportOptions): Transport {
       };
     },
     async upload(name, input, body, request) {
-      const response = await post(name, {
-        ...withInputHeader(input, body),
-        signal: request?.signal,
-      });
+      const response = await post(
+        name,
+        { ...withInputHeader(input, body), signal: request?.signal },
+        true,
+      );
 
       return parseJson(await response.text());
     },
@@ -223,6 +226,35 @@ function cancellable<T>(open: (signal: AbortSignal) => AsyncIterable<T>): AsyncI
       };
     },
   };
+}
+
+/** Parses a stream's body, marking an error the body carries as the host's answer; an error reading the body reaches the caller as the stream raised it. */
+async function* answering<T>(
+  body: ReadableStream<Uint8Array>,
+  parse: (body: ReadableStream<Uint8Array>) => AsyncGenerator<T>,
+): AsyncGenerator<T> {
+  const reader = body.getReader();
+  let broken = false;
+
+  const read = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      const next = await reader.read().catch((cause: unknown) => {
+        broken = true;
+
+        throw cause;
+      });
+
+      if (next.done) controller.close();
+      else controller.enqueue(next.value);
+    },
+    cancel: (reason) => reader.cancel(reason),
+  });
+
+  try {
+    yield* parse(read);
+  } catch (error) {
+    throw error instanceof SdkError && !broken ? hostAnswer(error) : error;
+  }
 }
 
 function crossesNetwork(url: string): boolean {

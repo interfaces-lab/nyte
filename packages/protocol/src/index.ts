@@ -14,11 +14,11 @@ export * from "./directory-store.ts";
 
 export * from "./socket-client.ts";
 
-export { parseJson } from "./json.ts";
+export { parseJson, readJson } from "./json.ts";
 
 export { streamBuffer } from "./stream-buffer.ts";
 
-export { createStreamClient } from "./stream-client.ts";
+export { createStreamClient, linkLost } from "./stream-client.ts";
 
 export { abortable, mapped } from "./streams.ts";
 

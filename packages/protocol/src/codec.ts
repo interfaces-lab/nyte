@@ -10,6 +10,7 @@ import type {
   OperationName,
   OperationOutput,
 } from "./declarations.ts";
+import { unchecked } from "./json.ts";
 import { rawPart } from "./raw-parts.ts";
 
 type Node = { readonly [key: string]: unknown };
@@ -318,34 +319,106 @@ function encode(plan: Plan, value: unknown): Json | undefined {
     return member === null ? json : encode(member, json);
   }
 
-  if (Guard.IsArray(value) || value instanceof Set) {
-    const { items } = plan;
+  const items = plan.items;
 
+  if (value instanceof Set || Guard.IsArray(value))
     return items === null
       ? toJson(value)
-      : Array.from(value, (item: unknown) => encode(items.plan, item) ?? null);
-  }
+      : encodeItems(value instanceof Set ? [...value] : value, items.plan);
 
   if (typeof value !== "object" || value === null) return toJson(value);
-  const { properties, rest } = plan;
 
-  if (properties === null && rest === null) return toJson(value);
-  const record: { [key: string]: Json } = {};
+  if (plan.properties === null && plan.rest === null) return toJson(value);
 
-  const keep = (key: string, item: unknown) => {
+  return encodeFields(value, plan.properties, plan.rest, plan.nulled);
+}
+
+/** Returns `value` itself when every item encodes to itself, so an output that is already wire JSON is not copied; a copy starts at the first item that differs. */
+function encodeItems(value: readonly unknown[], plan: Plan): Json {
+  let copy: Json[] | null = null;
+
+  for (let index = 0; index < value.length; index += 1) {
+    const item = value[index];
+    const json = encode(plan, item) ?? null;
+
+    if (copy === null) {
+      if (json === item) continue;
+      copy = value.slice(0, index).map(walked);
+    }
+
+    copy.push(json);
+  }
+
+  return copy ?? walked(value);
+}
+
+/** Returns a plain object itself when every field encodes to itself and none is stripped or nulled; a `Map`, or an object of any other prototype, is always copied, as is any object from its first field that differs. */
+function encodeFields(
+  value: object,
+  properties: ReadonlyMap<string, Plan> | null,
+  rest: Plan | null,
+  nulled: readonly string[],
+): Json {
+  if (value instanceof Map) {
+    const record: { [key: string]: Json } = {};
+
+    for (const entry of value) {
+      const key = String(entry[0]);
+      const target = properties?.get(key) ?? rest;
+      const json = target === null ? undefined : encode(target, entry[1]);
+
+      if (json !== undefined) put(record, key, json);
+    }
+
+    for (const key of nulled) if (!Object.hasOwn(record, key)) put(record, key, null);
+
+    return record;
+  }
+
+  if (!Guard.IsObjectNotArray(value)) return {};
+  const keys = Object.keys(value);
+
+  let copy: { [key: string]: Json } | null =
+    Object.getPrototypeOf(value) === Object.prototype ? null : {};
+
+  for (let index = 0; index < keys.length; index += 1) {
+    const key = keys[index] ?? "";
+    const item = value[key];
     const target = properties?.get(key) ?? rest;
     const json = target === null ? undefined : encode(target, item);
 
-    if (json !== undefined) put(record, key, json);
-  };
+    if (copy === null) {
+      if (json !== undefined && json === item) continue;
+      copy = copyFields(value, keys, index);
+    }
 
-  if (value instanceof Map) for (const [key, item] of value) keep(String(key), item);
-  else if (Guard.IsObjectNotArray(value))
-    for (const key of Object.keys(value)) keep(key, value[key]);
+    if (json !== undefined) put(copy, key, json);
+  }
 
-  for (const key of plan.nulled) if (!Object.hasOwn(record, key)) put(record, key, null);
+  for (const key of nulled)
+    if (!Object.hasOwn(copy ?? value, key)) {
+      copy ??= copyFields(value, keys, keys.length);
+      put(copy, key, null);
+    }
 
-  return record;
+  return copy ?? walked(value);
+}
+
+function copyFields(
+  value: { readonly [key: string]: unknown },
+  keys: readonly string[],
+  end: number,
+): { [key: string]: Json } {
+  const copy: { [key: string]: Json } = {};
+
+  for (const key of keys.slice(0, end)) put(copy, key, walked(value[key]));
+
+  return copy;
+}
+
+/** Types as JSON a value the walk handed back unchanged, which it checked down to every leaf. */
+function walked(value: unknown): Json {
+  return unchecked.Check(value) ? value : null;
 }
 
 function known(plan: Plan, value: unknown): unknown {
@@ -523,24 +596,13 @@ function toJson(value: unknown): Json | undefined {
   if (value instanceof Uint8Array)
     return btoa(Array.from(value, (byte) => String.fromCharCode(byte)).join(""));
 
-  if (value instanceof Set) return Array.from(value, (item: unknown) => toJson(item) ?? null);
+  if (value instanceof Set) return encodeItems([...value], INERT);
 
-  if (Guard.IsArray(value)) return value.map((item) => toJson(item) ?? null);
+  if (Guard.IsArray(value)) return encodeItems(value, INERT);
 
   if (typeof value !== "object") return undefined;
-  const record: { [key: string]: Json } = {};
 
-  const keep = (key: string, item: unknown) => {
-    const json = toJson(item);
-
-    if (json !== undefined) put(record, key, json);
-  };
-
-  if (value instanceof Map) for (const [key, item] of value) keep(String(key), item);
-  else if (Guard.IsObjectNotArray(value))
-    for (const key of Object.keys(value)) keep(key, value[key]);
-
-  return record;
+  return encodeFields(value, null, INERT, []);
 }
 
 function put(record: { [key: string]: Json }, key: string, json: Json): void {

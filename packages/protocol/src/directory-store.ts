@@ -70,7 +70,7 @@ export function openDirectoryStore(
       return seq;
     },
     apply(change) {
-      if (change.seq <= seq) return;
+      if (change.seq < seq) return;
       seq = change.seq;
       const table = change.tables.sessions;
 

@@ -18,6 +18,27 @@ type Post = (
   init: RequestInit & { readonly headers: Readonly<Record<string, string>> },
 ) => Promise<Response>;
 
+const answers = new WeakSet<SdkError>();
+
+/** The host gives these `unavailable` answers no status or header of their own, so they are told apart by message. */
+const COME_BACK = new Set([
+  "This listener is closed.",
+  "The host disconnected its clients.",
+  "The host is still opening.",
+]);
+
+/** Marks an error the host answered an operation with, so `linkLost` holds it final; an answer asking the client to come back later stays a link failure. */
+export function hostAnswer(error: SdkError): SdkError {
+  if (!COME_BACK.has(error.message)) answers.add(error);
+
+  return error;
+}
+
+/** Returns whether an error is a failure of the link to the host, so the request may be retried once the host is back: an `unavailable` the transport raised (a failed `fetch`, a stream channel that dropped, was refused or was closed by the host), an error answer without `X-Nyte-Host` (a relay or proxy answering for an unreachable host), or a host answer asking the client to come back later (`This listener is closed.`, `The host disconnected its clients.`, `The host is still opening.`). Any other `unavailable` the host answered an operation with is final. */
+export function linkLost(error: unknown): error is SdkError {
+  return error instanceof SdkError && error.code === "unavailable" && !answers.has(error);
+}
+
 /** Multiplex streams over one channel opened through `post`, asking for `deflated` frames when `deflate`; the channel closes when its last stream is released. */
 export function createStreamClient(post: Post, deflate: boolean) {
   type Stream = {
@@ -95,7 +116,7 @@ export function createStreamClient(post: Post, deflate: boolean) {
             buffer.end();
             forget(current, frame.stream);
           } else if (frame.kind === "error") {
-            buffer.fail(decodeError(parseJson(frame.error)));
+            buffer.fail(hostAnswer(decodeError(parseJson(frame.error))));
             forget(current, frame.stream);
           } else {
             let chunk: Uint8Array;
