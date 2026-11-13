@@ -324,6 +324,16 @@ const LeaseType = record({
 
 type Lease = Static<typeof LeaseType>;
 
+const OsProcessType = record({
+  boot: Type.String(),
+  pid: Type.Number(),
+  group: Type.Number(),
+  started: Type.String(),
+});
+
+/** An operating-system process as the machine that runs it identifies it: `boot` names the machine's boot (on Linux with its pid namespace), `group` the process group it leads, and `started` its start time as the platform reports it, a token compared only for equality with one read the same way on the same boot. A pid alone is reused; with its boot and start it names one process. */
+export type OsProcess = Static<typeof OsProcessType>;
+
 const ProcessRecordType = record({
   instance: Type.String(),
   holder: idSchema<"host">(),
@@ -338,6 +348,8 @@ export type ProcessRecord = Static<typeof ProcessRecordType>;
 const JobRecordType = record({
   id: idSchema<"job">(),
   instance: Type.String(),
+  /** The process group the job runs as, recorded once it started where its host can tell; absent on a job started before, or by a provider that cannot. */
+  os: Type.Optional(OsProcessType),
   workspace: idSchema<"workspace">(),
   session: idSchema<"session">(),
   head: idSchema<"head">(),

@@ -37,6 +37,7 @@ import { missing, readErrorCode } from "./fs-errors.ts";
 import { localDocuments } from "./local/files/documents.ts";
 import { createMediaLinks } from "./serve/media.ts";
 import { localGitHubAccount } from "./local/git/github.ts";
+import { localMachine } from "./local/process/machine.ts";
 import { localProvider } from "./local/provider.ts";
 import { importLegacyTrust } from "./local/migrations/legacy-trust.ts";
 import { migrateLocalWorkspaceIdentities } from "./local/migrations/workspace-identities.ts";
@@ -205,6 +206,7 @@ async function composeOpen(options: OpenHostOptions, opened: AsyncDisposableStac
     member: {
       label: options.label ?? "nyte",
       pid: process.pid,
+      machine: localMachine,
       capabilities: given.some((plugin) => plugin.id === browserTools.id) ? [browserTools.id] : [],
     },
     revoked: options.onRevoked,

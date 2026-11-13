@@ -81,6 +81,7 @@ import type {
   RestoreOutcome,
 } from "@nyte-ai/schema";
 import type { Login, PluginStorage } from "./host.ts";
+import type { OsProcess } from "./records.ts";
 import type { Receipt } from "./session.ts";
 import type { ToolDefinition } from "./tools.ts";
 
@@ -169,6 +170,8 @@ export interface Jobs {
 export interface Job {
   readonly id: JobId;
   readonly key: JobKey | null;
+  /** The process group the job runs as, for a host on the same machine to end it after this one is gone; absent where the provider cannot tell. */
+  readonly os?: OsProcess;
 
   write(bytes: Uint8Array): Promise<void>;
 

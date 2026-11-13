@@ -12,7 +12,8 @@ import { Type } from "typebox";
 import { assert, describe, expect, it, vi } from "vitest";
 import { createHost } from "../src/api/connection.ts";
 import { runStep } from "../src/engine/durable.ts";
-import { jobHandle } from "../src/engine/jobs.ts";
+import { composeServer } from "../src/compose.ts";
+import { jobHandle, reapJobs } from "../src/engine/jobs.ts";
 import { loadWaits } from "../src/engine/waits.ts";
 import { workspaceHandle } from "../src/env/workspaces.ts";
 import { viewHead } from "../src/watch/view.ts";
@@ -20,16 +21,24 @@ import { LOCAL, definePart } from "../src/index.ts";
 import {
   callRef,
   decodeCallRecord,
+  decodeJobRecord,
   decodeReceiptRecord,
   inboxRef,
   memoryStore,
   receiptRef,
 } from "../src/store.ts";
 import type { Kernel } from "../src/contract/kernel.ts";
-import type { ConnectionContext, Durable, StoreConnection } from "../src/index.ts";
+import type {
+  ConnectionContext,
+  Durable,
+  Machine,
+  OsProcess,
+  StoreConnection,
+} from "../src/index.ts";
 import { addWorkspace, createDisk, fakeProvider, kernelOver, world } from "./fake-env.ts";
 import type { Process } from "./fake-env.ts";
 import { killable, main, until } from "../src/harness.ts";
+import { fakeModels } from "./fake-models.ts";
 
 const question = definePart({
   kind: "test/question",
@@ -731,6 +740,128 @@ describe("jobs", () => {
 
     expect(await readCall(built.kernel, session.id, call)).toMatchObject(row.expected(job.id));
     expect(woken).toEqual(row.woken ? [`${session.id}/${main}`] : []);
+  });
+
+  it.each([
+    {
+      name: "ends a gone host's job by the process it recorded, then reports it stopped",
+      boot: "boot-1",
+      holder: "gone",
+      answer: "ended",
+      asked: true,
+      end: { kind: "exited", code: null, reason: "terminated" },
+      report:
+        "Job make (make) was stopped: the Nyte that ran it exited, so the next one ended the command. Its output and exit status are unknown.",
+    },
+    {
+      name: "reports a gone host's job whose process already ended as no longer running",
+      boot: "boot-1",
+      holder: "gone",
+      answer: "gone",
+      asked: true,
+      end: { kind: "lost" },
+      report:
+        "Job make (make) was lost with the Nyte that ran it, and it is no longer running. Its output and exit status are unknown.",
+    },
+    {
+      name: "says a gone host's job may still be running when the machine cannot tell",
+      boot: "boot-1",
+      holder: "gone",
+      answer: "unknown",
+      asked: true,
+      end: { kind: "lost" },
+      report:
+        "Job make (make) was abandoned: the Nyte that ran it exited, so its output and exit status are unknown, and the command may still be running.",
+    },
+    {
+      name: "asks the machine nothing for a gone host's job that recorded no process",
+      boot: undefined,
+      holder: "gone",
+      answer: "ended",
+      asked: false,
+      end: { kind: "lost" },
+      report:
+        "Job make (make) was abandoned: the Nyte that ran it exited, so its output and exit status are unknown, and the command may still be running.",
+    },
+    {
+      name: "leaves a live host's job and its process alone",
+      boot: "boot-1",
+      holder: "alive",
+      answer: "ended",
+      asked: false,
+      end: null,
+      report: null,
+    },
+  ] as const)("$name", async (row) => {
+    const store = memoryStore();
+    const disk = createDisk();
+    disk.directories.add("/work/project");
+    const asked: OsProcess[] = [];
+
+    const machine: Machine = {
+      async end(process) {
+        asked.push(process);
+
+        return row.answer;
+      },
+    };
+
+    const compose = (label: string, member: Machine | undefined) =>
+      composeServer({
+        store,
+        models: fakeModels().models,
+        plugins: [{ id: "fake-environment", environment: fakeProvider(disk, { boot: row.boot }) }],
+        workspace: { kind: "local", path: "/work/project" },
+        execution: { kind: "admit-only" },
+        member: {
+          label,
+          pid: null,
+          capabilities: [],
+          ...(member === undefined ? {} : { machine: member }),
+        },
+        home: null,
+        description: { name: label, platform: "darwin", version: "0.1.0" },
+      });
+
+    const a = await compose("A", undefined);
+    await using _a = a.host;
+    const b = await compose("B", machine);
+    await using _b = b.host;
+    const workspace = a.kernel.host.current().defaultWorkspace;
+    assert(workspace !== null);
+    const { session } = await a.host.sessions.start({ workspace, content: "Hi." });
+    const job = await a.host
+      .workspace(workspace)
+      .jobs.start({ command: "make", session: session.id });
+    const recorded = async () => {
+      const ref = await b.kernel.store.refs.get(`jobs/${job.id}`);
+
+      return decodeJobRecord(ref?.target ? await b.kernel.store.objects.get(ref.target) : null);
+    };
+
+    const os = (await recorded())?.os;
+
+    if (row.holder === "gone")
+      await b.kernel.store.refs.set([{ name: `processes/${a.kernel.instance}`, target: null }]);
+
+    await reapJobs(b.kernel);
+
+    expect({
+      os: os ?? null,
+      asked,
+      end: (await recorded())?.end ?? null,
+      reports: (await b.host.session(session.id).view()).messages.flatMap((message) =>
+        message.kind === "user" && message.source.kind === "job" ? [message.content] : [],
+      ),
+    }).toEqual({
+      os:
+        row.boot === undefined
+          ? null
+          : { boot: row.boot, pid: 4_000, group: 4_000, started: "fake:4000" },
+      asked: row.asked && os !== undefined ? [os] : [],
+      end: row.end,
+      reports: row.report === null ? [] : [row.report],
+    });
   });
 
   it("answers a step's recorded job as lost after a restart, spawning nothing again (B F1, P1)", async () => {

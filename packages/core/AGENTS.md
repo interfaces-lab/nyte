@@ -40,5 +40,5 @@
 - **Takeover.** A peer is dead only after 20 s unchanged while this process wrote within 10 s. The takeover deletes its process ref in the same `set` as the lease write, so the dead process can't write again. When changing this, run the verify-takeover-fence skill.
 - **Restart recovery.** A run survives its process. A takeover without progress counts an interruption; at 5 the run fails. A graceful close releases its leases.
 - **Durable calls.** A `CallRecord` with a result answers every replay. A `replay: "never"` call found from before this process settles `interrupted`.
-- **Jobs** belong to the instance that started them and are reaped only when it is dead.
+- **Jobs** belong to the instance that started them and are reaped only when it is dead. The reaper signals a job's process group only through `Machine.end`, which acts only on this boot and only while the group's leader runs with its recorded start.
 - **Session plugins aren't durable.** `plugins.replace(..., { session })` lives in process memory; a restart or takeover drops it.

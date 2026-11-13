@@ -99,6 +99,10 @@ export { holdMessage } from "./api/hold.ts";
 
 export { changesSince, readWindow } from "./watch/window.ts";
 
+export type { Machine } from "./contract/presence.ts";
+
+export type { OsProcess } from "./contract/records.ts";
+
 export type {
   FoldCheckpoint,
   FoldCheckpoints,

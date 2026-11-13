@@ -15,6 +15,7 @@ import {
 } from "@nyte-ai/core";
 import type { EndSpan, ExecutionEnv, Job } from "@nyte-ai/core";
 import { findExecutable, killTree, run, spawnCommand } from "./command.ts";
+import { identifyProcess } from "./machine.ts";
 import { prepareShellIntegration } from "./shell-integration/index.ts";
 
 type PtyModule = {
@@ -27,6 +28,7 @@ type Driver = {
   idle(): boolean | Promise<boolean>;
   kill(signal: NodeJS.Signals): void;
   readonly pty: boolean;
+  readonly pid: number | undefined;
 };
 
 const OUTPUT_LIMIT = 1024 * 1024;
@@ -102,6 +104,7 @@ export function localExec(
         : await terminal(command, { cwd, env, size: input.pty, shell, load }, log, finish);
 
     spawned();
+    const os = driver.pid === undefined ? null : await identifyProcess(driver.pid);
 
     dev("jobs", "start", {
       program: typeof command === "string" ? command.split(/\s/, 1)[0] : (command[0] ?? null),
@@ -138,6 +141,7 @@ export function localExec(
     const job: Job = {
       id: asId<"job">(crypto.randomUUID()),
       key: null,
+      ...(os === null ? {} : { os }),
       write: (bytes) => driver.write(bytes),
       output: () =>
         closable<OutputFrame>(() => {
@@ -232,6 +236,7 @@ async function pipe(
 
   return {
     pty: false,
+    pid: child.pid,
     async write(bytes) {
       const stdin = child.stdin;
 
@@ -338,6 +343,7 @@ async function terminal(
 
   return {
     pty: true,
+    pid: term.pid,
     async write(bytes) {
       term.write(Buffer.from(bytes));
     },

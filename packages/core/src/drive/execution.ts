@@ -443,6 +443,9 @@ export function driveInProcess(kernel: Kernel, coverage: ExecutionCoverage): Own
   if (coverage.kind === "all")
     void (async () => {
       await covering;
+      await reapJobs(kernel).catch((error) =>
+        fault("execution", "reaping failed", { error: formatError(error) }),
+      );
       let cursor: Cursor | undefined;
 
       do {

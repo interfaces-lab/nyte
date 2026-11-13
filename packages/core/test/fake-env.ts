@@ -29,6 +29,7 @@ import type {
   GitHubApi,
   Host,
   Job,
+  OsProcess,
   Page,
   Plugin,
 } from "../src/index.ts";
@@ -131,6 +132,8 @@ export function fakeProvider(
     readonly git?: boolean;
     readonly browser?: boolean;
     readonly confined?: boolean;
+    /** The boot its jobs report as their machine's; without it a job reports no process. */
+    readonly boot?: string;
   },
 ): FakeProvider {
   const snapshots = new Map<SnapshotId, ReadonlyMap<string, string>>();
@@ -213,7 +216,7 @@ export function fakeProvider(
       if (provider.failure !== null) throw new Error(provider.failure);
       provider.attaches += 1;
 
-      return env(provider, readTargetPath(target), options?.confined === true);
+      return env(provider, readTargetPath(target), options?.confined === true, options?.boot);
     },
     snapshots: (attached) => ({
       async before(run) {
@@ -361,13 +364,25 @@ export async function collect<T>(source: AsyncIterable<T>): Promise<readonly T[]
   return values;
 }
 
-function env(provider: FakeProvider, root: string, confined: boolean): ExecutionEnv {
+function env(
+  provider: FakeProvider,
+  root: string,
+  confined: boolean,
+  boot: string | undefined,
+): ExecutionEnv {
   return {
     identity: asId<"environment-identity">(`id:${root}`),
     cwd: root,
     files: filesAt(provider.disk, root, confined),
     async exec(command, options) {
-      const process = startProcess(command, options?.pty ?? null, options?.signal);
+      const pid = 4_000 + provider.processes.length;
+
+      const process = startProcess(
+        command,
+        options?.pty ?? null,
+        options?.signal,
+        boot === undefined ? undefined : { boot, pid, group: pid, started: `fake:${pid}` },
+      );
       provider.processes.push(process);
       provider.script(process);
 
@@ -614,6 +629,7 @@ function startProcess(
   command: string | readonly string[],
   pty: Process["pty"],
   signal: AbortSignal | undefined,
+  os: OsProcess | undefined,
 ): Process {
   const frames: OutputFrame[] = [];
   const wakes = new Set<() => void>();
@@ -647,6 +663,7 @@ function startProcess(
     job: {
       id: asId("process"),
       key: null,
+      ...(os === undefined ? {} : { os }),
       async write(bytes) {
         process.stdin.push(new TextDecoder().decode(bytes));
       },

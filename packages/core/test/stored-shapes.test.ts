@@ -26,7 +26,7 @@ it("keeps every stored shape until a store change is decided", () => {
     commit: "e3ab7da07323be3e",
     identity: "7a36a42575ab463a",
     inbox: "6bb3653102464274",
-    job: "883d9aa8a972c69b",
+    job: "20b2f74e2b21730d",
     lease: "d0dd01cdbad7ec93",
     part: "99bf6a359ec10990",
     principals: "103773fcbe00ed1c",

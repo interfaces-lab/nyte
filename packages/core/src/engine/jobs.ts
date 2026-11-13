@@ -16,7 +16,7 @@ import type { ConnectionContext } from "../contract/host.ts";
 import type { Kernel } from "../contract/kernel.ts";
 import type { Job, JobEntry, JobOutput, Jobs, JobTable } from "../contract/workspace.ts";
 import { decodeJobRecord } from "../contract/records.ts";
-import type { JobRecord } from "../contract/records.ts";
+import type { JobRecord, OsProcess } from "../contract/records.ts";
 import { commit } from "../watch/commit.ts";
 import { JOBS, jobRef } from "../store/refs.ts";
 import { reportId, reserveReport } from "../store/reports.ts";
@@ -40,6 +40,8 @@ const ORPHAN_MS = 60_000;
 const ENDED_KEPT = 32;
 
 const ENDED_JOB_MS = 60 * 60_000;
+
+const TERMINATED: JobEnd = { kind: "exited", code: null, reason: "terminated" };
 
 export function createJobTable(kernel: Kernel): JobTable {
   const entries = new Map<JobId, JobEntry>();
@@ -474,6 +476,11 @@ async function spawn(
       throw cause;
     });
 
+  if (owner !== null && process.os !== undefined)
+    await recordJobProcess(kernel, id, process.os).catch((error: unknown) => {
+      fault("jobs", "process not recorded", { job: id, error: String(error) });
+    });
+
   const output = createOutput(
     input.pty !== undefined && input.session === undefined
       ? {
@@ -536,6 +543,26 @@ function recordJobEnd(
   });
 }
 
+/** Records the process group job `id` runs as, so a host on the same machine can end it once this one is gone. */
+function recordJobProcess(kernel: Kernel, id: JobId, os: OsProcess): Promise<void> {
+  return attempt(`Recording job ${id}'s process`, async () => {
+    const found = await readJob(kernel.store, id);
+
+    if (found === null || found.record.end !== null) return undefined;
+
+    const outcome = await commit(kernel, [
+      {
+        name: jobRef(id),
+        target: await put(kernel.store, "job", { ...found.record, os }),
+        expect: found.ref.revision,
+      },
+    ]);
+
+    return outcome.kind === "set" ? undefined : STALE;
+  });
+}
+
+/** Ends the jobs whose host is dead or gone. Where the job's process group was recorded on this machine, it is ended first and only then is the job reported ended; where that cannot be established, the report says the command may still be running. A dead holder's process ref is deleted before anything is signalled, so a holder that beat after all keeps its jobs. */
 export async function reapJobs(kernel: Kernel): Promise<void> {
   const presence = kernel.presence;
 
@@ -559,22 +586,33 @@ export async function reapJobs(kernel: Kernel): Promise<void> {
 
     if (holder.kind !== "dead" && holder.kind !== "absent") continue;
 
+    if (
+      holder.kind === "dead" &&
+      (await commit(kernel, [{ name: holder.name, target: null, expect: holder.expect }])).kind !==
+        "set"
+    )
+      continue;
+
+    const ended =
+      record.os === undefined
+        ? "unknown"
+        : ((await presence.member.machine?.end(record.os)) ?? "unknown");
+
+    const end = ended === "ended" ? TERMINATED : LOST;
+
     const reaped = await commit(kernel, [
       {
         name: ref.name,
-        target: await put(kernel.store, "job", { ...record, end: LOST, endedAt: Date.now() }),
+        target: await put(kernel.store, "job", { ...record, end, endedAt: Date.now() }),
         expect: ref.revision,
       },
-      ...(holder.kind === "dead"
-        ? [{ name: holder.name, target: null, expect: holder.expect }]
-        : []),
-      ...(await reserveJobReport(kernel, record, abandonedReport(record))),
+      ...(await reserveJobReport(kernel, record, abandonedReport(record, ended))),
     ]);
 
     if (reaped.kind !== "set") continue;
-    dev("jobs", "abandoned", { job: record.id, instance: record.instance });
+    dev("jobs", "abandoned", { job: record.id, instance: record.instance, process: ended });
 
-    if (await kernel.waits.jobEnded(record.id, LOST)) continue;
+    if (await kernel.waits.jobEnded(record.id, end)) continue;
 
     await deliverReport(kernel, record.session, reportId({ kind: "job", job: record.id }));
   }
@@ -597,8 +635,14 @@ async function reserveJobReport(
   ];
 }
 
-function abandonedReport(record: JobRecord): string {
+function abandonedReport(record: JobRecord, ended: "ended" | "gone" | "unknown"): string {
   const named = record.command === "" ? record.title : `${record.title} (${record.command})`;
+
+  if (ended === "ended")
+    return `Job ${named} was stopped: the Nyte that ran it exited, so the next one ended the command. Its output and exit status are unknown.`;
+
+  if (ended === "gone")
+    return `Job ${named} was lost with the Nyte that ran it, and it is no longer running. Its output and exit status are unknown.`;
 
   return `Job ${named} was abandoned: the Nyte that ran it exited, so its output and exit status are unknown, and the command may still be running.`;
 }
