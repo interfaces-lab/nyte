@@ -66,8 +66,20 @@ const styles = create({
     WebkitAppRegion: "drag",
   },
   control: { WebkitAppRegion: "no-drag" },
-  tabs: { display: "flex", minWidth: 0, overflowX: "auto", scrollbarWidth: "none" },
-  list: { display: "flex", alignItems: "center", gap: space.px, minWidth: 0 },
+  tabs: {
+    display: "flex",
+    minWidth: 0,
+    overflowX: "auto",
+    scrollbarWidth: "none",
+    WebkitAppRegion: "no-drag",
+  },
+  list: {
+    display: "flex",
+    alignItems: "center",
+    gap: space.px,
+    minWidth: 0,
+    WebkitAppRegion: "initial",
+  },
   slot: { display: "flex", flexShrink: 0 },
   item: {
     "--_tab-close-opacity": {
@@ -95,7 +107,6 @@ const styles = create({
     maxWidth: 200,
     height: control.heightSm,
     minHeight: target.min,
-    WebkitAppRegion: "no-drag",
     borderRadius: radius.control,
     backgroundColor: {
       default: "transparent",
