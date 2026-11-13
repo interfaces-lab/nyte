@@ -489,6 +489,7 @@ export function ProjectsSection({
           <Row.Actions placement="overlay">
             <Button
               size="sm"
+              variant="plain"
               iconOnly
               icon="settings"
               aria-label={`${project.name} Settings`}

@@ -379,6 +379,7 @@ export default defineConfig({
         "nyte-interactions/specific-confirm-label": "error",
         "nyte-interactions/no-disabled-caption": "error",
         "nyte-interactions/title-case-control-label": "error",
+        "nyte-interactions/no-stacked-fills": "error",
       },
     },
     {

@@ -43,6 +43,21 @@ const visibleText = (node) =>
 
 const nonControls = new Set(["div", "span", "li", "img", "section", "p"]);
 
+const elementName = (node) =>
+  node.type === "JSXMemberExpression"
+    ? `${elementName(node.object)}.${elementName(node.property)}`
+    : readName(node);
+
+const fillingControls = new Set([
+  "Button",
+  "ButtonLink",
+  "Toggle",
+  "SplitButton.Main",
+  "SplitButton.MenuTrigger",
+]);
+
+const unfilledVariants = new Set(["plain", "quiet", "text", "inline", "outline", "solid"]);
+
 const dragHandles = new Map([
   ["packages/ui/src/slider.tsx", new Set(["control"])],
   ["packages/app/src/chat/composer/reasoning-steps.tsx", new Set(["steps"])],
@@ -101,6 +116,47 @@ export default {
         });
       },
     })),
+    "no-stacked-fills": rule(
+      "Keep one hover fill under the pointer: no filling control inside a filling row.",
+      (context) => ({
+        JSXOpeningElement(node) {
+          const control = elementName(node.name);
+
+          if (!fillingControls.has(control)) return;
+
+          const variant = attribute(node, "variant");
+
+          if (variant !== undefined && literal(variant.value) === undefined) return;
+
+          if (control !== "Toggle" && unfilledVariants.has(literal(variant?.value))) return;
+
+          for (let parent = node.parent?.parent; parent; parent = parent.parent) {
+            if (parent.type !== "JSXElement") continue;
+
+            const row = parent.openingElement;
+            const interactive = attribute(row, "interactive");
+
+            if (
+              elementName(row.name) !== "Row" ||
+              ((interactive === undefined || literal(interactive.value) === false) &&
+                literal(attribute(row, "variant")?.value) !== "nav")
+            )
+              continue;
+
+            context.report({
+              node,
+              message:
+                `<${control}> paints its own hover fill inside a <Row> that fills on hover and ` +
+                `focus-within, so two translucent fills stack under the pointer and read as a ` +
+                `stain. Give the row's control variant="plain", which answers with its ink, or ` +
+                `drop interactive from the row if the control is its only target.`,
+            });
+
+            return;
+          }
+        },
+      }),
+    ),
     "drag-only-touch-action": rule("Reserve touchAction none for drag handles.", (context) => ({
       Property(node) {
         if (readName(node.key) !== "touchAction" || literal(node.value) !== "none") return;
