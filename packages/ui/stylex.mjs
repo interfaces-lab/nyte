@@ -89,19 +89,45 @@ function withOrder(options = {}) {
   };
 }
 
-const settledStylesheet = {
-  name: "nyte-stylex-settled-stylesheet",
-  apply: "serve",
-  configureServer(server) {
-    server.middlewares.use((request, _response, next) => {
-      if (request.url?.startsWith("/virtual:stylex.css") !== true) return next();
-      void server.waitForRequestsIdle().then(() => next(), next);
-    });
-  },
-};
+function settledStylesheet(plugin) {
+  let version = -1;
+  let css = "";
+
+  return {
+    name: "nyte-stylex-settled-stylesheet",
+    apply: "serve",
+    configureServer(server) {
+      server.middlewares.use((request, response, next) => {
+        if (request.url?.startsWith("/virtual:stylex.css") !== true) return next();
+
+        void server
+          .waitForRequestsIdle()
+          .then(() => {
+            const current = plugin.__stylexGetSharedStore().version;
+
+            if (current !== version) {
+              css = plugin.__stylexCollectCss();
+              version = current;
+            }
+
+            response.setHeader("Content-Type", "text/css");
+            response.setHeader("Cache-Control", "no-store");
+            response.end(css);
+          })
+          .catch(next);
+      });
+    },
+  };
+}
+
+function vite(options) {
+  const plugin = unplugin.vite(withOrder(options));
+
+  return [settledStylesheet(plugin), plugin];
+}
 
 export const stylex = {
-  vite: (options) => [settledStylesheet, unplugin.vite(withOrder(options))],
+  vite,
   rollup: (options) => unplugin.rollup(withOrder(options)),
   esbuild: (options) => unplugin.esbuild(withOrder(options)),
   webpack: (options) => unplugin.webpack(withOrder(options)),
