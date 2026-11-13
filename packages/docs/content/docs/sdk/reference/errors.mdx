@@ -13,6 +13,7 @@ class SdkError extends Error {
   readonly hostId: HostId | null;
   readonly issues: readonly ValidationIssue[];
   readonly correlation: string | null;
+  readonly retry: boolean;
 }
 ```
 
@@ -23,6 +24,7 @@ class SdkError extends Error {
 | `hostId`      | The host that raised it, or `null` when no host answered                             |
 | `issues`      | For `invalid`, each problem with its `path` into the input, `message` and `severity` |
 | `correlation` | For `internal`, a fresh id for this failure                                          |
+| `retry`       | For `unavailable`, `true` when the host couldn't serve the request yet; ask again    |
 
 `SdkError` comes from `@nyte-ai/sdk` and `@nyte-ai/sdk/client`.
 
@@ -42,7 +44,7 @@ class SdkError extends Error {
 
 The HTTP column is the status a listener answers with, for code that calls the
 [HTTP API](/docs/sdk/reference/connection#http-api) without the SDK. The response body is the same
-fields as JSON: `{ code, message, hostId, issues, correlation }`. On the
+fields as JSON: `{ code, message, hostId, issues, correlation }`, plus `retry: true` when it is set. On the
 [host WebSocket](/docs/sdk/reference/connection#websocket), an `error` frame carries the same
 fields.
 

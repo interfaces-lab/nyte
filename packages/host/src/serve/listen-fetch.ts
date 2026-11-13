@@ -329,7 +329,8 @@ export async function listenFetch(
   };
 
   const admitSocket = async (request: Request): Promise<SocketPeer> => {
-    if (closing !== null) throw new SdkError("unavailable", "This listener is closed.");
+    if (closing !== null)
+      throw new SdkError("unavailable", "This listener is closed.", { retry: true });
 
     if (!allowsCaller(request)) throw new SdkError("denied", "This origin may not call the host.");
     const ticket = new URL(request.url).searchParams.get("ticket");
@@ -390,7 +391,7 @@ export async function listenFetch(
     trace: { principal: PrincipalId | null },
   ): Promise<Response> => {
     if (closing !== null)
-      return failure(new SdkError("unavailable", "This listener is closed."), {});
+      return failure(new SdkError("unavailable", "This listener is closed.", { retry: true }), {});
     const early = await options.before?.(request);
 
     if (early !== undefined) return early;
@@ -479,9 +480,15 @@ export async function listenFetch(
 
   const disconnectClients = (): void => {
     for (const [key, entry] of cache)
-      drop(key, entry, new SdkError("unavailable", "The host disconnected its clients."));
+      drop(
+        key,
+        entry,
+        new SdkError("unavailable", "The host disconnected its clients.", { retry: true }),
+      );
     devices.clear();
-    generation.abort(new SdkError("unavailable", "The host disconnected its clients."));
+    generation.abort(
+      new SdkError("unavailable", "The host disconnected its clients.", { retry: true }),
+    );
     generation = new AbortController();
   };
 

@@ -121,7 +121,7 @@ async function composeOpen(options: OpenHostOptions, opened: AsyncDisposableStac
         .some((row) => row.actions.some((declared) => declared.name === action)),
     perform: (action, input, timeoutMs) =>
       server === null
-        ? Promise.reject(new SdkError("unavailable", "The host is still opening."))
+        ? Promise.reject(new SdkError("unavailable", "The host is still opening.", { retry: true }))
         : performOffered(server, { action, input, timeoutMs }),
   };
 

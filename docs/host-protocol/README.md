@@ -175,6 +175,10 @@ The text channel works differently. The host merges its appends. When they still
 
 The host advertises both limits in its welcome. Three limits are not in the welcome. A hello is at most 4 KiB. A frame the client sends is at most `maxFrameBytes`, where the same call over HTTP may carry 8 MiB. A socket ticket lasts 30 s and opens one socket.
 
+## Errors
+
+An error travels as `{ code, message, hostId, issues, correlation, retry? }`, over HTTP with the status its code maps to, on a stream as its last frame, and on the socket in an `error` frame. An `unavailable` the host answers is final unless it carries `retry: true`, which the host sets only when it could not serve the request yet: the listener is closed, the host disconnected its clients, or the host is still opening. A client asks again once the host is reachable. The host leaves `retry` out of a final error, and a client never reads the message to decide.
+
 ## Versions
 
 The host speaks a range of API revisions. A revision is an integer. Every change to an operation, a row or an event kind that an older client couldn't ignore bumps the revision.

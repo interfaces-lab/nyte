@@ -58,12 +58,14 @@ export const SdkErrorWireType = Type.Object({
   hostId: nullable(idSchema<"host">()),
   issues: Type.Array(ValidationIssueType),
   correlation: nullable(Type.String()),
+  retry: Type.Optional(Type.Boolean()),
 });
 
 export type SdkErrorWire = Decoded<typeof SdkErrorWireType>;
 
 export type SdkErrorCode = SdkErrorWire["code"];
 
+/** An error a host answered or a client raised. `retry` is true when the answer is not final: the host could not serve the request yet (it is opening, closing, or disconnected its clients), so a client asks again once the host is reachable. */
 export class SdkError extends Error {
   override readonly name = "SdkError";
 
@@ -75,6 +77,8 @@ export class SdkError extends Error {
 
   readonly correlation: string | null;
 
+  readonly retry: boolean;
+
   constructor(
     code: SdkErrorCode,
     message: string,
@@ -82,6 +86,7 @@ export class SdkError extends Error {
       readonly hostId?: HostId | null;
       readonly issues?: readonly ValidationIssue[];
       readonly correlation?: string | null;
+      readonly retry?: boolean;
     },
   ) {
     super(message);
@@ -89,6 +94,7 @@ export class SdkError extends Error {
     this.hostId = options?.hostId ?? null;
     this.issues = options?.issues ?? [];
     this.correlation = options?.correlation ?? null;
+    this.retry = options?.retry ?? false;
   }
 }
 

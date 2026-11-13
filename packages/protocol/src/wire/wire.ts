@@ -26,14 +26,19 @@ const DATA = 0;
 
 const CONTROL = 1;
 
+/** Returns the wire form of an error; `retry` is sent only when true, so a final error's frame is the one a host before it sent. */
 export function encodeError(error: SdkError): SdkErrorWire {
-  return {
+  const wire = {
     code: error.code,
     message: error.message,
     hostId: error.hostId,
     issues: error.issues,
     correlation: error.correlation,
   };
+
+  if (!error.retry) return wire;
+
+  return { ...wire, retry: true };
 }
 
 /** Rebuilds the `SdkError` a wire error carries; a body that is not a wire error is the code `statusCode` gives the response's status, `internal` without one. */
@@ -53,6 +58,7 @@ export function decodeError(value: Json, status?: number): SdkError {
     hostId: wire.hostId,
     issues: wire.issues,
     correlation: wire.correlation,
+    retry: wire.retry === true,
   });
 }
 

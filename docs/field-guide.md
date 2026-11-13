@@ -163,7 +163,7 @@ What a new feature should not do: put a field on a row that changes at a differe
 
 - **Two connections, two retry curves.** `sdk.connect` retries HTTP from 50 ms without jitter; `openHost` reconnects the socket from 1 s with jitter. Both functions are named `retryDelay`.
 - **Two things are called `openHost`.** `@nyte-ai/host` exports the one that composes a host in this process; `@nyte-ai/sdk/client` exports the one that opens a socket to a host.
-- **An `unavailable` is usually an answer, not an outage.** More than sixty host paths answer it on purpose. Only a transport that failed, or one of three answers that mean come back later, counts as a lost link (`linkLost`). Those three are matched by their text, because the host gives them no status of their own.
+- **An `unavailable` is usually an answer, not an outage.** More than sixty host paths answer it on purpose. Only a transport that failed, or an answer with `retry` set, counts as a lost link (`linkLost`). The host sets `retry` on the answers that mean come back later: a listener that is closed, a host that disconnected its clients, and a host still opening. The client reads the field, never the message.
 - **A change can arrive at a seq the client already holds.** A job's, a child's or a page's state, and a session's activation, change without a log event, and ride the seq they joined. Stores drop only a change older than their seq.
 - **Seqs skip.** One gathered change covers several log events. No row is missed.
 - **A client older than revision 23 gets one change per event.** It takes no fragments, and a gathered frame could pass the frame limit.

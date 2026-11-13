@@ -61,6 +61,7 @@ describe("errors", () => {
       hostId: asId("h1"),
       issues: [{ severity: "error", path: ["content", 0], message: "Required." }],
       correlation: "c1",
+      retry: true,
     });
     const wire = encodeError(error);
     const decoded = decodeError(structuredClone(wire));

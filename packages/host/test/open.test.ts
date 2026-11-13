@@ -3,10 +3,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { memoryStore } from "@nyte-ai/core/store";
 import type { Host, Plugin, Store } from "@nyte-ai/core";
-import { standard } from "@nyte-ai/schema";
+import { SdkError, standard } from "@nyte-ai/schema";
+import { createTransport, linkLost } from "@nyte-ai/protocol";
 import type { HostView } from "@nyte-ai/schema";
 import { Type } from "typebox";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import { nyteProviders } from "@nyte-ai/ai";
 import { storedAccounts } from "./stored-accounts.ts";
 import { createModels } from "@nyte-ai/ai/models";
@@ -341,6 +342,88 @@ describe("openHost", () => {
     expect(refused.headers.get("X-Nyte-Host")).toBe(host.hostId);
   });
 
+  it("sets retry on each answer that asks a client to come back, so linkLost holds it a lost link and any other unavailable final", async () => {
+    const home = await folder();
+    const opening = Promise.withResolvers<SdkError>();
+
+    await using host = await openHost({
+      store: memoryStore(),
+      models: fakeModels().models,
+      plugins: [chatOnly],
+      workspace: { kind: "chat-only", locator: null },
+      home,
+      clientPlugins: (actions) => {
+        void rejection(actions.perform("browser", null, 1_000)).then(
+          opening.resolve,
+          opening.reject,
+        );
+
+        return [];
+      },
+    });
+
+    const listener = await host.listen({
+      transport: { kind: "fetch" },
+      auth: { kind: "token", token: TOKEN },
+    });
+
+    const transport = createTransport({
+      url: "http://host.test",
+      headers: async () => ({ Authorization: `Bearer ${TOKEN}` }),
+      fetch: (url, init) => listener.fetch(new Request(url, init)),
+    });
+
+    const workspace = (await host.workspaces.list())[0]?.id;
+    assert(workspace !== undefined);
+    const watching = transport.frames("connection.watch", {})[Symbol.asyncIterator]();
+    await watching.next();
+
+    const rows = [
+      { answer: "the host is still opening", retry: true, error: await opening.promise },
+      {
+        answer: "a job this host does not run",
+        retry: false,
+        error: await rejection(
+          transport.output({ workspace, job: "no-such-job" })[Symbol.asyncIterator]().next(),
+        ),
+      },
+      {
+        answer: "the host disconnected its clients",
+        retry: true,
+        error: await (async () => {
+          listener.disconnectClients();
+
+          return rejection(watching.next());
+        })(),
+      },
+      {
+        answer: "the listener is closed",
+        retry: true,
+        error: await (async () => {
+          await listener.close();
+
+          return rejection(transport.invoke("sessions.list", {}));
+        })(),
+      },
+    ];
+
+    expect(
+      rows.map((row) => ({
+        answer: row.answer,
+        code: row.error.code,
+        retry: row.error.retry,
+        lost: linkLost(row.error),
+      })),
+    ).toEqual(
+      rows.map((row) => ({
+        answer: row.answer,
+        code: "unavailable",
+        retry: row.retry,
+        lost: row.retry,
+      })),
+    );
+  });
+
   it("with a credential stored, reads no secrets key at open, listen, models.list() or the identity route; a chat's first turn and its title request read it once (§55)", async () => {
     const home = await folder();
     const store = memoryStore();
@@ -573,6 +656,18 @@ describe("openHost", () => {
     },
   );
 });
+
+async function rejection(pending: Promise<unknown>): Promise<SdkError> {
+  try {
+    await pending;
+  } catch (error) {
+    if (error instanceof SdkError) return error;
+
+    throw error;
+  }
+
+  throw new Error("Expected an SdkError.");
+}
 
 function guardFile(reason: string): string {
   return `export default {
