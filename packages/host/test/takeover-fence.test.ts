@@ -1,4 +1,4 @@
-import type { Store, StoreConnection } from "@nyte-ai/core";
+import type { Machine, OsProcess, Store, StoreConnection } from "@nyte-ai/core";
 import { envelope, leaseRef } from "@nyte-ai/core/store";
 import { composeServer, main } from "@nyte-ai/core/testing";
 import { SdkError } from "@nyte-ai/schema";
@@ -104,171 +104,247 @@ function controlledStore(
   };
 }
 
+const processA: OsProcess = { boot: "boot", pid: 101, group: 101, started: "test:1" };
+
+/** A machine that says A's process is `answer`, and that this one is `self`. */
+function machine(self: OsProcess | null, answer: "running" | "gone" | "unknown"): Machine {
+  return {
+    self: async () => self,
+    state: async (process) => (process.pid === processA.pid ? answer : "running"),
+    end: async () => "unknown",
+  };
+}
+
+const verdicts = {
+  lapsed: { a: undefined, b: undefined },
+  exited: { a: machine(processA, "running"), b: machine({ ...processA, pid: 202 }, "gone") },
+} as const;
+
 afterEach(() => {
   vi.restoreAllMocks();
   vi.useRealTimers();
 });
 
-it.each(schedules().map((schedule) => ({ order: schedule.join(" -> "), schedule })))(
-  "never publishes after takeover: $order",
-  async ({ schedule }) => {
-    vi.useFakeTimers({
-      toFake: ["Date", "performance", "setInterval", "clearInterval", "setTimeout", "clearTimeout"],
-    });
-    vi.setSystemTime(0);
-    const intervals = vi.spyOn(globalThis, "setInterval");
-    await using resources = new AsyncDisposableStack();
-    const store = resources.adopt(sqliteStore({ memory: true }), (owned) => owned.close());
-    const raw = await store.open();
-    const write = transactionGate();
-    const beat = transactionGate();
-    const claim = transactionGate();
-    const publication = "kv/takeover-fence";
-    let processName = "";
-    let lease = "";
+it.each(
+  (["lapsed", "exited"] as const).flatMap((verdict) =>
+    schedules().map((schedule) => ({ verdict, order: schedule.join(" -> "), schedule })),
+  ),
+)("never publishes after a takeover A $verdict: $order", async ({ verdict, schedule }) => {
+  vi.useFakeTimers({
+    toFake: ["Date", "performance", "setInterval", "clearInterval", "setTimeout", "clearTimeout"],
+  });
+  vi.setSystemTime(0);
+  const intervals = vi.spyOn(globalThis, "setInterval");
+  await using resources = new AsyncDisposableStack();
+  const store = resources.adopt(sqliteStore({ memory: true }), (owned) => owned.close());
+  const raw = await store.open();
+  const write = transactionGate();
+  const beat = transactionGate();
+  const claim = transactionGate();
+  const publication = "kv/takeover-fence";
+  let processName = "";
+  let lease = "";
 
-    const compose = (label: string, controlled: Store) =>
-      composeServer({
-        store: controlled,
-        models: fakeModels().models,
-        plugins: [chatOnly],
-        workspace: { kind: "chat-only", locator: null },
-        execution: { kind: "admit-only" },
-        member: { label, pid: null, capabilities: [] },
-        home: null,
-        description: { name: label, platform: "darwin", version: "0.1.0" },
-      });
-
-    const a = await compose(
-      "A",
-      controlledStore(raw, (updates) => {
-        if (updates.some((update) => update.name === publication)) return write;
-
-        if (updates.some((update) => update.name === processName && update.target !== null))
-          return beat;
-
-        return undefined;
-      }),
-    );
-
-    resources.use(a.host);
-    const heartbeatIndex = intervals.mock.calls.findIndex(([, every]) => every === 5_000);
-    const tickA = intervals.mock.calls[heartbeatIndex]?.[0];
-    const timerA = intervals.mock.results[heartbeatIndex];
-    assert(tickA !== undefined && timerA?.type === "return");
-    clearInterval(timerA.value);
-
-    const b = await compose(
-      "B",
-      controlledStore(raw, (updates) =>
-        updates.some((update) => update.name === lease && update.target !== null)
-          ? claim
-          : undefined,
-      ),
-    );
-
-    resources.use(b.host);
-    const presenceA = a.kernel.presence;
-    const presenceB = b.kernel.presence;
-    assert(presenceA !== null && presenceB !== null);
-    const { session } = await a.host.sessions.start({ content: "Base." });
-    processName = `processes/${a.kernel.instance}`;
-    lease = leaseRef(session.id, main);
-    const initial = await raw.objects.put("Initial publication");
-    const stale = await raw.objects.put("A publication");
-    const fresh = await raw.objects.put("B publication");
-    await raw.refs.set([
-      { name: publication, target: initial },
-      {
-        name: lease,
-        target: await raw.objects.put(
-          envelope(
-            "lease",
-            {
-              holder: a.kernel.hostId,
-              instance: a.kernel.instance,
-              expiresAt: 60_000,
-            },
-            0,
-          ),
-        ),
+  const compose = (label: string, controlled: Store, chosen: Machine | undefined) =>
+    composeServer({
+      store: controlled,
+      models: fakeModels().models,
+      plugins: [chatOnly],
+      workspace: { kind: "chat-only", locator: null },
+      execution: { kind: "admit-only" },
+      member: {
+        label,
+        pid: null,
+        capabilities: [],
+        ...(chosen === undefined ? {} : { machine: chosen }),
       },
-    ]);
+      home: null,
+      description: { name: label, platform: "darwin", version: "0.1.0" },
+    });
+
+  const a = await compose(
+    "A",
+    controlledStore(raw, (updates) => {
+      if (updates.some((update) => update.name === publication)) return write;
+
+      if (updates.some((update) => update.name === processName && update.target !== null))
+        return beat;
+
+      return undefined;
+    }),
+    verdicts[verdict].a,
+  );
+
+  resources.use(a.host);
+  const heartbeatIndex = intervals.mock.calls.findIndex(([, every]) => every === 5_000);
+  const tickA = intervals.mock.calls[heartbeatIndex]?.[0];
+  const timerA = intervals.mock.results[heartbeatIndex];
+  assert(tickA !== undefined && timerA?.type === "return");
+  clearInterval(timerA.value);
+
+  const b = await compose(
+    "B",
+    controlledStore(raw, (updates) =>
+      updates.some((update) => update.name === lease && update.target !== null) ? claim : undefined,
+    ),
+    verdicts[verdict].b,
+  );
+
+  resources.use(b.host);
+  const presenceA = a.kernel.presence;
+  const presenceB = b.kernel.presence;
+  assert(presenceA !== null && presenceB !== null);
+  const { session } = await a.host.sessions.start({ content: "Base." });
+  processName = `processes/${a.kernel.instance}`;
+  lease = leaseRef(session.id, main);
+  const initial = await raw.objects.put("Initial publication");
+  const stale = await raw.objects.put("A publication");
+  const fresh = await raw.objects.put("B publication");
+  await raw.refs.set([
+    { name: publication, target: initial },
+    {
+      name: lease,
+      target: await raw.objects.put(
+        envelope(
+          "lease",
+          {
+            holder: a.kernel.hostId,
+            instance: a.kernel.instance,
+            expiresAt: 60_000,
+          },
+          0,
+        ),
+      ),
+    },
+  ]);
+  if (verdict === "lapsed") {
     expect(await presenceB.holder(a.kernel.instance)).toMatchObject({ kind: "alive" });
     await vi.advanceTimersByTimeAsync(20_000);
-    expect(await presenceB.holder(a.kernel.instance)).toMatchObject({ kind: "dead" });
-    let pendingWrite: Promise<string> | undefined;
-    const takeover = b.host.execution.advance({ session: session.id, head: main });
-    resources.defer(async () => {
-      write.open();
-      beat.open();
-      claim.open();
-      await pendingWrite;
-      await takeover;
-    });
-    await claim.entered;
-    let takenOver = false;
-    let published = false;
+  }
 
-    for (const step of schedule) {
-      switch (step) {
-        case "write":
-          pendingWrite = a.kernel.store.refs.set([{ name: publication, target: stale }]).then(
-            (outcome) => outcome.kind,
-            (cause: unknown) => {
-              assert(cause instanceof SdkError);
+  expect(await presenceB.holder(a.kernel.instance)).toMatchObject({ kind: "dead", why: verdict });
+  let pendingWrite: Promise<string> | undefined;
+  const takeover = b.host.execution.advance({ session: session.id, head: main });
+  resources.defer(async () => {
+    write.open();
+    beat.open();
+    claim.open();
+    await pendingWrite;
+    await takeover;
+  });
+  await claim.entered;
+  let takenOver = false;
+  let published = false;
 
-              return cause.code;
-            },
-          );
+  for (const step of schedule) {
+    switch (step) {
+      case "write":
+        pendingWrite = a.kernel.store.refs.set([{ name: publication, target: stale }]).then(
+          (outcome) => outcome.kind,
+          (cause: unknown) => {
+            assert(cause instanceof SdkError);
 
-          if (!presenceA.revoked.aborted) await write.entered;
-          break;
-        case "write SQL":
-          if (write.called) published = (await write.commit()).kind === "set";
-          break;
-        case "write reply":
-          await write.reply();
-          expect(await pendingWrite).toBe(published ? "set" : "unavailable");
-          break;
-        case "beat":
-          tickA();
+            return cause.code;
+          },
+        );
 
-          if (!presenceA.revoked.aborted) await beat.entered;
-          break;
-        case "beat SQL":
-          if (beat.called) await beat.commit();
-          break;
-        case "beat reply":
-          await beat.reply();
-          break;
-        case "takeover": {
-          const outcome = await claim.commit();
-          takenOver = outcome.kind === "set";
-          const held = await raw.refs.get(lease);
-          assert(held !== null && held.target !== null);
-          expect(await raw.objects.get(held.target)).toMatchObject({
-            body: { instance: takenOver ? b.kernel.instance : a.kernel.instance },
-          });
+        if (!presenceA.revoked.aborted) await write.entered;
+        break;
+      case "write SQL":
+        if (write.called) published = (await write.commit()).kind === "set";
+        break;
+      case "write reply":
+        await write.reply();
+        expect(await pendingWrite).toBe(published ? "set" : "unavailable");
+        break;
+      case "beat":
+        tickA();
 
-          if (takenOver) {
-            expect(
-              await b.kernel.store.refs.set([{ name: publication, target: fresh }]),
-            ).toMatchObject({ kind: "set" });
-          }
+        if (!presenceA.revoked.aborted) await beat.entered;
+        break;
+      case "beat SQL":
+        if (beat.called) await beat.commit();
+        break;
+      case "beat reply":
+        await beat.reply();
+        break;
+      case "takeover": {
+        const outcome = await claim.commit();
+        takenOver = outcome.kind === "set";
+        const held = await raw.refs.get(lease);
+        assert(held !== null && held.target !== null);
+        expect(await raw.objects.get(held.target)).toMatchObject({
+          body: { instance: takenOver ? b.kernel.instance : a.kernel.instance },
+        });
 
-          break;
+        if (takenOver) {
+          expect(
+            await b.kernel.store.refs.set([{ name: publication, target: fresh }]),
+          ).toMatchObject({ kind: "set" });
         }
-      }
 
-      const ref = await raw.refs.get(publication);
-      assert(ref !== null && ref.target !== null);
-      expect(await raw.objects.get(ref.target)).toBe(
-        takenOver ? "B publication" : published ? "A publication" : "Initial publication",
-      );
+        break;
+      }
     }
 
-    await claim.reply();
-    expect(await takeover).toMatchObject({ kind: takenOver ? "idle" : "fenced" });
-  },
-);
+    const ref = await raw.refs.get(publication);
+    assert(ref !== null && ref.target !== null);
+    expect(await raw.objects.get(ref.target)).toBe(
+      takenOver ? "B publication" : published ? "A publication" : "Initial publication",
+    );
+  }
+
+  await claim.reply();
+  expect(await takeover).toMatchObject({ kind: takenOver ? "idle" : "fenced" });
+});
+
+it.each([
+  { name: "A's process runs", a: processA, b: "running" },
+  { name: "B's machine cannot tell", a: processA, b: "unknown" },
+  { name: "A recorded no process", a: null, b: "gone" },
+  { name: "B has no machine", a: processA, b: null },
+] as const)("keeps a silent A alive for 20 s when $name", async (row) => {
+  vi.useFakeTimers({ toFake: ["Date", "performance", "setInterval", "clearInterval"] });
+  vi.setSystemTime(0);
+  const intervals = vi.spyOn(globalThis, "setInterval");
+  await using resources = new AsyncDisposableStack();
+  const store = resources.adopt(sqliteStore({ memory: true }), (owned) => owned.close());
+
+  const compose = (label: string, chosen: Machine | undefined) =>
+    composeServer({
+      store,
+      models: fakeModels().models,
+      plugins: [chatOnly],
+      workspace: { kind: "chat-only", locator: null },
+      execution: { kind: "admit-only" },
+      member: {
+        label,
+        pid: null,
+        capabilities: [],
+        ...(chosen === undefined ? {} : { machine: chosen }),
+      },
+      home: null,
+      description: { name: label, platform: "darwin", version: "0.1.0" },
+    });
+
+  const a = await compose("A", machine(row.a, "running"));
+  resources.use(a.host);
+  const heartbeat =
+    intervals.mock.results[intervals.mock.calls.findIndex(([, every]) => every === 5_000)];
+  assert(heartbeat?.type === "return");
+  clearInterval(heartbeat.value);
+
+  const b = await compose(
+    "B",
+    row.b === null ? undefined : machine({ ...processA, pid: 202 }, row.b),
+  );
+
+  resources.use(b.host);
+  assert(b.kernel.presence !== null);
+  expect(await b.kernel.presence.holder(a.kernel.instance)).toMatchObject({ kind: "alive" });
+  await vi.advanceTimersByTimeAsync(20_000);
+  expect(await b.kernel.presence.holder(a.kernel.instance)).toMatchObject({
+    kind: "dead",
+    why: "lapsed",
+  });
+});

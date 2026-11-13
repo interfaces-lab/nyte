@@ -20,18 +20,26 @@ let self: Promise<Seen | null> | undefined;
  * A token's prefix names how it was read; change the prefix whenever the reading changes, so a token read another way is never taken for a different process.
  */
 export const localMachine: Machine = {
+  self: () => identifyProcess(process.pid),
+  async state(target) {
+    const boot = await currentBoot();
+
+    if (boot === null || target.boot !== boot || target.pid <= 1) return "unknown";
+
+    if (!exists(target.pid)) return "gone";
+    const seen = await readProcess(target.pid);
+
+    if (seen === null || !sameReading(seen.started, target.started)) return "unknown";
+
+    return seen.exited || seen.started !== target.started ? "gone" : "running";
+  },
   async end(target) {
     if (!(await mayAct(target))) return "unknown";
 
     if (!exists(target.pid)) return exists(-target.group) ? "unknown" : "gone";
     const seen = await readProcess(target.pid);
 
-    if (
-      seen === null ||
-      seen.started.slice(0, seen.started.indexOf(":")) !==
-        target.started.slice(0, target.started.indexOf(":"))
-    )
-      return "unknown";
+    if (seen === null || !sameReading(seen.started, target.started)) return "unknown";
 
     if (seen.started !== target.started) return "gone";
 
@@ -131,6 +139,11 @@ async function readProcess(pid: number): Promise<Seen | null> {
         started: `darwin-lstart-utc:${match[3]?.replace(/\s+/g, " ")}`,
         exited: match[1]?.startsWith("Z") === true,
       };
+}
+
+/** Whether two start tokens were read the same way, so that they can be compared at all. */
+function sameReading(left: string, right: string): boolean {
+  return left.slice(0, left.indexOf(":")) === right.slice(0, right.indexOf(":"));
 }
 
 /** Whether a process (or, for a negative pid, a process group) exists: true when signalling it is merely forbidden, false only when the OS says there is none. */

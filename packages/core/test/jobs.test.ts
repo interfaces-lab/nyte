@@ -799,6 +799,8 @@ describe("jobs", () => {
     const asked: OsProcess[] = [];
 
     const machine: Machine = {
+      self: async () => null,
+      state: async () => "unknown",
       async end(process) {
         asked.push(process);
 

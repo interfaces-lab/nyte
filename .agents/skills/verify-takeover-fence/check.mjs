@@ -15,6 +15,7 @@ const COVERED_FILES = [
   "packages/core/src/store/log.ts",
   "packages/core/src/store/refs.ts",
   "packages/host/src/store/sqlite.ts",
+  "packages/host/src/local/process/machine.ts",
 ];
 const here = new URL(".", import.meta.url).pathname;
 const root = resolve(here, "../../..");
@@ -32,10 +33,9 @@ function reviewNotice() {
   );
 }
 
-function check(label, appendFence, deleteProcess, expectCounterexample) {
-  console.log(
-    `\n${label}: AppendProcessFence=${appendFence}, DeleteProcessOnClaim=${deleteProcess}`,
-  );
+function check(label, constants, invariants, violates) {
+  const settings = Object.entries(constants).map(([name, value]) => `${name}=${value}`);
+  console.log(`\n${label}: ${settings.join(", ")}; ${invariants.join(", ")}`);
   const work = mkdtempSync(join(tmpdir(), "nyte-takeover-fence-"));
   try {
     copyFileSync(join(here, "TakeoverFence.tla"), join(work, "TakeoverFence.tla"));
@@ -44,11 +44,12 @@ function check(label, appendFence, deleteProcess, expectCounterexample) {
       [
         "INIT Init",
         "NEXT Next",
-        "INVARIANT NoStalePublication",
+        ...invariants.map((invariant) => `INVARIANT ${invariant}`),
         "CHECK_DEADLOCK FALSE",
         "CONSTANTS",
-        `  AppendProcessFence = ${String(appendFence).toUpperCase()}`,
-        `  DeleteProcessOnClaim = ${String(deleteProcess).toUpperCase()}`,
+        ...Object.entries(constants).map(
+          ([name, value]) => `  ${name} = ${String(value).toUpperCase()}`,
+        ),
         "",
       ].join("\n"),
     );
@@ -62,28 +63,31 @@ function check(label, appendFence, deleteProcess, expectCounterexample) {
       },
     );
     const output = `${result.stdout}${result.stderr}`;
-    const violated = output.includes("Invariant NoStalePublication is violated");
+    const violated = invariants.find((invariant) =>
+      output.includes(`Invariant ${invariant} is violated`),
+    );
     const passed = output.includes("Model checking completed. No error has been found.");
     const states = output.match(/^\d+ states generated.*$/m)?.[0] ?? "";
-    if (!violated && !passed) {
+    if (violated === undefined && !passed) {
       console.log(output);
       console.error(`ERROR: ${label} did not complete a valid check.`);
       return 2;
     }
-    if (expectCounterexample && !violated) {
+    if (violates !== null && violated !== violates) {
+      console.log(output);
       console.log(
-        `FAIL: ${label} survived; the model self-test no longer detects this design defect.`,
+        `FAIL: ${label} did not violate ${violates}; the model self-test no longer detects this design defect.`,
       );
       return 1;
     }
-    if (!expectCounterexample && violated) {
+    if (violates === null && violated !== undefined) {
       console.log(output);
-      console.log("FAIL: baseline design violates NoStalePublication. Inspect the counterexample.");
+      console.log(`FAIL: ${label} violates ${violated}. Inspect the counterexample.`);
       return 1;
     }
     console.log(states);
     console.log(
-      `PASS: ${label} ${violated ? "produced the expected model counterexample." : "satisfies the bounded design property."}`,
+      `PASS: ${label} ${violated === undefined ? "satisfies the bounded design properties." : `produced the expected ${violated} counterexample.`}`,
     );
     return 0;
   } finally {
@@ -91,12 +95,38 @@ function check(label, appendFence, deleteProcess, expectCounterexample) {
   }
 }
 
+const BASELINE = { AppendProcessFence: true, DeleteProcessOnClaim: true, PidCheckSeesExit: true };
+
+const BOTH = ["NoStalePublication", "NoLiveExitTakeover"];
+
 const started = performance.now();
 reviewNotice();
 const results = [
-  check("baseline", true, true, false),
-  check("missing publication fence mutant", false, true, true),
-  check("missing process revocation mutant", true, false, true),
+  check("baseline", BASELINE, BOTH, null),
+  check(
+    "missing publication fence mutant",
+    { ...BASELINE, AppendProcessFence: false },
+    BOTH,
+    "NoStalePublication",
+  ),
+  check(
+    "missing process revocation mutant",
+    { ...BASELINE, DeleteProcessOnClaim: false },
+    BOTH,
+    "NoStalePublication",
+  ),
+  check(
+    "pid check that calls a running process gone mutant",
+    { ...BASELINE, PidCheckSeesExit: false },
+    BOTH,
+    "NoLiveExitTakeover",
+  ),
+  check(
+    "fence under that wrong verdict",
+    { ...BASELINE, PidCheckSeesExit: false },
+    ["NoStalePublication"],
+    null,
+  ),
 ];
 console.log(`\nElapsed: ${((performance.now() - started) / 1000).toFixed(1)}s`);
 process.exit(Math.max(...results));

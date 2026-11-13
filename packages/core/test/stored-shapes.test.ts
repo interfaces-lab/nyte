@@ -30,7 +30,7 @@ it("keeps every stored shape until a store change is decided", () => {
     lease: "d0dd01cdbad7ec93",
     part: "99bf6a359ec10990",
     principals: "103773fcbe00ed1c",
-    process: "529e7948f7890396",
+    process: "95737928ecd08a26",
     project: "43d15ff3e2d118f1",
     prompt: "415e40695f4ad3f6",
     receipt: "f3eb06f1a16b8288",

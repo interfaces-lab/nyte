@@ -562,7 +562,7 @@ function recordJobProcess(kernel: Kernel, id: JobId, os: OsProcess): Promise<voi
   });
 }
 
-/** Ends the jobs whose host is dead or gone. Where the job's process group was recorded on this machine, it is ended first and only then is the job reported ended; where that cannot be established, the report says the command may still be running. A dead holder's process ref is deleted before anything is signalled, so a holder that beat after all keeps its jobs. */
+/** Ends the jobs whose host is dead or gone. Where the job's process group was recorded on this machine, it is ended first and only then is the job reported ended; where that cannot be established, the report says the command may still be running. A holder that only stopped beating has its process ref deleted before anything is signalled, so one that was paused and beats again keeps its jobs; one whose process is gone keeps its ref for the claim that takes over its leases, which would otherwise wait out the lease. */
 export async function reapJobs(kernel: Kernel): Promise<void> {
   const presence = kernel.presence;
 
@@ -588,6 +588,7 @@ export async function reapJobs(kernel: Kernel): Promise<void> {
 
     if (
       holder.kind === "dead" &&
+      holder.why === "lapsed" &&
       (await commit(kernel, [{ name: holder.name, target: null, expect: holder.expect }])).kind !==
         "set"
     )

@@ -1,7 +1,7 @@
 import { SdkError } from "@nyte-ai/schema";
-import type { HostId, Revision } from "@nyte-ai/schema";
+import type { HostId, Ref, Revision } from "@nyte-ai/schema";
 import type { Member, Presence } from "../contract/presence.ts";
-import { envelope } from "../contract/records.ts";
+import { decodeProcessRecord, envelope } from "../contract/records.ts";
 import type { StoreConnection } from "../contract/store.ts";
 import { PROCESSES, processRef } from "../store/refs.ts";
 import { fault } from "../util/dev-log.ts";
@@ -17,11 +17,14 @@ const GAP_MS = 2 * BEAT_MS;
 export const REVOKED =
   "Another Nyte took over this one's work while it was paused, so this host stopped; it reopens on its own.";
 
+/** Registers this process at `processes/<instance>`, with its OS process where its machine can tell, beats it every 5 s and fences every write on it. `holder` judges a peer dead after 20 s unchanged while this process wrote within 10 s, or at once when the peer's record names an OS process its machine says is gone; a peer whose process the machine cannot tell about waits out the 20 s. */
 export async function openPresence(
   raw: StoreConnection,
   input: { readonly instance: string; readonly holder: HostId; readonly member: Member },
 ): Promise<Presence> {
   const name = processRef(input.instance);
+  const machine = input.member.machine;
+  const os = (await machine?.self()) ?? null;
 
   const body = envelope(
     "process",
@@ -32,6 +35,7 @@ export async function openPresence(
       pid: input.member.pid,
       capabilities: [...input.member.capabilities],
       startedAt: Date.now(),
+      ...(os === null ? {} : { os }),
     },
     Date.now(),
   );
@@ -64,6 +68,13 @@ export async function openPresence(
   };
 
   const writable = (now: number): boolean => now - wroteAt <= GAP_MS;
+
+  const gone = async (ref: Ref): Promise<boolean> => {
+    if (machine === undefined || ref.target === null) return false;
+    const record = decodeProcessRecord(await raw.objects.get(ref.target));
+
+    return record?.os !== undefined && (await machine.state(record.os)) === "gone";
+  };
 
   const observe = (instance: string, current: Revision, now: number) => {
     const known = seen.get(instance);
@@ -135,10 +146,17 @@ export async function openPresence(
       }
 
       const lapsed = now - observe(instance, ref.revision, now).since;
+      const dead = { kind: "dead", name: ref.name, expect: ref.revision } as const;
+      const alive = {
+        kind: "alive",
+        until: Date.now() + Math.max(LAPSE_MS - lapsed, BEAT_MS),
+      } as const;
 
-      return writable(now) && lapsed >= LAPSE_MS
-        ? { kind: "dead", name: ref.name, expect: ref.revision }
-        : { kind: "alive", until: Date.now() + Math.max(LAPSE_MS - lapsed, BEAT_MS) };
+      if (!writable(now)) return alive;
+
+      if (lapsed >= LAPSE_MS) return { ...dead, why: "lapsed" };
+
+      return (await gone(ref)) ? { ...dead, why: "exited" } : alive;
     },
     async sweep() {
       const listed = await raw.refs.list(PROCESSES);

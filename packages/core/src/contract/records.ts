@@ -341,6 +341,8 @@ const ProcessRecordType = record({
   pid: nullable(Type.Number()),
   capabilities: list(Type.String()),
   startedAt: Type.Number(),
+  /** The OS process it runs as, for a peer on the same machine to tell at once that it is gone; absent where its host cannot tell. */
+  os: Type.Optional(OsProcessType),
 });
 
 export type ProcessRecord = Static<typeof ProcessRecordType>;

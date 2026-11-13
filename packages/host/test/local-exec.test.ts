@@ -289,6 +289,45 @@ describe.skipIf(windows)("the local machine", () => {
     expect(running(os.pid)).toBe(true);
   });
 
+  it.each([
+    { name: "running while it runs", change: (os: OsProcess) => os, answer: "running" },
+    {
+      name: "gone for its pid with another start",
+      change: (os: OsProcess) => ({ ...os, started: `${os.started}0` }),
+      answer: "gone",
+    },
+    {
+      name: "unknown for a start read another way",
+      change: (os: OsProcess) => ({ ...os, started: `other:${os.started}` }),
+      answer: "unknown",
+    },
+    {
+      name: "unknown on another boot",
+      change: (os: OsProcess) => ({ ...os, boot: `${os.boot}0` }),
+      answer: "unknown",
+    },
+    {
+      name: "unknown for pid 1",
+      change: (os: OsProcess) => ({ ...os, pid: 1, group: 1 }),
+      answer: "unknown",
+    },
+  ])("tells a process $name", async (row) => {
+    const os = await started("sleep 30");
+
+    expect(await localMachine.state(row.change(os))).toBe(row.answer);
+  });
+
+  it("tells a process gone once it exited, and this host's own process running", async () => {
+    const finished = await started("sleep 0.2");
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    const self = await localMachine.self();
+
+    expect({
+      finished: await localMachine.state(finished),
+      self: self === null ? null : await localMachine.state(self),
+    }).toEqual({ finished: "gone", self: "running" });
+  });
+
   it("signals nothing when the leader exited and its group still runs, and answers gone once nothing does", async () => {
     const orphaned = await started("sleep 30 & sleep 0.3");
     await new Promise((resolve) => setTimeout(resolve, 800));
