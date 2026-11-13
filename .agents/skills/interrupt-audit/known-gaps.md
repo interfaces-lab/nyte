@@ -21,6 +21,7 @@ These are real and not fixed. Each names what it would take. The commit that fix
 - **Mobile cannot answer an approval.** It shows that the run waits.
 - **The TUI and mobile keep showing a chat that was deleted elsewhere.** Their head store now goes stale with `unknown`; neither acts on it, and neither reads `archived`.
 - **A reconnect's reads wait for the welcome.** A resume sends `resume.held` only to a host whose welcome names revision 27 or later, since an older host refuses the field, so each chat's and list's read leaves one round trip after the hello instead of riding with it. Remembering the revision a host last named and reading again without `held` on `invalid` would remove the wait.
+- **A command's output crosses the wire twice.** Its tail goes out as a progress frame while it runs, and the settled row carries the output again: 4.4 KB each for a 4 KB log. A settled row that names the progress it already sent would halve a tool turn.
 - **The HTTP stream channel wraps base64 in JSON in SSE.** A frame kind without the inner layers needs a revision bump.
 - **A stalled git remote or formatter hangs its call.** `git push`, `blame` and the formatter run have no timeout.
 - **A lease's holder notices a lapse up to one renewal late.** With presence the 20 s rule and the process fence cover it; changing it means running the takeover-fence checks.

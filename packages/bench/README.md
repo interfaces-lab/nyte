@@ -145,7 +145,7 @@ Read the spans back:
 | Step | What it does |
 | --- | --- |
 | S1 | One streamed reply: 400 characters of thinking and 4,000 of text, in deltas of 10 characters 5 ms apart |
-| S2 | One tool turn: a shell call that returns 4,096 bytes, then 1,000 characters of text |
+| S2 | One tool turn: a shell call that returns 4,096 bytes and runs for 300 ms, then 1,000 characters of text |
 | S3 | A fresh client opens a chat of 100 exchanges; `S3.all` then pages its whole history |
 | S4 | A fresh client lists 200 chats; `S4.title` renames one |
 | S5 | One client, one chat open, idle for a minute |
@@ -159,14 +159,16 @@ Server to client, in bytes. The reference is [t3code](https://github.com/pingdot
 
 | Step | Loopback payload, before | Now | Off loopback on socket, before | Now | t3code, compressed | Target |
 | --- | ---: | ---: | ---: | ---: | ---: | --- |
-| S1 | 83,799 in 458 messages | 27,236 in 86 | 6,863 | 2,234 | 4,185 | Under t3code while still streaming tokens, which t3code does not |
-| S2 | 45,016 in 126 | 19,914 in 27 | 3,172 | 1,695 | 4,189 | Under t3code |
-| S3 | 74,986 | 74,986 | 19,821 | 19,829 | 22,718 | Under t3code's cold load |
-| S3.all | 236,678 | 236,678 | 182,053 | 39,946 | 37,586 | Within 10% of t3code; random ids are what is left |
-| S4 | 64,971 | 53,491 | not measured | 14,836 | 13,570 for 200 rows | Within 10% of t3code |
-| S4.title | 979 | 979 | 229 | 230 | 513 | Under t3code |
-| S5 | 32 | 32 | 56 | 56 | 66 | Under t3code |
+| S1 | 83,799 in 458 messages | 27,895 in 86 | 6,863 | 2,168 | 4,185 | Under t3code while still streaming tokens, which t3code does not |
+| S2 | 45,016 in 126 | 25,477 in 31 | 3,172 | 1,763 | 4,189 | Under t3code |
+| S3 | 74,986 | 75,245 | 19,821 | 20,404 | 22,718 | Under t3code's cold load |
+| S3.all | 236,678 | 236,937 | 182,053 | 40,677 | 37,586 | Within 10% of t3code; random ids are what is left |
+| S4 | 64,971 | 53,750 | not measured | 15,355 | 13,570 for 200 rows | Within 10% of t3code; now 13% over |
+| S4.title | 979 | 979 | 229 | 231 | 513 | Under t3code |
+| S5 | 32 | 140 | 56 | 92 | 66 | Under t3code; now over, by the probe below |
 | S6 | 2,687 | 1,038 in 5 | 1,883 | 995 | 234 for the session alone | Open: the order now crosses only where it moved; the welcome and the answer's empty tables are left |
+
+Three of these moved for a reason other than size work. The "before" S2 ran a command that returned at once, which hid what a real one costs: its output tail as a progress frame and more moves of the session's row. S2 now runs for 300 ms, so its "Now" is not comparable with its "before". S3 and S4 carry one more request, 519 bytes on the socket: a client that has not pinned its host asks for the host's identity as it connects, which a pinned client always did. And S5's idle minute holds two probes each way, 172 bytes up and 108 down, which is how a client finds a link that died without a close.
 
 What is left, largest first: the host view's first frame, which crosses base64 inside SSE (7 KB of S3 and S4), session rows of about 870 bytes for a 40-character title (S4), and in S6 the welcome (249 bytes) and a resume's answer that names all nine tables when none changed (483).
 

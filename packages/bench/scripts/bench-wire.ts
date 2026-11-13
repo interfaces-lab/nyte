@@ -338,7 +338,7 @@ function answer(request: Request): Reply {
   if (asked === "Go.") return { content: [thinking, text("word ".repeat(800))] };
 
   if (asked === "Run it." && request.context.messages.at(-1)?.role !== "toolResult") {
-    const command = { command: "cat build.log", description: "Show the build log" };
+    const command = { command: "cat build.log && sleep 0.3", description: "Show the build log" };
 
     return {
       content: [

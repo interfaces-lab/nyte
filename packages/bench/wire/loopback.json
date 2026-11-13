@@ -1,5 +1,5 @@
 {
-  "commit": "2cb0954a2e18e6a1df84b9aa25b70bc2befac7d0",
+  "commit": "ff729c9b56a8087d9689f9858f6dee456896bf7f",
   "node": "v26.13.0",
   "deflate": {
     "offered": "permessage-deflate; client_max_window_bits",
@@ -9,17 +9,17 @@
     "S1": {
       "title": "stream text",
       "down": {
-        "bytes": 27236,
+        "bytes": 27895,
         "messages": 86,
-        "ws": 27137,
+        "ws": 27796,
         "http": {
           "requests": 1,
           "bytes": 99
         },
-        "socket": 27842,
+        "socket": 28501,
         "deflate": {
-          "alone": 11017,
-          "shared": 1696
+          "alone": 11219,
+          "shared": 1734
         },
         "kinds": {
           "http head.send": {
@@ -32,19 +32,23 @@
           },
           "event change session heads+messages+turns": {
             "messages": 1,
-            "bytes": 2014
+            "bytes": 1610
+          },
+          "event change session messages+turns": {
+            "messages": 1,
+            "bytes": 1193
           },
           "text whole": {
             "messages": 2,
-            "bytes": 294
+            "bytes": 344
           },
           "text append": {
-            "messages": 78,
-            "bytes": 14523
+            "messages": 77,
+            "bytes": 14333
           },
           "event change session messages": {
             "messages": 1,
-            "bytes": 647
+            "bytes": 657
           },
           "event change session heads+messages+turns+usage": {
             "messages": 1,
@@ -73,27 +77,29 @@
         }
       },
       "extra": {
-        "streamed-text messages": 80,
-        "streamed-text median bytes": 190,
+        "streamed-text messages": 79,
+        "streamed-text median bytes": 191,
         "streamed-text p90 bytes": 191,
-        "overhead ratio": 6.19
+        "overhead ratio": 6.34
       },
-      "sequence": ["http head.send"]
+      "sequence": [
+        "http head.send"
+      ]
     },
     "S2": {
       "title": "tool turn",
       "down": {
-        "bytes": 19914,
-        "messages": 27,
-        "ws": 19815,
+        "bytes": 25477,
+        "messages": 31,
+        "ws": 25378,
         "http": {
           "requests": 1,
           "bytes": 99
         },
-        "socket": 20284,
+        "socket": 25863,
         "deflate": {
-          "alone": 7701,
-          "shared": 1275
+          "alone": 8654,
+          "shared": 1387
         },
         "kinds": {
           "http head.send": {
@@ -106,19 +112,31 @@
           },
           "event change session heads+messages+turns": {
             "messages": 2,
-            "bytes": 3443
+            "bytes": 3469
+          },
+          "event change session background": {
+            "messages": 1,
+            "bytes": 375
+          },
+          "text progress": {
+            "messages": 1,
+            "bytes": 4466
           },
           "event change session background+heads+messages+turns": {
             "messages": 1,
-            "bytes": 4720
+            "bytes": 4250
+          },
+          "event change session heads+messages": {
+            "messages": 1,
+            "bytes": 1045
           },
           "text whole": {
             "messages": 1,
-            "bytes": 137
+            "bytes": 167
           },
           "text append": {
-            "messages": 16,
-            "bytes": 3070
+            "messages": 17,
+            "bytes": 3161
           },
           "event change session heads+messages+turns+usage": {
             "messages": 1,
@@ -147,34 +165,40 @@
         }
       },
       "extra": {
-        "tool call bytes": 3791,
-        "tool call messages": 2
+        "tool call bytes": 8521,
+        "tool call messages": 4
       },
-      "sequence": ["http head.send"]
+      "sequence": [
+        "http head.send"
+      ]
     },
     "S3": {
       "title": "cold open, newest screen",
       "down": {
-        "bytes": 74986,
+        "bytes": 75245,
         "messages": 6,
         "ws": 67816,
         "http": {
-          "requests": 3,
-          "bytes": 7170
+          "requests": 4,
+          "bytes": 7429
         },
-        "socket": 75971,
+        "socket": 76492,
         "deflate": {
-          "alone": 11837,
-          "shared": 11626
+          "alone": 11835,
+          "shared": 11629
         },
         "kinds": {
+          "http .nyte/identity": {
+            "messages": 1,
+            "bytes": 255
+          },
           "http stream comment": {
             "messages": 1,
             "bytes": 13
           },
           "http stream connection.watch chunk": {
             "messages": 1,
-            "bytes": 7082
+            "bytes": 7086
           },
           "http .nyte/ws/ticket": {
             "messages": 1,
@@ -211,15 +235,19 @@
         "messages": 5,
         "ws": 548,
         "http": {
-          "requests": 3,
+          "requests": 4,
           "bytes": 6
         },
-        "socket": 2014,
+        "socket": 2241,
         "deflate": {
-          "alone": 462,
-          "shared": 316
+          "alone": 459,
+          "shared": 315
         },
         "kinds": {
+          "http .nyte/identity": {
+            "messages": 1,
+            "bytes": 0
+          },
           "http .nyte/streams": {
             "messages": 1,
             "bytes": 2
@@ -256,9 +284,10 @@
       },
       "extra": {
         "window messages": 40,
-        "round trips": 7
+        "round trips": 8
       },
       "sequence": [
+        "http .nyte/identity",
         "http .nyte/streams",
         "http connection.watch",
         "http .nyte/ws/ticket",
@@ -271,26 +300,30 @@
     "S3.all": {
       "title": "cold open, all history",
       "down": {
-        "bytes": 236678,
+        "bytes": 236937,
         "messages": 6,
         "ws": 67816,
         "http": {
-          "requests": 5,
-          "bytes": 168862
+          "requests": 6,
+          "bytes": 169121
         },
-        "socket": 238190,
+        "socket": 238711,
         "deflate": {
-          "alone": 11837,
-          "shared": 11626
+          "alone": 11835,
+          "shared": 11629
         },
         "kinds": {
+          "http .nyte/identity": {
+            "messages": 1,
+            "bytes": 255
+          },
           "http stream comment": {
             "messages": 1,
             "bytes": 13
           },
           "http stream connection.watch chunk": {
             "messages": 1,
-            "bytes": 7082
+            "bytes": 7086
           },
           "http .nyte/ws/ticket": {
             "messages": 1,
@@ -331,15 +364,19 @@
         "messages": 5,
         "ws": 548,
         "http": {
-          "requests": 5,
+          "requests": 6,
           "bytes": 254
         },
-        "socket": 2854,
+        "socket": 3081,
         "deflate": {
-          "alone": 462,
-          "shared": 316
+          "alone": 459,
+          "shared": 315
         },
         "kinds": {
+          "http .nyte/identity": {
+            "messages": 1,
+            "bytes": 0
+          },
           "http .nyte/streams": {
             "messages": 1,
             "bytes": 2
@@ -381,9 +418,10 @@
       "extra": {
         "messages shown": 200,
         "history pages with messages": 1,
-        "round trips": 9
+        "round trips": 10
       },
       "sequence": [
+        "http .nyte/identity",
         "http .nyte/streams",
         "http connection.watch",
         "http .nyte/ws/ticket",
@@ -398,26 +436,30 @@
     "S4": {
       "title": "session list",
       "down": {
-        "bytes": 53491,
+        "bytes": 53750,
         "messages": 5,
         "ws": 46321,
         "http": {
-          "requests": 3,
-          "bytes": 7170
+          "requests": 4,
+          "bytes": 7429
         },
-        "socket": 54474,
+        "socket": 54995,
         "deflate": {
-          "alone": 6774,
-          "shared": 6592
+          "alone": 6874,
+          "shared": 6691
         },
         "kinds": {
+          "http .nyte/identity": {
+            "messages": 1,
+            "bytes": 255
+          },
           "http stream comment": {
             "messages": 1,
             "bytes": 13
           },
           "http stream connection.watch chunk": {
             "messages": 1,
-            "bytes": 7082
+            "bytes": 7086
           },
           "http .nyte/ws/ticket": {
             "messages": 1,
@@ -450,15 +492,19 @@
         "messages": 3,
         "ws": 308,
         "http": {
-          "requests": 3,
+          "requests": 4,
           "bytes": 6
         },
-        "socket": 1760,
+        "socket": 1987,
         "deflate": {
           "alone": 253,
           "shared": 203
         },
         "kinds": {
+          "http .nyte/identity": {
+            "messages": 1,
+            "bytes": 0
+          },
           "http .nyte/streams": {
             "messages": 1,
             "bytes": 2
@@ -489,6 +535,7 @@
         "sessions listed": 50
       },
       "sequence": [
+        "http .nyte/identity",
         "http .nyte/streams",
         "http connection.watch",
         "http .nyte/ws/ticket",
@@ -508,8 +555,8 @@
         },
         "socket": 983,
         "deflate": {
-          "alone": 527,
-          "shared": 225
+          "alone": 528,
+          "shared": 228
         },
         "kinds": {
           "event change host sessions": {
@@ -539,24 +586,19 @@
     "S5": {
       "title": "idle",
       "down": {
-        "bytes": 32,
+        "bytes": 0,
         "messages": 0,
         "ws": 0,
         "http": {
           "requests": 0,
-          "bytes": 32
+          "bytes": 0
         },
-        "socket": 56,
+        "socket": 0,
         "deflate": {
           "alone": 0,
           "shared": 0
         },
-        "kinds": {
-          "http stream comment": {
-            "messages": 4,
-            "bytes": 32
-          }
-        }
+        "kinds": {}
       },
       "up": {
         "bytes": 0,
@@ -566,7 +608,7 @@
           "requests": 0,
           "bytes": 0
         },
-        "socket": 12,
+        "socket": 0,
         "deflate": {
           "alone": 0,
           "shared": 0
@@ -588,8 +630,8 @@
         },
         "socket": 1445,
         "deflate": {
-          "alone": 579,
-          "shared": 468
+          "alone": 580,
+          "shared": 472
         },
         "kinds": {
           "http .nyte/ws/ticket": {
@@ -628,8 +670,8 @@
         },
         "socket": 1333,
         "deflate": {
-          "alone": 457,
-          "shared": 364
+          "alone": 455,
+          "shared": 363
         },
         "kinds": {
           "http .nyte/ws/ticket": {
