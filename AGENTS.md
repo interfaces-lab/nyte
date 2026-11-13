@@ -7,6 +7,7 @@
 - Add backward compatibility only when asked.
 - `node_modules` is the source of truth for library types.
 - Before changing a package, read `packages/<name>/AGENTS.md` if it exists. It isn't loaded for you.
+- The field guide maps the path a message takes from a client through the host and core and back, with its clocks, its surprises and its known gaps. Read it before changing that path.
 - AGENTS.md names symbols, concepts and commands, never file or folder paths: files move. `pnpm lint` rejects a path.
 - Put new guidance in the file that already owns the topic; create a skill only for a distinct topic.
 - Work in the current checkout. Create a branch, worktree or PR only when asked; then base it on `origin/main` and target `main`.
