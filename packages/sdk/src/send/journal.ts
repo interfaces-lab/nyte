@@ -39,7 +39,11 @@ export interface JournalLoop {
   expired(session: SessionId, head: HeadName): readonly Message["id"][];
   /** Sends the expired sends shown as `message` in `session` again, as if just made, and whether there were any. */
   resend(session: SessionId, message: Message["id"]): Promise<boolean>;
-  /** Removes the expired sends shown as `message` in `session`, and whether there were any. */
+  /**
+   * Removes the sends shown as `message` in `session` that the host has not answered, expired or
+   * not, so they are never posted again, and whether there were any. Each one's `send` rejects with
+   * `unknown`; a post already on its way that the host admits is withdrawn with `receipt.stop`.
+   */
   discard(session: SessionId, message: Message["id"]): Promise<boolean>;
   subscribe(listener: () => void): Disposer;
 }
@@ -62,6 +66,7 @@ type Held = {
   answered: Message["id"] | null;
   answeredAfter: number | null;
   expired: boolean;
+  discarded: AbortController;
 };
 
 /**
@@ -161,15 +166,19 @@ export function journalLoop(rows: Rows, journal: RequestJournal, host: HostId): 
   };
 
   const post = async (current: Held): Promise<Sent> => {
-    const { id } = current.entry;
+    const { id, session } = current.entry;
+    const discarded = current.discarded.signal;
 
     for (;;) {
+      discarded.throwIfAborted();
+
       try {
         const sent = await attempt(current.entry);
 
         if (sent === EXPIRED) break;
 
-        return sent;
+        if (!discarded.aborted) return sent;
+        await rows.call("receipt.stop", { session, receipt: id });
       } catch (error) {
         const closing = rows.link.signal.aborted;
 
@@ -189,7 +198,7 @@ export function journalLoop(rows: Rows, journal: RequestJournal, host: HostId): 
         dev("sdk", "send retrying", { receipt: id, attempts: current.attempts, delay });
         current.retrying = { at: Date.now() + delay, reason: error.message };
         changed();
-        await backoff(rows.link, delay, rows.link.signal);
+        await backoff(rows.link, delay, AbortSignal.any([rows.link.signal, discarded]));
       }
     }
 
@@ -233,6 +242,7 @@ export function journalLoop(rows: Rows, journal: RequestJournal, host: HostId): 
       answered: null,
       answeredAfter: null,
       expired: false,
+      discarded: new AbortController(),
     };
 
     const key = JSON.stringify([entry.session, entry.head]);
@@ -350,9 +360,20 @@ export function journalLoop(rows: Rows, journal: RequestJournal, host: HostId): 
       return again.length > 0;
     },
     async discard(session, message) {
-      const gone = expiredHeld(session, message);
+      const gone = [...held.values()].filter(
+        (current) =>
+          current.answered === null &&
+          current.entry.session === session &&
+          (current.entry.options.replace ?? asId<"message">(current.entry.id)) === message,
+      );
 
-      for (const current of gone) held.delete(current.entry.id);
+      for (const current of gone) {
+        held.delete(current.entry.id);
+        current.discarded.abort(
+          new SdkError("unknown", "The message was removed before the host had it."),
+        );
+      }
+
       await Promise.all(gone.map((current) => journal.remove(current.entry.id)));
 
       if (gone.length > 0) changed();

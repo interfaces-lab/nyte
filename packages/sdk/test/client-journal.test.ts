@@ -772,6 +772,102 @@ async function restart(row: Restart): Promise<void> {
   await expect.poll(() => stored.size).toBe(0);
 }
 
+interface Removal {
+  readonly name: string;
+  /** Whether the person removes the message while a post of it is on its way, which the host then admits; otherwise between two failed posts. */
+  readonly inFlight: boolean;
+}
+
+const removals: readonly Removal[] = [
+  {
+    name: "a message removed between posts while the host is away is never sent",
+    inFlight: false,
+  },
+  {
+    name: "a message removed while its post is on the way is withdrawn when the host admits it",
+    inFlight: true,
+  },
+];
+
+describe("removing a message the host has not answered", () => {
+  for (const row of removals) it(row.name, () => removeUnsent(row));
+});
+
+async function removeUnsent(row: Removal): Promise<void> {
+  const host = await open();
+  const journal = createSendJournal();
+  const connection = await client(host, journal);
+  const session = await settledChat(host, connection);
+  const halfway = Promise.withResolvers<void>();
+  const resume = Promise.withResolvers<void>();
+  const arrived = Promise.withResolvers<void>();
+  const admit = Promise.withResolvers<void>();
+  const receipt = asId<"receipt">(crypto.randomUUID());
+  const message = asId<"message">(receipt);
+  let down = true;
+  let posts = 0;
+
+  host.fake.reply({
+    content: [{ type: "text", text: "abcdefgh" }],
+    tokens: 4,
+    async tap(streamed) {
+      if (streamed !== 1) return;
+      halfway.resolve();
+      await resume.promise;
+    },
+  });
+
+  const first = await session.send("First.");
+  await halfway.promise;
+
+  host.intercept(async (request, next) => {
+    if (readOperation(request) !== "head.send") return next(request);
+    posts += 1;
+    arrived.resolve();
+
+    if (row.inFlight) await admit.promise;
+    else if (down) throw new TypeError("fetch failed");
+
+    return next(request);
+  });
+
+  const sending = session.send("Removed.", { id: receipt, delivery: "queue" });
+  await arrived.promise;
+
+  if (!row.inFlight)
+    await viewWhen(
+      () => session.view(),
+      (view) =>
+        view.queue.some(
+          (shown) =>
+            shown.id === message && shown.status.kind === "unsent" && shown.status.attempts >= 1,
+        ),
+    );
+
+  const refused = expect(sending).rejects.toMatchObject({ code: "unknown" });
+  expect(await session.receipt(receipt).stop()).toEqual({ kind: "missing" });
+  const removed = posts;
+  expect(queued(await session.view())).toEqual([]);
+  down = false;
+  admit.resolve();
+  await refused;
+  resume.resolve();
+  await first.settled();
+
+  const settled = await viewWhen(
+    () => session.view(),
+    (view) => view.execution.kind === "idle",
+  );
+
+  expect([...users(settled), ...queued(settled)]).toEqual(["Hi.", "First."]);
+  expect([...users(await host.view(session.id)), ...queued(await host.view(session.id))]).toEqual([
+    "Hi.",
+    "First.",
+  ]);
+  expect(posts).toBe(removed);
+  expect(await journal.load()).toEqual([]);
+}
+
 /** Sends `content` from a client over `left.storage` whose request the host never answers, admitted first or `dropped` on the way, and closes the client as a quit does. */
 async function quitSending(
   left: Quit,
