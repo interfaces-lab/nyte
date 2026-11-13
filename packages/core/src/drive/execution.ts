@@ -29,6 +29,7 @@ import { recoverMoves } from "../engine/move.ts";
 import { readChildState } from "../store/children.ts";
 import { begin, endRun, newRun } from "../engine/runs.ts";
 import { reapJobs } from "../engine/jobs.ts";
+import { recoverReports } from "../engine/reports.ts";
 import { BEAT_MS } from "../engine/presence.ts";
 import { recoverStarts } from "../engine/start.ts";
 import { crashLooping, interruption, parkedFailure } from "../engine/interruptions.ts";
@@ -296,6 +297,8 @@ async function recover(
     await recoverMoves(kernel, session);
     await recoverStarts(kernel, session);
   }
+
+  await recoverReports(kernel, session);
 
   const runnable: HeadName[] = [];
 

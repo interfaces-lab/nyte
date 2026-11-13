@@ -359,6 +359,31 @@ export function recording(store: StoreConnection) {
   };
 }
 
+/** A connection whose process dies once a set `kill` names has committed: every later set throws, as no write reaches the store after a crash. */
+export function killable(store: StoreConnection) {
+  let after: ((updates: readonly RefUpdate[]) => boolean) | null = null;
+  let dead = false;
+
+  return {
+    kill(match: (updates: readonly RefUpdate[]) => boolean): void {
+      after = match;
+    },
+    store: {
+      ...store,
+      refs: {
+        ...store.refs,
+        async set(updates) {
+          if (dead) throw new Error("The process was killed.");
+          const outcome = await store.refs.set(updates);
+          dead = after?.(updates) ?? false;
+
+          return outcome;
+        },
+      },
+    } satisfies StoreConnection,
+  };
+}
+
 async function refuse(): Promise<never> {
   throw new Error("No environment in tests.");
 }

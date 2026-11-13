@@ -12,6 +12,7 @@ import {
   JsonObjectType,
   JsonType,
   McpCeilingType,
+  MessageSourceType,
   ModelRefType,
   MoveOutcomeType,
   PartStatusType,
@@ -35,6 +36,7 @@ import type {
   JobEnd,
   Json,
   McpCeiling,
+  MessageSource,
   MoveOutcome,
   PartStatus,
   Placement,
@@ -179,6 +181,15 @@ const RECEIPT = {
   digest: Type.String(),
 };
 
+const ReportedEndType = Type.Union([
+  record({ kind: Type.Literal("run"), session: idSchema<"session">(), run: idSchema<"run">() }),
+  record({ kind: Type.Literal("job"), job: idSchema<"job">() }),
+]);
+
+/** The end a report tells of: a child's run or a job. */
+export type ReportedEnd = Static<typeof ReportedEndType>;
+
+/** A `report` receipt reserves the report a child's run or a job owes `head`, in the set that ends it. Admitting the report replaces it with the `send` receipt of the same id, a waiter that takes the end deletes it, and a delivery refused for good settles it `undelivered`. */
 const ReceiptRecordType = Type.Union([
   record({
     ...RECEIPT,
@@ -206,6 +217,15 @@ const ReceiptRecordType = Type.Union([
     ...RECEIPT,
     kind: Type.Literal("batch"),
     outcome: nullable(typed<BatchOutcome>()(BatchOutcomeType)),
+  }),
+  record({
+    id: idSchema<"receipt">(),
+    kind: Type.Literal("report"),
+    head: idSchema<"head">(),
+    content: Type.String(),
+    source: typed<MessageSource>()(MessageSourceType),
+    ended: ReportedEndType,
+    outcome: nullable(record({ kind: Type.Literal("undelivered"), reason: Type.String() })),
   }),
 ]);
 

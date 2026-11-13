@@ -1,13 +1,13 @@
 import { Buffer } from "node:buffer";
 import { once } from "node:events";
 import { isJson, isJsonObject } from "@nyte-ai/schema";
-import type { Json, JsonSchema } from "@nyte-ai/schema";
+import type { Json, JsonSchema, SessionId } from "@nyte-ai/schema";
 import type { Listener } from "@nyte-ai/core";
 import type { ServedHost } from "@nyte-ai/core/server";
 import { decodeError } from "@nyte-ai/protocol";
 import { WebSocket } from "ws";
 import type { RawData } from "ws";
-import { assert } from "vitest";
+import { assert, expect, vi } from "vitest";
 import { listen } from "../../src/index.ts";
 import { open } from "./fake-models.ts";
 import type { FakeModels } from "./fake-models.ts";
@@ -38,6 +38,23 @@ export function hello(
       actions: actions.map((action) => ({ name: action, summary: `Does ${action}.`, input: {} })),
     },
   };
+}
+
+/** Waits until the run a child's report started on `session` has ended, so a resume and the fresh read after it see the same state. */
+export async function reportSettled(host: Composed, session: SessionId): Promise<void> {
+  await vi.waitFor(async () => {
+    const view = await host.session(session).view();
+
+    expect(view.execution.kind).toBe("idle");
+    expect(
+      view.messages.some(
+        (message) =>
+          message.kind === "user" &&
+          message.source.kind === "child" &&
+          message.status.kind === "landed",
+      ),
+    ).toBe(true);
+  });
 }
 
 export async function target(listener: Listener, actions: readonly string[] = ["open"]) {

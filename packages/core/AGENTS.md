@@ -32,7 +32,8 @@
 - **Idempotent IDs.** A reused receipt or session id with the same digest replays; a different digest throws. Ids created inside a durable call are recorded in `CallRecord.acquisitions`. Tool call ids are `${run}:${requests}:${providerId}`.
 - **Replace.** An inbox target is revised in place. A landed target rewinds the head, fences the live run and admits the new message in one `set`.
 - **Run fence.** Writes for a run fence on `live/<id>`. A stop sets `stopping`, deletes `live/<id>` and fails open parts in one `set`.
-- **Only `endRun` retires a run**, in one `set`: deletes `runs/<id>` and `live/<id>`, writes `lastRun`, settles receipts, fails live parts unless completed.
+- **Only `endRun` retires a run**, in one `set`: deletes `runs/<id>` and `live/<id>`, writes `lastRun`, settles receipts, fails live parts unless completed, and reserves a child's report.
+- **Reports are reserved, not sent.** A child's run or a job reserves its report as a `report` receipt in the set that ends it. A wait that takes the end deletes it in the same set; admission adopts it under its own id, so a second delivery replays; `recover` delivers what a crash left.
 - **Head lease.** One process advances a head, holding `leases/<head>` (30 s, renewed every 10 s). Claims compare `holder` and `instance`.
 - **Presence.** Each process beats `processes/<instance>` by CAS and fences every write on it. A lost beat or a fenced write revokes the process.
 - **Takeover.** A peer is dead only after 20 s unchanged while this process wrote within 10 s. The takeover deletes its process ref in the same `set` as the lease write, so the dead process can't write again. When changing this, run the verify-takeover-fence skill.

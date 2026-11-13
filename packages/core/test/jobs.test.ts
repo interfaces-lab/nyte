@@ -1,5 +1,13 @@
 import { asId, standard } from "@nyte-ai/schema";
-import type { CallId, JobId, JobView, Json, OutputFrame, SessionId } from "@nyte-ai/schema";
+import type {
+  CallId,
+  JobId,
+  JobView,
+  Json,
+  OutputFrame,
+  RefUpdate,
+  SessionId,
+} from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { assert, describe, expect, it, vi } from "vitest";
 import { createHost } from "../src/api/connection.ts";
@@ -9,12 +17,19 @@ import { loadWaits } from "../src/engine/waits.ts";
 import { workspaceHandle } from "../src/env/workspaces.ts";
 import { viewHead } from "../src/watch/view.ts";
 import { LOCAL, definePart } from "../src/index.ts";
-import { callRef, decodeCallRecord, memoryStore } from "../src/store.ts";
+import {
+  callRef,
+  decodeCallRecord,
+  decodeReceiptRecord,
+  inboxRef,
+  memoryStore,
+  receiptRef,
+} from "../src/store.ts";
 import type { Kernel } from "../src/contract/kernel.ts";
-import type { ConnectionContext, Durable } from "../src/index.ts";
+import type { ConnectionContext, Durable, StoreConnection } from "../src/index.ts";
 import { addWorkspace, createDisk, fakeProvider, kernelOver, world } from "./fake-env.ts";
 import type { Process } from "./fake-env.ts";
-import { main, until } from "../src/harness.ts";
+import { killable, main, until } from "../src/harness.ts";
 
 const question = definePart({
   kind: "test/question",
@@ -193,6 +208,131 @@ describe("jobs", () => {
     expect((await session.view()).background).toEqual([
       expect.objectContaining({ id: job.id, state: "failed" }),
     ]);
+  });
+
+  it.each([
+    {
+      name: "killed between the job's end and its report",
+      awaited: false,
+      kill: (_session: SessionId, job: JobId) => (updates: readonly RefUpdate[]) =>
+        updates.some((update) => update.name === `jobs/${job}`),
+      expected: { reports: ["Job make (make) exited with code 0.\n\nbuilt"], receipt: "send" },
+    },
+    {
+      name: "killed after the job's report was admitted, before its receipt settled",
+      awaited: false,
+      kill: (session: SessionId) => (updates: readonly RefUpdate[]) =>
+        updates.some((update) => update.name === inboxRef(session, main)),
+      expected: { reports: ["Job make (make) exited with code 0.\n\nbuilt"], receipt: "send" },
+    },
+    {
+      name: "killed between an awaited job's end and the wait taking it",
+      awaited: true,
+      kill: (_session: SessionId, job: JobId) => (updates: readonly RefUpdate[]) =>
+        updates.some((update) => update.name === `jobs/${job}`),
+      expected: { reports: [], receipt: null },
+    },
+  ])(
+    "reports a job's end to its session once, unless a wait took it, after a host $name",
+    async (row) => {
+      const store = await memoryStore().open();
+      const killed = killable(store);
+      const disk = createDisk();
+      disk.directories.add("/work/project");
+      const provider = fakeProvider(disk);
+      const kernel = kernelOver(killed.store, provider, { execution: { kind: "admit-only" } });
+      const host = createHost(kernel, { credential: { kind: "token", token: "x" } });
+      const workspace = await addWorkspace(host);
+      const { session } = await host.sessions.start({ workspace, content: "Hi." });
+
+      const job = await host
+        .workspace(workspace)
+        .jobs.start({ command: "make", session: session.id });
+
+      const process = await started(provider.processes, 1);
+
+      if (row.awaited)
+        expect(
+          await parkOn(
+            kernel,
+            session.id,
+            asId("c1"),
+            async (durable) => (await durable.wait({ kind: "job", job: job.id })).kind,
+          ),
+        ).toEqual({ kind: "parked" });
+
+      killed.kill(row.kill(session.id, job.id));
+      process.emit("built\n");
+      process.exit(0);
+      await job.settled();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      const reopened = createHost(
+        kernelOver(store, provider, { execution: { kind: "admit-only" } }),
+        {
+          credential: { kind: "token", token: "x" },
+        },
+      );
+
+      await reopened.execution.repair({ limit: 100 });
+      await reopened.execution.repair({ limit: 100 });
+      const ref = await store.refs.get(receiptRef(session.id, asId(`${job.id}:report`)));
+      const receipt = decodeReceiptRecord(ref?.target ? await store.objects.get(ref.target) : null);
+
+      expect({
+        reports: (await reopened.session(session.id).view()).messages.flatMap((message) =>
+          message.kind === "user" && message.source.kind === "job" ? [message.content] : [],
+        ),
+        receipt: receipt?.kind ?? null,
+      }).toEqual(row.expected);
+    },
+  );
+
+  it("reserves no report under a session removed while its job's end is written", async () => {
+    const store = await memoryStore().open();
+    const entered = Promise.withResolvers<void>();
+    const released = Promise.withResolvers<void>();
+    let held: JobId | null = null;
+
+    const gated: StoreConnection = {
+      ...store,
+      refs: {
+        ...store.refs,
+        async set(updates) {
+          if (held !== null && updates.some((update) => update.name === `jobs/${held}`)) {
+            held = null;
+            entered.resolve();
+            await released.promise;
+          }
+
+          return store.refs.set(updates);
+        },
+      },
+    };
+
+    const disk = createDisk();
+    disk.directories.add("/work/project");
+    const provider = fakeProvider(disk);
+    const kernel = kernelOver(gated, provider, { execution: { kind: "admit-only" } });
+    const host = createHost(kernel, { credential: { kind: "token", token: "x" } });
+    const workspace = await addWorkspace(host);
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
+
+    const job = await host
+      .workspace(workspace)
+      .jobs.start({ command: "make", session: session.id });
+
+    const process = await started(provider.processes, 1);
+    held = job.id;
+    process.exit(0);
+    await entered.promise;
+
+    expect(await session.remove()).toEqual({ kind: "removed" });
+    released.resolve();
+    expect(await job.settled()).toMatchObject({ kind: "exited", code: 0 });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(await store.refs.list(`sessions/${session.id}/`)).toEqual([]);
   });
 
   it("opens a late reader on the last 256 KiB of output, after a gap for what it dropped, and keeps the view's tail at 4 KiB", async () => {

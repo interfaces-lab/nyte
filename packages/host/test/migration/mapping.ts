@@ -285,6 +285,13 @@ export const MAPPING = [
       "session_index gains `pinned` (1 or 0) and `name_folded` (the name in lower case, or null), filled from each session record with every row's `seq` kept, and the index session_index_pinned orders the rows by pinned, parent, then activity",
     covers: ["from 29"],
   },
+  {
+    version: 31,
+    step: "2026-11-13-report-receipts",
+    target: "tables",
+    change: "nothing",
+    covers: ["from 30"],
+  },
 ] as const;
 
 function decisionType<T extends TSchema>(value: T) {

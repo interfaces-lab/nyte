@@ -26,6 +26,7 @@ import { readRunEnd } from "../watch/reads.ts";
 import { callPhase } from "./call-phase.ts";
 import { storedAnswer } from "../store/parts.ts";
 import { callRef, jobRef, partRef, runRef } from "../store/refs.ts";
+import { withdrawReport } from "../store/reports.ts";
 import { load, put, readCall } from "../store/session.ts";
 import type { Found } from "../store/session.ts";
 import {
@@ -91,9 +92,10 @@ export function createWaitRegistry(
     session: SessionId,
     current: CallRecord,
     outcome: WaitOutcome,
+    withdrawn: readonly RefUpdate[],
   ): Promise<CallChange> => ({
     record: { ...current, waits: [...current.waits, outcome], waiting: null, partial: [] },
-    updates: await resumed(session, current),
+    updates: [...(await resumed(session, current)), ...withdrawn],
     index: { add: [wokenIndex(session, current.id)], drop: waitIndex(session, current) },
   });
 
@@ -122,8 +124,10 @@ export function createWaitRegistry(
       }
 
       const target = current.waiting;
+      const withdrawn = await withdrawReport(kernel.store, outcome);
 
-      if (slot === null || target.kind !== "all") return completion(session, current, outcome);
+      if (slot === null || target.kind !== "all")
+        return completion(session, current, outcome, withdrawn);
 
       if ((current.partial.at(slot) ?? null) !== null) return null;
 
@@ -134,7 +138,7 @@ export function createWaitRegistry(
       const outcomes = partial.flatMap((found) => (found === null ? [] : [found]));
 
       if (outcomes.length === target.targets.length)
-        return completion(session, current, { kind: "all", outcomes });
+        return completion(session, current, { kind: "all", outcomes }, withdrawn);
 
       const on = waitingOn(target, partial);
       const filled = { ...current, partial };
@@ -155,13 +159,15 @@ export function createWaitRegistry(
                   on,
                 },
               ],
-        updates:
-          on === null || current.run === null
+        updates: [
+          ...(on === null || current.run === null
             ? []
             : await runWait(kernel.store, session, current.run, async (record) => ({
                 parked: record.parked,
                 waiting: on,
-              })),
+              }))),
+          ...withdrawn,
+        ],
         index: { add: [], drop: waitIndex(session, current).filter((name) => !kept.has(name)) },
       };
     });

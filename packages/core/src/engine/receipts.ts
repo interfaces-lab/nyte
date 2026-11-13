@@ -109,7 +109,11 @@ export async function known(
 
   if (found === null) return false;
 
-  if (found.record.kind !== kind || found.record.digest !== digest)
+  if (
+    found.record.kind !== kind ||
+    found.record.kind === "report" ||
+    found.record.digest !== digest
+  )
     throw new SdkError("invalid", `Receipt ${id} was used for another command.`);
 
   return true;

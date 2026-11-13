@@ -1,5 +1,13 @@
 import { asId, asSeq } from "@nyte-ai/schema";
-import type { CallId, Json, PatchEvent, WaitTarget } from "@nyte-ai/schema";
+import type {
+  CallId,
+  Json,
+  PatchEvent,
+  RefUpdate,
+  RunId,
+  SessionId,
+  WaitTarget,
+} from "@nyte-ai/schema";
 import { assert, describe, expect, it } from "vitest";
 import { driveInProcess } from "../src/drive/execution.ts";
 import { runStep } from "../src/engine/durable.ts";
@@ -12,14 +20,59 @@ import {
   decodeReceiptRecord,
   decodeRunRecord,
   envelope,
+  inboxRef,
   memoryStore,
   partRef,
   receiptRef,
   runRef,
 } from "../src/store.ts";
 import type { Kernel } from "../src/contract/kernel.ts";
-import type { StoreConnection } from "../src/index.ts";
-import { completed, label, livePart, main, settledChat, setup, startRun } from "../src/harness.ts";
+import type { Plugin, StoreConnection } from "../src/index.ts";
+import {
+  completed,
+  killable,
+  label,
+  livePart,
+  main,
+  settledChat,
+  setup,
+  startRun,
+} from "../src/harness.ts";
+
+function awaitRun(kernel: Kernel, session: SessionId, call: CallId, target: WaitTarget) {
+  return runStep<Json>(kernel, {
+    session,
+    head: main,
+    run: null,
+    call,
+    kind: "hook",
+    replay: "safe",
+    intent: { test: true },
+    part: null,
+    signal: new AbortController().signal,
+    body: async (durable) => (await durable.wait(target)).kind,
+    settle: async (ended) => ({
+      result: ended.kind === "done" ? ended.value : null,
+      updates: [],
+    }),
+    decode: (result) => result,
+  });
+}
+
+const refuseReports: Plugin<"core"> = {
+  id: "refuse-reports",
+  hooks: {
+    before_send: (submission) =>
+      submission.source.kind === "child"
+        ? { action: "reject", reason: "No reports." }
+        : { action: "continue" },
+  },
+};
+
+const ended = (updates: readonly RefUpdate[]): boolean =>
+  updates.some((update) =>
+    (update.events ?? []).some((event) => event.kind === "run" && event.change === "ended"),
+  );
 
 describe("runs", () => {
   it("settles the receipts of a run's landed inputs in its end set, so a crash right after it leaves none pending", async () => {
@@ -253,6 +306,100 @@ describe("runs", () => {
       status: { kind: "pending", schedule: { kind: "attached" } },
     });
   });
+
+  it.each([
+    {
+      name: "a create child's host killed between its run's end and the report",
+      awaited: false,
+      kill: () => ended,
+      expected: { reports: 1, receipt: "send" },
+    },
+    {
+      name: "a create child's host killed after the report was admitted, before its receipt settled",
+      awaited: false,
+      kill: (parent: SessionId) => (updates: readonly RefUpdate[]) =>
+        updates.some((update) => update.name === inboxRef(parent, main)),
+      expected: { reports: 1, receipt: "send" },
+    },
+    {
+      name: "a task child's host killed between its run's end and the wait taking it",
+      awaited: true,
+      kill: () => ended,
+      expected: { reports: 0, receipt: null },
+    },
+    {
+      name: "a task child's host killed after the wait took its end",
+      awaited: true,
+      kill: (parent: SessionId) => (updates: readonly RefUpdate[]) =>
+        updates.some((update) => update.name === callRef(parent, asId("task-call"))),
+      expected: { reports: 0, receipt: null },
+    },
+    {
+      name: "a task child's host that lives",
+      awaited: true,
+      kill: () => () => false,
+      expected: { reports: 0, receipt: null },
+    },
+    {
+      name: "a create child whose report before_send refuses",
+      awaited: false,
+      kill: () => () => false,
+      refused: true,
+      expected: { reports: 0, receipt: "undelivered" },
+    },
+  ])(
+    "reports a child's end to its parent once, unless a wait took it, after $name",
+    async (row) => {
+      const store = await memoryStore().open();
+      const killed = killable(store);
+
+      const plugins = row.refused ? [refuseReports] : [];
+
+      const a = await setup({ store: killed.store, execution: { kind: "admit-only" }, plugins });
+      const parent = await settledChat(a.host, a.script);
+      const { session: child } = await a.host.sessions.start({ parent: parent.id, content: "Go." });
+      const step = a.host.execution.advance({ session: child.id, head: main });
+      const turn = await a.script.started(2);
+      const run: RunId = turn.input.run.id;
+      await livePart(a.kernel, child.id, run, asId(`${run}:1:0`), "Found it.");
+
+      if (row.awaited)
+        expect(
+          await awaitRun(a.kernel, parent.id, asId("task-call"), {
+            kind: "run",
+            session: child.id,
+            run,
+          }),
+        ).toEqual({ kind: "parked" });
+
+      killed.kill(row.kill(parent.id));
+      turn.finish();
+      await step.catch(() => undefined);
+
+      const b = await setup({ store, execution: { kind: "admit-only" }, plugins });
+      await b.host.execution.repair({ limit: 100 });
+      await b.host.execution.repair({ limit: 100 });
+      const ref = await store.refs.get(receiptRef(parent.id, asId(`${run}:report`)));
+      const receipt = decodeReceiptRecord(ref?.target ? await store.objects.get(ref.target) : null);
+
+      const reports = (await b.host.session(parent.id).view()).messages.filter(
+        (message) => message.kind === "user" && message.source.kind === "child",
+      );
+
+      expect({
+        reports: reports.length,
+        receipt:
+          receipt === null
+            ? null
+            : receipt.kind === "report"
+              ? (receipt.outcome?.kind ?? "reserved")
+              : receipt.kind,
+      }).toEqual(row.expected);
+
+      for (const report of reports)
+        expect(report).toMatchObject({ content: "Found it.", delivery: "attach" });
+    },
+  );
 
   it("attaches no report when a wait parked here took the child's end", async () => {
     const { kernel, host } = await setup({ execution: { kind: "admit-only" } });

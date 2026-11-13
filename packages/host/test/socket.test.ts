@@ -43,6 +43,7 @@ import {
   hello,
   openSocket,
   performs,
+  reportSettled,
   serve,
   socketUrl,
   target,
@@ -408,6 +409,7 @@ describe("the host's WebSocket", () => {
     gate.resolve();
     await started.receipt.settled();
     await childReaches(watcher, child, "done");
+    await reportSettled(host, session);
     const resumed = await reconnect(listener, session, store);
 
     expect(resumed.complete).toBe(false);
@@ -426,6 +428,7 @@ describe("the host's WebSocket", () => {
     const child = started.session.id;
     await started.receipt.settled();
     await childReaches(watcher, child, "done");
+    await reportSettled(host, session);
     const store = await readAndDrop(listener, session);
 
     expect(childState(store.snapshot().rows.background.values(), child)).toBe("done");

@@ -732,6 +732,13 @@ const sessionCatalogs: SchemaStep = {
   },
 };
 
+/** Changes nothing and moves the version: a store from here on may hold `report` receipts, which an older Nyte cannot decode, so that Nyte refuses the store instead of failing its recovery on one. */
+const reportReceipts: SchemaStep = {
+  kind: "schema",
+  name: "2026-11-13-report-receipts",
+  sql: { sqlite: [], postgres: [] },
+};
+
 const STORE_STEPS: readonly StoreStep[] = [
   baseline,
   recordFields,
@@ -763,6 +770,7 @@ const STORE_STEPS: readonly StoreStep[] = [
   sessionCatalogs,
   projectCoordinators,
   sessionIndexFilters,
+  reportReceipts,
 ];
 
 export const STORE_VERSION: number = STORE_STEPS.length;
