@@ -138,6 +138,38 @@ Read the spans back:
 
 `test/scenarios.test.ts` runs U and D end to end on a SQLite store in a temp folder and checks the hop order. Set `NYTE_WATERFALL_DIR` to save each waterfall as JSON.
 
+## Wire size
+
+`pnpm --dir packages/bench bench:wire` measures what a host puts on the network for six steps, through the real client: `sdk.connect` and `openHost` from `@nyte-ai/sdk/client`, opened the way the app opens them, behind a relay that counts every byte on the client's TCP connections.
+
+| Step | What it does |
+| --- | --- |
+| S1 | One streamed reply: 400 characters of thinking and 4,000 of text, in deltas of 10 characters 5 ms apart |
+| S2 | One tool turn: a shell call that returns 4,096 bytes, then 1,000 characters of text |
+| S3 | A fresh client opens a chat of 100 exchanges; `S3.all` then pages its whole history |
+| S4 | A fresh client lists 200 chats; `S4.title` renames one |
+| S5 | One client, one chat open, idle for a minute |
+| S6 | The socket drops and the client resumes |
+
+Each step reports both directions: WebSocket messages and payload bytes, HTTP bodies, the bytes on the socket, and the payload by frame kind. `--remote` renames the host in each request so the listener takes the client for one off loopback and compresses for it; the on-socket column is then what a phone or a tunnelled client pays. `--json <path>` saves a run, `--dump <path>` writes every message as a line of JSON, and `--compare <path>` prints each number beside a saved run and fails when a step's server-to-client bytes grew by more than 10%. `--idle-ms` shortens S5.
+
+`wire/loopback.json` and `wire/remote.json` are the saved runs, and `pnpm --dir packages/bench bench:wire:gate` (`--gate`) compares against the first. A streamed step lands a few percent apart between runs, because the host gathers its pushes on timers.
+
+Server to client, in bytes. The reference is [t3code](https://github.com/pingdotgg/t3code) at `73e49aa6`, measured on its real server and web client with the same scripted deltas; its figures are compressed payload, which leaves out the frame and HTTP headers that Nyte's on-socket column includes.
+
+| Step | Loopback payload, before | Now | Off loopback on socket, before | Now | t3code, compressed | Target |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| S1 | 83,799 in 458 messages | 27,236 in 86 | 6,863 | 2,234 | 4,185 | Under t3code while still streaming tokens, which t3code does not |
+| S2 | 45,016 in 126 | 19,914 in 27 | 3,172 | 1,695 | 4,189 | Under t3code |
+| S3 | 74,986 | 74,986 | 19,821 | 19,829 | 22,718 | Under t3code's cold load |
+| S3.all | 236,678 | 236,678 | 182,053 | 39,946 | 37,586 | Within 10% of t3code; random ids are what is left |
+| S4 | 64,971 | 53,491 | not measured | 14,836 | 13,570 for 200 rows | Within 10% of t3code |
+| S4.title | 979 | 979 | 229 | 230 | 513 | Under t3code |
+| S5 | 32 | 32 | 56 | 56 | 66 | Under t3code |
+| S6 | 2,687 | 2,687 | 1,883 | 1,884 | 234 for the session alone | Open: a resume resends the window's order |
+
+What is left, largest first: the 40 ids of the window's order on every resume (S6), the host view's first frame, which crosses base64 inside SSE (7 KB of S3 and S4), and session rows of about 870 bytes for a 40-character title (S4).
+
 ## Development
 
 ```sh
