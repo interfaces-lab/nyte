@@ -100,7 +100,7 @@ test("a blank chat in a trusted folder offers its project plugin's command and r
       environment: {
         kind: "local",
         inspect: async () => ({
-          identity: asId("folder"),
+          identity: asId("chat-only"),
           availability: { kind: "available" },
           projectSources: [".nyte/plugins/qa-probe"],
         }),
