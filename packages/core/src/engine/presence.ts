@@ -101,7 +101,7 @@ export async function openPresence(
     refs: {
       ...raw.refs,
       async set(updates) {
-        if (revocation.signal.aborted) throw new SdkError("unavailable", REVOKED);
+        if (revocation.signal.aborted) throw new SdkError("unavailable", REVOKED, { retry: true });
 
         const outcome = await raw.refs.set(
           updates.map((update) => ({ ...update, fences: [...(update.fences ?? []), name] })),
@@ -110,7 +110,7 @@ export async function openPresence(
         if (outcome.kind === "fenced" && outcome.name === name) {
           revoke();
 
-          throw new SdkError("unavailable", REVOKED);
+          throw new SdkError("unavailable", REVOKED, { retry: true });
         }
 
         return outcome;
