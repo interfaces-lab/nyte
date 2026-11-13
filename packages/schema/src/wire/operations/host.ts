@@ -33,6 +33,7 @@ import {
 } from "../../projects.ts";
 import { pagedSchema, ParentFilterType } from "../../primitives.ts";
 import { SessionCatalogViewSchema, SessionInfoType, SessionsReadType } from "../../sessions.ts";
+import { HeldType } from "../../views.ts";
 import {
   AddOutcomeSchema,
   ForgetOutcomeSchema,
@@ -347,7 +348,7 @@ export const HOST_OPERATIONS = {
       pinned: Type.Optional(Type.Boolean()),
       query: Type.Optional(Type.String()),
       limit: Type.Optional(Type.Number()),
-      resume: Type.Optional(Type.Object({ seq: Type.Number() })),
+      resume: Type.Optional(Type.Object({ seq: Type.Number(), held: Type.Optional(HeldType) })),
     }),
     output: wireSchema(SessionsReadType),
   },

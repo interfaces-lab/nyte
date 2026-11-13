@@ -27,6 +27,9 @@ export type Retries = {
   readonly reset: () => void;
 };
 
+/** The first host revision whose `head.read` and `sessions.read` take `resume.held`. An older host refuses the field as unknown. */
+const HELD_REVISION = 27;
+
 const RETRY_BASE_MS = 1_000;
 
 const RETRY_MAX_MS = 30_000;
@@ -38,6 +41,11 @@ export function socketRetryDelay(attempt: number): number {
   const ceiling = Math.min(RETRY_MAX_MS, RETRY_BASE_MS * 2 ** attempt);
 
   return ceiling / 2 + (Math.random() * ceiling) / 2;
+}
+
+/** Whether the socket's host takes `resume.held`, from the revision its welcome names. A resume that would send `held` waits for the welcome, a round trip it otherwise shares with the hello. */
+export async function takesHeld(socket: HostSocket): Promise<boolean> {
+  return (await socket.welcome).api_server_revision >= HELD_REVISION;
 }
 
 export function freshnessCell(): FreshnessCell {

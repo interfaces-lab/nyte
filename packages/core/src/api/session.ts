@@ -1,4 +1,4 @@
-import { asId, SdkError, SESSIONS_LIMIT } from "@nyte-ai/schema";
+import { asId, digestIdSet, SdkError, SESSIONS_LIMIT } from "@nyte-ai/schema";
 import type {
   Configuration,
   ConfigurationPatch,
@@ -6,6 +6,7 @@ import type {
   Execution,
   HeadInfo,
   HeadName,
+  Held,
   MessageId,
   Paged,
   ParentFilter,
@@ -252,10 +253,11 @@ interface SessionsWindow {
   readonly limit?: number;
 }
 
+/** Reads the sessions window. A `resume.held` that describes the set of ids the window selects gets `kept`, their count, in place of the ids. */
 export async function readSessions(
   kernel: Kernel,
   principal: PrincipalId,
-  input?: SessionsWindow & { readonly resume?: { readonly seq: number } },
+  input?: SessionsWindow & { readonly resume?: { readonly seq: number; readonly held?: Held } },
 ): Promise<SessionsRead> {
   const read = await kernel.store.sessions.changed({
     since: input?.resume?.seq ?? 0,
@@ -273,9 +275,17 @@ export async function readSessions(
     }),
   );
 
+  const held = input?.resume?.held;
+
+  const kept =
+    held !== undefined && held.count === read.ids.length && held.digest === digestIdSet(read.ids)
+      ? held.count
+      : undefined;
+
   return {
     seq: read.seq,
-    ids: read.ids,
+    ids: kept === undefined ? read.ids : [],
+    kept,
     rows: rows.flatMap((info) => (info === null ? [] : [info])),
   };
 }

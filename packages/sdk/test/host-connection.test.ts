@@ -581,6 +581,77 @@ describe("a sessions store's order", () => {
   });
 });
 
+/** Says the host serves `revision` in its welcome, the way a host at that revision does, and keeps every frame either side sends. */
+function welcomedAt(revision: number, frames: string[]) {
+  return class extends WebSocket {
+    override send(data: string): void {
+      frames.push(data);
+      super.send(data);
+    }
+
+    override dispatchEvent(event: Event): boolean {
+      if (!(event instanceof MessageEvent)) return super.dispatchEvent(event);
+      const text = String(event.data);
+
+      const data = text.includes('"type":"welcome"')
+        ? text
+            .replace(/"api_revision":\d+/u, `"api_revision":${revision}`)
+            .replace(/"api_server_revision":\d+/u, `"api_server_revision":${revision}`)
+        : text;
+
+      frames.push(data);
+
+      return super.dispatchEvent(new MessageEvent("message", { data }));
+    }
+  };
+}
+
+describe("a resume", () => {
+  it.each([
+    { host: "this host", revision: API_REVISION, describes: true },
+    { host: "a host at revision 26", revision: 26, describes: false },
+  ])(
+    "against $host describes what it holds only to a host that takes it, and ends equal to a fresh read",
+    async (entry) => {
+      const served = await serve();
+      const session = await startSession(served);
+      const frames: string[] = [];
+      const Socket = welcomedAt(entry.revision, frames);
+
+      const connection = attach(
+        served.listener,
+        (request) => new Socket(request.url, { headers: request.headers }),
+      );
+
+      const sessions = connection.directory();
+      cleanups.push(async () => sessions.close());
+      const store = watched(connection, session);
+
+      await matchesRead(connection, store, session);
+      await vi.waitFor(() => expect(sessions.freshness().kind).toBe("fresh"));
+      const first = frames.length;
+      served.listener.disconnectClients();
+      await vi.waitFor(() => expect(store.freshness().kind).toBe("stale"));
+      await send(served, session, "While away.");
+      await until(connection, "open");
+      await matchesRead(connection, store, session);
+      await vi.waitFor(() => expect(sessions.freshness().kind).toBe("fresh"));
+
+      const resumes = frames
+        .slice(first)
+        .filter((frame) => /"op":"(head|sessions)\.read","input":\{.*"resume"/u.test(frame));
+
+      const answers = frames.slice(first).filter((frame) => frame.includes('"kept":'));
+
+      expect(resumes).toHaveLength(2);
+      expect(resumes.filter((frame) => frame.includes('"held":'))).toHaveLength(
+        entry.describes ? 2 : 0,
+      );
+      expect(answers).toHaveLength(entry.describes ? 2 : 0);
+    },
+  );
+});
+
 describe("offer", () => {
   it("answers another connection's client.perform with what the handler returns", async () => {
     const served = await serve();

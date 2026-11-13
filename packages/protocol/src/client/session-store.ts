@@ -1,4 +1,4 @@
-import { backgroundRowKey, catalogRowKey } from "@nyte-ai/schema";
+import { backgroundRowKey, catalogRowKey, digestIds } from "@nyte-ai/schema";
 import type {
   BackgroundRow,
   CatalogRow,
@@ -11,6 +11,7 @@ import type {
   MessageId,
   PartView,
   PathChange,
+  Resume,
   Seq,
   SessionChange,
   TurnInfo,
@@ -38,6 +39,8 @@ export interface SessionStore {
   readonly seq: Seq;
   readonly stale: boolean;
   apply(change: SessionChange): void;
+  /** The `resume` a `head.read` sends: the seq, the first id of the order, and `held`, which describes the order. The next `resume` applies its `kept` to the order described here. */
+  describe(): Resume;
   resume(window: HeadWindow): void;
   snapshot(): SessionSnapshot;
 }
@@ -50,6 +53,7 @@ export function openSessionStore(window: HeadWindow): SessionStore {
   let order: readonly MessageId[] = window.order;
   let leadingPrompt = window.leadingPrompt;
   let stale = false;
+  let described: readonly MessageId[] = [];
   write(rows, window.tables);
 
   const move = (path: PathChange): void => {
@@ -88,11 +92,24 @@ export function openSessionStore(window: HeadWindow): SessionStore {
 
       for (const path of change.paths) if (path.head === head && !stale) move(path);
     },
+    describe() {
+      described = order;
+      const from = order[0] ?? null;
+
+      return from === null
+        ? { seq, from }
+        : { seq, from, held: { count: order.length, digest: digestIds(order) } };
+    },
     resume(next) {
       seq = next.seq;
-      order = next.order;
+
+      order =
+        next.kept === undefined
+          ? next.order
+          : [...described.slice(described.length - next.kept), ...next.order];
+
       leadingPrompt = next.leadingPrompt;
-      stale = false;
+      stale = next.kept !== undefined && next.kept > described.length;
 
       if (next.complete) rows = emptyRows();
 

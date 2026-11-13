@@ -9,6 +9,7 @@ import type {
   Cursor,
   ForkOutcome,
   HeadName,
+  Held,
   HistoryPage,
   MergeOutcome,
   MessageId,
@@ -172,13 +173,13 @@ export interface Sessions {
     readonly limit?: number;
   }): Promise<Paged<SessionInfo>>;
 
-  /** `pinned` keeps the sessions pinned (true) or not (false); `query` keeps those whose name holds it, ignoring case. */
+  /** `pinned` keeps the sessions pinned (true) or not (false); `query` keeps those whose name holds it, ignoring case. A `resume.held` that describes the ids selected answers `kept` with no `ids`. */
   read(input?: {
     readonly parents?: ParentFilter;
     readonly pinned?: boolean;
     readonly query?: string;
     readonly limit?: number;
-    readonly resume?: { readonly seq: number };
+    readonly resume?: { readonly seq: number; readonly held?: Held };
   }): Promise<SessionsRead>;
 }
 

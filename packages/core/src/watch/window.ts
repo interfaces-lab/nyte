@@ -1,7 +1,8 @@
-import { asId, asSeq } from "@nyte-ai/schema";
+import { asId, asSeq, digestIds } from "@nyte-ai/schema";
 import type {
   Execution,
   HeadName,
+  Held,
   HeadRow,
   HeadSettingsRow,
   HeadUsageRow,
@@ -58,7 +59,7 @@ const TABLES: readonly Table[] = [
 
 type Placed = { readonly message: Message; readonly position: number };
 
-type Held = { readonly seq: Seq; readonly before: number };
+type Covered = { readonly seq: Seq; readonly before: number };
 
 export function readWindow(
   state: FoldState,
@@ -104,10 +105,18 @@ export function readWindow(
     paths: new Map(),
   });
 
+  const order = shown.map((entry) => entry.message.id);
+
+  const kept =
+    path === undefined || resume?.held === undefined || resume.from === null
+      ? undefined
+      : readKept(path, order, resume.from, resume.held, execution);
+
   return {
     seq: state.seq,
     head,
-    order: shown.map((entry) => entry.message.id),
+    order: kept === undefined ? order : order.slice(kept),
+    kept,
     leadingPrompt: leading?.id ?? null,
     complete: held === null,
     tables: {
@@ -251,13 +260,50 @@ function readShownAt(path: Path, id: MessageId, execution: Execution): number | 
   return message?.id === id && !belongsInQueue(message, execution) ? position : undefined;
 }
 
-function readHeld(state: FoldState, path: Path, resume: Resume, execution: Execution): Held | null {
+function readHeld(
+  state: FoldState,
+  path: Path,
+  resume: Resume,
+  execution: Execution,
+): Covered | null {
   if (resume.seq < state.base) return null;
 
   if (resume.from === null) return { seq: resume.seq, before: Number.POSITIVE_INFINITY };
   const before = readShownAt(path, resume.from, execution);
 
   return before === undefined ? null : { seq: resume.seq, before };
+}
+
+/**
+ * How many ids at the end of the order the client holds start `order`, or undefined when `held` does
+ * not prove what the client holds. The client's order starts at `from`; `held` proves it is the
+ * `held.count` shown messages from there on. The ids it keeps are checked against `order` one by one,
+ * so a client that applies the answer to the order it described ends with `order` exactly.
+ */
+function readKept(
+  path: Path,
+  order: readonly MessageId[],
+  from: MessageId,
+  held: Held,
+  execution: Execution,
+): number | undefined {
+  const start = readShownAt(path, from, execution);
+  const first = order[0];
+
+  if (start === undefined || first === undefined) return undefined;
+
+  const ids = path.messages
+    .slice(start)
+    .flatMap((message) => (belongsInQueue(message, execution) ? [] : [message.id]))
+    .slice(0, held.count);
+
+  if (ids.length !== held.count || digestIds(ids) !== held.digest) return undefined;
+  const dropped = ids.indexOf(first);
+
+  if (dropped < 0) return undefined;
+  const kept = ids.slice(dropped);
+
+  return kept.every((id, index) => order[index] === id) ? kept.length : undefined;
 }
 
 function readHeadRow(state: FoldState, name: HeadName): HeadRow {

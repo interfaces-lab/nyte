@@ -243,9 +243,18 @@ export const WindowSpecType = Type.Union([
 
 export type WindowSpec = Decoded<typeof WindowSpecType>;
 
+/** The list of ids a resuming client holds, described by its length and `digestIds`, so a host can tell whether the list it would send is the one the client holds without the list crossing. */
+export const HeldType = Type.Object({
+  count: Type.Integer({ minimum: 0 }),
+  digest: Type.String(),
+});
+
+export type Held = Decoded<typeof HeldType>;
+
 export const ResumeType = Type.Object({
   seq: SeqType,
   from: nullable(idSchema<"message">()),
+  held: Type.Optional(HeldType),
 });
 
 export type Resume = Decoded<typeof ResumeType>;
@@ -254,6 +263,7 @@ export const HeadWindowType = Type.Object({
   seq: SeqType,
   head: idSchema<"head">(),
   order: Type.Array(idSchema<"message">()),
+  kept: Type.Optional(Type.Integer({ minimum: 0 })),
   leadingPrompt: nullable(idSchema<"message">()),
   complete: Type.Boolean(),
   tables: TableChangesType,
@@ -261,6 +271,38 @@ export const HeadWindowType = Type.Object({
 });
 
 export type HeadWindow = Decoded<typeof HeadWindowType>;
+
+/** A 64-bit hash of `ids` in their order, as 16 hex digits. Each id is hashed after its length, so two lists hash alike only by collision. It runs the same in a host and in every client, browser and React Native included, without `crypto.subtle`. */
+export function digestIds(ids: readonly string[]): string {
+  let left = 0xdeadbeef;
+  let right = 0x41c6ce57;
+
+  const mix = (unit: number): void => {
+    left = Math.imul(left ^ unit, 2_654_435_761);
+    right = Math.imul(right ^ unit, 1_597_334_677);
+  };
+
+  for (const id of ids) {
+    mix(id.length);
+
+    for (let index = 0; index < id.length; index += 1) mix(id.charCodeAt(index));
+  }
+
+  const high =
+    Math.imul(left ^ (left >>> 16), 2_246_822_507) ^
+    Math.imul(right ^ (right >>> 13), 3_266_489_909);
+
+  const low =
+    Math.imul(right ^ (right >>> 16), 2_246_822_507) ^
+    Math.imul(high ^ (high >>> 13), 3_266_489_909);
+
+  return `${(high >>> 0).toString(16).padStart(8, "0")}${(low >>> 0).toString(16).padStart(8, "0")}`;
+}
+
+/** `digestIds` of `ids` as a set: in code-unit order, whatever order they come in. */
+export function digestIdSet(ids: readonly string[]): string {
+  return digestIds(ids.toSorted((left, right) => Number(left > right) - Number(left < right)));
+}
 
 export function catalogRowKey(row: CatalogRow): string {
   return row.id;

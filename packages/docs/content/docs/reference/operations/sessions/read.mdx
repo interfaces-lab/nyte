@@ -16,6 +16,14 @@ reads [`session.info`](/docs/reference/operations/session/info) for an id it hol
 `parents` to filter (`roots`, `children` of a session, or `all`), and `limit` for the window (50 by
 default).
 
+A resume can also describe the ids the client holds, so the host doesn't send them again:
+`resume.held` is `{ count, digest }`, the number of ids and `digestIdSet` of them, from
+`@nyte-ai/schema`, which hashes them in code-unit order. When the ids the window selects are exactly
+those, the answer's `ids` is empty and `kept` is their count: the client keeps the ids it described.
+Any other selection, such as a new session, a removed one, or one that moved into the window and
+pushed another out, answers every id and no `kept`. A host before API revision 27 refuses `held` as
+an unknown field, so a client sends it only to a host whose welcome names revision 27 or later.
+
 Pass `pinned: true` with a large `limit` for every pinned session however old, and `query` for the
 sessions whose name holds it, ignoring case; a session without a name never matches. The host
 answers both from its session index, so neither reads every session. The host pushes every changed
@@ -133,6 +141,19 @@ None of its own.
       "properties": {
         "seq": {
           "type": "number"
+        },
+        "held": {
+          "type": "object",
+          "required": ["count", "digest"],
+          "properties": {
+            "count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "digest": {
+              "type": "string"
+            }
+          }
         }
       }
     }
@@ -155,6 +176,10 @@ None of its own.
       "items": {
         "type": "string"
       }
+    },
+    "kept": {
+      "type": "integer",
+      "minimum": 0
     },
     "rows": {
       "type": "array",

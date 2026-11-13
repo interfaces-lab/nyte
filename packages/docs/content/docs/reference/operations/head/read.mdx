@@ -15,6 +15,17 @@ current through and the first message it holds. The answer then holds only the r
 that are in neither the answer's `order` nor its turns are dropped. A `from` the host can't place
 on the path any more, or a `seq` older than the log it still holds, answers a complete window.
 
+A resume can also describe the order the client holds, so the host doesn't send it again:
+`resume.held` is `{ count, digest }`, the number of ids in the order and `digestIds` of them, from
+`@nyte-ai/schema`. When the host finds those `count` messages from `from` on and they hash to
+`digest`, and the window's order starts with the last of them, the answer carries `kept`: the window's
+order is the last `kept` ids of the order the client described, followed by the answer's `order`.
+With nothing moved, `order` is empty and `kept` is the whole count; with one message landed, `order`
+holds that one id. When anything else moved, such as a rewind, a move to another branch, or a window
+that starts past every id the client held, the answer has no `kept` and its `order` is whole. A host
+before API revision 27 refuses `held` as an unknown field, so a client sends it only to a host whose
+welcome names revision 27 or later.
+
 ## When to call it
 
 After [`events.subscribe`](/docs/reference/operations/events/subscribe) on the session's scope,
@@ -42,6 +53,36 @@ Output, with the tables shortened:
   "order": ["f9b3c8e6-6257-4b24-a875-5f6c9cafb923"],
   "leadingPrompt": null,
   "complete": true,
+  "tables": { "messages": { "upsert": [], "drop": [] } },
+  "live": { "activation": { "kind": "active" } }
+}
+```
+
+A resume that describes the order it holds, after one message landed:
+
+```json
+{
+  "session": "0b7d2c4e-6f1a-4b3c-9e8d-7a6b5c4d3e2f",
+  "head": "main",
+  "window": { "tail": 50 },
+  "resume": {
+    "seq": 12,
+    "from": "f9b3c8e6-6257-4b24-a875-5f6c9cafb923",
+    "held": { "count": 1, "digest": "b591a1b629c3cf3c" }
+  }
+}
+```
+
+The answer keeps that id and sends the new one:
+
+```json
+{
+  "seq": 15,
+  "head": "main",
+  "order": ["2d6a1f0b-93c4-4e57-8b1a-c0d9e8f7a6b5"],
+  "kept": 1,
+  "leadingPrompt": null,
+  "complete": false,
   "tables": { "messages": { "upsert": [], "drop": [] } },
   "live": { "activation": { "kind": "active" } }
 }
@@ -114,6 +155,19 @@ Output, with the tables shortened:
               "type": "null"
             }
           ]
+        },
+        "held": {
+          "type": "object",
+          "required": ["count", "digest"],
+          "properties": {
+            "count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "digest": {
+              "type": "string"
+            }
+          }
         }
       }
     }
@@ -140,6 +194,10 @@ Output, with the tables shortened:
       "items": {
         "type": "string"
       }
+    },
+    "kept": {
+      "type": "integer",
+      "minimum": 0
     },
     "leadingPrompt": {
       "anyOf": [

@@ -579,17 +579,17 @@
     "S6": {
       "title": "reconnect",
       "down": {
-        "bytes": 2687,
+        "bytes": 1038,
         "messages": 5,
-        "ws": 2612,
+        "ws": 963,
         "http": {
           "requests": 1,
           "bytes": 75
         },
-        "socket": 3094,
+        "socket": 1445,
         "deflate": {
-          "alone": 1491,
-          "shared": 1356
+          "alone": 579,
+          "shared": 468
         },
         "kinds": {
           "http .nyte/ws/ticket": {
@@ -614,22 +614,22 @@
           },
           "result head.read": {
             "messages": 1,
-            "bytes": 2132
+            "bytes": 483
           }
         }
       },
       "up": {
-        "bytes": 531,
+        "bytes": 579,
         "messages": 4,
-        "ws": 529,
+        "ws": 577,
         "http": {
           "requests": 1,
           "bytes": 2
         },
-        "socket": 1285,
+        "socket": 1333,
         "deflate": {
-          "alone": 429,
-          "shared": 335
+          "alone": 457,
+          "shared": 364
         },
         "kinds": {
           "http .nyte/ws/ticket": {
@@ -644,13 +644,13 @@
             "messages": 1,
             "bytes": 124
           },
-          "call head.read": {
-            "messages": 1,
-            "bytes": 211
-          },
           "call text.open": {
             "messages": 1,
             "bytes": 60
+          },
+          "call head.read": {
+            "messages": 1,
+            "bytes": 259
           }
         }
       },
@@ -660,8 +660,8 @@
       "sequence": [
         "http .nyte/ws/ticket",
         "call events.subscribe",
-        "call head.read",
-        "call text.open"
+        "call text.open",
+        "call head.read"
       ]
     }
   }

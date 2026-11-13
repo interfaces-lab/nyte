@@ -1,5 +1,6 @@
-import { SESSIONS_LIMIT } from "@nyte-ai/schema";
+import { digestIdSet, SESSIONS_LIMIT } from "@nyte-ai/schema";
 import type {
+  Held,
   ParentFilter,
   SessionId,
   SessionInfo,
@@ -23,6 +24,8 @@ export interface DirectoryWindow {
 export interface DirectoryStore {
   readonly seq: number;
   apply(change: SessionsChange): void;
+  /** The `resume` a `sessions.read` sends: the seq, and `held`, which describes the set of ids listed. A `kept` in the next `resume` keeps the ids described here. */
+  describe(): { readonly seq: number; readonly held: Held };
   resume(read: SessionsRead): void;
   snapshot(): DirectorySnapshot;
 }
@@ -37,6 +40,7 @@ export function openDirectoryStore(
   const limit = Math.max(1, window.limit ?? SESSIONS_LIMIT);
   const rows = new Map<SessionId, SessionInfo>();
   let ids: readonly SessionId[] = [];
+  let described: readonly SessionId[] = [];
   let seq = 0;
 
   const order = (): void => {
@@ -64,7 +68,7 @@ export function openDirectoryStore(
     seq = next.seq;
 
     for (const row of next.rows) keep(row);
-    const kept = new Set(next.ids);
+    const kept = new Set(next.kept === undefined ? next.ids : [...described, ...next.ids]);
 
     for (const id of rows.keys()) if (!kept.has(id)) rows.delete(id);
     order();
@@ -87,6 +91,11 @@ export function openDirectoryStore(
 
       for (const id of table.drop) rows.delete(id);
       order();
+    },
+    describe() {
+      described = ids;
+
+      return { seq, held: { count: ids.length, digest: digestIdSet(ids) } };
     },
     resume,
     snapshot: () => ({ ids, rows }),

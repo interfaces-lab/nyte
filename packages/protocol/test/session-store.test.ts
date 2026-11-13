@@ -1,10 +1,19 @@
 import { changesSince, readWindow } from "@nyte-ai/core";
 import { decodeFoldCheckpoint, emptyFold, encodeFoldCheckpoint, fold } from "@nyte-ai/core/testing";
 import { asId, backgroundRowKey, catalogRowKey } from "@nyte-ai/schema";
-import type { HeadName, HeadWindow, SessionEvent, WindowSpec } from "@nyte-ai/schema";
+import type {
+  HeadName,
+  HeadWindow,
+  Resume,
+  SessionEvent,
+  SessionId,
+  WindowSpec,
+} from "@nyte-ai/schema";
 import { beforeAll, describe, expect, it } from "vitest";
-import { openSessionStore } from "../src/index.ts";
-import type { SessionSnapshot, SessionStore } from "../src/index.ts";
+import { openDirectoryStore, openSessionStore } from "../src/index.ts";
+import type { DirectoryWindow, SessionSnapshot, SessionStore } from "../src/index.ts";
+import { fakeModels, open } from "./fake-models.ts";
+import type { Composed, FakeModels } from "./fake-models.ts";
 import { interleave, MAIN, random, recordLong, recordSessions } from "./sessions.ts";
 import type { Recorded } from "./sessions.ts";
 
@@ -38,6 +47,8 @@ type Client = {
 
 let logs: readonly Log[] = [];
 
+let keptResumes = 0;
+
 beforeAll(async () => {
   const recorded = [...(await recordSessions()), await recordLong(80)];
   const next = random(SEED);
@@ -47,6 +58,223 @@ beforeAll(async () => {
     { recorded: entry, events: interleave(entry, next, PRINCIPAL) },
   ]);
 }, 60_000);
+
+type Kept = "all" | "some" | "none";
+
+type Away = { readonly attach: number; readonly resume: number };
+
+type HeadCase = {
+  readonly name: string;
+  readonly recording: string;
+  readonly tail: number;
+  readonly away: (recorded: Recorded) => Away;
+  readonly restore?: boolean;
+  readonly describes: boolean;
+  readonly kept: Kept;
+  readonly sends?: number;
+};
+
+const HEAD_CASES: readonly HeadCase[] = [
+  {
+    name: "nothing moved",
+    recording: "long",
+    tail: 40,
+    away: (recorded) => ({
+      attach: orderMoves(recorded)[60],
+      resume: orderMoves(recorded)[61] - 1,
+    }),
+    describes: true,
+    kept: "all",
+    sends: 0,
+  },
+  {
+    name: "one message landed",
+    recording: "long",
+    tail: 40,
+    away: (recorded) => ({ attach: orderMoves(recorded)[60], resume: orderMoves(recorded)[61] }),
+    describes: true,
+    kept: "some",
+    sends: 1,
+  },
+  {
+    name: "a turn landed",
+    recording: "long",
+    tail: 40,
+    away: (recorded) => ({ attach: orderMoves(recorded)[60], resume: orderMoves(recorded)[63] }),
+    describes: true,
+    kept: "some",
+    sends: 3,
+  },
+  {
+    name: "the window's start moved past every id the client held",
+    recording: "long",
+    tail: 2,
+    away: (recorded) => ({ attach: orderMoves(recorded)[60], resume: orderMoves(recorded)[63] }),
+    describes: true,
+    kept: "none",
+  },
+  {
+    name: "a message was removed",
+    recording: "replace",
+    tail: 40,
+    away: (recorded) => around(headMoves(recorded)[0]),
+    describes: true,
+    kept: "none",
+  },
+  {
+    name: "the head moved to another branch",
+    recording: "replace",
+    tail: 40,
+    away: (recorded) => around(headMoves(recorded)[1]),
+    describes: true,
+    kept: "none",
+  },
+  {
+    name: "a compaction",
+    recording: "compaction",
+    tail: 40,
+    away: (recorded) => ({ attach: orderMoves(recorded)[3], resume: recorded.events.length }),
+    describes: true,
+    kept: "all",
+    sends: 4,
+  },
+  {
+    name: "a seq too old to diff",
+    recording: "long",
+    tail: 40,
+    away: (recorded) => ({
+      attach: orderMoves(recorded)[60],
+      resume: orderMoves(recorded)[61] - 1,
+    }),
+    restore: true,
+    describes: true,
+    kept: "all",
+    sends: 0,
+  },
+  {
+    name: "a client that sends no held",
+    recording: "long",
+    tail: 40,
+    away: (recorded) => ({
+      attach: orderMoves(recorded)[60],
+      resume: orderMoves(recorded)[61] - 1,
+    }),
+    describes: false,
+    kept: "none",
+  },
+];
+
+type SessionsCase = {
+  readonly name: string;
+  readonly limit: number;
+  readonly away: (
+    host: Composed,
+    fake: FakeModels,
+    sessions: readonly SessionId[],
+  ) => Promise<void>;
+  readonly describes: boolean;
+  readonly kept: boolean;
+};
+
+const SESSIONS_CASES: readonly SessionsCase[] = [
+  { name: "nothing moved", limit: 50, away: async () => undefined, describes: true, kept: true },
+  {
+    name: "a listed session moved up",
+    limit: 50,
+    away: (host, fake, sessions) => sendTo(host, fake, sessions[0]),
+    describes: true,
+    kept: true,
+  },
+  {
+    name: "a session started",
+    limit: 50,
+    away: async (host, fake) => {
+      await startSession(host, fake);
+    },
+    describes: true,
+    kept: false,
+  },
+  {
+    name: "a session was removed",
+    limit: 50,
+    away: async (host, _fake, sessions) => {
+      await host.session(sessions[1] ?? asId("missing")).remove();
+    },
+    describes: true,
+    kept: false,
+  },
+  {
+    name: "a session moved into the window and pushed one out",
+    limit: 2,
+    away: (host, fake, sessions) => sendTo(host, fake, sessions[0]),
+    describes: true,
+    kept: false,
+  },
+  {
+    name: "a client that sends no held",
+    limit: 50,
+    away: async () => undefined,
+    describes: false,
+    kept: false,
+  },
+];
+
+describe("a resume that describes what the client holds", () => {
+  it.each(HEAD_CASES)("ends with the head's rows and order a fresh read gives: $name", (entry) => {
+    const recorded = logs.find((log) => log.recorded.name === entry.recording)?.recorded;
+
+    if (recorded === undefined) throw new Error(`No ${entry.recording} recording.`);
+    const away = entry.away(recorded);
+    const spec = { tail: entry.tail };
+    const attached = foldTo(recorded, away.attach);
+    const store = openSessionStore(structuredClone(readWindow(attached, MAIN, spec, null)));
+    const held = store.snapshot().order.length;
+    const resumed = foldTo(recorded, away.resume);
+    const state = entry.restore === true ? restoreCheckpoint(resumed) : resumed;
+    const point = store.describe();
+    const resume: Resume = entry.describes ? point : { seq: point.seq, from: point.from };
+    const answer = structuredClone(readWindow(state, MAIN, spec, resume));
+
+    expect(away.resume).toBeGreaterThan(away.attach);
+    expect(state.base > store.seq).toBe(entry.restore === true);
+    store.resume(answer);
+
+    expect(differ(store.snapshot(), readWindow(state, MAIN, spec, null), MAIN)).toBeNull();
+    expect(store.stale).toBe(false);
+    expect(readKept(answer.kept, held)).toBe(entry.kept);
+
+    if (entry.sends !== undefined) expect(answer.order).toHaveLength(entry.sends);
+  });
+
+  it.each(SESSIONS_CASES)(
+    "ends with the session list's rows and ids a fresh read gives: $name",
+    async (entry) => {
+      const fake = fakeModels();
+      await using host = await open(fake, []);
+      const sessions: SessionId[] = [];
+
+      for (let index = 0; index < 3; index += 1) sessions.push(await startSession(host, fake));
+      const window: DirectoryWindow = { parents: { kind: "roots" }, limit: entry.limit };
+      const store = openDirectoryStore(await host.sessions.read(window), window);
+      await entry.away(host, fake, sessions);
+      const point = store.describe();
+
+      const answer = await host.sessions.read({
+        ...window,
+        resume: entry.describes ? point : { seq: point.seq },
+      });
+
+      store.resume(answer);
+      const fresh = openDirectoryStore(await host.sessions.read(window), window).snapshot();
+
+      expect(store.snapshot()).toEqual(fresh);
+      expect(answer.kept !== undefined).toBe(entry.kept);
+
+      if (entry.kept) expect(answer.ids).toEqual([]);
+    },
+    30_000,
+  );
+});
 
 describe("session store", () => {
   it("holds what a fresh read holds after any attach, changes, drop and resume", () => {
@@ -65,6 +293,7 @@ describe("session store", () => {
 
     expect(failures.slice(0, 3)).toEqual([]);
     expect(logs.length * CLIENTS).toBeGreaterThanOrEqual(2_000);
+    expect(keptResumes).toBeGreaterThan(500);
   });
 
   it("holds what a fresh read holds after the host restores a checkpoint newer than the store", () => {
@@ -117,13 +346,73 @@ describe("session store", () => {
   });
 });
 
+function foldTo(recorded: Recorded, point: number): FoldState {
+  return recorded.events
+    .slice(0, point)
+    .reduce(
+      (state, event) => fold(state, event),
+      emptyFold({ session: recorded.session, principal: asId(PRINCIPAL) }),
+    );
+}
+
+/** The points after which the main head's whole order differs from the point before, so `orderMoves(recorded)[n]` is the first point whose order has moved `n` times. */
+function orderMoves(recorded: Recorded): readonly number[] {
+  let state = emptyFold({ session: recorded.session, principal: asId(PRINCIPAL) });
+  const read = () => JSON.stringify(readWindow(state, MAIN, { tail: 1_000_000 }, null).order);
+
+  const orders = [
+    read(),
+    ...recorded.events.map((event) => {
+      state = fold(state, event);
+
+      return read();
+    }),
+  ];
+
+  return orders.flatMap((order, point) =>
+    point > 0 && order === orders[point - 1] ? [] : [point],
+  );
+}
+
+function headMoves(recorded: Recorded): readonly number[] {
+  return recorded.events.flatMap((event, index) =>
+    event.kind === "head" && event.reason === "moved" && event.head === MAIN ? [index + 1] : [],
+  );
+}
+
+function around(point: number | undefined): Away {
+  if (point === undefined) throw new Error("The recording never moves its head.");
+
+  return { attach: point - 1, resume: point };
+}
+
+function readKept(kept: number | undefined, held: number): Kept {
+  if (kept === undefined) return "none";
+
+  return kept === held ? "all" : "some";
+}
+
+async function startSession(host: Composed, fake: FakeModels): Promise<SessionId> {
+  fake.reply({ content: [{ type: "text", text: "Hello." }] });
+  const started = await host.sessions.start({ content: "Hi." });
+  await started.receipt.settled();
+
+  return started.session.id;
+}
+
+async function sendTo(host: Composed, fake: FakeModels, session: SessionId | undefined) {
+  if (session === undefined) throw new Error("No session to send to.");
+  fake.reply({ content: [{ type: "text", text: "Again." }] });
+  await (await host.session(session).send("Again.")).settled();
+}
+
 function simulate(
   log: Log,
   schedules: readonly Schedule[],
   restore: number | null,
   next: () => number,
 ): readonly string[] {
-  const clients = schedules.map(open);
+  const clients = schedules.map(openClient);
   const failures: string[] = [];
   let state = emptyFold({ session: log.recorded.session, principal: asId(PRINCIPAL) });
 
@@ -227,7 +516,7 @@ function plan(id: string, log: Log, next: () => number): Schedule {
   };
 }
 
-function open(schedule: Schedule): Client {
+function openClient(schedule: Schedule): Client {
   return { schedule, trace: [], spec: { tail: 200 }, store: null, connected: false };
 }
 
@@ -255,7 +544,7 @@ function step(client: Client, state: FoldState, point: number, next: () => numbe
   }
 
   if ([...schedule.drops.values()].includes(point) && !client.connected)
-    resume(client, store, state, point);
+    resume(client, store, state, point, next);
 
   if (client.connected && (schedule.emits.has(point) || point === schedule.check)) {
     const change = structuredClone(changesSince(state, store.seq));
@@ -264,27 +553,38 @@ function step(client: Client, state: FoldState, point: number, next: () => numbe
     if (next() < 0.1) store.apply(change);
     client.trace.push(`apply@${point}`);
 
-    if (store.stale) resume(client, store, state, point);
+    if (store.stale) resume(client, store, state, point, next);
   }
 
   if (point !== schedule.check) return null;
 
-  if (!client.connected) resume(client, store, state, point);
+  if (!client.connected) resume(client, store, state, point, next);
 
   return compare(client, store.snapshot(), state);
 }
 
-function resume(client: Client, store: SessionStore, state: FoldState, point: number): void {
-  const snapshot = store.snapshot();
+/** Resumes as a client at revision 27 or later does half the time, describing the order it holds, and as an older client otherwise. */
+function resume(
+  client: Client,
+  store: SessionStore,
+  state: FoldState,
+  point: number,
+  next: () => number,
+): void {
+  const described = store.describe();
+  const describes = next() < 0.5;
 
-  const window = readWindow(state, client.schedule.head, client.spec, {
-    seq: store.seq,
-    from: snapshot.order[0] ?? null,
-  });
+  const window = readWindow(
+    state,
+    client.schedule.head,
+    client.spec,
+    describes ? described : { seq: described.seq, from: described.from },
+  );
 
   store.resume(structuredClone(window));
+  keptResumes += window.kept === undefined ? 0 : 1;
   client.connected = true;
-  client.trace.push(`resume@${point}`);
+  client.trace.push(`resume@${point}${window.kept === undefined ? "" : ` kept ${window.kept}`}`);
 }
 
 function pickSpec(state: FoldState, schedule: Schedule, next: () => number): WindowSpec {

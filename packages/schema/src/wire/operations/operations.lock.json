@@ -1,5 +1,5 @@
 {
-  "revision": 26,
+  "revision": 27,
   "operations": {
     "connection.watch": "17957128114e6a29",
     "connection.blob": "d661f9695af8afc2",
@@ -29,7 +29,7 @@
     "workspaces.cleanWorktrees": "87adb6ec8d5b3b13",
     "sessions.start": "383e3713eb1ae9bc",
     "sessions.list": "880c8041a608d9d4",
-    "sessions.read": "429315371749e962",
+    "sessions.read": "b0d1ad673c0f237a",
     "host.tailnet.status": "d8512fd7aefbd768",
     "host.tailnet.configure": "90695a6d242db10d",
     "host.tailnet.logout": "0041b560c3ca6a08",
@@ -55,7 +55,7 @@
     "head.send": "57c22a5f007c6d8f",
     "head.configure": "24b15dbbf3a0394d",
     "head.view": "4ef635762a38757a",
-    "head.read": "d62cfde39a6da258",
+    "head.read": "eff85e1a0b2d49cc",
     "head.see": "10d92f97a2b9100f",
     "head.history": "d0527f15158bffae",
     "head.tree": "5fe8ad00dfe40cef",

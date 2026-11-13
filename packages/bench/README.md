@@ -166,9 +166,9 @@ Server to client, in bytes. The reference is [t3code](https://github.com/pingdot
 | S4 | 64,971 | 53,491 | not measured | 14,836 | 13,570 for 200 rows | Within 10% of t3code |
 | S4.title | 979 | 979 | 229 | 230 | 513 | Under t3code |
 | S5 | 32 | 32 | 56 | 56 | 66 | Under t3code |
-| S6 | 2,687 | 2,687 | 1,883 | 1,884 | 234 for the session alone | Open: a resume resends the window's order |
+| S6 | 2,687 | 1,038 in 5 | 1,883 | 995 | 234 for the session alone | Open: the order now crosses only where it moved; the welcome and the answer's empty tables are left |
 
-What is left, largest first: the 40 ids of the window's order on every resume (S6), the host view's first frame, which crosses base64 inside SSE (7 KB of S3 and S4), and session rows of about 870 bytes for a 40-character title (S4).
+What is left, largest first: the host view's first frame, which crosses base64 inside SSE (7 KB of S3 and S4), session rows of about 870 bytes for a 40-character title (S4), and in S6 the welcome (249 bytes) and a resume's answer that names all nine tables when none changed (483).
 
 ## Development
 

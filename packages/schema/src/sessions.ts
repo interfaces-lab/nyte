@@ -50,6 +50,7 @@ export const SESSIONS_LIMIT = 50;
 export const SessionsReadType = Type.Object({
   seq: Type.Number(),
   ids: Type.Array(idSchema<"session">()),
+  kept: Type.Optional(Type.Integer({ minimum: 0 })),
   rows: Type.Array(SessionInfoType),
 });
 
