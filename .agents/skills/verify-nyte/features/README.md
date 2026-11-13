@@ -1,11 +1,11 @@
 # Nyte verification map
 
-Each feature file maps a feature to the tests that cover it. A mapped test is not a current passing run; report the run's own result and evidence.
+Each feature file maps a feature to the tests that cover it. Report the run's own result and evidence, not the mapping.
 
 - Run one test file while iterating: `bun test <file>` in `packages/tui`, `pnpm exec vitest run <file>` elsewhere.
 - Run a whole suite only as a final sweep. Suites run in parallel load the machine enough that unrelated app tests fail.
 - `pnpm e2e:desktop` builds every desktop output and runs every chapter.
-- For a visual claim, capture a screenshot and an accessibility snapshot. A skipped entry point is not verified through another one.
+- A skipped entry point is not verified through another one.
 
 ## Features
 

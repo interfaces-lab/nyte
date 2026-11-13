@@ -1,26 +1,24 @@
 # Page contract
 
-Component pages hold this order. The components `index.mdx` is an overview and is exempt.
+One page per component subpath. None for style, asset, helper or engine subpaths (`diffs`, `trees`,
+`highlights`, `worker-pool`, `code-themes`) or the app's or desktop's own components.
+
+Component pages, except the components `index.mdx` overview, hold this order:
 
 1. Frontmatter `title` and a one-line `description`.
 2. One fence importing from the component's own subpath.
-3. One or two sentences on what it is and when to reach for it.
-4. `## Usage`, only rules that change what a reader types.
-5. `## Anatomy`, the parts in nesting order, when there is more than one.
-6. `## Examples`, `<Preview>` where a demo is registered, fences otherwise. Order them by what a
-   reader needs in their first ten uses, not by Base UI's sections.
-7. `## Props`, our props as a table, then an `<include>` per Base UI part, with the MIT attribution
-   line.
-8. `## Accessibility`, the keyboard model, focus and ARIA.
+3. One or two sentences: what it is, when to reach for it.
+4. `## Usage`: only rules that change what a reader types.
+5. `## Anatomy`: parts in nesting order, if more than one.
+6. `## Examples`: `<Preview>` for a registered demo, else a fence, ordered by a reader's first ten
+   uses, not Base UI's sections. A demo and its fence show the same API.
+7. `## Props`: our props table, then an `<include>` per Base UI part with the MIT attribution line.
+   An unstyled pass-through part (trigger, portal) gets one line saying so and its `<include>`, no
+   table of ours and none of Base UI's prose.
+8. `## Accessibility`: keyboard model, focus, ARIA.
 
-A part that passes through Base UI unstyled, such as a trigger or a portal, gets one line saying so
-and no table of ours. Its `<include>` stays. Never copy Base UI's prose.
-
-Keep out repo paths, generator commands, implementation history and roadmap. A limit the caller
-hits stays in. Never introduce an example that isn't on the page.
-
-Sentence case headings, straight quotes, no em dashes, no colon joining two clauses. Cut a sentence
-that could appear unchanged in another project's docs.
-
-Use only MDX components registered in `packages/docs/src/components/mdx.tsx`. A demo and the fence
-beside it show the same API.
+Never copy Base UI's prose or introduce an example the page doesn't show. Leave out repo paths,
+generator commands, implementation history and roadmap; keep a limit the caller hits. Sentence-case
+headings, straight quotes, no em dashes, no colon joining two clauses. Cut any sentence that could
+appear unchanged in another project's docs. Use only MDX components registered in
+`packages/docs/src/components/mdx.tsx`.
