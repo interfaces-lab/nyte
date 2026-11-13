@@ -1,7 +1,8 @@
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import process from "node:process";
+import { HOST_HEADER } from "@nyte-ai/protocol";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Value } from "typebox/value";
@@ -19,10 +20,6 @@ export type RunningHost = Static<typeof RunningHostType>;
 const HostAddressType = Type.Object({ port: Type.Integer(), token: Type.String() });
 
 export type HostAddress = Static<typeof HostAddressType>;
-
-export type Published =
-  | { readonly kind: "published" }
-  | { readonly kind: "taken"; readonly by: RunningHost };
 
 export function hostFilePath(env: Readonly<Record<string, string | undefined>> = process.env) {
   return join(hostStateDirectory(env), "host.json");
@@ -69,37 +66,28 @@ export async function findRunningHost(path: string): Promise<RunningHost | null>
   return (await hostAnswers(host.url)) ? host : null;
 }
 
-/** Whether anything answers HTTP at `url` within a second. */
+/** Whether a Nyte host, one that names itself in its host header, answers at `url` within a second. */
 export async function hostAnswers(url: string): Promise<boolean> {
   return fetch(new URL("/.nyte/describe", url), { signal: AbortSignal.timeout(1_000) }).then(
     async (response) => {
       await response.body?.cancel();
 
-      return true;
+      return response.headers.has(HOST_HEADER);
     },
     () => false,
   );
 }
 
-/** Creates `path` readable only by this user, naming `host`, unless a live host already holds it; a stale file is replaced. */
-export async function publishHost(path: string, host: RunningHost): Promise<Published> {
+/**
+ * Makes `path` name `host`, readable only by this user, replacing whatever it held. Only the holder
+ * of the host lock calls it, after finding no live host in the file, so a pid or port the file
+ * still names belongs to no host. Readers see the old file or the new one, never a partial one.
+ */
+export async function publishHost(path: string, host: RunningHost): Promise<void> {
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-
-  for (let attempt = 0; ; attempt++) {
-    try {
-      await writeFile(path, `${JSON.stringify(host)}\n`, { flag: "wx", mode: 0o600 });
-
-      return { kind: "published" };
-    } catch (cause) {
-      if (!(cause instanceof Error && "code" in cause && cause.code === "EEXIST") || attempt > 0)
-        throw cause;
-    }
-
-    const holder = await findRunningHost(path);
-
-    if (holder !== null) return { kind: "taken", by: holder };
-    await rm(path, { force: true });
-  }
+  const draft = `${path}.tmp`;
+  await writeFile(draft, `${JSON.stringify(host)}\n`, { mode: 0o600 });
+  await rename(draft, path);
 }
 
 export async function readHostAddress(path: string): Promise<HostAddress | null> {
@@ -118,7 +106,8 @@ export async function withdrawHost(path: string, pid: number): Promise<void> {
   if ((await readHostFile(path))?.pid === pid) await rm(path, { force: true });
 }
 
-async function readHostFile(path: string): Promise<RunningHost | null> {
+/** The host `path` names, or `null` when it is missing, empty or not a host file. */
+export async function readHostFile(path: string): Promise<RunningHost | null> {
   const parsed = await readJson(path);
 
   return Value.Check(RunningHostType, parsed) ? parsed : null;

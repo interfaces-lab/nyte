@@ -4,8 +4,7 @@ import { basename, join } from "node:path";
 import process from "node:process";
 import { promisify } from "node:util";
 import { app } from "electron";
-import { Type } from "typebox";
-import { Value } from "typebox/value";
+import { processAlive, readHostFile } from "@nyte-ai/service/host-endpoint";
 import {
   bundledHostAgentJob,
   developmentHostAgentJob,
@@ -61,16 +60,6 @@ export async function processStarted(pid: number): Promise<number | null> {
   const started = printed === null ? Number.NaN : Date.parse(printed.stdout.trim());
 
   return Number.isNaN(started) ? null : started;
-}
-
-export function processAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-
-    return true;
-  } catch (cause) {
-    return cause instanceof Error && "code" in cause && cause.code === "EPERM";
-  }
 }
 
 function loginItemAgent(options: HostAgentOptions): HostAgent {
@@ -168,23 +157,18 @@ async function servingHost(nyteHome: string, label: string): Promise<ServingHost
   return pid === null ? null : { pid, own: pid === (await launchdPid(label)) };
 }
 
-const RunningHostType = Type.Object({ pid: Type.Integer() });
-
 async function servedPid(nyteHome: string): Promise<number | null> {
-  const text = await readFile(join(nyteHome, "host.json"), "utf8").catch(() => null);
-  const parsed: unknown = text === null ? null : JSON.parse(text);
+  const host = await readHostFile(join(nyteHome, "host.json"));
 
-  return Value.Check(RunningHostType, parsed) && processAlive(parsed.pid) ? parsed.pid : null;
+  return host !== null && processAlive(host.pid) ? host.pid : null;
 }
 
+/** `restart` starts the new host without waiting for the old one to exit: it stands by on the host lock (`whenTaken: "wait"`) and serves once the old one is gone. */
 function detachedHost(options: HostAgentOptions): HostAgent {
   const label = options.label ?? `${appId(options)}.host`;
   const pid = (): Promise<number | null> => servedPid(options.nyteHome);
 
-  const start = async (): Promise<AgentRegistration> => {
-    if (process.platform === "win32") return "not-found";
-
-    if ((await pid()) !== null) return "enabled";
+  const launch = (): void =>
     spawn(
       options.executable,
       [
@@ -203,6 +187,12 @@ function detachedHost(options: HostAgentOptions): HostAgent {
         },
       },
     ).unref();
+
+  const start = async (): Promise<AgentRegistration> => {
+    if (process.platform === "win32") return "not-found";
+
+    if ((await pid()) !== null) return "enabled";
+    launch();
 
     return "enabled";
   };
@@ -226,7 +216,8 @@ function detachedHost(options: HostAgentOptions): HostAgent {
     },
     async restart() {
       await stop();
-      await start();
+
+      if (process.platform !== "win32") launch();
     },
     stop,
   };

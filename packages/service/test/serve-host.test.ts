@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
 import { setTimeout as sleep } from "node:timers/promises";
+import { HOST_HEADER } from "@nyte-ai/protocol";
 import { asId } from "@nyte-ai/schema";
 import type { Execution, JobView, RunView } from "@nyte-ai/schema";
 import { Type } from "typebox";
@@ -226,7 +227,9 @@ const cases: readonly {
   {
     name: "an older build's live host.json, held without the lock, turns an exit host away",
     async run(scene) {
-      const older = createServer((_request, response) => response.end("{}"));
+      const older = createServer((_request, response) =>
+        response.writeHead(200, { [HOST_HEADER]: "older" }).end("{}"),
+      );
       await new Promise<void>((resolve) => older.listen(0, "127.0.0.1", resolve));
       const address = older.address();
 
