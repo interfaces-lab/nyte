@@ -44,7 +44,7 @@ const ROW_LIMIT = 2_000_000;
 
 const encoder = new TextEncoder();
 
-/** Returns a `Store` over a Durable Object's SQLite storage, node-free, with the sqlite store's tables, row helpers (`store-rows.ts`) and semantics (§41f): `objects(id TEXT PRIMARY KEY, body TEXT NULL, bytes BLOB NULL)`, `refs(name TEXT PRIMARY KEY, target TEXT NULL, revision TEXT NOT NULL)` and `log(session TEXT, seq INTEGER, at INTEGER, event TEXT, PRIMARY KEY (session, seq))`, brought to core's `STORE_VERSION` by `migrateStore` on first `open()`, each commit one `transactionSync` and no backup; the open rejects with `SdkError("unavailable")` for a store a newer Nyte migrated. `put` ids the value with core's `objectId` and stores its JSON once; `putBlob` buffers the stream, ids it with `blobId` and stores the bytes once as an `ArrayBuffer`; an object and a blob that share an id share the row, each column filled once; `blob` reads the bytes back with their size and a null mime; a body, blob or logged event past the Durable Object's 2 MB row limit throws `SdkError("invalid")` before anything is written (§42k). `refs.set` runs inside one `transactionSync` with no await between its reads and writes, first rejecting with `SdkError("unavailable")` when a newer Nyte has migrated the store, with `RefStore.set`'s semantics, each revision a random UUID, any throw inside rolling the whole batch back. `list(prefix)` reads the name range from `prefix` in name order; `log` returns the events after `after` in seq order up to `limit`, each validated as a `SessionEvent`; `tail` is the session's last seq, or 0. Every `open()` returns a connection over the one storage; `close()` releases nothing, the storage being the object's. In workerd, which allows code generation only while modules load, the Worker turns TypeBox acceleration off at startup (`Settings.Set({ useAcceleration: false })` from `typebox/system`, as `packages/examples/cloudflare/worker.ts` does), or `log`'s validation throws inside a request. */
+/** Returns a `Store` over a Durable Object's SQLite storage, node-free, with the sqlite store's tables, row helpers (`store-rows.ts`) and semantics (§41f): `objects(id TEXT PRIMARY KEY, body TEXT NULL, bytes BLOB NULL)`, `refs(name TEXT PRIMARY KEY, target TEXT NULL, revision TEXT NOT NULL)` and `log(session TEXT, seq INTEGER, at INTEGER, event TEXT, PRIMARY KEY (session, seq))`, brought to core's `STORE_VERSION` by `migrateStore` on first `open()`, each commit one `transactionSync` and no backup; the open rejects with `SdkError("unavailable")` for a store a newer Nyte migrated. `put` ids the value with core's `objectId` and stores its JSON once; `putBlob` buffers the stream, ids it with `blobId` and stores the bytes once as an `ArrayBuffer`; an object and a blob that share an id share the row, each column filled once; `blob` reads the bytes back with their size and a null mime; a body, blob or logged event past the Durable Object's 2 MB row limit throws `SdkError("invalid")` before anything is written (§42k). `refs.set` runs inside one `transactionSync` with no await between its reads and writes, first rejecting with `SdkError("unavailable")` when a newer Nyte has migrated the store, with `RefStore.set`'s semantics, each revision a random UUID, any throw inside rolling the whole batch back. `list(prefix)` reads the name range from `prefix` in name order; `log` returns the events after `after` in seq order up to `limit`, each validated as a `SessionEvent`; `tail` is the session's last seq, or 0. `checkpoints` keeps each session's fold checkpoint in `fold_checkpoints` as the sqlite store does, except that a write whose body is past the row limit keeps nothing, so that session's folds start from the checkpoint kept before it. Every `open()` returns a connection over the one storage; `close()` releases nothing, the storage being the object's. In workerd, which allows code generation only while modules load, the Worker turns TypeBox acceleration off at startup (`Settings.Set({ useAcceleration: false })` from `typebox/system`, as `packages/examples/cloudflare/worker.ts` does), or `log`'s validation throws inside a request. */
 export function durableObjectStore(storage: DurableObjectSql): Store {
   let connection: StoreConnection | null = null;
 
@@ -386,6 +386,34 @@ function connect(storage: DurableObjectSql): StoreConnection {
         );
       },
       tail: async (session) => tail(session),
+    },
+    checkpoints: {
+      async read(session) {
+        const row = rows("SELECT seq, body FROM fold_checkpoints WHERE session = ?", session)[0];
+        const body = parseText(row?.body);
+
+        return row === undefined || body === null
+          ? null
+          : { seq: asSeq(parseNumber(row.seq)), body };
+      },
+      async write(session, checkpoint) {
+        if (encoder.encode(checkpoint.body).byteLength > ROW_LIMIT) return;
+        rows(
+          "INSERT INTO fold_checkpoints (session, seq, body) VALUES (?, ?, ?) ON CONFLICT (session) DO UPDATE SET seq = excluded.seq, body = excluded.body WHERE excluded.seq >= fold_checkpoints.seq",
+          session,
+          checkpoint.seq,
+          checkpoint.body,
+        );
+      },
+      async gap(session, after) {
+        const row = rows(
+          "SELECT COUNT(*) AS events, COALESCE(SUM(LENGTH(CAST(event AS BLOB))), 0) AS bytes FROM log WHERE session = ? AND seq > ?",
+          session,
+          after,
+        )[0];
+
+        return { events: parseNumber(row?.events ?? 0), bytes: parseNumber(row?.bytes ?? 0) };
+      },
     },
   };
 }

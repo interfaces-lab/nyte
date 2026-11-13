@@ -7,6 +7,12 @@ import { Compile } from "typebox/compile";
 
 type Role = "reader" | "checkpoint";
 
+/** How long a connection that may block its thread waits on another connection's lock before SQLite answers busy. */
+export const BUSY_TIMEOUT_MS = 5_000;
+
+/** Parameters past this many string characters and bytes in total run on a statement prepared for that call, not a cached one. */
+export const LARGE_PARAMS_SIZE = 64 * 1024;
+
 const rowSchema = Type.Record(
   Type.String(),
   Type.Union([Type.Null(), Type.String(), Type.Number(), Type.BigInt()]),
@@ -33,7 +39,7 @@ const { parentPort, workerData } = require("node:worker_threads");
 const { DatabaseSync } = require("node:sqlite");
 const db = new DatabaseSync(workerData.path, {
   readOnly: workerData.role === "reader",
-  timeout: 5000,
+  timeout: ${BUSY_TIMEOUT_MS},
 });
 if (String(db.prepare("PRAGMA journal_mode").get().journal_mode).toLowerCase() !== "wal")
   throw new Error("SQLite workers require WAL mode");
@@ -62,10 +68,10 @@ parentPort.on("message", ({ id, sql, params }) => {
       }, 100);
     } else {
       const size = params.reduce((total, value) => total + (typeof value === "string" ? value.length : ArrayBuffer.isView(value) ? value.byteLength : 0), 0);
-      let statement = size > 65536 ? undefined : statements.get(sql);
+      let statement = size > ${LARGE_PARAMS_SIZE} ? undefined : statements.get(sql);
       if (statement === undefined) {
         statement = db.prepare(sql);
-        if (size <= 65536) {
+        if (size <= ${LARGE_PARAMS_SIZE}) {
           if (statements.size >= 16) statements.delete(statements.keys().next().value);
           statements.set(sql, statement);
         }

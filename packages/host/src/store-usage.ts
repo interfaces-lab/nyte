@@ -241,6 +241,8 @@ export interface StoreUsageCache {
   path: string;
   /** Cells bucket requests by local day, so another time zone refolds them. */
   timeZone: string;
+  /** The store version the cells were folded at; a migration may rewrite requests in place, keeping their rowids and count. */
+  store: number;
   through: number;
   requests: number;
   readonly sessions: Map<SessionId, Map<string, UsageCell>>;
@@ -248,7 +250,15 @@ export interface StoreUsageCache {
 }
 
 export function createStoreUsageCache(): StoreUsageCache {
-  return { path: "", timeZone: "", through: 0, requests: 0, sessions: new Map(), changed: false };
+  return {
+    path: "",
+    timeZone: "",
+    store: 0,
+    through: 0,
+    requests: 0,
+    sessions: new Map(),
+    changed: false,
+  };
 }
 
 export function readNyteUsage(
@@ -354,14 +364,24 @@ export function readNyteUsage(
 function foldNewRequests(database: DatabaseSync, path: string, cache: StoreUsageCache): void {
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
+  const store = parseNumber(
+    database.prepare("SELECT version FROM store_meta WHERE id = 1").get()?.version ?? 0,
+  );
+
   const covered =
     cache.through === 0
       ? 0
       : parseNumber(database.prepare(USAGE_EVENT_COUNT).get(cache.through)?.requests);
 
-  if (cache.path !== path || cache.timeZone !== timeZone || covered !== cache.requests) {
+  if (
+    cache.path !== path ||
+    cache.timeZone !== timeZone ||
+    cache.store !== store ||
+    covered !== cache.requests
+  ) {
     cache.path = path;
     cache.timeZone = timeZone;
+    cache.store = store;
     cache.through = 0;
     cache.requests = 0;
     cache.sessions.clear();
@@ -415,6 +435,7 @@ const storeUsageCacheDocument = Type.Object({
   version: Type.Literal(STORE_USAGE_CACHE_VERSION),
   path: Type.String(),
   timeZone: Type.String(),
+  store: Type.Integer({ minimum: 0 }),
   through: Type.Integer({ minimum: 0 }),
   requests: Type.Integer({ minimum: 0 }),
   sessions: Type.Array(
@@ -460,6 +481,7 @@ export async function loadStoreUsageCache(path: string): Promise<StoreUsageCache
   return {
     path: document.path,
     timeZone: document.timeZone,
+    store: document.store,
     through: document.through,
     requests: document.requests,
     sessions: new Map(
@@ -488,6 +510,7 @@ export async function saveStoreUsageCache(path: string, cache: StoreUsageCache):
     version: STORE_USAGE_CACHE_VERSION,
     path: cache.path,
     timeZone: cache.timeZone,
+    store: cache.store,
     through: cache.through,
     requests: cache.requests,
     sessions: [...cache.sessions].map(([sessionId, cells]) => [sessionId, [...cells.values()]]),

@@ -2,9 +2,10 @@ import { mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import process from "node:process";
 import { DatabaseSync } from "node:sqlite";
+import { setTimeout } from "node:timers/promises";
 import type { SQLInputValue, StatementSync } from "node:sqlite";
 import { asSeq } from "@nyte-ai/schema";
-import type { ObjectId, Ref, Revision, Seq, SessionId } from "@nyte-ai/schema";
+import type { ObjectId, Ref, Revision, Seq, SessionId, SetOutcome } from "@nyte-ai/schema";
 import { dev } from "@nyte-ai/core";
 import {
   admits,
@@ -36,11 +37,19 @@ import {
   parseText,
   storedReader,
 } from "./store-rows.ts";
-import { sqliteWorkers } from "./sqlite-workers.ts";
+import { BUSY_TIMEOUT_MS, LARGE_PARAMS_SIZE, sqliteWorkers } from "./sqlite-workers.ts";
 import { compactStore } from "./store-compaction.ts";
-import { sessionIndexChanges, sqlSessionIndex, stampDirectory } from "./session-index.ts";
+import {
+  READ_HOST_SEQ,
+  sessionIndexChanges,
+  sqlSessionIndex,
+  stampDirectory,
+  WRITE_HOST_SEQ,
+} from "./session-index.ts";
 
-const BUSY_TIMEOUT_MS = 5_000;
+const BUSY_WAIT_MS = 1;
+
+const BUSY_BACKOFF_MS = 20;
 
 const BACKUPS_KEPT = 3;
 
@@ -97,11 +106,12 @@ export function sqliteStore(
 
     database = created;
     workers = "path" in input ? sqliteWorkers(created, input.path) : null;
+    const lock = writeLock();
 
     if ("path" in input) {
       const stop = new AbortController();
 
-      const done = compactStore(created, stop.signal, () => workers?.check()).catch(
+      const done = compactStore(created, stop.signal, lock, () => workers?.check()).catch(
         (error: unknown) => {
           if (!stop.signal.aborted) dev("sqlite", "compaction-failed", { message: String(error) });
         },
@@ -110,7 +120,10 @@ export function sqliteStore(
       compaction = { stop, done };
     }
 
-    return connect(created, workers);
+    const opened = connect(created, workers, lock);
+    created.exec(`PRAGMA busy_timeout = ${BUSY_WAIT_MS}`);
+
+    return opened;
   };
 
   const connection = (): Promise<StoreConnection> => {
@@ -218,6 +231,7 @@ function sqliteTarget(database: DatabaseSync, path: string | null): MigrationTar
         }
 
         for (const statement of change.sql) database.exec(statement);
+        const prepared = statementCache(database);
         const putBody = database.prepare(PUT_BODY);
 
         const repoint = database.prepare(
@@ -235,7 +249,7 @@ function sqliteTarget(database: DatabaseSync, path: string | null): MigrationTar
             return "conflict";
           }
 
-          updateSessionIndex(database, moved.name, moved.id, mintRevision());
+          updateSessionIndex(prepared, moved.name, moved.id, mintRevision());
         }
 
         const create = database.prepare(
@@ -247,7 +261,7 @@ function sqliteTarget(database: DatabaseSync, path: string | null): MigrationTar
           const revision = mintRevision();
 
           if (Number(create.run(created.name, created.target, revision).changes) > 0)
-            updateSessionIndex(database, created.name, created.target, revision);
+            updateSessionIndex(prepared, created.name, created.target, revision);
         }
 
         const relog = database.prepare(
@@ -265,7 +279,7 @@ function sqliteTarget(database: DatabaseSync, path: string | null): MigrationTar
         if (change.reindexSessions)
           for (const row of database.prepare("SELECT name, target, revision FROM refs").all()) {
             const ref = parseRef(row);
-            updateSessionIndex(database, ref.name, ref.target, ref.revision);
+            updateSessionIndex(prepared, ref.name, ref.target, ref.revision);
           }
 
         for (const statement of change.indexed) database.exec(statement);
@@ -340,6 +354,7 @@ function backup(
 function connect(
   database: DatabaseSync,
   workers: ReturnType<typeof sqliteWorkers> | null,
+  lock: ReturnType<typeof writeLock>,
 ): StoreConnection {
   const putBody = database.prepare(PUT_BODY);
 
@@ -395,6 +410,8 @@ function connect(
   const getCatalog = database.prepare("SELECT body FROM catalogs WHERE id = ?");
   const readVersion = database.prepare("SELECT version FROM store_meta WHERE id = 1");
   const readDataVersion = database.prepare("PRAGMA data_version");
+  const setVersion = database.prepare("UPDATE session_index SET version = ? WHERE session = ?");
+  const prepared = statementCache(database);
 
   const read = async (statement: StatementSync, ...params: SQLInputValue[]) =>
     (await workers?.read(statement.sourceSQL, params)) ?? statement.all(...params);
@@ -419,8 +436,10 @@ function connect(
     ),
     catalogs: {
       async putIfAbsent(id, body) {
-        write(database, putCatalog, id, body);
-        workers?.check();
+        return lock(() => {
+          write(database, putCatalog, id, body);
+          workers?.check();
+        });
       },
       async get(id) {
         const [row] = await read(getCatalog, id);
@@ -431,10 +450,13 @@ function connect(
     objects: {
       async put(object) {
         const id = await objectId(object);
-        write(database, putBody, id, JSON.stringify(object));
-        workers?.check();
 
-        return id;
+        return lock(() => {
+          write(database, putBody, id, JSON.stringify(object));
+          workers?.check();
+
+          return id;
+        });
       },
       async get(id) {
         const body = parseText(getBody.get(id)?.body);
@@ -444,10 +466,13 @@ function connect(
       async putBlob(bytes) {
         const joined = await collectBlob(bytes);
         const id = await blobId(joined);
-        write(database, putBytes, id, joined);
-        workers?.check();
 
-        return id;
+        return lock(() => {
+          write(database, putBytes, id, joined);
+          workers?.check();
+
+          return id;
+        });
       },
       async blob(id) {
         const size = getSize.get(id)?.size;
@@ -471,113 +496,121 @@ function connect(
         const logged = collectSessionEvents(updates);
 
         const waiting = performance.now();
-        database.exec("BEGIN IMMEDIATE");
-        const acquired = performance.now();
 
-        try {
-          assertStoreVersion(parseNumber(readVersion.get()?.version ?? 0));
-          const before = new Map<string, Ref | undefined>();
+        return lock((): SetOutcome => {
+          database.exec("BEGIN IMMEDIATE");
+          const acquired = performance.now();
 
-          for (const update of updates)
-            if (!before.has(update.name)) before.set(update.name, ref(update.name) ?? undefined);
-          const fenced = fenceNames(updates).find((name) => ref(name) === null);
+          try {
+            assertStoreVersion(parseNumber(readVersion.get()?.version ?? 0));
+            const before = new Map<string, Ref | undefined>();
 
-          if (fenced !== undefined) {
-            database.exec("ROLLBACK");
+            for (const update of updates)
+              if (!before.has(update.name)) before.set(update.name, ref(update.name) ?? undefined);
+            const fenced = fenceNames(updates).find((name) => ref(name) === null);
 
-            return { kind: "fenced", name: fenced };
-          }
+            if (fenced !== undefined) {
+              database.exec("ROLLBACK");
 
-          const stale = updates.find((update) => !admits(update, before.get(update.name)));
+              return { kind: "fenced", name: fenced };
+            }
 
-          if (stale !== undefined) {
-            database.exec("ROLLBACK");
+            const stale = updates.find((update) => !admits(update, before.get(update.name)));
 
-            return {
-              kind: "stale",
-              name: stale.name,
-              revision: before.get(stale.name)?.revision ?? null,
-            };
-          }
+            if (stale !== undefined) {
+              database.exec("ROLLBACK");
 
-          const missing = updates.find(
-            (update) => update.target !== null && hasBody.get(update.target) === undefined,
-          );
+              return {
+                kind: "stale",
+                name: stale.name,
+                revision: before.get(stale.name)?.revision ?? null,
+              };
+            }
 
-          if (missing !== undefined) {
-            database.exec("ROLLBACK");
-
-            return {
-              kind: "stale",
-              name: missing.name,
-              revision: before.get(missing.name)?.revision ?? null,
-            };
-          }
-
-          const replaced = replacedTargets(updates, before);
-          const stamp = stampDirectory(updates, (text, values) =>
-            database.prepare(text).all(...values),
-          );
-          const touched = new Map<SessionId, Revision>();
-          const current = new Map([...before].map(([name, row]) => [name, row?.revision ?? null]));
-
-          const revisions = updates.map((update) => {
-            const revision = mintRevision();
-
-            if (update.target === null) deleteRef.run(update.name);
-            else putRef.run(update.name, update.target, revision);
-            audit?.run(
-              Date.now(),
-              process.pid,
-              fenceNames([update]).find((name) => name.startsWith("processes/")) ?? null,
-              update.name,
-              current.get(update.name) ?? null,
-              update.target === null ? null : revision,
-              update.target,
+            const missing = updates.find(
+              (update) => update.target !== null && hasBody.get(update.target) === undefined,
             );
-            current.set(update.name, update.target === null ? null : revision);
-            updateSessionIndex(database, update.name, update.target, revision);
-            const session = parseSessionRef(update.name);
 
-            if (session !== null) touched.set(session, revision);
+            if (missing !== undefined) {
+              database.exec("ROLLBACK");
 
-            return revision;
-          });
+              return {
+                kind: "stale",
+                name: missing.name,
+                revision: before.get(missing.name)?.revision ?? null,
+              };
+            }
 
-          for (const [session, version] of touched)
-            database
-              .prepare("UPDATE session_index SET version = ? WHERE session = ?")
-              .run(version, session);
+            const replaced = replacedTargets(updates, before);
 
-          for (const id of replaced) dropReplaced.run(id);
+            const stamp = stampDirectory(updates, (text, values) =>
+              (text === READ_HOST_SEQ || text === WRITE_HOST_SEQ
+                ? prepared(text)
+                : database.prepare(text)
+              ).all(...values),
+            );
 
-          const host = stamp();
-          const at = Date.now();
-          const tails = new Map<SessionId, number>();
+            const touched = new Map<SessionId, Revision>();
 
-          const appended = logged.map(({ session, event }) => {
-            const seq = (tails.get(session) ?? tail(session)) + 1;
-            tails.set(session, seq);
-            write(database, append, session, seq, at, JSON.stringify(event));
+            const current = new Map(
+              [...before].map(([name, row]) => [name, row?.revision ?? null]),
+            );
 
-            return asSeq(seq);
-          });
+            const revisions = updates.map((update) => {
+              const revision = mintRevision();
 
-          database.exec("COMMIT");
-          workers?.check();
+              if (update.target === null) deleteRef.run(update.name);
+              else putRef.run(update.name, update.target, revision);
+              audit?.run(
+                Date.now(),
+                process.pid,
+                fenceNames([update]).find((name) => name.startsWith("processes/")) ?? null,
+                update.name,
+                current.get(update.name) ?? null,
+                update.target === null ? null : revision,
+                update.target,
+              );
+              current.set(update.name, update.target === null ? null : revision);
+              updateSessionIndex(prepared, update.name, update.target, revision);
+              const session = parseSessionRef(update.name);
 
-          return { kind: "set", logged: appended, at, revisions, host };
-        } catch (error) {
-          if (database.isTransaction) database.exec("ROLLBACK");
+              if (session !== null) touched.set(session, revision);
 
-          throw error;
-        } finally {
-          dev("sqlite", "transaction", {
-            connection: "writer",
-            lockWaitMs: acquired - waiting,
-            executionMs: performance.now() - acquired,
-          });
-        }
+              return revision;
+            });
+
+            for (const [session, version] of touched) setVersion.run(version, session);
+
+            for (const id of replaced) dropReplaced.run(id);
+
+            const host = stamp();
+            const at = Date.now();
+            const tails = new Map<SessionId, number>();
+
+            const appended = logged.map(({ session, event }) => {
+              const seq = (tails.get(session) ?? tail(session)) + 1;
+              tails.set(session, seq);
+              write(database, append, session, seq, at, JSON.stringify(event));
+
+              return asSeq(seq);
+            });
+
+            database.exec("COMMIT");
+            workers?.check();
+
+            return { kind: "set", logged: appended, at, revisions, host };
+          } catch (error) {
+            if (database.isTransaction) database.exec("ROLLBACK");
+
+            throw error;
+          } finally {
+            dev("sqlite", "transaction", {
+              connection: "writer",
+              lockWaitMs: acquired - waiting,
+              executionMs: performance.now() - acquired,
+            });
+          }
+        });
       },
       async log(session, after, limit) {
         return (await read(readLog, session, after, limit)).map((row) =>
@@ -596,8 +629,10 @@ function connect(
           : { seq: asSeq(parseNumber(row.seq)), body };
       },
       async write(session, checkpoint) {
-        write(database, writeCheckpoint, session, checkpoint.seq, checkpoint.body);
-        workers?.check();
+        return lock(() => {
+          write(database, writeCheckpoint, session, checkpoint.seq, checkpoint.body);
+          workers?.check();
+        });
       },
       async gap(session, after) {
         const [row] = await read(readGap, session, after);
@@ -620,7 +655,7 @@ function auditing(database: DatabaseSync): StatementSync | null {
 }
 
 function updateSessionIndex(
-  database: DatabaseSync,
+  prepared: (text: string) => StatementSync,
   name: string,
   target: ObjectId | null,
   revision: Revision,
@@ -630,14 +665,81 @@ function updateSessionIndex(
   const body =
     target === null
       ? null
-      : parseText(database.prepare("SELECT body FROM objects WHERE id = ?").get(target)?.body);
+      : parseText(prepared("SELECT body FROM objects WHERE id = ?").get(target)?.body);
 
   for (const change of sessionIndexChanges(
     name,
     body === null ? null : decodeObject(body),
     revision,
   ))
-    database.prepare(change.text).run(...change.values);
+    prepared(change.text).run(...change.values);
+}
+
+/** Returns `database`'s statement for a text, prepared on its first use and kept as long as the cache, which never evicts: only texts from a fixed set go through it. */
+function statementCache(database: DatabaseSync): (text: string) => StatementSync {
+  const statements = new Map<string, StatementSync>();
+
+  return (text) => {
+    const statement = statements.get(text) ?? database.prepare(text);
+    statements.set(text, statement);
+
+    return statement;
+  };
+}
+
+/**
+ * Returns the main connection's write lock: each attempt is an autocommit write or a whole
+ * `BEGIN IMMEDIATE` transaction. When no attempt waits, it runs at the call and its result or
+ * error comes back synchronously. An attempt SQLite refuses with `SQLITE_BUSY` changed nothing;
+ * it waits off the thread with backoff and runs again until `BUSY_TIMEOUT_MS` after its call, and
+ * the returned promise rejects with SQLite's error after that. Attempts run in call order, so one
+ * called while another waits runs after it.
+ */
+function writeLock(): <T>(attempt: () => T) => T | Promise<T> {
+  let waiting: Promise<void> | null = null;
+
+  return <T>(attempt: () => T): T | Promise<T> => {
+    const called = performance.now();
+    const tried = waiting === null;
+
+    if (tried) {
+      try {
+        return attempt();
+      } catch (error) {
+        if (!busy(error)) throw error;
+      }
+    }
+
+    const retried = (waiting ?? Promise.resolve()).then(() => retry(attempt, called, tried));
+
+    const settled = retried.then(
+      () => undefined,
+      () => undefined,
+    );
+
+    waiting = settled;
+    void settled.then(() => {
+      if (waiting === settled) waiting = null;
+    });
+
+    return retried;
+  };
+}
+
+async function retry<T>(attempt: () => T, called: number, tried: boolean): Promise<T> {
+  for (let delay = tried ? 1 : 0; ; delay = Math.min(Math.max(delay * 2, 1), BUSY_BACKOFF_MS)) {
+    if (delay > 0) await setTimeout(delay);
+
+    try {
+      return attempt();
+    } catch (error) {
+      if (!busy(error) || performance.now() - called >= BUSY_TIMEOUT_MS) throw error;
+    }
+  }
+}
+
+function busy(error: unknown): boolean {
+  return error instanceof Error && "errcode" in error && Number(error.errcode) % 256 === 5;
 }
 
 function write(database: DatabaseSync, statement: StatementSync, ...params: SQLInputValue[]) {
@@ -648,5 +750,7 @@ function write(database: DatabaseSync, statement: StatementSync, ...params: SQLI
     0,
   );
 
-  return (size > 64 * 1024 ? database.prepare(statement.sourceSQL) : statement).run(...params);
+  return (size > LARGE_PARAMS_SIZE ? database.prepare(statement.sourceSQL) : statement).run(
+    ...params,
+  );
 }

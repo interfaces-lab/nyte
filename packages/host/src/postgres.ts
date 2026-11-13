@@ -23,6 +23,7 @@ import {
   sessionIndexRef,
   parseSessionRef,
 } from "@nyte-ai/core/store";
+import { dev } from "@nyte-ai/core";
 import type { Store, StoreConnection } from "@nyte-ai/core";
 import type { MigrationTarget } from "@nyte-ai/core/store";
 import { Pool } from "pg";
@@ -71,12 +72,21 @@ const MIGRATION_LOCK = "SELECT pg_advisory_xact_lock(hashtextextended('nyte:stor
 const SHARED_MIGRATION_LOCK =
   "SELECT pg_advisory_xact_lock_shared(hashtextextended('nyte:store', 0))";
 
-/** Returns a `Store` over Postgres: a `pg` `Pool` of its own from `connectionString`, ended by `close()`, or the caller's `pool` (any `PostgresPool`, §41c), left open. The first `open()` brings it to core's `STORE_VERSION` with `migrateStore`, the sqlite store's tables with `bytes` as `BYTEA`, `seq`/`at` as `BIGINT` and `refs.name` collated `"C"` so `list` ranges and orders by code point as the other stores do; each commit is one transaction under an exclusive advisory lock, so instances opening at once serialize, and the open rejects with `SdkError("unavailable")` for a store a newer Nyte migrated. There is no backup. Semantics are the sqlite store's (§41f); each `refs.set` is one transaction on one pooled client that shares the migration's advisory lock, rejects with `SdkError("unavailable")` when a newer Nyte has migrated the store, then takes `pg_advisory_xact_lock` on every ref name and session it touches, in sorted order (a row lock cannot hold an absent ref or a session's next seq), then reads those refs and applies `RefStore.set`, rolling back on any error. Every `open()` returns a connection whose reads go through the pool. */
+/** Returns a `Store` over Postgres: a `pg` `Pool` of its own from `connectionString`, ended by `close()`, its idle clients' errors logged rather than thrown, or the caller's `pool` (any `PostgresPool`, §41c), left open. The first `open()` brings it to core's `STORE_VERSION` with `migrateStore`, the sqlite store's tables with `bytes` as `BYTEA`, `seq`/`at` as `BIGINT` and `refs.name` collated `"C"` so `list` ranges and orders by code point as the other stores do; each commit is one transaction under an exclusive advisory lock, so instances opening at once serialize, and the open rejects with `SdkError("unavailable")` for a store a newer Nyte migrated. There is no backup. Semantics are the sqlite store's (§41f); each `refs.set` is one transaction on one pooled client that shares the migration's advisory lock, rejects with `SdkError("unavailable")` when a newer Nyte has migrated the store, then takes `pg_advisory_xact_lock` on every ref name and session it touches, in sorted order (a row lock cannot hold an absent ref or a session's next seq), then reads those refs and applies `RefStore.set`, rolling back on any error. Every `open()` returns a connection whose reads go through the pool. */
 export function postgresStore(
-  input: { readonly connectionString: string } | { readonly pool: PostgresPool },
+  input:
+    | { readonly connectionString: string }
+    | {
+        /** The caller's pool, which the caller ends and listens on for `error`: a `pg` pool emits it when an idle client fails, and with no listener the process exits. */
+        readonly pool: PostgresPool;
+      },
 ): Store {
   const pool: PostgresPool =
-    "pool" in input ? input.pool : new Pool({ connectionString: input.connectionString });
+    "pool" in input
+      ? input.pool
+      : new Pool({ connectionString: input.connectionString }).on("error", (error) => {
+          dev("postgres", "idle-client-error", { message: error.message });
+        });
 
   let ready: Promise<StoreConnection> | null = null;
 
@@ -409,10 +419,18 @@ async function publish(
 
   try {
     await client.query(SHARED_MIGRATION_LOCK);
-    assertStoreVersion(await storedVersion(client));
 
-    for (const key of locks)
-      await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [key]);
+    assertStoreVersion(
+      parseNumber(
+        (await client.query("SELECT version FROM store_meta WHERE id = 1")).rows[0]?.version ?? 0,
+      ),
+    );
+
+    if (locks.length > 0)
+      await client.query(
+        "SELECT pg_advisory_xact_lock(hashtextextended(key, 0)) FROM unnest($1::text[]) WITH ORDINALITY AS locks(key, ordinal) ORDER BY ordinal",
+        [locks],
+      );
 
     const directory = directorySessions(updates);
 
@@ -475,11 +493,19 @@ async function publish(
       objects.length === 0
         ? { rows: [] }
         : await client.query(
-            "SELECT id FROM objects WHERE id = ANY($1::text[]) AND body IS NOT NULL ORDER BY id FOR UPDATE",
+            "SELECT id, body FROM objects WHERE id = ANY($1::text[]) AND body IS NOT NULL ORDER BY id FOR UPDATE",
             [objects],
           );
 
-    const stored = new Set(present.map((row) => parseText(row.id)));
+    const stored = new Map(
+      present.flatMap((row) => {
+        const id = parseText(row.id);
+        const body = parseText(row.body);
+
+        return id === null || body === null ? [] : [[id, body] as const];
+      }),
+    );
+
     const missing = updates.find((update) => update.target !== null && !stored.has(update.target));
 
     if (missing !== undefined) {
@@ -513,7 +539,7 @@ async function publish(
           "INSERT INTO refs (name, target, revision) VALUES ($1, $2, $3) ON CONFLICT (name) DO UPDATE SET target = excluded.target, revision = excluded.revision",
           [update.name, update.target, revision],
         );
-      await updateSessionIndex(client, update.name, update.target, revision);
+      await updateSessionIndex(client, update.name, update.target, revision, stored);
       const session = parseSessionRef(update.name);
 
       if (session !== null) touched.set(session, revision);
@@ -580,14 +606,16 @@ async function updateSessionIndex(
   name: string,
   target: ObjectId | null,
   revision: Revision,
+  bodies: ReadonlyMap<string, string> = new Map(),
 ): Promise<void> {
   if (sessionIndexRef(name) === null) return;
   const body =
     target === null
       ? null
-      : parseText(
+      : (bodies.get(target) ??
+        parseText(
           (await client.query("SELECT body FROM objects WHERE id = $1", [target])).rows[0]?.body,
-        );
+        ));
 
   for (const change of sessionIndexChanges(
     name,

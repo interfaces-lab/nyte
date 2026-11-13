@@ -127,8 +127,7 @@ async function* historyLines(path: string, start: number, signal: AbortSignal | 
 
     if (!stat.isFile()) throw new Error("History is not a regular file.");
     const buffer = Buffer.alloc(64 * 1024);
-    let pending = Buffer.alloc(0);
-    let pendingStart = start;
+    const pending: Buffer[] = [];
     let position = start;
 
     while (position < stat.size) {
@@ -142,30 +141,28 @@ async function* historyLines(path: string, start: number, signal: AbortSignal | 
       );
 
       if (bytesRead === 0) break;
-      position += bytesRead;
       const read = buffer.subarray(0, bytesRead);
-      const chunk = pending.length === 0 ? read : Buffer.concat([pending, read]);
+      const readStart = position;
+      position += bytesRead;
       let from = 0;
 
-      for (let newline = chunk.indexOf(0x0a); newline !== -1; newline = chunk.indexOf(0x0a, from)) {
+      for (let newline = read.indexOf(0x0a); newline !== -1; newline = read.indexOf(0x0a, from)) {
         yield {
-          text: chunk.toString("utf8", from, newline),
+          text:
+            pending.length === 0
+              ? read.toString("utf8", from, newline)
+              : Buffer.concat([...pending.splice(0), read.subarray(0, newline)]).toString("utf8"),
           terminated: true,
-          end: pendingStart + newline + 1,
+          end: readStart + newline + 1,
         };
         from = newline + 1;
       }
 
-      pendingStart += from;
-      pending = Buffer.from(chunk.subarray(from));
+      if (from < bytesRead) pending.push(Buffer.from(read.subarray(from)));
     }
 
     if (pending.length > 0)
-      yield {
-        text: pending.toString("utf8"),
-        terminated: false,
-        end: pendingStart + pending.length,
-      };
+      yield { text: Buffer.concat(pending).toString("utf8"), terminated: false, end: position };
   } finally {
     await file.close();
   }

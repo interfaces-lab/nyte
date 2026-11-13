@@ -20,8 +20,6 @@ const SUPERSEDED_KINDS = [
   "workspace",
 ];
 
-const COMPACTED = 1;
-
 const START_DELAY_MS = 30_000;
 
 const WORKING_MS = 60 * 60_000;
@@ -36,29 +34,54 @@ const REMOVE_BATCH = `DELETE FROM objects WHERE rowid > ?1 AND rowid <= ?2
     OR (body IS NULL AND length(bytes) > ${BLOB_LIMIT})
   )`;
 
+const FIRST_RECENT =
+  "SELECT min(rowid) AS recent FROM objects WHERE rowid > ?1 AND rowid <= ?2 AND json_extract(body, '$.at') >= ?3";
+
+/**
+ * Removes unreferenced objects at least `WORKING_MS` old, 30 seconds after the store opens and
+ * then hourly. `PRAGMA user_version` holds the objects rowid every row at or below has been
+ * checked once old enough to remove, and a pass resumes above it; it stops at the first object
+ * still too recent, so that object is checked again by a later pass.
+ */
 export async function compactStore(
   database: DatabaseSync,
   signal: AbortSignal,
+  lock: <T>(attempt: () => T) => T | Promise<T>,
   written: () => void,
 ): Promise<void> {
-  if (Number(database.prepare("PRAGMA user_version").get()?.user_version) >= COMPACTED) return;
   await setTimeout(START_DELAY_MS, undefined, { signal });
-
-  const cutoff = Date.now() - WORKING_MS;
-
-  const last = Number(
-    database.prepare("SELECT COALESCE(MAX(rowid), 0) AS last FROM objects").get()?.last,
-  );
-
   const remove = database.prepare(REMOVE_BATCH);
-  let removed = 0;
+  const firstRecent = database.prepare(FIRST_RECENT);
+  const readLast = database.prepare("SELECT COALESCE(MAX(rowid), 0) AS last FROM objects");
 
-  for (let from = 0; from < last; from += BATCH_ROWS) {
-    removed += Number(remove.run(from, from + BATCH_ROWS, cutoff).changes);
-    written();
-    await setImmediate(undefined, { signal });
+  for (;;) {
+    const cutoff = Date.now() - WORKING_MS;
+    const start = Number(database.prepare("PRAGMA user_version").get()?.user_version);
+    const last = Number(readLast.get()?.last);
+    let through = start;
+    let removed = 0;
+
+    while (through < last) {
+      const from = through;
+      const to = Math.min(from + BATCH_ROWS, last);
+      removed += Number((await lock(() => remove.run(from, to, cutoff))).changes);
+      written();
+      const recent = firstRecent.get(from, to, cutoff)?.recent;
+
+      if (recent !== null && recent !== undefined) {
+        through = Number(recent) - 1;
+        break;
+      }
+
+      through = to;
+      await setImmediate(undefined, { signal });
+    }
+
+    const watermark = Math.min(through, Number(readLast.get()?.last));
+
+    if (watermark !== start)
+      await lock(() => database.exec(`PRAGMA user_version = ${String(watermark)}`));
+    dev("sqlite", "compacted", { removed, through: watermark });
+    await setTimeout(WORKING_MS, undefined, { signal, ref: false });
   }
-
-  database.exec(`PRAGMA user_version = ${COMPACTED}`);
-  dev("sqlite", "compacted", { removed });
 }

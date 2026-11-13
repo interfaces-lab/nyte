@@ -30,10 +30,6 @@ export interface UsageScanReader {
   close(): Promise<void>;
 }
 
-export function catalogForUsage(models: Pick<Models, "getModels">): readonly Model<Api>[] {
-  return [...models.getModels("anthropic"), ...models.getModels("openai-codex")];
-}
-
 export class UsageScanner implements UsageScanReader {
   private readonly home: string;
   private readonly cachePath: string;
