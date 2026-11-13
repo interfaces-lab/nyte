@@ -1,5 +1,6 @@
 import type { McpOwner } from "../mcp-server/grants.ts";
 import { Buffer } from "node:buffer";
+import { setTimeout as sleep } from "node:timers/promises";
 import {
   API_MIN_REVISION,
   API_REVISION,
@@ -163,6 +164,9 @@ const GATHER_MS = 8;
 
 /** The shortest time between two pushes of a session's changes and streamed text: a fast model's deltas reach a client as about thirty frames a second. */
 const PUSH_MS = 33;
+
+/** The shortest time between two pushes of the host's session rows to one client. A turn moves its session's row at every step, a tool turn nine times in under a second, and each push carries the row whole; the list a person scans does not need thirty frames a second. The first change after a quiet spell goes out at once and the feed merges what moves meanwhile, so the last state always arrives. */
+const SESSIONS_PUSH_MS = 250;
 
 const FRAGMENT_REVISION = 23;
 
@@ -477,6 +481,7 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
         kind: "change",
         tables: next.value.tables,
       });
+      await sleep(SESSIONS_PUSH_MS, undefined, { ref: false });
     }
   };
 
