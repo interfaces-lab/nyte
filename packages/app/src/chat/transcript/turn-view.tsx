@@ -197,7 +197,10 @@ export function UserMessageView({
     edit.attachmentReads === 0 &&
     edit.document.text === original &&
     edit.attachments.length === 0 &&
-    edit.kept.length === messageFiles(content).length;
+    edit.kept.length === messageFiles(content).length &&
+    edit.model?.key === branchModel?.model?.key &&
+    edit.thinkingLevel === branchModel?.thinkingLevel &&
+    edit.fast === (branchModel?.fast === true);
 
   const keepWhileEditing = (element: HTMLDivElement | null): (() => void) | undefined =>
     element === null ? undefined : transcript.keep(element);
@@ -425,6 +428,7 @@ export function UserMessageView({
   );
 }
 
+/** Base UI removes an open popup's backdrop on the press, so the click that follows lands outside every popup; the press decides. */
 function DismissOnOutsideClick({
   rowRef,
   onDismiss,
@@ -439,25 +443,42 @@ function DismissOnOutsideClick({
 
     if (row === null) return;
 
-    const listener = (event: MouseEvent): void => {
-      if (event.defaultPrevented || event.button !== 0 || event.composedPath().includes(row))
-        return;
-      const target = event.target;
+    let pressStartedInPopup = false;
 
+    const press = (event: PointerEvent): void => {
+      pressStartedInPopup = insidePopup(event.target);
+    };
+
+    const listener = (event: MouseEvent): void => {
       if (
-        target instanceof Element &&
-        target.closest('[role="menu"], [role="listbox"], [role="dialog"], [data-base-ui-inert]')
+        event.defaultPrevented ||
+        event.button !== 0 ||
+        pressStartedInPopup ||
+        insidePopup(event.target) ||
+        event.composedPath().includes(row)
       )
         return;
       dismiss();
     };
 
+    row.ownerDocument.addEventListener("pointerdown", press, true);
     row.ownerDocument.addEventListener("click", listener);
 
-    return () => row.ownerDocument.removeEventListener("click", listener);
+    return () => {
+      row.ownerDocument.removeEventListener("pointerdown", press, true);
+      row.ownerDocument.removeEventListener("click", listener);
+    };
   });
 
   return null;
+}
+
+function insidePopup(target: EventTarget | null): boolean {
+  return (
+    target instanceof Element &&
+    target.closest('[role="menu"], [role="listbox"], [role="dialog"], [data-base-ui-inert]') !==
+      null
+  );
 }
 
 function HistoryDisclosure({
