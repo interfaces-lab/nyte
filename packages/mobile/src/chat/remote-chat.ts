@@ -20,13 +20,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { describeHostError } from "../connection/connection.ts";
 import { useHost } from "../connection/host-context.tsx";
-import {
-  healthMessage,
-  updatedLabel,
-  useChat,
-  useHealth,
-  useSessions,
-} from "../connection/live.ts";
+import { healthMessage, updatedLabel, useChatRead, useHealth } from "../connection/live.ts";
 import { uploadDraft, type DraftContent } from "../media/attachments.ts";
 
 export type SendAnswer =
@@ -77,23 +71,24 @@ async function configureModel(
   }
 }
 
+/** `tip` and `heads` come from the session's info, read again whenever the head's revision, which moves with its tip, changes. */
 export function useRemoteChat(client: Connection, sessionId: SessionId, headName?: HeadName) {
   const { newerHost, live } = useHost();
   const session = client.session(sessionId);
   const head = headName === undefined ? session : session.head(headName);
 
-  const chat = useChat(live, client, sessionId, headName);
+  const read = useChatRead(live, client, sessionId, headName);
+  const chat = read !== undefined && "view" in read ? read : undefined;
   const health = useHealth(live);
-  const info = useQuery({ queryKey: ["session-info", sessionId], queryFn: () => session.info() });
-  const parent = info.data?.parent ?? null;
+  const state = chat?.view;
 
-  const listed = useSessions(live, {
-    parents: parent === null ? { kind: "roots" } : { kind: "children", session: parent },
+  const info = useQuery({
+    queryKey: ["session-info", sessionId, state?.revision ?? null],
+    queryFn: () => session.info(),
+    placeholderData: (previous, query) => (query?.queryKey[1] === sessionId ? previous : undefined),
   });
 
-  const state = chat?.view;
-  const row = listed?.sessions?.find((candidate) => candidate.id === sessionId);
-  const tip = row?.heads.find((entry) => entry.name === head.name)?.tip;
+  const tip = info.data?.heads.find((entry) => entry.name === head.name)?.tip;
 
   const [sending, setSending] = useState(false);
 
@@ -190,8 +185,10 @@ export function useRemoteChat(client: Connection, sessionId: SessionId, headName
   return {
     state,
     tip: tip?.kind === "commit" ? tip.id : undefined,
-    heads: row?.heads.map((entry) => entry.name) ?? [],
+    heads: info.data?.heads.map((entry) => entry.name) ?? [],
     health: healthMessage(health),
+    loadError:
+      read !== undefined && "error" in read ? describeHostError(read.error, newerHost) : undefined,
     updated: updatedLabel(chat?.freshness),
     see: (commit: CommitId) => head.see(commit),
     info: info.data,

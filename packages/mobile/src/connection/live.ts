@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 import Constants from "expo-constants";
 import { asId } from "@nyte-ai/schema";
-import type { Connection, HeadName, SessionId, SessionInfo } from "@nyte-ai/sdk";
+import type { Connection, HeadName, SdkError, SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { headView, openHost, streamText, unsentSends, withStreamedText } from "@nyte-ai/sdk/client";
 import type {
   Freshness,
@@ -20,6 +20,9 @@ export interface ChatSnapshot {
   readonly view: HeadView;
   readonly freshness: Freshness;
 }
+
+/** A head's snapshot, or the error its read failed with while the SDK retries it and holds none. */
+export type ChatRead = ChatSnapshot | { readonly error: SdkError };
 
 export interface ListSnapshot {
   readonly sessions: readonly SessionInfo[] | undefined;
@@ -48,14 +51,14 @@ const MAIN = asId<"head">("main");
 
 const TAIL = 200;
 
-const NONE: Shared<ChatSnapshot> = { subscribe: () => () => undefined, snapshot: () => undefined };
+const NONE: Shared<ChatRead> = { subscribe: () => () => undefined, snapshot: () => undefined };
 
 const healths = new WeakMap<
   LiveHost,
   { readonly subscribe: (listener: () => void) => () => void; readonly snapshot: () => Health }
 >();
 
-const chats = new WeakMap<LiveHost, Map<string, Shared<ChatSnapshot>>>();
+const chats = new WeakMap<LiveHost, Map<string, Shared<ChatRead>>>();
 
 const lists = new WeakMap<LiveHost, Map<string, Shared<ListSnapshot>>>();
 
@@ -86,6 +89,17 @@ export function useChat(
   session: SessionId | undefined,
   head: HeadName | undefined,
 ): ChatSnapshot | undefined {
+  const read = useChatRead(live, client, session, head);
+
+  return read !== undefined && "view" in read ? read : undefined;
+}
+
+export function useChatRead(
+  live: LiveHost,
+  client: Connection,
+  session: SessionId | undefined,
+  head: HeadName | undefined,
+): ChatRead | undefined {
   const chat = session === undefined ? NONE : openChat(live, client, session, head ?? MAIN);
 
   return useSyncExternalStore(chat.subscribe, chat.snapshot);
@@ -96,7 +110,7 @@ function openChat(
   client: Connection,
   session: SessionId,
   name: HeadName,
-): Shared<ChatSnapshot> {
+): Shared<ChatRead> {
   return sharedStore(chats, live, JSON.stringify([session, name]), (changed) => {
     const store = live.head(session, name, { tail: TAIL });
     const unsent = unsentSends(client, session, name);
@@ -111,9 +125,17 @@ function openChat(
     return {
       read(previous) {
         const snapshot = store.snapshot();
-
-        if (snapshot === null) return undefined;
         const freshness = store.freshness();
+
+        if (snapshot === null) {
+          const error = freshness.kind === "stale" ? freshness.error : null;
+
+          if (error === null) return undefined;
+
+          return previous !== undefined && "error" in previous && previous.error === error
+            ? previous
+            : { error };
+        }
 
         const laid = unsent.lay(
           headView(snapshot),
@@ -122,7 +144,10 @@ function openChat(
 
         const view = withStreamedText(laid, texts);
 
-        return previous?.view === view && previous.freshness === freshness
+        return previous !== undefined &&
+          "view" in previous &&
+          previous.view === view &&
+          previous.freshness === freshness
           ? previous
           : { view, freshness };
       },

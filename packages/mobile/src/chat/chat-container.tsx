@@ -250,7 +250,7 @@ export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
     );
   }
 
-  const unavailable = chat.error ?? chat.health;
+  const unavailable = chat.error ?? chat.health ?? chat.loadError;
 
   if (unavailable !== undefined) {
     return (
