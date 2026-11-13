@@ -6,7 +6,7 @@ const ENDINGS = ["SIGINT", "SIGTERM", "SIGHUP"] as const;
 
 export type Ending = (typeof ENDINGS)[number];
 
-const SHUTDOWN_DEADLINE_MS = 1_500;
+let shutdownDeadlineMs = 1_500;
 
 export function exitStatus(ending: Ending): number {
   return 128 + constants.signals[ending];
@@ -52,9 +52,14 @@ export function watchTerminal(
 
 let armed = false;
 
+/** Gives every later `exitWithin` `ms` instead of 1.5 s, for a command whose own stop takes longer. */
+export function extendShutdown(ms: number): void {
+  shutdownDeadlineMs = ms;
+}
+
 export function exitWithin(status: number): void {
   if (armed) return;
   armed = true;
   process.exitCode = status;
-  setTimeout(() => process.exit(status), SHUTDOWN_DEADLINE_MS).unref();
+  setTimeout(() => process.exit(status), shutdownDeadlineMs).unref();
 }

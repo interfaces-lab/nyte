@@ -66,11 +66,14 @@ export const factHandlers = {
       effects: [{ kind: "load-folder-catalog", workspace: msg.workspace }],
     }));
   },
-  view: followedOnly<MsgOf<"view">>((state, session, msg, now) =>
-    msg.view === session.view
-      ? stay(withFacts(state, { chat: { ...session, freshness: msg.freshness } }))
-      : viewArrived(state, { ...session, freshness: msg.freshness }, msg.view, now),
-  ),
+  view: followedOnly<MsgOf<"view">>((state, session, msg, now) => {
+    if (msg.view !== session.view)
+      return viewArrived(state, { ...session, freshness: msg.freshness }, msg.view, now);
+
+    if (msg.freshness === session.freshness) return stay(state);
+
+    return stay(withFacts(state, { chat: { ...session, freshness: msg.freshness } }));
+  }),
   health: (state, msg) => stay(withFacts(state, { health: msg.health })),
   "session-info": followedOnly<MsgOf<"session-info">>((state, session, msg) => {
     const next = withFacts(state, { chat: { ...session, info: msg.info } });

@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import { homedir } from "node:os";
 import process from "node:process";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -66,6 +67,29 @@ async function ensureHost(progress?: (phase: string) => void): Promise<LocalEndp
 
   if (running !== null) return { url: running.url, token: running.token };
   progress?.("Starting a Nyte host…");
+  const deadline = Date.now() + HOST_START_MS;
+  let child: ChildProcess | null = null;
+
+  while (Date.now() < deadline) {
+    const exited = child !== null && (child.exitCode !== null || child.signalCode !== null);
+
+    if ((child === null || exited) && !hostLockHeld()) {
+      if (exited) throw new Error(`The Nyte host stopped while starting. See ${hostLogPath()}.`);
+      child = startHost();
+    }
+
+    await sleep(HOST_POLL_MS);
+    const started = await findRunningHost(path);
+
+    if (started !== null) return { url: started.url, token: started.token };
+  }
+
+  throw new Error(
+    `The Nyte host didn't start within ${String(HOST_START_MS / 1000)} s. See ${hostLogPath()}.`,
+  );
+}
+
+function startHost(): ChildProcess {
   const command = selfCommand();
 
   const child = spawn(command[0], [...command.slice(1), "host", "--log", "--supervised"], {
@@ -78,23 +102,8 @@ async function ensureHost(progress?: (phase: string) => void): Promise<LocalEndp
   });
 
   child.unref();
-  const deadline = Date.now() + HOST_START_MS;
 
-  while (Date.now() < deadline) {
-    const exited = child.exitCode !== null || child.signalCode !== null;
-
-    await sleep(HOST_POLL_MS);
-    const started = await findRunningHost(path);
-
-    if (started !== null) return { url: started.url, token: started.token };
-
-    if (exited && !hostLockHeld())
-      throw new Error(`The Nyte host stopped while starting. See ${hostLogPath()}.`);
-  }
-
-  throw new Error(
-    `The Nyte host didn't start within ${String(HOST_START_MS / 1000)} s. See ${hostLogPath()}.`,
-  );
+  return child;
 }
 
 function retireOutdatedHost(session: HostSession): HostSession {
@@ -136,9 +145,9 @@ async function retireWhenOutdated(connection: Connection, signal: AbortSignal): 
 
 /**
  * Whether a host holds `host.lock`, so one is starting or serving even though `host.json` doesn't
- * name it yet. Asked only after the host this command started has exited: it either lost the lock
- * to that host or failed. Taking the lock to ask holds it for one SQLite open, so a host claiming
- * it in that instant sees it taken.
+ * name it yet. Asked only while this command has no host of its own starting: before it starts one,
+ * and after the one it started has exited, having lost the lock or failed. Taking the lock to ask
+ * holds it for one SQLite open, so a host claiming it in that instant sees it taken.
  */
 function hostLockHeld(): boolean {
   const release = tryLockFile(hostLockPath());

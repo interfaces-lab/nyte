@@ -2,7 +2,7 @@ import { asId } from "@nyte-ai/schema";
 import type { ModelCatalogView } from "@nyte-ai/sdk";
 import type { ResolvedSettings } from "../../src/lib/settings-schema.ts";
 import { indexSlash } from "../../src/model/commands.ts";
-import { initialState } from "../../src/model/state.ts";
+import { initialState } from "../../src/model/initial-state.ts";
 import type { FollowedSession, State } from "../../src/model/state.ts";
 
 export const SETTINGS: ResolvedSettings = {

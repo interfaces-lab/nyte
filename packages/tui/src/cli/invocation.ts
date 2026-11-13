@@ -15,8 +15,8 @@ export type CommandEnd =
  * Owns the process's ending for every one-shot command. Replaces `PrintInvocation`.
  * - Cleanups run newest first, and each runs even when an earlier one throws.
  * - `signal` aborts on the first SIGINT, SIGTERM or SIGHUP and arms the shutdown deadline with
- *   128 + n. Long-running commands (host, events, account) wait on this signal; there is no second
- *   listener and no `untilInterrupted`.
+ *   128 + n; a second signal exits at once. Long-running commands (host, events, account) wait on
+ *   this signal; there is no second listener and no `untilInterrupted`.
  * - `finish` runs every deferred cleanup, then reports once: a received signal wins and exits
  *   128 + n, printing only a `canceled` error, which a command throws to say what its cancel
  *   changed; otherwise a `CliError` prints through `formatError` (or `formatErrorJson` on stderr
@@ -37,8 +37,9 @@ export function createInvocation(output: Output): Invocation {
   let finishing: Promise<number> | undefined;
 
   const stopEnding = onEnding((ending) => {
+    if (received !== undefined) process.exit(exitStatus(received));
     exitWithin(exitStatus(ending));
-    received ??= ending;
+    received = ending;
     controller.abort(new Error(`Received ${ending}`));
   });
 

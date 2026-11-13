@@ -2,6 +2,7 @@ import { asId } from "@nyte-ai/schema";
 import type { PartId, PartView, SessionId, SessionInfo } from "@nyte-ai/schema";
 import { headView, openHost, streamText, unsentSends, withStreamedText } from "@nyte-ai/sdk/client";
 import type {
+  Freshness,
   HeadStore,
   HeadView,
   Health,
@@ -20,6 +21,8 @@ const TAIL = 200;
 
 interface Opened<T> {
   read(): T | null;
+  /** Read after `read`; a change here alone yields the same value again. */
+  freshness?(): Freshness;
   close(): void;
 }
 
@@ -68,6 +71,7 @@ export function chatViews(
           texts,
         );
       },
+      freshness: () => store.freshness(),
       close() {
         stopStore();
         stopUnsent?.();
@@ -189,6 +193,8 @@ function liveValues<T>(open: (changed: () => void) => Opened<T>): AsyncIterable<
     [Symbol.asyncIterator]() {
       let dirty = true;
       let closed = false;
+      let last: T | null = null;
+      let lastFreshness: Freshness | undefined;
       let wake: (() => void) | null = null;
 
       const resume = (): void => {
@@ -210,9 +216,13 @@ function liveValues<T>(open: (changed: () => void) => Opened<T>): AsyncIterable<
             if (dirty) {
               dirty = false;
               const value = opened.read();
+              const freshness = opened.freshness?.();
 
-              if (value !== null) return { done: false, value };
-              continue;
+              if (value === null || (value === last && freshness === lastFreshness)) continue;
+              last = value;
+              lastFreshness = freshness;
+
+              return { done: false, value };
             }
 
             await new Promise<void>((resolve) => {
