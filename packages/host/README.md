@@ -29,7 +29,7 @@ By default `openHost` keeps sessions in SQLite under `~/.nyte` and opens the cur
 
 `listen` serves a host over `node:http`, a unix socket or a bare fetch handler. `listenFetch` from `@nyte-ai/host/listen-fetch` is the fetch handler alone, with no `node:*` import, for Workers. Both serve the [`@nyte-ai/protocol`](../protocol/README.md) operations, CORS, and the `/.nyte/identity` and `/.nyte/describe` routes. A request authenticates with the listener token, a pairing code, a paired device's token, or your own `authorize` function.
 
-Over `node:http` and the unix socket, `listen` also serves the WebSocket at `/.nyte/ws` that the [host protocol](../../docs/host-protocol/README.md) describes. Only the unix socket answers the operations marked `local`.
+Over `node:http` and the unix socket, `listen` also serves the WebSocket at `/.nyte/ws`. Only the unix socket answers the operations marked `local`.
 
 ## Stores
 
