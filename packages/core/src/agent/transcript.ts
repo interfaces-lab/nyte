@@ -921,8 +921,14 @@ function excerptAttributes(source: ExcerptSource): string {
       return source.command === undefined
         ? `source="terminal"`
         : `source="terminal" ${attribute("command", source.command)}`;
-    case "browser":
-      return `source="browser" ${attribute("url", source.url)} ${attribute("selector", source.selector)}`;
+    case "browser": {
+      const page = `source="browser" ${attribute("url", source.url)} ${attribute("selector", source.selector)}`;
+      const region = source.region;
+
+      if (region === undefined) return page;
+
+      return `${page} region="x=${String(Math.round(region.x))} y=${String(Math.round(region.y))} w=${String(Math.round(region.width))} h=${String(Math.round(region.height))}"`;
+    }
     case "chat":
       return `source="side chat" ${attribute("title", source.title)}`;
   }

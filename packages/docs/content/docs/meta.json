@@ -9,6 +9,7 @@
     "benchmarks",
     "---Desktop app---",
     "desktop/editor",
+    "desktop/design-mode",
     "desktop/themes",
     "---Configure---",
     "configure/settings",

@@ -7,7 +7,8 @@ import { ParseError } from "typebox/value";
 import { ExpectedHostError } from "./errors.ts";
 import { Uuid } from "@nyte-ai/connect";
 import type { CallInput, CallPath, CallRequest } from "./ipc.ts";
-import { TERMINAL_NOTICE_LIMITS } from "@nyte-ai/app/contract/bridge.ts";
+import { DESIGN_PICK_CHARS } from "./browser-page.ts";
+import { BROWSER_DESIGN_VIEW_KEYS, TERMINAL_NOTICE_LIMITS } from "@nyte-ai/app/contract/bridge.ts";
 import type {
   BrowserBoundsMessage,
   BrowserFocusMessage,
@@ -46,6 +47,14 @@ export const themeSource = Type.Union([
 ]);
 
 const noInput = Type.Optional(Type.Undefined());
+
+const designOff = strict({ kind: Type.Literal("off") });
+
+const designView = strict({
+  kind: Type.Literal("view"),
+  view: Type.Enum(Object.values(BROWSER_DESIGN_VIEW_KEYS)),
+  shown: Type.Boolean(),
+});
 
 const remotePlugin = Type.Literal("cloudflare");
 
@@ -212,7 +221,12 @@ export const CALL_INPUT_SCHEMAS: CallInputParsers = {
   ),
   "host.browser.close": compile(strict({ surface: nonEmpty })),
   "host.browser.captureFrame": compile(strict({ surface: nonEmpty })),
-  "host.browser.pickElement": compile(strict({ surface: nonEmpty })),
+  "host.browser.design": compile(
+    strict({
+      surface: nonEmpty,
+      change: Type.Union([strict({ kind: Type.Literal("on") }), designOff, designView]),
+    }),
+  ),
   "host.browser.find": compile(
     strict({
       surface: nonEmpty,
@@ -300,6 +314,34 @@ export function decodeBrowserFocus(input: BrowserFocusMessage): BrowserFocusMess
 
 export function decodeBrowserKey(input: BrowserKey): BrowserKey {
   return checked(browserKey, input);
+}
+
+const pageBox = strict({
+  x: Type.Number(),
+  y: Type.Number(),
+  width: Type.Number({ minimum: 0 }),
+  height: Type.Number({ minimum: 0 }),
+});
+
+const designPageMessage = Type.Union([
+  designOff,
+  designView,
+  strict({
+    kind: Type.Literal("pick"),
+    id: Type.String({ minLength: 1, maxLength: 64 }),
+    selector: Type.String({ minLength: 1, maxLength: DESIGN_PICK_CHARS.selector }),
+    text: Type.String({ maxLength: DESIGN_PICK_CHARS.text }),
+    region: Type.Optional(pageBox),
+    crop: pageBox,
+  }),
+]);
+
+export type DesignPageMessage = Static<typeof designPageMessage>;
+
+const designPageMessageParser = compile(designPageMessage);
+
+export function decodeDesignPageMessage(input: unknown): DesignPageMessage {
+  return designPageMessageParser.Parse(input);
 }
 
 export const themePreference = Compile(themeSource);

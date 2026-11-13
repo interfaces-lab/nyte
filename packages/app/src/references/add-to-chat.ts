@@ -10,6 +10,8 @@ type ChatExcerptReceiver = (excerpt: ChatExcerpt) => HTMLElement | false | Promi
 
 let receiver: ChatExcerptReceiver | undefined;
 
+export const NO_CHAT = "Open a chat, then try again.";
+
 export function receiveChatExcerpts(receive: ChatExcerptReceiver): () => void {
   receiver = receive;
 
@@ -30,7 +32,7 @@ export function addToChat(excerpt: ChatExcerpt): boolean | Promise<HTMLElement> 
   if (excerpt.image === undefined) return result !== false;
 
   return Promise.resolve(result).then((target) => {
-    if (target === false) throw new Error("Open a chat, then try Add to Chat again.");
+    if (target === false) throw new Error(NO_CHAT);
 
     return target;
   });

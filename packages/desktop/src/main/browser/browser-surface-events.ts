@@ -9,6 +9,7 @@ import {
   takePressedKey,
   webUrl,
 } from "./browser-policy.ts";
+import { wireDesign } from "./browser-design.ts";
 import { attachConsoleCapture } from "./browser-runtime.ts";
 import { hasViewHolder } from "./browser-surface.ts";
 import type { Surface, SurfaceRegistry } from "./browser-surface.ts";
@@ -342,6 +343,7 @@ export function wireSurface(registry: SurfaceRegistry, surface: Surface): void {
   wirePopups(registry, surface, contents);
   wireTrust(registry, surface, contents);
   wireKeys(registry, surface, contents);
+  wireDesign(registry, surface, contents);
   wireFullscreen(registry, surface, contents);
   wireNavigation(registry, surface, contents);
   wireFailures(registry, surface, contents);

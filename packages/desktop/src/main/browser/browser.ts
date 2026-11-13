@@ -5,19 +5,20 @@ import { showBrowserMenu, performBrowserAction } from "./browser-actions.ts";
 import type {
   BrowserBoundsMessage,
   BrowserBridge,
-  BrowserElementPick,
+  BrowserDesignChange,
   BrowserFocusMessage,
   BrowserKey,
   BrowserNavigationAction,
   BrowserSurfaceState,
   HostEvent,
 } from "@nyte-ai/app/contract/bridge.ts";
+import { NO_DESIGN } from "@nyte-ai/app/contract/bridge.ts";
 import { SurfaceAgent } from "./browser-agent-surface.ts";
 import type { AgentSurfaces } from "./browser-agent-surface.ts";
 import type { BrowserAgent, BrowserHolder, BrowserOwner } from "../../shared/browser-agent.ts";
 import { BrowserDownloads } from "./browser-downloads.ts";
 import { GuestSessions } from "./browser-guest-session.ts";
-import { pickElement } from "./browser-picker.ts";
+import { changeDesign } from "./browser-design.ts";
 import { nextZoomFactor, webUrl } from "./browser-policy.ts";
 import { createSurfaceRuntime } from "./browser-runtime.ts";
 import {
@@ -344,14 +345,15 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
     }
   }
 
-  pickElement(input: { readonly surface: string }): Promise<BrowserElementPick | undefined> {
-    const contents = this.#surfaces.get(input.surface)?.view.webContents;
+  design(input: { readonly surface: string; readonly change: BrowserDesignChange }): void {
+    const surface = this.#surfaces.get(input.surface);
 
-    if (contents === undefined || contents.isDestroyed() || contents.getURL() === "")
-      return Promise.resolve(undefined);
-    contents.focus();
+    if (surface === undefined) return;
+    const contents = surface.view.webContents;
 
-    return pickElement(contents);
+    if (input.change.kind === "on" && !surface.design.on && !contents.isDestroyed())
+      contents.focus();
+    changeDesign(this, surface, input.change);
   }
 
   find(input: Parameters<BrowserBridge["find"]>[0]): ReturnType<BrowserBridge["find"]> {
@@ -500,6 +502,7 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
         nodeIntegration: false,
         webSecurity: true,
         spellcheck: false,
+        focusOnNavigation: false,
       },
     });
 
@@ -533,6 +536,7 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
       visited: undefined,
       paused: false,
       pressed: [],
+      design: NO_DESIGN,
       published: undefined,
     };
 

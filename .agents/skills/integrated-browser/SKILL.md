@@ -92,6 +92,18 @@ things the renderer coordinates, never DOM facts.
   work, at the cost of a different process model and the security and CDP work built on
   `WebContentsView`. Revisit it if menus or tooltips pausing the page becomes the complaint,
   or the overlay list needs repeated fixes.
+- **Keyboard.** A page takes the window's keyboard only when the user asks for it. By
+  default Electron focuses a `WebContentsView` each time a navigation commits in it, hidden
+  or not, which pulls the keyboard out of the composer whenever an agent's page or a dev
+  server reloads; hiding a view that holds the keyboard then leaves it with nothing, and
+  macOS beeps on every key. The surface is created with `focusOnNavigation: false`, and a
+  page that already holds the keyboard keeps it across its own navigations. The panel asks
+  for the page through the `focus` flag of `BrowserBoundsMessage` (`page.focus()` in
+  `browser-panel.tsx`), which a focused text field, menu or dialog overrides. Call it from
+  a gesture that starts a navigation by hand; never focus the page from main on load. A
+  reload after a renderer crash still focuses the page: Chromium does that itself and
+  Electron has no switch for it. The focus grab needs a key window, so a test with
+  `show: false` cannot see it.
 - **Right-click.** Context menus are native (`packages/app/src/components/context-menu.ts`), so they need no
   occlusion.
 - **Input.** All agent input goes through CDP, not `sendInputEvent`. Snapshot refs carry a

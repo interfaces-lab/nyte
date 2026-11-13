@@ -1,6 +1,7 @@
 import type { BrowserWindow, Session, WebContents, WebContentsView } from "electron";
 import type {
   BrowserBoundsMessage,
+  BrowserDesign,
   BrowserFindResult,
   BrowserKey,
   BrowserSurfaceState,
@@ -71,6 +72,7 @@ export interface Surface {
   visited: string | undefined;
   paused: boolean;
   readonly pressed: BrowserKey[];
+  design: BrowserDesign;
   published:
     | { readonly state: BrowserSurfaceState; readonly window: HostWindow | undefined }
     | undefined;
@@ -169,6 +171,7 @@ export function surfaceState(
       agentHolders,
       fullscreen: false,
       deniedPermissions: [],
+      design: surface.design,
     };
   }
 
@@ -187,6 +190,7 @@ export function surfaceState(
     agentHolders,
     fullscreen: surface.fullscreen,
     deniedPermissions: [...surface.deniedPermissions],
+    design: surface.design,
   };
 }
 

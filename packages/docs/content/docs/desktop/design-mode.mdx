@@ -1,0 +1,50 @@
+---
+title: Design Mode
+description: Point at a page in the desktop browser and send the element or area to the chat, with tools to measure and check it.
+---
+
+Design Mode works on any page in a **Browser** tab. Click **Design Mode** in the browser's toolbar,
+or press `⇧⌘L`. Shortcuts below are for macOS; use `Ctrl` for `⌘` on Linux.
+
+While it's on, the page doesn't react to the pointer: links don't open and buttons don't press.
+The wheel still scrolls.
+
+## Send an element or an area [#pick]
+
+Hover to see what you're pointing at. The card under it shows the element's font, size and weight,
+its text and background colours with the page's own colour variables, and the contrast between them.
+
+Click to send the element to the chat. Drag to send an area instead. Each one lands in the message
+you're writing, with a screenshot of the spot. Write what to change there, then send. The agent gets
+the page address, a selector for the element, its text and attributes, and the screenshot. An area
+also carries its size and position on the page.
+
+| Key   | What it does                                           |
+| ----- | ------------------------------------------------------ |
+| `↑`   | Point at the parent of the element under the pointer   |
+| `↓`   | Step back down                                         |
+| `⌥`   | Hold to measure from the element to its parent's edges |
+| `Esc` | Cancel a drag, or leave Design Mode                    |
+
+## Views [#views]
+
+The bar under the address bar turns on what to draw over the page. Each view has a key.
+
+| View         | Key  | What it draws                                  |
+| ------------ | ---- | ---------------------------------------------- |
+| **X-ray**    | `⇧X` | An outline around every element                |
+| **Rulers**   | `⇧R` | Page pixels along the top and left edges       |
+| **Grid**     | `⇧G` | Each grid and flex container's tracks and gaps |
+| **Contrast** | `⇧C` | Text below WCAG AA, with its contrast ratio    |
+
+Margin and padding show in orange and green on whatever you hover.
+
+## Check alignment with guides [#guides]
+
+With **Rulers** on, press a ruler to add a red guide at that point: the top ruler adds a vertical
+guide, the left ruler a horizontal one. Drag to move it. Near an element's edge it snaps to that
+edge. The guide turns solid while the element under the pointer has an edge exactly on it, so an
+element that's a pixel off shows straight away.
+
+Press a guide's number on its ruler, or drag the guide out of the page, to remove it. Guides last
+until you leave Design Mode or the page reloads.

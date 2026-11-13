@@ -1,6 +1,10 @@
 import { ipcRenderer } from "electron";
 import type { BrowserKey } from "@nyte-ai/app/contract/bridge.ts";
-import { BROWSER_PAGE_KEY_CHANNEL } from "../shared/browser-page.ts";
+import type { DesignPageMessage } from "../shared/ipc-inputs.ts";
+import { BROWSER_PAGE_DESIGN_CHANNEL, BROWSER_PAGE_KEY_CHANNEL } from "../shared/browser-page.ts";
+import type { DesignMainMessage } from "../shared/browser-page.ts";
+import { designMode } from "./design-mode/design-mode.ts";
+import { editsText } from "./edits-text.ts";
 
 const mac = process.platform === "darwin";
 
@@ -26,16 +30,6 @@ const editing = mac
     };
 
 const pageKeys = new Set(["Control", "Shift", "Alt", "Meta", "Insert", "Help"]);
-
-function editsText(event: KeyboardEvent): boolean {
-  const target = event.composedPath()[0];
-
-  return (
-    target instanceof HTMLInputElement ||
-    target instanceof HTMLTextAreaElement ||
-    (target instanceof HTMLElement && target.isContentEditable)
-  );
-}
 
 function pageKeeps(event: KeyboardEvent): boolean {
   const named =
@@ -87,3 +81,13 @@ if (window.opener === null)
       repeat: event.repeat,
     } satisfies BrowserKey);
   });
+
+if (window.opener === null && window.top === window) {
+  const design = designMode((message: DesignPageMessage) =>
+    ipcRenderer.send(BROWSER_PAGE_DESIGN_CHANNEL, message),
+  );
+
+  ipcRenderer.on(BROWSER_PAGE_DESIGN_CHANNEL, (_event, message: DesignMainMessage) =>
+    design.receive(message),
+  );
+}

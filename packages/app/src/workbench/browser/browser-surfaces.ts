@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import type {
+  BrowserDesignPick,
   BrowserDownload,
   BrowserKey,
   BrowserSurfaceState,
@@ -33,6 +34,8 @@ let views: ReadonlyMap<string, BrowserSurfaceView> = new Map();
 const listeners = new Set<() => void>();
 
 const keyListeners = new Map<string, (key: BrowserKey) => void>();
+
+const pickListeners = new Map<string, (pick: BrowserDesignPick) => void>();
 
 function set(surface: string, view: BrowserSurfaceView): void {
   const next = new Map(views);
@@ -134,6 +137,21 @@ export function onBrowserKey(surface: string, listener: (key: BrowserKey) => voi
 
 export function applyBrowserKey(event: Extract<HostEvent, { kind: "browser_key" }>): void {
   keyListeners.get(event.surface)?.(event.key);
+}
+
+export function onBrowserPick(
+  surface: string,
+  listener: (pick: BrowserDesignPick) => void,
+): () => void {
+  pickListeners.set(surface, listener);
+
+  return () => {
+    if (pickListeners.get(surface) === listener) pickListeners.delete(surface);
+  };
+}
+
+export function applyBrowserPick(event: Extract<HostEvent, { kind: "browser_design_pick" }>): void {
+  pickListeners.get(event.surface)?.(event.pick);
 }
 
 export function claimBrowserSurface(surface: string): void {

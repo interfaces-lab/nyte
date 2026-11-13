@@ -8,6 +8,7 @@ import {
   applyBrowserEvent,
   applyBrowserAgentOpened,
   applyBrowserKey,
+  applyBrowserPick,
 } from "../workbench/browser/browser-surfaces.ts";
 import { applyBrowserHistory } from "../workbench/browser/browser-history.ts";
 import { workbench } from "../workbench/store.ts";
@@ -78,6 +79,10 @@ export function useHostEvents(): void {
           return;
         case "browser_key":
           applyBrowserKey(event);
+
+          return;
+        case "browser_design_pick":
+          applyBrowserPick(event);
 
           return;
         case "browser_history_changed":

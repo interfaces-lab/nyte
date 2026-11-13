@@ -160,6 +160,10 @@ function selectorTail(selector: string): string {
   return selector.split(/\s*>\s*|\s+/u).at(-1) ?? selector;
 }
 
+function areaLabel(region: { readonly width: number; readonly height: number }): string {
+  return `Area ${String(Math.round(region.width))} × ${String(Math.round(region.height))}`;
+}
+
 function excerptLabel(reference: ExcerptReference): string {
   const { source } = reference;
 
@@ -169,7 +173,7 @@ function excerptLabel(reference: ExcerptReference): string {
     case "terminal":
       return source.command ?? `Terminal (${lineCount(reference.text)})`;
     case "browser":
-      return selectorTail(source.selector);
+      return source.region === undefined ? selectorTail(source.selector) : areaLabel(source.region);
     case "chat":
       return source.title;
     default: {
@@ -189,7 +193,9 @@ function excerptTitle(reference: ExcerptReference): string {
     case "terminal":
       return source.command === undefined ? "Terminal output" : `Output of ${source.command}`;
     case "browser":
-      return `${source.selector} on ${source.url}`;
+      return source.region === undefined
+        ? `${source.selector} on ${source.url}`
+        : `${areaLabel(source.region)} at ${source.selector} on ${source.url}`;
     case "chat":
       return `Side chat: ${source.title}`;
     default: {

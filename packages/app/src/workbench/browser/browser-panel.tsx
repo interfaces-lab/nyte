@@ -7,10 +7,12 @@ import type { MouseEvent, ReactElement, ReactNode, RefObject } from "react";
 import type {
   BrowserBoundsMessage,
   BrowserBridge,
-  BrowserElementPick,
+  BrowserDesignChange,
+  BrowserDesignPick,
   BrowserNavigationAction,
 } from "../../contract/bridge.ts";
-import { addToChat } from "../../references/add-to-chat.ts";
+import { NO_DESIGN } from "../../contract/bridge.ts";
+import { addToChat, NO_CHAT } from "../../references/add-to-chat.ts";
 import { errorMessage } from "../../contract/errors.ts";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Button, ButtonLink } from "@nyte-ai/ui/button";
@@ -36,9 +38,11 @@ import {
   claimBrowserSurface,
   forgetBrowserSurface,
   onBrowserKey,
+  onBrowserPick,
   setBrowserFinding,
   useBrowserSurface,
 } from "./browser-surfaces.ts";
+import { DesignBar } from "./browser-design-bar.tsx";
 import { DownloadsBar } from "./browser-downloads.tsx";
 import { FindBar } from "./browser-find.tsx";
 import type { FindBarHandle } from "./browser-find.tsx";
@@ -368,22 +372,22 @@ function FocusAddressNextFrame({
   return null;
 }
 
-async function addElementToChat(picked: BrowserElementPick): Promise<void> {
+async function addPickToChat(pick: BrowserDesignPick): Promise<void> {
+  const name = pick.source.region === undefined ? "element.png" : "area.png";
+
   const image =
-    picked.image?.startsWith(PNG_DATA_URL) === true
-      ? new File([Uint8Array.fromBase64(picked.image.slice(PNG_DATA_URL.length))], "element.png", {
+    pick.image?.startsWith(PNG_DATA_URL) === true
+      ? new File([Uint8Array.fromBase64(pick.image.slice(PNG_DATA_URL.length))], name, {
           type: "image/png",
         })
       : undefined;
 
-  await addToChat({
-    reference: {
-      kind: "excerpt",
-      source: { kind: "browser", url: picked.url, selector: picked.selector },
-      text: picked.html,
-    },
+  const added = await addToChat({
+    reference: { kind: "excerpt", source: pick.source, text: pick.text },
     image,
   });
+
+  if (added === false) throw new Error(NO_CHAT);
 }
 
 interface BrowserPanelProps {
@@ -416,12 +420,11 @@ export function BrowserPanel({
   const history = useBrowserHistory(workspacePath);
   const [draft, setDraft] = useState<string | undefined>(undefined);
   const [failure, setFailure] = useState<string | undefined>(undefined);
-  const [picking, setPicking] = useState(false);
-  const latestPick = useRef(0);
   const stateUrl = state?.url;
   const blank = parseWebUrl(url) === undefined;
   const currentUrl = stateUrl ?? (blank ? "" : url);
   const hasPage = state !== undefined && state.url !== "";
+  const design = state?.design ?? NO_DESIGN;
   const showSurface = visible && hasPage && state.error === undefined;
 
   const page = useSurfacePlacement(slotRef, surface, hasPage ? state.url : "", showSurface);
@@ -498,6 +501,15 @@ export function BrowserPanel({
     [surface],
   );
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- picks forwarded from the page's Design Mode, resubscribed per surface
+  useEffect(
+    () =>
+      onBrowserPick(surface, (pick) => {
+        void addPickToChat(pick).catch((cause: unknown) => setFailure(errorMessage(cause)));
+      }),
+    [surface],
+  );
+
   const navigate = (action: BrowserNavigationAction): void => {
     void browserBridge()
       .navigate({ surface, action })
@@ -509,20 +521,11 @@ export function BrowserPanel({
     browserBridge().setFocus({ surface, focused: true });
   };
 
-  const pickElement = (): void => {
+  const changeDesign = (change: BrowserDesignChange): void => {
     setFailure(undefined);
-    setPicking(true);
-    latestPick.current += 1;
-    const pick = latestPick.current;
     void browserBridge()
-      .pickElement({ surface })
-      .then(async (picked) => {
-        if (picked !== undefined) await addElementToChat(picked);
-      })
-      .catch((cause: unknown) => setFailure(errorMessage(cause)))
-      .finally(() => {
-        if (latestPick.current === pick) setPicking(false);
-      });
+      .design({ surface, change })
+      .catch((cause: unknown) => setFailure(errorMessage(cause)));
   };
 
   const runShortcut = (shortcut: BrowserShortcut): boolean => {
@@ -566,9 +569,9 @@ export function BrowserPanel({
         onToggleHistory();
 
         return true;
-      case "add-to-chat":
+      case "design-mode":
         if (!hasPage) return false;
-        pickElement();
+        changeDesign({ kind: design.on ? "off" : "on" });
 
         return true;
       default: {
@@ -581,6 +584,7 @@ export function BrowserPanel({
 
   const go = (target: string): void => {
     setFailure(undefined);
+    page.focus();
 
     if (target === url) navigate("reload");
     else onUrlChange(target);
@@ -667,21 +671,30 @@ export function BrowserPanel({
           icon="arrow-left"
           aria-label="Go back"
           disabled={state?.canGoBack !== true}
-          onClick={() => navigate("back")}
+          onClick={() => {
+            page.focus();
+            navigate("back");
+          }}
         />
         <Button
           iconOnly
           icon="arrow-right"
           aria-label="Go forward"
           disabled={state?.canGoForward !== true}
-          onClick={() => navigate("forward")}
+          onClick={() => {
+            page.focus();
+            navigate("forward");
+          }}
         />
         <Button
           iconOnly
           icon={loading ? "x" : "refresh"}
           aria-label={loading ? "Stop loading page" : "Reload page"}
           disabled={!hasPage}
-          onClick={() => navigate(loading ? "stop" : "reload")}
+          onClick={() => {
+            page.focus();
+            navigate(loading ? "stop" : "reload");
+          }}
         />
         <AddressField
           ref={addressRef}
@@ -713,11 +726,11 @@ export function BrowserPanel({
         {hasPage && (
           <Toggle
             iconOnly
-            icon="code-brackets"
-            aria-label="Add Element to Chat"
+            icon="bezier-pointer"
+            aria-label="Design Mode"
             aria-keyshortcuts={nyte.platform === "darwin" ? "Meta+Shift+L" : "Control+Shift+L"}
-            pressed={picking}
-            onPressedChange={pickElement}
+            pressed={design.on}
+            onPressedChange={(on) => changeDesign({ kind: on ? "on" : "off" })}
           />
         )}
         {hasPage && <ShieldMenu state={state} onChanged={() => navigate("reload")} />}
@@ -760,6 +773,9 @@ export function BrowserPanel({
           </div>
         )}
       </div>
+      {hasPage && state.error === undefined && design.on && (
+        <DesignBar views={design.views} onChange={changeDesign} onPointerDone={page.focus} />
+      )}
       {failure !== undefined && (
         <div role="alert" {...props(styles.notice)}>
           <span {...props(styles.noticeText)}>{failure}</span>
@@ -791,6 +807,7 @@ export function BrowserPanel({
                 xstyle={styles.bookmarkButton}
                 onClick={(event) => {
                   event.preventDefault();
+                  page.focus();
                   onUrlChange(item.url);
                 }}
               >
@@ -869,6 +886,7 @@ export function BrowserPanel({
                         event.preventDefault();
                         setDraft(undefined);
                         setFailure(undefined);
+                        page.focus();
                         onUrlChange(entry.url);
                       }}
                     >
@@ -885,6 +903,7 @@ export function BrowserPanel({
                     <Row.Actions placement="overlay">
                       <Button
                         size="sm"
+                        variant="plain"
                         iconOnly
                         icon="x"
                         aria-label={`Remove from history: ${entry.title || displayAddress(entry.url)}`}

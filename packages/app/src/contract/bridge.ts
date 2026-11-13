@@ -1,4 +1,4 @@
-import type { TailnetStatus } from "@nyte-ai/schema";
+import type { ExcerptSource, TailnetStatus } from "@nyte-ai/schema";
 import type { CredentialSource, SessionId, Usage, WorkspaceId } from "@nyte-ai/sdk";
 import type { OpenSocket } from "@nyte-ai/sdk/client";
 import type { ConnectionProblem, HostEndpoint } from "./connection.ts";
@@ -309,6 +309,7 @@ export interface BrowserSurfaceState {
   readonly agentHolders: number;
   readonly fullscreen: boolean;
   readonly deniedPermissions: readonly string[];
+  readonly design: BrowserDesign;
 }
 
 export interface BrowserPageError {
@@ -447,6 +448,7 @@ export type HostEvent =
   | { kind: "browser_download"; surface: string; download: BrowserDownload }
   | { kind: "browser_open_tab"; surface: string; url: string; background: boolean }
   | { kind: "browser_key"; surface: string; key: BrowserKey }
+  | { kind: "browser_design_pick"; surface: string; pick: BrowserDesignPick }
   | { kind: "browser_login_requested"; surface: string; host: string; realm: string }
   | {
       kind: "browser_history_changed";
@@ -460,10 +462,38 @@ export type HostEvent =
       url: string;
     };
 
-export interface BrowserElementPick {
-  readonly url: string;
-  readonly selector: string;
-  readonly html: string;
+export interface BrowserDesignViews {
+  readonly xray: boolean;
+  readonly rulers: boolean;
+  readonly grid: boolean;
+  readonly contrast: boolean;
+}
+
+export interface BrowserDesign {
+  readonly on: boolean;
+  readonly views: BrowserDesignViews;
+}
+
+export const BROWSER_DESIGN_VIEW_KEYS = {
+  KeyX: "xray",
+  KeyR: "rulers",
+  KeyG: "grid",
+  KeyC: "contrast",
+} as const satisfies Record<string, keyof BrowserDesignViews>;
+
+export const NO_DESIGN: BrowserDesign = {
+  on: false,
+  views: { xray: false, rulers: false, grid: false, contrast: false },
+};
+
+export type BrowserDesignChange =
+  | { readonly kind: "on" }
+  | { readonly kind: "off" }
+  | { readonly kind: "view"; readonly view: keyof BrowserDesignViews; readonly shown: boolean };
+
+export interface BrowserDesignPick {
+  readonly source: Extract<ExcerptSource, { kind: "browser" }>;
+  readonly text: string;
   readonly image: string | undefined;
 }
 
@@ -484,7 +514,7 @@ export interface BrowserBridge {
   perform(input: { surface: string; action: BrowserAction; owner: string | null }): Promise<void>;
   close(input: { surface: string }): Promise<void>;
   captureFrame(input: { surface: string }): Promise<string | undefined>;
-  pickElement(input: { surface: string }): Promise<BrowserElementPick | undefined>;
+  design(input: { surface: string; change: BrowserDesignChange }): Promise<void>;
   find(input: {
     surface: string;
     text: string;
