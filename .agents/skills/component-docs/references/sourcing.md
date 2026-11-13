@@ -14,17 +14,17 @@ A claim you can't trace to a file doesn't go on the page.
 
 Each one shipped. Look for them by name in review.
 
-- **Invented export.** `createPreviewCardHandle` was documented and never exported.
-- **Neighbour copy.** About a dozen pages say `className` and `style` "take plain values, not
+- **Invented export.** A page imported `createPreviewCardHandle` before ui exported it.
+- **Neighbour copy.** About a dozen pages said `className` and `style` "take plain values, not
   functions of state". `StyledProps` keeps Base UI's types, so state functions work. One page
   guessed and the rest copied it.
-- **Demo as union.** Button's page listed the four variants its demo rendered, against five in the
+- **Demo as union.** Button's page listed the variants its demo rendered, not every member of the
   type. A demo may show a subset. The props table lists every member.
 - **Upstream emphasis.** Alert dialog led with `createHandle()` because Base UI gives handles a
   section on every overlay page. Lead with nesting the trigger, then `open` with `onOpenChange`.
 - **Crossed pairs.** `pressed` goes with `onPressedChange`, `checked` with `onCheckedChange`.
-- **Qualifier creep.** An audit that fixed overbroad sentences by adding "unless", "except" and
-  "with the default" grew the prose 40%. A correction replaces the wrong sentence. If the true
+- **Qualifier creep.** An audit fixed overbroad sentences by adding "unless", "except" and "with
+  the default", and grew the prose 40%. A correction replaces the wrong sentence. If the true
   version needs a qualifier for a case outside a reader's first ten uses, cut the sentence.
 
 Snippets follow the root `AGENTS.md` code style.

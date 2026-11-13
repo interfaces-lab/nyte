@@ -4,39 +4,25 @@ description: >
   Verify Nyte's Electron desktop, terminal client, or web app through the existing Playwright
   and compiled-binary QA runners. Use to reproduce a visible bug, identify where it starts,
   fix it within the requested scope, and replay the same journey before claiming it works.
+  Not for looking at a page with the browser_* tools; read
+  .agents/skills/workbench-browser/SKILL.md for that.
 ---
 
 # Verify Nyte
 
-Commands and entry points come from the current runners. A mapped or skipped test is not a
-passing run. Read [features/README.md](features/README.md) to choose a journey.
+A mapped, skipped or `fixme` test is not a passing run. Read [features/README.md](features/README.md) to choose a journey.
 
 ## Choose the proof
 
-Name the user action, expected visible result, and any side effect that must follow. Pick the
-owning desktop chapter or TUI scenario. Read its assertions and skip markers before running it.
-Use the same input and fixture state before and after a fix.
-Remove tests that duplicate stronger retained proof. Keep unique failure cases. Use the
-smallest real journey first, then check nearby behavior. Keep results in run artifacts and the
-task response; do not create an audit document unless requested.
+Name the user action, the visible result and any side effect that must follow. Pick the owning desktop chapter or TUI test and read its assertions and skip markers before running it. Use the same input and fixture state before and after a fix. Start with the smallest real journey, then check nearby behavior. Remove tests that duplicate stronger retained proof; keep unique failure cases. Keep results in run artifacts and the reply, and write no audit document unless asked.
 
-Follow the root and package `AGENTS.md` files. Use pnpm and the runtimes in `mise.toml`.
-Dev servers belong to the user. The test runners below launch their own instances. Inspect a
-user's running instance only when asked, and leave its lifecycle alone. Coordinate shared build
-outputs if another agent is building app, desktop, or the TUI binary.
+Each runner launches its own instance under a temporary `HOME`. Inspect the user's running app or host only when asked, and leave its lifecycle alone. Coordinate shared build outputs if another agent is building the app, desktop or TUI binary.
 
-## Doctor and launch
+## Record and build
 
-Record `git rev-parse HEAD`, relevant working-tree changes, the build command and its outcome,
-and the exact test command. Rebuild after source changes. File timestamps alone do not establish
-which source a binary contains. Missing dependencies or a failed build are setup failures.
-If another task replaces build outputs or changes source during verification, record that
-boundary. Use a pinned artifact for comparisons and rebuild once the source is stable.
+Record `git rev-parse HEAD`, relevant working-tree changes, the build command and its outcome, and the exact test command. Rebuild after source changes; a file timestamp does not show which source a binary holds, and the desktop launcher fails only on a missing output, never a stale one. If another task changes source or build outputs mid-run, record that boundary, compare against a pinned artifact, and rebuild once the source is stable.
 
-Desktop uses an offline scripted provider, a temporary HOME and an Electron profile created by
-`packages/desktop/e2e/launch.ts`, and each launch's own host launchd job (`nyte-host.js` on Electron's Node) started by
-`packages/desktop/e2e/host.ts`. Build the five outputs in this order, then run one chapter.
-All commands below run from the repository root.
+**Desktop.** From the repository root, build the five outputs in this order and stop on a failure, then run the owning chapter:
 
 ```sh
 verification_root=$(mktemp -d /tmp/nyte-verification.XXXXXX)
@@ -48,16 +34,9 @@ pnpm --dir packages/desktop build:e2e
 pnpm --dir packages/desktop exec playwright test --config e2e/playwright.config.ts e2e/chat.spec.ts --workers=1 --retries=0 --reporter=list --output="$verification_root/desktop"
 ```
 
-Stop on a failed build. Select the matching chapter instead of `chat.spec.ts` when appropriate.
-The launcher waits for `[data-nyte-shell]`; the journey must then assert the controls it needs
-are usable. Desktop chapters share a window within each file, so replay the whole chapter when
-the failing test depends on earlier steps. The fixture owns Electron tracing; a global
-`--trace=on` flag does not establish that the ZIP contains Electron snapshots or pixels.
+The launcher waits for `[data-nyte-shell]`; the journey must then assert that the controls it needs are usable. A chapter's tests share one window in file order, so replay the whole chapter when a failing test depends on earlier ones.
 
-TUI journeys run in process. `startTui()` in `packages/tui/test/harness/tui.ts` mounts the
-whole TUI on a test renderer with a manual clock, over an in-process host with `fakeModels` in an
-isolated HOME. Run the owning test file first, then the suite. The binary smoke builds the binary
-and covers only what it alone shows: pipes, print mode, exit codes, trust, `/quit` and `--session`.
+**TUI.** `startTui()` mounts the whole TUI on a test renderer with a manual clock, over an in-process host with an in-memory store and `fakeModels`. Run the owning file, then the suite. The binary smoke builds `dist/nyte` and covers only what the compiled binary shows, which `packages/tui/qa/README.md` lists.
 
 ```sh
 cd packages/tui && bun test test/app/resume.test.ts
@@ -65,88 +44,45 @@ pnpm --dir packages/tui test
 pnpm --dir packages/tui test:binary
 ```
 
-`NYTE_BINARY` points the smoke at an existing build; record which build it ran.
+`NYTE_BINARY` points the smoke at an existing build; record which one. Each journey is one test, so `--test-name-pattern` runs one, and steps after a failed step stay unverified. There is no visible playback command.
 
-Every runner starts from an empty store, so none of them can see rows an older build wrote.
-After changing a stored shape, run `pnpm --dir packages/host check:store [path]`. It reads the
-store read-only and exits 1 with each unreadable group, its count and first location.
+**Web.** Before `pnpm e2e:web`, run `lsof -iTCP:5181 -sTCP:LISTEN`, or use the `NYTE_E2E_PORT` value when set. Outside CI the config reuses any listener there, so if it is not this run's server, set a free `NYTE_E2E_PORT` for the whole command. Clear account sign-in for the build as `packages/app/e2e/README.md` shows. HTTP readiness still needs a usable-page check.
 
-For web verification, use `pnpm e2e:web`. First read `packages/app/e2e/server/address.ts` and inspect
-the selected port with `lsof -iTCP:5181 -sTCP:LISTEN`, substituting `NYTE_E2E_PORT` when set.
-The config reuses listeners outside CI. If the listener is unrelated, select an unused port
-through `NYTE_E2E_PORT` for the entire command. HTTP readiness still needs a usable-page check.
+**Stored shapes.** No runner opens a store an older build wrote. Desktop seeds its baseline with the current build, and the others start empty. After changing a stored shape, run `pnpm --dir packages/host check:store [path]`. Without a path it reads the real home's store, read-only, and exits 1 on any unreadable row.
 
 ## Drive and observe
 
-Desktop selectors live in `packages/desktop/e2e/ui.ts`. The composer is
-`getByRole("combobox", { name: "Message" })`; transcript assertions use the `Messages` region's
-`log`. Use the chapter fixtures and existing user actions. Wait for the specific state required
-by the next action. Register event waits before the action and avoid fixed sleeps.
+Desktop locators live in `packages/desktop/e2e/ui.ts`; transcript assertions go through `messages(page)`, the `Messages` region. In TUI tests, press keys by command name and change state through keys and the host, never by importing state setters. Add or extend a test only when asked for coverage.
 
-For TUI changes, add or extend a test in `packages/tui/test/app` when coverage is needed. The
-`startTui()` handle sends text, presses keys by command name with `press`, waits for a composed
-frame with `frame`, and resizes. Command names and shortcuts live in
-`packages/tui/src/lib/constants.ts`. Drive state through keys and the host, never by importing
-state setters. Behaviour only the compiled binary shows goes in `packages/tui/qa/binary.smoke.ts`.
+For streaming, focus, resize or scrolling changes, observe the transition as well as its end, with a concrete assertion such as one composer, a preserved draft, stable focus, or no output after cancellation. A final screenshot cannot show what happened between states.
 
-There is no visible playback command. Each journey is one test, so `bun test <file>` with
-`--test-name-pattern` runs one. If an earlier step in a test fails, its later steps remain
-unverified.
+For browser panels, read `.agents/skills/integrated-browser/SKILL.md` first. Guest pages are native `WebContentsView`s, so an app DOM screenshot cannot prove guest pixels or overlay order. Record guest state and a composited window capture where the platform supports it.
 
-For streaming, focus, resize, or scrolling changes, observe the transition as well as its end.
-Choose a concrete assertion such as one composer, preserved draft, stable focus, or no output
-after cancellation. A final screenshot cannot establish what happened between states.
-The desktop `/hold` provider emits once and then stays silent. Silence after Stop is therefore
-insufficient; prove the run settled or a subsequent turn was accepted.
+## Find the cause and repeat
 
-For browser panels, read `.agents/skills/integrated-browser/SKILL.md`. Guest pages are native
-`WebContentsView`s. Record guest state and a composited window capture where the platform
-supports it; an app DOM screenshot alone cannot prove guest pixels or overlay order.
+At the first mismatch, preserve the failure before cleanup. Find the earliest failed step and compare its input with:
 
-## Identify and repeat
+- Provider requests and process or file evidence, for whether the action reached its owner.
+- Session state read through the SDK or the run's store before fixture cleanup, for what persisted. The TUI test host keeps its store in memory and deletes its temp home at dispose, so read state inside the test.
+- The screen, accessibility tree and logs, for what the client displayed.
 
-At the first mismatch, preserve the failure before cleanup. Locate the earliest failed step
-and compare the input with these observations:
+Use them to tell a setup failure such as a failed build, a wrong fixture, a product failure and an observation failure apart. A timeout alone does not name the cause. Read only this run's state; do not invent a health endpoint or open personal sessions.
 
-- Provider requests and process or file evidence show whether the action reached its owner.
-- Session state read through the existing SDK or isolated store before fixture cleanup shows
-  what persisted. A TUI test deletes its isolated HOME when it ends, so read the store inside
-  the test when the diagnosis needs it.
-- The screen, accessibility tree, and logs show what the client displayed.
-
-Use these to distinguish a setup failure, an incorrect fixture, a product failure, and an
-observation failure. A timeout alone does not identify the cause. Keep reads scoped to this
-run's state. Do not invent a health endpoint or inspect personal sessions.
-
-Within an authorized fix, change the cause and rebuild. Replay the same journey with retries
-disabled, then the nearby behavior the change could affect. For an audit-only request, report
-the finding without changing product code. Do not bypass a failing step, weaken its assertion,
-or count a `skip` or `fixme` as coverage. If the same failure survives two fixes, revisit the
-diagnosis instead of adding another delay or guard.
+Within an authorized fix, change the cause, rebuild, and replay the same journey with retries off, then the nearby behavior. For an audit-only request, report without changing product code. Never bypass a failing step, weaken its assertion, or count a `skip` or `fixme` as coverage. If the same failure survives two fixes, revisit the diagnosis instead of adding another delay or guard.
 
 ## Evidence and cleanup
 
-Keep the failed and passing runs in separate locations. For desktop, retain the command output,
-trace, explicit result screenshot and accessibility snapshot when a visual claim needs them.
-The default chapter fixture saves its own trace only on failure. Inspect a trace ZIP's contents
-before claiming it shows the Electron interaction. Passing visual proof currently requires
-explicit captures in the owning chapter. Save file or provider effects alongside UI observations.
-While the fixture is alive, use `testInfo.attach` with the PNG returned by
-`desktop.page.screenshot()` and text returned by `desktop.page.locator("body").ariaSnapshot()`.
-For an audit that does not authorize test edits, report missing captures as a proof limit.
+Keep failed and passing runs in separate locations, with file or provider effects next to UI observations. The desktop fixture owns Electron tracing and attaches a trace ZIP and the main process output only when a test fails; a global `--trace=on` does not give Electron snapshots or pixels. Inspect a ZIP's contents before claiming it shows the Electron interaction. Passing visual proof needs explicit captures in the owning chapter, like the `testInfo.attach` pair in `chat.spec.ts`'s "a held response can be stopped". Without authority to edit tests, report missing captures as a proof limit.
 
-TUI tests write no artifacts. Frames are emulated cell data from the test renderer and the
-binary smoke reads raw PTY bytes, not PNG captures. Copy what a diagnosis needs out of the test
-before it ends, and keep the runner's output.
+TUI tests write no artifacts. Frames are emulated cell text and the binary smoke reads raw PTY bytes. Copy what the diagnosis needs out of the test before it ends, and keep the runner's output.
 
-For performance, the composer test holds each typed key to one frame (16.67 ms) at p95 and
-50 ms at worst, and the startup tests hold keys typed at launch to 50 ms. Compare matching
-inputs on the same identified build; unit-test duration is not application latency.
+For performance, the composer and startup tests in `packages/tui/test/app` gate typing latency. Compare matching inputs on the same identified build; unit-test duration is not application latency.
 
-Let runner cleanup finish after a pass or failure. If interrupted, inspect the recorded process
-ownership before stopping anything. Kill only processes this run created. Keep proof outside
-temporary fixture homes and confirm it exists after cleanup. A signal, emulator, or screenshot
-does not prove physical terminal scanout, clipboard, IME, or a packaged install.
+Let runner cleanup finish. If interrupted, check the recorded process ownership and kill only processes this run created. Keep proof outside temporary fixture homes and confirm it exists after cleanup. A signal, emulator or screenshot does not prove physical terminal scanout, clipboard, IME or a packaged install.
 
-Report the journey, build identity, command, result, skipped cases, evidence location, and what
-remains unverified. Update the feature map only with facts supported by source or a named run.
+Report the journey, build identity, command, result, skipped cases, evidence location and what remains unverified. Update the feature map only with facts backed by source or a named run.
+
+## Not covered
+
+- Live TUI runs with `pnpm dev:live`, which root `AGENTS.md` owns. With an isolated `HOME`, `mise` refuses to run, so resolve node first with `N=$(mise which node)` under the real `HOME` and put its directory on `PATH`.
+- Checking a screen in light and dark, which `nyte-styles` sends agents here for. Desktop `ui.ts` has `setTheme`.

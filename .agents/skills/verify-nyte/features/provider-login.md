@@ -1,63 +1,27 @@
 # Provider sign-in
 
-Connect a model provider so its models can answer. The host runs the provider's login and
-stores the account; each client shows the steps (`open`, `paste`, `choose`, `waiting`, `done`,
-`failed`) and answers them.
+Connect a model provider so its models can answer. The host runs the provider's login and stores the account. Each client shows the login steps and answers them: the TUI's `/login` dialog, `nyte login`, and Settings › Models › Connect Provider on desktop and web. `/accounts` in the TUI switches the active account.
 
-## Sub-features
+- Desktop and web send `browser: "host"` or `"elsewhere"` with `models.login`. With `elsewhere`, Anthropic uses copy-code and OpenAI Codex uses device code instead of a localhost callback on the host, so desktop and web never show the provider's method question. `nyte login` sends `elsewhere` under `--no-open` or without a browser.
+- The first account is saved as "Account 1" without a prompt. The TUI and CLI ask for a name only when the provider already has an account, and `nyte login --label` skips the question. The name travels as `models.login`'s `label`.
 
-- `tui`: `/login [provider]` opens the auth dialog under the composer: method choice, link with
-  code, masked key field, waiting spinner. Esc cancels.
-- `cli`: `nyte login <provider> [--method oauth|api_key]` prompts over readline on stderr.
-- `desktop`: Settings › Models › Connect Provider. Browser sign-in, device code panel, or the
-  API key form. The client picks the provider's default method itself and never shows its
-  method question.
-- `web`: the same Settings › Models screen against a remote host. The client sends
-  `browser: "elsewhere"` with `models.login`, so Anthropic uses copy-code and OpenAI Codex uses
-  device code instead of a localhost callback on the server.
-- `accounts`: the first account is saved as "Account 1" without a prompt. The TUI and CLI ask
-  "Label for this … account (optional)" only when the provider already has an account; the name
-  travels as `models.login`'s `label`. `/accounts` switches the active account.
+## Test runners
 
-## How to get to it (user POV)
+Fast loop from the repository root, seconds each:
 
-- TUI: type `/login`, pick a provider, follow the dialog.
-- Shell: `nyte login anthropic`.
-- Desktop or web: Settings › Models, a provider row's Connect Provider button.
-
-## Driving it with the test runners
-
-Fast loop, from the repository root. Each finishes in seconds:
-
-- Host rules (naming, steps, cancel): `pnpm --dir packages/core exec vitest run test/models.test.ts`
-  and `pnpm --dir packages/ai exec vitest run test/models-runtime.test.ts`.
+- Host rules (naming, steps, cancel): `pnpm --dir packages/core exec vitest run test/models.test.ts` and `pnpm --dir packages/ai exec vitest run test/models-runtime.test.ts`.
 - Provider method choice: `pnpm --dir packages/ai exec vitest run test/anthropic-oauth.test.ts test/openai-codex-oauth.test.ts`.
-- Wire (`label` and `browser` cross HTTP): `pnpm --dir packages/protocol exec vitest run test/client.test.ts`.
+- Wire: `pnpm --dir packages/host exec vitest run test/serve/client.test.ts` runs a login with a `label` over HTTP and reads it back from `models.accounts`. No wire test sends `browser`.
 - TUI dialog frames: `cd packages/tui && bun test test/ui/dialogs/auth.test.tsx test/app/app.test.tsx`.
-- Desktop and web screen in real Electron:
-  `pnpm --dir packages/app exec vitest run src/settings/models-settings-login.electron.test.ts`.
-  It builds its own harness; no app build is needed. The harness bridge
-  (`src/settings/fixtures/login-harness-bridge.ts`) scripts login steps with `step(...)`, records
-  `models.login` input, `login.answer` codes and `host.openExternal` calls, and switches between
-  a local and remote host with `setEndpoint(url)`.
+- Desktop and web screen in real Electron: `pnpm --dir packages/app exec vitest run src/settings/models-settings-login.electron.test.ts`. It needs no app build. Its bridge, `src/settings/fixtures/login-harness-bridge.ts`, scripts steps with `step(...)`, records `models.login` input, `login.answer` codes and `host.openExternal` calls, and switches between a local and remote host with `setEndpoint(url)`.
 
-Journey: `cd packages/tui && bun test test/app/menus.test.ts test/app/app.test.tsx`. The tests
-"/accounts switches the login the next request uses, without asking the provider" and "API-key
-login supports paste, select all, delete and repaste without exposing its value" drive
-`/accounts` and `/login` through the whole TUI over an in-process host. The `/accounts` test
-seeds "Primary" and "Secondary" through `models.login` with `label`.
+Journey: `cd packages/tui && bun test test/app/menus.test.ts test/app/app.test.tsx`. "/accounts switches the login the next request uses, without asking the provider" seeds two labelled accounts and switches between them; "API-key login supports paste, select all, delete and repaste without exposing its value" drives `/login`. Both run the whole TUI over an in-process host.
 
-Proof for a sign-in change: the action (click or keys), the visible step, the recorded
-`models.login` input or answered code, and the saved account label from `models.accounts`.
+Proof for a sign-in change: the action (click or keys), the visible step, the recorded `models.login` input or answered code, and the saved account label from `models.accounts`.
 
 ## Gotchas
 
-- No runner reaches a real provider. The TUI tests answer with `fakeModels`, so the OAuth flows are proven
-  only by the ai tests with stubbed `fetch`. Say so when reporting.
-- The Electron harness replaces the host connection. It proves what the screen sends and shows,
-  not that a real host saved the account; pair it with the core test.
-- No web e2e journey covers sign-in. The web case is proven only through the harness's
-  `setEndpoint`; a remote-host claim needs that test named in the report.
-- The client decides `browser` from the endpoint hostname (`localhost`, `127.0.0.1`, `[::1]`
-  mean the host). A tunnel that forwards a remote host to a local port reads as local.
-- Each TUI journey is its own test. Name the test that failed before blaming a login change.
+- No runner reaches a real provider. The TUI tests answer with `fakeModels`, so only the ai tests, with stubbed `fetch`, prove the OAuth flows. Say so when reporting.
+- The Electron harness replaces the host connection. It proves what the screen sends and shows, not that a real host saved the account; pair it with the core test.
+- No web e2e journey covers sign-in. Only the harness's `setEndpoint` proves the web case, so a remote-host claim must name that test.
+- Desktop and web pick `browser` from the endpoint hostname, reading `localhost`, `127.0.0.1` and `[::1]` as the host's own machine. A tunnel that forwards a remote host to a local port reads as local.

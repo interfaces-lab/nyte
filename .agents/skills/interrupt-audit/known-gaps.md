@@ -4,7 +4,6 @@ These are real and not fixed. Each names what it would take. The commit that fix
 
 - **A `task` child can reach its parent twice.** A child that ends before its parent's `task` parks the wait has its report delivered and its answer returned by `task`, and a child stopped with its parent reports its stopped end. Holding a child's report until the call that started it settles would cover both.
 - **A migration loads the whole store into memory.**
-- **Pointer receipts written before the index stopped counting them stay in `pending_work`** until a migration rebuilds the index. They cost a sweep visit each, as before.
 - **Search walks the session index when a name is rare.** `sessions.read` with `query` matches a lower-cased name column in activity order until `limit` match, about half a millisecond at 5,000 chats. Pinned chats read from their own index whatever the count. A trigram index would make search independent of the count.
 - **A client newer than its host gets `invalid` for a filter the host does not know.** A phone at revision 25 against a Mac at 24 shows no search results and no older pinned chats until the Mac updates.
 - **A client cannot tell which session a text frame belongs to.** Every open chat store takes every part streaming on the socket into its text map. A frame for a part its view doesn't hold notifies no one, but its entry stays until the store closes. A session on the frame would let the store drop it.

@@ -25,7 +25,7 @@ Each concept has one name. Code uses the term, and users see the UI word where i
 | panel | A workbench tool view, such as editor, changes, terminal or browser. | | pane |
 | design mode | The browser panel's mode for picking an element or a region of a page for the chat, with views drawn over the page. See `BrowserDesign`. | Design Mode | picker, inspect mode |
 | region | A rectangle of a page in CSS pixels, picked in design mode; its excerpt names the element at its centre. | Area | selection |
-| editor | The workbench panel containing the file tree, search and file editors. An individual document opens in a file editor. | Editor | Files (for the panel) |
+| editor | The workbench panel with the file tree, search and file editors. Each document opens in a file editor. | Editor | Files (for the panel) |
 | window tab / workbench tab | Always qualified. | Tab | bare `tab` |
 | layout | The tree of splits and panes in one window tab. See `Layout` in `panes/layout.ts`. | | row layout (for this), workspace |
 | split | A row (`right`) or column (`down`) of two or more layout children, each sized by a share or in pixels. | | group, stack, row, column |
@@ -40,7 +40,7 @@ Each concept has one name. Code uses the term, and users see the UI word where i
 
 ## Project workflow
 
-Projects exist: a project record, its coordinator chat, the prompt its chats read and the shared docs. The rest of these terms reserve the names for the planned workflow.
+The code has projects, their coordinator chats, the prompt a project's chats read, and shared docs. The other rows reserve names for the planned workflow.
 
 | Term | Meaning | UI word | Don't use |
 |---|---|---|---|
