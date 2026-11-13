@@ -7,7 +7,6 @@
 - Add backward compatibility only when asked.
 - `node_modules` is the source of truth for library types.
 - Before changing a package, read `packages/<name>/AGENTS.md` if it exists. It isn't loaded for you.
-- The field guide maps the path a message takes from a client through the host and core and back, with its clocks, its surprises and its known gaps. Read it before changing that path.
 - AGENTS.md names symbols, concepts and commands, never file or folder paths: files move. `pnpm lint` rejects a path.
 - Put new guidance in the file that already owns the topic; create a skill only for a distinct topic.
 - Work in the current checkout. Create a branch, worktree or PR only when asked; then base it on `origin/main` and target `main`.
@@ -64,5 +63,6 @@
 - While iterating, typecheck only what you touched: `pnpm exec turbo typecheck --filter=<package>...`.
 - `tsc` is the source of truth for types. When the editor or the type-aware lint rules disagree with it, reproduce with the package's `typecheck` script.
 - After changing `@nyte-ai/schema` wire types or core's stored record types (`HeadRecord`, `SessionRecord` and the other `*Record` schemas), run `pnpm --dir packages/host check:store` and backfill what it reports.
+- After changing what a client receives over the wire, run `pnpm --dir packages/bench bench:wire:gate`.
 - Report failures in unrelated files; don't fix them.
 - Before changing Turborepo config, read the docs that ship inside the installed `turbo` package.

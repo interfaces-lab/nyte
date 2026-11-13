@@ -10,7 +10,6 @@ const root = resolve(import.meta.dirname, "..");
 const ENTRIES = [
   {
     source: "packages/app/src",
-    doc: "docs/app-structure.md",
     layers: [
       ["contract"],
       ["lib", "data"],
@@ -44,7 +43,6 @@ const ENTRIES = [
   },
   {
     source: "packages/core/src",
-    doc: "docs/core-structure.md",
     layers: [
       ["util"],
       ["contract"],
@@ -154,7 +152,9 @@ for (const entry of ENTRIES) {
 
   if (problems.length === 0) continue;
 
-  process.stdout.write(`The layer rules and what each folder owns: ${entry.doc}\n`);
+  process.stdout.write(
+    `A folder imports its own layer or a lower one. Move the code to the folder that owns it, or have the higher folder pass it in. The order is the layers of ${entry.source} in scripts/check-layers.mjs, lowest first.\n`,
+  );
 
   failed = true;
 }

@@ -2,7 +2,7 @@
 
 This is how a Nyte host and its clients share state. The desktop app, the TUI, mobile, the CLI and agents over MCP all use this one contract. The host folds its event log into tables. A client attaches to a window of rows, applies changes by id, and resumes from the last seq it saw. Neither side diffs state. The host sends whole rows, and the client replaces them by id.
 
-[rationale.md](rationale.md) holds the measurements this design rests on, the audit of the code it replaces, and the shapes it rejected. [model/](model) holds the TLA+ model of attach and resume. To check the model, run this from the repository root. It fetches `tla-ts` with `pnpm dlx`.
+[model/](model) holds the TLA+ model of attach and resume. To check the model, run this from the repository root. It fetches `tla-ts` with `pnpm dlx`.
 
 ```sh
 node docs/host-protocol/model/check.mjs

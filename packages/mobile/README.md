@@ -378,7 +378,7 @@ Provider execution and storage stay on the host. The app reads the host through
 per host, opened with `openHost` over React Native's WebSocket, holds every live
 store:
 
-- a chat's [head](../../docs/glossary.md) store, drawn through `headView` with
+- a chat's head store, drawn through `headView` with
   streamed text and unsent sends laid over it
 - the session list store
 

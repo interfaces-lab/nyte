@@ -33,7 +33,7 @@ Each concept has one name. Code uses the term, and users see the UI word where i
 | composer | The input editor with its trays, chips and queue. | | input |
 | draft | Unsent composer content. | Draft | for core's fold index |
 | send journal | A client's record of messages it sent that the host hasn't shown yet, resent on the next connect. An entry older than a day the host never saw is expired: still shown unsent, no longer sent on its own. See `createSendJournal`. | | |
-| image markup | Pen strokes and shapes in source-image pixels, flattened into a copy when added to a chat. | Markup | annotation, drawing (for the feature) |
+| image markup | Pen, highlighter and shape marks in source-image pixels, with a crop, flattened into a copy when added to a chat. | Markup | annotation, drawing (for the feature) |
 | warm | Hold a session's live watch before it opens, so opening it reuses that watch. | | preload, prefetch, prime |
 | hot set | The sessions kept warm or mounted, capped by count. | | cache (unqualified) |
 | stair | One step of a colour ladder (content, fill or stroke), strongest first, with one job and a contrast floor. See the `nyte-styles` skill. | | tier, level, ink-N, interactive-* (for a colour step) |
@@ -46,7 +46,7 @@ Projects exist: a project record, its coordinator chat, the prompt its chats rea
 |---|---|---|---|
 | project | One coordinator chat in a folder and the settings every chat in it reads on each request: models, instructions, preloaded skills, MCP servers and shared docs. See `schema/src/projects.ts`. | Project | lane, stack, workstream, routine |
 | coordinator | A project's own chat. It plans the work and starts the project's agents, its subagents. | Coordinator | lead, keeper |
-| shared doc | A file in `.nyte/projects/docs`, under the home or the folder, that a project's chats read and add to. A project turns each one off or on. | Shared context | brief, memory, notes |
+| shared doc | A file in the `projects/docs` folder of `.nyte`, under the home or the folder, that a project's chats read and add to. A project turns each one off or on. | Shared context | brief, memory, notes |
 | writer family | The one session family allowed to change a checkout, keyed by the checkout's root. The family is a top-level chat and the subagents that share its folder. | | owner or lock (for checkouts) |
 | trigger | A project rule. When an event matches, an owner acts on a pinned model until a stop condition, within a budget. | Trigger | subscription, automation, routine |
 | pull request watch | The model-free poll that follows one pull request for a project and turns what changed into dispatches. | Watching | watch (alone, which means a session's live watch), listener |
