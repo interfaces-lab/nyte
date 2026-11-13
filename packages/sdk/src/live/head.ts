@@ -11,7 +11,7 @@ import type {
 import { asSdkError, openSessionStore } from "@nyte-ai/protocol";
 import type { HostSocket, SessionRows, SessionStore, SocketEvent } from "@nyte-ai/protocol";
 import type { Catalogs } from "./catalogs.ts";
-import { activations, sessionChanges } from "../event-checks.ts";
+import { activations, sessionChanges, sessionsChanges } from "../event-checks.ts";
 import { freshnessCell, keepRows, listenerSet, readRetries, request, sameJson } from "./store.ts";
 import type { Freshness, Join, Live } from "./store.ts";
 
@@ -67,6 +67,13 @@ const EMPTY_CATALOG: SessionCatalogView = {
   tools: [],
 };
 
+/**
+ * Holds one head's window over the session scope and keeps it current. A session scope has no event
+ * for its session's removal, so the store also listens to the host scope's `change` events, which
+ * the connection's session lists subscribe to: when one drops the store's session, the store reads
+ * the head again, and the host's `unknown` answer leaves it stale with that error. A connection
+ * that holds no session list hears no drop, and its store learns of the removal at its next read.
+ */
 export function openHeadStore(
   input: { readonly session: SessionId; readonly head: HeadName; readonly tail: number },
   join: Join,
@@ -175,6 +182,18 @@ export function openHeadStore(
   };
 
   const receive = (live: HostSocket, event: SocketEvent): void => {
+    if (event.scope === "host") {
+      if (
+        !reading &&
+        event.kind === "change" &&
+        sessionsChanges.Check(event) &&
+        event.tables.sessions?.drop.includes(input.session) === true
+      )
+        void read(live);
+
+      return;
+    }
+
     if (event.scope !== `session/${input.session}`) return;
 
     if (event.kind === "live" && activations.Check(event.activation)) {

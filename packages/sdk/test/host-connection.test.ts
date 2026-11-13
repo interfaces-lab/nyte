@@ -270,6 +270,24 @@ describe("a head store", () => {
     await matchesRead(connection, store, session);
   });
 
+  it("goes stale with unknown when its session is removed while the connection holds a session list, and keeps its rows", async () => {
+    const served = await serve();
+    const session = await startSession(served);
+    const connection = attach(served.listener);
+    const sessions = connection.directory();
+    cleanups.push(async () => sessions.close());
+    const store = watched(connection, session);
+
+    await matchesRead(connection, store, session);
+    const shown = store.snapshot()?.order;
+    expect(await served.host.session(session).remove()).toEqual({ kind: "removed" });
+
+    await vi.waitFor(() =>
+      expect(store.freshness()).toMatchObject({ kind: "stale", error: { code: "unknown" } }),
+    );
+    expect(store.snapshot()?.order).toBe(shown);
+  });
+
   it("opens a head whose window passes maxFrameBytes with its whole message, and the connection stays open", async () => {
     const served = await serve();
     const session = await startSession(served);
