@@ -1,15 +1,13 @@
 import { asId } from "@nyte-ai/schema";
 import type { PartId, PartView, SessionId, SessionInfo } from "@nyte-ai/schema";
-import { headView, openHost, streamText, unsentSends, withStreamedText } from "@nyte-ai/sdk/client";
+import { openHost, unsentSends } from "@nyte-ai/sdk/client";
 import type {
+  ChatStore,
   Freshness,
-  HeadStore,
   HeadView,
   Health,
   HostConnection,
   SessionsWindow,
-  StreamedText,
-  UnsentSends,
 } from "@nyte-ai/sdk/client";
 import type { Connection } from "@nyte-ai/sdk";
 import type { LocalEndpoint } from "@nyte-ai/service";
@@ -33,53 +31,20 @@ export function openLiveHost(endpoint: LocalEndpoint, kind: "tui" | "cli"): Host
   });
 }
 
-export function openChat(live: HostConnection, session: SessionId): HeadStore {
-  return live.head(session, MAIN, { tail: TAIL });
-}
-
-export function chatSends(connection: Connection, session: SessionId): UnsentSends {
-  return unsentSends(connection, session, MAIN);
-}
-
-export function chatViews(
-  live: HostConnection,
-  store: HeadStore,
-  unsent: UnsentSends | null,
-): AsyncIterable<HeadView> {
-  return liveValues((changed) => {
-    let texts: StreamedText = new Map();
-    const stopStore = store.subscribe(changed);
-    const stopUnsent = unsent?.subscribe(changed);
-
-    const stopText = live.text((update) => {
-      texts = streamText(texts, update);
-      changed();
-    });
-
-    return {
-      read() {
-        const snapshot = store.snapshot();
-
-        if (snapshot === null) return null;
-        const freshness = store.freshness();
-        const view = headView(snapshot);
-
-        return withStreamedText(
-          unsent === null
-            ? view
-            : unsent.lay(view, freshness.kind === "fresh" ? freshness.seq : null),
-          texts,
-        );
-      },
-      freshness: () => store.freshness(),
-      close() {
-        stopStore();
-        stopUnsent?.();
-        stopText();
-        store.close();
-      },
-    };
+/** The chat of `session`'s main head; with `sends`, its journaled sends are laid in until the host has them. */
+export function openChat(live: HostConnection, session: SessionId, sends?: Connection): ChatStore {
+  return live.chat(session, MAIN, {
+    tail: TAIL,
+    unsent: sends === undefined ? undefined : unsentSends(sends, session, MAIN),
   });
+}
+
+export function chatViews(chat: ChatStore): AsyncIterable<HeadView> {
+  return liveValues((changed) => ({
+    read: () => chat.snapshot().view,
+    freshness: () => chat.snapshot().freshness,
+    close: chat.subscribe(changed),
+  }));
 }
 
 export async function readPart(

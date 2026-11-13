@@ -65,7 +65,7 @@ export function HostProvider({ session, children }: { session: HostSession; chil
   const health = useHealth(session.live);
   useMountEffect(() => {
     const subscription = AppState.addEventListener("change", (state) => {
-      if (state === "active") session.live.wake();
+      if (state === "active") session.live.retry();
     });
 
     return () => subscription.remove();

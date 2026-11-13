@@ -94,17 +94,23 @@ export function withStreamedText(view: HeadView, texts: StreamedText): HeadView 
           known.laid.size === laid.size &&
           Array.from(laid).every((entry) => known.laid.get(entry[0]) === entry[1])
         ? known.result
-        : {
-            ...view,
-            messages: Array.from(laid).reduce(
-              (messages, entry) => messages.with(entry[0], entry[1]),
-              view.messages,
-            ),
-          };
+        : { ...view, messages: replaced(view.messages, laid) };
 
   views.set(view, { texts, laid, result });
 
   return result;
+}
+
+/** Copies `messages` with each laid message in its place. V8 copies a long array of messages through `Array.prototype.with` about sixty times slower than through `slice`, and this runs once per streamed delta. */
+function replaced(
+  messages: readonly Message[],
+  laid: ReadonlyMap<number, Message>,
+): readonly Message[] {
+  const copy = messages.slice();
+
+  for (const entry of laid) copy[entry[0]] = entry[1];
+
+  return copy;
 }
 
 function indexParts(messages: readonly Message[]): ReadonlyMap<string, number> {

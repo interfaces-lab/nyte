@@ -12,7 +12,6 @@ import { addFolder, rootSessions, tuiPlugins } from "../run.ts";
 import { loginProvider, logoutProvider, runLogin } from "../services/auth.ts";
 import { TaskIndex } from "../services/task-index.ts";
 import {
-  chatSends,
   chatViews,
   healthUpdates,
   openChat,
@@ -200,7 +199,7 @@ export function hostPort(
                     children: sessionLists(live, {
                       parents: { kind: "children", session: info.id },
                     }),
-                    views: (child) => chatViews(live, openChat(live, child), null),
+                    views: (child) => chatViews(openChat(live, child)),
                     jobs: host.workspace(info.workspace).jobs.watch(),
                     onChange() {
                       latest = opened.tasks;
@@ -323,16 +322,16 @@ function sessionPort(
   return {
     id: session.id,
     watch() {
-      const store = openChat(live, session.id);
+      const chat = openChat(live, session.id, host);
 
       views = pagedViews({
-        watch: () => chatViews(live, store, chatSends(host, session.id)),
+        watch: () => chatViews(chat),
         history: (query) => session.history(query),
       });
 
       return mapped(tracePaints(views, session.id, painted), (view): ChatUpdate => ({
         view,
-        freshness: store.freshness(),
+        freshness: chat.snapshot().freshness,
       }));
     },
     earlier: (limit) => views?.earlier(limit) ?? Promise.resolve(0),

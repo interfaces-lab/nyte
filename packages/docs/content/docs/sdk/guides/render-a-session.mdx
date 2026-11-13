@@ -5,9 +5,9 @@ description: Read a session's view once or live, draw its messages, and page in 
 
 Use this page to show a chat on screen. A `SessionView` holds a head's messages in order, what is
 running now, what is queued, and the files that changed. `session.view()` reads one from the host,
-and `headView` builds one from a head store's rows. Your client draws the view as it is. The store
-applies the host's change events, and `withStreamedText` lays streamed text over the view, so your
-code never replays events or joins text itself.
+and a chat store keeps one current from the host's rows. Your client draws the view as it is. The
+store applies the host's change events and lays streamed text and unsent sends over the view, so
+your code never replays events or joins text itself.
 
 ## Read it once, or follow its rows
 
@@ -19,56 +19,50 @@ const view = await session.view({ tail: 100 });
 includes the turns those messages belong to.
 
 To redraw on every change, attach to the host's rows with `openHost` from `@nyte-ai/sdk/client`.
-It holds one socket per host, and each `head` store on it holds one head's window of rows and
-applies the change events that move them:
+It holds one socket per host, and each `chat` store on it holds one head's window of rows, applies
+the change events that move them, and lays in what the rows don't have yet:
 
 ```ts
-import { headView, openHost, streamText, withStreamedText } from "@nyte-ai/sdk/client";
-import type { StreamedText } from "@nyte-ai/sdk/client";
+import { openHost, unsentSends } from "@nyte-ai/sdk/client";
 
 const live = openHost(address, {
   credentials: { kind: "token", token },
   client: { kind: "other", name: "my-client", version: "1.0.0" },
 });
 
-const store = live.head(session.id, session.name, { tail: 100 });
-let texts: StreamedText = new Map();
+const chat = live.chat(session.id, session.name, {
+  tail: 100,
+  unsent: unsentSends(connection, session.id, session.name),
+});
 
-const show = () => {
-  const snapshot = store.snapshot();
+const stop = chat.subscribe(() => {
+  const view = chat.snapshot().view;
 
-  if (snapshot !== null) draw(withStreamedText(headView(snapshot), texts));
-};
-
-const stopRows = store.subscribe(show);
-
-const stopText = live.text((update) => {
-  texts = streamText(texts, update);
-  show();
+  if (view !== null) draw(view);
 });
 ```
 
 `subscribe` and `snapshot` are the store shape that React's `useSyncExternalStore`, Svelte, Vue and
 Solid read. [Build an agent app](/docs/build/composition#build-the-chat) shows each one.
 
-- `snapshot()` is `null` until the first read arrives.
-- `headView` turns a snapshot into a view, the same shape `session.view()` returns without `seq`,
-  and returns the same view for the same snapshot.
-- Text a part is still streaming arrives on `live.text`. `streamText` keeps it, and
-  `withStreamedText` lays it over the view.
-- Keep the store you subscribe to. Each `live.head(...)` call opens a new one.
+- `snapshot().view` is `null` until the first read arrives. `snapshot()` returns the same object
+  until the view or its freshness changes, and `subscribe` calls you only then.
+- Text a part is still streaming is laid over its message as it arrives. Text for a part this view
+  doesn't hold, such as another chat's, doesn't call you.
+- A send still in the connection's journal is not a row yet. `unsent`, with the `Connection` from
+  `sdk.connect` that you send through, lays it in as `unsent` until the host's row shows it.
+- The store opens the head's rows when its first listener subscribes and closes them when the last
+  one leaves.
 
-A send still in the connection's journal is not a row yet. `session.view()` shows it as `unsent`;
-over a store, `unsentSends(connection, session.id, session.name)`, with the `Connection` from
-`sdk.connect` that you send through, does the same. `lay(view, seq)` adds it to the view, with
-`seq` from `store.freshness()` while the store is fresh, and `subscribe` calls you when the journal
-changes.
+When the socket drops, the snapshot's `freshness` turns stale and the view stays. Once the socket is
+back, the rows resume from the seq of the last change applied, so nothing is missed or repeated.
+Unsubscribe when the chat leaves the screen, and call `live.release()` when you are done with the
+host. In a browser, pass `socket: ticketSocket()`, since a page can't put headers on a WebSocket.
 
-When the socket drops, the store marks itself stale (`store.freshness()`) and keeps its rows. Once
-the socket is back, it resumes from the seq of the last change it applied, so nothing is missed or
-repeated. Call `store.close()` when the chat leaves the screen, and `live.release()` when you are
-done with the host. In a browser, pass `socket: ticketSocket()`, since a page can't put headers on
-a WebSocket.
+The chat store is built from parts you can use on their own: `live.head(...)` is the store of rows,
+`headView` turns its snapshot into a view, `streamText` and `withStreamedText` keep and lay the
+text `live.text` streams, and `unsentSends(...).lay(view, seq)` adds the journal's sends.
+[openHost](/docs/sdk/reference/entry-points#open-host) lists each.
 
 `live.directory({ parents: { kind: "roots" } })` is the same kind of store for the `sessions`
 table: its snapshot holds the listed `ids` in order and each one's `SessionInfo` in `rows`, whose
@@ -218,8 +212,8 @@ For a scrolling transcript, `pagedViews` does the bookkeeping. It takes a source
 ```ts
 import { pagedViews } from "@nyte-ai/sdk";
 
-// `views` is an AsyncIterable of the head's views. Over a head store, yield
-// `headView(store.snapshot())` each time `subscribe` calls you.
+// `views` is an AsyncIterable of the head's views. Over a chat store, yield
+// `chat.snapshot().view` each time `subscribe` calls you.
 const paged = pagedViews({ watch: () => views, history: (query) => session.history(query) });
 
 for await (const view of paged) draw(view);

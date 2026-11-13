@@ -62,9 +62,9 @@ Each step names the file to open. Paths are under `packages/`.
 
 **10. The host pushes.** A client that subscribed to `session/<id>` holds a fold attachment (`core/src/api/session-attachment.ts`). `serveSession` in `host/src/serve/socket.ts` gathers what changed, 8 ms after the first unsent change and at most every 33 ms, and sends one `change` with each touched row whole (`changesAfter` in `core/src/watch/window.ts`), then the streamed text as appends on the text channel. The host's list of sessions is its own scope, fed by `core/src/api/sessions-feed.ts`.
 
-**11. The SDK applies rows by id.** `sdk/src/live/head.ts` feeds each change to `openSessionStore` (`protocol/src/client/session-store.ts`), which replaces rows and splices the head's order; there is no diffing on either side. `headView` in `sdk/src/view/head-view.ts` projects the snapshot, and `withStreamedText` lays the live text over a part whose row is older.
+**11. The SDK applies rows by id.** `sdk/src/live/head.ts` feeds each change to `openSessionStore` (`protocol/src/client/session-store.ts`), which replaces rows and splices the head's order; there is no diffing on either side. `headView` in `sdk/src/view/head-view.ts` projects the snapshot, and `withStreamedText` lays the live text over a part whose row is older. `live.chat` (`sdk/src/live/chat.ts`) holds the three: the head store, the unsent sends and the streamed text, laid into one snapshot that changes only when what a client draws does.
 
-**12. The client draws.** The app composes those in `app/src/data/chat-store.ts` and paces text per frame (`paced-text.ts`); the transcript patches the one row that changed. The TUI does the same composition in `tui/src/live-host.ts` and dispatches a `view` message to its reducer. Mobile does it in `mobile/src/connection/live.ts`.
+**12. The client draws.** Each client adapts a `live.chat` store. The app does it in `app/src/data/chat-store.ts`, pages history over it and paces text per frame (`paced-text.ts`); the transcript patches the one row that changed. The TUI does it in `tui/src/live-host.ts` and dispatches a `view` message to its reducer. Mobile does it in `mobile/src/connection/live.ts`.
 
 **13. The run ends in one set.** `endRun` in `core/src/engine/runs.ts` deletes the run, writes the head's last run, settles the receipts of the messages it landed, and fails any part still live. The journal drops its entry once a view contains the message. A child session's answer is then sent to its parent as an attached message.
 
@@ -188,8 +188,7 @@ These are real and not fixed. Each names what it would take.
 - **A migration loads the whole store into memory.**
 - **Pointer receipts written before the index stopped counting them stay in `pending_work`** until a migration rebuilds the index. They cost a sweep visit each, as before.
 - **The sidebar's pinned list and search cover the 50 most recent chats.** `sessions.read` defaults to 50 and the app never pages or filters.
-- **A client cannot tell which session a text frame belongs to.** Every open chat's listener sees every part streaming on the socket.
-- **The three clients each build a chat view** from `headView`, the unsent overlay and streamed text. One `live.chat` in the SDK would hold it once.
+- **A client cannot tell which session a text frame belongs to.** Every open chat store takes every part streaming on the socket into its text map. A frame for a part its view doesn't hold notifies no one, but its entry stays until the store closes. A session on the frame would let the store drop it.
 - **Desktop main keeps two host-view streams**, one in `HostLink` and one in `DesktopHost`, each with its own retry loop.
 - **Two desktop builds on one home can retire each other's host.** The dev, production and bench builds share `~/.nyte`, and each files a retire request when the serving host's version or operations differ from its own.
 - **A resume resends the window's order** when nothing moved: 1.6 KB of ids a chat, the largest part of a reconnect.

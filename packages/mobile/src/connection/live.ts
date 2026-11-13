@@ -2,7 +2,7 @@ import { useSyncExternalStore } from "react";
 import Constants from "expo-constants";
 import { asId } from "@nyte-ai/schema";
 import type { Connection, HeadName, SdkError, SessionId, SessionInfo } from "@nyte-ai/sdk";
-import { headView, openHost, streamText, unsentSends, withStreamedText } from "@nyte-ai/sdk/client";
+import { openHost, unsentSends } from "@nyte-ai/sdk/client";
 import type {
   Freshness,
   HeadView,
@@ -10,7 +10,6 @@ import type {
   HostConnection as LiveHost,
   OpenSocket,
   SessionsWindow,
-  StreamedText,
 } from "@nyte-ai/sdk/client";
 import { SHARE_LOCATION } from "./connect-copy.ts";
 
@@ -112,50 +111,33 @@ function openChat(
   name: HeadName,
 ): Shared<ChatRead> {
   return sharedStore(chats, live, JSON.stringify([session, name]), (changed) => {
-    const store = live.head(session, name, { tail: TAIL });
-    const unsent = unsentSends(client, session, name);
-    let texts: StreamedText = new Map();
-    const stops = [store.subscribe(changed), unsent.subscribe(changed)];
-
-    const stopText = live.text((update) => {
-      texts = streamText(texts, update);
-      changed();
+    const chat = live.chat(session, name, {
+      tail: TAIL,
+      unsent: unsentSends(client, session, name),
     });
 
     return {
       read(previous) {
-        const snapshot = store.snapshot();
-        const freshness = store.freshness();
+        const snapshot = chat.snapshot();
+        const view = snapshot.view;
+        const freshness = snapshot.freshness;
 
-        if (snapshot === null) {
-          const error = freshness.kind === "stale" ? freshness.error : null;
-
-          if (error === null) return undefined;
-
-          return previous !== undefined && "error" in previous && previous.error === error
+        if (view !== null)
+          return previous !== undefined &&
+            "view" in previous &&
+            previous.view === view &&
+            previous.freshness === freshness
             ? previous
-            : { error };
-        }
+            : { view, freshness };
+        const error = freshness.kind === "stale" ? freshness.error : null;
 
-        const laid = unsent.lay(
-          headView(snapshot),
-          freshness.kind === "fresh" ? freshness.seq : null,
-        );
+        if (error === null) return undefined;
 
-        const view = withStreamedText(laid, texts);
-
-        return previous !== undefined &&
-          "view" in previous &&
-          previous.view === view &&
-          previous.freshness === freshness
+        return previous !== undefined && "error" in previous && previous.error === error
           ? previous
-          : { view, freshness };
+          : { error };
       },
-      close() {
-        for (const stop of stops) stop();
-        stopText();
-        store.close();
-      },
+      close: chat.subscribe(changed),
     };
   });
 }

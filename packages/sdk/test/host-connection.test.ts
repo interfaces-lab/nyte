@@ -361,7 +361,7 @@ describe("a reconnect", () => {
     });
 
     connection.health.subscribe(() => {
-      if (connection.health.snapshot().kind === "retrying") connection.wake();
+      if (connection.health.snapshot().kind === "retrying") connection.retry();
     });
     served.listener.disconnectClients();
     await vi.waitFor(() => expect(transport.opened).toHaveLength(2));

@@ -25,6 +25,8 @@ import type {
   SocketLike,
 } from "@nyte-ai/protocol";
 import { catalogCache } from "./catalogs.ts";
+import { openChatStore } from "./chat.ts";
+import type { ChatOptions, ChatStore } from "./chat.ts";
 import { credentialHeaders } from "../connection/connect.ts";
 import { performs } from "../event-checks.ts";
 import { openClientsStore } from "./clients.ts";
@@ -81,10 +83,10 @@ export interface HostConnection {
   readonly hostId: HostId | null;
   readonly health: Live<Health>;
   retry(): void;
-  wake(): void;
   release(): void;
   call<N extends CallName>(name: N, input: OperationInput<N>): Promise<OperationOutput<N>>;
   head(session: SessionId, head: HeadName, options: { readonly tail: number }): HeadStore;
+  chat(session: SessionId, head: HeadName, options: ChatOptions): ChatStore;
   part(session: SessionId, part: PartId): PartStore;
   directory(window?: SessionsWindow): SessionsStore;
   text(listener: (update: TextUpdate) => void): Disposer;
@@ -343,13 +345,6 @@ function superviseHost(address: string, options: HostOptions, registry: Registry
     show({ kind: "retrying", attempt, at: Date.now() + delay, error });
   };
 
-  const restart = (): void => {
-    if (released) return;
-    attempt = 0;
-
-    if (health.kind === "retrying" || health.kind === "blocked") void connect();
-  };
-
   const subscribe = (socket: HostSocket, scope: string): Promise<void> => {
     const known = subscribed.get(scope);
 
@@ -440,8 +435,12 @@ function superviseHost(address: string, options: HostOptions, registry: Registry
       return host;
     },
     health: { subscribe: healthListeners.subscribe, snapshot: () => health },
-    retry: restart,
-    wake: restart,
+    retry() {
+      if (released) return;
+      attempt = 0;
+
+      if (health.kind === "retrying" || health.kind === "blocked") void connect();
+    },
     release() {
       holders -= 1;
 
@@ -461,6 +460,12 @@ function superviseHost(address: string, options: HostOptions, registry: Registry
     },
     head: (session, head, view) =>
       openHeadStore({ session, head, tail: view.tail }, join, catalogs),
+    chat: (session, head, options) =>
+      openChatStore(
+        () => connection.head(session, head, options),
+        (listener) => connection.text(listener),
+        options.unsent,
+      ),
     part: (session, part) => openPartStore({ session, part }, join),
     directory: (window) => openSessions(window ?? {}, join),
     text(listener) {

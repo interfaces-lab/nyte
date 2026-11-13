@@ -1,6 +1,9 @@
 import { SdkError } from "@nyte-ai/sdk";
 import type { HeadName, PartId, SessionId, SessionInfo, SessionView } from "@nyte-ai/sdk";
+import { headView } from "@nyte-ai/sdk/client";
 import type {
+  ChatSnapshot,
+  ChatStore,
   HeadSnapshot,
   HeadStore,
   HostConnection,
@@ -8,6 +11,7 @@ import type {
   PartStore,
   SessionsSnapshot,
   SessionsStore,
+  UnsentSends,
 } from "@nyte-ai/sdk/client";
 import { asId } from "@nyte-ai/schema";
 
@@ -34,10 +38,11 @@ export function scriptedLive(script: LiveScript): HostConnection {
     hostId: asId<"host">("scripted"),
     health: { subscribe: () => () => undefined, snapshot: () => OPEN },
     retry: () => undefined,
-    wake: () => undefined,
     release: () => undefined,
     call: refuse,
     head: (session, head) => headStore(script.views(session), head),
+    chat: (session, head, options) =>
+      chatStore(headStore(script.views(session), head), options.unsent),
     part: (session, part) => partStore(script.views(session), part),
     directory(window) {
       const parents = window?.parents;
@@ -87,6 +92,31 @@ function headStore(source: LiveSource<SessionView> | undefined, head: HeadName):
         ? { kind: "stale", since: 0, error: source === undefined ? MISSING : null }
         : { kind: "fresh", seq: view.seq },
     close: () => undefined,
+  };
+}
+
+function chatStore(store: HeadStore, unsent: UnsentSends | undefined): ChatStore {
+  let shown: ChatSnapshot = { view: null, seq: 0, freshness: store.freshness() };
+
+  return {
+    subscribe(listener) {
+      const stops = [store.subscribe(listener), unsent?.subscribe(listener)];
+
+      return () => {
+        for (const stop of stops) stop?.();
+      };
+    },
+    snapshot() {
+      const rows = store.snapshot();
+      const freshness = store.freshness();
+      const seq = freshness.kind === "fresh" ? freshness.seq : null;
+      const view = rows === null ? null : (unsent?.lay(headView(rows), seq) ?? headView(rows));
+
+      if (view === shown.view && sameJson(freshness, shown.freshness)) return shown;
+      shown = { view, seq: seq ?? shown.seq, freshness };
+
+      return shown;
+    },
   };
 }
 

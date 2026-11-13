@@ -233,6 +233,7 @@ A `HostConnection` has:
 | Member                                     | What it does                                                                                                                                                       |
 | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `head(session, head, { tail })`            | A store of one head's last `tail` messages and the rows they need                                                                                                  |
+| `chat(session, head, { tail, unsent? })`   | A store of the view a client draws: the head's view with `unsent`'s sends and streamed text laid in. See [chat store](#chat-store)                                 |
 | `part(session, part)`                      | A store of one part by id, wherever it sits in the session, kept current from the session's changes                                                                |
 | `directory(window?)`                       | A store of the `sessions` table. `window` is `{ parents?, limit? }`, as for `sessions.read`                                                                        |
 | `clients()`                                | A store of the connected clients, a `Map` of `ClientRow` by client id                                                                                              |
@@ -241,7 +242,7 @@ A `HostConnection` has:
 | `perform(client, action, input, options?)` | Asks another client to perform an action it declared, with `client.perform`. `options` is `{ timeoutMs? }`                                                         |
 | `offer(action, handler)`                   | Declares `{ name, summary, input }` in this client's hello, reconnecting to do so, and answers each request with `handler(input, requester)`. Returns the disposer |
 | `health`                                   | A store of `connecting`, `open`, `retrying` with the next attempt's time, or `blocked` with reason `auth`, `version` or `offline`                                  |
-| `retry()`, `wake()`                        | Dials again now, with the backoff reset, when the connection is `retrying` or `blocked`                                                                            |
+| `retry()`                                  | Dials again now, with the backoff reset, when the connection is `retrying` or `blocked`                                                                            |
 | `hostId`                                   | The host's id once its welcome arrived, else `null`                                                                                                                |
 | `release()`                                | Lets go of the connection                                                                                                                                          |
 
@@ -258,7 +259,28 @@ resumes from its seq once the socket is back.
   `rows`, a `Map` per table keyed by row id.
 - A session store's snapshot holds the listed `ids` in order and each one's `SessionInfo` in `rows`.
 
-These helpers come with it:
+### Chat store [#chat-store]
+
+```ts
+chat(session: SessionId, head: HeadName, options: { tail: number; unsent?: UnsentSends }): ChatStore
+```
+
+A `ChatStore` has only `subscribe` and `snapshot`. It opens its head store and its text listener
+when its first listener subscribes and closes both when its last leaves, so it needs no `close()`.
+Its snapshot is a `ChatSnapshot`:
+
+| Field       | What it holds                                                                                                                    |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `view`      | The head's `HeadView` with the sends still in `unsent` and the text parts are streaming laid in, or `null` before the first read |
+| `seq`       | The seq `view` is current through. It stays at the last fresh seq while the store is stale                                       |
+| `freshness` | The head store's freshness. A read that failed before any view arrived is `stale` with its `error`                               |
+
+`snapshot()` returns the same object until `view` or `freshness` changes, and a listener is called
+only for a new one. Text streaming for a part the view doesn't hold, such as another chat's, calls
+no listener. Pass `unsent: unsentSends(connection, session, head)` with the `Connection` you send
+through.
+
+The chat store is built from these helpers, which you can use on their own:
 
 | Helper                                   | What it does                                                                                   |
 | ---------------------------------------- | ---------------------------------------------------------------------------------------------- |

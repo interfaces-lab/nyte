@@ -38,6 +38,8 @@ export type { SessionsStore, SessionsSnapshot, SessionsWindow } from "./live/ses
 
 export type { HeadRows, HeadSnapshot, HeadStore } from "./live/head.ts";
 
+export type { ChatOptions, ChatSnapshot, ChatStore } from "./live/chat.ts";
+
 export type { PartSnapshot, PartStore } from "./live/part.ts";
 
 export type { Freshness, Live } from "./live/store.ts";

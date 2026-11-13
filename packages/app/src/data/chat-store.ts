@@ -2,14 +2,8 @@ import { asId } from "@nyte-ai/schema";
 import type { PartId, PartView } from "@nyte-ai/schema";
 import { pagedViews, tracePaints } from "@nyte-ai/sdk";
 import type { PagedViews, SessionId } from "@nyte-ai/sdk";
-import { headView, streamText, unsentSends, withStreamedText } from "@nyte-ai/sdk/client";
-import type {
-  Freshness,
-  HeadStore,
-  HeadView,
-  HostConnection,
-  StreamedText,
-} from "@nyte-ai/sdk/client";
+import { unsentSends } from "@nyte-ai/sdk/client";
+import type { ChatSnapshot, Freshness, HeadView, HostConnection } from "@nyte-ai/sdk/client";
 import { countWork } from "../lib/work-counts.ts";
 import { connection, registries } from "./connection.ts";
 import { createTextPacer } from "./paced-text.ts";
@@ -51,7 +45,7 @@ export const chatStore = liveFamily((live, session: SessionId): AsyncIterable<Ch
     const tail = Math.min(Math.max(OPENING_TAIL, known), REOPENING_TAIL);
 
     const views = pagedViews<LaidView>({
-      watch: () => laidViews(live, live.head(session, MAIN, { tail }), session),
+      watch: () => laidViews(live, session, tail),
       history: (query) => connection().session(session).history(query),
     });
 
@@ -89,51 +83,32 @@ export const chatStore = liveFamily((live, session: SessionId): AsyncIterable<Ch
   },
 }));
 
-function laidViews(
-  live: HostConnection,
-  store: HeadStore,
-  session: SessionId,
-): AsyncIterable<LaidView> {
+function laidViews(live: HostConnection, session: SessionId, tail: number) {
   return liveValues<LaidView>((changed) => {
-    const unsent = unsentSends(connection(), session, MAIN);
-    let texts: StreamedText = new Map();
-    let seq = 0;
-    let shown: { readonly source: HeadView; readonly view: LaidView } | null = null;
-    const stops = [store.subscribe(changed), unsent.subscribe(changed)];
-
-    const stopText = live.text((update) => {
-      texts = streamText(texts, update);
-      changed();
+    const chat = live.chat(session, MAIN, {
+      tail,
+      unsent: unsentSends(connection(), session, MAIN),
     });
+
+    let shown: { readonly snapshot: ChatSnapshot; readonly view: LaidView } | null = null;
 
     return {
       read() {
-        const snapshot = store.snapshot();
-        const freshness = store.freshness();
+        const snapshot = chat.snapshot();
+        const freshness = snapshot.freshness;
 
-        if (snapshot === null) {
+        if (snapshot.view === null) {
           if (freshness.kind === "stale" && freshness.error !== null) throw freshness.error;
 
           return null;
         }
 
-        if (freshness.kind === "fresh") seq = freshness.seq;
-
-        const source = withStreamedText(
-          unsent.lay(headView(snapshot), freshness.kind === "fresh" ? freshness.seq : null),
-          texts,
-        );
-
-        if (shown?.source === source && shown.view.freshness === freshness) return shown.view;
-        shown = { source, view: { ...source, seq, freshness } };
+        if (shown?.snapshot !== snapshot)
+          shown = { snapshot, view: { ...snapshot.view, seq: snapshot.seq, freshness } };
 
         return shown.view;
       },
-      close() {
-        for (const stop of stops) stop();
-        stopText();
-        store.close();
-      },
+      close: chat.subscribe(changed),
     };
   });
 }

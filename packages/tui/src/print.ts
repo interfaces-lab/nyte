@@ -130,9 +130,7 @@ async function follow(options: PrintOptions): Promise<RunEnding> {
     options.signal.addEventListener("abort", () => resolve("canceled"), { once: true });
   });
 
-  const views = chatViews(options.live, openChat(options.live, options.session.id), null)[
-    Symbol.asyncIterator
-  ]();
+  const views = chatViews(openChat(options.live, options.session.id))[Symbol.asyncIterator]();
 
   // oxlint-disable-next-line nyte-code/no-one-off-boolean-helpers -- read through a call: inline, the early return keeps `signal.aborted` narrowed to false across the awaits
   const aborted = (): boolean => options.signal.aborted;
