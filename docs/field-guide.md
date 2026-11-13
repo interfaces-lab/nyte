@@ -38,6 +38,28 @@ phone ── tailnet, tunnel or LAN ──► host
 
 Sessions run in the host. Quitting the desktop app or the TUI stops neither a run nor a job.
 
+## Who owns what
+
+Every rule on this path comes from five ownerships. When a change feels awkward, it is usually putting something on the wrong side of one of them.
+
+| | Owns | Never |
+| --- | --- | --- |
+| Store | The only durable truth: refs and the log, changed by one operation, `refs.set` | Decides anything |
+| Core | Every decision: admission, order, runs, tools, what a row holds. State is the fold of the log | Touches the machine, or knows a transport |
+| Host | The machine and the door: files, git, processes, keys, the listener, who is calling, when to push | Decides what a chat is. It calls core through a `Connection`, as a client would |
+| SDK | The link: two connections, the send journal, the live stores, resume, `live.chat` | Derives a fact the host owns |
+| Client | What the person sees and has not sent: drafts, scroll, pacing, layout | Keeps a copy of the host's truth that it could not throw away and read again |
+
+What follows from them:
+
+- **The host decides; a client asks and is told.** A client sends an operation and receives whole rows by id. It replaces what it holds. It never replays events and never computes a row, so there is no reducer on the client and no second place for a rule to drift. A client that needs a fact it cannot read from a row is missing a field on the row.
+- **A client can vanish at any moment.** Runs, jobs, queued messages and waits live in the host, and nothing a client holds is needed for a run to finish. The one thing that exists only in a client is what the person typed and has not delivered, so the journal writes it before it posts.
+- **Written, then shown.** A row a client draws came from the log through the fold. Streamed text is the one exception: it rides beside the rows as appends and is replaced by the stored part when the part settles.
+- **A request says how it recovers.** A send carries an id and leaves a receipt, so sending it twice replays the first. A read resumes from a seq. An operation that must not be repeated says `recovery: "never"`. An error says what to do in its `code`, and `retry` when the answer is only "not yet"; no client reads a message to decide.
+- **The link's health and the data's freshness are two facts.** `health` says whether the socket is up. Each live store's `freshness` says whether its rows are current. A screen keeps drawing stale rows and says so; it does not blank them.
+- **One table is the contract.** `OPERATIONS` in `schema` gives each operation its name, authority, scope, input, output, kind and recovery. The host's binding, the client's codec, the MCP surface and the reference pages are all read from it, and `pnpm operations` fails when a row changes without a revision.
+- **Core never imports the machine.** The host hands it providers for files, processes, git and stores, which is what lets the same kernel run in a Node host, a Durable Object and a test.
+
 ## Follow one message
 
 Each step names the file to open. Paths are under `packages/`.
@@ -120,6 +142,23 @@ Core's layers are in [core-structure.md](core-structure.md); the two that matter
 
 A client finds the host with `findRunningHost`: read `host.json`, check the pid, and ask the address, which must answer with the host header. A host that finds the lock held stands by (the desktop's) or exits (a TUI's). A `nyte` that finds no host starts one only while nobody holds the lock.
 
+## Interrupts
+
+What happens when something cuts across a run, and the function that decides it. All three clients draw the host's rows, so they agree unless the last column says otherwise.
+
+| Interrupt | What happens | Decided in | Clients differ |
+| --- | --- | --- | --- |
+| Stop | The client changes nothing until the host's row says stopping. Partial text and settled tool results stay. A running command gets SIGTERM, then SIGKILL after 2 s. A subagent the run awaits (`task`) is stopped; ones it started (`create`) and background jobs go on. Queued messages are kept and the next starts at once. During an approval the run ends in about 25 ms and the approval closes | `stopRun` in `core/src/engine/fence.ts`, then `settleLive` in `drive/execution.ts`, then `endRun` | No |
+| A message during a run | It steers or queues, by preference and key. A steer lands at the next tool boundary, and becomes a queue when the model takes no mid-run input or the run is stopping. Editing a queued message holds it; removing withdraws it | `send` and `reviseQueued` in `engine/admission.ts`, `engine/send-schedule.ts`, `boundary` in `drive/execution.ts`, `api/hold.ts` | No |
+| The person looks elsewhere | The run goes on. Unread is commits after the principal's `seenThrough`, and a chat is seen only while shown in a focused window | Each client's mark-seen, then `advanceSeen` in `core/src/watch/seen.ts` | No |
+| History changes under a run | Editing a landed message rewinds the branch and fences the live run in one set. Moving to another branch and forking refuse while the chat is busy | `engine/admission.ts`, `engine/stop.ts`, `engine/move.ts`, `engine/fork.ts` | No |
+| The run waits on a person | An approval parks with no timeout and survives a restart. The first answer wins; a second gets "already answered", one after Stop gets "no longer waiting". A question waits 1 min, then the run goes on and a late answer arrives as a message | `plugin/src/approvals/approvals.ts`, `plugin/src/question/question.ts` | Mobile shows a waiting approval and cannot answer it |
+| The link drops | The socket reconnects from 1 s doubling to 30 s and resumes from its seq. Sends are journaled and sent again; Stop and an approval's answer are not | `sdk/src/live/host-connection.ts`, `sdk/src/send/journal.ts` | Mobile alone keeps its journal on disk |
+| The model fails | A retryable error shows retrying with its reason and a countdown. Otherwise the run ends failed with the message. A context that is too long compacts once, then fails | `core/src/agent/agent-loop.ts`, `endRun` | No |
+| The client goes away | The run goes on. On return the client reads the tail and shows unread | Nothing decides it: that is the rule | A message still unsent is lost, except on mobile |
+| The host stops | Told to stop: the command is killed, its call settles interrupted, and the run resumes in about 100 ms on the next host. Killed: the run looks live for 20 s, then the call settles interrupted and the run resumes | `service/src/outdated-host.ts`, `engine/presence.ts`, `recover` in `drive/execution.ts`, `reapJobs` in `engine/jobs.ts` | No |
+| The chat changes elsewhere | Another client's rows arrive like any others. A subagent's report starts a run in its parent only if the parent's last run completed. Delete is refused while a run is live | `core/src/api/session.ts` | The app closes a chat deleted elsewhere; the TUI keeps showing it |
+
 ## Clocks
 
 | Clock | Value | Where |
@@ -191,6 +230,13 @@ These are real and not fixed. Each names what it would take.
 - **A client cannot tell which session a text frame belongs to.** Every open chat store takes every part streaming on the socket into its text map. A frame for a part its view doesn't hold notifies no one, but its entry stays until the store closes. A session on the frame would let the store drop it.
 - **Desktop main keeps two host-view streams**, one in `HostLink` and one in `DesktopHost`, each with its own retry loop.
 - **Two desktop builds on one home can retire each other's host.** The dev, production and bench builds share `~/.nyte`, and each files a retire request when the serving host's version or operations differ from its own.
+- **A command outlives a host that was killed.** Its process group is reparented and keeps running while its call reads interrupted and the run resumes, so the model may start it again beside the orphan. Nothing in a client can stop it. Fixing it means storing the pid, group and start time on the job and killing a group whose holder is dead.
+- **A killed host's run looks live for 20 s** on the next host, and a Stop in that window shows stopping for as long. The wait is the presence lapse; shortening it for a process on the same machine whose pid is gone means changing the takeover fence.
+- **Stop waits for a tool that ignores its abort signal**, and the queue waits behind it. The built-in command and MCP tools honour the signal; a plugin's tool may not.
+- **A half-open link is never noticed.** Nothing on the client times out, so a path that dies silently leaves it open and fresh, with Stop and send pending.
+- **An unsent message is lost when the app or the TUI quits.** Their journals are in memory; mobile's is on disk.
+- **Mobile cannot answer an approval.** It shows that the run waits.
+- **The TUI keeps showing a chat that was deleted or archived elsewhere.** A head store gets no event when its chat is removed.
 - **A resume resends the window's order** when nothing moved: 1.6 KB of ids a chat, the largest part of a reconnect.
 - **The HTTP stream channel wraps base64 in JSON in SSE.** A frame kind without the inner layers needs a revision bump.
 - **A stalled git remote or formatter hangs its call.** `git push`, `blame` and the formatter run have no timeout.
