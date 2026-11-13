@@ -12,7 +12,6 @@ import type { MentionFile } from "../../data/files.ts";
 import { PIERRE_TREE_CSS } from "@nyte-ai/ui/worker-pool";
 import { syncTreePaths } from "./tree-paths.ts";
 import { treeItemHeight } from "./tree-theme.ts";
-import { WORKBENCH_KINDS } from "../model.ts";
 import { workbenchStyles } from "../workbench.stylex.ts";
 
 const SEPARATOR_WIDTH = 10;
@@ -64,7 +63,6 @@ export function FileBreadcrumbs({
 
   return (
     <nav ref={nav} aria-label="File path" {...props(styles.path)}>
-      {path === undefined && WORKBENCH_KINDS.editor.label}
       {external && (
         <span title={path} {...props(styles.label)}>
           {path}
