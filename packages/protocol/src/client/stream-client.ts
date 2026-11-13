@@ -32,6 +32,9 @@ export function linkLost(error: unknown): error is SdkError {
   return error instanceof SdkError && error.code === "unavailable" && !answers.has(error);
 }
 
+/** How long a stream channel may deliver no byte, from the request that opens it, before it counts as lost. The host writes a ping on it every 15 s, so this is three missed pings. A path that dies without a close never ends the body, and a watch or a wait on it would otherwise hang for good. */
+const QUIET_MS = 45_000;
+
 /** Multiplex streams over one channel opened through `post`, asking for `deflated` frames when `deflate`; the channel closes when its last stream is released. */
 export function createStreamClient(post: Post, deflate: boolean) {
   type Stream = {
@@ -86,6 +89,20 @@ export function createStreamClient(post: Post, deflate: boolean) {
     const ready = Promise.withResolvers<string>();
     const current: Channel = { ready: ready.promise, controller, streams: new Map() };
     channel = current;
+
+    const quiet = (): ReturnType<typeof setTimeout> =>
+      setTimeout(
+        () => controller.abort(new SdkError("unavailable", "The stream channel went quiet.")),
+        QUIET_MS,
+      );
+
+    let silence = quiet();
+
+    const heard = (): void => {
+      clearTimeout(silence);
+      silence = quiet();
+    };
+
     void (async () => {
       try {
         const response = await post(CHANNEL_PATH, {
@@ -98,7 +115,7 @@ export function createStreamClient(post: Post, deflate: boolean) {
           throw new SdkError("invalid", "The host did not open a stream channel.");
         ready.resolve(id);
 
-        for await (const envelope of parseSse(networkBody(response.body))) {
+        for await (const envelope of parseSse(networkBody(response.body, heard))) {
           const frame = readStreamFrame(envelope);
           const stream = current.streams.get(frame.stream);
 
@@ -143,6 +160,8 @@ export function createStreamClient(post: Post, deflate: boolean) {
 
         for (const stream of current.streams.values()) stream.buffer.fail(error);
       } finally {
+        clearTimeout(silence);
+
         for (const stream of current.streams.values()) stream.dispose();
         current.streams.clear();
         controller.abort();
@@ -201,7 +220,11 @@ export function createStreamClient(post: Post, deflate: boolean) {
   };
 }
 
-function networkBody(body: ReadableStream<Uint8Array>): ReadableStream<Uint8Array> {
+/** Passes the body on, calling `heard` for each chunk that arrives, pings included, and turning a read that fails into `unavailable`. */
+function networkBody(
+  body: ReadableStream<Uint8Array>,
+  heard: () => void,
+): ReadableStream<Uint8Array> {
   const reader = body.getReader();
 
   return new ReadableStream<Uint8Array>({
@@ -209,6 +232,8 @@ function networkBody(body: ReadableStream<Uint8Array>): ReadableStream<Uint8Arra
       const next = await reader.read().catch((cause: unknown) => {
         throw new SdkError("unavailable", cause instanceof Error ? cause.message : String(cause));
       });
+
+      heard();
 
       if (next.done) controller.close();
       else controller.enqueue(next.value);
