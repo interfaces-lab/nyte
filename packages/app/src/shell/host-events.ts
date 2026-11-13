@@ -2,6 +2,7 @@ import { toast } from "@nyte-ai/ui/toast";
 import type { HostProcess } from "../contract/bridge.ts";
 import { keys, queryClient } from "../data/query-client.ts";
 import { commitHostWorkspace } from "../data/workspaces.ts";
+import { currentLive } from "../data/connection.ts";
 import { nyte } from "../contract/nyte.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import {
@@ -21,6 +22,14 @@ export function useHostEvents(): void {
     const showHostProcess = followHostProcess();
 
     void nyte.host.hostProcess?.state().then(showHostProcess);
+
+    const reconnect = (): void => {
+      if (document.visibilityState !== "hidden") currentLive()?.retry();
+    };
+
+    window.addEventListener("online", reconnect);
+    window.addEventListener("focus", reconnect);
+    document.addEventListener("visibilitychange", reconnect);
 
     const unsubscribe = nyte.host.onEvent((event) => {
       switch (event.kind) {
@@ -48,6 +57,8 @@ export function useHostEvents(): void {
         case "host_process_changed":
           queryClient.setQueryData(keys.hostProcess, event.state);
           showHostProcess(event.state);
+
+          if (event.state.kind === "current") currentLive()?.retry();
 
           return;
         case "settings_changed":
@@ -101,7 +112,12 @@ export function useHostEvents(): void {
       }
     });
 
-    return unsubscribe;
+    return () => {
+      unsubscribe();
+      window.removeEventListener("online", reconnect);
+      window.removeEventListener("focus", reconnect);
+      document.removeEventListener("visibilitychange", reconnect);
+    };
   });
 }
 

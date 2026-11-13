@@ -31,7 +31,10 @@ const RETRY_BASE_MS = 1_000;
 
 const RETRY_MAX_MS = 30_000;
 
-export function retryDelay(attempt: number): number {
+/**
+ * Paces the socket's redials, and the reads a store retries on an open socket: 1 s doubling to 30 s, each step a random point in its upper half. A redial is a hello, a welcome and a resume of every scope the client holds, so it starts at 1 s rather than at once; it is jittered because a host that restarts drops every client's socket in the same instant, and they should not all come back in the same one. A welcome resets it, and `retry()` skips the wait. The HTTP link paces its requests with `retryDelay` in `connection/rows.ts`.
+ */
+export function socketRetryDelay(attempt: number): number {
   const ceiling = Math.min(RETRY_MAX_MS, RETRY_BASE_MS * 2 ** attempt);
 
   return ceiling / 2 + (Math.random() * ceiling) / 2;
@@ -65,7 +68,7 @@ export function readRetries(): Retries {
     failed: (run) => {
       failures += 1;
       clearTimeout(timer);
-      timer = setTimeout(run, retryDelay(failures));
+      timer = setTimeout(run, socketRetryDelay(failures));
     },
     reset: () => {
       failures = 0;

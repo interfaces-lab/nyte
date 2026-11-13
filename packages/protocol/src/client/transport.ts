@@ -48,6 +48,11 @@ export type Transport = {
 
 const DONE = { done: true, value: undefined } as const;
 
+/**
+ * How long a query or a receipt may go unanswered before it fails as a lost link. A request on a connection whose path died silently is never answered and never fails, and nothing else on HTTP notices. Both answer in milliseconds: a query reads, and a receipt is admission's one write. A command has no deadline, because the host runs some for as long as they take (a compaction, a push, a commit hook) and failing one here would report a lost link while the host finishes it. Streams, watches, uploads, byte reads and `wait` calls have none either.
+ */
+const CALL_MS = 30_000;
+
 /** Returns a transport over `fetch` and `ReadableStream`, with no `EventSource`, so headers reach every request and it runs in browsers and React Native; a host off loopback is asked for deflated stream frames. */
 export function createTransport(options: TransportOptions): Transport {
   const base = options.url.replace(/\/+$/, "");
@@ -110,9 +115,16 @@ export function createTransport(options: TransportOptions): Transport {
           controller.abort();
         }
       }
-      const response = await post(name, { ...json(input), signal: request?.signal }, true);
 
-      return parseJson(await response.text());
+      const call = async (signal: AbortSignal | undefined): Promise<Json> => {
+        const response = await post(name, { ...json(input), signal }, true);
+
+        return parseJson(await response.text());
+      };
+
+      return OPERATIONS[name].kind === "command"
+        ? call(request?.signal)
+        : answered(name, request?.signal, call);
     },
     frames(name, input) {
       return cancellable(async function* (signal) {
@@ -166,6 +178,28 @@ export function createTransport(options: TransportOptions): Transport {
     host: () => host,
     operations: () => operations,
   };
+}
+
+/** Runs a query or a receipt under `CALL_MS`; past it, the request is aborted and fails as the `unavailable` a failed `fetch` fails with, so `linkLost` holds it a lost link. The caller's own abort reaches the caller as it was. */
+async function answered<T>(
+  name: OperationName,
+  outer: AbortSignal | undefined,
+  run: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  const deadline = new AbortController();
+  const timer = setTimeout(() => deadline.abort(), CALL_MS);
+
+  try {
+    return await run(
+      outer === undefined ? deadline.signal : AbortSignal.any([outer, deadline.signal]),
+    );
+  } catch (error) {
+    if (!deadline.signal.aborted || outer?.aborted === true) throw error;
+
+    throw new SdkError("unavailable", `The host didn't answer ${name} within ${CALL_MS / 1000} s.`);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function cancellable<T>(open: (signal: AbortSignal) => AsyncIterable<T>): AsyncIterable<T> {

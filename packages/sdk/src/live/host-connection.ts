@@ -37,7 +37,7 @@ import { openHeadStore } from "./head.ts";
 import type { HeadStore } from "./head.ts";
 import { openPartStore } from "./part.ts";
 import type { PartStore } from "./part.ts";
-import { listenerSet, request, retryDelay } from "./store.ts";
+import { listenerSet, request, socketRetryDelay } from "./store.ts";
 import type { Attachment, Live } from "./store.ts";
 
 export type Health =
@@ -82,6 +82,7 @@ export interface HostConnection {
   readonly address: string;
   readonly hostId: HostId | null;
   readonly health: Live<Health>;
+  /** Call it when the link may have come back or died: the app came to the foreground, the window got focus, the network came online, the host restarted. A connection that is retrying or blocked dials now; an open one asks the host something and redials if no answer comes within 2 s. A live socket stays, and costs one small call. */
   retry(): void;
   release(): void;
   call<N extends CallName>(name: N, input: OperationInput<N>): Promise<OperationOutput<N>>;
@@ -111,6 +112,9 @@ type Joined = { readonly scope: string; readonly attachment: Attachment };
 type Waiter = { resolve(socket: HostSocket): void; reject(error: SdkError): void };
 
 type Offered = { readonly action: ActionDeclaration; readonly handler: ActionHandler };
+
+/** How long the check that tells a refused credential from an unreachable host may take, so a dead path can't hold a reconnect forever. */
+const LOGIN_STATUS_MS = 5_000;
 
 const hosts = new Map<string, Owned>();
 
@@ -339,7 +343,7 @@ function superviseHost(address: string, options: HostOptions, registry: Registry
   };
 
   const schedule = (error: SdkError): void => {
-    const delay = retryDelay(attempt + sizeCloses);
+    const delay = socketRetryDelay(attempt + sizeCloses);
     attempt += 1;
     retryTimer = setTimeout(() => void connect(), delay);
     show({ kind: "retrying", attempt, at: Date.now() + delay, error });
@@ -439,7 +443,15 @@ function superviseHost(address: string, options: HostOptions, registry: Registry
       if (released) return;
       attempt = 0;
 
-      if (health.kind === "retrying" || health.kind === "blocked") void connect();
+      if (health.kind === "retrying" || health.kind === "blocked") {
+        void connect();
+
+        return;
+      }
+
+      current?.probe().catch(() => {
+        if (current === null && health.kind === "retrying") void connect();
+      });
     },
     release() {
       holders -= 1;
@@ -528,17 +540,22 @@ async function loginStatus(
   credentials: HostCredentials,
   send: (url: string, init?: RequestInit) => Promise<Response>,
 ): Promise<number | null> {
+  const deadline = new AbortController();
+  const timer = setTimeout(() => deadline.abort(), LOGIN_STATUS_MS);
+
   const response = await credentialHeaders(credentials)
     .then((headers) =>
       send(hostUrl(address, "/clients.read", "http"), {
         method: "POST",
         headers: { "Content-Type": "application/json", ...headers },
         body: "{}",
+        signal: deadline.signal,
       }),
     )
     .catch(() => null);
 
-  await response?.body?.cancel();
+  clearTimeout(timer);
+  await response?.body?.cancel().catch(() => undefined);
 
   return response?.status ?? null;
 }

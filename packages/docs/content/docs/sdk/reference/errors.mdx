@@ -106,6 +106,10 @@ Calls that take `expect` usually return a `stale` outcome instead of throwing; s
 Either the host can't be reached right now, or the thing you asked for doesn't exist here:
 
 - The network request failed, the listener is closed, or the connection was closed.
+- The host didn't answer: a read or a send over `sdk.connect` got no answer within 30 s, or the
+  `openHost` socket went quiet and didn't answer a probe. A link whose path died never fails by
+  itself, so the SDK fails it. Commands, streams, watches, uploads and waits have no such
+  deadline, because the host runs some of them for as long as they take.
 - `sdk.open` was called in a browser or React Native bundle.
 - `connection.github` on a host that has no GitHub login to serve.
 - A workspace's MCP servers on a host without MCP.
@@ -119,7 +123,11 @@ doesn't make them safe to repeat. Follow the [safe retry rules](#retry-safely).
 
 Over `openHost`, the stores keep their rows, go stale, and resume once the socket is back, and
 `health` shows `retrying` with the error. `call` and `perform` wait while the connection is
-`connecting`, and reject with the error `health` holds while it is `retrying` or `blocked`.
+`connecting`, and reject with the error `health` holds while it is `retrying` or `blocked`. A
+call pending on a socket that stops answering fails with `unavailable` within 15 s, and an idle
+socket that stops answering leaves `open` within 40 s. Call `retry()` when you have a reason to
+think the link changed, such as the app coming to the foreground or the network coming back, to
+find out within 2 s.
 
 ### not_supported [#not_supported]
 

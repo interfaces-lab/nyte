@@ -214,7 +214,14 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
       store.dispatch({ kind: "copy-text", text });
   };
 
-  const onFocus = (): void => store.dispatch({ kind: "terminal-focus", focused: true });
+  const onFocus = (): void => {
+    store.dispatch({ kind: "terminal-focus", focused: true });
+    void options.host.then(
+      (link) => link.live.retry(),
+      () => undefined,
+    );
+  };
+
   const onBlur = (): void => store.dispatch({ kind: "terminal-focus", focused: false });
 
   renderer.on(CliRenderEvents.RESIZE, syncTerminal);

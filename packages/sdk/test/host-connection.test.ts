@@ -1,6 +1,6 @@
 import { API_MIN_REVISION, API_REVISION, asId } from "@nyte-ai/schema";
 import type { HeadName, SessionId } from "@nyte-ai/schema";
-import { openDirectoryStore, openSessionStore } from "@nyte-ai/protocol";
+import { linkLost, openDirectoryStore, openSessionStore } from "@nyte-ai/protocol";
 import type { Listener } from "@nyte-ai/core";
 import { composeHost } from "@nyte-ai/core/server";
 import { memoryStore } from "@nyte-ai/core/store";
@@ -375,6 +375,96 @@ describe("a reconnect", () => {
       WebSocket.OPEN,
     ]);
   });
+});
+
+/** Opens real sockets, and lets `cut` kill the ones open now: they drop every frame both ways and never close, as a TCP flow does once its path dies silently. Sockets opened later work. */
+function deafening() {
+  const transport = counting();
+  const dead = new Set<WebSocket>();
+  const owed = new Set<string>();
+
+  const socket: OpenSocket = (request) => {
+    const made = transport.socket(request);
+
+    if (!(made instanceof WebSocket)) return made;
+    made.addEventListener("message", (event) => {
+      if (dead.has(made)) event.stopImmediatePropagation();
+      else owed.delete(frameId(String(event.data)));
+    });
+    const send = made.send.bind(made);
+
+    return Object.assign(made, {
+      send(data: string) {
+        if (dead.has(made)) return;
+        owed.add(frameId(data));
+        send(data);
+      },
+    });
+  };
+
+  return {
+    socket,
+    opened: transport.opened,
+    owed: () => [...owed].filter((id) => id !== ""),
+    cut() {
+      for (const made of transport.opened) dead.add(made);
+    },
+  };
+}
+
+function frameId(data: string): string {
+  return /"id":"([^"]+)"/.exec(data)?.[1] ?? "";
+}
+
+describe("a silent link", () => {
+  it.each([
+    { case: "while idle", call: false, retry: false, alive: 29_999, lost: 40_000 },
+    { case: "with a call pending", call: true, retry: false, alive: 14_999, lost: 15_000 },
+    { case: "when asked to retry", call: false, retry: true, alive: 1_999, lost: 2_000 },
+  ] as const)(
+    "is found $case, fails the pending call as a lost link, and resumes on a new socket",
+    async (row) => {
+      const served = await serve();
+      const session = await startSession(served);
+      vi.useFakeTimers({
+        toFake: ["setTimeout", "clearTimeout", "Date"],
+        shouldClearNativeTimers: true,
+      });
+      cleanups.push(async () => {
+        vi.useRealTimers();
+      });
+      const transport = deafening();
+      const connection = attach(served.listener, transport.socket);
+      const store = watched(connection, session);
+      await matchesRead(connection, store, session);
+
+      if (row.retry) connection.retry();
+      await vi.waitFor(() => expect(transport.owed()).toEqual([]));
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(connection.health.snapshot().kind).toBe("open");
+      expect(transport.opened).toHaveLength(1);
+
+      transport.cut();
+      await send(served, session, "While away.");
+
+      const pending = row.call
+        ? connection.call("clients.read", {}).catch((error: unknown) => error)
+        : null;
+
+      if (row.retry) connection.retry();
+      await vi.advanceTimersByTimeAsync(row.alive);
+      expect(connection.health.snapshot().kind).toBe("open");
+      await vi.advanceTimersByTimeAsync(row.lost - row.alive);
+      expect(connection.health.snapshot().kind).not.toBe("open");
+      expect(store.freshness().kind).toBe("stale");
+
+      if (pending !== null) expect(linkLost(await pending)).toBe(true);
+      await until(connection, "open");
+      await matchesRead(connection, store, session);
+      expect(transport.opened).toHaveLength(2);
+    },
+    30_000,
+  );
 });
 
 describe("a failed read", () => {
