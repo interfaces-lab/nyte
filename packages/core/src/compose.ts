@@ -83,7 +83,7 @@ import { createBus } from "./watch/bus.ts";
 import { createFoldCache, createLogPublisher, pollStore } from "./watch/watch.ts";
 import { createModelState } from "./store/model-state.ts";
 import { createPartTable } from "./store/parts.ts";
-import { hostIdentityRef, kvRef } from "./store/refs.ts";
+import { hostIdentityRef, kvRef, parseSessionRef } from "./store/refs.ts";
 import { loadSecretCipherKey } from "./store/secrets.ts";
 import { readHeld, readKv } from "./store/session.ts";
 import { dev } from "./util/dev-log.ts";
@@ -144,6 +144,12 @@ const BUILTINS: readonly Plugin<"core">[] = [
 ];
 
 const CLEAN_WORKTREES_MS = 24 * 60 * 60 * 1000;
+
+/** How long a session's plugin runtime outlives its last use. Bringing one back scans the workspace again and runs every plugin's `activate` again, so a chat someone returns to within a sitting stays warm; past it, a host that stays up for weeks holds runtimes for the chats in use rather than every chat it has touched. */
+const RUNTIME_IDLE_MS = 10 * 60 * 1000;
+
+/** How often the host looks for idle plugin runtimes: one closes between {@link RUNTIME_IDLE_MS} and this much after its last use. */
+const EVICT_RUNTIMES_MS = 60 * 1000;
 
 export async function composeHost(options: ComposeOptions): Promise<ServedHost> {
   return (await composeServer(options)).host;
@@ -253,12 +259,23 @@ export async function composeServer(
     .then(clean);
   const cleaning = setInterval(clean, CLEAN_WORKTREES_MS);
 
+  const evicting = setInterval(
+    () =>
+      void evictIdleRuntimes(kernel).catch((error: unknown) =>
+        dev("plugins", "eviction failed", { error: String(error) }),
+      ),
+    EVICT_RUNTIMES_MS,
+  );
+
+  if (typeof evicting === "object") evicting.unref();
+
   const host = createHost(kernel, { credential: { kind: "token", token: "" } });
   let closing: Promise<void> | null = null;
 
   const close = (): Promise<void> => {
     closing ??= (async () => {
       clearInterval(cleaning);
+      clearInterval(evicting);
       unpoll();
       await host.close();
       await release(kernel, driver);
@@ -603,7 +620,12 @@ export function createKernel(input: KernelOptions): Kernel {
       host: input.hostPlugins ?? [],
       sources: input.pluginSources ?? new Map(),
       state: createPluginState(),
-      runtime: (session) => runtimes.get(session) ?? install(session, null),
+      runtime(session) {
+        const found = runtimes.get(session) ?? install(session, null);
+        found.touch();
+
+        return found;
+      },
       reload: (session) => install(session, runtimes.get(session) ?? null).ready,
       runtimes: () => runtimes,
       async close(session) {
@@ -612,7 +634,9 @@ export function createKernel(input: KernelOptions): Kernel {
         if (runtime === undefined) return;
         runtimes.delete(session);
         forgetScans(kernel, (key) => key === session);
+        const detached = kernel.environments.detach(session);
         await runtime.close();
+        await detached;
       },
       api: (owner, session) =>
         kernel.plugins.runtime(session).api(owner) ??
@@ -664,11 +688,8 @@ async function release(kernel: Kernel, driver: Owned | null): Promise<void> {
   await Promise.allSettled(running.map((job) => jobHandle(kernel, job.view.id).settled()));
 
   await closeWatches(kernel);
-  const sessions = [...kernel.plugins.runtimes().keys()];
 
-  for (const session of sessions) await kernel.plugins.close(session);
-
-  for (const session of sessions) await kernel.environments.detach(session);
+  for (const session of kernel.plugins.runtimes().keys()) await kernel.plugins.close(session);
 
   for (const workspace of workspaces) await kernel.environments.detachWorkspace(workspace);
   await kernel.folds.close();
@@ -681,6 +702,35 @@ async function release(kernel: Kernel, driver: Owned | null): Promise<void> {
       return held === undefined ? [] : [{ name, expect: held.revision }];
     }),
   );
+}
+
+/**
+ * Closes, through `kernel.plugins.close`, every runtime unused for {@link RUNTIME_IDLE_MS}. One stays while a hold is out or it is activating, while a run of its session drives here, while its fold is cached (a client has the chat open), while it has session plugins (they live only in memory), while a job it owns runs, and while a part action or answer of it is awaited in this process. A parked run keeps none: whatever wakes it fetches the runtime again. Every chosen runtime leaves the table before anything awaits. An evicted session whose activation was `active` is forgotten without an event, so it reads `inactive`, as on a host that has not touched it since it started; `unavailable` and `failed` stay, so their notice and a workspace reload's retry stay too.
+ */
+async function evictIdleRuntimes(kernel: Kernel): Promise<void> {
+  const now = Date.now();
+  const driving = new Set(kernel.executionState.driving.values());
+  const parts = kernel.partTable;
+  const awaited = new Set([...parts.waiters.keys(), ...parts.acting.keys()].map(parseSessionRef));
+
+  const idle = [...kernel.plugins.runtimes()].flatMap(([session, runtime]) => {
+    const since = runtime.idleSince();
+
+    return since === null ||
+      now - since < RUNTIME_IDLE_MS ||
+      driving.has(session) ||
+      awaited.has(session) ||
+      kernel.folds.folding(session) ||
+      kernel.plugins.state.assigned.has(session) ||
+      kernel.jobs.background(session).some((job) => job.item.state === "working")
+      ? []
+      : [session];
+  });
+
+  for (const session of idle)
+    if (kernel.sessions.activation(session).kind === "active") kernel.sessions.forget(session);
+
+  await Promise.all(idle.map((session) => kernel.plugins.close(session)));
 }
 
 async function storedIdentity(store: StoreConnection): Promise<HostIdentity | null> {

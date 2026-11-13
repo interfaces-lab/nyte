@@ -117,6 +117,7 @@ export function build(
 
 const ALLOWED: RuntimeVerdict = { kind: "allow" };
 
+/** Holds the runtime across the approvals, so the sweep cannot close it between two of them and skip the rest. */
 async function approveRuntimeCall(
   kernel: Kernel,
   session: SessionId,
@@ -124,14 +125,19 @@ async function approveRuntimeCall(
   signal: AbortSignal,
 ): Promise<RuntimeVerdict> {
   const runtime = kernel.plugins.runtimes().get(session);
+  const release = runtime?.hold();
 
-  for (const plugin of runtime?.plugins() ?? []) {
-    const api = runtime?.instance(plugin.id)?.api;
+  try {
+    for (const plugin of runtime?.plugins() ?? []) {
+      const api = runtime?.instance(plugin.id)?.api;
 
-    if (plugin.approve === undefined || api === undefined) continue;
-    const verdict = await plugin.approve(call, { api, signal });
+      if (plugin.approve === undefined || api === undefined) continue;
+      const verdict = await plugin.approve(call, { api, signal });
 
-    if (verdict.kind === "deny") return verdict;
+      if (verdict.kind === "deny") return verdict;
+    }
+  } finally {
+    release?.();
   }
 
   return signal.aborted ? { kind: "deny", reason: "The request was aborted." } : ALLOWED;

@@ -68,6 +68,11 @@ const scanIssues = new WeakMap<Resources, readonly ValidationIssue[]>();
 /** Watches whose events ended or threw. One stays listed with its sessions until the next scan of one of them restarts it. */
 const ended = new WeakSet<RootWatch>();
 
+/** The session whose attachment each workspace watch reads through. Every session on the workspace shares the watch, and detaching that one session ends it. */
+const openers = new WeakMap<RootWatch, SessionId>();
+
+const WORKSPACE_PATHS = [...SKILL_DIRECTORIES, SHARED_DOCS, PLUGIN_FOLDER];
+
 export async function scanResources(kernel: Kernel, session: SessionId): Promise<Resources> {
   const record = (await requireSession(kernel.store, session)).record;
   const workspace = record.workspace;
@@ -98,6 +103,7 @@ export async function scanResources(kernel: Kernel, session: SessionId): Promise
   return entry.resources;
 }
 
+/** Drops the chosen sessions' scans and takes them off the watches; a watch with no session left stops, and a workspace watch whose opener left while others stay moves onto one of theirs before the opener's attachment closes under it. */
 export function forgetScans(
   kernel: Kernel,
   chosen: (session: SessionId) => boolean = () => true,
@@ -107,6 +113,12 @@ export function forgetScans(
 
   for (const [key, watch] of watches) {
     for (const session of watch.sessions) if (chosen(session)) watch.sessions.delete(session);
+    const opener = openers.get(watch);
+
+    if (watch.sessions.size > 0 && opener !== undefined && chosen(opener)) {
+      ended.add(watch);
+      void rewatch(kernel, key, watch);
+    }
 
     if (watch.sessions.size > 0 || watch.kept) continue;
     watches.delete(key);
@@ -375,12 +387,22 @@ async function follow(kernel: Kernel, session: SessionId, workspace: WorkspaceId
   if (classifyFileSupport(kernel.environments.provider(record.target.kind)) !== "available") return;
   const env = await kernel.environments.attach(session).catch(() => null);
 
-  if (env !== null)
-    watchRoot(kernel, workspace, env.files, session, [
-      ...SKILL_DIRECTORIES,
-      SHARED_DOCS,
-      PLUGIN_FOLDER,
-    ]);
+  if (env !== null) watchRoot(kernel, workspace, env.files, session, WORKSPACE_PATHS);
+}
+
+/** Restarts the workspace watch `key` through the attachment of a session still on it, the first that attaches. */
+async function rewatch(kernel: Kernel, key: string, watch: RootWatch): Promise<void> {
+  for (const session of watch.sessions) {
+    const env = await kernel.environments.attach(session).catch(() => null);
+
+    if (kernel.workspaceState.watches.get(key) !== watch) return;
+
+    if (env !== null && watch.sessions.has(session)) {
+      watchRoot(kernel, key, env.files, session, WORKSPACE_PATHS);
+
+      return;
+    }
+  }
 }
 
 async function homePaths(kernel: Kernel): Promise<readonly string[]> {
@@ -425,6 +447,8 @@ function watchRoot(
   };
 
   watches.set(key, watch);
+
+  if (key !== HOME && session !== null) openers.set(watch, session);
   void drain(kernel, key, watch, events, changes);
 }
 
@@ -487,30 +511,37 @@ async function refreshRoot(
   for (const session of watch.sessions) await refresh(kernel, session);
 }
 
+/** Holds the session's runtime while it rescans, so the sweep cannot close it under the scan and leave a scan and a watch membership behind for a session with no runtime. */
 async function refresh(kernel: Kernel, session: SessionId): Promise<void> {
   const before = kernel.workspaceState.scans.get(session);
   dropScans(kernel, (key) => key === session);
   const runtime = kernel.plugins.runtimes().get(session);
 
   if (runtime === undefined || kernel.workspaceState.closed) return;
-  const after = await scanResources(kernel, session);
-  const read = await before?.resources.catch(() => null);
-  const workspace = kernel.workspaceState.scans.get(session)?.workspace;
+  const release = runtime.hold();
 
-  const plugins =
-    workspace === undefined
-      ? null
-      : await sessionPlugins(kernel, runtime, workspace).catch(() => null);
+  try {
+    const after = await scanResources(kernel, session);
+    const read = await before?.resources.catch(() => null);
+    const workspace = kernel.workspaceState.scans.get(session)?.workspace;
 
-  const unchanged =
-    read !== undefined &&
-    read !== null &&
-    sameInputs(read, after) &&
-    plugins !== null &&
-    samePlugins(runtime.requested(), plugins);
+    const plugins =
+      workspace === undefined
+        ? null
+        : await sessionPlugins(kernel, runtime, workspace).catch(() => null);
 
-  if (unchanged || kernel.workspaceState.closed) return;
-  await kernel.plugins.reload(session);
+    const unchanged =
+      read !== undefined &&
+      read !== null &&
+      sameInputs(read, after) &&
+      plugins !== null &&
+      samePlugins(runtime.requested(), plugins);
+
+    if (unchanged || kernel.workspaceState.closed) return;
+    await kernel.plugins.reload(session);
+  } finally {
+    release();
+  }
 }
 
 function sameInputs(left: Resources, right: Resources): boolean {

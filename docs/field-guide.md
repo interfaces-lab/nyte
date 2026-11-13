@@ -131,6 +131,7 @@ A client finds the host with `findRunningHost`: read `host.json`, check the pid,
 | A fold nobody holds lingers | 30 s | `watch/watch.ts` |
 | Checkpoint after a run ends | 1 s later, once 1,024 events or 1 MiB of log have built up | `fold/checkpoint.ts` |
 | Hook budget | 5 s a handler, 300 s for `before_compaction` | `extend/hooks.ts` |
+| Idle plugin runtime closed after; sweep | 10 min; 60 s | `core/src/compose.ts` |
 | Client hold on a queued message | 20 s, renewed every 5 s | `contract/session.ts`, `api/hold.ts` |
 | Push gather; shortest time between pushes | 8 ms; 33 ms | `host/src/serve/socket.ts` |
 | Socket ping; closed after | 30 s; 3 missed pongs | `serve/socket.ts` |
@@ -169,7 +170,7 @@ What a new feature should not do: put a field on a row that changes at a differe
 - **A client older than revision 23 gets one change per event.** It takes no fragments, and a gathered frame could pass the frame limit.
 - **`FOLD_CODE` is a hash of the files in `fold/`.** Any edit there, a comment included, rebuilds every stored checkpoint once.
 - **Session plugins are not durable.** `plugins.replace(..., { session })` lives in memory, and a restart drops it.
-- **A plugin runtime is never evicted.** Every chat this host has sent to keeps its runtime, its watch and its MCP subscription until the host stops.
+- **A chat nobody uses loses its plugin runtime after 10 minutes.** The sweep in `core/src/compose.ts` closes it with its scan, its place on the folder watch, its environment attachment and its MCP subscription. It stays while a run drives, a client has the chat open, a job runs, a part waits for an answer, or the chat has session plugins. A parked run keeps none; whatever wakes it builds a new one. The next use scans again and runs each plugin's `activate` again, so what a plugin keeps in memory per chat is gone, and a workspace whose last chat left reconnects its MCP servers.
 - **Context files are read on every model request**, 34 file reads for a shallow folder, so an edit to `AGENTS.md` reaches the next request of a running turn.
 - **The local provider does no containment on reads and writes.** A path outside the workspace is used as given and reported as `scope`. Moves, copies, `mkdir` and trash do refuse to leave the folder, by real path.
 - **A terminal at its prompt counts as running.** An outdated host with one open does not retire.

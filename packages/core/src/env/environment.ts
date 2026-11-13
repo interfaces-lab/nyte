@@ -82,6 +82,11 @@ export function createEnvironmentRegistry(kernel: Kernel): EnvironmentRegistry {
   const provider = (kind: string): EnvironmentProvider | undefined =>
     providers().find((candidate) => candidate.kind === kind);
 
+  const dropEmptySlot = (session: SessionId, slot: Slot): void => {
+    if (slot.wraps.length === 0 && slot.attaching === null && sessions.get(session) === slot)
+      sessions.delete(session);
+  };
+
   const ensureSessionSlot = (session: SessionId): Slot => {
     const known = sessions.get(session);
 
@@ -221,6 +226,7 @@ export function createEnvironmentRegistry(kernel: Kernel): EnvironmentRegistry {
         if (index < 0) return;
         slot.wraps.splice(index, 1);
         slot.version += 1;
+        dropEmptySlot(session, slot);
       };
     },
     async snapshots(session) {
@@ -234,8 +240,7 @@ export function createEnvironmentRegistry(kernel: Kernel): EnvironmentRegistry {
       if (slot === undefined) return;
       const attached = slot.attaching;
       slot.attaching = null;
-
-      if (slot.wraps.length === 0 && sessions.get(session) === slot) sessions.delete(session);
+      dropEmptySlot(session, slot);
       await (await attached?.catch(() => null))?.close();
     },
     attachWorkspace: async (workspace) => (await attachingWorkspace(workspace)).env,

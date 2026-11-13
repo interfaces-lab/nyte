@@ -337,6 +337,7 @@ function createRegistryDraft<T>(draft: Map<string, Entry<T>>, owner: string): Re
   };
 }
 
+/** Holds the runtime while it reads, so the sweep cannot close it mid-read and have an emptied catalog recorded. */
 async function sessionCatalog(
   kernel: Kernel,
   session: SessionId,
@@ -345,20 +346,25 @@ async function sessionCatalog(
 
   if (runtime === undefined || runtime.outcomes().length === 0) return null;
   const { registries } = runtime;
+  const release = runtime.hold();
 
-  return {
-    commands: commandInfos(registries),
-    settings: await settingInfos(kernel, session),
-    skills: skillInfos(registries),
-    agents: registries.agents.entries().map(({ item, owner }) => ({
-      id: item.id,
-      owner,
-      description: item.description ?? null,
-      model: item.model ?? null,
-      mode: item.mode ?? "all",
-    })),
-    tools: toolSource(runtime).list(),
-  };
+  try {
+    return {
+      commands: commandInfos(registries),
+      settings: await settingInfos(kernel, session),
+      skills: skillInfos(registries),
+      agents: registries.agents.entries().map(({ item, owner }) => ({
+        id: item.id,
+        owner,
+        description: item.description ?? null,
+        model: item.model ?? null,
+        mode: item.mode ?? "all",
+      })),
+      tools: toolSource(runtime).list(),
+    };
+  } finally {
+    release();
+  }
 }
 
 export function skillInfos(registries: RegistrySet): readonly SkillInfo[] {

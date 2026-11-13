@@ -196,7 +196,7 @@ export interface PluginHost {
 
   runtimes(): ReadonlyMap<SessionId, PluginRuntime>;
 
-  /** Closes `session`'s runtime and takes it off the folder watches, which stop once no session is left on them. */
+  /** Closes `session`'s runtime, detaches its environment and takes it off the folder watches, which stop once no session is left on them. The runtime leaves the table and the environment its slot before anything awaits, so a `runtime(session)` meanwhile builds a fresh one on a fresh attachment. */
   close(session: SessionId): Promise<void>;
 
   api(owner: string, session: SessionId): PluginApi<"core">;
@@ -386,6 +386,12 @@ export interface PluginRuntime {
   assigned(): readonly (Plugin<"core"> | PluginFile)[] | null;
 
   hold(): Disposer;
+
+  /** When it was created, last fetched or let go of its last hold; null while a hold is out or it is still activating. */
+  idleSince(): number | null;
+
+  /** Marks it used now; `kernel.plugins.runtime` calls it on every fetch. */
+  touch(): void;
 
   close(): Promise<void>;
 }

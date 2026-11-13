@@ -117,6 +117,8 @@ export function createPluginRuntime(
   const lifecycle = serial();
   let holds = 0;
   let idle: PromiseWithResolvers<void> | null = null;
+  let activating = true;
+  let used = Date.now();
   let shownIssues = "";
   let resolvedUncovered = false;
 
@@ -136,6 +138,7 @@ export function createPluginRuntime(
       holds -= 1;
 
       if (holds > 0) return;
+      used = Date.now();
       idle?.resolve();
       idle = null;
     };
@@ -384,6 +387,10 @@ export function createPluginRuntime(
     plugins: () => [...active.values()].map((entry) => entry.instance.plugin),
     instance: (id) => active.get(id)?.instance,
     assigned: () => kernel.plugins.state.assigned.get(session) ?? null,
+    idleSince: () => (holds > 0 || activating ? null : used),
+    touch() {
+      used = Date.now();
+    },
     close: () =>
       lifecycle.run(async () => {
         while (holds > 0) await (idle ??= Promise.withResolvers()).promise;
@@ -402,6 +409,7 @@ export function createPluginRuntime(
 
   const serve = (): void => {
     serving = own;
+    activating = false;
   };
 
   void ready.then(serve, serve);
@@ -418,7 +426,6 @@ export function createPluginRuntime(
     await retired.catch(() => undefined);
 
     if (kernel.plugins.runtimes().get(session) !== runtime) return;
-    void kernel.environments.detach(session);
     void kernel.plugins.close(session);
   });
 
