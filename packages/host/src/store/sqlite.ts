@@ -185,10 +185,20 @@ function storedVersion(database: DatabaseSync): number {
   return row === undefined ? 0 : parseNumber(row.version);
 }
 
+/** Returns SQLite's counter of commits other connections made to this file, as this connection last saw it. It does not move for this connection's own writes. */
+function peerCommits(database: DatabaseSync): number {
+  return parseNumber(database.prepare("PRAGMA data_version").get()?.data_version ?? 0);
+}
+
+/** The migration reads records before the transaction that commits it, so that a long read blocks no one. `stamp` notes the file's count of peer commits and `commit` answers `conflict` when it has moved: another Nyte wrote in between, perhaps a ref the read never saw, which would keep its old shape under the new version. `migrateStore` reads again on a conflict. */
 function sqliteTarget(database: DatabaseSync, path: string | null): MigrationTarget {
+  let read = 0;
+
   const target: MigrationTarget = {
     dialect: "sqlite",
     async stamp() {
+      read = peerCommits(database);
+
       return {
         version: storedVersion(database),
         empty:
@@ -228,6 +238,12 @@ function sqliteTarget(database: DatabaseSync, path: string | null): MigrationTar
           database.exec("ROLLBACK");
 
           return "moved";
+        }
+
+        if (peerCommits(database) !== read) {
+          database.exec("ROLLBACK");
+
+          return "conflict";
         }
 
         for (const statement of change.sql) database.exec(statement);

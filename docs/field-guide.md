@@ -223,7 +223,6 @@ What a new feature should not do: put a field on a row that changes at a differe
 These are real and not fixed. Each names what it would take.
 
 - **A child's or a job's report is not durable.** It is a second write after the run ends, with a random receipt id and no recovery. A crash between the two loses it. It needs a deterministic id and a step in `recover`.
-- **A migration reads outside the transaction that commits it.** An older Nyte still writing to the same file during an upgrade can leave rows in the old shape. Holding the write lock for the whole migration fixes it and blocks every peer for its length.
 - **A migration loads the whole store into memory.**
 - **Pointer receipts written before the index stopped counting them stay in `pending_work`** until a migration rebuilds the index. They cost a sweep visit each, as before.
 - **Search walks the session index when a name is rare.** `sessions.read` with `query` matches a lower-cased name column in activity order until `limit` match, about half a millisecond at 5,000 chats. Pinned chats read from their own index whatever the count. A trigram index would make search independent of the count.
