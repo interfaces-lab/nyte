@@ -5,7 +5,7 @@ import { showsText, showsTool } from "@nyte-ai/plugin/client/presentation";
 import { errorMessage } from "../../contract/errors.ts";
 import { connected } from "../../data/connection.ts";
 import { projectSessionChoice } from "../../data/session-configuration.ts";
-import { chatStore } from "../../data/chat-store.ts";
+import { chatStore, warmSession } from "../../data/chat-store.ts";
 import { childList } from "../../data/directory.ts";
 import { useWatch } from "../../data/watch-store.ts";
 import { contentDraftText } from "../../references/message-references.ts";
@@ -146,6 +146,7 @@ export async function startSideChat(parent: SessionId, question: string): Promis
       side: true,
       content: question,
     });
+    warmSession(id);
     await chatStore(id)
       .next()
       .catch(() => undefined);

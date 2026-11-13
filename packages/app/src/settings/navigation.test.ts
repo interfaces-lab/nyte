@@ -3,7 +3,7 @@ import { test } from "vitest";
 import type { NyteBridge } from "../contract/bridge.ts";
 import { installBridge } from "../contract/nyte.ts";
 import { createWebBridge } from "../web/bridge.ts";
-import { settingsSectionGroups, showsSettingsSection } from "./pages.ts";
+import { settingsSectionGroups, showsSettingsSection } from "./sections.ts";
 
 const web = createWebBridge().bridge;
 

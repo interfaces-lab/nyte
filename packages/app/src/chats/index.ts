@@ -1,7 +1,7 @@
 import { useState, useSyncExternalStore } from "react";
 import { useSyncExternalStoreWithSelector } from "use-sync-external-store/with-selector";
 import { asId } from "@nyte-ai/schema";
-import type { BackgroundItem, JobView, SessionId, WorkspaceInfo } from "@nyte-ai/sdk";
+import type { BackgroundItem, JobView, SessionId, WorkspaceId, WorkspaceInfo } from "@nyte-ai/sdk";
 import { QueryObserver } from "@tanstack/react-query";
 import type { SelectedWorkspace } from "../contract/bridge.ts";
 import { derivedStore } from "../data/derived-store.ts";
@@ -236,13 +236,45 @@ function subscribeChildChats(parent: SessionId, notice: () => void): () => void 
   };
 }
 
+const readWorkspaces = queryDataReader<readonly WorkspaceInfo[]>(keys.workspaces);
+
+const refetchedFor = new Set<WorkspaceId>();
+
+/** Other clients add folders this window never hears about; a row naming one refetches the list, once per folder, so one that is gone can't refetch it again. */
+function fetchUnknownWorkspaces(): void {
+  const workspaces = readWorkspaces();
+
+  if (workspaces === undefined) return;
+  const listed = new Set(workspaces.map((workspace) => workspace.id));
+
+  const unknown = [...sessionRows().rows.values()].filter(
+    (row) => !listed.has(row.workspace) && !refetchedFor.has(row.workspace),
+  );
+
+  if (unknown.length === 0) return;
+
+  for (const row of unknown) refetchedFor.add(row.workspace);
+  void queryClient.invalidateQueries({ queryKey: keys.workspaces, exact: true });
+}
+
 const directory = derivedStore(
   {
     rows: { read: sessionRows, subscribe: subscribeSessionRows },
     workspaces: {
-      read: queryDataReader<readonly WorkspaceInfo[]>(keys.workspaces),
-      subscribe: (notice: () => void) =>
-        new QueryObserver(queryClient, workspacesQuery).subscribe(notice),
+      read: readWorkspaces,
+      subscribe(notice: () => void) {
+        const leave = [
+          new QueryObserver(queryClient, workspacesQuery).subscribe(() => {
+            notice();
+            fetchUnknownWorkspaces();
+          }),
+          subscribeSessionRows(fetchUnknownWorkspaces),
+        ];
+
+        return () => {
+          for (const unsubscribe of leave) unsubscribe();
+        };
+      },
     },
     projects: {
       read: () => hostWatch("host").getState().value?.projects,

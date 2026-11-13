@@ -50,7 +50,7 @@ Outside `src/`, `dev/` holds the account-footer test page, served at `/dev/accou
 - Tool rows are in `chat/tools/`. A subagent row is `chat/tools/subagent-call.tsx`.
 - A chat's tasks are its view's background items, joined to the chats and jobs they name, in `chats/tasks.ts`. Read them through `useChatTasks` and `useTask`. The trays list them with `listAgents` and `listTerminals`.
 - In `data/`, session reads are `sessions.ts`, session actions `session-actions.ts`, a chat's rows `chat-store.ts`, the session list `directory.ts`, other live watches `watches.ts` and cache keys `query-client.ts`.
-- Git reads are `data/vcs.ts`, file reads `data/files.ts`, the model catalog `data/catalog.ts` and usage `data/usage.ts`.
+- Git reads are `data/vcs.ts`, a folder's GitHub repository `data/github.ts`, file reads `data/files.ts`, the model catalog `data/catalog.ts` and usage `data/usage.ts`. The GitHub account and its sign-in stay in `account/github-account.ts`.
 - In `workbench/`, the kind table and tab types are `model.ts`, the pure transitions `view-reducer.ts`, the store `store.ts`, selectors and the rail model `selectors.ts`, the path rule `paths.ts` and the width `width.ts`. `persistence.ts` holds what the workbench saves and the persistence helper. `commands.ts` holds the actions that touch several stores and the reference opener. The rail is `rail.tsx`.
 - The Editor panel is `workbench/editor/editor-panel.tsx`. Its file tree is `files-explorer.tsx`, and `file-store.ts` owns open documents and their drafts.
 - The Changes panel is `workbench/changes/changes-panel.tsx`, and its derivations are `workbench/changes/changes-model.ts`. The diff it draws is `diff/diff-view.tsx`.

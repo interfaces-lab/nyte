@@ -5,7 +5,7 @@ export {
   showsSettingsSection,
   settingsSectionGroups,
   type SettingsSection,
-} from "./pages.ts";
+} from "./sections.ts";
 
 export { closeSettings, rememberWorkspaceHref } from "./return.ts";
 

@@ -7,12 +7,8 @@ import { Icon } from "@nyte-ai/ui/icon";
 import { Input, InputGroup } from "@nyte-ai/ui/input";
 import { Row } from "@nyte-ai/ui/row";
 import { sidebarStyles as rail } from "../sidebar/sidebar.stylex.ts";
-import {
-  SETTINGS_PAGES,
-  settingsSectionGroups,
-  type PageInfo,
-  type SettingsSection,
-} from "./pages.ts";
+import { SETTINGS_PAGES, type PageInfo } from "./pages.ts";
+import { settingsSectionGroups, type SettingsSection } from "./sections.ts";
 import { closeSettings } from "./return.ts";
 import { settingsStyles as styles } from "./settings.stylex.ts";
 

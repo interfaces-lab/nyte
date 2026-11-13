@@ -10,7 +10,7 @@ import { focusNextPane, splitPanes } from "../panes/pane-context.tsx";
 import { nyte } from "../contract/nyte.ts";
 import { keys, queryClient } from "../data/query-client.ts";
 import { commitHostWorkspace } from "../data/workspaces.ts";
-import { firstSettingsSection } from "../settings/pages.ts";
+import { firstSettingsSection } from "../settings/sections.ts";
 import { closeSettings } from "../settings/return.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
 import { launch } from "../workbench/commands.ts";

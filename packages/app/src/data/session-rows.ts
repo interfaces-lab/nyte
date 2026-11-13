@@ -142,7 +142,11 @@ const unlisted: StoreSource<Unlisted> = {
       const all = sessionList("all").value;
 
       const listed = new Set(
-        [...(all ?? []), ...(sessionList("roots").value ?? [])].map((session) => session.id),
+        [
+          ...(all ?? []),
+          ...(sessionList("roots").value ?? []),
+          ...[...askedParents.keys()].flatMap((parent) => childList(parent).value ?? []),
+        ].map((session) => session.id),
       );
 
       const wanted = new Set(

@@ -8,7 +8,7 @@ import { readStartCatalog } from "../../data/catalog.ts";
 import { findProject } from "../../data/projects.ts";
 import { selectedWorkspaceId } from "../../data/workspaces.ts";
 import { connected } from "../../data/connection.ts";
-import { chatStore } from "../../data/chat-store.ts";
+import { chatStore, warmSession } from "../../data/chat-store.ts";
 import { selectedModelOption } from "./model-picker-state.ts";
 import { startComposerChat } from "./composer-send.ts";
 import type { ComposerSendPlan } from "./composer-send.ts";
@@ -92,6 +92,7 @@ export async function startDraft(
       },
       plan,
     );
+    warmSession(id);
     await chatStore(id)
       .next()
       .catch(() => undefined);

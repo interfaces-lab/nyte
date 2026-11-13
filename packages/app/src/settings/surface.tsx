@@ -2,7 +2,8 @@ import { props } from "@stylexjs/stylex";
 import { useParams } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
-import { SETTINGS_PAGES, type PageInfo, type SettingsSection } from "./pages.ts";
+import { SETTINGS_PAGES, type PageInfo } from "./pages.ts";
+import type { SettingsSection } from "./sections.ts";
 import { settingsStyles as styles } from "./settings.stylex.ts";
 
 export function SettingsSurface(): ReactElement {

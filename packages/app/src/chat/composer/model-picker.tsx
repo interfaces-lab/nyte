@@ -32,7 +32,7 @@ import { useSetListing } from "../../data/catalog.ts";
 import type { DesktopCatalog, DesktopModelOption } from "../../data/catalog.ts";
 import { useAccountLimits } from "../../data/usage.ts";
 import { preferences, useSetting } from "../../preferences/index.ts";
-import { showsSettingsSection } from "../../settings/index.ts";
+import { showsSettingsSection } from "../../settings/sections.ts";
 import {
   AGENT_PROVIDERS,
   modelIcon,

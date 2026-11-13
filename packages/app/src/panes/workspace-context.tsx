@@ -9,7 +9,7 @@ import {
   MenuSubContent,
   MenuSubTrigger,
 } from "@nyte-ai/ui/menu";
-import { useGitHubRepository } from "../account/github-account.ts";
+import { useGitHubRepository } from "../data/github.ts";
 import { folderPicker, handleOpenOutcome } from "./open-workspace.tsx";
 import { clientActions } from "../contract/client-actions.ts";
 import { nyte } from "../contract/nyte.ts";

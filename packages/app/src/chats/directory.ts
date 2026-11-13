@@ -59,8 +59,22 @@ export function describeChats(
 ): ChatDirectory {
   const names = new Map((projects ?? []).map((project) => [project.id, project.name] as const));
 
+  const folders =
+    workspaces === undefined
+      ? undefined
+      : new Map(workspaces.map((workspace) => [workspace.id, workspace] as const));
+
   const chats = new Map(
     [...sessions].map((session) => {
+      const known = described.get(session);
+
+      if (
+        known !== undefined &&
+        known.workspaces === workspaces &&
+        known.projects === projects &&
+        previous.get(session.id) === known.chat
+      )
+        return [session.id, known.chat] as const;
       const head = mainHead(session);
       const project = coordinatedProject(session);
 
@@ -68,7 +82,7 @@ export function describeChats(
         id: session.id,
         parent: session.parent,
         title: (project === undefined ? undefined : names.get(project)) ?? sessionTitle(session),
-        location: workspaces === undefined ? LOADING : locate(session.workspace, workspaces),
+        location: folders === undefined ? LOADING : locate(session.workspace, folders),
         status: runStatus(head?.execution),
         background: head?.background ?? NO_BACKGROUND,
         mark: project === undefined ? sessionMark(session) : coordinatorMark(session),
@@ -78,7 +92,10 @@ export function describeChats(
             : null,
       };
 
-      return [session.id, replaceEqualDeep(previous.get(session.id), next)] as const;
+      const chat = replaceEqualDeep(previous.get(session.id), next);
+      described.set(session, { chat, workspaces, projects });
+
+      return [session.id, chat] as const;
     }),
   );
 
@@ -87,19 +104,32 @@ export function describeChats(
     : chats;
 }
 
+/** A row's chat, valid while the folder and project lists are the ones it was described with. */
+const described = new WeakMap<
+  SessionInfo,
+  {
+    readonly chat: Chat;
+    readonly workspaces: readonly WorkspaceInfo[] | undefined;
+    readonly projects: readonly ProjectInfo[] | undefined;
+  }
+>();
+
 const LOADING: ChatLocation = { kind: "loading" };
 
 const UNLISTED: ChatLocation = { kind: "unlisted" };
 
 const NO_BACKGROUND: BackgroundWork = { working: 0, waiting: 0 };
 
-function locate(workspace: WorkspaceId, workspaces: readonly WorkspaceInfo[]): ChatLocation {
-  const info = workspaces.find((candidate) => candidate.id === workspace);
+function locate(
+  workspace: WorkspaceId,
+  folders: ReadonlyMap<WorkspaceId, WorkspaceInfo>,
+): ChatLocation {
+  const info = folders.get(workspace);
   const folder = info === undefined ? null : listedFolder(info);
 
   if (info === undefined || folder === null) return UNLISTED;
   const isolation = info.isolation;
-  const source = workspaces.find((candidate) => candidate.id === isolation?.source);
+  const source = isolation === null ? undefined : folders.get(isolation.source);
 
   return {
     kind: "folder",
