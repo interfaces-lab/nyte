@@ -36,7 +36,6 @@ export const DESKTOP_SETTING_SCHEMAS = {
   alertsFailed: Type.Array(Type.Enum(ALERT_OFFERS.failed)),
   alertsDone: Type.Array(Type.Enum(ALERT_OFFERS.done)),
   remindMinutes: Type.Union([Type.Literal(1), Type.Literal(2), Type.Literal(5), Type.Literal(15)]),
-  notifyViewedChat: Type.Boolean(),
   notifySubagents: Type.Boolean(),
   terminalNotifications: Type.Boolean(),
 };
@@ -60,7 +59,6 @@ export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
   alertsFailed: ["notification", "badge", "sound"],
   alertsDone: ["notification", "badge"],
   remindMinutes: 2,
-  notifyViewedChat: false,
   notifySubagents: false,
   terminalNotifications: true,
 };

@@ -1,6 +1,5 @@
 import { toast } from "@nyte-ai/ui/toast";
-import type { HostEvent, HostProcess } from "../contract/bridge.ts";
-import type { AlertState } from "../contract/desktop-settings.ts";
+import type { HostProcess } from "../contract/bridge.ts";
 import { keys, queryClient } from "../data/query-client.ts";
 import { commitHostWorkspace } from "../data/workspaces.ts";
 import { nyte } from "../contract/nyte.ts";
@@ -60,10 +59,6 @@ export function useHostEvents(): void {
           return;
         case "open_session":
           windowTabs.openChat(event.session, "permanent");
-
-          return;
-        case "chat_alert":
-          showChatAlert(event);
 
           return;
         case "remote_access_changed":
@@ -158,28 +153,4 @@ function followHostProcess(): (state: HostProcess) => void {
       }
     }
   };
-}
-
-const ALERT_TOAST = {
-  waiting: "warning",
-  failed: "error",
-  done: undefined,
-} as const satisfies Readonly<Record<AlertState, string | undefined>>;
-
-function showChatAlert(alert: Extract<HostEvent, { kind: "chat_alert" }>): void {
-  const id = `chat-alert:${alert.session}`;
-
-  toast.add({
-    id,
-    type: ALERT_TOAST[alert.state],
-    title: alert.title,
-    description: alert.body,
-    actionProps: {
-      children: "Open",
-      onClick: () => {
-        toast.close(id);
-        windowTabs.openChat(alert.session, "permanent");
-      },
-    },
-  });
 }

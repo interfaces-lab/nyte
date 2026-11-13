@@ -262,8 +262,6 @@ function postNotices(id: WorkbenchTabId, notices: readonly OscNotice[]): void {
   const attention = nyte.host.attention;
 
   if (attention === undefined) return;
-
-  if (document.hasFocus() && output.get(id)?.visible() === true) return;
   const title = getTerminal(id)?.title ?? "Terminal";
 
   for (const notice of notices)

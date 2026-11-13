@@ -106,13 +106,6 @@ export const desktopSettingsPlugin = {
         scope: "host",
       },
       {
-        id: "desktop.notifyViewedChat",
-        label: "Notify about the chat you're viewing",
-        schema: standard(DESKTOP_SETTING_SCHEMAS.notifyViewedChat),
-        default: DEFAULT_DESKTOP_SETTINGS.notifyViewedChat,
-        scope: "host",
-      },
-      {
         id: "desktop.notifySubagents",
         label: "Include subagent chats",
         schema: standard(DESKTOP_SETTING_SCHEMAS.notifySubagents),

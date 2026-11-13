@@ -31,19 +31,16 @@ export class Alerts {
     app.on("browser-window-focus", () => this.#stopBounce());
   }
 
+  /** Alerts only reach someone who is away: while any Nyte window is focused, the sidebar already shows it. */
   agent(delivery: AttentionDelivery): void {
-    const focused = this.#windows.focused();
+    if (this.#windows.focused() !== undefined) return;
 
-    if (
-      focused !== undefined &&
-      this.#viewed(focused) === delivery.session &&
-      !this.#settings().notifyViewedChat
-    )
-      return;
+    if (delivery.notify)
+      this.#post({ title: delivery.title, body: delivery.body, silent: !delivery.sound }, () =>
+        this.#openChat(delivery.session),
+      );
 
-    if (delivery.notify) this.#tell(focused, delivery);
-
-    if (!delivery.bounce || focused !== undefined || app.dock === undefined) return;
+    if (!delivery.bounce || app.dock === undefined) return;
     this.#stopBounce();
     this.#bounce = app.dock.bounce("critical");
   }
@@ -67,7 +64,12 @@ export class Alerts {
   terminal(window: HostWindow, notice: TerminalNotice): void {
     const settings = this.#settings();
 
-    if (!settings.notifications || !settings.terminalNotifications) return;
+    if (
+      !settings.notifications ||
+      !settings.terminalNotifications ||
+      this.#windows.focused() !== undefined
+    )
+      return;
     this.#post({ ...notice, silent: !settings.notificationSounds }, () =>
       this.#windows.reveal(window),
     );
@@ -79,24 +81,6 @@ export class Alerts {
 
   release(window: HostWindow): void {
     this.#windowStates.delete(window);
-  }
-
-  #tell(focused: HostWindow | undefined, delivery: AttentionDelivery): void {
-    if (focused !== undefined && this.#windowStates.get(focused)?.kind === "ready") {
-      this.#windows.send(focused, {
-        kind: "chat_alert",
-        session: delivery.session,
-        state: delivery.state,
-        title: delivery.title,
-        body: delivery.body,
-      });
-
-      return;
-    }
-
-    this.#post({ title: delivery.title, body: delivery.body, silent: !delivery.sound }, () =>
-      this.#openChat(delivery.session),
-    );
   }
 
   #viewed(window: HostWindow): string | null | undefined {
