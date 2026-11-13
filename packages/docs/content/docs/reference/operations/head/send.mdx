@@ -217,6 +217,24 @@ command.`
                           },
                           "selector": {
                             "type": "string"
+                          },
+                          "region": {
+                            "type": "object",
+                            "required": ["x", "y", "width", "height"],
+                            "properties": {
+                              "x": {
+                                "type": "number"
+                              },
+                              "y": {
+                                "type": "number"
+                              },
+                              "width": {
+                                "type": "number"
+                              },
+                              "height": {
+                                "type": "number"
+                              }
+                            }
                           }
                         }
                       },
