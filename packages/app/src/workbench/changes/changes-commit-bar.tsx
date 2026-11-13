@@ -375,7 +375,15 @@ async function runCommitAction(run: CommitRun): Promise<CommitBarResult> {
     if (plan.push) {
       const pushed = await git.push({ setUpstream: options.setUpstream === true }, { expect });
 
-      const outcome = pushResultMessage(pushed);
+      const outcome =
+        pushed.kind === "rejected" && (await git.refs()).remotes.length === 0
+          ? {
+              tone: "error" as const,
+              text: "This repository has no remote to push to.",
+              detail:
+                "Add one with git remote add, or create the repository on GitHub with gh repo create.",
+            }
+          : pushResultMessage(pushed);
 
       if (outcome.tone === "error") {
         if (pushed.kind !== "stale") run.onPushInterrupted();
