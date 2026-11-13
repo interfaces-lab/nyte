@@ -2,7 +2,6 @@ import { create, props } from "@stylexjs/stylex";
 import type { ToolClass } from "@nyte-ai/sdk";
 import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
-import { Icon } from "@nyte-ai/ui/icon";
 import { PreviewCard, PreviewCardContent, PreviewCardTrigger } from "@nyte-ai/ui/preview-card";
 import { control, media, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
@@ -91,14 +90,6 @@ export const toolLineStyles = create({
   },
   dimmed: { "--_action": role.contentTertiary, "--_details": role.contentTertiary },
   dimmedText: { color: role.contentTertiary },
-  icon: {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-    color: "var(--_action)",
-    ...COLOR_TRANSITION,
-  },
   action: { flexShrink: 0, color: "var(--_action)", ...COLOR_TRANSITION },
   actionOnly: { flexShrink: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" },
   details: {
@@ -250,11 +241,6 @@ export function ToolLineView({
 
   const content: ReactNode = (
     <>
-      {copy.server !== undefined && (
-        <span {...props(toolLineStyles.icon)}>
-          <Icon name="mcp" size="sm" />
-        </span>
-      )}
       {status.tense !== "none" && (
         <span
           {...props(

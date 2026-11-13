@@ -1,41 +1,19 @@
 import { attachFile, clipText } from "@nyte-ai/core";
-import { standard } from "@nyte-ai/schema";
-import type { BlobId } from "@nyte-ai/schema";
-import { Type } from "typebox";
-import type { Static } from "typebox";
+import type { BlobId, Infer } from "@nyte-ai/schema";
 import type { ToolDefinition } from "@nyte-ai/plugin/core";
 import { readCapped } from "./body.ts";
 import type { Fetch } from "./body.ts";
 import { htmlToMarkdown, htmlToText } from "./html-markdown.ts";
+import { DEFAULT_FETCH_SECONDS, fetchParameters, WEB_FETCH_TOOL } from "./schema.ts";
 
 const MAX_RESPONSE_BYTES = 5 * 1024 * 1024;
 
 const MAX_REDIRECTS = 10;
 
-const DEFAULT_TIMEOUT_SECONDS = 30;
-
-const MAX_TIMEOUT_SECONDS = 120;
-
 const USER_AGENT =
   "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; Nyte/1.0; +https://nyte.sh";
 
-const fetchParameters = Type.Object({
-  url: Type.String({ minLength: 1, description: "The URL." }),
-  format: Type.Optional(
-    Type.Enum(["markdown", "text", "html"], {
-      description: "Default markdown.",
-    }),
-  ),
-  timeout: Type.Optional(
-    Type.Number({
-      exclusiveMinimum: 0,
-      maximum: MAX_TIMEOUT_SECONDS,
-      description: `Seconds to wait; default ${DEFAULT_TIMEOUT_SECONDS}.`,
-    }),
-  ),
-});
-
-type Format = NonNullable<Static<typeof fetchParameters>["format"]>;
+type Format = NonNullable<Infer<typeof fetchParameters>["format"]>;
 
 type Page =
   | { readonly kind: "text"; readonly text: string }
@@ -48,11 +26,11 @@ const ACCEPT = {
   html: "text/html;q=1.0, application/xhtml+xml;q=0.9, text/plain;q=0.8, text/markdown;q=0.7, */*;q=0.1",
 } satisfies { readonly [F in Format]: string };
 
-export function webFetch(fetch: Fetch): ToolDefinition<Static<typeof fetchParameters>> {
+export function webFetch(fetch: Fetch): ToolDefinition<Infer<typeof fetchParameters>> {
   return {
-    name: "web_fetch",
+    name: WEB_FETCH_TOOL,
     description: "Fetch an http(s) URL as markdown, text or HTML; an image comes back as a file.",
-    parameters: standard(fetchParameters),
+    parameters: fetchParameters,
     class: (args) => ({ kind: "custom", label: `Fetching ${args.url}` }),
     effects: "none",
     approval: "never",
@@ -63,7 +41,7 @@ export function webFetch(fetch: Fetch): ToolDefinition<Static<typeof fetchParame
       if (url === null || (url.protocol !== "http:" && url.protocol !== "https:"))
         throw new Error(`Fetch an http:// or https:// URL; ${args.url} isn't one.`);
       const format = args.format ?? "markdown";
-      const seconds = args.timeout ?? DEFAULT_TIMEOUT_SECONDS;
+      const seconds = args.timeout ?? DEFAULT_FETCH_SECONDS;
 
       const page = await invocation.memo("page", async (): Promise<Page> => {
         const deadline = AbortSignal.timeout(seconds * 1000);

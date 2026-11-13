@@ -1,20 +1,10 @@
 import { attachFile } from "@nyte-ai/core";
 import type { BrowserApi, Page, ToolDefinition, ToolInvocation } from "@nyte-ai/core";
-import { asId, standard } from "@nyte-ai/schema";
+import { asId } from "@nyte-ai/schema";
 import type { Infer, PageOutcome, PageSnapshot } from "@nyte-ai/schema";
-import { Type } from "typebox";
-import type { TSchema } from "typebox";
 import type { Plugin } from "@nyte-ai/plugin/core";
-
-const page = Type.Optional(
-  Type.String({ description: "The page id; omit for the page opened last." }),
-);
-
-const ref = Type.String({ description: "A node's ref from the latest snapshot." });
-
-function on<P extends Record<string, TSchema>>(properties: P) {
-  return standard(Type.Object({ page, ...properties }));
-}
+import { browserParameters } from "./browser/schema.ts";
+import type { BrowserTool } from "./browser/schema.ts";
 
 async function requireBrowser(invocation: ToolInvocation): Promise<BrowserApi> {
   const capability = await invocation.workspace.browser();
@@ -60,19 +50,18 @@ function outcomeText(outcome: PageOutcome): string {
     : `The page is closed: ${outcome.reason}.`;
 }
 
-function browserTool<S extends ReturnType<typeof on>>(input: {
-  readonly name: string;
+function browserTool<T extends Exclude<BrowserTool, "browser_open" | "browser_capture">>(input: {
+  readonly name: T;
   readonly description: string;
-  readonly parameters: S;
   readonly replay: "safe" | "never";
   readonly approval?: ToolDefinition["approval"];
-  run(args: Infer<S>, invocation: ToolInvocation): Promise<string>;
-}): ToolDefinition<Infer<S>> {
+  run(args: Infer<(typeof browserParameters)[T]>, invocation: ToolInvocation): Promise<string>;
+}): ToolDefinition<Infer<(typeof browserParameters)[T]>> {
   return {
     name: input.name,
     description: input.description,
-    parameters: input.parameters,
-    class: () => ({ kind: "custom", label: input.name.replace("browser_", "Browser: ") }),
+    parameters: browserParameters[input.name],
+    class: () => ({ kind: "custom", label: input.name }),
     effects: "none",
     approval: input.approval,
     replay: input.replay,
@@ -85,10 +74,8 @@ function browserTool<S extends ReturnType<typeof on>>(input: {
 const open: ToolDefinition<{ url: string }> = {
   name: "browser_open",
   description: "Open a URL in a new browser page and return the page id and its snapshot.",
-  parameters: standard(
-    Type.Object({ url: Type.String({ minLength: 1, description: "The URL to open." }) }),
-  ),
-  class: (args) => ({ kind: "custom", label: `Opening ${args.url}` }),
+  parameters: browserParameters.browser_open,
+  class: () => ({ kind: "custom", label: "browser_open" }),
   effects: "none",
   approval: "never",
   replay: "safe",
@@ -110,8 +97,8 @@ const open: ToolDefinition<{ url: string }> = {
 const capture: ToolDefinition<{ page?: string }> = {
   name: "browser_capture",
   description: "Take a screenshot of the page.",
-  parameters: on({}),
-  class: () => ({ kind: "custom", label: "Browser: capture" }),
+  parameters: browserParameters.browser_capture,
+  class: () => ({ kind: "custom", label: "browser_capture" }),
   effects: "none",
   approval: "never",
   replay: "safe",
@@ -148,7 +135,6 @@ export const browserTools: readonly ToolDefinition[] = [
     name: "browser_snapshot",
     description:
       "Read the page's accessibility tree: one line per node with its ref, role and name.",
-    parameters: on({ ref: Type.Optional(ref) }),
     replay: "safe",
     approval: "never",
     run: (args, invocation) =>
@@ -159,13 +145,6 @@ export const browserTools: readonly ToolDefinition[] = [
   browserTool({
     name: "browser_click",
     description: "Click a node by its ref.",
-    parameters: on({
-      ref,
-      button: Type.Optional(
-        Type.Union([Type.Literal("left"), Type.Literal("right"), Type.Literal("middle")]),
-      ),
-      double: Type.Optional(Type.Boolean()),
-    }),
     replay: "never",
     run: (args, invocation) =>
       withPage(invocation, args.page, async (held) =>
@@ -175,12 +154,6 @@ export const browserTools: readonly ToolDefinition[] = [
   browserTool({
     name: "browser_type",
     description: "Type text into a node by its ref.",
-    parameters: on({
-      ref,
-      text: Type.String(),
-      clear: Type.Optional(Type.Boolean()),
-      submit: Type.Optional(Type.Boolean()),
-    }),
     replay: "never",
     run: (args, invocation) =>
       withPage(invocation, args.page, async (held) =>
@@ -197,7 +170,6 @@ export const browserTools: readonly ToolDefinition[] = [
   browserTool({
     name: "browser_press",
     description: "Press a key or chord, such as Enter or Control+a, on a node or the page.",
-    parameters: on({ key: Type.String(), ref: Type.Optional(ref) }),
     replay: "never",
     run: (args, invocation) =>
       withPage(invocation, args.page, async (held) =>
@@ -207,16 +179,6 @@ export const browserTools: readonly ToolDefinition[] = [
   browserTool({
     name: "browser_scroll",
     description: "Scroll the page or a node.",
-    parameters: on({
-      direction: Type.Union([
-        Type.Literal("up"),
-        Type.Literal("down"),
-        Type.Literal("top"),
-        Type.Literal("bottom"),
-      ]),
-      ref: Type.Optional(ref),
-      pages: Type.Optional(Type.Number({ minimum: 0.1 })),
-    }),
     replay: "never",
     approval: "never",
     run: (args, invocation) =>
@@ -230,12 +192,6 @@ export const browserTools: readonly ToolDefinition[] = [
     name: "browser_wait",
     description:
       "Wait for the page to load, for text to appear or disappear, or for a delay in milliseconds.",
-    parameters: on({
-      for: Type.Union([Type.Literal("loaded"), Type.Literal("text"), Type.Literal("delay")]),
-      text: Type.Optional(Type.String()),
-      gone: Type.Optional(Type.Boolean({ description: "With text: wait for it to disappear." })),
-      ms: Type.Optional(Type.Number({ minimum: 0 })),
-    }),
     replay: "never",
     approval: "never",
     run: (args, invocation) =>
@@ -254,10 +210,6 @@ export const browserTools: readonly ToolDefinition[] = [
   browserTool({
     name: "browser_console",
     description: "Read the page's console, newest first.",
-    parameters: on({
-      limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
-      clear: Type.Optional(Type.Boolean()),
-    }),
     replay: "never",
     approval: "never",
     run: (args, invocation) =>
@@ -273,7 +225,6 @@ export const browserTools: readonly ToolDefinition[] = [
   browserTool({
     name: "browser_evaluate",
     description: "Evaluate a JavaScript expression in the page; with a ref, the node is `this`.",
-    parameters: on({ expression: Type.String(), ref: Type.Optional(ref) }),
     replay: "never",
     run: (args, invocation) =>
       withPage(invocation, args.page, async (held) => {

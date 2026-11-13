@@ -98,8 +98,8 @@ test("scenario D on the web: why did CI fail on my PR, fix it", async ({ page })
   await test.step("the skill picked the CI MCP server, and the transcript shows it", async () => {
     expect(server.route()).toBe("mcp");
     await press(log.getByRole("button", { name: /^Explored SKILL\.md, ran 2 tools$/u }));
-    await expect(log.getByRole("button", { name: "ci: List check runs" })).toBeVisible();
-    await expect(log.getByRole("button", { name: "ci: Get job logs" })).toBeVisible();
+    await expect(log.getByRole("button", { name: "Ran List check runs in ci" })).toBeVisible();
+    await expect(log.getByRole("button", { name: "Ran Get job logs in ci" })).toBeVisible();
     await expect(log.getByText(/gh pr checks/u)).toHaveCount(0);
   });
 
@@ -114,10 +114,13 @@ test("scenario D on the web: why did CI fail on my PR, fix it", async ({ page })
       /##\[error\]Process completed with exit code 1\.\s*\[File get_job_logs\.txt, 5242\d{3} bytes, text\/plain\]$/u,
     );
 
-    logRow.mountMs = await timeKeyToFrame(log.getByRole("button", { name: "ci: Get job logs" }), {
-      label: "Tool output",
-      text: "step 000001 ok",
-    });
+    logRow.mountMs = await timeKeyToFrame(
+      log.getByRole("button", { name: "Ran Get job logs in ci" }),
+      {
+        label: "Tool output",
+        text: "step 000001 ok",
+      },
+    );
 
     expect(logRow.mountMs).toBeLessThanOrEqual(LOG_ROW_BUDGET_MS);
   });

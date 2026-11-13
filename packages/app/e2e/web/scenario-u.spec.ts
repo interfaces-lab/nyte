@@ -248,7 +248,7 @@ test("scenario U on the web: a random restaurant nearby, quit mid-answer, reopen
     await reopened.keyboard.press("Control+`");
     await tabTo(messages(reopened).getByRole("button", { name: "Explored SKILL.md, ran 1 tool" }));
     await reopened.keyboard.press("Enter");
-    const places = messages(reopened).getByRole("button", { name: "places: Search places" });
+    const places = messages(reopened).getByRole("button", { name: "Ran Search places in places" });
     await tabTo(places);
     await reopened.keyboard.press("Enter");
     await expect(places.locator("xpath=following::*[@aria-label='Tool output'][1]")).toContainText(

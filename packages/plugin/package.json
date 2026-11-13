@@ -48,11 +48,14 @@
     "./client/transcript": "./src/client/transcript.tsx",
     "./client/transcript-tui": "./src/client/transcript-tui.ts",
     "./approvals/schema": "./src/approvals/schema.ts",
+    "./browser/schema": "./src/browser/schema.ts",
     "./canvas/protocol": "./src/canvas/canvas-protocol.ts",
     "./canvas/schema": "./src/canvas/schema.ts",
+    "./codemode/schema": "./src/codemode/schema.ts",
     "./desktop-settings/schema": "./src/desktop-settings/schema.ts",
     "./question/schema": "./src/question/schema.ts",
-    "./secret/schema": "./src/secret/schema.ts"
+    "./secret/schema": "./src/secret/schema.ts",
+    "./web/schema": "./src/web/schema.ts"
   },
   "publishConfig": {
     "exports": {
@@ -188,6 +191,10 @@
         "types": "./dist/src/approvals/schema.d.ts",
         "import": "./dist/src/approvals/schema.js"
       },
+      "./browser/schema": {
+        "types": "./dist/src/browser/schema.d.ts",
+        "import": "./dist/src/browser/schema.js"
+      },
       "./canvas/protocol": {
         "types": "./dist/src/canvas/canvas-protocol.d.ts",
         "import": "./dist/src/canvas/canvas-protocol.js"
@@ -195,6 +202,10 @@
       "./canvas/schema": {
         "types": "./dist/src/canvas/schema.d.ts",
         "import": "./dist/src/canvas/schema.js"
+      },
+      "./codemode/schema": {
+        "types": "./dist/src/codemode/schema.d.ts",
+        "import": "./dist/src/codemode/schema.js"
       },
       "./desktop-settings/schema": {
         "types": "./dist/src/desktop-settings/schema.d.ts",
@@ -207,6 +218,10 @@
       "./secret/schema": {
         "types": "./dist/src/secret/schema.d.ts",
         "import": "./dist/src/secret/schema.js"
+      },
+      "./web/schema": {
+        "types": "./dist/src/web/schema.d.ts",
+        "import": "./dist/src/web/schema.js"
       }
     },
     "access": "public",

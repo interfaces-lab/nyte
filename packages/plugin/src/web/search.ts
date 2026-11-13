@@ -1,38 +1,19 @@
 import { dev } from "@nyte-ai/core";
-import { standard } from "@nyte-ai/schema";
-import { Type } from "typebox";
-import type { Static } from "typebox";
 import type { PluginApi, SearchResult, ToolDefinition } from "@nyte-ai/plugin/core";
+import { searchOutput, searchParameters, WEB_SEARCH_TOOL } from "./schema.ts";
+import type { SearchOutput } from "./schema.ts";
 
 const TIMEOUT_MS = 25_000;
-
-const parameters = standard(
-  Type.Object({ query: Type.String({ minLength: 1, description: "What to search the web for." }) }),
-);
-
-const searchOutput = Type.Object({
-  provider: Type.String(),
-  results: Type.Array(
-    Type.Object({
-      url: Type.String(),
-      title: Type.Optional(Type.String()),
-      content: Type.Optional(Type.String()),
-      published: Type.Optional(Type.Number({ description: "Milliseconds since the Unix epoch." })),
-    }),
-  ),
-});
-
-type SearchOutput = Static<typeof searchOutput>;
 
 export function webSearch(
   api: PluginApi,
   setting: string,
 ): ToolDefinition<{ query: string }, SearchOutput> {
   return {
-    name: "web_search",
+    name: WEB_SEARCH_TOOL,
     description: `Search the web for current information. The year is ${new Date().getFullYear()}.`,
-    parameters,
-    output: standard(searchOutput),
+    parameters: searchParameters,
+    output: searchOutput,
     class: (args) => ({ kind: "custom", label: `Searching ${args.query}` }),
     effects: "none",
     approval: "never",

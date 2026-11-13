@@ -518,6 +518,7 @@ const NAMED_TOOLS = new Map<string, CustomTool>([
     { verbs: { running: "Checking console logs", past: "Checked console logs" } },
   ],
   ["browser_evaluate", { verbs: { running: "Executing JS", past: "Executed JS" } }],
+  ["browser_capture", { verbs: { running: "Taking screenshot", past: "Took screenshot" } }],
 ]);
 
 const MCP_LABEL = /^(?<server>[^:\s]+): (?<name>\S+)$/u;
@@ -542,6 +543,26 @@ export function customTool(label: string): CustomTool {
   if (/\s/u.test(label)) return { verbs: { running: label, past: label } };
 
   return { verbs: RAN, name: label };
+}
+
+/**
+ * An MCP call's server and tool title, or null when the tool isn't an MCP tool. The host names
+ * MCP tools `mcp__<server>__<tool>` and labels them `<server>: <title or tool>`.
+ *
+ * @category presentation
+ */
+export function readMcpCall(
+  name: string,
+  label: string,
+): { readonly server: string; readonly title: string } | null {
+  const named = MCP_NAME.exec(name)?.groups;
+
+  if (named?.server === undefined || named.name === undefined) return null;
+  const at = label.indexOf(": ");
+
+  return at > 0
+    ? { server: label.slice(0, at), title: label.slice(at + 2) }
+    : { server: named.server, title: named.name };
 }
 
 function customDetail(custom: CustomTool): string | undefined {

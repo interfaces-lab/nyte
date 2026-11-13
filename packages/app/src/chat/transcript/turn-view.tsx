@@ -65,7 +65,8 @@ import {
 import { StatusMarker } from "./row-surfaces.tsx";
 import { RecoveryAction } from "./turn-recovery.tsx";
 import { ToolCallView } from "../tools/tool-call.tsx";
-import { StepGroupView } from "./step-group.tsx";
+import { StepEntryView, StepGroupView } from "./step-group.tsx";
+import { stepEntries } from "./step-entries.ts";
 import { ThinkingLine } from "./thinking-line.tsx";
 import { replyAge, userDisplayText, workedFor } from "./transcript-presentation.ts";
 import { useCopyConfirmation } from "../../components/copy-confirmation.ts";
@@ -814,10 +815,20 @@ export function TurnItemView({
         />
       );
     case "step": {
-      const [first] = row.messages;
+      const entries = stepEntries(row.messages, true);
+      const [only] = entries;
 
-      if (!running && row.messages.length === 1 && first !== undefined && showsTool(first))
-        return <TurnPartView message={first} cwd={cwd} density={density} />;
+      if (!running && entries.length === 1 && only !== undefined && only.kind !== "thinking")
+        return (
+          <StepEntryView
+            entry={only}
+            cwd={cwd}
+            density={density}
+            thinkingOnly={false}
+            titled={false}
+            live={false}
+          />
+        );
 
       return (
         <StepGroupView
