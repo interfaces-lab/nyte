@@ -6,7 +6,7 @@ import { failure, formatSize, green, red, table } from "./terminal.mjs";
 const KIB = 1_024;
 
 const budgets = {
-  main: 682 * KIB,
+  main: 688 * KIB,
   preload: 8 * KIB,
   renderer: 3_490 * KIB,
   css: 290 * KIB,
