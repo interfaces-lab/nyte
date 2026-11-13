@@ -92,8 +92,8 @@ at the first content block's text.
 Something changed between your read and your write. Read again and decide. Common causes:
 
 - `heads.remove(name, { expect })` when the head moved since the revision you passed.
-- A different host answered than the one you expected, from `connect`'s `expect` or mid-connection.
-  The error's `hostId` is the host that answered.
+- A different host answered than the one you expected, or its identity key changed, from
+  `connect`'s `expect` or mid-connection. The error's `hostId` is the host that answered.
 - The host lost a race with other writers several times in a row.
 
 Calls that take `expect` usually return a `stale` outcome instead of throwing; see

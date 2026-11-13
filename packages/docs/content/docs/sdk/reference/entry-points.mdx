@@ -139,7 +139,7 @@ token fails here rather than on the first call.
 | ------------- | --------------------------------------------------------------------------------------------- |
 | `url`         | The listener's address                                                                        |
 | `credentials` | How to sign in. See below                                                                     |
-| `expect`      | `{ hostId }`. Throws `SdkError("stale")` when a different host answers                        |
+| `expect`      | `{ hostId, publicKey }`, saved from an earlier connection. See below                          |
 | `journal`     | Where unsent messages wait. Default: in memory. See [createSendJournal](#create-send-journal) |
 | `fetch`       | `(url, init?) => Promise<Response>`, used instead of the global `fetch`                       |
 
@@ -151,9 +151,12 @@ token fails here rather than on the first call.
 - `{ kind: "custom", headers() }` to compute request headers yourself, for a listener with
   `custom` auth.
 
-With `expect`, `connect` first asks the host to sign a random challenge and checks the signature
-and host id, then checks the id again on the first view. A host that doesn't answer the challenge
-is checked on the first view alone.
+`connect` asks the host to sign a random challenge every time. Without `expect`, it asks beside
+the first view and returns the key the host proved as `connection.publicKey`, or leaves it
+`undefined` when the host answers no challenge or its answer fails. With `expect`, it asks before it sends any
+credential, and throws `SdkError("stale")` when the answer names another host, carries another key,
+doesn't verify, or is missing; then it checks the id again on the first view. When only the key
+differs, the error says the host's identity key changed and to pair again.
 
 ## createSendJournal [#create-send-journal]
 

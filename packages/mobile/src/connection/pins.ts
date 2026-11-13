@@ -1,6 +1,7 @@
 import { base64ToBase64Url } from "@nyte-ai/connect";
 import type { DeviceCrypto } from "@nyte-ai/connect/enrollment";
-import type { HostId } from "@nyte-ai/sdk";
+import type { ConnectOptions } from "@nyte-ai/sdk";
+import { asId } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import type { SavedConnection } from "./connection.ts";
@@ -30,20 +31,26 @@ export interface PinStorage {
   readonly write: (key: string, text: string) => Promise<void>;
 }
 
+export type HostPin = NonNullable<ConnectOptions["expect"]>;
+
 export interface PinStore {
-  readonly read: (route: PinRoute) => Promise<string | undefined>;
-  readonly write: (route: PinRoute, hostId: HostId) => Promise<void>;
+  readonly read: (route: PinRoute) => Promise<HostPin | undefined>;
+  readonly write: (route: PinRoute, pin: HostPin) => Promise<void>;
 }
 
-const PinSchema = Type.Object({ hostId: Type.String({ minLength: 1 }) });
+const PinSchema = Type.Object({
+  hostId: Type.String({ minLength: 1 }),
+  publicKey: Type.String({ minLength: 1 }),
+});
 
+/** Names a route's pin in the keychain. The `nyte.host-key.` prefix is apart from the id-only pins an earlier version kept under `nyte.pin.`, which are never read. */
 async function pinKey(crypto: DeviceCrypto, route: PinRoute): Promise<string> {
   const parts =
     route.kind === "address"
       ? [route.kind, route.url]
       : [route.kind, route.origin, route.ownerId, route.environmentId];
 
-  return `nyte.pin.${base64ToBase64Url(await crypto.sha256Base64(JSON.stringify(parts)))}`;
+  return `nyte.host-key.${base64ToBase64Url(await crypto.sha256Base64(JSON.stringify(parts)))}`;
 }
 
 export function createPinStore(storage: PinStorage, crypto: DeviceCrypto): PinStore {
@@ -56,9 +63,8 @@ export function createPinStore(storage: PinStorage, crypto: DeviceCrypto): PinSt
 
       if (!Value.Check(PinSchema, value)) throw new Error("The saved host pin is unreadable.");
 
-      return value.hostId;
+      return { hostId: asId(value.hostId), publicKey: value.publicKey };
     },
-    write: async (route, hostId) =>
-      storage.write(await pinKey(crypto, route), JSON.stringify({ hostId })),
+    write: async (route, pin) => storage.write(await pinKey(crypto, route), JSON.stringify(pin)),
   };
 }

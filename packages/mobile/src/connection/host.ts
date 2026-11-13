@@ -10,6 +10,7 @@ import { createJournal } from "./journal.ts";
 import { openLiveHost } from "./live.ts";
 import type { LiveHost } from "./live.ts";
 import { createPinStore, pinRoute } from "./pins.ts";
+import type { HostPin } from "./pins.ts";
 import { readAccountConfig } from "../account/account-config.ts";
 import { deviceCrypto } from "../account/device.ts";
 import { releaseReplaced } from "../account/revocation.ts";
@@ -53,6 +54,7 @@ const verified = new WeakMap<SavedConnection, VerifiedHost>();
 
 let adoptions = 0;
 
+/** Connects to a saved host and holds it to the key it proved when it was paired: a pinned host is connected with `expect`, so it proves that key before the token is sent, and a pin that does not hold is `identityChanged`. A first connection or a repair pins what the host proves, and a host that proves no key is `unverified`. */
 export async function verifyHost(input: {
   readonly saved: SavedConnection;
   readonly repair: boolean;
@@ -61,10 +63,10 @@ export async function verifyHost(input: {
   const { saved, signal } = input;
   const route = pinRoute(saved);
   const address = displayAddress(saved.connection);
-  let pinned: string | undefined;
+  let pinned: HostPin | undefined;
 
   try {
-    pinned = await pins.read(route);
+    pinned = input.repair ? undefined : await pins.read(route);
   } catch {
     return { kind: "keychain" };
   }
@@ -77,6 +79,7 @@ export async function verifyHost(input: {
     credentials: { kind: "token", token: saved.connection.token },
     journal: createJournal(journals, JSON.stringify(route)),
     fetch: hostFetch(saved),
+    expect: pinned,
   });
 
   const abandoned = new Promise<never>((_, reject) => {
@@ -92,6 +95,9 @@ export async function verifyHost(input: {
       return { kind: "cancelled" };
     }
 
+    if (cause instanceof SdkError && cause.code === "stale" && pinned !== undefined)
+      return { kind: "identityChanged", address, url: saved.connection.url };
+
     if (cause instanceof SdkError) return classifyConnectFailure(cause, address);
 
     return { kind: "unexpected", detail: cause instanceof Error ? cause.message : String(cause) };
@@ -105,12 +111,11 @@ export async function verifyHost(input: {
 
   if (signal.aborted) return refuse({ kind: "cancelled" });
 
-  if (pinned !== undefined && pinned !== connection.hostId && !input.repair)
-    return refuse({ kind: "identityChanged", address, url: saved.connection.url });
+  if (connection.publicKey === undefined) return refuse({ kind: "unverified", address });
 
-  if (pinned !== connection.hostId) {
+  if (pinned === undefined) {
     try {
-      await pins.write(route, connection.hostId);
+      await pins.write(route, { hostId: connection.hostId, publicKey: connection.publicKey });
     } catch {
       return refuse({ kind: "keychain" });
     }

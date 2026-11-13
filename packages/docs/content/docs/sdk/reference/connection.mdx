@@ -9,7 +9,8 @@ logins, hangs off it.
 
 | Member          | Returns                   | What it does                                                                                        |
 | --------------- | ------------------------- | --------------------------------------------------------------------------------------------------- |
-| `hostId`        | `HostId`                  | The id of the host that answered. Save it to pass as `expect` on the next `connect`                 |
+| `hostId`        | `HostId`                  | The id of the host that answered. Save it with `publicKey` to pass as `expect` next time            |
+| `publicKey`     | `string \| undefined`     | The identity key the host proved while connecting. Undefined without one, and on a `Host`           |
 | `principal`     | `PrincipalId`             | Who this connection acts as                                                                         |
 | `credential`    | `CredentialSource`        | The credential in use. After pairing, the device token to save                                      |
 | `sessions`      | `Sessions`                | Start, list and read chats. See [Session](/docs/sdk/reference/session#sessions)                     |

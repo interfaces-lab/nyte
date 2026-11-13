@@ -199,22 +199,22 @@ export function throwForRenderer(cause: unknown): never {
 }
 
 interface ServerWatch {
-  readonly saved: SavedServer;
+  saved: SavedServer;
   readonly stop: AbortController;
   readonly first: PromiseWithResolvers<void>;
   state: ServerState | undefined;
 }
 
-async function probeServer(url: string, token: string, hostId?: SavedServer["hostId"]) {
-  const connection = await sdk.connect({
-    url,
-    credentials: { kind: "token", token },
-    expect: hostId === undefined ? undefined : { hostId },
-  });
+async function probeServer(url: string, token: string) {
+  const connection = await sdk.connect({ url, credentials: { kind: "token", token } });
 
   try {
     for await (const view of connection.watch())
-      return { hostId: connection.hostId, version: view.version };
+      return {
+        hostId: connection.hostId,
+        publicKey: connection.publicKey ?? null,
+        version: view.version,
+      };
     throw new SdkError("unavailable", "The server closed before it described itself.");
   } finally {
     await connection.close();
@@ -398,7 +398,10 @@ export class DesktopHost {
       return {
         url: HOST_PORT_ORIGIN,
         credentials: { kind: "token", token: "" },
-        expect: { hostId: connection.hostId },
+        expect:
+          connection.publicKey === undefined
+            ? undefined
+            : { hostId: connection.hostId, publicKey: connection.publicKey },
         ...(this.#deps.mediaOrigin === undefined ? {} : { mediaOrigin: this.#deps.mediaOrigin }),
       };
     },
@@ -652,7 +655,14 @@ export class DesktopHost {
     );
 
     if ("kind" in answered) return { kind: "failed" as const, message: answered.message };
-    const saved = { url: input.baseUrl, hostId: answered.hostId, token: input.token };
+
+    const saved = {
+      url: input.baseUrl,
+      hostId: answered.hostId,
+      publicKey: answered.publicKey,
+      token: input.token,
+    };
+
     await this.#servers.write(saved);
     await this.#watchServer(saved);
     this.#deps.emitHostEvent({ kind: "server_changed" });
@@ -681,6 +691,38 @@ export class DesktopHost {
     return watch;
   }
 
+  /** Connects to the watched server. One with a saved key is held to it. One without is held to its id alone, and the first key it proves is saved, so a server saved before keys were pinned is pinned by its next connection; a write that fails is tried again by the connection after. */
+  async #connectSaved(watch: ServerWatch): Promise<Connection> {
+    const saved = watch.saved;
+
+    const connection = await sdk.connect({
+      url: saved.url,
+      credentials: { kind: "token", token: saved.token },
+      expect:
+        saved.publicKey === null ? undefined : { hostId: saved.hostId, publicKey: saved.publicKey },
+    });
+
+    if (saved.publicKey !== null) return connection;
+
+    if (connection.hostId !== saved.hostId) {
+      await connection.close().catch(() => undefined);
+
+      throw new SdkError(
+        "stale",
+        `Host ${connection.hostId} answered instead of ${saved.hostId}.`,
+        {
+          hostId: connection.hostId,
+        },
+      );
+    }
+
+    if (connection.publicKey === undefined || watch.stop.signal.aborted) return connection;
+    watch.saved = { ...saved, publicKey: connection.publicKey };
+    void this.#servers.write(watch.saved).catch(() => undefined);
+
+    return connection;
+  }
+
   async #followServer(watch: ServerWatch): Promise<void> {
     const { saved } = watch;
     const signal = AbortSignal.any([watch.stop.signal, this.#watching.signal]);
@@ -688,11 +730,7 @@ export class DesktopHost {
 
     while (!signal.aborted) {
       try {
-        const connection = await sdk.connect({
-          url: saved.url,
-          credentials: { kind: "token", token: saved.token },
-          expect: { hostId: saved.hostId },
-        });
+        const connection = await this.#connectSaved(watch);
 
         const stop = (): void => {
           void connection.close();

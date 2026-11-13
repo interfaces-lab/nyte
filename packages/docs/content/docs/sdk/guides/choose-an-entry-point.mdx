@@ -162,8 +162,10 @@ credential store instead.
 
 ### Check which host answered
 
-Pass `expect` with a host id you saved earlier. `connect` throws `SdkError("stale")` when a different
-host answers at that URL, for example after the machine was reinstalled.
+Pass `expect` with the host id and identity key you saved the first time you connected. Before it
+sends your credential, `connect` asks the host to sign a random challenge, and checks that the
+answer names that id and verifies under that key. It throws `SdkError("stale")` when another host
+answers at that URL, when the host's identity key changed, or when nothing answers the challenge.
 
 ```ts
 import { asId } from "@nyte-ai/schema";
@@ -171,11 +173,16 @@ import { asId } from "@nyte-ai/schema";
 const connection = await sdk.connect({
   url: "https://agent.example.com",
   credentials: { kind: "token", token },
-  expect: { hostId: asId<"host">(savedHostId) },
+  expect: { hostId: asId<"host">(saved.hostId), publicKey: saved.publicKey },
 });
 ```
 
-`connection.hostId` is the id to save.
+Save `connection.hostId` and `connection.publicKey` from a connection you made over a channel you
+trust: the one that traded a pairing code, the local socket, or HTTPS to an address you checked.
+The key is only as trustworthy as that first connection. `publicKey` is `undefined` when the host
+answers no identity challenge, such as a deploy without `NYTE_IDENTITY_KEY`, and such a host can't
+be pinned. A host whose identity key was regenerated fails every pin made before it; pair with it
+again and save the new key.
 
 ### Show the connection's state
 

@@ -120,7 +120,8 @@ describe("connect", () => {
     const sent: string[] = [];
 
     host.intercept((request, next) => {
-      sent.push(request.headers.get("Authorization")?.split(" ")[0] ?? "");
+      if (new URL(request.url).pathname !== "/.nyte/identity")
+        sent.push(request.headers.get("Authorization")?.split(" ")[0] ?? "");
 
       return next(request);
     });
@@ -146,20 +147,40 @@ describe("connect", () => {
     expect(sent.at(-1)).toBe("Bearer");
   });
 
-  it("verifies the identity challenge and pins the host: another id or a forged signature is stale", async () => {
+  it("learns the host's key unpinned and pins it: another id, another key or a forged signature is stale", async () => {
     const host = await open({ identity: true });
     const credentials = { kind: "token", token: TOKEN_SECRET } as const;
-    const pin = { hostId: host.host.hostId };
+    const learned = kept(await connect({ url: BASE, credentials, fetch: host.fetch }));
+    assert(learned.publicKey !== undefined);
+    const pin = { hostId: host.host.hostId, publicKey: learned.publicKey };
     const pinned = kept(await connect({ url: BASE, credentials, fetch: host.fetch, expect: pin }));
 
     expect(pinned.hostId).toBe(host.host.hostId);
+    expect(pinned.publicKey).toBe(pin.publicKey);
 
     const other = await failure(() =>
-      connect({ url: BASE, credentials, fetch: host.fetch, expect: { hostId: asId("other") } }),
+      connect({
+        url: BASE,
+        credentials,
+        fetch: host.fetch,
+        expect: { ...pin, hostId: asId("other") },
+      }),
     );
 
     expect(other.code).toBe("stale");
     expect(other.hostId).toBe(host.host.hostId);
+
+    const rekeyed = await failure(() =>
+      connect({
+        url: BASE,
+        credentials,
+        fetch: host.fetch,
+        expect: { ...pin, publicKey: "A".repeat(43) },
+      }),
+    );
+
+    expect(rekeyed).toMatchObject({ code: "stale", hostId: host.host.hostId });
+    expect(rekeyed.message).toContain("pair again");
 
     host.intercept(async (request, next) => {
       const response = await next(request);
@@ -180,26 +201,23 @@ describe("connect", () => {
     expect(forged.code).toBe("stale");
   });
 
-  it("pins by the answering id when the host serves no identity challenge", async () => {
+  it("connects to a host that serves no identity challenge without a key, and refuses it with a pin", async () => {
     const host = await open();
     const credentials = { kind: "token", token: TOKEN_SECRET } as const;
+    const unpinned = kept(await connect({ url: BASE, credentials, fetch: host.fetch }));
 
-    const stale = await failure(() =>
-      connect({ url: BASE, credentials, fetch: host.fetch, expect: { hostId: asId("other") } }),
-    );
+    expect(unpinned.publicKey).toBeUndefined();
 
-    expect(stale).toMatchObject({ code: "stale", hostId: host.host.hostId });
-
-    const pinned = kept(
-      await connect({
+    const pinned = await failure(() =>
+      connect({
         url: BASE,
         credentials,
         fetch: host.fetch,
-        expect: { hostId: host.host.hostId },
+        expect: { hostId: host.host.hostId, publicKey: "A".repeat(43) },
       }),
     );
 
-    expect(pinned.hostId).toBe(host.host.hostId);
+    expect(pinned.code).toBe("stale");
   });
 
   it("names the operation each request posts", async () => {

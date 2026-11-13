@@ -175,13 +175,13 @@ What a new feature should not do: put a field on a row that changes at a differe
 - **A terminal at its prompt counts as running.** An outdated host with one open does not retire.
 - **`nyte host` runs on Bun and cannot open a pty.** Terminals open on the desktop app's host.
 - **The Durable Object runs the SQLite migration dialect.** Its table list is SQLite's, and a row is capped at 2 MB.
+- **Regenerating `identity.key` makes every pinned client pair again.** The host keeps its id, which lives in the store, but `expect` pins the key, so each client gets `stale` until it saves the new one.
 - **A send with `replace` and its own id leaves a second receipt** that points at the first and is never settled. It is not pending work.
 
 ## Known gaps
 
 These are real and not fixed. Each names what it would take.
 
-- **The identity check proves nothing against an impostor.** `expect: { hostId }` verifies a signature with the public key the same response carries, and a 404 skips the check (`sdk/src/connection/connect.ts`). Pinning needs the key in `expect`, which changes the API.
 - **A child's or a job's report is not durable.** It is a second write after the run ends, with a random receipt id and no recovery. A crash between the two loses it. It needs a deterministic id and a step in `recover`.
 - **A migration reads outside the transaction that commits it.** An older Nyte still writing to the same file during an upgrade can leave rows in the old shape. Holding the write lock for the whole migration fixes it and blocks every peer for its length.
 - **A migration loads the whole store into memory.**

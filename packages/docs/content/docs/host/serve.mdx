@@ -266,8 +266,12 @@ The [Vercel template](/docs/host/deploy#vercel) answers its cron route this way.
 
 A host from `sdk.open` answers `GET /.nyte/identity` with a signature from the key in
 `<home>/.nyte/identity.key`, and `GET /.nyte/describe` with its machine name, platform and Nyte
-version. Neither route needs a credential. A client that passes `expect: { hostId }` to
-`sdk.connect` checks the signature and throws `SdkError("stale")` when a different host answers.
+version. Neither route needs a credential. `sdk.connect` asks for that signature on every
+connection and returns the key it proved as `connection.publicKey`. A client that saves it beside
+`connection.hostId` and passes both as `expect` the next time throws `SdkError("stale")`, before it
+sends its credential, when another host answers, when the key differs, or when nothing answers the
+challenge. Replacing or deleting `identity.key` gives the host a new key, so every client that
+pinned the old one has to pair again.
 [Check which host answered](/docs/sdk/guides/choose-an-entry-point#check-which-host-answered) shows
 the client side.
 

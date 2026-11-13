@@ -186,7 +186,8 @@ export interface ImageProcessor {
 export interface ConnectOptions {
   readonly url: string;
   readonly credentials: CredentialSource;
-  readonly expect?: { readonly hostId: HostId };
+  /** The host this client trusted before: its id and the base64url raw Ed25519 public key it proved then (`Connection.publicKey`). The key is required because a pin that can be left out lets any server that signs with a key of its own pass. */
+  readonly expect?: { readonly hostId: HostId; readonly publicKey: string };
   readonly journal?: RequestJournal;
   readonly fetch?: (url: string, init?: RequestInit) => Promise<Response>;
 }
@@ -220,6 +221,8 @@ export interface PluginStorage {
 
 export interface Connection {
   readonly hostId: HostId;
+  /** The base64url raw Ed25519 public key the answering host proved by signing a fresh challenge while this connection was made; save it beside `hostId` to pass as `expect`. Absent when the host answers no identity challenge, and on an in-process connection, which has no answering host. */
+  readonly publicKey?: string;
   readonly principal: PrincipalId;
   readonly credential: CredentialSource;
   readonly sessions: Sessions;

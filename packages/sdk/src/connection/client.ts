@@ -24,6 +24,7 @@ import { workspaceHandle } from "./workspace.ts";
 
 type ClientContext = {
   readonly hostId: HostId;
+  readonly publicKey: string | undefined;
   readonly principal: PrincipalId;
   readonly credential: CredentialSource;
   readonly journal: RequestJournal;
@@ -62,6 +63,7 @@ export function createClient(transport: Transport, context: ClientContext): Conn
 
   const connection: Connection = {
     hostId: context.hostId,
+    publicKey: context.publicKey,
     principal: context.principal,
     credential: context.credential,
     sessions: {

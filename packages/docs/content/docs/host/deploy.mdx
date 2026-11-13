@@ -45,7 +45,7 @@ Both read the same secrets:
 | ------------------- | -------- | --------------------------------------------------------------------------------------------------------------- |
 | `NYTE_TOKEN`        | Yes      | The listener token, at least 16 characters. It grants `participant` and `owner`, so keep it off browsers        |
 | `NYTE_SECRET_KEY`   | No       | A base64 32-byte key that encrypts stored secrets. Without it, model logins fail with `SdkError("unavailable")` |
-| `NYTE_IDENTITY_KEY` | No       | A base64 32-byte Ed25519 seed. Without it, the host answers no identity challenge, so `expect` can't check it   |
+| `NYTE_IDENTITY_KEY` | No       | A base64 32-byte Ed25519 seed. Without it, the host answers no identity challenge, so clients can't pin it      |
 
 `openssl rand -base64 32` prints a value that fits either key.
 

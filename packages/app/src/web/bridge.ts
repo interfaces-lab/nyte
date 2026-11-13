@@ -1,4 +1,4 @@
-import type { Connection as SdkConnection, HostId } from "@nyte-ai/sdk";
+import type { Connection as SdkConnection } from "@nyte-ai/sdk";
 import type {
   HostEvent,
   NyteBridge,
@@ -21,12 +21,16 @@ export interface Connection {
 export interface ConnectOptions {
   readonly signal?: AbortSignal;
   readonly relay?: true;
-  readonly expect?: HostId;
+  readonly expect?: HostEndpoint["expect"];
 }
 
 export interface WebBridge {
   readonly bridge: NyteBridge;
-  connect(connection: Connection, options?: ConnectOptions): Promise<HostId>;
+  /** Connects and answers the host's id with the key it proved, which is absent for a host that answers no identity challenge. */
+  connect(
+    connection: Connection,
+    options?: ConnectOptions,
+  ): Promise<Pick<SdkConnection, "hostId" | "publicKey">>;
 }
 
 const DIRECT_MS = 4_000;
@@ -83,17 +87,17 @@ async function openEndpoint(
 async function openDirect(
   options: ConnectOptions | undefined,
 ): Promise<{ readonly endpoint: HostEndpoint; readonly opened: SdkConnection } | undefined> {
-  const hostId = options?.expect;
+  const pin = options?.expect;
 
-  if (hostId === undefined) return undefined;
-  const url = await directRoute(hostId);
+  if (pin === undefined) return undefined;
+  const url = await directRoute(pin.hostId);
 
   if (url === undefined) return undefined;
 
   const endpoint: HostEndpoint = {
     url,
     credentials: { kind: "custom", headers: () => ({}) },
-    expect: { hostId },
+    expect: pin,
   };
 
   const deadline = AbortSignal.timeout(DIRECT_MS);
@@ -104,7 +108,7 @@ async function openDirect(
   return openEndpoint(endpoint, signal).then(
     (opened) => ({ endpoint, opened }),
     () => {
-      if (options?.signal?.aborted !== true) holdRoute(hostId);
+      if (options?.signal?.aborted !== true) holdRoute(pin.hostId);
 
       return undefined;
     },
@@ -262,7 +266,7 @@ export function createWebBridge(): WebBridge {
       const chosen: HostEndpoint = {
         url,
         credentials: { kind: "token", token },
-        ...(options?.expect === undefined ? {} : { expect: { hostId: options.expect } }),
+        expect: options?.expect,
       };
 
       const direct = await openDirect(options);
@@ -276,7 +280,7 @@ export function createWebBridge(): WebBridge {
       selected = undefined;
       noteDirect(direct !== undefined);
 
-      return opened.hostId;
+      return opened;
     },
   };
 }
