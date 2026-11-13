@@ -110,17 +110,18 @@ export function storeConformance(name: string, open: () => Promise<Store>): void
       id: string,
       at: number,
       parent: string | null = null,
+      named: { readonly name?: string; readonly pinned?: boolean } = {},
     ) =>
       connection.objects.put(
         envelope(
           "session",
           {
             id,
-            name: null,
+            name: named.name ?? null,
             parent,
             origin: null,
             workspace: "w",
-            pinned: false,
+            pinned: named.pinned ?? false,
             archived: false,
             createdAt: 1,
             lastActivityAt: at,
@@ -246,6 +247,86 @@ export function storeConformance(name: string, open: () => Promise<Store>): void
       expect(
         await connection.sessions.changed({ since: 3, parents: { kind: "all" }, limit: 10 }),
       ).toEqual({ seq: 3, ids: ["c", "b", "a"], rows: [] });
+    });
+
+    it("selects pinned sessions and names that hold a query, ignoring case, and follows a pin, an unpin and a rename", async () => {
+      const connection = await connect();
+
+      await connection.refs.set([
+        {
+          name: "sessions/a",
+          target: await root(connection, "a", 10, null, { pinned: true, name: "Fix the 50% bug" }),
+        },
+        {
+          name: "sessions/b",
+          target: await root(connection, "b", 20, null, { name: "ÉCOLE notes" }),
+        },
+        {
+          name: "sessions/c",
+          target: await root(connection, "c", 30, "a", { pinned: true, name: "fix_it" }),
+        },
+        { name: "sessions/d", target: await root(connection, "d", 40) },
+      ]);
+
+      const cases = [
+        { filter: { parents: { kind: "roots" }, pinned: true }, ids: ["a"] },
+        { filter: { parents: { kind: "all" }, pinned: true }, ids: ["c", "a"] },
+        { filter: { parents: { kind: "roots" }, pinned: false }, ids: ["d", "b"] },
+        { filter: { parents: { kind: "all" }, query: "FIX" }, ids: ["c", "a"] },
+        { filter: { parents: { kind: "all" }, query: "FIX", limit: 1 }, ids: ["c"] },
+        { filter: { parents: { kind: "all" }, query: "50%" }, ids: ["a"] },
+        { filter: { parents: { kind: "all" }, query: "%" }, ids: ["a"] },
+        { filter: { parents: { kind: "all" }, query: "_" }, ids: ["c"] },
+        { filter: { parents: { kind: "all" }, query: "école" }, ids: ["b"] },
+        { filter: { parents: { kind: "all" }, query: "" }, ids: ["c", "b", "a"] },
+        { filter: { parents: { kind: "roots" }, pinned: true, query: "bug" }, ids: ["a"] },
+        { filter: { parents: { kind: "roots" }, pinned: true, query: "it" }, ids: [] },
+      ] as const;
+
+      for (const entry of cases)
+        expect(
+          (await connection.sessions.changed({ since: 0, limit: 10, ...entry.filter })).ids,
+          JSON.stringify(entry.filter),
+        ).toEqual(entry.ids);
+
+      await connection.refs.set([
+        { name: "sessions/a", target: await root(connection, "a", 10) },
+        {
+          name: "sessions/d",
+          target: await root(connection, "d", 40, null, { pinned: true, name: "Renamed" }),
+        },
+      ]);
+
+      expect(
+        (
+          await connection.sessions.changed({
+            since: 0,
+            parents: { kind: "roots" },
+            pinned: true,
+            limit: 10,
+          })
+        ).ids,
+      ).toEqual(["d"]);
+      expect(
+        (
+          await connection.sessions.changed({
+            since: 0,
+            parents: { kind: "all" },
+            query: "fix",
+            limit: 10,
+          })
+        ).ids,
+      ).toEqual(["c"]);
+      expect(
+        (
+          await connection.sessions.changed({
+            since: 0,
+            parents: { kind: "all" },
+            query: "RENAMED",
+            limit: 10,
+          })
+        ).ids,
+      ).toEqual(["d"]);
     });
 
     it("finds only outstanding work, including archived sessions, and removes settled receipts atomically", async () => {
@@ -750,7 +831,7 @@ export function storeMigrationConformance(
                 parent: row.parent,
                 origin: null,
                 workspace: "w",
-                pinned: false,
+                pinned: row.id === "newer",
                 archived: row.id === "older",
                 createdAt: 1,
                 lastActivityAt: row.lastActivityAt,
@@ -869,6 +950,26 @@ export function storeMigrationConformance(
           expect((await connection.sessions.work({ limit: 10 })).map((ref) => ref.name)).toEqual([
             "sessions/older",
           ]);
+          expect(
+            (
+              await connection.sessions.changed({
+                since: 0,
+                parents: { kind: "all" },
+                pinned: true,
+                limit: 10,
+              })
+            ).ids,
+          ).toEqual(["newer"]);
+          expect(
+            (
+              await connection.sessions.changed({
+                since: 0,
+                parents: { kind: "all" },
+                query: "OLD",
+                limit: 10,
+              })
+            ).ids,
+          ).toEqual(["older"]);
           expect(
             (await connection.sessions.pending({ kind: "receipt" })).map((ref) => ref.name),
           ).toEqual(["sessions/older/receipts/pending"]);

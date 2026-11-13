@@ -145,6 +145,7 @@ const unlisted: StoreSource<Unlisted> = {
         [
           ...(all ?? []),
           ...(sessionList("roots").value ?? []),
+          ...(sessionList("pinned").value ?? []),
           ...[...askedParents.keys()].flatMap((parent) => childList(parent).value ?? []),
         ].map((session) => session.id),
       );
@@ -176,6 +177,7 @@ const unlisted: StoreSource<Unlisted> = {
     const leave = [
       sessionList("all").subscribeByFrame(sync),
       sessionList("roots").subscribeByFrame(sync),
+      sessionList("pinned").subscribeByFrame(sync),
     ];
 
     sync();
@@ -243,6 +245,10 @@ const sources = {
     read: () => sessionList("roots").value,
     subscribe: (notice: () => void) => sessionList("roots").subscribeByFrame(notice),
   },
+  pinned: {
+    read: () => sessionList("pinned").value,
+    subscribe: (notice: () => void) => sessionList("pinned").subscribeByFrame(notice),
+  },
   recorded: {
     read: queryDataReader<readonly SessionInfo[]>(keys.firstFrameRoots),
     subscribe: (notice: () => void) =>
@@ -270,7 +276,7 @@ const NO_ROWS: SessionRows = {
 const store = derivedStore(
   sources,
   (read, previous: SessionRows): SessionRows => {
-    const roots = read.roots.read() ?? read.recorded.read();
+    const roots = withPinned(read.roots.read() ?? read.recorded.read(), read.pinned.read());
     const pending = read.pending.read();
 
     const merged = mergeSessionRows(
@@ -295,6 +301,18 @@ const store = derivedStore(
   },
   NO_ROWS,
 );
+
+/** The newest roots, then each pinned root they leave out, which is older than all of them, so a pinned chat stays listed however many chats came after it. */
+function withPinned(
+  roots: readonly SessionInfo[] | undefined,
+  pinned: readonly SessionInfo[] | undefined,
+): readonly SessionInfo[] | undefined {
+  if (roots === undefined || pinned === undefined) return roots;
+  const listed = new Set(roots.map((session) => session.id));
+  const older = pinned.filter((session) => !listed.has(session.id));
+
+  return older.length === 0 ? roots : [...roots, ...older];
+}
 
 export interface RowSources {
   readonly lists: readonly (readonly SessionInfo[] | undefined)[];

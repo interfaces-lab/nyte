@@ -172,8 +172,11 @@ export interface Sessions {
     readonly limit?: number;
   }): Promise<Paged<SessionInfo>>;
 
+  /** `pinned` keeps the sessions pinned (true) or not (false); `query` keeps those whose name holds it, ignoring case. */
   read(input?: {
     readonly parents?: ParentFilter;
+    readonly pinned?: boolean;
+    readonly query?: string;
     readonly limit?: number;
     readonly resume?: { readonly seq: number };
   }): Promise<SessionsRead>;

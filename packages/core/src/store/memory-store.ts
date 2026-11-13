@@ -54,7 +54,11 @@ export function memoryStore(): Store {
   };
 
   const listed = (
-    parents: ParentFilter,
+    filter: {
+      readonly parents: ParentFilter;
+      readonly pinned?: boolean;
+      readonly query?: string;
+    },
     after: { readonly at: number; readonly id: SessionId } | undefined,
     limit: number,
   ): readonly SessionIndexRow[] =>
@@ -62,8 +66,12 @@ export function memoryStore(): Store {
       .filter(
         (entry): entry is [string, Extract<SessionIndexEntry, { kind: "session" }>] =>
           entry[1].kind === "session" &&
-          (parents.kind === "all" ||
-            entry[1].parent === (parents.kind === "roots" ? null : parents.session)) &&
+          (filter.parents.kind === "all" ||
+            entry[1].parent ===
+              (filter.parents.kind === "roots" ? null : filter.parents.session)) &&
+          (filter.pinned === undefined || entry[1].pinned === filter.pinned) &&
+          (filter.query === undefined ||
+            (entry[1].name?.toLowerCase().includes(filter.query.toLowerCase()) ?? false)) &&
           (after === undefined ||
             entry[1].at < after.at ||
             (entry[1].at === after.at && byCodePoint(entry[1].session, after.id) > 0)),
@@ -117,15 +125,15 @@ export function memoryStore(): Store {
   const connection: StoreConnection = {
     sessions: {
       async list({ parents, after, limit }) {
-        return listed(parents, after, limit);
+        return listed({ parents }, after, limit);
       },
-      async changed({ since, parents, limit }) {
-        const rows = listed(parents, undefined, limit);
+      async changed(input) {
+        const rows = listed(input, undefined, input.limit);
 
         return {
           seq: hostSeq,
           ids: rows.map((row) => asId<"session">(row.ref.name.slice("sessions/".length))),
-          rows: rows.filter((row) => row.seq > since),
+          rows: rows.filter((row) => row.seq > input.since),
         };
       },
       async work({ after, limit }) {

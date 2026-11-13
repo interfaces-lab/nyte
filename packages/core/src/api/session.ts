@@ -247,6 +247,8 @@ async function listSessions(
 
 interface SessionsWindow {
   readonly parents?: ParentFilter;
+  readonly pinned?: boolean;
+  readonly query?: string;
   readonly limit?: number;
 }
 
@@ -258,6 +260,8 @@ export async function readSessions(
   const read = await kernel.store.sessions.changed({
     since: input?.resume?.seq ?? 0,
     parents: input?.parents ?? { kind: "all" },
+    pinned: input?.pinned,
+    query: input?.query,
     limit: Math.max(1, input?.limit ?? DEFAULT_LIMIT),
   });
 

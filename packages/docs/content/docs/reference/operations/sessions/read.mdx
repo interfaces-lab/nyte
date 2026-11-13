@@ -1,10 +1,10 @@
 ---
 title: sessions.read
-description: "Reads the host's sessions table: the ids a filter selects and every row changed since a seq."
+description: "Reads the host's sessions table: the ids a filter selects and every row changed since a seq. `pinned` keeps the sessions pinned (true) or not (false); `query` keeps those whose name holds it, ignoring case."
 ---
 
-Reads the host's sessions table at one seq of the host scope. `ids` are the sessions `parents` and
-`limit` select, newest activity first. `rows` holds each of them changed since `resume.seq`, or all
+Reads the host's sessions table at one seq of the host scope. `ids` are the sessions `parents`,
+`pinned`, `query` and `limit` select, newest activity first. `rows` holds each of them changed since `resume.seq`, or all
 of them without `resume`. `seq` is the host seq the answer is current through.
 
 ## When to call it
@@ -15,6 +15,13 @@ for the ids it already holds, replaces the ones in `rows`, drops the ones no lon
 reads [`session.info`](/docs/reference/operations/session/info) for an id it holds no row for. Pass
 `parents` to filter (`roots`, `children` of a session, or `all`), and `limit` for the window (50 by
 default).
+
+Pass `pinned: true` with a large `limit` for every pinned session however old, and `query` for the
+sessions whose name holds it, ignoring case; a session without a name never matches. The host
+answers both from its session index, so neither reads every session. The host pushes every changed
+row to every client on the host scope, so a client keeping such a window applies the same filter to
+what arrives: a session pinned, unpinned or renamed elsewhere joins or leaves it. A host before API
+revision 25 refuses both fields as unknown.
 
 ## Access
 
@@ -110,6 +117,12 @@ None of its own.
           }
         }
       ]
+    },
+    "pinned": {
+      "type": "boolean"
+    },
+    "query": {
+      "type": "string"
     },
     "limit": {
       "type": "number"

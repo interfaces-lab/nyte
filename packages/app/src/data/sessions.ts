@@ -1,27 +1,25 @@
 import { useMutation, useMutationState } from "@tanstack/react-query";
-import type { SessionId } from "@nyte-ai/sdk";
+import { useState } from "react";
+import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import type { ChatView } from "./chat-store.ts";
 import { projectSessionChoice, sessionConfigurationOptions } from "./session-configuration.ts";
 import type { PendingConfiguration } from "./session-configuration.ts";
-import { useRootRows } from "./session-rows.ts";
 import { chatStore } from "./chat-store.ts";
+import { sessionSearch } from "./directory.ts";
 import { useWatch, useWatchSelect } from "./watch-store.ts";
 import { subagentActivity } from "./session-activity.ts";
 
+/** Asks the host for the newest roots named like `search` on each change, and keeps the last answer on screen until the next one arrives, so typing never blanks the list. */
 export function useSessionSearch(search: string, enabled = true) {
-  const roots = useRootRows();
-  const needle = search.trim().toLocaleLowerCase();
+  const needle = search.trim();
+  const found = useWatch(enabled && needle !== "" ? sessionSearch(needle) : undefined).value;
+  const [shown, setShown] = useState<readonly SessionInfo[] | undefined>(found);
+
+  if (found !== undefined && found !== shown) setShown(found);
+  const items = enabled && needle !== "" ? (found ?? shown) : undefined;
 
   return {
-    data:
-      !enabled || needle === "" || roots === undefined
-        ? undefined
-        : {
-            items: roots.filter(
-              (session) =>
-                !session.archived && (session.name ?? "").toLocaleLowerCase().includes(needle),
-            ),
-          },
+    data: items === undefined ? undefined : { items: items.filter((session) => !session.archived) },
   };
 }
 

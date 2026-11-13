@@ -52,6 +52,8 @@ export type SessionIndexEntry =
       readonly session: SessionId;
       readonly parent: SessionId | null;
       readonly at: number;
+      readonly pinned: boolean;
+      readonly name: string | null;
     }
   | {
       readonly kind: "run" | "inbox" | "receipt" | "call";
@@ -75,6 +77,8 @@ export function projectSessionIndex(name: string, object: Json | null): SessionI
             session: ref.session,
             parent: record.parent,
             at: record.lastActivityAt,
+            pinned: record.pinned,
+            name: record.name,
           };
     }
     case "run":

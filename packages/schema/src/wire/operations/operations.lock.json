@@ -1,5 +1,5 @@
 {
-  "revision": 24,
+  "revision": 25,
   "operations": {
     "connection.watch": "17957128114e6a29",
     "connection.blob": "d661f9695af8afc2",
@@ -29,7 +29,7 @@
     "workspaces.cleanWorktrees": "87adb6ec8d5b3b13",
     "sessions.start": "e4d0dd6c9349a44b",
     "sessions.list": "880c8041a608d9d4",
-    "sessions.read": "948192556f92bf5c",
+    "sessions.read": "429315371749e962",
     "host.tailnet.status": "d8512fd7aefbd768",
     "host.tailnet.configure": "90695a6d242db10d",
     "host.tailnet.logout": "0041b560c3ca6a08",

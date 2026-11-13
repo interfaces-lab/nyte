@@ -40,8 +40,16 @@ export function sessionIndexChanges(
     return entry?.kind === "session"
       ? [
           {
-            text: "INSERT INTO session_index (name, session, parent, sort_at, version) VALUES (?, ?, ?, ?, ?) ON CONFLICT (name) DO UPDATE SET session = excluded.session, parent = excluded.parent, sort_at = excluded.sort_at, version = excluded.version",
-            values: [name, entry.session, entry.parent, -entry.at, revision],
+            text: "INSERT INTO session_index (name, session, parent, sort_at, version, pinned, name_folded) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (name) DO UPDATE SET session = excluded.session, parent = excluded.parent, sort_at = excluded.sort_at, version = excluded.version, pinned = excluded.pinned, name_folded = excluded.name_folded",
+            values: [
+              name,
+              entry.session,
+              entry.parent,
+              -entry.at,
+              revision,
+              entry.pinned ? 1 : 0,
+              entry.name?.toLowerCase() ?? null,
+            ],
           },
         ]
       : [{ text: "DELETE FROM session_index WHERE name = ?", values: [name] }];
@@ -62,7 +70,7 @@ export function sqlSessionIndex(
 ): SessionIndex {
   return {
     async list({ parents, after, limit }) {
-      const filter = selection(parents, after);
+      const filter = selection({ parents }, after);
 
       return (
         await read(
@@ -71,8 +79,8 @@ export function sqlSessionIndex(
         )
       ).map(indexRow);
     },
-    async changed({ since, parents, limit }) {
-      const filter = selection(parents, undefined);
+    async changed({ since, parents, pinned, query, limit }) {
+      const filter = selection({ parents, pinned, query }, undefined);
 
       const rows = await read(
         `SELECT m.seq AS host_seq, x.session, x.name, x.target, x.revision, x.version, x.seq FROM host_seq m LEFT JOIN (SELECT s.session, s.sort_at, r.name, r.target, r.revision, s.version, s.seq FROM session_index s JOIN refs r ON r.name = s.name${filter.where} ORDER BY s.sort_at, s.session LIMIT ?) x ON 1 = 1 WHERE m.id = 1 ORDER BY x.sort_at, x.session`,
@@ -175,17 +183,33 @@ export function stampedSessions(stamped: Rows, removed: Rows): readonly SessionI
   ].toSorted();
 }
 
+/** `query` matches as a substring of the folded name: it is folded the same way and its LIKE wildcards are escaped. */
 function selection(
-  parents: ParentFilter,
+  filter: {
+    readonly parents: ParentFilter;
+    readonly pinned?: boolean;
+    readonly query?: string;
+  },
   after: { readonly at: number; readonly id: SessionId } | undefined,
 ): { readonly where: string; readonly values: readonly Binding[] } {
   const conditions: string[] = [];
   const values: Binding[] = [];
+  const parents = filter.parents;
 
   if (parents.kind === "roots") conditions.push("s.parent IS NULL");
   if (parents.kind === "children") {
     conditions.push("s.parent = ?");
     values.push(parents.session);
+  }
+
+  if (filter.pinned !== undefined) {
+    conditions.push("s.pinned = ?");
+    values.push(filter.pinned ? 1 : 0);
+  }
+
+  if (filter.query !== undefined) {
+    conditions.push("s.name_folded LIKE ? ESCAPE '\\'");
+    values.push(`%${filter.query.toLowerCase().replaceAll(/[\\%_]/g, "\\$&")}%`);
   }
   if (after !== undefined) {
     conditions.push("(s.sort_at, s.session) > (?, ?)");

@@ -15,6 +15,7 @@ import { keys, queryClient } from "../data/query-client.ts";
 import { newestModelCatalog } from "../data/catalog.ts";
 import { chatStore } from "../data/chat-store.ts";
 import { sessionList } from "../data/directory.ts";
+import { sessionRows } from "../data/session-rows.ts";
 import { hostWatch } from "../data/watches.ts";
 import { sessionId } from "../data/schemas.ts";
 import { startupConnection } from "../data/startup.ts";
@@ -119,7 +120,7 @@ function windowFolder(): FirstFrame["folder"] {
 function write(): void {
   const catalog = newestModelCatalog();
   const workspaces = queryClient.getQueryData<readonly WorkspaceInfo[]>(keys.workspaces);
-  const directory = sessionList("roots").value;
+  const directory = sessionRows().roots;
   const host = hostWatch("host").value;
 
   if (recording === undefined || catalog === undefined) return;

@@ -226,7 +226,8 @@ These are real and not fixed. Each names what it would take.
 - **A migration reads outside the transaction that commits it.** An older Nyte still writing to the same file during an upgrade can leave rows in the old shape. Holding the write lock for the whole migration fixes it and blocks every peer for its length.
 - **A migration loads the whole store into memory.**
 - **Pointer receipts written before the index stopped counting them stay in `pending_work`** until a migration rebuilds the index. They cost a sweep visit each, as before.
-- **The sidebar's pinned list and search cover the 50 most recent chats.** `sessions.read` defaults to 50 and the app never pages or filters.
+- **Search walks the session index when a name is rare.** `sessions.read` with `query` matches a lower-cased name column in activity order until `limit` match, about half a millisecond at 5,000 chats. Pinned chats read from their own index whatever the count. A trigram index would make search independent of the count.
+- **A client newer than its host gets `invalid` for a filter the host does not know.** A phone at revision 25 against a Mac at 24 shows no search results and no older pinned chats until the Mac updates.
 - **A client cannot tell which session a text frame belongs to.** Every open chat store takes every part streaming on the socket into its text map. A frame for a part its view doesn't hold notifies no one, but its entry stays until the store closes. A session on the frame would let the store drop it.
 - **Desktop main keeps two host-view streams**, one in `HostLink` and one in `DesktopHost`, each with its own retry loop.
 - **Two desktop builds on one home can retire each other's host.** The dev, production and bench builds share `~/.nyte`, and each files a retire request when the serving host's version or operations differ from its own.

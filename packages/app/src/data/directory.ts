@@ -2,14 +2,26 @@ import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import type { HostConnection, SessionsWindow } from "@nyte-ai/sdk/client";
 import { liveFamily, liveValues } from "./watch-store.ts";
 
+/** `pinned` is every pinned root however old, which the sidebar lays over the newest roots; `roots` and `all` are the newest of each. */
 export const sessionList = liveFamily(
-  (live, parents: "roots" | "all"): AsyncIterable<readonly SessionInfo[]> =>
-    directoryRows(live, { parents: { kind: parents } }),
+  (live, list: "roots" | "all" | "pinned"): AsyncIterable<readonly SessionInfo[]> =>
+    directoryRows(
+      live,
+      list === "pinned"
+        ? { parents: { kind: "roots" }, pinned: true, limit: Number.MAX_SAFE_INTEGER }
+        : { parents: { kind: list } },
+    ),
 );
 
 export const childList = liveFamily(
   (live, parent: SessionId): AsyncIterable<readonly SessionInfo[]> =>
     directoryRows(live, { parents: { kind: "children", session: parent } }),
+);
+
+/** The newest roots whose name holds `query`, ignoring case, answered by the host from its index whatever the number of chats. */
+export const sessionSearch = liveFamily(
+  (live, query: string): AsyncIterable<readonly SessionInfo[]> =>
+    directoryRows(live, { parents: { kind: "roots" }, query }),
 );
 
 function directoryRows(

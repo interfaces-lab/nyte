@@ -12,8 +12,11 @@ export interface DirectorySnapshot {
   readonly rows: ReadonlyMap<SessionId, SessionInfo>;
 }
 
+/** What a `sessions.read` selected, which the store applies to every row the host pushes after it, so a row that leaves the window, like an unpinned chat in a pinned window, drops out. */
 export interface DirectoryWindow {
   readonly parents?: ParentFilter;
+  readonly pinned?: boolean;
+  readonly query?: string;
   readonly limit?: number;
 }
 
@@ -29,6 +32,8 @@ export function openDirectoryStore(
   window: DirectoryWindow = {},
 ): DirectoryStore {
   const parents = window.parents ?? { kind: "all" };
+  const pinned = window.pinned;
+  const query = window.query?.toLowerCase();
   const limit = Math.max(1, window.limit ?? SESSIONS_LIMIT);
   const rows = new Map<SessionId, SessionInfo>();
   let ids: readonly SessionId[] = [];
@@ -46,8 +51,10 @@ export function openDirectoryStore(
 
   const keep = (row: SessionInfo): void => {
     if (
-      parents.kind === "all" ||
-      row.parent === (parents.kind === "roots" ? null : parents.session)
+      (parents.kind === "all" ||
+        row.parent === (parents.kind === "roots" ? null : parents.session)) &&
+      (pinned === undefined || row.pinned === pinned) &&
+      (query === undefined || (row.name?.toLowerCase().includes(query) ?? false))
     )
       rows.set(row.id, row);
     else rows.delete(row.id);

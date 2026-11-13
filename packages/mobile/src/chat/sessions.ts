@@ -87,18 +87,33 @@ export function markTone(mark: TaskState, theme: Theme) {
   }
 }
 
+/** Lists the newest roots a page at a time, with every pinned root after them however old; a search asks the host for the roots whose name holds it and keeps the last answer on screen until the next one arrives. */
 export function useSessionList(live: LiveHost, search = "") {
   const [limit, setLimit] = useState(PAGE);
-  const listed = useSessions(live, { parents: { kind: "roots" }, limit });
+  const needle = search.trim();
+
+  const listed = useSessions(
+    live,
+    needle === ""
+      ? { parents: { kind: "roots" }, limit }
+      : { parents: { kind: "roots" }, query: needle, limit },
+  );
+
+  const pinned = useSessions(live, {
+    parents: { kind: "roots" },
+    pinned: true,
+    limit: Number.MAX_SAFE_INTEGER,
+  })?.sessions;
+
   const { newerHost } = useHost();
   const health = healthMessage(useHealth(live));
   const failure = listed?.freshness.kind === "stale" ? listed.freshness.error : null;
-  const needle = search.trim().toLocaleLowerCase();
   const current = listed?.sessions;
   const [seen, setSeen] = useState(current);
 
   if (current !== undefined && current !== seen) setSeen(current);
   const rows = current ?? seen;
+  const shown = new Set(rows?.map((session) => session.id));
 
   const list: SessionListState =
     rows !== undefined
@@ -106,8 +121,8 @@ export function useSessionList(live: LiveHost, search = "") {
           kind: "ready",
           sessions:
             needle === ""
-              ? rows
-              : rows.filter((session) => (session.name ?? "").toLocaleLowerCase().includes(needle)),
+              ? [...rows, ...(pinned ?? []).filter((session) => !shown.has(session.id))]
+              : rows,
           next: rows.length >= limit ? limit + PAGE : undefined,
         }
       : health !== undefined

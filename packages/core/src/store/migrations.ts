@@ -27,7 +27,12 @@ import {
   trustTarget,
 } from "./refs.ts";
 import { headBackground } from "./head-background-migration.ts";
-import { orderedSessionIndex, sessionIndex, sessionSeqs } from "./session-index-steps.ts";
+import {
+  orderedSessionIndex,
+  sessionIndex,
+  sessionIndexFilters,
+  sessionSeqs,
+} from "./session-index-steps.ts";
 import { waitIndex, wokenIndex } from "./wait-index.ts";
 import { projectCoordinators } from "./project-migration.ts";
 
@@ -757,6 +762,7 @@ const STORE_STEPS: readonly StoreStep[] = [
   sessionSeqs,
   sessionCatalogs,
   projectCoordinators,
+  sessionIndexFilters,
 ];
 
 export const STORE_VERSION: number = STORE_STEPS.length;
@@ -815,7 +821,10 @@ export async function migrateStore(target: MigrationTarget): Promise<void> {
       repoints: moved,
       creates: [...created, ...recovered],
       relogs: relogged,
-      reindexSessions: steps.includes(sessionIndex) || steps.includes(orderedSessionIndex),
+      reindexSessions:
+        steps.includes(sessionIndex) ||
+        steps.includes(orderedSessionIndex) ||
+        steps.includes(sessionIndexFilters),
       indexed: steps.flatMap((step) =>
         step.kind === "schema" ? (step.indexed?.[target.dialect] ?? []) : [],
       ),

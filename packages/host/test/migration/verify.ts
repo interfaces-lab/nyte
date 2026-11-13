@@ -431,12 +431,20 @@ export async function verifyMigration(
       if (entry === null) continue;
 
       if (entry.kind === "session")
-        indexed.set(name, { session: entry.session, parent: entry.parent, sortAt: -entry.at });
+        indexed.set(name, {
+          session: entry.session,
+          parent: entry.parent,
+          sortAt: -entry.at,
+          pinned: entry.pinned ? 1 : 0,
+          nameFolded: entry.name?.toLowerCase() ?? null,
+        });
       else pending.set(name, entry.kind);
     }
 
     const indexRows = database
-      .prepare("SELECT name, session, parent, sort_at, version FROM main.session_index")
+      .prepare(
+        "SELECT name, session, parent, sort_at, version, pinned, name_folded FROM main.session_index",
+      )
       .all();
 
     const pendingRows = database.prepare("SELECT name, kind FROM main.pending_work").all();
@@ -447,6 +455,8 @@ export async function verifyMigration(
           session: row.session,
           parent: row.parent,
           sortAt: row.sort_at,
+          pinned: row.pinned,
+          nameFolded: row.name_folded,
         }) ||
         text(row.version) === ""
       )

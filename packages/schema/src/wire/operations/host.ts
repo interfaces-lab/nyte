@@ -340,10 +340,12 @@ export const HOST_OPERATIONS = {
   "sessions.read": {
     ...PARTICIPANT,
     summary:
-      "Reads the host's sessions table: the ids a filter selects and every row changed since a seq.",
+      "Reads the host's sessions table: the ids a filter selects and every row changed since a seq. `pinned` keeps the sessions pinned (true) or not (false); `query` keeps those whose name holds it, ignoring case.",
     kind: "query",
     input: wireObject({
       parents: Type.Optional(ParentFilterType),
+      pinned: Type.Optional(Type.Boolean()),
+      query: Type.Optional(Type.String()),
       limit: Type.Optional(Type.Number()),
       resume: Type.Optional(Type.Object({ seq: Type.Number() })),
     }),
