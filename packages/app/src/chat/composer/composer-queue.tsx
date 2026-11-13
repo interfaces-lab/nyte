@@ -3,7 +3,7 @@ import { props } from "@stylexjs/stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { useRef, useState } from "react";
 import type { KeyboardEvent, ReactElement } from "react";
-import type { UserContent } from "@nyte-ai/sdk";
+import type { MessageId, UserContent } from "@nyte-ai/sdk";
 import { Button } from "@nyte-ai/ui/button";
 import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { trayStyles } from "../../theme/tray.stylex.ts";
@@ -20,6 +20,7 @@ export type PendingRowAction =
 interface ComposerQueueProps {
   readonly pending: readonly UserMessage[];
   readonly unsent: readonly UserMessage[];
+  readonly expired: readonly MessageId[];
   readonly rowActions: ReadonlyMap<string, PendingRowAction>;
   readonly editingId: string | undefined;
   readonly canEdit: boolean;
@@ -30,6 +31,7 @@ interface ComposerQueueProps {
   readonly onSteer: (message: UserMessage) => void;
   readonly onCancel: (message: UserMessage) => void;
   readonly onRemoveUnsent: (message: UserMessage) => void;
+  readonly onResend: (message: UserMessage) => void;
   readonly onEditBlocked: (reason: string) => void;
   readonly onReturn: () => void;
 }
@@ -58,6 +60,7 @@ function QueuedMessageContent({ content }: { readonly content: UserContent }): R
 export function ComposerQueue({
   pending,
   unsent,
+  expired,
   rowActions,
   editingId,
   canEdit,
@@ -68,6 +71,7 @@ export function ComposerQueue({
   onSteer,
   onCancel,
   onRemoveUnsent,
+  onResend,
   onEditBlocked,
   onReturn,
 }: ComposerQueueProps): ReactElement | null {
@@ -134,7 +138,16 @@ export function ComposerQueue({
       return;
     }
 
-    if (unsentRow || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+    if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+
+    if (unsentRow) {
+      if (event.key !== "Enter" || !expired.includes(item.id)) return;
+      event.preventDefault();
+      onReturn();
+      onResend(item);
+
+      return;
+    }
 
     if (event.key === "Enter") {
       event.preventDefault();
@@ -241,6 +254,12 @@ export function ComposerQueue({
         })}
         {unsent.map((row) => {
           const retrying = row.status.kind === "unsent" ? row.status.retrying : null;
+          const stopped = expired.includes(row.id);
+
+          const reason =
+            retrying === null || /[.!?]$/u.test(retrying.reason)
+              ? (retrying?.reason ?? "")
+              : `${retrying.reason}.`;
 
           return (
             <div
@@ -248,8 +267,8 @@ export function ComposerQueue({
               key={row.id}
               data-queue-row={row.id}
               tabIndex={focusKey === row.id ? 0 : -1}
-              aria-keyshortcuts={`ArrowUp ArrowDown Escape ${deleteKey}`}
-              aria-description={unsentDescription}
+              aria-keyshortcuts={`ArrowUp ArrowDown ${stopped ? "Enter " : ""}Escape ${deleteKey}`}
+              aria-description={stopped ? `Enter sends. ${unsentDescription}` : unsentDescription}
               onFocus={() => setActive(row.id)}
               onKeyDown={(event) => keyDown(event, row, true)}
               data-error={retrying !== null}
@@ -269,11 +288,22 @@ export function ComposerQueue({
                       composerStyles.queuedError,
                     )}
                   >
-                    Couldn't send: {retrying.reason}. Retrying…
+                    {stopped ? `Couldn't send: ${reason}` : `Couldn't send: ${reason} Retrying…`}
                   </span>
                 )}
               </div>
               <div {...props(composerStyles.queueActions)}>
+                {stopped && (
+                  <Button
+                    iconOnly
+                    icon="arrow-up"
+                    aria-label="Send queued message"
+                    onClick={(event) => {
+                      release(event.currentTarget);
+                      onResend(row);
+                    }}
+                  />
+                )}
                 <Button
                   iconOnly
                   icon="trash"

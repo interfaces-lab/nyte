@@ -4,6 +4,7 @@ import type {
   ConfigurationPatch,
   Connection,
   Delivery,
+  ReceiptId,
   ReviseOptions,
   ReviseOutcome,
   Session,
@@ -109,8 +110,8 @@ export function composerSendPlan(input: {
 export async function sendComposerMessage(
   session: Session,
   plan: Extract<ComposerSendPlan, { kind: "message" }>,
+  id: ReceiptId = asId<"receipt">(crypto.randomUUID()),
 ): Promise<void> {
-  const id = asId<"receipt">(crypto.randomUUID());
   followTrace(session.id, id);
 
   await traced("composer.submit", id, { session: session.id }, async () => {
@@ -165,6 +166,8 @@ interface ComposerDelivery {
   readonly submission: ComposerSubmission;
   readonly attachments: readonly { readonly content: ImageContent }[];
   readonly delivery: Delivery;
+  /** The receipt a message is sent under, which is also the id of its unsent row. */
+  readonly receipt: ReceiptId;
   readonly onLeave: () => void;
 }
 
@@ -226,7 +229,7 @@ export async function deliverSubmission(input: ComposerDelivery): Promise<Delive
   }
 
   try {
-    await sendComposerMessage(session, plan);
+    await sendComposerMessage(session, plan, input.receipt);
 
     return { kind: "sent", note: undefined };
   } catch (cause: unknown) {

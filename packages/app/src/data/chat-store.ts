@@ -1,7 +1,7 @@
 import { asId } from "@nyte-ai/schema";
 import type { PartId, PartView } from "@nyte-ai/schema";
 import { pagedViews, tracePaints } from "@nyte-ai/sdk";
-import type { PagedViews, SessionId } from "@nyte-ai/sdk";
+import type { MessageId, PagedViews, SessionId } from "@nyte-ai/sdk";
 import { unsentSends } from "@nyte-ai/sdk/client";
 import type { ChatSnapshot, Freshness, HeadView, HostConnection } from "@nyte-ai/sdk/client";
 import { countWork } from "../lib/work-counts.ts";
@@ -15,9 +15,15 @@ export interface ChatView extends HeadView {
   readonly seq: number;
   readonly freshness: Freshness;
   readonly activity: SessionActivity;
+  /** The unsent messages the journal no longer sends on its own, the same array until it changes. */
+  readonly expired: readonly MessageId[];
 }
 
-type LaidView = HeadView & { readonly seq: number; readonly freshness: Freshness };
+type LaidView = HeadView & {
+  readonly seq: number;
+  readonly freshness: Freshness;
+  readonly expired: readonly MessageId[];
+};
 
 const MAIN = asId<"head">("main");
 
@@ -85,12 +91,10 @@ export const chatStore = liveFamily((live, session: SessionId): AsyncIterable<Ch
 
 function laidViews(live: HostConnection, session: SessionId, tail: number) {
   return liveValues<LaidView>((changed) => {
-    const chat = live.chat(session, MAIN, {
-      tail,
-      unsent: unsentSends(connection(), session, MAIN),
-    });
-
+    const unsent = unsentSends(connection(), session, MAIN);
+    const chat = live.chat(session, MAIN, { tail, unsent });
     let shown: { readonly snapshot: ChatSnapshot; readonly view: LaidView } | null = null;
+    let expired: readonly MessageId[] = [];
 
     return {
       read() {
@@ -103,8 +107,13 @@ function laidViews(live: HostConnection, session: SessionId, tail: number) {
           return null;
         }
 
-        if (shown?.snapshot !== snapshot)
-          shown = { snapshot, view: { ...snapshot.view, seq: snapshot.seq, freshness } };
+        if (shown?.snapshot !== snapshot) {
+          const ids = unsent.expired();
+
+          if (ids.length !== expired.length || ids.some((id, index) => id !== expired[index]))
+            expired = ids;
+          shown = { snapshot, view: { ...snapshot.view, seq: snapshot.seq, freshness, expired } };
+        }
 
         return shown.view;
       },
@@ -196,6 +205,11 @@ export function warmSession(session: SessionId): void {
   hotSet.set(session, release);
 
   if (hotSet.size > WARM_SESSIONS) hotSet.values().next().value?.();
+}
+
+/** Sends an unsent message the journal stopped sending after a day again, as if just sent. */
+export function resendMessage(session: SessionId, message: MessageId): Promise<void> {
+  return unsentSends(connection(), session, MAIN).resend(message);
 }
 
 export async function loadEarlierMessages(session: SessionId, limit: number): Promise<number> {

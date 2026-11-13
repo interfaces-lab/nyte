@@ -3,7 +3,8 @@ import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 import { createPortal, flushSync } from "react-dom";
 import type { ReactElement, ReactNode } from "react";
-import type { Delivery, HeldMessage, MessageId, SessionId } from "@nyte-ai/sdk";
+import type { Delivery, HeldMessage, MessageId, RunId, SessionId } from "@nyte-ai/sdk";
+import type { Health } from "@nyte-ai/sdk/client";
 import { asId } from "@nyte-ai/schema";
 import { PLANNING_LABEL, runMark, taskLabel } from "@nyte-ai/plugin/client/presentation";
 import type { RunStatus, UserMessage } from "@nyte-ai/plugin/client/presentation";
@@ -17,7 +18,7 @@ import { SIDECHAT_COMMAND, usePluginCatalog } from "../../data/plugins.ts";
 import { sessionActions } from "../../data/session-rows.ts";
 import { useSessionActivity, useSessionChoice } from "../../data/sessions.ts";
 import { connection } from "../../data/connection.ts";
-import { chatStore } from "../../data/chat-store.ts";
+import { chatStore, resendMessage } from "../../data/chat-store.ts";
 import { useWatchSelect } from "../../data/watch-store.ts";
 import { nyte } from "../../contract/nyte.ts";
 import { DEFAULT_COMPOSER_VIEW_STATE } from "../../panes/session-view-state.ts";
@@ -99,11 +100,23 @@ interface EditHold {
   held: HeldMessage | undefined;
 }
 
+/**
+ * A Stop this composer sent and the host has not answered by showing the run stopping or ending
+ * it. It shows as stopping while the run and the link's health are the ones it was sent under, so
+ * a Stop sent into a link that is then found lost, or that fails, can be pressed again. Only the
+ * latest Stop reports a failure: an earlier one sent into a dead link can fail after the run ended.
+ */
+interface StopAsk {
+  readonly run: RunId;
+  readonly health: Health | undefined;
+}
+
 export function Composer({
   sessionId,
   status,
   pending,
   unsent,
+  expired,
   initialViewState = DEFAULT_COMPOSER_VIEW_STATE,
   onViewStateChange,
   inputRef,
@@ -118,6 +131,7 @@ export function Composer({
   status: RunStatus;
   pending: readonly UserMessage[];
   unsent: readonly UserMessage[];
+  expired: readonly MessageId[];
   initialViewState?: ComposerViewState;
   onViewStateChange?: (state: ComposerViewState) => void;
   inputRef?: (element: ComposerEditorHandle | null) => void;
@@ -149,13 +163,18 @@ export function Composer({
   const [feedback, setFeedback] = useState<ComposerFeedback>();
   const [rowActions, setRowActions] = useState<ReadonlyMap<string, PendingRowAction>>(new Map());
   const liveRun = "run" in status ? status.run : undefined;
-  const stopping = status.kind === "working" && status.stopping;
   const [target, setTarget] = useState<ComposerTarget>({ kind: "new" });
   const [savingEdit, setSavingEdit] = useState(false);
   const folder = useChatFolder();
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const mac = nyte.platform === "darwin";
   const health = useHostHealth();
+  const [stopAsked, setStopAsked] = useState<StopAsk>();
+  const latestStop = useRef<StopAsk>(undefined);
+
+  const stopping =
+    (status.kind === "working" && status.stopping) ||
+    (stopAsked !== undefined && stopAsked.run === liveRun && stopAsked.health === health);
 
   const staleSince = useWatchSelect(chatStore(sessionId), (state) =>
     state.value?.freshness.kind === "stale" ? state.value.freshness.since : undefined,
@@ -299,6 +318,7 @@ export function Composer({
 
   const editHold = useRef<EditHold | undefined>(undefined);
   const shown = useRef(false);
+  const removedSends = useRef(new Set<string>());
 
   const takeHold = (): HeldMessage | undefined => {
     const held = editHold.current?.held;
@@ -456,12 +476,14 @@ export function Composer({
     pendingRecall.current = undefined;
     const sentAttachments = attachments;
     const submittingTab = windowTabs.paneTabId();
+    const receipt = asId<"receipt">(crypto.randomUUID());
 
     const outcome = await deliverSubmission({
       sessionId: steer?.session ?? sessionId,
       submission,
       attachments: sentAttachments,
       delivery,
+      receipt,
       onLeave: () => {
         windowTabs.dispatch({ kind: "keep-tab", tabId: submittingTab });
         recalled.current = undefined;
@@ -487,6 +509,7 @@ export function Composer({
 
         return;
       case "refused":
+        if (removedSends.current.delete(receipt)) return;
         refuse(outcome.message, { document, attachments: sentAttachments });
 
         return;
@@ -568,16 +591,21 @@ export function Composer({
 
   const abort = (): void => {
     if (liveRun === undefined || stopping) return;
+    const asked: StopAsk = { run: liveRun, health };
+    latestStop.current = asked;
+    setStopAsked(asked);
     connection()
       .session(sessionId)
       .run(liveRun)
       .stop()
-      .catch((cause: unknown) =>
+      .catch((cause: unknown) => {
+        if (latestStop.current !== asked) return;
+        setStopAsked(undefined);
         setFeedback({
           kind: "error",
           message: `Couldn't stop the response: ${errorMessage(cause)}`,
-        }),
-      );
+        });
+      });
   };
 
   const cancelPending = (item: UserMessage): void => {
@@ -667,6 +695,7 @@ export function Composer({
   };
 
   const removeOutboxRow = (row: UserMessage): void => {
+    removedSends.current.add(row.id);
     messageReceipt(sessionId, row)
       .stop()
       .catch((cause: unknown) => {
@@ -675,6 +704,15 @@ export function Composer({
           message: `Couldn't remove the message: ${errorMessage(cause)}`,
         });
       });
+  };
+
+  const resendOutboxRow = (row: UserMessage): void => {
+    resendMessage(sessionId, row.id).catch((cause: unknown) => {
+      setFeedback({
+        kind: "error",
+        message: `Couldn't send the message: ${errorMessage(cause)}`,
+      });
+    });
   };
 
   const returnToEditor = (): void => editorRef.current?.focus({ preventScroll: true });
@@ -747,6 +785,7 @@ export function Composer({
               <ComposerQueue
                 pending={pending}
                 unsent={unsent}
+                expired={expired}
                 rowActions={rowActions}
                 editingId={target.kind === "queued" ? target.message.id : undefined}
                 canEdit={canBeginEdit}
@@ -757,6 +796,7 @@ export function Composer({
                 onSteer={steerPending}
                 onCancel={cancelPending}
                 onRemoveUnsent={removeOutboxRow}
+                onResend={resendOutboxRow}
                 onEditBlocked={(message) => setFeedback({ kind: "status", message })}
                 onReturn={returnToEditor}
               />

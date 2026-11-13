@@ -6,6 +6,7 @@ import type {
   ChatStore,
   HeadSnapshot,
   HeadStore,
+  Health,
   HostConnection,
   PartSnapshot,
   PartStore,
@@ -24,6 +25,7 @@ export interface LiveScript {
   readonly views: (session: SessionId) => LiveSource<SessionView> | undefined;
   readonly sessions: LiveSource<readonly SessionInfo[]>;
   readonly children: (parent: SessionId) => readonly SessionInfo[];
+  readonly health?: LiveSource<Health>;
 }
 
 const OPEN = { kind: "open", since: 0 } as const;
@@ -36,7 +38,10 @@ export function scriptedLive(script: LiveScript): HostConnection {
   return {
     address: "http://scripted.test",
     hostId: asId<"host">("scripted"),
-    health: { subscribe: () => () => undefined, snapshot: () => OPEN },
+    health: {
+      subscribe: (listener) => script.health?.subscribe(listener) ?? (() => undefined),
+      snapshot: () => script.health?.latest() ?? OPEN,
+    },
     retry: () => undefined,
     release: () => undefined,
     call: refuse,

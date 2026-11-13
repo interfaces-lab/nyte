@@ -18,7 +18,7 @@ import type {
   WorkspaceInfo,
 } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
-import type { HostConnection } from "@nyte-ai/sdk/client";
+import type { Health, HostConnection } from "@nyte-ai/sdk/client";
 import { constant, scriptedLive } from "./scripted-live.ts";
 import { installConnection } from "../src/data/connection.ts";
 
@@ -29,6 +29,7 @@ export interface ConnectionScript {
   readonly workspaces?: readonly WorkspaceInfo[];
   readonly session?: (id: SessionId) => Partial<Session>;
   readonly host?: ViewStream<HostView>;
+  readonly health?: ViewStream<Health>;
   readonly models?: Partial<ModelsApi>;
   readonly github?: Partial<GitHubAccountApi>;
   readonly git?: Partial<GitApi>;
@@ -304,6 +305,7 @@ export function scriptedConnection(script: ConnectionScript = {}): {
     },
     sessions: "watch" in listed ? listed : constant(rows),
     children: (parent) => script.children?.get(parent) ?? [],
+    health: script.health,
   });
 
   return { connection, live, sent };

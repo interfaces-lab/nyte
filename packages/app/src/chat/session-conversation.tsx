@@ -58,6 +58,8 @@ const CLOSED_TRAY: TrayView = { kind: "closed" };
 
 const NONE_CLEARED: ReadonlySet<string> = new Set();
 
+const NONE_EXPIRED: ChatView["expired"] = [];
+
 const HISTORY_PAGE = 200;
 
 type SessionDeletionState =
@@ -345,6 +347,7 @@ function ConversationScreen(conversation: SessionConversationProps): ReactElemen
   const status = runStatus(useWatchSelect(store, (state) => state.value?.execution));
   const activation = useWatchSelect(store, (state) => state.value?.activation);
   const messages = useWatchSelect(store, projector.messages);
+  const expired = useWatchSelect(store, (state) => state.value?.expired ?? NONE_EXPIRED);
   const choice = useSessionChoice(sessionId);
 
   const viewStore = usePaneViewStateStore();
@@ -532,6 +535,7 @@ function ConversationScreen(conversation: SessionConversationProps): ReactElemen
                     status={status}
                     pending={messages.queued}
                     unsent={messages.unsent}
+                    expired={expired}
                     fileDropRoot={column}
                     initialViewState={viewStore.readSession(sessionId).composer}
                     onViewStateChange={(composer) =>
@@ -562,6 +566,7 @@ function ConversationScreen(conversation: SessionConversationProps): ReactElemen
                 status={status}
                 pending={messages.queued}
                 unsent={messages.unsent}
+                expired={expired}
                 fileDropRoot={column}
                 initialViewState={viewStore.readSession(sessionId).composer}
                 onViewStateChange={(composer) =>
