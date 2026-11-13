@@ -11,7 +11,7 @@ import type { Kernel } from "../contract/kernel.ts";
 import type { Setting, SettingDefinition } from "../contract/plugin.ts";
 import { collectContributions } from "../engine/contributions.ts";
 import { WORKSPACE_TRUST } from "../env/trust.ts";
-import { dropScans, trustChanged } from "../env/workspaces.ts";
+import { dropScans, readTrust, trustChanged } from "../env/workspaces.ts";
 import { commit } from "../fold/commit.ts";
 import { headRef, kvRef, sessionRef } from "../store/refs.ts";
 import { sealText } from "../store/secrets.ts";
@@ -138,10 +138,12 @@ async function storeHostValue(
     ? await sealSecretEntries(kernel, value, await readKv(kernel.store, name))
     : value;
 
+  const trust = id === WORKSPACE_TRUST ? await readTrust(kernel) : null;
+
   await commit(kernel, [{ name, target: await put(kernel.store, "kv", stored) }]);
   changed(kernel, id, null);
 
-  if (id === WORKSPACE_TRUST) void trustChanged(kernel).catch(() => undefined);
+  if (trust !== null) void trustChanged(kernel, trust).catch(() => undefined);
 
   if (id === SKILL_PATHS) {
     dropScans(kernel);
@@ -207,31 +209,30 @@ export async function configure(
   patch: ConfigurationPatch,
   activation = false,
 ): Promise<ConfigureOutcome> {
-  const found = await requireSession(kernel.store, session);
-  const entry = found.record.heads.find((current) => current.name === head);
-
-  if (entry === undefined) throw new SdkError("unknown", `Session ${session} has no head ${head}.`);
-  const runtime = kernel.plugins.runtime(session);
-
-  if (!activation) await runtime.ready;
-
-  const selected = await kernel.resolveConfiguration({
-    session,
-    head,
-    selected: entry.selected,
-    patch,
-    contributions: collectContributions(runtime),
-  });
-
-  if (selected.kind !== "exact") return selected;
-
-  await attempt(`Configuring ${head}`, async () => {
+  const selected = await attempt(`Configuring ${head}`, async () => {
     const current = await requireSession(kernel.store, session);
+    const entry = current.record.heads.find((other) => other.name === head);
+
+    if (entry === undefined)
+      throw new SdkError("unknown", `Session ${session} has no head ${head}.`);
+    const runtime = kernel.plugins.runtime(session);
+
+    if (!activation) await runtime.ready;
+
+    const resolved = await kernel.resolveConfiguration({
+      session,
+      head,
+      selected: entry.selected,
+      patch,
+      contributions: collectContributions(runtime),
+    });
+
+    if (resolved.kind !== "exact") return resolved;
 
     const record = {
       ...current.record,
       heads: current.record.heads.map((other) =>
-        other.name === head ? { ...other, selected } : other,
+        other.name === head ? { ...other, selected: resolved } : other,
       ),
     };
 
@@ -240,12 +241,14 @@ export async function configure(
         name: sessionRef(session),
         target: await put(kernel.store, "session", record),
         expect: current.ref.revision,
-        events: [{ head, kind: "configured", selected, effective: selected }],
+        events: [{ head, kind: "configured", selected: resolved, effective: resolved }],
       },
     ]);
 
-    return outcome.kind === "set" ? true : STALE;
+    return outcome.kind === "set" ? resolved : STALE;
   });
+
+  if (selected.kind !== "exact") return selected;
 
   if (patch.settings !== undefined)
     await settingsConfigured(kernel, session, Object.keys(patch.settings));

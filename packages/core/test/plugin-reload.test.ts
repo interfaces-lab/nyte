@@ -188,7 +188,7 @@ describe("plugin reload (D4)", () => {
     expect(report.plugins).toEqual([{ kind: "activated", id: "extra", issues: [] }]);
     await other.kernel.plugins.runtime(session.id).ready;
     expect(other.kernel.host.current().plugins).toEqual([
-      { id: "test-environment", source: "inline", path: null, issues: [] },
+      { id: "test-environment", source: "builtin", path: null, issues: [] },
       { id: "extra", source: "inline", path: null, issues: [] },
     ]);
     expect(

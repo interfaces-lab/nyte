@@ -3,6 +3,7 @@ import type { HostChange, Kernel } from "../contract/kernel.ts";
 import { closable, coalesce, latest } from "../util/iterable.ts";
 import { readSessions, sessionInfo } from "./session.ts";
 
+/** Returns the host's session rows as they change, for one principal. Another process's commit re-reads the whole directory only when the directory's seq moved, which every change to it stamps in any process; a presence beat or a write elsewhere in the store costs one row. */
 export function sessionChanges(
   kernel: Kernel,
   principal: PrincipalId,
@@ -18,7 +19,7 @@ export function sessionChanges(
     let external = false;
     let changes = 0;
     let through = 0;
-    let sent: number | null = null;
+    let started = false;
 
     const ticks = coalesce(
       latest(changes, (push) => {
@@ -83,6 +84,14 @@ export function sessionChanges(
     };
 
     const resync = async (): Promise<void> => {
+      const probe = await kernel.store.sessions.changed({
+        since: through,
+        ...everything,
+        limit: 1,
+      });
+
+      if (probe.seq <= through) return;
+
       const read = await readSessions(kernel, principal, {
         ...everything,
         resume: { seq: through },
@@ -99,7 +108,7 @@ export function sessionChanges(
 
     return {
       async pull() {
-        if (sent === null) {
+        if (!started) {
           await ticks.next();
 
           const read = await readSessions(kernel, principal, {
@@ -109,7 +118,7 @@ export function sessionChanges(
 
           known = new Set(read.ids);
           reach(read.seq);
-          sent = through;
+          started = true;
 
           return { done: false, value: { seq: through, tables: {} } };
         }
@@ -133,8 +142,7 @@ export function sessionChanges(
 
           reach(through);
 
-          if (through <= sent || (upsert.size === 0 && drop.size === 0)) continue;
-          sent = through;
+          if (upsert.size === 0 && drop.size === 0) continue;
           const tables = { sessions: { upsert: [...upsert.values()], drop: [...drop] } };
           upsert.clear();
           drop.clear();

@@ -74,15 +74,6 @@ interface Resolved {
   readonly inputs: Resources | null;
 }
 
-const BUILT_IN: ReadonlySet<string> = new Set([
-  "system-prompt",
-  "environment",
-  "resources",
-  "interruptions",
-  "worktrees",
-  "variables",
-]);
-
 const RESERVED_IDS: readonly string[] = ["models", "settings"];
 
 const ACTIVATE_SECONDS = 30;
@@ -195,9 +186,11 @@ export function createPluginRuntime(
   };
 
   function issueRows(): readonly HostView["plugins"][number][] {
+    const builtins = builtinIds(kernel);
+
     return [...rows].map(([id, issues]) => ({
       id,
-      source: BUILT_IN.has(id) ? "builtin" : "inline",
+      source: builtins.has(id) ? "builtin" : "inline",
       path: null,
       issues: [...issues, ...(found.get(id) ?? [])],
     }));
@@ -229,7 +222,7 @@ export function createPluginRuntime(
 
     for (const { item, owner } of current) {
       if (RESERVED_PART_KINDS.has(item.kind)) {
-        if (!BUILT_IN.has(owner)) pend(owner, reservedKind(item.kind, owner));
+        if (!builtinIds(kernel).has(owner)) pend(owner, reservedKind(item.kind, owner));
         continue;
       }
 
@@ -587,16 +580,21 @@ export async function replacePlugins(
   return { generation: bumpGeneration(kernel), plugins: reported };
 }
 
+function builtinIds(kernel: Kernel): ReadonlySet<string> {
+  return new Set(kernel.plugins.builtins.map((plugin) => plugin.id));
+}
+
 function formatErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
 export function hostPluginRows(kernel: Kernel): readonly HostView["plugins"][number][] {
   const rows = new Map<string, HostView["plugins"][number]>();
+  const builtins = builtinIds(kernel);
 
   for (const plugin of [...kernel.plugins.builtins, ...kernel.plugins.host]) {
     if (rows.has(plugin.id)) continue;
-    const builtin = BUILT_IN.has(plugin.id);
+    const builtin = builtins.has(plugin.id);
     const loaded = builtin ? undefined : kernel.plugins.sources.get(plugin);
 
     rows.set(plugin.id, {
@@ -748,8 +746,8 @@ function collisions(plugins: readonly Plugin<"core">[]): readonly ValidationIssu
     for (const command of declared?.commands ?? []) claim("commands", command.name, plugin.id);
 
     for (const part of declared?.parts ?? []) {
-      if (!RESERVED_PART_KINDS.has(part.kind)) claim("parts", part.kind, plugin.id);
-      else if (!BUILT_IN.has(plugin.id)) issues.push(reservedKind(part.kind, plugin.id));
+      if (RESERVED_PART_KINDS.has(part.kind)) issues.push(reservedKind(part.kind, plugin.id));
+      else claim("parts", part.kind, plugin.id);
     }
   }
 
@@ -810,6 +808,7 @@ function installHook<N extends HookName<"core">>(
   if (entry !== undefined) api.hook(name, entry);
 }
 
+/** Registers `definition` while any runtime holds it. Releasing the last hold has every runtime that contributes its kind sync its parts again, since one that found the kind taken skipped its own definition. */
 function holdPart(kernel: Kernel, definition: PartDefinition, owner: string): Disposer {
   const { holds } = kernel.plugins.state;
 
@@ -830,6 +829,10 @@ function holdPart(kernel: Kernel, definition: PartDefinition, owner: string): Di
     if (held.count > 0) return;
     holds.delete(definition);
     held.dispose();
+
+    for (const runtime of kernel.plugins.runtimes().values())
+      if (runtime.registries.parts.entries().some((entry) => entry.item.kind === definition.kind))
+        runtime.registries.reload();
   };
 }
 

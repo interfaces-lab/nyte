@@ -37,11 +37,12 @@ export async function loadPlugins(
   kernel: Kernel,
   plugins: readonly (Plugin<"core"> | PluginFile)[],
 ): Promise<readonly Plugin<"core">[]> {
-  const each = await Promise.all(
-    plugins.map(async (plugin) => ("id" in plugin ? [plugin] : kernel.plugins.load([plugin.path]))),
-  );
+  const files = plugins.flatMap((plugin) => ("id" in plugin ? [] : [plugin.path]));
+  const loaded = files.length === 0 ? [] : await kernel.plugins.load(files);
 
-  return each.flat();
+  return plugins.flatMap((plugin) =>
+    "id" in plugin ? [plugin] : (loaded[files.indexOf(plugin.path)] ?? []),
+  );
 }
 
 export async function newChatPlugins(

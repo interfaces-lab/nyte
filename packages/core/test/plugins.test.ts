@@ -283,8 +283,8 @@ describe("plugin api", () => {
     assert(!view.done);
 
     expect(view.value.plugins).toEqual([
-      { id: "test-environment", source: "inline", path: null, issues: [] },
-      { id: "system-prompt", source: "builtin", path: null, issues: [] },
+      { id: "test-environment", source: "builtin", path: null, issues: [] },
+      { id: "system-prompt", source: "inline", path: null, issues: [] },
       {
         id: "mcp",
         source: "inline",

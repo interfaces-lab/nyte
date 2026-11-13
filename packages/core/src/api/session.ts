@@ -538,7 +538,9 @@ async function update(
 
   if (moved !== null) {
     await kernel.environments.detach(session);
-    await Promise.allSettled([kernel.plugins.reload(session)]);
+
+    if (kernel.plugins.runtimes().has(session))
+      await kernel.plugins.reload(session).catch(() => undefined);
     await releaseWorktree(kernel, session, moved);
   }
 

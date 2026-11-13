@@ -78,10 +78,26 @@ describe("resources", () => {
       expect.objectContaining({ severity: "warning", path: ["skills", "shared"] }),
     ]);
     expect(resources.contextFiles).toEqual([
-      { path: "/home/ada/.nyte/AGENTS.md", scope: "user", content: "User rules.\n" },
-      { path: "/AGENTS.md", scope: "ancestor", content: "Root rules.\n" },
-      { path: "/work/AGENTS.md", scope: "ancestor", content: "Work agents.\n" },
       {
+        id: "context:user:AGENTS.md",
+        path: "/home/ada/.nyte/AGENTS.md",
+        scope: "user",
+        content: "User rules.\n",
+      },
+      {
+        id: "context:ancestor:/AGENTS.md",
+        path: "/AGENTS.md",
+        scope: "ancestor",
+        content: "Root rules.\n",
+      },
+      {
+        id: "context:ancestor:/work/AGENTS.md",
+        path: "/work/AGENTS.md",
+        scope: "ancestor",
+        content: "Work agents.\n",
+      },
+      {
+        id: "context:project:AGENTS.override.md",
         path: "/work/project/AGENTS.override.md",
         scope: "project",
         content: "Project override.\n",
@@ -312,7 +328,12 @@ describe("resources", () => {
 
     expect(scanned.user).toBeNull();
     expect(scanned.contextFiles).toEqual([
-      { path: "/remote/AGENTS.md", scope: "project", content: "Sandbox rules.\n" },
+      {
+        id: "context:project:AGENTS.md",
+        path: "/remote/AGENTS.md",
+        scope: "project",
+        content: "Sandbox rules.\n",
+      },
     ]);
   });
 

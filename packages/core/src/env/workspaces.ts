@@ -170,8 +170,9 @@ export function createWorkspaces(
 
         if (options?.projectResources === undefined) changed(kernel, id);
         else {
+          const before = await readTrust(kernel);
           await decideTrust(kernel, record, options.projectResources);
-          await trustChanged(kernel);
+          await trustChanged(kernel, before);
         }
 
         return { kind: "added", workspace: id };
@@ -365,8 +366,9 @@ export function workspaceHandle(
       if (record === null) return { kind: "missing" };
 
       if (patch.projectResources !== undefined) {
+        const before = await readTrust(kernel);
         await decideTrust(kernel, record, patch.projectResources);
-        await trustChanged(kernel);
+        await trustChanged(kernel, before);
       }
 
       return { kind: "updated" };
@@ -768,13 +770,52 @@ async function runSnapshots(
   return null;
 }
 
-export async function trustChanged(kernel: Kernel): Promise<void> {
-  dropScans(kernel);
+export type TrustSnapshot = ReadonlyMap<
+  WorkspaceId,
+  Pick<WorkspaceInfo, "projectResources" | "trusted">
+>;
 
-  for (const record of await workspaceRecords(kernel.store)) changed(kernel, record.id);
+export async function readTrust(kernel: Kernel): Promise<TrustSnapshot> {
+  const [records, trust] = await Promise.all([
+    workspaceRecords(kernel.store),
+    readFolderTrust(kernel),
+  ]);
+
+  return new Map(
+    records.map((record) => [
+      record.id,
+      { projectResources: trust.decided(record), trusted: trust.trusted(record) },
+    ]),
+  );
+}
+
+/** Answers a trust write against `before`, read ahead of it: only workspaces whose shown trust moved are announced, and only sessions whose workspace gained or lost trust rescan and reload. */
+export async function trustChanged(kernel: Kernel, before: TrustSnapshot): Promise<void> {
+  const moved = [...(await readTrust(kernel))].filter(([id, trust]) => {
+    const was = before.get(id);
+
+    return was?.trusted !== trust.trusted || was.projectResources !== trust.projectResources;
+  });
+
+  for (const [id] of moved) changed(kernel, id);
+
+  const flipped = new Set(
+    moved.flatMap(([id, trust]) =>
+      (before.get(id)?.trusted === true) === (trust.trusted === true) ? [] : [id],
+    ),
+  );
+
+  dropScans(kernel, (_session, cached) => flipped.has(cached.workspace));
+
+  const sessions = await Promise.all(
+    [...flipped].map((workspace) => sessionsOn(kernel.store, workspace)),
+  );
 
   await Promise.allSettled(
-    [...kernel.plugins.runtimes().keys()].map((session) => kernel.plugins.reload(session)),
+    sessions
+      .flat()
+      .filter((session) => kernel.plugins.runtimes().has(session))
+      .map((session) => kernel.plugins.reload(session)),
   );
 }
 

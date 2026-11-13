@@ -8,7 +8,7 @@ import { kvRef } from "../store/refs.ts";
 import { openText } from "../store/secrets.ts";
 import { readKv } from "../store/session.ts";
 
-export const VARIABLES: SettingDefinition<Readonly<Record<string, SecretEntry>>> = {
+const VARIABLES: SettingDefinition<Readonly<Record<string, SecretEntry>>> = {
   id: "variables.entries",
   label: "Environment variables",
   schema: standard(

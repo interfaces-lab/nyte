@@ -648,9 +648,9 @@ export function createKernel(input: KernelOptions): Kernel {
 }
 
 async function release(kernel: Kernel, driver: Owned | null): Promise<void> {
-  await kernel.modelState.close();
-  await kernel.mcp?.close();
   await driver?.close();
+  await kernel.mcp?.close();
+  await kernel.modelState.close();
 
   const workspaces = (await kernel.store.refs.list("workspaces/")).map((ref) =>
     asId<"workspace">(ref.name.slice("workspaces/".length)),

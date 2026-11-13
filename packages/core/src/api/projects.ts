@@ -84,7 +84,7 @@ export function projectHandle(kernel: Kernel, id: ProjectId): Project {
   };
 }
 
-export async function readProjects(kernel: Kernel): Promise<readonly ProjectRecord[]> {
+async function readProjects(kernel: Kernel): Promise<readonly ProjectRecord[]> {
   const found = await Promise.all(
     (await kernel.store.refs.list(PROJECTS)).map((ref) =>
       load(kernel.store, ref, decodeProjectRecord),

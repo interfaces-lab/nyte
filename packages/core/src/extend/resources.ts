@@ -65,6 +65,9 @@ export const SKILL_PATHS = "skills.paths";
 
 const scanIssues = new WeakMap<Resources, readonly ValidationIssue[]>();
 
+/** Watches whose events ended or threw. One stays listed with its sessions until the next scan of one of them restarts it. */
+const ended = new WeakSet<RootWatch>();
+
 export async function scanResources(kernel: Kernel, session: SessionId): Promise<Resources> {
   const record = (await requireSession(kernel.store, session)).record;
   const workspace = record.workspace;
@@ -403,7 +406,7 @@ function watchRoot(
 
   if (kernel.workspaceState.closed) return;
 
-  if (known !== undefined && known.paths === joined && (known.kept || !kept)) {
+  if (known !== undefined && !ended.has(known) && known.paths === joined && (known.kept || !kept)) {
     if (session !== null) known.sessions.add(session);
 
     return;
@@ -458,16 +461,7 @@ async function drain(
   } catch (error) {
     dev("resources", "watch failed", { key, error: String(error) });
   } finally {
-    if (kernel.workspaceState.watches.get(key) === watch) {
-      kernel.workspaceState.watches.delete(key);
-      void changes
-        .run(async () => {
-          for (const session of watch.sessions) await refresh(kernel, session);
-        })
-        .catch((error: unknown) =>
-          dev("resources", "refresh failed", { key, error: String(error) }),
-        );
-    }
+    ended.add(watch);
   }
 }
 

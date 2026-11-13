@@ -1,11 +1,5 @@
 import { describeOperations, SdkError } from "@nyte-ai/schema";
-import type {
-  Capability,
-  CredentialSource,
-  PluginReplacementReport,
-  SessionId,
-  WorkspaceId,
-} from "@nyte-ai/schema";
+import type { Capability, CredentialSource, WorkspaceId } from "@nyte-ai/schema";
 import { ALL_AUTHORITY, LOCAL } from "../contract/host.ts";
 import type {
   Connection,
@@ -192,7 +186,14 @@ export function createConnection(
     plugins: gated(
       "plugins",
       {
-        replace: (plugins, scope) => replaceFiles(kernel, plugins, scope),
+        async replace(plugins, scope) {
+          await requireLoader(kernel);
+
+          return kernel.plugins.replace(
+            listPluginPaths(plugins).map((path) => ({ path })),
+            scope,
+          );
+        },
         check: async (plugins) =>
           kernel.plugins.check(await kernel.plugins.load(listPluginPaths(plugins))),
       },
@@ -244,18 +245,9 @@ export function createHost(
   };
 }
 
-async function replaceFiles(
-  kernel: Kernel,
-  files: readonly PluginFile[],
-  scope?: { readonly session: SessionId },
-): Promise<PluginReplacementReport> {
-  const paths = listPluginPaths(files);
-  await kernel.plugins.load(paths);
-
-  return kernel.plugins.replace(
-    paths.map((path) => ({ path })),
-    scope,
-  );
+/** Throws the loader's `unavailable` on a host that loads no plugin files, so a wire replace, even an empty one, never touches such a host's plugins. On a host with a loader it imports nothing. */
+async function requireLoader(kernel: Kernel): Promise<void> {
+  await kernel.plugins.load([]);
 }
 
 function listPluginPaths(files: readonly PluginFile[]): readonly string[] {

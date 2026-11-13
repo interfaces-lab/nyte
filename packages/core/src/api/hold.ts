@@ -36,6 +36,7 @@ export async function holdMessage(
   const lose = (reason: Awaited<HeldMessage["lost"]>) => {
     if (!renewing) return;
     stop();
+    clearTimeout(expiry);
     lost.resolve(reason);
   };
 
