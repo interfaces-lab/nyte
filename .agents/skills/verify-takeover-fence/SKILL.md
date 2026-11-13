@@ -51,7 +51,7 @@ In the lapse runs, Vitest fake time pauses A's heartbeat while B keeps its own p
 
 ## Coverage and sync record
 
-Last confirmed product code at `8340c40561f0b02dca04da49b8fb40e7f93e5693` on `main`. The mapping below was rechecked, and both checks run, against the uncommitted change that adds the same-machine verdict; move `SYNC_COMMIT` to the commit that lands it.
+Last confirmed product code at `ec59d402346badac166044a865bf81fff401bab1` on `main`.
 
 | Source and function | Covered behavior |
 | --- | --- |
@@ -69,7 +69,7 @@ Last confirmed product code at `8340c40561f0b02dca04da49b8fb40e7f93e5693` on `ma
 `check.mjs` prints the output of this command as a re-review notice:
 
 ```sh
-git log --oneline 8340c40561f0b02dca04da49b8fb40e7f93e5693..HEAD -- packages/core/src/compose.ts packages/core/src/contract/presence.ts packages/core/src/engine/presence.ts packages/core/src/drive/execution.ts packages/core/src/watch/commit.ts packages/core/src/store/log.ts packages/core/src/store/refs.ts packages/host/src/store/sqlite.ts packages/host/src/local/process/machine.ts
+git log --oneline ec59d402346badac166044a865bf81fff401bab1..HEAD -- packages/core/src/compose.ts packages/core/src/contract/presence.ts packages/core/src/engine/presence.ts packages/core/src/drive/execution.ts packages/core/src/watch/commit.ts packages/core/src/store/log.ts packages/core/src/store/refs.ts packages/host/src/store/sqlite.ts packages/host/src/local/process/machine.ts
 ```
 
 History output is not a gate. Unrelated edits do not prevent TLC from running. An unavailable history range is a notice too. Review uncommitted changes separately; this log cannot show them.

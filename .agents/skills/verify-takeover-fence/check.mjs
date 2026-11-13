@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 const TLA_TS = "tla-ts@0.0.6";
-const SYNC_COMMIT = "8340c40561f0b02dca04da49b8fb40e7f93e5693";
+const SYNC_COMMIT = "ec59d402346badac166044a865bf81fff401bab1";
 const COVERED_FILES = [
   "packages/core/src/compose.ts",
   "packages/core/src/contract/presence.ts",
