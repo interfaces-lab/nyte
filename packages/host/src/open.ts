@@ -1,4 +1,4 @@
-import { mkdir, readFile } from "node:fs/promises";
+import { chmod, mkdir, open, readFile } from "node:fs/promises";
 import { homedir, hostname } from "node:os";
 import { dirname, join } from "node:path";
 import process from "node:process";
@@ -33,7 +33,7 @@ import web from "@nyte-ai/plugin/core/web";
 import manifest from "../package.json" with { type: "json" };
 import { credentialStore } from "./keys/credentials.ts";
 import { identitySigner } from "./keys/identity-key.ts";
-import { readErrorCode } from "./fs-errors.ts";
+import { missing, readErrorCode } from "./fs-errors.ts";
 import { localDocuments } from "./local/files/documents.ts";
 import { createMediaLinks } from "./serve/media.ts";
 import { localGitHubAccount } from "./local/git/github.ts";
@@ -89,9 +89,13 @@ export async function openHost(options: OpenHostOptions = {}): Promise<Host> {
   }
 }
 
+/** Opens the default store with its files readable by their owner alone: the file holds every chat, and SQLite gives the write-ahead log and shared memory beside it the mode of the file. A folder that already existed keeps its own mode, so the file's is what protects it. */
 async function defaultStore(home: string, onMigrate?: () => void): Promise<Store> {
   const path = storePath(home);
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+  await (await open(path, "a", 0o600)).close();
+
+  for (const file of [path, `${path}-wal`, `${path}-shm`]) await chmod(file, 0o600).catch(missing);
 
   return sqliteStore({ path, onMigrate });
 }

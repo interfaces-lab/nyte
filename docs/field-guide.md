@@ -191,7 +191,6 @@ These are real and not fixed. Each names what it would take.
 - **The three clients each build a chat view** from `headView`, the unsent overlay and streamed text. One `live.chat` in the SDK would hold it once.
 - **Desktop main keeps two host-view streams**, one in `HostLink` and one in `DesktopHost`, each with its own retry loop.
 - **Two desktop builds on one home can retire each other's host.** The dev, production and bench builds share `~/.nyte`, and each files a retire request when the serving host's version or operations differ from its own.
-- **The store file is created 0644.** `~/.nyte` is 0700 when Nyte creates it, and an existing folder keeps its mode.
 - **A resume resends the window's order** when nothing moved: 1.6 KB of ids a chat, the largest part of a reconnect.
 - **The HTTP stream channel wraps base64 in JSON in SSE.** A frame kind without the inner layers needs a revision bump.
 - **A stalled git remote or formatter hangs its call.** `git push`, `blame` and the formatter run have no timeout.
