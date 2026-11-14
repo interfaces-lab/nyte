@@ -83,7 +83,7 @@ import { clientActions } from "@nyte-ai/app/contract/client-actions.ts";
 import type { HostRuntime } from "./host-runtime.ts";
 import type { HostWindow } from "../shared/host-window.ts";
 import { DEFAULT_DESKTOP_SETTINGS } from "@nyte-ai/app/contract/desktop-settings.ts";
-import { LaunchStateStore } from "./launch-state.ts";
+import { LaunchStateStore, openingFrame, windowsAfterClose } from "./launch-state.ts";
 import { registerUpdates } from "./updates/updates.ts";
 import { createOpenWith } from "./open-with.ts";
 import type { DesktopWindowOpen } from "@nyte-ai/app/contract/desktop-window.ts";
@@ -574,30 +574,6 @@ function registerIpc(): void {
   });
 }
 
-interface OpeningFrame {
-  readonly bounds: Partial<Electron.Rectangle>;
-  readonly maximized: boolean;
-  readonly fullscreen: boolean;
-}
-
-function openingFrame(windowId: string): OpeningFrame {
-  const own = launchState.frame(windowId);
-
-  if (own !== undefined && onScreen(own.bounds)) return own;
-  const last = launchState.window();
-
-  if (last === undefined)
-    return { bounds: { width: 1280, height: 800 }, maximized: false, fullscreen: false };
-
-  if (own === undefined && windows.size === 0 && onScreen(last.bounds)) return last;
-
-  return {
-    bounds: { width: last.bounds.width, height: last.bounds.height },
-    maximized: false,
-    fullscreen: false,
-  };
-}
-
 function onScreen(bounds: Electron.Rectangle): boolean {
   return screen
     .getAllDisplays()
@@ -617,7 +593,13 @@ const FIRST_FRAME_LIMIT_MS = 4_000;
  * workspace is seeded before it loads, so every load of it shows the folder.
  */
 function createWindow(windowId: string = randomUUID(), opening?: DesktopWindowOpen): NyteWindow {
-  const frame = openingFrame(windowId);
+  const frame = openingFrame({
+    own: launchState.frame(windowId),
+    last: launchState.window(),
+    first: windows.size === 0,
+    onScreen,
+  });
+
   const kept = launchState.windows();
 
   if (!kept.includes(windowId)) launchState.setWindows([...kept, windowId]);
@@ -756,8 +738,12 @@ function createWindow(windowId: string = randomUUID(), opening?: DesktopWindowOp
     screen.off("display-metrics-changed", placeButtons);
     windows.delete(id);
 
-    if (!quitting && windows.size > 0)
-      launchState.setWindows(launchState.windows().filter((kept) => kept !== windowId));
+    const saved = windowsAfterClose(launchState.windows(), windowId, {
+      quitting,
+      remaining: windows.size,
+    });
+
+    if (saved !== undefined) launchState.setWindows(saved);
     browserSurfaces.releaseWindow(id);
     desktopHost?.closeWindow(id);
     alerts.release(id);

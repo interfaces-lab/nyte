@@ -7,6 +7,7 @@ import type {
 import { describeRunEnd } from "@nyte-ai/plugin/client/notifications";
 import { mainHead } from "@nyte-ai/plugin/client/presentation";
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
+import type { HostWindow } from "./host-window.ts";
 
 type Status = {
   readonly key: string;
@@ -47,6 +48,63 @@ export interface AttentionPlan {
 }
 
 export type AttentionSettings = AlertSettings & Pick<DesktopSettings, "notifySubagents">;
+
+export type WindowAttention =
+  | { readonly kind: "ready"; readonly viewed: string | null }
+  | { readonly kind: "loading"; readonly opening: SessionId };
+
+/** In insertion order, which picks the viewer a notification click goes to. */
+export type AttentionWindows = ReadonlyMap<HostWindow, WindowAttention>;
+
+export type WindowAttentionEvent =
+  | { readonly kind: "viewing"; readonly window: HostWindow; readonly viewed: string | null }
+  | { readonly kind: "reloading" | "released"; readonly window: HostWindow }
+  | { readonly kind: "clicked"; readonly window: HostWindow; readonly session: SessionId };
+
+export interface WindowAttentionStep {
+  readonly windows: AttentionWindows;
+  readonly reveal: HostWindow | undefined;
+  readonly open: { readonly window: HostWindow; readonly session: SessionId } | undefined;
+}
+
+export function findViewer(windows: AttentionWindows, session: SessionId): HostWindow | undefined {
+  return [...windows].find(
+    (entry) => entry[1].kind === "ready" && entry[1].viewed === session,
+  )?.[0];
+}
+
+/**
+ * A reload keeps `loading`, so a click that raced the window's load opens its chat once the new
+ * page reports what it views.
+ */
+export function stepWindowAttention(
+  windows: AttentionWindows,
+  event: WindowAttentionEvent,
+): WindowAttentionStep {
+  const before = windows.get(event.window);
+  const ready = before?.kind === "ready";
+  const next = new Map(windows);
+
+  if (event.kind === "viewing") next.set(event.window, { kind: "ready", viewed: event.viewed });
+
+  if (event.kind === "released" || (event.kind === "reloading" && ready)) next.delete(event.window);
+
+  if (event.kind === "clicked" && !ready)
+    next.set(event.window, { kind: "loading", opening: event.session });
+
+  const opening =
+    event.kind === "viewing" && before?.kind === "loading"
+      ? before.opening
+      : event.kind === "clicked" && ready
+        ? event.session
+        : undefined;
+
+  return {
+    windows: next,
+    reveal: event.kind === "clicked" ? event.window : undefined,
+    open: opening === undefined ? undefined : { window: event.window, session: opening },
+  };
+}
 
 export function planAttention(input: {
   readonly previous: AttentionSeen | undefined;

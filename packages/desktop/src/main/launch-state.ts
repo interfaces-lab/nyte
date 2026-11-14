@@ -30,11 +30,59 @@ const launchState = Compile(stateSchema);
 
 type ThemeSource = Static<typeof themeSource>;
 
-type WindowFrame = Static<typeof windowFrame>;
+type Rect = Static<typeof rect>;
+
+export type WindowFrame = Static<typeof windowFrame>;
 
 type LaunchState = Static<typeof stateSchema>;
 
+export interface OpeningFrame {
+  readonly bounds: Partial<Rect>;
+  readonly maximized: boolean;
+  readonly fullscreen: boolean;
+}
+
 const INITIAL: LaunchState = { theme: "system" };
+
+/**
+ * A window reopens where it closed while that is on a screen. Otherwise it takes the last closed
+ * window's size, and its place and state too only as the launch's first window with no frame of
+ * its own.
+ */
+export function openingFrame(input: {
+  readonly own: WindowFrame | undefined;
+  readonly last: WindowFrame | undefined;
+  readonly first: boolean;
+  readonly onScreen: (bounds: Rect) => boolean;
+}): OpeningFrame {
+  const own = input.own;
+  const last = input.last;
+
+  if (own !== undefined && input.onScreen(own.bounds)) return own;
+
+  if (last !== undefined && own === undefined && input.first && input.onScreen(last.bounds))
+    return last;
+
+  return {
+    bounds: { width: last?.bounds.width ?? 1280, height: last?.bounds.height ?? 800 },
+    maximized: false,
+    fullscreen: false,
+  };
+}
+
+/**
+ * Quitting or closing the last window keeps every window for the next launch, so this returns
+ * `undefined`; closing any other window drops it.
+ */
+export function windowsAfterClose(
+  kept: readonly string[],
+  closed: string,
+  input: { readonly quitting: boolean; readonly remaining: number },
+): readonly string[] | undefined {
+  if (input.quitting || input.remaining === 0) return undefined;
+
+  return kept.filter((windowId) => windowId !== closed);
+}
 
 function readState(path: string): LaunchState {
   try {
