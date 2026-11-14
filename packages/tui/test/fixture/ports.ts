@@ -23,6 +23,8 @@ import type {
   ChatUpdate,
   Ports,
   SessionPort,
+  RefusedSend,
+  SendEnd,
   SettingsPort,
   ShellEnd,
   ShellPort,
@@ -52,6 +54,8 @@ export interface FakeSession extends SessionPort {
     readonly stoppedTasks: unknown[];
   };
   withdrawResult: "withdrawn" | "landed-first" | "gone";
+  /** How each send ends once the journal holds it; `sent` by default. */
+  sendEnd: SendEnd | null;
   answerResult: boolean | Error;
   readonly toolStates: Map<string, ToolPartState>;
   commandResult: CommandOutcome | null;
@@ -62,6 +66,8 @@ export interface FakeHost extends HostPort {
   readonly sessions: ReadonlyMap<string, FakeSession>;
   publishCatalog(catalog: ModelCatalogView): void;
   publishSessions(sessions: readonly SessionInfo[]): void;
+  /** Lists replayed sends the host refused, as a connection that just loaded its journal does. */
+  refuseReplays(sends: readonly RefusedSend[]): void;
   readonly hostSettings: { readonly id: string; readonly value: unknown }[];
   readonly starts: Parameters<HostPort["start"]>[0][];
   readonly folders: (string | null)[];
@@ -158,6 +164,7 @@ function fakeSession(id: string): FakeSession {
     id: asId(id),
     calls,
     withdrawResult: "withdrawn",
+    sendEnd: null,
     answerResult: true,
     commandResult: null,
     toolStates: new Map(),
@@ -175,8 +182,12 @@ function fakeSession(id: string): FakeSession {
     async send(content, options) {
       calls.send.push({ content, delivery: options.delivery });
       sent += 1;
+      const message = asId<"message">(`sent-${String(sent)}`);
 
-      return { message: asId(`sent-${String(sent)}`) };
+      return {
+        message,
+        delivered: Promise.resolve(session.sendEnd ?? { kind: "sent", message }),
+      };
     },
     async withdraw(message) {
       calls.withdraw.push(message);
@@ -258,6 +269,7 @@ export function fakeHost(): FakeHost {
   const catalogs = queue<Pick<HostView, "catalog" | "settings" | "version">>();
 
   const directory = queue<readonly SessionInfo[]>();
+  const refusals = queue<readonly RefusedSend[]>();
   const hostSettings: FakeHost["hostSettings"] = [];
   const starts: FakeHost["starts"] = [];
   const folders: FakeHost["folders"] = [];
@@ -312,6 +324,8 @@ export function fakeHost(): FakeHost {
     sessionInfos: () => directory,
     health: () => queue<Health>(),
     publishSessions: (list) => directory.push(list),
+    refuseReplays: (sends) => refusals.push(sends),
+    refusedSends: () => refusals,
     publishCatalog(next) {
       catalog = next;
       catalogs.push({ catalog: next.generation, settings: [], version: "0.0.0" });

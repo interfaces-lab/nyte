@@ -327,6 +327,69 @@ test.each<{
     events: [edit, held(1), { kind: "intake", event: { kind: "reading" } }, save],
     expected: { ...QUIET, shown: "Then run the tests.", hold: "held 1" },
   },
+  {
+    name: "closing while a save runs keeps the edit open and the save running",
+    events: [edit, typed("Edited."), save, { kind: "closed" }],
+    expected: { ...QUIET, shown: "Edited.", hold: "saving 2" },
+  },
+  {
+    name: "a save that outlived its composer and revised the message leaves only the person's text",
+    events: [
+      edit,
+      typed("Edited."),
+      save,
+      { kind: "closed" },
+      { kind: "saved", token: 2, saved: { kind: "revised" } },
+    ],
+    expected: { ...QUIET, shown: "mine", hold: null, effects: ["revised"] },
+  },
+  {
+    name: "a save that outlived its composer and was refused folds the edit into the person's text",
+    events: [
+      edit,
+      typed("Edited."),
+      save,
+      { kind: "closed" },
+      { kind: "saved", token: 2, saved: { kind: "refused", message: "Couldn't update." } },
+    ],
+    expected: { ...QUIET, shown: "Edited.\nmine", hold: null },
+  },
+  {
+    name: "a save that outlived its composer and found the message sent folds the edit",
+    events: [
+      edit,
+      typed("Edited."),
+      save,
+      { kind: "closed" },
+      { kind: "saved", token: 2, saved: { kind: "sent" } },
+    ],
+    expected: { ...QUIET, shown: "Edited.\nmine", hold: null },
+  },
+  {
+    name: "Edit during another edit does nothing",
+    events: [edit, { ...edit, message: { ...QUEUED, id: asId<"message">("other") } }],
+    expected: { ...QUIET, shown: "Then run the tests.", hold: "asking 1" },
+  },
+  {
+    name: "files are taken while no save runs",
+    events: [edit, held(1), { kind: "files" }],
+    expected: { ...QUIET, shown: "Then run the tests.", hold: "held 1" },
+  },
+  {
+    name: "files are refused while a save runs",
+    events: [edit, held(1), save, { kind: "files" }],
+    expected: { ...QUIET, shown: "Then run the tests.", hold: "saving 2", handled: false },
+  },
+  {
+    name: "a send is taken while no files are read",
+    events: [{ kind: "submit" }],
+    expected: { ...QUIET, shown: "mine", hold: null },
+  },
+  {
+    name: "a send waits for files still being read",
+    events: [{ kind: "intake", event: { kind: "reading" } }, { kind: "submit" }],
+    expected: { ...QUIET, shown: "mine", hold: null, handled: false },
+  },
 ])("$name", (row) => {
   expect(after(row.events)).toEqual(row.expected);
 });

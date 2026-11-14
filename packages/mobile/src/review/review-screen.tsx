@@ -5,7 +5,7 @@ import { ActivityIndicator, ScrollView, useWindowDimensions } from "react-native
 import { css, html } from "react-strict-dom";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { SessionId } from "@nyte-ai/sdk";
-import { executionMark, formatWholeDuration } from "@nyte-ai/plugin/client/presentation";
+import { formatWholeDuration } from "@nyte-ai/plugin/client/presentation";
 import { useHost } from "../connection/host-context.tsx";
 import { EmptyState } from "../ui/empty-state.tsx";
 import { GlassButton } from "../ui/glass-button.tsx";
@@ -18,7 +18,7 @@ import { latestChangedTurn, turnAnswer } from "../chat/turn-changes.ts";
 import { confirmMergeRequest, MERGE_PROMPT } from "../chat/merge-request.ts";
 import { useRemoteChat } from "../chat/remote-chat.ts";
 import { Markdown } from "../chat/markdown.tsx";
-import { openQuestion } from "../view-helpers.ts";
+import { chatMark, openQuestion } from "../view-helpers.ts";
 import {
   controls,
   list,
@@ -65,57 +65,58 @@ export function ReviewScreen({ sessionId }: { sessionId: SessionId }) {
   const run = execution === undefined || execution.kind === "idle" ? undefined : execution.run;
   const waiting = view === undefined ? undefined : openQuestion(view);
   const running = run !== undefined;
-  const mark = executionMark(execution);
+  const mark = chatMark(info, execution);
   const added = changes.reduce((total, file) => total + file.added, 0);
   const removed = changes.reduce((total, file) => total + file.removed, 0);
   const tone = markTone(mark, theme);
   const ended = execution?.kind === "idle" ? execution.lastRun?.end.kind : undefined;
   const outcome = ended === "stopped" ? "aborted" : ended;
 
-  const readiness: { headline: string; symbol: SFSymbol; tint: string; detail: string } = running
-    ? {
-        headline: "Agent is working",
-        symbol: "clock",
-        tint: theme.muted,
-        detail: `${statusLabels[mark]}${run === undefined ? "" : ` \u00b7 ${formatWholeDuration(now - run.startedAt)}`}`,
-      }
-    : waiting !== undefined
+  const readiness: { headline: string; symbol: SFSymbol; tint: string; detail: string } =
+    mark === "waiting" || (!running && waiting !== undefined)
       ? {
           headline: "Needs your answer",
           symbol: "questionmark.circle.fill",
           tint: theme.warning,
           detail: "Waiting for your answer",
         }
-      : changes.length === 0
+      : running
         ? {
-            headline: "No file changes",
-            symbol: "doc",
+            headline: "Agent is working",
+            symbol: "clock",
             tint: theme.muted,
-            detail: "The agent hasn't edited files in this conversation.",
+            detail: `${statusLabels[mark]}${run === undefined ? "" : ` \u00b7 ${formatWholeDuration(now - run.startedAt)}`}`,
           }
-        : outcome === "failed"
+        : changes.length === 0
           ? {
-              headline: "Failed with changes",
-              symbol: "xmark.circle.fill",
-              tint: theme.danger,
-              detail: "The run failed.",
+              headline: "No file changes",
+              symbol: "doc",
+              tint: theme.muted,
+              detail: "The agent hasn't edited files in this conversation.",
             }
-          : outcome === "aborted"
+          : outcome === "failed"
             ? {
-                headline: "Stopped with changes",
-                symbol: "stop.circle.fill",
-                tint: theme.muted,
-                detail: "Stopped. Check the diff first.",
+                headline: "Failed with changes",
+                symbol: "xmark.circle.fill",
+                tint: theme.danger,
+                detail: "The run failed.",
               }
-            : {
-                headline: "Ready for review",
-                symbol: "checkmark.circle.fill",
-                tint: theme.success,
-                detail:
-                  changedTurn === undefined || changedTurn.endedAt === null
-                    ? "Finished"
-                    : `Finished in ${formatWholeDuration(changedTurn.endedAt - changedTurn.startedAt)}`,
-              };
+            : outcome === "aborted"
+              ? {
+                  headline: "Stopped with changes",
+                  symbol: "stop.circle.fill",
+                  tint: theme.muted,
+                  detail: "Stopped. Check the diff first.",
+                }
+              : {
+                  headline: "Ready for review",
+                  symbol: "checkmark.circle.fill",
+                  tint: theme.success,
+                  detail:
+                    changedTurn === undefined || changedTurn.endedAt === null
+                      ? "Finished"
+                      : `Finished in ${formatWholeDuration(changedTurn.endedAt - changedTurn.startedAt)}`,
+                };
 
   async function merge() {
     if (merging) return;

@@ -11,8 +11,23 @@ import { follow } from "../lib/view-helpers.ts";
 import { addFolder, rootSessions, tuiPlugins } from "../run.ts";
 import { loginProvider, logoutProvider, runLogin } from "../services/auth.ts";
 import { TaskIndex } from "../services/task-index.ts";
-import { chatViews, healthUpdates, readPart, sessionLists, whenOpen } from "../live-host.ts";
-import type { ChatUpdate, HostPort, PluginsPort, SessionPort, WorkspacePort } from "./ports.ts";
+import {
+  chatViews,
+  healthUpdates,
+  readPart,
+  refusedSends,
+  sessionLists,
+  whenOpen,
+} from "../live-host.ts";
+import { errorMessage } from "../lib/format.ts";
+import type {
+  ChatUpdate,
+  HostPort,
+  PluginsPort,
+  SendEnd,
+  SessionPort,
+  WorkspacePort,
+} from "./ports.ts";
 
 const TOOL_STATE = compile(withJson(ToolPartStateType));
 
@@ -82,6 +97,7 @@ export function hostPort(
     catalog: () => host.watch(),
     sessionInfos: () => sessionLists(host, { parents: { kind: "all" } }),
     health: () => healthUpdates(host),
+    refusedSends: () => refusedSends(host),
     listModels: () => whenOpen(host, () => host.call("models.list", {})),
     accounts: (provider) => host.models.accounts(provider ?? undefined),
     selectAccount: (provider, account) => host.models.selectAccount(provider, account),
@@ -333,11 +349,18 @@ function sessionPort(
       const id = options.id ?? asId<"receipt">(crypto.randomUUID());
       followTrace(session.id, id);
 
-      const receipt = await traced("composer.submit", id, { session: session.id }, () =>
-        session.send(content, { ...options, id }),
+      const sending = await traced("composer.submit", id, { session: session.id }, () =>
+        host.chat(session.id).send(content, { ...options, id }),
       );
 
-      return { message: receipt.message };
+      return {
+        message: asId<"message">(sending.id),
+        delivered: sending.delivered.then(
+          (end): SendEnd =>
+            end.kind === "sent" ? { kind: "sent", message: end.receipt.message } : end,
+          (error: unknown): SendEnd => ({ kind: "refused", reason: errorMessage(error) }),
+        ),
+      };
     },
     async withdraw(message) {
       const receipt = readReceipt(message);

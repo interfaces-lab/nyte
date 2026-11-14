@@ -29,10 +29,8 @@ import {
   useHealth,
 } from "../connection/live.ts";
 import { uploadDraft, type DraftContent } from "../media/attachments.ts";
-
-export type SendAnswer =
-  | { kind: "sent"; message: Message["id"] }
-  | { kind: "refused"; error: string };
+import { sendAnswer } from "./send-answer.ts";
+import type { SendAnswer } from "./send-answer.ts";
 
 export type SendOutcome =
   | { kind: "taken"; answer: Promise<SendAnswer> }
@@ -78,7 +76,10 @@ async function configureModel(
   }
 }
 
-/** `tip` and `heads` come from the session's info, read again whenever the head's revision, which moves with its tip, changes. */
+/**
+ * `send` resolves `taken` once the journal holds the message, so a send cut off by the link, or one
+ * that waits a day, stays the journal's, and only a refusal answers `refused`.
+ * `tip` and `heads` come from the session's info, read again whenever the head's revision, which moves with its tip, its run's state or its background work's states change, so the info's `headAttention` follows a subagent that asks. */
 export function useRemoteChat(client: ClientConnection, sessionId: SessionId, headName?: HeadName) {
   const { newerHost } = useHost();
   const session = client.session(sessionId);
@@ -90,7 +91,13 @@ export function useRemoteChat(client: ClientConnection, sessionId: SessionId, he
   const state = chat?.view;
 
   const info = useQuery({
-    queryKey: ["session-info", sessionId, state?.revision ?? null],
+    queryKey: [
+      "session-info",
+      sessionId,
+      state?.revision ?? null,
+      state?.execution.kind ?? null,
+      state?.background.map((item) => item.state).join() ?? null,
+    ],
     queryFn: () => session.info(),
     placeholderData: (previous, query) => (query?.queryKey[1] === sessionId ? previous : undefined),
   });
@@ -127,15 +134,25 @@ export function useRemoteChat(client: ClientConnection, sessionId: SessionId, he
       return upload;
     }
 
-    const answer = head
+    const journaled = await chatFor(client, sessionId, head.name)
       .send(upload.message, delivery === undefined ? undefined : { delivery })
       .then(
-        (receipt): SendAnswer => ({ kind: "sent", message: receipt.message }),
-        (cause: unknown): SendAnswer => ({
-          kind: "refused",
+        (sending) => ({ kind: "journaled" as const, sending }),
+        (cause: unknown) => ({
+          kind: "failed" as const,
           error: describeSendError(cause, newerHost),
         }),
       );
+
+    if (journaled.kind === "failed") {
+      setSendError({ head: head.name, message: journaled.error });
+
+      return journaled;
+    }
+
+    const answer = sendAnswer(journaled.sending.delivered, (cause) =>
+      describeSendError(cause, newerHost),
+    );
 
     void answer.then((outcome) => {
       if (outcome.kind === "refused") setSendError({ head: head.name, message: outcome.error });

@@ -33,6 +33,7 @@ import type {
   Health,
   PartSnapshot,
   PartStore,
+  RefusedSend,
   SessionsSnapshot,
   SessionsStore,
 } from "@nyte-ai/sdk/client";
@@ -48,6 +49,8 @@ export interface ConnectionScript {
   readonly send?: (id: SessionId) => Chat["send"];
   readonly host?: ViewStream<HostView>;
   readonly health?: ViewStream<Health>;
+  /** The replayed sends the host refused, which `take` removes. */
+  readonly refused?: ViewStream<readonly RefusedSend[]>;
   readonly models?: Partial<ModelsApi>;
   readonly github?: Partial<GitHubAccountApi>;
   readonly git?: Partial<GitApi>;
@@ -132,6 +135,8 @@ const OPEN = { kind: "open", since: 0 } as const;
 const MAIN = asId<"head">("main");
 
 const NO_MESSAGES: readonly MessageId[] = [];
+
+const NO_REFUSALS: readonly RefusedSend[] = [];
 
 /** A connection that answers what `script` holds and refuses the rest. Its stores and chats read the script's views and lists, and its health is the script's, open by default. */
 export function scriptedConnection(script: ConnectionScript = {}): {
@@ -344,6 +349,16 @@ export function scriptedConnection(script: ConnectionScript = {}): {
     github: { account: refuse, signIn: refuse, signOut: refuse, ...script.github },
     documents: { read: refuse, bytes: refuse, write: refuse, watch: refused, ...script.documents },
     health: { subscribe: health.subscribe, snapshot: () => health.latest() ?? OPEN },
+    refused: {
+      subscribe: (listener) => script.refused?.subscribe(listener) ?? (() => undefined),
+      snapshot: () => script.refused?.latest() ?? NO_REFUSALS,
+      take(id) {
+        const listed = script.refused?.latest() ?? NO_REFUSALS;
+
+        if (listed.some((send) => send.id === id))
+          script.refused?.push(listed.filter((send) => send.id !== id));
+      },
+    },
     retry: () => undefined,
     call: refuse,
     head: (id, head) => headStore(views(id), head),

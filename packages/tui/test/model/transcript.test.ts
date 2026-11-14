@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { deriveTranscript, turnStatus } from "../../src/model/transcript.ts";
-import type { Row, TranscriptModel, TurnModel } from "../../src/model/transcript.ts";
+import type { Row, TranscriptModel, TurnModel, TurnStatus } from "../../src/model/transcript.ts";
 import type { ShellJob, TranscriptLocal } from "../../src/model/state.ts";
 import { mountWindow, revealEarlier, revealLater, WINDOW } from "../../src/model/window.ts";
-import { buildView } from "../fixture/view.ts";
+import type { SessionView, WaitTarget } from "@nyte-ai/sdk";
+import { asId } from "@nyte-ai/schema";
+import { buildView, followed } from "../fixture/view.ts";
 
 const LOCAL: TranscriptLocal = {
   following: true,
@@ -51,10 +53,10 @@ describe("rows", () => {
     if (prompt?.kind !== "user") throw new Error("The fixture's turn starts with its prompt");
     const cut = { ...whole, messages: rest, leadingPrompt: prompt };
 
-    expect(summary(deriveTranscript(cut, [], LOCAL))).toEqual([
+    expect(summary(deriveTranscript(cut, [], LOCAL, null))).toEqual([
       { clipped: true, first: "user", blocks: 3 },
     ]);
-    expect(summary(deriveTranscript(whole, [], LOCAL))).toEqual([
+    expect(summary(deriveTranscript(whole, [], LOCAL, null))).toEqual([
       { clipped: false, first: "user", blocks: 4 },
     ]);
   });
@@ -75,7 +77,7 @@ describe("rows", () => {
         .live("run-t2"),
     );
 
-    const model = deriveTranscript(view, [shell("s1", 4_000)], LOCAL);
+    const model = deriveTranscript(view, [shell("s1", 4_000)], LOCAL, null);
 
     expect(model.rows.map((row) => row.key)).toEqual(["turn:t1", "shell:s1", "turn:t2"]);
     expect(turnsIn(model)[1]?.blocks.map((message) => message.id)).toEqual([
@@ -90,7 +92,7 @@ describe("rows", () => {
       v.turn("t1", (t) => t.ended("stopped")).turn("t2", (t) => t.user("x").ended("completed")),
     );
 
-    expect(deriveTranscript(view, [], LOCAL).rows.map((row) => row.key)).toEqual(["turn:t2"]);
+    expect(deriveTranscript(view, [], LOCAL, null).rows.map((row) => row.key)).toEqual(["turn:t2"]);
   });
 
   test("a steer is a pending prompt from its send until it joins the run", () => {
@@ -103,7 +105,7 @@ describe("rows", () => {
         .live(),
     );
 
-    const prompts = deriveTranscript(view, [], LOCAL).rows.flatMap((row) =>
+    const prompts = deriveTranscript(view, [], LOCAL, null).rows.flatMap((row) =>
       row.kind === "prompt" ? [[row.key, row.pending]] : [],
     );
 
@@ -120,7 +122,7 @@ describe("rows", () => {
       ),
     );
 
-    const model = deriveTranscript(view, [], LOCAL);
+    const model = deriveTranscript(view, [], LOCAL, null);
     const [turn] = turnsIn(model);
 
     expect(turn?.blocks.map((message) => message.kind)).toEqual(["user", "user"]);
@@ -128,6 +130,41 @@ describe("rows", () => {
 });
 
 describe("turn status", () => {
+  test.each<[string, number, TurnStatus["kind"]]>([
+    ["waits on the person while a subagent below it asks", 1, "waiting"],
+    ["works while the subagent below it works", 0, "working"],
+  ])("a live turn whose run waits on a subagent %s", (_name, asking, kind) => {
+    const live = buildView((v) =>
+      v.turn("t1", (t) => t.user("go").text("delegating", { live: true })).live(),
+    );
+
+    if (live.execution.kind !== "live") throw new Error("The fixture's run isn't live.");
+
+    const on: WaitTarget = {
+      kind: "run",
+      session: asId("child"),
+      run: asId("child-run"),
+    };
+
+    const view: SessionView = {
+      ...live,
+      execution: { kind: "waiting", run: live.execution.run, on },
+      turns: live.turns.map((turn) => ({ ...turn, state: { kind: "waiting", on } })),
+    };
+
+    const info = followed(view).info;
+
+    const below = {
+      ...info,
+      heads: info.heads.map((head) => ({
+        ...head,
+        background: { working: 1 - asking, waiting: asking },
+      })),
+    };
+
+    expect(turnsIn(deriveTranscript(view, [], LOCAL, below)).at(-1)?.status?.kind).toBe(kind);
+  });
+
   test("a settled turn reports Worked for from endedAt - startedAt", () => {
     const view = buildView((v) =>
       v.turn("t1", (t) => t.at(1_000).user("a").text("b").ended("completed", { endedAt: 4_500 })),
@@ -135,7 +172,7 @@ describe("turn status", () => {
 
     const [info] = view.turns;
 
-    expect(info === undefined ? null : turnStatus(info, view.messages, view)).toEqual({
+    expect(info === undefined ? null : turnStatus(info, view.messages, view, false)).toEqual({
       kind: "settled",
       durationMs: 3_500,
       failure: null,
@@ -145,7 +182,7 @@ describe("turn status", () => {
 
   test("a stop reads as an aborted failure", () => {
     const view = buildView((v) => v.turn("t1", (t) => t.user("a").text("b").ended("stopped")));
-    const model = deriveTranscript(view, [], LOCAL);
+    const model = deriveTranscript(view, [], LOCAL, null);
 
     expect(turnsIn(model)[0]?.status).toMatchObject({
       kind: "settled",
@@ -169,7 +206,8 @@ describe("turn status", () => {
 
     const unanswered = buildView((v) => v.turn("t1", (t) => t.user("a"), { run: undefined }));
 
-    const status = (view: typeof thinking) => turnsIn(deriveTranscript(view, [], LOCAL))[0]?.status;
+    const status = (view: typeof thinking) =>
+      turnsIn(deriveTranscript(view, [], LOCAL, null))[0]?.status;
 
     expect(status(thinking)).toMatchObject({ kind: "thinking" });
     expect(status(retrying)).toEqual({
@@ -193,7 +231,7 @@ describe("turn status", () => {
         .waiting("q1"),
     );
 
-    expect(turnsIn(deriveTranscript(view, [], LOCAL))[0]?.status).toEqual({
+    expect(turnsIn(deriveTranscript(view, [], LOCAL, null))[0]?.status).toEqual({
       kind: "waiting",
       question: true,
     });

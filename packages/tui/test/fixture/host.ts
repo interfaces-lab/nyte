@@ -12,7 +12,7 @@ import { listen } from "@nyte-ai/host";
 import { asId } from "@nyte-ai/schema";
 import type { WorkspaceTarget } from "@nyte-ai/schema";
 import { connect, createSendJournal } from "@nyte-ai/sdk/client";
-import type { ClientConnection } from "@nyte-ai/sdk/client";
+import type { ClientConnection, ClientConnectOptions } from "@nyte-ai/sdk/client";
 import type { LocalEndpoint } from "@nyte-ai/service";
 
 export type Reply = FakeModels["reply"] extends (...replies: readonly (infer R)[]) => void
@@ -43,6 +43,8 @@ export async function openTestHost(options?: {
   readonly workspace?: WorkspaceTarget;
   readonly loadPlugins?: (paths: readonly string[]) => Promise<readonly Plugin<"core">[]>;
   readonly loadPluginDirectory?: (dir: string) => Promise<PluginDirectory>;
+  /** The client's requests go through it, so a test can lose one on the way. */
+  readonly fetch?: NonNullable<ClientConnectOptions["transport"]>["fetch"];
 }): Promise<TestHost> {
   dev.off();
   const models = fakeModels({ models: options?.models });
@@ -77,6 +79,7 @@ export async function openTestHost(options?: {
     credentials: { kind: "token", token },
     client: { kind: "tui", name: "nyte", version: "0.0.0" },
     journal: createSendJournal(),
+    transport: { fetch: options?.fetch },
   });
   let closed: Promise<void> | null = null;
 

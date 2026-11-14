@@ -1,4 +1,6 @@
 import type { PartId, PartView, SessionId, SessionInfo } from "@nyte-ai/schema";
+import { errorMessage } from "./lib/format.ts";
+import type { RefusedSend } from "./effects/ports.ts";
 import type {
   Chat,
   ClientConnection,
@@ -89,6 +91,26 @@ export function healthUpdates(connection: ClientConnection): AsyncIterable<Healt
   return liveValues((changed) => ({
     read: () => connection.health.snapshot(),
     close: connection.health.subscribe(changed),
+  }));
+}
+
+/** Each replayed send the host refused, once: a read takes what it yields off the connection's list. */
+export function refusedSends(connection: ClientConnection): AsyncIterable<readonly RefusedSend[]> {
+  return liveValues((changed) => ({
+    read() {
+      const listed = connection.refused.snapshot();
+
+      if (listed.length === 0) return null;
+
+      for (const send of listed) connection.refused.take(send.id);
+
+      return listed.map((send) => ({
+        session: send.session,
+        content: send.content,
+        reason: errorMessage(send.error),
+      }));
+    },
+    close: connection.refused.subscribe(changed),
   }));
 }
 

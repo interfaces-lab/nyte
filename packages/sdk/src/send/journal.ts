@@ -10,6 +10,7 @@ import type {
   ReceiptId,
   SessionId,
   SessionView,
+  UserContent,
 } from "@nyte-ai/schema";
 import { dev } from "@nyte-ai/core/client";
 import type { RequestJournal } from "@nyte-ai/core";
@@ -17,6 +18,8 @@ import type { OperationOutput } from "@nyte-ai/protocol";
 import type { Rows } from "../connection/rows.ts";
 import { backoff, httpRetryDelay } from "../connection/rows.ts";
 import { parsed } from "../connection/receipts.ts";
+import { listenerSet } from "../live/store.ts";
+import type { Live } from "../live/store.ts";
 
 /**
  * Where a send journal keeps its entries: text under a key, one entry per key, so each write and
@@ -52,11 +55,31 @@ export interface JournalLoop {
   /** The send `id` while the journal shows it unsent, which `send` reaches before its first post, or `null`. */
   sending(id: ReceiptId): Sending | null;
   subscribe(listener: () => void): Disposer;
+  readonly refused: RefusedSends;
+}
+
+/** A send the journal replayed, at connect or on `resend`, that the host refused: nothing sends it again, and no `send` is left to hear of it. */
+export interface RefusedSend {
+  readonly id: ReceiptId;
+  readonly session: SessionId;
+  readonly head: HeadName;
+  readonly content: UserContent;
+  readonly error: unknown;
+}
+
+/**
+ * The replayed sends the host refused, oldest first, the same array until it changes. Each stays
+ * listed until `take` takes it, so a client that looks after the host answered still gets its text
+ * back.
+ */
+export interface RefusedSends extends Live<readonly RefusedSend[]> {
+  take(id: ReceiptId): void;
 }
 
 /**
  * How a journaled send ended without the host's answer: `kept` while the journal still holds it, to
- * post on the next connection after a link closed under it or on `resend` after it expired;
+ * post on the next connection to its own host after a link closed under it, or on `resend` after it
+ * expired;
  * `removed` by `discard`; `dropped` when the host refused it and nothing holds it.
  */
 type Unanswered = "kept" | "removed" | "dropped";
@@ -160,7 +183,8 @@ function readEntry(text: string): JournalEntry | null {
  * Sends each journaled entry until the host answers, the link closes, or the entry outlives
  * `EXPIRES_MS` without the host having its receipt. An expired entry stays journaled and shown
  * unsent, its `retrying` reason `EXPIRED_REASON`, until `resend` sends it again or `discard`
- * removes it; its `send` rejects with `timeout`.
+ * removes it; its `send` rejects with `timeout`. A replayed send has no caller to hear its end, so
+ * one the host refused is listed in `refused`.
  */
 export function journalLoop(rows: Rows, journal: RequestJournal, host: HostId): JournalLoop {
   const held = new Map<string, Held>();
@@ -168,6 +192,8 @@ export function journalLoop(rows: Rows, journal: RequestJournal, host: HostId): 
   const tails = new Map<string, Promise<void>>();
   const shown = new Map<string, number>();
   const listeners = new Set<() => void>();
+  const refusals = listenerSet();
+  let refused: readonly RefusedSend[] = [];
 
   const changed = (): void => {
     for (const listener of listeners) listener();
@@ -296,14 +322,30 @@ export function journalLoop(rows: Rows, journal: RequestJournal, host: HostId): 
     return sent;
   };
 
+  const holdReplayed = (entry: JournalEntry): void => {
+    const sent = hold(entry);
+    const current = held.get(entry.id);
+
+    sent.catch((error: unknown) => {
+      dev("sdk", "replay failed", {
+        receipt: entry.id,
+        code: error instanceof SdkError ? error.code : "internal",
+      });
+
+      if (current?.unanswered !== "dropped") return;
+      refused = refused.concat({
+        id: entry.id,
+        session: entry.session,
+        head: entry.head,
+        content: entry.content,
+        error,
+      });
+      refusals.notify();
+    });
+  };
+
   const replay = (entries: readonly JournalEntry[]): void => {
-    for (const entry of entries.filter((entry) => entry.host === host))
-      hold(entry).catch((error: unknown) =>
-        dev("sdk", "replay failed", {
-          receipt: entry.id,
-          code: error instanceof SdkError ? error.code : "internal",
-        }),
-      );
+    for (const entry of entries.filter((entry) => entry.host === host)) holdReplayed(entry);
   };
 
   const shownHeld = (session: SessionId, head: HeadName): ReadonlyMap<Message["id"], Held> => {
@@ -431,6 +473,15 @@ export function journalLoop(rows: Rows, journal: RequestJournal, host: HostId): 
       return () => {
         listeners.delete(listener);
       };
+    },
+    refused: {
+      subscribe: refusals.subscribe,
+      snapshot: () => refused,
+      take(id) {
+        if (!refused.some((send) => send.id === id)) return;
+        refused = refused.filter((send) => send.id !== id);
+        refusals.notify();
+      },
     },
   };
 }

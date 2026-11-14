@@ -73,6 +73,9 @@ export const EDIT_ENDED_NOTICES = {
   lapsed: "Couldn't keep the message on hold.",
 } satisfies Record<Awaited<HeldMessage["lost"]>["kind"], string>;
 
+/** What attaching says while a save runs, when the composer takes no files. */
+export const FILES_WHILE_SAVING = "Finish editing the message, then attach the image again.";
+
 export const CLOSED_SESSION: ComposerSession = {
   open: false,
   hold: null,
@@ -121,7 +124,9 @@ export type ComposerSessionEvent =
   | { readonly kind: "attached"; readonly attachments: readonly ComposerImageAttachment[] }
   | { readonly kind: "detached"; readonly id: string }
   | { readonly kind: "notice"; readonly notice: ComposerNotice | null }
-  | { readonly kind: "restored" };
+  | { readonly kind: "restored" }
+  | { readonly kind: "submit" }
+  | { readonly kind: "files" };
 
 export type ComposerSessionEffect =
   | { readonly kind: "hold"; readonly message: MessageId; readonly token: number }
@@ -145,7 +150,10 @@ export type ComposerSessionEffect =
   | { readonly kind: "focus"; readonly preventScroll: boolean }
   | { readonly kind: "revised" };
 
-/** `handled` is false only for a recall that moved nothing, so the key goes on. */
+/**
+ * `handled` is false for a recall that moved nothing, so the key goes on, and for a `submit` or
+ * `files` the composer can't take now, so nothing is sent or read.
+ */
 export interface SessionStep {
   readonly state: ComposerSession;
   readonly draft: SessionDraft;
@@ -181,11 +189,13 @@ function transition(
         ? step({ ...state, open: true }, draft)
         : askHold({ ...state, open: true }, draft, draft.edit.message.id);
     case "closed":
-      return step(
-        { ...state, open: false, hold: null, reading: null },
-        foldEdit(draft),
-        releasing(state.hold),
-      );
+      return saving(state)
+        ? step({ ...state, open: false, reading: null }, foldEdit(draft, "kept"))
+        : step(
+            { ...state, open: false, hold: null, reading: null },
+            foldEdit(draft, "folded"),
+            releasing(state.hold),
+          );
     case "edit":
       return beginEdit(state, draft, event.message, event.asking);
     case "edit-cancelled":
@@ -250,12 +260,23 @@ function transition(
       return noticed(state, draft, event.notice);
     case "restored":
       return step(state, restoredDraft(draft));
+    case "submit":
+      return step(state, draft, [], state.intake.reads === 0);
+    case "files":
+      return step(state, draft, [], !saving(state));
     default: {
       const _exhaustive: never = event;
 
       return _exhaustive;
     }
   }
+}
+
+/** Why a queued message can't open for editing now: a question takes the composer, or another edit is open. */
+export function editBlock(draft: SessionDraft, asking: boolean): "asking" | "editing" | null {
+  if (asking) return "asking";
+
+  return draft.edit === null ? null : "editing";
 }
 
 /** Whether a save is running, which keeps the composer from taking input. */
@@ -301,7 +322,8 @@ function beginEdit(
   message: UserMessage,
   asking: boolean,
 ): SessionStep {
-  if (asking || draft.edit !== null || message.source.kind === "action") return step(state, draft);
+  if (editBlock(draft, asking) !== null || message.source.kind === "action")
+    return step(state, draft);
 
   const held = askHold(
     { ...state, recall: null, intake: nextIntake(state.intake, { kind: "cleared" }) },
@@ -323,8 +345,7 @@ function holdAnswered(
   const current = hold?.token === token ? hold : null;
 
   if (answer.kind === "held") {
-    if (current === null || current.phase !== "asking")
-      return step(state, draft, [{ kind: "release", token }]);
+    if (current === null) return step(state, draft, [{ kind: "release", token }]);
 
     return step({ ...state, hold: { ...current, phase: "held" } }, draft);
   }
@@ -376,7 +397,12 @@ function save(
   );
 }
 
-/** A save ended: one the host did not take holds the message again, a revision ends the edit, and a message that left ends it with the reason. */
+/**
+ * A save ended: one the host did not take holds the message again, a revision ends the edit, and a
+ * message that left ends it with the reason. A save that outlived its composer settles the draft
+ * as closing would have once the outcome is known: a revision leaves the person's own text, and an
+ * edit the host did not take joins it.
+ */
 function saved(
   state: ComposerSession,
   draft: SessionDraft,
@@ -386,19 +412,22 @@ function saved(
   const hold = state.hold;
 
   if (hold === null || hold.token !== token || hold.phase !== "saving") return step(state, draft);
-  const focus: ComposerSessionEffect = { kind: "focus", preventScroll: true };
+  const focus: readonly ComposerSessionEffect[] = state.open
+    ? [{ kind: "focus", preventScroll: true }]
+    : [];
 
   switch (outcome.kind) {
     case "empty":
     case "kept":
     case "refused": {
+      if (!state.open) return step({ ...state, hold: null }, foldEdit(draft, "folded"));
       const again = askHold({ ...state, hold: null }, draft, hold.message);
 
       return outcome.kind === "empty"
-        ? { ...again, effects: [...again.effects, focus] }
+        ? { ...again, effects: [...again.effects, ...focus] }
         : noticed(again.state, again.draft, errorNotice(outcome.message), [
             ...again.effects,
-            focus,
+            ...focus,
           ]);
     }
 
@@ -406,11 +435,11 @@ function saved(
       return step(
         { ...state, hold: null, intake: nextIntake(state.intake, { kind: "cleared" }) },
         draft.edit?.message.id === hold.message ? { ...draft, edit: null } : draft,
-        [focus, { kind: "revised" }],
+        [...focus, { kind: "revised" }],
       );
     case "sent":
     case "missing":
-      return leaveEdit(state, draft, EDIT_ENDED_NOTICES[outcome.kind], [focus]);
+      return leaveEdit(state, draft, EDIT_ENDED_NOTICES[outcome.kind], focus);
     default: {
       const _exhaustive: never = outcome;
 

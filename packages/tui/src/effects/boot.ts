@@ -16,6 +16,7 @@ import {
   settleFolder,
   watchHealth,
   watchHost,
+  watchRefused,
 } from "./session.ts";
 
 export interface BootOptions {
@@ -52,6 +53,14 @@ export async function boot(options: BootOptions, context: HandlerContext): Promi
     .finally(() => scope.watches.delete(health));
 
   scope.watches.add(health);
+
+  const refused: Promise<void> = watchRefused(context)
+    .catch((cause: unknown) => {
+      ports.log.write("watch", cause);
+    })
+    .finally(() => scope.watches.delete(refused));
+
+  scope.watches.add(refused);
   const catalog = await ports.host.listModels();
   const { settings } = context.read().facts;
   dispatch({ kind: "catalog", generation: (scope.catalogGeneration += 1), catalog });

@@ -116,7 +116,15 @@ storage you own, such as `localStorage` or a folder, they survive a restart of y
 `createSendJournal()` keeps them in memory, so they survive a dropped connection but not a
 restart; it is what `sdk.connect` uses when you pass none.
 On the next `connect` to the same host, the SDK resends what is left under each message's id, so
-a message the host already has is not sent twice, even when two clients load it.
+a message the host already has is not sent twice, even when two clients load it. A client of
+another host leaves those messages journaled, and the next client of their own host shows them as
+`unsent` until they land.
+
+No `send` is waiting on a resent message, so when the host refuses one, the connection lists it in
+`connection.refused` instead: a store of `{ id, session, head, content, error }`, oldest first.
+Give its `content` back to that chat's input, then call `connection.refused.take(id)`. It stays
+listed until you do, so a screen that opens late still gets it. A message sent again with
+`chat.resend` ends the same way.
 
 A message is sent on its own for a day. After that the SDK sends it only if the host already has
 it; otherwise the message stays in the view as `unsent`, its `retrying` reason saying it waited

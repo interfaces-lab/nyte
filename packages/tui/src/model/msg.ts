@@ -212,7 +212,9 @@ export type Outcome =
   | { readonly kind: "sent"; readonly submission: string; readonly message: MessageId }
   | {
       readonly kind: "send-refused";
-      readonly submission: string;
+      /** `null` for a send the journal replayed, which no submission waits on. */
+      readonly submission: string | null;
+      readonly session: SessionId;
       readonly reason: string;
       readonly snapshot: DraftSnapshot;
     }

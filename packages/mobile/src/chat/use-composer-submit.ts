@@ -14,6 +14,7 @@ import { resolveAttachment } from "../media/annotations.ts";
 import { parseCommandLine, type CommandLine } from "./completions.ts";
 import type { ComposerTarget, SessionTarget } from "./composer-target.ts";
 import { useChatScope } from "./drafts.ts";
+import { returnedDraft } from "./send-answer.ts";
 import type { ThinkingLevel } from "./thinking.ts";
 import {
   readPendingStart,
@@ -84,7 +85,7 @@ export function useComposerSubmit({
   };
 
   const restoreSubmitted = (submitted: string, submittedImages: readonly StagedImage[]) => {
-    setDraft((current) => (current.trim() === "" ? submitted : `${submitted}\n\n${current}`));
+    setDraft((current) => returnedDraft(current, submitted));
     attachments.restore(submittedImages);
   };
 
@@ -138,8 +139,8 @@ export function useComposerSubmit({
     if (outcome.kind !== "taken") return;
     clearSubmitted(submitted, submittedImages);
     void outcome.answer.then((answer) => {
-      if (answer.kind === "sent") attachments.release(submittedImages);
-      else restoreSubmitted(submitted, submittedImages);
+      if (answer.kind === "refused") restoreSubmitted(submitted, submittedImages);
+      else attachments.release(submittedImages);
     });
   };
 

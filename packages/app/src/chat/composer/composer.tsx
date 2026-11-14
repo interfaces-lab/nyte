@@ -40,7 +40,7 @@ import { deliver, draftCommands } from "./composer-send.ts";
 import { planSubmission } from "./composer-plan.ts";
 import { endedDraft, errorNotice, shownDraft } from "./composer-draft.ts";
 import type { ComposerNotice } from "./composer-draft.ts";
-import { saving } from "./composer-session.ts";
+import { editBlock, FILES_WHILE_SAVING, saving } from "./composer-session.ts";
 import type { PendingRowAction } from "./composer-session.ts";
 import { composerSession } from "./composer-effects.ts";
 import { preferences, useSetting } from "../../preferences/index.ts";
@@ -234,7 +234,7 @@ export function Composer({
     files: readonly ComposerFile[],
     signal?: AbortSignal,
   ): Promise<string | undefined> => {
-    if (savingEdit) return "Finish editing the message, then attach the image again.";
+    if (!dispatch({ kind: "files" })) return FILES_WHILE_SAVING;
 
     return takeFiles({
       files,
@@ -254,7 +254,7 @@ export function Composer({
     delivery: Delivery,
     document: ComposerDocumentState,
   ): Promise<void> => {
-    if (state.intake.reads !== 0) return;
+    if (!dispatch({ kind: "submit" })) return;
     const sentAttachments = attachments;
     const submittingTab = windowTabs.paneTabId();
     const receipt = asId<"receipt">(crypto.randomUUID());
@@ -355,12 +355,9 @@ export function Composer({
     draftEmpty(shownView.draft, attachments.length) &&
     nextIdleQueued !== undefined;
 
-  const canBeginEdit = questions === undefined && target === null;
-
+  const blocked = editBlock(draft, questions !== undefined);
   const queuedEditReason =
-    questions === undefined && target !== null
-      ? "Finish editing the queued message first."
-      : undefined;
+    blocked === "editing" ? "Finish editing the queued message first." : undefined;
 
   const removeOutboxRow = (row: UserMessage): void => {
     messageReceipt(sessionId, row)
@@ -449,7 +446,7 @@ export function Composer({
                 expired={expired}
                 rowActions={state.rows}
                 editingId={target === null ? undefined : target.message.id}
-                canEdit={canBeginEdit}
+                canEdit={blocked === null}
                 editBlocked={queuedEditReason}
                 enterSteers={emptyEnterSteers}
                 mac={mac}

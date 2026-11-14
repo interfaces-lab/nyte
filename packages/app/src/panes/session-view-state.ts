@@ -5,7 +5,7 @@ import type { Static } from "typebox";
 import { Type } from "typebox";
 import type { PaneId } from "./layout.ts";
 import type { WindowDrafts } from "../chat/composer/drafts.ts";
-import { persistedDraft } from "../chat/composer/composer-draft.ts";
+import { persistedDraft, restorable } from "../chat/composer/composer-draft.ts";
 import type { SessionDraft } from "../chat/composer/composer-draft.ts";
 
 const KEPT_SESSION_VIEWS = 64;
@@ -84,6 +84,11 @@ export function composerHasContent(composer: ComposerViewState): boolean {
   return composer.draft.trim() !== "" || composer.attachments.length > 0;
 }
 
+/** Whether the window keeps the chat's draft: the person's own text or images, or a refused send to restore. */
+export function draftKept(draft: SessionDraft): boolean {
+  return composerHasContent(persistedDraft(draft)) || restorable(draft) !== null;
+}
+
 export function draftHasContent(draft: BlankViewState): boolean {
   return composerHasContent(draft.composer);
 }
@@ -152,21 +157,23 @@ export class SessionViewStateStore {
       for (const [id, kept] of sessions) {
         if (sessions.size <= KEPT_SESSION_VIEWS) break;
 
-        if (
-          !composerHasContent(persistedDraft(kept.draft)) &&
-          (kept.draft.notice === null || kept.draft.notice.restore === null)
-        )
-          sessions.delete(id);
+        if (draftKept(kept.draft)) continue;
+        sessions.delete(id);
+
+        if (kept.stepGroups.size > 0)
+          this.#window.saveSteps(id, DEFAULT_SESSION_VIEW_STATE.stepGroups);
       }
     }
+
+    if ((known ?? DEFAULT_SESSION_VIEW_STATE).stepGroups !== state.stepGroups)
+      this.#window.saveSteps(sessionId, state.stepGroups);
 
     if (previous === state.draft) return;
     const before = persistedDraft(previous);
     const after = persistedDraft(state.draft);
 
-    if (storedChanged(before, after)) {
-      this.#window.save(`session:${sessionId}`, before, after, persistableComposer(after));
-    }
+    if (storedChanged(before, after) || restorable(previous) !== restorable(state.draft))
+      this.#window.saveSession(sessionId, previous, state.draft);
 
     this.#window.notify(`session:${sessionId}`);
   }

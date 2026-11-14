@@ -3,9 +3,10 @@ import type { CanvasState } from "@nyte-ai/plugin/canvas/schema";
 import { text } from "@nyte-ai/plugin/client";
 import type { PartDefinition, PartState } from "@nyte-ai/plugin/client";
 import { asId, asSeq } from "@nyte-ai/schema";
-import type { Execution, Message, SessionView, TurnInfo } from "@nyte-ai/sdk";
+import type { Execution, Message, SessionInfo, SessionView, TurnInfo } from "@nyte-ai/sdk";
 import { describe, expect, it } from "vitest";
 import { conversationRows } from "../src/chat/transcript-rows.ts";
+import { chatMark } from "../src/view-helpers.ts";
 
 type PartMessage = Extract<Message, { readonly kind: "part" }>;
 
@@ -254,5 +255,52 @@ describe("conversationRows", () => {
     expect(
       conversationRows(view([{ ...part("other-1", canvas, usage), partKind: "maps/places" }])),
     ).toEqual([]);
+  });
+});
+
+describe("a chat's mark on the phone", () => {
+  const delegating: Execution = {
+    kind: "waiting",
+    run: {
+      id: run,
+      head: asId<"head">("main"),
+      startedAt: 0,
+      attempt: 1,
+      origin: { kind: "input", message: asId<"message">("prompt-1") },
+    },
+    on: { kind: "run", session: asId<"session">("child"), run: asId<"run">("child-run") },
+  };
+
+  function row(waiting: number): SessionInfo {
+    return {
+      id: asId<"session">("chat"),
+      name: null,
+      parent: null,
+      call: null,
+      workspace: asId<"workspace">("workspace"),
+      pinned: false,
+      archived: false,
+      activation: { kind: "active" },
+      heads: [
+        {
+          name: asId<"head">("main"),
+          tip: { kind: "start" },
+          stack: null,
+          execution: delegating,
+          unread: false,
+          background: { working: 1 - waiting, waiting },
+        },
+      ],
+      createdAt: 0,
+      lastActivityAt: 0,
+    };
+  }
+
+  it.each<[string, SessionInfo | undefined, string]>([
+    ["a run waiting on a subagent that asks needs attention", row(1), "waiting"],
+    ["a run waiting on a subagent that works is working", row(0), "working"],
+    ["before the chat's row is read, its own run decides", undefined, "working"],
+  ])("%s", (_name, info, mark) => {
+    expect(chatMark(info, delegating)).toBe(mark);
   });
 });

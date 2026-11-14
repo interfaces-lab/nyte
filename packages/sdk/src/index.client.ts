@@ -4,7 +4,7 @@ export type { ClientConnectOptions, ClientConnection } from "./connect.ts";
 
 export { createSendJournal } from "./send/journal.ts";
 
-export type { JournalStorage } from "./send/journal.ts";
+export type { JournalStorage, RefusedSend, RefusedSends } from "./send/journal.ts";
 
 export { ticketSocket } from "./live/ticket-socket.ts";
 

@@ -302,6 +302,7 @@ describe("handbacks", () => {
     const refused = play(busy, {
       kind: "send-refused",
       submission: "submission-1",
+      session: S1,
       reason: "Blocked by plugin",
       snapshot: { text: "my message", parts: new Map() },
     });
@@ -328,6 +329,7 @@ describe("handbacks", () => {
     const refused = play(open.state, {
       kind: "send-refused",
       submission: "x",
+      session: S1,
       reason: "no",
       snapshot: { text: "later", parts: new Map() },
     });
@@ -335,6 +337,25 @@ describe("handbacks", () => {
     expect(refused.effects).toEqual([]);
     expect(refused.state.local.handbacks[S1]?.length).toBe(1);
   });
+});
+
+test("a replayed send the host refused waits for its own chat, not the one shown", () => {
+  const idle = buildView((v) => v.turn("t1", (t) => t.user("hi").text("ok").ended("completed")));
+  const elsewhere = asId<"session">("elsewhere");
+
+  const refused = play(ready(idle), {
+    kind: "send-refused",
+    submission: null,
+    session: elsewhere,
+    reason: "Message not sent: unknown session. It is back in the composer.",
+    snapshot: { text: "replayed", parts: new Map() },
+  });
+
+  expect([
+    refused.effects,
+    refused.state.local.handbacks[S1]?.length ?? 0,
+    refused.state.local.handbacks[elsewhere]?.map((handback) => handback.draft.text),
+  ]).toEqual([[], 0, ["replayed"]]);
 });
 
 describe("editing", () => {

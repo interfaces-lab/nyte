@@ -12,6 +12,7 @@ import type {
 import { availableModels, findModel } from "../lib/catalog.ts";
 import { shortId } from "../lib/format.ts";
 import { indexedMention } from "../model/completion.ts";
+import { draftFromContent } from "../model/draft.ts";
 import { chatFolder, followedSession } from "../model/state.ts";
 import type { BlankChat, Selection, State, WorkspaceFacts } from "../model/state.ts";
 import { SessionConfigurator } from "../services/session-config.ts";
@@ -270,6 +271,20 @@ export async function watchHost(context: HandlerContext): Promise<void> {
   });
 
   await Promise.all([catalogs, infos]);
+}
+
+/** Gives each replayed send the host refused back to its chat, as a live refusal is. */
+export function watchRefused(context: HandlerContext): Promise<void> {
+  return each(context.ports.host.refusedSends(), context.signal, (refused) => {
+    for (const send of refused)
+      context.dispatch({
+        kind: "send-refused",
+        submission: null,
+        session: send.session,
+        reason: `Message not sent: ${send.reason}. It is back in the composer.`,
+        snapshot: draftFromContent(send.content),
+      });
+  });
 }
 
 export function watchHealth(context: HandlerContext): Promise<void> {

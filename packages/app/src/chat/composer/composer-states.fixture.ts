@@ -15,10 +15,11 @@ import type {
   UserContent,
 } from "@nyte-ai/sdk";
 import { SdkError } from "@nyte-ai/sdk";
-import type { Health } from "@nyte-ai/sdk/client";
+import type { Health, RefusedSend } from "@nyte-ai/sdk/client";
 import { asId, asSeq } from "@nyte-ai/schema";
 import { viewStream } from "../../../test/scripted-connection.ts";
 import { enterBehavior } from "./composer-keys.ts";
+import { windowTabs } from "../../tabs/window-tabs.ts";
 import { USAGE, endedTurn } from "../../../test/view-fixtures.ts";
 
 const configuration: Configuration = {
@@ -213,6 +214,9 @@ const OPEN: Health = { kind: "open", since: 0 };
 export const health = viewStream<Health>(OPEN);
 
 export const stops: PromiseWithResolvers<StopOutcome<never>>[] = [];
+
+/** The connection's list of sends the journal replayed and the host refused. */
+export const refusals = viewStream<readonly RefusedSend[]>([]);
 
 /** How a send the composer made ends; `unsent` leaves it with the journal, as a link that closed under it or a day's wait does. */
 export type SendEnding = "refused" | "unsent" | "removed";
@@ -739,6 +743,54 @@ export async function sendTwice(probe: Probe): Promise<readonly string[]> {
     failures.push("Send stays busy while the journal holds the messages");
 
   for (const sent of sends.splice(first)) sent.end("unsent");
+
+  return failures;
+}
+
+/**
+ * Lists a replayed send the host refused for a chat no composer shows, over an empty draft and then
+ * over text, and checks the window's draft store takes it back as a live refusal and the connection's
+ * list is emptied.
+ */
+export async function replayRefused(): Promise<readonly string[]> {
+  const failures: string[] = [];
+  const drafts = windowTabs.panes().viewState;
+  const chat = asId<"session">("composer-replayed-elsewhere");
+
+  for (const [typed, shows, restore] of [
+    ["", SENT, null],
+    ["next", "next", SENT],
+  ] as const) {
+    drafts.updateDraft(chat, () => ({
+      composer: { draft: typed, attachments: [], selectionStart: 0, selectionEnd: 0 },
+      edit: null,
+      notice: null,
+    }));
+    refusals.push([
+      {
+        id: asId<"receipt">(`replayed-${typed}`),
+        session: chat,
+        head: asId<"head">("main"),
+        content: SENT,
+        error: new SdkError("invalid", "The host refused the message."),
+      },
+    ]);
+    await until(
+      () => (refusals.latest()?.length === 0 ? true : null),
+      "the refused replay to be taken",
+    );
+    const draft = drafts.readSession(chat).draft;
+    const label = typed === "" ? "over an empty draft" : "over text";
+
+    if (draft.composer.draft !== shows)
+      failures.push(`${label}: the draft reads "${draft.composer.draft}", not "${shows}"`);
+
+    if (draft.notice?.message.startsWith("Couldn't send the message") !== true)
+      failures.push(`${label}: the notice reads "${draft.notice?.message ?? ""}"`);
+
+    if ((draft.notice?.restore?.text ?? null) !== restore)
+      failures.push(`${label}: Restore Draft offers "${draft.notice?.restore?.text ?? "nothing"}"`);
+  }
 
   return failures;
 }

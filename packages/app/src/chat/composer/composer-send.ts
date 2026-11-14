@@ -13,7 +13,6 @@ import type {
   UserContent,
   WorkspaceId,
 } from "@nyte-ai/sdk";
-import { asId } from "@nyte-ai/schema";
 import type { ProjectId } from "@nyte-ai/schema";
 import type { ImageContent } from "@nyte-ai/schema/model";
 import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
@@ -29,6 +28,7 @@ import { messageFiles } from "../transcript/message-content.tsx";
 import type { MessageFile } from "../transcript/message-content.tsx";
 import { openSideChat } from "../side-chat/side-chats.ts";
 import type { ParsedPluginCommand } from "./plugin-command.ts";
+import { refusalMessage } from "./composer-draft.ts";
 import type { SendEnd } from "./composer-draft.ts";
 import type { EditSaved } from "./composer-session.ts";
 import { planEdit } from "./composer-plan.ts";
@@ -67,20 +67,6 @@ export async function uploadComposerContent(content: ComposerContent): Promise<U
   );
 
   return [...content.parts, ...content.files, ...uploaded];
-}
-
-export async function sendComposerMessage(
-  session: Session,
-  plan: Extract<ComposerSendPlan, { kind: "message" }>,
-  id: ReceiptId = asId<"receipt">(crypto.randomUUID()),
-): Promise<void> {
-  followTrace(session.id, id);
-
-  await traced("composer.submit", id, { session: session.id }, async () => {
-    const draft = await admittedDraft(session.id, plan);
-
-    await session.send(draft.content, { id, delivery: draft.delivery });
-  });
 }
 
 /** Puts a planned message in the chat's send journal, resolving once the journal holds it. */
@@ -191,7 +177,7 @@ function sendEnd(delivered: Awaited<ChatSend["delivered"]>): SendEnd {
 }
 
 function refusedSend(cause: unknown): SendEnd {
-  return { kind: "refused", message: `Couldn't send the message: ${errorMessage(cause)}` };
+  return { kind: "refused", message: refusalMessage(cause) };
 }
 
 export async function deliverEdit(input: ComposerEdit): Promise<EditSaved> {

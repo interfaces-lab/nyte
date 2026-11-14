@@ -11,6 +11,8 @@ import type { ConnectFailure } from "./connect-copy.ts";
 import { connectionStore, hostVerifier } from "./host.ts";
 import { useHealth } from "./live.ts";
 import { releaseCopy } from "../account/account-copy.ts";
+import { chatDrafts } from "../chat/draft-store.ts";
+import { returnRefused } from "../chat/send-answer.ts";
 import { useAccount } from "../account/account-provider.tsx";
 import { RELEASE_TIMEOUT_MS, releaseOnHost } from "../account/revocation.ts";
 import { toast } from "../ui/toast.tsx";
@@ -58,6 +60,10 @@ export function useHost(): ConnectedHost {
   return host;
 }
 
+/**
+ * Also gives each replayed send the host refused back to its chat's draft, whether or not its chat
+ * is open, reading the list again after each since `take` notifies.
+ */
 export function HostProvider({ session, children }: { session: HostSession; children: ReactNode }) {
   const health = useHealth(session.client);
   useMountEffect(() => {
@@ -66,6 +72,23 @@ export function HostProvider({ session, children }: { session: HostSession; chil
     });
 
     return () => subscription.remove();
+  });
+  useMountEffect(() => {
+    const refused = session.client.refused;
+
+    const giveBack = (): void => {
+      for (;;) {
+        const send = refused.snapshot()[0];
+
+        if (send === undefined) return;
+        returnRefused(chatDrafts, session.scope, [send]);
+        refused.take(send.id);
+      }
+    };
+
+    giveBack();
+
+    return refused.subscribe(giveBack);
   });
 
   const opened = health.kind === "open" ? health.since : undefined;

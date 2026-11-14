@@ -27,6 +27,7 @@ import type {
   TextUpdate,
 } from "./live/host-connection.ts";
 import type { PartStore } from "./live/part.ts";
+import type { RefusedSends } from "./send/journal.ts";
 import type { SessionsStore, SessionsWindow } from "./live/sessions.ts";
 import type { Live } from "./live/store.ts";
 
@@ -68,6 +69,8 @@ export interface ClientConnection extends Connection {
     options?: { readonly timeoutMs?: number },
   ): Promise<Json>;
   offer(action: ActionDeclaration, handler: ActionHandler): Disposer;
+  /** The sends the journal replayed, at connect or on `resend`, that the host refused, kept until `take` so the client can give each one's text back. */
+  readonly refused: RefusedSends;
 }
 
 const MAIN = asId<"head">("main");
@@ -104,6 +107,7 @@ export async function connect(options: ClientConnectOptions): Promise<ClientConn
     ...http,
     ...link,
     credential: dialed.credential,
+    refused: dialed.journal.refused,
     sessions: { ...http.sessions, open: (window) => link.sessions(window) },
     chat(session, chat) {
       const head = chat?.head ?? MAIN;

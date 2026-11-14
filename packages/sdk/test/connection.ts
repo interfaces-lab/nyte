@@ -161,3 +161,20 @@ export function tapped(
     cancel: () => frames.return(undefined).then(() => undefined),
   });
 }
+
+/** Reads the view until `done` accepts it, for up to 5 s. */
+export async function viewWhen(
+  read: () => Promise<SessionView>,
+  done: (view: SessionView) => boolean,
+): Promise<SessionView> {
+  const deadline = Date.now() + 5_000;
+
+  for (;;) {
+    const view = await read();
+
+    if (done(view)) return view;
+
+    if (Date.now() > deadline) throw new Error("No view was accepted within 5000 ms.");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}

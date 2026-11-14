@@ -1,11 +1,12 @@
 import { flushSync } from "react-dom";
 import type { Delivery, HeldMessage, MessageId, SessionId } from "@nyte-ai/sdk";
 import { errorMessage } from "../../contract/errors.ts";
-import { connection } from "../../data/connection.ts";
+import { connection, currentConnection, installedLive } from "../../data/connection.ts";
+import { windowTabs } from "../../tabs/window-tabs.ts";
 import type { SessionViewStateStore } from "../../panes/session-view-state.ts";
 import type { ComposerSubmission } from "./composer-document.ts";
 import type { ComposerEditorHandle } from "./composer-editor.tsx";
-import { shownDraft } from "./composer-draft.ts";
+import { replayedDraft, shownDraft } from "./composer-draft.ts";
 import { readPrompts } from "./composer-history.ts";
 import { deliverEdit } from "./composer-send.ts";
 import { CLOSED_SESSION, EDIT_ENDED_NOTICES, stepSession } from "./composer-session.ts";
@@ -24,6 +25,28 @@ export interface ComposerPorts {
 }
 
 type SaveEffect = Extract<ComposerSessionEffect, { readonly kind: "save" }>;
+
+const refusedSends = installedLive((current) => current.refused);
+
+/**
+ * Gives each replayed send the host refused back to its chat's draft in this window, whether or not
+ * a composer shows the chat, then takes it off the connection's list. It reads the list again after
+ * each one, since `take` notifies and the call it starts gives back the rest.
+ */
+function giveBackRefused(): void {
+  for (;;) {
+    const refused = refusedSends.read()?.[0];
+
+    if (refused === undefined) return;
+    windowTabs
+      .panes()
+      .viewState.updateDraft(refused.session, (draft) => replayedDraft(draft, refused));
+    currentConnection()?.refused.take(refused.id);
+  }
+}
+
+refusedSends.subscribe(giveBackRefused);
+giveBackRefused();
 
 type ReadEffect = Extract<ComposerSessionEffect, { readonly kind: "read-prompts" }>;
 

@@ -44,9 +44,11 @@ export interface ChatSend {
   readonly id: ReceiptId;
   /**
    * How the send ends: `sent` once the host has it; `unsent` when it has not reached the host but the
-   * journal still holds it and shows it unsent, to post on the next connection after the link closed
-   * or on `resend` after it waited more than a day; `removed` when `remove` withdrew it first.
-   * Rejects with the host's error when the host refused it, the one end where nothing will send it.
+   * journal still holds it and shows it unsent, to post on the next connection to the same host
+   * after the link closed, or on `resend` after it waited more than a day; `removed` when `remove`
+   * withdrew it first. Rejects with the host's error when the host refused it, the one end where
+   * nothing will send it. A refusal of that post on a later connection, which no `delivered` hears,
+   * is listed in `connection.refused`.
    */
   readonly delivered: Promise<ChatDelivered>;
 }

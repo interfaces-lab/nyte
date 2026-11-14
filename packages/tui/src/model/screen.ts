@@ -190,7 +190,12 @@ export function deriveScreen(state: State, held: Pick<ScreenModel, "hints"> | nu
     dialog,
     blocked: input.blocked,
     queue,
-    transcript: deriveTranscript(view, followedShells(state), state.local.transcript),
+    transcript: deriveTranscript(
+      view,
+      followedShells(state),
+      state.local.transcript,
+      session?.info ?? null,
+    ),
     tasks: state.facts.tasks,
     scrollAcceleration: state.facts.settings.scrollAcceleration,
     interactions,

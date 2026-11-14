@@ -1,7 +1,12 @@
 import { expect, test } from "vitest";
 import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { asId } from "@nyte-ai/schema";
+import { SdkError } from "@nyte-ai/sdk";
+import type { RefusedSend } from "@nyte-ai/sdk/client";
+import type { StorageArea } from "../../lib/storage.ts";
+import { SessionViewStateStore } from "../../panes/session-view-state.ts";
 import type { ComposerImageAttachment, ComposerViewState } from "../../panes/session-view-state.ts";
+import { WindowDrafts } from "./drafts.ts";
 import {
   endedDraft,
   foldEdit,
@@ -10,6 +15,7 @@ import {
   openedEdit,
   persistedDraft,
   refusedDraft,
+  replayedDraft,
   restoredDraft,
   shownDraft,
   typedDraft,
@@ -62,6 +68,14 @@ const REFUSED: ComposerNotice = {
   kind: "error",
   message: "Refused.",
   restore: { text: "hello", attachments: [] },
+};
+
+const REPLAYED: RefusedSend = {
+  id: asId<"receipt">("replayed"),
+  session: asId<"session">("chat"),
+  head: asId<"head">("main"),
+  content: [{ kind: "text", text: "hello" }],
+  error: new SdkError("invalid", "Refused."),
 };
 
 const typed = (text: string) => ({ text, selectionStart: text.length, selectionEnd: text.length });
@@ -209,7 +223,7 @@ const ROWS: readonly {
   },
   {
     name: "closing the composer leaves an unchanged edit out of the draft, and drops a notice with nothing to restore",
-    result: foldEdit(draft("mine", { edit: "Then run the tests.", notice: ERROR })),
+    result: foldEdit(draft("mine", { edit: "Then run the tests.", notice: ERROR }), "folded"),
     expected: {
       shown: "mine",
       kept: "mine",
@@ -221,7 +235,7 @@ const ROWS: readonly {
   },
   {
     name: "closing the composer folds a changed edit into the draft",
-    result: foldEdit(draft("mine", { edit: "Then lint." })),
+    result: foldEdit(draft("mine", { edit: "Then lint." }), "folded"),
     expected: {
       shown: "Then lint.\nmine",
       kept: "Then lint.\nmine",
@@ -233,7 +247,7 @@ const ROWS: readonly {
   },
   {
     name: "closing the composer keeps a notice that can still restore",
-    result: foldEdit(draft("mine", { notice: REFUSED })),
+    result: foldEdit(draft("mine", { notice: REFUSED }), "folded"),
     expected: {
       shown: "mine",
       kept: "mine",
@@ -352,6 +366,30 @@ const ROWS: readonly {
     },
   },
   {
+    name: "a replayed send the host refused gives its text back to an empty draft",
+    result: replayedDraft(draft(""), REPLAYED),
+    expected: {
+      shown: "hello",
+      kept: "hello",
+      composer: "hello",
+      images: "",
+      editing: false,
+      notice: "error: Couldn't send the message: Refused.",
+    },
+  },
+  {
+    name: "a replayed send the host refused offers Restore Draft over the person's text",
+    result: replayedDraft(draft("mine"), REPLAYED),
+    expected: {
+      shown: "mine",
+      kept: "mine",
+      composer: "mine",
+      images: "",
+      editing: false,
+      notice: `error: Couldn't send the message: Refused. [restore "hello"]`,
+    },
+  },
+  {
     name: "Restore Draft puts the text in front and keeps the message",
     result: restoredDraft(draft("next", { notice: REFUSED })),
     expected: {
@@ -379,4 +417,128 @@ const ROWS: readonly {
 
 test.each(ROWS)("$name", (row) => {
   expect(summary(row.result)).toEqual(row.expected);
+});
+
+const STORE_KEY = "drafts";
+
+const CHAT = asId<"session">("chat");
+
+const LARGE_IMAGE: ComposerImageAttachment = {
+  ...IMAGE,
+  id: "large",
+  content: { ...IMAGE.content, data: "A".repeat(256 * 1024 + 1) },
+};
+
+function memoryArea(): StorageArea & { readonly values: Map<string, string> } {
+  const values = new Map<string, string>();
+
+  return {
+    values,
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => void values.set(key, value),
+    removeItem: (key) => void values.delete(key),
+  };
+}
+
+/** What a window that loads `area` shows for the chat: its text, images, notice and Restore Draft's images. */
+function reloaded(area: StorageArea) {
+  const shown = new WindowDrafts({ storage: area, storageKey: STORE_KEY }).sessions.get(
+    CHAT,
+  )?.draft;
+
+  return shown === undefined
+    ? null
+    : {
+        ...summary(shown),
+        restoring: shown.notice?.restore?.attachments.map((image) => image.id).join(",") ?? null,
+      };
+}
+
+test.each<{
+  readonly name: string;
+  readonly drafts: readonly SessionDraft[];
+  readonly stored?: Readonly<Record<string, unknown>>;
+  readonly expected: ReturnType<typeof reloaded>;
+}>([
+  {
+    name: "a Restore Draft notice comes back after a reload, with its text and images",
+    drafts: [
+      {
+        ...draft("mine"),
+        notice: { ...REFUSED, restore: { text: "hello", attachments: [IMAGE, LARGE_IMAGE] } },
+      },
+    ],
+    expected: {
+      shown: "mine",
+      kept: "mine",
+      composer: "mine",
+      images: "",
+      editing: false,
+      notice: 'error: Refused. [restore "hello"]',
+      restoring: "image",
+    },
+  },
+  {
+    name: "a Restore Draft notice over an empty draft is kept on its own",
+    drafts: [{ ...draft(""), notice: REFUSED }],
+    expected: {
+      shown: "",
+      kept: "",
+      composer: "",
+      images: "",
+      editing: false,
+      notice: 'error: Refused. [restore "hello"]',
+      restoring: "",
+    },
+  },
+  {
+    name: "a restored or dismissed notice is not offered again after a reload",
+    drafts: [
+      { ...draft(""), notice: REFUSED },
+      { ...draft(""), notice: null },
+    ],
+    expected: null,
+  },
+  {
+    name: "a notice with nothing to restore is not stored",
+    drafts: [{ ...draft("mine"), notice: ERROR }],
+    expected: {
+      shown: "mine",
+      kept: "mine",
+      composer: "mine",
+      images: "",
+      editing: false,
+      notice: null,
+      restoring: null,
+    },
+  },
+  {
+    name: "a draft stored before Restore Draft was stored still loads",
+    drafts: [],
+    stored: {
+      [STORE_KEY]: { tabs: {}, sessions: [CHAT] },
+      [`${STORE_KEY}:session:${CHAT}`]: { draft: "older", selectionStart: 0, selectionEnd: 0 },
+    },
+    expected: {
+      shown: "older",
+      kept: "older",
+      composer: "older",
+      images: "",
+      editing: false,
+      notice: null,
+      restoring: null,
+    },
+  },
+])("$name", (row) => {
+  const area = memoryArea();
+
+  for (const [key, value] of Object.entries(row.stored ?? {}))
+    area.setItem(key, JSON.stringify(value));
+  const window = new WindowDrafts({ storage: area, storageKey: STORE_KEY });
+  const store = new SessionViewStateStore(window, "tab");
+
+  for (const next of row.drafts) store.updateDraft(CHAT, () => next);
+  window.emit();
+
+  expect(reloaded(area)).toEqual(row.expected);
 });

@@ -1,4 +1,6 @@
 import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
+import type { RefusedSend } from "@nyte-ai/sdk/client";
+import { errorMessage } from "../../contract/errors.ts";
 import type { ComposerImageAttachment, ComposerViewState } from "../../panes/session-view-state.ts";
 import { contentDraftText } from "../../references/message-references.ts";
 import type { ComposerDocumentState } from "./composer-document.ts";
@@ -41,6 +43,13 @@ export interface SessionDraft {
   readonly composer: ComposerViewState;
   readonly edit: QueuedEdit | null;
   readonly notice: ComposerNotice | null;
+}
+
+/** The notice whose Restore Draft still has a refused send's text, which the window stores with the draft. */
+export function restorable(draft: SessionDraft): ComposerNotice | null {
+  const notice = draft.notice;
+
+  return notice === null || notice.restore === null ? null : notice;
 }
 
 export function shownDraft(draft: SessionDraft): ComposerViewState {
@@ -113,17 +122,17 @@ export function lostEdit(draft: SessionDraft): SessionDraft {
 }
 
 /**
- * What closing the composer does to the chat's draft: an open edit the person changed joins their
- * text, and a notice with nothing to restore goes.
+ * What closing the composer does to the chat's draft: a notice with nothing to restore goes, and an
+ * open edit the person changed joins their text when `edit` is `folded`. A `kept` edit stays open,
+ * for a save in flight whose outcome decides it.
  */
-export function foldEdit(draft: SessionDraft): SessionDraft {
+export function foldEdit(draft: SessionDraft, edit: "folded" | "kept"): SessionDraft {
   if (draft.edit === null && draft.notice === null) return draft;
+  const notice = draft.notice?.restore === null ? null : draft.notice;
 
-  return {
-    composer: persistedDraft(draft),
-    edit: null,
-    notice: draft.notice?.restore === null ? null : draft.notice,
-  };
+  if (edit === "kept") return notice === draft.notice ? draft : { ...draft, notice };
+
+  return { composer: persistedDraft(draft), edit: null, notice };
 }
 
 /** A send left the composer: its text goes if nothing changed it since, and its images go. */
@@ -166,6 +175,23 @@ export function refusedDraft(draft: SessionDraft, message: string, sent: Restore
  */
 export function endedDraft(draft: SessionDraft, end: SendEnd, sent: Restore): SessionDraft {
   return end.kind === "refused" ? refusedDraft(draft, end.message, sent) : draft;
+}
+
+/**
+ * A send the journal replayed, which no composer waits on, that the host refused: it comes back
+ * as a live refusal does, through `refusedDraft`, with the text it was sent with. Its images were
+ * uploaded as files, so only the text comes back, as an opened queued edit's does.
+ */
+export function replayedDraft(draft: SessionDraft, refused: RefusedSend): SessionDraft {
+  return refusedDraft(draft, refusalMessage(refused.error), {
+    text: contentDraftText(refused.content),
+    attachments: [],
+  });
+}
+
+/** What a composer says of a send the host refused, live or replayed. */
+export function refusalMessage(cause: unknown): string {
+  return `Couldn't send the message: ${errorMessage(cause)}`;
 }
 
 /** Restore Draft: the notice's text goes in front of the person's own draft and the button goes. */

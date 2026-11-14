@@ -1,9 +1,9 @@
 import type { Dispatch, SetStateAction } from "react";
-import { createMMKV, useMMKVString } from "react-native-mmkv";
+import { useMMKVString } from "react-native-mmkv";
 import type { SessionId } from "@nyte-ai/sdk";
 import { useHost } from "../connection/host-context.tsx";
-
-const drafts = createMMKV({ id: "nyte.drafts" });
+import { chatDrafts } from "./draft-store.ts";
+import { draftKey } from "./send-answer.ts";
 
 export function useChatScope(): string {
   return useHost().scope;
@@ -11,8 +11,8 @@ export function useChatScope(): string {
 
 export function useChatDraft(sessionId?: SessionId): [string, Dispatch<SetStateAction<string>>] {
   const scope = useChatScope();
-  const key = JSON.stringify([scope, sessionId ?? "new"]);
-  const [draft, save] = useMMKVString(key, drafts);
+  const key = draftKey(scope, sessionId);
+  const [draft, save] = useMMKVString(key, chatDrafts);
 
   const setDraft: Dispatch<SetStateAction<string>> = (next) => {
     save((previous) => {

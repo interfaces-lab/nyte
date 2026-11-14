@@ -16,17 +16,43 @@ import {
   contentChanged,
   DEFAULT_SESSION_VIEW_STATE,
   draftHasContent,
+  draftKept,
   persistableComposer,
 } from "../../panes/session-view-state.ts";
 import type { SessionId } from "@nyte-ai/sdk";
 import { ModelRefType, ThinkingType, asId } from "@nyte-ai/schema";
 import { projectId } from "../../data/schemas.ts";
 import { readStored, removeStored, type StorageArea, writeStored } from "../../lib/storage.ts";
-import { persistedDraft } from "./composer-draft.ts";
+import { persistedDraft, restorable } from "./composer-draft.ts";
+import type { ComposerNotice, SessionDraft } from "./composer-draft.ts";
 
 const FLUSH_DEBOUNCE_MS = 200;
 
 const STORED_IMAGE_LIMIT = 256 * 1024;
+
+/** A chat's stored step groups and thoughts shown live: at most this much JSON, the newest kept. */
+const STORED_STEPS_LIMIT = 16 * 1024;
+
+const stepsSchema = Type.Array(Type.Tuple([Type.String({ minLength: 1 }), Type.Boolean()]));
+
+type StoredSteps = Static<typeof stepsSchema>;
+
+/** The newest of `groups` that fit in `STORED_STEPS_LIMIT`, or `undefined` when there are none. */
+function storedSteps(groups: ReadonlyMap<string, boolean>): StoredSteps | undefined {
+  const entries = [...groups];
+  let size = 2;
+  let from = entries.length;
+
+  for (; from > 0; from -= 1) {
+    size += JSON.stringify(entries[from - 1]).length + 1;
+
+    if (size > STORED_STEPS_LIMIT) break;
+  }
+
+  return from === entries.length ? undefined : entries.slice(from);
+}
+
+const NO_IMAGES: readonly ComposerImageAttachment[] = [];
 
 interface PaneDraftState {
   active: ChatDraft;
@@ -64,6 +90,15 @@ const storedDraftSchema = Type.Object(
   strict,
 );
 
+/** A chat's draft with what its Restore Draft notice gives back; a draft stored before it has no `refused`. */
+const sessionDraftSchema = Type.Object(
+  {
+    ...composerSchema.properties,
+    refused: Type.Optional(Type.Object({ message: Type.String(), text: Type.String() }, strict)),
+  },
+  strict,
+);
+
 const ownerId = Type.String({ minLength: 1 });
 
 const paneIndexSchema = Type.Object({ active: ownerId, parked: Type.Array(ownerId) }, strict);
@@ -88,7 +123,14 @@ type StoredIndex = Static<typeof indexSchema>;
 
 type PersistedAttachments = Static<typeof attachmentsSchema>;
 
-type StoredValue = PersistedComposer | StoredDraft | readonly ComposerImageAttachment[];
+type StoredSession = Static<typeof sessionDraftSchema>;
+
+type StoredValue =
+  | PersistedComposer
+  | StoredDraft
+  | StoredSession
+  | readonly ComposerImageAttachment[]
+  | StoredSteps;
 
 function composerView(
   composer: PersistedComposer,
@@ -102,6 +144,15 @@ function composerView(
     selectionStart: Math.min(composer.selectionStart, length),
     selectionEnd: Math.min(composer.selectionEnd, length),
   };
+}
+
+/** The images stored for `key`, each small enough to keep, or `undefined` when none is. */
+function storedImages(
+  attachments: readonly ComposerImageAttachment[],
+): readonly ComposerImageAttachment[] | undefined {
+  const stored = attachments.filter((image) => image.content.data.length <= STORED_IMAGE_LIMIT);
+
+  return stored.length > 0 ? stored : undefined;
 }
 
 function readOwner<Schema extends TSchema>(
@@ -214,39 +265,84 @@ export class WindowDrafts {
   }
 
   saveDraft(previous: ChatDraft, next: ChatDraft): void {
-    this.save(`draft:${next.id}`, previous.composer, next.composer, {
-      updatedAt: next.updatedAt,
-      composer: persistableComposer(next.composer),
-      project: next.project,
-      choice: next.choice,
-    });
+    this.save(
+      `draft:${next.id}`,
+      previous.composer,
+      next.composer,
+      composerHasContent(next.composer)
+        ? {
+            updatedAt: next.updatedAt,
+            composer: persistableComposer(next.composer),
+            project: next.project,
+            choice: next.choice,
+          }
+        : undefined,
+    );
 
     if (!contentChanged(previous.composer, next.composer)) return;
     clearTimeout(this.#publishTimer);
     this.#publishTimer = setTimeout(this.emit, FLUSH_DEBOUNCE_MS);
   }
 
+  /**
+   * Stores the chat's draft and, beside it, the text and images its Restore Draft notice gives back,
+   * so a reload still offers them; the notice's images are kept as a draft's are.
+   */
+  saveSession(sessionId: SessionId, previous: SessionDraft, next: SessionDraft): void {
+    const after = persistedDraft(next);
+    const notice = restorable(next);
+
+    const record: StoredSession | undefined = draftKept(next)
+      ? {
+          ...persistableComposer(after),
+          ...(notice === null || notice.restore === null
+            ? {}
+            : { refused: { message: notice.message, text: notice.restore.text } }),
+        }
+      : undefined;
+
+    this.save(`session:${sessionId}`, persistedDraft(previous), after, record);
+    const before = restorable(previous)?.restore?.attachments ?? NO_IMAGES;
+    const kept = notice?.restore?.attachments ?? NO_IMAGES;
+    const persistence = this.#persistence;
+
+    if (persistence === undefined || before === kept) return;
+    this.#pending.set(`${persistence.storageKey}:session:${sessionId}:refused`, storedImages(kept));
+  }
+
+  /** Stores the chat's step groups and thoughts shown live beside its draft, on the drafts' debounce. */
+  saveSteps(sessionId: SessionId, stepGroups: ReadonlyMap<string, boolean>): void {
+    const persistence = this.#persistence;
+
+    if (persistence !== undefined)
+      this.#pending.set(
+        `${persistence.storageKey}:session:${sessionId}:steps`,
+        storedSteps(stepGroups),
+      );
+
+    this.#schedule();
+  }
+
   save(
     owner: string,
     previous: ComposerViewState,
     next: ComposerViewState,
-    record: PersistedComposer | StoredDraft | undefined,
+    record: StoredValue | undefined,
   ): void {
     const persistence = this.#persistence;
 
     if (persistence !== undefined) {
       const key = `${persistence.storageKey}:${owner}`;
-      this.#pending.set(key, composerHasContent(next) ? record : undefined);
+      this.#pending.set(key, record);
 
-      if (previous.attachments !== next.attachments) {
-        const stored = next.attachments.filter(
-          (image) => image.content.data.length <= STORED_IMAGE_LIMIT,
-        );
-
-        this.#pending.set(`${key}:images`, stored.length > 0 ? stored : undefined);
-      }
+      if (previous.attachments !== next.attachments)
+        this.#pending.set(`${key}:images`, storedImages(next.attachments));
     }
 
+    this.#schedule();
+  }
+
+  #schedule(): void {
     clearTimeout(this.#flushTimer);
     this.#flushTimer = setTimeout(this.#store, FLUSH_DEBOUNCE_MS);
 
@@ -312,16 +408,50 @@ export class WindowDrafts {
     }
 
     for (const id of index.sessions) {
-      const stored = readOwner(persistence, `session:${id}`, composerSchema);
+      const stored = readOwner(persistence, `session:${id}`, sessionDraftSchema);
 
-      if (stored === undefined) continue;
-      const composer = composerView(stored.record, stored.attachments);
+      const stepGroups = new Map(
+        readStored(
+          persistence.storage,
+          `${persistence.storageKey}:session:${id}:steps`,
+          stepsSchema,
+          [],
+        ),
+      );
 
-      if (!composerHasContent(composer)) continue;
-      this.sessions.set(asId<"session">(id), {
-        ...DEFAULT_SESSION_VIEW_STATE,
-        draft: { ...DEFAULT_SESSION_VIEW_STATE.draft, composer },
-      });
+      if (stored === undefined) {
+        if (stepGroups.size > 0)
+          this.sessions.set(asId<"session">(id), { ...DEFAULT_SESSION_VIEW_STATE, stepGroups });
+        continue;
+      }
+
+      const refused = stored.record.refused;
+
+      const notice: ComposerNotice | null =
+        refused === undefined
+          ? null
+          : {
+              kind: "error",
+              message: refused.message,
+              restore: {
+                text: refused.text,
+                attachments: readStored(
+                  persistence.storage,
+                  `${persistence.storageKey}:session:${id}:refused`,
+                  attachmentsSchema,
+                  [],
+                ),
+              },
+            };
+
+      const draft = {
+        composer: composerView(stored.record, stored.attachments),
+        edit: null,
+        notice,
+      };
+
+      if (!draftKept(draft) && stepGroups.size === 0) continue;
+      this.sessions.set(asId<"session">(id), { ...DEFAULT_SESSION_VIEW_STATE, draft, stepGroups });
     }
   }
 
@@ -351,7 +481,7 @@ export class WindowDrafts {
     }
 
     const sessions = [...this.sessions]
-      .filter(([, state]) => composerHasContent(persistedDraft(state.draft)))
+      .filter(([, state]) => draftKept(state.draft) || state.stepGroups.size > 0)
       .map(([id]) => id)
       .toSorted();
 

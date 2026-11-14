@@ -1,7 +1,8 @@
 import { asId } from "@nyte-ai/schema";
-import { createSendJournal } from "@nyte-ai/sdk";
+import { createSendJournal, SdkError } from "@nyte-ai/sdk";
 import type { JournalEntry } from "@nyte-ai/sdk";
 import { describe, expect, it } from "vitest";
+import { draftKey, returnRefused, sendAnswer } from "../src/chat/send-answer.ts";
 import { journalStorage } from "../src/connection/journal.ts";
 
 function memory() {
@@ -60,4 +61,58 @@ describe("the MMKV send journal", () => {
     expect((await journal.load()).map((item) => item.id)).toEqual(["good"]);
     expect([...values.keys()]).toEqual([JSON.stringify(["host-1", "good"])]);
   });
+});
+
+describe("how a send the journal holds ends on the phone", () => {
+  it.each<[string, () => Parameters<typeof sendAnswer>[0], string]>([
+    [
+      "the host has it",
+      () => Promise.resolve({ kind: "sent", receipt: { message: asId<"message">("m1") } }),
+      "sent",
+    ],
+    [
+      "the link closed while the journal keeps it",
+      () => Promise.resolve({ kind: "unsent" }),
+      "unsent",
+    ],
+    ["its unsent row was removed", () => Promise.resolve({ kind: "removed" }), "removed"],
+    ["the host refused it", () => Promise.reject(new SdkError("invalid", "Refused.")), "refused"],
+  ])(
+    "when %s, the answer says so, and only a refusal gives the text back",
+    async (_name, delivered, kind) => {
+      expect((await sendAnswer(delivered(), () => "Refused.")).kind).toBe(kind);
+    },
+  );
+
+  it.each<[string, string | undefined, string]>([
+    ["an empty draft gets the replayed text", undefined, "Typed offline."],
+    ["a draft with text keeps it after the replayed text", "Mine.", "Typed offline.\n\nMine."],
+  ])(
+    "a replayed send the host refused comes back to its chat's draft: %s",
+    (_name, before, after) => {
+      const values = new Map<string, string>();
+      const key = draftKey("scope", asId<"session">("session-1"));
+
+      if (before !== undefined) values.set(key, before);
+
+      returnRefused(
+        {
+          getString: (stored) => values.get(stored),
+          set: (stored, value) => void values.set(stored, value),
+        },
+        "scope",
+        [
+          {
+            id: asId<"receipt">("r1"),
+            session: asId<"session">("session-1"),
+            head: asId<"head">("main"),
+            content: [{ kind: "text", text: "Typed offline." }],
+            error: new SdkError("invalid", "Refused."),
+          },
+        ],
+      );
+
+      expect(values.get(key)).toBe(after);
+    },
+  );
 });

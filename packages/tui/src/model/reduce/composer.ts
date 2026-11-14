@@ -191,8 +191,6 @@ export const composerHandlers = {
       : stay(withNotice(next, "Queued message saved.", "info", now));
   },
   "send-refused": (state, msg, now) => {
-    const submission = state.local.submissions.find((candidate) => candidate.id === msg.submission);
-
     const next = withNotice(
       withLocal(state, {
         submissions: state.local.submissions.filter((candidate) => candidate.id !== msg.submission),
@@ -202,13 +200,9 @@ export const composerHandlers = {
       now,
     );
 
-    const target = submission?.session ?? state.facts.chat?.id;
-
-    if (target === undefined) return stay(next);
-
     return stageHandback(
       next,
-      target,
+      msg.session,
       { draft: msg.snapshot, notice: null, unlessLanded: null },
       now,
     );

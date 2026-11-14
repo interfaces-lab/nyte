@@ -3,6 +3,7 @@ import type { Configuration, SessionView, Thinking } from "@nyte-ai/sdk";
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { createRunner } from "../../src/effects/runner.ts";
 import type { Runner } from "../../src/effects/runner.ts";
+import type { SendEnd } from "../../src/effects/ports.ts";
 import type { Msg } from "../../src/model/msg.ts";
 import { followedSession } from "../../src/model/state.ts";
 import type { State, Submission } from "../../src/model/state.ts";
@@ -209,6 +210,7 @@ test("a plugin reject answers send-refused with the snapshot and sends nothing",
   expect(app.dispatched.at(-1)).toEqual({
     kind: "send-refused",
     submission: "sub-1",
+    session: asId("s1"),
     reason: "Not now.",
     snapshot: SUBMISSION.snapshot,
   });
@@ -246,6 +248,64 @@ test("an accepted send reaches the session with its delivery and answers sent", 
     kind: "sent",
     submission: "sub-1",
     message: asId("sent-1"),
+  });
+});
+
+test.each<[string, SendEnd | null, readonly ("sent" | "send-refused")[]]>([
+  ["the host has it", null, ["sent"]],
+  ["the link closed while the journal keeps it", { kind: "unsent" }, ["sent"]],
+  ["its unsent row was removed", { kind: "removed" }, ["sent"]],
+  ["the host refused it", { kind: "refused", reason: "not here" }, ["sent", "send-refused"]],
+])(
+  "a send answers sent once the journal holds it; when %s, only a refusal comes back",
+  async (_name, end, kinds) => {
+    const app = harness(buildState(followed(PENDING)));
+    const session = app.ports.host.addSession("s1");
+    session.sendEnd = end;
+    app.runner.run({ kind: "follow", target: asId("s1"), announce: false });
+    await app.runner.settled();
+    app.runner.run({ kind: "send", submission: SUBMISSION, delivery: "queue" });
+    await app.runner.settled();
+    await Bun.sleep(0);
+
+    expect(
+      app.dispatched.flatMap((msg) =>
+        msg.kind === "sent" || msg.kind === "send-refused" ? [msg.kind] : [],
+      ),
+    ).toEqual([...kinds]);
+
+    if (end?.kind === "refused")
+      expect(app.dispatched.at(-1)).toEqual({
+        kind: "send-refused",
+        submission: "sub-1",
+        session: asId("s1"),
+        reason: "Message not sent: not here. It is back in the composer.",
+        snapshot: SUBMISSION.snapshot,
+      });
+  },
+);
+
+test("a send the journal replayed and the host refused comes back to its chat at boot", async () => {
+  const app = harness(buildState(null));
+  app.ports.host.refuseReplays([
+    { session: asId("s2"), content: "Typed offline.", reason: "unknown session" },
+  ]);
+  app.runner.boot({
+    start: "launch",
+    home: "/tmp",
+    cwd: "/tmp",
+    target: { kind: "new" },
+    model: null,
+    effort: null,
+  });
+  await app.runner.settled();
+
+  expect(await app.received("send-refused")).toEqual({
+    kind: "send-refused",
+    submission: null,
+    session: asId("s2"),
+    reason: "Message not sent: unknown session. It is back in the composer.",
+    snapshot: { text: "Typed offline.", parts: new Map() },
   });
 });
 

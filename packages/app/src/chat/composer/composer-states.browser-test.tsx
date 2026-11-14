@@ -48,6 +48,8 @@ import {
   question,
   queued,
   refuseSend,
+  refusals,
+  replayRefused,
   sendTwice,
   sends,
   stops,
@@ -203,6 +205,11 @@ const STATES: readonly ComposerState[] = [
     check: refuseSend,
   },
   {
+    name: "replayed",
+    view: view(COMPLETED),
+    check: replayRefused,
+  },
+  {
     name: "question",
     view: view(live(), [], [question]),
     draft: "Yes, for one release.",
@@ -297,6 +304,7 @@ installScripted(
       }),
     }),
     health,
+    refused: refusals,
   }),
 );
 

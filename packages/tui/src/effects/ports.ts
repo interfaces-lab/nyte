@@ -105,7 +105,27 @@ export interface HostPort {
   applySetting(id: string, value: Json): Promise<SettingOutcome>;
   tasks(session: SessionId): AsyncIterable<readonly Task[]>;
   blob(id: string): AsyncIterable<Uint8Array>;
+  /** The sends the journal replayed, at connect or on a resend, that the host refused, each once. */
+  refusedSends(): AsyncIterable<readonly RefusedSend[]>;
 }
+
+/** A replayed send the host refused, which no submission waits on. */
+export interface RefusedSend {
+  readonly session: SessionId;
+  readonly content: UserContent;
+  readonly reason: string;
+}
+
+/**
+ * How a send the journal holds ends: `sent` once the host has it, `unsent` while the journal keeps
+ * it for the next connection to that host or for a resend, `removed` when it was withdrawn first,
+ * and `refused` when the host refused it, the one end where nothing sends it.
+ */
+export type SendEnd =
+  | { readonly kind: "sent"; readonly message: MessageId }
+  | { readonly kind: "unsent" }
+  | { readonly kind: "removed" }
+  | { readonly kind: "refused"; readonly reason: string };
 
 export interface ChatUpdate {
   readonly view: HeadView;
@@ -129,7 +149,11 @@ export interface SessionPort {
   see(commit: CommitId): Promise<void>;
   info(): Promise<SessionInfo>;
   workspace(): Promise<{ readonly id: WorkspaceId; readonly cwd: string | null }>;
-  send(content: UserContent, options: SendOptions): Promise<{ readonly message: MessageId }>;
+  /** Resolves once the journal holds the message, with its id and how it ends. */
+  send(
+    content: UserContent,
+    options: SendOptions,
+  ): Promise<{ readonly message: MessageId; readonly delivered: Promise<SendEnd> }>;
   withdraw(message: MessageId): Promise<"withdrawn" | "landed-first" | "gone">;
   revise(
     message: MessageId,

@@ -1,13 +1,22 @@
 import { openQuestions } from "@nyte-ai/plugin/question/schema";
 import { PartIdSchema, SessionIdSchema } from "@nyte-ai/schema";
-import type { PartId, RunView, SessionId, SessionInfo } from "@nyte-ai/sdk";
+import type { Execution, PartId, RunView, SessionId, SessionInfo } from "@nyte-ai/sdk";
 import type { HeadView } from "@nyte-ai/sdk/client";
-import { mainHead } from "@nyte-ai/plugin/client/presentation";
+import { executionMark, mainHead, sessionMark } from "@nyte-ai/plugin/client/presentation";
+import type { TaskState } from "@nyte-ai/plugin/client/presentation";
 
 export function liveRun(session: SessionInfo): RunView | undefined {
   const execution = mainHead(session)?.execution;
 
   return execution === undefined || execution.kind === "idle" ? undefined : execution.run;
+}
+
+/** The chat's mark as every surface shows it, `headAttention`'s from its row once the row is read; until then, its own run's. */
+export function chatMark(
+  info: SessionInfo | undefined,
+  execution: Execution | undefined,
+): TaskState {
+  return info === undefined ? executionMark(execution) : sessionMark(info);
 }
 
 export function hasRun(session: SessionInfo): boolean {

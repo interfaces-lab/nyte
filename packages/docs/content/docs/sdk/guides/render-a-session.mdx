@@ -67,7 +67,9 @@ an unsent message, and `act` for an approval or a question. While a stop is on i
 
 `chat.send` resolves once the journal holds the message, so clear the input then. Put the text back
 only when its `delivered` rejects. An `unsent` message is still in the journal and in the view, and
-sending its text again would send it twice.
+sending its text again would send it twice. A message the journal resends after a reconnect has no
+`delivered`; when the host refuses it, it shows up in `connection.refused`, as
+[Send messages](/docs/sdk/guides/send-messages#retries-are-already-handled) shows.
 
 `connection.sessions.open({ parents: { kind: "roots" } })` is the same kind of store for the
 `sessions` table: its snapshot holds the listed `ids` in order and each one's `SessionInfo` in
