@@ -154,6 +154,22 @@ test.each<[string, ResponseRow, ReturnType<typeof responseRowView>]>([
     expect.objectContaining({ markdown: "One\n\n\n\nTwo" }),
   ],
   [
+    "a part from a later attempt of the run carries on the interrupted text with nothing between",
+    {
+      ...LAYOUT,
+      kind: "response",
+      messages: [
+        settledText("run-1:a1:0", "I picked **Luigi's Trattori"),
+        settledText("run-1:a2:0", "a** (0.4 km). "),
+        settledText("run-1:a2:1", "It is open late."),
+      ],
+      ...ended,
+    },
+    expect.objectContaining({
+      markdown: "I picked **Luigi's Trattoria** (0.4 km).\n\nIt is open late.",
+    }),
+  ],
+  [
     "two blank parts still draw a reply",
     {
       ...LAYOUT,

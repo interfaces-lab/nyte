@@ -25,7 +25,7 @@ import { prepareHome } from "./baseline.ts";
 import { launchDesktop } from "./launch.ts";
 import { composer, messages } from "./ui.ts";
 
-const LAST_SETTLED = /button "Ran 1 command, 2 tools"/u;
+const LAST_SETTLED = /button "Check the opening hours"/u;
 
 const MEASURING = process.env.NYTE_SCENARIO_U_MEASURE === "1";
 
@@ -162,13 +162,15 @@ test("scenario U: a random restaurant nearby, quit mid-answer, reopen and resume
 
   await test.step("the reopened chat renders the same settled frames", async () => {
     await expect(
-      messages(reopened).getByRole("button", { name: "Ran 1 command, 2 tools" }),
+      messages(reopened).getByRole("button", { name: "Check the opening hours" }),
     ).toBeVisible({ timeout: 30_000 });
-    const after = await messages(reopened).ariaSnapshot();
-    await shot("transcript-after-reopen", reopened);
     await writeFile(test.info().outputPath("transcript-before-quit.yml"), before);
-    await writeFile(test.info().outputPath("transcript-after-reopen.yml"), after);
-    expect(settledFrames(after, LAST_SETTLED)).toBe(settledFrames(before, LAST_SETTLED));
+    await expect
+      .poll(async () => settledFrames(await messages(reopened).ariaSnapshot(), LAST_SETTLED), {
+        timeout: 10_000,
+      })
+      .toBe(settledFrames(before, LAST_SETTLED));
+    await shot("transcript-after-reopen", reopened);
   });
 
   await test.step("the canvas, browser tab, terminal and places result come back", async () => {

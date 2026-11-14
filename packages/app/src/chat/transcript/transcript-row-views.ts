@@ -73,7 +73,10 @@ export function stepRowView(row: StepRow): StepRowView {
 }
 
 export function responseRowView(row: ResponseRow): ResponseRowView | null {
-  const markdown = row.messages.map((message) => message.state.markdown.trim()).join("\n\n");
+  const markdown = replyParagraphs(row.messages)
+    .map((paragraph) => paragraph.trim())
+    .join("\n\n");
+
   const first = row.messages[0];
 
   if (markdown === "" || first === undefined) return null;
@@ -90,6 +93,37 @@ export function responseRowView(row: ResponseRow): ResponseRowView | null {
       .at(-1),
   };
 }
+
+/**
+ * A reply's text parts as paragraphs. A part written by a later attempt of the same run carries on
+ * the text an interruption cut off, mid-word if that is where it stopped, so it joins the part
+ * before it with nothing between.
+ */
+function replyParagraphs(messages: ResponseRow["messages"]): readonly string[] {
+  return messages.reduce<readonly string[]>((paragraphs, message, index) => {
+    const before = messages[index - 1];
+    const last = paragraphs.at(-1);
+
+    return before !== undefined && last !== undefined && resumesText(before.id, message.id)
+      ? [...paragraphs.slice(0, -1), last + message.state.markdown]
+      : [...paragraphs, message.state.markdown];
+  }, []);
+}
+
+/** Whether `next` is a part of a later attempt of the run that wrote `before`: a turn's parts are named `<run>:a<attempt>:<index>`. */
+function resumesText(before: string, next: string): boolean {
+  const earlier = ATTEMPT_PART.exec(before);
+  const later = ATTEMPT_PART.exec(next);
+
+  return (
+    earlier !== null &&
+    later !== null &&
+    earlier[1] === later[1] &&
+    Number(later[2]) > Number(earlier[2])
+  );
+}
+
+const ATTEMPT_PART = /^(.+):a(\d+):\d+$/u;
 
 export function userRowView(row: PromptRow | PartRow): UserRowView | undefined {
   const message = row.message;

@@ -56,6 +56,8 @@ export function restaurantReplies(input: {
         `NYTE_E2E_U ${JSON.stringify({ tool: last.toolName, text: contentText(last.content).slice(0, 600) })}`,
       );
 
+    if (last?.role === "user" && last !== first) return resumedAnswer(request);
+
     if (last?.role === "user")
       return {
         timing: PACE,
@@ -142,6 +144,27 @@ export function restaurantReplies(input: {
       default:
         return null;
     }
+  };
+}
+
+/** The rest of the answer after the host says the last response was interrupted: a resumed run ends its request with that notice as a user message, after the text the model had already written. */
+function resumedAnswer(request: Request): Reply {
+  const written = request.context.messages
+    .findLast((message) => message.role === "assistant")
+    ?.content.flatMap((block) => (block.type === "text" ? [block.text] : []))
+    .join("");
+
+  return {
+    timing: PACE,
+    content: [
+      {
+        type: "text",
+        text:
+          written !== undefined && HOURS_ANSWER.startsWith(written)
+            ? HOURS_ANSWER.slice(written.length)
+            : HOURS_ANSWER,
+      },
+    ],
   };
 }
 
