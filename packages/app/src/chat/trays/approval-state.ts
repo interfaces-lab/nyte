@@ -6,6 +6,7 @@ import { useWaitingDescendants } from "../../chats/index.ts";
 import { connection } from "../../data/connection.ts";
 import { chatStore } from "../../data/chat-store.ts";
 import { useWatchSelect } from "../../data/watch-store.ts";
+import { openAsks } from "./asks.ts";
 
 export interface ApprovalRequest {
   readonly sessionId: SessionId;
@@ -16,17 +17,11 @@ export interface ApprovalRequest {
 export function useApprovalRequest(sessionId: SessionId): ApprovalRequest | undefined {
   const parts = useWatchSelect(chatStore(sessionId), (state) => state.value?.parts);
   const waiting = useWaitingDescendants(sessionId);
-  const [own] = openApprovals({ parts: parts ?? [] });
+  const [first] = openAsks(openApprovals, { sessionId, parts }, waiting);
 
-  if (own !== undefined) return { sessionId, approval: own, origin: undefined };
-
-  return waiting.flatMap((entry) => {
-    const [first] = openApprovals(entry.view);
-
-    return first === undefined
-      ? []
-      : [{ sessionId: entry.id, approval: first, origin: entry.title }];
-  })[0];
+  return first === undefined
+    ? undefined
+    : { sessionId: first.sessionId, approval: first.request, origin: first.origin?.title };
 }
 
 export function useAnswerApproval() {

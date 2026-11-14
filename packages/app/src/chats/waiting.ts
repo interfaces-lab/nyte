@@ -4,6 +4,7 @@ import type { SessionId } from "@nyte-ai/sdk";
 import type { ChatView } from "../data/chat-store.ts";
 import type { DerivedStore } from "../data/derived-store.ts";
 import { chatStore } from "../data/chat-store.ts";
+import { reconcile } from "../data/keep.ts";
 
 export interface WaitingChat {
   readonly id: SessionId;
@@ -52,14 +53,12 @@ export function waitingBelow(root: SessionId): DerivedStore<readonly WaitingChat
 
   const follow = (): void => {
     const walked = new Set([root, ...waitingChildren(root).map((child) => child.id)]);
-
-    for (const [id, unsubscribe] of watched)
-      if (!walked.has(id)) {
-        unsubscribe();
-        watched.delete(id);
-      }
-
-    for (const id of walked) if (!watched.has(id)) watched.set(id, chatStore(id).subscribe(follow));
+    reconcile(
+      watched,
+      walked,
+      (id) => chatStore(id).subscribe(follow),
+      (unsubscribe) => unsubscribe(),
+    );
     notify();
   };
 

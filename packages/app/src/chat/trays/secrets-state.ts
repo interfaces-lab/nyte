@@ -6,6 +6,7 @@ import { useWaitingDescendants } from "../../chats/index.ts";
 import { connection } from "../../data/connection.ts";
 import { chatStore } from "../../data/chat-store.ts";
 import { useWatchSelect } from "../../data/watch-store.ts";
+import { openAsks } from "./asks.ts";
 
 export interface SecretRequest {
   readonly sessionId: SessionId;
@@ -16,17 +17,11 @@ export interface SecretRequest {
 export function useSecretRequest(sessionId: SessionId): SecretRequest | undefined {
   const parts = useWatchSelect(chatStore(sessionId), (state) => state.value?.parts);
   const waiting = useWaitingDescendants(sessionId);
-  const [own] = openSecretRequests({ parts: parts ?? [] });
+  const [first] = openAsks(openSecretRequests, { sessionId, parts }, waiting);
 
-  if (own !== undefined) return { sessionId, request: own, origin: undefined };
-
-  return waiting.flatMap((entry) => {
-    const [first] = openSecretRequests(entry.view);
-
-    return first === undefined
-      ? []
-      : [{ sessionId: entry.id, request: first, origin: entry.title }];
-  })[0];
+  return first === undefined
+    ? undefined
+    : { sessionId: first.sessionId, request: first.request, origin: first.origin?.title };
 }
 
 export function useSaveSecret() {

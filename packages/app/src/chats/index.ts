@@ -1,4 +1,4 @@
-import { useState, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 import { useSyncExternalStoreWithSelector } from "use-sync-external-store/with-selector";
 import { asId } from "@nyte-ai/schema";
 import type { BackgroundItem, JobView, SessionId, WorkspaceId, WorkspaceInfo } from "@nyte-ai/sdk";
@@ -21,7 +21,7 @@ import { describeChats } from "./directory.ts";
 import type { Chat, ChatDirectory } from "./directory.ts";
 import { childTask, describeTask, matchesKey } from "./tasks.ts";
 import type { ChildTask, Task, TaskKey } from "./tasks.ts";
-import { waitingBelow } from "./waiting.ts";
+import { waitingWalk } from "./waiting-walk.ts";
 import type { WaitingChat } from "./waiting.ts";
 
 export type { Chat, ChatDirectory } from "./directory.ts";
@@ -112,18 +112,10 @@ export function useChildTasks(parent: SessionId): readonly ChildTask[] {
   );
 }
 
-/** The component owns the walk for its session and starts a new one when the session changes. */
 export function useWaitingDescendants(session: SessionId): readonly WaitingChat[] {
-  const [owned, setOwned] = useState(() => ({ session, store: waitingBelow(session) }));
-  const current = owned.session === session ? owned : { session, store: waitingBelow(session) };
+  const walk = waitingWalk(session);
 
-  if (current !== owned) setOwned(current);
-
-  return useSyncExternalStore(
-    current.store.subscribe,
-    current.store.getSnapshot,
-    current.store.getSnapshot,
-  );
+  return useSyncExternalStore(walk.subscribe, walk.getSnapshot, walk.getSnapshot);
 }
 
 /** Includes every child of `parent`, however many chats the host's lists carry. */

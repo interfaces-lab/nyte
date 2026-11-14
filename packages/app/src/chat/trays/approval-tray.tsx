@@ -9,7 +9,7 @@ import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { tray } from "../../theme/schema.stylex.ts";
-import { Tray, trayParts, useTrayRoot } from "./tray.tsx";
+import { Tray, trayParts } from "./tray.tsx";
 import { useAnswerApproval, useApprovalRequest } from "./approval-state.ts";
 import type { ApprovalRequest } from "./approval-state.ts";
 
@@ -141,17 +141,15 @@ function ApprovalCard({
 export function ApprovalTray({
   sessionId,
   disabled,
-  viewport,
 }: {
   readonly sessionId: SessionId;
   readonly disabled: boolean;
   readonly viewport: HTMLElement | null;
 }): ReactElement {
   const request = useApprovalRequest(sessionId);
-  const { ref } = useTrayRoot(viewport);
 
   return (
-    <div ref={ref} {...props(trayParts.root)}>
+    <div {...props(trayParts.root)}>
       <Tray open={request !== undefined} label="Approval">
         {request !== undefined && (
           <ApprovalCard
