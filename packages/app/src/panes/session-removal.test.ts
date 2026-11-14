@@ -46,7 +46,6 @@ test("Undo never replaces a newer chat or a new draft", () => {
       attachments: [],
       selectionStart: 13,
       selectionEnd: 13,
-      focused: true,
     },
   });
   assert.equal(restoreSecond(), false);

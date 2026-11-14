@@ -21,6 +21,84 @@ interface EnterKeyState {
 
 export type SubmitAction = "submit" | "submit-alternate";
 
+/**
+ * What the composer knows when a key reaches it after the suggestion menu passed on it. `from` is
+ * the editor itself or the form around it, which sees the key after the editor did.
+ */
+export interface KeySituation {
+  readonly from: "editor" | "form";
+  readonly disabled: boolean;
+  readonly submitting: boolean;
+  readonly editing: boolean;
+  readonly empty: boolean;
+  readonly steerQueued: boolean;
+  readonly menuOpen: boolean;
+  readonly canStop: boolean;
+  readonly canRecall: boolean;
+}
+
+type KeyState = EnterKeyState & {
+  readonly altKey: boolean;
+  readonly defaultPrevented: boolean;
+};
+
+/**
+ * `recall` counts as handled only when the walk moved. `dismiss-tray` closes an open tray or
+ * question and, when none was open, stops the run if `stop` is set.
+ */
+export type KeyAction =
+  | { readonly kind: "pass" }
+  | { readonly kind: "submit"; readonly action: SubmitAction }
+  | { readonly kind: "steer-queued" }
+  | { readonly kind: "recall"; readonly direction: RecallDirection }
+  | { readonly kind: "cancel-edit" }
+  | { readonly kind: "swallow" }
+  | { readonly kind: "dismiss-tray"; readonly stop: boolean };
+
+const PASS: KeyAction = { kind: "pass" };
+
+export function composerKey(situation: KeySituation, key: KeyState): KeyAction {
+  if (situation.from === "form") return formKey(situation, key);
+  const recall = recallDirection(key);
+
+  if (recall !== undefined)
+    return situation.canRecall ? { kind: "recall", direction: recall } : PASS;
+  const enter = composerEnterAction(key);
+
+  if (enter === "submit-alternate") return { kind: "submit", action: enter };
+
+  if (enter === "submit") {
+    return situation.empty &&
+      situation.steerQueued &&
+      !situation.disabled &&
+      !situation.submitting &&
+      !situation.editing
+      ? { kind: "steer-queued" }
+      : { kind: "submit", action: enter };
+  }
+
+  if (key.key !== "Escape" || situation.menuOpen || situation.disabled) return PASS;
+
+  if (situation.editing)
+    return situation.submitting ? { kind: "swallow" } : { kind: "cancel-edit" };
+
+  return { kind: "dismiss-tray", stop: situation.canStop };
+}
+
+function formKey(situation: KeySituation, key: KeyState): KeyAction {
+  if (
+    key.key !== "Escape" ||
+    key.defaultPrevented ||
+    situation.disabled ||
+    situation.submitting ||
+    situation.menuOpen ||
+    !situation.editing
+  )
+    return PASS;
+
+  return { kind: "cancel-edit" };
+}
+
 type ComposerEnterAction = SubmitAction | "newline" | "none";
 
 export function composerEnterAction(event: EnterKeyState): ComposerEnterAction {

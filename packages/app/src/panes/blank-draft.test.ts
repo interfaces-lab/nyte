@@ -216,7 +216,6 @@ test("reload restores parked drafts and follow-up text after a typing pause", ()
       attachments: [],
       selectionStart: 8,
       selectionEnd: 8,
-      focused: true,
     },
   }));
   vi.advanceTimersByTime(200);
@@ -228,7 +227,6 @@ test("reload restores parked drafts and follow-up text after a typing pause", ()
   const followUp = reloaded.viewState.readSession(chat).composer;
   assert.equal(followUp.draft, "Follow-up after reload");
   assert.equal(followUp.selectionStart, 8);
-  assert.equal(followUp.focused, false);
 });
 
 test("a send waiting at reload comes back as an editable draft under its id", () => {

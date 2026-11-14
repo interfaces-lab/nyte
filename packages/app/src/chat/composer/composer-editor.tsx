@@ -2,7 +2,7 @@ import { props } from "@stylexjs/stylex";
 import type { Editor, EditorEvents } from "@tiptap/core";
 import { closeHistory } from "@tiptap/pm/history";
 import { TextSelection } from "@tiptap/pm/state";
-import { useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
+import { useEffectEvent, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 import type { ReactElement, Ref } from "react";
 import type { MentionFile } from "../../data/files.ts";
 import {
@@ -70,7 +70,6 @@ interface ComposerEditorProps {
   readonly placeholder: string;
   readonly combobox?: ComposerComboboxState;
   readonly onKeyDown: (event: KeyboardEvent) => void;
-  readonly onFocusChange?: (focused: boolean) => void;
   readonly onFilesSelected?: (
     files: readonly ComposerFile[],
     signal?: AbortSignal,
@@ -163,7 +162,6 @@ export function ComposerEditor({
   placeholder,
   combobox,
   onKeyDown,
-  onFocusChange,
   onFilesSelected,
 }: ComposerEditorProps): ReactElement {
   const catalog = indexFilesByUrl(files);
@@ -180,6 +178,7 @@ export function ComposerEditor({
   const observed = useRef<ComposerDocumentState | undefined>(undefined);
   const lastReferences = useRef<readonly MessageReference[]>([]);
   const onFilesSelectedRef = useRef(onFilesSelected);
+  const keyDown = useEffectEvent(onKeyDown);
 
   const [handle] = useState((): ComposerEditorHandle => ({
     readElement: () => {
@@ -282,7 +281,7 @@ export function ComposerEditor({
             ),
           handleKeyDown: (view, event) => {
             if (event.isComposing || view.composing) return false;
-            onKeyDown(event);
+            keyDown(event);
 
             return event.defaultPrevented;
           },
@@ -310,7 +309,7 @@ export function ComposerEditor({
           },
         },
       }),
-    [className, combobox, disabled, editor, label, onFilesSelected, onKeyDown, placeholder],
+    [className, combobox, disabled, editor, label, onFilesSelected, placeholder],
   );
 
   // oxlint-disable-next-line nyte-code/no-direct-effect -- Tiptap transaction subscription with the current callbacks
@@ -467,12 +466,7 @@ export function ComposerEditor({
 
   return (
     <div {...props(composerStyles.editorHost)}>
-      <ComposerSurfaceContent
-        editor={editor}
-        style={editorContentStyle}
-        onFocus={() => onFocusChange?.(true)}
-        onBlur={() => onFocusChange?.(false)}
-      />
+      <ComposerSurfaceContent editor={editor} style={editorContentStyle} />
       <span
         ref={caretRef}
         hidden

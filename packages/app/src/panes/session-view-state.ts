@@ -21,7 +21,6 @@ export interface ComposerViewState {
   readonly attachments: readonly ComposerImageAttachment[];
   readonly selectionStart: number;
   readonly selectionEnd: number;
-  readonly focused: boolean;
 }
 
 export type ScrollViewState =
@@ -71,7 +70,6 @@ export const DEFAULT_COMPOSER_VIEW_STATE: ComposerViewState = {
   attachments: [],
   selectionStart: 0,
   selectionEnd: 0,
-  focused: false,
 };
 
 export const DEFAULT_SESSION_VIEW_STATE: SessionViewState = {

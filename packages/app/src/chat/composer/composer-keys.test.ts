@@ -1,5 +1,11 @@
 import { expect, test } from "vitest";
-import { enterBehavior, recallDirection, submissionDelivery } from "./composer-keys.ts";
+import {
+  composerKey,
+  enterBehavior,
+  recallDirection,
+  submissionDelivery,
+} from "./composer-keys.ts";
+import type { KeyAction, KeySituation } from "./composer-keys.ts";
 
 test("while a run works, the placeholder and the send tooltip name what Enter does", () => {
   const steering = enterBehavior({ kind: "running", preference: "steer" }, true);
@@ -50,4 +56,181 @@ test("only Ctrl+Alt with Up or Down steps through the prompt history", () => {
   expect(key("ArrowUp", { altKey: false })).toBeUndefined();
   expect(key("ArrowUp", { shiftKey: true })).toBeUndefined();
   expect(key("ArrowLeft")).toBeUndefined();
+});
+
+const PASS: KeyAction = { kind: "pass" };
+
+const SITUATION: KeySituation = {
+  from: "editor",
+  disabled: false,
+  submitting: false,
+  editing: false,
+  empty: false,
+  steerQueued: false,
+  menuOpen: false,
+  canStop: false,
+  canRecall: false,
+};
+
+const KEY = {
+  key: "Enter",
+  shiftKey: false,
+  metaKey: false,
+  ctrlKey: false,
+  altKey: false,
+  isComposing: false,
+  defaultPrevented: false,
+};
+
+const QUEUED_EMPTY = { empty: true, steerQueued: true };
+
+test.each<{
+  readonly name: string;
+  readonly situation: Partial<KeySituation>;
+  readonly key: Partial<typeof KEY>;
+  readonly action: KeyAction;
+}>([
+  {
+    name: "Enter on an empty draft steers the next queued message",
+    situation: QUEUED_EMPTY,
+    key: {},
+    action: { kind: "steer-queued" },
+  },
+  {
+    name: "Enter with text sends it",
+    situation: { steerQueued: true },
+    key: {},
+    action: { kind: "submit", action: "submit" },
+  },
+  {
+    name: "Enter on an empty draft while disabled submits, which does nothing",
+    situation: { ...QUEUED_EMPTY, disabled: true },
+    key: {},
+    action: { kind: "submit", action: "submit" },
+  },
+  {
+    name: "Enter on an empty draft while sending submits, which does nothing",
+    situation: { ...QUEUED_EMPTY, submitting: true },
+    key: {},
+    action: { kind: "submit", action: "submit" },
+  },
+  {
+    name: "Enter while editing a queued message saves it",
+    situation: { ...QUEUED_EMPTY, editing: true },
+    key: {},
+    action: { kind: "submit", action: "submit" },
+  },
+  {
+    name: "Ctrl+Enter on an empty draft never steers the queue",
+    situation: QUEUED_EMPTY,
+    key: { ctrlKey: true },
+    action: { kind: "submit", action: "submit-alternate" },
+  },
+  {
+    name: "Cmd+Enter submits the other delivery even with the menu open",
+    situation: { menuOpen: true },
+    key: { metaKey: true },
+    action: { kind: "submit", action: "submit-alternate" },
+  },
+  { name: "Shift+Enter is a line break", situation: {}, key: { shiftKey: true }, action: PASS },
+  {
+    name: "Enter while composing is the IME's",
+    situation: {},
+    key: { isComposing: true },
+    action: PASS,
+  },
+  {
+    name: "Escape cancels an edit",
+    situation: { editing: true, canStop: true },
+    key: { key: "Escape" },
+    action: { kind: "cancel-edit" },
+  },
+  {
+    name: "Escape while an edit saves is swallowed",
+    situation: { editing: true, submitting: true },
+    key: { key: "Escape" },
+    action: { kind: "swallow" },
+  },
+  {
+    name: "Escape on a disabled editor passes",
+    situation: { editing: true, disabled: true, canStop: true },
+    key: { key: "Escape" },
+    action: PASS,
+  },
+  {
+    name: "Escape with the menu open passes",
+    situation: { editing: true, menuOpen: true },
+    key: { key: "Escape" },
+    action: PASS,
+  },
+  {
+    name: "Escape tries an open tray before it stops the run",
+    situation: { canStop: true },
+    key: { key: "Escape" },
+    action: { kind: "dismiss-tray", stop: true },
+  },
+  {
+    name: "Escape with no run only tries a tray",
+    situation: {},
+    key: { key: "Escape" },
+    action: { kind: "dismiss-tray", stop: false },
+  },
+  {
+    name: "Ctrl+Alt+Up recalls an older prompt",
+    situation: { canRecall: true },
+    key: { key: "ArrowUp", ctrlKey: true, altKey: true },
+    action: { kind: "recall", direction: "older" },
+  },
+  {
+    name: "Ctrl+Alt+Down recalls a newer prompt",
+    situation: { canRecall: true },
+    key: { key: "ArrowDown", ctrlKey: true, altKey: true },
+    action: { kind: "recall", direction: "newer" },
+  },
+  {
+    name: "Ctrl+Alt+Up passes where recall is off",
+    situation: { editing: true },
+    key: { key: "ArrowUp", ctrlKey: true, altKey: true },
+    action: PASS,
+  },
+  {
+    name: "Escape from another control cancels an edit",
+    situation: { from: "form", editing: true },
+    key: { key: "Escape" },
+    action: { kind: "cancel-edit" },
+  },
+  {
+    name: "Escape from another control while an edit saves passes",
+    situation: { from: "form", editing: true, submitting: true },
+    key: { key: "Escape" },
+    action: PASS,
+  },
+  {
+    name: "Escape the editor already handled passes the form",
+    situation: { from: "form", editing: true },
+    key: { key: "Escape", defaultPrevented: true },
+    action: PASS,
+  },
+  {
+    name: "Escape from another control with the menu open passes",
+    situation: { from: "form", editing: true, menuOpen: true },
+    key: { key: "Escape" },
+    action: PASS,
+  },
+  {
+    name: "Escape from another control with no edit passes",
+    situation: { from: "form", canStop: true },
+    key: { key: "Escape" },
+    action: PASS,
+  },
+  {
+    name: "Enter from another control passes the form",
+    situation: { from: "form", editing: true },
+    key: {},
+    action: PASS,
+  },
+])("$name", (row) => {
+  expect(composerKey({ ...SITUATION, ...row.situation }, { ...KEY, ...row.key })).toEqual(
+    row.action,
+  );
 });

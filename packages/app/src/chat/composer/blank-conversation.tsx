@@ -14,7 +14,7 @@ import { composerSource } from "./composer-suggestions.tsx";
 import { bindComposerFileDrop } from "../../references/composer-file-drop.ts";
 import type { ComposerDocumentState, ComposerSubmission } from "./composer-document.ts";
 import type { ComposerEditorHandle } from "./composer-editor.tsx";
-import { composerSendPlan } from "./composer-send.ts";
+import { composerSendPlan } from "./composer-plan.ts";
 import { startDraft } from "./draft-start.ts";
 import { ModelPicker } from "./model-picker.tsx";
 import { WorkspaceContext } from "../../panes/workspace-context.tsx";
@@ -31,7 +31,7 @@ import { useHostState } from "../../data/host.ts";
 import { useMentionFiles } from "../../data/files.ts";
 import { useProjects } from "../../data/projects.ts";
 import { useWorkspaceCatalog } from "../../data/plugins.ts";
-import { modelRefFor, selectedModelOption } from "./model-picker-state.ts";
+import { draftModel, modelRefFor, selectedModelOption } from "./model-picker-state.ts";
 import { StartupReadsRelease } from "../../data/startup.ts";
 import { useChatFolder } from "../chat-folder.ts";
 import { ChatScope } from "../chat-scope.tsx";
@@ -110,7 +110,7 @@ function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement
 
   const selected = selectedModelOption(
     catalog.data?.models ?? [],
-    choice?.model ?? project?.models.coordinator ?? catalog.data?.defaults?.model,
+    draftModel(choice, project, catalog.data?.defaults),
   );
 
   const current = selected?.option;
@@ -243,12 +243,6 @@ function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement
               setAttachmentError(undefined);
             }}
             inputRef={attachInput}
-            onFocusChange={(focused) =>
-              updateViewState((state) => ({
-                ...state,
-                composer: { ...state.composer, focused },
-              }))
-            }
             model={
               <ModelPicker
                 catalog={catalog.data}

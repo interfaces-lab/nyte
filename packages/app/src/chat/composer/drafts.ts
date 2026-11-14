@@ -92,7 +92,6 @@ function composerView(
     attachments,
     selectionStart: Math.min(composer.selectionStart, length),
     selectionEnd: Math.min(composer.selectionEnd, length),
-    focused: false,
   };
 }
 

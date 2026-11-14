@@ -24,30 +24,19 @@ import { selectedWorkspaceId } from "../../data/workspaces.ts";
 import { connected } from "../../data/connection.ts";
 import { chatStore } from "../../data/chat-store.ts";
 import type { ComposerSubmission } from "./composer-document.ts";
-import type { ContentPart } from "../../references/message-references.ts";
 import { messageFiles } from "../transcript/message-content.tsx";
 import type { MessageFile } from "../transcript/message-content.tsx";
-import { parsePluginCommand } from "./plugin-command.ts";
 import { openSideChat } from "../side-chat/side-chats.ts";
 import type { ParsedPluginCommand } from "./plugin-command.ts";
+import { planEdit } from "./composer-plan.ts";
+import type {
+  ComposerContent,
+  ComposerSendPlan,
+  DraftCommands,
+  SubmissionPlan,
+} from "./composer-plan.ts";
 
-interface ComposerContent {
-  readonly parts: readonly ContentPart[];
-  readonly images: readonly ImageContent[];
-  readonly files: readonly MessageFile[];
-}
-
-export function composerMessageContent(
-  parts: readonly ContentPart[],
-  attachments: readonly { readonly content: ImageContent }[],
-  files: readonly MessageFile[] = [],
-): ComposerContent {
-  return { parts, images: attachments.map((attachment) => attachment.content), files };
-}
-
-export function composerContentEmpty(content: ComposerContent): boolean {
-  return content.parts.length === 0 && content.images.length === 0 && content.files.length === 0;
-}
+export { composerContentEmpty, composerMessageContent } from "./composer-plan.ts";
 
 export async function uploadComposerContent(content: ComposerContent): Promise<UserContent> {
   const [only, ...rest] = content.parts;
@@ -75,36 +64,6 @@ export async function uploadComposerContent(content: ComposerContent): Promise<U
   );
 
   return [...content.parts, ...content.files, ...uploaded];
-}
-
-export type ComposerSendPlan =
-  | { readonly kind: "empty" }
-  | { readonly kind: "command"; readonly command: ParsedPluginCommand; readonly delivery: Delivery }
-  | { readonly kind: "message"; readonly content: ComposerContent; readonly delivery: Delivery };
-
-export function composerSendPlan(input: {
-  readonly submission: ComposerSubmission;
-  readonly attachments: readonly { readonly content: ImageContent }[];
-  readonly commands: readonly CommandInfo[];
-  readonly delivery: Delivery;
-}): ComposerSendPlan {
-  const text = input.submission.text.trim();
-  const { references, parts } = input.submission;
-
-  if (parts.length === 0 && input.attachments.length === 0) return { kind: "empty" };
-
-  const command =
-    references.every((reference) => reference.kind === "file") && input.attachments.length === 0
-      ? parsePluginCommand(text, input.commands)
-      : undefined;
-
-  if (command !== undefined) return { kind: "command", command, delivery: input.delivery };
-
-  return {
-    kind: "message",
-    content: composerMessageContent(parts, input.attachments),
-    delivery: input.delivery,
-  };
 }
 
 export async function sendComposerMessage(
@@ -153,23 +112,11 @@ type DeliveryOutcome =
   | { readonly kind: "sent"; readonly note: string | undefined }
   | { readonly kind: "refused"; readonly message: string };
 
+type Delivered = Extract<DeliveryOutcome, { readonly kind: "sent" | "refused" }>;
+
 type EditOutcome =
   | Extract<DeliveryOutcome, { readonly kind: "empty" | "kept" | "refused" }>
   | ReviseOutcome;
-
-type DraftCommands =
-  | { readonly kind: "loaded"; readonly commands: readonly CommandInfo[] }
-  | Extract<DeliveryOutcome, { readonly kind: "kept" }>;
-
-interface ComposerDelivery {
-  readonly sessionId: SessionId;
-  readonly submission: ComposerSubmission;
-  readonly attachments: readonly { readonly content: ImageContent }[];
-  readonly delivery: Delivery;
-  /** The receipt a message is sent under, which is also the id of its unsent row. */
-  readonly receipt: ReceiptId;
-  readonly onLeave: () => void;
-}
 
 interface ComposerEdit {
   readonly sessionId: SessionId;
@@ -180,7 +127,7 @@ interface ComposerEdit {
   readonly revise: (content: UserContent, options: ReviseOptions) => Promise<ReviseOutcome>;
 }
 
-async function draftCommands(sessionId: SessionId, text: string): Promise<DraftCommands> {
+export async function draftCommands(sessionId: SessionId, text: string): Promise<DraftCommands> {
   if (!/^\/\S/.test(text.trim())) return { kind: "loaded", commands: NO_COMMANDS };
   const store = chatStore(sessionId);
   const shown = store.value;
@@ -190,36 +137,16 @@ async function draftCommands(sessionId: SessionId, text: string): Promise<DraftC
       kind: "loaded",
       commands: [...view.catalog.commands, ...CLIENT_COMMANDS],
     }),
-    (cause: unknown): DraftCommands => ({
-      kind: "kept",
-      message: `Commands couldn't load: ${errorMessage(cause)}`,
-    }),
+    (cause: unknown): DraftCommands => ({ kind: "failed", reason: errorMessage(cause) }),
   );
 }
 
-export async function deliverSubmission(input: ComposerDelivery): Promise<DeliveryOutcome> {
-  const { sessionId, submission } = input;
-  const loaded = await draftCommands(sessionId, submission.text);
-
-  if (loaded.kind === "kept") return loaded;
-
-  const plan = composerSendPlan({
-    submission,
-    attachments: input.attachments,
-    commands: loaded.commands,
-    delivery: input.delivery,
-  });
-
-  if (plan.kind === "empty") return { kind: "empty" };
-
-  const blocked =
-    plan.kind === "message" ? parsePluginCommand(submission.text, loaded.commands) : undefined;
-
-  if (blocked !== undefined) return { kind: "kept", message: `Send /${blocked.name} by itself.` };
-
-  const session = (await connected()).session(sessionId);
-  input.onLeave();
-
+/** Sends a planned draft; `receipt` is also the id of the message's unsent row. */
+export async function deliver(
+  session: Session,
+  plan: Extract<SubmissionPlan, { readonly kind: "command" | "message" }>,
+  receipt: ReceiptId,
+): Promise<Delivered> {
   if (plan.kind === "command") {
     try {
       return await runCommand(session, plan.command);
@@ -229,7 +156,7 @@ export async function deliverSubmission(input: ComposerDelivery): Promise<Delive
   }
 
   try {
-    await sendComposerMessage(session, plan, input.receipt);
+    await sendComposerMessage(session, plan, receipt);
 
     return { kind: "sent", note: undefined };
   } catch (cause: unknown) {
@@ -238,27 +165,21 @@ export async function deliverSubmission(input: ComposerDelivery): Promise<Delive
 }
 
 export async function deliverEdit(input: ComposerEdit): Promise<EditOutcome> {
-  const { sessionId, submission } = input;
-  const loaded = await draftCommands(sessionId, submission.text);
+  const plan = planEdit({
+    submission: input.submission,
+    attachments: input.attachments,
+    commands: await draftCommands(input.sessionId, input.submission.text),
+    delivery: input.delivery,
+    files: messageFiles(input.message.content),
+  });
 
-  if (loaded.kind === "kept") return loaded;
-
-  if (parsePluginCommand(submission.text, loaded.commands) !== undefined)
-    return { kind: "kept", message: "Commands can't run from a queued message." };
-
-  if (submission.parts.length === 0 && input.attachments.length === 0) return { kind: "empty" };
-
-  const content = composerMessageContent(
-    submission.parts,
-    input.attachments,
-    messageFiles(input.message.content),
-  );
+  if (plan.kind !== "message") return plan;
 
   try {
     const draft = await admitDraft({
-      content: await uploadComposerContent(content),
-      delivery: input.delivery,
-      session: sessionId,
+      content: await uploadComposerContent(plan.content),
+      delivery: plan.delivery,
+      session: input.sessionId,
     });
 
     return await input.revise(draft.content, { delivery: draft.delivery });
@@ -288,7 +209,7 @@ export async function compactSession(
   }
 }
 
-async function openSideChatFrom(parent: SessionId, question: string): Promise<DeliveryOutcome> {
+async function openSideChatFrom(parent: SessionId, question: string): Promise<Delivered> {
   const info = await (await connected()).session(parent).info();
 
   if (info.side === true) return { kind: "refused", message: "Side chats can't start side chats." };
@@ -301,7 +222,7 @@ async function openSideChatFrom(parent: SessionId, question: string): Promise<De
 async function runCommand(
   session: Session,
   { name, argument }: ParsedPluginCommand,
-): Promise<DeliveryOutcome> {
+): Promise<Delivered> {
   if (name === COMPACT_COMMAND.name) return compactSession(session, argument);
 
   if (name === SIDECHAT_COMMAND.name) return openSideChatFrom(session.id, argument);

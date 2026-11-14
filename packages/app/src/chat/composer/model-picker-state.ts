@@ -1,4 +1,4 @@
-import type { ModelRef, ProviderUsage } from "@nyte-ai/sdk";
+import type { ModelRef, ProviderUsage, Thinking } from "@nyte-ai/sdk";
 import type { ModelThinkingLevel } from "@nyte-ai/schema/model";
 import { MODEL_THINKING_LEVELS } from "@nyte-ai/schema/model";
 import type { DesktopCatalog, DesktopModelOption, ProviderStatus } from "../../data/catalog.ts";
@@ -20,6 +20,39 @@ export function selectedModelOption(
   }
 
   return undefined;
+}
+
+/** The model a chat runs on as its composer shows it: one that can't steer only queues. */
+export interface SessionModel {
+  readonly option: DesktopModelOption | undefined;
+  readonly fast: boolean;
+  readonly thinking: Thinking | undefined;
+  readonly steers: boolean;
+}
+
+export function sessionModel(
+  catalog: Pick<DesktopCatalog, "models"> | undefined,
+  choice:
+    | { readonly model: ModelRef | undefined; readonly thinking: Thinking | undefined }
+    | undefined,
+): SessionModel {
+  const selected = selectedModelOption(catalog?.models ?? [], choice?.model);
+
+  return {
+    option: selected?.option,
+    fast: selected?.fast === true,
+    thinking: choice?.thinking,
+    steers: selected?.option.capabilities.steer !== false,
+  };
+}
+
+/** A new chat's model: the draft's pick, else its project's coordinator, else the default. */
+export function draftModel(
+  choice: { readonly model: ModelRef } | undefined,
+  project: { readonly models: { readonly coordinator: ModelRef | null } } | undefined,
+  defaults: { readonly model: ModelRef } | undefined,
+): ModelRef | undefined {
+  return choice?.model ?? project?.models.coordinator ?? defaults?.model;
 }
 
 export function modelRefFor(option: DesktopModelOption, fast: boolean) {

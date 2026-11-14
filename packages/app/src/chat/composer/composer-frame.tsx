@@ -26,13 +26,8 @@ import {
   transferredFiles,
 } from "../../references/composer-file-drop.ts";
 import type { ComposerImageAttachment } from "../../panes/session-view-state.ts";
-import {
-  composerEnterAction,
-  enterBehavior,
-  recallDirection,
-  submissionDelivery,
-} from "./composer-keys.ts";
-import type { SubmitAction } from "./composer-keys.ts";
+import { composerKey, enterBehavior, submissionDelivery } from "./composer-keys.ts";
+import type { KeyAction, KeySituation, SubmitAction } from "./composer-keys.ts";
 import type { RecallDirection } from "./composer-history.ts";
 import type { MessageReference } from "../../references/message-references.ts";
 import { composerStyles } from "./composer.stylex.ts";
@@ -76,11 +71,10 @@ interface ComposerFrameProps {
   onAbort?: () => void;
   onDismissTray?: () => boolean;
   floating?: boolean;
-  onEmptySubmit?: () => boolean;
+  onSteerQueued?: () => void;
   onRecall?: (direction: RecallDirection) => boolean;
   model?: ReactNode;
   inputRef?: (element: ComposerEditorHandle | null) => void;
-  onFocusChange?: (focused: boolean) => void;
   suggestionCatalog: ComposerSuggestionCatalog;
   completeCommand?: (name: string, prefix: string) => Promise<readonly CommandCompletion[]>;
   mentionFiles: ComposerMentionFiles;
@@ -112,11 +106,10 @@ export function ComposerFrame({
   onAbort,
   onDismissTray,
   floating = false,
-  onEmptySubmit,
+  onSteerQueued,
   onRecall,
   model,
   inputRef,
-  onFocusChange,
   suggestionCatalog,
   completeCommand,
   mentionFiles,
@@ -276,6 +269,65 @@ export function ComposerFrame({
     ).finally(() => setSubmitting(false));
   };
 
+  const keySituation = (from: KeySituation["from"]): KeySituation => ({
+    from,
+    disabled,
+    submitting,
+    editing: editing !== undefined,
+    empty: document.text.trim() === "" && attachments.length === 0 && references.length === 0,
+    steerQueued: onSteerQueued !== undefined,
+    menuOpen: suggestionMenu.open,
+    canStop: busy && !stopping && onAbort !== undefined,
+    canRecall: onRecall !== undefined,
+  });
+
+  const runKey = (action: KeyAction, event: KeyboardEvent): void => {
+    switch (action.kind) {
+      case "pass":
+        return;
+      case "recall":
+        if (onRecall?.(action.direction) === true) event.preventDefault();
+
+        return;
+      case "submit":
+        event.preventDefault();
+        void submit(action.action);
+
+        return;
+      case "steer-queued":
+        event.preventDefault();
+        onSteerQueued?.();
+
+        return;
+      case "cancel-edit":
+        event.preventDefault();
+        editing?.onCancel();
+
+        return;
+      case "swallow":
+        event.preventDefault();
+
+        return;
+      case "dismiss-tray":
+        if (onDismissTray?.() === true) {
+          event.preventDefault();
+
+          return;
+        }
+
+        if (!action.stop) return;
+        event.preventDefault();
+        onAbort?.();
+
+        return;
+      default: {
+        const _exhaustive: never = action;
+
+        return _exhaustive;
+      }
+    }
+  };
+
   const editingIndicator =
     editing?.kind !== "queued" || collapsed ? undefined : (
       <div
@@ -414,18 +466,10 @@ export function ComposerFrame({
       onFocus={() => setFocused(true)}
       onBlur={(event) => setFocused(event.currentTarget.contains(event.relatedTarget))}
       onKeyDown={(event) => {
-        if (
-          event.key !== "Escape" ||
-          event.defaultPrevented ||
-          disabled ||
-          submitting ||
-          suggestionMenu.open ||
-          editing === undefined
-        )
-          return;
+        if (composerKey(keySituation("form"), event.nativeEvent).kind !== "cancel-edit") return;
         event.preventDefault();
         event.stopPropagation();
-        editing.onCancel();
+        editing?.onCancel();
       }}
       onSubmit={(event) => {
         event.preventDefault();
@@ -551,59 +595,9 @@ export function ComposerFrame({
               suggestionMenu.onCompletionChange(answering ? undefined : completion, next);
             }}
             onFilesSelected={onFilesSelected}
-            onFocusChange={onFocusChange}
             onKeyDown={(event) => {
               if (!answering && suggestionMenu.onKeyDown(event)) return;
-              const recall = recallDirection(event);
-
-              if (recall !== undefined && onRecall?.(recall) === true) {
-                event.preventDefault();
-
-                return;
-              }
-
-              const enter = composerEnterAction(event);
-
-              if (enter === "submit" || enter === "submit-alternate") {
-                event.preventDefault();
-
-                if (
-                  enter === "submit" &&
-                  !disabled &&
-                  !submitting &&
-                  editing === undefined &&
-                  document.text.trim() === "" &&
-                  attachments.length === 0 &&
-                  references.length === 0 &&
-                  onEmptySubmit?.() === true
-                )
-                  return;
-                void submit(enter);
-
-                return;
-              }
-
-              if (event.key !== "Escape" || suggestionMenu.open || disabled) return;
-
-              if (editing !== undefined) {
-                event.preventDefault();
-
-                if (submitting) return;
-                editing.onCancel();
-
-                return;
-              }
-
-              if (onDismissTray?.()) {
-                event.preventDefault();
-
-                return;
-              }
-
-              if (busy && !stopping && onAbort !== undefined) {
-                event.preventDefault();
-                onAbort();
-              }
+              runKey(composerKey(keySituation("editor"), event), event);
             }}
           />
         </div>
