@@ -10,32 +10,8 @@ import { childList } from "../../data/directory.ts";
 import { useWatch } from "../../data/watch-store.ts";
 import { contentDraftText } from "../../references/message-references.ts";
 import type { ExcerptReference } from "../../references/message-references.ts";
-
-/**
- * What a chat's side-chat window shows: a question not yet asked, one being started, or a side chat.
- * A new one's `question` is the draft it opens with, the question back after a start failed.
- */
-export type SideChatShown =
-  | {
-      readonly kind: "new";
-      readonly id: string;
-      readonly error: string | null;
-      readonly question: string;
-    }
-  | { readonly kind: "starting"; readonly question: string }
-  | { readonly kind: "chat"; readonly id: SessionId };
-
-/**
- * A chat's side-chat window. Side chats are new chats a person starts beside a chat, to ask about
- * it without steering it: ordinary sessions whose `parent` is that chat. Each starts with the
- * chat's recent history as hidden context in its prompt, never in its transcript, and lasts until
- * it is archived. It reaches its parent only as a `chat` excerpt someone adds to a message there.
- */
-export type SideChatWindow =
-  | { readonly kind: "closed" }
-  | { readonly kind: "open"; readonly shown: SideChatShown; readonly folded: boolean };
-
-const CLOSED: SideChatWindow = { kind: "closed" };
+import { CLOSED, nextSideChat } from "./side-chat-state.ts";
+import type { SideChatEvent, SideChatShown, SideChatWindow } from "./side-chat-state.ts";
 
 /** The most of the parent's history a side chat starts with, counted back from its newest message. */
 const CONTEXT_CHARS = 24_000;
@@ -85,7 +61,7 @@ function sideChats(children: readonly SessionInfo[]): readonly SessionInfo[] {
 /** Opens `parent`'s window on a new side chat, starting it at once when there's a question. */
 export function openSideChat(parent: SessionId, question: string): Promise<void> {
   if (question.trim() === "") {
-    open(parent, newQuestion("", null));
+    dispatch(parent, { kind: "open", shown: newQuestion("", null) });
 
     return Promise.resolve();
   }
@@ -95,27 +71,19 @@ export function openSideChat(parent: SessionId, question: string): Promise<void>
 
 /** Shows the window's side chat, or the newest side chat, or a new one. */
 export function summonSideChat(parent: SessionId): void {
-  const current = slotFor(parent).state;
-
-  if (current.kind === "open") {
-    set(parent, { ...current, folded: false });
-
-    return;
-  }
-
-  const newest = sideChats(childList(parent).value ?? []).at(-1);
-
-  open(parent, newest === undefined ? newQuestion("", null) : { kind: "chat", id: newest.id });
+  dispatch(parent, {
+    kind: "summon",
+    newest: sideChats(childList(parent).value ?? []).at(-1)?.id,
+    blank: newQuestion("", null),
+  });
 }
 
 export function showSideChat(parent: SessionId, id: SessionId): void {
-  open(parent, { kind: "chat", id });
+  dispatch(parent, { kind: "open", shown: { kind: "chat", id } });
 }
 
 export function foldSideChat(parent: SessionId, folded: boolean): void {
-  const current = slotFor(parent).state;
-
-  if (current.kind === "open") set(parent, { ...current, folded });
+  dispatch(parent, { kind: "fold", folded });
 }
 
 /**
@@ -126,7 +94,7 @@ export function foldSideChat(parent: SessionId, folded: boolean): void {
  */
 export async function startSideChat(parent: SessionId, question: string): Promise<void> {
   const starting: SideChatShown = { kind: "starting", question };
-  open(parent, starting);
+  dispatch(parent, { kind: "open", shown: starting });
   const id = asId<"session">(crypto.randomUUID());
   const view = chatStore(parent).value;
   const choice = view === undefined ? undefined : projectSessionChoice(view, []);
@@ -150,13 +118,13 @@ export async function startSideChat(parent: SessionId, question: string): Promis
     await chatStore(id)
       .next()
       .catch(() => undefined);
-    replaceShown(parent, starting, { kind: "chat", id });
+    dispatch(parent, { kind: "replace", from: starting, to: { kind: "chat", id } });
   } catch (cause: unknown) {
-    replaceShown(
-      parent,
-      starting,
-      newQuestion(question, `Couldn't start the side chat: ${errorMessage(cause)}`),
-    );
+    dispatch(parent, {
+      kind: "replace",
+      from: starting,
+      to: newQuestion(question, `Couldn't start the side chat: ${errorMessage(cause)}`),
+    });
   }
 }
 
@@ -166,19 +134,14 @@ export async function startSideChat(parent: SessionId, question: string): Promis
  * isn't.
  */
 export async function archiveSideChat(parent: SessionId, id: SessionId): Promise<void> {
-  const current = slotFor(parent).state;
-
-  const closed =
-    current.kind === "open" && current.shown.kind === "chat" && current.shown.id === id
-      ? current
-      : undefined;
-
-  if (closed !== undefined) set(parent, CLOSED);
+  const before = slotFor(parent).state;
+  dispatch(parent, { kind: "archive", id });
+  const closed = slotFor(parent).state === before ? undefined : before;
 
   try {
     await (await connected()).session(id).update({ archived: true });
   } catch {
-    if (closed !== undefined && slotFor(parent).state === CLOSED) set(parent, closed);
+    if (closed !== undefined) dispatch(parent, { kind: "restore", window: closed });
   }
 }
 
@@ -241,19 +204,12 @@ function newQuestion(question: string, error: string | null): SideChatShown {
   return { kind: "new", id: crypto.randomUUID(), error, question };
 }
 
-function open(parent: SessionId, shown: SideChatShown): void {
-  set(parent, { kind: "open", shown, folded: false });
-}
-
-/** Shows `next` in `parent`'s window if it still shows `shown`, folded or not as it is. */
-function replaceShown(parent: SessionId, shown: SideChatShown, next: SideChatShown): void {
-  const current = slotFor(parent).state;
-
-  if (current.kind === "open" && current.shown === shown) set(parent, { ...current, shown: next });
-}
-
-function set(parent: SessionId, next: SideChatWindow): void {
+/** Moves `parent`'s window by `event`, waking its listeners only when the window changed. */
+function dispatch(parent: SessionId, event: SideChatEvent): void {
   const slot = slotFor(parent);
+  const next = nextSideChat(slot.state, event);
+
+  if (next === slot.state) return;
 
   slot.state = next;
   slot.listeners.forEach((listener) => listener());

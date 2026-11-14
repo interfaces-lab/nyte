@@ -124,55 +124,77 @@ export function useHostEvents(): void {
 
 const HOST_RESTART = "host-restart";
 
+export type HostToast = "loading" | "restarted" | "close" | "none";
+
+export interface HostToastStep {
+  readonly restarting: boolean;
+  readonly toast: HostToast;
+}
+
+/** The restart toast's next step: it loads from a restart until the host is current again, and an offline host mid-restart leaves it loading. */
+export function hostToast(restarting: boolean, state: HostProcess): HostToastStep {
+  switch (state.kind) {
+    case "restarting":
+      return { restarting: true, toast: "loading" };
+    case "stale":
+      return { restarting: false, toast: "close" };
+    case "offline":
+      return { restarting, toast: restarting ? "none" : "close" };
+    case "current":
+      return { restarting: false, toast: restarting ? "restarted" : "close" };
+    default: {
+      const _exhaustive: never = state;
+
+      return _exhaustive;
+    }
+  }
+}
+
 function followHostProcess(): (state: HostProcess) => void {
   let restarting = false;
 
   return (state) => {
-    switch (state.kind) {
-      case "restarting":
-        restarting = true;
-        toast.add({
-          id: HOST_RESTART,
-          type: "loading",
-          timeout: 0,
-          title: "Restarting Nyte Host…",
-          description: undefined,
-          actionProps: undefined,
-        });
+    const next = hostToast(restarting, state);
 
-        return;
-      case "stale":
-        restarting = false;
-        toast.close(HOST_RESTART);
-
-        return;
-      case "offline":
-        if (!restarting) toast.close(HOST_RESTART);
-
-        return;
-      case "current":
-        if (!restarting) {
-          toast.close(HOST_RESTART);
-
-          return;
-        }
-
-        restarting = false;
-        toast.add({
-          id: HOST_RESTART,
-          type: "success",
-          timeout: 4000,
-          title: "Nyte Host restarted",
-          description: undefined,
-          actionProps: undefined,
-        });
-
-        return;
-      default: {
-        const _exhaustive: never = state;
-
-        return _exhaustive;
-      }
-    }
+    restarting = next.restarting;
+    showHostToast(next.toast);
   };
+}
+
+function showHostToast(shown: HostToast): void {
+  switch (shown) {
+    case "loading":
+      toast.add({
+        id: HOST_RESTART,
+        type: "loading",
+        timeout: 0,
+        title: "Restarting Nyte Host…",
+        description: undefined,
+        actionProps: undefined,
+      });
+
+      return;
+    case "restarted":
+      toast.add({
+        id: HOST_RESTART,
+        type: "success",
+        timeout: 4000,
+        title: "Nyte Host restarted",
+        description: undefined,
+        actionProps: undefined,
+      });
+
+      return;
+    case "close":
+      toast.close(HOST_RESTART);
+
+      return;
+    case "none":
+      return;
+    default: {
+      const _exhaustive: never = shown;
+
+      return _exhaustive;
+    }
+  }
 }
