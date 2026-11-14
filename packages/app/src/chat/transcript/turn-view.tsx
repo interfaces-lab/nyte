@@ -1,9 +1,6 @@
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
-import { create, props } from "@stylexjs/stylex";
-import { media, space } from "@nyte-ai/ui/styles/schema.stylex";
-import { motion, role } from "@nyte-ai/ui/styles/vars.stylex";
-import { text } from "@nyte-ai/ui/styles/text.stylex";
+import { props } from "@stylexjs/stylex";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { Row } from "@nyte-ai/ui/row";
 import { BubbleContent } from "@nyte-ai/ui/bubble";
@@ -13,24 +10,21 @@ import { useEffectEvent, useId, useLayoutEffect, useRef, useState } from "react"
 import type { ReactElement, ReactNode, RefObject } from "react";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { flushSync } from "react-dom";
-import type { CommitId, Message as ViewMessage, SessionView, UserContent } from "@nyte-ai/sdk";
+import type { Message as ViewMessage, UserContent } from "@nyte-ai/sdk";
 import { failureNotice, showsThinking, showsTool } from "@nyte-ai/plugin/client/presentation";
 import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { drawPart } from "../../canvas/client-plugins.tsx";
 import { useTranscriptControls, useTranscriptScope } from "./transcript.tsx";
 import type { ModelThinkingLevel } from "@nyte-ai/schema/model";
 import { isPart, branchSummary, compaction } from "@nyte-ai/plugin/client";
-import { CHANGES_VISIBLE_FILES, filesChangedLabel } from "../../diff/change-tree.ts";
-import { FileTypeIcon } from "@nyte-ai/ui/file-type-icon";
 import { Button } from "@nyte-ai/ui/button";
-import { Icon } from "@nyte-ai/ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import type { ToolCallDensity } from "../../preferences/index.ts";
 import { useMentionFiles } from "../../data/files.ts";
 import { usePluginCatalog } from "../../data/plugins.ts";
 import { Prose } from "../markdown/prose.tsx";
-import { useReferenceOpener } from "../../references/reference-opener.tsx";
 import { SubagentGroupView, SubagentReportLine } from "../tools/subagent-call.tsx";
+import { ResponseView } from "./reply-view.tsx";
 import { AnswerLine } from "./answer-line.tsx";
 import type { ComposerSubmission } from "../composer/composer-document.ts";
 import { ComposerFrame } from "../composer/composer-frame.tsx";
@@ -43,7 +37,6 @@ import { uploadComposerContent } from "../composer/composer-send.ts";
 import { composerSource } from "../composer/composer-suggestions.tsx";
 import { BlobImage, UserMessageText, messageImages } from "./message-content.tsx";
 import { contentDraftText } from "../../references/message-references.ts";
-import { forkChat } from "../../data/session-actions.ts";
 import { ModelPicker } from "../composer/model-picker.tsx";
 import type { ModelPickerChange } from "../composer/model-picker.tsx";
 import {
@@ -56,19 +49,14 @@ import { StatusMarker } from "./row-surfaces.tsx";
 import { RecoveryAction } from "./turn-recovery.tsx";
 import { ToolCallView } from "../tools/tool-call.tsx";
 import { StepEntryView, StepGroupFactsView } from "./step-group.tsx";
-import { responseRowView, stepRowView, userRowView } from "./transcript-row-views.ts";
+import { stepRowView, userRowView } from "./transcript-row-views.ts";
 import type { UserRowView } from "./transcript-row-views.ts";
 import { liveTurnStyles } from "./live-turn.tsx";
 import { ThinkingLine } from "./thinking-line.tsx";
-import { replyAge, userDisplayText } from "./transcript-presentation.ts";
-import { useCopyConfirmation } from "../../components/copy-confirmation.ts";
-import { stepGroupStyles } from "./step-group.stylex.ts";
-import { conversation } from "../../theme/schema.stylex.ts";
-import { useNowMinute } from "../../lib/use-now-minute.ts";
+import { userDisplayText } from "./transcript-presentation.ts";
 import type { PromptRow, TurnItemRow } from "./transcript-rows.ts";
 import { errorMessage } from "../../contract/errors.ts";
 import type { DesktopCatalog, DesktopModelOption } from "../../data/catalog.ts";
-import { ChangeStats } from "../../components/change-stats.tsx";
 import { beginEdit, decideSave, dismissible, nextEdit } from "./user-edit.ts";
 import type { UserEditEvent, UserEditState } from "./user-edit.ts";
 
@@ -426,95 +414,6 @@ function HistoryDisclosure({
   );
 }
 
-export function ChangesCard({
-  files,
-  onOpenChanges,
-}: {
-  readonly files: SessionView["changes"];
-  readonly onOpenChanges: (path: string | null) => void;
-}): ReactElement {
-  const [expanded, setExpanded] = useState(false);
-  const title = filesChangedLabel(files.length);
-  const collapsed = !expanded && files.length > CHANGES_VISIBLE_FILES;
-  const shown = collapsed ? files.slice(0, CHANGES_VISIBLE_FILES - 1) : files;
-
-  return (
-    <section aria-label={title} {...props(turnStyles.changesCard)}>
-      <div {...props(turnStyles.changesHeader)}>
-        <span {...props(turnStyles.changesTitle)}>{title}</span>
-        <Button
-          variant="plain"
-          size="sm"
-          onClick={() => onOpenChanges(null)}
-          xstyle={turnStyles.changesReview}
-        >
-          Review
-        </Button>
-      </div>
-      <ul {...props(turnStyles.changesList)}>
-        {shown.map((file) => (
-          <Row
-            key={file.path}
-            render={<li />}
-            interactive
-            data-change-stats-control=""
-            xstyle={turnStyles.changesFile}
-          >
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Row.Primary
-                    aria-label={`Open ${file.path} in Changes`}
-                    onClick={() => onOpenChanges(file.path)}
-                  >
-                    <Row.Leading xstyle={turnStyles.changesFileIcon}>
-                      <FileTypeIcon path={file.path} />
-                    </Row.Leading>
-                    <Row.Label>{file.path.split("/").at(-1) ?? file.path}</Row.Label>
-                    <ChangeStats added={file.added} removed={file.removed} />
-                  </Row.Primary>
-                }
-              />
-              <TooltipContent side="top">{file.path}</TooltipContent>
-            </Tooltip>
-          </Row>
-        ))}
-        {collapsed && (
-          <Row render={<li />} interactive xstyle={turnStyles.changesFile}>
-            <Row.Primary aria-expanded={false} onClick={() => setExpanded(true)}>
-              <Row.Leading xstyle={turnStyles.changesFileIcon}>
-                <Icon name="more-horizontal" size="sm" />
-              </Row.Leading>
-              <Row.Label>{`Show ${String(files.length - shown.length)} more`}</Row.Label>
-            </Row.Primary>
-          </Row>
-        )}
-      </ul>
-    </section>
-  );
-}
-
-export function ChangesFooter({
-  state,
-  files,
-}: {
-  readonly state: "pending" | "ready";
-  readonly files: SessionView["changes"];
-}): ReactElement {
-  const opener = useReferenceOpener();
-
-  return (
-    <div {...props(turnStyles.changesFooter(CHANGES_VISIBLE_FILES))}>
-      {state === "ready" && files.length > 0 && (
-        <ChangesCard
-          files={files}
-          onOpenChanges={(path) => opener?.({ kind: "changes", path })?.()}
-        />
-      )}
-    </div>
-  );
-}
-
 function NoteView({ message }: { message: ViewMessage }): ReactElement | null {
   const sessionId = useTranscriptScope()?.sessionId;
 
@@ -608,134 +507,6 @@ function userRow(
       return _exhaustive;
     }
   }
-}
-
-const replyStyles = create({
-  reply: {
-    display: "flex",
-    flexDirection: "column",
-    gap: conversation.rowGap,
-    minWidth: 0,
-    "--_reply-time-opacity": {
-      default: 0,
-      ":hover": { [media.hover]: 1 },
-      ":focus-within": 1,
-    },
-  },
-  latest: { "--_reply-time-opacity": 1 },
-  actions: { display: "flex", alignItems: "center", gap: space.s1 },
-  time: {
-    color: role.contentTertiary,
-    opacity: "var(--_reply-time-opacity)",
-    transitionProperty: "opacity",
-    transitionDuration: {
-      default: motion.durationFast,
-      "@media (prefers-reduced-motion: reduce)": "0s",
-    },
-    transitionTimingFunction: motion.easeOut,
-  },
-});
-
-function ResponseView({
-  row,
-}: {
-  row: Extract<TurnItemRow, { kind: "response" }>;
-}): ReactElement | null {
-  const view = responseRowView(row);
-
-  if (view === null) return null;
-
-  return (
-    <div {...props(replyStyles.reply, view.latest && replyStyles.latest)}>
-      {view.worked !== undefined && <span {...props(stepGroupStyles.status)}>{view.worked}</span>}
-      <Prose markdown={view.markdown} streaming={view.streaming} />
-      {view.ended && (
-        <ReplyActions
-          markdown={view.markdown}
-          at={view.at}
-          worked={view.worked}
-          commit={view.commit}
-        />
-      )}
-    </div>
-  );
-}
-
-const SENT_AT = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
-
-function ReplyActions({
-  markdown,
-  at,
-  worked,
-  commit,
-}: {
-  markdown: string;
-  at: number;
-  worked: string | undefined;
-  commit: CommitId | undefined;
-}): ReactElement {
-  const sessionId = useTranscriptScope()?.sessionId;
-  const confirmation = useCopyConfirmation();
-  const now = useNowMinute();
-  const sent = new Date(at);
-  const full = SENT_AT.format(sent);
-
-  return (
-    <div {...props(text.sm, replyStyles.actions)}>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <Button
-              variant="ghost"
-              size="xs"
-              iconOnly
-              icon={confirmation.copied ? "checkmark" : "copy"}
-              data-copied={confirmation.copied || undefined}
-              aria-label="Copy reply"
-              onClick={() => confirmation.copy(markdown)}
-            />
-          }
-        />
-        <TooltipContent>{confirmation.copied ? "Copied" : "Copy reply"}</TooltipContent>
-      </Tooltip>
-      {sessionId !== undefined && commit !== undefined && (
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                variant="ghost"
-                size="xs"
-                iconOnly
-                icon="fork"
-                aria-label="Fork chat from here"
-                onClick={() => void forkChat(sessionId, commit)}
-              />
-            }
-          />
-          <TooltipContent>Fork chat from here</TooltipContent>
-        </Tooltip>
-      )}
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <time dateTime={sent.toISOString()} {...props(replyStyles.time)}>
-              <span aria-hidden="true">{replyAge(at, now)}</span>
-              <span {...props(srOnly)}>Message sent {full}</span>
-            </time>
-          }
-        />
-        <TooltipContent>
-          {full}
-          {worked !== undefined && (
-            <>
-              <br />
-              {worked}
-            </>
-          )}
-        </TooltipContent>
-      </Tooltip>
-    </div>
-  );
 }
 
 export function TurnItemView({

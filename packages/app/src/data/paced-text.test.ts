@@ -7,6 +7,7 @@ import {
   drainPace,
   extendPace,
   flushPace,
+  flushReveal,
   framePace,
   presentReveal,
   receiveReveal,
@@ -220,7 +221,7 @@ describe("receiveReveal", () => {
       expected: { shown: [["a", 360, "live"]], frame: false, deadline: false, same: true },
     },
     {
-      name: "a newer live text waits, empty, while the older one drains at its pace",
+      name: "a newer live text waits, empty, while the older one drains its tail",
       steps: [
         { messages: [text("a", "lorem ", true)], showing: true },
         { messages: [text("a", LONG, true), text("b", LONG, true)], showing: true },
@@ -308,7 +309,7 @@ describe("receiveReveal", () => {
   });
 });
 
-test("a reply that starts while the one before it drains shows only once that one has shown, then paces from nothing", () => {
+test("a reply that starts while the one before it drains waits three frames for that tail, then paces from nothing", () => {
   const before = text("a", LONG, false);
   const after = text("b", LONG, true);
 
@@ -321,20 +322,15 @@ test("a reply that starts while the one before it drains shows only once that on
   let reveal = receiveReveal(opened, [before, after], { showing: true, opening: false, now: 0 });
   const frames: string[] = [];
 
-  for (let frame = 1; reveal !== undefined && frame <= 30; frame += 1) {
+  for (let frame = 1; reveal !== undefined && frame <= 16; frame += 1) {
     reveal = tickReveal(reveal, { showing: true, now: frame * FRAME });
     const shown = presentReveal({ messages: [before, after] }, reveal).messages.filter(showsText);
     frames.push(shown.map((message) => message.state.markdown.length).join("/"));
   }
 
   expect(frames).toEqual([
-    "48/0",
-    "90/0",
-    "132/0",
-    "174/0",
-    "216/0",
-    "264/0",
-    "312/0",
+    "120/0",
+    "240/0",
     "360/0",
     "360/42",
     "360/78",
@@ -349,14 +345,30 @@ test("a reply that starts while the one before it drains shows only once that on
     "360/312",
     "360/336",
     "360/360",
-    "360/360",
-    "360/360",
-    "360/360",
-    "360/360",
-    "360/360",
-    "360/360",
-    "360/360",
-    "360/360",
-    "360/360",
   ]);
+});
+
+test.each([
+  { name: "while showing, the waiting reply then paces from nothing", showing: true, after: 0 },
+  { name: "while hidden, the waiting reply shows whole", showing: false, after: 360 },
+])("the drain's deadline shows the older tail at once; $name", (row) => {
+  const before = text("a", LONG, false);
+  const after = text("b", LONG, true);
+
+  const opened = receiveReveal(undefined, [text("a", "lorem ", true)], {
+    showing: true,
+    opening: true,
+    now: 0,
+  });
+
+  const waiting = receiveReveal(opened, [before, after], { showing: true, opening: false, now: 0 });
+
+  if (waiting === undefined) throw new Error("Expected the older reply to drain");
+  const flushed = flushReveal(waiting, { showing: row.showing, now: 250 });
+
+  expect(
+    presentReveal({ messages: [before, after] }, flushed)
+      .messages.filter(showsText)
+      .map((message) => message.state.markdown.length),
+  ).toEqual([360, row.after]);
 });

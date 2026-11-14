@@ -319,7 +319,7 @@ test("the live row plans while the run is idle, names the live thought only wher
 
   const renamed = {
     ...thinkingView,
-    seq: asSeq(2),
+    seq: asSeq(3),
     messages: [prompt, thought("**Checking the lease**\n\nThe lease\n\n**Reading the helper**")],
   } satisfies SessionView & { readonly activity: SessionActivity };
 
@@ -340,6 +340,29 @@ test("the live row plans while the run is idle, names the live thought only wher
     planning: false,
     thought: "Checking the lease",
   });
+
+  const changedRows = (from: typeof working, to: typeof working) => {
+    const before = { value: from, error: undefined };
+    const layouts = quiet.rows(before);
+    const rows = layouts.map((row) => quiet.row(before, row.key));
+    const after = { value: to, error: undefined };
+
+    return [
+      quiet.rows(after) === layouts,
+      layouts
+        .filter((row, index) => quiet.row(after, row.key) !== rows[index])
+        .map((row) => row.key),
+    ];
+  };
+
+  const longer = {
+    ...thinkingView,
+    seq: asSeq(2),
+    messages: [prompt, thought("**Checking the lease**\n\nThe lease length")],
+  } satisfies SessionView & { readonly activity: SessionActivity };
+
+  expect(changedRows(thinkingView, longer)).toEqual([true, []]);
+  expect(changedRows(longer, renamed)).toEqual([true, ["row:live"]]);
   expect(live(quiet, renamed)).toMatchObject({ thought: "Reading the helper" });
   expect(live(full, renamed)).toMatchObject({ planning: false, thought: undefined });
 });

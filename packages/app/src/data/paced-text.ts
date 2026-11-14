@@ -6,6 +6,8 @@ const TARGET_CHARS_PER_FRAME = 24;
 
 const MAX_LAG_FRAMES = 8;
 
+const WAITING_DRAIN_FRAMES = 3;
+
 const BARRIER_MAX_WAIT_MS = 250;
 
 const MIN_FRAME_FLUSH_INTERVAL_MS = 12;
@@ -31,7 +33,7 @@ export interface Revealed {
 
 /**
  * The text message being paced, the status it shows until its text has caught up, and how much of
- * it shows; `next` is a newer live text held empty until this one has shown at its pace.
+ * it shows; `next` is a newer live text held empty until this one has all shown.
  */
 export interface Reveal extends Revealed {
   readonly pace: Pace;
@@ -54,14 +56,15 @@ export function flushPace(pace: Pace, now: number): Pace {
   return { text: pace.text, shown: pace.text.length, flushedAt: now, drainFrames: undefined };
 }
 
-export function drainPace(pace: Pace, now: number): Pace {
+/** The backlog shows within `frames` frames, or fewer when its countdown is already lower. */
+export function drainPace(pace: Pace, now: number, frames = MAX_LAG_FRAMES): Pace {
   const pending = pace.text.length - pace.shown;
 
   if (pending === 0) return pace;
 
   if (pending <= TARGET_CHARS_PER_FRAME) return flushPace(pace, now);
 
-  return { ...pace, drainFrames: pace.drainFrames ?? MAX_LAG_FRAMES };
+  return { ...pace, drainFrames: Math.min(pace.drainFrames ?? frames, frames) };
 }
 
 export function framePace(pace: Pace, now: number): Pace {
@@ -111,8 +114,9 @@ export function chunkLength(pending: string, budget: number): number {
 /**
  * What to pace after a view arrives: the same message while it is still the newest live text, else
  * the newest live text, whole when the chat is opening and from nothing otherwise. A newer live
- * text waits, empty, while the one before it still has text to show, so that text keeps its pace
- * instead of appearing at once. A hidden transcript shows everything at once.
+ * text waits, empty, while the one before it shows its tail within three frames, so that tail
+ * neither appears at once nor holds the newer text back at reading pace. A hidden transcript shows
+ * everything at once.
  */
 export function receiveReveal(
   current: Reveal | undefined,
@@ -134,7 +138,7 @@ export function receiveReveal(
   const waiting = waitingText(current, same, live, messages);
 
   if (waiting !== undefined) {
-    const draining = drainPace(pace, moment.now);
+    const draining = drainPace(pace, moment.now, WAITING_DRAIN_FRAMES);
 
     if (!moment.showing || draining.shown === draining.text.length)
       return settledReveal(beginReveal(waiting, moment));
@@ -195,10 +199,27 @@ export function tickReveal(
   current: Reveal,
   moment: { readonly showing: boolean; readonly now: number },
 ): Reveal | undefined {
-  const pace = moment.showing
-    ? framePace(current.pace, moment.now)
-    : flushPace(current.pace, moment.now);
+  return moment.showing
+    ? revealAfter(current, framePace(current.pace, moment.now), moment)
+    : flushReveal(current, moment);
+}
 
+/**
+ * The drain's deadline: all of `current` shows at once. The text waiting behind it still starts
+ * from nothing while the transcript is showing, so a late deadline never dumps it whole.
+ */
+export function flushReveal(
+  current: Reveal,
+  moment: { readonly showing: boolean; readonly now: number },
+): Reveal | undefined {
+  return revealAfter(current, flushPace(current.pace, moment.now), moment);
+}
+
+function revealAfter(
+  current: Reveal,
+  pace: Pace,
+  moment: { readonly showing: boolean; readonly now: number },
+): Reveal | undefined {
   if (current.next !== undefined && pace.shown === pace.text.length)
     return settledReveal(beginReveal(current.next, { opening: !moment.showing, now: moment.now }));
 
@@ -293,9 +314,10 @@ export function createTextPacer<V extends { readonly messages: readonly Message[
 
   function flush(): void {
     const current = reveal;
+    deadline = undefined;
 
     if (current === undefined || latest === undefined) return;
-    settle(tickReveal(current, { showing: false, now: performance.now() }));
+    settle(flushReveal(current, { showing: visible(), now: performance.now() }));
     revise(presentReveal(latest, reveal));
   }
 

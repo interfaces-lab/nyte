@@ -22,13 +22,22 @@ function readGroup(scope: Scope | undefined, key: string | undefined): boolean |
     : scope.viewStore.readSession(scope.sessionId).stepGroups.get(key);
 }
 
-/** Every step group reads its entry from the chat's view state, so panes on one chat agree; a write tells them all. */
+/**
+ * Every step group reads its entry from the chat's view state, so panes on one chat agree; a write
+ * tells them all. Open states and thoughts shown live are each kept for the latest 64, so a long
+ * run of thoughts never pushes out a group the reader opened or closed.
+ */
 function writeGroup(scope: Scope, key: string, value: boolean): void {
   scope.viewStore.updateSession(scope.sessionId, (current) => {
     const groups = new Map(current.stepGroups);
     groups.delete(key);
     groups.set(key, value);
-    const oldest = [...groups.keys()].slice(0, Math.max(0, groups.size - REMEMBERED_STEP_GROUPS));
+
+    const kind = [...groups.keys()].filter(
+      (kept) => kept.startsWith(SHOWN_LIVE) === key.startsWith(SHOWN_LIVE),
+    );
+
+    const oldest = kind.slice(0, Math.max(0, kind.length - REMEMBERED_STEP_GROUPS));
 
     for (const stale of oldest) groups.delete(stale);
 

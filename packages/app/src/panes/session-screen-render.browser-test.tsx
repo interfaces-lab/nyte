@@ -32,6 +32,32 @@ import {
   view,
 } from "./session-screen-render.fixtures.ts";
 import type { UserMessage } from "./session-screen-render.fixtures.ts";
+import {
+  answerIndex,
+  buttonShown,
+  checkFollowing,
+  checkFrame,
+  distance,
+  expectRule,
+  first,
+  firstPaintedRows,
+  frames,
+  listRows,
+  measureTop,
+  moved,
+  near,
+  openEditor,
+  painted,
+  PROSE,
+  scene,
+  toEnd,
+  type,
+  until,
+  visible,
+  wheel,
+  wheelUntil,
+} from "./session-screen-render.stage.ts";
+import type { Stage } from "./session-screen-render.stage.ts";
 
 let liveText = "Streaming";
 
@@ -82,8 +108,6 @@ const catalog = {
 
 const host = { workspace: undefined } satisfies HostState;
 
-let renderFailure: unknown;
-
 const panes = tabPanes();
 
 selectSession(panes, ID);
@@ -92,7 +116,7 @@ function mount(container: HTMLElement): Root {
   queryClient.setQueryData(keys.host, host);
   queryClient.setQueryData(keys.modelCatalog("initial"), catalog);
   queryClient.setQueryData(keys.mentionFiles(undefined), []);
-  renderFailure = undefined;
+  scene.renderFailure = undefined;
 
   const router = createAppRouter({
     history: createMemoryHistory({ initialEntries: [`/session/${ID}`] }),
@@ -100,7 +124,7 @@ function mount(container: HTMLElement): Root {
 
   const root = createRoot(container, {
     onUncaughtError: (error) => {
-      renderFailure = error;
+      scene.renderFailure = error;
     },
   });
 
@@ -123,155 +147,6 @@ function mount(container: HTMLElement): Root {
   return root;
 }
 
-async function until(predicate: () => boolean, what: string): Promise<void> {
-  const deadline = performance.now() + 5_000;
-
-  while (!predicate()) {
-    if (renderFailure !== undefined) throw renderFailure;
-
-    if (performance.now() > deadline) throw new Error(`Timed out waiting for ${what}`);
-    await new Promise<void>((resolve) => window.setTimeout(resolve, 10));
-  }
-}
-
-function painted(): Promise<void> {
-  return new Promise((resolve) =>
-    window.requestAnimationFrame(() => window.setTimeout(() => resolve(), 0)),
-  );
-}
-
-const failures: string[] = [];
-
-let step = "mount";
-
-function expectRule(rule: string, condition: boolean, detail: string): void {
-  const line = `rule ${rule} (${step}): ${detail}`;
-
-  if (!condition && !failures.includes(line)) failures.push(line);
-}
-
-interface Stage {
-  readonly viewport: HTMLElement;
-  readonly log: HTMLElement;
-  readonly dock: HTMLElement;
-}
-
-let stage: Stage;
-
-const PROSE = "p:not([data-sticky-user-message] *)";
-
-function measureTop(element: Element): number {
-  return Math.round(
-    element.getBoundingClientRect().top - stage.viewport.getBoundingClientRect().top,
-  );
-}
-
-function listRows(): HTMLElement[] {
-  return Array.from(stage.log.querySelectorAll<HTMLElement>("[data-row-key]")).sort(
-    (first, second) => Number(first.dataset.index) - Number(second.dataset.index),
-  );
-}
-
-function visible(selector: string): HTMLElement[] {
-  const bottom = measureTop(stage.dock);
-
-  return Array.from(stage.log.querySelectorAll<HTMLElement>(selector))
-    .filter((block) => {
-      const height = block.getBoundingClientRect().height;
-
-      return height > 0 && measureTop(block) >= 0 && measureTop(block) + height <= bottom;
-    })
-    .sort((first, second) => measureTop(first) - measureTop(second));
-}
-
-function answerIndex(row: HTMLElement): number | undefined {
-  const match = /^response:answer-(\d+)$/u.exec(row.dataset.rowKey ?? "");
-
-  return match?.[1] === undefined ? undefined : Number(match[1]);
-}
-
-function distance(): number {
-  return stage.viewport.scrollHeight - stage.viewport.clientHeight - stage.viewport.scrollTop;
-}
-
-function buttonShown(): boolean {
-  const button = stage.dock.querySelector("[data-slot='scroll-to-bottom']");
-
-  return button !== null && getComputedStyle(button).visibility === "visible";
-}
-
-function checkFrame(label: string): void {
-  const rows = listRows();
-
-  for (const [index, below] of rows.entries()) {
-    const above = rows[index - 1];
-
-    const overlap =
-      above === undefined
-        ? 0
-        : above.getBoundingClientRect().bottom - below.getBoundingClientRect().top;
-
-    expectRule("22", overlap <= 0.5, `${label}: rows overlap by ${overlap.toFixed(1)}px`);
-  }
-
-  const last = rows.at(-1);
-
-  const extent =
-    last === undefined
-      ? 0
-      : stage.log.getBoundingClientRect().bottom - last.getBoundingClientRect().bottom;
-
-  expectRule(
-    "23",
-    extent >= -0.5,
-    `${label}: extent ends ${(-extent).toFixed(1)}px above the last row`,
-  );
-
-  const column =
-    stage.viewport.getBoundingClientRect().bottom - stage.dock.getBoundingClientRect().bottom;
-
-  expectRule(
-    "13",
-    Math.abs(column) <= 1,
-    `${label}: composer sits ${column.toFixed(1)}px above the column's bottom`,
-  );
-  expectRule(
-    "25",
-    buttonShown() === distance() > 60,
-    `${label}: button shown=${String(buttonShown())} at ${distance().toFixed(0)}px from the end`,
-  );
-}
-
-function checkFollowing(label: string): void {
-  checkFrame(label);
-  expectRule(
-    "1-4",
-    Math.abs(distance()) <= 1,
-    `${label}: ${distance().toFixed(1)}px from the end while following`,
-  );
-  const last = listRows().at(-1);
-
-  const gap =
-    last === undefined
-      ? 0
-      : stage.dock.getBoundingClientRect().top - last.getBoundingClientRect().bottom;
-
-  const room = stage.viewport.clientHeight - stage.dock.offsetHeight;
-  expectRule(
-    "14",
-    Math.abs(gap - Math.min(114, 2 * Math.floor((room * 0.17) / 2))) <= 1,
-    `${label}: last row ends ${gap.toFixed(1)}px above the composer`,
-  );
-}
-
-async function frames(label: string, verify: () => void): Promise<void> {
-  for (let frame = 0; frame < 4; frame += 1) {
-    await painted();
-    checkFrame(`${label} frame ${String(frame)}`);
-    verify();
-  }
-}
-
 async function streamFrames(count: number, verify: (label: string) => void): Promise<void> {
   for (let index = 0; index < count; index += 1) {
     liveText += `\n\nDelta ${String(index)}: ${sentence.repeat(1 + (index % 3))}`;
@@ -279,16 +154,6 @@ async function streamFrames(count: number, verify: (label: string) => void): Pro
     await painted();
     verify(`stream frame ${String(index)}`);
   }
-}
-
-async function wheel(delta: number): Promise<void> {
-  stage.viewport.dispatchEvent(new WheelEvent("wheel", { deltaY: delta, bubbles: true }));
-  stage.viewport.scrollTop += delta;
-  await painted();
-}
-
-async function wheelUntil(found: () => boolean, delta = -300, limit = 60): Promise<void> {
-  for (let count = 0; count < limit && !found(); count += 1) await wheel(delta);
 }
 
 async function holds(rule: string, element: Element, frames: number): Promise<void> {
@@ -300,68 +165,19 @@ async function holds(rule: string, element: Element, frames: number): Promise<vo
   });
 }
 
-async function toEnd(): Promise<void> {
-  stage.dock.querySelector<HTMLButtonElement>("button[aria-label='Scroll to bottom']")?.click();
-  await painted();
-}
-
-async function openEditor(row: HTMLElement): Promise<void> {
-  row.querySelector<HTMLElement>("[data-composer-readonly]")?.click();
-  await until(() => row.querySelector("[contenteditable='true']") !== null, "the editor");
-  await painted();
-}
-
-async function firstPaintedRows(container: HTMLElement): Promise<Stage> {
-  await until(() => container.querySelector("[data-composer-region]") !== null, "the composer");
-
-  for (;;) {
-    await painted();
-    const viewport = container.querySelector<HTMLElement>("[aria-label='Messages']");
-    const log = container.querySelector<HTMLElement>("[aria-label='Messages'] > div");
-    const dock = container.querySelector<HTMLElement>("[data-composer-region]")?.parentElement;
-
-    if (
-      viewport &&
-      log &&
-      dock &&
-      log.querySelector("[data-row-key]:not([data-row-key='row:skeleton'])")
-    )
-      return { viewport, log, dock };
-  }
-}
-
-async function type(text: string): Promise<void> {
-  const draft = stage.dock.querySelector<HTMLElement>("[aria-multiline][aria-label='Message']");
-
-  if (draft === null) throw new Error("The composer has no editor");
-  draft.focus();
-  window.getSelection()?.collapse(draft, draft.childNodes.length);
-  await painted();
-  document.execCommand("insertText", false, text);
-  await painted();
-}
-
-const near = (value: number, target: number): boolean => Math.abs(value - target) <= 1;
-
-const moved = (element: Element, top: number): string =>
-  `moved from ${String(top)} to ${String(measureTop(element))}`;
-
-function first<T>(value: T | undefined | null, what: string): T {
-  if (value === undefined || value === null)
-    throw new Error(`${what} is missing at ${step}\n${failures.join("\n")}`);
-
-  return value;
-}
-
 export function run(): Promise<string> {
   const watchdog = new Promise<string>((resolve) =>
-    window.setTimeout(() => resolve(`timed out at ${step}\n${failures.join("\n")}`), 35_000),
+    window.setTimeout(
+      () => resolve(`timed out at ${scene.step}\n${scene.failures.join("\n")}`),
+      35_000,
+    ),
   );
 
   return Promise.race([checkRules(), watchdog]);
 }
 
 async function checkRules(): Promise<string> {
+  let stage: Stage;
   queryClient.clear();
   const container = document.createElement("div");
   container.style.cssText = "display:flex;width:900px;height:700px";
@@ -373,7 +189,7 @@ async function checkRules(): Promise<string> {
     checkFollowing("initial");
     expectRule("window", listRows().length < TURNS, "a long thread renders every row");
 
-    step = "7, 12";
+    scene.step = "7, 12";
 
     const editable = first(
       visible("[data-sticky-user-message]").findLast(
@@ -384,6 +200,12 @@ async function checkRules(): Promise<string> {
 
     await openEditor(editable);
     await holds("7/12", editable, 6);
+    await wheelUntil(() => measureTop(editable) > 3 * stage.viewport.clientHeight, -400, 20);
+    expectRule(
+      "12",
+      editable.isConnected && editable.querySelector("[contenteditable='true']") !== null,
+      "the edited row left the DOM once it scrolled out of the rendered window",
+    );
     expectRule(
       "19",
       editable.querySelector("[contenteditable='true']") !== null,
@@ -404,7 +226,7 @@ async function checkRules(): Promise<string> {
     await painted();
     expectRule("7", distance() > 1, "cancelling an edit returned to the end");
 
-    step = "6, 11";
+    scene.step = "6, 11";
     await toEnd();
     await wheelUntil(() => visible("[aria-expanded='false']").length > 0, -150);
     const trigger = first(visible("[aria-expanded='false']")[0], "a closed disclosure at the end");
@@ -427,8 +249,13 @@ async function checkRules(): Promise<string> {
       `collapsing ${moved(trigger, triggerTop)}`,
     );
 
-    step = "3, 1-4, 17";
+    scene.step = "3, 1-4, 17";
     await toEnd();
+    expectRule(
+      "3",
+      stage.dock.contains(document.activeElement),
+      "scroll-to-bottom left focus outside the composer",
+    );
 
     const latest = first(
       Array.from(stage.log.querySelectorAll<HTMLElement>("[data-sticky-user-message]")).at(-1),
@@ -453,7 +280,7 @@ async function checkRules(): Promise<string> {
       `the latest prompt sits at ${String(measureTop(latest))} at the end`,
     );
 
-    step = "8";
+    scene.step = "8";
 
     const paragraph = first(
       visible(PROSE).find((block) => measureTop(block) > 100),
@@ -465,10 +292,17 @@ async function checkRules(): Promise<string> {
     await painted();
     await holds("8", selected, 4);
     window.getSelection()?.removeAllRanges();
+    await streamFrames(2, checkFrame);
+    expectRule("8", distance() > 1, "clearing the selection returned to the end");
     await wheel(stage.viewport.scrollHeight);
     await streamFrames(2, checkFollowing);
 
-    step = "5, 9, 10";
+    scene.step = "5, 9, 10";
+    await toEnd();
+    stage.viewport.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }));
+    stage.viewport.scrollTop -= 2;
+    await streamFrames(2, checkFrame);
+    expectRule("5", distance() > 2, "↑ and a 2px scroll up did not start Reading");
     await toEnd();
     await wheel(-250);
     await holds("5/9", first(visible(PROSE)[0], "visible prose"), 6);
@@ -538,7 +372,7 @@ async function checkRules(): Promise<string> {
     );
     window.getSelection()?.removeAllRanges();
 
-    step = "16, 18";
+    scene.step = "16, 18";
 
     const findPrompt = (n: number): HTMLElement | null =>
       stage.log.querySelector(`[data-row-key='prompt:prompt-${String(n)}'] [data-turn-span] > div`);
@@ -590,7 +424,7 @@ async function checkRules(): Promise<string> {
     container.style.height = "700px";
     await painted();
 
-    step = "21";
+    scene.step = "21";
     await toEnd();
     await wheel(-600);
     const nearEnd = first(visible(PROSE)[0], "visible prose above the end");
@@ -617,7 +451,7 @@ async function checkRules(): Promise<string> {
       checkFollowing(`${height} viewport while following`);
     }
 
-    step = "15";
+    scene.step = "15";
     await wheel(-200);
     const anchored = first(visible(PROSE)[0], "visible prose");
     const anchoredTop = measureTop(anchored);
@@ -639,7 +473,7 @@ async function checkRules(): Promise<string> {
     await painted();
     checkFollowing("composer grew while following");
 
-    step = "2";
+    scene.step = "2";
     await wheel(-300);
     expectRule("2", distance() > 60, "the wheel did not leave the end before sending");
     stage.dock.querySelector<HTMLButtonElement>("button[aria-label='Send message']")?.click();
@@ -648,13 +482,13 @@ async function checkRules(): Promise<string> {
     await painted();
     checkFollowing("after sending");
 
-    step = "25";
+    scene.step = "25";
     await wheel(-30);
     expectRule("25", !buttonShown(), "the button shows within 60px");
     await wheel(-100);
     expectRule("25", buttonShown(), "the button hides past 60px");
 
-    step = "20, 24";
+    scene.step = "20, 24";
     await wheel(-900);
 
     const kept = first(visible(PROSE)[0]?.closest<HTMLElement>("[data-row-key]"), "a visible row");
@@ -678,7 +512,7 @@ async function checkRules(): Promise<string> {
     stage = await firstPaintedRows(container);
     checkFollowing("reopened at the end");
 
-    step = "19";
+    scene.step = "19";
 
     const action: UserMessage = {
       ...user("action-1", TURNS, "Instructions for the selected Git action.", "steer"),
@@ -750,7 +584,7 @@ async function checkRules(): Promise<string> {
       "an action message became editable or showed its instructions",
     );
 
-    step = "latest-turn footer";
+    scene.step = "latest-turn footer";
 
     let reservation: number | undefined;
 
@@ -877,7 +711,7 @@ async function checkRules(): Promise<string> {
     stream.push({ ...finishedNext, changes: [] });
     await frames("empty footer", () => expectRule("footer", !nextFooter.offsetHeight, "reserved"));
 
-    step = "edit submission before the host updates";
+    scene.step = "edit submission before the host updates";
     stream.push(finishedNext);
     await toEnd();
     await until(() => nextFooter.querySelector("section") !== null, "the card before editing");
@@ -989,7 +823,7 @@ async function checkRules(): Promise<string> {
     });
     await frames("newer turn completed", () => checkFooter(acknowledged, true));
 
-    return failures.length === 0 ? "passed" : failures.join("\n");
+    return scene.failures.length === 0 ? "passed" : scene.failures.join("\n");
   } finally {
     flushSync(() => root.unmount());
     container.remove();

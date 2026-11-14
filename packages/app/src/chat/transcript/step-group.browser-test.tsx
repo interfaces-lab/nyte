@@ -765,6 +765,31 @@ export async function run() {
     outer.querySelectorAll("button")[1]?.click();
     await settle();
     check(states().join() === "false,false", `Either pane closes both (${states().join()})`);
+    outer.querySelectorAll("button")[0]?.click();
+    await settle();
+    transcript(
+      Array.from({ length: 70 }, (_, index) => (
+        <StepGroupView
+          key={index}
+          messages={[
+            thought(`seen-${String(index)}`, "A thought shown live", index, true),
+            read(`seen-read-${String(index)}`, index),
+          ]}
+          cwd={undefined}
+          added={0}
+          removed={0}
+          running
+          density="detailed"
+        />
+      )),
+    );
+    await settle();
+    twoPanes("shared");
+    await settle();
+    check(
+      states().join() === "true,true",
+      `A group the reader opened stays open after 70 thoughts show live (${states().join()})`,
+    );
 
     return "passed";
   } finally {
