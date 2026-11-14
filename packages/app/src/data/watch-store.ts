@@ -2,7 +2,7 @@ import type { ClientConnection } from "@nyte-ai/sdk/client";
 import { useSyncExternalStore } from "react";
 import { useSyncExternalStoreWithSelector } from "use-sync-external-store/with-selector";
 import { countWork } from "../lib/work-counts.ts";
-import { connected, registries } from "./connection.ts";
+import { connected, onInstall } from "./connection.ts";
 
 export interface WatchState<T> {
   readonly value: T | undefined;
@@ -62,19 +62,31 @@ function notifyAll(listeners: ReadonlySet<() => void>): void {
   for (const listener of Array.from(listeners)) listener();
 }
 
+/** What a store shows of its source's latest snapshot: nothing yet, a failed first read, or a value. */
+export type Shown<T> =
+  | { readonly kind: "waiting" }
+  | { readonly kind: "failed"; readonly error: Error }
+  | { readonly kind: "shown"; readonly value: T };
+
+/** A synchronous source a store reads once on the microtask after each burst of changes. `show` gets the value it last showed in this opening, and returning it again publishes nothing. */
+export interface LiveView<T> {
+  readonly subscribe: (listener: () => void) => () => void;
+  readonly show: (previous: T | undefined) => Shown<T>;
+  readonly close: () => void;
+}
+
+type Opening<T> = AsyncIterable<T> | LiveView<T>;
+
 export class WatchStore<T> {
   private state: WatchState<T> = UNSTARTED;
   private readonly listeners = new Set<() => void>();
   private readonly renders = new Set<() => void>();
   private stop: (() => void) | undefined;
   private failures = 0;
-  private readonly open: () => AsyncIterable<T> | Promise<AsyncIterable<T>>;
+  private readonly open: () => Opening<T> | Promise<Opening<T>>;
   private readonly idle: () => void;
 
-  constructor(
-    open: () => AsyncIterable<T> | Promise<AsyncIterable<T>>,
-    idle: () => void = () => undefined,
-  ) {
+  constructor(open: () => Opening<T> | Promise<Opening<T>>, idle: () => void = () => undefined) {
     this.open = open;
     this.idle = idle;
   }
@@ -125,20 +137,13 @@ export class WatchStore<T> {
     this.render();
   }
 
-  first(): Promise<void> {
-    if (this.state.value !== undefined || this.state.error !== undefined || !this.active)
-      return Promise.resolve();
+  /** Resolves with the current value when `accept` takes it, or else with the first coming one it takes, watching the store until then; rejects on the next error the store publishes. */
+  until(accept: (value: T) => boolean): Promise<T> {
+    const current = this.state.value;
 
-    return this.next().then(
-      () => undefined,
-      () => undefined,
-    );
-  }
+    if (current !== undefined && accept(current)) return Promise.resolve(current);
 
-  next(): Promise<T> {
     return new Promise((resolve, reject) => {
-      const seen = this.state.value;
-
       const leave = this.subscribe(() => {
         const { value, error } = this.state;
 
@@ -149,11 +154,17 @@ export class WatchStore<T> {
           return;
         }
 
-        if (value === undefined || value === seen) return;
+        if (value === undefined || !accept(value)) return;
         leave();
         resolve(value);
       });
     });
+  }
+
+  next(): Promise<T> {
+    const seen = this.state.value;
+
+    return this.until((value) => value !== seen);
   }
 
   private listen(listeners: Set<() => void>, listener: () => void): () => void {
@@ -174,11 +185,71 @@ export class WatchStore<T> {
   private start(): () => void {
     let stopped = false;
     let iterator: AsyncIterator<T> | undefined;
+    let leave: (() => void) | undefined;
     let reopen: ReturnType<typeof setTimeout> | undefined;
+
+    const fail = (cause: unknown): void => {
+      if (stopped) return;
+      this.failures += 1;
+      this.publish({
+        value: this.state.value,
+        error: cause instanceof Error ? cause : new Error(String(cause)),
+      });
+      reopen = setTimeout(
+        () => {
+          if (!stopped) this.stop = this.start();
+        },
+        Math.min(FIRST_REOPEN_MS * 2 ** (this.failures - 1), MAX_REOPEN_MS),
+      );
+    };
+
+    const follow = (source: LiveView<T>): void => {
+      let last: T | undefined;
+      let queued = false;
+
+      const read = (): void => {
+        queued = false;
+
+        if (stopped || leave === undefined) return;
+        const shown = source.show(last);
+
+        if (shown.kind === "failed") {
+          leave();
+          leave = undefined;
+          fail(shown.error);
+
+          return;
+        }
+
+        if (shown.kind === "waiting" || shown.value === last) return;
+        last = shown.value;
+        this.receive(shown.value);
+      };
+
+      const unsubscribe = source.subscribe(() => {
+        if (queued) return;
+        queued = true;
+        queueMicrotask(read);
+      });
+
+      leave = () => {
+        unsubscribe();
+        source.close();
+      };
+
+      read();
+    };
 
     void (async () => {
       try {
         const source = await this.open();
+
+        if (!(Symbol.asyncIterator in source)) {
+          if (stopped) source.close();
+          else follow(source);
+
+          return;
+        }
 
         if (stopped) return;
         iterator = source[Symbol.asyncIterator]();
@@ -187,35 +258,30 @@ export class WatchStore<T> {
           const next = await iterator.next();
 
           if (stopped || next.done === true) return;
-          this.failures = 0;
-          const streaming = this.state.value !== undefined && this.state.error === undefined;
-          this.state = { value: next.value, error: undefined };
-          notifyAll(this.listeners);
-
-          if (streaming) notifyByFrame(this.render);
-          else this.render();
+          this.receive(next.value);
         }
       } catch (cause) {
-        if (stopped) return;
-        this.failures += 1;
-        this.publish({
-          value: this.state.value,
-          error: cause instanceof Error ? cause : new Error(String(cause)),
-        });
-        reopen = setTimeout(
-          () => {
-            if (!stopped) this.stop = this.start();
-          },
-          Math.min(FIRST_REOPEN_MS * 2 ** (this.failures - 1), MAX_REOPEN_MS),
-        );
+        fail(cause);
       }
     })();
 
     return () => {
       stopped = true;
       clearTimeout(reopen);
+      leave?.();
+      leave = undefined;
       void iterator?.return?.();
     };
+  }
+
+  private receive(value: T): void {
+    this.failures = 0;
+    const streaming = this.state.value !== undefined && this.state.error === undefined;
+    this.state = { value, error: undefined };
+    notifyAll(this.listeners);
+
+    if (streaming) notifyByFrame(this.render);
+    else this.render();
   }
 
   private publish(state: WatchState<T>): void {
@@ -234,7 +300,7 @@ export class WatchStore<T> {
 const RETAINED_WATCHES = 16;
 
 export function watchFamily<K extends string, T>(
-  open: (connection: ClientConnection, key: K) => AsyncIterable<T>,
+  open: (connection: ClientConnection, key: K) => Opening<T>,
 ) {
   const stores = new Map<K, WatchStore<T>>();
 
@@ -247,10 +313,8 @@ export function watchFamily<K extends string, T>(
     }
   };
 
-  registries.add({
-    clear() {
-      for (const store of stores.values()) store.reset();
-    },
+  onInstall((replaced) => {
+    if (replaced) for (const store of stores.values()) store.reset();
   });
 
   return (key: K): WatchStore<T> => {

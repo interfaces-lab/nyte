@@ -303,7 +303,7 @@ function source(first: SessionView | undefined): ViewStream {
 }
 
 async function settled(ids: readonly SessionId[]): Promise<void> {
-  await Promise.all(ids.map((id) => chatStore(id).first()));
+  await Promise.all(ids.map((id) => chatStore(id).until(() => true)));
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
 

@@ -156,7 +156,7 @@ function drawer(root: Root): Draw {
       const id = asId<"session">(`chat-${String(chats)}`);
       streams.set(id, viewStream(answerView(id, markdown, streaming)));
       current = { id, release: chatStore(id).subscribe(() => undefined) };
-      await chatStore(id).first();
+      await chatStore(id).until(() => true);
     } else {
       const arrived = chatStore(current.id).next();
       streams.get(current.id)?.push(answerView(current.id, markdown, streaming));

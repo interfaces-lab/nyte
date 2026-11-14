@@ -66,7 +66,7 @@ const unlisted = settledTool("task-unlisted", {
 function Parent({ children }: { readonly children: ReactNode }): ReactNode {
   return (
     <QueryClientProvider client={new QueryClient()}>
-      <PaneControllerProvider controller={tabPanes()}>
+      <PaneControllerProvider panes={tabPanes()}>
         <TranscriptProvider paneId={PRIMARY} sessionId={parent}>
           {children}
         </TranscriptProvider>
@@ -103,8 +103,8 @@ test("a create call finds its child in the parent's background by the call that 
     sessionList("all").subscribe(() => undefined),
     chatStore(parent).subscribe(() => undefined),
   ];
-  await sessionList("all").first();
-  await chatStore(parent).first();
+  await sessionList("all").until(() => true);
+  await chatStore(parent).until(() => true);
 
   const html = renderToStaticMarkup(
     <Parent>
@@ -178,8 +178,8 @@ test("a child whose chat still reads as running shows how the parent's backgroun
     chatStore(parent).subscribe(() => undefined),
   ];
 
-  await sessionList("all").first();
-  await chatStore(parent).first();
+  await sessionList("all").until(() => true);
+  await chatStore(parent).until(() => true);
 
   const html = renderToStaticMarkup(
     <Parent>

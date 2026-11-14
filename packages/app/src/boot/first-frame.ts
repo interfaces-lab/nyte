@@ -17,6 +17,7 @@ import { chatStore } from "../data/chat-store.ts";
 import { sessionList } from "../data/directory.ts";
 import { sessionRows } from "../data/session-rows.ts";
 import { hostWatch } from "../data/watches.ts";
+import type { WatchStore } from "../data/watch-store.ts";
 import { sessionId } from "../data/schemas.ts";
 import { startupConnection } from "../data/startup.ts";
 import { activeTab, tabPlace } from "../tabs/model.ts";
@@ -175,13 +176,25 @@ export async function windowContentReady(): Promise<void> {
       noContent.promise,
       Promise.all([
         queryClient.getQueryData(keys.firstFrameRoots) === undefined
-          ? sessionList("roots").first()
+          ? arrived(sessionList("roots"))
           : undefined,
-        place.kind === "session" ? chatStore(place.sessionId).first() : undefined,
+        place.kind === "session" ? arrived(chatStore(place.sessionId)) : undefined,
       ]),
     ]);
   } finally {
     clearTimeout(limit);
     leave();
   }
+}
+
+/** The store's first value or error, settled at once when it has one or nobody watches it, and never rejecting. */
+function arrived<T>(store: WatchStore<T>): Promise<void> | undefined {
+  return store.active && store.error === undefined
+    ? store
+        .until(() => true)
+        .then(
+          () => undefined,
+          () => undefined,
+        )
+    : undefined;
 }

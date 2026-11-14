@@ -2,14 +2,18 @@ import { asId } from "@nyte-ai/schema";
 import type { PartId, PartView } from "@nyte-ai/schema";
 import { tracePaints } from "@nyte-ai/sdk";
 import type { MessageId, SessionId } from "@nyte-ai/sdk";
-import type { Chat, ChatSnapshot, Freshness, HeadView } from "@nyte-ai/sdk/client";
+import type { Chat, ChatSnapshot, Freshness, HeadView, PartSnapshot } from "@nyte-ai/sdk/client";
 import { useSyncExternalStore } from "react";
 import { countWork } from "../lib/work-counts.ts";
-import { connection, registries } from "./connection.ts";
+import { heldSessions, nextExpiry, nextHolds, NO_HOLDS } from "./chat-holds.ts";
+import type { HoldEvent } from "./chat-holds.ts";
+import { connection, onInstall } from "./connection.ts";
+import { reconcile } from "./keep.ts";
 import { createTextPacer } from "./paced-text.ts";
 import { sessionActivityProjector } from "./session-activity.ts";
 import type { SessionActivity } from "./session-activity.ts";
 import { liveValues, watchFamily } from "./watch-store.ts";
+import type { LiveView, Shown } from "./watch-store.ts";
 
 export interface ChatView extends HeadView {
   readonly seq: number;
@@ -125,87 +129,77 @@ function laidViews(chat: Chat) {
 
 export type ShownPart = { readonly part: PartView | null; readonly staleSince: number | null };
 
-const partStores = watchFamily((opened, key: string): AsyncIterable<ShownPart> =>
-  liveValues<ShownPart>((changed) => {
-    const [session = "", part = ""] = key.split(" ");
-    const store = opened.part(asId<"session">(session), asId<"part">(part));
-    const stop = store.subscribe(changed);
-    let shown = partStores(key).value ?? null;
+const partStores = watchFamily((opened, key: string): LiveView<ShownPart> => {
+  const [session = "", part = ""] = key.split(" ");
+  const store = opened.part(asId<"session">(session), asId<"part">(part));
+  const retained = partStores(key).value;
 
-    return {
-      read() {
-        const freshness = store.freshness();
-        const staleSince = freshness.kind === "stale" ? freshness.since : null;
-        const snapshot = store.snapshot();
-        const found = snapshot === null ? shown?.part : snapshot.part;
+  return {
+    subscribe: (listener) => store.subscribe(listener),
+    show: (previous) =>
+      showPart({ snapshot: store.snapshot(), freshness: store.freshness() }, previous ?? retained),
+    close: () => store.close(),
+  };
+});
 
-        if (found === undefined) {
-          if (freshness.kind === "stale" && freshness.error !== null) throw freshness.error;
+/** The part, or the one shown before while the store has none, with when it went stale; `previous` itself while neither changed. A store with no part to show fails with its error, or waits. */
+export function showPart(
+  store: { readonly snapshot: PartSnapshot | null; readonly freshness: Freshness },
+  previous: ShownPart | undefined,
+): Shown<ShownPart> {
+  const freshness = store.freshness;
+  const staleSince = freshness.kind === "stale" ? freshness.since : null;
+  const found = store.snapshot === null ? previous?.part : store.snapshot.part;
 
-          return null;
-        }
+  if (found === undefined)
+    return freshness.kind === "stale" && freshness.error !== null
+      ? { kind: "failed", error: freshness.error }
+      : { kind: "waiting" };
 
-        if (shown?.part === found && shown.staleSince === staleSince) return shown;
-        shown = { part: found, staleSince };
+  if (previous?.part === found && previous.staleSince === staleSince)
+    return { kind: "shown", value: previous };
 
-        return shown;
-      },
-      close() {
-        stop();
-        store.close();
-      },
-    };
-  }),
-);
+  return { kind: "shown", value: { part: found, staleSince } };
+}
 
 export function partStore(session: SessionId, part: PartId) {
   return partStores(`${session} ${part}`);
 }
 
-const KEPT_CHATS = 8;
+let holds = NO_HOLDS;
 
-const kept = new Map<SessionId, () => void>();
+const held = new Map<SessionId, () => void>();
 
-registries.add({
-  clear() {
-    for (const release of kept.values()) release();
-    kept.clear();
-  },
+let expiry: ReturnType<typeof setTimeout> | undefined;
+
+/** Applies `event` to the holds, holds each chat they name and releases the rest, and sets the one timer at the next warm hold's end. */
+function hold(event: HoldEvent): void {
+  holds = nextHolds(holds, event);
+  reconcile(
+    held,
+    heldSessions(holds),
+    (session) => chatStore(session).subscribe(() => undefined),
+    (release) => release(),
+  );
+  clearTimeout(expiry);
+  const until = nextExpiry(holds);
+
+  expiry =
+    until === null
+      ? undefined
+      : setTimeout(() => hold({ kind: "tick", now: Date.now() }), until - Date.now());
+}
+
+onInstall((replaced) => {
+  if (replaced) hold({ kind: "replaced" });
 });
 
 export function keepChat(session: SessionId): void {
-  const held = kept.get(session) ?? chatStore(session).subscribe(() => undefined);
-  kept.delete(session);
-  kept.set(session, held);
-
-  for (const [oldest, release] of kept) {
-    if (kept.size <= KEPT_CHATS) break;
-    kept.delete(oldest);
-    release();
-  }
+  hold({ kind: "keep", session });
 }
 
-const WARM_SESSIONS = 3;
-
-const WARM_MS = 5_000;
-
-const hotSet = new Map<SessionId, () => void>();
-
 export function warmSession(session: SessionId): void {
-  const hold = chatStore(session).subscribe(() => undefined);
-
-  const release = (): void => {
-    clearTimeout(timer);
-
-    if (hotSet.get(session) === release) hotSet.delete(session);
-    hold();
-  };
-
-  const timer = setTimeout(release, WARM_MS);
-  hotSet.get(session)?.();
-  hotSet.set(session, release);
-
-  if (hotSet.size > WARM_SESSIONS) hotSet.values().next().value?.();
+  hold({ kind: "warm", session, now: Date.now() });
 }
 
 /** Sends an unsent message the journal stopped sending after a day again, as if just sent. */

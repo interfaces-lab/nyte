@@ -87,7 +87,7 @@ export async function run(): Promise<string> {
   const root = createRoot(container);
   flushSync(() => root.render(<Roots />));
   const loading = container.textContent;
-  await store.first();
+  await store.until(() => true);
   await painted();
   const report = [{ phase: "initial", shown: container.textContent, commits: commits() }];
 

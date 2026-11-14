@@ -117,7 +117,7 @@ export async function run(): Promise<string> {
   ]);
 
   const listing = sessionList("all").subscribe(() => undefined);
-  await sessionList("all").first();
+  await sessionList("all").until(() => true);
 
   const root = createRoot(stage, {
     onUncaughtError: (error) => {

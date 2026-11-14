@@ -2,7 +2,7 @@ import type { ToolMessage } from "@nyte-ai/plugin/client/presentation";
 import { compile, ToolPartStateType, withJson } from "@nyte-ai/schema";
 import type { ToolPartState } from "@nyte-ai/schema";
 import { useEffect, useState } from "react";
-import { currentLive } from "../../data/connection.ts";
+import { currentConnection } from "../../data/connection.ts";
 import { useTranscriptScope } from "../transcript/transcript.tsx";
 
 const TOOL_STATE = compile(withJson(ToolPartStateType));
@@ -20,7 +20,7 @@ export function useWholeToolState(message: ToolMessage, open: boolean): ToolPart
   // oxlint-disable-next-line nyte-code/no-direct-effect -- holds the part's live store open while the row is open
   useEffect(() => {
     if (!reads || session === undefined) return;
-    const store = currentLive()?.part(session, part);
+    const store = currentConnection()?.part(session, part);
 
     if (store === undefined) return;
 

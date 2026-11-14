@@ -2,8 +2,9 @@ import { API_REVISION } from "@nyte-ai/schema";
 import { SdkError } from "@nyte-ai/sdk";
 import type { CredentialSource } from "@nyte-ai/sdk";
 import { connect, mediaLink, ticketSocket } from "@nyte-ai/sdk/client";
-import type { ClientConnection, ClientConnectOptions, OpenSocket } from "@nyte-ai/sdk/client";
+import type { ClientConnection, ClientConnectOptions, Live, OpenSocket } from "@nyte-ai/sdk/client";
 import type { ConnectionProblem, HostEndpoint } from "../contract/connection.ts";
+import type { StoreSource } from "./derived-store.ts";
 import { localJournal } from "./send-journal.ts";
 
 type Fetch = NonNullable<NonNullable<ClientConnectOptions["transport"]>["fetch"]>;
@@ -14,7 +15,7 @@ let installedMedia: ((path: string) => Promise<string>) | undefined;
 
 const first = Promise.withResolvers<ClientConnection>();
 
-let ready = first.promise;
+const installs = new Set<(replaced: boolean) => void>();
 
 export async function connectHost(
   endpoint: HostEndpoint,
@@ -61,21 +62,19 @@ export async function mediaUrl(path: string): Promise<string> {
   return installedMedia(path);
 }
 
+/** Installs `connection`, tells every `onInstall` listener whether it replaced one, then closes the one it replaced. */
 export function installConnection(connection: ClientConnection): void {
   const replaced = installed;
   installed = connection;
   first.resolve(connection);
-  ready = Promise.resolve(connection);
 
-  if (replaced !== undefined) for (const stores of registries) stores.clear();
+  for (const listener of installs) listener(replaced !== undefined);
 
   if (replaced !== connection) void replaced?.close();
-
-  for (const listener of liveListeners) listener();
 }
 
 export function connected(): Promise<ClientConnection> {
-  return ready;
+  return installed === undefined ? first.promise : Promise.resolve(installed);
 }
 
 /** The installed connection, for what follows its socket's health or asks it to retry. */
@@ -83,12 +82,34 @@ export function currentLive(): ClientConnection | undefined {
   return installed;
 }
 
-const liveListeners = new Set<() => void>();
+/** Hears every install; `replaced` is false only for the first. */
+export function onInstall(listener: (replaced: boolean) => void): () => void {
+  installs.add(listener);
 
-export function subscribeLive(listener: () => void): () => void {
-  liveListeners.add(listener);
+  return () => installs.delete(listener);
+}
 
-  return () => liveListeners.delete(listener);
+/** `read`'s value on the installed connection, followed onto each connection that replaces it: a listener hears its changes and each install. */
+export function installedLive<S>(
+  read: (current: ClientConnection) => Live<S>,
+): StoreSource<S | undefined> {
+  return {
+    subscribe(listener) {
+      let leave = installed === undefined ? undefined : read(installed).subscribe(listener);
+
+      const stop = onInstall(() => {
+        leave?.();
+        leave = installed === undefined ? undefined : read(installed).subscribe(listener);
+        listener();
+      });
+
+      return () => {
+        stop();
+        leave?.();
+      };
+    },
+    read: () => (installed === undefined ? undefined : read(installed).snapshot()),
+  };
 }
 
 export function currentConnection(): ClientConnection | undefined {
@@ -100,8 +121,6 @@ export function connection(): ClientConnection {
 
   return installed;
 }
-
-export const registries = new Set<{ clear(): void }>();
 
 export function hostChanged(cause: unknown): boolean {
   return cause instanceof SdkError && cause.code === "stale";
