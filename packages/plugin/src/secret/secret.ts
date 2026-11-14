@@ -26,6 +26,7 @@ import {
   secretParameters,
 } from "./schema.ts";
 import type { SaveRequest, SavedSecrets, SecretPhase, SecretState } from "./schema.ts";
+import { readsOnly, withheldInSideChats } from "../side-chat.ts";
 
 const WAIT_MS = 10 * 60_000;
 
@@ -137,6 +138,9 @@ const request: ToolDefinition<Infer<typeof secretParameters>> = {
   approval: "never",
   replay: "safe",
   async execute(args, invocation) {
+    if (await readsOnly(invocation.session, invocation.sdk))
+      throw new SdkError("denied", "A side chat can't ask the user for a secret.");
+
     const part = await invocation.session.parts.create(secret, {
       state: {
         call: invocation.call,
@@ -343,6 +347,7 @@ export default {
     commands: [save, remove],
     settings: [savedSetting],
   },
+  hooks: { transform_transcript: withheldInSideChats(SECRET_TOOL) },
   activate(api) {
     const run = (): void => void sweep(api).catch(() => undefined);
     const timer = setInterval(run, SWEEP_MS);

@@ -9,7 +9,7 @@ import type {
   SettingDefinition,
   ToolDefinition,
 } from "@nyte-ai/core";
-import { ApprovalPolicyType, SdkError } from "@nyte-ai/schema";
+import { ApprovalPolicyType, asId, SdkError } from "@nyte-ai/schema";
 import type { Awaitable, Infer } from "@nyte-ai/schema";
 import {
   APPROVAL_POLICIES,
@@ -20,6 +20,7 @@ import {
 } from "./schema.ts";
 import type { ApprovalDecision, ApprovalPolicy, ApprovalState } from "./schema.ts";
 import type { Plugin } from "@nyte-ai/plugin/core";
+import { readsOnly } from "../side-chat.ts";
 
 type Actions = typeof approvalContract.actions;
 
@@ -37,6 +38,11 @@ export interface ApprovalTool extends RuntimeCall {
 const DENIED = "The user denied this tool call. Ask them how to proceed instead of retrying it.";
 
 const UNANSWERED = "The approval request closed before the user answered.";
+
+const READ_ONLY =
+  "This chat belongs to a side chat, which is read-only: it can't edit files, run commands or use tools that change things. Tell the user they can do this from the main chat.";
+
+const PROBE = asId<"call">("side-chat-probe");
 
 const POLICIES = ApprovalPolicyType.anyOf.map((literal) => literal.const);
 
@@ -72,11 +78,44 @@ function workspacePath(cwd: string, path: string): string | null {
 }
 
 /**
+ * Whether `tool` may change something, which is what `ask` asks before:
+ * reads, listings, delegation and tools whose `approval` is not `policy`
+ * change nothing (a subagent's own calls are judged in its session).
+ */
+function changes(tool: ApprovalTool): boolean {
+  const kind = tool.class.kind;
+
+  return (
+    (tool.approval ?? "policy") === "policy" &&
+    kind !== "read" &&
+    kind !== "list" &&
+    kind !== "delegate"
+  );
+}
+
+/**
+ * Whether a call of `definition` may change something, judged by the class
+ * it gives a call without arguments: every class takes its kind from the
+ * tool, not from the arguments. A class that needs arguments counts as
+ * changing.
+ */
+function mayChange(definition: ToolDefinition): boolean {
+  try {
+    return changes({
+      name: definition.name,
+      class: definition.class({}, { call: PROBE }),
+      approval: definition.approval,
+    });
+  } catch {
+    return true;
+  }
+}
+
+/**
  * Why `policy` stops `tool` for the user in a workspace at `cwd`, or null
- * when the call runs without asking. Reads, listings, delegation and tools
- * whose `approval` is not `policy` never ask (a subagent's own calls ask in
- * its session); under `auto-edit` an edit in the workspace runs unless it is
- * under `.claude`, `.git` or `.nyte`.
+ * when the call runs without asking: only a call that `changes` asks, and
+ * under `auto-edit` an edit in the workspace runs unless it is under
+ * `.claude`, `.git` or `.nyte`.
  *
  * @category plugins
  * @since 0.1.0
@@ -88,10 +127,7 @@ export function approvalReason(
 ): ApprovalState["reason"] | null {
   const subject = tool.class;
 
-  if (policy === "full" || (tool.approval ?? "policy") !== "policy") return null;
-
-  if (subject.kind === "read" || subject.kind === "list" || subject.kind === "delegate")
-    return null;
+  if (policy === "full" || !changes(tool)) return null;
 
   if (subject.kind === "shell") return "shell";
 
@@ -195,6 +231,9 @@ async function approveRuntimeCall(
   context: { readonly api: PluginApi<"core">; readonly signal: AbortSignal },
 ): Promise<RuntimeVerdict> {
   const { api, signal } = context;
+
+  if (changes(call) && (await readsOnly(api.session, api.sdk)))
+    return { kind: "deny", reason: READ_ONLY };
   const reason = await pendingReason(api, call);
 
   if (reason === null) return { kind: "allow" };
@@ -219,7 +258,9 @@ async function approveRuntimeCall(
  * reaches the model as the rejected call's reason. A call another agent
  * runtime asks to run comes through `approve` and waits on the same part
  * while its runtime runs; its mirror call (`approval: "runtime"`) is not
- * asked about again. Only a principal with owner authority can allow.
+ * asked about again. Only a principal with owner authority can allow. A
+ * session that only reads (see `readsOnly`) is offered no tool that changes
+ * something, under every policy, and a call to one is refused at once.
  *
  * @category plugins
  * @since 0.1.0
@@ -229,14 +270,28 @@ export default {
   contribute: { parts: [approval], settings: [permissions] },
   approve: approveRuntimeCall,
   hooks: {
+    transform_transcript: async (transcript, context) => {
+      if (!(await readsOnly(context.api.session, context.api.sdk))) return transcript;
+
+      const changing = new Set(
+        context.api.contribute.tools
+          .list()
+          .filter(mayChange)
+          .map((definition) => definition.name),
+      );
+
+      return { ...transcript, tools: transcript.tools.filter((info) => !changing.has(info.name)) };
+    },
     before_tool: async (call, context) => {
       const { api } = context;
 
       const definition = api.contribute.tools.list().find((tool) => tool.name === call.name);
+      const tool = { name: call.name, class: call.class, approval: definition?.approval };
 
-      const reason = await context.memo("reason", () =>
-        pendingReason(api, { name: call.name, class: call.class, approval: definition?.approval }),
-      );
+      if (changes(tool) && (await readsOnly(api.session, api.sdk)))
+        return { action: "reject", reason: READ_ONLY };
+
+      const reason = await context.memo("reason", () => pendingReason(api, tool));
 
       if (reason === null) return { action: "continue" };
 

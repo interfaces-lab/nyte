@@ -164,6 +164,42 @@ export function open(
   });
 }
 
+/**
+ * Starts a `main` chat, a `side` chat of a main chat, or a `subagent` of a side
+ * chat, each ancestor answering "Done." first, and the request index of the
+ * chat's own first turn, which `replies` answer.
+ */
+export async function startChat(
+  host: ServedHost,
+  fake: FakeModels,
+  chat: "main" | "side" | "subagent",
+  replies: readonly Reply[],
+): Promise<Awaited<ReturnType<ServedHost["sessions"]["start"]>> & { readonly first: number }> {
+  if (chat === "main") {
+    const first = fake.requests.length;
+    fake.reply(...replies);
+
+    return { ...(await host.sessions.start({ content: "Go." })), first };
+  }
+
+  const parent = await startChat(host, fake, chat === "side" ? "main" : "side", [
+    { content: [{ type: "text", text: "Done." }] },
+  ]);
+
+  const ended = await parent.receipt.settled();
+
+  if (ended.kind !== "completed") throw new Error(`The ${chat} chat's parent ended ${ended.kind}.`);
+
+  const first = fake.requests.length;
+  const input = { content: "Go.", parent: parent.session.id };
+  fake.reply(...replies);
+
+  return {
+    ...(await host.sessions.start(chat === "side" ? { ...input, side: true } : input)),
+    first,
+  };
+}
+
 export async function until<T>(
   read: () => Promise<T | undefined> | T | undefined,
   timeout = 3000,

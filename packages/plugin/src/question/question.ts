@@ -10,6 +10,7 @@ import {
 } from "./schema.ts";
 import type { QuestionAnswers, QuestionInfo, QuestionPhase, QuestionState } from "./schema.ts";
 import type { Plugin } from "@nyte-ai/plugin/core";
+import { readsOnly, withheldInSideChats } from "../side-chat.ts";
 
 const WAIT_MS = 60_000;
 
@@ -145,6 +146,9 @@ const ask: ToolDefinition<Infer<typeof questionParameters>> = {
   approval: "never",
   replay: "safe",
   async execute(args, invocation) {
+    if (await readsOnly(invocation.session, invocation.sdk))
+      throw new SdkError("denied", "A side chat can't ask the user questions.");
+
     for (const item of args.questions) {
       if (new Set(item.options.map((option) => option.label.trim())).size !== item.options.length)
         throw new SdkError("invalid", "Question option labels must be distinct.");
@@ -212,7 +216,8 @@ async function stopWaiting(part: Part<typeof question>, head: HeadName): Promise
 /**
  * Contributes the question tool and its grouped modal. The durable wait
  * resumes after one complete submission or a skip from any client, or after
- * a minute; an answer after that reaches the asking head as a message.
+ * a minute; an answer after that reaches the asking head as a message. A
+ * session that only reads (see `readsOnly`) is never offered the tool.
  *
  * @category plugins
  * @since 0.1.0
@@ -220,4 +225,5 @@ async function stopWaiting(part: Part<typeof question>, head: HeadName): Promise
 export default {
   id: "question",
   contribute: { parts: [question], tools: [ask] },
+  hooks: { transform_transcript: withheldInSideChats(QUESTION_TOOL) },
 } satisfies Plugin;

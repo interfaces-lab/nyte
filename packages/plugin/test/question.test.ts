@@ -4,7 +4,9 @@ import { asId } from "@nyte-ai/schema";
 import { assert, expect, it } from "vitest";
 import questionPlugin, { question } from "../src/question/question.ts";
 import { openQuestions } from "../src/question/schema.ts";
-import { fakeModels, open, until } from "./fake-models.ts";
+import secretsPlugin from "../src/secret/secret.ts";
+import { fakeModels, open, startChat, until } from "./fake-models.ts";
+import type { Reply } from "./fake-models.ts";
 
 const questions = [
   {
@@ -173,3 +175,53 @@ it("rejects invalid submissions and keeps the first answer across same-set retri
   );
   expect(openQuestions(await session.view())).toEqual([]);
 });
+
+const asking: Reply = {
+  content: [
+    { type: "toolCall", id: "ask", name: "question", arguments: { questions } },
+    {
+      type: "toolCall",
+      id: "secret",
+      name: "request_secret",
+      arguments: { name: "API_KEY", label: "API key", reason: "To call the API." },
+    },
+  ],
+};
+
+const refused = [
+  { kind: "failed", message: "A side chat can't ask the user questions." },
+  { kind: "failed", message: "A side chat can't ask the user for a secret." },
+] as const;
+
+const done: Reply = { content: [{ type: "text", text: "Done." }] };
+
+it.each([
+  ["main", ["question", "request_secret"], [], done],
+  ["side", [], refused, asking],
+  ["subagent", [], refused, asking],
+] as const)(
+  "a %s chat is offered %j and its asks give %j",
+  async (chat, offered, outcomes, reply) => {
+    const fake = fakeModels();
+    await using host = await open(fake, [questionPlugin, secretsPlugin]);
+    const { session, receipt, first } = await startChat(host, fake, chat, [reply, done]);
+
+    assert((await receipt.settled()).kind === "completed");
+    const system = fake.requests[first]?.context.messages[0];
+
+    assert(system?.role === "system");
+    expect(
+      (system.toolsAdded ?? [])
+        .map((info) => info.name)
+        .filter((name) => name === "question" || name === "request_secret"),
+    ).toEqual(offered);
+    const view = await session.view();
+
+    expect(
+      view.messages.flatMap((message) =>
+        isPart(message, tool) && message.state.phase === "settled" ? [message.state.outcome] : [],
+      ),
+    ).toEqual(outcomes);
+    expect(view.parts).toEqual([]);
+  },
+);

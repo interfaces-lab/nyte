@@ -8,7 +8,7 @@ import { assert, describe, expect, it } from "vitest";
 import approvalsPlugin, { approvalReason } from "../src/approvals/approvals.ts";
 import { openApprovals, PERMISSIONS } from "../src/approvals/schema.ts";
 import type { ApprovalPolicy } from "../src/approvals/schema.ts";
-import { fakeModels, open, until } from "./fake-models.ts";
+import { fakeModels, open, startChat, until } from "./fake-models.ts";
 import type { FakeModels, Reply } from "./fake-models.ts";
 
 const ran: string[] = [];
@@ -39,7 +39,21 @@ const shell = {
   },
 } satisfies ToolDefinition<{ command: string }>;
 
-const tools: Plugin<"core"> = { id: "tools", contribute: { tools: [save, shell] } };
+const look = {
+  name: "look",
+  description: "Read a file.",
+  parameters: standard(Type.Object({ path: Type.String() })),
+  class: (args) => ({ kind: "read", path: args.path }),
+  effects: "none",
+  replay: "safe",
+  execute: async (args) => {
+    ran.push(`look ${args.path}`);
+
+    return { content: [{ kind: "text", text: `Read ${args.path}.` }] };
+  },
+} satisfies ToolDefinition<{ path: string }>;
+
+const tools: Plugin<"core"> = { id: "tools", contribute: { tools: [save, shell, look] } };
 
 const plugins = [approvalsPlugin, tools];
 
@@ -55,6 +69,12 @@ function calls(...list: readonly (readonly [string, Record<string, string>])[]):
 }
 
 const done: Reply = { content: [{ type: "text", text: "Done." }] };
+
+function offered(fake: FakeModels, request: number): readonly string[] {
+  const system = fake.requests[request]?.context.messages[0];
+
+  return system?.role === "system" ? (system.toolsAdded ?? []).map((info) => info.name) : [];
+}
 
 function results(fake: FakeModels, request: number): readonly string[] {
   return (fake.requests[request]?.context.messages ?? []).flatMap((message) =>
@@ -292,6 +312,50 @@ it("takes the first answer when two clients answer one approval", async () => {
   ).toMatchObject({ decision: "once" });
 });
 
+describe("a side chat and its subagents only read, under every policy", () => {
+  const readOnly =
+    "The tool call was rejected: This chat belongs to a side chat, which is read-only: it can't edit files, run commands or use tools that change things. Tell the user they can do this from the main chat.";
+
+  const read = { call: ["look", { path: "a.ts" }], ran: "look a.ts" } as const;
+  const write = { call: ["save", { path: "a.ts" }], ran: "save a.ts" } as const;
+  const command = { call: ["shell", { command: "ls" }], ran: "shell ls" } as const;
+  const every = ["read", "write", "edit", "list", "bash", "job", "save", "shell", "look"];
+  const reading = ["read", "list", "look"];
+
+  it.each([
+    ["full", "main", read, every, "Read a.ts."],
+    ["full", "main", write, every, "Wrote a.ts."],
+    ["full", "main", command, every, "Ran ls."],
+    ...(["ask", "auto-edit", "full"] as const).flatMap((policy) =>
+      (["side", "subagent"] as const).flatMap((chat) => [
+        [policy, chat, read, reading, "Read a.ts."] as const,
+        [policy, chat, write, reading, readOnly] as const,
+        [policy, chat, command, reading, readOnly] as const,
+      ]),
+    ),
+  ] as const)(
+    "%s, %s chat: %j is offered %j and gives %s",
+    async (policy, chat, tried, offers, result) => {
+      ran.length = 0;
+      const fake = fakeModels();
+      await using host = await started(policy, fake);
+
+      const { session, receipt, first } = await startChat(host, fake, chat, [
+        calls(tried.call),
+        done,
+      ]);
+
+      expect((await receipt.settled()).kind).toBe("completed");
+      expect(offered(fake, first)).toEqual(offers);
+      expect(results(fake, first + 1)).toEqual([result]);
+      expect(ran).toEqual(result === readOnly ? [] : [tried.ran]);
+      expect(
+        (await session.view()).parts.filter((part) => part.partKind === "ask/approval"),
+      ).toEqual([]);
+    },
+  );
+});
+
 function runtimeApis() {
   const apis = new Map<SessionId, PluginApi<"core">>();
 
@@ -343,6 +407,19 @@ it("decides a call another runtime runs through api.approve, granting by the too
     reason: "The approval request closed before the user answered.",
   });
   expect(openApprovals(await session.view())).toEqual([]);
+
+  const side = await host.sessions.start({ parent: session.id, side: true, content: "Hi." });
+  const sideApi = await runtime.find(side.session.id);
+
+  expect(await sideApi.approve(bash, signal)).toEqual({
+    kind: "deny",
+    reason:
+      "This chat belongs to a side chat, which is read-only: it can't edit files, run commands or use tools that change things. Tell the user they can do this from the main chat.",
+  });
+  expect(
+    await sideApi.approve({ name: "Read", class: { kind: "read", path: "a.ts" } }, signal),
+  ).toEqual({ kind: "allow" });
+  expect(openApprovals(await side.session.view())).toEqual([]);
 });
 
 it("lets only the host's owner allow a tool call; a participant can deny it", async () => {
