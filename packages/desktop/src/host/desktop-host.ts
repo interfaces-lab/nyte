@@ -26,12 +26,14 @@ import type {
   HostCallPath,
 } from "../shared/ipc.ts";
 import { HOST_PORT_ORIGIN } from "../shared/host-port.ts";
-import type { HostWindow } from "../shared/host-window.ts";
-import { planAttention } from "../shared/attention.ts";
+import type { HostWindow, WindowEnd } from "../shared/host-window.ts";
+import { planAttention, reconcileReminders } from "../shared/attention.ts";
 import type { AttentionDelivery, AttentionReminder, AttentionSeen } from "../shared/attention.ts";
 import { DEFAULT_DESKTOP_SETTINGS } from "@nyte-ai/app/contract/desktop-settings.ts";
 import type { DesktopSettings } from "@nyte-ai/app/contract/desktop-settings.ts";
+import { busyTaskCount } from "../shared/update-activity.ts";
 import type { DesktopUpdateActivity } from "../shared/update-activity.ts";
+import { restorableFolder } from "../shared/window-workspace.ts";
 import { desktopSettings } from "./host-settings.ts";
 import { ExpectedHostError } from "../shared/errors.ts";
 import { callTable } from "../shared/ipc-call.ts";
@@ -317,23 +319,16 @@ export class DesktopHost {
 
   #remind(reminders: readonly AttentionReminder[]): void {
     const every = this.#settings.remindMinutes * 60_000;
+    const changes = reconcileReminders(this.#reminders, reminders, every);
 
-    const wanted = new Map(
-      reminders.map((reminder) => [reminder.id, JSON.stringify([every, reminder.delivery])]),
-    );
-
-    for (const [id, held] of this.#reminders) {
-      if (wanted.get(id) === held.signature) continue;
-      clearInterval(held.timer);
+    for (const id of changes.stop) {
+      clearInterval(this.#reminders.get(id)?.timer);
       this.#reminders.delete(id);
     }
 
-    for (const reminder of reminders) {
-      const signature = wanted.get(reminder.id);
-
-      if (signature === undefined || this.#reminders.has(reminder.id)) continue;
+    for (const reminder of changes.start) {
       const timer = setInterval(() => this.#deps.alert?.(reminder.delivery), every);
-      this.#reminders.set(reminder.id, { signature, timer });
+      this.#reminders.set(reminder.id, { signature: reminder.signature, timer });
     }
   }
 
@@ -453,14 +448,11 @@ export class DesktopHost {
     "host.connect.signOut": () => this.#connect.signOut(),
   } satisfies HostCalls;
 
-  /** The window's renderer is gone or reloading; a seed outlives it. */
-  releaseWindow(window: HostWindow): void {
+  /** A seed outlives every end but the window's closing. */
+  windowEnded(window: HostWindow, end: WindowEnd): void {
     this.#selections.delete(window);
-  }
 
-  closeWindow(window: HostWindow): void {
-    this.#selections.delete(window);
-    this.#seeds.delete(window);
+    if (end === "closed") this.#seeds.delete(window);
   }
 
   registerWorkspace(path: string): Promise<RegisterWorkspaceOutcome> {
@@ -524,9 +516,7 @@ export class DesktopHost {
     const rows = opened === undefined ? [] : await listSessions(opened);
     const terminalCommandCount = opened === undefined ? 0 : await busyTerminals(opened);
 
-    const taskCount = rows.filter((row) =>
-      row.heads.some((head) => head.execution.kind !== "idle"),
-    ).length;
+    const taskCount = busyTaskCount(rows);
 
     return taskCount === 0 && terminalCommandCount === 0
       ? { kind: "idle" }
@@ -547,21 +537,14 @@ export class DesktopHost {
 
     if (info === null) return;
 
-    const workspace = await host
-      .workspace(info.workspace)
-      .info()
-      .catch(() => null);
+    const folder = restorableFolder(
+      await host
+        .workspace(info.workspace)
+        .info()
+        .catch(() => null),
+    );
 
-    if (
-      workspace === null ||
-      workspace.availability.kind === "unavailable" ||
-      workspace.target.kind !== "local" ||
-      !("path" in workspace.target) ||
-      (workspace.trusted === null && workspace.projectSources.length > 0)
-    )
-      return;
-    const { path } = workspace.target;
-    this.#selections.set(window, { id: workspace.id, path, name: basename(path) });
+    if (folder !== undefined) this.#selections.set(window, folder);
   }
 
   async #openWorkspace(

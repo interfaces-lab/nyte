@@ -81,7 +81,7 @@ import { createHostTray } from "./host-tray.ts";
 import type { HostTray } from "./host-tray.ts";
 import { clientActions } from "@nyte-ai/app/contract/client-actions.ts";
 import type { HostRuntime } from "./host-runtime.ts";
-import type { HostWindow } from "../shared/host-window.ts";
+import type { HostWindow, WindowEnd } from "../shared/host-window.ts";
 import { DEFAULT_DESKTOP_SETTINGS } from "@nyte-ai/app/contract/desktop-settings.ts";
 import { LaunchStateStore, openingFrame, windowsAfterClose } from "./launch-state.ts";
 import { registerUpdates } from "./updates/updates.ts";
@@ -658,13 +658,15 @@ function createWindow(windowId: string = randomUUID(), opening?: DesktopWindowOp
     windows.set(id, entry);
   });
 
-  const releaseRendererWork = (): void => {
-    desktopHost?.releaseWindow(id);
-    alerts.reloading(id);
-    unsavedEdits.report(id, false);
+  const windowEnded = (end: WindowEnd): void => {
+    if (end === "closed") browserSurfaces.releaseWindow(id);
+    desktopHost?.windowEnded(id, end);
+    alerts.windowEnded(id, end);
+    unsavedEdits.windowEnded(id);
+    entry.menuCommands.windowEnded(end);
   };
 
-  created.webContents.on("render-process-gone", releaseRendererWork);
+  created.webContents.on("render-process-gone", () => windowEnded("crashed"));
   const placeButtons = (): void => placeWindowButtons(created);
 
   const fullscreenChanged = (): void => {
@@ -679,10 +681,7 @@ function createWindow(windowId: string = randomUUID(), opening?: DesktopWindowOp
   created.on("enter-full-screen", fullscreenChanged);
   created.on("leave-full-screen", fullscreenChanged);
   screen.on("display-metrics-changed", placeButtons);
-  created.webContents.on("did-navigate", () => {
-    releaseRendererWork();
-    entry.menuCommands.reset();
-  });
+  created.webContents.on("did-navigate", () => windowEnded("navigated"));
 
   const updateWindowBackground = (): void => {
     created.setBackgroundColor(windowBackgroundColor());
@@ -733,7 +732,6 @@ function createWindow(windowId: string = randomUUID(), opening?: DesktopWindowOp
   });
 
   created.on("closed", () => {
-    entry.menuCommands.reset();
     nativeTheme.off("updated", updateWindowBackground);
     screen.off("display-metrics-changed", placeButtons);
     windows.delete(id);
@@ -744,10 +742,7 @@ function createWindow(windowId: string = randomUUID(), opening?: DesktopWindowOp
     });
 
     if (saved !== undefined) launchState.setWindows(saved);
-    browserSurfaces.releaseWindow(id);
-    desktopHost?.closeWindow(id);
-    alerts.release(id);
-    unsavedEdits.report(id, false);
+    windowEnded("closed");
 
     if (windows.size === 0) {
       previewsOpen.abort();

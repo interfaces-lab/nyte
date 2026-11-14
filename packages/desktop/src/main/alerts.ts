@@ -8,7 +8,7 @@ import type {
   AttentionWindows,
   WindowAttentionEvent,
 } from "../shared/attention.ts";
-import type { HostWindow } from "../shared/host-window.ts";
+import type { HostWindow, WindowEnd } from "../shared/host-window.ts";
 
 export interface AlertWindows {
   focused(): HostWindow | undefined;
@@ -68,12 +68,8 @@ export class Alerts {
     );
   }
 
-  reloading(window: HostWindow): void {
-    this.#step({ kind: "reloading", window });
-  }
-
-  release(window: HostWindow): void {
-    this.#step({ kind: "released", window });
+  windowEnded(window: HostWindow, end: WindowEnd): void {
+    this.#step({ kind: "ended", window, end });
   }
 
   /** `latest()` runs only when no window views the chat, because it restores windows when none is open. */

@@ -7,6 +7,7 @@ import type {
   BrowserKey,
   BrowserNavigationAction,
 } from "@nyte-ai/app/contract/bridge.ts";
+import type { WindowEnd } from "../shared/host-window.ts";
 import { clientActionAccelerator, clientActions } from "@nyte-ai/app/contract/client-actions.ts";
 import { shortcutCharacter } from "@nyte-ai/app/contract/browser-shortcuts.ts";
 
@@ -207,8 +208,8 @@ export function createMenuCommandDelivery(options: {
 
       for (const command of pending.splice(0)) options.send(command);
     },
-    reset(): void {
-      ready = false;
+    windowEnded(end: WindowEnd): void {
+      if (end !== "crashed") ready = false;
     },
   };
 }

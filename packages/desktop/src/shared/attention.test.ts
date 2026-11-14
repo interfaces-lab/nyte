@@ -2,10 +2,11 @@ import { expect, test } from "vitest";
 import { DEFAULT_DESKTOP_SETTINGS } from "@nyte-ai/app/contract/desktop-settings.ts";
 import type { Execution, SessionInfo } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
-import { findViewer, planAttention, stepWindowAttention } from "./attention.ts";
+import { findViewer, planAttention, reconcileReminders, stepWindowAttention } from "./attention.ts";
 import type {
   AttentionDelivery,
   AttentionPlan,
+  AttentionReminder,
   AttentionSettings,
   WindowAttention,
   WindowAttentionEvent,
@@ -451,31 +452,43 @@ test.each<{
       [1, { kind: "ready", viewed: "viewed" }],
       [2, { kind: "ready", viewed: null }],
     ],
-    event: { kind: "reloading", window: 1 },
+    event: { kind: "ended", window: 1, end: "navigated" },
     after: [[2, { kind: "ready", viewed: null }]],
   },
   {
     name: "a reload keeps a loading window loading",
     before: [[1, { kind: "loading", opening }]],
-    event: { kind: "reloading", window: 1 },
+    event: { kind: "ended", window: 1, end: "navigated" },
+    after: [[1, { kind: "loading", opening }]],
+  },
+  {
+    name: "a crash forgets a ready window",
+    before: [[1, { kind: "ready", viewed: "viewed" }]],
+    event: { kind: "ended", window: 1, end: "crashed" },
+    after: [],
+  },
+  {
+    name: "a crash keeps a loading window loading",
+    before: [[1, { kind: "loading", opening }]],
+    event: { kind: "ended", window: 1, end: "crashed" },
     after: [[1, { kind: "loading", opening }]],
   },
   {
     name: "a reload of an unknown window changes nothing",
     before: [[1, { kind: "ready", viewed: null }]],
-    event: { kind: "reloading", window: 2 },
+    event: { kind: "ended", window: 2, end: "navigated" },
     after: [[1, { kind: "ready", viewed: null }]],
   },
   {
-    name: "a released ready window is forgotten",
+    name: "a closed ready window is forgotten",
     before: [[1, { kind: "ready", viewed: "viewed" }]],
-    event: { kind: "released", window: 1 },
+    event: { kind: "ended", window: 1, end: "closed" },
     after: [],
   },
   {
-    name: "a released loading window is forgotten",
+    name: "a closed loading window is forgotten",
     before: [[1, { kind: "loading", opening }]],
-    event: { kind: "released", window: 1 },
+    event: { kind: "ended", window: 1, end: "closed" },
     after: [],
   },
   {
@@ -548,4 +561,99 @@ test.each<{
   },
 ])("finding the viewer: $name", (row) => {
   expect(findViewer(new Map(row.windows), viewed)).toBe(row.viewer);
+});
+
+function reminding(id: string, title = id): AttentionReminder {
+  return {
+    id,
+    delivery: {
+      session: asId<"session">(id),
+      state: "waiting",
+      title,
+      body: "Still needs your answer",
+      notify: true,
+      sound: true,
+      bounce: false,
+    },
+  };
+}
+
+interface Reminding {
+  readonly every: number;
+  readonly reminders: readonly (readonly [string, string?])[];
+}
+
+test.each<{
+  readonly name: string;
+  readonly before: Reminding;
+  readonly after: Reminding;
+  readonly stop: readonly string[];
+  readonly start: readonly string[];
+}>([
+  {
+    name: "a new reminder starts",
+    before: { every: 60_000, reminders: [] },
+    after: { every: 60_000, reminders: [["a"]] },
+    stop: [],
+    start: ['a "a"'],
+  },
+  {
+    name: "an unchanged reminder runs on",
+    before: { every: 60_000, reminders: [["a"]] },
+    after: { every: 60_000, reminders: [["a"]] },
+    stop: [],
+    start: [],
+  },
+  {
+    name: "a changed interval starts the reminder again",
+    before: { every: 120_000, reminders: [["a"]] },
+    after: { every: 60_000, reminders: [["a"]] },
+    stop: ["a"],
+    start: ['a "a"'],
+  },
+  {
+    name: "a changed delivery starts the reminder again",
+    before: { every: 60_000, reminders: [["a", "Old name"]] },
+    after: { every: 60_000, reminders: [["a", "New name"]] },
+    stop: ["a"],
+    start: ['a "New name"'],
+  },
+  {
+    name: "a reminder no longer wanted stops",
+    before: { every: 60_000, reminders: [["a"], ["b"]] },
+    after: { every: 60_000, reminders: [["b"]] },
+    stop: ["a"],
+    start: [],
+  },
+  {
+    name: "stops follow the held order and starts the plan's",
+    before: { every: 60_000, reminders: [["b"], ["a", "Old name"], ["c"]] },
+    after: { every: 60_000, reminders: [["d"], ["a", "New name"], ["b"]] },
+    stop: ["a", "c"],
+    start: ['d "d"', 'a "New name"'],
+  },
+])("reminders: $name", (row) => {
+  const wanted = (plan: Reminding) => plan.reminders.map((entry) => reminding(entry[0], entry[1]));
+
+  const held = new Map(
+    reconcileReminders(new Map(), wanted(row.before), row.before.every).start.map((reminder) => [
+      reminder.id,
+      reminder,
+    ]),
+  );
+
+  const changes = reconcileReminders(held, wanted(row.after), row.after.every);
+
+  expect({
+    stop: changes.stop,
+    start: changes.start.map((reminder) => `${reminder.id} "${reminder.delivery.title}"`),
+  }).toEqual({ stop: row.stop, start: row.start });
+
+  for (const id of changes.stop) held.delete(id);
+
+  for (const reminder of changes.start) held.set(reminder.id, reminder);
+  expect(reconcileReminders(held, wanted(row.after), row.after.every)).toEqual({
+    stop: [],
+    start: [],
+  });
 });

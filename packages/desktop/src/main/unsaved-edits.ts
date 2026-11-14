@@ -31,6 +31,7 @@ export function createUnsavedEdits(
       if (held) holding.add(window);
       else holding.delete(window);
     },
+    windowEnded: (window: number): void => void holding.delete(window),
     mayClose: (window: number): boolean =>
       !holding.has(window) || discard("Your unsaved changes in this window will be lost.", window),
     mayQuit: (): boolean =>

@@ -1,3 +1,5 @@
+import type { SessionInfo } from "@nyte-ai/sdk/client";
+
 export type DesktopUpdateActivity =
   | { readonly kind: "idle" }
   | {
@@ -5,6 +7,11 @@ export type DesktopUpdateActivity =
       readonly taskCount: number;
       readonly terminalCommandCount: number;
     };
+
+/** Every chat with a head that isn't idle counts, subagents and archived chats alike. */
+export function busyTaskCount(rows: readonly SessionInfo[]): number {
+  return rows.filter((row) => row.heads.some((head) => head.execution.kind !== "idle")).length;
+}
 
 export function runningWork(
   activity: Extract<DesktopUpdateActivity, { readonly kind: "busy" }>,

@@ -7,7 +7,7 @@ import type {
 import { describeRunEnd } from "@nyte-ai/plugin/client/notifications";
 import { mainHead } from "@nyte-ai/plugin/client/presentation";
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
-import type { HostWindow } from "./host-window.ts";
+import type { HostWindow, WindowEnd } from "./host-window.ts";
 
 type Status = {
   readonly key: string;
@@ -49,6 +49,11 @@ export interface AttentionPlan {
 
 export type AttentionSettings = AlertSettings & Pick<DesktopSettings, "notifySubagents">;
 
+export interface ReminderChanges {
+  readonly stop: readonly string[];
+  readonly start: readonly (AttentionReminder & { readonly signature: string })[];
+}
+
 export type WindowAttention =
   | { readonly kind: "ready"; readonly viewed: string | null }
   | { readonly kind: "loading"; readonly opening: SessionId };
@@ -58,7 +63,7 @@ export type AttentionWindows = ReadonlyMap<HostWindow, WindowAttention>;
 
 export type WindowAttentionEvent =
   | { readonly kind: "viewing"; readonly window: HostWindow; readonly viewed: string | null }
-  | { readonly kind: "reloading" | "released"; readonly window: HostWindow }
+  | { readonly kind: "ended"; readonly window: HostWindow; readonly end: WindowEnd }
   | { readonly kind: "clicked"; readonly window: HostWindow; readonly session: SessionId };
 
 export interface WindowAttentionStep {
@@ -74,8 +79,8 @@ export function findViewer(windows: AttentionWindows, session: SessionId): HostW
 }
 
 /**
- * A reload keeps `loading`, so a click that raced the window's load opens its chat once the new
- * page reports what it views.
+ * A page that ends without its window closing keeps `loading`, so a click that raced the window's
+ * load opens its chat once the new page reports what it views.
  */
 export function stepWindowAttention(
   windows: AttentionWindows,
@@ -87,7 +92,7 @@ export function stepWindowAttention(
 
   if (event.kind === "viewing") next.set(event.window, { kind: "ready", viewed: event.viewed });
 
-  if (event.kind === "released" || (event.kind === "reloading" && ready)) next.delete(event.window);
+  if (event.kind === "ended" && (event.end === "closed" || ready)) next.delete(event.window);
 
   if (event.kind === "clicked" && !ready)
     next.set(event.window, { kind: "loading", opening: event.session });
@@ -103,6 +108,28 @@ export function stepWindowAttention(
     windows: next,
     reveal: event.kind === "clicked" ? event.window : undefined,
     open: opening === undefined ? undefined : { window: event.window, session: opening },
+  };
+}
+
+/**
+ * Leaves a running reminder whose interval and delivery are unchanged; stops the others held and
+ * starts the new or changed ones.
+ */
+export function reconcileReminders(
+  held: ReadonlyMap<string, { readonly signature: string }>,
+  wanted: readonly AttentionReminder[],
+  every: number,
+): ReminderChanges {
+  const signed = wanted.map((reminder) => ({
+    ...reminder,
+    signature: JSON.stringify([every, reminder.delivery]),
+  }));
+
+  const signatures = new Map(signed.map((reminder) => [reminder.id, reminder.signature]));
+
+  return {
+    stop: [...held.keys()].filter((id) => signatures.get(id) !== held.get(id)?.signature),
+    start: signed.filter((reminder) => held.get(reminder.id)?.signature !== reminder.signature),
   };
 }
 
