@@ -1,7 +1,7 @@
 import { create, props } from "@stylexjs/stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import type { ToolClass } from "@nyte-ai/sdk";
-import { tidyPath, toolNoun, toolStatus, toolVerbs } from "@nyte-ai/plugin/client/presentation";
+import { tidyPath, toolNoun, toolVerbs } from "@nyte-ai/plugin/client/presentation";
 import type { ToolMessage } from "@nyte-ai/plugin/client/presentation";
 import { editPatch } from "./edit-patch.ts";
 import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
@@ -21,6 +21,7 @@ import { fileFromUrl } from "../../references/message-references.ts";
 import { useReferenceOpener } from "../../references/reference-opener.tsx";
 import { activityStyles } from "../transcript/activity.stylex.ts";
 import { ToolOutcome } from "./tool-line.tsx";
+import { basename, fileUrl, toolFacts } from "./tool-facts.ts";
 
 type EditToolClass = Extract<ToolClass, { readonly kind: "edit" }>;
 
@@ -175,20 +176,6 @@ const styles = create({
   expandIconOpen: { transform: "rotate(180deg)" },
 });
 
-function basename(path: string): string {
-  return path.split(/[\\/]/u).at(-1) ?? path;
-}
-
-function fileUrl(path: string, cwd: string | undefined): string | undefined {
-  const absolute = path.startsWith("/") ? path : cwd === undefined ? undefined : `${cwd}/${path}`;
-
-  if (absolute === undefined) return undefined;
-  const url = new URL("file:///");
-  url.pathname = absolute;
-
-  return url.href;
-}
-
 function Stats({
   added,
   removed,
@@ -218,8 +205,9 @@ export function EditCallView({
   readonly cwd: string | undefined;
   readonly density: ToolCallDensity;
 }): ReactElement {
-  const status = toolStatus(message);
-  const running = status.tense === "running";
+  const tool = toolFacts(message, message.state, toolVerbs(toolClass), "settled");
+  const status = tool.status;
+  const running = tool.running;
   const opener = useReferenceOpener();
   const [open, setOpen] = useState(false);
   const facts = editPatch(message);
@@ -229,12 +217,7 @@ export function EditCallView({
   const removed = facts?.removed ?? 0;
   const created = facts?.created === true;
 
-  const verb =
-    status.tense === "none"
-      ? undefined
-      : status.tone === "success" && created
-        ? "Created"
-        : toolVerbs(toolClass)[status.tense];
+  const verb = status.tone === "success" && created ? "Created" : tool.verb;
 
   const file = running ? undefined : fileFromUrl(fileUrl(toolClass.path, cwd) ?? "");
   const openFile = file === undefined ? undefined : opener?.({ kind: "file", file });

@@ -2,7 +2,7 @@ import { create, props } from "@stylexjs/stylex";
 import { Fragment, useState } from "react";
 import type { ReactElement } from "react";
 import { isJsonObject } from "@nyte-ai/schema";
-import { formatDuration, toolOutput, toolStatus } from "@nyte-ai/plugin/client/presentation";
+import { formatDuration } from "@nyte-ai/plugin/client/presentation";
 import type { ToolMessage } from "@nyte-ai/plugin/client/presentation";
 import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
@@ -11,6 +11,7 @@ import { ToolCard, ToolMark, ToolVerb, brandName, toolCardStyles } from "./tool-
 import { ToolOutcome } from "./tool-line.tsx";
 import { ToolOutputText, outputExcerpt } from "./tool-output.tsx";
 import { useWholeToolState } from "./whole-tool-state.ts";
+import { toolFacts } from "./tool-facts.ts";
 
 const styles = create({
   sections: { display: "flex", flexDirection: "column", gap: space.s2, padding: space.s2 },
@@ -47,13 +48,12 @@ export function McpCallView({
 }): ReactElement {
   const [open, setOpen] = useState(false);
   const state = useWholeToolState(message, open);
-  const status = toolStatus(message);
-  const running = status.tense === "running";
-  const output = toolOutput(state).trimEnd();
+  const facts = toolFacts(message, state, undefined, "settled");
+  const status = facts.status;
+  const running = facts.running;
+  const output = facts.output.trimEnd();
   const args = message.state.args;
-
-  const durationMs =
-    message.status.kind === "settled" ? message.status.endedAt - message.at : undefined;
+  const durationMs = facts.durationMs;
 
   return (
     <ToolCard

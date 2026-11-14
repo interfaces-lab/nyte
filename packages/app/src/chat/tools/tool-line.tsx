@@ -8,14 +8,7 @@ import { intent } from "@nyte-ai/ui/surface-theme";
 import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { useState } from "react";
 import type { ReactElement, ReactNode } from "react";
-import {
-  customTool,
-  placeName,
-  toolNoun,
-  toolOutput,
-  toolStatus,
-  toolVerbs,
-} from "@nyte-ai/plugin/client/presentation";
+import { customTool, placeName, toolNoun, toolVerbs } from "@nyte-ai/plugin/client/presentation";
 import type {
   CustomTool,
   ToolMessage,
@@ -27,6 +20,7 @@ import { useReferenceOpener } from "../../references/reference-opener.tsx";
 import { activityStyles } from "../transcript/activity.stylex.ts";
 import { ToolOutputText, excerptText, outputExcerpt } from "./tool-output.tsx";
 import { useWholeToolState } from "./whole-tool-state.ts";
+import { fileUrl, toolFacts } from "./tool-facts.ts";
 
 type LineToolClass = Extract<ToolClass, { readonly kind: "read" | "list" | "custom" }>;
 
@@ -194,17 +188,6 @@ export function ToolOutcome({ status }: { readonly status: ToolStatus }): ReactE
   );
 }
 
-function fileUrl(path: string, cwd: string | undefined): string | undefined {
-  const absolute = path.startsWith("/") ? path : cwd === undefined ? undefined : `${cwd}/${path}`;
-
-  if (absolute === undefined) return undefined;
-
-  const url = new URL("file:///");
-  url.pathname = absolute;
-
-  return url.href;
-}
-
 export function ToolLineView({
   message,
   toolClass,
@@ -217,16 +200,11 @@ export function ToolLineView({
   const opener = useReferenceOpener();
   const [expanded, setExpanded] = useState(false);
   const [hovered, setHovered] = useState(false);
-  const status = toolStatus(message);
-  const running = status.tense === "running";
   const state = useWholeToolState(message, expanded);
-
-  const raw = running
-    ? state.phase === "running"
-      ? (state.progress?.text ?? "")
-      : ""
-    : toolOutput(state);
-
+  const facts = toolFacts(message, state, toolVerbs(toolClass), "progress-while-running");
+  const status = facts.status;
+  const running = facts.running;
+  const raw = facts.output;
   const excerpt = outputExcerpt(raw.trimEnd());
   const copy = lineCopy(toolClass, cwd, status.tense);
 
@@ -249,7 +227,7 @@ export function ToolLineView({
             running && activityStyles.shimmer,
           )}
         >
-          {copy.verbs[status.tense]}
+          {facts.verb}
         </span>
       )}
       {hasDetails && (
