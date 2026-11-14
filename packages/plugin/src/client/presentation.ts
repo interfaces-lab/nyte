@@ -268,6 +268,21 @@ export function runStatus(execution: Execution | undefined): RunStatus {
 }
 
 /**
+ * Whether a client shows its run as stopping: the host's row says so, or the person asked this
+ * client to stop that run and the host hasn't answered with its row yet. `asked` is the run the
+ * pending stop request named. It counts only while `status` still holds that run, so once the host
+ * says stopping, ends the run or starts another, the host's state is what shows. The client clears
+ * `asked` when the request fails, so a failed stop stops showing at once.
+ *
+ * @category presentation
+ */
+export function runStopping(status: RunStatus, asked: RunId | null): boolean {
+  if (!("run" in status)) return false;
+
+  return (status.kind === "working" && status.stopping) || status.run === asked;
+}
+
+/**
  * The status a run leaves when it ends; a stopped run is never a failure.
  *
  * @category presentation

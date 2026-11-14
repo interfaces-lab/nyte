@@ -1,5 +1,12 @@
 import { asId } from "@nyte-ai/schema";
-import type { Execution, PartStatus, ToolClass, ToolOutcome, ToolPartState } from "@nyte-ai/schema";
+import type {
+  Execution,
+  PartStatus,
+  RunId,
+  ToolClass,
+  ToolOutcome,
+  ToolPartState,
+} from "@nyte-ai/schema";
 import { expect, it } from "vitest";
 import {
   backgroundLabel,
@@ -11,12 +18,14 @@ import {
   rowMark,
   runMark,
   runStatus,
+  runStopping,
   sessionTitle,
   taskLabel,
   toolOutput,
   toolStatus,
   toolTitle,
 } from "../src/client/presentation.ts";
+import type { RunStatus } from "../src/client/presentation.ts";
 
 const READ: ToolClass = { kind: "read", path: "/repo/src/app.ts" };
 
@@ -225,6 +234,26 @@ it("keeps a run's outcome and an approval wait apart, and draws background work 
   ]);
 
   expect(runStatus(responding)).toEqual({ kind: "working", run: run.id, stopping: true });
+
+  const other = asId<"run">("other");
+  const replying = runStatus({ ...responding, stopping: false });
+
+  const stops: readonly [RunStatus, RunId | null, boolean][] = [
+    [replying, null, false],
+    [replying, run.id, true],
+    [replying, other, false],
+    [runStatus(responding), null, true],
+    [runStatus(approval), run.id, true],
+    [runStatus(retrying), run.id, true],
+    [runStatus(delegating), other, false],
+    [runStatus(stopped), run.id, false],
+    [runStatus(completed), run.id, false],
+    [runStatus(undefined), run.id, false],
+  ];
+
+  expect(stops.map(([status, asked]) => runStopping(status, asked))).toEqual(
+    stops.map(([, , shown]) => shown),
+  );
   expect(runStatus(approval)).toEqual({ kind: "waiting-for-approval", run: run.id });
   expect(runStatus(failed)).toEqual({ kind: "failed", failure });
 
