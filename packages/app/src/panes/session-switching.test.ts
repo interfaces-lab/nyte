@@ -7,7 +7,11 @@ const Report = Type.Object({
   opening: Type.Number(),
   gapShown: Type.Boolean(),
   gapClosed: Type.Number(),
-  paging: Type.Object({ pages: Type.Number(), idleFetches: Type.Number() }),
+  paging: Type.Object({
+    pages: Type.Number(),
+    firstPrompt: Type.Boolean(),
+    idleFetches: Type.Number(),
+  }),
   switches: Type.Array(Type.String()),
   switched: Type.Array(Type.String()),
   slowest: Type.Number(),
@@ -30,6 +34,6 @@ test(
     expect(report.opening).toBeLessThan(2 * report.roundTrip);
     expect(report.gapShown).toBe(false);
     expect(report.switched).toEqual([]);
-    expect(report.paging).toEqual({ pages: 5, idleFetches: 0 });
+    expect(report.paging).toEqual({ pages: 5, firstPrompt: true, idleFetches: 0 });
   },
 );

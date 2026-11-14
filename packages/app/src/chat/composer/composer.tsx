@@ -215,7 +215,12 @@ export function Composer({
 
   useMountEffect(() => {
     const show = (): void => setDraft(viewStore.readSession(sessionId).draft);
-    const leave = viewStore.subscribeDraft(sessionId, show);
+
+    const leave = viewStore.subscribeDraft(sessionId, () => {
+      show();
+      dispatch({ kind: "draft-changed" });
+    });
+
     show();
     dispatch({ kind: "shown" });
 

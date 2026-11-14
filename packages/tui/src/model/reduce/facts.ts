@@ -9,6 +9,7 @@ import type {
 } from "@nyte-ai/sdk";
 import type { HeadView } from "@nyte-ai/sdk/client";
 import { openQuestions } from "@nyte-ai/plugin/question/schema";
+import { headAttention } from "@nyte-ai/plugin/client/presentation";
 import { shortId } from "../../lib/format.ts";
 import { completingCommands, indexSlash } from "../commands.ts";
 import { CLOSED, explicitMentionQuery, nextCompletion } from "../completion.ts";
@@ -78,7 +79,7 @@ export const factHandlers = {
   "session-info": followedOnly<MsgOf<"session-info">>((state, session, msg) => {
     const next = withFacts(state, { chat: { ...session, info: msg.info } });
 
-    return session.view === null || drawnTip(msg.info) === drawnTip(session.info)
+    return session.view === null || unreadTip(msg.info) === unreadTip(session.info)
       ? stay(next)
       : see(next);
   }),
@@ -225,15 +226,14 @@ function latestRun(execution: Execution): RunId | null {
   return execution.kind === "idle" ? (execution.lastRun?.id ?? null) : execution.run.id;
 }
 
-function drawnTip(info: SessionInfo): CommitId | null {
-  const tip = info.heads.find((head) => head.name === "main")?.tip;
-
-  return tip?.kind === "commit" ? tip.id : null;
+/** The commit `headAttention` says the person marks read, or null while nothing is unread. */
+function unreadTip(info: SessionInfo): CommitId | null {
+  return headAttention(info).unreadTip?.commit ?? null;
 }
 
 function see(state: State): Step {
   const session = followedSession(state);
-  const tip = session === null ? null : drawnTip(session.info);
+  const tip = session === null ? null : unreadTip(session.info);
 
   if (!state.facts.focused || session === null || tip === null) return stay(state);
 

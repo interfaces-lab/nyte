@@ -116,7 +116,7 @@ describe("views", () => {
   });
 });
 
-function atTip(commit: string): Msg {
+function atTip(commit: string, unread = true): Msg {
   const info = followed(working).info;
 
   return {
@@ -130,7 +130,7 @@ function atTip(commit: string): Msg {
           tip: { kind: "commit", id: asId(commit) },
           stack: null,
           execution: working.execution,
-          unread: true,
+          unread,
           background: { working: 0, waiting: 0 },
         },
       ],
@@ -154,6 +154,21 @@ describe("reading", () => {
     expect(marks(play(same.state, atTip("c2")))).toEqual([
       { kind: "see", session: S1, commit: asId("c2") },
     ]);
+  });
+
+  test("a tip the directory lists as read is not marked again, on arrival or on focus", () => {
+    const read = play(ready(working), atTip("c1", false));
+
+    expect(marks(read)).toEqual([]);
+    expect(
+      marks(
+        play(
+          read.state,
+          { kind: "terminal-focus", focused: false },
+          { kind: "terminal-focus", focused: true },
+        ),
+      ),
+    ).toEqual([]);
   });
 
   test("while the terminal is in the background nothing is marked; focus marks the tip on screen", () => {

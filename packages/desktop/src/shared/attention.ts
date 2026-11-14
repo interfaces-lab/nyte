@@ -4,7 +4,7 @@ import type {
   AlertState,
   DesktopSettings,
 } from "@nyte-ai/app/contract/desktop-settings.ts";
-import { alertNews, headAttention } from "@nyte-ai/plugin/client/presentation";
+import { alertNews, alertsOnChat, headAttention } from "@nyte-ai/plugin/client/presentation";
 import type { HeadAttention } from "@nyte-ai/plugin/client/presentation";
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import type { HostWindow, WindowEnd } from "./host-window.ts";
@@ -131,10 +131,10 @@ export function reconcileReminders(
 }
 
 /**
- * An ask always reaches the person, once: a chat that waits on the person counts unless the chat
- * above it alerts for it already, which a parent does for any ask below it, so a question alerts on
- * the root chat it is answered from, whatever `notifySubagents` says. `notifySubagents` decides
- * only whether a subagent's or side chat's own end alerts.
+ * An ask always reaches the person, once, where `alertsOnChat` says: a subagent's on the chat above
+ * it while that chat alerts for it, which a parent does for any ask below it, and a side chat's on
+ * the side chat, whatever `notifySubagents` says. `notifySubagents` decides only whether a
+ * subagent's or side chat's own end alerts.
  */
 export function planAttention(input: {
   readonly previous: AttentionSeen | undefined;
@@ -167,10 +167,12 @@ export function planAttention(input: {
       fresh: changed || (before?.fresh === true && before.key === status.alert.key),
       counted:
         !session.archived &&
-        (session.parent === null ||
-          (status.alert.state === "waiting"
-            ? !asking.has(session.parent)
-            : settings.notifySubagents)),
+        alertsOnChat(
+          session,
+          status.alert,
+          session.parent !== null && asking.has(session.parent),
+          settings.notifySubagents,
+        ),
     };
   });
 

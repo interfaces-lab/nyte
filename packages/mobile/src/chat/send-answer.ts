@@ -1,5 +1,6 @@
 import type { Message, SessionId, UserContent } from "@nyte-ai/sdk";
 import type { RefusedSend } from "@nyte-ai/sdk/client";
+import type { SendOutcome } from "./remote-chat.ts";
 
 /**
  * How a send the journal holds ends for the composer: `sent` once the host has it, `unsent` while
@@ -28,6 +29,28 @@ export function sendAnswer(
       end.kind === "sent" ? { kind: "sent", message: end.receipt.message } : { kind: end.kind },
     (cause: unknown): SendAnswer => ({ kind: "refused", error: describe(cause) }),
   );
+}
+
+/**
+ * Asks the agent to merge through the chat, as every send goes: the screen goes back to the chat
+ * once the journal holds the request, whether or not the host has answered, and a refusal gives
+ * the request back to the chat's draft through `refused`. A send the journal never took keeps the
+ * screen, with its error.
+ */
+export async function askToMerge(
+  send: () => Promise<SendOutcome>,
+  refused: () => void,
+): Promise<{ readonly kind: "back" } | { readonly kind: "failed"; readonly error: string } | null> {
+  const outcome = await send();
+
+  if (outcome.kind === "ignored") return null;
+
+  if (outcome.kind === "failed") return outcome;
+  void outcome.answer.then((answer) => {
+    if (answer.kind === "refused") refused();
+  });
+
+  return { kind: "back" };
 }
 
 /** The draft a refused send leaves: its text alone in an empty draft, else in front of the person's own. */

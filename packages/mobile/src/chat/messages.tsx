@@ -7,9 +7,11 @@ import { css, html } from "react-strict-dom";
 import { useQuery } from "@tanstack/react-query";
 import type { BlobId, Connection, PartId, SessionId } from "@nyte-ai/sdk";
 import { failureNotice } from "@nyte-ai/plugin/client/presentation";
+import type { TaskState } from "@nyte-ai/plugin/client/presentation";
 import { useHost } from "../connection/host-context.tsx";
 import { controls, media, radii, spacing, textStyles, tokens, useTheme } from "../theme.ts";
 import type { ConversationLayout } from "./conversation-layout.ts";
+import { runStatusLabel } from "./transcript-rows.ts";
 import type { ChatRow, UserDelivery } from "./transcript-rows.ts";
 import { ActivityIcon, activitySummary } from "./tool-activity-sheet.tsx";
 import { CanvasFrame } from "./canvas-frame.tsx";
@@ -255,31 +257,18 @@ function CanvasRow({
 
 function RunStatus({
   execution,
+  mark,
 }: {
   execution: Extract<ChatRow, { kind: "status" }>["execution"];
+  mark: TaskState;
 }) {
   const theme = useTheme();
   const waiting = execution.kind === "waiting";
 
-  const label =
-    execution.kind === "live"
-      ? execution.stopping
-        ? "Stopping…"
-        : execution.phase === "responding"
-          ? "Replying…"
-          : "Using tools…"
-      : execution.kind === "waiting"
-        ? execution.on.kind === "part"
-          ? "Waiting for your answer"
-          : execution.on.kind === "run"
-            ? "Waiting for a subagent"
-            : "Waiting for background work"
-        : `${execution.reason}. Retrying…`;
-
   return (
     <html.div style={styles.status} aria-live="polite">
       {waiting ? null : <ActivityIndicator size="small" color={theme.muted} />}
-      <html.span style={textStyles.caption}>{label}</html.span>
+      <html.span style={textStyles.caption}>{runStatusLabel(execution, mark)}</html.span>
     </html.div>
   );
 }
@@ -340,6 +329,7 @@ function Summary({ text }: { text: string }) {
 export const MessageRow = memo(function MessageRow({
   item,
   layout,
+  mark,
   delegateNames,
   queued,
   onOpenActivity,
@@ -348,6 +338,8 @@ export const MessageRow = memo(function MessageRow({
 }: {
   item: ChatRow;
   layout: ConversationLayout;
+  /** The chat's mark, from `chatMark`. */
+  mark: TaskState;
   delegateNames: ReadonlyMap<SessionId, string>;
   queued: QueuedActions;
   onOpenActivity: (item: Extract<ChatRow, { kind: "activity" }>) => void;
@@ -368,7 +360,7 @@ export const MessageRow = memo(function MessageRow({
       {item.kind === "activity" ? (
         <WorkRow item={item} delegateNames={delegateNames} onOpenActivity={onOpenActivity} />
       ) : item.kind === "status" ? (
-        <RunStatus execution={item.execution} />
+        <RunStatus execution={item.execution} mark={mark} />
       ) : item.kind === "summary" ? (
         <Summary text={item.text} />
       ) : item.kind === "marker" ? (

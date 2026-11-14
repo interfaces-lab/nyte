@@ -9,6 +9,7 @@ import type {
   ComposerSession,
   ComposerSessionEffect,
   ComposerSessionEvent,
+  EditSaved,
 } from "./composer-session.ts";
 
 const QUEUED: UserMessage = {
@@ -393,6 +394,66 @@ test.each<{
 ])("$name", (row) => {
   expect(after(row.events)).toEqual(row.expected);
 });
+
+test.each<{
+  readonly name: string;
+  readonly saved: EditSaved;
+  /** Whether the reopened composer's hold is granted before the closed one's save settles. */
+  readonly grantedFirst: boolean;
+  readonly shown: string;
+}>([
+  { name: "revises it", saved: { kind: "revised" }, grantedFirst: true, shown: "mine" },
+  { name: "revises it", saved: { kind: "revised" }, grantedFirst: false, shown: "mine" },
+  {
+    name: "is refused",
+    saved: { kind: "refused", message: "Couldn't update." },
+    grantedFirst: true,
+    shown: "Edited.\nmine",
+  },
+  {
+    name: "is refused",
+    saved: { kind: "refused", message: "Couldn't update." },
+    grantedFirst: false,
+    shown: "Edited.\nmine",
+  },
+  { name: "finds it sent", saved: { kind: "sent" }, grantedFirst: false, shown: "Edited.\nmine" },
+])(
+  "a chat reopened while its closed composer's save runs holds nothing once the save $name (granted first: $grantedFirst)",
+  (row) => {
+    let closing: ComposerSession = CLOSED_SESSION;
+    let reopened: ComposerSession = CLOSED_SESSION;
+    let draft = DRAFT;
+    const released: string[] = [];
+
+    const drive = (which: "closing" | "reopened", event: ComposerSessionEvent): void => {
+      const next = stepSession(which === "closing" ? closing : reopened, draft, event);
+
+      if (which === "closing") closing = next.state;
+      else reopened = next.state;
+      draft = next.draft;
+      released.push(
+        ...next.effects.flatMap((effect) =>
+          effect.kind === "release" ? [`${which} ${String(effect.token)}`] : [],
+        ),
+      );
+    };
+
+    for (const event of [{ kind: "shown" } as const, edit, held(1), typed("Edited."), save])
+      drive("closing", event);
+    drive("closing", { kind: "closed" });
+    drive("reopened", { kind: "shown" });
+
+    if (row.grantedFirst) drive("reopened", held(1));
+    drive("closing", { kind: "saved", token: 2, saved: row.saved });
+    drive("reopened", row.grantedFirst ? { kind: "draft-changed" } : held(1));
+
+    expect({
+      shown: (draft.edit?.view ?? draft.composer).draft,
+      holds: [closing.hold, reopened.hold],
+      released,
+    }).toEqual({ shown: row.shown, holds: [null, null], released: ["reopened 1"] });
+  },
+);
 
 test.each<{
   readonly name: string;

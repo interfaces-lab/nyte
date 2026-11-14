@@ -7,7 +7,7 @@ import { createFileTabStore } from "./editor/file-store.ts";
 import type { WorkbenchPersistence } from "./persistence.ts";
 import { createWorkbenchStore } from "./store.ts";
 import { reduceView } from "./view-reducer.ts";
-import { workbenchPanelWidth } from "./width.ts";
+import { DEFAULT_WIDTH, workbenchPanelWidth, workbenchSeparatorValue } from "./width.ts";
 
 test("reopening Changes applies the requested scope and path to the open tab in one step", () => {
   const opened = reduceView(DEFAULT_VIEW, {
@@ -172,6 +172,16 @@ test("the panel keeps its preferred pixel width as the stage changes", () => {
   });
 
   expect(workbenchPanelWidth(reopened.getView(view).width, 2000)).toBe(700);
+});
+
+test.each([
+  { name: "a wide stage", stage: 1176, expected: { min: 33, max: 64, now: 50 } },
+  { name: "a 720 px stage at zoom 2", stage: 360, expected: { min: 100, max: 100, now: 100 } },
+  { name: "a 900 px stage at zoom 3", stage: 300, expected: { min: 100, max: 100, now: 100 } },
+])("the resize separator reports within its range on $name", (row) => {
+  const width = workbenchPanelWidth(DEFAULT_WIDTH, row.stage);
+
+  expect(workbenchSeparatorValue(width, row.stage)).toEqual(row.expected);
 });
 
 test.each([

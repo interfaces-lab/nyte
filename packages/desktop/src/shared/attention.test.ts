@@ -346,6 +346,23 @@ test.each<{
     },
   },
   {
+    name: "a side chat's old question alerts on the side chat while its parent asks too",
+    previous: [],
+    rows: [chat("parent", asking), chat("side", asking, {}, { ...child, side: true })],
+    plan: {
+      seen: ["parent=waiting:p1 fresh", "side=waiting:p1 fresh"],
+      deliveries: [
+        'parent waiting "parent": Needs your answer [notify sound bounce]',
+        'side waiting "side": Needs your answer [notify sound bounce]',
+      ],
+      badge: 2,
+      reminders: [
+        'parent:waiting:p1 parent waiting "parent": Still needs your answer [notify sound]',
+        'side:waiting:p1 side waiting "side": Still needs your answer [notify sound]',
+      ],
+    },
+  },
+  {
     name: "the waiting subagent delivers, badges and reminds with notifySubagents",
     settings: { notifySubagents: true },
     previous: [],

@@ -4,11 +4,11 @@ import {
   BUSY_COMPOSER_PLACEHOLDER,
   COMPOSER_PLACEHOLDER,
 } from "../lib/constants.ts";
-import { backgroundLabel } from "@nyte-ai/plugin/client/presentation";
+import { backgroundLabel, headAttention } from "@nyte-ai/plugin/client/presentation";
 import { approvalPrompt } from "@nyte-ai/plugin/approvals/schema";
 import { readProgramStatus } from "../lib/program-status.ts";
 import type { ProgramState, ProgramStatus } from "../lib/program-status.ts";
-import { unfinishedTask } from "../lib/tasks.ts";
+import { taskStatus, unfinishedTask } from "../lib/tasks.ts";
 import type { Task } from "../lib/tasks.ts";
 import { promptMessages } from "../lib/view-helpers.ts";
 import { liveDialog } from "./choices.ts";
@@ -106,16 +106,19 @@ function placeholderFor(
   return COMPOSER_PLACEHOLDER;
 }
 
-function tasksLine(state: State, question: QuestionModel | null): TasksLine | null {
-  const active = state.facts.tasks.filter(unfinishedTask).length;
+/**
+ * The tasks line asks for attention while a task's mark waits on the person, as the task list
+ * shows it: `headAttention`'s for a subagent.
+ */
+function tasksLine(state: State): TasksLine | null {
+  const active = state.facts.tasks.filter(unfinishedTask);
 
-  if (active === 0) return null;
-
-  const attention = question?.owner.kind === "child";
+  if (active.length === 0) return null;
+  const waiting = active.filter((task) => taskStatus(task) === "waiting").length;
 
   return {
-    text: backgroundLabel({ working: active, waiting: attention ? 1 : 0 }) ?? "",
-    attention,
+    text: backgroundLabel({ working: active.length, waiting }) ?? "",
+    attention: waiting > 0,
   };
 }
 
@@ -205,7 +208,7 @@ export function deriveScreen(state: State, held: Pick<ScreenModel, "hints"> | nu
         ? ""
         : placeholderFor({ ...input, followUp: input.followUp }),
     footer: footerFor(state, input.run.kind === "idle" ? 0 : queuedCount(queue)),
-    tasksLine: tasksLine(state, question),
+    tasksLine: tasksLine(state),
     notice: state.local.notice,
     failure: state.local.failures.at(-1) ?? null,
     program: {
@@ -252,6 +255,11 @@ function healthNotice(health: Health): HealthNotice | null {
   }
 }
 
+/**
+ * What the terminal is told the chat is blocked on: a sign-in, an approval or a question this client
+ * shows, else any ask `headAttention` says the chat waits on, such as a subagent's it hasn't read,
+ * named as a question.
+ */
 function blockedStatus(state: State, question: QuestionModel | null): ProgramState | null {
   const auth = state.local.dialogs.findLast((dialog) => dialog.kind === "auth");
 
@@ -274,7 +282,11 @@ function blockedStatus(state: State, question: QuestionModel | null): ProgramSta
       msg: `${approvalHeading(approval)} ${approvalPrompt(approval).detail}`,
     };
 
-  return question === null || question.late
-    ? null
-    : { state: "blocked", kind: "question", msg: questionTitle(question) };
+  if (question !== null && !question.late)
+    return { state: "blocked", kind: "question", msg: questionTitle(question) };
+  const alert = session === null ? null : headAttention(session.info).alert;
+
+  return alert?.state === "waiting"
+    ? { state: "blocked", kind: "question", msg: alert.body }
+    : null;
 }

@@ -12,6 +12,7 @@ import type {
   UserContent,
 } from "@nyte-ai/sdk";
 import type { HeadView } from "@nyte-ai/sdk/client";
+import type { TaskState } from "@nyte-ai/plugin/client/presentation";
 
 export type ActivityPart =
   | {
@@ -148,6 +149,28 @@ function activityPart(message: Message): ActivityPart | undefined {
     };
 
   return undefined;
+}
+
+/**
+ * The words under a chat's live run. `mark` is the chat's, from `chatMark`: a run that waits while
+ * the chat waits on the person waits for their answer, also when it waits on a subagent that asks.
+ */
+export function runStatusLabel(
+  execution: Extract<ChatRow, { kind: "status" }>["execution"],
+  mark: TaskState,
+): string {
+  if (execution.kind === "live")
+    return execution.stopping
+      ? "Stopping…"
+      : execution.phase === "responding"
+        ? "Replying…"
+        : "Using tools…";
+
+  if (execution.kind === "retrying") return `${execution.reason}. Retrying…`;
+
+  if (execution.on.kind === "part" || mark === "waiting") return "Waiting for your answer";
+
+  return execution.on.kind === "run" ? "Waiting for a subagent" : "Waiting for background work";
 }
 
 export function conversationRows(view: HeadView): ChatRow[] {

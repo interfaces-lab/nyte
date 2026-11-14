@@ -3,6 +3,7 @@ import { css, html } from "react-strict-dom";
 import type { ActOutcome, PartId, SessionId } from "@nyte-ai/sdk";
 import type { HeadView } from "@nyte-ai/sdk/client";
 import type { QuestionAnswers } from "@nyte-ai/plugin/question/schema";
+import type { TaskState } from "@nyte-ai/plugin/client/presentation";
 import { spacing } from "../theme.ts";
 import type { AskedQuestion } from "../view-helpers.ts";
 import { EmptyState } from "../ui/empty-state.tsx";
@@ -15,6 +16,8 @@ import { ToolActivitySheet, useActivitySheet } from "./tool-activity-sheet.tsx";
 
 type TimelineProps = {
   state: HeadView;
+  /** The chat's mark, from `chatMark`. */
+  mark: TaskState;
   sessionId: SessionId;
   delegateNames: ReadonlyMap<SessionId, string>;
   question: AskedQuestion | undefined;
@@ -30,6 +33,7 @@ type TimelineProps = {
 
 export function Timeline({
   state,
+  mark,
   sessionId,
   delegateNames,
   question,
@@ -61,11 +65,12 @@ export function Timeline({
       <MessageScroller
         data={rows}
         getItemType={(item) => item.row.kind}
-        extraData={layout}
+        extraData={[layout, mark]}
         renderItem={({ item }) => (
           <MessageRow
             item={item.row}
             layout={layout}
+            mark={mark}
             delegateNames={delegateNames}
             queued={queued}
             onOpenActivity={activity.openActivity}

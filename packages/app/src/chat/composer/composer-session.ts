@@ -91,6 +91,7 @@ type HoldAnswer = { readonly kind: "held" } | { readonly kind: "ended"; readonly
 export type ComposerSessionEvent =
   | { readonly kind: "shown" }
   | { readonly kind: "closed" }
+  | { readonly kind: "draft-changed" }
   | { readonly kind: "edit"; readonly message: UserMessage; readonly asking: boolean }
   | { readonly kind: "edit-cancelled" }
   | { readonly kind: "hold-answered"; readonly token: number; readonly answer: HoldAnswer }
@@ -163,14 +164,16 @@ export interface SessionStep {
 
 /**
  * The composer's next state, the chat's next draft, and the effects to run. A change to the shown
- * text drops a read of earlier prompts still in flight.
+ * text drops a read of earlier prompts still in flight. A hold whose edit left the chat's draft is
+ * released, as when a composer that closed during a save settles the draft a reopened one holds
+ * the message for; `draft-changed` tells a composer the window's store changed its draft.
  */
 export function stepSession(
   state: ComposerSession,
   draft: SessionDraft,
   event: ComposerSessionEvent,
 ): SessionStep {
-  const next = transition(state, draft, event);
+  const next = releaseLeftHold(transition(state, draft, event));
 
   if (next.state.reading === null || shownDraft(next.draft).draft === shownDraft(draft).draft)
     return next;
@@ -196,6 +199,8 @@ function transition(
             foldEdit(draft, "folded"),
             releasing(state.hold),
           );
+    case "draft-changed":
+      return step(state, draft);
     case "edit":
       return beginEdit(state, draft, event.message, event.asking);
     case "edit-cancelled":
@@ -301,6 +306,19 @@ function noticed(
   effects: readonly ComposerSessionEffect[] = [],
 ): SessionStep {
   return step(state, state.open ? { ...draft, notice } : draft, effects);
+}
+
+function releaseLeftHold(next: SessionStep): SessionStep {
+  const hold = next.state.hold;
+
+  if (hold === null || hold.phase === "saving" || next.draft.edit?.message.id === hold.message)
+    return next;
+
+  return {
+    ...next,
+    state: { ...next.state, hold: null },
+    effects: [...next.effects, ...releasing(hold)],
+  };
 }
 
 function releasing(hold: EditHold | null): readonly ComposerSessionEffect[] {

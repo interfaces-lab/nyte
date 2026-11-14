@@ -270,9 +270,10 @@ async function pause(ms: number): Promise<void> {
 
 /**
  * Rule 27 through the real pager: from the top of `name`'s chat, pages load one after another
- * until none older remain, and then more scrolling at the top asks the host nothing.
+ * until none older remain, the chat's first prompt draws at the top, and then more scrolling at the
+ * top asks the host nothing.
  */
-async function pageToStart(container: HTMLElement) {
+async function pageToStart(container: HTMLElement, name: Name) {
   const viewport = container.querySelector<HTMLElement>("[aria-label='Messages']");
 
   if (viewport === null) throw new Error("No transcript");
@@ -301,7 +302,11 @@ async function pageToStart(container: HTMLElement) {
 
   await pause(2 * ROUND_TRIP_MS);
 
-  return { pages: asked - start, idleFetches: fetches.length - asked };
+  return {
+    pages: asked - start,
+    firstPrompt: container.innerText.split("\n").includes(`${name} question 1`),
+    idleFetches: fetches.length - asked,
+  };
 }
 
 export async function run(): Promise<string> {
@@ -401,7 +406,7 @@ export async function run(): Promise<string> {
     }
 
     const switched = fetches.slice(beforeSwitching);
-    const paging = await pageToStart(container);
+    const paging = await pageToStart(container, "charlie");
 
     return JSON.stringify({
       opening,

@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { KeyboardStickyView } from "react-native-keyboard-controller";
 import type { QuestionAnswers } from "@nyte-ai/plugin/question/schema";
+import type { TaskState } from "@nyte-ai/plugin/client/presentation";
 import type {
   ActOutcome,
   Configuration,
@@ -34,6 +35,8 @@ import { Timeline } from "./timeline.tsx";
 
 type ChatScreenProps = {
   state: HeadView;
+  /** The chat's mark, from `chatMark`. */
+  mark: TaskState;
   heads: readonly HeadName[];
   health: string | undefined;
   updated: string | undefined;
@@ -63,6 +66,7 @@ type ChatScreenProps = {
 
 export function ChatScreen({
   state,
+  mark,
   heads,
   health,
   updated,
@@ -114,6 +118,7 @@ export function ChatScreen({
         >
           <Timeline
             state={state}
+            mark={mark}
             sessionId={sessionId}
             delegateNames={delegateNames}
             question={question}

@@ -12,11 +12,12 @@ import { GlassButton } from "../ui/glass-button.tsx";
 import { SectionHeader } from "../ui/section-header.tsx";
 import { Group, GroupRow } from "../ui/group.tsx";
 import { IconTile } from "../ui/icon-tile.tsx";
-import { describeHostError } from "../connection/connection.ts";
 import { statusLabels, formatActivity, markTone } from "../chat/sessions.ts";
 import { latestChangedTurn, turnAnswer } from "../chat/turn-changes.ts";
 import { confirmMergeRequest, MERGE_PROMPT } from "../chat/merge-request.ts";
 import { useRemoteChat } from "../chat/remote-chat.ts";
+import { askToMerge, returnedDraft } from "../chat/send-answer.ts";
+import { useChatDraft } from "../chat/drafts.ts";
 import { Markdown } from "../chat/markdown.tsx";
 import { chatMark, openQuestion } from "../view-helpers.ts";
 import {
@@ -44,9 +45,10 @@ function basename(path: string): string {
 
 export function ReviewScreen({ sessionId }: { sessionId: SessionId }) {
   const theme = useTheme();
-  const { client, newerHost } = useHost();
+  const { client } = useHost();
   const insets = useSafeAreaInsets();
   const chat = useRemoteChat(client, sessionId);
+  const [, setDraft] = useChatDraft(sessionId);
   const [merging, setMerging] = useState(false);
   const [mergeError, setMergeError] = useState<string>();
   const [now] = useState(() => Date.now());
@@ -123,14 +125,16 @@ export function ReviewScreen({ sessionId }: { sessionId: SessionId }) {
     setMerging(true);
     setMergeError(undefined);
 
-    try {
-      await client.session(sessionId).send(MERGE_PROMPT);
-      router.back();
-    } catch (cause) {
-      setMergeError(describeHostError(cause, newerHost));
-    }
+    const asked = await askToMerge(
+      () => chat.send(MERGE_PROMPT),
+      () => setDraft((current) => returnedDraft(current, MERGE_PROMPT)),
+    );
 
     setMerging(false);
+
+    if (asked?.kind === "back") router.back();
+
+    if (asked?.kind === "failed") setMergeError(asked.error);
   }
 
   if (chat.state === undefined) {

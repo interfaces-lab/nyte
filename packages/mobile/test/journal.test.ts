@@ -2,7 +2,8 @@ import { asId } from "@nyte-ai/schema";
 import { createSendJournal, SdkError } from "@nyte-ai/sdk";
 import type { JournalEntry } from "@nyte-ai/sdk";
 import { describe, expect, it } from "vitest";
-import { draftKey, returnRefused, sendAnswer } from "../src/chat/send-answer.ts";
+import { askToMerge, draftKey, returnRefused, sendAnswer } from "../src/chat/send-answer.ts";
+import type { SendOutcome } from "../src/chat/remote-chat.ts";
 import { journalStorage } from "../src/connection/journal.ts";
 
 function memory() {
@@ -115,4 +116,32 @@ describe("how a send the journal holds ends on the phone", () => {
       expect(values.get(key)).toBe(after);
     },
   );
+
+  it.each<[string, SendOutcome, string, boolean]>([
+    [
+      "the journal holds it and the host has not answered",
+      { kind: "taken", answer: new Promise(() => undefined) },
+      "back",
+      false,
+    ],
+    [
+      "the host refuses it after the journal took it",
+      { kind: "taken", answer: Promise.resolve({ kind: "refused", error: "Refused." }) },
+      "back",
+      true,
+    ],
+    ["the journal never took it", { kind: "failed", error: "Offline." }, "failed", false],
+  ])("asking to merge from the review, when %s", async (_name, outcome, kind, givenBack) => {
+    let returned = false;
+
+    const asked = await askToMerge(
+      () => Promise.resolve(outcome),
+      () => {
+        returned = true;
+      },
+    );
+
+    await Promise.resolve();
+    expect([asked?.kind, returned]).toEqual([kind, givenBack]);
+  });
 });

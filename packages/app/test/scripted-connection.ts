@@ -10,7 +10,6 @@ import type {
   HostView,
   JobId,
   Json,
-  Message,
   MessageId,
   ModelsApi,
   Session,
@@ -391,16 +390,17 @@ export function installScripted(scripted: { readonly connection: ClientConnectio
  * A chat over a scripted head, keeping the SDK chat's stop rule: `asked` from a stop until the
  * view's row says stopping, the run changes, the stop fails or the health changes; a second stop
  * while it shows stopping sends nothing; only the latest stop's failure rejects. `earlier` lays the
- * scripted history's messages before the view's while anyone listens.
+ * scripted history's pages before the view while anyone listens, as the SDK's pager does: their
+ * messages before the view's, their turns the view lacks before its own, and the oldest page's
+ * leading prompt.
  */
 function scriptedChat(store: HeadStore, handle: Session, health: LiveSource<Health>): Chat {
   let asked: { readonly run: RunId; readonly health: Health | undefined } | null = null;
-  let older: readonly Message[] = [];
-  let paged: {
-    readonly base: HeadView;
-    readonly older: readonly Message[];
-    readonly view: HeadView;
-  } | null = null;
+  let older: Paged = NO_PAGES;
+
+  let paged: { readonly base: HeadView; readonly older: Paged; readonly view: HeadView } | null =
+    null;
+
   let shown: ChatSnapshot = {
     view: null,
     seq: 0,
@@ -418,7 +418,7 @@ function scriptedChat(store: HeadStore, handle: Session, health: LiveSource<Heal
       paged = {
         base,
         older,
-        view: older.length === 0 ? base : { ...base, messages: [...older, ...base.messages] },
+        view: older === NO_PAGES ? base : withPages(base, older),
       };
     const view = base === null ? null : (paged?.view ?? base);
     const execution = view?.execution;
@@ -455,7 +455,7 @@ function scriptedChat(store: HeadStore, handle: Session, health: LiveSource<Heal
 
         for (const stop of stops) stop();
 
-        if (listeners.size === 0) older = [];
+        if (listeners.size === 0) older = NO_PAGES;
       };
     },
     snapshot,
@@ -502,12 +502,35 @@ function scriptedChat(store: HeadStore, handle: Session, health: LiveSource<Heal
 
       if (listeners.size === 0 || oldest === undefined) return 0;
       const page = await handle.history({ before: oldest.id, limit: count });
-      older = [...page.messages, ...older];
+
+      if (page.messages.length === 0) return 0;
+      const known = new Set(older.turns.map((turn) => turn.id));
+      older = {
+        messages: [...page.messages, ...older.messages],
+        turns: [...page.turns.filter((turn) => !known.has(turn.id)), ...older.turns],
+        leadingPrompt: page.leadingPrompt,
+      };
       notify();
 
       return page.messages.length;
     },
     act: (part, action, input) => handle.part(part).act(action, input),
+  };
+}
+
+/** The older pages a scripted chat has loaded. */
+type Paged = Pick<SessionView, "messages" | "turns" | "leadingPrompt">;
+
+const NO_PAGES: Paged = { messages: [], turns: [], leadingPrompt: null };
+
+function withPages(view: HeadView, pages: Paged): HeadView {
+  const own = new Set(view.turns.map((turn) => turn.id));
+
+  return {
+    ...view,
+    messages: [...pages.messages, ...view.messages],
+    turns: [...pages.turns.filter((turn) => !own.has(turn.id)), ...view.turns],
+    leadingPrompt: pages.leadingPrompt,
   };
 }
 

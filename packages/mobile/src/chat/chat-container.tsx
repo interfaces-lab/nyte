@@ -15,7 +15,7 @@ import { navigationMenuAction } from "../ui/navigation-menu.tsx";
 import { toast } from "../ui/toast.tsx";
 import { TranscriptSkeleton } from "../ui/skeleton.tsx";
 import { spacing, textStyles, tokens } from "../theme.ts";
-import { openQuestion, type AskedQuestion } from "../view-helpers.ts";
+import { chatMark, openQuestion, type AskedQuestion } from "../view-helpers.ts";
 import type { QueuedActions } from "./messages.tsx";
 import { useRemoteChat } from "./remote-chat.ts";
 import { confirmMergeRequest, MERGE_PROMPT } from "./merge-request.ts";
@@ -224,6 +224,7 @@ export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
         <ChatScreen
           {...chat}
           state={chat.state}
+          mark={chatMark(head === undefined ? info : undefined, chat.state.execution)}
           sessionId={sessionId}
           workspace={info?.workspace}
           head={head ?? "main"}

@@ -20,6 +20,7 @@ export { parseCitation } from "./citation.ts";
 export type { Citation } from "./citation.ts";
 export { showsAnswer, showsReport, shownContent } from "./user-messages.ts";
 export type { AnswerMessage, ReportMessage } from "./user-messages.ts";
+export { alertsOnChat } from "./alerts.ts";
 
 export type UserMessage = Extract<Message, { readonly kind: "user" }>;
 

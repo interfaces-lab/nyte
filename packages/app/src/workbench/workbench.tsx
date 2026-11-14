@@ -19,6 +19,7 @@ import {
   DEFAULT_WIDTH,
   setActiveWorkbenchWidth,
   workbenchPanelWidth,
+  workbenchSeparatorValue,
   workbenchWidthBounds,
 } from "./width.ts";
 import {
@@ -247,6 +248,7 @@ function WorkbenchViewHost({
   const maximized = view.layout.kind === "maximized";
   const chatShowing = workbenchShowsChat(view.layout);
   const panelWidth = maximized ? stageWidth : workbenchPanelWidth(view.width, stageWidth);
+  const separator = workbenchSeparatorValue(panelWidth, stageWidth);
 
   const setWidth = (width: number): void =>
     workbench.dispatch(viewKey, { kind: "set-width", pixels: width });
@@ -421,10 +423,10 @@ function WorkbenchViewHost({
               tabIndex={0}
               aria-label="Resize workbench"
               aria-orientation="vertical"
-              aria-valuemin={Math.round((bounds.min / stageWidth) * 100)}
-              aria-valuemax={Math.round((bounds.max / stageWidth) * 100)}
-              aria-valuenow={Math.round((panelWidth / stageWidth) * 100)}
-              aria-valuetext={`${String(Math.round((panelWidth / stageWidth) * 100))}%`}
+              aria-valuemin={separator.min}
+              aria-valuemax={separator.max}
+              aria-valuenow={separator.now}
+              aria-valuetext={`${String(separator.now)}%`}
               title="Drag to resize. Double-click to reset."
               {...props(workbenchStyles.sash, resizing && workbenchStyles.sashActive)}
               onKeyDown={resizeWithKeyboard}

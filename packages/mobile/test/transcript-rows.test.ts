@@ -5,7 +5,7 @@ import type { PartDefinition, PartState } from "@nyte-ai/plugin/client";
 import { asId, asSeq } from "@nyte-ai/schema";
 import type { Execution, Message, SessionInfo, SessionView, TurnInfo } from "@nyte-ai/sdk";
 import { describe, expect, it } from "vitest";
-import { conversationRows } from "../src/chat/transcript-rows.ts";
+import { conversationRows, runStatusLabel } from "../src/chat/transcript-rows.ts";
 import { chatMark } from "../src/view-helpers.ts";
 
 type PartMessage = Extract<Message, { readonly kind: "part" }>;
@@ -296,11 +296,29 @@ describe("a chat's mark on the phone", () => {
     };
   }
 
-  it.each<[string, SessionInfo | undefined, string]>([
-    ["a run waiting on a subagent that asks needs attention", row(1), "waiting"],
-    ["a run waiting on a subagent that works is working", row(0), "working"],
-    ["before the chat's row is read, its own run decides", undefined, "working"],
-  ])("%s", (_name, info, mark) => {
-    expect(chatMark(info, delegating)).toBe(mark);
+  it.each<[string, SessionInfo | undefined, string, string]>([
+    [
+      "a run waiting on a subagent that asks needs attention",
+      row(1),
+      "waiting",
+      "Waiting for your answer",
+    ],
+    [
+      "a run waiting on a subagent that works is working",
+      row(0),
+      "working",
+      "Waiting for a subagent",
+    ],
+    [
+      "before the chat's row is read, its own run decides",
+      undefined,
+      "working",
+      "Waiting for a subagent",
+    ],
+  ])("%s", (_name, info, mark, label) => {
+    expect([
+      chatMark(info, delegating),
+      runStatusLabel(delegating, chatMark(info, delegating)),
+    ]).toEqual([mark, label]);
   });
 });

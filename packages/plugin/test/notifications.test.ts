@@ -146,6 +146,18 @@ test.each<{
     notified: [],
   },
   {
+    name: "a side chat's old question rings on the side chat",
+    before: { ...row("side", LIVE, { parent: "Release" }), side: true },
+    after: { ...row("side", ASKING, { parent: "Release" }), side: true },
+    notified: [{ title: "side", message: "Needs your answer", level: "warning" }],
+  },
+  {
+    name: "a side chat's end stays quiet",
+    before: { ...row("side", LIVE, { parent: "Release" }), side: true },
+    after: { ...row("side", DONE, { parent: "Release" }), side: true },
+    notified: [],
+  },
+  {
     name: "a chat someone is looking at stays quiet",
     before: row("shown", LIVE),
     after: row("shown", ASKING),
