@@ -5,7 +5,7 @@ import { asId } from "@nyte-ai/schema";
 import type { PaneController } from "./pane-controller.ts";
 import { activeSelection } from "./pane-layout.ts";
 import type { PaneId } from "./layout.ts";
-import type { ComposerImageAttachment } from "./session-view-state.ts";
+import type { ComposerImageAttachment, DraftChoice } from "./session-view-state.ts";
 
 function writeDraft(controller: PaneController, text: string, paneId: PaneId = PRIMARY): void {
   const draft = controller.viewState.readBlank(paneId);
@@ -316,4 +316,80 @@ test("a draft the storage refuses doesn't stop the other drafts or the index fro
 
   const reloaded = tabPanes({ storage: values, storageKey: "panes-refused" });
   assert.equal(reloaded.viewState.readBlank(PRIMARY).composer.draft, "Kept");
+});
+
+const project = asId<"project">("project-1");
+
+const model = { provider: "anthropic", id: "claude" };
+
+function choose(controller: PaneController, choice: DraftChoice): void {
+  controller.viewState.writeBlank(PRIMARY, { ...controller.viewState.readBlank(PRIMARY), choice });
+}
+
+function shown(controller: PaneController) {
+  const draft = controller.viewState.readBlank(PRIMARY);
+
+  return { text: draft.composer.draft, project: draft.project, choice: draft.choice };
+}
+
+test.each<[string, (controller: PaneController) => void, Omit<ReturnType<typeof shown>, "text">]>([
+  [
+    "a new chat in a project with a model picked before typing",
+    (controller) => {
+      controller.newChat(project);
+      choose(controller, { model, thinking: "high" });
+      writeDraft(controller, "Plan it");
+    },
+    { project, choice: { model, thinking: "high" } },
+  ],
+  [
+    "a model picked after typing",
+    (controller) => {
+      writeDraft(controller, "Plan it");
+      choose(controller, { model, thinking: undefined });
+    },
+    { project: undefined, choice: { model, thinking: undefined } },
+  ],
+  [
+    "no project or model",
+    (controller) => writeDraft(controller, "Plan it"),
+    { project: undefined, choice: undefined },
+  ],
+])("a reload keeps a draft's project and model: %s", (name, write, kept) => {
+  vi.useFakeTimers();
+  onTestFinished(() => {
+    vi.useRealTimers();
+  });
+  const storage = memoryStorage();
+  write(tabPanes({ storage, storageKey: name }));
+  vi.advanceTimersByTime(200);
+
+  assert.deepEqual(shown(tabPanes({ storage, storageKey: name })), { text: "Plan it", ...kept });
+});
+
+test.each([
+  ["from before projects and models were stored", {}, { project: undefined, choice: undefined }],
+  [
+    "naming a project and a model that are gone, which the composer then ignores and refuses",
+    { project: "gone", choice: { model: { provider: "gone", id: "gone" } } },
+    { project: "gone", choice: { model: { provider: "gone", id: "gone" }, thinking: undefined } },
+  ],
+])("a stored draft %s still loads", (_, stored, kept) => {
+  const storage = memoryStorage();
+  const index = { tabs: { "": { [PRIMARY]: { active: "stored", parked: [] } } }, sessions: [] };
+  storage.setItem("panes-stored", JSON.stringify(index));
+
+  storage.setItem(
+    "panes-stored:draft:stored",
+    JSON.stringify({
+      updatedAt: 1,
+      composer: { draft: "Plan it", selectionStart: 7, selectionEnd: 7 },
+      ...stored,
+    }),
+  );
+
+  assert.deepEqual(shown(tabPanes({ storage, storageKey: "panes-stored" })), {
+    text: "Plan it",
+    ...kept,
+  });
 });

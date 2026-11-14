@@ -190,7 +190,12 @@ export class SessionViewStateStore {
 
     drafts.active = next;
 
-    if (storedChanged(current.composer, next.composer)) this.#window.saveDraft(current, next);
+    if (
+      storedChanged(current.composer, next.composer) ||
+      current.choice !== next.choice ||
+      current.project !== next.project
+    )
+      this.#window.saveDraft(current, next);
   }
 
   drafts(): readonly ChatDraft[] {

@@ -19,7 +19,8 @@ import {
   persistableComposer,
 } from "../../panes/session-view-state.ts";
 import type { SessionId } from "@nyte-ai/sdk";
-import { asId } from "@nyte-ai/schema";
+import { ModelRefType, ThinkingType, asId } from "@nyte-ai/schema";
+import { projectId } from "../../data/schemas.ts";
 import { readStored, removeStored, type StorageArea, writeStored } from "../../lib/storage.ts";
 
 const FLUSH_DEBOUNCE_MS = 200;
@@ -51,7 +52,14 @@ interface Persistence {
 }
 
 const storedDraftSchema = Type.Object(
-  { updatedAt: Type.Number(), composer: composerSchema },
+  {
+    updatedAt: Type.Number(),
+    composer: composerSchema,
+    project: Type.Optional(projectId),
+    choice: Type.Optional(
+      Type.Object({ model: ModelRefType, thinking: Type.Optional(ThinkingType) }, strict),
+    ),
+  },
   strict,
 );
 
@@ -190,6 +198,8 @@ export class WindowDrafts {
     this.save(`draft:${next.id}`, previous.composer, next.composer, {
       updatedAt: next.updatedAt,
       composer: persistableComposer(next.composer),
+      project: next.project,
+      choice: next.choice,
     });
 
     if (!contentChanged(previous.composer, next.composer)) return;
@@ -251,7 +261,11 @@ export class WindowDrafts {
           id,
           updatedAt: stored.record.updatedAt,
           composer: composerView(stored.record.composer, stored.attachments),
-          choice: undefined,
+          choice: stored.record.choice && {
+            model: stored.record.choice.model,
+            thinking: stored.record.choice.thinking,
+          },
+          project: stored.record.project,
           status: EDITING,
         }
       );
