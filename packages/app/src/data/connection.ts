@@ -21,7 +21,7 @@ let installedMedia: ((path: string) => Promise<string>) | undefined;
 
 const first = Promise.withResolvers<ClientConnection>();
 
-const installs = new Set<(replaced: boolean) => void>();
+const installs = new Set<(replaced: boolean, sameHost: boolean) => void>();
 
 export async function connectHost(
   endpoint: HostEndpoint,
@@ -63,16 +63,16 @@ export async function mediaUrl(path: string): Promise<string> {
   return installedMedia(path);
 }
 
-/** Installs `connection`, resets the host reads cached from another host it replaces, tells every `onInstall` listener whether it replaced one, then closes the one it replaced. */
+/** Installs `connection`, resets the host reads cached from another host it replaces, tells every `onInstall` listener whether it replaced one and whether that one was to the same host, then closes the one it replaced. */
 export function installConnection(connection: ClientConnection): void {
   const replaced = installed;
   installed = connection;
   first.resolve(connection);
+  const sameHost = replaced?.hostId === connection.hostId;
 
-  if (replaced !== undefined && replaced.hostId !== connection.hostId)
-    void queryClient.resetQueries({ predicate: readsHost });
+  if (replaced !== undefined && !sameHost) void queryClient.resetQueries({ predicate: readsHost });
 
-  for (const listener of installs) listener(replaced !== undefined);
+  for (const listener of installs) listener(replaced !== undefined, sameHost);
 
   if (replaced !== connection) void replaced?.close();
 }
@@ -81,8 +81,8 @@ export function connected(): Promise<ClientConnection> {
   return installed === undefined ? first.promise : Promise.resolve(installed);
 }
 
-/** Hears every install; `replaced` is false only for the first. */
-export function onInstall(listener: (replaced: boolean) => void): () => void {
+/** Hears every install; `replaced` is false only for the first, and `sameHost` says whether the connection it replaced was to the same host. */
+export function onInstall(listener: (replaced: boolean, sameHost: boolean) => void): () => void {
   installs.add(listener);
 
   return () => installs.delete(listener);

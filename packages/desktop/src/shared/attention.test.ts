@@ -185,11 +185,11 @@ test.each<{
     previous: [["parent", "working:run", true]],
     rows: [chat("parent", onSubagent, { waiting: 1 }), chat("child", asking, {}, child)],
     plan: {
-      seen: ["parent=waiting:run:below fresh", "child=waiting:p1 fresh"],
+      seen: ["parent=working:run:asking fresh", "child=waiting:p1 fresh"],
       deliveries: ['parent waiting "parent": Needs your answer [notify sound bounce]'],
       badge: 1,
       reminders: [
-        'parent:waiting:run:below parent waiting "parent": Still needs your answer [notify sound]',
+        'parent:working:run:asking parent waiting "parent": Still needs your answer [notify sound]',
       ],
     },
   },
@@ -199,11 +199,11 @@ test.each<{
     previous: [["parent", "working:run", true]],
     rows: [chat("parent", onSubagent, { waiting: 1 }), chat("child", asking, {}, child)],
     plan: {
-      seen: ["parent=waiting:run:below fresh", "child=waiting:p1 fresh"],
+      seen: ["parent=working:run:asking fresh", "child=waiting:p1 fresh"],
       deliveries: ['parent waiting "parent": Needs your answer [notify sound bounce]'],
       badge: 1,
       reminders: [
-        'parent:waiting:run:below parent waiting "parent": Still needs your answer [notify sound]',
+        'parent:working:run:asking parent waiting "parent": Still needs your answer [notify sound]',
       ],
     },
   },
@@ -218,14 +218,14 @@ test.each<{
     ],
     plan: {
       seen: [
-        "parent=waiting:run:below fresh",
-        "child=waiting:run:below fresh",
+        "parent=working:run:asking fresh",
+        "child=working:run:asking fresh",
         "grandchild=waiting:p1 fresh",
       ],
       deliveries: ['parent waiting "parent": Needs your answer [notify sound bounce]'],
       badge: 1,
       reminders: [
-        'parent:waiting:run:below parent waiting "parent": Still needs your answer [notify sound]',
+        'parent:working:run:asking parent waiting "parent": Still needs your answer [notify sound]',
       ],
     },
   },
@@ -237,15 +237,113 @@ test.each<{
   },
   {
     name: "a parent's answered subagent goes back to working and delivers nothing",
-    previous: [["parent", "waiting:run:below", true]],
+    previous: [["parent", "working:run:asking", true]],
     rows: [chat("parent", onSubagent, { working: 1 })],
     plan: { seen: ["parent=working:run fresh"], deliveries: [], badge: 0, reminders: [] },
   },
   {
-    name: "the waiting subagent counts for nothing without notifySubagents",
+    name: "a waiting subagent whose parent isn't listed alerts on itself without notifySubagents",
     previous: [],
     rows: [chat("child", asking, {}, child)],
-    plan: { seen: ["child=waiting:p1 fresh"], deliveries: [], badge: 0, reminders: [] },
+    plan: {
+      seen: ["child=waiting:p1 fresh"],
+      deliveries: ['child waiting "child": Needs your answer [notify sound bounce]'],
+      badge: 1,
+      reminders: ['child:waiting:p1 child waiting "child": Still needs your answer [notify sound]'],
+    },
+  },
+  {
+    name: "without notifySubagents a running parent's background subagent's question alerts once, on the parent",
+    previous: [["parent", "working:run", true]],
+    rows: [chat("parent", running, { waiting: 1 }), chat("child", asking, {}, child)],
+    plan: {
+      seen: ["parent=working:run:asking fresh", "child=waiting:p1 fresh"],
+      deliveries: ['parent waiting "parent": Needs your answer [notify sound bounce]'],
+      badge: 1,
+      reminders: [
+        'parent:working:run:asking parent waiting "parent": Still needs your answer [notify sound]',
+      ],
+    },
+  },
+  {
+    name: "without notifySubagents an idle parent's background subagent's question alerts once, on the parent",
+    previous: [["parent", "ended:run", false]],
+    rows: [chat("parent", completed, { waiting: 1 }), chat("child", asking, {}, child)],
+    plan: {
+      seen: ["parent=ended:run:asking fresh", "child=waiting:p1 fresh"],
+      deliveries: ['parent waiting "parent": Needs your answer [notify sound bounce]'],
+      badge: 1,
+      reminders: [
+        'parent:ended:run:asking parent waiting "parent": Still needs your answer [notify sound]',
+      ],
+    },
+  },
+  {
+    name: "without notifySubagents a grandchild's question below an idle chat alerts once, at the top of the chain",
+    previous: [],
+    rows: [
+      chat("parent", completed, { waiting: 1 }),
+      chat("child", onSubagent, { waiting: 1 }, child),
+      chat("grandchild", asking, {}, { parent: asId("child") }),
+    ],
+    plan: {
+      seen: [
+        "parent=ended:run:asking fresh",
+        "child=working:run:asking fresh",
+        "grandchild=waiting:p1 fresh",
+      ],
+      deliveries: ['parent waiting "parent": Needs your answer [notify sound bounce]'],
+      badge: 1,
+      reminders: [
+        'parent:ended:run:asking parent waiting "parent": Still needs your answer [notify sound]',
+      ],
+    },
+  },
+  {
+    name: "an idle parent whose subagent's question is answered doesn't deliver its end again",
+    settings: { notifySubagents: true },
+    previous: [
+      ["parent", "ended:run:asking", true],
+      ["child", "waiting:p1", true],
+    ],
+    rows: [
+      chat("parent", completed, { unread: true, working: 1 }),
+      chat("child", running, {}, child),
+    ],
+    plan: {
+      seen: ["parent=ended:run fresh", "child=working:run fresh"],
+      deliveries: [],
+      badge: 1,
+      reminders: [],
+    },
+  },
+  {
+    name: "a subagent below an archived parent alerts for its question itself",
+    previous: [],
+    rows: [
+      chat("parent", completed, { waiting: 1 }, { archived: true }),
+      chat("child", asking, {}, child),
+    ],
+    plan: {
+      seen: ["parent=ended:run:asking fresh", "child=waiting:p1 fresh"],
+      deliveries: ['child waiting "child": Needs your answer [notify sound bounce]'],
+      badge: 1,
+      reminders: ['child:waiting:p1 child waiting "child": Still needs your answer [notify sound]'],
+    },
+  },
+  {
+    name: "a side chat's old question alerts on the side chat without notifySubagents",
+    previous: [],
+    rows: [chat("parent", completed), chat("side", asking, {}, { ...child, side: true })],
+    plan: {
+      seen: ["parent=ended:run fresh", "side=waiting:p1 fresh"],
+      deliveries: [
+        'parent done "parent": Done [notify]',
+        'side waiting "side": Needs your answer [notify sound bounce]',
+      ],
+      badge: 1,
+      reminders: ['side:waiting:p1 side waiting "side": Still needs your answer [notify sound]'],
+    },
   },
   {
     name: "the waiting subagent delivers, badges and reminds with notifySubagents",
@@ -352,26 +450,30 @@ test.each<{
     },
   },
   {
-    name: "an idle parent whose subagent waits delivers done",
+    name: "an idle parent whose subagent waits delivers, badges and reminds",
     previous: [],
     rows: [chat("idle-parent", completed, { waiting: 1 })],
     plan: {
-      seen: ["idle-parent=ended:run fresh"],
-      deliveries: ['idle-parent done "idle-parent": Done [notify]'],
-      badge: 0,
-      reminders: [],
+      seen: ["idle-parent=ended:run:asking fresh"],
+      deliveries: ['idle-parent waiting "idle-parent": Needs your answer [notify sound bounce]'],
+      badge: 1,
+      reminders: [
+        'idle-parent:ended:run:asking idle-parent waiting "idle-parent": Still needs your answer [notify sound]',
+      ],
     },
   },
   {
-    name: "with notifySubagents a background subagent's question alerts on the subagent",
+    name: "with notifySubagents an idle parent's background subagent's question alerts once, on the parent",
     settings: { notifySubagents: true },
     previous: [["parent", "ended:run", false]],
     rows: [chat("parent", completed, { waiting: 1 }), chat("child", asking, {}, child)],
     plan: {
-      seen: ["parent=ended:run", "child=waiting:p1 fresh"],
-      deliveries: ['child waiting "child": Needs your answer [notify sound bounce]'],
+      seen: ["parent=ended:run:asking fresh", "child=waiting:p1 fresh"],
+      deliveries: ['parent waiting "parent": Needs your answer [notify sound bounce]'],
       badge: 1,
-      reminders: ['child:waiting:p1 child waiting "child": Still needs your answer [notify sound]'],
+      reminders: [
+        'parent:ended:run:asking parent waiting "parent": Still needs your answer [notify sound]',
+      ],
     },
   },
   {

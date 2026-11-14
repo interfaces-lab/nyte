@@ -56,7 +56,7 @@ const STOPPED: Execution = {
 function row(
   name: string,
   execution: Execution,
-  change: { readonly waiting?: number; readonly parent?: string } = {},
+  change: { readonly working?: number; readonly waiting?: number; readonly parent?: string } = {},
 ): SessionInfo {
   return {
     id: asId<"session">(name),
@@ -74,7 +74,7 @@ function row(
         stack: null,
         execution,
         unread: false,
-        background: { working: 0, waiting: change.waiting ?? 0 },
+        background: { working: change.working ?? 0, waiting: change.waiting ?? 0 },
       },
     ],
     createdAt: 0,
@@ -85,6 +85,8 @@ function row(
 test.each<{
   readonly name: string;
   readonly before: SessionInfo;
+  /** Heard between `before` and `after`. */
+  readonly through?: SessionInfo;
   readonly after: SessionInfo;
   readonly notified: readonly Parameters<ClientApi["ui"]["notify"]>[0][];
 }>([
@@ -98,6 +100,25 @@ test.each<{
     name: "a chat whose subagent starts waiting",
     before: row("Release", ON_SUBAGENT),
     after: row("Release", ON_SUBAGENT, { waiting: 1 }),
+    notified: [{ title: "Release", message: "Needs your answer", level: "warning" }],
+  },
+  {
+    name: "an idle chat whose background subagent starts waiting",
+    before: row("Release", DONE, { working: 1 }),
+    after: row("Release", DONE, { waiting: 1 }),
+    notified: [{ title: "Release", message: "Needs your answer", level: "warning" }],
+  },
+  {
+    name: "a running chat whose background subagent starts waiting",
+    before: row("Release", LIVE, { working: 1 }),
+    after: row("Release", LIVE, { waiting: 1 }),
+    notified: [{ title: "Release", message: "Needs your answer", level: "warning" }],
+  },
+  {
+    name: "an idle chat once its subagent's question is answered, without its end again",
+    before: row("Release", DONE, { working: 1 }),
+    through: row("Release", DONE, { waiting: 1 }),
+    after: row("Release", DONE, { working: 1 }),
     notified: [{ title: "Release", message: "Needs your answer", level: "warning" }],
   },
   {
@@ -136,7 +157,7 @@ test.each<{
     after: row("Release", ASKING),
     notified: [],
   },
-])("notifies $name", async (row) => {
+])("notifies $name", async (scenario) => {
   await using host = await open(fakeModels(), []);
   const notified: Parameters<ClientApi["ui"]["notify"]>[0][] = [];
 
@@ -150,10 +171,12 @@ test.each<{
     report: () => undefined,
   });
 
-  plugins.sessionsChanged([row.before]);
-  plugins.sessionsChanged([row.after]);
+  plugins.sessionsChanged([scenario.before]);
+
+  if (scenario.through !== undefined) plugins.sessionsChanged([scenario.through]);
+  plugins.sessionsChanged([scenario.after]);
   await Promise.resolve();
 
-  expect(notified).toEqual(row.notified);
+  expect(notified).toEqual(scenario.notified);
   await plugins.dispose();
 });

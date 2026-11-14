@@ -12,7 +12,9 @@ import type { ToolDefinition, ToolInvocation, ToolNamespace } from "@nyte-ai/cor
 import { isJson, isJsonObject, SdkError } from "@nyte-ai/schema";
 import type { Json, JsonSchema, ToolContent, ToolInfo, ToolOutcome } from "@nyte-ai/schema";
 import type { Plugin, PluginApi } from "@nyte-ai/plugin/core";
+import { mayChange } from "./approvals/approvals.ts";
 import { CODEMODE_TOOL, codemodeParameters } from "./codemode/schema.ts";
+import { readsOnly } from "./side-chat.ts";
 import { createToolSearchDocument, DEFAULT_SEARCH_LIMIT, rankTools } from "./tool-search.ts";
 
 const DESCRIPTION = `Run JavaScript that calls other tools. The input is raw JavaScript (not JSON, no code fence), run as an async function body in a QuickJS sandbox: top-level \`await\` and \`return\` work. No Node, file system, network, or timers.
@@ -28,7 +30,10 @@ const LISTING_TOKENS = 3000;
  * passes (its worker entry and wasm); the default export uses the installed
  * package's own. The `codemode` tool runs a script in a QuickJS worker whose
  * only capability is calling the session's tools through
- * `invocation.tools.execute`, including those exposed to code only.
+ * `invocation.tools.execute`, including those exposed to code only. In a
+ * session that only reads (see `readsOnly`), which it learns once as it
+ * activates, the tools that change something are left out of its listing and
+ * its scripts, since a call to one is refused.
  *
  * @category plugins
  * @since 0.1.0
@@ -38,10 +43,14 @@ export function codemodePlugin(
 ): Plugin {
   return {
     id: "codemode",
-    activate(api) {
-      api.contribute.tools.add(codemode(api, runtime));
+    async activate(api) {
+      const reading = await readsOnly(api.session, api.sdk);
+      const offered = (definition: ToolDefinition): boolean => !reading || !mayChange(definition);
+      api.contribute.tools.add(codemode(api, runtime, offered));
       api.hook("transform_transcript", (transcript) =>
-        api.contribute.tools.list().some((definition) => definition.exposure === "code")
+        api.contribute.tools
+          .list()
+          .some((definition) => definition.exposure === "code" && offered(definition))
           ? transcript
           : {
               ...transcript,
@@ -49,7 +58,7 @@ export function codemodePlugin(
             },
       );
       api.contribute.prompt.add((draft, siblings) => {
-        const text = listTools(siblings.tools.list());
+        const text = listTools(siblings.tools.list().filter(offered));
 
         if (text !== null) draft.set("codemode", { id: "codemode", order: 96, text });
       });
@@ -164,6 +173,7 @@ function toJsonSchema(
 function codemode(
   api: PluginApi,
   runtime: Pick<CodemodeSandboxOptions, "workerUrl" | "wasm">,
+  offered: (definition: ToolDefinition) => boolean,
 ): ToolDefinition<{ code: string }> {
   return {
     name: CODEMODE_TOOL,
@@ -177,9 +187,21 @@ function codemode(
     replay: "never",
     async execute(args, invocation) {
       const { code, options } = parseCodemodeSource(args.code);
+      const withheld = new Set(
+        api.contribute.tools
+          .list()
+          .filter((definition) => !offered(definition))
+          .map((definition) => definition.name),
+      );
+
       const callable = invocation.tools
         .list()
-        .filter((info) => info.exposure !== "model-only" && info.exposure !== "hidden");
+        .filter(
+          (info) =>
+            info.exposure !== "model-only" &&
+            info.exposure !== "hidden" &&
+            !withheld.has(info.name),
+        );
       const stored = await api.storage.get("store");
 
       if (stored !== undefined && !isJsonObject(stored))

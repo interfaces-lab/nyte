@@ -4,7 +4,7 @@ import type {
   AlertState,
   DesktopSettings,
 } from "@nyte-ai/app/contract/desktop-settings.ts";
-import { headAttention, mainHead } from "@nyte-ai/plugin/client/presentation";
+import { alertNews, headAttention } from "@nyte-ai/plugin/client/presentation";
 import type { HeadAttention } from "@nyte-ai/plugin/client/presentation";
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import type { HostWindow, WindowEnd } from "./host-window.ts";
@@ -131,8 +131,10 @@ export function reconcileReminders(
 }
 
 /**
- * A subagent counts with `notifySubagents`, except for a question its parent already alerts for
- * because the parent's run waits below it: one question alerts once, at the top of the chain.
+ * An ask always reaches the person, once: a chat that waits on the person counts unless the chat
+ * above it alerts for it already, which a parent does for any ask below it, so a question alerts on
+ * the root chat it is answered from, whatever `notifySubagents` says. `notifySubagents` decides
+ * only whether a subagent's or side chat's own end alerts.
  */
 export function planAttention(input: {
   readonly previous: AttentionSeen | undefined;
@@ -143,17 +145,10 @@ export function planAttention(input: {
   const { previous, settings } = input;
   const attended = input.rows.map((session) => ({ session, status: headAttention(session) }));
 
-  const askingBelow = new Set(
-    attended.flatMap((entry) => {
-      const execution = mainHead(entry.session)?.execution;
-
-      return !entry.session.archived &&
-        execution?.kind === "waiting" &&
-        execution.on.kind !== "part" &&
-        entry.status.alert.state === "waiting"
-        ? [entry.session.id]
-        : [];
-    }),
+  const asking = new Set(
+    attended.flatMap((entry) =>
+      !entry.session.archived && entry.status.alert.state === "waiting" ? [entry.session.id] : [],
+    ),
   );
 
   const rows = attended.map((entry) => {
@@ -161,22 +156,21 @@ export function planAttention(input: {
     const status = entry.status;
     const before = previous?.get(session.id);
 
-    const asked =
-      status.alert.state === "waiting" &&
-      session.parent !== null &&
-      askingBelow.has(session.parent);
-
-    const moved =
+    const changed =
       previous !== undefined &&
       (before === undefined ? session.createdAt >= input.since : before.key !== status.alert.key);
 
     return {
       session,
       status,
-      moved,
-      fresh: moved || (before?.fresh === true && before.key === status.alert.key),
+      moved: changed && (before === undefined || alertNews(before.key, status.alert)),
+      fresh: changed || (before?.fresh === true && before.key === status.alert.key),
       counted:
-        !session.archived && (session.parent === null || (settings.notifySubagents && !asked)),
+        !session.archived &&
+        (session.parent === null ||
+          (status.alert.state === "waiting"
+            ? !asking.has(session.parent)
+            : settings.notifySubagents)),
     };
   });
 

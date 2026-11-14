@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, test, vi } from "vitest";
 import { QueryClient } from "@tanstack/react-query";
 import { toast } from "@nyte-ai/ui/toast";
-import type { SessionInfo } from "@nyte-ai/sdk";
+import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import { ActionToasts } from "../lib/action-toasts.ts";
 import { reflects, SessionActions } from "./session-actions.ts";
+import type { HeldDeletes } from "./session-actions.ts";
 import { keys } from "./query-client.ts";
 import { scriptedConnection } from "../../test/scripted-connection.ts";
 
@@ -25,8 +26,24 @@ function chat(id: string): SessionInfo {
   };
 }
 
+/** A page's held deletes, kept in memory: `ids` is what a reload of the page would find. */
+function pageLedger(): HeldDeletes & { readonly ids: () => readonly SessionId[] } {
+  let ids: readonly SessionId[] = [];
+
+  return {
+    ids: () => ids,
+    read: () => ids,
+    write(next) {
+      ids = next;
+    },
+  };
+}
+
 /** Sessions on a scripted host whose updates wait for `writes`. While `lag.held` is set, the host's rows wait for `release` after an answer, as a socket change that comes after the HTTP answer does. */
-function fixture(chats: readonly SessionInfo[] = [chat("one"), chat("two"), chat("three")]) {
+function fixture(
+  chats: readonly SessionInfo[] = [chat("one"), chat("two"), chat("three")],
+  held: HeldDeletes = pageLedger(),
+) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const saved = new Map(chats.map((session) => [session.id, session]));
   const writes = Promise.withResolvers<void>();
@@ -104,6 +121,7 @@ function fixture(chats: readonly SessionInfo[] = [chat("one"), chat("two"), chat
       },
     },
     sessions: () => connection,
+    held,
   });
   const directory = () => rows.current.flatMap((row) => actions.projectSession(row) ?? []);
 
@@ -287,6 +305,53 @@ test("delete commits when the notification closes", async () => {
   );
   assert.equal(f.client.getQueryData(keys.session(asId<"session">("one"))), undefined);
   f.client.clear();
+});
+
+test.each<{
+  readonly name: string;
+  readonly before: (f: ReturnType<typeof fixture>) => void;
+  readonly listed: number;
+  readonly saved: number;
+}>([
+  {
+    name: "a delete still waiting on its Undo stays hidden and commits on the reloaded page",
+    before: () => undefined,
+    listed: 2,
+    saved: 2,
+  },
+  {
+    name: "an undone delete stays undone",
+    before: (f) => undo("1 chat deleted", f.toasts),
+    listed: 3,
+    saved: 3,
+  },
+  {
+    name: "a delete committed before the reload isn't sent again",
+    before: () => toast.close(notification("1 chat deleted").id),
+    listed: 3,
+    saved: 3,
+  },
+])("a reload within a delete's Undo: $name", async (row) => {
+  const page = pageLedger();
+  const before = fixture(undefined, page);
+  before.writes.resolve();
+  before.actions.delete(asId<"session">("one"), () => () => {});
+  row.before(before);
+  await Promise.resolve();
+
+  const reloaded = fixture(undefined, page);
+  reloaded.writes.resolve();
+  const hidden = reloaded.directory().length;
+  reloaded.actions.commitHeld();
+  await vi.waitFor(() => assert.equal(reloaded.saved.size, row.saved));
+  await Promise.resolve();
+
+  const outcome = { hidden, saved: reloaded.saved.size, held: page.ids() };
+  toast.close();
+  before.client.clear();
+  reloaded.client.clear();
+
+  assert.deepEqual(outcome, { hidden: row.listed, saved: row.saved, held: [] });
 });
 
 test("failed permanent deletion restores the chat and its pane", async () => {

@@ -93,8 +93,11 @@ test.each<{
   leave();
 });
 
+/** One opening of a scripted source: a value, a failure, or a stream that stays open `openFor` ms and ends empty. */
+type Step = number | Error | { readonly openFor: number };
+
 /** A source a store opens: each opening reads `script` from where the last left off; a stream ends after its values, and a live source moves to its next step when `step` is called. */
-function opener(source: "finished" | "reopen" | "live", script: readonly (number | Error)[]) {
+function opener(source: "finished" | "reopen" | "live", script: readonly Step[]) {
   const log = { opens: 0, closes: 0 };
   let at = 0;
   const listeners = new Set<() => void>();
@@ -110,7 +113,10 @@ function opener(source: "finished" | "reopen" | "live", script: readonly (number
           const value = script[at];
           at += 1;
 
-          if (value !== undefined && !(value instanceof Error)) yield value;
+          if (typeof value === "number") yield value;
+
+          if (typeof value === "object" && !(value instanceof Error))
+            await new Promise((resolve) => setTimeout(resolve, value.openFor));
         })(),
         ended: source,
       };
@@ -124,7 +130,7 @@ function opener(source: "finished" | "reopen" | "live", script: readonly (number
       show(previous): Shown<number> {
         const step = script[at];
 
-        if (step === undefined) return { kind: "waiting" };
+        if (typeof step !== "number" && !(step instanceof Error)) return { kind: "waiting" };
 
         if (step instanceof Error) return { kind: "failed", error: step };
 
@@ -150,9 +156,11 @@ function opener(source: "finished" | "reopen" | "live", script: readonly (number
 test.each<{
   readonly name: string;
   readonly source: "finished" | "reopen" | "live";
-  readonly script: readonly (number | Error)[];
+  readonly script: readonly Step[];
   /** Live steps taken after the store opens. */
   readonly steps: number;
+  /** How long the store is held after its steps, 4 s unless given. */
+  readonly held?: number;
   readonly outcome: {
     readonly opens: number;
     readonly closes: number;
@@ -168,11 +176,27 @@ test.each<{
     outcome: { opens: 1, closes: 0, value: 1, error: undefined },
   },
   {
-    name: "a stream that ends as reopen opens again 1 s after each end, doubling while it ends empty",
+    name: "a stream that ends as reopen opens again 1 s after its end, then 2 s, whether or not it delivered",
     source: "reopen",
     script: [1, 2],
     steps: 0,
-    outcome: { opens: 4, closes: 0, value: 2, error: undefined },
+    outcome: { opens: 3, closes: 0, value: 2, error: undefined },
+  },
+  {
+    name: "a stream that delivers and ends at once opens 6 times a minute, backing off to 30 s",
+    source: "reopen",
+    script: Array.from({ length: 70 }, () => 1),
+    steps: 0,
+    held: 60_000,
+    outcome: { opens: 6, closes: 0, value: 1, error: undefined },
+  },
+  {
+    name: "a stream that stayed open 30 s reopens 1 s after its end, then backs off again",
+    source: "reopen",
+    script: [1, 1, 1, { openFor: 30_000 }, 1, 1, 1],
+    steps: 0,
+    held: 40_000,
+    outcome: { opens: 6, closes: 0, value: 1, error: undefined },
   },
   {
     name: "a live source's failed first read shows its error and stays open for the source to retry",
@@ -200,7 +224,7 @@ test.each<{
     await vi.advanceTimersByTimeAsync(0);
   }
 
-  await vi.advanceTimersByTimeAsync(4_000);
+  await vi.advanceTimersByTimeAsync(row.held ?? 4_000);
 
   expect({
     opens: source.log.opens,

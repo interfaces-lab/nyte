@@ -11,6 +11,7 @@ import type {
 } from "@nyte-ai/schema";
 import { expect, it, test } from "vitest";
 import {
+  alertNews,
   backgroundLabel,
   callTaskState,
   groupMark,
@@ -363,7 +364,7 @@ test.each<{
     chat: chat(ON_SUBAGENT, { background: { working: 0, waiting: 1 } }),
     mark: "waiting",
     unread: false,
-    alert: "waiting waiting:run:below Needs your answer",
+    alert: "waiting working:run:asking Needs your answer",
   },
   {
     name: "a run waiting on a subagent that works is working",
@@ -380,11 +381,11 @@ test.each<{
     alert: "waiting waiting:p1 Needs your answer",
   },
   {
-    name: "a responding run stays working over background that waits",
+    name: "a responding run stays working over background that waits, and alerts for its ask",
     chat: chat(LIVE, { background: { working: 0, waiting: 1 } }),
     mark: "working",
     unread: false,
-    alert: "working:run",
+    alert: "waiting working:run:asking Needs your answer",
   },
   {
     name: "a retrying run retries in the same run",
@@ -422,11 +423,18 @@ test.each<{
     alert: "ended:run",
   },
   {
-    name: "an idle chat whose subagent waits",
+    name: "an idle chat whose subagent waits alerts for its ask",
     chat: chat(DONE, { background: { working: 0, waiting: 1 } }),
     mark: "waiting",
     unread: false,
-    alert: "done ended:run Done",
+    alert: "waiting ended:run:asking Needs your answer",
+  },
+  {
+    name: "an idle chat's unread reply stays unread while its subagent asks",
+    chat: chat(DONE, { unread: true, background: { working: 1, waiting: 1 } }),
+    mark: "waiting",
+    unread: true,
+    alert: "waiting ended:run:asking Needs your answer",
   },
   {
     name: "a coordinator whose agents work isn't done or unread yet",
@@ -440,7 +448,7 @@ test.each<{
     alert: "ended:run:agents",
   },
   {
-    name: "a coordinator whose agent waits on the person isn't done yet",
+    name: "a coordinator whose agent waits on the person isn't done yet, and alerts for its ask",
     chat: chat(
       DONE,
       { unread: true, background: { working: 0, waiting: 1 } },
@@ -448,7 +456,7 @@ test.each<{
     ),
     mark: "waiting",
     unread: false,
-    alert: "ended:run:agents",
+    alert: "waiting ended:run:agents:asking Needs your answer",
   },
   {
     name: "a chat outside a project with working background is done",
@@ -478,6 +486,42 @@ test.each<{
     expect(attention.unreadTip === null).toBe(!row.chat.heads.some((head) => head.unread));
   },
 );
+
+test.each<{
+  readonly name: string;
+  readonly previous: string | undefined;
+  readonly chat: Pick<SessionInfo, "heads" | "project" | "parent">;
+  readonly news: boolean;
+}>([
+  { name: "a first alert", previous: undefined, chat: chat(DONE), news: true },
+  { name: "the same alert again", previous: "ended:run", chat: chat(DONE), news: false },
+  {
+    name: "an ask below an idle chat",
+    previous: "ended:run",
+    chat: chat(DONE, { background: { working: 0, waiting: 1 } }),
+    news: true,
+  },
+  {
+    name: "an idle chat's end again once the ask below it is answered",
+    previous: "ended:run:asking",
+    chat: chat(DONE, { background: { working: 1, waiting: 0 } }),
+    news: false,
+  },
+  {
+    name: "a coordinator's end once its last agent's ask is answered and it finishes",
+    previous: "ended:run:agents:asking",
+    chat: chat(DONE, {}, { project: asId("p") }),
+    news: true,
+  },
+  {
+    name: "a run's own question after an ask below it",
+    previous: "working:run:asking",
+    chat: chat(ASKING, { background: { working: 0, waiting: 1 } }),
+    news: true,
+  },
+])("an alert is news to a reader that last had another: $name", (row) => {
+  expect(alertNews(row.previous, headAttention(row.chat).alert)).toBe(row.news);
+});
 
 it("marks a group of tasks waiting first, then working, then failed", () => {
   const groups: readonly (readonly TaskState[])[] = [

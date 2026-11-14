@@ -1,10 +1,13 @@
 import type { QueryClient } from "@tanstack/react-query";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import { keyedSerial } from "@nyte-ai/schema/serial";
 import type { CommitId, Connection, SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { toast } from "@nyte-ai/ui/toast";
 import { ActionToasts } from "../lib/action-toasts.ts";
 import { keys } from "./query-client.ts";
 import { connection } from "./connection.ts";
+import { sessionId as sessionIdSchema } from "./schemas.ts";
 
 type SessionChange =
   | { readonly kind: "archive"; readonly archived: boolean }
@@ -27,6 +30,33 @@ type HideSession = (sessionId: SessionId) => () => void;
 
 /** The longest a change the host took stays over its row while the row has yet to show it. */
 const SHOWN_WITHIN_MS = 2_000;
+
+/** The deletes a page made and hasn't committed: kept where a reload of the page finds them. */
+export interface HeldDeletes {
+  read(): readonly SessionId[];
+  write(sessions: readonly SessionId[]): void;
+}
+
+const HELD_DELETES = "nyte:pending-deletes";
+
+const heldDeletesSchema = Type.Array(sessionIdSchema);
+
+/**
+ * The page's session storage, which outlives a reload and not the page. A delete is held here, not
+ * sent when the page hides, because a request a page sends as it unloads may die with it, while
+ * this write is done before the page can go.
+ */
+const pageDeletes: HeldDeletes = {
+  read() {
+    const stored: unknown = JSON.parse(sessionStorage.getItem(HELD_DELETES) ?? "[]");
+
+    return Value.Check(heldDeletesSchema, stored) ? stored : [];
+  },
+  write(sessions) {
+    if (sessions.length === 0) sessionStorage.removeItem(HELD_DELETES);
+    else sessionStorage.setItem(HELD_DELETES, JSON.stringify(sessions));
+  },
+};
 
 /** Whether the host's row shows `change`: a deleted session has no row, and a session with no row left shows nothing older. */
 export function reflects(row: SessionInfo | undefined, change: SessionChange): boolean {
@@ -91,6 +121,9 @@ export class SessionActions {
   readonly #hosted: HostedRows;
   readonly #connection: () => Pick<Connection, "session">;
   readonly #toasts: ActionToasts;
+  readonly #held: HeldDeletes;
+  /** The deletes an earlier load of the page held and never committed, until `commitHeld`. */
+  #resumed: readonly PendingChange[];
   readonly #listeners = new Set<() => void>();
   readonly #queues = keyedSerial<SessionId>();
   /** Each session's current archive change, and how to drop its entry from the Undo notification. */
@@ -106,18 +139,33 @@ export class SessionActions {
     hosted,
     sessions = connection,
     toasts = new ActionToasts(),
+    held = pageDeletes,
   }: {
     client: QueryClient;
     findRow: (sessionId: SessionId) => SessionInfo | undefined;
     hosted: HostedRows;
     sessions?: () => Pick<Connection, "session">;
     toasts?: ActionToasts;
+    held?: HeldDeletes;
   }) {
     this.#client = client;
     this.#findRow = findRow;
     this.#hosted = hosted;
     this.#connection = sessions;
     this.#toasts = toasts;
+    this.#held = held;
+    this.#resumed = held.read().map((sessionId) => this.#add(sessionId, { kind: "delete" }));
+  }
+
+  /** Commits the deletes the page held when it reloaded, which stay hidden until then: a reload ends their Undo. */
+  commitHeld(): void {
+    const resumed = this.#resumed;
+    this.#resumed = [];
+
+    for (const pending of resumed) {
+      this.#release(pending.sessionId);
+      void this.#run(pending);
+    }
   }
 
   readonly subscribe = (listener: () => void): (() => void) => {
@@ -209,17 +257,24 @@ export class SessionActions {
     this.#archives.delete(sessionId);
     const pending = this.#add(sessionId, { kind: "delete" });
     const restore = hide(sessionId);
+    this.#held.write([...this.#held.read(), sessionId]);
     this.#toasts.add("deleted", {
       undo: () => {
+        this.#release(sessionId);
         this.#remove(pending);
         restore();
       },
       commit: () => {
+        this.#release(sessionId);
         void this.#run(pending).then((saved) => {
           if (!saved) restore();
         });
       },
     });
+  }
+
+  #release(sessionId: SessionId): void {
+    this.#held.write(this.#held.read().filter((held) => held !== sessionId));
   }
 
   #find(sessionId: SessionId): SessionInfo | undefined {

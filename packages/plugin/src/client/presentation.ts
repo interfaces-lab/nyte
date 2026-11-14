@@ -413,11 +413,14 @@ const QUIET: HeadAttention = {
 
 const ASKED = "Needs your answer";
 
+const ASKING = ":asking";
+
 /**
  * The one rule for whether a chat waits on the person, read from its main head. A run that waits
  * on its own approval, question or secret waits; so does a run that waits on a subagent while
  * background work below it waits on the person, since the person answers through this chat. A
- * project's coordinator isn't done while its agents work or wait on the person.
+ * project's coordinator isn't done while its agents work or wait on the person. An ask below
+ * alerts here too, keyed as the alert it interrupts plus `:asking`.
  *
  * @category presentation
  */
@@ -428,18 +431,25 @@ export function headAttention(
 
   if (head === undefined) return QUIET;
   const coordinating = session.parent === null && session.project !== undefined;
-  const mark = attentionMark(head.execution, head.background, coordinating);
-  const alert = headAlert(head, mark, coordinating);
+  const own = headAlert(head, coordinating);
 
   const unreadTip =
     head.unread && head.tip.kind === "commit" ? { head: head.name, commit: head.tip.id } : null;
 
   return {
-    mark,
+    mark: attentionMark(head.execution, head.background, coordinating),
     unreadTip,
-    settledUnread: unreadTip !== null && (alert.state === "done" || alert.state === "failed"),
-    alert,
+    settledUnread: unreadTip !== null && (own.state === "done" || own.state === "failed"),
+    alert:
+      own.state === "waiting" || head.background.waiting === 0
+        ? own
+        : { key: `${own.key}${ASKING}`, state: "waiting", body: ASKED },
   };
+}
+
+/** Whether `alert` is news after `previous`, the last key a reader had: a changed key is, but not a return to the alert an ask below interrupted. */
+export function alertNews(previous: string | undefined, alert: HeadAttention["alert"]): boolean {
+  return alert.key !== previous && previous !== `${alert.key}${ASKING}`;
 }
 
 /**
@@ -460,20 +470,13 @@ export function attentionMark(
   return coordinating && mark === "background" ? "working" : mark;
 }
 
-function headAlert(
-  head: Pick<HeadInfo, "execution" | "background">,
-  mark: TaskState,
-  coordinating: boolean,
-): HeadAttention["alert"] {
+function headAlert(head: HeadInfo, coordinating: boolean): HeadAttention["alert"] {
   const execution = head.execution;
 
   switch (execution.kind) {
     case "waiting":
-      if (execution.on.kind === "part")
-        return { key: `waiting:${execution.on.part}`, state: "waiting", body: ASKED };
-
-      return mark === "waiting"
-        ? { key: `waiting:${execution.run.id}:below`, state: "waiting", body: ASKED }
+      return execution.on.kind === "part"
+        ? { key: `waiting:${execution.on.part}`, state: "waiting", body: ASKED }
         : { key: `working:${execution.run.id}`, state: undefined };
     case "live":
     case "retrying":

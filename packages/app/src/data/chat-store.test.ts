@@ -1,13 +1,15 @@
 import { asId, SdkError } from "@nyte-ai/schema";
 import type { PartView } from "@nyte-ai/schema";
 import type { ChatSnapshot, Freshness, HeadView } from "@nyte-ai/sdk/client";
+import type { SessionView } from "@nyte-ai/sdk";
 import { expect, test, vi } from "vitest";
 import { heldSessions, nextExpiry, nextHolds, NO_HOLDS } from "./chat-holds.ts";
 import { chatStore, keepChat, showChat, showPart, warmSession } from "./chat-store.ts";
 import type { ChatView, ShownPart } from "./chat-store.ts";
 import type { SessionActivity } from "./session-activity.ts";
 import { installScripted, scriptedConnection } from "../../test/scripted-connection.ts";
-import { sessionView } from "../../test/view-fixtures.ts";
+import type { ViewStream } from "../../test/scripted-connection.ts";
+import { sessionView, settledTool } from "../../test/view-fixtures.ts";
 
 vi.useFakeTimers();
 
@@ -400,4 +402,93 @@ test.each<{
         }
       : shown.kind,
   ).toEqual(row.shown);
+});
+
+/** A chat's view stream whose first read hasn't landed until `push`. */
+function unread(): ViewStream {
+  let latest: SessionView | undefined;
+  const listeners = new Set<() => void>();
+
+  return {
+    latest: () => latest,
+    push(view) {
+      latest = view;
+
+      for (const listener of Array.from(listeners)) listener();
+    },
+    subscribe(listener) {
+      listeners.add(listener);
+
+      return () => listeners.delete(listener);
+    },
+    watch: async function* () {},
+  };
+}
+
+const HELD = sessionView({
+  messages: Array.from({ length: 200 }, (_, index) =>
+    settledTool(`m${String(index)}`, { kind: "read", path: "a.ts" }),
+  ),
+});
+
+test.each<{
+  readonly name: string;
+  readonly host: string;
+  readonly shown: { readonly messages: number; readonly freshness: string } | undefined;
+  readonly tail: number;
+}>([
+  {
+    name: "a new connection to the same host keeps the chat shown, stale, and opens with the tail it held",
+    host: "scripted",
+    shown: { messages: 200, freshness: "stale" },
+    tail: 200,
+  },
+  {
+    name: "a connection to another host clears the chat and opens with the first tail",
+    host: "other",
+    shown: undefined,
+    tail: 40,
+  },
+])("replacing the connection: $name", async (row) => {
+  const session = asId<"session">(`replaced-${row.host}`);
+  installScripted(scriptedConnection({ views: new Map([[session, [HELD]]]) }));
+  const store = chatStore(session);
+  const leave = store.subscribe(() => undefined);
+  await vi.advanceTimersByTimeAsync(0);
+  const before = store.value?.messages.length;
+
+  const next = unread();
+  const tails: (number | undefined)[] = [];
+  const scripted = scriptedConnection({ views: new Map([[session, next]]) }).connection;
+
+  installScripted({
+    connection: {
+      ...scripted,
+      hostId: asId<"host">(row.host),
+      chat(id, options) {
+        tails.push(options?.tail);
+
+        return scripted.chat(id, options);
+      },
+    },
+  });
+  await vi.advanceTimersByTimeAsync(0);
+  const value = store.value;
+
+  const waiting =
+    value === undefined
+      ? undefined
+      : { messages: value.messages.length, freshness: value.freshness.kind };
+
+  next.push(sessionView({ messages: HELD.messages.slice(-3) }));
+  await vi.advanceTimersByTimeAsync(0);
+
+  expect({ before, waiting, tails, landed: store.value?.freshness.kind }).toEqual({
+    before: 200,
+    waiting: row.shown,
+    tails: [row.tail],
+    landed: "fresh",
+  });
+  leave();
+  await vi.advanceTimersByTimeAsync(0);
 });

@@ -15,6 +15,9 @@ const FIRST_REOPEN_MS = 1_000;
 
 const MAX_REOPEN_MS = 30_000;
 
+/** How long an opening stays open before its end counts as a fresh start rather than a failure. */
+const STEADY_MS = 30_000;
+
 const HIDDEN_FLUSH_MS = 100;
 
 const queued = new Set<() => void>();
@@ -83,7 +86,8 @@ export interface LiveView<T> {
 /**
  * A stream a store follows, and what its end means: `finished` keeps the last value as the final
  * one until the store opens again; `reopen` opens it again on the reopen backoff, as a stream that
- * fails does. A stream that fails publishes its error and reopens on the same backoff.
+ * fails does. A stream that fails publishes its error and reopens on the same backoff, which starts
+ * again only after an opening stays open a while.
  */
 export interface Stream<T> {
   readonly values: AsyncIterable<T>;
@@ -132,11 +136,17 @@ export class WatchStore<T> {
     if (this.active) this.stop = this.start();
   };
 
-  reset(): void {
+  /** Opens the store again from nothing, or, with `carry`, from what `carry` makes of its value. */
+  reset(carry?: (value: T) => T): void {
+    const value = this.state.value;
     this.stop?.();
     this.stop = undefined;
     this.failures = 0;
-    this.publish(UNSTARTED);
+    this.publish(
+      carry === undefined || value === undefined
+        ? UNSTARTED
+        : { value: carry(value), error: undefined },
+    );
 
     if (this.active) this.stop = this.start();
   }
@@ -212,14 +222,14 @@ export class WatchStore<T> {
     let leave: (() => void) | undefined;
     let reopen: ReturnType<typeof setTimeout> | undefined;
 
+    const opened = Date.now();
+
     const later = (): void => {
-      this.failures += 1;
-      reopen = setTimeout(
-        () => {
-          if (!stopped) this.stop = this.start();
-        },
-        Math.min(FIRST_REOPEN_MS * 2 ** (this.failures - 1), MAX_REOPEN_MS),
-      );
+      const next = nextReopen(this.failures, Date.now() - opened);
+      this.failures = next.failures;
+      reopen = setTimeout(() => {
+        if (!stopped) this.stop = this.start();
+      }, next.delay);
     };
 
     const fail = (cause: unknown): void => {
@@ -309,7 +319,6 @@ export class WatchStore<T> {
   }
 
   private receive(value: T): void {
-    this.failures = 0;
     const streaming = this.state.value !== undefined && this.state.error === undefined;
     this.state = { value, error: undefined };
     notifyAll(this.listeners);
@@ -331,10 +340,27 @@ export class WatchStore<T> {
   };
 }
 
+/**
+ * The count of short openings in a row after one that lasted `openedMs`, and the wait before the
+ * next: 1 s doubling to 30 s. A value delivered doesn't start the count again, since a stream that
+ * delivers and ends at once is as broken as one that ends empty; only staying open `STEADY_MS` does.
+ */
+function nextReopen(failures: number, openedMs: number) {
+  const count = (openedMs >= STEADY_MS ? 0 : failures) + 1;
+
+  return { failures: count, delay: Math.min(FIRST_REOPEN_MS * 2 ** (count - 1), MAX_REOPEN_MS) };
+}
+
 const RETAINED_WATCHES = 16;
 
+/**
+ * One store per key, each opened on the installed connection. A connection that replaces it opens
+ * every store again: from nothing for another host, or from what `carry` makes of its value for
+ * the same host, so the store shows that until the new connection's first read lands.
+ */
 export function watchFamily<K extends string, T>(
   open: (connection: ClientConnection, key: K) => Opening<T> | Promise<Opening<T>>,
+  carry?: (value: T) => T,
 ) {
   const stores = new Map<K, WatchStore<T>>();
 
@@ -347,8 +373,8 @@ export function watchFamily<K extends string, T>(
     }
   };
 
-  onInstall((replaced) => {
-    if (replaced) for (const store of stores.values()) store.reset();
+  onInstall((replaced, sameHost) => {
+    if (replaced) for (const store of stores.values()) store.reset(sameHost ? carry : undefined);
   });
 
   return (key: K): WatchStore<T> => {

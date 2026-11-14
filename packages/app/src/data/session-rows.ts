@@ -28,6 +28,8 @@ export const sessionActions = new SessionActions({
   },
 });
 
+void connected().then(() => sessionActions.commitHeld());
+
 export const sessionRows = (): SessionRows => store.getSnapshot();
 
 export const subscribeSessionRows = (notice: () => void): (() => void) => store.subscribe(notice);

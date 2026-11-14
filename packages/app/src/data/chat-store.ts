@@ -2,7 +2,14 @@ import { asId } from "@nyte-ai/schema";
 import type { PartId, PartView } from "@nyte-ai/schema";
 import { paintSpans, SdkError } from "@nyte-ai/sdk";
 import type { MessageId, SessionId } from "@nyte-ai/sdk";
-import type { Chat, ChatSnapshot, Freshness, HeadView, PartSnapshot } from "@nyte-ai/sdk/client";
+import type {
+  Chat,
+  ChatSnapshot,
+  ClientConnection,
+  Freshness,
+  HeadView,
+  PartSnapshot,
+} from "@nyte-ai/sdk/client";
 import { useSyncExternalStore } from "react";
 import { countWork } from "../lib/work-counts.ts";
 import { heldSessions, nextExpiry, nextHolds, NO_HOLDS } from "./chat-holds.ts";
@@ -52,7 +59,10 @@ function nextFrame(): Promise<void> {
   return new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
 }
 
-export const chatStore = watchFamily((opened, session: SessionId): LiveView<ChatView> => {
+/** A chat keeps its view across a new connection to the same host, as stale, and opens again with the tail it held. */
+export const chatStore = watchFamily(openChat, (view) => staleChat(view, Date.now()));
+
+function openChat(opened: ClientConnection, session: SessionId): LiveView<ChatView> {
   const known = chatStore(session).value?.messages.length ?? 0;
   const tail = Math.min(Math.max(OPENING_TAIL, known), REOPENING_TAIL);
   const chat = opened.chat(session, { tail });
@@ -88,7 +98,14 @@ export const chatStore = watchFamily((opened, session: SessionId): LiveView<Chat
       if (chats.get(session) === chat) changeChats(() => chats.delete(session));
     },
   };
-});
+}
+
+/** The view a chat keeps while a new connection reads it again: stale since `since`, or since it went stale. */
+function staleChat(view: ChatView, since: number): ChatView {
+  return view.freshness.kind === "stale"
+    ? view
+    : { ...view, freshness: { kind: "stale", since, error: null } };
+}
 
 /** The chat's view with its seq, freshness, expired sends, stop and activity laid in; a chat with no view yet fails with its stale error, or waits. */
 export function showChat(
