@@ -105,15 +105,10 @@ export function usePaneViewStateStore(): SessionViewStateStore {
 
 export interface PaneActions {
   newChat(): void;
-  openSession(sessionId: SessionId): void;
-  openSessionInPane(paneId: PaneId, sessionId: SessionId): void;
   openDraftChat(draftId: string, sessionId: SessionId, composer?: ComposerViewState): void;
   split(direction: SplitDirection): void;
   close(paneId: PaneId): void;
-  focus(paneId: PaneId): void;
-  focusNext(): boolean;
   drop(sessionId: SessionId, targetPaneId: PaneId, placement: DropPlacement): void;
-  removeSession(sessionId: SessionId): void;
 }
 
 export function usePaneActions(): PaneActions {
@@ -122,12 +117,6 @@ export function usePaneActions(): PaneActions {
   return {
     newChat() {
       windowTabs.newChat();
-    },
-    openSession(sessionId) {
-      controller.selectSession(sessionId);
-    },
-    openSessionInPane(paneId, sessionId) {
-      controller.selectSessionInPane(paneId, sessionId);
     },
     openDraftChat(draftId, sessionId, composer) {
       controller.openDraftChat(draftId, sessionId, composer);
@@ -138,17 +127,8 @@ export function usePaneActions(): PaneActions {
     close(paneId) {
       controller.close(paneId);
     },
-    focus(paneId) {
-      controller.focus(paneId);
-    },
-    focusNext() {
-      return focusNextPane(controller);
-    },
     drop(sessionId, targetPaneId, placement) {
       controller.drop(sessionId, targetPaneId, placement);
-    },
-    removeSession(sessionId) {
-      controller.removeSession(sessionId);
     },
   };
 }

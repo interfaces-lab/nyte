@@ -12,6 +12,7 @@ import { asId } from "@nyte-ai/schema";
 import { shellActions, useStagePage } from "../tabs/shell-state.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
 import {
+  focusNextPane,
   PaneControllerProvider,
   usePaneActions,
   useCanSplitPane,
@@ -68,7 +69,7 @@ test.each([560, 640])("split availability and execution agree at window width %s
   assert.equal(selected.available, width >= 640);
   selected.actions.split("right");
   assert.equal(chatPanes(controller.getSnapshot()).length, selected.available ? 2 : 1);
-  assert.equal(selected.actions.focusNext(), selected.available);
+  assert.equal(focusNextPane(controller), selected.available);
 
   if (selected.available) assert.equal(requests.at(-1), PRIMARY);
 });

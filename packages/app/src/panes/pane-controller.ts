@@ -1,34 +1,15 @@
 import type { ProjectId } from "@nyte-ai/schema";
 import type { SessionId } from "@nyte-ai/sdk";
-import { layoutPanes } from "./layout.ts";
-import type { Layout, LayoutAction, PaneId, SplitDirection } from "./layout.ts";
+import type { Layout, PaneId, SplitDirection } from "./layout.ts";
 import type { LayoutStore } from "./layout-store.ts";
+import { focusRequest, planPane } from "./pane-commands.ts";
+import type { PaneCommand, PaneFocus, PanePlan } from "./pane-commands.ts";
 import type { PaneContent } from "./pane-kinds.ts";
-import {
-  activeSelection,
-  chatContent,
-  chatPanes,
-  findSessionTab,
-  focusedChat,
-  paneForSession,
-  showChat,
-} from "./pane-layout.ts";
+import { chatPanes, paneForSession } from "./pane-layout.ts";
 import type { ChatPane, DropPlacement, PaneSelection } from "./pane-layout.ts";
 import type { ComposerViewState, SessionViewStateStore } from "./session-view-state.ts";
 
-type Actions = readonly LayoutAction<PaneContent>[];
-
 const BLANK: PaneSelection = { kind: "blank" };
-
-const EDGES = {
-  left: { direction: "right", side: "before" },
-  right: { direction: "right", side: "after" },
-  top: { direction: "down", side: "before" },
-  bottom: { direction: "down", side: "after" },
-} as const satisfies Record<
-  Exclude<DropPlacement, "center">,
-  { readonly direction: SplitDirection; readonly side: "before" | "after" }
->;
 
 export class PaneController {
   readonly #store: LayoutStore;
@@ -52,30 +33,30 @@ export class PaneController {
   readonly getSnapshot = (): Layout<PaneContent> => this.#store.getSnapshot();
 
   selectSession(sessionId: SessionId): void {
-    this.#show(showChat(this.getSnapshot(), { kind: "session", sessionId }));
+    this.#run({ kind: "show", selection: { kind: "session", sessionId } });
   }
 
   selectSessionInPane(pane: PaneId, sessionId: SessionId): void {
-    this.#show(this.#inPane(pane, { kind: "session", sessionId }));
+    this.#run({ kind: "show-in", pane, selection: { kind: "session", sessionId } });
   }
 
   newChat(project?: ProjectId): void {
     const pane = this.getSnapshot().focus[0];
     this.#viewState.startNewDraft(pane, project);
-    this.#showOrFocus(showChat(this.getSnapshot(), BLANK));
+    this.#run({ kind: "show", selection: BLANK }, "always");
   }
 
   selectDraft(draftId: string): void {
     const visible = this.#paneShowingDraft(draftId);
 
     if (visible !== undefined) {
-      this.#showOrFocus([{ kind: "focus", pane: visible.pane }]);
+      this.#run({ kind: "focus", pane: visible.pane }, "always");
 
       return;
     }
 
     if (!this.#viewState.activateDraft(this.getSnapshot().focus[0], draftId)) return;
-    this.#showOrFocus(showChat(this.getSnapshot(), BLANK));
+    this.#run({ kind: "show", selection: BLANK }, "always");
   }
 
   removeDraft(draftId: string): void {
@@ -97,71 +78,19 @@ export class PaneController {
   }
 
   split(direction: SplitDirection): void {
-    this.#show([
-      {
-        kind: "open",
-        content: chatContent(BLANK),
-        place: { kind: "edge", pane: this.getSnapshot().focus[0], direction, side: "after" },
-      },
-    ]);
+    this.#run({ kind: "split", direction });
   }
 
   close(pane: PaneId): void {
-    const layout = this.getSnapshot();
-    const closing = layoutPanes(layout.root).find((entry) => entry.id === pane);
-
-    if (closing === undefined) return;
-
-    if (layoutPanes(layout.root).length === 1) {
-      this.#show(this.#inPane(pane, BLANK));
-
-      return;
-    }
-
-    this.#show(closing.tabs.map((tab) => ({ kind: "close", tab: tab.id })));
+    this.#run({ kind: "close", pane });
   }
 
   focus(pane: PaneId): void {
-    this.#show([{ kind: "focus", pane }]);
+    this.#run({ kind: "focus", pane });
   }
 
   drop(sessionId: SessionId, pane: PaneId, placement: DropPlacement): void {
-    const layout = this.getSnapshot();
-    const target = chatPanes(layout).find((entry) => entry.pane === pane);
-    const source = findSessionTab(layout, sessionId);
-
-    if (target === undefined || source?.pane === pane) return;
-    const selection: PaneSelection = { kind: "session", sessionId };
-
-    if (placement === "center") {
-      this.#show(
-        source === undefined
-          ? this.#inPane(pane, selection)
-          : [
-              { kind: "set-content", tab: target.tab, content: chatContent(selection) },
-              { kind: "set-content", tab: source.tab, content: chatContent(target.selection) },
-              { kind: "focus", pane },
-            ],
-      );
-
-      return;
-    }
-
-    const place = { kind: "edge", pane, ...EDGES[placement] } as const;
-
-    this.#show([
-      source === undefined
-        ? { kind: "open", content: chatContent(selection), place }
-        : { kind: "move", tab: source.tab, place },
-    ]);
-  }
-
-  removeSession(sessionId: SessionId): void {
-    const layout = this.getSnapshot();
-    const pane = paneForSession(layout, sessionId);
-
-    if (pane === undefined) return;
-    this.#store.dispatch(...this.#inPane(pane, BLANK), { kind: "focus", pane: layout.focus[0] });
+    this.#run({ kind: "drop", sessionId, pane, placement });
   }
 
   removeSessionWithUndo(sessionId: SessionId): () => boolean {
@@ -170,42 +99,9 @@ export class PaneController {
 
     if (pane === undefined) return () => false;
     const focused = previous.focus[0];
-    this.removeSession(sessionId);
+    this.#run({ kind: "hide", sessionId });
 
-    return () => {
-      const current = this.getSnapshot();
-      const shown = chatPanes(current).find((entry) => entry.pane === pane);
-
-      if (shown?.selection.kind !== "blank") return false;
-
-      const composer = this.#viewState.readBlank(pane).composer;
-
-      if (composer.draft !== "" || composer.attachments.length > 0) return false;
-      const keep = activeSelection(current).kind === "blank" ? focused : current.focus[0];
-      this.#show([
-        ...this.#inPane(pane, { kind: "session", sessionId }),
-        { kind: "focus", pane: keep },
-      ]);
-
-      return true;
-    };
-  }
-
-  #inPane(pane: PaneId, selection: PaneSelection): Actions {
-    const layout = this.getSnapshot();
-    const target = chatPanes(layout).find((entry) => entry.pane === pane);
-
-    if (target === undefined) return [];
-
-    const shown =
-      selection.kind === "session" ? paneForSession(layout, selection.sessionId) : undefined;
-
-    if (shown !== undefined) return [{ kind: "focus", pane: shown }];
-
-    return [
-      { kind: "set-content", tab: target.tab, content: chatContent(selection) },
-      { kind: "focus", pane },
-    ];
+    return () => this.#run({ kind: "unhide", sessionId, pane, focused }).actions.length > 0;
   }
 
   #paneShowingDraft(draftId: string): ChatPane | undefined {
@@ -215,18 +111,15 @@ export class PaneController {
     );
   }
 
-  #show(actions: Actions): boolean {
+  #run(command: PaneCommand, focus?: PaneFocus): PanePlan {
     const before = this.getSnapshot();
-    this.#store.dispatch(...actions);
-    const after = this.getSnapshot();
+    const planned = planPane(before, command, (pane) => this.#viewState.readBlank(pane));
+    const plan = focus === undefined ? planned : { ...planned, focus };
+    this.#store.dispatch(...plan.actions);
+    const pane = focusRequest(before, this.getSnapshot(), plan);
 
-    if (after === before) return false;
-    this.#store.requestFocus(focusedChat(after)?.pane ?? after.focus[0]);
+    if (pane !== undefined) this.#store.requestFocus(pane);
 
-    return true;
-  }
-
-  #showOrFocus(actions: Actions): void {
-    if (!this.#show(actions)) this.#store.requestFocus(this.getSnapshot().focus[0]);
+    return plan;
   }
 }

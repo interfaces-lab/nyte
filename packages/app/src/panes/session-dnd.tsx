@@ -26,13 +26,15 @@ import { asId } from "@nyte-ai/schema";
 import type { SessionId } from "@nyte-ai/sdk";
 import { sessionId as sessionIdSchema } from "../data/schemas.ts";
 import { role, shadow } from "@nyte-ai/ui/styles/vars.stylex";
-import { usePaneActions, usePaneLayout } from "./pane-context.tsx";
-import type { Layout, PaneId } from "./layout.ts";
-import type { PaneContent } from "./pane-kinds.ts";
+import { usePaneActions, usePaneLayoutStore } from "./pane-context.tsx";
+import type { PaneId } from "./layout.ts";
+import type { LayoutStore } from "./layout-store.ts";
+import { dropTarget } from "./pane-commands.ts";
+import type { SessionDropTarget } from "./pane-commands.ts";
 import { chatPanes } from "./pane-layout.ts";
 import { occludes } from "../components/overlay-occlusion.ts";
 import type { DropPlacement } from "./pane-layout.ts";
-import { placementInRect, SESSION_DRAG_ACTIVATION_DISTANCE } from "./session-dnd-geometry.ts";
+import { SESSION_DRAG_ACTIVATION_DISTANCE } from "./session-dnd-geometry.ts";
 import type { SessionDragPoint } from "./session-dnd-geometry.ts";
 
 const DROP_PLACEMENTS = ["center", "top", "bottom", "left", "right"] as const;
@@ -44,11 +46,6 @@ const sessionDragDataSchema = Type.Object({
 });
 
 type SessionDragData = Static<typeof sessionDragDataSchema>;
-
-export interface SessionDropTarget {
-  readonly paneId: PaneId;
-  readonly placement: DropPlacement;
-}
 
 const sessionDropDataSchema = Type.Object({
   kind: Type.Literal("session-pane"),
@@ -115,50 +112,39 @@ function matchingDropContainer(
   return containers.find((container) => container.id === targetId);
 }
 
-function collisionDetector(layout: Layout<PaneContent>): CollisionDetection {
+function collisionDetector(store: LayoutStore): CollisionDetection {
   return ({ active, collisionRect, droppableContainers, droppableRects, pointerCoordinates }) => {
     const dragged = parseSessionDragData(active.data.current);
 
     if (dragged === undefined) return [];
-    const point = pointForCollision(pointerCoordinates, collisionRect);
+    const layout = store.getSnapshot();
 
-    const panes = chatPanes(layout);
+    const rects = new Map(
+      chatPanes(layout).flatMap((pane) => {
+        const container = matchingDropContainer(droppableContainers, {
+          paneId: pane.pane,
+          placement: "center",
+        });
 
-    for (const pane of panes) {
-      const paneContainer = matchingDropContainer(droppableContainers, {
-        paneId: pane.pane,
-        placement: "center",
-      });
+        const rect = container === undefined ? undefined : droppableRects.get(container.id);
 
-      if (paneContainer === undefined) continue;
-      const rect = droppableRects.get(paneContainer.id);
+        return rect === undefined ? [] : [[pane.pane, rect] as const];
+      }),
+    );
 
-      if (
-        rect === undefined ||
-        point.x < rect.left ||
-        point.x > rect.right ||
-        point.y < rect.top ||
-        point.y > rect.bottom
-      ) {
-        continue;
-      }
+    const target = dropTarget(
+      layout,
+      rects,
+      pointForCollision(pointerCoordinates, collisionRect),
+      dragged.sessionId,
+    );
 
-      if (pane.selection.kind === "session" && pane.selection.sessionId === dragged.sessionId) {
-        return [];
-      }
+    const container =
+      target === undefined ? undefined : matchingDropContainer(droppableContainers, target);
 
-      const placement = placementInRect(rect, point, panes.length > 1);
-
-      if (placement === undefined) return [];
-      const target = { paneId: pane.pane, placement } satisfies SessionDropTarget;
-      const container = matchingDropContainer(droppableContainers, target);
-
-      return container === undefined
-        ? []
-        : [{ id: container.id, data: { droppableContainer: container, value: 0 } }];
-    }
-
-    return [];
+    return container === undefined
+      ? []
+      : [{ id: container.id, data: { droppableContainer: container, value: 0 } }];
   };
 }
 
@@ -195,9 +181,9 @@ function SessionDragSurface({ children }: { readonly children: ReactNode }): Rea
 }
 
 export function SessionDndProvider({ children }: { readonly children: ReactNode }): ReactElement {
-  const layout = usePaneLayout((current) => current);
+  const store = usePaneLayoutStore();
   const panes = usePaneActions();
-  const detectCollision = collisionDetector(layout);
+  const detectCollision = collisionDetector(store);
 
   const pointerSensor = useSensor(PointerSensor, {
     activationConstraint: { distance: SESSION_DRAG_ACTIVATION_DISTANCE },

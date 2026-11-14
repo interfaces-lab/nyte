@@ -8,12 +8,12 @@ import { PaneFloatingMount } from "../chat/chat-pane-view.tsx";
 import type { Layout } from "./layout.ts";
 import { LayoutView, PANE_GAP } from "./layout-view.tsx";
 import { usePaneLayout, usePaneLayoutStore } from "./pane-context.tsx";
+import { dropPreviewBox } from "./pane-commands.ts";
+import type { SessionDropTarget } from "./pane-commands.ts";
 import { boxStyle, layoutGeometry } from "./pane-geometry.ts";
-import type { Box, Linear } from "./pane-geometry.ts";
 import type { PaneContent } from "./pane-kinds.ts";
 import { renderPaneContent } from "./pane-views.tsx";
 import { useSessionDropTarget } from "./session-dnd.tsx";
-import type { SessionDropTarget } from "./session-dnd.tsx";
 import { useHostState } from "../data/host.ts";
 import { nyte } from "../contract/nyte.ts";
 
@@ -23,38 +23,6 @@ import { useWorkbenchView } from "../workbench/store.ts";
 import { Workbench } from "../workbench/workbench.tsx";
 import { useChatWindow } from "../window/index.ts";
 import { clientCapabilities } from "../contract/client-actions.ts";
-
-function half(value: Linear): Linear {
-  return { px: value.px / 2, fraction: value.fraction / 2, gaps: value.gaps / 2 };
-}
-
-function plus(left: Linear, right: Linear): Linear {
-  return {
-    px: left.px + right.px,
-    fraction: left.fraction + right.fraction,
-    gaps: left.gaps + right.gaps,
-  };
-}
-
-function dropPreviewBox(box: Box, target: SessionDropTarget): Box {
-  switch (target.placement) {
-    case "center":
-      return box;
-    case "left":
-      return { ...box, width: half(box.width) };
-    case "right":
-      return { ...box, x: plus(box.x, half(box.width)), width: half(box.width) };
-    case "top":
-      return { ...box, height: half(box.height) };
-    case "bottom":
-      return { ...box, y: plus(box.y, half(box.height)), height: half(box.height) };
-    default: {
-      const _exhaustive: never = target.placement;
-
-      return _exhaustive;
-    }
-  }
-}
 
 function DropPreview({ target }: { readonly target: SessionDropTarget }): ReactElement | null {
   const box = usePaneLayout((layout: Layout<PaneContent>) =>
