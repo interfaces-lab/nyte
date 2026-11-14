@@ -17,7 +17,7 @@ test("background agents share one block, report in one line each, and wake the p
     log.getByText("Done", { exact: true }),
     "each agent's card and its report say Done",
   ).toHaveCount(4);
-  await expect(log.getByText(/Child \S+ completed/u)).toHaveCount(0);
+  await expect(log.getByText(/Subagent \S+ completed/u)).toHaveCount(0);
   await expect(log.getByText(/Echo: Trace part/u)).toHaveCount(0);
   await expect(log.getByRole("button", { name: "Edit Message" })).toHaveCount(1);
   await expect(chatPane(page).getByText(/queued/u)).toHaveCount(0);
@@ -65,7 +65,7 @@ test("the agents tray previews a finished agent, opens it as a full chat, and cl
   const { page } = desktop;
   const pane = chatPane(page);
   const tabs = page.getByRole("tablist", { name: "Tabs" }).getByRole("tab");
-  const pill = pane.getByRole("button", { name: "Agents", exact: true });
+  const pill = pane.getByRole("button", { name: /^Agents \d+$/u });
 
   await expect(pill, "finished agents stay listed until cleared").toHaveAccessibleDescription(
     "Agents, 0 active, 2 done",
@@ -84,6 +84,6 @@ test("the agents tray previews a finished agent, opens it as a full chat, and cl
 
   await tabs.nth(0).click();
   await pill.click();
-  await pane.getByRole("button", { name: "Clear Finished" }).click();
+  await pane.getByRole("button", { name: "Clear All", exact: true }).click();
   await expect(pill).toHaveCount(0);
 });

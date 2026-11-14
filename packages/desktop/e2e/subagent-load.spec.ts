@@ -197,7 +197,7 @@ test("typing stays responsive while five agents stream", async ({ desktop }, tes
   const log = messages(page).first();
   const field = composer(page);
   const groupRow = log.locator("[data-row-key^='agents:']");
-  const pill = chatPane(page).getByRole("button", { name: "Agents", exact: true });
+  const pill = chatPane(page).getByRole("button", { name: /^Agents \d+$/u });
   const allActive = `Agents, ${String(SWARM_AGENTS)} active`;
 
   const agents = Array.from({ length: SWARM_AGENTS }, (_, index) =>

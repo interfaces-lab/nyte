@@ -43,7 +43,7 @@ import { chatTitle, useChat, useChatTasks, useChatWorkspace } from "../chats/ind
 import { useChatFolder } from "./chat-folder.ts";
 import { ChatScope } from "./chat-scope.tsx";
 import { SideChatWindow } from "./side-chat/side-chat-window.tsx";
-import { chatWindow, showTray, useChatWindow } from "../window/index.ts";
+import { chatWindow, drawnTray, showTray, useChatWindow } from "../window/index.ts";
 import type { TrayView } from "../window/index.ts";
 
 const CLOSED_TRAY: TrayView = { kind: "closed" };
@@ -290,7 +290,10 @@ function ConversationScreen(conversation: SessionConversationProps): ReactElemen
   });
 
   const deferredTrayView = useDeferredValue(trayView);
-  const shownTrayView = trayView.kind === "detail" ? deferredTrayView : trayView;
+  const [drawnTrayView, setDrawnTrayView] = useState(trayView);
+  const shownTrayView = drawnTray(trayView, deferredTrayView, drawnTrayView);
+
+  if (shownTrayView !== drawnTrayView) setDrawnTrayView(shownTrayView);
 
   const subagentTray: SubagentTrayView =
     shownTrayView.kind === "terminals" ? { kind: "closed" } : shownTrayView;

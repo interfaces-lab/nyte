@@ -32,7 +32,7 @@ export interface WindowSnapshot {
   readonly covered: boolean;
 }
 
-export { showTray, type TrayView } from "./tray.ts";
+export { drawnTray, showTray, type TrayView } from "./tray.ts";
 
 export { unreadOnHost, viewedChat } from "./exposure.ts";
 

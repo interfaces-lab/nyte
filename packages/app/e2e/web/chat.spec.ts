@@ -7,7 +7,7 @@ test("a new chat shows the reply and takes its title from the provider", async (
   await page.goto(pairingLink(E2E_TOKEN));
   await expect(page.getByRole("form", { name: "Message", exact: true })).toBeVisible();
 
-  await page.getByRole("button", { name: /New Chat/u }).click();
+  await page.getByRole("button", { name: /^New Chat (⌘|Ctrl) N$/u }).click();
   const composer = page.getByRole("combobox", { name: "Message" });
   await composer.fill("hello");
   await composer.press("Enter");
@@ -43,7 +43,7 @@ test("a new chat shows the reply and takes its title from the provider", async (
   await page.goto(sessionUrl);
   await expect(pane.getByText("Echo: hello", { exact: true })).toBeVisible();
   await expect(page).toHaveURL(sessionUrl);
-  await page.getByRole("button", { name: /New Chat/u }).click();
+  await page.getByRole("button", { name: /^New Chat (⌘|Ctrl) N$/u }).click();
   await expect(page).toHaveURL(new URL("/", sessionUrl).href);
   await expect(composer).toHaveText("");
 
@@ -58,7 +58,7 @@ test("without a tab strip a child chat opens in the pane and the title bar's bac
 }, testInfo) => {
   const errors = collectErrors(page);
   await page.goto(pairingLink(E2E_TOKEN));
-  await page.getByRole("button", { name: /New Chat/u }).click();
+  await page.getByRole("button", { name: /^New Chat (⌘|Ctrl) N$/u }).click();
   const composer = page.getByRole("combobox", { name: "Message" });
   await composer.fill("Start an agent.");
   await composer.press("Enter");

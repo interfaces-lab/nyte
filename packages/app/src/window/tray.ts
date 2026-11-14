@@ -45,3 +45,15 @@ export function showTray(
 
   return view;
 }
+
+/**
+ * The tray view to draw while React renders a detail in the background: the agent's chat once the
+ * deferred render reaches it, and until then the view drawn last. A deferred value can lag more
+ * than one change behind, so after Back to the list it can still hold the agent opened before;
+ * drawing it would show that agent's chat for a frame.
+ */
+export function drawnTray(current: TrayView, deferred: TrayView, drawn: TrayView): TrayView {
+  if (current.kind !== "detail") return current;
+
+  return deferred.kind === "detail" && deferred.sessionId === current.sessionId ? deferred : drawn;
+}

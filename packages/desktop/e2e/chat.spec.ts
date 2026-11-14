@@ -61,9 +61,7 @@ test("a held response can be stopped", async ({ desktop }, testInfo) => {
   const stop = chatPane(page).getByRole("button", { name: "Stop response" });
   await expect(stop).toBeVisible();
   await expect(messages(page).getByRole("paragraph").last()).toContainText("Holding");
-  await expect(
-    page.getByRole("tab", { selected: true }).getByRole("img", { name: "Working" }),
-  ).toBeVisible();
+  await expect(page.getByRole("tab", { selected: true })).toHaveAccessibleName("/hold, working");
   await stop.click();
   await expect(stop).toBeHidden();
   await expect(page.getByRole("button", { name: "Send message" })).toBeVisible();

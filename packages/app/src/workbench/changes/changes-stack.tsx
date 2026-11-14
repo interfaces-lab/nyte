@@ -182,8 +182,14 @@ function createHeaderStore() {
 
 type HeaderStore = ReturnType<typeof createHeaderStore>;
 
+/**
+ * The stacked diffs of one Changes scope. A scroll restore or focus reveal waits until `visible`:
+ * Pierre's `CodeView` drops a scroll request on a root with no layout, so one made while the
+ * panel is hidden would be lost.
+ */
 export function ChangesStack({
   ref,
+  visible,
   items,
   collapsedPaths,
   onToggleCollapsed,
@@ -203,6 +209,7 @@ export function ChangesStack({
   onDemandPatch,
 }: {
   readonly ref?: Ref<ChangesStackHandle>;
+  readonly visible: boolean;
   readonly items: readonly ChangesStackItem[];
   readonly collapsedPaths: readonly string[];
   readonly onToggleCollapsed: (path: string) => void;
@@ -288,14 +295,15 @@ export function ChangesStack({
   useLayoutEffect(() => {
     const pending = restore.current;
 
-    if (pending === undefined || viewer.current?.getInstance() === undefined) return;
+    if (!visible || pending === undefined || viewer.current?.getInstance() === undefined) return;
     viewer.current.scrollTo({ type: "position", position: pending, behavior: "instant" });
     restore.current = undefined;
-  }, [model.items]);
+  }, [model.items, visible]);
 
   // oxlint-disable-next-line nyte-code/no-direct-effect -- scrolls the imperative viewer to the focused file before paint
   useLayoutEffect(() => {
     if (
+      !visible ||
       focusRevision === 0 ||
       appliedFocusRevision.current === focusRevision ||
       focusPath === undefined ||
@@ -312,7 +320,7 @@ export function ChangesStack({
       behavior: "instant",
     });
     onFocusApplied?.(focusRevision);
-  }, [focusPath, focusRevision, model.items, onFocusApplied]);
+  }, [focusPath, focusRevision, model.items, onFocusApplied, visible]);
 
   const inputs: HeaderInputs = {
     sources: model.sourceById,

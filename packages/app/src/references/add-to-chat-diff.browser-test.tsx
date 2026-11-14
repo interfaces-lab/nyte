@@ -109,6 +109,7 @@ export async function run(): Promise<string> {
           />
         </div>
         <ChangesStack
+          visible
           items={[
             {
               kind: "diff",

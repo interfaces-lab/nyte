@@ -45,7 +45,61 @@ async function settle(): Promise<void> {
   await frame();
 }
 
+const RESTORED_SCROLL = 48;
+
+async function mountedScroll(hidden: boolean): Promise<number> {
+  const container = document.createElement("div");
+  container.style.cssText = `display:${hidden ? "none" : "flex"};height:420px;width:760px`;
+  document.body.append(container);
+  const root = createRoot(container);
+
+  const render = (visible: boolean): void =>
+    flushSync(() =>
+      root.render(
+        <ChangesStack
+          visible={visible}
+          items={ITEMS}
+          collapsedPaths={[]}
+          onToggleCollapsed={() => undefined}
+          onExpand={() => undefined}
+          scrollTop={RESTORED_SCROLL}
+          focusPath={undefined}
+          focusRevision={0}
+          layout="unified"
+          wordWrap={false}
+          viewedState={() => "unviewed"}
+          onViewedChange={() => undefined}
+          onScrollTop={() => undefined}
+          onActivePath={() => undefined}
+        />,
+      ),
+    );
+
+  try {
+    render(!hidden);
+    await settle();
+    container.style.display = "flex";
+    render(true);
+    await settle();
+    const scrollport = container.querySelector("[data-nyte-scrollport]");
+
+    if (!(scrollport instanceof HTMLElement)) throw new Error("Missing scrollport");
+
+    return scrollport.scrollTop;
+  } finally {
+    root.unmount();
+    container.remove();
+  }
+}
+
 export async function run(): Promise<string> {
+  const shown = await mountedScroll(false);
+  const hidden = await mountedScroll(true);
+  check(shown > 0, "A stack mounted visible restores its scroll");
+  check(
+    hidden === shown,
+    `A stack mounted hidden restores its scroll once shown: ${String(hidden)}, not ${String(shown)}`,
+  );
   const container = document.createElement("div");
   container.style.cssText = "display:flex;height:420px;width:760px";
   document.body.append(container);
@@ -56,6 +110,7 @@ export async function run(): Promise<string> {
     flushSync(() =>
       root.render(
         <ChangesStack
+          visible
           items={ITEMS}
           collapsedPaths={collapsedPaths}
           onToggleCollapsed={(path) => {

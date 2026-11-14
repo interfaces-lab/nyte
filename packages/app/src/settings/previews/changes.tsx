@@ -47,6 +47,7 @@ export function ChangesPreview(): ReactElement {
     <div {...props(styles.frame)}>
       <FileTypeIconSprite />
       <ChangesStack
+        visible
         items={ignoreWhitespace ? ITEMS_IGNORING_WHITESPACE : ITEMS}
         collapsedPaths={NO_PATHS}
         onToggleCollapsed={() => undefined}

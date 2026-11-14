@@ -12,9 +12,13 @@ async function openServerWorkspace(page: Page): Promise<void> {
   await expect(pane.getByRole("button", { name: /^nyte-e2e-web-/u })).toBeVisible();
 }
 
-async function viewSource(page: Page, editorPanel: Locator): Promise<void> {
-  await editorPanel.getByRole("button", { name: "File options" }).click();
-  await page.getByRole("menuitem", { name: "View Source" }).click();
+async function viewSource(editorPanel: Locator): Promise<void> {
+  const view = editorPanel.getByRole("group", { name: "Markdown View" });
+  await view.getByRole("button", { name: "Source", exact: true }).click();
+  await expect(view.getByRole("button", { name: "Source", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
 }
 
 test("a paired browser reads, edits, blames, searches, and mentions workspace files", async ({
@@ -48,7 +52,7 @@ test("a paired browser reads, edits, blames, searches, and mentions workspace fi
     await editorPanel.getByRole("button", { name: "Show Explorer", exact: true }).click();
     await readme.click();
     await expect(editorPanel.getByText(README_LINE, { exact: true })).toBeVisible();
-    await viewSource(page, editorPanel);
+    await viewSource(editorPanel);
   });
 
   await test.step("a saved edit is on disk after a reload", async () => {
@@ -73,7 +77,7 @@ test("a paired browser reads, edits, blames, searches, and mentions workspace fi
   });
 
   await test.step("Git blame names the seeded commit author", async () => {
-    await viewSource(page, editorPanel);
+    await viewSource(editorPanel);
     await editorPanel.getByText(README_LINE, { exact: true }).click();
     await editorPanel.getByRole("button", { name: "File options" }).click();
     await page.getByRole("menuitemcheckbox", { name: "Git Blame" }).click();
@@ -113,7 +117,7 @@ test("a paired browser reads, edits, blames, searches, and mentions workspace fi
   });
 
   await test.step("an @ mention in a new chat offers the workspace file", async () => {
-    await page.getByRole("button", { name: /New Chat/u }).click();
+    await page.getByRole("button", { name: /^New Chat (⌘|Ctrl) N$/u }).click();
     await page.getByRole("combobox", { name: "Message" }).fill("@READ");
     await expect(page.getByRole("option", { name: /README\.md/u })).toBeVisible();
   });

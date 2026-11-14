@@ -23,6 +23,18 @@ async function closeTab(tabs: Locator, tab: Locator): Promise<void> {
   await expect(tabs.getByRole("tab")).toHaveCount(count - 1);
 }
 
+function fileTabs(page: Page): Locator {
+  return workbench(page).getByRole("tablist", { name: /^Editor group 1 files/u });
+}
+
+async function closeFile(page: Page, name: string): Promise<void> {
+  const tabs = fileTabs(page);
+  const count = await tabs.getByRole("tab").count();
+  await tabs.getByRole("tab", { name, exact: true }).hover();
+  await tabs.getByRole("button", { name: `Close ${name}`, exact: true }).click();
+  await expect(tabs.getByRole("tab")).toHaveCount(count - 1);
+}
+
 async function openWorkbenchTab(page: Page, kind: string): Promise<void> {
   await page.getByRole("button", { name: "New workbench tab" }).click();
   await page
@@ -132,7 +144,7 @@ test("the workbench journey", async ({ desktop }) => {
       .getByRole("tabpanel", { name: "Editor" })
       .getByRole("region", { name: "Editor", exact: true });
 
-    await expect(editorPanel.getByRole("navigation", { name: "File path" })).toHaveText("Editor");
+    await expect(editorPanel.getByRole("navigation", { name: "File path" })).toBeEmpty();
     await expect(editorPanel.getByRole("combobox", { name: "Go to file" })).toBeVisible();
     const start = editorPanel.getByRole("region", { name: "Start" });
     await expect(start.getByRole("button", { name: "Show Explorer" })).toBeVisible();
@@ -172,12 +184,11 @@ test("the workbench journey", async ({ desktop }) => {
     await expect(editorPanel.getByText("Saved", { exact: true })).toBeVisible();
     await expect.poll(() => readFile(notesPath, "utf8")).toBe(NOTES.replace("jumps.", "leaps."));
 
-    await editorPanel.getByRole("button", { name: "File options" }).click();
-    await page.getByRole("menuitem", { name: "View Source" }).click();
+    const markdownView = editorPanel.getByRole("group", { name: "Markdown View" });
+    await markdownView.getByRole("button", { name: "Source", exact: true }).click();
     await expect(editorPanel.getByText("title: Field notes")).toBeVisible();
     await expect(editor.getByRole("heading")).toHaveCount(0);
-    await editorPanel.getByRole("button", { name: "File options" }).click();
-    await page.getByRole("menuitem", { name: "View Document" }).click();
+    await markdownView.getByRole("button", { name: "Document", exact: true }).click();
     await expect(editor.getByRole("heading", { name: "Field notes", level: 1 })).toBeVisible();
 
     await editor.getByRole("link", { name: "the guide" }).click({ modifiers: ["ControlOrMeta"] });
@@ -187,9 +198,8 @@ test("the workbench journey", async ({ desktop }) => {
         .getByRole("heading", { name: "Guide" }),
     ).toBeVisible();
 
-    const tabs = workbenchTabs(page);
-    await closeTab(tabs, tabs.getByRole("tab", { name: "guide.md" }));
-    await closeTab(tabs, tabs.getByRole("tab", { name: "notes.md" }));
+    await closeFile(page, "guide.md");
+    await closeFile(page, "notes.md");
   });
 
   await test.step("a PDF opens with its first page drawn, its page count and a zoom control", async () => {
@@ -218,8 +228,7 @@ test("the workbench journey", async ({ desktop }) => {
     await editorPanel.getByRole("button", { name: "Zoom in" }).click();
     await expect(editorPanel.getByText("125%")).toBeVisible();
 
-    const tabs = workbenchTabs(page);
-    await closeTab(tabs, tabs.getByRole("tab", { name: "field-guide.pdf" }));
+    await closeFile(page, "field-guide.pdf");
   });
 
   await test.step("Changes reports that the home folder is not a repository", async () => {
@@ -329,8 +338,8 @@ test("saved v7 workbench tabs reopen as Editor", async ({ desktop }, testInfo) =
   const page = desktop.page;
 
   for (const selection of [
-    { active: "files", label: "Editor", capture: "editor-selected" },
-    { active: "kept-document", label: "migration-notes.md", capture: "document-selected" },
+    { active: "files", capture: "editor-selected" },
+    { active: "kept-document", capture: "document-selected" },
   ]) {
     await test.step(`v7 restores ${selection.capture} as v8 and survives another reload`, async () => {
       const path = join(desktop.home, "migration-notes.md");
@@ -372,33 +381,29 @@ test("saved v7 workbench tabs reopen as Editor", async ({ desktop }, testInfo) =
         await page.locator("[data-nyte-shell]").waitFor({ state: "visible" });
         await openChat(page, FIXTURES.beta);
         const tabs = workbenchTabs(page);
-        await expect(tabs.getByRole("tab")).toHaveText([
-          "Editor",
-          "migration-notes.md",
-          "migration-preview.ts",
-        ]);
-        await expect(tabs.getByRole("tab", { name: selection.label, exact: true })).toHaveAttribute(
+        await expect(tabs.getByRole("tab")).toHaveText(["Editor"]);
+        await expect(tabs.getByRole("tab", { name: "Editor", exact: true })).toHaveAttribute(
           "aria-selected",
           "true",
         );
         await expect(tabs.getByRole("tab", { name: "Editor", exact: true })).toHaveAttribute(
           "id",
-          `${desktop.home}-tab-files`,
+          `${desktop.home}-tab-editor`,
         );
-        await expect(
-          tabs.getByRole("tab", { name: "migration-notes.md", exact: true }),
-        ).toHaveAttribute("id", `${desktop.home}-tab-kept-document`);
+        const files = fileTabs(page);
+        await expect(files.getByRole("tab")).toHaveText([
+          "migration-notes.md",
+          "migration-preview.ts",
+        ]);
+        const document = files.getByRole("tab", { name: "migration-notes.md", exact: true });
+        await expect(document).toHaveAttribute("aria-selected", "true");
+        await expect(document).toHaveAttribute("id", `${desktop.home}-file-tab-kept-document`);
         const editorPanel = workbench(page).getByRole("region", { name: "Editor", exact: true });
-        await expect(editorPanel).toBeVisible();
-
-        if (selection.active === "files")
-          await expect(editorPanel.getByRole("combobox", { name: "Go to file" })).toBeVisible();
-        else
-          await expect(
-            editorPanel
-              .getByRole("textbox", { name: "migration-notes.md" })
-              .getByRole("heading", { name: "Preserved document" }),
-          ).toBeVisible();
+        await expect(
+          editorPanel
+            .getByRole("textbox", { name: "migration-notes.md" })
+            .getByRole("heading", { name: "Preserved document" }),
+        ).toBeVisible();
 
         const written = await page.evaluate(() =>
           localStorage.getItem("nyte:desktop:workbench:v7"),

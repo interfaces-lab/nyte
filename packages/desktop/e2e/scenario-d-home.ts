@@ -3,6 +3,8 @@ import { join } from "node:path";
 import { pushedCiRepo } from "@nyte-ai/app/e2e/scenario-d";
 import { ciHome } from "@nyte-ai/bench";
 import type { CiRepo, CiRoute, ScenarioHome } from "@nyte-ai/bench";
+import { dev } from "@nyte-ai/core";
+import { sdk } from "@nyte-ai/sdk";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Value } from "typebox/value";
@@ -12,10 +14,19 @@ export interface CiDesktopHome extends AsyncDisposable {
   readonly repo: CiRepo;
 }
 
+/**
+ * The scenario's home with the CI repo as a workspace. The host runs as a launchd job and takes
+ * its PATH from the home's login shell, so the shell files put node and the repo's `gh` on it.
+ */
 export async function ciDesktopHome(parent: string, route: CiRoute): Promise<CiDesktopHome> {
   const repo = await pushedCiRepo(parent);
   const home = await ciHome({ route, root: parent });
-  await writeFile(join(home.home, ".zshrc"), "");
+  const profile = `export PATH='${repo.path.replaceAll("'", "'\\''")}'\n`;
+  await writeFile(join(home.home, ".zshrc"), profile);
+  await writeFile(join(home.home, ".profile"), profile);
+  dev.off();
+  const host = await sdk.open({ home: home.home, workspace: { kind: "local", path: repo.root } });
+  await host.close();
 
   return {
     home,

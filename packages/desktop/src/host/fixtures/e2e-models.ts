@@ -114,7 +114,7 @@ export function scriptedReply(text: string): Reply {
     }
 
     default:
-      return text.startsWith("Child ")
+      return text.startsWith("Subagent ")
         ? { content: [{ type: "text", text: "An agent reported back." }] }
         : { content: [{ type: "text", text: `Echo: ${text}` }] };
   }

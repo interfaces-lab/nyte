@@ -536,6 +536,7 @@ function ChangesPanelView({
           )}
           <ChangesStack
             ref={stack}
+            visible={visible}
             items={sections}
             collapsedPaths={collapsedPaths}
             onToggleCollapsed={toggleCollapsedPath}
