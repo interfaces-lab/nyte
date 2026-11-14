@@ -9,8 +9,6 @@ const web = createWebBridge().bridge;
 
 const desktop: NyteBridge = { ...web, clientSurface: "desktop" };
 
-const relay: NyteBridge = { ...web, relay: true };
-
 test.each<{
   readonly name: string;
   readonly bridge: NyteBridge;
@@ -28,9 +26,6 @@ test.each<{
     section: "profile",
     shown: true,
   },
-  { name: "a relay hides Usage", bridge: relay, section: "usage", shown: false },
-  { name: "a relay hides Providers", bridge: relay, section: "providers", shown: false },
-  { name: "a relay hides Profile", bridge: relay, section: "profile", shown: false },
 ])("$name, and the sidebar lists only what it shows", (row) => {
   installBridge(row.bridge);
   assert.equal(showsSettingsSection(row.section), row.shown);

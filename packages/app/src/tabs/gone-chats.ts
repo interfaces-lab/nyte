@@ -8,13 +8,17 @@ export interface GoneChats {
   readonly forget: ReadonlySet<SessionId>;
 }
 
-/** Every chat a tab shows or closed-tab history could reopen. */
+/**
+ * Every chat a tab shows, closed-tab history could reopen, or a pane hidden for it waits on, so a
+ * delete made here closes that pane when it commits as one made elsewhere does.
+ */
 export function watchedChats(state: WindowState): ReadonlySet<SessionId> {
-  return new Set(
-    [...state.tabs, ...state.closed.map((closed) => closed.tab)].flatMap((tab) =>
+  return new Set([
+    ...[...state.tabs, ...state.closed.map((closed) => closed.tab)].flatMap((tab) =>
       tabPlaces(tab).flatMap((place) => (place.kind === "session" ? [place.sessionId] : [])),
     ),
-  );
+    ...state.hidden.map((entry) => entry.sessionId),
+  ]);
 }
 
 /**

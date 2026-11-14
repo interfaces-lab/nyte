@@ -12,11 +12,18 @@ import { NEEDS_YOU_ANCHOR, needsYouStyles as styles } from "./needs-you.stylex.t
 
 const BADGE_CAP = 9;
 
-// Base UI traps focus in a popover only when it holds a close part, so the list renders a hidden one.
+/**
+ * Base UI traps focus in a popover only when it holds a close part, so the list renders a hidden one.
+ *
+ * The title bar clips the bell while the workbench covers the content, and Chromium hides a box
+ * anchored to a clipped anchor, so the stack lets go of the bell until it shows again. A bell
+ * clipped flush to the edge still counts as intersecting, so only a visible area counts as shown.
+ */
 export function NeedsYou(): ReactElement {
   const toasts = useToasts();
   const held = useHeldToasts();
   const [open, setOpen] = useState(false);
+  const [bellShown, setBellShown] = useState(true);
   const [visits, setVisits] = useState<Visits>({ opened: 0, closed: 0 });
   const bell = useRef<HTMLButtonElement>(null);
   const live = toasts.filter((item) => item.transitionStatus !== "ending");
@@ -50,7 +57,7 @@ export function NeedsYou(): ReactElement {
         setVisits({ ...visits, opened: eventTime(details.event) });
       }}
     >
-      <span {...props(styles.anchor)}>
+      <span ref={observeBell(setBellShown)} {...props(styles.anchor)}>
         <Popover.Trigger
           ref={bell}
           onPointerEnter={() => void loadDeferred("needsYou")}
@@ -66,7 +73,7 @@ export function NeedsYou(): ReactElement {
           </span>
         )}
       </span>
-      <ToastStack anchor={NEEDS_YOU_ANCHOR} hidden={open} />
+      <ToastStack anchor={bellShown ? NEEDS_YOU_ANCHOR : undefined} hidden={open} />
       <Popover.Portal>
         <Popover.Positioner side="bottom" align="end" sideOffset={4}>
           <Deferred entry="needsYou">
@@ -88,6 +95,27 @@ export function NeedsYou(): ReactElement {
       </Popover.Portal>
     </Popover.Root>
   );
+}
+
+function observeBell(
+  onChange: (shown: boolean) => void,
+): (bell: HTMLElement | null) => (() => void) | undefined {
+  return (bell) => {
+    if (bell === null) return undefined;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries.at(-1);
+
+        if (entry !== undefined) onChange(entry.intersectionRatio > 0);
+      },
+      { threshold: 0.01 },
+    );
+
+    observer.observe(bell);
+
+    return () => observer.disconnect();
+  };
 }
 
 function eventTime(event: Event): number {

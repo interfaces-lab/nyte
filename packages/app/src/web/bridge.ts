@@ -17,7 +17,6 @@ export interface Connection {
 
 export interface ConnectOptions {
   readonly signal?: AbortSignal;
-  readonly relay?: true;
   readonly expect?: HostEndpoint["expect"];
 }
 
@@ -125,7 +124,6 @@ function webPageUrl(url: string): string | undefined {
 export function createWebBridge(): WebBridge {
   let endpoint: HostEndpoint | undefined;
   let connection: SdkConnection | undefined;
-  let relay: true | undefined;
 
   const connected = (): SdkConnection => {
     if (connection === undefined) throw new Error(NOT_CONNECTED);
@@ -134,7 +132,7 @@ export function createWebBridge(): WebBridge {
   };
 
   const registerWorkspace = ({ path }: { path: string }): Promise<RegisterWorkspaceOutcome> =>
-    registerFolder(async () => connected(), path, false);
+    registerFolder(async () => connected(), path, false, "server");
 
   const openWorkspace = async (input: { path: string }): Promise<OpenWorkspaceOutcome> => {
     const registered = await registerWorkspace(input);
@@ -148,9 +146,6 @@ export function createWebBridge(): WebBridge {
     clientSurface: "web",
     platform: browserPlatform(),
     machineName: undefined,
-    get relay() {
-      return relay;
-    },
     host: {
       onMenuCommand: () => () => undefined,
       setThemePreference: () => undefined,
@@ -232,7 +227,6 @@ export function createWebBridge(): WebBridge {
       await connection?.close();
       connection = opened;
       endpoint = next;
-      relay = direct === undefined ? options?.relay : undefined;
       noteDirect(direct !== undefined);
 
       return opened;

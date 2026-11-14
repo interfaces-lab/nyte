@@ -7,6 +7,7 @@ import type { FakeModels } from "@nyte-ai/bench";
 import type { HostEvent } from "@nyte-ai/app/contract/bridge.ts";
 import type { Authority } from "@nyte-ai/schema";
 import { TOKEN } from "@nyte-ai/core/server";
+import { UsageScanner } from "@nyte-ai/host/usage-service";
 import { desktopSettingsPlugin } from "@nyte-ai/plugin/core/desktop-settings";
 import { sdk } from "@nyte-ai/sdk";
 import type { Connection, CredentialSource, Host, Listener, OpenHostOptions } from "@nyte-ai/sdk";
@@ -99,6 +100,7 @@ export async function testDesktop(
   const host = new DesktopHost({
     home,
     link,
+    usageScan: new UsageScanner(home),
     emitHostEvent: (event) => events.push(event),
     ...overrides,
   });

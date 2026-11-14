@@ -228,7 +228,11 @@ socketTest(
 
     assert.deepEqual(
       await made.host.call(1, "host.openWorkspace", { path: join(folder, "missing") }),
-      { kind: "failed", message: "This folder is not available on the server." },
+      {
+        kind: "failed",
+        message:
+          "Nyte can't read this folder. Check that it exists and that Nyte has access to it.",
+      },
     );
     assert.deepEqual(made.events, []);
 

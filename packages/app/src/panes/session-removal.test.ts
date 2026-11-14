@@ -8,7 +8,7 @@ const first = asId<"session">("first");
 
 const second = asId<"session">("second");
 
-test("Undo restores both archived panes and their original focus", () => {
+test("Undo restores both deleted chats in their panes and their original focus", () => {
   const controller = tabPanes();
   selectSession(controller, first);
   runPane(controller, { kind: "split", direction: "right" });
@@ -18,8 +18,8 @@ test("Undo restores both archived panes and their original focus", () => {
   const restoreSecond = controller.window.hide(second);
   assert.equal(paneForSession(paneLayout(controller), first), undefined);
   assert.equal(paneForSession(paneLayout(controller), second), undefined);
-  assert.equal(restoreSecond(), true);
-  assert.equal(restoreFirst(), true);
+  restoreSecond();
+  restoreFirst();
   assert.ok(paneForSession(paneLayout(controller), first));
   assert.ok(paneForSession(paneLayout(controller), second));
   assert.deepEqual(activeSelection(paneLayout(controller)), {
@@ -33,7 +33,7 @@ test("Undo never replaces a newer chat or a new draft", () => {
   selectSession(controller, first);
   const restore = controller.window.hide(first);
   selectSession(controller, second);
-  assert.equal(restore(), false);
+  restore();
   assert.deepEqual(activeSelection(paneLayout(controller)), {
     kind: "session",
     sessionId: second,
@@ -48,11 +48,12 @@ test("Undo never replaces a newer chat or a new draft", () => {
       selectionEnd: 13,
     },
   });
-  assert.equal(restoreSecond(), false);
+  restoreSecond();
+  assert.equal(paneForSession(paneLayout(controller), second), undefined);
   assert.equal(controller.viewState.readBlank(PRIMARY).composer.draft, "Keep my draft");
 });
 
-test("archiving a background pane does not move focus away from the active chat", () => {
+test("deleting a background pane's chat does not move focus away from the active chat", () => {
   const controller = tabPanes();
   selectSession(controller, first);
   runPane(controller, { kind: "split", direction: "right" });

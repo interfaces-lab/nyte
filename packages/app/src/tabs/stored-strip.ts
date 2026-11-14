@@ -10,6 +10,7 @@ import { persistPaneContent, restorePaneContent } from "../panes/pane-kinds.ts";
 import type { PaneContent } from "../panes/pane-kinds.ts";
 import { chatContent, paneSelectionSchema } from "../panes/pane-layout.ts";
 import type { PaneSelection } from "../panes/pane-layout.ts";
+import { withChatsInOneTab } from "./model.ts";
 import type { LastingTab, WindowState } from "./model.ts";
 
 const strict = { additionalProperties: false };
@@ -102,15 +103,18 @@ export function storeStrip(state: WindowState): StoredStrip {
 }
 
 export function parseStrip(stored: unknown, createId: () => string): WindowState | undefined {
-  if (Value.Check(currentStripSchema, stored))
-    return restoreStrip(
-      stored,
-      (layout) =>
-        restoreLayout(layout, restorePaneContent) ??
-        createLayout(chatContent({ kind: "blank" }), { newId: createId }),
-    );
+  const restored = Value.Check(currentStripSchema, stored)
+    ? restoreStrip(
+        stored,
+        (layout) =>
+          restoreLayout(layout, restorePaneContent) ??
+          createLayout(chatContent({ kind: "blank" }), { newId: createId }),
+      )
+    : Value.Check(earlierStripSchema, stored)
+      ? restoreStrip(stored, migrateLayout)
+      : undefined;
 
-  return Value.Check(earlierStripSchema, stored) ? restoreStrip(stored, migrateLayout) : undefined;
+  return restored === undefined ? undefined : withChatsInOneTab(restored, createId);
 }
 
 function restoreStrip<Stored>(

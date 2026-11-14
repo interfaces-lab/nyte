@@ -243,10 +243,12 @@ export function Titlebar(): ReactElement {
                 ))}
               </span>
             )}
-        </span>
-        <span {...props(titlebarStyles.trailing, !workspaceVisible && titlebarStyles.trailingLast)}>
-          <span {...props(titlebarStyles.control)}>
-            <NeedsYou />
+          <span
+            {...props(titlebarStyles.trailing, !workspaceVisible && titlebarStyles.trailingLast)}
+          >
+            <span {...props(titlebarStyles.control)}>
+              <NeedsYou />
+            </span>
           </span>
         </span>
         {workspaceVisible && (

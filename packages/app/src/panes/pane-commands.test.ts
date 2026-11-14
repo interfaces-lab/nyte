@@ -7,7 +7,7 @@ import type { Layout, LayoutNode, PaneId } from "./layout.ts";
 import { dropTarget } from "./pane-commands.ts";
 import type { TabPanes } from "../tabs/window-store.ts";
 import type { PaneContent } from "./pane-kinds.ts";
-import { chatPanes } from "./pane-layout.ts";
+import { chatPanes, paneForSession } from "./pane-layout.ts";
 
 const A = asId<"session">("A");
 
@@ -40,12 +40,13 @@ const six: Fixture = (controller) => {
     runPane(controller, { kind: "split", direction: "right" });
 };
 
-/** Undoes hiding A from [A|B] after `between` ran on the pane A left, expecting `accepted`. */
+/** Undoes hiding A from [A|B] after `between` ran on the pane A left, expecting A back when `accepted`. */
 function unhide(between: Command, accepted: boolean): Command {
   return (controller, panes) => {
     const restore = controller.window.hide(A);
     between(controller, panes);
-    expect(restore()).toBe(accepted);
+    restore();
+    expect(paneForSession(paneLayout(controller), A) !== undefined).toBe(accepted);
   };
 }
 

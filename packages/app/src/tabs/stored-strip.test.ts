@@ -1,5 +1,6 @@
 import { asId } from "@nyte-ai/schema";
 import { expect, test } from "vitest";
+import { layoutPanes } from "../panes/layout.ts";
 import type { Layout, Pane } from "../panes/layout.ts";
 import type { PaneContent } from "../panes/pane-kinds.ts";
 import { chatContent } from "../panes/pane-layout.ts";
@@ -95,4 +96,106 @@ test.each<{
   const saved = storeStrip(restored);
   expect(saved.version).toBe(3);
   expect(parseStrip(JSON.parse(JSON.stringify(saved)), () => "unused")).toEqual(restored);
+});
+
+function chatTab(id: string, ...selections: readonly PaneSelection[]) {
+  const panes = selections.map((selection, index) => pane(`${id}-${String(index)}`, selection));
+  const first = panes[0];
+  const second = panes[1];
+
+  if (first === undefined) throw new Error("A tab shows a pane");
+
+  const root: Layout<PaneContent>["root"] =
+    second === undefined
+      ? first
+      : {
+          kind: "split",
+          id: asId<"split">(`${id}-split`),
+          direction: "right",
+          children: [
+            { node: first, size: 1 },
+            { node: second, size: 1 },
+          ],
+        };
+
+  return { id, view: { kind: "panes" as const, layout: { root, focus: [first.id] } } } as const;
+}
+
+test.each<{
+  readonly name: string;
+  readonly stored: object;
+  readonly tabs: readonly (readonly [string, readonly string[]])[];
+  readonly active: string;
+}>([
+  {
+    name: "a chat saved in two tabs stays in the active one",
+    stored: storeStrip({
+      tabs: [chatTab("one", alpha), chatTab("two", alpha)],
+      activeTabId: "two",
+      recent: ["one"],
+      closed: [],
+      hidden: [],
+    }),
+    tabs: [["two", ["alpha"]]],
+    active: "two",
+  },
+  {
+    name: "a split keeps its other chat",
+    stored: storeStrip({
+      tabs: [chatTab("one", beta, alpha), chatTab("two", alpha)],
+      activeTabId: "two",
+      recent: ["one"],
+      closed: [],
+      hidden: [],
+    }),
+    tabs: [
+      ["one", ["beta"]],
+      ["two", ["alpha"]],
+    ],
+    active: "two",
+  },
+  {
+    name: "a chat the active tab does not show stays in the tab looked at last",
+    stored: storeStrip({
+      tabs: [chatTab("one", beta), chatTab("two", alpha), chatTab("three", alpha)],
+      activeTabId: "one",
+      recent: ["three", "two"],
+      closed: [],
+      hidden: [],
+    }),
+    tabs: [
+      ["one", ["beta"]],
+      ["three", ["alpha"]],
+    ],
+    active: "one",
+  },
+  {
+    name: "a version 2 window with a chat in two tabs",
+    stored: {
+      ...version2({ kind: "single", paneId: "primary", selection: alpha }),
+      tabs: ["one", "two"].map((id) => ({
+        id,
+        view: { kind: "panes", layout: { kind: "single", paneId: "primary", selection: alpha } },
+      })),
+      activeTabId: "one",
+    },
+    tabs: [["one", ["alpha"]]],
+    active: "one",
+  },
+])("a saved window: $name", ({ stored, tabs, active }) => {
+  const restored = parseStrip(JSON.parse(JSON.stringify(stored)), () => "unused");
+
+  expect(
+    restored?.tabs.map((tab) => [
+      tab.id,
+      tab.view.kind === "page"
+        ? []
+        : layoutPanes(tab.view.layout.root).map((shown) =>
+            shown.tab.content.fields.selection.kind === "session"
+              ? shown.tab.content.fields.selection.sessionId
+              : "blank",
+          ),
+    ]),
+  ).toEqual(tabs);
+  expect(restored?.activeTabId).toBe(active);
 });

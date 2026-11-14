@@ -94,6 +94,11 @@ test.each([
     ["a", "b"],
   ],
   [
+    "a chat deleted here while its undo waits",
+    [open("a"), open("b"), () => ({ kind: "hide-chat", sessionId: asId<"session">("a") })],
+    ["a", "b"],
+  ],
+  [
     "a page shows no chat",
     [
       () => ({

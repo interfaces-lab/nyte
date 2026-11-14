@@ -2,15 +2,23 @@ import type { Connection } from "@nyte-ai/sdk";
 import type { RegisterWorkspaceOutcome } from "./bridge.ts";
 import { errorMessage } from "./errors.ts";
 
+/** What a person reads when the host can't read the folder, by where the host keeps its folders. */
+const UNREADABLE_FOLDER = {
+  local: "Nyte can't read this folder. Check that it exists and that Nyte has access to it.",
+  server: "The server can't read this folder. Check the path on the server.",
+} as const;
+
 /**
  * Adds the folder at `path` to the host's workspaces, trusting it first when `trust` is set. Both
- * bridges register through this, so a folder carries the host's own path and a failure reads the
- * same on each: it comes back as `failed` with words a person can read, never as a rejection.
+ * bridges register through this, so a folder carries the host's own path and a failure comes back
+ * as `failed` with words a person can read, never as a rejection. `folders` says whether the host
+ * reads folders on this computer or on a server.
  */
 export async function registerFolder(
   host: () => Promise<Pick<Connection, "workspaces" | "workspace">>,
   path: string,
   trust: boolean,
+  folders: keyof typeof UNREADABLE_FOLDER,
 ): Promise<RegisterWorkspaceOutcome> {
   try {
     const connection = await host();
@@ -24,7 +32,7 @@ export async function registerFolder(
       return { kind: "failed", message: "The folder changed. Try again." };
 
     if (added.kind === "unavailable")
-      return { kind: "failed", message: "This folder is not available on the server." };
+      return { kind: "failed", message: UNREADABLE_FOLDER[folders] };
 
     if (trust) await connection.workspace(added.workspace).update({ projectResources: true });
     const workspace = await connection.workspace(added.workspace).info();

@@ -587,6 +587,5 @@ export interface NyteBridge {
   readonly platform: NodeJS.Platform;
   readonly machineName: string | undefined;
   readonly canvasShell?: string;
-  readonly relay?: true;
   readonly host: HostBridge;
 }

@@ -573,6 +573,27 @@ function closeChats(
 }
 
 /**
+ * A window saved before a chat could be in only one tab keeps each chat in the tab looked at last:
+ * the active tab, then the recent ones, then the strip's order. A saved window hides no pane, so
+ * no blank draft is read.
+ */
+export function withChatsInOneTab(state: WindowState, createId: () => string): WindowState {
+  const order = new Set([state.activeTabId, ...state.recent, ...state.tabs.map((tab) => tab.id)]);
+
+  return [...order].reduce((current, tabId) => {
+    const tab = current.tabs.find((candidate) => candidate.id === tabId);
+
+    return tab === undefined
+      ? current
+      : closeChats(current, new Set(shownChats(tabLayout(tab))), createId, readsNoBlank, tabId);
+  }, state);
+}
+
+function readsNoBlank(): never {
+  throw new Error("A saved window hides no pane.");
+}
+
+/**
  * A chat going away, deleted here with an undo pending, turns blank in every tab that shows it, and
  * each blank pane is remembered so the undo or the commit can find it.
  */
@@ -686,6 +707,33 @@ function leavePage(state: WindowState, createId: () => string): WindowState {
 }
 
 export function reduce(
+  state: WindowState,
+  action: WindowAction,
+  createId: () => string,
+  blank: BlankDrafts,
+): WindowState {
+  return withLiveHidden(step(state, action, createId, blank));
+}
+
+/**
+ * A hidden pane is remembered only while its tab is open and it still shows the blank: once it
+ * closes or shows something else, neither an undo nor a commit can act on it.
+ */
+function withLiveHidden(state: WindowState): WindowState {
+  const hidden = state.hidden.filter((entry) =>
+    state.tabs.some(
+      (tab) =>
+        tab.id === entry.tabId &&
+        chatPanes(tabLayout(tab)).some(
+          (chat) => chat.pane === entry.pane && chat.selection.kind === "blank",
+        ),
+    ),
+  );
+
+  return hidden.length === state.hidden.length ? state : { ...state, hidden };
+}
+
+function step(
   state: WindowState,
   action: WindowAction,
   createId: () => string,

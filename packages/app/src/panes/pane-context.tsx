@@ -32,7 +32,7 @@ export function PaneControllerProvider({
   return <PaneControllerContext value={value}>{children}</PaneControllerContext>;
 }
 
-export function hideFromPanes(sessionId: SessionId): () => boolean {
+export function hideFromPanes(sessionId: SessionId): () => void {
   return windowTabs.store.hide(sessionId);
 }
 

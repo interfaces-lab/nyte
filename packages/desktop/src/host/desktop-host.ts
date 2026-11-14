@@ -1,6 +1,5 @@
 import { basename, join } from "node:path";
 import { serial } from "@nyte-ai/schema/serial";
-import { UsageScanner } from "@nyte-ai/host/usage-service";
 import type { UsageScanReader } from "@nyte-ai/host/usage-service";
 import { API_REVISION, asId } from "@nyte-ai/schema";
 import { connect, createSendJournal, SdkError } from "@nyte-ai/sdk/client";
@@ -47,7 +46,7 @@ export interface DesktopHostDependencies {
   readonly home: string;
   /** Main's one link to the host: the connection calls go over and the host view this follows. */
   readonly link: Pick<HostLink, "connection" | "follow" | "attach">;
-  readonly usageScan?: UsageScanReader;
+  readonly usageScan: UsageScanReader;
   readonly remoteAccessPlugins?: RemoteAccessPlugins;
   readonly connect?: ConnectRuntime;
   readonly keepAwake?: (awake: boolean) => void;
@@ -230,7 +229,7 @@ export class DesktopHost {
   constructor(dependencies: DesktopHostDependencies) {
     this.#deps = dependencies;
     this.#servers = new ServerSettingsStore(join(dependencies.home, ".nyte", "server.json"));
-    this.#usageScan = dependencies.usageScan ?? new UsageScanner(dependencies.home);
+    this.#usageScan = dependencies.usageScan;
 
     this.#connect =
       dependencies.connect ??
@@ -434,7 +433,7 @@ export class DesktopHost {
   } satisfies HostCalls;
 
   registerWorkspace(path: string): Promise<RegisterWorkspaceOutcome> {
-    return registerFolder(() => this.#deps.link.connection(), path, false);
+    return registerFolder(() => this.#deps.link.connection(), path, false, "local");
   }
 
   /** The host's available local folders. */
@@ -511,7 +510,12 @@ export class DesktopHost {
   }
 
   async #openWorkspace(path: string, trust: boolean): Promise<OpenWorkspaceOutcome> {
-    const registered = await registerFolder(() => this.#deps.link.connection(), path, trust);
+    const registered = await registerFolder(
+      () => this.#deps.link.connection(),
+      path,
+      trust,
+      "local",
+    );
 
     return registered.kind === "failed"
       ? registered

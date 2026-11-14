@@ -544,6 +544,20 @@ const gone =
       sessionIds: new Set(ids.map((id) => asId<"session">(id))),
     });
 
+const closeOthers =
+  (id: string) =>
+  (store: Window): void => {
+    const kept = store.getSnapshot().tabs.find((tab) => label(tabPlace(tab)) === id);
+
+    if (kept === undefined) throw new Error(`No tab shows ${id}`);
+    store.dispatch({ kind: "close-others", tabId: kept.id });
+  };
+
+const openNextToParent =
+  (id: string) =>
+  (store: Window): void =>
+    store.dispatch({ kind: "open", place: chat(id), target: "next-to-parent" });
+
 const typeInBlank = (store: Window): void => {
   const state = store.getSnapshot();
   const tab = activeTab(state);
@@ -566,42 +580,50 @@ const splitWindow = [
   inActiveTab(() => ({ kind: "show", selection: chat("c") })),
 ];
 
-test.each<[string, readonly ((store: Window) => void)[], readonly string[][], string]>([
+test.each<
+  [string, readonly ((store: Window) => void)[], readonly string[][], string, readonly string[]]
+>([
   [
     "a chat deleted in a background tab is hidden there while the undo waits (D7)",
     [openChat("a"), openChat("b"), deleteChat("a")],
     [["blank"], ["b"]],
     "b",
+    ["a"],
   ],
   [
     "undo brings it back in that tab",
     [openChat("a"), openChat("b"), deleteChat("a", true)],
     [["a"], ["b"]],
     "b",
+    [],
   ],
   [
     "the delete committing closes the tab it left blank, as a delete elsewhere does",
     [openChat("a"), openChat("b"), deleteChat("a"), gone("a")],
     [["b"]],
     "b",
+    [],
   ],
   [
     "the chat shown here, once deleted, closes its tab like any other (D7)",
     [openChat("a"), openChat("b"), deleteChat("b"), gone("b")],
     [["a"]],
     "a",
+    [],
   ],
   [
     "a split keeps its other chat once the delete commits (D7)",
     [...splitWindow, deleteChat("b"), gone("b")],
     [["a"], ["c"]],
     "c",
+    [],
   ],
   [
     "while the undo waits, the split shows a blank where the chat was",
     [...splitWindow, deleteChat("b")],
     [["a"], ["blank", "c"]],
     "c",
+    ["b"],
   ],
   [
     "a blank pane typed in after the delete stays when it commits",
@@ -617,14 +639,30 @@ test.each<[string, readonly ((store: Window) => void)[], readonly string[][], st
     ],
     [["a"], ["blank", "c"]],
     "blank",
+    [],
   ],
   [
     "a chat deleted elsewhere closes the same panes, with no undo",
     [...splitWindow, gone("b", "a")],
     [["c"]],
     "c",
+    [],
   ],
-])("a chat going away: %s", (_, steps, tabs, active) => {
+  [
+    "a tab closed while the undo waits leaves nothing for the undo to fill",
+    [openChat("a"), openChat("b"), deleteChat("b"), closeOthers("a")],
+    [["a"]],
+    "a",
+    [],
+  ],
+  [
+    "a blank tab the next chat reuses leaves nothing for the undo to fill",
+    [openChat("b"), deleteChat("b"), openNextToParent("c")],
+    [["c"]],
+    "c",
+    [],
+  ],
+])("a chat going away: %s", (_, steps, tabs, active, waiting) => {
   const drafts = new WindowDrafts();
   const store = new WindowStore(initialWindow("t1", createId), () => drafts);
 
@@ -636,6 +674,7 @@ test.each<[string, readonly ((store: Window) => void)[], readonly string[][], st
   ).toEqual(tabs);
   expect(label(tabPlace(activeTab(state)))).toBe(active);
   expect(state.closed, "a deleted chat's tab is not offered again").toEqual([]);
+  expect(state.hidden.map((entry) => entry.sessionId)).toEqual(waiting);
 });
 
 const project: Place = { kind: "project", projectId: asId<"project">("p") };

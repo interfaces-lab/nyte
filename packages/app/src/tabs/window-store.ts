@@ -169,19 +169,11 @@ export class WindowStore {
     viewState.removeDraft(draftId);
   }
 
-  /**
-   * Blanks the chat in every tab that shows it and returns its undo, which reports whether the
-   * chat came back anywhere.
-   */
-  hide(sessionId: SessionId): () => boolean {
+  /** Blanks the chat in every tab that shows it and returns its undo. */
+  hide(sessionId: SessionId): () => void {
     this.dispatch({ kind: "hide-chat", sessionId });
 
-    return () => {
-      const before = this.#state;
-      this.dispatch({ kind: "unhide-chat", sessionId });
-
-      return this.#state.tabs !== before.tabs;
-    };
+    return () => this.dispatch({ kind: "unhide-chat", sessionId });
   }
 
   #paneShowingDraft(tabId: string, draftId: string): ChatPane | undefined {
