@@ -536,6 +536,12 @@ const deleteChat =
     if (undo) restore();
   };
 
+/** The delete's Undo, pressed after whatever came between. */
+const undoDelete =
+  (id: string) =>
+  (store: Window): void =>
+    store.dispatch({ kind: "unhide-chat", sessionId: asId<"session">(id) });
+
 const gone =
   (...ids: readonly string[]) =>
   (store: Window): void =>
@@ -595,6 +601,27 @@ test.each<
     [openChat("a"), openChat("b"), deleteChat("a", true)],
     [["a"], ["b"]],
     "b",
+    [],
+  ],
+  [
+    "undo after the chat was reopened in another tab leaves it there and the blank as it is",
+    [openChat("a"), openChat("b"), deleteChat("a"), openChat("a"), undoDelete("a")],
+    [["blank"], ["b"], ["a"]],
+    "a",
+    [],
+  ],
+  [
+    "undo of a chat deleted twice brings it back where it was deleted last, closing no tab",
+    [
+      openChat("a"),
+      openChat("b"),
+      deleteChat("a"),
+      openChat("a"),
+      deleteChat("a"),
+      undoDelete("a"),
+    ],
+    [["blank"], ["b"], ["a"]],
+    "a",
     [],
   ],
   [

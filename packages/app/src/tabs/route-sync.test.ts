@@ -1,11 +1,18 @@
 import { expect, test } from "vitest";
 import { noDrafts } from "../../test/panes.ts";
-import type { SessionId } from "@nyte-ai/sdk";
+import type { SessionId, WorkspaceInfo } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import { activeTab, initialWindow, reduce } from "./model.ts";
 import type { Place, Tab, WindowAction, WindowState } from "./model.ts";
-import type { SelectedWorkspace } from "../contract/bridge.ts";
-import { adoptLocation, followFolder, restoredFolder, routeFor } from "./route-sync.ts";
+import type { OpenWorkspaceOutcome, SelectedWorkspace } from "../contract/bridge.ts";
+import {
+  adoptLocation,
+  checkedFolder,
+  followFolder,
+  restoredFolder,
+  routeFor,
+  unreadableFolder,
+} from "./route-sync.ts";
 import type { FolderFollow, ShownFolder } from "./route-sync.ts";
 
 let lastId = 0;
@@ -282,4 +289,106 @@ test("launch: the host skips an untrusted folder the window remembered, then fol
     { workspace: undefined },
     { kind: "activate", folder: "/a" },
   ]);
+});
+
+function listed(folder: SelectedWorkspace, readable: boolean): WorkspaceInfo {
+  return {
+    id: folder.id,
+    target: { kind: "local", path: folder.path },
+    identity: asId("identity"),
+    availability: readable ? { kind: "available" } : { kind: "unavailable", reason: "unreachable" },
+    projectResources: null,
+    trusted: null,
+    projectSources: [],
+    addedBy: asId("principal"),
+    sessions: 0,
+    writers: [],
+    isolation: null,
+  };
+}
+
+test.each<{
+  readonly name: string;
+  readonly shown: SelectedWorkspace | undefined;
+  readonly workspaces: readonly WorkspaceInfo[] | undefined;
+  readonly asked: SelectedWorkspace | undefined;
+}>([
+  {
+    name: "a folder the host lists as unreadable is asked about again",
+    shown: finder,
+    workspaces: [listed(folderA, true), listed(finder, false)],
+    asked: finder,
+  },
+  {
+    name: "a readable folder is not",
+    shown: finder,
+    workspaces: [listed(finder, true)],
+    asked: undefined,
+  },
+  {
+    name: "another folder being unreadable doesn't concern this window",
+    shown: folderA,
+    workspaces: [listed(folderA, true), listed(finder, false)],
+    asked: undefined,
+  },
+  {
+    name: "a folder the list doesn't have yet, as one just opened, waits for the list",
+    shown: picked,
+    workspaces: [listed(folderA, true)],
+    asked: undefined,
+  },
+  { name: "Home has no folder to check", shown: undefined, workspaces: [], asked: undefined },
+  {
+    name: "before the list arrives nothing is asked",
+    shown: finder,
+    workspaces: undefined,
+    asked: undefined,
+  },
+])("unreadable folder: $name", (row) => {
+  expect(unreadableFolder(row.shown, row.workspaces)).toEqual(row.asked);
+});
+
+const UNREADABLE: OpenWorkspaceOutcome = {
+  kind: "failed",
+  message: "Nyte can't read this folder. Check that it exists and that Nyte has access to it.",
+};
+
+test.each<{
+  readonly name: string;
+  readonly now: SelectedWorkspace | undefined;
+  readonly outcome: OpenWorkspaceOutcome;
+  readonly shown: { readonly workspace: SelectedWorkspace | undefined } | undefined;
+}>([
+  {
+    name: "a folder the host can't open any more gives way to Home",
+    now: finder,
+    outcome: UNREADABLE,
+    shown: { workspace: undefined },
+  },
+  {
+    name: "a folder the host opens again stays",
+    now: finder,
+    outcome: { kind: "opened", workspace: finder, needsTrust: false },
+    shown: undefined,
+  },
+  {
+    name: "a folder made again at its path is shown as the host now knows it",
+    now: finder,
+    outcome: { kind: "opened", workspace: { ...finder, id: asId("wf2") }, needsTrust: false },
+    shown: { workspace: { ...finder, id: asId("wf2") } },
+  },
+  {
+    name: "a folder picked while the host answered stays",
+    now: picked,
+    outcome: UNREADABLE,
+    shown: undefined,
+  },
+  {
+    name: "Home chosen while the host answered stays",
+    now: undefined,
+    outcome: UNREADABLE,
+    shown: undefined,
+  },
+])("checked folder: $name", (row) => {
+  expect(checkedFolder(finder, row.now, row.outcome)).toEqual(row.shown);
 });

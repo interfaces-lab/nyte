@@ -1,9 +1,11 @@
+import { hashKey } from "@tanstack/react-query";
 import { useRouter } from "@tanstack/react-router";
 import { useState, useSyncExternalStore } from "react";
-import type { SessionId } from "@nyte-ai/sdk";
+import type { SessionId, WorkspaceInfo } from "@nyte-ai/sdk";
 import { chatFolderPath, subscribeChats, useChats } from "../chats/index.ts";
 import { activateWorkspace } from "../sidebar/use-show-session.ts";
 import { nyte } from "../contract/nyte.ts";
+import { handleOpenOutcome } from "../panes/open-workspace.tsx";
 import type { HostState } from "../contract/nyte.ts";
 import { useProjects } from "../data/projects.ts";
 import { keys, queryClient } from "../data/query-client.ts";
@@ -14,7 +16,14 @@ import { goneChats, watchedChats } from "./gone-chats.ts";
 import { activeTab, tabPlace } from "./model.ts";
 import type { WindowState } from "./model.ts";
 import { locationPlace, navigateTo } from "./places.ts";
-import { adoptLocation, followFolder, restoredFolder, routeFor } from "./route-sync.ts";
+import {
+  adoptLocation,
+  checkedFolder,
+  followFolder,
+  restoredFolder,
+  routeFor,
+  unreadableFolder,
+} from "./route-sync.ts";
 import type { FolderFollow, ShownFolder } from "./route-sync.ts";
 import { windowTabItems } from "./tab-items.ts";
 import type { WindowTabItem } from "./window-tab-strip.tsx";
@@ -85,14 +94,60 @@ export function useWindowTabsSync(): void {
     const unsubscribeTabs = windowTabs.subscribe(sync);
     const unsubscribeChats = subscribeChats(sync);
     const unsubscribeGone = forgetGoneChats();
+    const unsubscribeFolder = checkShownFolder();
 
     return () => {
       unsubscribeRouter();
       unsubscribeTabs();
       unsubscribeChats();
       unsubscribeGone();
+      unsubscribeFolder();
     };
   });
+}
+
+/**
+ * Asks the host to open the window's folder again whenever its list says it can't read it, and
+ * reads that list again each time the window comes to the front, so a folder deleted while the
+ * window shows it is noticed there.
+ */
+function checkShownFolder(): () => void {
+  const listKey = hashKey(keys.workspaces);
+  let asking: string | undefined;
+
+  const check = (): void => {
+    const asked = unreadableFolder(
+      shownFolder().workspace,
+      queryClient.getQueryData<readonly WorkspaceInfo[]>(keys.workspaces),
+    );
+
+    if (asked === undefined || asking === asked.path) return;
+    asking = asked.path;
+
+    void nyte.host.openWorkspace({ path: asked.path }).then((outcome) => {
+      asking = undefined;
+      const shown = checkedFolder(asked, shownFolder().workspace, outcome);
+
+      if (shown === undefined) return;
+      queryClient.setQueryData(keys.host, shown);
+      handleOpenOutcome(outcome);
+    });
+  };
+
+  const reread = (): void =>
+    void queryClient.invalidateQueries({ queryKey: keys.workspaces, exact: true });
+
+  const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
+    if (event.type === "updated" && event.query.queryHash === listKey) check();
+  });
+
+  window.addEventListener("focus", reread);
+  check();
+
+  return () => {
+    unsubscribe();
+    window.removeEventListener("focus", reread);
+  };
 }
 
 function forgetGoneChats(): () => void {

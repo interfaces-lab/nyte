@@ -415,7 +415,6 @@ export type HostEvent =
   | { kind: "server_changed" }
   | { kind: "open_session"; session: SessionId }
   | { kind: "remote_access_changed" }
-  | { kind: "status"; message: string }
   | { kind: "browser_changed"; surface: string; state: BrowserSurfaceState }
   | { kind: "browser_download"; surface: string; download: BrowserDownload }
   | { kind: "browser_open_tab"; surface: string; url: string; background: boolean }

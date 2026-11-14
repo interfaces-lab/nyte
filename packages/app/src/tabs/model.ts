@@ -628,7 +628,11 @@ function hideChat(
   return { ...hidden, hidden: [...hidden.hidden, ...hiding] };
 }
 
-/** Undoing a hide fills each pane it blanked that still waits, empty, for the chat. */
+/**
+ * Undoing a hide brings the chat back in one place: the pane hidden last that still waits, empty,
+ * for it, then an earlier one. A chat reopened meanwhile stays where it was reopened, and the panes
+ * it left stay blank.
+ */
 function unhideChat(
   state: WindowState,
   sessionId: SessionId,
@@ -638,23 +642,24 @@ function unhideChat(
   const hiding = state.hidden.filter((entry) => entry.sessionId === sessionId);
 
   if (hiding.length === 0) return state;
+  const place: Place = { kind: "session", sessionId };
 
-  const shown = hiding.reduce(
+  return hiding.toReversed().reduce<WindowState>(
     (current, entry) =>
-      reduce(
-        current,
-        {
-          kind: "pane",
-          tabId: entry.tabId,
-          command: { kind: "unhide", sessionId, pane: entry.pane, focused: entry.focused },
-        },
-        createId,
-        blank,
-      ),
-    state,
+      current.tabs.some((tab) => showing(tab, place))
+        ? current
+        : reduce(
+            current,
+            {
+              kind: "pane",
+              tabId: entry.tabId,
+              command: { kind: "unhide", sessionId, pane: entry.pane, focused: entry.focused },
+            },
+            createId,
+            blank,
+          ),
+    { ...state, hidden: state.hidden.filter((entry) => entry.sessionId !== sessionId) },
   );
-
-  return { ...shown, hidden: shown.hidden.filter((entry) => entry.sessionId !== sessionId) };
 }
 
 /**

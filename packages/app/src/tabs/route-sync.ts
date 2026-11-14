@@ -1,5 +1,5 @@
-import type { SessionId } from "@nyte-ai/sdk";
-import type { HostState, SelectedWorkspace } from "../contract/bridge.ts";
+import type { SessionId, WorkspaceInfo } from "@nyte-ai/sdk";
+import type { HostState, OpenWorkspaceOutcome, SelectedWorkspace } from "../contract/bridge.ts";
 import { activeTab, tabPlace } from "./model.ts";
 import type { Place, Tab, WindowAction, WindowState } from "./model.ts";
 import { pageSection, samePlaceAt } from "./places.ts";
@@ -39,6 +39,40 @@ export function restoredFolder(
   if (asked.chosen || now.workspace !== asked.workspace) return undefined;
 
   return { workspace: restored };
+}
+
+/**
+ * The window's folder when the host lists it as one it can't read, as when it was deleted while the
+ * window showed it or before a window Finder opened reloaded; the window then asks the host to open
+ * it again.
+ */
+export function unreadableFolder(
+  shown: SelectedWorkspace | undefined,
+  workspaces: readonly WorkspaceInfo[] | undefined,
+): SelectedWorkspace | undefined {
+  const listed = workspaces?.find((workspace) => workspace.id === shown?.id);
+
+  return listed?.availability.kind === "unavailable" ? shown : undefined;
+}
+
+/**
+ * What the window shows once the host answered whether it can open `asked` again, or undefined to
+ * keep what it shows: a folder it can't open gives way to Home, as a chat's unreadable folder does,
+ * a folder made again at the same path is shown as the host now knows it, and a window that left
+ * the folder while the host answered stays where it went.
+ */
+export function checkedFolder(
+  asked: SelectedWorkspace,
+  now: SelectedWorkspace | undefined,
+  outcome: OpenWorkspaceOutcome,
+): HostState | undefined {
+  if (now?.path !== asked.path) return undefined;
+
+  if (outcome.kind === "failed") return { workspace: undefined };
+
+  return outcome.kind === "opened" && outcome.workspace.id !== asked.id
+    ? { workspace: outcome.workspace }
+    : undefined;
 }
 
 /**

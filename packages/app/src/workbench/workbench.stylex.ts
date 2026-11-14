@@ -29,7 +29,7 @@ export const workbenchStyles = create({
   },
   panelOpen: {
     minWidth: 0,
-    width: `clamp(${workbench.widthMin}px, var(--_workbench-width), max(${workbench.widthMin}px, calc(100cqi - ${workbench.centerWidthMin}px)))`,
+    width: `min(100cqi, clamp(${workbench.widthMin}px, var(--_workbench-width), max(${workbench.widthMin}px, calc(100cqi - ${workbench.centerWidthMin}px))))`,
   },
   panelWidth: (pixels: number) => ({ "--_workbench-width": `${pixels}px` }),
   railHost: { width: workbench.railWidth, minWidth: workbench.railWidth },

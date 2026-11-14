@@ -60,10 +60,6 @@ export function useHostEvents(): void {
           void queryClient.invalidateQueries({ queryKey: keys.remoteAccess });
 
           return;
-        case "status":
-          toast.add({ title: event.message });
-
-          return;
         case "browser_changed":
         case "browser_download":
         case "browser_open_tab":

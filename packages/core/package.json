@@ -19,7 +19,8 @@
     "./client": "./src/client.ts",
     "./server": "./src/server.ts",
     "./store": "./src/store.ts",
-    "./testing": "./src/testing.ts"
+    "./testing": "./src/testing.ts",
+    "./usage": "./src/util/usage.ts"
   },
   "publishConfig": {
     "exports": {
@@ -42,6 +43,10 @@
       "./testing": {
         "types": "./dist/src/testing.d.ts",
         "import": "./dist/src/testing.js"
+      },
+      "./usage": {
+        "types": "./dist/src/util/usage.d.ts",
+        "import": "./dist/src/util/usage.js"
       }
     },
     "access": "public",

@@ -5,9 +5,9 @@ import { join } from "node:path";
 import process from "node:process";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { HOST_EVENT_CHANNEL } from "../src/shared/ipc.ts";
+import { FIXTURES } from "./baseline.ts";
 import { expect, test } from "./fixtures.ts";
-import { messages, openNewChat, send } from "./ui.ts";
+import { chatRow, messages, openNewChat, revealChat, send, sidebar } from "./ui.ts";
 
 test.use({ chapter: "browser" });
 
@@ -260,11 +260,13 @@ test("the integrated browser journey", async ({ desktop }) => {
   });
 
   await test.step("a toast above the composer leaves the page showing", async () => {
-    await application.evaluate(({ BrowserWindow }, channel) => {
-      for (const window of BrowserWindow.getAllWindows())
-        window.webContents.send(channel, { kind: "status", message: "Saved" });
-    }, HOST_EVENT_CHANNEL);
-    const notice = page.locator('[data-slot="toast"]').filter({ hasText: "Saved" });
+    const row = await revealChat(page, FIXTURES.alpha);
+    const archive = sidebar(page).getByRole("button", { name: `Archive ${FIXTURES.alpha}` });
+    await expect(async () => {
+      await row.hover();
+      await archive.click({ timeout: 1_000 });
+    }).toPass();
+    const notice = page.locator('[data-slot="toast"]').filter({ hasText: "1 chat archived" });
     await expect(notice).toBeVisible();
     await notice.hover();
     await page.evaluate(async () => {
@@ -287,8 +289,9 @@ test("the integrated browser journey", async ({ desktop }) => {
         toastBox.y < composerBox.y + composerBox.height &&
         composerBox.y < toastBox.y + toastBox.height,
     ).toBe(false);
-    await notice.getByRole("button", { name: "Dismiss notification" }).click();
+    await notice.getByRole("button", { name: "Undo" }).click();
     await expect(notice).toHaveCount(0);
+    await expect(chatRow(page, FIXTURES.alpha)).toBeVisible();
   });
 
   await test.step.skip("pause and restore blocking for this host", async () => {
