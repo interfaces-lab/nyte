@@ -10,6 +10,7 @@ import {
   projectSessionChoice,
   sessionConfigurationOptions,
 } from "./session-configuration.ts";
+import type { ConfigureSessionPatch } from "./session-configuration.ts";
 import { installScripted, scriptedConnection, viewStream } from "../../test/scripted-connection.ts";
 import { sessionView } from "../../test/view-fixtures.ts";
 
@@ -50,7 +51,7 @@ const CONFIGURED: ConfigureOutcome = {
 let sessions = 0;
 
 /** A chat on the old model whose configure answers when `answer` is called, and a picker's choice of the new model made through the real mutation. */
-async function picked(configure: () => Promise<ConfigureOutcome>) {
+async function picked(configure: (patch: ConfigureSessionPatch) => Promise<ConfigureOutcome>) {
   sessions += 1;
   const session = asId<"session">(`configured-${String(sessions)}`);
   const views = viewStream<SessionView>(chosen(1, OLD));
@@ -106,7 +107,7 @@ async function settle(ms = 0): Promise<void> {
 
 test.each<{
   readonly name: string;
-  readonly steps: readonly ("answer" | "unrelated view" | "chosen view" | "2 s")[];
+  readonly steps: readonly ("answer" | "unrelated view" | "chosen view" | "picked back" | "2 s")[];
   readonly shown: string;
   readonly pending: number;
 }>([
@@ -134,13 +135,32 @@ test.each<{
     shown: "old",
     pending: 0,
   },
+  {
+    name: "picking the old model back once the new one is answered shows the old model",
+    steps: ["answer", "picked back"],
+    shown: "old",
+    pending: 0,
+  },
 ])("$name", async (row) => {
   vi.useFakeTimers();
   const answer = Promise.withResolvers<ConfigureOutcome>();
-  const chat = await picked(() => answer.promise);
+
+  const chat = await picked(async (patch) =>
+    patch.model?.id === OLD.id
+      ? { ...CONFIGURED, selected: { ...CONFIGURED.selected, model: OLD } }
+      : answer.promise,
+  );
 
   for (const step of row.steps) {
     if (step === "answer") answer.resolve(CONFIGURED);
+
+    if (step === "picked back")
+      void new MutationObserver(
+        queryClient,
+        sessionConfigurationOptions({ sessionId: chat.session }),
+      )
+        .mutate({ model: OLD })
+        .catch(() => undefined);
 
     if (step === "unrelated view") chat.views.push(chosen(2, OLD));
 

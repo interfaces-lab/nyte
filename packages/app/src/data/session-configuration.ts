@@ -73,7 +73,10 @@ export function showsChoice(
 /** The longest a chosen model shows over the chat after the host has taken it, while the chat's view has yet to show it. */
 const SHOWN_WITHIN_MS = 2_000;
 
-/** The pending choice overlays the chat until its view shows what the host configured, or `SHOWN_WITHIN_MS` passes, or the chat's store fails; the wait starts only once the host has answered. */
+/** Each chat's latest answered choice still waiting for its view. */
+const waits = new Map<SessionId, AbortController>();
+
+/** The pending choice overlays the chat until its view shows what the host configured, or `SHOWN_WITHIN_MS` passes, or the chat's store fails, or a later choice is answered, so a pick back to the model the view still shows can't leave the earlier pick showing; the wait starts only once the host has answered. */
 export function sessionConfigurationOptions({ sessionId }: { readonly sessionId: SessionId }) {
   return mutationOptions({
     mutationKey: ["session", sessionId, "configure"],
@@ -83,13 +86,17 @@ export function sessionConfigurationOptions({ sessionId }: { readonly sessionId:
 
       if (outcome.kind !== "configured")
         throw new Error("That model setting is no longer available");
+      waits.get(sessionId)?.abort();
       const bound = new AbortController();
+      waits.set(sessionId, bound);
       const timer = setTimeout(() => bound.abort(), SHOWN_WITHIN_MS);
 
       await chatStore(sessionId)
         .until((view) => showsChoice(view, outcome.selected), bound.signal)
         .catch(() => undefined);
       clearTimeout(timer);
+
+      if (waits.get(sessionId) === bound) waits.delete(sessionId);
     },
   });
 }

@@ -4,7 +4,7 @@ import type {
   AlertState,
   DesktopSettings,
 } from "@nyte-ai/app/contract/desktop-settings.ts";
-import { headAttention } from "@nyte-ai/plugin/client/presentation";
+import { headAttention, mainHead } from "@nyte-ai/plugin/client/presentation";
 import type { HeadAttention } from "@nyte-ai/plugin/client/presentation";
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import type { HostWindow, WindowEnd } from "./host-window.ts";
@@ -130,6 +130,10 @@ export function reconcileReminders(
   };
 }
 
+/**
+ * A subagent counts with `notifySubagents`, except for a question its parent already alerts for
+ * because the parent's run waits below it: one question alerts once, at the top of the chain.
+ */
 export function planAttention(input: {
   readonly previous: AttentionSeen | undefined;
   readonly rows: readonly SessionInfo[];
@@ -137,10 +141,30 @@ export function planAttention(input: {
   readonly since: number;
 }): AttentionPlan {
   const { previous, settings } = input;
+  const attended = input.rows.map((session) => ({ session, status: headAttention(session) }));
 
-  const rows = input.rows.map((session) => {
-    const status = headAttention(session);
+  const askingBelow = new Set(
+    attended.flatMap((entry) => {
+      const execution = mainHead(entry.session)?.execution;
+
+      return !entry.session.archived &&
+        execution?.kind === "waiting" &&
+        execution.on.kind !== "part" &&
+        entry.status.alert.state === "waiting"
+        ? [entry.session.id]
+        : [];
+    }),
+  );
+
+  const rows = attended.map((entry) => {
+    const session = entry.session;
+    const status = entry.status;
     const before = previous?.get(session.id);
+
+    const asked =
+      status.alert.state === "waiting" &&
+      session.parent !== null &&
+      askingBelow.has(session.parent);
 
     const moved =
       previous !== undefined &&
@@ -151,7 +175,8 @@ export function planAttention(input: {
       status,
       moved,
       fresh: moved || (before?.fresh === true && before.key === status.alert.key),
-      counted: !session.archived && (settings.notifySubagents || session.parent === null),
+      counted:
+        !session.archived && (session.parent === null || (settings.notifySubagents && !asked)),
     };
   });
 

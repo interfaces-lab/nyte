@@ -85,14 +85,15 @@ A few of these need more detail:
 
 Client hooks run in a client app, through [client plugins](/docs/plugins#sides).
 
-| Hook                 | Phase   | Receives                                                                              |
-| -------------------- | ------- | ------------------------------------------------------------------------------------- |
-| `app_ready`          | Observe | `{ restored }` once the client has mounted its plugins                                |
-| `session_opened`     | Observe | `{ session }` when the user switches to a chat                                        |
-| `before_submit`      | Decide  | The draft about to be sent: `content`, `delivery`, and `session`, null for a new chat |
-| `session_closed`     | Observe | `{ session }` for the chat the user switched away from                                |
-| `run_ended_anywhere` | Observe | `{ session, run, end }` for a run that ends in any chat                               |
-| `app_closing`        | Observe | Nothing, as the app closes                                                            |
+| Hook                         | Phase   | Receives                                                                                    |
+| ---------------------------- | ------- | ------------------------------------------------------------------------------------------- |
+| `app_ready`                  | Observe | `{ restored }` once the client has mounted its plugins                                      |
+| `session_opened`             | Observe | `{ session }` when the user switches to a chat                                              |
+| `before_submit`              | Decide  | The draft about to be sent: `content`, `delivery`, and `session`, null for a new chat       |
+| `session_closed`             | Observe | `{ session }` for the chat the user switched away from                                      |
+| `run_ended_anywhere`         | Observe | `{ session, run, end }` for a run that ends in any chat                                     |
+| `attention_changed_anywhere` | Observe | `{ info }` when any chat starts or stops waiting on the user, or a run in it starts or ends |
+| `app_closing`                | Observe | Nothing, as the app closes                                                                  |
 
 ```ts title="done-sound.ts"
 import type { Plugin } from "@nyte-ai/plugin/client";

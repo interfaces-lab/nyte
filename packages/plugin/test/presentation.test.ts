@@ -440,6 +440,17 @@ test.each<{
     alert: "ended:run:agents",
   },
   {
+    name: "a coordinator whose agent waits on the person isn't done yet",
+    chat: chat(
+      DONE,
+      { unread: true, background: { working: 0, waiting: 1 } },
+      { project: asId("p") },
+    ),
+    mark: "waiting",
+    unread: false,
+    alert: "ended:run:agents",
+  },
+  {
     name: "a chat outside a project with working background is done",
     chat: chat(DONE, { unread: true, background: { working: 1, waiting: 0 } }),
     mark: "background",

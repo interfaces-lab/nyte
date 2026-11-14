@@ -291,7 +291,7 @@ export class SessionActions {
     });
   }
 
-  /** Keeps `pending` over its row until the host's row shows it, or `SHOWN_WITHIN_MS` passes, so the row never shows the old value between the answer and the change that brings the new one. */
+  /** Keeps `pending` over its row until the host's row shows it, or `SHOWN_WITHIN_MS` passes, so the row never shows the old value between the answer and the change that brings the new one. Dropping it drops the earlier changes of its kind to its row too, which the host took first, so a change back to the value the row still shows can't leave the one it replaced showing. */
   #keepUntilShown(pending: PendingChange): void {
     let kept = true;
 
@@ -300,7 +300,15 @@ export class SessionActions {
       kept = false;
       clearTimeout(timer);
       leave();
-      this.#remove(pending);
+      const at = this.#pending.indexOf(pending);
+
+      this.#pending = this.#pending.filter(
+        (item, index) =>
+          index > at ||
+          item.sessionId !== pending.sessionId ||
+          item.change.kind !== pending.change.kind,
+      );
+      this.#emit();
     };
 
     const check = (): void => {

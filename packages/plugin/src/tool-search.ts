@@ -3,6 +3,8 @@ import { isJsonObject, standard } from "@nyte-ai/schema";
 import type { Json, ToolInfo } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import type { Plugin } from "@nyte-ai/plugin/core";
+import { mayChange } from "./approvals/approvals.ts";
+import { readsOnly } from "./side-chat.ts";
 
 export const DEFAULT_SEARCH_LIMIT = 8;
 
@@ -59,7 +61,8 @@ const output = standard(Type.Object({ loaded: Type.Array(Type.String()) }));
  * has not loaded yet and loads the matches, so the model sees them declared
  * from its next request on. Loads live in the call's output, so they follow
  * the head's history through restarts, branches and compaction. The tool is
- * declared only while some `deferred` tool is not.
+ * declared only while some `deferred` tool is not. A session that only reads
+ * is never offered a tool that changes something, so it finds none.
  *
  * @category plugins
  * @since 0.1.0
@@ -92,11 +95,17 @@ export default {
         const loaded = new Set(await invocation.tools.loaded());
         const found = namespaces();
 
+        const withheld = (await readsOnly(invocation.session, invocation.sdk))
+          ? new Set(api.contribute.tools.list().filter(mayChange).map((tool) => tool.name))
+          : new Set<string>();
+
         const candidates = invocation.tools
           .list()
           .filter(
             (info) =>
-              (info.exposure === "code" || info.exposure === "deferred") && !loaded.has(info.name),
+              (info.exposure === "code" || info.exposure === "deferred") &&
+              !loaded.has(info.name) &&
+              !withheld.has(info.name),
           );
 
         const names = rankTools(

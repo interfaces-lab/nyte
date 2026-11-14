@@ -360,7 +360,7 @@ export type HookTable = {
     "client"
   >;
 
-  /** A session's attention changed: it started or stopped waiting on the person, or a run ended. */
+  /** A session's `headAttention` alert changed after the client's first list: a run started, began or stopped waiting on the person, or ended, or the session appeared. */
   attention_changed_anywhere: Observe<{ readonly info: SessionInfo }, "client">;
 
   app_ready: Observe<{ readonly restored: boolean }, "client">;

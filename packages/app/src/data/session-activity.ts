@@ -26,31 +26,58 @@ function readActivity(message: Message): SessionActivity | null {
   }
 }
 
+interface Folded {
+  readonly tool: Extract<SessionActivity, { readonly kind: "tool" }> | undefined;
+  readonly live: Exclude<SessionActivity, { readonly kind: "tool" }>;
+}
+
+const NOTHING: Folded = { tool: undefined, live: IDLE };
+
+/**
+ * The latest running tool, else the latest live part. It folds again only from the last message of
+ * the view before when every message ahead of it is the same object, as while text streams into
+ * the last one, so a delta costs a comparison per message rather than a lookup.
+ */
 export function sessionActivityProjector(): (
   view: Pick<SessionView, "messages">,
 ) => SessionActivity {
   const known = new WeakMap<Message, SessionActivity | null>();
+  let previous: readonly Message[] = [];
+  let settled = NOTHING;
 
-  return ({ messages }) => {
-    let activeTool: Extract<SessionActivity, { readonly kind: "tool" }> | undefined;
-    let live: Exclude<SessionActivity, { readonly kind: "tool" }> = IDLE;
+  const fold = (folded: Folded, message: Message): Folded => {
+    let activity = known.get(message);
 
-    for (const message of messages) {
-      let activity = known.get(message);
-
-      if (activity === undefined) {
-        activity = readActivity(message);
-        known.set(message, activity);
-      }
-
-      if (activity === null) continue;
-
-      if (activity.kind === "tool") activeTool = activity;
-      else live = activity;
+    if (activity === undefined) {
+      activity = readActivity(message);
+      known.set(message, activity);
     }
 
-    return activeTool ?? live;
+    if (activity === null) return folded;
+
+    return activity.kind === "tool"
+      ? { tool: activity, live: folded.live }
+      : { tool: folded.tool, live: activity };
   };
+
+  return (view) => {
+    const messages = view.messages;
+    const kept = Math.max(0, previous.length - 1);
+    const resumes = messages.length > kept && sameLead(messages, previous, kept);
+    const ahead = messages.slice(resumes ? kept : 0, -1).reduce(fold, resumes ? settled : NOTHING);
+    const last = messages.at(-1);
+    previous = messages;
+    settled = ahead;
+    const folded = last === undefined ? ahead : fold(ahead, last);
+
+    return folded.tool ?? folded.live;
+  };
+}
+
+function sameLead(next: readonly Message[], previous: readonly Message[], count: number): boolean {
+  for (let index = 0; index < count; index += 1) if (next[index] !== previous[index]) return false;
+
+  return true;
 }
 
 export function subagentActivity(

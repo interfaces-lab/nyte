@@ -417,7 +417,7 @@ const ASKED = "Needs your answer";
  * The one rule for whether a chat waits on the person, read from its main head. A run that waits
  * on its own approval, question or secret waits; so does a run that waits on a subagent while
  * background work below it waits on the person, since the person answers through this chat. A
- * project's coordinator isn't done while its agents work.
+ * project's coordinator isn't done while its agents work or wait on the person.
  *
  * @category presentation
  */
@@ -483,7 +483,7 @@ function headAlert(
 
       if (last === null) return QUIET.alert;
 
-      if (coordinating && head.background.working > 0)
+      if (coordinating && head.background.working + head.background.waiting > 0)
         return { key: `ended:${last.id}:agents`, state: undefined };
       const key = `ended:${last.id}`;
       const body = describeRunEnd(last.end);

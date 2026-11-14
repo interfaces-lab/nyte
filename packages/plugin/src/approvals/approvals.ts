@@ -99,7 +99,7 @@ function changes(tool: ApprovalTool): boolean {
  * tool, not from the arguments. A class that needs arguments counts as
  * changing.
  */
-function mayChange(definition: ToolDefinition): boolean {
+export function mayChange(definition: ToolDefinition): boolean {
   try {
     return changes({
       name: definition.name,

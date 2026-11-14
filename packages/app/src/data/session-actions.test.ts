@@ -394,6 +394,8 @@ test.each<{
 test.each<{
   readonly name: string;
   readonly fails: boolean;
+  /** Renames back to the old name once the first rename is answered. */
+  readonly back?: true;
   /** Ms waited after the answer before the host's row arrives; null when it never does. */
   readonly rowAfter: number | null;
   readonly afterAnswer: { readonly name: string; readonly pending: number };
@@ -420,6 +422,14 @@ test.each<{
     afterAnswer: { name: "one", pending: 0 },
     settled: { name: "one", pending: 0 },
   },
+  {
+    name: "a rename back to the old name is not undone by the rename before it",
+    fails: false,
+    back: true,
+    rowAfter: 500,
+    afterAnswer: { name: "one", pending: 0 },
+    settled: { name: "one", pending: 0 },
+  },
 ])("between the answer and the row: $name", async (row) => {
   vi.useFakeTimers();
   const f = fixture();
@@ -429,6 +439,8 @@ test.each<{
   if (row.fails) f.failures.add("renamed");
   f.writes.resolve();
   await f.actions.rename({ sessionId: id, name: "renamed" });
+
+  if (row.back === true) await f.actions.rename({ sessionId: id, name: "one" });
 
   const afterAnswer = {
     name: f.directory()[0]?.name,
