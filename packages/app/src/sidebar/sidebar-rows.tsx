@@ -59,7 +59,7 @@ export function DraftRow({
   readonly selected: boolean;
 }): ReactElement {
   const onOpen = (): void => windowTabs.showDraft(draft.id);
-  const onDelete = () => windowTabs.controller().removeDraft(draft.id);
+  const onDelete = () => windowTabs.removeDraft(draft.id);
   const title = draftPreviewText(useDebouncedValue(draft.composer.draft, 100));
 
   const row = (
@@ -128,8 +128,7 @@ function showSession(sessionId: SessionId, target: OpenIntent | "beside"): void 
   }
 
   shellActions.showWorkspace();
-  const controller = windowTabs.controller();
-  controller.drop(sessionId, controller.getSnapshot().focus[0], "right");
+  windowTabs.dispatch({ kind: "open-beside", sessionId });
 }
 
 export function SessionRow({

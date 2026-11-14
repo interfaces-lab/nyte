@@ -1,6 +1,8 @@
 import type { ProjectId, SessionId } from "@nyte-ai/sdk";
 import { createLayout, reduceLayout } from "../panes/layout.ts";
-import type { Layout } from "../panes/layout.ts";
+import type { Layout, LayoutAction, PaneId } from "../panes/layout.ts";
+import { commandFocus, focusRequest, planPane } from "../panes/pane-commands.ts";
+import type { PaneCommand, PaneFocus } from "../panes/pane-commands.ts";
 import { paneRules } from "../panes/pane-kinds.ts";
 import type { PaneContent } from "../panes/pane-kinds.ts";
 import {
@@ -12,6 +14,7 @@ import {
   showChat,
 } from "../panes/pane-layout.ts";
 import type { PaneSelection } from "../panes/pane-layout.ts";
+import type { ChatDraft } from "../panes/session-view-state.ts";
 
 export type CustomizePage = {
   readonly kind: "customize";
@@ -57,7 +60,18 @@ export type WindowAction =
       readonly place: Place;
       readonly target: OpenIntent | "here";
     }
-  | { readonly kind: "layout"; readonly tabId: string; readonly layout: Layout<PaneContent> }
+  | {
+      readonly kind: "pane";
+      readonly tabId: string;
+      readonly command: PaneCommand;
+      readonly focus?: PaneFocus;
+    }
+  | {
+      readonly kind: "arrange";
+      readonly tabId: string;
+      readonly actions: readonly LayoutAction<PaneContent>[];
+    }
+  | { readonly kind: "open-beside"; readonly sessionId: SessionId }
   | { readonly kind: "page-section"; readonly section: string }
   | { readonly kind: "leave-page" }
   | { readonly kind: "new-tab" }
@@ -72,6 +86,9 @@ export type WindowAction =
   | { readonly kind: "reorder"; readonly tabIds: readonly string[]; readonly tabId: string }
   | { readonly kind: "forget-closed"; readonly gone: ReadonlySet<SessionId> }
   | { readonly kind: "close-chats"; readonly sessionIds: ReadonlySet<SessionId> };
+
+/** The blank draft a pane of a tab holds, which decides whether hiding a chat can be undone. */
+export type BlankDrafts = (tabId: string, pane: PaneId) => ChatDraft;
 
 const BLANK: PaneSelection = { kind: "blank" };
 
@@ -109,8 +126,20 @@ export function findChatTab(state: WindowState): Tab | undefined {
   return state.tabs.find((tab) => tab.id === id);
 }
 
+/** The tab whose panes the window shows and pane commands act on: the active or last chat tab. */
+export function paneTabId(state: WindowState): string {
+  return findChatTab(state)?.id ?? state.activeTabId;
+}
+
 export function tabLayout(tab: Tab): Layout<PaneContent> {
   return tab.view.kind === "page" ? PAGE_LAYOUT : tab.view.layout;
+}
+
+/** A tab that has closed shows no chat. */
+export function shownLayout(state: WindowState, tabId: string): Layout<PaneContent> {
+  const tab = state.tabs.find((candidate) => candidate.id === tabId);
+
+  return tab === undefined ? PAGE_LAYOUT : tabLayout(tab);
 }
 
 export function tabPlaces(tab: Tab): readonly Place[] {
@@ -419,6 +448,35 @@ function changeLayout(
   return closeChats(withTab(state, { ...tab, view }), arrived, createId, tab.id);
 }
 
+function arrangeTab(
+  state: WindowState,
+  tabId: string,
+  actions: (layout: Layout<PaneContent>) => readonly LayoutAction<PaneContent>[],
+  createId: () => string,
+): WindowState {
+  const tab = state.tabs.find((candidate) => candidate.id === tabId);
+
+  if (tab === undefined) return state;
+  const rules = { ...paneRules, newId: createId };
+
+  const layout = actions(tabLayout(tab)).reduce(
+    (current, action) => reduceLayout(current, action, rules),
+    tabLayout(tab),
+  );
+
+  return layout === tabLayout(tab) ? state : changeLayout(state, tabId, layout, createId);
+}
+
+type PaneAction = Extract<WindowAction, { readonly kind: "pane" }>;
+
+/** "Open beside" is a drop on the right of the focused pane of the tab pane commands act on. */
+function openBeside(state: WindowState, sessionId: SessionId): PaneAction {
+  const tabId = paneTabId(state);
+  const pane = shownLayout(state, tabId).focus[0];
+
+  return { kind: "pane", tabId, command: { kind: "drop", sessionId, pane, placement: "right" } };
+}
+
 function shownChats(layout: Layout<PaneContent>): readonly SessionId[] {
   return chatPanes(layout).flatMap((pane) =>
     pane.selection.kind === "session" ? [pane.selection.sessionId] : [],
@@ -524,12 +582,22 @@ export function reduce(
   state: WindowState,
   action: WindowAction,
   createId: () => string,
+  blank: BlankDrafts,
 ): WindowState {
   switch (action.kind) {
     case "open":
       return open(state, action.place, action.target, createId);
-    case "layout":
-      return changeLayout(state, action.tabId, action.layout, createId);
+    case "pane":
+      return arrangeTab(
+        state,
+        action.tabId,
+        (layout) => planPane(layout, action.command, (pane) => blank(action.tabId, pane)).actions,
+        createId,
+      );
+    case "arrange":
+      return arrangeTab(state, action.tabId, () => action.actions, createId);
+    case "open-beside":
+      return reduce(state, openBeside(state, action.sessionId), createId, blank);
     case "page-section": {
       const tab = activeTab(state);
 
@@ -602,4 +670,64 @@ export function reduce(
       return _exhaustive;
     }
   }
+}
+
+/**
+ * Which pane of which tab takes DOM focus once `action` turned `before` into `after`. A pane command
+ * asks for its own tab's pane by its rule; a raw arrangement asks for none, as the pane it came from
+ * focused itself; every other tab whose layout changed asks for its focused pane. A tab that opens
+ * asks for none: its panes mount focused.
+ */
+export function focusRequests(
+  before: WindowState,
+  after: WindowState,
+  action: WindowAction,
+): ReadonlyMap<string, PaneId> {
+  const acting = actingTab(before, action);
+
+  const changed = after.tabs.flatMap((tab): [string, PaneId][] => {
+    const previous = before.tabs.find((candidate) => candidate.id === tab.id);
+
+    return previous === undefined || tab.id === acting || tabLayout(previous) === tabLayout(tab)
+      ? []
+      : [[tab.id, tabLayout(tab).focus[0]]];
+  });
+
+  const own = ownRequest(before, after, action);
+
+  return new Map(own === undefined ? changed : [...changed, own]);
+}
+
+function actingTab(state: WindowState, action: WindowAction): string | undefined {
+  if (action.kind === "arrange") return action.tabId;
+
+  return commandIn(state, action)?.tabId;
+}
+
+function commandIn(state: WindowState, action: WindowAction): PaneAction | undefined {
+  if (action.kind === "pane") return action;
+
+  return action.kind === "open-beside" ? openBeside(state, action.sessionId) : undefined;
+}
+
+function ownRequest(
+  before: WindowState,
+  after: WindowState,
+  action: WindowAction,
+): [string, PaneId] | undefined {
+  const pane = commandIn(before, action);
+
+  if (pane === undefined) return undefined;
+  const previous = before.tabs.find((tab) => tab.id === pane.tabId);
+  const next = after.tabs.find((tab) => tab.id === pane.tabId);
+
+  if (previous === undefined || next === undefined) return undefined;
+
+  const requested = focusRequest(
+    tabLayout(previous),
+    tabLayout(next),
+    pane.focus ?? commandFocus(pane.command),
+  );
+
+  return requested === undefined ? undefined : [pane.tabId, requested];
 }

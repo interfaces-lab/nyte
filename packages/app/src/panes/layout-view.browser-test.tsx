@@ -11,7 +11,7 @@ import { asId } from "@nyte-ai/schema";
 import "../theme/tokens.stylex.ts";
 import { installScripted, scriptedConnection, viewStream } from "../../test/scripted-connection.ts";
 import { endedTurn, sessionRow, sessionView } from "../../test/view-fixtures.ts";
-import { tabPanes } from "../../test/panes.ts";
+import { runPane, selectSession, tabPanes } from "../../test/panes.ts";
 import type { HostState } from "../contract/nyte.ts";
 import { keys, queryClient } from "../data/query-client.ts";
 import { createAppRouter } from "../shell/routes.tsx";
@@ -164,10 +164,10 @@ async function checkLayout(): Promise<string> {
   queryClient.setQueryData(keys.mentionFiles(undefined), []);
 
   const panes = tabPanes();
-  panes.selectSession(LEFT);
-  panes.split("right");
-  panes.selectSession(RIGHT);
-  const store = panes.store;
+  selectSession(panes, LEFT);
+  runPane(panes, { kind: "split", direction: "right" });
+  selectSession(panes, RIGHT);
+  const store = panes.layout;
   const [left, right] = chatPanes(store.getSnapshot());
 
   if (left === undefined || right === undefined) throw new Error("Expected two chat panes");
@@ -183,7 +183,7 @@ async function checkLayout(): Promise<string> {
       <QueryClientProvider client={queryClient}>
         <RouterContextProvider router={router}>
           <TooltipProvider delay={0} closeDelay={0} timeout={0}>
-            <PaneControllerProvider controller={panes}>
+            <PaneControllerProvider panes={panes}>
               <SessionDndProvider>
                 <LayoutView store={store} renderTab={renderPaneContent} />
               </SessionDndProvider>

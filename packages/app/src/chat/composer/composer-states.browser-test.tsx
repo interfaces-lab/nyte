@@ -1,4 +1,4 @@
-import { tabPanes } from "../../../test/panes.ts";
+import { selectSession, tabPanes } from "../../../test/panes.ts";
 import "../../../test/window-bridge.ts";
 import { runStatus } from "@nyte-ai/plugin/client/presentation";
 import { TooltipProvider } from "@nyte-ai/ui/tooltip";
@@ -11,6 +11,7 @@ import { createRoot } from "react-dom/client";
 import type { ModelCatalogView, StopOutcome } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import type { HostState } from "../../contract/nyte.ts";
+import type { TabPanes } from "../../tabs/window-store.ts";
 import { PaneControllerProvider } from "../../panes/pane-context.tsx";
 import { SessionDndProvider } from "../../panes/session-dnd.tsx";
 import { keys, queryClient } from "../../data/query-client.ts";
@@ -24,6 +25,7 @@ import { installScripted, scriptedConnection } from "../../../test/scripted-conn
 import { COMPLETED, sessionRow } from "../../../test/view-fixtures.ts";
 import { preferences } from "../../preferences/index.ts";
 import { Composer } from "./composer.tsx";
+import { persistedDraft } from "./composer-draft.ts";
 import { conversationMessages } from "../transcript/transcript-rows.ts";
 import {
   DRAFT,
@@ -43,8 +45,9 @@ import {
   pressStop,
   question,
   queued,
+  refuseSend,
+  sends,
   stops,
-  storeViewState,
   until,
   view,
 } from "./composer-states.fixture.ts";
@@ -183,6 +186,11 @@ const STATES: readonly ComposerState[] = [
     check: expiredRow,
   },
   {
+    name: "refused",
+    view: view(live(), [queued("first", QUEUED_TEXT)]),
+    check: refuseSend,
+  },
+  {
     name: "question",
     view: view(live(), [], [question]),
     draft: "Yes, for one release.",
@@ -226,6 +234,12 @@ installScripted(
       STATES.map((state) => [stateSession(state), state.view === undefined ? [] : [state.view]]),
     ),
     session: () => ({
+      send: async () => {
+        const sent = Promise.withResolvers<never>();
+        sends.push(sent);
+
+        return sent.promise;
+      },
       hold: async (message) => {
         calls.push(`hold ${message}`);
         const answer = holdAnswers.shift();
@@ -286,9 +300,6 @@ function LoneComposer({ state }: { readonly state: ComposerState }): ReactElemen
       pending={messages.queued}
       unsent={messages.unsent}
       expired={state.expired ?? []}
-      onViewStateChange={(state) => {
-        storeViewState(state);
-      }}
     />
   );
 }
@@ -296,9 +307,13 @@ function LoneComposer({ state }: { readonly state: ComposerState }): ReactElemen
 function Stage({
   state,
   layer,
+  panes,
+  shown,
 }: {
   readonly state: ComposerState;
   readonly layer: Layer;
+  readonly panes: TabPanes;
+  readonly shown: boolean;
 }): ReactElement {
   const [router] = useState(() =>
     createAppRouter({
@@ -306,20 +321,17 @@ function Stage({
     }),
   );
 
-  const [panes] = useState(() => {
-    const controller = tabPanes();
-    controller.selectSession(stateSession(state));
-
-    return controller;
-  });
-
   return (
     <QueryClientProvider client={queryClient}>
       <RouterContextProvider router={router}>
         <TooltipProvider delay={0} closeDelay={0} timeout={0}>
-          <PaneControllerProvider controller={panes}>
+          <PaneControllerProvider panes={panes}>
             <SessionDndProvider>
-              {layer === "composer" ? <LoneComposer state={state} /> : <SessionScreen />}
+              {layer === "session" ? (
+                <SessionScreen />
+              ) : (
+                shown && <LoneComposer state={state} />
+              )}
             </SessionDndProvider>
           </PaneControllerProvider>
         </TooltipProvider>
@@ -346,8 +358,35 @@ async function show(host: HTMLElement, state: ComposerState, layer: Layer, width
     },
   });
 
-  flushSync(() => root.render(<Stage state={state} layer={layer} />));
+  const panes = tabPanes();
+  selectSession(panes, stateSession(state));
 
+  const draw = (shown: boolean): void =>
+    root.render(<Stage state={state} layer={layer} panes={panes} shown={shown} />);
+
+  flushSync(() => draw(true));
+
+  const probe = await probeStage(stage, layer, panes, state, draw);
+
+  if (state.draft !== undefined) {
+    await painted();
+    probe.editor.focus();
+    document.execCommand("insertText", false, state.draft);
+  }
+
+  await painted();
+  await painted();
+
+  return { stage, root, probe };
+}
+
+async function probeStage(
+  stage: HTMLElement,
+  layer: Layer,
+  panes: TabPanes,
+  state: ComposerState,
+  draw: (shown: boolean) => void,
+): Promise<Probe> {
   const region = await until(
     () => stage.querySelector<HTMLElement>("[data-composer-region]"),
     "the composer",
@@ -368,23 +407,27 @@ async function show(host: HTMLElement, state: ComposerState, layer: Layer, width
       "the transcript",
     );
 
-  if (state.draft !== undefined) {
-    await painted();
-    editor.focus();
-    document.execCommand("insertText", false, state.draft);
-  }
+  const leave = (away: boolean): void => {
+    if (layer === "composer") draw(!away);
+    else selectSession(panes, away ? stateSession(STATES[0] ?? state) : stateSession(state));
+  };
 
-  await painted();
-  await painted();
-
-  const probe: Probe = {
+  return {
     layer,
     region,
     editor,
     button: (name) => region.querySelector<HTMLButtonElement>(`button[aria-label='${name}']`),
-  };
+    stored: () => persistedDraft(panes.viewState.readSession(stateSession(state)).draft).draft,
+    revisit: async (meanwhile) => {
+      flushSync(() => leave(true));
+      await until(() => (region.isConnected ? null : true), "the composer to leave");
+      await painted();
+      await meanwhile();
+      flushSync(() => leave(false));
 
-  return { stage, root, probe };
+      return probeStage(stage, layer, panes, state, draw);
+    },
+  };
 }
 
 function layoutFailures(stage: HTMLElement, region: HTMLElement): string[] {

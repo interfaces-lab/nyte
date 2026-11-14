@@ -20,8 +20,8 @@ import { connected, connection } from "../../data/connection.ts";
 import { chatStore, resendMessage, stopChat, useChatStopping } from "../../data/chat-store.ts";
 import { useWatchSelect } from "../../data/watch-store.ts";
 import { nyte } from "../../contract/nyte.ts";
-import { DEFAULT_COMPOSER_VIEW_STATE } from "../../panes/session-view-state.ts";
 import type { ComposerViewState } from "../../panes/session-view-state.ts";
+import { usePaneViewStateStore } from "../../panes/pane-context.tsx";
 import type { ComposerDocumentState, ComposerSubmission } from "./composer-document.ts";
 import type { ComposerEditorHandle } from "./composer-editor.tsx";
 import { ComposerFrame } from "./composer-frame.tsx";
@@ -34,14 +34,24 @@ import { composerSource } from "./composer-suggestions.tsx";
 import { bindComposerFileDrop } from "../../references/composer-file-drop.ts";
 import { attachComposerFiles } from "./composer-files.ts";
 import type { ComposerFile } from "../../references/composer-file-drop.ts";
-import type { ComposerImageAttachment } from "../../panes/session-view-state.ts";
 import { ComposerFooter } from "./composer-footer.tsx";
 import { loadedPrompts, readPrompts, recallStep } from "./composer-history.ts";
 import type { PromptHistory, RecallDirection } from "./composer-history.ts";
 import { deliveryChoices, nextToSteer } from "./composer-keys.ts";
 import { deliver, deliverEdit, draftCommands } from "./composer-send.ts";
 import { planSubmission } from "./composer-plan.ts";
-import { contentDraftText } from "../../references/message-references.ts";
+import {
+  foldEdit,
+  leftDraft,
+  lostEdit,
+  openedEdit,
+  refusedDraft,
+  restoredDraft,
+  shownDraft,
+  typedDraft,
+  updateShown,
+} from "./composer-draft.ts";
+import type { ComposerNotice, QueuedEdit, SessionDraft } from "./composer-draft.ts";
 import { preferences, useSetting } from "../../preferences/index.ts";
 import { TaskMark } from "../../components/task-mark.tsx";
 import { workbenchViewKey } from "../../workbench/paths.ts";
@@ -61,33 +71,8 @@ import { useChatFolder } from "../chat-folder.ts";
 
 const FOLLOW_UP_PLACEHOLDER = "Add a follow-up";
 
-interface ComposerFeedback {
-  readonly kind: "status" | "command" | "error";
-  readonly message: string;
-  readonly restore?: () => void;
-}
-
-type ComposerTarget =
-  | { readonly kind: "new" }
-  | { readonly kind: "queued"; readonly message: UserMessage; readonly stash: ComposerViewState };
-
 function messageReceipt(sessionId: SessionId, message: UserMessage) {
   return connection().session(sessionId).receipt(asId<"receipt">(message.id));
-}
-
-function draftWith(
-  view: ComposerViewState,
-  front: { readonly text: string; readonly attachments: readonly ComposerImageAttachment[] },
-): ComposerViewState {
-  const joined = view.draft === "" ? front.text : `${front.text}\n${view.draft}`;
-
-  return {
-    ...view,
-    draft: joined,
-    attachments: [...front.attachments, ...view.attachments],
-    selectionStart: joined.length,
-    selectionEnd: joined.length,
-  };
 }
 
 const EDIT_ENDED_NOTICES = {
@@ -100,14 +85,20 @@ interface EditHold {
   held: HeldMessage | undefined;
 }
 
+/**
+ * The chat's draft, its queued edit and its notice live in the window's draft store and change only
+ * through it, so a send that settles after this composer closed still lands where the chat's next
+ * composer reads it. `draft` is the store's value as the subscription last handed it over: a state
+ * update shares a keystroke's commit with the editor's own updates, where `useSyncExternalStore`
+ * would add a second commit per key. A notice other than a refusal is dropped once the composer is
+ * gone, as it was when the composer held it.
+ */
 export function Composer({
   sessionId,
   status,
   pending,
   unsent,
   expired,
-  initialViewState = DEFAULT_COMPOSER_VIEW_STATE,
-  onViewStateChange,
   inputRef,
   fileDropRoot,
   backgroundWork,
@@ -121,8 +112,6 @@ export function Composer({
   pending: readonly UserMessage[];
   unsent: readonly UserMessage[];
   expired: readonly MessageId[];
-  initialViewState?: ComposerViewState;
-  onViewStateChange?: (state: ComposerViewState) => void;
   inputRef?: (element: ComposerEditorHandle | null) => void;
   fileDropRoot?: HTMLElement | null;
   backgroundWork?: {
@@ -144,14 +133,18 @@ export function Composer({
   const runningMessagePreference = steers ? runningMessage : "queue";
   const attachTranscriptDock = useTranscriptDock();
   const transcript = useTranscriptControls();
-  const [currentViewState, setCurrentViewState] = useState(initialViewState);
-  const attachments = currentViewState.attachments;
+  const viewStore = usePaneViewStateStore();
+
+  const [draft, setDraft] = useState(() => viewStore.readSession(sessionId).draft);
+
+  const shownView = shownDraft(draft);
+  const attachments = shownView.attachments;
   const [attachmentReads, setAttachmentReads] = useState(0);
   const [attachmentError, setAttachmentError] = useState<string>();
-  const [feedback, setFeedback] = useState<ComposerFeedback>();
+  const feedback = draft.notice;
   const [rowActions, setRowActions] = useState<ReadonlyMap<string, PendingRowAction>>(new Map());
   const liveRun = "run" in status ? status.run : undefined;
-  const [target, setTarget] = useState<ComposerTarget>({ kind: "new" });
+  const target = draft.edit;
   const [savingEdit, setSavingEdit] = useState(false);
   const folder = useChatFolder();
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
@@ -219,28 +212,25 @@ export function Composer({
 
   const mentions = useMentionFiles(folder, true);
   const mentionFiles = composerSource(mentions.data, mentions.isError);
-  const latestViewState = useRef(currentViewState);
-  const latestTarget = useRef(target);
-
   const pendingRecall = useRef<symbol | undefined>(undefined);
 
-  const updateViewState = (update: (current: ComposerViewState) => ComposerViewState): void => {
-    const next = update(latestViewState.current);
+  const storedDraft = (): SessionDraft => viewStore.readSession(sessionId).draft;
 
-    if (next.draft !== latestViewState.current.draft) pendingRecall.current = undefined;
-    latestViewState.current = next;
-    setCurrentViewState(next);
-    const editing = latestTarget.current;
-    onViewStateChange?.(
-      editing.kind === "queued"
-        ? draftWith(editing.stash, { text: next.draft, attachments: next.attachments })
-        : next,
-    );
+  const updateDraft = (update: (current: SessionDraft) => SessionDraft): void => {
+    const before = shownDraft(storedDraft()).draft;
+
+    if (shownDraft(viewStore.updateDraft(sessionId, update)).draft !== before)
+      pendingRecall.current = undefined;
   };
 
-  const retarget = (next: ComposerTarget): void => {
-    latestTarget.current = next;
-    setTarget(next);
+  const updateViewState = (update: (current: ComposerViewState) => ComposerViewState): void =>
+    updateDraft((current) => updateShown(current, update));
+
+  const shown = useRef(false);
+
+  const setFeedback = (notice: ComposerNotice | null): void => {
+    if (!shown.current) return;
+    updateDraft((current) => ({ ...current, notice }));
   };
 
   const recalled = useRef<
@@ -257,16 +247,16 @@ export function Composer({
     const position = recallStep(history.prompts.length, recalled.current?.position, direction);
 
     if (position === recalled.current?.position) return false;
-    const draft = recalled.current?.draft ?? latestViewState.current;
+    const saved = recalled.current?.draft ?? shownDraft(storedDraft());
     const prompt = position === undefined ? undefined : history.prompts[position];
-    recalled.current = position === undefined ? undefined : { position, draft, history };
+    recalled.current = position === undefined ? undefined : { position, draft: saved, history };
     updateViewState((current) =>
       prompt === undefined
         ? {
             ...current,
-            draft: draft.draft,
-            selectionStart: draft.selectionStart,
-            selectionEnd: draft.selectionEnd,
+            draft: saved.draft,
+            selectionStart: saved.selectionStart,
+            selectionEnd: saved.selectionEnd,
           }
         : { ...current, draft: prompt, selectionStart: prompt.length, selectionEnd: prompt.length },
     );
@@ -294,6 +284,7 @@ export function Composer({
         setFeedback({
           kind: "error",
           message: `Couldn't read earlier prompts: ${errorMessage(cause)}`,
+          restore: null,
         });
       },
     );
@@ -302,7 +293,6 @@ export function Composer({
   };
 
   const editHold = useRef<EditHold | undefined>(undefined);
-  const shown = useRef(false);
   const removedSends = useRef(new Set<string>());
 
   const takeHold = (): HeldMessage | undefined => {
@@ -316,25 +306,16 @@ export function Composer({
     void takeHold()?.release();
   };
 
-  const endEdit = (restored: ComposerViewState): void => {
+  const endEdit = (update: (current: SessionDraft) => SessionDraft): void => {
     releaseHold();
-    retarget({ kind: "new" });
     setAttachmentError(undefined);
-    updateViewState(() => restored);
+    updateDraft(update);
   };
 
   const leaveEdit = (message: MessageId, notice: string): void => {
-    const current = latestTarget.current;
-
-    if (current.kind !== "queued" || current.message.id !== message) return;
-    const edited = latestViewState.current;
-
-    endEdit(
-      edited.draft === contentDraftText(current.message.content) && edited.attachments.length === 0
-        ? current.stash
-        : draftWith(current.stash, { text: edited.draft, attachments: edited.attachments }),
-    );
-    setFeedback({ kind: "error", message: notice });
+    if (storedDraft().edit?.message.id !== message) return;
+    endEdit(lostEdit);
+    setFeedback({ kind: "error", message: notice, restore: null });
   };
 
   const startHold = (message: MessageId): void => {
@@ -375,17 +356,22 @@ export function Composer({
   };
 
   const resumeHold = useEffectEvent(() => {
-    if (target.kind === "queued" && !savingEdit) startHold(target.message.id);
+    if (target !== null && !savingEdit) startHold(target.message.id);
   });
 
   useMountEffect(() => {
     shown.current = true;
+    const show = (): void => setDraft(viewStore.readSession(sessionId).draft);
+    const leave = viewStore.subscribeDraft(sessionId, show);
+    show();
     resumeHold();
 
     return () => {
       shown.current = false;
       pendingRecall.current = undefined;
       releaseHold();
+      leave();
+      viewStore.updateDraft(sessionId, foldEdit);
     };
   });
 
@@ -429,29 +415,6 @@ export function Composer({
     });
   };
 
-  const refuse = (
-    message: string,
-    sent: {
-      readonly document: ComposerDocumentState;
-      readonly attachments: readonly ComposerImageAttachment[];
-    },
-  ): void => {
-    const restore = (): void => {
-      updateViewState((current) =>
-        draftWith(current, { text: sent.document.text, attachments: sent.attachments }),
-      );
-      setFeedback({ kind: "error", message });
-    };
-
-    if (latestViewState.current.draft === "") {
-      restore();
-
-      return;
-    }
-
-    setFeedback({ kind: "error", message, restore });
-  };
-
   const send = async (
     submission: ComposerSubmission,
     delivery: Delivery,
@@ -473,7 +436,7 @@ export function Composer({
     if (plan.kind === "empty") return;
 
     if (plan.kind === "kept") {
-      setFeedback({ kind: "error", message: plan.message });
+      setFeedback({ kind: "error", message: plan.message, restore: null });
 
       return;
     }
@@ -481,27 +444,25 @@ export function Composer({
     const session = (await connected()).session(steer?.session ?? sessionId);
     windowTabs.dispatch({ kind: "keep-tab", tabId: submittingTab });
     recalled.current = undefined;
-    updateViewState((current) => {
-      const attachments = current.attachments.filter(
-        (attachment) => !sentAttachments.includes(attachment),
-      );
-
-      if (current.draft !== document.text) return { ...current, attachments };
-
-      return { ...current, draft: "", attachments, selectionStart: 0, selectionEnd: 0 };
-    });
+    updateDraft((current) => leftDraft(current, document, sentAttachments));
     setAttachmentError(undefined);
-    setFeedback(undefined);
+    setFeedback(null);
     const outcome = await deliver(session, plan, receipt);
 
     switch (outcome.kind) {
       case "refused":
         if (removedSends.current.delete(receipt)) return;
-        refuse(outcome.message, { document, attachments: sentAttachments });
+        updateDraft((current) =>
+          refusedDraft(current, outcome.message, {
+            text: document.text,
+            attachments: sentAttachments,
+          }),
+        );
 
         return;
       case "sent":
-        if (outcome.note !== undefined) setFeedback({ kind: "command", message: outcome.note });
+        if (outcome.note !== undefined)
+          setFeedback({ kind: "command", message: outcome.note, restore: null });
         sessionActions.restore(steer?.session ?? sessionId);
 
         if (steer === undefined) transcript.end();
@@ -516,7 +477,7 @@ export function Composer({
   };
 
   const saveEdit = async (
-    edit: Extract<ComposerTarget, { readonly kind: "queued" }>,
+    edit: QueuedEdit,
     submission: ComposerSubmission,
     delivery: Delivery,
   ): Promise<void> => {
@@ -550,11 +511,13 @@ export function Composer({
         case "kept":
         case "refused":
           startHold(edit.message.id);
-          setFeedback({ kind: "error", message: saved.message });
+          setFeedback({ kind: "error", message: saved.message, restore: null });
 
           return;
         case "revised":
-          endEdit(edit.stash);
+          endEdit((current) =>
+            current.edit?.message.id === edit.message.id ? { ...current, edit: null } : current,
+          );
 
           return;
         case "sent":
@@ -582,6 +545,7 @@ export function Composer({
       setFeedback({
         kind: "error",
         message: `Couldn't stop the response: ${errorMessage(cause)}`,
+        restore: null,
       }),
     );
   };
@@ -636,32 +600,23 @@ export function Composer({
   const nextIdleQueued =
     nextQueuedAction === undefined || nextQueuedAction.kind === "failed" ? nextQueued : undefined;
 
-  const emptyDraft = currentViewState.draft === "" && attachments.length === 0;
+  const emptyDraft = shownView.draft === "" && attachments.length === 0;
 
   const emptyEnterSteers =
-    questions === undefined && target.kind === "new" && emptyDraft && nextIdleQueued !== undefined;
+    questions === undefined && target === null && emptyDraft && nextIdleQueued !== undefined;
 
-  const canBeginEdit = questions === undefined && target.kind === "new";
+  const canBeginEdit = questions === undefined && target === null;
 
   const queuedEditReason =
-    questions === undefined && target.kind === "queued"
+    questions === undefined && target !== null
       ? "Finish editing the queued message first."
       : undefined;
 
   const beginEdit = (item: UserMessage): void => {
     if (!canBeginEdit || item.source.kind === "action") return;
-    const draft = contentDraftText(item.content);
-    retarget({ kind: "queued", message: item, stash: latestViewState.current });
+    updateDraft((current) => openedEdit(current, item));
     startHold(item.id);
-    setFeedback(undefined);
     setAttachmentError(undefined);
-    updateViewState((current) => ({
-      ...current,
-      draft,
-      attachments: [],
-      selectionStart: draft.length,
-      selectionEnd: draft.length,
-    }));
     editorRef.current?.focus();
   };
 
@@ -673,6 +628,7 @@ export function Composer({
         setFeedback({
           kind: "error",
           message: `Couldn't remove the message: ${errorMessage(cause)}`,
+          restore: null,
         });
       });
   };
@@ -682,6 +638,7 @@ export function Composer({
       setFeedback({
         kind: "error",
         message: `Couldn't send the message: ${errorMessage(cause)}`,
+        restore: null,
       });
     });
   };
@@ -701,7 +658,7 @@ export function Composer({
         <div {...props(composerStyles.inputStack)}>
           <div {...props(composerStyles.preComposerOverlay)}>
             <div {...props(composerStyles.preComposerStack)}>
-              {feedback !== undefined && (
+              {feedback !== null && (
                 <div
                   role={feedback.kind === "error" ? "alert" : "status"}
                   {...props(composerStyles.queued)}
@@ -716,8 +673,8 @@ export function Composer({
                     }
                   />
                   <span {...props(composerStyles.queuedText)}>{feedback.message}</span>
-                  {feedback.restore !== undefined && (
-                    <Button variant="text" onClick={feedback.restore}>
+                  {feedback.restore !== null && (
+                    <Button variant="text" onClick={() => updateDraft(restoredDraft)}>
                       Restore Draft
                     </Button>
                   )}
@@ -725,7 +682,7 @@ export function Composer({
                     iconOnly
                     icon="x"
                     aria-label="Dismiss notification"
-                    onClick={() => setFeedback(undefined)}
+                    onClick={() => setFeedback(null)}
                   />
                 </div>
               )}
@@ -758,7 +715,7 @@ export function Composer({
                 unsent={unsent}
                 expired={expired}
                 rowActions={rowActions}
-                editingId={target.kind === "queued" ? target.message.id : undefined}
+                editingId={target === null ? undefined : target.message.id}
                 canEdit={canBeginEdit}
                 editBlocked={queuedEditReason}
                 enterSteers={emptyEnterSteers}
@@ -768,7 +725,7 @@ export function Composer({
                 onCancel={cancelPending}
                 onRemoveUnsent={removeOutboxRow}
                 onResend={resendOutboxRow}
-                onEditBlocked={(message) => setFeedback({ kind: "status", message })}
+                onEditBlocked={(message) => setFeedback({ kind: "status", message, restore: null })}
                 onReturn={returnToEditor}
               />
             </div>
@@ -807,9 +764,9 @@ export function Composer({
             surface={surface}
             document={
               questions?.document ?? {
-                text: currentViewState.draft,
-                selectionStart: currentViewState.selectionStart,
-                selectionEnd: currentViewState.selectionEnd,
+                text: shownView.draft,
+                selectionStart: shownView.selectionStart,
+                selectionEnd: shownView.selectionEnd,
               }
             }
             onDocumentChange={(document) => {
@@ -819,21 +776,12 @@ export function Composer({
                 return;
               }
 
-              if (document.text !== latestViewState.current.draft) {
-                recalled.current = undefined;
-                setFeedback((current) => (current?.kind === "error" ? current : undefined));
-              }
-
-              updateViewState((current) => ({
-                ...current,
-                draft: document.text,
-                selectionStart: document.selectionStart,
-                selectionEnd: document.selectionEnd,
-              }));
+              if (document.text !== shownDraft(storedDraft()).draft) recalled.current = undefined;
+              updateDraft((current) => typedDraft(current, document));
             }}
             onSubmit={
               questions === undefined
-                ? target.kind === "queued"
+                ? target !== null
                   ? (submission, delivery) => saveEdit(target, submission, delivery)
                   : send
                 : async (_submission, _delivery, document) => {
@@ -862,7 +810,7 @@ export function Composer({
                 ? () => steerPending(nextIdleQueued)
                 : undefined
             }
-            onRecall={questions === undefined && target.kind === "new" ? recall : undefined}
+            onRecall={questions === undefined && target === null ? recall : undefined}
             completeCommand={(name, prefix) =>
               connection().session(sessionId).completeCommand(name, prefix)
             }
@@ -895,12 +843,12 @@ export function Composer({
             }
             inputRef={attachInput}
             editing={
-              questions !== undefined || target.kind === "new"
+              questions !== undefined || target === null
                 ? undefined
                 : {
                     kind: "queued",
                     delivery: target.message.delivery,
-                    onCancel: () => endEdit(target.stash),
+                    onCancel: () => endEdit((current) => ({ ...current, edit: null })),
                   }
             }
           />

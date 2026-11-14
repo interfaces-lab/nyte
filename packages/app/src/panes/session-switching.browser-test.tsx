@@ -1,4 +1,4 @@
-import { tabPanes } from "../../test/panes.ts";
+import { selectSession, tabPanes } from "../../test/panes.ts";
 import "../../test/window-bridge.ts";
 import { TooltipProvider } from "@nyte-ai/ui/tooltip";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -276,14 +276,14 @@ export async function run(): Promise<string> {
 
   const root = createRoot(container);
   const panes = tabPanes();
-  panes.selectSession(find("alpha").id);
+  selectSession(panes, find("alpha").id);
 
   flushSync(() =>
     root.render(
       <QueryClientProvider client={queryClient}>
         <RouterContextProvider router={router}>
           <TooltipProvider delay={0} closeDelay={0} timeout={0}>
-            <PaneControllerProvider controller={panes}>
+            <PaneControllerProvider panes={panes}>
               <SessionDndProvider>
                 <SessionScreen />
               </SessionDndProvider>
@@ -297,7 +297,7 @@ export async function run(): Promise<string> {
   const show = async (name: Name): Promise<number> => {
     const started = performance.now();
     const latest = `${find(name).live.split(" ").at(-1) ?? ""} `;
-    panes.selectSession(find(name).id);
+    selectSession(panes, find(name).id);
 
     for (;;) {
       const at = await frame();

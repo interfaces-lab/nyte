@@ -170,7 +170,7 @@ function mount(session: SessionId) {
   const render = (mode: "visible" | "hidden") =>
     flushSync(() =>
       root.render(
-        <PaneControllerProvider controller={panes}>
+        <PaneControllerProvider panes={panes}>
           <TranscriptProvider paneId={PRIMARY} sessionId={session}>
             <Activity mode={mode}>
               <LiveTurn state="planning" thinking />

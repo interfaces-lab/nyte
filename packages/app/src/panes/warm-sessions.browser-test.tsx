@@ -1,4 +1,5 @@
 import "../../test/window-bridge.ts";
+import { paneLayout, selectSession } from "../../test/panes.ts";
 import { TooltipProvider } from "@nyte-ai/ui/tooltip";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, RouterContextProvider } from "@tanstack/react-router";
@@ -146,7 +147,7 @@ const catalog = {
 
 const host = { workspace: undefined } satisfies HostState;
 
-const panes = windowTabs.controller();
+const panes = windowTabs.panes();
 
 let renderFailure: unknown;
 
@@ -168,7 +169,7 @@ function mount(container: HTMLElement): Root {
       <QueryClientProvider client={queryClient}>
         <RouterContextProvider router={router}>
           <TooltipProvider delay={0} closeDelay={0} timeout={0}>
-            <PaneControllerProvider controller={panes}>
+            <PaneControllerProvider panes={panes}>
               <SessionDndProvider>
                 <SessionScreen />
               </SessionDndProvider>
@@ -229,7 +230,7 @@ function findShown(container: HTMLElement, sessionId: SessionId): Shown | undefi
 }
 
 async function show(container: HTMLElement, sessionId: SessionId): Promise<Shown> {
-  panes.selectSession(sessionId);
+  selectSession(panes, sessionId);
   let shown: Shown | undefined;
   await until(() => {
     shown = findShown(container, sessionId);
@@ -252,7 +253,7 @@ async function type(editor: HTMLElement, text: string): Promise<void> {
 }
 
 function readScroll(sessionId: SessionId): ScrollViewState | undefined {
-  return panes.viewState.readSession(sessionId).scroll[panes.getSnapshot().focus[0]];
+  return panes.viewState.readSession(sessionId).scroll[paneLayout(panes).focus[0]];
 }
 
 const failures: string[] = [];

@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
-import { PRIMARY, tabPanes } from "../../test/panes.ts";
+import { paneLayout, PRIMARY, selectSession, tabPanes } from "../../test/panes.ts";
 import { onTestFinished, test, vi } from "vitest";
 import { asId } from "@nyte-ai/schema";
-import type { PaneController } from "./pane-controller.ts";
+import type { TabPanes } from "../tabs/window-store.ts";
 import { activeSelection } from "./pane-layout.ts";
 import type { PaneId } from "./layout.ts";
 import type { ComposerImageAttachment, DraftChoice } from "./session-view-state.ts";
 
-function writeDraft(controller: PaneController, text: string, paneId: PaneId = PRIMARY): void {
+function writeDraft(controller: TabPanes, text: string, paneId: PaneId = PRIMARY): void {
   const draft = controller.viewState.readBlank(paneId);
   controller.viewState.writeBlank(paneId, {
     ...draft,
@@ -25,10 +25,10 @@ test("new chat keeps non-empty drafts available for reopening", () => {
   writeDraft(controller, "First idea\nwith detail");
   const firstId = controller.viewState.readBlank(PRIMARY).id;
 
-  controller.newChat();
+  controller.window.newChat(controller.tabId);
   writeDraft(controller, "Second idea");
   const secondId = controller.viewState.readBlank(PRIMARY).id;
-  controller.newChat();
+  controller.window.newChat(controller.tabId);
 
   assert.deepEqual(
     controller.viewState
@@ -37,9 +37,9 @@ test("new chat keeps non-empty drafts available for reopening", () => {
       .sort(),
     ["First idea", "Second idea"],
   );
-  controller.selectDraft(firstId);
+  controller.window.selectDraft(controller.tabId, firstId);
   assert.equal(controller.viewState.readBlank(PRIMARY).composer.draft, "First idea\nwith detail");
-  controller.selectDraft(secondId);
+  controller.window.selectDraft(controller.tabId, secondId);
   assert.equal(controller.viewState.readBlank(PRIMARY).composer.draft, "Second idea");
 });
 
@@ -69,8 +69,8 @@ test("sidebar publication is debounced while typing", () => {
 test("empty new chats are reused and stay out of the draft list", () => {
   const controller = tabPanes();
   const draftId = controller.viewState.readBlank(PRIMARY).id;
-  controller.newChat();
-  controller.newChat();
+  controller.window.newChat(controller.tabId);
+  controller.window.newChat(controller.tabId);
   assert.equal(controller.viewState.readBlank(PRIMARY).id, draftId);
   assert.deepEqual(controller.viewState.drafts(), []);
 });
@@ -79,7 +79,7 @@ test("deleting the open draft replaces it with an empty chat", () => {
   const controller = tabPanes();
   writeDraft(controller, "Discard me");
   const draftId = controller.viewState.readBlank(PRIMARY).id;
-  controller.removeDraft(draftId);
+  controller.window.removeDraft(controller.tabId, draftId);
   assert.equal(controller.viewState.readBlank(PRIMARY).composer.draft, "");
   assert.notEqual(controller.viewState.readBlank(PRIMARY).id, draftId);
 });
@@ -127,7 +127,7 @@ test("a send belongs to its draft: parking keeps it, and a start under way canno
   const waiting = controller.viewState.beginSend(PRIMARY, composer);
   assert.ok(waiting !== undefined);
 
-  controller.newChat();
+  controller.window.newChat(controller.tabId);
   assert.equal(controller.viewState.readDraft(id)?.status, waiting);
 
   assert.equal(controller.viewState.commitSend(id, waiting), true);
@@ -148,10 +148,10 @@ test("a started draft opens its chat only in the pane that shows it", () => {
   writeDraft(controller, "Started elsewhere");
   const { id } = controller.viewState.readBlank(PRIMARY);
   const other = asId<"session">("other");
-  controller.selectSession(other);
+  selectSession(controller, other);
 
-  controller.openDraftChat(id, asId<"session">(id));
-  assert.deepEqual(activeSelection(controller.getSnapshot()), {
+  controller.window.openDraftChat(controller.tabId, id, asId<"session">(id));
+  assert.deepEqual(activeSelection(paneLayout(controller)), {
     kind: "session",
     sessionId: other,
   });
@@ -162,7 +162,7 @@ test("late removal of a parked draft preserves the pane's newer draft", () => {
   const controller = tabPanes();
   writeDraft(controller, "Already submitted");
   const submittedId = controller.viewState.readBlank(PRIMARY).id;
-  controller.newChat();
+  controller.window.newChat(controller.tabId);
   writeDraft(controller, "New request");
   const currentId = controller.viewState.readBlank(PRIMARY).id;
 
@@ -206,10 +206,10 @@ test("reload restores parked drafts and follow-up text after a typing pause", ()
   const first = tabPanes({ storage, storageKey: "panes-reload" });
   const opened = first.viewState.readBlank(PRIMARY);
   writeDraft(first, "First idea");
-  first.newChat();
+  first.window.newChat(first.tabId);
   writeDraft(first, "Second idea");
   const chat = asId<"session">("chat-1");
-  first.viewState.updateSession(chat, (current) => ({
+  first.viewState.updateDraft(chat, (current) => ({
     ...current,
     composer: {
       draft: "Follow-up after reload",
@@ -222,9 +222,9 @@ test("reload restores parked drafts and follow-up text after a typing pause", ()
 
   const reloaded = tabPanes({ storage, storageKey: "panes-reload" });
   assert.equal(reloaded.viewState.readBlank(PRIMARY).composer.draft, "Second idea");
-  reloaded.selectDraft(opened.id);
+  reloaded.window.selectDraft(reloaded.tabId, opened.id);
   assert.equal(reloaded.viewState.readBlank(PRIMARY).composer.draft, "First idea");
-  const followUp = reloaded.viewState.readSession(chat).composer;
+  const followUp = reloaded.viewState.readSession(chat).draft.composer;
   assert.equal(followUp.draft, "Follow-up after reload");
   assert.equal(followUp.selectionStart, 8);
 });
@@ -310,7 +310,7 @@ test("a draft the storage refuses doesn't stop the other drafts or the index fro
   const first = tabPanes({ storage, storageKey: "panes-refused" });
   writeDraft(first, "Refused");
   refused = first.viewState.readBlank(PRIMARY).id;
-  first.newChat();
+  first.window.newChat(first.tabId);
   writeDraft(first, "Kept");
   vi.advanceTimersByTime(200);
 
@@ -322,21 +322,21 @@ const project = asId<"project">("project-1");
 
 const model = { provider: "anthropic", id: "claude" };
 
-function choose(controller: PaneController, choice: DraftChoice): void {
+function choose(controller: TabPanes, choice: DraftChoice): void {
   controller.viewState.writeBlank(PRIMARY, { ...controller.viewState.readBlank(PRIMARY), choice });
 }
 
-function shown(controller: PaneController) {
+function shown(controller: TabPanes) {
   const draft = controller.viewState.readBlank(PRIMARY);
 
   return { text: draft.composer.draft, project: draft.project, choice: draft.choice };
 }
 
-test.each<[string, (controller: PaneController) => void, Omit<ReturnType<typeof shown>, "text">]>([
+test.each<[string, (controller: TabPanes) => void, Omit<ReturnType<typeof shown>, "text">]>([
   [
     "a new chat in a project with a model picked before typing",
     (controller) => {
-      controller.newChat(project);
+      controller.window.newChat(controller.tabId, project);
       choose(controller, { model, thinking: "high" });
       writeDraft(controller, "Plan it");
     },

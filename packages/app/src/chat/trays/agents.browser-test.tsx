@@ -1,4 +1,5 @@
 import "../../../test/window-bridge.ts";
+import { paneLayout, selectSession } from "../../../test/panes.ts";
 import { TooltipProvider } from "@nyte-ai/ui/tooltip";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, RouterContextProvider } from "@tanstack/react-router";
@@ -371,15 +372,15 @@ export async function run(): Promise<string> {
   });
 
   const root = createRoot(container);
-  const panes = windowTabs.controller();
-  panes.selectSession(PARENT);
+  const panes = windowTabs.panes();
+  selectSession(panes, PARENT);
 
   flushSync(() =>
     root.render(
       <QueryClientProvider client={queryClient}>
         <RouterContextProvider router={router}>
           <TooltipProvider delay={0} closeDelay={0} timeout={0}>
-            <PaneControllerProvider controller={panes}>
+            <PaneControllerProvider panes={panes}>
               <SessionDndProvider>
                 <SessionScreen />
               </SessionDndProvider>
@@ -461,7 +462,7 @@ export async function run(): Promise<string> {
   await record(container, () => button(container, "Open Map the core").click(), "chat:core");
   button(container, "Open as full chat").click();
   await until(() => {
-    const selection = activeSelection(panes.getSnapshot());
+    const selection = activeSelection(paneLayout(panes));
 
     return (
       selection.kind === "session" &&
@@ -471,11 +472,11 @@ export async function run(): Promise<string> {
     );
   }, "the agent's chat in the pane");
 
-  panes.selectSession(PARENT);
+  selectSession(panes, PARENT);
   await until(() => transcript()?.textContent.includes("Map the app") === true, "the parent again");
   card("Map the app").click();
   await until(() => {
-    const selection = activeSelection(panes.getSnapshot());
+    const selection = activeSelection(paneLayout(panes));
 
     return (
       selection.kind === "session" &&

@@ -1,4 +1,5 @@
 import { expect, test } from "vitest";
+import { noDrafts } from "../../test/panes.ts";
 import type { SessionId } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import { activeTab, initialWindow, reduce } from "./model.ts";
@@ -26,7 +27,8 @@ const project: Place = { kind: "project", projectId: asId<"project">("p") };
 
 function showing(...places: readonly Place[]): WindowState {
   return places.reduce(
-    (state, place) => reduce(state, { kind: "open", place, target: "permanent" }, createId),
+    (state, place) =>
+      reduce(state, { kind: "open", place, target: "permanent" }, createId, noDrafts),
     initialWindow("t0", createId),
   );
 }

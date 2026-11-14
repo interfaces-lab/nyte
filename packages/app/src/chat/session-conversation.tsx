@@ -15,12 +15,7 @@ import type { BranchModelChoice, BranchModelPicker } from "./transcript/turn-vie
 import { observeActivation } from "../panes/open-workspace.tsx";
 import { Input } from "@nyte-ai/ui/input";
 import { MenuItem, MenuSeparator } from "@nyte-ai/ui/menu";
-import {
-  hideFromPanes,
-  usePaneFocused,
-  useSplitPanes,
-  usePaneViewStateStore,
-} from "../panes/pane-context.tsx";
+import { hideFromPanes, usePaneFocused, useSplitPanes } from "../panes/pane-context.tsx";
 import type { PaneId } from "../panes/layout.ts";
 import { useCatalog } from "../data/catalog.ts";
 import { coordinatedProject } from "../data/projects.ts";
@@ -350,8 +345,6 @@ function ConversationScreen(conversation: SessionConversationProps): ReactElemen
   const expired = useWatchSelect(store, (state) => state.value?.expired ?? NONE_EXPIRED);
   const choice = useSessionChoice(sessionId);
 
-  const viewStore = usePaneViewStateStore();
-
   const loadEarlier = () => loadEarlierMessages(sessionId, HISTORY_PAGE);
 
   const [scroll, setScroll] = useState<HTMLDivElement | null>(null);
@@ -537,13 +530,6 @@ function ConversationScreen(conversation: SessionConversationProps): ReactElemen
                     unsent={messages.unsent}
                     expired={expired}
                     fileDropRoot={column}
-                    initialViewState={viewStore.readSession(sessionId).composer}
-                    onViewStateChange={(composer) =>
-                      viewStore.updateSession(sessionId, (current) => ({
-                        ...current,
-                        composer,
-                      }))
-                    }
                     inputRef={attachComposer}
                     steer={
                       subagentTray.kind === "detail"
@@ -568,13 +554,6 @@ function ConversationScreen(conversation: SessionConversationProps): ReactElemen
                 unsent={messages.unsent}
                 expired={expired}
                 fileDropRoot={column}
-                initialViewState={viewStore.readSession(sessionId).composer}
-                onViewStateChange={(composer) =>
-                  viewStore.updateSession(sessionId, (current) => ({
-                    ...current,
-                    composer,
-                  }))
-                }
                 inputRef={attachComposer}
               />
             )}

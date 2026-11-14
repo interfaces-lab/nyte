@@ -17,7 +17,6 @@ import type {
 import { SdkError } from "@nyte-ai/sdk";
 import type { Health } from "@nyte-ai/sdk/client";
 import { asId, asSeq } from "@nyte-ai/schema";
-import type { ComposerViewState } from "../../panes/session-view-state.ts";
 import { viewStream } from "../../../test/scripted-connection.ts";
 import { enterBehavior } from "./composer-keys.ts";
 import { USAGE, endedTurn } from "../../../test/view-fixtures.ts";
@@ -175,6 +174,10 @@ export interface Probe {
   readonly region: HTMLElement;
   readonly editor: HTMLElement;
   readonly button: (name: string) => HTMLButtonElement | null;
+  /** The draft text the window keeps for this chat. */
+  readonly stored: () => string;
+  /** Opens another chat, runs `meanwhile`, comes back, and probes the composer drawn anew. */
+  readonly revisit: (meanwhile: () => Promise<void>) => Promise<Probe>;
 }
 
 export const inert = (button: HTMLButtonElement | null): boolean =>
@@ -205,13 +208,13 @@ const saveGates: Promise<void>[] = [];
 
 let loseHold: (lost: Awaited<HeldMessage["lost"]>) => void = () => undefined;
 
-let stored: ComposerViewState | undefined;
-
 const OPEN: Health = { kind: "open", since: 0 };
 
 export const health = viewStream<Health>(OPEN);
 
 export const stops: PromiseWithResolvers<StopOutcome<never>>[] = [];
+
+export const sends: PromiseWithResolvers<never>[] = [];
 
 export function heldMessage(message: MessageId): HeldMessage {
   const lost = Promise.withResolvers<Awaited<HeldMessage["lost"]>>();
@@ -250,6 +253,7 @@ export async function editQueuedMessage({
   region,
   editor,
   button,
+  stored,
 }: Probe): Promise<readonly string[]> {
   const failures: string[] = [];
 
@@ -315,8 +319,8 @@ export async function editQueuedMessage({
 
   if (layer === "composer")
     check(
-      stored?.draft === `${QUEUED_TEXT}\n${KEPT_DRAFT}`,
-      `the composer stores "${stored?.draft ?? ""}" while editing`,
+      stored() === `${QUEUED_TEXT}\n${KEPT_DRAFT}`,
+      `the composer stores "${stored()}" while editing`,
     );
 
   mark = calls.length;
@@ -449,6 +453,219 @@ export async function editQueuedMessage({
   return failures;
 }
 
+interface Refusal {
+  readonly name: string;
+  readonly typed: string;
+  readonly leave: "no" | "before it" | "for it" | "after it";
+  readonly editing: boolean;
+  readonly shows: string;
+  readonly restored: string | undefined;
+}
+
+const SENT = "hello";
+
+const REFUSALS: readonly Refusal[] = [
+  {
+    name: "an empty draft",
+    typed: "",
+    leave: "no",
+    editing: false,
+    shows: SENT,
+    restored: undefined,
+  },
+  {
+    name: "a draft with text",
+    typed: "next",
+    leave: "no",
+    editing: false,
+    shows: "next",
+    restored: `${SENT}\nnext`,
+  },
+  {
+    name: "a chat left and reopened before it",
+    typed: "next",
+    leave: "before it",
+    editing: false,
+    shows: "next",
+    restored: `${SENT}\nnext`,
+  },
+  {
+    name: "an empty draft in a chat left for it",
+    typed: "",
+    leave: "for it",
+    editing: false,
+    shows: SENT,
+    restored: undefined,
+  },
+  {
+    name: "a draft with text in a chat left for it",
+    typed: "next",
+    leave: "for it",
+    editing: false,
+    shows: "next",
+    restored: `${SENT}\nnext`,
+  },
+  {
+    name: "a chat left after it",
+    typed: "next",
+    leave: "after it",
+    editing: false,
+    shows: "next",
+    restored: `${SENT}\nnext`,
+  },
+  {
+    name: "a queued edit",
+    typed: "",
+    leave: "no",
+    editing: true,
+    shows: QUEUED_TEXT,
+    restored: undefined,
+  },
+];
+
+/** Refuses a send in each situation of `REFUSALS` and checks where its text lands and which notice shows. */
+export async function refuseSend(probe: Probe): Promise<readonly string[]> {
+  const failures: string[] = [];
+  let shown = probe;
+
+  for (const row of REFUSALS) {
+    const check = (ok: boolean, failure: string): void => {
+      if (!ok) failures.push(`${row.name}: ${failure}`);
+    };
+
+    shown = await refuseOnce(shown, row, check);
+
+    if (failures.length > 0) return failures;
+    shown.region
+      .querySelector<HTMLButtonElement>("[role='alert'] button[aria-label='Dismiss notification']")
+      ?.click();
+    shown.editor.focus();
+    document.execCommand("selectAll");
+    document.execCommand("delete");
+    await painted();
+  }
+
+  return failures;
+}
+
+async function refuseOnce(
+  probe: Probe,
+  row: Refusal,
+  check: (ok: boolean, failure: string) => void,
+): Promise<Probe> {
+  const reads = (shown: Probe, text: string) =>
+    until(
+      () => (written(shown) === text ? true : null),
+      `the composer to read "${text}"`,
+      () => `; it reads "${written(shown)}"`,
+    );
+
+  const type = (shown: Probe, text: string): void => {
+    shown.editor.focus();
+    document.execCommand("insertText", false, text);
+  };
+
+  const alert = (shown: Probe) => shown.region.querySelector("[role='alert']");
+
+  const restore = (shown: Probe) =>
+    Array.from(alert(shown)?.querySelectorAll("button") ?? []).find(
+      (button) => button.textContent === "Restore Draft",
+    );
+
+  const refuse = async (): Promise<void> => {
+    sends.shift()?.reject(new SdkError("invalid", "The host refused the message."));
+    await painted();
+    await painted();
+  };
+
+  const away = (meanwhile: () => Promise<void>) => probe.revisit(meanwhile);
+
+  type(probe, SENT);
+  await reads(probe, SENT);
+  await painted();
+  const sent = sends.length;
+  probe.editor.dispatchEvent(
+    new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
+  );
+  await until(() => (sends.length > sent ? true : null), "the send");
+  await reads(probe, "");
+  let shown = row.leave === "before it" ? await away(async () => undefined) : probe;
+
+  if (row.editing) {
+    shown.region
+      .querySelector<HTMLButtonElement>(
+        "[data-queue-row='first'] button[aria-label='Edit queued message']",
+      )
+      ?.click();
+    await reads(shown, QUEUED_TEXT);
+  }
+
+  if (row.typed !== "") {
+    type(shown, row.typed);
+    await reads(shown, row.typed);
+  }
+
+  if (row.leave === "for it") shown = await away(refuse);
+  else await refuse();
+
+  if (row.leave === "after it") shown = await away(async () => undefined);
+
+  const settled = shown;
+  await eventually(() => alert(settled) !== null && written(settled) === row.shows);
+  check(
+    written(shown) === row.shows,
+    `the composer reads "${written(shown)}", not "${row.shows}"`,
+  );
+  check(
+    alert(shown)?.textContent?.startsWith("Couldn't send the message") === true,
+    `the notice reads "${alert(shown)?.textContent ?? ""}"`,
+  );
+  check(
+    (restore(shown) !== undefined) === (row.restored !== undefined),
+    `Restore Draft ${restore(shown) === undefined ? "is missing" : "shows"}`,
+  );
+
+  if (!row.editing) check(shown.stored() === row.shows, `the window keeps "${shown.stored()}"`);
+
+  if (row.editing) {
+    shown.editor.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
+    );
+    await eventually(() => written(settled) === SENT);
+    check(
+      written(shown) === SENT,
+      `after the edit the composer reads "${written(shown)}"`,
+    );
+    check(shown.stored() === SENT, `after the edit the window keeps "${shown.stored()}"`);
+  }
+
+  if (row.restored === undefined) return shown;
+  const restored = row.restored;
+  restore(shown)?.click();
+  await eventually(() => written(settled) === restored);
+  check(
+    written(shown) === restored,
+    `after Restore the composer reads "${written(shown)}"`,
+  );
+  check(restore(shown) === undefined, "Restore Draft outlives the restore");
+  check(alert(shown) !== null, "the notice left with the restore");
+  check(shown.stored() === row.restored, `after Restore the window keeps "${shown.stored()}"`);
+
+  return shown;
+}
+
+function written(probe: Probe): string {
+  const text = probe.editor.innerText;
+
+  return text === "\n" ? "" : text;
+}
+
+async function eventually(done: () => boolean): Promise<void> {
+  const deadline = performance.now() + 2_000;
+
+  while (!done() && performance.now() < deadline) await painted();
+}
+
 export async function pressStop({ region, editor, button }: Probe): Promise<readonly string[]> {
   const failures: string[] = [];
 
@@ -566,11 +783,6 @@ export function painted(): Promise<void> {
   return new Promise((resolve) =>
     window.requestAnimationFrame(() => window.setTimeout(() => resolve(), 0)),
   );
-}
-
-/** Keeps the view state the lone composer stored last, which `editQueuedMessage` checks. */
-export function storeViewState(state: ComposerViewState): void {
-  stored = state;
 }
 
 /** Records the error the stage's root threw, or clears it for the next stage, so `until` stops waiting. */

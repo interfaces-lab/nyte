@@ -1,11 +1,11 @@
 import type { ClientRect } from "@dnd-kit/core";
 import { expect, test } from "vitest";
 import { asId } from "@nyte-ai/schema";
-import { PRIMARY, tabPanes } from "../../test/panes.ts";
+import { paneLayout, PRIMARY, runPane, selectSession, tabPanes } from "../../test/panes.ts";
 import { activeTab, layoutPanes } from "./layout.ts";
 import type { Layout, LayoutNode, PaneId } from "./layout.ts";
 import { dropTarget } from "./pane-commands.ts";
-import type { PaneController } from "./pane-controller.ts";
+import type { TabPanes } from "../tabs/window-store.ts";
 import type { PaneContent } from "./pane-kinds.ts";
 import { chatPanes } from "./pane-layout.ts";
 
@@ -15,9 +15,9 @@ const B = asId<"session">("B");
 
 const C = asId<"session">("C");
 
-type Fixture = (controller: PaneController) => void;
+type Fixture = (controller: TabPanes) => void;
 
-type Command = (controller: PaneController, panes: readonly PaneId[]) => void;
+type Command = (controller: TabPanes, panes: readonly PaneId[]) => void;
 
 function pane(panes: readonly PaneId[], index: number): PaneId {
   return panes[index] ?? PRIMARY;
@@ -25,30 +25,31 @@ function pane(panes: readonly PaneId[], index: number): PaneId {
 
 const blank: Fixture = () => undefined;
 
-const one: Fixture = (controller) => controller.selectSession(A);
+const one: Fixture = (controller) => selectSession(controller, A);
 
 const two: Fixture = (controller) => {
-  controller.selectSession(A);
-  controller.split("right");
-  controller.selectSession(B);
+  selectSession(controller, A);
+  runPane(controller, { kind: "split", direction: "right" });
+  selectSession(controller, B);
 };
 
 const six: Fixture = (controller) => {
-  controller.selectSession(A);
+  selectSession(controller, A);
 
-  for (let split = 0; split < 5; split += 1) controller.split("right");
+  for (let split = 0; split < 5; split += 1)
+    runPane(controller, { kind: "split", direction: "right" });
 };
 
 /** Undoes hiding A from [A|B] after `between` ran on the pane A left, expecting `accepted`. */
 function unhide(between: Command, accepted: boolean): Command {
   return (controller, panes) => {
-    const restore = controller.removeSessionWithUndo(A);
+    const restore = controller.window.hide(controller.tabId, A);
     between(controller, panes);
     expect(restore()).toBe(accepted);
   };
 }
 
-function typeInto(controller: PaneController, paneId: PaneId): void {
+function typeInto(controller: TabPanes, paneId: PaneId): void {
   const draft = controller.viewState.readBlank(paneId);
   controller.viewState.writeBlank(paneId, {
     ...draft,
@@ -87,12 +88,17 @@ function label(layout: Layout<PaneContent>, paneId: PaneId | undefined): string 
 }
 
 test.each([
-  ["blank + show A", blank, (controller) => controller.selectSession(A), "A*", "0", ["0"]],
-  ["A + show A", one, (controller) => controller.selectSession(A), "A", "0", []],
+  ["blank + show A", blank, (controller) => selectSession(controller, A), "A*", "0", ["0"]],
+  ["A + show A", one, (controller) => selectSession(controller, A), "A", "0", []],
   [
     "[A|B] focus B + show-in(left, B)",
     two,
-    (controller, panes) => controller.selectSessionInPane(pane(panes, 0), B),
+    (controller, panes) =>
+      runPane(controller, {
+        kind: "show-in",
+        pane: pane(panes, 0),
+        selection: { kind: "session", sessionId: B },
+      }),
     "right(A,B)",
     "1",
     [],
@@ -101,23 +107,36 @@ test.each([
     "[A|B] focus left + show-in(left, C)",
     (controller) => {
       two(controller);
-      controller.focus(
-        pane(
-          chatPanes(controller.getSnapshot()).map((entry) => entry.pane),
+      runPane(controller, {
+        kind: "focus",
+        pane: pane(
+          chatPanes(paneLayout(controller)).map((entry) => entry.pane),
           0,
         ),
-      );
+      });
     },
-    (controller, panes) => controller.selectSessionInPane(pane(panes, 0), C),
+    (controller, panes) =>
+      runPane(controller, {
+        kind: "show-in",
+        pane: pane(panes, 0),
+        selection: { kind: "session", sessionId: C },
+      }),
     "right(C,B)",
     "0",
     ["0"],
   ],
-  ["[A] + close", one, (controller) => controller.close(PRIMARY), "blank", "0", ["0"]],
+  [
+    "[A] + close",
+    one,
+    (controller) => runPane(controller, { kind: "close", pane: PRIMARY }),
+    "blank",
+    "0",
+    ["0"],
+  ],
   [
     "[A|B] + close(left)",
     two,
-    (controller, panes) => controller.close(pane(panes, 0)),
+    (controller, panes) => runPane(controller, { kind: "close", pane: pane(panes, 0) }),
     "B",
     "0",
     ["0"],
@@ -125,7 +144,7 @@ test.each([
   [
     "[A] + split right",
     one,
-    (controller) => controller.split("right"),
+    (controller) => runPane(controller, { kind: "split", direction: "right" }),
     "right(A,blank*)",
     "1",
     ["1"],
@@ -133,7 +152,7 @@ test.each([
   [
     "6 panes + split",
     six,
-    (controller) => controller.split("right"),
+    (controller) => runPane(controller, { kind: "split", direction: "right" }),
     "right(A,blank,blank,blank,blank,blank)",
     "5",
     [],
@@ -141,7 +160,13 @@ test.each([
   [
     "[A|B] + drop(B, left, center)",
     two,
-    (controller, panes) => controller.drop(B, pane(panes, 0), "center"),
+    (controller, panes) =>
+      runPane(controller, {
+        kind: "drop",
+        sessionId: B,
+        pane: pane(panes, 0),
+        placement: "center",
+      }),
     "right(B,A)",
     "0",
     ["0"],
@@ -149,7 +174,8 @@ test.each([
   [
     "[A] + drop(C, p, center)",
     one,
-    (controller) => controller.drop(C, PRIMARY, "center"),
+    (controller) =>
+      runPane(controller, { kind: "drop", sessionId: C, pane: PRIMARY, placement: "center" }),
     "C",
     "0",
     ["0"],
@@ -157,7 +183,13 @@ test.each([
   [
     "[A|B] + drop(A, left, center)",
     two,
-    (controller, panes) => controller.drop(A, pane(panes, 0), "center"),
+    (controller, panes) =>
+      runPane(controller, {
+        kind: "drop",
+        sessionId: A,
+        pane: pane(panes, 0),
+        placement: "center",
+      }),
     "right(A,B)",
     "1",
     [],
@@ -165,7 +197,8 @@ test.each([
   [
     "[A|B] + drop(A, left, right)",
     two,
-    (controller, panes) => controller.drop(A, pane(panes, 0), "right"),
+    (controller, panes) =>
+      runPane(controller, { kind: "drop", sessionId: A, pane: pane(panes, 0), placement: "right" }),
     "right(A,B)",
     "1",
     [],
@@ -173,7 +206,8 @@ test.each([
   [
     "[A] + drop(C, p, right)",
     one,
-    (controller) => controller.drop(C, PRIMARY, "right"),
+    (controller) =>
+      runPane(controller, { kind: "drop", sessionId: C, pane: PRIMARY, placement: "right" }),
     "right(A,C*)",
     "1",
     ["1"],
@@ -181,7 +215,13 @@ test.each([
   [
     "[A|B] + drop(A, right, bottom)",
     two,
-    (controller, panes) => controller.drop(A, pane(panes, 1), "bottom"),
+    (controller, panes) =>
+      runPane(controller, {
+        kind: "drop",
+        sessionId: A,
+        pane: pane(panes, 1),
+        placement: "bottom",
+      }),
     "down(B,A)",
     "1",
     ["1"],
@@ -189,7 +229,8 @@ test.each([
   [
     "6 panes + drop(C, p, right)",
     six,
-    (controller) => controller.drop(C, PRIMARY, "right"),
+    (controller) =>
+      runPane(controller, { kind: "drop", sessionId: C, pane: PRIMARY, placement: "right" }),
     "right(A,blank,blank,blank,blank,blank)",
     "5",
     [],
@@ -198,7 +239,7 @@ test.each([
     "[A|B] focus B + hide A",
     two,
     (controller) => {
-      controller.removeSessionWithUndo(A);
+      controller.window.hide(controller.tabId, A);
     },
     "right(blank,B)",
     "1",
@@ -223,20 +264,38 @@ test.each([
   [
     "unhide after showing C",
     two,
-    unhide((controller, panes) => controller.selectSessionInPane(pane(panes, 0), C), false),
+    unhide(
+      (controller, panes) =>
+        runPane(controller, {
+          kind: "show-in",
+          pane: pane(panes, 0),
+          selection: { kind: "session", sessionId: C },
+        }),
+      false,
+    ),
     "right(C,B)",
     "0",
     ["0"],
   ],
-  ["newChat when already blank", blank, (controller) => controller.newChat(), "blank", "0", ["0"]],
+  [
+    "newChat when already blank",
+    blank,
+    (controller) => controller.window.newChat(controller.tabId),
+    "blank",
+    "0",
+    ["0"],
+  ],
   [
     "selectDraft shown in another pane",
     (controller) => {
-      controller.split("right");
-      controller.selectSession(B);
+      runPane(controller, { kind: "split", direction: "right" });
+      selectSession(controller, B);
     },
     (controller, panes) =>
-      controller.selectDraft(controller.viewState.readBlank(pane(panes, 0)).id),
+      controller.window.selectDraft(
+        controller.tabId,
+        controller.viewState.readBlank(pane(panes, 0)).id,
+      ),
     "right(blank,B)",
     "0",
     ["0"],
@@ -246,13 +305,13 @@ test.each([
   (_name, fixture, command, layout, focused, requested) => {
     const controller = tabPanes();
     fixture(controller);
-    const before = controller.getSnapshot();
+    const before = paneLayout(controller);
     const panes = chatPanes(before).map((entry) => entry.pane);
     const requests: PaneId[] = [];
-    const stop = controller.store.onFocusRequest((paneId) => requests.push(paneId));
+    const stop = controller.layout.onFocusRequest((paneId) => requests.push(paneId));
     command(controller, panes);
     stop();
-    const after = controller.getSnapshot();
+    const after = paneLayout(controller);
 
     expect({
       layout: arrangement(after.root, before),
@@ -270,12 +329,12 @@ function rect(left: number, top: number, width: number, height: number): ClientR
 function measured(
   fixture: Fixture,
   rects: readonly (ClientRect | undefined)[],
-): (controller: PaneController) => ReadonlyMap<PaneId, ClientRect> {
+): (controller: TabPanes) => ReadonlyMap<PaneId, ClientRect> {
   return (controller) => {
     fixture(controller);
 
     return new Map(
-      chatPanes(controller.getSnapshot()).flatMap((entry, index) => {
+      chatPanes(paneLayout(controller)).flatMap((entry, index) => {
         const measure = rects[index];
 
         return measure === undefined ? [] : [[entry.pane, measure] as const];
@@ -349,14 +408,14 @@ test.each([
   ],
 ] satisfies readonly (readonly [
   string,
-  (controller: PaneController) => ReadonlyMap<PaneId, ClientRect>,
+  (controller: TabPanes) => ReadonlyMap<PaneId, ClientRect>,
   { readonly x: number; readonly y: number },
   typeof A,
   { readonly pane: number; readonly placement: string } | undefined,
 ])[])("dropTarget: %s", (_name, build, point, dragged, expected) => {
   const controller = tabPanes();
   const rects = build(controller);
-  const layout = controller.getSnapshot();
+  const layout = paneLayout(controller);
   const target = dropTarget(layout, rects, point, dragged);
 
   expect(

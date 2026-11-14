@@ -178,7 +178,7 @@ function Stage({
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider delay={0} closeDelay={0} timeout={0}>
-        <PaneControllerProvider controller={panes}>
+        <PaneControllerProvider panes={panes}>
           <TranscriptProvider paneId={PRIMARY} sessionId={SESSION}>
             <div style={{ padding: 16 }}>
               <ShellStep density={density} />

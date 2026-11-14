@@ -1,4 +1,4 @@
-import { tabPanes } from "../../../test/panes.ts";
+import { selectSession, tabPanes } from "../../../test/panes.ts";
 import "../../../test/window-bridge.ts";
 import { TooltipProvider } from "@nyte-ai/ui/tooltip";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -276,7 +276,7 @@ export async function run(): Promise<string> {
   });
 
   const panes = tabPanes();
-  panes.selectSession(SESSION);
+  selectSession(panes, SESSION);
   const stage = document.createElement("div");
   stage.style.cssText = "position:relative;display:flex;flex-direction:column;height:560px;";
   document.body.append(stage);
@@ -287,7 +287,7 @@ export async function run(): Promise<string> {
       <QueryClientProvider client={queryClient}>
         <RouterContextProvider router={router}>
           <TooltipProvider delay={0} closeDelay={0} timeout={0}>
-            <PaneControllerProvider controller={panes}>
+            <PaneControllerProvider panes={panes}>
               <SessionDndProvider>
                 <SessionScreen />
               </SessionDndProvider>
@@ -316,7 +316,7 @@ export async function run(): Promise<string> {
     await openModelPicker(editor);
     await pasteFromNowhere(editor);
 
-    flushSync(() => panes.newChat());
+    flushSync(() => panes.window.newChat(panes.tabId));
     await openModelPicker(
       await until(
         () => stage.querySelector<HTMLElement>("[data-placeholder^='Ask Nyte']"),

@@ -111,8 +111,7 @@ function TitlebarTabStrip({ state, mac }: { state: WindowState; mac: boolean }):
           markRead: (sessionId) => chatWindow.markRead([sessionId]),
           openBeside: (sessionId) => {
             shellActions.showWorkspace();
-            const controller = windowTabs.controller();
-            controller.drop(sessionId, controller.getSnapshot().focus[0], "right");
+            windowTabs.dispatch({ kind: "open-beside", sessionId });
           },
           archive: (session) => {
             if (!session.archived && sessionIsRunning(session, chatDirectory())) {

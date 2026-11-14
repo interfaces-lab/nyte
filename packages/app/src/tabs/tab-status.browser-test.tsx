@@ -1,4 +1,5 @@
 import "../../test/window-bridge.ts";
+import { paneLayout, runPane, selectSession } from "../../test/panes.ts";
 import { TooltipProvider } from "@nyte-ai/ui/tooltip";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, RouterContextProvider } from "@tanstack/react-router";
@@ -174,9 +175,14 @@ export async function run(): Promise<string> {
   windowTabs.start({ id: "tab-status", launch: undefined });
   windowTabs.openChat(asId<"session">("Solo"), "permanent");
   windowTabs.openChat(asId<"session">("Left"), "permanent");
-  const controller = windowTabs.controller();
-  controller.drop(asId<"session">("Right"), controller.getSnapshot().focus[0], "right");
-  controller.selectSession(asId<"session">("Left"));
+  const controller = windowTabs.panes();
+  runPane(controller, {
+    kind: "drop",
+    sessionId: asId<"session">("Right"),
+    pane: paneLayout(controller).focus[0],
+    placement: "right",
+  });
+  selectSession(controller, asId<"session">("Left"));
   windowTabs.openChat(quiet.id, "permanent");
   windowTabs.dispatch({ kind: "new-tab" });
 

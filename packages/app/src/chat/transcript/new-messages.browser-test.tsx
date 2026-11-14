@@ -1,4 +1,5 @@
 import "../../../test/window-bridge.ts";
+import { selectSession } from "../../../test/panes.ts";
 import { TooltipProvider } from "@nyte-ai/ui/tooltip";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, RouterContextProvider } from "@tanstack/react-router";
@@ -223,15 +224,15 @@ export async function run(): Promise<string> {
   });
 
   const root = createRoot(container);
-  const panes = windowTabs.controller();
-  panes.selectSession(ID);
+  const panes = windowTabs.panes();
+  selectSession(panes, ID);
 
   flushSync(() =>
     root.render(
       <QueryClientProvider client={queryClient}>
         <RouterContextProvider router={router}>
           <TooltipProvider delay={0} closeDelay={0} timeout={0}>
-            <PaneControllerProvider controller={panes}>
+            <PaneControllerProvider panes={panes}>
               <SessionDndProvider>
                 <SessionScreen />
               </SessionDndProvider>
@@ -319,7 +320,7 @@ export async function run(): Promise<string> {
       "a reader's 2 px upward wheel stops following",
     );
 
-    panes.selectSession(COLD);
+    selectSession(panes, COLD);
     await frames(10);
     check(!coldSeen, "an unread chat isn't marked read before its view arrives");
     coldOpened.resolve();

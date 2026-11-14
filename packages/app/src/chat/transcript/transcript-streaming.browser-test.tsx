@@ -1,4 +1,4 @@
-import { tabPanes } from "../../../test/panes.ts";
+import { selectSession, tabPanes } from "../../../test/panes.ts";
 import "./transcript-render-counter.ts";
 import "../../../test/window-bridge.ts";
 import { TooltipProvider } from "@nyte-ai/ui/tooltip";
@@ -193,14 +193,14 @@ export async function run(): Promise<string> {
 
   const root = createRoot(container);
   const panes = tabPanes();
-  panes.selectSession(ID);
+  selectSession(panes, ID);
 
   flushSync(() =>
     root.render(
       <QueryClientProvider client={queryClient}>
         <RouterContextProvider router={router}>
           <TooltipProvider delay={0} closeDelay={0} timeout={0}>
-            <PaneControllerProvider controller={panes}>
+            <PaneControllerProvider panes={panes}>
               <SessionDndProvider>
                 <SessionScreen />
               </SessionDndProvider>

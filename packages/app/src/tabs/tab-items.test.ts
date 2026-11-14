@@ -1,6 +1,7 @@
 import { expect, test } from "vitest";
 import { asId } from "@nyte-ai/schema";
 import type { ChatDirectory } from "../chats/index.ts";
+import { noDrafts } from "../../test/panes.ts";
 import { initialWindow, reduce } from "./model.ts";
 import type { WindowAction, WindowState } from "./model.ts";
 import { windowTabItems } from "./tab-items.ts";
@@ -16,7 +17,7 @@ function createId(): string {
 const NO_CHATS: ChatDirectory = new Map();
 
 function run(state: WindowState, actions: readonly WindowAction[]): WindowState {
-  return actions.reduce((current, action) => reduce(current, action, createId), state);
+  return actions.reduce((current, action) => reduce(current, action, createId, noDrafts), state);
 }
 
 const start = run(initialWindow("t0", createId), [

@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import { sessionRow } from "../../test/view-fixtures.ts";
-import { changePanes, showIn, splitRight } from "../../test/panes.ts";
+import { changePanes, noDrafts, showIn, splitRight } from "../../test/panes.ts";
 import { goneChats, watchedChats } from "./gone-chats.ts";
 import { initialWindow, reduce } from "./model.ts";
 import type { WindowAction, WindowState } from "./model.ts";
@@ -58,7 +58,7 @@ test.each([
 
 function run(actions: readonly ((state: WindowState) => WindowAction)[]): WindowState {
   return actions.reduce(
-    (state, action) => reduce(state, action(state), createId),
+    (state, action) => reduce(state, action(state), createId, noDrafts),
     initialWindow("t0", createId),
   );
 }
@@ -79,9 +79,8 @@ test.each([
     "a chat in each pane of a split",
     [
       open("a"),
-      (state: WindowState) => changePanes(state, splitRight, createId),
-      (state: WindowState) =>
-        changePanes(state, showIn({ kind: "session", sessionId: OPEN }), createId),
+      (state: WindowState) => changePanes(state, splitRight),
+      (state: WindowState) => changePanes(state, showIn({ kind: "session", sessionId: OPEN })),
     ],
     ["a", "open"],
   ],

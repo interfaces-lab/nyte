@@ -666,7 +666,7 @@ export async function run() {
       flushSync(() =>
         root.render(
           <QueryClientProvider client={queryClient}>
-            <PaneControllerProvider controller={panes}>
+            <PaneControllerProvider panes={panes}>
               <TranscriptProvider paneId={PRIMARY} sessionId={asId<"session">("step-group-test")}>
                 {node}
               </TranscriptProvider>

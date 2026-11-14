@@ -3,7 +3,14 @@ import { asId } from "@nyte-ai/schema";
 import { planPane } from "../panes/pane-commands.ts";
 import { chatContent, chatPanes } from "../panes/pane-layout.ts";
 import type { DropPlacement, PaneSelection } from "../panes/pane-layout.ts";
-import { changePanes, focusFirst, showIn, splitRight, tabPanes } from "../../test/panes.ts";
+import {
+  changePanes,
+  focusFirst,
+  noDrafts,
+  showIn,
+  splitRight,
+  tabPanes,
+} from "../../test/panes.ts";
 import type { PaneChange } from "../../test/panes.ts";
 import { activeTab, initialWindow, reduce, tabLayout, tabPlace, withoutPreviews } from "./model.ts";
 import type { Place, WindowAction, WindowState } from "./model.ts";
@@ -17,7 +24,7 @@ function createId(): string {
 }
 
 function run(actions: readonly WindowAction[], state = initialWindow("t1", createId)): WindowState {
-  return actions.reduce((current, action) => reduce(current, action, createId), state);
+  return actions.reduce((current, action) => reduce(current, action, createId, noDrafts), state);
 }
 
 const chat = (id: string): PaneSelection => ({ kind: "session", sessionId: asId<"session">(id) });
@@ -27,7 +34,7 @@ const customize: Place = { kind: "customize", section: undefined, sessionId: und
 const places = (state: WindowState): readonly Place[] => state.tabs.map((tab) => tabPlace(tab));
 
 function pane(state: WindowState, change: PaneChange): WindowAction {
-  return changePanes(state, change, createId);
+  return changePanes(state, change);
 }
 
 test("a click opens a chat in its own tab, using a new chat tab it is opened from", () => {
@@ -492,7 +499,7 @@ test.each<[string, readonly (WindowAction | PaneChange)[], readonly string[][], 
 ])("one tab per chat: %s", (_, steps, tabs, active) => {
   const state = steps.reduce(
     (current, step) =>
-      reduce(current, "kind" in step ? step : pane(current, step), createId),
+      reduce(current, "kind" in step ? step : pane(current, step), createId, noDrafts),
     initialWindow("t1", createId),
   );
 

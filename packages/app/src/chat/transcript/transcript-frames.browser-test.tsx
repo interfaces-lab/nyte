@@ -1,4 +1,4 @@
-import { tabPanes, PRIMARY } from "../../../test/panes.ts";
+import { PRIMARY, selectSession, tabPanes } from "../../../test/panes.ts";
 import "../../../test/window-bridge.ts";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@nyte-ai/ui/tooltip";
@@ -167,7 +167,7 @@ export async function run(): Promise<string> {
   container.style.cssText = `display:flex;width:760px;height:540px;color:${foreground};background:${background}`;
   document.body.append(container);
   const controller = tabPanes();
-  controller.selectSession(SESSION);
+  selectSession(controller, SESSION);
   const root = createRoot(container);
 
   const render = (children: ReactNode): void =>
@@ -175,7 +175,7 @@ export async function run(): Promise<string> {
       root.render(
         <QueryClientProvider client={queryClient}>
           <TooltipProvider delay={0} closeDelay={0} timeout={0}>
-            <PaneControllerProvider controller={controller}>{children}</PaneControllerProvider>
+            <PaneControllerProvider panes={controller}>{children}</PaneControllerProvider>
           </TooltipProvider>
         </QueryClientProvider>,
       ),

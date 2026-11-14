@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import { asId } from "@nyte-ai/schema";
 import type { Execution, HeadInfo, SessionId } from "@nyte-ai/sdk";
-import { changePanes, focusFirst, showIn, splitRight } from "../../test/panes.ts";
+import { changePanes, focusFirst, noDrafts, showIn, splitRight } from "../../test/panes.ts";
 import type { PaneChange } from "../../test/panes.ts";
 import { initialWindow, reduce } from "../tabs/model.ts";
 import type { WindowAction, WindowState } from "../tabs/model.ts";
@@ -43,7 +43,7 @@ function nextId(): string {
 }
 
 function run(actions: readonly WindowAction[], state = initialWindow("t1", nextId)): WindowState {
-  return actions.reduce((current, action) => reduce(current, action, nextId), state);
+  return actions.reduce((current, action) => reduce(current, action, nextId, noDrafts), state);
 }
 
 function open(sessionId: SessionId): WindowAction {
@@ -51,7 +51,7 @@ function open(sessionId: SessionId): WindowAction {
 }
 
 function pane(state: WindowState, change: PaneChange): WindowState {
-  return run([changePanes(state, change, nextId)], state);
+  return run([changePanes(state, change)], state);
 }
 
 function view(tabs: WindowState, change: Partial<WindowView> = {}): WindowView {

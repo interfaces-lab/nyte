@@ -22,6 +22,7 @@ import type { SessionId } from "@nyte-ai/sdk";
 import { ModelRefType, ThinkingType, asId } from "@nyte-ai/schema";
 import { projectId } from "../../data/schemas.ts";
 import { readStored, removeStored, type StorageArea, writeStored } from "../../lib/storage.ts";
+import { persistedDraft } from "./composer-draft.ts";
 
 const FLUSH_DEBOUNCE_MS = 200;
 
@@ -123,6 +124,7 @@ export class WindowDrafts {
   readonly sessions = new Map<SessionId, SessionViewState>();
   readonly #panes = new Map<string, Map<PaneId, PaneDraftState>>();
   readonly #listeners = new Set<() => void>();
+  readonly #keyed = new Map<string, Set<() => void>>();
   readonly #persistence: Persistence | undefined;
   readonly #pending = new Map<string, StoredValue | undefined>();
   #flushTimer: ReturnType<typeof setTimeout> | undefined;
@@ -140,6 +142,23 @@ export class WindowDrafts {
 
     return () => this.#listeners.delete(listener);
   };
+
+  /** Calls `listener` on `notify(key)`, so one chat's keystrokes wake only what shows that chat. */
+  subscribeKey(key: string, listener: () => void): () => void {
+    const listeners = this.#keyed.get(key) ?? new Set<() => void>();
+    this.#keyed.set(key, listeners);
+    listeners.add(listener);
+
+    return () => {
+      listeners.delete(listener);
+
+      if (listeners.size === 0 && this.#keyed.get(key) === listeners) this.#keyed.delete(key);
+    };
+  }
+
+  notify(key: string): void {
+    for (const listener of this.#keyed.get(key) ?? []) listener();
+  }
 
   readonly listedDrafts = (): readonly ChatDraft[] => {
     this.#listed ??= this.drafts();
@@ -299,7 +318,10 @@ export class WindowDrafts {
       const composer = composerView(stored.record, stored.attachments);
 
       if (!composerHasContent(composer)) continue;
-      this.sessions.set(asId<"session">(id), { ...DEFAULT_SESSION_VIEW_STATE, composer });
+      this.sessions.set(asId<"session">(id), {
+        ...DEFAULT_SESSION_VIEW_STATE,
+        draft: { ...DEFAULT_SESSION_VIEW_STATE.draft, composer },
+      });
     }
   }
 
@@ -329,7 +351,7 @@ export class WindowDrafts {
     }
 
     const sessions = [...this.sessions]
-      .filter(([, state]) => composerHasContent(state.composer))
+      .filter(([, state]) => composerHasContent(persistedDraft(state.draft)))
       .map(([id]) => id)
       .toSorted();
 

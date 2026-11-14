@@ -72,66 +72,29 @@ export function planPane(
   command: PaneCommand,
   blank: (pane: PaneId) => ChatDraft,
 ): PanePlan {
-  switch (command.kind) {
-    case "show":
-      return changed(showChat(layout, command.selection));
-    case "show-in":
-      return changed(inPane(layout, command.pane, command.selection));
-    case "split":
-      return changed([
-        {
-          kind: "open",
-          content: chatContent(BLANK),
-          place: {
-            kind: "edge",
-            pane: layout.focus[0],
-            direction: command.direction,
-            side: "after",
-          },
-        },
-      ]);
-    case "close":
-      return changed(closePane(layout, command.pane));
-    case "focus":
-      return changed([{ kind: "focus", pane: command.pane }]);
-    case "drop":
-      return changed(dropSession(layout, command.sessionId, command.pane, command.placement));
-    case "hide": {
-      const pane = paneForSession(layout, command.sessionId);
+  return { actions: paneActions(layout, command, blank), focus: commandFocus(command) };
+}
 
-      return {
-        actions:
-          pane === undefined
-            ? []
-            : [...inPane(layout, pane, BLANK), { kind: "focus", pane: layout.focus[0] }],
-        focus: "never",
-      };
-    }
-
-    case "unhide":
-      return changed(unhideSession(layout, command, blank));
-    default: {
-      const _exhaustive: never = command;
-
-      return _exhaustive;
-    }
-  }
+/** Hiding a chat keeps DOM focus where it is; every other command follows the change. */
+export function commandFocus(command: PaneCommand): PaneFocus {
+  return command.kind === "hide" ? "never" : "if-changed";
 }
 
 /**
- * The pane to move DOM focus to once `plan` turned `before` into `after`: the focused chat's pane
- * when the layout changed, the focused pane when the plan always focuses, and none otherwise.
+ * The pane to move DOM focus to once a command turned `before` into `after`: the focused chat's
+ * pane when the layout changed, the focused pane when the command always focuses, and none
+ * otherwise.
  */
 export function focusRequest(
   before: Layout<PaneContent>,
   after: Layout<PaneContent>,
-  plan: PanePlan,
+  focus: PaneFocus,
 ): PaneId | undefined {
-  if (plan.focus === "never") return undefined;
+  if (focus === "never") return undefined;
 
   if (after !== before) return focusedChat(after)?.pane ?? after.focus[0];
 
-  return plan.focus === "always" ? after.focus[0] : undefined;
+  return focus === "always" ? after.focus[0] : undefined;
 }
 
 /**
@@ -188,8 +151,51 @@ export function dropPreviewBox(box: Box, target: SessionDropTarget): Box {
   }
 }
 
-function changed(actions: readonly LayoutAction<PaneContent>[]): PanePlan {
-  return { actions, focus: "if-changed" };
+function paneActions(
+  layout: Layout<PaneContent>,
+  command: PaneCommand,
+  blank: (pane: PaneId) => ChatDraft,
+): readonly LayoutAction<PaneContent>[] {
+  switch (command.kind) {
+    case "show":
+      return showChat(layout, command.selection);
+    case "show-in":
+      return inPane(layout, command.pane, command.selection);
+    case "split":
+      return [
+        {
+          kind: "open",
+          content: chatContent(BLANK),
+          place: {
+            kind: "edge",
+            pane: layout.focus[0],
+            direction: command.direction,
+            side: "after",
+          },
+        },
+      ];
+    case "close":
+      return closePane(layout, command.pane);
+    case "focus":
+      return [{ kind: "focus", pane: command.pane }];
+    case "drop":
+      return dropSession(layout, command.sessionId, command.pane, command.placement);
+    case "hide": {
+      const pane = paneForSession(layout, command.sessionId);
+
+      return pane === undefined
+        ? []
+        : [...inPane(layout, pane, BLANK), { kind: "focus", pane: layout.focus[0] }];
+    }
+
+    case "unhide":
+      return unhideSession(layout, command, blank);
+    default: {
+      const _exhaustive: never = command;
+
+      return _exhaustive;
+    }
+  }
 }
 
 function inPane(

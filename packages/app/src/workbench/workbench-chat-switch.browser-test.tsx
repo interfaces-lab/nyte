@@ -1,4 +1,4 @@
-import { tabPanes } from "../../test/panes.ts";
+import { selectSession, tabPanes } from "../../test/panes.ts";
 import "../chat/transcript/transcript-render-counter.ts";
 import "../../test/window-bridge.ts";
 import "./panels.deferred.tsx";
@@ -344,7 +344,7 @@ export async function run(): Promise<string> {
 
   const root = createRoot(container);
   const panes = tabPanes();
-  panes.selectSession(asId<"session">("alpha"));
+  selectSession(panes, asId<"session">("alpha"));
   reset();
 
   flushSync(() =>
@@ -352,7 +352,7 @@ export async function run(): Promise<string> {
       <QueryClientProvider client={queryClient}>
         <RouterContextProvider router={router}>
           <TooltipProvider delay={0} closeDelay={0} timeout={0}>
-            <PaneControllerProvider controller={panes}>
+            <PaneControllerProvider panes={panes}>
               <SessionDndProvider>
                 <SessionScreen />
               </SessionDndProvider>
@@ -364,7 +364,7 @@ export async function run(): Promise<string> {
   );
 
   const show = async (name: Name): Promise<void> => {
-    panes.selectSession(asId<"session">(name));
+    selectSession(panes, asId<"session">(name));
     await until(
       () => container.innerText.includes(`${name} question ${String(TURNS)}`),
       `chat ${name}`,

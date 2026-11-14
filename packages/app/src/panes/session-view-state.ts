@@ -5,6 +5,8 @@ import type { Static } from "typebox";
 import { Type } from "typebox";
 import type { PaneId } from "./layout.ts";
 import type { WindowDrafts } from "../chat/composer/drafts.ts";
+import { persistedDraft } from "../chat/composer/composer-draft.ts";
+import type { SessionDraft } from "../chat/composer/composer-draft.ts";
 
 const KEPT_SESSION_VIEWS = 64;
 
@@ -28,7 +30,7 @@ export type ScrollViewState =
   | { readonly kind: "anchor"; readonly key: string; readonly offset: number };
 
 export interface SessionViewState {
-  readonly composer: ComposerViewState;
+  readonly draft: SessionDraft;
   readonly scroll: Partial<Record<PaneId, ScrollViewState>>;
   readonly stepGroups: ReadonlyMap<string, boolean>;
 }
@@ -73,7 +75,7 @@ export const DEFAULT_COMPOSER_VIEW_STATE: ComposerViewState = {
 };
 
 export const DEFAULT_SESSION_VIEW_STATE: SessionViewState = {
-  composer: DEFAULT_COMPOSER_VIEW_STATE,
+  draft: { composer: DEFAULT_COMPOSER_VIEW_STATE, edit: null, notice: null },
   scroll: {},
   stepGroups: new Map(),
 };
@@ -130,6 +132,11 @@ export class SessionViewStateStore {
 
   readonly listedDrafts = (): readonly ChatDraft[] => this.#window.listedDrafts();
 
+  /** Calls `listener` when the chat's draft changes, and for nothing else. */
+  subscribeDraft(sessionId: SessionId, listener: () => void): () => void {
+    return this.#window.subscribeKey(`session:${sessionId}`, listener);
+  }
+
   readSession(sessionId: SessionId): SessionViewState {
     return this.#window.sessions.get(sessionId) ?? DEFAULT_SESSION_VIEW_STATE;
   }
@@ -137,7 +144,7 @@ export class SessionViewStateStore {
   writeSession(sessionId: SessionId, state: SessionViewState): void {
     const sessions = this.#window.sessions;
     const known = sessions.get(sessionId);
-    const previous = known?.composer ?? DEFAULT_COMPOSER_VIEW_STATE;
+    const previous = known?.draft ?? DEFAULT_SESSION_VIEW_STATE.draft;
     sessions.delete(sessionId);
     sessions.set(sessionId, state);
 
@@ -145,18 +152,23 @@ export class SessionViewStateStore {
       for (const [id, kept] of sessions) {
         if (sessions.size <= KEPT_SESSION_VIEWS) break;
 
-        if (!composerHasContent(kept.composer)) sessions.delete(id);
+        if (
+          !composerHasContent(persistedDraft(kept.draft)) &&
+          (kept.draft.notice === null || kept.draft.notice.restore === null)
+        )
+          sessions.delete(id);
       }
     }
 
-    if (storedChanged(previous, state.composer)) {
-      this.#window.save(
-        `session:${sessionId}`,
-        previous,
-        state.composer,
-        persistableComposer(state.composer),
-      );
+    if (previous === state.draft) return;
+    const before = persistedDraft(previous);
+    const after = persistedDraft(state.draft);
+
+    if (storedChanged(before, after)) {
+      this.#window.save(`session:${sessionId}`, before, after, persistableComposer(after));
     }
+
+    this.#window.notify(`session:${sessionId}`);
   }
 
   updateSession(
@@ -167,6 +179,11 @@ export class SessionViewStateStore {
     this.writeSession(sessionId, next);
 
     return next;
+  }
+
+  updateDraft(sessionId: SessionId, update: (draft: SessionDraft) => SessionDraft): SessionDraft {
+    return this.updateSession(sessionId, (current) => ({ ...current, draft: update(current.draft) }))
+      .draft;
   }
 
   readBlank(paneId: PaneId): ChatDraft {

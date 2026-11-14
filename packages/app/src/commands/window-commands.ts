@@ -196,11 +196,11 @@ export function runWindowCommand(router: RegisteredRouter, command: AppMenuActio
     case "split-down":
       uncoverPanes(router);
 
-      return splitPanes(windowTabs.controller(), command === "split-down" ? "down" : "right");
+      return splitPanes(windowTabs.panes(), command === "split-down" ? "down" : "right");
     case "markdown-source":
       return toggleMarkdownSource();
     case "focus-pane":
-      return focusNextPane(windowTabs.controller());
+      return focusNextPane(windowTabs.panes());
     case "reload-window":
       window.location.reload();
 

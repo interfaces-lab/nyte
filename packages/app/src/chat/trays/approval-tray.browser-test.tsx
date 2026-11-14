@@ -1,4 +1,4 @@
-import { tabPanes } from "../../../test/panes.ts";
+import { selectSession, tabPanes } from "../../../test/panes.ts";
 import "../../../test/window-bridge.ts";
 import { TooltipProvider } from "@nyte-ai/ui/tooltip";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -176,7 +176,7 @@ function Stage(): ReactElement {
 
   const [panes] = useState(() => {
     const controller = tabPanes();
-    controller.selectSession(SESSION);
+    selectSession(controller, SESSION);
 
     return controller;
   });
@@ -185,7 +185,7 @@ function Stage(): ReactElement {
     <QueryClientProvider client={queryClient}>
       <RouterContextProvider router={router}>
         <TooltipProvider delay={0} closeDelay={0} timeout={0}>
-          <PaneControllerProvider controller={panes}>
+          <PaneControllerProvider panes={panes}>
             <SessionDndProvider>
               <SessionScreen />
             </SessionDndProvider>

@@ -10,7 +10,7 @@ import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import { SessionRow } from "../sidebar/sidebar-rows.tsx";
 import { ChatCardGroup } from "./chat-card.tsx";
 import { PaneControllerProvider } from "../panes/pane-context.tsx";
-import type { PaneController } from "../panes/pane-controller.ts";
+import type { TabPanes } from "../tabs/window-store.ts";
 import { SessionDndProvider } from "../panes/session-dnd.tsx";
 import { keys, queryClient } from "../data/query-client.ts";
 import { WindowTabStrip } from "../tabs/window-tab-strip.tsx";
@@ -73,10 +73,10 @@ installScripted(
   }),
 );
 
-function Stage({ panes }: { readonly panes: PaneController }): ReactElement {
+function Stage({ panes }: { readonly panes: TabPanes }): ReactElement {
   return (
     <QueryClientProvider client={queryClient}>
-      <PaneControllerProvider controller={panes}>
+      <PaneControllerProvider panes={panes}>
         <SessionDndProvider>
           <ChatCardGroup placement="row">
             <div style={{ width: 240 }}>
