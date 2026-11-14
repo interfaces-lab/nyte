@@ -1,10 +1,11 @@
 import { expect, test } from "vitest";
 import { asId } from "@nyte-ai/schema";
+import { planPane } from "../panes/pane-commands.ts";
 import { chatContent, chatPanes } from "../panes/pane-layout.ts";
-import type { PaneSelection } from "../panes/pane-layout.ts";
-import { changePanes, focusFirst, showIn, splitRight } from "../../test/panes.ts";
+import type { DropPlacement, PaneSelection } from "../panes/pane-layout.ts";
+import { changePanes, focusFirst, showIn, splitRight, tabPanes } from "../../test/panes.ts";
 import type { PaneChange } from "../../test/panes.ts";
-import { activeTab, initialWindow, reduce, tabPlace, withoutPreviews } from "./model.ts";
+import { activeTab, initialWindow, reduce, tabLayout, tabPlace, withoutPreviews } from "./model.ts";
 import type { Place, WindowAction, WindowState } from "./model.ts";
 
 let lastId = 1;
@@ -379,4 +380,125 @@ test("previews don't outlast the window, and chats deleted or archived don't reo
   closed = run([{ kind: "reopen-tab" }, { kind: "reopen-tab" }], closed);
   expect(places(closed), "kept was deleted").toEqual([{ kind: "blank" }, chat("a")]);
   expect(previews(closed)).toEqual([false, false]);
+});
+
+const drafts = tabPanes().viewState;
+
+/** What the sidebar's and tab strip's "Open beside" (`right`) and a drop on the focused pane do. */
+function dropOnFocused(id: string, placement: DropPlacement): PaneChange {
+  return (layout) =>
+    planPane(
+      layout,
+      { kind: "drop", sessionId: asId<"session">(id), pane: layout.focus[0], placement },
+      (paneId) => drafts.readBlank(paneId),
+    ).actions;
+}
+
+const label = (place: Place): string => (place.kind === "session" ? place.sessionId : place.kind);
+
+test.each<[string, readonly (WindowAction | PaneChange)[], readonly string[][], string]>([
+  [
+    "open beside a chat another tab shows moves it here and closes that tab",
+    [
+      { kind: "open", place: chat("a"), target: "permanent" },
+      { kind: "open", place: chat("b"), target: "permanent" },
+      dropOnFocused("a", "right"),
+    ],
+    [["b", "a"]],
+    "a",
+  ],
+  [
+    "a click on the moved chat then shows the split it is in",
+    [
+      { kind: "open", place: chat("a"), target: "permanent" },
+      { kind: "open", place: chat("b"), target: "permanent" },
+      dropOnFocused("a", "right"),
+      { kind: "open", place: chat("a"), target: "permanent" },
+    ],
+    [["b", "a"]],
+    "a",
+  ],
+  [
+    "a center drop of a chat another tab shows replaces this pane's chat",
+    [
+      { kind: "open", place: chat("a"), target: "permanent" },
+      { kind: "open", place: chat("b"), target: "permanent" },
+      dropOnFocused("a", "center"),
+    ],
+    [["a"]],
+    "a",
+  ],
+  [
+    "the split a chat moves out of keeps its other chat",
+    [
+      { kind: "open", place: chat("a"), target: "permanent" },
+      splitRight,
+      showIn(chat("c")),
+      { kind: "open", place: chat("b"), target: "permanent" },
+      dropOnFocused("a", "bottom"),
+    ],
+    [["c"], ["b", "a"]],
+    "a",
+  ],
+  [
+    "a drop with no room for another pane leaves the chat in its tab",
+    [
+      { kind: "open", place: chat("a"), target: "permanent" },
+      { kind: "open", place: chat("b"), target: "permanent" },
+      ...Array.from({ length: 5 }, () => splitRight),
+      dropOnFocused("a", "right"),
+    ],
+    [["a"], ["b", "blank", "blank", "blank", "blank", "blank"]],
+    "blank",
+  ],
+  [
+    "reopening a tab whose chat is open again activates the tab that has it",
+    [
+      { kind: "open", place: chat("a"), target: "permanent" },
+      { kind: "open", place: chat("b"), target: "permanent" },
+      { kind: "close-tab", tabId: "t1" },
+      { kind: "open", place: chat("a"), target: "permanent" },
+      { kind: "reopen-tab" },
+    ],
+    [["b"], ["a"]],
+    "a",
+  ],
+  [
+    "reopening a split brings back only the chats no other tab has",
+    [
+      { kind: "open", place: chat("a"), target: "permanent" },
+      splitRight,
+      showIn(chat("c")),
+      { kind: "close-tab", tabId: "t1" },
+      { kind: "open", place: chat("a"), target: "permanent" },
+      { kind: "reopen-tab" },
+    ],
+    [["c"], ["a"]],
+    "c",
+  ],
+  [
+    "reopening a tab whose chats are all closed brings it back whole",
+    [
+      { kind: "open", place: chat("a"), target: "permanent" },
+      splitRight,
+      showIn(chat("c")),
+      { kind: "open", place: chat("b"), target: "permanent" },
+      { kind: "close-tab", tabId: "t1" },
+      { kind: "reopen-tab" },
+    ],
+    [["a", "c"], ["b"]],
+    "c",
+  ],
+])("one tab per chat: %s", (_, steps, tabs, active) => {
+  const state = steps.reduce(
+    (current, step) =>
+      reduce(current, "kind" in step ? step : pane(current, step), createId),
+    initialWindow("t1", createId),
+  );
+
+  expect(
+    state.tabs.map((tab) => chatPanes(tabLayout(tab)).map((shown) => label(shown.selection))),
+  ).toEqual(tabs);
+  expect(label(tabPlace(activeTab(state)))).toBe(active);
+  expect(state.closed, "a chat that moved or came back isn't offered again").toEqual([]);
 });

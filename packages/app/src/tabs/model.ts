@@ -392,19 +392,37 @@ function removeTabs(
   return { ...remaining, tabs: [fresh], activeTabId: fresh.id };
 }
 
-function changeLayout(state: WindowState, tabId: string, layout: Layout<PaneContent>): WindowState {
+/**
+ * A chat that enters the tab's layout, by a drop or "Open beside", leaves every other tab, as a
+ * move: a tab it leaves empty closes without being offered for reopening.
+ */
+function changeLayout(
+  state: WindowState,
+  tabId: string,
+  layout: Layout<PaneContent>,
+  createId: () => string,
+): WindowState {
   const tab = state.tabs.find((candidate) => candidate.id === tabId);
 
   if (tab === undefined || tab.view.kind === "page") return state;
 
-  if (
+  const view: View =
     tab.view.kind === "preview" &&
     showsOneChat(layout) &&
     sameSelection(activeSelection(layout), activeSelection(tab.view.layout))
-  )
-    return withTab(state, { ...tab, view: { kind: "preview", layout } });
+      ? { kind: "preview", layout }
+      : { kind: "panes", layout };
 
-  return withTab(state, { ...tab, view: { kind: "panes", layout } });
+  const before = new Set(shownChats(tab.view.layout));
+  const arrived = new Set(shownChats(layout).filter((id) => !before.has(id)));
+
+  return closeChats(withTab(state, { ...tab, view }), arrived, createId, tab.id);
+}
+
+function shownChats(layout: Layout<PaneContent>): readonly SessionId[] {
+  return chatPanes(layout).flatMap((pane) =>
+    pane.selection.kind === "session" ? [pane.selection.sessionId] : [],
+  );
 }
 
 function forgetClosed(state: WindowState, gone: ReadonlySet<SessionId>): WindowState {
@@ -419,14 +437,17 @@ function closeChats(
   state: WindowState,
   sessionIds: ReadonlySet<SessionId>,
   createId: () => string,
+  kept?: string,
 ): WindowState {
+  const closing = state.tabs.filter((tab) => tab.id !== kept);
+
   const goneChats = (layout: Layout<PaneContent>) =>
     chatPanes(layout).filter(
       (chat) => chat.selection.kind === "session" && sessionIds.has(chat.selection.sessionId),
     );
 
   const emptied = new Set(
-    state.tabs
+    closing
       .filter((tab) => {
         if (tab.view.kind === "page") return false;
         const gone = goneChats(tab.view.layout).length;
@@ -436,11 +457,12 @@ function closeChats(
       .map((tab) => tab.id),
   );
 
-  const collapsed = state.tabs.flatMap((tab): Tab[] => {
+  const collapsed = closing.flatMap((tab): Tab[] => {
     if (tab.view.kind === "page" || emptied.has(tab.id)) return [];
     const gone = goneChats(tab.view.layout);
 
     if (gone.length === 0) return [];
+
     const layout = gone.reduce(
       (current, chat) => reduceLayout(current, { kind: "close", tab: chat.tab }, paneRules),
       tab.view.layout,
@@ -455,6 +477,41 @@ function closeChats(
     state.closed,
     createId,
   );
+}
+
+/**
+ * Reopening gives way to the tabs that show its chats now, as opening a chat does: their panes stay
+ * closed, and when it has no other chat left the tab showing its focused chat is activated instead.
+ */
+function reopenTab(state: WindowState, createId: () => string): WindowState {
+  const last = state.closed[0];
+
+  if (last === undefined) return state;
+  const rest: WindowState = { ...state, closed: state.closed.slice(1) };
+
+  if (last.tab.view.kind === "page") return restoreTab(rest, last.tab, last.index);
+  const layout = last.tab.view.layout;
+
+  const taken = chatPanes(layout).filter((pane) =>
+    rest.tabs.some((tab) => showing(tab, pane.selection)),
+  );
+
+  if (taken.length === 0) return restoreTab(rest, last.tab, last.index);
+  const focused = tabPlaces(last.tab).find((place) => place.kind === "session");
+
+  if (taken.length === shownChats(layout).length && focused !== undefined)
+    return open(rest, focused, "permanent", createId);
+
+  const left = taken.reduce(
+    (current, pane) => reduceLayout(current, { kind: "close", tab: pane.tab }, paneRules),
+    layout,
+  );
+
+  return restoreTab(rest, { ...last.tab, view: { kind: "panes", layout: left } }, last.index);
+}
+
+function restoreTab(state: WindowState, tab: Tab, index: number): WindowState {
+  return activate(insertTab(state, tab, Math.min(index, state.tabs.length)), tab.id);
 }
 
 function leavePage(state: WindowState, createId: () => string): WindowState {
@@ -472,7 +529,7 @@ export function reduce(
     case "open":
       return open(state, action.place, action.target, createId);
     case "layout":
-      return changeLayout(state, action.tabId, action.layout);
+      return changeLayout(state, action.tabId, action.layout, createId);
     case "page-section": {
       const tab = activeTab(state);
 
@@ -508,19 +565,8 @@ export function reduce(
       return closeTabs(state, new Set(state.tabs.slice(index + 1).map((tab) => tab.id)), createId);
     }
 
-    case "reopen-tab": {
-      const [last, ...rest] = state.closed;
-
-      if (last === undefined) return state;
-
-      return activate(
-        {
-          ...insertTab(state, last.tab, Math.min(last.index, state.tabs.length)),
-          closed: rest,
-        },
-        last.tab.id,
-      );
-    }
+    case "reopen-tab":
+      return reopenTab(state, createId);
 
     case "activate-tab":
       return state.tabs.some((tab) => tab.id === action.tabId)
