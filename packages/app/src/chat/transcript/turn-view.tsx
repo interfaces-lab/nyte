@@ -14,12 +14,7 @@ import type { ReactElement, ReactNode, RefObject } from "react";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { flushSync } from "react-dom";
 import type { CommitId, Message as ViewMessage, SessionView, UserContent } from "@nyte-ai/sdk";
-import {
-  failureNotice,
-  showsAnswer,
-  showsThinking,
-  showsTool,
-} from "@nyte-ai/plugin/client/presentation";
+import { failureNotice, showsThinking, showsTool } from "@nyte-ai/plugin/client/presentation";
 import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { drawPart } from "../../canvas/client-plugins.tsx";
 import { useTranscriptControls, useTranscriptScope } from "./transcript.tsx";
@@ -66,9 +61,11 @@ import { StatusMarker } from "./row-surfaces.tsx";
 import { RecoveryAction } from "./turn-recovery.tsx";
 import { ToolCallView } from "../tools/tool-call.tsx";
 import { StepEntryView, StepGroupView } from "./step-group.tsx";
-import { stepEntries } from "./step-entries.ts";
+import { responseRowView, stepRowView, userRowView } from "./transcript-row-views.ts";
+import type { UserRowView } from "./transcript-row-views.ts";
+import { liveTurnStyles } from "./live-turn.tsx";
 import { ThinkingLine } from "./thinking-line.tsx";
-import { replyAge, userDisplayText, workedFor } from "./transcript-presentation.ts";
+import { replyAge, userDisplayText } from "./transcript-presentation.ts";
 import { useCopyConfirmation } from "../../components/copy-confirmation.ts";
 import { stepGroupStyles } from "./step-group.stylex.ts";
 import { conversation } from "../../theme/schema.stylex.ts";
@@ -161,6 +158,12 @@ export interface BranchModelChoice {
 export interface BranchModelPicker extends BranchModelChoice {
   readonly catalog: DesktopCatalog | undefined;
 }
+
+type EditUserMessage = (
+  message: UserMessage,
+  content: UserContent,
+  choice: BranchModelChoice,
+) => Promise<void>;
 
 interface UserEditState extends BranchModelChoice {
   readonly document: ComposerDocumentState;
@@ -621,45 +624,13 @@ function NoteView({ message }: { message: ViewMessage }): ReactElement | null {
 
 function TurnPartView({
   message,
-  pending,
   cwd,
   density,
-  onEditUser,
-  branchModel,
 }: {
   message: ViewMessage;
-  pending?: boolean;
   cwd: string | undefined;
   density: ToolCallDensity;
-  onEditUser?: (
-    message: UserMessage,
-    content: UserContent,
-    choice: BranchModelChoice,
-  ) => Promise<void>;
-  branchModel?: BranchModelPicker;
 }): ReactElement | null {
-  if (message.kind === "user") {
-    const { source } = message;
-
-    if (source.kind === "child" || source.kind === "job")
-      return <SubagentReportLine source={source} content={message.content} held={false} />;
-
-    if (showsAnswer(message)) return <AnswerLine message={message} held={false} />;
-
-    return (
-      <UserMessageView
-        content={message.source.kind === "action" ? message.source.label : message.content}
-        pending={pending}
-        onEdit={
-          onEditUser === undefined || message.source.kind === "action"
-            ? undefined
-            : (content, choice) => onEditUser(message, content, choice)
-        }
-        branchModel={branchModel}
-      />
-    );
-  }
-
   if (showsThinking(message))
     return (
       <ThinkingLine text={message.state.markdown} streaming={message.status.kind === "live"} />
@@ -668,6 +639,51 @@ function TurnPartView({
   if (showsTool(message)) return <ToolCallView message={message} cwd={cwd} density={density} />;
 
   return <NoteView message={message} />;
+}
+
+function userRow(
+  view: UserRowView,
+  onEditUser: EditUserMessage | undefined,
+  branchModel: BranchModelPicker | undefined,
+): ReactElement {
+  switch (view.kind) {
+    case "report": {
+      const line = (
+        <SubagentReportLine source={view.source} content={view.content} held={view.held} />
+      );
+
+      return view.wrapped ? <div {...props(liveTurnStyles.root)}>{line}</div> : line;
+    }
+
+    case "answer": {
+      const line = <AnswerLine message={view.message} held={view.held} />;
+
+      return view.wrapped ? <div {...props(liveTurnStyles.root)}>{line}</div> : line;
+    }
+
+    case "user": {
+      const message = view.message;
+
+      return (
+        <UserMessageView
+          content={view.content}
+          pending={view.pending}
+          onEdit={
+            onEditUser === undefined || !view.editable
+              ? undefined
+              : (content, choice) => onEditUser(message, content, choice)
+          }
+          branchModel={branchModel}
+        />
+      );
+    }
+
+    default: {
+      const _exhaustive: never = view;
+
+      return _exhaustive;
+    }
+  }
 }
 
 const replyStyles = create({
@@ -701,24 +717,21 @@ function ResponseView({
 }: {
   row: Extract<TurnItemRow, { kind: "response" }>;
 }): ReactElement | null {
-  const markdown = row.messages.map((message) => message.state.markdown.trim()).join("\n\n");
-  const streaming = row.messages.some((message) => message.status.kind === "live");
-  const first = row.messages[0];
+  const view = responseRowView(row);
 
-  if (markdown === "" || first === undefined) return null;
-
-  const worked = row.ended && row.workedMs !== undefined ? workedFor(row.workedMs) : undefined;
-
-  const commit = row.messages
-    .flatMap((message) => (message.status.kind === "settled" ? [message.status.commit] : []))
-    .at(-1);
+  if (view === null) return null;
 
   return (
-    <div {...props(replyStyles.reply, row.ended && row.latest && replyStyles.latest)}>
-      {worked !== undefined && <span {...props(stepGroupStyles.status)}>{worked}</span>}
-      <Prose markdown={markdown} streaming={streaming} />
-      {row.ended && (
-        <ReplyActions markdown={markdown} at={first.at} worked={worked} commit={commit} />
+    <div {...props(replyStyles.reply, view.latest && replyStyles.latest)}>
+      {view.worked !== undefined && <span {...props(stepGroupStyles.status)}>{view.worked}</span>}
+      <Prose markdown={view.markdown} streaming={view.streaming} />
+      {view.ended && (
+        <ReplyActions
+          markdown={view.markdown}
+          at={view.at}
+          worked={view.worked}
+          commit={view.commit}
+        />
       )}
     </div>
   );
@@ -803,46 +816,36 @@ function ReplyActions({
 
 export function TurnItemView({
   row,
-  running,
   density,
   cwd,
   onEditUser,
   branchModel,
 }: {
   row: TurnItemRow | PromptRow;
-  running: boolean;
   density: ToolCallDensity;
   cwd: string | undefined;
-  onEditUser?: (
-    message: UserMessage,
-    content: UserContent,
-    choice: BranchModelChoice,
-  ) => Promise<void>;
+  onEditUser?: EditUserMessage;
   branchModel?: BranchModelPicker;
 }): ReactElement | null {
   switch (row.kind) {
     case "prompt":
-      return (
-        <TurnPartView message={row.message} pending={row.pending} cwd={cwd} density={density} />
-      );
-    case "part":
-      return (
-        <TurnPartView
-          message={row.message}
-          cwd={cwd}
-          density={density}
-          onEditUser={onEditUser}
-          branchModel={branchModel}
-        />
-      );
-    case "step": {
-      const entries = stepEntries(row.messages, true);
-      const [only] = entries;
+    case "part": {
+      const user = userRowView(row);
 
-      if (!running && entries.length === 1 && only !== undefined && only.kind !== "thinking")
+      return user === undefined ? (
+        <TurnPartView message={row.message} cwd={cwd} density={density} />
+      ) : (
+        userRow(user, onEditUser, branchModel)
+      );
+    }
+
+    case "step": {
+      const step = stepRowView(row);
+
+      if (step.kind === "entry")
         return (
           <StepEntryView
-            entry={only}
+            entry={step.entry}
             cwd={cwd}
             density={density}
             thinkingOnly={false}
@@ -857,7 +860,7 @@ export function TurnItemView({
           cwd={cwd}
           added={row.added}
           removed={row.removed}
-          running={running}
+          running={row.running}
           density={density}
         />
       );

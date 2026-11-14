@@ -125,7 +125,7 @@ function Completion({ row }: { row: TurnItemRow | undefined }): ReactElement | n
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <TurnItemView row={row} running={false} density="compact" cwd={undefined} />
+        <TurnItemView row={row} density="compact" cwd={undefined} />
       </TooltipProvider>
     </QueryClientProvider>
   );
@@ -137,7 +137,7 @@ function Stage(): ReactElement {
       <TooltipProvider delay={0} closeDelay={0} timeout={0}>
         {rows.map((row) => (
           <div key={row.key} data-row={row.key}>
-            <TurnItemView row={row} running={false} density="compact" cwd={undefined} />
+            <TurnItemView row={row} density="compact" cwd={undefined} />
           </div>
         ))}
         <p>

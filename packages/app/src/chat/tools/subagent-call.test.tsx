@@ -119,7 +119,7 @@ test("a create call finds its child in the parent's background by the call that 
         retrying: undefined,
       }).map((row) =>
         row.kind === "agents" ? (
-          <TurnItemView key={row.key} row={row} running={false} density="compact" cwd={undefined} />
+          <TurnItemView key={row.key} row={row} density="compact" cwd={undefined} />
         ) : null,
       )}
     </Parent>,

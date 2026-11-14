@@ -2,7 +2,6 @@ import { props } from "@stylexjs/stylex";
 import { useId, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import type { ReactElement } from "react";
-import { showsThinking } from "@nyte-ai/plugin/client/presentation";
 import { Button } from "@nyte-ai/ui/button";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { focus, srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
@@ -19,8 +18,7 @@ import { nextPin, PINNED } from "./step-group-pin.ts";
 import type { StepGroupPinEvent } from "./step-group-pin.ts";
 import { useStepGroupOpen } from "./step-group-open.ts";
 import { stepGroupContent } from "./step-group-content.ts";
-import { stepGroupLine } from "./step-group-presentation.ts";
-import { stepEntries, topLevelSteps } from "./step-entries.ts";
+import { stepGroupFacts } from "./step-group-presentation.ts";
 import type { StepEntry } from "./step-entries.ts";
 import { ChangeStats } from "../../components/change-stats.tsx";
 
@@ -93,33 +91,17 @@ export function StepGroupView({
   running: boolean;
   density: ToolCallDensity;
 }): ReactElement {
-  const [now] = useState(() => Date.now());
-  const first = messages[0];
-  const last = messages.at(-1);
-  const lastAt = last?.status.kind === "settled" ? last.status.endedAt : last?.at;
+  const facts = stepGroupFacts(messages, running);
+  const line = facts.line;
+  const thinkingOnly = facts.thinkingOnly;
+  const entries = facts.entries;
+  const titled = facts.titled;
+  const hasContent = facts.hasContent;
 
-  const durationMs =
-    first === undefined ? 0 : Math.max(0, (running ? now : (lastAt ?? first.at)) - first.at);
-
-  const line = stepGroupLine({ messages: topLevelSteps(messages), durationMs, running });
-
-  const thinkingOnly = messages.every(showsThinking);
-  const entries = stepEntries(messages, !thinkingOnly);
-
-  const [open, setOpen] = useStepGroupOpen(first?.id);
+  const [open, setOpen] = useStepGroupOpen(messages[0]?.id);
 
   const [showEarlier, setShowEarlier] = useState(false);
   const earlier = showEarlier ? 0 : Math.max(0, entries.length - STEP_LIMIT);
-  const [onlyThought] = messages;
-  const titled = !running && thinkingOnly && messages.length === 1 && onlyThought !== undefined;
-
-  const hasContent =
-    entries.length > 0 &&
-    !(
-      titled &&
-      showsThinking(onlyThought) &&
-      reasoningHeading(onlyThought.state.markdown).body.trim() === ""
-    );
 
   const content = stepGroupContent({
     density,

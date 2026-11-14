@@ -5,10 +5,13 @@ import {
   toolStatus,
 } from "@nyte-ai/plugin/client/presentation";
 import type { ToolMessage } from "@nyte-ai/plugin/client/presentation";
+import { basename } from "../tools/tool-facts.ts";
 import { reasoningHeading } from "./reasoning-heading.ts";
+import { stepEntries, topLevelSteps } from "./step-entries.ts";
+import type { StepEntry } from "./step-entries.ts";
 import type { StepMessage } from "./transcript-presentation.ts";
 
-type StepGroupLine =
+export type StepGroupLine =
   | { readonly kind: "summary"; readonly verb: string; readonly detail: string | undefined }
   | { readonly kind: "thinking" };
 
@@ -26,6 +29,45 @@ interface Work {
   readonly listed: ReadonlySet<string>;
   readonly commands: number;
   readonly tools: number;
+}
+
+export interface StepGroupFacts {
+  readonly entries: readonly StepEntry[];
+  readonly line: StepGroupLine;
+  readonly thinkingOnly: boolean;
+  readonly titled: boolean;
+  readonly hasContent: boolean;
+}
+
+/**
+ * What a step group draws. A running group's line ignores its duration, so the duration is
+ * measured only once the group settles: from its first step to the last one's end.
+ */
+export function stepGroupFacts(messages: readonly StepMessage[], running: boolean): StepGroupFacts {
+  const first = messages[0];
+  const last = messages.at(-1);
+  const lastAt = last?.status.kind === "settled" ? last.status.endedAt : last?.at;
+
+  const durationMs =
+    first === undefined || running ? 0 : Math.max(0, (lastAt ?? first.at) - first.at);
+
+  const thinkingOnly = messages.every(showsThinking);
+  const entries = stepEntries(messages, !thinkingOnly);
+  const titled = !running && thinkingOnly && messages.length === 1 && first !== undefined;
+
+  return {
+    entries,
+    line: stepGroupLine({ messages: topLevelSteps(messages), durationMs, running }),
+    thinkingOnly,
+    titled,
+    hasContent:
+      entries.length > 0 &&
+      !(
+        titled &&
+        showsThinking(first) &&
+        reasoningHeading(first.state.markdown).body.trim() === ""
+      ),
+  };
 }
 
 export function stepGroupLine({
@@ -173,10 +215,6 @@ function workDetail(work: Work, lead: Lead): string {
   ]
     .filter((text) => text !== undefined)
     .join(", ");
-}
-
-function basename(path: string): string {
-  return path.split(/[\\/]/u).at(-1) ?? path;
 }
 
 function count(n: number, noun: string, plural = `${noun}s`): string {
