@@ -2,9 +2,21 @@ import { expect, test } from "vitest";
 import type { Message, MessageSource, PartStatus } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import type { Json } from "@nyte-ai/schema";
-import type { TextMessage, UserMessage } from "@nyte-ai/plugin/client/presentation";
+import type {
+  TextMessage,
+  ThinkingMessage,
+  UserMessage,
+} from "@nyte-ai/plugin/client/presentation";
 import { settledTool } from "../../../test/view-fixtures.ts";
-import { responseRowView, shownRow, stepRowView, userRowView } from "./transcript-row-views.ts";
+import {
+  changesRowView,
+  responseRowView,
+  shownRow,
+  stepRowView,
+  thoughtProse,
+  thoughtView,
+  userRowView,
+} from "./transcript-row-views.ts";
 import type { StepMessage } from "./transcript-presentation.ts";
 import type { PromptRow, TranscriptRow, TurnItemRow } from "./transcript-rows.ts";
 
@@ -292,4 +304,115 @@ test.each<[string, TranscriptRow, boolean, TranscriptRow | "same"]>([
 ])("%s", (_, row, navigating, shown) => {
   if (shown === "same") expect(shownRow(row, navigating)).toBe(row);
   else expect(shownRow(row, navigating)).toEqual(shown);
+});
+
+test.each<[string, readonly StepMessage[], readonly StepMessage[]]>([
+  ["a group that grows keeps its open state", [read("a")], [read("a"), read("b")]],
+  [
+    "a group whose first step settles keeps it",
+    [running(read("a")), read("b")],
+    [read("a"), read("b")],
+  ],
+])("the step group's open key: %s", (_, before, after) => {
+  const keys = [stepRowView(step(before, true)), stepRowView(step(after, false))].map((view) =>
+    view.kind === "group" ? view.facts.openKey : undefined,
+  );
+
+  expect(keys).toEqual(["a", "a"]);
+});
+
+function thinking(markdown: string, status: PartStatus): ThinkingMessage {
+  return {
+    id: asId<"message">("th"),
+    turn: asId<"turn">("t"),
+    at: 1,
+    kind: "part",
+    part: asId<"part">("th"),
+    partKind: "thinking",
+    role: "step",
+    version: 1,
+    state: { markdown, merged: 1, signature: null },
+    status,
+  };
+}
+
+const ENDED: PartStatus = { kind: "settled", commit: asId<"commit">("th"), endedAt: 2 };
+
+const HEADED = "**Checking the lease**\n\nThe lease is fine.";
+
+test.each<[string, string, PartStatus, boolean, ReturnType<typeof thoughtView>]>([
+  [
+    "a streaming thought reads Thinking over its whole text",
+    HEADED,
+    LIVE,
+    false,
+    { kind: "folded", streaming: true, label: "Thinking", body: HEADED },
+  ],
+  [
+    "an ended thought folds under its heading",
+    HEADED,
+    ENDED,
+    false,
+    { kind: "folded", streaming: false, label: "Checking the lease", body: "The lease is fine." },
+  ],
+  [
+    "an ended thought without a heading folds under Thought",
+    "Weighing it",
+    ENDED,
+    false,
+    { kind: "folded", streaming: false, label: "Thought", body: "Weighing it" },
+  ],
+  [
+    "a thought shown live stays unfolded under Thought, heading and all",
+    HEADED,
+    ENDED,
+    true,
+    { kind: "unfolded", streaming: false, label: "Thought", body: HEADED },
+  ],
+  [
+    "a thought that is only a heading draws its label alone",
+    "**Only a heading**",
+    ENDED,
+    false,
+    { kind: "label", streaming: false, label: "Only a heading" },
+  ],
+  [
+    "a thought that has only started streaming draws Thinking alone",
+    "",
+    LIVE,
+    false,
+    { kind: "label", streaming: true, label: "Thinking" },
+  ],
+  ["an empty ended thought draws nothing", " ", ENDED, false, null],
+])("thought: %s", (_, markdown, status, unfolded, view) => {
+  expect(thoughtView(thinking(markdown, status), markdown, unfolded)).toEqual(view);
+});
+
+test.each<[string, PartStatus, boolean, string]>([
+  ["a titled ended thought drops the heading its group shows", ENDED, true, "The lease is fine."],
+  ["a titled streaming thought keeps it", LIVE, true, HEADED],
+  ["an untitled one keeps it", ENDED, false, HEADED],
+])("thought in a thinking group: %s", (_, status, titled, markdown) => {
+  expect(thoughtProse(thinking(HEADED, status), HEADED, titled)).toEqual({
+    markdown,
+    streaming: status.kind === "live",
+  });
+});
+
+const FILES = [{ path: "src/a.ts", status: "modified", added: 1, removed: 0 }] as const;
+
+test.each<
+  [
+    string,
+    "pending" | "ready",
+    readonly (typeof FILES)[number][],
+    ReturnType<typeof changesRowView>,
+  ]
+>([
+  ["a working turn reserves the card's room", "pending", [], { kind: "reserved" }],
+  ["a working turn reserves it even with changes so far", "pending", FILES, { kind: "reserved" }],
+  ["an ended turn with changes shows the card", "ready", FILES, { kind: "card", files: FILES }],
+  ["an ended turn without changes shows nothing", "ready", [], null],
+])("the summary row: %s", (_, state, files, view) => {
+  expect(changesRowView({ ...LAYOUT, kind: "changes", state, files })).toEqual(view);
 });

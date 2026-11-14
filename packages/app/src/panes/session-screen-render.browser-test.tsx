@@ -30,6 +30,8 @@ import {
   paragraphs,
   ended,
   view,
+  previewView,
+  QUEUED,
 } from "./session-screen-render.fixtures.ts";
 import type { UserMessage } from "./session-screen-render.fixtures.ts";
 import {
@@ -69,6 +71,8 @@ const refuse = async (): Promise<never> => {
 
 const sends: string[] = [];
 
+const revisions: string[] = [];
+
 const editLanding = Promise.withResolvers<Extract<UserMessage["status"], { kind: "landed" }>>();
 
 const editRead = Promise.withResolvers<SessionView>();
@@ -81,6 +85,12 @@ installScripted(
     views: new Map([[ID, stream]]),
     session: () => ({
       view: () => editRead.promise,
+      hold: () => new Promise<never>(() => undefined),
+      revise: async () => {
+        revisions.push("revised");
+
+        return { kind: "revised" };
+      },
       send: async (content, options) => {
         sends.push(JSON.stringify(content));
 
@@ -249,6 +259,37 @@ async function checkRules(): Promise<string> {
       `collapsing ${moved(trigger, triggerTop)}`,
     );
 
+    scene.step = "6 preview";
+    await toEnd();
+
+    stream.push(previewView(liveText, 3));
+    await until(() => stage.log.querySelector("[data-step-preview]") !== null, "a live preview");
+    await painted();
+
+    const inPreview = first(
+      stage.log.querySelector<HTMLElement>("[data-step-preview] > * > *"),
+      "a step inside the live preview",
+    );
+
+    const inPreviewTop = measureTop(inPreview);
+    inPreview.click();
+    await painted();
+
+    for (let frame = 0; frame < 4; frame += 1) {
+      liveText += `\n\n${sentence.repeat(2)}`;
+      stream.push(previewView(liveText, 4 + frame));
+      await painted();
+      checkFrame(`preview frame ${String(frame)}`);
+      expectRule(
+        "6",
+        near(measureTop(inPreview), inPreviewTop),
+        `a click inside the live preview: ${moved(inPreview, inPreviewTop)}`,
+      );
+    }
+
+    stream.push(view(liveText));
+    await painted();
+
     scene.step = "3, 1-4, 17";
     await toEnd();
     expectRule(
@@ -279,6 +320,54 @@ async function checkRules(): Promise<string> {
       Math.abs(measureTop(latest)) <= 2 && latest.dataset.stickyActive === "true",
       `the latest prompt sits at ${String(measureTop(latest))} at the end`,
     );
+
+    scene.step = "17 handover";
+
+    const stickyPrompt = (key: string): HTMLElement =>
+      first(
+        stage.log.querySelector<HTMLElement>(`[data-row-key='${key}'] [data-sticky-user-message]`),
+        key,
+      );
+
+    const joining = user("join-32", TURNS, "A prompt that joins the running turn.", "steer");
+    let reply = "Replying";
+
+    const pushReply = async (): Promise<void> => {
+      stream.push(view(liveText, [joining, prose("join-reply-32", TURNS, reply, true)]));
+      await painted();
+    };
+
+    await pushReply();
+    await until(
+      () => stage.log.querySelector("[data-row-key='prompt:join-32']") !== null,
+      "the joining prompt",
+    );
+    await painted();
+    const earlier = stickyPrompt(`prompt:steer-${String(TURNS)}`);
+    const joined = stickyPrompt("prompt:join-32");
+    const handover: string[] = [];
+
+    for (let frame = 0; frame < 40 && joined.dataset.stickyActive !== "true"; frame += 1) {
+      reply += `\n\n${sentence.repeat(1 + (frame % 3))}`;
+      await pushReply();
+      checkFollowing(`handover frame ${String(frame)}`);
+      const stuck = [earlier, joined].filter((prompt) => prompt.dataset.stickyActive === "true");
+      handover.push(
+        `${String(measureTop(earlier))}/${String(measureTop(joined))}:${stuck.map((prompt) => (prompt === joined ? "joined" : "earlier")).join("") || "none"}${stage.viewport.dataset.topFade === "true" ? "+fade" : ""}`,
+      );
+    }
+
+    expectRule(
+      "17",
+      handover.every((frame) => /:(earlier|joined)$/u.test(frame)),
+      `a prompt joining the turn left a frame with no prompt stuck: ${handover.join(" ")}`,
+    );
+    expectRule(
+      "17",
+      joined.dataset.stickyActive === "true" && earlier.dataset.stickyActive === "false",
+      `the joining prompt never took over: ${handover.join(" ")}`,
+    );
+    await streamFrames(2, checkFollowing);
 
     scene.step = "8";
 
@@ -482,6 +571,54 @@ async function checkRules(): Promise<string> {
     await painted();
     checkFollowing("after sending");
 
+    scene.step = "2 queued edit";
+
+    stream.push({ ...view(liveText), queue: [QUEUED] });
+    await until(
+      () => stage.dock.querySelector("button[aria-label='Edit queued message']") !== null,
+      "the queued message",
+    );
+    await painted();
+    await wheel(-300);
+    expectRule("2", distance() > 60, "the wheel did not leave the end before saving the edit");
+    first(
+      stage.dock.querySelector<HTMLButtonElement>("button[aria-label='Edit queued message']"),
+      "the queued message's Edit",
+    ).click();
+    await until(
+      () =>
+        stage.dock.querySelector<HTMLElement>("[aria-multiline][aria-label='Message']")
+          ?.innerText === "A queued follow-up.",
+      "the queued message in the composer",
+    );
+    await type(" Then push.");
+    expectRule("2", distance() > 60, "editing the queued message returned to the end");
+    stage.dock.querySelector<HTMLButtonElement>("button[aria-label='Send message']")?.click();
+    await until(() => revisions.length > 0, "the queued edit to save");
+    await painted();
+    await painted();
+    checkFollowing("after saving a queued edit");
+    stream.push(view(liveText));
+    await painted();
+
+    scene.step = "5 PageUp in the composer";
+    await toEnd();
+
+    const composerEditor = first(
+      stage.dock.querySelector<HTMLElement>("[aria-multiline][aria-label='Message']"),
+      "the composer's editor",
+    );
+
+    composerEditor.focus();
+    composerEditor.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "PageUp", bubbles: true, cancelable: true }),
+    );
+    await painted();
+    await painted();
+    expectRule("5", distance() > 60, "PageUp in the composer did not scroll up");
+    await holds("5/9", first(visible(PROSE)[0], "visible prose after PageUp"), 3);
+    await toEnd();
+
     scene.step = "25";
     await wheel(-30);
     expectRule("25", !buttonShown(), "the button shows within 60px");
@@ -654,6 +791,23 @@ async function checkRules(): Promise<string> {
       expectRule("footer", !previousFooter.isConnected, "the previous turn retained its card");
     });
     const nextFooter = first(reserved, "the next turn's pending footer");
+
+    const reservedCard = (): number =>
+      first(nextFooter.firstElementChild, "the footer's reservation").getBoundingClientRect()
+        .height;
+
+    const fullReservation = reservedCard();
+
+    for (const height of [300, 420, 700]) {
+      container.style.height = `${String(height)}px`;
+      await painted();
+      const room = Math.max(0, stage.viewport.clientHeight - 320);
+      expectRule(
+        "summary row",
+        Math.abs(reservedCard() - Math.min(fullReservation, room)) <= 0.5,
+        `a ${String(stage.viewport.clientHeight)}px view reserves ${String(reservedCard())}px, not ${String(Math.min(fullReservation, room))}px`,
+      );
+    }
 
     const nextStatus = {
       kind: "landed",

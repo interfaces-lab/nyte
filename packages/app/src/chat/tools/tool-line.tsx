@@ -201,7 +201,7 @@ export function ToolLineView({
   const [expanded, setExpanded] = useState(false);
   const [hovered, setHovered] = useState(false);
   const state = useWholeToolState(message, expanded);
-  const facts = toolFacts(message, state, toolVerbs(toolClass), "progress-while-running");
+  const facts = toolFacts(message, state, toolVerbs(toolClass), "line");
   const status = facts.status;
   const running = facts.running;
   const raw = facts.output;

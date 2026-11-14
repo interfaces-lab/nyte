@@ -1,7 +1,6 @@
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import { fetchParameters, searchOutput, searchParameters } from "@nyte-ai/plugin/web/schema";
-import { toolStatus } from "@nyte-ai/plugin/client/presentation";
 import type { ToolMessage } from "@nyte-ai/plugin/client/presentation";
 import { Icon } from "@nyte-ai/ui/icon";
 import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
@@ -11,6 +10,7 @@ import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { useReferenceOpener } from "../../references/reference-opener.tsx";
 import { ToolMark, ToolSpinner, ToolVerb, toolCardStyles } from "./tool-card.tsx";
 import { ToolOutcome } from "./tool-line.tsx";
+import { toolFacts } from "./tool-facts.ts";
 
 const SHOWN_SOURCES = 4;
 
@@ -44,8 +44,9 @@ function site(url: URL): string {
 }
 
 export function SearchCallView({ message }: { readonly message: ToolMessage }): ReactElement {
-  const status = toolStatus(message);
-  const running = status.tense === "running";
+  const facts = toolFacts(message, message.state, undefined, "web");
+  const status = facts.status;
+  const running = facts.running;
   const args = searchParameters["~standard"].validate(message.state.args);
   const query = args instanceof Promise || args.issues !== undefined ? "" : args.value.query;
   const state = message.state;
@@ -93,8 +94,9 @@ export function SearchCallView({ message }: { readonly message: ToolMessage }): 
 }
 
 export function FetchCallView({ message }: { readonly message: ToolMessage }): ReactElement {
-  const status = toolStatus(message);
-  const running = status.tense === "running";
+  const facts = toolFacts(message, message.state, undefined, "web");
+  const status = facts.status;
+  const running = facts.running;
   const args = fetchParameters["~standard"].validate(message.state.args);
 
   const url =

@@ -116,6 +116,18 @@ export function checkFrame(label: string): void {
     Math.abs(column) <= 1,
     `${label}: composer sits ${column.toFixed(1)}px above the column's bottom`,
   );
+
+  const viewport = getComputedStyle(stage.viewport);
+  const masked = Number.parseFloat(viewport.getPropertyValue("--_dock-height"));
+
+  const dockTop =
+    stage.viewport.getBoundingClientRect().bottom - stage.dock.getBoundingClientRect().top;
+
+  expectRule(
+    "13",
+    viewport.maskImage.startsWith("linear-gradient") && Math.abs(masked - dockTop) <= 1,
+    `${label}: the transcript is masked ${String(masked)}px above the bottom, the composer's top is ${dockTop.toFixed(1)}px`,
+  );
   expectRule(
     "25",
     buttonShown() === distance() > 60,

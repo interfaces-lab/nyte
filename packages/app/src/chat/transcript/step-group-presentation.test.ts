@@ -204,7 +204,9 @@ test.each<{
   readonly name: string;
   readonly messages: readonly StepMessage[];
   readonly running: boolean;
-  readonly facts: Omit<ReturnType<typeof stepGroupFacts>, "entries"> & { readonly entries: number };
+  readonly facts: Omit<ReturnType<typeof stepGroupFacts>, "entries" | "openKey"> & {
+    readonly entries: number;
+  };
 }>([
   {
     name: "a settled thought is titled by its heading and timed from its start to its end",
@@ -310,5 +312,12 @@ test.each<{
 ])("$name", (row) => {
   const facts = stepGroupFacts(row.messages, row.running);
 
-  assert.deepEqual({ ...facts, entries: facts.entries.length }, row.facts);
+  assert.deepEqual(
+    { ...facts, entries: facts.entries.length, openKey: undefined },
+    {
+      ...row.facts,
+      openKey: undefined,
+    },
+  );
+  assert.equal(facts.openKey, row.messages[0]?.id);
 });

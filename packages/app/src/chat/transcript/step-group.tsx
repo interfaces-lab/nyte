@@ -12,7 +12,7 @@ import { BrowserCallsView } from "../tools/browser-call.tsx";
 import { ToolCallView } from "../tools/tool-call.tsx";
 import { Prose } from "../markdown/prose.tsx";
 import { ThinkingLine } from "./thinking-line.tsx";
-import { reasoningHeading } from "./reasoning-heading.ts";
+import { thoughtProse } from "./transcript-row-views.ts";
 import type { StepMessage } from "./transcript-presentation.ts";
 import { nextPin, PINNED } from "./step-group-pin.ts";
 import type { StepGroupPinEvent } from "./step-group-pin.ts";
@@ -50,26 +50,21 @@ export function StepEntryView({
     case "browser":
       return <BrowserCallsView calls={entry.steps} />;
     case "thinking": {
-      const streaming = entry.message.status.kind === "live";
-
       if (thinkingOnly) {
+        const thought = thoughtProse(entry.message, entry.markdown, titled);
+
         return (
           <div {...props(stepGroupStyles.thinking)}>
             <span {...props(srOnly)}>Reasoning</span>
-            <Prose
-              markdown={
-                titled && !streaming ? reasoningHeading(entry.markdown).body : entry.markdown
-              }
-              streaming={streaming}
-            />
+            <Prose markdown={thought.markdown} streaming={thought.streaming} />
           </div>
         );
       }
 
       return (
         <ThinkingLine
+          message={entry.message}
           text={entry.markdown}
-          streaming={streaming}
           live={live}
           thoughtKey={entry.key}
         />
@@ -102,7 +97,6 @@ export function StepGroupView({
   return (
     <StepGroupFactsView
       facts={stepGroupFacts(messages, running)}
-      groupKey={messages[0]?.id}
       cwd={cwd}
       added={added}
       removed={removed}
@@ -112,10 +106,9 @@ export function StepGroupView({
   );
 }
 
-/** A step group drawn from facts its row already worked out; `groupKey` keeps its open state. */
+/** A step group drawn from facts its row already worked out. */
 export function StepGroupFactsView({
   facts,
-  groupKey,
   cwd,
   added,
   removed,
@@ -123,7 +116,6 @@ export function StepGroupFactsView({
   density,
 }: {
   facts: StepGroupFacts;
-  groupKey: string | undefined;
   cwd: string | undefined;
   added: number;
   removed: number;
@@ -136,7 +128,7 @@ export function StepGroupFactsView({
   const titled = facts.titled;
   const hasContent = facts.hasContent;
 
-  const [open, setOpen] = useStepGroupOpen(groupKey);
+  const [open, setOpen] = useStepGroupOpen(facts.openKey);
 
   const [showEarlier, setShowEarlier] = useState(false);
   const earlier = showEarlier ? 0 : Math.max(0, entries.length - STEP_LIMIT);

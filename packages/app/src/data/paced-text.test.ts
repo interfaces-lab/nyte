@@ -372,3 +372,88 @@ test.each([
       .map((message) => message.state.markdown.length),
   ).toEqual([360, row.after]);
 });
+
+test("a third reply that arrives while the first drains waits its turn behind the second, and each paces from nothing", () => {
+  const first = text("a", LONG, false);
+  const second = text("b", LONG, false);
+  const third = text("c", LONG, true);
+  const moment = { showing: true, opening: false };
+
+  const opened = receiveReveal(undefined, [text("a", "lorem ", true)], {
+    ...moment,
+    opening: true,
+    now: 0,
+  });
+
+  const draining = receiveReveal(opened, [first, text("b", "lorem ", true)], { ...moment, now: 0 });
+  let reveal = receiveReveal(draining, [first, second, third], { ...moment, now: 0 });
+  const frames: string[] = [];
+
+  for (let frame = 1; reveal !== undefined && frame <= 19; frame += 1) {
+    reveal = tickReveal(reveal, { showing: true, now: frame * FRAME });
+    const shown = presentReveal({ messages: [first, second, third] }, reveal).messages;
+    frames.push(
+      shown.map((message) => (showsText(message) ? message.state.markdown.length : 0)).join("/"),
+    );
+  }
+
+  expect(frames).toEqual([
+    "120/0/0",
+    "240/0/0",
+    "360/0/0",
+    "360/120/0",
+    "360/240/0",
+    "360/360/0",
+    "360/360/42",
+    "360/360/78",
+    "360/360/114",
+    "360/360/144",
+    "360/360/168",
+    "360/360/192",
+    "360/360/216",
+    "360/360/240",
+    "360/360/264",
+    "360/360/288",
+    "360/360/312",
+    "360/360/336",
+    "360/360/360",
+  ]);
+});
+
+test("each drain's deadline shows that reply's tail at once, and the next still paces from nothing", () => {
+  const messages = [text("a", LONG, false), text("b", LONG, false), text("c", LONG, true)];
+  const moment = { showing: true, opening: false, now: 0 };
+
+  const opened = receiveReveal(undefined, [text("a", "lorem ", true)], {
+    ...moment,
+    opening: true,
+  });
+
+  const draining = receiveReveal(
+    opened,
+    [messages[0], text("b", "lorem ", true)].filter(showsText),
+    moment,
+  );
+
+  const queued = receiveReveal(draining, messages, moment);
+
+  if (queued === undefined) throw new Error("Expected the first reply to drain");
+  const once = flushReveal(queued, { showing: true, now: 250 });
+
+  if (once === undefined) throw new Error("Expected the second reply to drain");
+  const twice = flushReveal(once, { showing: true, now: 500 });
+
+  expect(
+    [queued, once, twice].map((reveal) =>
+      presentReveal({ messages }, reveal)
+        .messages.filter(showsText)
+        .map((message) => message.state.markdown.length)
+        .join("/"),
+    ),
+  ).toEqual(["6/0/0", "360/0/0", "360/360/0"]);
+  expect([queued, once, twice].map((reveal) => revealTimers(reveal).deadline)).toEqual([
+    true,
+    true,
+    false,
+  ]);
+});

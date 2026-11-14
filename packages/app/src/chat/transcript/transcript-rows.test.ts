@@ -3,8 +3,13 @@ import type { Message, SessionView } from "@nyte-ai/sdk";
 import type { SessionActivity } from "../../data/session-activity.ts";
 import { asId, asSeq } from "@nyte-ai/schema";
 import { COMPLETED, USAGE, endedTurn, settledTool } from "../../../test/view-fixtures.ts";
-import { stickySpans, transcriptProjector, transcriptRows } from "./transcript-rows.ts";
-import type { RowLayout } from "./transcript-rows.ts";
+import {
+  stickySpans,
+  stuckPrompt,
+  transcriptProjector,
+  transcriptRows,
+} from "./transcript-rows.ts";
+import type { RowLayout, StickyPrompt } from "./transcript-rows.ts";
 
 const turn = asId<"turn">("t");
 
@@ -371,9 +376,9 @@ function layout(key: string, group: string | null, sticky = false): RowLayout {
   return { key, group, leads: false, sticky };
 }
 
-test.each<
-  [string, readonly RowLayout[], readonly number[], readonly (readonly [number, number])[]]
->([
+type Pairs = readonly (readonly [number, number])[];
+
+test.each<[string, readonly RowLayout[], readonly number[], Pairs, Pairs]>([
   [
     "rules 16-17: each turn's prompt spans its turn",
     [layout("p1", "t1", true), layout("a1", "t1"), layout("p2", "t2", true), layout("a2", "t2")],
@@ -382,6 +387,7 @@ test.each<
       [0, 1],
       [2, 3],
     ],
+    [],
   ],
   [
     "rule 17: a prompt that joined a running turn ends the earlier prompt's span and spans the rest",
@@ -397,24 +403,56 @@ test.each<
       [0, 1],
       [2, 3],
     ],
+    [[0, 2]],
   ],
   [
     "rule 16: rows outside a turn hold no prompt, and a pending prompt outside turns never spans",
     [layout("a0", null), layout("p1", "t1", true), layout("queued", null, true)],
     [-1, 1, -1],
     [[1, 1]],
+    [],
   ],
   [
     "rule 16: a turn whose prompt isn't sticky holds nothing",
     [layout("report", "t1"), layout("a1", "t1")],
     [-1, -1],
     [],
+    [],
   ],
-])("%s", (_name, rows, above, ends) => {
+])("%s", (_name, rows, above, ends, handovers) => {
   const spans = stickySpans(rows);
 
-  expect([spans.above, [...spans.ends].toSorted(([first], [second]) => first - second)]).toEqual([
+  const sorted = (pairs: ReadonlyMap<number, number>) =>
+    [...pairs].toSorted(([first], [second]) => first - second);
+
+  expect([spans.above, sorted(spans.ends), sorted(spans.handovers)]).toEqual([
     above,
     ends,
+    handovers,
   ]);
+});
+
+const JOINED = new Map([[0, 2]]);
+
+function prompts(earlier: number, joining: number, height = 50): readonly StickyPrompt[] {
+  return [
+    { index: 0, top: earlier, height },
+    { index: 2, top: joining, height },
+  ];
+}
+
+test.each<[string, readonly StickyPrompt[], ReadonlyMap<number, number>, number | undefined]>([
+  ["rule 16: the prompt at the top is stuck", prompts(0, 158), JOINED, 0],
+  ["rule 17: the joining prompt at the top takes over", prompts(-74, 0), JOINED, 2],
+  [
+    "rule 17: while the joining prompt pushes the earlier one off, the earlier one stays stuck",
+    prompts(-34, 30),
+    JOINED,
+    0,
+  ],
+  ["rule 17: a prompt pushed off by its turn's end is not", prompts(-34, 30), new Map(), undefined],
+  ["rule 17: once both have scrolled past, none is", prompts(-200, -80), JOINED, undefined],
+  ["rule 18: a prompt as tall as the view never sticks", prompts(0, 158, 700), JOINED, undefined],
+])("%s", (_name, shown, handovers, stuck) => {
+  expect(stuckPrompt(shown, 700, handovers)).toBe(stuck);
 });

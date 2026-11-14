@@ -11,6 +11,7 @@ import { ChangeStats } from "../../components/change-stats.tsx";
 import { CHANGES_VISIBLE_FILES, filesChangedLabel } from "../../diff/change-tree.ts";
 import { useReferenceOpener } from "../../references/reference-opener.tsx";
 import { turnStyles } from "./turn.stylex.ts";
+import type { ChangesRowView } from "./transcript-row-views.ts";
 
 function ChangesCard({
   files,
@@ -80,20 +81,14 @@ function ChangesCard({
   );
 }
 
-export function ChangesFooter({
-  state,
-  files,
-}: {
-  readonly state: "pending" | "ready";
-  readonly files: SessionView["changes"];
-}): ReactElement {
+export function ChangesFooter({ view }: { readonly view: ChangesRowView }): ReactElement {
   const opener = useReferenceOpener();
 
   return (
     <div {...props(turnStyles.changesFooter(CHANGES_VISIBLE_FILES))}>
-      {state === "ready" && files.length > 0 && (
+      {view.kind === "card" && (
         <ChangesCard
-          files={files}
+          files={view.files}
           onOpenChanges={(path) => opener?.({ kind: "changes", path })?.()}
         />
       )}

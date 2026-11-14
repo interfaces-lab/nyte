@@ -37,6 +37,8 @@ export interface StepGroupFacts {
   readonly thinkingOnly: boolean;
   readonly titled: boolean;
   readonly hasContent: boolean;
+  /** Where the group's open state is kept: its first message, so it holds while the group grows. */
+  readonly openKey: string | undefined;
 }
 
 /**
@@ -68,6 +70,7 @@ export function stepGroupFacts(messages: readonly StepMessage[], running: boolea
         showsThinking(first) &&
         reasoningHeading(first.state.markdown).body.trim() === ""
       ),
+    openKey: first?.id,
   };
 }
 

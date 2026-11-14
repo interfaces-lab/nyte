@@ -48,7 +48,7 @@ export function McpCallView({
 }): ReactElement {
   const [open, setOpen] = useState(false);
   const state = useWholeToolState(message, open);
-  const facts = toolFacts(message, state, undefined, "settled");
+  const facts = toolFacts(message, state, undefined, "mcp");
   const status = facts.status;
   const running = facts.running;
   const output = facts.output.trimEnd();

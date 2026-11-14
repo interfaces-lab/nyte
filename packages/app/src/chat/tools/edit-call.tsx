@@ -205,7 +205,7 @@ export function EditCallView({
   readonly cwd: string | undefined;
   readonly density: ToolCallDensity;
 }): ReactElement {
-  const tool = toolFacts(message, message.state, toolVerbs(toolClass), "settled");
+  const tool = toolFacts(message, message.state, toolVerbs(toolClass), "edit");
   const status = tool.status;
   const running = tool.running;
   const opener = useReferenceOpener();

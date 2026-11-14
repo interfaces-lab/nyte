@@ -3,7 +3,7 @@ import type { PartStatus, ToolPartState } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import type { ToolMessage, ToolWord } from "@nyte-ai/plugin/client/presentation";
 import { basename, fileUrl, toolFacts } from "./tool-facts.ts";
-import type { OutputPolicy } from "./tool-facts.ts";
+import type { ToolCardKind } from "./tool-facts.ts";
 
 const RUN = asId<"run">("run");
 
@@ -54,10 +54,21 @@ function message(state: ToolPartState, status: PartStatus): ToolMessage {
 
 const VERBS = { running: "Running", past: "Ran" };
 
-const POLICIES: readonly OutputPolicy[] = [
-  "settled",
-  "progress-while-running",
-  "progress-while-unsettled",
+type Policy = "settled" | "while running" | "while unsettled";
+
+const POLICY_COLUMN = { settled: 0, "while running": 1, "while unsettled": 2 } as const;
+
+/** Each card's output policy: the column of `outputs` its output follows. */
+const CARDS: readonly (readonly [ToolCardKind, Policy])[] = [
+  ["edit", "settled"],
+  ["mcp", "settled"],
+  ["script", "settled"],
+  ["browser", "settled"],
+  ["web", "settled"],
+  ["secret", "settled"],
+  ["shell", "while running"],
+  ["line", "while running"],
+  ["subagent", "while unsettled"],
 ];
 
 test.each<
@@ -164,9 +175,11 @@ test.each<
     ["out", "", "out"],
   ],
 ])("%s", (_, input, whole, word, running, verb, durationMs, outputs) => {
-  const facts = POLICIES.map((policy) => toolFacts(input, whole, VERBS, policy));
+  const facts = CARDS.map(([card]) => toolFacts(input, whole, VERBS, card));
 
-  expect(facts.map((fact) => fact.output)).toEqual(outputs);
+  expect(facts.map((fact) => fact.output)).toEqual(
+    CARDS.map(([, policy]) => outputs[POLICY_COLUMN[policy]]),
+  );
 
   for (const fact of facts)
     expect({ ...fact, output: undefined }).toEqual({
@@ -177,7 +190,7 @@ test.each<
       verb,
     });
 
-  expect(toolFacts(input, whole, undefined, "settled").verb).toBeUndefined();
+  expect(toolFacts(input, whole, undefined, "edit").verb).toBeUndefined();
 });
 
 test.each<[string, string | undefined, string | undefined]>([

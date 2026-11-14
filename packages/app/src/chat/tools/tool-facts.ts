@@ -16,7 +16,26 @@ export interface ToolFacts {
  * settled shows nothing. `progress-while-unsettled` shows progress while the part is unsettled,
  * so a cut-off call keeps its last progress.
  */
-export type OutputPolicy = "settled" | "progress-while-running" | "progress-while-unsettled";
+type OutputPolicy = "settled" | "progress-while-running" | "progress-while-unsettled";
+
+/**
+ * Each tool card's output policy. A shell call and a tool line stream their progress; a subagent
+ * keeps its last progress when cut off; the rest show only what a settled call returned, and the
+ * script, browser, web and secret cards show even that only for a failure or not at all.
+ */
+const OUTPUT_POLICY = {
+  edit: "settled",
+  mcp: "settled",
+  script: "settled",
+  browser: "settled",
+  web: "settled",
+  secret: "settled",
+  shell: "progress-while-running",
+  line: "progress-while-running",
+  subagent: "progress-while-unsettled",
+} as const satisfies Record<string, OutputPolicy>;
+
+export type ToolCardKind = keyof typeof OUTPUT_POLICY;
 
 /**
  * What a tool card reads from its message: the status and tense come from `message`, the output
@@ -26,7 +45,7 @@ export function toolFacts(
   message: ToolMessage,
   state: ToolPartState,
   verbs: ToolVerbs | undefined,
-  policy: OutputPolicy,
+  card: ToolCardKind,
 ): ToolFacts {
   const status = toolStatus(message);
   const running = status.tense === "running";
@@ -34,7 +53,7 @@ export function toolFacts(
   return {
     status,
     running,
-    output: shownOutput(state, running, policy),
+    output: shownOutput(state, running, OUTPUT_POLICY[card]),
     durationMs: message.status.kind === "settled" ? message.status.endedAt - message.at : undefined,
     verb: status.tense === "none" ? undefined : verbs?.[status.tense],
   };

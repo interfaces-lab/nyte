@@ -21,7 +21,7 @@ import { TurnItemView } from "./turn-view.tsx";
 import type { BranchModelChoice, BranchModelPicker } from "./turn-view.tsx";
 import { estimateRowSize, withDivider } from "./transcript-rows.ts";
 import type { TranscriptProjector } from "./transcript-rows.ts";
-import { shownRow } from "./transcript-row-views.ts";
+import { changesRowView, shownRow } from "./transcript-row-views.ts";
 import { firstUnread, observeVisit, openVisit } from "./transcript-unread.ts";
 import type { UnreadVisit } from "./transcript-unread.ts";
 import { UnreadDivider } from "./transcript-unread-view.tsx";
@@ -52,7 +52,7 @@ function EarlierSteps(): ReactElement {
 
   return (
     <StatusMarker role="status">
-      {!loadable || scope.historyFailed ? (
+      {!loadable || scope.historyStalled ? (
         <Button variant="text" disabled={!loadable} onClick={() => controls.history()}>
           Show Earlier Steps
         </Button>
@@ -118,10 +118,12 @@ const TranscriptRowView = memo(function TranscriptRowView({
       );
     case "earlier":
       return <EarlierSteps />;
-    case "changes":
-      return row.state === "pending" || row.files.length > 0 ? (
-        <ChangesFooter state={row.state} files={row.files} />
-      ) : null;
+    case "changes": {
+      const changes = changesRowView(row);
+
+      return changes === null ? null : <ChangesFooter view={changes} />;
+    }
+
     case "prompt":
       return <TurnItemView row={row} density={density} cwd={cwd} />;
 

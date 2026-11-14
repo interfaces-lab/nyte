@@ -2,7 +2,7 @@ import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import { isJsonObject } from "@nyte-ai/schema";
 import { codemodeParameters } from "@nyte-ai/plugin/codemode/schema";
-import { readMcpCall, toolOutput, toolStatus } from "@nyte-ai/plugin/client/presentation";
+import { readMcpCall } from "@nyte-ai/plugin/client/presentation";
 import type { ToolMessage } from "@nyte-ai/plugin/client/presentation";
 import { Icon } from "@nyte-ai/ui/icon";
 import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
@@ -17,6 +17,7 @@ import {
   toolCardStyles,
 } from "./tool-card.tsx";
 import { ToolOutcome } from "./tool-line.tsx";
+import { toolFacts } from "./tool-facts.ts";
 
 const styles = create({
   calls: {
@@ -35,8 +36,9 @@ export function ScriptCallView({
   readonly message: ToolMessage;
   readonly calls: readonly ToolMessage[];
 }): ReactElement {
-  const status = toolStatus(message);
-  const running = status.tense === "running";
+  const facts = toolFacts(message, message.state, undefined, "script");
+  const status = facts.status;
+  const running = facts.running;
   const checked = codemodeParameters["~standard"].validate(message.state.args);
   const code = checked instanceof Promise || checked.issues !== undefined ? "" : checked.value.code;
 
@@ -82,7 +84,8 @@ export function ScriptCallView({
 }
 
 function ScriptCallRow({ call }: { readonly call: ToolMessage }): ReactElement {
-  const status = toolStatus(call);
+  const facts = toolFacts(call, call.state, undefined, "script");
+  const status = facts.status;
   const name = callName(call);
   const args = call.state.args;
 
@@ -105,9 +108,7 @@ function ScriptCallRow({ call }: { readonly call: ToolMessage }): ReactElement {
         <ToolOutcome status={status} />
       </div>
       {status.tone === "failure" && (
-        <p {...props(text.sm, toolCardStyles.failure, toolCardStyles.hang)}>
-          {toolOutput(call.state)}
-        </p>
+        <p {...props(text.sm, toolCardStyles.failure, toolCardStyles.hang)}>{facts.output}</p>
       )}
     </div>
   );

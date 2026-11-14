@@ -14,7 +14,6 @@ import {
 } from "./transcript-mode.ts";
 import type {
   HistoryEvent,
-  HistoryPager,
   HistoryStep,
   SettleAction,
   SettleMeasure,
@@ -283,65 +282,153 @@ test.each<[string, TranscriptMode, boolean, number, number, boolean]>([
   expect(adjustsOnResize(mode, { start, end, measured }, 400)).toBe(adjusts);
 });
 
-const loading: HistoryPager = { loading: true, failed: false };
+const at = (now: number, top = "prompt:a", older = false) =>
+  ({ kind: "present", nearTop: true, opening: false, now, top, older }) as const;
 
-const failed: HistoryPager = { loading: false, failed: true };
+const near = at(0);
 
-const near = { kind: "present", nearTop: true, opening: false } as const;
+const clipped = at(0, "prompt:a", true);
 
-test.each<[string, HistoryPager, readonly HistoryEvent[], HistoryPager, HistoryStep["action"]]>([
-  ["rule 27: near the top a page loads", IDLE_HISTORY, [near], loading, "load"],
-  ["rule 27: one page at a time", loading, [near], loading, "none"],
+const empty = { kind: "loaded", count: 0 } as const;
+
+const page = { kind: "loaded", count: 40 } as const;
+
+const failed = (now: number) => ({ kind: "failed", now }) as const;
+
+const asked = { kind: "asked", top: "prompt:a", older: true } as const;
+
+test.each<
+  [
+    string,
+    readonly HistoryEvent[],
+    { readonly loads: number; readonly loading: boolean; readonly stalled: boolean },
+    HistoryStep["action"],
+  ]
+>([
+  [
+    "rule 27: near the top a page loads",
+    [near],
+    { loads: 1, loading: true, stalled: false },
+    "load",
+  ],
+  [
+    "rule 27: one page at a time",
+    [near, near],
+    { loads: 1, loading: true, stalled: false },
+    "none",
+  ],
   [
     "rule 27: further down nothing loads",
-    IDLE_HISTORY,
     [{ ...near, nearTop: false }],
-    IDLE_HISTORY,
+    { loads: 0, loading: false, stalled: false },
     "none",
   ],
   [
     "rule 27: a session opening at the end loads nothing until it settles",
-    IDLE_HISTORY,
     [{ ...near, opening: true }],
-    IDLE_HISTORY,
+    { loads: 0, loading: false, stalled: false },
     "none",
   ],
   [
     "rule 27: a page that came keeps pages coming on the next frame",
-    loading,
-    [{ kind: "loaded", count: 40 }],
-    IDLE_HISTORY,
+    [near, page],
+    { loads: 1, loading: false, stalled: false },
     "next-frame",
   ],
   [
-    "rule 27: an empty page ends the run",
-    loading,
-    [{ kind: "loaded", count: 0 }],
-    IDLE_HISTORY,
+    "rule 27: a head with nothing older is asked once, not on every scroll at the top",
+    [near, empty, at(10), at(20), at(30)],
+    { loads: 1, loading: false, stalled: false },
     "none",
   ],
   [
-    "rule 27: two empty pages never strand what is older: the next present asks again",
-    loading,
-    [{ kind: "loaded", count: 0 }, near, { kind: "loaded", count: 0 }, near],
-    loading,
+    "rule 27: once the top row changes, an exhausted head is asked again",
+    [near, empty, at(10, "prompt:b")],
+    { loads: 2, loading: true, stalled: false },
     "load",
   ],
-  ["a failed page marks the pager failed", loading, [{ kind: "failed" }], failed, "none"],
-  ["a present after a failure tries again", failed, [near], { ...failed, loading: true }, "load"],
   [
-    "asking after a failure loads at once and clears it",
-    failed,
-    [{ kind: "asked" }],
-    loading,
+    "rule 27: an empty page while older messages show is asked again on the next frame",
+    [clipped, empty],
+    { loads: 1, loading: false, stalled: false },
+    "next-frame",
+  ],
+  [
+    "three empty pages in a row while older messages show bring the button back",
+    [clipped, empty, clipped, empty, clipped, empty, clipped, clipped],
+    { loads: 3, loading: false, stalled: true },
+    "none",
+  ],
+  [
+    "a click on the stalled button asks again",
+    [clipped, empty, clipped, empty, clipped, empty, asked],
+    { loads: 4, loading: true, stalled: false },
     "load",
   ],
-  ["asking while a page loads waits for it", loading, [{ kind: "asked" }], loading, "none"],
-])("history: %s", (_name, start, events, pager, action) => {
-  const step = events.reduce<HistoryStep>((last, event) => nextHistory(last.pager, event), {
-    pager: start,
-    action: "none",
-  });
+  [
+    "a page that came after empty ones starts the count again",
+    [clipped, empty, clipped, empty, clipped, page, clipped, empty, clipped, empty],
+    { loads: 5, loading: false, stalled: false },
+    "next-frame",
+  ],
+  [
+    "a failed page shows the button",
+    [near, failed(0)],
+    { loads: 1, loading: false, stalled: true },
+    "none",
+  ],
+  [
+    "after a failure a present waits a second before asking again",
+    [near, failed(0), at(10), at(500), at(999)],
+    { loads: 1, loading: false, stalled: true },
+    "none",
+  ],
+  [
+    "after the wait a present asks again, keeping the button",
+    [near, failed(0), at(1_000)],
+    { loads: 2, loading: true, stalled: true },
+    "load",
+  ],
+  [
+    "each failure in a row doubles the wait",
+    [near, failed(0), at(1_000), failed(1_000), at(2_999), at(3_000)],
+    { loads: 3, loading: true, stalled: true },
+    "load",
+  ],
+  [
+    "the wait stops doubling at 30 s",
+    [
+      ...[0, 1, 2, 3, 4, 5].flatMap((index) => [at(index * 40_000), failed(index * 40_000)]),
+      at(5 * 40_000 + 30_000),
+    ],
+    { loads: 7, loading: true, stalled: true },
+    "load",
+  ],
+  [
+    "a click after a failure asks at once and hides the button",
+    [near, failed(0), asked],
+    { loads: 2, loading: true, stalled: false },
+    "load",
+  ],
+  [
+    "a click while a page loads waits for it",
+    [near, asked],
+    { loads: 1, loading: true, stalled: false },
+    "none",
+  ],
+])("history: %s", (_name, events, expected, action) => {
+  const steps: HistoryStep[] = [];
 
-  expect([step.pager, step.action]).toEqual([pager, action]);
+  for (const event of events) steps.push(nextHistory(steps.at(-1)?.pager ?? IDLE_HISTORY, event));
+
+  const last = steps.at(-1);
+
+  expect([
+    {
+      loads: steps.filter((step) => step.action === "load").length,
+      loading: last?.pager.loading,
+      stalled: last?.pager.stalled,
+    },
+    last?.action,
+  ]).toEqual([expected, action]);
 });

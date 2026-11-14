@@ -39,9 +39,14 @@ import {
   touchScroll,
   wroteScroll,
 } from "./transcript-mode.ts";
-import type { HistoryEvent, HistoryPager, TranscriptScroll } from "./transcript-mode.ts";
+import type {
+  HistoryEvent,
+  HistoryPager,
+  HistoryTop,
+  TranscriptScroll,
+} from "./transcript-mode.ts";
 import { DockInput, ViewportInput } from "./transcript-input.tsx";
-import { stickySpans } from "./transcript-rows.ts";
+import { EARLIER_ROW, stickySpans } from "./transcript-rows.ts";
 import type { RowLayout } from "./transcript-rows.ts";
 import {
   distanceFromEnd,
@@ -116,8 +121,8 @@ interface TranscriptState extends TranscriptOptions {
   readonly setDock: (dock: HTMLDivElement | null) => void;
   readonly controlsRef: RefObject<TranscriptControls | null>;
   readonly controls: TranscriptControls;
-  readonly historyFailed: boolean;
-  readonly setHistoryFailed: (failed: boolean) => void;
+  readonly historyStalled: boolean;
+  readonly setHistoryStalled: (stalled: boolean) => void;
 }
 
 const ignore = (): void => {};
@@ -150,7 +155,7 @@ export function useTranscriptControls(): TranscriptControls {
 }
 
 export function useTranscriptScope():
-  | Pick<TranscriptState, "paneId" | "sessionId" | "viewStore" | "loadEarlier" | "historyFailed">
+  | Pick<TranscriptState, "paneId" | "sessionId" | "viewStore" | "loadEarlier" | "historyStalled">
   | undefined {
   return useContext(TranscriptContext) ?? undefined;
 }
@@ -181,7 +186,7 @@ export function TranscriptProvider({
     history: () => controlsRef.current?.history(),
   }));
 
-  const [historyFailed, setHistoryFailed] = useState(false);
+  const [historyStalled, setHistoryStalled] = useState(false);
 
   const transcript = {
     paneId,
@@ -195,8 +200,8 @@ export function TranscriptProvider({
     setDock,
     controlsRef,
     controls,
-    historyFailed,
-    setHistoryFailed,
+    historyStalled,
+    setHistoryStalled,
   };
 
   return <TranscriptContext value={transcript}>{children}</TranscriptContext>;
@@ -222,7 +227,7 @@ export function TranscriptContent({
     initialPosition,
     dock,
     controlsRef,
-    setHistoryFailed,
+    setHistoryStalled,
   } = useTranscript();
 
   const [viewport, setViewport] = useState<HTMLDivElement | null>(null);
@@ -305,19 +310,29 @@ export function TranscriptContent({
 
   const history = useRef<HistoryPager>(IDLE_HISTORY);
 
-  const pageHistory = (instance: TranscriptVirtualizer, event: HistoryEvent): void => {
+  const historyTop = useMemo(
+    (): HistoryTop => ({
+      top: rows[0]?.key,
+      older: rows.some((row) => row.key.startsWith(EARLIER_ROW)),
+    }),
+    [rows],
+  );
+
+  const shownTop = useRef(historyTop);
+
+  const pageHistory = (event: HistoryEvent): void => {
     if (loadEarlier === undefined) return;
     const step = nextHistory(history.current, event);
 
-    if (step.pager.failed !== history.current.failed) setHistoryFailed(step.pager.failed);
+    if (step.pager.stalled !== history.current.stalled) setHistoryStalled(step.pager.stalled);
     history.current = step.pager;
 
-    if (step.action === "next-frame") requestAnimationFrame(() => loadHistory(instance));
+    if (step.action === "next-frame") requestAnimationFrame(() => loadHistory(virtualizer));
 
     if (step.action === "load")
       void loadEarlier().then(
-        (count) => pageHistory(instance, { kind: "loaded", count }),
-        () => pageHistory(instance, { kind: "failed" }),
+        (count) => pageHistory({ kind: "loaded", count }),
+        () => pageHistory({ kind: "failed", now: performance.now() }),
       );
   };
 
@@ -326,10 +341,12 @@ export function TranscriptContent({
     const mode = position.current.mode;
 
     if (scroll === null) return;
-    pageHistory(instance, {
+    pageHistory({
       kind: "present",
       nearTop: scroll.scrollTop < scroll.clientHeight * HISTORY_LEAD_SCREENS,
       opening: mode.kind === "following" && mode.opening,
+      now: performance.now(),
+      ...shownTop.current,
     });
   };
 
@@ -338,12 +355,13 @@ export function TranscriptContent({
     options: { readonly history: boolean },
   ): void => {
     const scroll = instance.scrollElement;
+    shownTop.current = historyTop;
     stretchSpans(instance, sticky.ends);
 
     if (scroll === null || content.current === null) return;
     const opening = position.current.mode.kind === "following" && position.current.mode.opening;
     settle(instance);
-    syncSticky(scroll, content.current);
+    syncSticky(scroll, content.current, sticky.handovers);
     queueMicrotask(() => syncScrollButton(scroll, dock));
 
     if (
@@ -436,7 +454,7 @@ export function TranscriptContent({
 
   const virtualRows = virtualizer.getVirtualItems();
   const presentRows = useEffectEvent((): void => present(virtualizer, { history: false }));
-  const askHistory = useEffectEvent((): void => pageHistory(virtualizer, { kind: "asked" }));
+  const askHistory = useEffectEvent((): void => pageHistory({ kind: "asked", ...historyTop }));
 
   // oxlint-disable-next-line nyte-code/no-direct-effect -- measures virtual rows and syncs sticky headers before paint
   useLayoutEffect(() => {

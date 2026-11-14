@@ -6,43 +6,43 @@ import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
 import { activityStyles } from "./activity.stylex.ts";
 import { stepGroupStyles } from "./step-group.stylex.ts";
 import { Prose } from "../markdown/prose.tsx";
-import { reasoningHeading } from "./reasoning-heading.ts";
+import type { ThinkingMessage } from "@nyte-ai/plugin/client/presentation";
+import { thoughtView } from "./transcript-row-views.ts";
 import { useShownLive } from "./step-group-open.ts";
 
 export function ThinkingLine({
+  message,
   text: reasoning,
-  streaming,
   live = false,
   thoughtKey,
 }: {
+  message: ThinkingMessage;
   text: string;
-  streaming: boolean;
   live?: boolean;
   thoughtKey?: string;
 }): ReactElement | null {
   const [open, setOpen] = useState<boolean | undefined>();
   const unfolded = useShownLive(thoughtKey, live);
+  const thought = thoughtView(message, reasoning, unfolded);
 
-  if (reasoning.trim() === "" && !streaming) return null;
-
-  const { title, body } =
-    streaming || unfolded ? { title: undefined, body: reasoning } : reasoningHeading(reasoning);
+  if (thought === null) return null;
+  const streaming = thought.streaming;
 
   const label = (
     <span {...props(stepGroupStyles.verb, streaming && activityStyles.shimmer)}>
-      {streaming ? "Thinking" : (title ?? "Thought")}
+      {thought.label}
     </span>
   );
 
-  if (body.trim() === "") return <div {...props(stepGroupStyles.status)}>{label}</div>;
+  if (thought.kind === "label") return <div {...props(stepGroupStyles.status)}>{label}</div>;
 
   const prose = (
     <div {...props(stepGroupStyles.calls, stepGroupStyles.thinking)}>
-      <Prose markdown={body} streaming={streaming} />
+      <Prose markdown={thought.body} streaming={streaming} />
     </div>
   );
 
-  if (unfolded)
+  if (thought.kind === "unfolded")
     return (
       <div aria-busy={streaming || undefined} {...props(stepGroupStyles.root)}>
         <div {...props(stepGroupStyles.status)}>{label}</div>

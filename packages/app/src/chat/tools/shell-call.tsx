@@ -459,7 +459,7 @@ export function ShellCallView({
 }): ReactElement {
   const [open, setOpen] = useState(false);
   const state = useWholeToolState(message, open);
-  const facts = toolFacts(message, state, toolVerbs(toolClass), "progress-while-running");
+  const facts = toolFacts(message, state, toolVerbs(toolClass), "shell");
   const status = facts.status;
   const running = facts.running;
   const sessionId = useTranscriptScope()?.sessionId;

@@ -184,3 +184,33 @@ export function view(
     catalog: { commands: [], settings: [], skills: [], agents: [], tools: [] },
   };
 }
+
+/** The view with `count` steps after the live reply, the last still running, so its group previews. */
+export function previewView(liveText: string, count: number): SessionView {
+  return view(
+    liveText,
+    Array.from({ length: count }, (_, index): Message => {
+      const call = {
+        ...settledTool(`preview-${String(index)}`, {
+          kind: "shell",
+          command: `pnpm step ${String(index)}`,
+        }),
+        turn: turnId(TURNS),
+      };
+
+      return index < count - 1
+        ? call
+        : {
+            ...call,
+            state: { ...call.state, phase: "running", progress: null },
+            status: { kind: "live", run: liveRun.id },
+          };
+    }),
+  );
+}
+
+export const QUEUED: SessionView["queue"][number] = {
+  ...user("queued-1", TURNS, "A queued follow-up."),
+  turn: asId<"turn">("loose:queued-1"),
+  status: { kind: "pending", schedule: { kind: "next-turn", reason: "requested" }, covered: true },
+};

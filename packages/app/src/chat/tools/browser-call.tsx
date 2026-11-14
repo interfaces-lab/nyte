@@ -1,8 +1,7 @@
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement, ReactNode } from "react";
 import type { BrowserStep } from "@nyte-ai/plugin/browser/schema";
-import { toolOutput, toolStatus } from "@nyte-ai/plugin/client/presentation";
-import type { ToolMessage, ToolStatus } from "@nyte-ai/plugin/client/presentation";
+import type { ToolMessage } from "@nyte-ai/plugin/client/presentation";
 import type { IconName } from "@nyte-ai/ui/icon";
 import { Icon } from "@nyte-ai/ui/icon";
 import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
@@ -11,6 +10,8 @@ import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { BlobImage } from "../transcript/message-content.tsx";
 import { ToolCard, ToolSpinner, ToolVerb, toolCardStyles } from "./tool-card.tsx";
 import { ToolOutcome } from "./tool-line.tsx";
+import { toolFacts } from "./tool-facts.ts";
+import type { ToolFacts } from "./tool-facts.ts";
 
 export interface BrowserCall {
   readonly message: ToolMessage;
@@ -57,8 +58,14 @@ export function BrowserCallsView({
     );
 
   const last = calls.at(-1);
-  const status = last === undefined ? undefined : toolStatus(last.message);
-  const running = status?.tense === "running";
+
+  const facts =
+    last === undefined
+      ? undefined
+      : toolFacts(last.message, last.message.state, undefined, "browser");
+
+  const status = facts?.status;
+  const running = facts?.running === true;
 
   const page = calls.flatMap((call) =>
     call.step.tool === "browser_open" ? [call.step.args.url.replace(/^https?:\/\//u, "")] : [],
@@ -96,7 +103,13 @@ export function BrowserCallsView({
 
 function BrowserPreview({ calls }: { readonly calls: readonly BrowserCall[] }): ReactNode {
   const last = calls.at(-1);
-  const failed = last !== undefined && toolStatus(last.message).tone === "failure";
+
+  const facts =
+    last === undefined
+      ? undefined
+      : toolFacts(last.message, last.message.state, undefined, "browser");
+
+  const failed = facts?.status.tone === "failure";
   const file = calls.map((call) => screenshot(call.message)).findLast((shot) => shot !== undefined);
 
   if (!failed && file === undefined) return null;
@@ -104,7 +117,7 @@ function BrowserPreview({ calls }: { readonly calls: readonly BrowserCall[] }): 
   return (
     <div {...props(styles.preview, hairline.blockStart)}>
       {failed ? (
-        <p {...props(text.sm, toolCardStyles.failure)}>{toolOutput(last.message.state)}</p>
+        <p {...props(text.sm, toolCardStyles.failure)}>{facts.output}</p>
       ) : (
         file !== undefined && <BlobImage file={file} compact />
       )}
@@ -121,9 +134,10 @@ function BrowserStepRow({
 }): ReactElement {
   const message = call.message;
   const copy = browserCopy(call.step);
-  const status = toolStatus(message);
-  const running = status.tense === "running";
-  const detail = stepDetail(message, status, shot);
+  const facts = toolFacts(message, message.state, undefined, "browser");
+  const status = facts.status;
+  const running = facts.running;
+  const detail = stepDetail(message, facts, shot);
 
   return (
     <div {...props(toolCardStyles.stack)}>
@@ -147,19 +161,16 @@ function BrowserStepRow({
   );
 }
 
-function stepDetail(message: ToolMessage, status: ToolStatus, shot: boolean): ReactNode {
-  if (status.tense === "running") return null;
+function stepDetail(message: ToolMessage, facts: ToolFacts, shot: boolean): ReactNode {
+  if (facts.running) return null;
 
-  if (status.tone === "failure")
-    return <p {...props(text.sm, toolCardStyles.failure)}>{toolOutput(message.state)}</p>;
+  if (facts.status.tone === "failure")
+    return <p {...props(text.sm, toolCardStyles.failure)}>{facts.output}</p>;
 
   const name = message.state.name;
 
-  if (name === "browser_console" || name === "browser_evaluate") {
-    const output = toolOutput(message.state);
-
-    return output === "" ? null : <pre {...props(toolCardStyles.mono)}>{output}</pre>;
-  }
+  if (name === "browser_console" || name === "browser_evaluate")
+    return facts.output === "" ? null : <pre {...props(toolCardStyles.mono)}>{facts.output}</pre>;
 
   const file = shot ? screenshot(message) : undefined;
 

@@ -42,7 +42,7 @@ Reading returns to Following only through rules 2, 3 and 4. Saving or cancelling
 ## Sticky prompts
 
 16. The prompt of the turn being read sticks to the top of the view. Reports from agents and jobs, and late answers to questions, don't stick.
-17. Following sticks prompts the same way Reading does. A prompt stays stuck until the last row of its turn scrolls past it, even at the end of the chat. A prompt that joined a running turn pushes the turn's earlier prompt off the top, so only one prompt is ever stuck. Sending, streaming or a turn ending never makes a prompt jump on or off the top.
+17. Following sticks prompts the same way Reading does. A prompt stays stuck until the last row of its turn scrolls past it, even at the end of the chat. A prompt that joined a running turn pushes the turn's earlier prompt off the top, so only one prompt is ever stuck. The earlier prompt stays stuck while it is pushed, until the joining one reaches the top. Sending, streaming or a turn ending never makes a prompt jump on or off the top.
 18. A prompt as tall as the view, or taller, never sticks.
 
 ## Row identity
@@ -66,7 +66,7 @@ The latest turn owns one summary row, keyed by its prompt. While the turn runs, 
 
 25. Scroll-to-bottom shows when the view is more than 60px from the end.
 26. A live step-group preview follows its own tail. It pauses when the reader scrolls up inside it, and resumes once the reader scrolls back to its end.
-27. Older messages load a page at a time while the view is within three screen heights of the top. Pages keep loading until the view leaves that range or no older messages remain. A session that opens at the end loads nothing older until it has settled there. Loading never moves the view.
+27. Older messages load a page at a time while the view is within three screen heights of the top. Pages keep loading until the view leaves that range or no older messages remain. Three empty pages in a row, or a failed page, show Show Earlier Steps instead, and clicking it asks again. A session that opens at the end loads nothing older until it has settled there. Loading never moves the view.
 
 ## Open decisions
 

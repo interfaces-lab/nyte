@@ -393,3 +393,62 @@ test.each([
     ...kept,
   });
 });
+
+const LONG_KEY = "m".repeat(200);
+
+const manyGroups = Array.from({ length: 128 }, (_, index): [string, boolean] => [
+  `${LONG_KEY}${String(index)}`,
+  index % 2 === 0,
+]);
+
+test.each<
+  [string, readonly (readonly [string, boolean])[], readonly (readonly [string, boolean])[]]
+>([
+  [
+    "rule 24: a chat's open and closed step groups and its thoughts shown live come back after a reload",
+    [
+      ["group-1", true],
+      ["group-2", false],
+      ["live:thought-1", true],
+    ],
+    [
+      ["group-1", true],
+      ["group-2", false],
+      ["live:thought-1", true],
+    ],
+  ],
+  [
+    "a stored value larger than its cap keeps the newest that fit",
+    manyGroups,
+    manyGroups.slice(manyGroups.length - 76),
+  ],
+  ["a chat with none stores none", [], []],
+])("%s", (name, written, restored) => {
+  vi.useFakeTimers();
+  onTestFinished(() => {
+    vi.useRealTimers();
+  });
+  const storage = memoryStorage();
+  const chat = asId<"session">("chat-steps");
+  const first = tabPanes({ storage, storageKey: name });
+  first.viewState.updateSession(chat, (current) => ({ ...current, stepGroups: new Map(written) }));
+  vi.advanceTimersByTime(200);
+
+  const reloaded = tabPanes({ storage, storageKey: name });
+  assert.deepEqual([...reloaded.viewState.readSession(chat).stepGroups], restored);
+});
+
+test("a chat's view state stored before step groups were kept loads with none", () => {
+  const storage = memoryStorage();
+  storage.setItem("panes-old", JSON.stringify({ tabs: {}, sessions: ["chat-old"] }));
+  storage.setItem(
+    "panes-old:session:chat-old",
+    JSON.stringify({ draft: "Before", selectionStart: 6, selectionEnd: 6 }),
+  );
+
+  const state = tabPanes({ storage, storageKey: "panes-old" }).viewState.readSession(
+    asId<"session">("chat-old"),
+  );
+
+  assert.deepEqual([state.draft.composer.draft, [...state.stepGroups]], ["Before", []]);
+});

@@ -455,9 +455,7 @@ function TurnPartView({
   density: ToolCallDensity;
 }): ReactElement | null {
   if (showsThinking(message))
-    return (
-      <ThinkingLine text={message.state.markdown} streaming={message.status.kind === "live"} />
-    );
+    return <ThinkingLine message={message} text={message.state.markdown} />;
 
   if (showsTool(message)) return <ToolCallView message={message} cwd={cwd} density={density} />;
 
@@ -552,7 +550,6 @@ export function TurnItemView({
       return (
         <StepGroupFactsView
           facts={step.facts}
-          groupKey={row.messages[0]?.id}
           cwd={cwd}
           added={row.added}
           removed={row.removed}

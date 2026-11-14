@@ -320,7 +320,7 @@ export function SubagentLineView({
 }): ReactElement {
   const [open, setOpen] = useState(false);
   const state = useWholeToolState(message, open);
-  const facts = toolFacts(message, state, toolVerbs(toolClass), "progress-while-unsettled");
+  const facts = toolFacts(message, state, toolVerbs(toolClass), "subagent");
   const output = excerptText(outputExcerpt(facts.output));
   const status = facts.status;
   const running = facts.running;

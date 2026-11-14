@@ -41,6 +41,8 @@ export interface StickySpans {
   readonly above: readonly number[];
   /** For each sticky prompt, the last row its span covers. */
   readonly ends: ReadonlyMap<number, number>;
+  /** For each sticky prompt whose span a prompt that joined its turn ends, that prompt. */
+  readonly handovers: ReadonlyMap<number, number>;
 }
 
 /**
@@ -50,12 +52,17 @@ export interface StickySpans {
 export function stickySpans(rows: readonly RowLayout[]): StickySpans {
   const above: number[] = [];
   const ends = new Map<number, number>();
+  const handovers = new Map<number, number>();
   let sticky = -1;
 
   for (const [index, row] of rows.entries()) {
     if (row.group === null || row.group !== rows[index - 1]?.group) sticky = -1;
 
-    if (row.sticky && row.group !== null) sticky = index;
+    if (row.sticky && row.group !== null) {
+      if (sticky >= 0) handovers.set(sticky, index);
+      sticky = index;
+    }
+
     above.push(sticky);
   }
 
@@ -73,7 +80,38 @@ export function stickySpans(rows: readonly RowLayout[]): StickySpans {
     end = index - 1;
   }
 
-  return { above, ends };
+  return { above, ends, handovers };
+}
+
+export interface StickyPrompt {
+  readonly index: number;
+  /** Its top, from the view's top edge. */
+  readonly top: number;
+  readonly height: number;
+}
+
+const STICKY_EPSILON = 2;
+
+/**
+ * Rules 16-18: the prompt stuck at the top, the last one there that is shorter than the view.
+ * While a prompt that joined the turn pushes the earlier one off, the earlier one stays stuck
+ * until the joining one reaches the top, so the handover takes one frame and no frame shows none.
+ */
+export function stuckPrompt(
+  prompts: readonly StickyPrompt[],
+  viewHeight: number,
+  handovers: StickySpans["handovers"],
+): number | undefined {
+  const eligible = prompts.filter((prompt) => prompt.height < viewHeight);
+  const atTop = eligible.findLast((prompt) => Math.abs(prompt.top) <= STICKY_EPSILON);
+
+  if (atTop !== undefined) return atTop.index;
+
+  return eligible.find((prompt) => {
+    const joining = prompts.find((other) => other.index === handovers.get(prompt.index));
+
+    return prompt.top < 0 && joining !== undefined && joining.top > STICKY_EPSILON;
+  })?.index;
 }
 
 type Failure = Parameters<typeof failureNotice>[0];
@@ -101,6 +139,9 @@ type ResponseRow = { readonly kind: "response"; readonly messages: readonly Text
 );
 
 type EarlierRow = RowLayout & { readonly kind: "earlier" };
+
+/** The key prefix of the row that says older messages exist above. */
+export const EARLIER_ROW = "earlier:";
 
 export type PromptRow = RowLayout & {
   readonly kind: "prompt";
@@ -232,7 +273,7 @@ function turnRows(
       if (turn.clipped && index === 0)
         rows.push({
           kind: "earlier",
-          key: `earlier:${turn.info.id}`,
+          key: `${EARLIER_ROW}${turn.info.id}`,
           ...at(),
           sticky: false,
         });

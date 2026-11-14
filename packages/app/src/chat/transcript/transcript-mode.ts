@@ -269,19 +269,59 @@ export function adjustsOnResize(
   return item.measured ? item.end <= fold : item.start < fold;
 }
 
-export interface HistoryPager {
-  readonly loading: boolean;
-  /** The last page failed, and no page has loaded since. */
-  readonly failed: boolean;
+/** Where a page was asked from: the top row, and whether the view said older messages exist. */
+export interface HistoryTop {
+  readonly top: string | undefined;
+  readonly older: boolean;
 }
 
-export const IDLE_HISTORY: HistoryPager = { loading: false, failed: false };
+export interface HistoryPager {
+  readonly loading: boolean;
+  /**
+   * "Show Earlier Steps" shows instead of the loader: the last page failed, or `EMPTY_PAGES` came
+   * back empty in a row while the view said older messages exist. A click asks again.
+   */
+  readonly stalled: boolean;
+  /** Failed pages in a row. */
+  readonly failures: number;
+  /** After a failure, a present asks nothing before this time. */
+  readonly retryAt: number;
+  /** Empty pages in a row while the view said older messages exist. */
+  readonly empty: number;
+  /** Where the page loading now was asked from. */
+  readonly from: HistoryTop | null;
+  /** The top row when a page came back empty and the view showed nothing older: the head has none until the top changes. */
+  readonly exhausted: string | null;
+}
+
+export const IDLE_HISTORY: HistoryPager = {
+  loading: false,
+  stalled: false,
+  failures: 0,
+  retryAt: -Infinity,
+  empty: 0,
+  from: null,
+  exhausted: null,
+};
+
+/** A page comes back empty when the view moved while it loaded, so this many in a row stall the pager. */
+const EMPTY_PAGES = 3;
+
+/** The wait after the first failure, doubling with each one after it up to `RETRY_MAX_MS`. */
+const RETRY_MS = 1_000;
+
+const RETRY_MAX_MS = 30_000;
 
 export type HistoryEvent =
-  | { readonly kind: "present"; readonly nearTop: boolean; readonly opening: boolean }
-  | { readonly kind: "asked" }
+  | ({
+      readonly kind: "present";
+      readonly nearTop: boolean;
+      readonly opening: boolean;
+      readonly now: number;
+    } & HistoryTop)
+  | ({ readonly kind: "asked" } & HistoryTop)
   | { readonly kind: "loaded"; readonly count: number }
-  | { readonly kind: "failed" };
+  | { readonly kind: "failed"; readonly now: number };
 
 export interface HistoryStep {
   readonly pager: HistoryPager;
@@ -291,28 +331,70 @@ export interface HistoryStep {
 
 /**
  * Rule 27: one page at a time while the view is near the top, once the session has settled.
- * An empty page ends the run of pages, not the pager: the next present asks again, so a page
- * that came back empty because the window moved never strands older messages, and a head with
- * none left answers without asking the host. Asking after a failure loads at once.
+ * An empty page with nothing older shown means the head has no more, so the pager asks nothing
+ * until the top row changes. An empty page while the view says older messages exist is asked
+ * again on the next frame, `EMPTY_PAGES` times in a row before the button shows. After a failure
+ * the button shows and a present waits out a doubling delay; a click asks at once.
  */
 export function nextHistory(pager: HistoryPager, event: HistoryEvent): HistoryStep {
   switch (event.kind) {
     case "present":
-      return !pager.loading && event.nearTop && !event.opening
-        ? { pager: { ...pager, loading: true }, action: "load" }
-        : { pager, action: "none" };
+      if (
+        pager.loading ||
+        !event.nearTop ||
+        event.opening ||
+        (pager.stalled && pager.failures === 0) ||
+        (pager.failures > 0 && event.now < pager.retryAt) ||
+        (!event.older && event.top === pager.exhausted)
+      )
+        return none(pager);
+
+      return { pager: { ...pager, loading: true, from: from(event) }, action: "load" };
     case "asked":
       return pager.loading
-        ? { pager, action: "none" }
-        : { pager: { loading: true, failed: false }, action: "load" };
+        ? none(pager)
+        : { pager: { ...pager, loading: true, stalled: false, from: from(event) }, action: "load" };
     case "loaded":
-      return { pager: IDLE_HISTORY, action: event.count > 0 ? "next-frame" : "none" };
-    case "failed":
-      return { pager: { loading: false, failed: true }, action: "none" };
+      return loaded(pager, event.count);
+    case "failed": {
+      const failures = pager.failures + 1;
+
+      return none({
+        ...pager,
+        loading: false,
+        stalled: true,
+        failures,
+        retryAt: event.now + Math.min(RETRY_MS * 2 ** (failures - 1), RETRY_MAX_MS),
+        from: null,
+      });
+    }
+
     default: {
       const _exhaustive: never = event;
 
       return _exhaustive;
     }
   }
+}
+
+function none(pager: HistoryPager): HistoryStep {
+  return { pager, action: "none" };
+}
+
+function from(event: HistoryTop): HistoryTop {
+  return { top: event.top, older: event.older };
+}
+
+function loaded(pager: HistoryPager, count: number): HistoryStep {
+  if (count > 0) return { pager: IDLE_HISTORY, action: "next-frame" };
+
+  if (pager.from?.older !== true)
+    return none({ ...IDLE_HISTORY, exhausted: pager.from?.top ?? null });
+  const empty = pager.empty + 1;
+  const stalled = empty >= EMPTY_PAGES;
+
+  return {
+    pager: { ...IDLE_HISTORY, stalled, empty },
+    action: stalled ? "none" : "next-frame",
+  };
 }

@@ -1,11 +1,18 @@
 import type { CommitId, MessageSource, UserContent } from "@nyte-ai/sdk";
 import { showsAnswer, showsReport } from "@nyte-ai/plugin/client/presentation";
-import type { AnswerMessage, UserMessage } from "@nyte-ai/plugin/client/presentation";
+import type {
+  AnswerMessage,
+  ThinkingMessage,
+  UserMessage,
+} from "@nyte-ai/plugin/client/presentation";
+import { reasoningHeading } from "./reasoning-heading.ts";
 import { stepGroupFacts } from "./step-group-presentation.ts";
 import type { StepGroupFacts } from "./step-group-presentation.ts";
 import type { StepEntry } from "./step-entries.ts";
 import { workedFor } from "./transcript-presentation.ts";
 import type { PromptRow, TranscriptRow, TurnItemRow } from "./transcript-rows.ts";
+
+type ChangesRow = Extract<TranscriptRow, { readonly kind: "changes" }>;
 
 type StepRow = Extract<TurnItemRow, { readonly kind: "step" }>;
 
@@ -120,4 +127,63 @@ export function shownRow(row: TranscriptRow, navigating: boolean): TranscriptRow
   if (row.kind === "live" && row.state === "idle") return { ...row, state: "planning" };
 
   return row;
+}
+
+/**
+ * How a thought line draws. While it streams it reads "Thinking" over its whole text. Once it
+ * ends it folds under its heading, or "Thought" without one, and unfolds under that label when it
+ * was shown while its group ran. A thought with no text left under its label draws the label alone,
+ * and an empty one that ended draws nothing.
+ */
+export type ThoughtView =
+  | { readonly kind: "label"; readonly streaming: boolean; readonly label: string }
+  | {
+      readonly kind: "folded" | "unfolded";
+      readonly streaming: boolean;
+      readonly label: string;
+      readonly body: string;
+    };
+
+export function thoughtView(
+  message: ThinkingMessage,
+  markdown: string,
+  unfolded: boolean,
+): ThoughtView | null {
+  const streaming = message.status.kind === "live";
+
+  if (markdown.trim() === "" && !streaming) return null;
+  const split = streaming || unfolded ? undefined : reasoningHeading(markdown);
+  const label = streaming ? "Thinking" : (split?.title ?? "Thought");
+  const body = split === undefined ? markdown : split.body;
+
+  if (body.trim() === "") return { kind: "label", streaming, label };
+
+  return { kind: unfolded ? "unfolded" : "folded", streaming, label, body };
+}
+
+export interface ThoughtProse {
+  readonly markdown: string;
+  readonly streaming: boolean;
+}
+
+/** A thought drawn bare in a group of thoughts: once it ends, without the heading the group's line already shows. */
+export function thoughtProse(
+  message: ThinkingMessage,
+  markdown: string,
+  titled: boolean,
+): ThoughtProse {
+  const streaming = message.status.kind === "live";
+
+  return { markdown: titled && !streaming ? reasoningHeading(markdown).body : markdown, streaming };
+}
+
+/** The turn's summary row: a reservation while the turn works, the card once it ended with changes, else nothing. */
+export type ChangesRowView =
+  | { readonly kind: "reserved" }
+  | { readonly kind: "card"; readonly files: ChangesRow["files"] };
+
+export function changesRowView(row: ChangesRow): ChangesRowView | null {
+  if (row.state === "pending") return { kind: "reserved" };
+
+  return row.files.length > 0 ? { kind: "card", files: row.files } : null;
 }
