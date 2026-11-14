@@ -54,6 +54,7 @@ import type {
 } from "./contract/workspace.ts";
 import { dispatchHead } from "./drive/dispatch.ts";
 import { createExecutionState, driveInProcess } from "./drive/execution.ts";
+import { HOST_CLOSING } from "./engine/durable.ts";
 import { createChildTable } from "./engine/children.ts";
 import { createJobTable, jobHandle } from "./engine/jobs.ts";
 import { openPresence } from "./engine/presence.ts";
@@ -419,7 +420,7 @@ async function composeKernel(
   presence?.revoked.addEventListener(
     "abort",
     () => {
-      kernel.executionState.closing.abort();
+      kernel.executionState.closing.abort(HOST_CLOSING);
       options.revoked?.();
     },
     { once: true },

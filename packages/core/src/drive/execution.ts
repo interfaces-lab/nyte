@@ -22,7 +22,7 @@ import type { ExecutionState, Kernel, LandedInput } from "../contract/kernel.ts"
 import { decodeLease, decodeRunRecord } from "../contract/records.ts";
 import type { RunRecord, SessionRecord } from "../contract/records.ts";
 import { landing, selectRunStart } from "../engine/admission.ts";
-import { LEASE_MS, RENEW_MS } from "../engine/durable.ts";
+import { HOST_CLOSING, LEASE_MS, RENEW_MS } from "../engine/durable.ts";
 import { stopRequested } from "../engine/fence.ts";
 import { holdLease } from "../engine/lease.ts";
 import { recoverMoves } from "../engine/move.ts";
@@ -467,7 +467,7 @@ export function driveInProcess(kernel: Kernel, coverage: ExecutionCoverage): Own
       for (const retry of retries) clearTimeout(retry);
       retries.clear();
       const state = kernel.executionState;
-      state.closing.abort();
+      state.closing.abort(HOST_CLOSING);
       await Promise.all(inflight.values());
       state.closing = new AbortController();
       await covering.then(

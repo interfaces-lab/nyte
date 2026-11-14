@@ -22,6 +22,7 @@ import { load, put, readCall } from "../store/session.ts";
 import { waitIndex, wokenIndex } from "../store/wait-index.ts";
 import { dev } from "../util/dev-log.ts";
 import { callPhase } from "./call-phase.ts";
+import { stopRequested } from "./fence.ts";
 import { holdLease } from "./lease.ts";
 import { lapsed, readParkedWait, runWait, WAIT_STOPPED, waitingOn } from "./waits.ts";
 import type { StoreConnection } from "../contract/store.ts";
@@ -54,6 +55,20 @@ class Parked extends Error {
   constructor() {
     super("The durable step parked on a wait.");
   }
+}
+
+/**
+ * Why a host aborts its runs' signals when it shuts down or loses its presence. A wait reached
+ * under it parks, so the host that takes the run over resumes it with the wait intact; a wait
+ * reached under any other abort is a Stop and ends stopped.
+ */
+export const HOST_CLOSING = new Error("The host is closing.");
+
+/** Whether a wait reached under an aborted signal ends stopped: always, unless the host's shutdown aborted it and nobody has asked its run to stop. */
+async function endsStopped(kernel: Kernel, place: Place): Promise<boolean> {
+  if (place.signal.reason !== HOST_CLOSING) return true;
+
+  return place.run !== null && stopRequested(kernel.store, place.session, place.run);
 }
 
 /** Whether an error is the throw that ends a parked step's body. A `catch` between a body and `runStep` re-throws it so the body stops at the park. */
@@ -437,7 +452,7 @@ function createDurable(
 
       if (outcome !== undefined) return outcome;
 
-      if (place.signal.aborted) {
+      if (place.signal.aborted && (await endsStopped(kernel, place))) {
         await changeCall(kernel, place, async (current) =>
           current === null || current.waits.length !== index || current.waiting !== null
             ? null
