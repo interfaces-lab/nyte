@@ -25,7 +25,6 @@ import { chatStore, keepChat, loadEarlierMessages } from "../data/chat-store.ts"
 import { connection } from "../data/connection.ts";
 import { useWatchSelect } from "../data/watch-store.ts";
 import type { WatchStore } from "../data/watch-store.ts";
-import type { DesktopModelOption } from "../data/catalog.ts";
 
 import { BackgroundWork, listTerminals } from "./trays/terminals.tsx";
 import { Timeline } from "./transcript/timeline.tsx";
@@ -36,18 +35,16 @@ import { SecretTray } from "./trays/secrets.tsx";
 import { transcriptProjector } from "./transcript/transcript-rows.ts";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { listAgents, SubagentTray, type SubagentTrayView } from "./trays/agents.tsx";
-import { modelRefFor, selectedModelOption } from "./composer/model-picker-state.ts";
+import { modelRefFor, sessionModel } from "./composer/model-picker-state.ts";
 import { StartupReadsRelease } from "../data/startup.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { useCommitCount } from "../lib/work-counts.ts";
-import { chatTitle, useChat, useChats, useChatTasks, useChatWorkspace } from "../chats/index.ts";
+import { chatTitle, useChat, useChatTasks, useChatWorkspace } from "../chats/index.ts";
 import { useChatFolder } from "./chat-folder.ts";
 import { ChatScope } from "./chat-scope.tsx";
 import { SideChatWindow } from "./side-chat/side-chat-window.tsx";
 import { chatWindow, showTray, useChatWindow } from "../window/index.ts";
 import type { TrayView } from "../window/index.ts";
-
-const EMPTY_MODEL_OPTIONS: readonly DesktopModelOption[] = [];
 
 const CLOSED_TRAY: TrayView = { kind: "closed" };
 
@@ -122,12 +119,8 @@ async function applyMessageEdit({
 async function awaitCurrentView(sessionId: SessionId, store: WatchStore<ChatView>): Promise<void> {
   const { seq } = await connection().session(sessionId).view({ tail: 0 });
 
-  for (;;) {
-    const { value, error } = store.getState();
-
-    if (error !== undefined || (value !== undefined && value.seq >= seq)) return;
-    await store.next();
-  }
+  if (store.getState().error !== undefined) return;
+  await store.until((view) => view.seq >= seq);
 }
 
 type SessionConversationProps =
@@ -239,21 +232,6 @@ function ActivationNotice({ activation }: { readonly activation: Activation }): 
   return null;
 }
 
-function MarkSeen({ sessionId }: { readonly sessionId: SessionId }): ReactElement | null {
-  const tip = useChats((chats) => chats.get(sessionId)?.unreadTip?.commit);
-  const looking = useChatWindow((snapshot) => snapshot.looking.has(sessionId));
-
-  return tip === undefined || !looking ? null : <SeeTip key={tip} sessionId={sessionId} />;
-}
-
-function SeeTip({ sessionId }: { readonly sessionId: SessionId }): null {
-  useMountEffect(() => {
-    chatWindow.markRead([sessionId]);
-  });
-
-  return null;
-}
-
 function SideConversation({
   paneId,
   sessionId,
@@ -350,18 +328,13 @@ function ConversationScreen(conversation: SessionConversationProps): ReactElemen
   const [scroll, setScroll] = useState<HTMLDivElement | null>(null);
   const [column, setColumn] = useState<HTMLDivElement | null>(null);
 
-  const modelOptions = catalog.data?.models ?? EMPTY_MODEL_OPTIONS;
-
-  const configuredModel = choice?.model;
-  const thinkingLevel = choice?.thinking;
-
-  const selected = selectedModelOption(modelOptions, configuredModel);
+  const model = sessionModel(catalog.data, choice);
 
   const branchModel: BranchModelPicker = {
     catalog: catalog.data,
-    model: selected?.option,
-    thinkingLevel,
-    fast: selected?.fast === true,
+    model: model.option,
+    thinkingLevel: model.thinking,
+    fast: model.fast,
   };
 
   const title = chatTitle(chat.kind === "ready" ? chat.chat : undefined);
@@ -452,7 +425,6 @@ function ConversationScreen(conversation: SessionConversationProps): ReactElemen
           focusComposer={() => composerRef.current?.focus({ preventScroll: true })}
         >
           <TranscriptColumn paging={presentation === "full"} onColumn={setColumn}>
-            {ready && <MarkSeen sessionId={sessionId} />}
             {((ready && chat.kind !== "loading") || failed) && <StartupReadsRelease />}
             {presentation === "full" && activation !== undefined && (
               <ActivationNotice key={JSON.stringify(activation)} activation={activation} />
@@ -480,17 +452,9 @@ function ConversationScreen(conversation: SessionConversationProps): ReactElemen
                     backgroundWork={{
                       content: (
                         <>
-                          <ApprovalTray
-                            sessionId={sessionId}
-                            disabled={failed || navigating}
-                            viewport={scroll}
-                          />
+                          <ApprovalTray sessionId={sessionId} disabled={failed || navigating} />
                           <QuestionTray disabled={failed || navigating} viewport={scroll} />
-                          <SecretTray
-                            sessionId={sessionId}
-                            disabled={failed || navigating}
-                            viewport={scroll}
-                          />
+                          <SecretTray sessionId={sessionId} disabled={failed || navigating} />
                           <SubagentTray
                             parentSessionId={sessionId}
                             agents={agents}
@@ -518,11 +482,9 @@ function ConversationScreen(conversation: SessionConversationProps): ReactElemen
                           />
                         </>
                       ),
-                      onEscape: () => {
-                        if (trayView.kind === "closed") return false;
-                        setTrayView({ kind: "closed" });
-
-                        return true;
+                      tray: {
+                        open: trayView.kind !== "closed",
+                        close: () => setTrayView({ kind: "closed" }),
                       },
                     }}
                     status={status}

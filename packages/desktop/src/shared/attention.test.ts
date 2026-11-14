@@ -181,9 +181,46 @@ test.each<{
     },
   },
   {
-    name: "a parent waiting on its subagent's approval is working",
+    name: "a parent whose run waits on its subagent's approval waits, delivers, badges and reminds",
+    previous: [["parent", "working:run", true]],
+    rows: [chat("parent", onSubagent, { waiting: 1 }), chat("child", asking, {}, child)],
+    plan: {
+      seen: ["parent=waiting:run:below fresh", "child=waiting:p1 fresh"],
+      deliveries: ['parent waiting "parent": Needs your answer [notify sound bounce]'],
+      badge: 1,
+      reminders: [
+        'parent:waiting:run:below parent waiting "parent": Still needs your answer [notify sound]',
+      ],
+    },
+  },
+  {
+    name: "with notifySubagents the waiting subagent alerts beside its parent",
+    settings: { notifySubagents: true },
+    previous: [["parent", "working:run", true]],
+    rows: [chat("parent", onSubagent, { waiting: 1 }), chat("child", asking, {}, child)],
+    plan: {
+      seen: ["parent=waiting:run:below fresh", "child=waiting:p1 fresh"],
+      deliveries: [
+        'parent waiting "parent": Needs your answer [notify sound bounce]',
+        'child waiting "child": Needs your answer [notify sound bounce]',
+      ],
+      badge: 2,
+      reminders: [
+        'parent:waiting:run:below parent waiting "parent": Still needs your answer [notify sound]',
+        'child:waiting:p1 child waiting "child": Still needs your answer [notify sound]',
+      ],
+    },
+  },
+  {
+    name: "a parent waiting on a subagent that works is working",
     previous: [],
-    rows: [chat("parent", onSubagent, { waiting: 1 })],
+    rows: [chat("parent", onSubagent, { working: 1 })],
+    plan: { seen: ["parent=working:run fresh"], deliveries: [], badge: 0, reminders: [] },
+  },
+  {
+    name: "a parent's answered subagent goes back to working and delivers nothing",
+    previous: [["parent", "waiting:run:below", true]],
+    rows: [chat("parent", onSubagent, { working: 1 })],
     plan: { seen: ["parent=working:run fresh"], deliveries: [], badge: 0, reminders: [] },
   },
   {
@@ -510,6 +547,24 @@ test.each<{
     reveal: 2,
   },
   {
+    name: "a focused window moves last, so it views a chat most recently",
+    before: [
+      [1, { kind: "ready", viewed: "viewed" }],
+      [2, { kind: "ready", viewed: "viewed" }],
+    ],
+    event: { kind: "focused", window: 1 },
+    after: [
+      [2, { kind: "ready", viewed: "viewed" }],
+      [1, { kind: "ready", viewed: "viewed" }],
+    ],
+  },
+  {
+    name: "focusing a window that hasn't reported changes nothing",
+    before: [[1, { kind: "ready", viewed: null }]],
+    event: { kind: "focused", window: 2 },
+    after: [[1, { kind: "ready", viewed: null }]],
+  },
+  {
     name: "a second click while loading wins",
     before: [
       [1, { kind: "loading", opening: viewed }],
@@ -543,19 +598,19 @@ test.each<{
     viewer: undefined,
   },
   {
-    name: "the earliest inserted viewer wins",
+    name: "the most recently focused viewer wins",
     windows: [
       [3, { kind: "ready", viewed: null }],
       [2, { kind: "ready", viewed: "viewed" }],
       [1, { kind: "ready", viewed: "viewed" }],
     ],
-    viewer: 2,
+    viewer: 1,
   },
   {
     name: "a loading window isn't a viewer, even loading the chat",
     windows: [
-      [1, { kind: "loading", opening: viewed }],
       [2, { kind: "ready", viewed: "viewed" }],
+      [1, { kind: "loading", opening: viewed }],
     ],
     viewer: 2,
   },

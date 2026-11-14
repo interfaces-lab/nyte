@@ -94,7 +94,6 @@ export const CALL_INPUT_SCHEMAS: CallInputParsers = {
   "host.pickWorkspace": compile(noInput),
   "host.pickFolder": compile(noInput),
   "host.trustWorkspace": compile(strict({ path: nonEmpty })),
-  "host.closeWorkspace": compile(noInput),
   "host.updates.state": compile(noInput),
   "host.updates.check": compile(noInput),
   "host.updates.channel": compile(noInput),
@@ -348,6 +347,8 @@ export const viewedChat = Compile(
 );
 
 export const unsavedEditsHeld = Compile(Type.Boolean());
+
+export const windowWorkspacePath = Compile(Type.Union([nonEmpty, Type.Null()]));
 
 export const terminalNotice = Compile(
   strict({

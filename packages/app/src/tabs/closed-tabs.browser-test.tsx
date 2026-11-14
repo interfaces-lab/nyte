@@ -8,8 +8,9 @@ import type { SessionId } from "@nyte-ai/sdk";
 import { installScripted, scriptedConnection } from "../../test/scripted-connection.ts";
 import { sessionRow } from "../../test/view-fixtures.ts";
 import { queryClient } from "../data/query-client.ts";
+import { closeSettings, showNotifiedChat } from "../settings/return.ts";
 import { createAppRouter } from "../shell/routes.tsx";
-import { tabPlace, tabPlaces } from "./model.ts";
+import { activeTab, tabPlace, tabPlaces } from "./model.ts";
 import { useWindowTabsSync } from "./use-window-tabs.tsx";
 import { windowTabs } from "./window-tabs.ts";
 
@@ -46,6 +47,44 @@ function painted(): Promise<void> {
   return new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
 }
 
+async function until(done: () => boolean): Promise<void> {
+  for (let frame = 0; frame < 200 && !done(); frame += 1) await painted();
+}
+
+const chat = (index: number): SessionId => asId<"session">(`other-${String(index)}`);
+
+type AppRouter = ReturnType<typeof createAppRouter>;
+
+/** What happens while Settings covers the chat in `other-1`, and the chat the window ends on. */
+const OVER_SETTINGS: readonly (readonly [string, (router: AppRouter) => void, SessionId])[] = [
+  ["a notification shows its chat", () => showNotifiedChat(chat(2)), chat(2)],
+  [
+    "Settings closes onto the chat a notification opened under it",
+    (router) => {
+      windowTabs.openChat(chat(3), "permanent");
+      closeSettings(router);
+    },
+    chat(3),
+  ],
+];
+
+async function overSettings(
+  router: AppRouter,
+  [name, act, expected]: (typeof OVER_SETTINGS)[number],
+): Promise<string> {
+  windowTabs.openChat(chat(1), "permanent");
+  await until(() => router.history.location.pathname === `/session/${chat(1)}`);
+  void router.navigate({ to: "/settings/$section", params: { section: "general" } });
+  await until(() => router.state.matches.some((match) => match.routeId === "/settings/$section"));
+  act(router);
+
+  for (let frame = 0; frame < 20; frame += 1) await painted();
+  const place = tabPlace(activeTab(windowTabs.getSnapshot()));
+  const shown = place.kind === "session" ? place.sessionId : place.kind;
+
+  return `${name}: ${router.history.location.pathname}, tab ${shown}${shown === expected ? "" : ` (wanted ${expected})`}`;
+}
+
 export async function run(): Promise<string> {
   windowTabs.start({ id: "closed-tabs", launch: undefined });
 
@@ -80,8 +119,11 @@ export async function run(): Promise<string> {
   for (let frame = 0; frame < 200 && closedChats().join(", ") !== quiet.id; frame += 1)
     await painted();
   const kept = closedChats().join(", ");
+  const settings: string[] = [];
+
+  for (const row of OVER_SETTINGS) settings.push(await overSettings(router, row));
   flushSync(() => root.unmount());
   container.remove();
 
-  return JSON.stringify({ kept });
+  return JSON.stringify({ kept, settings });
 }

@@ -6,6 +6,7 @@ import type { Box, Linear } from "./pane-geometry.ts";
 import type { PaneContent } from "./pane-kinds.ts";
 import {
   activeSelection,
+  canSplitPane,
   chatContent,
   chatPanes,
   findSessionTab,
@@ -13,7 +14,7 @@ import {
   paneForSession,
   showChat,
 } from "./pane-layout.ts";
-import type { DropPlacement, PaneSelection } from "./pane-layout.ts";
+import type { ChatPane, DropPlacement, PaneSelection } from "./pane-layout.ts";
 import { placementInRect } from "./session-dnd-geometry.ts";
 import type { SessionDragPoint } from "./session-dnd-geometry.ts";
 import type { ChatDraft } from "./session-view-state.ts";
@@ -99,13 +100,16 @@ export function focusRequest(
 
 /**
  * Where a chat dragged to `point` would land: the first pane whose rect holds the point, unless it
- * already shows the dragged chat. A lone pane offers only its edges.
+ * already shows the dragged chat. A lone pane offers only its edges. An edge is offered only where
+ * the drop can lay out another pane: a chat the layout shows moves, and another chat needs room
+ * that Split would have in a window `width` wide; without it, the drop replaces the pane's chat.
  */
 export function dropTarget(
   layout: Layout<PaneContent>,
   rects: ReadonlyMap<PaneId, ClientRect>,
   point: SessionDragPoint,
   dragged: SessionId,
+  width: number,
 ): SessionDropTarget | undefined {
   const panes = chatPanes(layout);
 
@@ -128,7 +132,10 @@ export function dropTarget(
     return undefined;
   const placement = placementInRect(hit.rect, point, panes.length > 1);
 
-  return placement === undefined ? undefined : { paneId: hit.pane.pane, placement };
+  if (placement === undefined) return undefined;
+  const splits = findSessionTab(layout, dragged) !== undefined || canSplitPane(layout, width);
+
+  return { paneId: hit.pane.pane, placement: splits ? placement : "center" };
 }
 
 export function dropPreviewBox(box: Box, target: SessionDropTarget): Box {
@@ -229,7 +236,7 @@ function closePane(
 
   if (layoutPanes(layout.root).length === 1) return inPane(layout, pane, BLANK);
 
-  return closing.tabs.map((tab) => ({ kind: "close", tab: tab.id }));
+  return [{ kind: "close", tab: closing.tab.id }];
 }
 
 /**
@@ -267,6 +274,15 @@ function dropSession(
   ];
 }
 
+/** A pane a hidden chat left: blank, with nothing typed in it, so the chat may come back. */
+export function waitsForChat(pane: ChatPane, draft: ChatDraft): boolean {
+  return (
+    pane.selection.kind === "blank" &&
+    draft.composer.draft === "" &&
+    draft.composer.attachments.length === 0
+  );
+}
+
 /** Keeps focus where it is unless the focused pane is blank, then returns it to `focused`. */
 function unhideSession(
   layout: Layout<PaneContent>,
@@ -275,11 +291,7 @@ function unhideSession(
 ): readonly LayoutAction<PaneContent>[] {
   const shown = chatPanes(layout).find((entry) => entry.pane === command.pane);
 
-  if (shown?.selection.kind !== "blank") return [];
-
-  const composer = blank(command.pane).composer;
-
-  if (composer.draft !== "" || composer.attachments.length > 0) return [];
+  if (shown === undefined || !waitsForChat(shown, blank(command.pane))) return [];
   const keep = activeSelection(layout).kind === "blank" ? command.focused : layout.focus[0];
 
   return [

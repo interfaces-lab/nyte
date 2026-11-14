@@ -93,7 +93,8 @@ export async function run(): Promise<string> {
 
   const publish = async (phase: string, rows: readonly SessionInfo[]): Promise<void> => {
     const before = commits();
-    const received = store.next();
+    const shown = store.getState().value;
+    const received = store.until((value) => value !== shown);
     source.push(rows);
     await received;
     await painted();

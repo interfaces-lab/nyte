@@ -69,15 +69,15 @@ export type StoredLayout = Static<typeof storedLayoutSchema>;
 
 type StoredNode = Static<typeof paneSchema> | Static<typeof splitSchema>;
 
+/**
+ * Writes a layout in the stored shape every saved window has, whose `tabs`, `hidden` and `zoomed`
+ * fields predate panes holding one tab each.
+ */
 export function persistLayout<Content extends TabContent>(
   layout: Layout<Content>,
   persist: (content: Content) => StoredContent | undefined,
 ): StoredLayout {
-  return {
-    root: persistNode(layout.root, persist),
-    focus: [...layout.focus],
-    zoomed: layout.zoomed,
-  };
+  return { root: persistNode(layout.root, persist), focus: [...layout.focus], zoomed: null };
 }
 
 export function restoreLayout<Content extends TabContent>(
@@ -92,7 +92,6 @@ export function restoreLayout<Content extends TabContent>(
   return normalizeLayout({
     root,
     focus: [asId<"pane">(head), ...stored.focus.slice(1).map((id) => asId<"pane">(id))],
-    zoomed: stored.zoomed === null ? null : asId<"pane">(stored.zoomed),
   });
 }
 
@@ -101,18 +100,15 @@ function persistNode<Content extends TabContent>(
   persist: (content: Content) => StoredContent | undefined,
 ): StoredNode {
   if (node.kind === "pane") {
+    const stored = persist(node.tab.content);
+
     return {
       kind: "pane",
       id: node.id,
-      tabs: node.tabs.flatMap((tab) => {
-        const stored = persist(tab.content);
-
-        return stored === undefined
-          ? []
-          : [{ id: tab.id, kind: stored.kind, fields: stored.fields }];
-      }),
-      active: node.active,
-      hidden: node.hidden,
+      tabs:
+        stored === undefined ? [] : [{ id: node.tab.id, kind: stored.kind, fields: stored.fields }],
+      active: node.tab.id,
+      hidden: false,
     };
   }
 
@@ -156,6 +152,7 @@ function restoreNode<Content extends TabContent>(
   };
 }
 
+/** A pane shows the tab stored as active, or the first one that restores. */
 function restorePane<Content extends TabContent>(
   stored: Static<typeof paneSchema>,
   restore: (stored: StoredContent) => Content | undefined,
@@ -166,18 +163,9 @@ function restorePane<Content extends TabContent>(
     return content === undefined ? [] : [{ id: asId<"pane-tab">(tab.id), content }];
   });
 
-  const first = tabs[0];
+  const tab = tabs.find((candidate) => candidate.id === stored.active) ?? tabs[0];
 
-  if (first === undefined) return undefined;
-  const active = tabs.find((tab) => tab.id === stored.active)?.id ?? first.id;
-
-  return {
-    kind: "pane",
-    id: asId<"pane">(stored.id),
-    tabs: [first, ...tabs.slice(1)],
-    active,
-    hidden: stored.hidden,
-  };
+  return tab === undefined ? undefined : { kind: "pane", id: asId<"pane">(stored.id), tab };
 }
 
 function restoreSize(size: Static<typeof sizeSchema>): PaneSize {
@@ -189,10 +177,7 @@ function restoreSize(size: Static<typeof sizeSchema>): PaneSize {
 function uniqueIds<Content extends TabContent>(root: LayoutNode<Content>): boolean {
   const panes = layoutPanes(root);
 
-  const ids = [
-    ...panes.map((pane) => pane.id),
-    ...panes.flatMap((pane) => pane.tabs.map((tab) => tab.id)),
-  ];
+  const ids = [...panes.map((pane) => pane.id), ...panes.map((pane) => pane.tab.id)];
 
   return new Set(ids).size === ids.length;
 }

@@ -68,14 +68,29 @@ export type Shown<T> =
   | { readonly kind: "failed"; readonly error: Error }
   | { readonly kind: "shown"; readonly value: T };
 
-/** A synchronous source a store reads once on the microtask after each burst of changes. `show` gets the value it last showed in this opening, and returning it again publishes nothing. */
+/**
+ * A synchronous source a store reads once on the microtask after each burst of changes. `show`
+ * gets the value it last showed in this opening, and returning it again publishes nothing. A
+ * failed read shows as the store's error while the source stays open: the source retries it, and
+ * its next value clears the error.
+ */
 export interface LiveView<T> {
   readonly subscribe: (listener: () => void) => () => void;
   readonly show: (previous: T | undefined) => Shown<T>;
   readonly close: () => void;
 }
 
-type Opening<T> = AsyncIterable<T> | LiveView<T>;
+/**
+ * A stream a store follows, and what its end means: `finished` keeps the last value as the final
+ * one until the store opens again; `reopen` opens it again on the reopen backoff, as a stream that
+ * fails does. A stream that fails publishes its error and reopens on the same backoff.
+ */
+export interface Stream<T> {
+  readonly values: AsyncIterable<T>;
+  readonly ended: "finished" | "reopen";
+}
+
+type Opening<T> = Stream<T> | LiveView<T>;
 
 export class WatchStore<T> {
   private state: WatchState<T> = UNSTARTED;
@@ -132,39 +147,48 @@ export class WatchStore<T> {
 
   getState = (): WatchState<T> => this.state;
 
+  read = (): T | undefined => this.state.value;
+
   revise(value: T): void {
     this.state = { value, error: this.state.error };
     this.render();
   }
 
-  /** Resolves with the current value when `accept` takes it, or else with the first coming one it takes, watching the store until then; rejects on the next error the store publishes. */
-  until(accept: (value: T) => boolean): Promise<T> {
+  /** Resolves with the current value when `accept` takes it, or else with the first coming one it takes, watching the store until then; rejects on the next error the store publishes, or with `signal`'s reason when it aborts first, and stops watching either way. */
+  until(accept: (value: T) => boolean, signal?: AbortSignal): Promise<T> {
     const current = this.state.value;
 
     if (current !== undefined && accept(current)) return Promise.resolve(current);
 
     return new Promise((resolve, reject) => {
+      const end = (): void => {
+        signal?.removeEventListener("abort", aborted);
+        leave();
+      };
+
+      const aborted = (): void => {
+        end();
+        reject(signal?.reason);
+      };
+
       const leave = this.subscribe(() => {
         const { value, error } = this.state;
 
         if (error !== undefined) {
-          leave();
+          end();
           reject(error);
 
           return;
         }
 
         if (value === undefined || !accept(value)) return;
-        leave();
+        end();
         resolve(value);
       });
+
+      if (signal?.aborted === true) aborted();
+      else signal?.addEventListener("abort", aborted, { once: true });
     });
-  }
-
-  next(): Promise<T> {
-    const seen = this.state.value;
-
-    return this.until((value) => value !== seen);
   }
 
   private listen(listeners: Set<() => void>, listener: () => void): () => void {
@@ -188,19 +212,23 @@ export class WatchStore<T> {
     let leave: (() => void) | undefined;
     let reopen: ReturnType<typeof setTimeout> | undefined;
 
-    const fail = (cause: unknown): void => {
-      if (stopped) return;
+    const later = (): void => {
       this.failures += 1;
-      this.publish({
-        value: this.state.value,
-        error: cause instanceof Error ? cause : new Error(String(cause)),
-      });
       reopen = setTimeout(
         () => {
           if (!stopped) this.stop = this.start();
         },
         Math.min(FIRST_REOPEN_MS * 2 ** (this.failures - 1), MAX_REOPEN_MS),
       );
+    };
+
+    const fail = (cause: unknown): void => {
+      if (stopped) return;
+      this.publish({
+        value: this.state.value,
+        error: cause instanceof Error ? cause : new Error(String(cause)),
+      });
+      later();
     };
 
     const follow = (source: LiveView<T>): void => {
@@ -214,9 +242,8 @@ export class WatchStore<T> {
         const shown = source.show(last);
 
         if (shown.kind === "failed") {
-          leave();
-          leave = undefined;
-          fail(shown.error);
+          if (shown.error !== this.state.error)
+            this.publish({ value: this.state.value, error: shown.error });
 
           return;
         }
@@ -244,7 +271,7 @@ export class WatchStore<T> {
       try {
         const source = await this.open();
 
-        if (!(Symbol.asyncIterator in source)) {
+        if (!("values" in source)) {
           if (stopped) source.close();
           else follow(source);
 
@@ -252,12 +279,19 @@ export class WatchStore<T> {
         }
 
         if (stopped) return;
-        iterator = source[Symbol.asyncIterator]();
+        iterator = source.values[Symbol.asyncIterator]();
 
         for (;;) {
           const next = await iterator.next();
 
-          if (stopped || next.done === true) return;
+          if (stopped) return;
+
+          if (next.done === true) {
+            if (source.ended === "reopen") later();
+
+            return;
+          }
+
           this.receive(next.value);
         }
       } catch (cause) {
@@ -300,7 +334,7 @@ export class WatchStore<T> {
 const RETAINED_WATCHES = 16;
 
 export function watchFamily<K extends string, T>(
-  open: (connection: ClientConnection, key: K) => Opening<T>,
+  open: (connection: ClientConnection, key: K) => Opening<T> | Promise<Opening<T>>,
 ) {
   const stores = new Map<K, WatchStore<T>>();
 
@@ -338,78 +372,6 @@ export function watchFamily<K extends string, T>(
     prune();
 
     return store;
-  };
-}
-
-export interface Opened<T> {
-  read(): T | null;
-  close(): void;
-}
-
-export function liveValues<T>(open: (changed: () => void) => Opened<T>): AsyncIterable<T> {
-  return {
-    [Symbol.asyncIterator]() {
-      let dirty = true;
-      let closed = false;
-      let last: T | null = null;
-      let wake: (() => void) | null = null;
-
-      const resume = (): void => {
-        const waiting = wake;
-        wake = null;
-        waiting?.();
-      };
-
-      const opened = open(() => {
-        dirty = true;
-        resume();
-      });
-
-      const readOrClose = (): T | null => {
-        try {
-          return opened.read();
-        } catch (cause) {
-          closed = true;
-          opened.close();
-          throw cause;
-        }
-      };
-
-      return {
-        async next(): Promise<IteratorResult<T>> {
-          for (;;) {
-            if (closed) return { done: true, value: undefined };
-
-            if (dirty) {
-              dirty = false;
-              const value = readOrClose();
-
-              if (value !== null && value !== last) {
-                last = value;
-
-                return { done: false, value };
-              }
-
-              continue;
-            }
-
-            await new Promise<void>((resolve) => {
-              wake = resolve;
-            });
-          }
-        },
-        async return(): Promise<IteratorResult<T>> {
-          if (!closed) {
-            closed = true;
-            opened.close();
-          }
-
-          resume();
-
-          return { done: true, value: undefined };
-        },
-      };
-    },
   };
 }
 

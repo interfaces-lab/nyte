@@ -19,12 +19,15 @@ import {
   windowContentReady,
   windowTabRoute,
 } from "@nyte-ai/app";
+import { windowOpening } from "@nyte-ai/app/contract/desktop-window.ts";
 import appIcon from "../../../build/icon-macos.svg";
 import { AccountProvider } from "./account/provider.tsx";
 
-startWindowTabs(window.nyte.window);
+const opening = windowOpening(window.nyte.window);
 
-seedFirstFrame("local");
+startWindowTabs(opening.window);
+
+seedFirstFrame("local", opening.workspace);
 
 export const router = createAppRouter({
   history: createMemoryHistory({ initialEntries: [windowTabRoute()] }),

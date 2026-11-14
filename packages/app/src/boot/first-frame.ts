@@ -9,7 +9,7 @@ import type { Decoded } from "@nyte-ai/schema";
 import { hashKey } from "@tanstack/react-query";
 import type { Query } from "@tanstack/react-query";
 import { Type } from "typebox";
-import type { HostState } from "../contract/bridge.ts";
+import type { HostState, SelectedWorkspace } from "../contract/bridge.ts";
 import { SelectedWorkspaceType } from "../contract/desktop-window.ts";
 import { keys, queryClient } from "../data/query-client.ts";
 import { newestModelCatalog } from "../data/catalog.ts";
@@ -68,7 +68,14 @@ export function forgetFirstFrame(): void {
   removeStored(localArea(), FIRST_FRAME_KEY);
 }
 
-export function seedFirstFrame(host: string): boolean {
+/**
+ * Seeds the window's first frame from the last run's snapshot of `host`. The window's own folder,
+ * `workspace`, which Finder opened it for, is its choice and outranks the folder the snapshot
+ * remembers for its chat.
+ */
+export function seedFirstFrame(host: string, workspace: SelectedWorkspace | undefined): boolean {
+  if (workspace !== undefined)
+    queryClient.setQueryData(keys.host, { workspace } satisfies HostState);
   const stored = readStored(localArea(), FIRST_FRAME_KEY, FirstFrameType, null);
   const frame = stored?.host === host ? stored : undefined;
 
@@ -85,7 +92,12 @@ export function seedFirstFrame(host: string): boolean {
   queryClient.setQueryData(keys.firstFrameHome, frame.home, { updatedAt: 0 });
   const place = tabPlace(activeTab(windowTabs.getSnapshot()));
 
-  if (frame.folder !== null && place.kind === "session" && place.sessionId === frame.folder.session)
+  if (
+    workspace === undefined &&
+    frame.folder !== null &&
+    place.kind === "session" &&
+    place.sessionId === frame.folder.session
+  )
     queryClient.setQueryData(keys.host, { workspace: frame.folder.workspace } satisfies HostState, {
       updatedAt: 0,
     });

@@ -1,4 +1,5 @@
 import { followTrace, traced } from "@nyte-ai/sdk";
+import type { Chat, ClientConnection } from "@nyte-ai/sdk/client";
 import type {
   CommandInfo,
   ConfigurationPatch,
@@ -28,6 +29,8 @@ import { messageFiles } from "../transcript/message-content.tsx";
 import type { MessageFile } from "../transcript/message-content.tsx";
 import { openSideChat } from "../side-chat/side-chats.ts";
 import type { ParsedPluginCommand } from "./plugin-command.ts";
+import type { SendEnd } from "./composer-draft.ts";
+import type { EditSaved } from "./composer-session.ts";
 import { planEdit } from "./composer-plan.ts";
 import type {
   ComposerContent,
@@ -36,7 +39,7 @@ import type {
   SubmissionPlan,
 } from "./composer-plan.ts";
 
-export { composerContentEmpty, composerMessageContent } from "./composer-plan.ts";
+type ChatSend = Awaited<ReturnType<Chat["send"]>>;
 
 export async function uploadComposerContent(content: ComposerContent): Promise<UserContent> {
   const [only, ...rest] = content.parts;
@@ -74,11 +77,35 @@ export async function sendComposerMessage(
   followTrace(session.id, id);
 
   await traced("composer.submit", id, { session: session.id }, async () => {
-    const content = await uploadComposerContent(plan.content);
-    const draft = await admitDraft({ content, delivery: plan.delivery, session: session.id });
+    const draft = await admittedDraft(session.id, plan);
 
     await session.send(draft.content, { id, delivery: draft.delivery });
   });
+}
+
+/** Puts a planned message in the chat's send journal, resolving once the journal holds it. */
+async function journalComposerMessage(
+  chat: Chat,
+  session: SessionId,
+  plan: Extract<ComposerSendPlan, { kind: "message" }>,
+  id: ReceiptId,
+): Promise<ChatSend> {
+  followTrace(session, id);
+
+  return traced("composer.submit", id, { session }, async () => {
+    const draft = await admittedDraft(session, plan);
+
+    return chat.send(draft.content, { id, delivery: draft.delivery });
+  });
+}
+
+async function admittedDraft(
+  session: SessionId,
+  plan: Extract<ComposerSendPlan, { kind: "message" }>,
+) {
+  const content = await uploadComposerContent(plan.content);
+
+  return admitDraft({ content, delivery: plan.delivery, session });
 }
 
 interface ComposerChat {
@@ -106,17 +133,7 @@ export async function startComposerChat(
 
 const NO_COMMANDS: readonly CommandInfo[] = [];
 
-type DeliveryOutcome =
-  | { readonly kind: "empty" }
-  | { readonly kind: "kept"; readonly message: string }
-  | { readonly kind: "sent"; readonly note: string | undefined }
-  | { readonly kind: "refused"; readonly message: string };
-
-type Delivered = Extract<DeliveryOutcome, { readonly kind: "sent" | "refused" }>;
-
-type EditOutcome =
-  | Extract<DeliveryOutcome, { readonly kind: "empty" | "kept" | "refused" }>
-  | ReviseOutcome;
+type Delivered = Extract<SendEnd, { readonly kind: "sent" | "refused" }>;
 
 interface ComposerEdit {
   readonly sessionId: SessionId;
@@ -132,7 +149,7 @@ export async function draftCommands(sessionId: SessionId, text: string): Promise
   const store = chatStore(sessionId);
   const shown = store.value;
 
-  return (shown === undefined ? store.next() : Promise.resolve(shown)).then(
+  return (shown === undefined ? store.until(() => true) : Promise.resolve(shown)).then(
     (view): DraftCommands => ({
       kind: "loaded",
       commands: [...view.catalog.commands, ...CLIENT_COMMANDS],
@@ -141,30 +158,43 @@ export async function draftCommands(sessionId: SessionId, text: string): Promise
   );
 }
 
-/** Sends a planned draft; `receipt` is also the id of the message's unsent row. */
+/**
+ * Sends a planned draft and resolves once the composer may take the next one: a command once it
+ * ran, a message once the send journal holds it. `ended` settles with how the send ended.
+ * `receipt` is also the id of the message's unsent row.
+ */
 export async function deliver(
-  session: Session,
+  connection: ClientConnection,
+  session: SessionId,
   plan: Extract<SubmissionPlan, { readonly kind: "command" | "message" }>,
   receipt: ReceiptId,
-): Promise<Delivered> {
+): Promise<{ readonly ended: Promise<SendEnd> }> {
   if (plan.kind === "command") {
-    try {
-      return await runCommand(session, plan.command);
-    } catch (cause: unknown) {
-      return { kind: "refused", message: errorMessage(cause) };
-    }
+    const ran = await runCommand(connection.session(session), plan.command).catch(
+      (cause: unknown): SendEnd => ({ kind: "refused", message: errorMessage(cause) }),
+    );
+
+    return { ended: Promise.resolve(ran) };
   }
 
   try {
-    await sendComposerMessage(session, plan, receipt);
+    const sending = await journalComposerMessage(connection.chat(session), session, plan, receipt);
 
-    return { kind: "sent", note: undefined };
+    return { ended: sending.delivered.then(sendEnd, refusedSend) };
   } catch (cause: unknown) {
-    return { kind: "refused", message: `Couldn't send the message: ${errorMessage(cause)}` };
+    return { ended: Promise.resolve(refusedSend(cause)) };
   }
 }
 
-export async function deliverEdit(input: ComposerEdit): Promise<EditOutcome> {
+function sendEnd(delivered: Awaited<ChatSend["delivered"]>): SendEnd {
+  return delivered.kind === "sent" ? { kind: "sent", note: undefined } : delivered;
+}
+
+function refusedSend(cause: unknown): SendEnd {
+  return { kind: "refused", message: `Couldn't send the message: ${errorMessage(cause)}` };
+}
+
+export async function deliverEdit(input: ComposerEdit): Promise<EditSaved> {
   const plan = planEdit({
     submission: input.submission,
     attachments: input.attachments,
@@ -188,10 +218,7 @@ export async function deliverEdit(input: ComposerEdit): Promise<EditOutcome> {
   }
 }
 
-export async function compactSession(
-  session: Session,
-  instructions: string,
-): Promise<Extract<DeliveryOutcome, { readonly kind: "sent" | "refused" }>> {
+export async function compactSession(session: Session, instructions: string): Promise<Delivered> {
   const outcome = await session.compact(instructions === "" ? {} : { instructions });
 
   switch (outcome.kind) {

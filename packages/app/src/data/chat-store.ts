@@ -1,6 +1,6 @@
 import { asId } from "@nyte-ai/schema";
 import type { PartId, PartView } from "@nyte-ai/schema";
-import { tracePaints } from "@nyte-ai/sdk";
+import { paintSpans, SdkError } from "@nyte-ai/sdk";
 import type { MessageId, SessionId } from "@nyte-ai/sdk";
 import type { Chat, ChatSnapshot, Freshness, HeadView, PartSnapshot } from "@nyte-ai/sdk/client";
 import { useSyncExternalStore } from "react";
@@ -12,8 +12,8 @@ import { reconcile } from "./keep.ts";
 import { createTextPacer } from "./paced-text.ts";
 import { sessionActivityProjector } from "./session-activity.ts";
 import type { SessionActivity } from "./session-activity.ts";
-import { liveValues, watchFamily } from "./watch-store.ts";
-import type { LiveView, Shown } from "./watch-store.ts";
+import { watchFamily } from "./watch-store.ts";
+import type { LiveView, Shown, WatchState } from "./watch-store.ts";
 
 export interface ChatView extends HeadView {
   readonly seq: number;
@@ -23,8 +23,6 @@ export interface ChatView extends HeadView {
   readonly expired: readonly MessageId[];
   readonly stopping: ChatSnapshot["stopping"];
 }
-
-type LaidView = Omit<ChatView, "activity">;
 
 const OPENING_TAIL = 40;
 
@@ -54,77 +52,68 @@ function nextFrame(): Promise<void> {
   return new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
 }
 
-export const chatStore = watchFamily((opened, session: SessionId): AsyncIterable<ChatView> => ({
-  [Symbol.asyncIterator]() {
-    const known = chatStore(session).value?.messages.length ?? 0;
-    const tail = Math.min(Math.max(OPENING_TAIL, known), REOPENING_TAIL);
-    const chat = opened.chat(session, { tail });
-    const iterator = tracePaints(laidViews(chat), session, nextFrame)[Symbol.asyncIterator]();
-    const activity = sessionActivityProjector();
+export const chatStore = watchFamily((opened, session: SessionId): LiveView<ChatView> => {
+  const known = chatStore(session).value?.messages.length ?? 0;
+  const tail = Math.min(Math.max(OPENING_TAIL, known), REOPENING_TAIL);
+  const chat = opened.chat(session, { tail });
+  const activity = sessionActivityProjector();
+  const paint = paintSpans<ChatView>(session, nextFrame);
+  let drawn: ChatSnapshot | undefined;
 
-    const pacer = createTextPacer<ChatView>(
-      () => shownTranscripts().has(session),
-      (view) => chatStore(session).revise(view),
-    );
+  const pacer = createTextPacer<ChatView>(
+    () => shownTranscripts().has(session),
+    (view) => chatStore(session).revise(view),
+  );
 
-    changeChats(() => chats.set(session, chat));
+  changeChats(() => chats.set(session, chat));
 
-    return {
-      async next() {
-        const next = await iterator.next();
+  return {
+    subscribe: (listener) => chat.subscribe(listener),
+    show(previous) {
+      const snapshot = chat.snapshot();
 
-        if (next.done === true) return next;
-        countWork(`publish:view:${session}`);
+      if (snapshot === drawn && previous !== undefined) return { kind: "shown", value: previous };
+      const shown = showChat(snapshot, activity);
 
-        return {
-          done: false,
-          value: pacer.receive({ ...next.value, activity: activity(next.value) }),
-        };
-      },
-      async return() {
-        pacer.dispose();
+      if (shown.kind !== "shown") return shown;
+      drawn = snapshot;
+      paint(shown.value);
+      countWork(`publish:view:${session}`);
 
-        if (chats.get(session) === chat) changeChats(() => chats.delete(session));
-        await iterator.return?.();
+      return { kind: "shown", value: pacer.receive(shown.value) };
+    },
+    close() {
+      pacer.dispose();
 
-        return { done: true, value: undefined };
-      },
-    };
-  },
-}));
+      if (chats.get(session) === chat) changeChats(() => chats.delete(session));
+    },
+  };
+});
 
-function laidViews(chat: Chat) {
-  return liveValues<LaidView>((changed) => {
-    let shown: { readonly snapshot: ChatSnapshot; readonly view: LaidView } | null = null;
+/** The chat's view with its seq, freshness, expired sends, stop and activity laid in; a chat with no view yet fails with its stale error, or waits. */
+export function showChat(
+  snapshot: ChatSnapshot,
+  activity: (view: HeadView) => SessionActivity,
+): Shown<ChatView> {
+  const view = snapshot.view;
+  const freshness = snapshot.freshness;
 
-    return {
-      read() {
-        const snapshot = chat.snapshot();
-        const freshness = snapshot.freshness;
+  if (view === null)
+    return freshness.kind === "stale" && freshness.error !== null
+      ? { kind: "failed", error: freshness.error }
+      : { kind: "waiting" };
 
-        if (snapshot.view === null) {
-          if (freshness.kind === "stale" && freshness.error !== null) throw freshness.error;
-
-          return null;
-        }
-
-        if (shown?.snapshot !== snapshot)
-          shown = {
-            snapshot,
-            view: {
-              ...snapshot.view,
-              seq: snapshot.seq,
-              freshness,
-              expired: snapshot.expired,
-              stopping: snapshot.stopping,
-            },
-          };
-
-        return shown.view;
-      },
-      close: chat.subscribe(changed),
-    };
-  });
+  return {
+    kind: "shown",
+    value: {
+      ...view,
+      seq: snapshot.seq,
+      freshness,
+      expired: snapshot.expired,
+      stopping: snapshot.stopping,
+      activity: activity(view),
+    },
+  };
 }
 
 export type ShownPart = { readonly part: PartView | null; readonly staleSince: number | null };
@@ -178,7 +167,13 @@ function hold(event: HoldEvent): void {
   reconcile(
     held,
     heldSessions(holds),
-    (session) => chatStore(session).subscribe(() => undefined),
+    (session) => {
+      const store = chatStore(session);
+
+      return store.subscribe(() => {
+        if (chatGone(store.getState())) queueMicrotask(() => hold({ kind: "gone", session }));
+      });
+    },
     (release) => release(),
   );
   clearTimeout(expiry);
@@ -193,6 +188,14 @@ function hold(event: HoldEvent): void {
 onInstall((replaced) => {
   if (replaced) hold({ kind: "replaced" });
 });
+
+/** Whether the chat's session is one the host no longer has: its read failed as unknown, before or after the chat showed. */
+export function chatGone(state: WatchState<ChatView>): boolean {
+  const freshness = state.value?.freshness;
+  const error = state.error ?? (freshness?.kind === "stale" ? freshness.error : null);
+
+  return error instanceof SdkError && error.code === "unknown";
+}
 
 export function keepChat(session: SessionId): void {
   hold({ kind: "keep", session });

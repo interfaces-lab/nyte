@@ -6,7 +6,7 @@ import type { PaneChange } from "../../test/panes.ts";
 import { initialWindow, reduce } from "../tabs/model.ts";
 import type { WindowAction, WindowState } from "../tabs/model.ts";
 import { chatsFor, COMPLETED, sessionRow } from "../../test/view-fixtures.ts";
-import { expose } from "./exposure.ts";
+import { expose, viewedChat } from "./exposure.ts";
 import type { WindowView } from "./exposure.ts";
 import { reduceTrays } from "./tray.ts";
 import type { TrayView } from "./tray.ts";
@@ -58,6 +58,7 @@ function view(tabs: WindowState, change: Partial<WindowView> = {}): WindowView {
   return {
     tabs,
     trays: new Map(),
+    sides: new Map(),
     settings: false,
     covered: false,
     focused: true,
@@ -88,7 +89,7 @@ test("an unread chat stays unread everywhere except while someone is looking at 
   expect(sorted(expose(view(single, { chats, focused: false })).unread)).toEqual([behind, left]);
 });
 
-test("only a completed run past the read mark leaves a chat unread, whatever runs in its background", () => {
+test("a completed or failed run past the read mark leaves a chat unread, and a coordinator only once its agents finish", () => {
   const stopped: Execution = {
     kind: "idle",
     lastRun: { id: asId<"run">("run"), end: { kind: "stopped" }, endedAt: 2 },
@@ -125,13 +126,39 @@ test("only a completed run past the read mark leaves a chat unread, whatever run
     delegating,
     sessionRow("working", { heads: unreadHeads(live) }),
     sessionRow("child", { parent: delegating.id }, live),
+    sessionRow("lead", { project: asId("p"), heads: unreadHeads(COMPLETED, 1) }),
     sessionRow("seen"),
   ]);
 
   expect(sorted(expose(view(initialWindow("t1", nextId), { chats })).unread)).toEqual([
     asId<"session">("completed"),
     delegating.id,
+    asId<"session">("failed"),
   ]);
+});
+
+test("an unfolded side window's chat is looked at with the chat under it; folded, it is not", () => {
+  const side = asId<"session">("side");
+  const open = { kind: "open", shown: { kind: "chat", id: side } } as const;
+
+  const unfolded = expose(view(split, { sides: new Map([[left, { ...open, folded: false }]]) }));
+
+  expect(sorted(unfolded.shown)).toEqual([left, right, side]);
+  expect(sorted(unfolded.looking)).toEqual([left, right, side]);
+
+  const folded = expose(view(split, { sides: new Map([[left, { ...open, folded: true }]]) }));
+
+  expect(sorted(folded.looking)).toEqual([left, right]);
+
+  const behindTab = expose(view(split, { sides: new Map([[behind, { ...open, folded: false }]]) }));
+
+  expect(behindTab.shown.has(side), "a side window over a chat not on screen shows nothing").toBe(
+    false,
+  );
+  expect(
+    expose(view(split, { focused: false, sides: new Map([[left, { ...open, folded: false }]]) }))
+      .looking.size,
+  ).toBe(0);
 });
 
 test("both panes of a split are looked at, whichever has focus", () => {
@@ -204,4 +231,35 @@ test("a page or settings leaves no chat on screen, even with the chat tab kept u
     expect(exposure.shown.size).toBe(0);
     expect(exposure.looking.size).toBe(0);
   }
+});
+
+test.each<{
+  readonly name: string;
+  readonly view: WindowView;
+  readonly viewed: SessionId | null;
+  readonly shown: readonly SessionId[];
+}>([
+  {
+    name: "a single pane: the chat it shows",
+    view: view(single),
+    viewed: left,
+    shown: [left],
+  },
+  {
+    name: "a split: only the focused pane's chat, where every pane is shown",
+    view: view(pane(split, focusFirst)),
+    viewed: left,
+    shown: [left, right],
+  },
+  {
+    name: "Settings over the chat: still the chat, where nothing is shown",
+    view: view(single, { settings: true }),
+    viewed: left,
+    shown: [],
+  },
+])("the chat main hears this window views: $name", (row) => {
+  expect([viewedChat(row.view.tabs), sorted(expose(row.view).shown)]).toEqual([
+    row.viewed,
+    row.shown,
+  ]);
 });

@@ -8,7 +8,9 @@ import { useState } from "react";
 import type { CSSProperties, ReactElement } from "react";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
+import { SdkError } from "@nyte-ai/sdk";
 import type { ModelCatalogView, StopOutcome } from "@nyte-ai/sdk";
+import type { Chat } from "@nyte-ai/sdk/client";
 import { asId } from "@nyte-ai/schema";
 import type { HostState } from "../../contract/nyte.ts";
 import type { TabPanes } from "../../tabs/window-store.ts";
@@ -46,12 +48,17 @@ import {
   question,
   queued,
   refuseSend,
+  sendTwice,
   sends,
   stops,
   until,
   view,
 } from "./composer-states.fixture.ts";
-import type { ComposerState, Layer, Probe } from "./composer-states.fixture.ts";
+import type { ComposerState, Layer, Probe, SendEnding } from "./composer-states.fixture.ts";
+
+type Delivered = Awaited<Awaited<ReturnType<Chat["send"]>>["delivered"]>;
+
+const REFUSED = new SdkError("invalid", "The host refused the message.");
 
 const STATES: readonly ComposerState[] = [
   {
@@ -186,6 +193,11 @@ const STATES: readonly ComposerState[] = [
     check: expiredRow,
   },
   {
+    name: "sending",
+    view: view(COMPLETED),
+    check: sendTwice,
+  },
+  {
     name: "refused",
     view: view(live(), [queued("first", QUEUED_TEXT)]),
     check: refuseSend,
@@ -233,13 +245,25 @@ installScripted(
     views: new Map(
       STATES.map((state) => [stateSession(state), state.view === undefined ? [] : [state.view]]),
     ),
-    session: () => ({
-      send: async () => {
-        const sent = Promise.withResolvers<never>();
-        sends.push(sent);
+    send: () => async (_content, options) => {
+      const delivered = Promise.withResolvers<Delivered>();
 
-        return sent.promise;
-      },
+      sends.push({
+        end: (ending: SendEnding) => {
+          if (ending === "refused") delivered.reject(REFUSED);
+          else
+            delivered.resolve(
+              ending === "unsent" ? { kind: ending, reason: null } : { kind: ending },
+            );
+        },
+      });
+
+      return {
+        id: options?.id ?? asId<"receipt">(crypto.randomUUID()),
+        delivered: delivered.promise,
+      };
+    },
+    session: () => ({
       hold: async (message) => {
         calls.push(`hold ${message}`);
         const answer = holdAnswers.shift();
@@ -327,11 +351,7 @@ function Stage({
         <TooltipProvider delay={0} closeDelay={0} timeout={0}>
           <PaneControllerProvider panes={panes}>
             <SessionDndProvider>
-              {layer === "session" ? (
-                <SessionScreen />
-              ) : (
-                shown && <LoneComposer state={state} />
-              )}
+              {layer === "session" ? <SessionScreen /> : shown && <LoneComposer state={state} />}
             </SessionDndProvider>
           </PaneControllerProvider>
         </TooltipProvider>

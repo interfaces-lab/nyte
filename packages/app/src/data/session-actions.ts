@@ -12,12 +12,42 @@ type SessionChange =
   | { readonly kind: "rename"; readonly name: string }
   | { readonly kind: "delete" };
 
+/** The rows the host's lists and reads hold, before any pending change: what a change waits to see. */
+interface HostedRows {
+  readonly row: (sessionId: SessionId) => SessionInfo | undefined;
+  readonly subscribe: (notice: () => void) => () => void;
+}
+
 interface PendingChange {
   readonly sessionId: SessionId;
   readonly change: SessionChange;
 }
 
 type HideSession = (sessionId: SessionId) => () => void;
+
+/** The longest a change the host took stays over its row while the row has yet to show it. */
+const SHOWN_WITHIN_MS = 2_000;
+
+/** Whether the host's row shows `change`: a deleted session has no row, and a session with no row left shows nothing older. */
+export function reflects(row: SessionInfo | undefined, change: SessionChange): boolean {
+  if (row === undefined) return true;
+
+  switch (change.kind) {
+    case "archive":
+      return row.archived === change.archived;
+    case "pin":
+      return row.pinned === change.pinned;
+    case "rename":
+      return row.name === change.name;
+    case "delete":
+      return false;
+    default: {
+      const exhaustive: never = change;
+
+      return exhaustive;
+    }
+  }
+}
 
 function applyChange(session: SessionInfo, change: SessionChange): SessionInfo | null {
   switch (change.kind) {
@@ -58,6 +88,7 @@ export async function forkChat(sessionId: SessionId, from?: CommitId): Promise<v
 export class SessionActions {
   readonly #client: QueryClient;
   readonly #findRow: (sessionId: SessionId) => SessionInfo | undefined;
+  readonly #hosted: HostedRows;
   readonly #connection: () => Pick<Connection, "session">;
   readonly #toasts: ActionToasts;
   readonly #listeners = new Set<() => void>();
@@ -72,16 +103,19 @@ export class SessionActions {
   constructor({
     client,
     findRow,
+    hosted,
     sessions = connection,
     toasts = new ActionToasts(),
   }: {
     client: QueryClient;
     findRow: (sessionId: SessionId) => SessionInfo | undefined;
+    hosted: HostedRows;
     sessions?: () => Pick<Connection, "session">;
     toasts?: ActionToasts;
   }) {
     this.#client = client;
     this.#findRow = findRow;
+    this.#hosted = hosted;
     this.#connection = sessions;
     this.#toasts = toasts;
   }
@@ -235,9 +269,12 @@ export class SessionActions {
         if (outcome.kind !== "updated" && outcome.kind !== "removed")
           throw new Error(`The host answered ${outcome.kind}`);
         this.#commit(pending);
+        this.#keepUntilShown(pending);
 
         return true;
       } catch {
+        this.#remove(pending);
+
         const verb =
           pending.change.kind === "archive" && !pending.change.archived
             ? "restore"
@@ -250,10 +287,29 @@ export class SessionActions {
         });
 
         return false;
-      } finally {
-        this.#remove(pending);
       }
     });
+  }
+
+  /** Keeps `pending` over its row until the host's row shows it, or `SHOWN_WITHIN_MS` passes, so the row never shows the old value between the answer and the change that brings the new one. */
+  #keepUntilShown(pending: PendingChange): void {
+    let kept = true;
+
+    const drop = (): void => {
+      if (!kept) return;
+      kept = false;
+      clearTimeout(timer);
+      leave();
+      this.#remove(pending);
+    };
+
+    const check = (): void => {
+      if (reflects(this.#hosted.row(pending.sessionId), pending.change)) drop();
+    };
+
+    const timer = setTimeout(drop, SHOWN_WITHIN_MS);
+    const leave = this.#hosted.subscribe(() => queueMicrotask(check));
+    check();
   }
 
   #commit({ sessionId, change }: PendingChange): void {

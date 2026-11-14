@@ -390,7 +390,7 @@ async function doubleClickRenames(): Promise<void> {
   press(again, "Enter");
   await until(() => updates.includes('Quiet chat:{"name":"Renamed chat"}'), "the rename to save");
   await painted();
-  check(document.activeElement === primary("Quiet chat"), "Enter returns focus to the row");
+  check(document.activeElement === primary("Renamed chat"), "Enter returns focus to the row");
 }
 
 function archiveWorkingChat(): void {

@@ -144,7 +144,6 @@ export function ApprovalTray({
 }: {
   readonly sessionId: SessionId;
   readonly disabled: boolean;
-  readonly viewport: HTMLElement | null;
 }): ReactElement {
   const request = useApprovalRequest(sessionId);
 

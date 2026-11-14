@@ -1,9 +1,11 @@
 import { isPart, text, thinking, tool } from "@nyte-ai/core/client";
 import type { PartState } from "@nyte-ai/core";
 import type {
+  CommitId,
   Execution,
   Failure,
   HeadInfo,
+  HeadName,
   Message,
   RunEnd,
   RunId,
@@ -11,6 +13,7 @@ import type {
   ToolClass,
   ToolPartState,
 } from "@nyte-ai/schema";
+import type { AlertState } from "../desktop-settings/schema.ts";
 
 export { jobTaskState } from "@nyte-ai/schema";
 export { parseCitation } from "./citation.ts";
@@ -268,21 +271,6 @@ export function runStatus(execution: Execution | undefined): RunStatus {
 }
 
 /**
- * Whether a client shows its run as stopping: the host's row says so, or the person asked this
- * client to stop that run and the host hasn't answered with its row yet. `asked` is the run the
- * pending stop request named. It counts only while `status` still holds that run, so once the host
- * says stopping, ends the run or starts another, the host's state is what shows. The client clears
- * `asked` when the request fails, so a failed stop stops showing at once.
- *
- * @category presentation
- */
-export function runStopping(status: RunStatus, asked: RunId | null): boolean {
-  if (!("run" in status)) return false;
-
-  return (status.kind === "working" && status.stopping) || status.run === asked;
-}
-
-/**
  * The status a run leaves when it ends; a stopped run is never a failure.
  *
  * @category presentation
@@ -396,10 +384,153 @@ export function mainHead(session: Pick<SessionInfo, "heads">): HeadInfo | undefi
   return session.heads.find((head) => head.name === "main") ?? session.heads[0];
 }
 
-export function sessionMark(session: Pick<SessionInfo, "heads">): TaskState {
+export function sessionMark(session: Pick<SessionInfo, "heads" | "project" | "parent">): TaskState {
+  return headAttention(session).mark;
+}
+
+/**
+ * What a chat asks of the person, as every surface shows it. `mark` is the chat's state;
+ * `unreadTip`, the commit a person marks read; `settledUnread`, a reply that ended done or failed
+ * and isn't read yet; `alert`, what a notification says, keyed so a changed key is news.
+ *
+ * @category presentation
+ */
+export interface HeadAttention {
+  readonly mark: TaskState;
+  readonly unreadTip: { readonly head: HeadName; readonly commit: CommitId } | null;
+  readonly settledUnread: boolean;
+  readonly alert:
+    | { readonly key: string; readonly state: undefined }
+    | { readonly key: string; readonly state: AlertState; readonly body: string };
+}
+
+const QUIET: HeadAttention = {
+  mark: "done",
+  unreadTip: null,
+  settledUnread: false,
+  alert: { key: "none", state: undefined },
+};
+
+const ASKED = "Needs your answer";
+
+/**
+ * The one rule for whether a chat waits on the person, read from its main head. A run that waits
+ * on its own approval, question or secret waits; so does a run that waits on a subagent while
+ * background work below it waits on the person, since the person answers through this chat. A
+ * project's coordinator isn't done while its agents work.
+ *
+ * @category presentation
+ */
+export function headAttention(
+  session: Pick<SessionInfo, "heads" | "project" | "parent">,
+): HeadAttention {
   const head = mainHead(session);
 
-  return head === undefined ? "done" : rowMark(runStatus(head.execution), head.background);
+  if (head === undefined) return QUIET;
+  const coordinating = session.parent === null && session.project !== undefined;
+  const mark = attentionMark(head.execution, head.background, coordinating);
+  const alert = headAlert(head, mark, coordinating);
+
+  const unreadTip =
+    head.unread && head.tip.kind === "commit" ? { head: head.name, commit: head.tip.id } : null;
+
+  return {
+    mark,
+    unreadTip,
+    settledUnread: unreadTip !== null && (alert.state === "done" || alert.state === "failed"),
+    alert,
+  };
+}
+
+/**
+ * A chat's mark from its own execution and the background work below it: {@link rowMark}, except
+ * that a run waiting on background work that waits on the person waits too, and a coordinator's
+ * working agents keep it working.
+ *
+ * @category presentation
+ */
+export function attentionMark(
+  execution: Execution,
+  background: BackgroundWork,
+  coordinating: boolean,
+): TaskState {
+  if (execution.kind === "waiting" && background.waiting > 0) return "waiting";
+  const mark = rowMark(runStatus(execution), background);
+
+  return coordinating && mark === "background" ? "working" : mark;
+}
+
+function headAlert(
+  head: Pick<HeadInfo, "execution" | "background">,
+  mark: TaskState,
+  coordinating: boolean,
+): HeadAttention["alert"] {
+  const execution = head.execution;
+
+  switch (execution.kind) {
+    case "waiting":
+      if (execution.on.kind === "part")
+        return { key: `waiting:${execution.on.part}`, state: "waiting", body: ASKED };
+
+      return mark === "waiting"
+        ? { key: `waiting:${execution.run.id}:below`, state: "waiting", body: ASKED }
+        : { key: `working:${execution.run.id}`, state: undefined };
+    case "live":
+    case "retrying":
+      return { key: `working:${execution.run.id}`, state: undefined };
+    case "idle": {
+      const last = execution.lastRun;
+
+      if (last === null) return QUIET.alert;
+
+      if (coordinating && head.background.working > 0)
+        return { key: `ended:${last.id}:agents`, state: undefined };
+      const key = `ended:${last.id}`;
+      const body = describeRunEnd(last.end);
+
+      if (body === undefined) return { key, state: undefined };
+
+      return { key, state: last.end.kind === "completed" ? "done" : "failed", body };
+    }
+
+    default: {
+      const _exhaustive: never = execution;
+
+      return _exhaustive;
+    }
+  }
+}
+
+/**
+ * What to tell the person about a run's end: that it's done, or that it failed and why, on one
+ * line of at most 120 characters. A stopped run says nothing, because someone asked for it.
+ *
+ * @category presentation
+ */
+export function describeRunEnd(end: RunEnd): string | undefined {
+  const status = endedStatus(end);
+
+  if (status.kind === "completed") return taskLabel("done");
+
+  if (status.kind !== "failed") return undefined;
+  const line = status.failure.message.replace(/\s+/g, " ").trim();
+
+  return `${taskLabel("failed")}: ${line.length > 120 ? `${line.slice(0, 119)}…` : line}`;
+}
+
+/**
+ * The one mark for a group of tasks, in {@link rowMark}'s order for background work: waiting on
+ * the person first, then working, then failed.
+ *
+ * @category presentation
+ */
+export function groupMark(states: readonly TaskState[]): TaskState {
+  if (states.includes("waiting")) return "waiting";
+
+  if (states.some((state) => state === "working" || state === "retrying" || state === "background"))
+    return "working";
+
+  return states.includes("failed") ? "failed" : "done";
 }
 
 /**

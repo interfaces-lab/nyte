@@ -1,6 +1,7 @@
 import { expect, test } from "vitest";
 import {
   composerKey,
+  draftEmpty,
   enterBehavior,
   recallDirection,
   submissionDelivery,
@@ -67,6 +68,7 @@ const SITUATION: KeySituation = {
   editing: false,
   empty: false,
   steerQueued: false,
+  trayOpen: false,
   menuOpen: false,
   canStop: false,
   canRecall: false,
@@ -164,16 +166,22 @@ test.each<{
     action: PASS,
   },
   {
-    name: "Escape tries an open tray before it stops the run",
-    situation: { canStop: true },
+    name: "Escape closes an open tray before it stops the run",
+    situation: { trayOpen: true, canStop: true },
     key: { key: "Escape" },
-    action: { kind: "dismiss-tray", stop: true },
+    action: { kind: "dismiss-tray" },
   },
   {
-    name: "Escape with no run only tries a tray",
+    name: "Escape with no tray open stops the run",
+    situation: { canStop: true },
+    key: { key: "Escape" },
+    action: { kind: "stop" },
+  },
+  {
+    name: "Escape with no tray and no run passes",
     situation: {},
     key: { key: "Escape" },
-    action: { kind: "dismiss-tray", stop: false },
+    action: PASS,
   },
   {
     name: "Ctrl+Alt+Up recalls an older prompt",
@@ -233,4 +241,13 @@ test.each<{
   expect(composerKey({ ...SITUATION, ...row.situation }, { ...KEY, ...row.key })).toEqual(
     row.action,
   );
+});
+
+test.each([
+  { text: "", attachments: 0, empty: true },
+  { text: "  \n ", attachments: 0, empty: true },
+  { text: " ", attachments: 1, empty: false },
+  { text: "Steer", attachments: 0, empty: false },
+])("a draft of $text.length characters and $attachments images is empty: $empty", (row) => {
+  expect(draftEmpty(row.text, row.attachments)).toBe(row.empty);
 });

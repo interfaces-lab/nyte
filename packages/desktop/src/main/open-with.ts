@@ -25,6 +25,8 @@ export function createOpenWith(options: {
   host: () => DesktopHost;
   /** Open windows, least recently focused first. */
   windows: () => readonly HostWindow[];
+  /** The path of the workspace a window shows, as its page last said. */
+  workspace: (window: HostWindow) => string | undefined;
   send: (window: HostWindow, path: string) => void;
   open: (opening: DesktopWindowOpen) => void;
   failed: (path: string, message: string) => void;
@@ -39,9 +41,9 @@ export function createOpenWith(options: {
     const host = options.host();
 
     const roots = options.windows().flatMap((window) => {
-      const workspace = host.selectedWorkspace(window);
+      const root = options.workspace(window);
 
-      return workspace === undefined ? [] : [{ window, root: workspace.path }];
+      return root === undefined ? [] : [{ window, root }];
     });
 
     const route = routeOpenedPath({ path, folder: stats.isDirectory() }, roots);

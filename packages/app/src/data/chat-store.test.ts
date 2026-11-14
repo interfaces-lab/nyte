@@ -1,11 +1,13 @@
 import { asId, SdkError } from "@nyte-ai/schema";
 import type { PartView } from "@nyte-ai/schema";
-import type { Freshness } from "@nyte-ai/sdk/client";
+import type { ChatSnapshot, Freshness, HeadView } from "@nyte-ai/sdk/client";
 import { expect, test, vi } from "vitest";
 import { heldSessions, nextExpiry, nextHolds, NO_HOLDS } from "./chat-holds.ts";
-import { chatStore, keepChat, showPart, warmSession } from "./chat-store.ts";
-import type { ShownPart } from "./chat-store.ts";
+import { chatStore, keepChat, showChat, showPart, warmSession } from "./chat-store.ts";
+import type { ChatView, ShownPart } from "./chat-store.ts";
+import type { SessionActivity } from "./session-activity.ts";
 import { installScripted, scriptedConnection } from "../../test/scripted-connection.ts";
+import { sessionView } from "../../test/view-fixtures.ts";
 
 vi.useFakeTimers();
 
@@ -14,7 +16,10 @@ type Step =
   | { readonly kind: "wait"; readonly ms: number }
   | { readonly kind: "replace" };
 
-const NAMES = "abcdefghi";
+const NAMES = "abcdefghix";
+
+/** The one session the scripted host doesn't have: its chat's read fails as unknown. */
+const GONE = "x";
 
 const id = (name: string) => asId<"session">(`hold-${name}`);
 
@@ -33,7 +38,15 @@ function run(step: Step): void {
 
       return;
     case "replace":
-      installScripted(scriptedConnection());
+      installScripted(
+        scriptedConnection({
+          views: new Map(
+            NAMES.split("")
+              .filter((name) => name !== GONE)
+              .map((name) => [id(name), [sessionView()]]),
+          ),
+        }),
+      );
 
       return;
     default: {
@@ -136,6 +149,16 @@ const ROWS: readonly {
     held: "bcdefghi",
   },
   {
+    name: "a kept chat the host no longer has is released",
+    steps: [{ kind: "keep", names: "axb" }],
+    held: "ab",
+  },
+  {
+    name: "a warm chat the host no longer has is released",
+    steps: [{ kind: "warm", names: "xa" }],
+    held: "a",
+  },
+  {
     name: "a replaced connection releases the kept chats",
     steps: [{ kind: "keep", names: "ab" }, { kind: "replace" }],
     held: "",
@@ -147,11 +170,12 @@ const ROWS: readonly {
   },
 ];
 
-test.each(ROWS)("through keepChat and warmSession: $name", (row) => {
+test.each(ROWS)("through keepChat and warmSession: $name", async (row) => {
   run({ kind: "replace" });
   run({ kind: "wait", ms: 5_000 });
 
   for (const step of row.steps) run(step);
+  await vi.advanceTimersByTimeAsync(0);
 
   expect(
     NAMES.split("")
@@ -168,12 +192,27 @@ test.each(ROWS)("through nextHolds: $name", (row) => {
       case "keep":
         return step.names
           .split("")
-          .reduce((inner, name) => nextHolds(inner, { kind: "keep", session: id(name) }), current);
+          .reduce(
+            (inner, name) =>
+              nextHolds(
+                inner,
+                name === GONE
+                  ? { kind: "gone", session: id(name) }
+                  : { kind: "keep", session: id(name) },
+              ),
+            current,
+          );
       case "warm":
         return step.names
           .split("")
           .reduce(
-            (inner, name) => nextHolds(inner, { kind: "warm", session: id(name), now }),
+            (inner, name) =>
+              nextHolds(
+                inner,
+                name === GONE
+                  ? { kind: "gone", session: id(name) }
+                  : { kind: "warm", session: id(name), now },
+              ),
             current,
           );
       case "wait":
@@ -304,4 +343,61 @@ test.each<{
   }
 
   expect(shown).toEqual({ kind: "shown", value: row.shown });
+});
+
+const head: HeadView = sessionView();
+
+const EXPIRED = [asId<"message">("expired")];
+
+test.each<{
+  readonly name: string;
+  readonly snapshot: ChatSnapshot;
+  readonly shown:
+    | "waiting"
+    | "failed"
+    | (Pick<ChatView, "seq" | "freshness" | "expired" | "stopping"> & {
+        readonly activity: SessionActivity["kind"];
+      });
+}>([
+  {
+    name: "no view yet while fresh waits",
+    snapshot: { view: null, seq: 0, freshness: FRESH, expired: [], stopping: "no" },
+    shown: "waiting",
+  },
+  {
+    name: "no view yet while stale without an error waits",
+    snapshot: { view: null, seq: 0, freshness: STALE, expired: [], stopping: "no" },
+    shown: "waiting",
+  },
+  {
+    name: "no view yet with a stale error fails",
+    snapshot: { view: null, seq: 0, freshness: FAILED, expired: [], stopping: "no" },
+    shown: "failed",
+  },
+  {
+    name: "a view shows with the chat's seq, freshness, expired sends, stop and activity",
+    snapshot: { view: head, seq: 4, freshness: STALE, expired: EXPIRED, stopping: "asked" },
+    shown: { seq: 4, freshness: STALE, expired: EXPIRED, stopping: "asked", activity: "idle" },
+  },
+])("showChat: $name", (row) => {
+  const shown = showChat(row.snapshot, () => ({ kind: "idle" }));
+
+  if (row.shown === "waiting" || row.shown === "failed") {
+    expect(shown.kind).toBe(row.shown);
+
+    return;
+  }
+
+  expect(shown.kind === "shown" && shown.value.messages === head.messages).toBe(true);
+  expect(
+    shown.kind === "shown"
+      ? {
+          seq: shown.value.seq,
+          freshness: shown.value.freshness,
+          expired: shown.value.expired,
+          stopping: shown.value.stopping,
+          activity: shown.value.activity.kind,
+        }
+      : shown.kind,
+  ).toEqual(row.shown);
 });

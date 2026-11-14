@@ -20,11 +20,7 @@ const TAB = "";
 export function blankLayout(): Layout<PaneContent> {
   const tab = { id: asId<"pane-tab">("primary-chat"), content: chatContent({ kind: "blank" }) };
 
-  return {
-    root: { kind: "pane", id: PRIMARY, tabs: [tab], active: tab.id, hidden: false },
-    focus: [PRIMARY],
-    zoomed: null,
-  };
+  return { root: { kind: "pane", id: PRIMARY, tab }, focus: [PRIMARY] };
 }
 
 /** A window of one blank tab whose pane is `PRIMARY`, apart from the app's window. */
@@ -40,6 +36,7 @@ export function tabPanes(drafts?: {
       activeTabId: TAB,
       recent: [],
       closed: [],
+      hidden: [],
     },
     () => windowDrafts,
   );

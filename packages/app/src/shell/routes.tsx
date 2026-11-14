@@ -34,7 +34,7 @@ import { ProjectOverview } from "../projects/project-overview.tsx";
 import {
   firstSettingsSection,
   showsSettingsSection,
-  rememberWorkspaceHref,
+  routeSettings,
   SettingsSurface,
 } from "../settings/index.ts";
 
@@ -276,11 +276,8 @@ export function createAppRouter({ history }: { history: RouterHistory }) {
     defaultStructuralSharing: true,
   });
 
-  router.subscribe("onResolved", () => {
-    if (!router.state.matches.some((match) => match.routeId === settingsRoute.id))
-      rememberWorkspaceHref(router.state.location.href);
-    leaveMissingSession(router);
-  });
+  router.subscribe("onResolved", () => leaveMissingSession(router));
+  routeSettings(router);
 
   return router;
 }

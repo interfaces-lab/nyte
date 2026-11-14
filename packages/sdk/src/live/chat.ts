@@ -6,12 +6,13 @@ import type {
   Json,
   MessageId,
   PartId,
+  ReceiptId,
   RunId,
   SendOptions,
   UserContent,
 } from "@nyte-ai/schema";
 import type { SendReceipt, Session } from "@nyte-ai/core";
-import type { JournalLoop } from "../send/journal.ts";
+import type { JournalLoop, Sending } from "../send/journal.ts";
 import { laidSends } from "../send/unsent.ts";
 import { headView } from "../view/head-view.ts";
 import type { HeadView } from "../view/head-view.ts";
@@ -39,6 +40,22 @@ export interface ChatSnapshot {
   readonly stopping: "no" | "asked" | "host";
 }
 
+export interface ChatSend {
+  readonly id: ReceiptId;
+  /**
+   * How the send ends: `sent` once the host has it; `unsent` when it has not reached the host but the
+   * journal still holds it and shows it unsent, to post on the next connection after the link closed
+   * or on `resend` after it waited more than a day; `removed` when `remove` withdrew it first.
+   * Rejects with the host's error when the host refused it, the one end where nothing will send it.
+   */
+  readonly delivered: Promise<ChatDelivered>;
+}
+
+export type ChatDelivered =
+  | { readonly kind: "sent"; readonly receipt: SendReceipt }
+  | { readonly kind: "unsent"; readonly reason: unknown }
+  | { readonly kind: "removed" };
+
 export interface ChatOptions {
   /** `main` when absent. */
   readonly head?: HeadName;
@@ -54,8 +71,12 @@ export interface ChatOptions {
  * for another chat's part notifies no one.
  */
 export interface Chat extends Live<ChatSnapshot> {
-  /** Sends through the connection's journal: it shows unsent until the host has it, survives a quit when the journal's storage does, and resolves or rejects as `Head.send` does. */
-  send(content: UserContent, options?: SendOptions): Promise<SendReceipt>;
+  /**
+   * Puts the message in the connection's journal and resolves once the journal holds it, before the
+   * host has it: from then it shows unsent until the host does, and survives a quit when the
+   * journal's storage does. Rejects when it never reached the journal.
+   */
+  send(content: UserContent, options?: SendOptions): Promise<ChatSend>;
   /** Sends an expired unsent message again, as if just sent. */
   resend(message: MessageId): Promise<void>;
   /** Withdraws a message that has not landed: an unsent one, expired or not, is never sent; one the host holds is withdrawn there. */
@@ -175,7 +196,27 @@ export function openChat(parts: ChatParts): Chat {
       };
     },
     snapshot: () => snapshot,
-    send: (content, options) => target.send(content, options),
+    async send(content, options) {
+      const id = options?.id ?? asId<"receipt">(crypto.randomUUID());
+      const journal = parts.journal;
+      const journaled = Promise.withResolvers<Sending>();
+
+      const leave = journal.subscribe(() => {
+        const sending = journal.sending(id);
+
+        if (sending !== null) journaled.resolve(sending);
+      });
+
+      const sent = target.send(content, { ...options, id });
+
+      try {
+        const sending = await Promise.race([journaled.promise, sent.then(() => journaled.promise)]);
+
+        return { id, delivered: delivered(sent, sending) };
+      } finally {
+        leave();
+      }
+    },
     async resend(message) {
       await parts.journal.resend(parts.session.id, message);
     },
@@ -215,6 +256,22 @@ export function openChat(parts: ChatParts): Chat {
     },
     act: (part, action, input) => parts.session.part(part).act(action, input),
   };
+}
+
+/** What `sent` ended as: a rejection the journal kept or removed resolves, a dropped one rejects. */
+function delivered(sent: Promise<SendReceipt>, sending: Sending): Promise<ChatDelivered> {
+  return sent.then(
+    (receipt) => ({ kind: "sent", receipt }),
+    (reason: unknown) => {
+      const left = sending.unanswered();
+
+      if (left === "kept") return { kind: "unsent", reason };
+
+      if (left === "removed") return { kind: "removed" };
+
+      throw reason;
+    },
+  );
 }
 
 /** `next`, or `previous` when it holds the same ids, so the array changes only when they do. */

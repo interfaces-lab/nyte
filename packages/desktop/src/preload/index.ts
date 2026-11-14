@@ -21,6 +21,7 @@ import {
   WINDOW_ID_ARGUMENT,
   WINDOW_OPEN_ARGUMENT,
   WINDOW_PAINTED_CHANNEL,
+  WINDOW_WORKSPACE_CHANNEL,
   WINDOW_ZOOM_CHANNEL,
 } from "../shared/ipc.ts";
 import type {
@@ -109,6 +110,9 @@ const bridge = {
         ? undefined
         : { windowIds: launchWindows.split(",").filter((id) => id !== "") },
     open: argumentValue(WINDOW_OPEN_ARGUMENT),
+    reloaded: performance
+      .getEntriesByType("navigation")
+      .some((entry) => entry instanceof PerformanceNavigationTiming && entry.type === "reload"),
   },
   windowPainted: () => ipcRenderer.send(WINDOW_PAINTED_CHANNEL),
   ...(canvasShell === undefined ? {} : { canvasShell }),
@@ -134,7 +138,6 @@ const bridge = {
     pickWorkspace: none("host.pickWorkspace"),
     pickFolder: none("host.pickFolder"),
     trustWorkspace: object("host.trustWorkspace"),
-    closeWorkspace: none("host.closeWorkspace"),
     updates: {
       state: none("host.updates.state"),
       check: none("host.updates.check"),
@@ -201,6 +204,7 @@ const bridge = {
       notify: (input) => ipcRenderer.send(TERMINAL_NOTIFICATION_CHANNEL, input),
     },
     setUnsavedEdits: (held) => ipcRenderer.send(UNSAVED_EDITS_CHANNEL, held),
+    setWorkspacePath: (path) => ipcRenderer.send(WINDOW_WORKSPACE_CHANNEL, path),
     onEvent(listener: (event: HostEvent) => void) {
       const wrapped = (_event: Electron.IpcRendererEvent, event: HostEvent): void => {
         listener(event);

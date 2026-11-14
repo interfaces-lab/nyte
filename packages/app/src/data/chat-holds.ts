@@ -10,6 +10,7 @@ export type HoldEvent =
   | { readonly kind: "keep"; readonly session: SessionId }
   | { readonly kind: "warm"; readonly session: SessionId; readonly now: number }
   | { readonly kind: "tick"; readonly now: number }
+  | { readonly kind: "gone"; readonly session: SessionId }
   | { readonly kind: "replaced" };
 
 const KEPT_CHATS = 8;
@@ -20,7 +21,7 @@ const WARM_MS = 5_000;
 
 export const NO_HOLDS: ChatHolds = { kept: [], warm: [] };
 
-/** Keeping or warming a chat makes it the newest of its kind and drops the oldest past the limit; a warm hold lapses at its `until`; a replaced connection drops the kept ones and leaves the warm ones. */
+/** Keeping or warming a chat makes it the newest of its kind and drops the oldest past the limit; a warm hold lapses at its `until`; a chat the host no longer has drops from both; a replaced connection drops the kept ones and leaves the warm ones. */
 export function nextHolds(holds: ChatHolds, event: HoldEvent): ChatHolds {
   switch (event.kind) {
     case "keep":
@@ -40,6 +41,11 @@ export function nextHolds(holds: ChatHolds, event: HoldEvent): ChatHolds {
       };
     case "tick":
       return { kept: holds.kept, warm: holds.warm.filter((hold) => hold.until > event.now) };
+    case "gone":
+      return {
+        kept: holds.kept.filter((session) => session !== event.session),
+        warm: holds.warm.filter((hold) => hold.session !== event.session),
+      };
     case "replaced":
       return { kept: [], warm: holds.warm };
     default: {

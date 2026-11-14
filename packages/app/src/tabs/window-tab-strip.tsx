@@ -22,6 +22,7 @@ import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { ChatCardGroup, ChatCardTrigger } from "../components/chat-card.tsx";
 import { ChatMenuItems } from "../components/chat-menu.tsx";
 import { TaskMark } from "../components/task-mark.tsx";
+import { tabName } from "./tab-items.ts";
 import { useSessionRow } from "../data/session-rows.ts";
 import { useCommitCount } from "../lib/work-counts.ts";
 import { useChatMark, useChatWindow } from "../window/index.ts";
@@ -207,7 +208,7 @@ function TabView({
               ref={returnFocus}
               variant="bare"
               value={tab.id}
-              aria-label={`${tab.tooltip}${unread ? ", unread" : ""}${tab.preview ? ", preview" : ""}`}
+              aria-label={tabName(tab, mark)}
               aria-keyshortcuts={MOVE_SHORTCUTS}
               onKeyDown={(event) => {
                 const step = readMoveStep(event);
@@ -230,7 +231,7 @@ function TabView({
             />
           }
         >
-          <span {...props(stripStyles.glyph)}>
+          <span aria-hidden {...props(stripStyles.glyph)}>
             {mark === undefined ? (
               tab.glyph === undefined ? undefined : (
                 <Icon name={tab.glyph} size="sm" />

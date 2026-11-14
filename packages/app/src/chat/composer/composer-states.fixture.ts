@@ -214,7 +214,10 @@ export const health = viewStream<Health>(OPEN);
 
 export const stops: PromiseWithResolvers<StopOutcome<never>>[] = [];
 
-export const sends: PromiseWithResolvers<never>[] = [];
+/** How a send the composer made ends; `unsent` leaves it with the journal, as a link that closed under it or a day's wait does. */
+export type SendEnding = "refused" | "unsent" | "removed";
+
+export const sends: { readonly end: (ending: SendEnding) => void }[] = [];
 
 export function heldMessage(message: MessageId): HeldMessage {
   const lost = Promise.withResolvers<Awaited<HeldMessage["lost"]>>();
@@ -254,6 +257,7 @@ export async function editQueuedMessage({
   editor,
   button,
   stored,
+  revisit,
 }: Probe): Promise<readonly string[]> {
   const failures: string[] = [];
 
@@ -318,10 +322,7 @@ export async function editQueuedMessage({
   );
 
   if (layer === "composer")
-    check(
-      stored() === `${QUEUED_TEXT}\n${KEPT_DRAFT}`,
-      `the composer stores "${stored()}" while editing`,
-    );
+    check(stored() === KEPT_DRAFT, `the composer stores "${stored()}" while editing`);
 
   mark = calls.length;
   press("Escape");
@@ -450,11 +451,21 @@ export async function editQueuedMessage({
   await called(mark, "revise second", "Steer");
   await until(steer, "the revised row to leave its sending state");
 
+  const beforeLeaving = editor.innerText;
+  await beginEdit();
+  const back = await revisit(async () => undefined);
+  await until(
+    () => (back.editor.innerText === beforeLeaving ? true : null),
+    "an unchanged edit to leave the draft as it was",
+    () => `; it reads "${back.editor.innerText}"`,
+  );
+
   return failures;
 }
 
 interface Refusal {
   readonly name: string;
+  readonly ends: SendEnding;
   readonly typed: string;
   readonly leave: "no" | "before it" | "for it" | "after it";
   readonly editing: boolean;
@@ -467,6 +478,7 @@ const SENT = "hello";
 const REFUSALS: readonly Refusal[] = [
   {
     name: "an empty draft",
+    ends: "refused",
     typed: "",
     leave: "no",
     editing: false,
@@ -475,6 +487,7 @@ const REFUSALS: readonly Refusal[] = [
   },
   {
     name: "a draft with text",
+    ends: "refused",
     typed: "next",
     leave: "no",
     editing: false,
@@ -483,6 +496,7 @@ const REFUSALS: readonly Refusal[] = [
   },
   {
     name: "a chat left and reopened before it",
+    ends: "refused",
     typed: "next",
     leave: "before it",
     editing: false,
@@ -491,6 +505,7 @@ const REFUSALS: readonly Refusal[] = [
   },
   {
     name: "an empty draft in a chat left for it",
+    ends: "refused",
     typed: "",
     leave: "for it",
     editing: false,
@@ -499,6 +514,7 @@ const REFUSALS: readonly Refusal[] = [
   },
   {
     name: "a draft with text in a chat left for it",
+    ends: "refused",
     typed: "next",
     leave: "for it",
     editing: false,
@@ -507,6 +523,7 @@ const REFUSALS: readonly Refusal[] = [
   },
   {
     name: "a chat left after it",
+    ends: "refused",
     typed: "next",
     leave: "after it",
     editing: false,
@@ -515,10 +532,38 @@ const REFUSALS: readonly Refusal[] = [
   },
   {
     name: "a queued edit",
+    ends: "refused",
     typed: "",
     leave: "no",
     editing: true,
     shows: QUEUED_TEXT,
+    restored: undefined,
+  },
+  {
+    name: "a send the journal still holds, on an empty draft",
+    ends: "unsent",
+    typed: "",
+    leave: "no",
+    editing: false,
+    shows: "",
+    restored: undefined,
+  },
+  {
+    name: "a send the journal still holds, in a chat left for it",
+    ends: "unsent",
+    typed: "next",
+    leave: "for it",
+    editing: false,
+    shows: "next",
+    restored: undefined,
+  },
+  {
+    name: "a send whose unsent row was removed",
+    ends: "removed",
+    typed: "",
+    leave: "no",
+    editing: false,
+    shows: "",
     restored: undefined,
   },
 ];
@@ -573,7 +618,7 @@ async function refuseOnce(
     );
 
   const refuse = async (): Promise<void> => {
-    sends.shift()?.reject(new SdkError("invalid", "The host refused the message."));
+    sends.shift()?.end(row.ends);
     await painted();
     await painted();
   };
@@ -589,6 +634,11 @@ async function refuseOnce(
   );
   await until(() => (sends.length > sent ? true : null), "the send");
   await reads(probe, "");
+  await painted();
+  check(
+    probe.button("Send message")?.getAttribute("aria-busy") !== "true",
+    "Send stays busy once the journal holds the message",
+  );
   let shown = row.leave === "before it" ? await away(async () => undefined) : probe;
 
   if (row.editing) {
@@ -611,13 +661,13 @@ async function refuseOnce(
   if (row.leave === "after it") shown = await away(async () => undefined);
 
   const settled = shown;
-  await eventually(() => alert(settled) !== null && written(settled) === row.shows);
+  const refused = row.ends === "refused";
+  await eventually(() => (alert(settled) !== null) === refused && written(settled) === row.shows);
+  check(written(shown) === row.shows, `the composer reads "${written(shown)}", not "${row.shows}"`);
   check(
-    written(shown) === row.shows,
-    `the composer reads "${written(shown)}", not "${row.shows}"`,
-  );
-  check(
-    alert(shown)?.textContent?.startsWith("Couldn't send the message") === true,
+    refused
+      ? alert(shown)?.textContent?.startsWith("Couldn't send the message") === true
+      : alert(shown) === null,
     `the notice reads "${alert(shown)?.textContent ?? ""}"`,
   );
   check(
@@ -632,10 +682,7 @@ async function refuseOnce(
       new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
     );
     await eventually(() => written(settled) === SENT);
-    check(
-      written(shown) === SENT,
-      `after the edit the composer reads "${written(shown)}"`,
-    );
+    check(written(shown) === SENT, `after the edit the composer reads "${written(shown)}"`);
     check(shown.stored() === SENT, `after the edit the window keeps "${shown.stored()}"`);
   }
 
@@ -643,10 +690,7 @@ async function refuseOnce(
   const restored = row.restored;
   restore(shown)?.click();
   await eventually(() => written(settled) === restored);
-  check(
-    written(shown) === restored,
-    `after Restore the composer reads "${written(shown)}"`,
-  );
+  check(written(shown) === restored, `after Restore the composer reads "${written(shown)}"`);
   check(restore(shown) === undefined, "Restore Draft outlives the restore");
   check(alert(shown) !== null, "the notice left with the restore");
   check(shown.stored() === row.restored, `after Restore the window keeps "${shown.stored()}"`);
@@ -664,6 +708,39 @@ async function eventually(done: () => boolean): Promise<void> {
   const deadline = performance.now() + 2_000;
 
   while (!done() && performance.now() < deadline) await painted();
+}
+
+/** Sends twice in a row: once the journal holds the first message, the composer is free for the next. */
+export async function sendTwice(probe: Probe): Promise<readonly string[]> {
+  const failures: string[] = [];
+  const first = sends.length;
+
+  for (const text of ["First.", "Second."]) {
+    probe.editor.focus();
+    document.execCommand("insertText", false, text);
+    await until(() => (written(probe) === text ? true : null), `the composer to read "${text}"`);
+    await painted();
+    probe.editor.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
+    );
+
+    try {
+      await until(() => (written(probe) === "" ? true : null), `"${text}" to leave the composer`);
+    } catch (error) {
+      failures.push(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  await painted();
+
+  if (sends.length !== first + 2) failures.push(`${String(sends.length - first)} sends, not 2`);
+
+  if (probe.button("Send message")?.getAttribute("aria-busy") === "true")
+    failures.push("Send stays busy while the journal holds the messages");
+
+  for (const sent of sends.splice(first)) sent.end("unsent");
+
+  return failures;
 }
 
 export async function pressStop({ region, editor, button }: Probe): Promise<readonly string[]> {

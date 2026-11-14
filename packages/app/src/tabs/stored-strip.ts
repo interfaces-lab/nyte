@@ -138,6 +138,7 @@ function restoreStrip<Stored>(
     activeTabId,
     recent: stored.recent.filter((id) => id !== activeTabId && open.has(id)),
     closed: stored.closed.map((closed) => ({ tab: restoreTab(closed.tab), index: closed.index })),
+    hidden: [],
   };
 }
 
@@ -190,17 +191,16 @@ function migrateLayout(layout: Static<typeof earlierLayoutSchema>): Layout<PaneC
       ],
     },
     focus: [asId<"pane">(focused), asId<"pane">(other)],
-    zoomed: null,
   };
 }
 
 function singlePane(id: string, selection: PaneSelection): Layout<PaneContent> {
-  return { root: earlierPane(id, selection), focus: [asId<"pane">(id)], zoomed: null };
+  return { root: earlierPane(id, selection), focus: [asId<"pane">(id)] };
 }
 
 function earlierPane(id: string, selection: PaneSelection): Pane<PaneContent> {
   const pane: PaneId = asId<"pane">(id);
   const tab = { id: asId<"pane-tab">(`${id}-chat`), content: chatContent(selection) };
 
-  return { kind: "pane", id: pane, tabs: [tab], active: tab.id, hidden: false };
+  return { kind: "pane", id: pane, tab };
 }

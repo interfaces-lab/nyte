@@ -87,7 +87,7 @@ export async function run(): Promise<string> {
   };
 
   const source = numbers();
-  const store = new WatchStore(source.open);
+  const store = new WatchStore(() => ({ values: source.open(), ended: "reopen" as const }));
   const heard: (number | null)[] = [];
   const rendered: (number | null)[] = [];
 
@@ -105,7 +105,7 @@ export async function run(): Promise<string> {
   const shown = (): string => container.textContent ?? "";
 
   try {
-    const opened = store.next();
+    const opened = store.until((value) => value === 0);
     source.push(0);
     await opened;
     flushSync(() => root.render(<Shown store={store} />));
@@ -153,7 +153,7 @@ export async function run(): Promise<string> {
     paused = false;
 
     const beforeRetry = rendered.length;
-    const ten = store.next();
+    const ten = store.until((value) => value === 10);
     source.push(10);
     await ten;
     const queuedBeforeRetry = pending.size;
@@ -165,7 +165,7 @@ export async function run(): Promise<string> {
       rendered: rendered.slice(beforeRetry),
     };
 
-    const eleven = store.next();
+    const eleven = store.until((value) => value === 11);
     source.push(11);
     await eleven;
     const rescheduled = pending.size;
@@ -173,7 +173,7 @@ export async function run(): Promise<string> {
     const retry = { ...retried, rescheduled, afterFrame: rendered.slice(beforeRetry) };
 
     const beforeDispose = rendered.length;
-    const twelve = store.next();
+    const twelve = store.until((value) => value === 12);
     source.push(12);
     await twelve;
     const queuedBeforeDispose = pending.size;

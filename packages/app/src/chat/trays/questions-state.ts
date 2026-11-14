@@ -9,7 +9,7 @@ import { connection } from "../../data/connection.ts";
 import { chatStore } from "../../data/chat-store.ts";
 import { useWatchSelect } from "../../data/watch-store.ts";
 import type { ComposerDocumentState } from "../composer/composer-document.ts";
-import { openAsks } from "./asks.ts";
+import { openAsks, requireAnswered } from "./asks.ts";
 import { dockView, stepDock } from "./question-dock.ts";
 import type { DockEvent, DockOutcome, Reply, RequestDraft } from "./question-dock.ts";
 
@@ -19,27 +19,10 @@ export async function answerQuestion(
   answers: QuestionAnswers | null,
 ): Promise<void> {
   const part = connection().session(sessionId).part(question.part);
-  const outcome = await (answers === null ? part.act("skip", {}) : part.act("answer", { answers }));
-
-  switch (outcome.kind) {
-    case "ok":
-      return;
-    case "rejected":
-      throw new Error(outcome.reason);
-    case "failed":
-      throw new Error(outcome.message);
-    case "no-owner":
-      throw new Error("This host cannot answer these questions yet.");
-    case "unknown-action":
-      throw new Error("Question answers are unavailable on this host.");
-    case "closed":
-      throw new Error("This question is no longer waiting.");
-    default: {
-      const exhaustive: never = outcome;
-
-      return exhaustive;
-    }
-  }
+  requireAnswered(
+    await (answers === null ? part.act("skip", {}) : part.act("answer", { answers })),
+    "question",
+  );
 }
 
 interface Submission {

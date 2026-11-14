@@ -32,6 +32,7 @@ export interface KeySituation {
   readonly editing: boolean;
   readonly empty: boolean;
   readonly steerQueued: boolean;
+  readonly trayOpen: boolean;
   readonly menuOpen: boolean;
   readonly canStop: boolean;
   readonly canRecall: boolean;
@@ -42,10 +43,7 @@ type KeyState = EnterKeyState & {
   readonly defaultPrevented: boolean;
 };
 
-/**
- * `recall` counts as handled only when the walk moved. `dismiss-tray` closes an open tray or
- * question and, when none was open, stops the run if `stop` is set.
- */
+/** `recall` counts as handled only when the walk moved. `dismiss-tray` closes an open tray or question. */
 export type KeyAction =
   | { readonly kind: "pass" }
   | { readonly kind: "submit"; readonly action: SubmitAction }
@@ -53,7 +51,8 @@ export type KeyAction =
   | { readonly kind: "recall"; readonly direction: RecallDirection }
   | { readonly kind: "cancel-edit" }
   | { readonly kind: "swallow" }
-  | { readonly kind: "dismiss-tray"; readonly stop: boolean };
+  | { readonly kind: "dismiss-tray" }
+  | { readonly kind: "stop" };
 
 const PASS: KeyAction = { kind: "pass" };
 
@@ -82,7 +81,17 @@ export function composerKey(situation: KeySituation, key: KeyState): KeyAction {
   if (situation.editing)
     return situation.submitting ? { kind: "swallow" } : { kind: "cancel-edit" };
 
-  return { kind: "dismiss-tray", stop: situation.canStop };
+  if (situation.trayOpen) return { kind: "dismiss-tray" };
+
+  return situation.canStop ? { kind: "stop" } : PASS;
+}
+
+/**
+ * Whether a draft holds nothing to send: whitespace and no images, which Send leaves alone. Enter
+ * on it steers the next queued message, and the queue's hint says so on the same rule.
+ */
+export function draftEmpty(text: string, attachments: number): boolean {
+  return text.trim() === "" && attachments === 0;
 }
 
 function formKey(situation: KeySituation, key: KeyState): KeyAction {

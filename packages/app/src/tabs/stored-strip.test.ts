@@ -13,14 +13,10 @@ const beta: PaneSelection = { kind: "session", sessionId: asId<"session">("beta"
 const blank: PaneSelection = { kind: "blank" };
 
 function pane(id: string, selection: PaneSelection): Pane<PaneContent> {
-  const tab = asId<"pane-tab">(`${id}-chat`);
-
   return {
     kind: "pane",
     id: asId<"pane">(id),
-    tabs: [{ id: tab, content: chatContent(selection) }],
-    active: tab,
-    hidden: false,
+    tab: { id: asId<"pane-tab">(`${id}-chat`), content: chatContent(selection) },
   };
 }
 
@@ -52,7 +48,7 @@ test.each<{
   {
     name: "a single pane keeps its id",
     stored: { kind: "single", paneId: "secondary", selection: alpha },
-    layout: { root: pane("secondary", alpha), focus: [asId<"pane">("secondary")], zoomed: null },
+    layout: { root: pane("secondary", alpha), focus: [asId<"pane">("secondary")] },
   },
   {
     name: "a split keeps its direction, order, ratio and focus",
@@ -68,7 +64,6 @@ test.each<{
         ],
       },
       focus: [asId<"pane">("primary"), asId<"pane">("secondary")],
-      zoomed: null,
     },
   },
   {
@@ -85,13 +80,12 @@ test.each<{
         ],
       },
       focus: [asId<"pane">("primary"), asId<"pane">("secondary")],
-      zoomed: null,
     },
   },
   {
     name: "a split showing one chat twice becomes its focused pane",
     stored: { ...split, secondary: alpha, activePaneId: "secondary" },
-    layout: { root: pane("secondary", alpha), focus: [asId<"pane">("secondary")], zoomed: null },
+    layout: { root: pane("secondary", alpha), focus: [asId<"pane">("secondary")] },
   },
 ])("version 2: $name, and saves as version 3", ({ stored, layout }) => {
   const restored = parseStrip(version2(stored), () => "unused");

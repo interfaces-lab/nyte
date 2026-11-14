@@ -260,7 +260,6 @@ export function SecretTray({
 }: {
   readonly sessionId: SessionId;
   readonly disabled: boolean;
-  readonly viewport: HTMLElement | null;
 }): ReactElement {
   const target = useSecretRequest(sessionId);
 

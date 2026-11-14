@@ -26,7 +26,7 @@ import {
   transferredFiles,
 } from "../../references/composer-file-drop.ts";
 import type { ComposerImageAttachment } from "../../panes/session-view-state.ts";
-import { composerKey, enterBehavior, submissionDelivery } from "./composer-keys.ts";
+import { composerKey, draftEmpty, enterBehavior, submissionDelivery } from "./composer-keys.ts";
 import type { KeyAction, KeySituation, SubmitAction } from "./composer-keys.ts";
 import type { RecallDirection } from "./composer-history.ts";
 import type { MessageReference } from "../../references/message-references.ts";
@@ -69,7 +69,8 @@ interface ComposerFrameProps {
   busy?: boolean;
   stopping?: boolean;
   onAbort?: () => void;
-  onDismissTray?: () => boolean;
+  /** The tray or question Escape closes before it stops the run. */
+  tray?: { readonly open: boolean; readonly close: () => void };
   floating?: boolean;
   onSteerQueued?: () => void;
   onRecall?: (direction: RecallDirection) => boolean;
@@ -104,7 +105,7 @@ export function ComposerFrame({
   busy = false,
   stopping = false,
   onAbort,
-  onDismissTray,
+  tray,
   floating = false,
   onSteerQueued,
   onRecall,
@@ -274,8 +275,9 @@ export function ComposerFrame({
     disabled,
     submitting,
     editing: editing !== undefined,
-    empty: document.text.trim() === "" && attachments.length === 0 && references.length === 0,
+    empty: draftEmpty(document.text, attachments.length) && references.length === 0,
     steerQueued: onSteerQueued !== undefined,
+    trayOpen: tray?.open === true,
     menuOpen: suggestionMenu.open,
     canStop: busy && !stopping && onAbort !== undefined,
     canRecall: onRecall !== undefined,
@@ -309,13 +311,11 @@ export function ComposerFrame({
 
         return;
       case "dismiss-tray":
-        if (onDismissTray?.() === true) {
-          event.preventDefault();
+        event.preventDefault();
+        tray?.close();
 
-          return;
-        }
-
-        if (!action.stop) return;
+        return;
+      case "stop":
         event.preventDefault();
         onAbort?.();
 

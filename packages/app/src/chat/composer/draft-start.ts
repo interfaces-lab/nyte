@@ -94,7 +94,7 @@ export async function startDraft(
     );
     warmSession(id);
     await chatStore(id)
-      .next()
+      .until(() => true)
       .catch(() => undefined);
     actions.openDraftChat(draftId, id);
   } catch (cause: unknown) {

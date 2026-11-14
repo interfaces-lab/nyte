@@ -8,7 +8,7 @@ import type { CommandInfo, Delivery } from "@nyte-ai/sdk";
 import { Button } from "@nyte-ai/ui/button";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { ComposerFrame } from "./composer-frame.tsx";
-import { attachComposerFiles } from "./composer-files.ts";
+import { NO_INTAKE, nextIntake, takeFiles } from "./composer-files.ts";
 import type { ComposerFile } from "../../references/composer-file-drop.ts";
 import { composerSource } from "./composer-suggestions.tsx";
 import { bindComposerFileDrop } from "../../references/composer-file-drop.ts";
@@ -97,8 +97,7 @@ function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement
   const held = status.kind === "waiting" || status.kind === "starting";
   const [pickerOpen, setPickerOpen] = useState(false);
   const attachments = viewState.composer.attachments;
-  const [attachmentReads, setAttachmentReads] = useState(0);
-  const [attachmentError, setAttachmentError] = useState<string>();
+  const [intake, setIntake] = useState(NO_INTAKE);
   const editorRef = useRef<ComposerEditorHandle | null>(null);
 
   const attachInput = (handle: ComposerEditorHandle | null) => {
@@ -120,7 +119,7 @@ function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement
     delivery: Delivery,
     document: ComposerDocumentState,
   ): void | Promise<void> => {
-    if (attachmentReads !== 0) return;
+    if (intake.reads !== 0) return;
 
     const plan = composerSendPlan({ submission, attachments, commands: [], delivery });
 
@@ -139,32 +138,21 @@ function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement
     return startDraft(viewStore, actions, draft.id, waiting, plan);
   };
 
-  const addFiles = async (
+  const addFiles = (
     files: readonly ComposerFile[],
     signal?: AbortSignal,
-  ): Promise<string | undefined> => {
-    setAttachmentReads((count) => count + 1);
-
-    return attachComposerFiles({ files, editor: editorRef.current })
-      .then((result) => {
-        signal?.throwIfAborted();
-
-        if (result.attachments.length > 0) {
-          updateViewState((state) => ({
-            ...state,
-            composer: {
-              ...state.composer,
-              attachments: [...state.composer.attachments, ...result.attachments],
-            },
-          }));
-        }
-
-        setAttachmentError(result.error);
-
-        return result.error;
-      })
-      .finally(() => setAttachmentReads((count) => count - 1));
-  };
+  ): Promise<string | undefined> =>
+    takeFiles({
+      files,
+      editor: editorRef.current,
+      signal,
+      step: (event) => setIntake((current) => nextIntake(current, event)),
+      attach: (taken) =>
+        updateViewState((state) => ({
+          ...state,
+          composer: { ...state.composer, attachments: [...state.composer.attachments, ...taken] },
+        })),
+    });
 
   const bindFileDrop = (element: HTMLDivElement | null): (() => void) | undefined =>
     element === null
@@ -227,8 +215,8 @@ function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement
                 : composerSource(mentions.data, mentions.isError)
             }
             attachments={attachments}
-            attachmentBusy={attachmentReads !== 0}
-            attachmentError={attachmentError}
+            attachmentBusy={intake.reads !== 0}
+            attachmentError={intake.error}
             onFilesSelected={addFiles}
             onAttachmentRemove={(id) => {
               updateViewState((state) => ({
@@ -240,7 +228,7 @@ function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement
                   ),
                 },
               }));
-              setAttachmentError(undefined);
+              setIntake((current) => nextIntake(current, { kind: "cleared" }));
             }}
             inputRef={attachInput}
             model={

@@ -7,8 +7,7 @@ import { Icon } from "@nyte-ai/ui/icon";
 import type { IconName } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
 import { glyph, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
-import { taskEnded, taskLabel } from "@nyte-ai/plugin/client/presentation";
-import type { TaskState } from "@nyte-ai/plugin/client/presentation";
+import { groupMark, taskEnded, taskLabel } from "@nyte-ai/plugin/client/presentation";
 import type { Task } from "../../chats/index.ts";
 import { tray } from "../../theme/schema.stylex.ts";
 import { trayStyles } from "../../theme/tray.stylex.ts";
@@ -85,17 +84,6 @@ export function useTrayRoot(viewport: HTMLElement | null) {
   return { root, ref: setRoot, availableHeight };
 }
 
-function pillState(tasks: readonly Task[]): TaskState {
-  const states = tasks.map((task) => task.state);
-
-  if (states.some((state) => state === "working" || state === "retrying" || state === "background"))
-    return "working";
-
-  if (states.includes("waiting")) return "waiting";
-
-  return states.includes("failed") ? "failed" : "done";
-}
-
 export function pillCounts(tasks: readonly Task[]): string {
   const going = tasks.filter((task) => !taskEnded(task.state)).length;
   const failed = tasks.filter((task) => task.state === "failed").length;
@@ -127,7 +115,7 @@ export function TrayPill({
   readonly ref?: Ref<HTMLButtonElement>;
   readonly onClick: () => void;
 }): ReactElement {
-  const state = pillState(tasks);
+  const state = groupMark(tasks.map((task) => task.state));
 
   return (
     <span {...props(trayParts.pillFrame, expanded && trayParts.pillOpen)}>

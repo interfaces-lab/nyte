@@ -282,7 +282,7 @@ takes over.
 
 | Method                        | What it does                                                                                                                                                         |
 | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `send(content, options?)`     | Sends on the chat's head through the journal, as `Head.send` does                                                                                                     |
+| `send(content, options?)`     | Puts the message in the journal and resolves once it is there, with its `id` and `delivered`: `sent`, `unsent` while the journal keeps it to send later, or `removed`; `delivered` rejects only when the host refused it |
 | `stop()`                      | Asks the host to stop the run the view shows. Sends nothing while the view shows no run or already shows it stopping. Rejects only while it is the latest stop     |
 | `earlier(count)`              | Loads up to `count` older messages into `view`, and resolves with how many came: `0` once the chat's first message is shown. A call while one is loading waits for it |
 | `remove(message)`             | Withdraws a message that hasn't landed. An unsent one, expired or not, is never sent                                                                                  |

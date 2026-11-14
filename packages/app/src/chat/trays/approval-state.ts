@@ -6,7 +6,7 @@ import { useWaitingDescendants } from "../../chats/index.ts";
 import { connection } from "../../data/connection.ts";
 import { chatStore } from "../../data/chat-store.ts";
 import { useWatchSelect } from "../../data/watch-store.ts";
-import { openAsks } from "./asks.ts";
+import { openAsks, requireAnswered } from "./asks.ts";
 
 export interface ApprovalRequest {
   readonly sessionId: SessionId;
@@ -32,29 +32,15 @@ export function useAnswerApproval() {
       readonly request: ApprovalRequest;
       readonly decision: ApprovalDecision;
     }) => {
-      const outcome = await connection()
-        .session(input.request.sessionId)
-        .part(input.request.approval.part)
-        .act(input.decision, {});
+      requireAnswered(
+        await connection()
+          .session(input.request.sessionId)
+          .part(input.request.approval.part)
+          .act(input.decision, {}),
+        "approval",
+      );
 
-      switch (outcome.kind) {
-        case "ok":
-          return input.request.approval.part;
-        case "rejected":
-          throw new Error(outcome.reason);
-        case "failed":
-          throw new Error(outcome.message);
-        case "closed":
-          throw new Error("This request is no longer waiting.");
-        case "no-owner":
-        case "unknown-action":
-          throw new Error("This host can't answer tool approvals.");
-        default: {
-          const exhaustive: never = outcome;
-
-          return exhaustive;
-        }
-      }
+      return input.request.approval.part;
     },
   });
 }

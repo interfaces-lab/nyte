@@ -1,19 +1,16 @@
 import {
+  headAttention,
   mainHead,
   runStatus,
-  sessionMark,
   sessionTitle,
 } from "@nyte-ai/plugin/client/presentation";
-import type { BackgroundWork, RunStatus, TaskState } from "@nyte-ai/plugin/client/presentation";
 import type {
-  CommitId,
-  HeadName,
-  SessionId,
-  SessionInfo,
-  WorkspaceId,
-  ProjectInfo,
-  WorkspaceInfo,
-} from "@nyte-ai/sdk";
+  BackgroundWork,
+  HeadAttention,
+  RunStatus,
+  TaskState,
+} from "@nyte-ai/plugin/client/presentation";
+import type { SessionId, SessionInfo, WorkspaceId, ProjectInfo, WorkspaceInfo } from "@nyte-ai/sdk";
 import { replaceEqualDeep } from "@tanstack/react-query";
 import { coordinatedProject } from "../data/projects.ts";
 import { workspaceName, workspacePath } from "../data/workspaces.ts";
@@ -41,12 +38,8 @@ export interface Chat {
   readonly status: RunStatus;
   readonly background: BackgroundWork;
   readonly mark: TaskState;
-  readonly unreadTip: UnreadTip | null;
-}
-
-export interface UnreadTip {
-  readonly head: HeadName;
-  readonly commit: CommitId;
+  readonly unreadTip: HeadAttention["unreadTip"];
+  readonly settledUnread: boolean;
 }
 
 export type ChatDirectory = ReadonlyMap<SessionId, Chat>;
@@ -77,6 +70,7 @@ export function describeChats(
         return [session.id, known.chat] as const;
       const head = mainHead(session);
       const project = coordinatedProject(session);
+      const attention = headAttention(session);
 
       const next: Chat = {
         id: session.id,
@@ -85,11 +79,9 @@ export function describeChats(
         location: folders === undefined ? LOADING : locate(session.workspace, folders),
         status: runStatus(head?.execution),
         background: head?.background ?? NO_BACKGROUND,
-        mark: project === undefined ? sessionMark(session) : coordinatorMark(session),
-        unreadTip:
-          head?.unread === true && head.tip.kind === "commit"
-            ? { head: head.name, commit: head.tip.id }
-            : null,
+        mark: attention.mark,
+        unreadTip: attention.unreadTip,
+        settledUnread: attention.settledUnread,
       };
 
       const chat = replaceEqualDeep(previous.get(session.id), next);
@@ -149,10 +141,4 @@ function listedFolder(workspace: WorkspaceInfo): Folder | null {
   const path = workspacePath(workspace);
 
   return path === null ? null : { workspace: workspace.id, path, name: workspaceName(workspace) };
-}
-
-function coordinatorMark(session: SessionInfo): TaskState {
-  const mark = sessionMark(session);
-
-  return mark === "background" ? "working" : mark;
 }

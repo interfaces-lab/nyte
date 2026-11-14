@@ -26,6 +26,8 @@ export const TERMINAL_NOTIFICATION_CHANNEL = "nyte:terminal-notification";
 
 export const UNSAVED_EDITS_CHANNEL = "nyte:unsaved-edits";
 
+export const WINDOW_WORKSPACE_CHANNEL = "nyte:window-workspace";
+
 export const CANVAS_SHELL_ARGUMENT = "--nyte-canvas-shell";
 
 export const MACHINE_NAME_ARGUMENT = "--nyte-machine-name";
@@ -76,7 +78,6 @@ const HOST_PROCESS_PATHS = [
   "host.openWorkspace",
   "host.registerWorkspace",
   "host.trustWorkspace",
-  "host.closeWorkspace",
   "host.server.state",
   "host.server.connect",
   "host.server.disconnect",
@@ -126,7 +127,6 @@ export type DesktopBridge = {
     | "fonts"
     | "openWorkspace"
     | "registerWorkspace"
-    | "closeWorkspace"
     | "server"
     | "remote"
     | "connect"
@@ -152,6 +152,7 @@ export type DesktopBridge = {
         | "browser"
         | "attention"
         | "setUnsavedEdits"
+        | "setWorkspacePath"
       >
     >;
 };

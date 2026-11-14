@@ -137,9 +137,10 @@ export function Pip({
     const element = card.current;
     const area = element?.parentElement?.getBoundingClientRect();
 
+    if (current?.pointer !== event.pointerId) return;
     drag.current = null;
 
-    if (current?.pointer !== event.pointerId || !moved.current) return;
+    if (!moved.current) return;
 
     if (element == null || area === undefined) return;
     setTimeout(() => {

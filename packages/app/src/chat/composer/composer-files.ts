@@ -131,3 +131,62 @@ export async function attachComposerFiles(args: {
 
   return { attachments, error };
 }
+
+/** Files being read into a composer, and what the last read could not take. */
+export interface Intake {
+  readonly reads: number;
+  readonly error: string | undefined;
+}
+
+export const NO_INTAKE: Intake = { reads: 0, error: undefined };
+
+/** A read starts, reports what it could not take, settles however it ended, or the error is cleared. */
+export type IntakeEvent =
+  | { readonly kind: "reading" }
+  | { readonly kind: "read"; readonly error: string | undefined }
+  | { readonly kind: "settled" }
+  | { readonly kind: "cleared" };
+
+export function nextIntake(intake: Intake, event: IntakeEvent): Intake {
+  switch (event.kind) {
+    case "reading":
+      return { ...intake, reads: intake.reads + 1 };
+    case "read":
+      return intake.error === event.error ? intake : { ...intake, error: event.error };
+    case "settled":
+      return { ...intake, reads: intake.reads - 1 };
+    case "cleared":
+      return intake.error === undefined ? intake : { ...intake, error: undefined };
+    default: {
+      const _exhaustive: never = event;
+
+      return _exhaustive;
+    }
+  }
+}
+
+/**
+ * Reads `files` into a composer, the one intake the follow-up composer and the new-chat screen
+ * share: `step` hears the read start, its error and its end, and `attach` gets the images it read,
+ * unless `signal` aborted it first. Resolves the error.
+ */
+export async function takeFiles(input: {
+  readonly files: readonly ComposerFile[];
+  readonly editor: ComposerEditorHandle | null;
+  readonly signal: AbortSignal | undefined;
+  readonly step: (event: IntakeEvent) => void;
+  readonly attach: (attachments: readonly ComposerImageAttachment[]) => void;
+}): Promise<string | undefined> {
+  input.step({ kind: "reading" });
+
+  return attachComposerFiles({ files: input.files, editor: input.editor })
+    .then((result) => {
+      input.signal?.throwIfAborted();
+
+      if (result.attachments.length > 0) input.attach(result.attachments);
+      input.step({ kind: "read", error: result.error });
+
+      return result.error;
+    })
+    .finally(() => input.step({ kind: "settled" }));
+}

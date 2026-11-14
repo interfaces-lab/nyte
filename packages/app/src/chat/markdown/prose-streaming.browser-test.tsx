@@ -158,7 +158,8 @@ function drawer(root: Root): Draw {
       current = { id, release: chatStore(id).subscribe(() => undefined) };
       await chatStore(id).until(() => true);
     } else {
-      const arrived = chatStore(current.id).next();
+      const shown = chatStore(current.id).getState().value;
+      const arrived = chatStore(current.id).until((value) => value !== shown);
       streams.get(current.id)?.push(answerView(current.id, markdown, streaming));
       await arrived;
     }

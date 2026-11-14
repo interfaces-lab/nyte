@@ -57,7 +57,8 @@ test("a chat pages in earlier messages while it is watched, and none once nobody
   const store = chatStore(session);
   const leave = store.subscribe(() => undefined);
   await store.until(() => true);
-  const paged = store.next();
+  const shown = store.getState().value;
+  const paged = store.until((value) => value !== shown);
 
   assert.equal(await loadEarlierMessages(session, 10), 1);
   assert.deepEqual(

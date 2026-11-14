@@ -440,7 +440,7 @@ export function Sidebar(): ReactElement {
                   ? undefined
                   : () => {
                       shellActions.showWorkspace();
-                      void nyte.host.closeWorkspace();
+                      void activateWorkspace(null);
                     }
               }
               onOpenSettings={openSettings}

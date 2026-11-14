@@ -1,9 +1,9 @@
 import { props } from "@stylexjs/stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
-import { useEffectEvent, useLayoutEffect, useRef, useState } from "react";
-import { createPortal, flushSync } from "react-dom";
+import { useEffectEvent, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import type { ReactElement, ReactNode } from "react";
-import type { Delivery, HeldMessage, MessageId, SessionId } from "@nyte-ai/sdk";
+import type { Delivery, MessageId, SessionId } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import { PLANNING_LABEL, runMark, taskLabel } from "@nyte-ai/plugin/client/presentation";
 import type { RunStatus, UserMessage } from "@nyte-ai/plugin/client/presentation";
@@ -19,8 +19,8 @@ import { useSessionActivity, useSessionChoice } from "../../data/sessions.ts";
 import { connected, connection } from "../../data/connection.ts";
 import { chatStore, resendMessage, stopChat, useChatStopping } from "../../data/chat-store.ts";
 import { useWatchSelect } from "../../data/watch-store.ts";
+import { useChats } from "../../chats/index.ts";
 import { nyte } from "../../contract/nyte.ts";
-import type { ComposerViewState } from "../../panes/session-view-state.ts";
 import { usePaneViewStateStore } from "../../panes/pane-context.tsx";
 import type { ComposerDocumentState, ComposerSubmission } from "./composer-document.ts";
 import type { ComposerEditorHandle } from "./composer-editor.tsx";
@@ -29,29 +29,20 @@ import type { ComposerSurface } from "./composer-frame.tsx";
 import { sessionModel } from "./model-picker-state.ts";
 import { SessionModelChip } from "./composer-model-chip.tsx";
 import { ComposerQueue } from "./composer-queue.tsx";
-import type { PendingRowAction } from "./composer-queue.tsx";
 import { composerSource } from "./composer-suggestions.tsx";
 import { bindComposerFileDrop } from "../../references/composer-file-drop.ts";
-import { attachComposerFiles } from "./composer-files.ts";
+import { takeFiles } from "./composer-files.ts";
 import type { ComposerFile } from "../../references/composer-file-drop.ts";
 import { ComposerFooter } from "./composer-footer.tsx";
-import { loadedPrompts, readPrompts, recallStep } from "./composer-history.ts";
-import type { PromptHistory, RecallDirection } from "./composer-history.ts";
-import { deliveryChoices, nextToSteer } from "./composer-keys.ts";
-import { deliver, deliverEdit, draftCommands } from "./composer-send.ts";
+import { loadedPrompts } from "./composer-history.ts";
+import { deliveryChoices, draftEmpty, nextToSteer } from "./composer-keys.ts";
+import { deliver, draftCommands } from "./composer-send.ts";
 import { planSubmission } from "./composer-plan.ts";
-import {
-  foldEdit,
-  leftDraft,
-  lostEdit,
-  openedEdit,
-  refusedDraft,
-  restoredDraft,
-  shownDraft,
-  typedDraft,
-  updateShown,
-} from "./composer-draft.ts";
-import type { ComposerNotice, QueuedEdit, SessionDraft } from "./composer-draft.ts";
+import { endedDraft, shownDraft } from "./composer-draft.ts";
+import type { ComposerNotice } from "./composer-draft.ts";
+import { saving } from "./composer-session.ts";
+import type { PendingRowAction } from "./composer-session.ts";
+import { composerSession } from "./composer-effects.ts";
 import { preferences, useSetting } from "../../preferences/index.ts";
 import { TaskMark } from "../../components/task-mark.tsx";
 import { workbenchViewKey } from "../../workbench/paths.ts";
@@ -75,14 +66,15 @@ function messageReceipt(sessionId: SessionId, message: UserMessage) {
   return connection().session(sessionId).receipt(asId<"receipt">(message.id));
 }
 
-const EDIT_ENDED_NOTICES = {
-  sent: "That message was already sent.",
-  missing: "That message is no longer queued.",
-  lapsed: "Couldn't keep the message on hold.",
-} satisfies Record<Awaited<HeldMessage["lost"]>["kind"], string>;
+function portalHost(): HTMLDivElement {
+  const host = document.createElement("div");
+  host.style.display = "contents";
 
-interface EditHold {
-  held: HeldMessage | undefined;
+  return host;
+}
+
+function error(message: string): ComposerNotice {
+  return { kind: "error", message, restore: null };
 }
 
 /**
@@ -91,7 +83,10 @@ interface EditHold {
  * composer reads it. `draft` is the store's value as the subscription last handed it over: a state
  * update shares a keystroke's commit with the editor's own updates, where `useSyncExternalStore`
  * would add a second commit per key. A notice other than a refusal is dropped once the composer is
- * gone, as it was when the composer held it.
+ * gone, as it was when the composer held it. Everything else the composer keeps (the edit's hold,
+ * a prompt walk, file reads, queue row actions) changes only through `stepSession`. The inline
+ * slot's callback ref is made once, in `useState`, so it stays one function whether or not the
+ * compiler memoizes this component: a new one each render would move the dock and blur the editor.
  */
 export function Composer({
   sessionId,
@@ -116,7 +111,7 @@ export function Composer({
   fileDropRoot?: HTMLElement | null;
   backgroundWork?: {
     readonly content: ReactNode;
-    readonly onEscape: () => boolean;
+    readonly tray: { readonly open: boolean; readonly close: () => void };
   };
   floatingMount?: HTMLDivElement | null;
   active?: boolean;
@@ -137,15 +132,26 @@ export function Composer({
 
   const [draft, setDraft] = useState(() => viewStore.readSession(sessionId).draft);
 
+  const [composer] = useState(() =>
+    composerSession({
+      sessionId,
+      drafts: viewStore,
+      revised: () => {
+        sessionActions.restore(sessionId);
+        transcript.end();
+      },
+    }),
+  );
+
+  const state = useSyncExternalStore(composer.subscribe, composer.read);
+  const dispatch = composer.dispatch;
   const shownView = shownDraft(draft);
   const attachments = shownView.attachments;
-  const [attachmentReads, setAttachmentReads] = useState(0);
-  const [attachmentError, setAttachmentError] = useState<string>();
   const feedback = draft.notice;
-  const [rowActions, setRowActions] = useState<ReadonlyMap<string, PendingRowAction>>(new Map());
   const liveRun = "run" in status ? status.run : undefined;
+  const mark = useChats((chats) => chats.get(sessionId)?.mark) ?? runMark(status);
   const target = draft.edit;
-  const [savingEdit, setSavingEdit] = useState(false);
+  const savingEdit = saving(state);
   const folder = useChatFolder();
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const mac = nyte.platform === "darwin";
@@ -154,49 +160,43 @@ export function Composer({
   const asked = useChatStopping(sessionId) === "asked";
   const stopping = (status.kind === "working" && status.stopping) || asked;
 
-  const staleSince = useWatchSelect(chatStore(sessionId), (state) =>
-    state.value?.freshness.kind === "stale" ? state.value.freshness.since : undefined,
+  const staleSince = useWatchSelect(chatStore(sessionId), (store) =>
+    store.value?.freshness.kind === "stale" ? store.value.freshness.since : undefined,
   );
-  const editorRef = useRef<ComposerEditorHandle | null>(null);
+
   const questions = useQuestionDock(sessionId);
   const pluginCatalog = usePluginCatalog(sessionId);
   const floating = floatingMount !== null;
-
-  const [portalHost] = useState(() => {
-    const element = document.createElement("div");
-    element.style.display = "contents";
-
-    return element;
-  });
-
+  const [portal] = useState(portalHost);
   const inlineSlot = useRef<HTMLDivElement | null>(null);
-  const focusAfterMove = useRef(false);
-  const cwd = folder?.path;
-  const activity = useSessionActivity(floating ? sessionId : undefined, cwd);
 
-  const attachInlineSlot = (slot: HTMLDivElement | null): void => {
+  const [attachInlineSlot] = useState(() => (slot: HTMLDivElement | null): void => {
     inlineSlot.current = slot;
 
     if (slot === null) {
-      portalHost.remove();
+      portal.remove();
 
       return;
     }
 
-    slot.append(portalHost);
-  };
+    slot.append(portal);
+  });
+
+  const focusAfterMove = useRef(false);
+  const cwd = folder?.path;
+  const activity = useSessionActivity(floating ? sessionId : undefined, cwd);
 
   // oxlint-disable-next-line nyte-code/no-direct-effect -- moves the portal host between DOM mounts before paint
   useLayoutEffect(() => {
     const destination = floatingMount ?? inlineSlot.current;
 
-    if (destination === null || portalHost.parentElement === destination) return;
-    destination.append(portalHost);
+    if (destination === null || portal.parentElement === destination) return;
+    destination.append(portal);
 
     if (!focusAfterMove.current) return;
     focusAfterMove.current = false;
-    editorRef.current?.focus({ preventScroll: true });
-  }, [floatingMount, portalHost]);
+    composer.editor()?.focus({ preventScroll: true });
+  }, [composer, floatingMount, portal]);
 
   const suggestionCatalog = composerSource(
     surface === "side-chat" && pluginCatalog.data !== undefined
@@ -212,171 +212,25 @@ export function Composer({
 
   const mentions = useMentionFiles(folder, true);
   const mentionFiles = composerSource(mentions.data, mentions.isError);
-  const pendingRecall = useRef<symbol | undefined>(undefined);
 
-  const storedDraft = (): SessionDraft => viewStore.readSession(sessionId).draft;
-
-  const updateDraft = (update: (current: SessionDraft) => SessionDraft): void => {
-    const before = shownDraft(storedDraft()).draft;
-
-    if (shownDraft(viewStore.updateDraft(sessionId, update)).draft !== before)
-      pendingRecall.current = undefined;
+  const notify = (notice: ComposerNotice | null): void => {
+    dispatch({ kind: "notice", notice });
   };
-
-  const updateViewState = (update: (current: ComposerViewState) => ComposerViewState): void =>
-    updateDraft((current) => updateShown(current, update));
-
-  const shown = useRef(false);
-
-  const setFeedback = (notice: ComposerNotice | null): void => {
-    if (!shown.current) return;
-    updateDraft((current) => ({ ...current, notice }));
-  };
-
-  const recalled = useRef<
-    | {
-        readonly position: number;
-        readonly draft: ComposerViewState;
-        readonly history: PromptHistory;
-      }
-    | undefined
-  >(undefined);
-
-  const step = (history: PromptHistory, direction: RecallDirection): boolean => {
-    pendingRecall.current = undefined;
-    const position = recallStep(history.prompts.length, recalled.current?.position, direction);
-
-    if (position === recalled.current?.position) return false;
-    const saved = recalled.current?.draft ?? shownDraft(storedDraft());
-    const prompt = position === undefined ? undefined : history.prompts[position];
-    recalled.current = position === undefined ? undefined : { position, draft: saved, history };
-    updateViewState((current) =>
-      prompt === undefined
-        ? {
-            ...current,
-            draft: saved.draft,
-            selectionStart: saved.selectionStart,
-            selectionEnd: saved.selectionEnd,
-          }
-        : { ...current, draft: prompt, selectionStart: prompt.length, selectionEnd: prompt.length },
-    );
-
-    return true;
-  };
-
-  const recall = (direction: RecallDirection): boolean => {
-    const walk = recalled.current;
-    const history = walk?.history ?? loadedPrompts(chatStore(sessionId).value);
-    const older = walk === undefined ? 0 : walk.position + 1;
-
-    if (direction === "newer" || older < history.prompts.length || history.before === null)
-      return step(history, direction);
-
-    if (pendingRecall.current !== undefined) return true;
-    const read = Symbol("recall");
-    pendingRecall.current = read;
-    void readPrompts(connection().session(sessionId), history, older + 1).then(
-      (more) => {
-        if (pendingRecall.current === read) step(more, direction);
-      },
-      (cause: unknown) => {
-        if (pendingRecall.current === read) pendingRecall.current = undefined;
-        setFeedback({
-          kind: "error",
-          message: `Couldn't read earlier prompts: ${errorMessage(cause)}`,
-          restore: null,
-        });
-      },
-    );
-
-    return true;
-  };
-
-  const editHold = useRef<EditHold | undefined>(undefined);
-  const removedSends = useRef(new Set<string>());
-
-  const takeHold = (): HeldMessage | undefined => {
-    const held = editHold.current?.held;
-    editHold.current = undefined;
-
-    return held;
-  };
-
-  const releaseHold = (): void => {
-    void takeHold()?.release();
-  };
-
-  const endEdit = (update: (current: SessionDraft) => SessionDraft): void => {
-    releaseHold();
-    setAttachmentError(undefined);
-    updateDraft(update);
-  };
-
-  const leaveEdit = (message: MessageId, notice: string): void => {
-    if (storedDraft().edit?.message.id !== message) return;
-    endEdit(lostEdit);
-    setFeedback({ kind: "error", message: notice, restore: null });
-  };
-
-  const startHold = (message: MessageId): void => {
-    releaseHold();
-
-    if (!shown.current) return;
-    const hold: EditHold = { held: undefined };
-    editHold.current = hold;
-
-    const lose = (notice: string): void => {
-      if (editHold.current !== hold) return;
-      editHold.current = undefined;
-      leaveEdit(message, notice);
-    };
-
-    connection()
-      .session(sessionId)
-      .hold(message)
-      .then(
-        (outcome) => {
-          if (outcome.kind !== "held") {
-            lose(EDIT_ENDED_NOTICES[outcome.kind]);
-
-            return;
-          }
-
-          if (editHold.current !== hold) {
-            void outcome.release();
-
-            return;
-          }
-
-          hold.held = outcome;
-          void outcome.lost.then((lost) => lose(EDIT_ENDED_NOTICES[lost.kind]));
-        },
-        (cause: unknown) => lose(`Couldn't hold the message: ${errorMessage(cause)}`),
-      );
-  };
-
-  const resumeHold = useEffectEvent(() => {
-    if (target !== null && !savingEdit) startHold(target.message.id);
-  });
 
   useMountEffect(() => {
-    shown.current = true;
     const show = (): void => setDraft(viewStore.readSession(sessionId).draft);
     const leave = viewStore.subscribeDraft(sessionId, show);
     show();
-    resumeHold();
+    dispatch({ kind: "shown" });
 
     return () => {
-      shown.current = false;
-      pendingRecall.current = undefined;
-      releaseHold();
       leave();
-      viewStore.updateDraft(sessionId, foldEdit);
+      dispatch({ kind: "closed" });
     };
   });
 
   const attachInput = (handle: ComposerEditorHandle | null) => {
-    editorRef.current = handle;
+    composer.attach(handle);
     inputRef?.(handle);
   };
 
@@ -385,34 +239,18 @@ export function Composer({
     signal?: AbortSignal,
   ): Promise<string | undefined> => {
     if (savingEdit) return "Finish editing the message, then attach the image again.";
-    setAttachmentReads((count) => count + 1);
 
-    return attachComposerFiles({ files, editor: editorRef.current })
-      .then((result) => {
-        signal?.throwIfAborted();
-
-        if (result.attachments.length > 0) {
-          updateViewState((current) => ({
-            ...current,
-            attachments: [...current.attachments, ...result.attachments],
-          }));
-        }
-
-        setAttachmentError(result.error);
-
-        return result.error;
-      })
-      .finally(() => setAttachmentReads((count) => count - 1));
+    return takeFiles({
+      files,
+      editor: composer.editor(),
+      signal,
+      step: (event) => dispatch({ kind: "intake", event }),
+      attach: (taken) => dispatch({ kind: "attached", attachments: taken }),
+    });
   };
 
-  const setRowAction = (change: string, action: PendingRowAction): void => {
-    setRowActions((current) => {
-      const shown = new Set<string>(pending.map((item) => item.id));
-      const next = new Map([...current].filter(([held]) => shown.has(held)));
-      next.set(change, action);
-
-      return next;
-    });
+  const setRowAction = (id: string, action: PendingRowAction | null): void => {
+    dispatch({ kind: "row", id, action, pending: pending.map((item) => item.id) });
   };
 
   const send = async (
@@ -420,133 +258,50 @@ export function Composer({
     delivery: Delivery,
     document: ComposerDocumentState,
   ): Promise<void> => {
-    if (attachmentReads !== 0) return;
-    pendingRecall.current = undefined;
+    if (state.intake.reads !== 0) return;
     const sentAttachments = attachments;
     const submittingTab = windowTabs.paneTabId();
     const receipt = asId<"receipt">(crypto.randomUUID());
+    const chat = steer?.session ?? sessionId;
 
     const plan = planSubmission({
       submission,
       attachments: sentAttachments,
-      commands: await draftCommands(steer?.session ?? sessionId, submission.text),
+      commands: await draftCommands(chat, submission.text),
       delivery,
     });
 
     if (plan.kind === "empty") return;
 
     if (plan.kind === "kept") {
-      setFeedback({ kind: "error", message: plan.message, restore: null });
+      notify(error(plan.message));
 
       return;
     }
 
-    const session = (await connected()).session(steer?.session ?? sessionId);
+    const live = await connected();
     windowTabs.dispatch({ kind: "keep-tab", tabId: submittingTab });
-    recalled.current = undefined;
-    updateDraft((current) => leftDraft(current, document, sentAttachments));
-    setAttachmentError(undefined);
-    setFeedback(null);
-    const outcome = await deliver(session, plan, receipt);
+    dispatch({ kind: "sent", document, attachments: sentAttachments });
+    const sending = await deliver(live, chat, plan, receipt);
 
-    switch (outcome.kind) {
-      case "refused":
-        if (removedSends.current.delete(receipt)) return;
-        updateDraft((current) =>
-          refusedDraft(current, outcome.message, {
-            text: document.text,
-            attachments: sentAttachments,
-          }),
-        );
+    void sending.ended.then((end) => {
+      viewStore.updateDraft(sessionId, (current) =>
+        endedDraft(current, end, { text: document.text, attachments: sentAttachments }),
+      );
 
-        return;
-      case "sent":
-        if (outcome.note !== undefined)
-          setFeedback({ kind: "command", message: outcome.note, restore: null });
-        sessionActions.restore(steer?.session ?? sessionId);
+      if (end.kind !== "sent") return;
 
-        if (steer === undefined) transcript.end();
+      if (end.note !== undefined) notify({ kind: "command", message: end.note, restore: null });
+      sessionActions.restore(chat);
 
-        return;
-      default: {
-        const _exhaustive: never = outcome;
-
-        return _exhaustive;
-      }
-    }
-  };
-
-  const saveEdit = async (
-    edit: QueuedEdit,
-    submission: ComposerSubmission,
-    delivery: Delivery,
-  ): Promise<void> => {
-    if (attachmentReads !== 0) return;
-    const session = connection().session(sessionId);
-    const held = takeHold();
-    setSavingEdit(true);
-
-    const saved = await deliverEdit({
-      sessionId,
-      submission,
-      attachments,
-      delivery,
-      message: edit.message,
-      revise: (content, options) =>
-        held !== undefined
-          ? held.save(content, options)
-          : session.revise(edit.message.id, content, options),
+      if (steer === undefined) transcript.end();
     });
-
-    if (held !== undefined) await held.release();
-
-    flushSync(() => {
-      setSavingEdit(false);
-
-      switch (saved.kind) {
-        case "empty":
-          startHold(edit.message.id);
-
-          return;
-        case "kept":
-        case "refused":
-          startHold(edit.message.id);
-          setFeedback({ kind: "error", message: saved.message, restore: null });
-
-          return;
-        case "revised":
-          endEdit((current) =>
-            current.edit?.message.id === edit.message.id ? { ...current, edit: null } : current,
-          );
-
-          return;
-        case "sent":
-        case "missing":
-          leaveEdit(edit.message.id, EDIT_ENDED_NOTICES[saved.kind]);
-
-          return;
-        default: {
-          const _exhaustive: never = saved;
-
-          return _exhaustive;
-        }
-      }
-    });
-    editorRef.current?.focus({ preventScroll: true });
-
-    if (saved.kind !== "revised") return;
-    sessionActions.restore(sessionId);
-    transcript.end();
   };
 
   const abort = (): void => {
     if (liveRun === undefined || stopping) return;
     stopChat(sessionId).catch((cause: unknown) =>
-      setFeedback({
-        kind: "error",
-        message: `Couldn't stop the response: ${errorMessage(cause)}`,
-        restore: null,
-      }),
+      notify(error(`Couldn't stop the response: ${errorMessage(cause)}`)),
     );
   };
 
@@ -571,9 +326,7 @@ export function Composer({
         (outcome) => {
           switch (outcome.kind) {
             case "revised":
-              setRowActions(
-                (current) => new Map([...current].filter(([shown]) => shown !== item.id)),
-              );
+              setRowAction(item.id, null);
 
               return;
             case "sent":
@@ -595,15 +348,16 @@ export function Composer({
   };
 
   const nextQueued = nextToSteer(pending);
-  const nextQueuedAction = nextQueued === undefined ? undefined : rowActions.get(nextQueued.id);
+  const nextQueuedAction = nextQueued === undefined ? undefined : state.rows.get(nextQueued.id);
 
   const nextIdleQueued =
     nextQueuedAction === undefined || nextQueuedAction.kind === "failed" ? nextQueued : undefined;
 
-  const emptyDraft = shownView.draft === "" && attachments.length === 0;
-
   const emptyEnterSteers =
-    questions === undefined && target === null && emptyDraft && nextIdleQueued !== undefined;
+    questions === undefined &&
+    target === null &&
+    draftEmpty(shownView.draft, attachments.length) &&
+    nextIdleQueued !== undefined;
 
   const canBeginEdit = questions === undefined && target === null;
 
@@ -612,38 +366,21 @@ export function Composer({
       ? "Finish editing the queued message first."
       : undefined;
 
-  const beginEdit = (item: UserMessage): void => {
-    if (!canBeginEdit || item.source.kind === "action") return;
-    updateDraft((current) => openedEdit(current, item));
-    startHold(item.id);
-    setAttachmentError(undefined);
-    editorRef.current?.focus();
-  };
-
   const removeOutboxRow = (row: UserMessage): void => {
-    removedSends.current.add(row.id);
     messageReceipt(sessionId, row)
       .stop()
-      .catch((cause: unknown) => {
-        setFeedback({
-          kind: "error",
-          message: `Couldn't remove the message: ${errorMessage(cause)}`,
-          restore: null,
-        });
-      });
+      .catch((cause: unknown) =>
+        notify(error(`Couldn't remove the message: ${errorMessage(cause)}`)),
+      );
   };
 
   const resendOutboxRow = (row: UserMessage): void => {
-    resendMessage(sessionId, row.id).catch((cause: unknown) => {
-      setFeedback({
-        kind: "error",
-        message: `Couldn't send the message: ${errorMessage(cause)}`,
-        restore: null,
-      });
-    });
+    resendMessage(sessionId, row.id).catch((cause: unknown) =>
+      notify(error(`Couldn't send the message: ${errorMessage(cause)}`)),
+    );
   };
 
-  const returnToEditor = (): void => editorRef.current?.focus({ preventScroll: true });
+  const returnToEditor = (): void => composer.editor()?.focus({ preventScroll: true });
 
   const dock = (
     <div ref={attachTranscriptDock} {...props(composerStyles.dock)}>
@@ -674,7 +411,7 @@ export function Composer({
                   />
                   <span {...props(composerStyles.queuedText)}>{feedback.message}</span>
                   {feedback.restore !== null && (
-                    <Button variant="text" onClick={() => updateDraft(restoredDraft)}>
+                    <Button variant="text" onClick={() => dispatch({ kind: "restored" })}>
                       Restore Draft
                     </Button>
                   )}
@@ -682,7 +419,7 @@ export function Composer({
                     iconOnly
                     icon="x"
                     aria-label="Dismiss notification"
-                    onClick={() => setFeedback(null)}
+                    onClick={() => notify(null)}
                   />
                 </div>
               )}
@@ -714,18 +451,20 @@ export function Composer({
                 pending={pending}
                 unsent={unsent}
                 expired={expired}
-                rowActions={rowActions}
+                rowActions={state.rows}
                 editingId={target === null ? undefined : target.message.id}
                 canEdit={canBeginEdit}
                 editBlocked={queuedEditReason}
                 enterSteers={emptyEnterSteers}
                 mac={mac}
-                onEdit={beginEdit}
+                onEdit={(message) =>
+                  dispatch({ kind: "edit", message, asking: questions !== undefined })
+                }
                 onSteer={steerPending}
                 onCancel={cancelPending}
                 onRemoveUnsent={removeOutboxRow}
                 onResend={resendOutboxRow}
-                onEditBlocked={(message) => setFeedback({ kind: "status", message, restore: null })}
+                onEditBlocked={(message) => notify({ kind: "status", message, restore: null })}
                 onReturn={returnToEditor}
               />
             </div>
@@ -735,11 +474,9 @@ export function Composer({
                 <>
                   {liveRun !== undefined && (
                     <span {...props(text.base, composerStyles.floatingStatus)}>
-                      <TaskMark state={runMark(status)} />
+                      <TaskMark state={mark} />
                       <span {...props(composerStyles.floatingStatusText, markerStyles.shimmer)}>
-                        {status.kind === "waiting-for-approval"
-                          ? taskLabel(runMark(status))
-                          : (activity ?? PLANNING_LABEL)}
+                        {mark === "waiting" ? taskLabel(mark) : (activity ?? PLANNING_LABEL)}
                       </span>
                     </span>
                   )}
@@ -776,13 +513,12 @@ export function Composer({
                 return;
               }
 
-              if (document.text !== shownDraft(storedDraft()).draft) recalled.current = undefined;
-              updateDraft((current) => typedDraft(current, document));
+              dispatch({ kind: "typed", document });
             }}
             onSubmit={
               questions === undefined
                 ? target !== null
-                  ? (submission, delivery) => saveEdit(target, submission, delivery)
+                  ? composer.save
                   : send
                 : async (_submission, _delivery, document) => {
                     await questions.advance(document);
@@ -796,21 +532,26 @@ export function Composer({
             answering={questions !== undefined}
             stopping={stopping}
             onAbort={abort}
-            onDismissTray={
+            tray={
               questions === undefined
-                ? backgroundWork?.onEscape
-                : () => {
-                    void questions.dismiss();
-
-                    return true;
-                  }
+                ? backgroundWork?.tray
+                : { open: true, close: () => void questions.dismiss() }
             }
             onSteerQueued={
               questions === undefined && nextIdleQueued !== undefined
                 ? () => steerPending(nextIdleQueued)
                 : undefined
             }
-            onRecall={questions === undefined && target === null ? recall : undefined}
+            onRecall={
+              questions === undefined && target === null
+                ? (direction) =>
+                    dispatch({
+                      kind: "recall",
+                      direction,
+                      loaded: loadedPrompts(chatStore(sessionId).value),
+                    })
+                : undefined
+            }
             completeCommand={(name, prefix) =>
               connection().session(sessionId).completeCommand(name, prefix)
             }
@@ -822,16 +563,10 @@ export function Composer({
             mentionFiles={questions === undefined ? mentionFiles : { status: "ready", data: [] }}
             hasConversationContext
             attachments={questions === undefined ? attachments : []}
-            attachmentBusy={questions === undefined && attachmentReads !== 0}
-            attachmentError={questions === undefined ? attachmentError : undefined}
+            attachmentBusy={questions === undefined && state.intake.reads !== 0}
+            attachmentError={questions === undefined ? state.intake.error : undefined}
             onFilesSelected={questions === undefined ? addFiles : undefined}
-            onAttachmentRemove={(id) => {
-              updateViewState((current) => ({
-                ...current,
-                attachments: current.attachments.filter((attachment) => attachment.id !== id),
-              }));
-              setAttachmentError(undefined);
-            }}
+            onAttachmentRemove={(id) => dispatch({ kind: "detached", id })}
             model={
               questions === undefined ? (
                 <SessionModelChip
@@ -848,7 +583,7 @@ export function Composer({
                 : {
                     kind: "queued",
                     delivery: target.message.delivery,
-                    onCancel: () => endEdit((current) => ({ ...current, edit: null })),
+                    onCancel: () => dispatch({ kind: "edit-cancelled" }),
                   }
             }
           />
@@ -863,7 +598,7 @@ export function Composer({
   return (
     <>
       <div ref={attachInlineSlot} {...props(composerStyles.portalSlot)} />
-      {createPortal(dock, portalHost)}
+      {createPortal(dock, portal)}
       {fileDropRoot !== undefined && fileDropRoot !== null && (
         <FileDrop element={fileDropRoot} onFiles={(files) => void addFiles(files)} />
       )}

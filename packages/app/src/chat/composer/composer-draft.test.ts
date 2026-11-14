@@ -3,6 +3,7 @@ import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { asId } from "@nyte-ai/schema";
 import type { ComposerImageAttachment, ComposerViewState } from "../../panes/session-view-state.ts";
 import {
+  endedDraft,
   foldEdit,
   leftDraft,
   lostEdit,
@@ -99,11 +100,23 @@ const ROWS: readonly {
     },
   },
   {
-    name: "an open edit shows over the person's text and is kept on top of it",
+    name: "a changed edit shows over the person's text and is kept on top of it",
+    result: draft("mine", { edit: "Then lint." }),
+    expected: {
+      shown: "Then lint.",
+      kept: "Then lint.\nmine",
+      composer: "mine",
+      images: "",
+      editing: true,
+      notice: null,
+    },
+  },
+  {
+    name: "an unchanged edit shows, and only the person's text is kept",
     result: draft("mine", { edit: "Then run the tests." }),
     expected: {
       shown: "Then run the tests.",
-      kept: "Then run the tests.\nmine",
+      kept: "mine",
       composer: "mine",
       images: "",
       editing: true,
@@ -163,7 +176,7 @@ const ROWS: readonly {
     result: openedEdit(draft("mine", { notice: REFUSED }), QUEUED),
     expected: {
       shown: "Then run the tests.",
-      kept: "Then run the tests.\nmine",
+      kept: "mine",
       composer: "mine",
       images: "",
       editing: true,
@@ -195,12 +208,24 @@ const ROWS: readonly {
     },
   },
   {
-    name: "closing the composer folds even an unchanged edit, and drops a notice with nothing to restore",
+    name: "closing the composer leaves an unchanged edit out of the draft, and drops a notice with nothing to restore",
     result: foldEdit(draft("mine", { edit: "Then run the tests.", notice: ERROR })),
     expected: {
-      shown: "Then run the tests.\nmine",
-      kept: "Then run the tests.\nmine",
-      composer: "Then run the tests.\nmine",
+      shown: "mine",
+      kept: "mine",
+      composer: "mine",
+      images: "",
+      editing: false,
+      notice: null,
+    },
+  },
+  {
+    name: "closing the composer folds a changed edit into the draft",
+    result: foldEdit(draft("mine", { edit: "Then lint." })),
+    expected: {
+      shown: "Then lint.\nmine",
+      kept: "Then lint.\nmine",
+      composer: "Then lint.\nmine",
       images: "",
       editing: false,
       notice: null,
@@ -271,7 +296,7 @@ const ROWS: readonly {
     }),
     expected: {
       shown: "Then run the tests.",
-      kept: "Then run the tests.\nhello",
+      kept: "hello",
       composer: "hello",
       images: "",
       editing: true,
@@ -286,11 +311,44 @@ const ROWS: readonly {
     }),
     expected: {
       shown: "Then run the tests.",
-      kept: "Then run the tests.\nmine",
+      kept: "mine",
       composer: "mine",
       images: "",
       editing: true,
       notice: 'error: Refused. [restore "hello"]',
+    },
+  },
+  {
+    name: "a send the journal still holds leaves an empty draft empty",
+    result: endedDraft(draft(""), { kind: "unsent" }, { text: "hello", attachments: [] }),
+    expected: { shown: "", kept: "", composer: "", images: "", editing: false, notice: null },
+  },
+  {
+    name: "a send whose unsent row was removed leaves the draft alone",
+    result: endedDraft(draft("next"), { kind: "removed" }, { text: "hello", attachments: [] }),
+    expected: {
+      shown: "next",
+      kept: "next",
+      composer: "next",
+      images: "",
+      editing: false,
+      notice: null,
+    },
+  },
+  {
+    name: "a refused send gives its text back",
+    result: endedDraft(
+      draft(""),
+      { kind: "refused", message: "Refused." },
+      { text: "hello", attachments: [] },
+    ),
+    expected: {
+      shown: "hello",
+      kept: "hello",
+      composer: "hello",
+      images: "",
+      editing: false,
+      notice: "error: Refused.",
     },
   },
   {

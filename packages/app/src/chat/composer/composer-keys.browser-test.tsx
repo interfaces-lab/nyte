@@ -172,22 +172,20 @@ async function recallPrompts(editor: HTMLElement): Promise<void> {
 }
 
 async function editRecalledPrompt(editor: HTMLElement): Promise<void> {
+  const reads = (text: string) =>
+    until(() => (editor.innerText === text ? true : null), `the composer to read "${text}"`);
+
   press(editor, "ArrowUp", { ctrlKey: true, altKey: true });
-  await until(
-    () => (editor.innerText === PROMPTS[2] ? true : null),
-    `the composer to read "${PROMPTS[2]}"`,
-  );
+  await reads(PROMPTS[2]);
   document.execCommand("insertText", false, " Edited.");
   const edited = `${PROMPTS[2]} Edited.`;
-  await until(() => (editor.innerText === edited ? true : null), "the edited prompt");
+  await reads(edited);
+  press(editor, "ArrowUp", { ctrlKey: true, altKey: true });
+  await reads(PROMPTS[1]);
   press(editor, "ArrowDown", { ctrlKey: true, altKey: true });
-  await new Promise<void>((resolve) => window.setTimeout(resolve, 100));
-
-  if (editor.innerText !== edited)
-    throw new Error(`stepping newer replaced the edited prompt with "${editor.innerText}"`);
-  document.execCommand("selectAll");
-  document.execCommand("insertText", false, DRAFT);
-  await until(() => (editor.innerText === DRAFT ? true : null), "the draft to come back");
+  await reads(edited);
+  press(editor, "ArrowDown", { ctrlKey: true, altKey: true });
+  await reads(DRAFT);
 }
 
 async function typeWhileRecalling(editor: HTMLElement): Promise<void> {

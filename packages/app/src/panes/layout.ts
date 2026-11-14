@@ -18,17 +18,11 @@ export interface PaneTab<Content extends TabContent> {
   readonly content: Content;
 }
 
-export type PaneTabs<Content extends TabContent> = readonly [
-  PaneTab<Content>,
-  ...PaneTab<Content>[],
-];
-
+/** A pane shows one tab; new content opened into it replaces the tab, so it mounts afresh. */
 export interface Pane<Content extends TabContent> {
   readonly kind: "pane";
   readonly id: PaneId;
-  readonly tabs: PaneTabs<Content>;
-  readonly active: PaneTabId;
-  readonly hidden: boolean;
+  readonly tab: PaneTab<Content>;
 }
 
 /** A weight shared with the split's other weighted children, or a fixed width in pixels. */
@@ -57,19 +51,16 @@ export type LayoutNode<Content extends TabContent> = Pane<Content> | Split<Conte
 export interface Layout<Content extends TabContent> {
   readonly root: LayoutNode<Content>;
   readonly focus: readonly [PaneId, ...PaneId[]];
-  readonly zoomed: PaneId | null;
 }
 
 export type TabPlace =
   | { readonly kind: "focused" }
-  | { readonly kind: "pane"; readonly pane: PaneId; readonly index: number }
   | {
       readonly kind: "edge";
       readonly pane: PaneId;
       readonly direction: SplitDirection;
       readonly side: "before" | "after";
-    }
-  | { readonly kind: "for"; readonly tabKind: string };
+    };
 
 export type LayoutAction<Content extends TabContent> =
   | { readonly kind: "open"; readonly content: Content; readonly place: TabPlace }
@@ -77,15 +68,11 @@ export type LayoutAction<Content extends TabContent> =
   | { readonly kind: "activate"; readonly tab: PaneTabId }
   | { readonly kind: "close"; readonly tab: PaneTabId }
   | { readonly kind: "set-content"; readonly tab: PaneTabId; readonly content: Content }
-  | { readonly kind: "split"; readonly pane: PaneId; readonly direction: SplitDirection }
   | { readonly kind: "resize"; readonly split: SplitId; readonly sizes: readonly PaneSize[] }
-  | { readonly kind: "focus"; readonly pane: PaneId }
-  | { readonly kind: "zoom"; readonly pane: PaneId | null }
-  | { readonly kind: "toggle-hidden"; readonly pane: PaneId };
+  | { readonly kind: "focus"; readonly pane: PaneId };
 
 export interface LayoutRules<Content extends TabContent> {
   readonly identify: (content: Content) => string | undefined;
-  readonly replaceable: (content: Content) => boolean;
   readonly newId: () => string;
 }
 
@@ -101,7 +88,7 @@ export function createLayout<Content extends TabContent>(
 ): Layout<Content> {
   const pane = newPane(content, rules);
 
-  return { root: pane, focus: [pane.id], zoomed: null };
+  return { root: pane, focus: [pane.id] };
 }
 
 export function layoutPanes<Content extends TabContent>(
@@ -121,29 +108,19 @@ export function focusedPane<Content extends TabContent>(layout: Layout<Content>)
   return findPane(layout, layout.focus[0]) ?? firstPane(layout.root);
 }
 
-export function activeTab<Content extends TabContent>(pane: Pane<Content>): PaneTab<Content> {
-  return pane.tabs.find((tab) => tab.id === pane.active) ?? pane.tabs[0];
-}
-
 export function paneOfTab<Content extends TabContent>(
   layout: Layout<Content>,
   tab: PaneTabId,
 ): Pane<Content> | undefined {
-  return layoutPanes(layout.root).find((pane) => pane.tabs.some((entry) => entry.id === tab));
+  return layoutPanes(layout.root).find((pane) => pane.tab.id === tab);
 }
 
+/** Whether the layout shows the tab, as every pane shows its one tab. */
 export function tabShown<Content extends TabContent>(
   layout: Layout<Content>,
   tab: PaneTabId,
 ): boolean {
-  const pane = paneOfTab(layout, tab);
-
-  return (
-    pane !== undefined &&
-    !pane.hidden &&
-    pane.active === tab &&
-    (layout.zoomed === null || layout.zoomed === pane.id)
-  );
+  return paneOfTab(layout, tab) !== undefined;
 }
 
 export function reduceLayout<Content extends TabContent>(
@@ -162,16 +139,10 @@ export function reduceLayout<Content extends TabContent>(
       return close(layout, action.tab);
     case "set-content":
       return setContent(layout, action.tab, action.content);
-    case "split":
-      return split(layout, action.pane, action.direction, rules);
     case "resize":
       return resize(layout, action.split, action.sizes);
     case "focus":
       return focus(layout, action.pane);
-    case "zoom":
-      return zoom(layout, action.pane);
-    case "toggle-hidden":
-      return toggleHidden(layout, action.pane);
     default: {
       const _exhaustive: never = action;
 
@@ -191,16 +162,11 @@ function open<Content extends TabContent>(
   const existing =
     identity === undefined
       ? undefined
-      : layoutPanes(layout.root)
-          .flatMap((pane) => pane.tabs)
-          .find((tab) => rules.identify(tab.content) === identity);
+      : layoutPanes(layout.root).find((pane) => rules.identify(pane.tab.content) === identity);
 
-  if (existing !== undefined) return activateTab(layout, existing.id);
-  const tab = { id: asId<"pane-tab">(rules.newId()), content };
+  if (existing !== undefined) return focus(layout, existing.id);
 
-  return place.kind === "pane"
-    ? insertTab(layout, tab, place.pane, place.index)
-    : placeTab(layout, tab, place, rules);
+  return placeTab(layout, { id: asId<"pane-tab">(rules.newId()), content }, place, rules);
 }
 
 function move<Content extends TabContent>(
@@ -210,29 +176,12 @@ function move<Content extends TabContent>(
   rules: LayoutRules<Content>,
 ): Layout<Content> {
   const source = paneOfTab(layout, tabId);
-  const tab = source?.tabs.find((entry) => entry.id === tabId);
 
-  if (source === undefined || tab === undefined) return layout;
-
-  if (place.kind === "pane" && place.pane === source.id) {
-    const others = source.tabs.filter((entry) => entry.id !== tabId);
-    const tabs = insertAt(others, place.index, tab);
-    const same = tabs.every((entry, at) => entry === source.tabs[at]);
-
-    return same
-      ? focusAndActivate(layout, source.id, tabId)
-      : focusAndActivate(replacePane(layout, { ...source, tabs }), source.id, tabId);
-  }
-
-  if (source.tabs.length === 1 && targetPane(place) === source.id) return layout;
+  if (source === undefined || targetPane(place) === source.id) return layout;
   const without = removeTab(layout, tabId);
 
   if (without === undefined) return layout;
-
-  const moved =
-    place.kind === "pane"
-      ? insertTab(without, tab, place.pane, place.index)
-      : placeTab(without, tab, place, rules);
+  const moved = placeTab(without, source.tab, place, rules);
 
   return moved === without ? layout : moved;
 }
@@ -241,7 +190,9 @@ function activate<Content extends TabContent>(
   layout: Layout<Content>,
   tabId: PaneTabId,
 ): Layout<Content> {
-  return paneOfTab(layout, tabId) === undefined ? layout : activateTab(layout, tabId);
+  const pane = paneOfTab(layout, tabId);
+
+  return pane === undefined ? layout : focus(layout, pane.id);
 }
 
 function close<Content extends TabContent>(
@@ -257,31 +208,11 @@ function setContent<Content extends TabContent>(
   content: Content,
 ): Layout<Content> {
   const pane = paneOfTab(layout, tabId);
-  const current = pane?.tabs.find((tab) => tab.id === tabId);
 
-  if (
-    pane === undefined ||
-    current === undefined ||
-    current.content === content ||
-    current.content.kind !== content.kind
-  )
+  if (pane === undefined || pane.tab.content === content || pane.tab.content.kind !== content.kind)
     return layout;
-  const tabs = mapTabs(pane.tabs, (tab) => (tab.id === tabId ? { id: tab.id, content } : tab));
 
-  return replacePane(layout, { ...pane, tabs });
-}
-
-function split<Content extends TabContent>(
-  layout: Layout<Content>,
-  paneId: PaneId,
-  direction: SplitDirection,
-  rules: LayoutRules<Content>,
-): Layout<Content> {
-  const pane = findPane(layout, paneId);
-
-  if (pane === undefined || pane.tabs.length < 2) return layout;
-
-  return move(layout, pane.active, { kind: "edge", pane: paneId, direction, side: "after" }, rules);
+  return replacePane(layout, { ...pane, tab: { id: tabId, content } });
 }
 
 function resize<Content extends TabContent>(
@@ -316,110 +247,33 @@ function focus<Content extends TabContent>(
   layout: Layout<Content>,
   paneId: PaneId,
 ): Layout<Content> {
-  const pane = findPane(layout, paneId);
-
-  if (pane === undefined || pane.hidden || layout.focus[0] === paneId) return layout;
+  if (findPane(layout, paneId) === undefined || layout.focus[0] === paneId) return layout;
 
   return { ...layout, focus: [paneId, ...layout.focus.filter((id) => id !== paneId)] };
 }
 
-function zoom<Content extends TabContent>(
-  layout: Layout<Content>,
-  paneId: PaneId | null,
-): Layout<Content> {
-  if (paneId === layout.zoomed) return layout;
-
-  if (paneId === null) return { ...layout, zoomed: null };
-  const pane = findPane(layout, paneId);
-
-  if (pane === undefined || pane.hidden) return layout;
-
-  return { ...focus(layout, paneId), zoomed: paneId };
-}
-
-function toggleHidden<Content extends TabContent>(
-  layout: Layout<Content>,
-  paneId: PaneId,
-): Layout<Content> {
-  const pane = findPane(layout, paneId);
-
-  if (pane === undefined) return layout;
-
-  if (pane.hidden) return focus(replacePane(layout, { ...pane, hidden: false }), paneId);
-
-  const visible = layoutPanes(layout.root).filter((entry) => !entry.hidden);
-
-  if (visible.length < 2) return layout;
-  const hidden = replacePane(layout, { ...pane, hidden: true });
-  const next = layout.focus.find((id) => id !== paneId && visible.some((entry) => entry.id === id));
-  const focused = next === undefined ? hidden : focus(hidden, next);
-
-  return focused.zoomed === paneId ? { ...focused, zoomed: null } : focused;
-}
-
+/** A tab opened into a pane replaces the one it showed. */
 function placeTab<Content extends TabContent>(
   layout: Layout<Content>,
   tab: PaneTab<Content>,
-  place: Exclude<TabPlace, { readonly kind: "pane" }>,
+  place: TabPlace,
   rules: LayoutRules<Content>,
 ): Layout<Content> {
   switch (place.kind) {
-    case "focused":
-      return intoPane(layout, tab, focusedPane(layout), rules);
-    case "edge":
-      return besidePane(layout, tab, place.pane, place.direction, place.side, rules);
-    case "for": {
-      const holder = layout.focus
-        .map((id) => findPane(layout, id))
-        .find((pane) => pane?.tabs.some((entry) => entry.content.kind === place.tabKind));
+    case "focused": {
+      const pane = focusedPane(layout);
 
-      if (holder !== undefined) return intoPane(layout, tab, holder, rules);
-      const beside = besidePane(layout, tab, focusedPane(layout).id, "right", "after", rules);
-
-      return beside === layout ? intoPane(layout, tab, focusedPane(layout), rules) : beside;
+      return focus(replacePane(layout, { ...pane, tab }), pane.id);
     }
 
+    case "edge":
+      return besidePane(layout, tab, place.pane, place.direction, place.side, rules);
     default: {
       const _exhaustive: never = place;
 
       return _exhaustive;
     }
   }
-}
-
-function intoPane<Content extends TabContent>(
-  layout: Layout<Content>,
-  tab: PaneTab<Content>,
-  pane: Pane<Content>,
-  rules: LayoutRules<Content>,
-): Layout<Content> {
-  const replaced = pane.tabs.find(
-    (entry) => entry.content.kind === tab.content.kind && rules.replaceable(entry.content),
-  );
-
-  if (replaced !== undefined) {
-    const tabs = mapTabs(pane.tabs, (entry) => (entry === replaced ? tab : entry));
-
-    return focusAndActivate(replacePane(layout, { ...pane, tabs }), pane.id, tab.id);
-  }
-
-  const after = pane.tabs.findIndex((entry) => entry.id === pane.active) + 1;
-
-  return insertTab(layout, tab, pane.id, after);
-}
-
-function insertTab<Content extends TabContent>(
-  layout: Layout<Content>,
-  tab: PaneTab<Content>,
-  paneId: PaneId,
-  index: number,
-): Layout<Content> {
-  const pane = findPane(layout, paneId);
-
-  if (pane === undefined) return layout;
-  const next = replacePane(layout, { ...pane, tabs: insertAt(pane.tabs, index, tab) });
-
-  return focusAndActivate(next, pane.id, tab.id);
 }
 
 function besidePane<Content extends TabContent>(
@@ -433,13 +287,7 @@ function besidePane<Content extends TabContent>(
   if (layoutPanes(layout.root).length >= MAX_PANES || findPane(layout, target) === undefined)
     return layout;
 
-  const pane: Pane<Content> = {
-    kind: "pane",
-    id: asId<"pane">(rules.newId()),
-    tabs: [tab],
-    active: tab.id,
-    hidden: false,
-  };
+  const pane: Pane<Content> = { kind: "pane", id: asId<"pane">(rules.newId()), tab };
 
   const root = insertBeside(layout.root, target, pane, direction, side, rules);
 
@@ -513,23 +361,9 @@ function removeTab<Content extends TabContent>(
   const pane = paneOfTab(layout, tabId);
 
   if (pane === undefined) return undefined;
-  const index = pane.tabs.findIndex((tab) => tab.id === tabId);
-  const rest = pane.tabs.filter((tab) => tab.id !== tabId);
-  const first = rest[0];
-
-  if (first !== undefined) {
-    const neighbour = rest[index] ?? rest[index - 1] ?? first;
-    const tabs: PaneTabs<Content> = [first, ...rest.slice(1)];
-    const active = pane.active === tabId ? neighbour.id : pane.active;
-
-    return replacePane(layout, { ...pane, tabs, active });
-  }
-
   const root = removePane(layout.root, pane.id);
 
-  if (root === undefined) return undefined;
-
-  return normalizeLayout({ ...layout, root });
+  return root === undefined ? undefined : normalizeLayout({ ...layout, root });
 }
 
 function removePane<Content extends TabContent>(
@@ -574,32 +408,6 @@ function flatten<Content extends TabContent>(
         : entry,
     );
   });
-}
-
-function activateTab<Content extends TabContent>(
-  layout: Layout<Content>,
-  tabId: PaneTabId,
-): Layout<Content> {
-  const pane = paneOfTab(layout, tabId);
-
-  return pane === undefined ? layout : focusAndActivate(layout, pane.id, tabId);
-}
-
-function focusAndActivate<Content extends TabContent>(
-  layout: Layout<Content>,
-  paneId: PaneId,
-  tabId: PaneTabId,
-): Layout<Content> {
-  const pane = findPane(layout, paneId);
-
-  if (pane === undefined) return layout;
-
-  const shown =
-    pane.active === tabId && !pane.hidden
-      ? layout
-      : replacePane(layout, { ...pane, active: tabId, hidden: false });
-
-  return focus(shown, paneId);
 }
 
 function replacePane<Content extends TabContent>(
@@ -655,16 +463,9 @@ export function normalizeLayout<Content extends TabContent>(
   const known = layout.focus.filter((id) => panes.some((pane) => pane.id === id));
   const missing = panes.filter((pane) => !known.includes(pane.id)).map((pane) => pane.id);
   const ordered = [...known, ...missing];
-  const lead = ordered.find((id) => panes.some((pane) => pane.id === id && !pane.hidden));
-  const head = lead ?? firstPane(layout.root).id;
-  const focusOrder: Layout<Content>["focus"] = [head, ...ordered.filter((id) => id !== head)];
+  const head = ordered[0] ?? firstPane(layout.root).id;
 
-  const zoomed =
-    layout.zoomed !== null && panes.some((pane) => pane.id === layout.zoomed)
-      ? layout.zoomed
-      : null;
-
-  return { root: layout.root, focus: focusOrder, zoomed };
+  return { root: layout.root, focus: [head, ...ordered.filter((id) => id !== head)] };
 }
 
 function firstPane<Content extends TabContent>(node: LayoutNode<Content>): Pane<Content> {
@@ -677,36 +478,11 @@ function newPane<Content extends TabContent>(
 ): Pane<Content> {
   const tab = { id: asId<"pane-tab">(rules.newId()), content };
 
-  return {
-    kind: "pane",
-    id: asId<"pane">(rules.newId()),
-    tabs: [tab],
-    active: tab.id,
-    hidden: false,
-  };
+  return { kind: "pane", id: asId<"pane">(rules.newId()), tab };
 }
 
 function targetPane(place: TabPlace): PaneId | undefined {
-  return place.kind === "pane" || place.kind === "edge" ? place.pane : undefined;
-}
-
-function mapTabs<Content extends TabContent>(
-  tabs: PaneTabs<Content>,
-  update: (tab: PaneTab<Content>) => PaneTab<Content>,
-): PaneTabs<Content> {
-  return [update(tabs[0]), ...tabs.slice(1).map(update)];
-}
-
-function insertAt<Content extends TabContent>(
-  tabs: readonly PaneTab<Content>[],
-  index: number,
-  tab: PaneTab<Content>,
-): PaneTabs<Content> {
-  const at = Math.max(0, Math.min(index, tabs.length));
-  const before = tabs.slice(0, at);
-  const head = before[0];
-
-  return head === undefined ? [tab, ...tabs] : [head, ...before.slice(1), tab, ...tabs.slice(at)];
+  return place.kind === "edge" ? place.pane : undefined;
 }
 
 function atLeastTwo<Content extends TabContent>(

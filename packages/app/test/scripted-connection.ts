@@ -44,6 +44,8 @@ export interface ConnectionScript {
   readonly children?: ReadonlyMap<SessionId, readonly SessionInfo[]>;
   readonly workspaces?: readonly WorkspaceInfo[];
   readonly session?: (id: SessionId) => Partial<Session>;
+  /** The chat's `send`; by default it holds the message at once and delivers it through the session's `send`. */
+  readonly send?: (id: SessionId) => Chat["send"];
   readonly host?: ViewStream<HostView>;
   readonly health?: ViewStream<Health>;
   readonly models?: Partial<ModelsApi>;
@@ -345,8 +347,11 @@ export function scriptedConnection(script: ConnectionScript = {}): {
     retry: () => undefined,
     call: refuse,
     head: (id, head) => headStore(views(id), head),
-    chat: (id, options) =>
-      scriptedChat(headStore(views(id), options?.head ?? MAIN), session(id), health),
+    chat: (id, options) => {
+      const chat = scriptedChat(headStore(views(id), options?.head ?? MAIN), session(id), health);
+
+      return script.send === undefined ? chat : { ...chat, send: script.send(id) };
+    },
     part: (id, part) => partStore(views(id), part),
     text: () => () => undefined,
     clients: () => ({
@@ -439,7 +444,16 @@ function scriptedChat(store: HeadStore, handle: Session, health: LiveSource<Heal
       };
     },
     snapshot,
-    send: (content, options) => handle.send(content, options),
+    async send(content, options) {
+      const id = options?.id ?? asId<"receipt">(crypto.randomUUID());
+
+      return {
+        id,
+        delivered: handle
+          .send(content, { ...options, id })
+          .then((receipt) => ({ kind: "sent", receipt })),
+      };
+    },
     resend: async () => undefined,
     async remove(message) {
       await handle.receipt(asId<"receipt">(message)).stop();

@@ -41,8 +41,6 @@ export const sessionScreenStyles = create({
     containerType: "size",
   },
   layoutTab: { position: "absolute", display: "flex", minWidth: 0, minHeight: 0, overflow: "clip" },
-  layoutTabHidden: { contentVisibility: "hidden" },
-  layoutTabZoomed: { zIndex: 1 },
   pane: {
     position: "relative",
     display: "flex",

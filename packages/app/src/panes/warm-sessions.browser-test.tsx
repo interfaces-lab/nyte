@@ -127,7 +127,8 @@ installScripted(
 );
 
 async function moveTip(session: SessionId, tip: number): Promise<void> {
-  const moved = chatStore(session).next();
+  const shown = chatStore(session).getState().value;
+  const moved = chatStore(session).until((value) => value !== shown);
   streams.get(session)?.push(view(session));
   listed.push(
     (listed.latest() ?? []).map((row) =>

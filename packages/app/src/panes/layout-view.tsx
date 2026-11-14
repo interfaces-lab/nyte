@@ -2,12 +2,12 @@ import { props } from "@stylexjs/stylex";
 import { useState, useSyncExternalStore } from "react";
 import type { PointerEvent, ReactElement, ReactNode } from "react";
 import { sessionScreenStyles } from "./session-screen.stylex.ts";
-import { layoutPanes, reduceLayout, sizeWeight, tabShown } from "./layout.ts";
+import { layoutPanes, reduceLayout, sizeWeight } from "./layout.ts";
 import type { Layout, LayoutNode, PaneSize, Split } from "./layout.ts";
 import type { LayoutStore } from "./layout-store.ts";
 import { boxStyle, layoutGeometry } from "./pane-geometry.ts";
 import type { Box, Geometry, Linear, Separator } from "./pane-geometry.ts";
-import { paneMount, paneRules } from "./pane-kinds.ts";
+import { paneRules } from "./pane-kinds.ts";
 import type { PaneContent } from "./pane-kinds.ts";
 import { MIN_PANE_SIZE } from "./pane-layout.ts";
 import type { PaneTabInput } from "./pane-views.tsx";
@@ -45,27 +45,24 @@ export function LayoutView({
     return () => observer.disconnect();
   };
 
-  const tabs = layoutPanes(layout.root).flatMap((pane) =>
-    pane.tabs.flatMap((tab) => {
-      const box = geometry.panes.get(pane.id);
+  const tabs = layoutPanes(layout.root).flatMap((pane) => {
+    const box = geometry.panes.get(pane.id);
 
-      return box === undefined ||
-        (paneMount(tab.content) === "while-active" && tab.id !== pane.active)
-        ? []
-        : [
-            {
-              box,
-              input: {
-                pane: pane.id,
-                tab: tab.id,
-                content: tab.content,
-                visible: tabShown(layout, tab.id),
-                focused: layout.focus[0] === pane.id,
-              },
+    return box === undefined
+      ? []
+      : [
+          {
+            box,
+            input: {
+              pane: pane.id,
+              tab: pane.tab.id,
+              content: pane.tab.content,
+              visible: true,
+              focused: layout.focus[0] === pane.id,
             },
-          ];
-    }),
-  );
+          },
+        ];
+  });
 
   return (
     <div ref={observe} {...props(sessionScreenStyles.layout)}>
@@ -75,21 +72,19 @@ export function LayoutView({
           store={store}
           input={entry.input}
           box={entry.box}
-          zoomed={layout.zoomed === entry.input.pane}
           renderTab={renderTab}
         />
       ))}
-      {layout.zoomed === null &&
-        geometry.separators.map((separator) => (
-          <LayoutSeparator
-            key={separatorKey(separator)}
-            store={store}
-            layout={layout}
-            geometry={geometry}
-            separator={separator}
-            frame={frame}
-          />
-        ))}
+      {geometry.separators.map((separator) => (
+        <LayoutSeparator
+          key={separatorKey(separator)}
+          store={store}
+          layout={layout}
+          geometry={geometry}
+          separator={separator}
+          frame={frame}
+        />
+      ))}
       {children}
     </div>
   );
@@ -99,17 +94,14 @@ function LayoutTab({
   store,
   input,
   box,
-  zoomed,
   renderTab,
 }: {
   readonly store: LayoutStore;
   readonly input: PaneTabInput;
   readonly box: Box;
-  readonly zoomed: boolean;
   readonly renderTab: RenderTab;
 }): ReactElement {
   const pane = input.pane;
-  const visible = input.visible;
 
   const activate = (): boolean => {
     if (store.getSnapshot().focus[0] === pane) return false;
@@ -122,12 +114,7 @@ function LayoutTab({
     <div
       data-nyte-pane-id={pane}
       data-nyte-pane-tab={input.tab}
-      inert={visible ? undefined : true}
-      {...props(
-        sessionScreenStyles.layoutTab,
-        !visible && sessionScreenStyles.layoutTabHidden,
-        zoomed && sessionScreenStyles.layoutTabZoomed,
-      )}
+      {...props(sessionScreenStyles.layoutTab)}
       style={boxStyle(box, PANE_GAP)}
       onPointerDown={() => {
         if (activate()) store.requestFocus(pane);
@@ -398,16 +385,12 @@ function separatorValue(
   frame: Frame | undefined,
 ): SeparatorValue {
   const split = findSplit(layout.root, separator.split);
+  const weights = (split?.children ?? []).reduce((sum, child) => sum + sizeWeight(child.size), 0);
 
-  const shown = split?.children.filter(
-    (child) => !(child.node.kind === "pane" && child.node.hidden),
+  const leading = (split?.children.slice(0, separator.index + 1) ?? []).reduce(
+    (sum, child) => sum + sizeWeight(child.size),
+    0,
   );
-
-  const weights = (shown ?? []).reduce((sum, child) => sum + sizeWeight(child.size), 0);
-
-  const leading = (split?.children.slice(0, separator.index + 1) ?? [])
-    .filter((child) => shown?.includes(child) === true)
-    .reduce((sum, child) => sum + sizeWeight(child.size), 0);
 
   const now = weights === 0 ? 50 : Math.round((leading / weights) * 100);
   const measured = frame === undefined ? undefined : measure(layout, separator, geometry, frame);
@@ -442,16 +425,14 @@ function nodeSpan(
   size: number,
   gap: number,
 ): Span | undefined {
-  const edges = layoutPanes(node)
-    .filter((pane) => !pane.hidden)
-    .flatMap((pane) => {
-      const box = geometry.panes.get(pane.id);
+  const edges = layoutPanes(node).flatMap((pane) => {
+    const box = geometry.panes.get(pane.id);
 
-      if (box === undefined) return [];
-      const start = resolve(across ? box.x : box.y, size, gap);
+    if (box === undefined) return [];
+    const start = resolve(across ? box.x : box.y, size, gap);
 
-      return [{ start, end: start + resolve(across ? box.width : box.height, size, gap) }];
-    });
+    return [{ start, end: start + resolve(across ? box.width : box.height, size, gap) }];
+  });
 
   if (edges.length === 0) return undefined;
   const start = Math.min(...edges.map((edge) => edge.start));

@@ -104,11 +104,11 @@ const ROWS: readonly Row[] = [
     seen: { shows: "agent/a", chosen: ["a"] },
   },
   {
-    name: "a draft for an unlisted request is ignored but kept",
-    asks: [OWN],
-    drafts: [draft("gone", "x")],
+    name: "a draft for a request no longer listed is ignored, and dropped by the next step",
+    asks: [OWN, ask("agent", "a")],
+    drafts: [draft("gone", "x"), draft("agent", "a")],
     events: [{ kind: "select", label: "Yes" }],
-    seen: { shows: "own/q", chosen: ["Yes"], outcomes: ["kept"], drafts: ["gone/x", "own/q"] },
+    seen: { shows: "agent/a", chosen: ["Yes"], outcomes: ["kept"], drafts: ["agent/a"] },
   },
   {
     name: "single select, then reselect",

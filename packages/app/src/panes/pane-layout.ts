@@ -1,7 +1,7 @@
 import type { SessionId } from "@nyte-ai/sdk";
 import { Type } from "typebox";
 import { sessionId } from "../data/schemas.ts";
-import { activeTab, focusedPane, layoutPanes, MAX_PANES } from "./layout.ts";
+import { focusedPane, layoutPanes, MAX_PANES } from "./layout.ts";
 import type { Layout, LayoutAction, Pane, PaneId, PaneTabId } from "./layout.ts";
 import type { PaneContent } from "./pane-kinds.ts";
 
@@ -34,7 +34,7 @@ export function chatContent(selection: PaneSelection): PaneContent<"chat"> {
 }
 
 export function shownChat(pane: Pane<PaneContent>): ChatPane | undefined {
-  const tab = activeTab(pane);
+  const tab = pane.tab;
 
   return tab.content.kind === "chat"
     ? { pane: pane.id, tab: tab.id, selection: tab.content.fields.selection }
@@ -58,9 +58,7 @@ export function findSessionTab(
   id: SessionId,
 ): { readonly pane: PaneId; readonly tab: PaneTabId } | undefined {
   return layoutPanes(layout.root)
-    .flatMap((pane) =>
-      pane.tabs.map((tab) => ({ pane: pane.id, tab: tab.id, content: tab.content })),
-    )
+    .map((pane) => ({ pane: pane.id, tab: pane.tab.id, content: pane.tab.content }))
     .find(
       (entry) =>
         entry.content.kind === "chat" &&

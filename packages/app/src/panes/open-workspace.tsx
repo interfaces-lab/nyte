@@ -8,6 +8,7 @@ import type { ReactElement } from "react";
 import type { Activation } from "@nyte-ai/sdk";
 import { Button } from "@nyte-ai/ui/button";
 import { keys, queryClient } from "../data/query-client.ts";
+import { commitHostWorkspace } from "../data/workspaces.ts";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { nyte } from "../contract/nyte.ts";
 import type { HostBridge, OpenWorkspaceOutcome } from "../contract/bridge.ts";
@@ -59,6 +60,10 @@ function setPrompt(next: TrustPrompt | undefined): void {
   for (const listener of listeners) listener();
 }
 
+/**
+ * Shows what opening a folder came to, once the bridge answers: an opened folder becomes the
+ * window's workspace, asking for trust when it needs it, and a failure says why.
+ */
 export function handleOpenOutcome(outcome: OpenWorkspaceOutcome): void {
   switch (outcome.kind) {
     case "failed":
@@ -73,6 +78,8 @@ export function handleOpenOutcome(outcome: OpenWorkspaceOutcome): void {
 
       return;
     case "opened":
+      commitHostWorkspace(outcome.workspace);
+      void queryClient.invalidateQueries({ queryKey: keys.workspaces, exact: true });
       toast.close("workspace-open");
       setPrompt(outcome.needsTrust ? { path: outcome.workspace.path } : undefined);
 
@@ -144,17 +151,12 @@ function grantTrust(
 ): Promise<boolean> {
   setPrompt(undefined);
 
-  return trust({ path: prompt.path })
-    .catch((cause: unknown): OpenWorkspaceOutcome => ({
-      kind: "failed",
-      message: cause instanceof Error ? cause.message : String(cause),
-    }))
-    .then((outcome) => {
-      handleOpenOutcome(outcome);
-      void queryClient.invalidateQueries({ queryKey: keys.workspaces });
+  return trust({ path: prompt.path }).then((outcome) => {
+    handleOpenOutcome(outcome);
+    void queryClient.invalidateQueries({ queryKey: keys.workspaces });
 
-      return outcome.kind !== "failed";
-    });
+    return outcome.kind !== "failed";
+  });
 }
 
 export function folderPicker(): (() => void) | undefined {

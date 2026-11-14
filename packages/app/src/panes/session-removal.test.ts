@@ -14,8 +14,8 @@ test("Undo restores both archived panes and their original focus", () => {
   runPane(controller, { kind: "split", direction: "right" });
   selectSession(controller, second);
   runPane(controller, { kind: "focus", pane: PRIMARY });
-  const restoreFirst = controller.window.hide(controller.tabId, first);
-  const restoreSecond = controller.window.hide(controller.tabId, second);
+  const restoreFirst = controller.window.hide(first);
+  const restoreSecond = controller.window.hide(second);
   assert.equal(paneForSession(paneLayout(controller), first), undefined);
   assert.equal(paneForSession(paneLayout(controller), second), undefined);
   assert.equal(restoreSecond(), true);
@@ -31,14 +31,14 @@ test("Undo restores both archived panes and their original focus", () => {
 test("Undo never replaces a newer chat or a new draft", () => {
   const controller = tabPanes();
   selectSession(controller, first);
-  const restore = controller.window.hide(controller.tabId, first);
+  const restore = controller.window.hide(first);
   selectSession(controller, second);
   assert.equal(restore(), false);
   assert.deepEqual(activeSelection(paneLayout(controller)), {
     kind: "session",
     sessionId: second,
   });
-  const restoreSecond = controller.window.hide(controller.tabId, second);
+  const restoreSecond = controller.window.hide(second);
   controller.viewState.writeBlank(PRIMARY, {
     ...controller.viewState.readBlank(PRIMARY),
     composer: {
@@ -57,7 +57,7 @@ test("archiving a background pane does not move focus away from the active chat"
   selectSession(controller, first);
   runPane(controller, { kind: "split", direction: "right" });
   selectSession(controller, second);
-  const restore = controller.window.hide(controller.tabId, first);
+  const restore = controller.window.hide(first);
   assert.deepEqual(activeSelection(paneLayout(controller)), {
     kind: "session",
     sessionId: second,

@@ -58,6 +58,33 @@ export const keys = {
   mermaid: (source: string) => ["mermaid", source] as const,
 };
 
+/**
+ * The first key segment of every read the host answers, here once rather than at each query: a
+ * host read heals when the link opens again (`linkReopened`) and is dropped when a connection to
+ * another host replaces this one. The rest are the window's, the desktop's, or caches seeded at
+ * startup.
+ */
+const HOST_READS: ReadonlySet<unknown> = new Set([
+  "workspaces",
+  "catalog",
+  "account-limits",
+  "model-accounts",
+  "github",
+  "github-account",
+  "session",
+  "git",
+  "files",
+  "documents",
+  "blob",
+  "canvas-revision",
+  "part-view",
+  "command-completion",
+]);
+
+export function readsHost(query: { readonly queryKey: QueryKey }): boolean {
+  return HOST_READS.has(query.queryKey[0]);
+}
+
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {

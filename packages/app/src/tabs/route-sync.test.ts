@@ -4,8 +4,9 @@ import type { SessionId } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import { activeTab, initialWindow, reduce } from "./model.ts";
 import type { Place, Tab, WindowAction, WindowState } from "./model.ts";
-import { adoptLocation, followFolder, routeFor } from "./route-sync.ts";
-import type { FolderFollow } from "./route-sync.ts";
+import type { SelectedWorkspace } from "../contract/bridge.ts";
+import { adoptLocation, followFolder, restoredFolder, routeFor } from "./route-sync.ts";
+import type { FolderFollow, ShownFolder } from "./route-sync.ts";
 
 let lastId = 0;
 
@@ -215,4 +216,70 @@ test("follow: switching A, B, then A again leaves A as the folder wanted last", 
 
   expect(steps.asked).toEqual(["/a", "/b", "/a"]);
   expect(steps.follow.wanted).toBe("/a");
+});
+
+const folderA: SelectedWorkspace = { id: asId("wa"), path: "/a", name: "a" };
+
+const picked: SelectedWorkspace = { id: asId("wp"), path: "/picked", name: "picked" };
+
+const finder: SelectedWorkspace = { id: asId("wf"), path: "/finder", name: "finder" };
+
+const nothing: ShownFolder = { workspace: undefined, chosen: false };
+
+const remembered: ShownFolder = { workspace: folderA, chosen: false };
+
+test.each<{
+  readonly name: string;
+  readonly asked: ShownFolder;
+  readonly now: ShownFolder;
+  readonly restored: SelectedWorkspace | undefined;
+  readonly shown: { readonly workspace: SelectedWorkspace | undefined } | undefined;
+}>([
+  {
+    name: "a window showing nothing shows the chat's folder",
+    asked: nothing,
+    now: nothing,
+    restored: folderA,
+    shown: { workspace: folderA },
+  },
+  {
+    name: "a folder remembered from the last launch gives way to the host's answer, even none",
+    asked: remembered,
+    now: remembered,
+    restored: undefined,
+    shown: { workspace: undefined },
+  },
+  {
+    name: "a window Finder opened keeps its folder",
+    asked: { workspace: finder, chosen: true },
+    now: { workspace: finder, chosen: true },
+    restored: folderA,
+    shown: undefined,
+  },
+  {
+    name: "a folder picked while the host answered stays",
+    asked: nothing,
+    now: { workspace: picked, chosen: true },
+    restored: folderA,
+    shown: undefined,
+  },
+  {
+    name: "Home chosen over a remembered folder while the host answered stays",
+    asked: remembered,
+    now: { workspace: undefined, chosen: false },
+    restored: folderA,
+    shown: undefined,
+  },
+])("restore: $name", (row) => {
+  expect(restoredFolder(row.asked, row.now, row.restored)).toEqual(row.shown);
+});
+
+test("launch: the host skips an untrusted folder the window remembered, then following the chat opens it", () => {
+  const restored = restoredFolder(remembered, remembered, undefined);
+  const followed = followFolder(START, chatTab, folder);
+
+  expect([restored, followed.step]).toEqual([
+    { workspace: undefined },
+    { kind: "activate", folder: "/a" },
+  ]);
 });

@@ -2,7 +2,14 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 import { openApprovals } from "@nyte-ai/plugin/approvals/schema";
 import { openQuestions } from "@nyte-ai/plugin/question/schema";
-import type { BackgroundItem, Execution, PartView, SessionId, SessionView } from "@nyte-ai/sdk";
+import type {
+  ActOutcome,
+  BackgroundItem,
+  Execution,
+  PartView,
+  SessionId,
+  SessionView,
+} from "@nyte-ai/sdk";
 import type { RunView } from "@nyte-ai/schema";
 import { asId, asSeq } from "@nyte-ai/schema";
 import { waitingWalk } from "../../chats/waiting-walk.ts";
@@ -10,7 +17,7 @@ import { chatStore } from "../../data/chat-store.ts";
 import { installScripted, scriptedConnection } from "../../../test/scripted-connection.ts";
 import type { ViewStream } from "../../../test/scripted-connection.ts";
 import { USAGE } from "../../../test/view-fixtures.ts";
-import { openAsks } from "./asks.ts";
+import { openAsks, requireAnswered } from "./asks.ts";
 
 const RUN: RunView = {
   id: asId<"run">("run"),
@@ -143,7 +150,7 @@ const ROWS: readonly Row[] = [
     asks: ["b/qb1 from B", "b/qb2 from B", "a/qa from A"],
   },
   {
-    name: "a grandchild under a child that waits on it; the child's own open question is left out",
+    name: "a grandchild under a child that waits on it, after the child's own open question",
     open: "questions",
     chats: {
       root: { execution: onChild("child"), below: [{ name: "child", title: "Child" }] },
@@ -154,10 +161,10 @@ const ROWS: readonly Row[] = [
       },
       grand: { parts: [question("q")], execution: onPart("q") },
     },
-    asks: ["grand/q from Grand"],
+    asks: ["child/mine from Child", "grand/q from Grand"],
   },
   {
-    name: "only waiting child chats are walked",
+    name: "a working child's ask is walked too, and a job never is",
     open: "questions",
     chats: {
       root: {
@@ -169,6 +176,15 @@ const ROWS: readonly Row[] = [
       },
       working: { parts: [question("q")], execution: onPart("q") },
       job: { parts: [question("q")], execution: onPart("q") },
+    },
+    asks: ["working/q from Working"],
+  },
+  {
+    name: "a child that ended isn't walked",
+    open: "questions",
+    chats: {
+      root: { execution: LIVE, below: [{ name: "done", title: "Done", state: "done" }] },
+      done: { parts: [question("q")], execution: onPart("q") },
     },
     asks: [],
   },
@@ -183,7 +199,7 @@ const ROWS: readonly Row[] = [
     loaded: ["child/q from Child"],
   },
   {
-    name: "a late question stays on its own chat but drops from its parent once the child's run goes on",
+    name: "a late question stays on its own chat and on its parent's tray once the child's run goes on",
     open: "questions",
     chats: {
       root: {
@@ -197,7 +213,7 @@ const ROWS: readonly Row[] = [
       waiting: { parts: [late("q")], execution: LIVE },
       working: { parts: [late("q")], execution: LIVE },
     },
-    asks: ["root/own late"],
+    asks: ["root/own late", "waiting/q late from Waiting", "working/q late from Working"],
   },
   {
     name: "stopped and answered questions are absent, and so is another kind of ask",
@@ -357,4 +373,50 @@ test("a chat's open asks are its own, then each waiting descendant's in walk ord
     leave();
     assert.notEqual(waitingWalk(root), walk, `${row.name}: the walk ends with its last listener`);
   }
+});
+
+test.each<{
+  readonly ask: "approval" | "question" | "secret";
+  readonly outcome: ActOutcome<unknown>;
+  readonly said: string | undefined;
+}>([
+  { ask: "approval", outcome: { kind: "ok", output: null }, said: undefined },
+  {
+    ask: "approval",
+    outcome: { kind: "rejected", reason: "Already answered." },
+    said: "Already answered.",
+  },
+  { ask: "approval", outcome: { kind: "closed" }, said: "This request is no longer waiting." },
+  {
+    ask: "approval",
+    outcome: { kind: "no-owner" },
+    said: "This host can't answer tool approvals.",
+  },
+  { ask: "question", outcome: { kind: "closed" }, said: "This question is no longer waiting." },
+  {
+    ask: "question",
+    outcome: { kind: "no-owner" },
+    said: "This host cannot answer these questions yet.",
+  },
+  {
+    ask: "question",
+    outcome: { kind: "unknown-action" },
+    said: "Question answers are unavailable on this host.",
+  },
+  { ask: "secret", outcome: { kind: "closed" }, said: "This request is no longer waiting." },
+  {
+    ask: "secret",
+    outcome: { kind: "unknown-action" },
+    said: "This host can't take secrets from a chat.",
+  },
+  {
+    ask: "secret",
+    outcome: { kind: "failed", message: "Keychain locked." },
+    said: "Keychain locked.",
+  },
+])("an answer to a $ask that comes back $outcome.kind says so", (row) => {
+  const answer = (): void => requireAnswered(row.outcome, row.ask);
+
+  if (row.said === undefined) assert.doesNotThrow(answer);
+  else assert.throws(answer, { message: row.said });
 });

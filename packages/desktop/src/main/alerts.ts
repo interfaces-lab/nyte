@@ -29,7 +29,10 @@ export class Alerts {
   constructor(settings: () => DesktopSettings, windows: AlertWindows) {
     this.#settings = settings;
     this.#windows = windows;
-    app.on("browser-window-focus", () => this.#stopBounce());
+    app.on("browser-window-focus", (_event, window) => {
+      this.#stopBounce();
+      this.#step({ kind: "focused", window: window.webContents.id });
+    });
   }
 
   /** Alerts only reach someone who is away: while any Nyte window is focused, the sidebar already shows it. */

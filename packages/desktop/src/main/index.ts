@@ -35,6 +35,7 @@ import {
   WINDOW_ID_ARGUMENT,
   WINDOW_OPEN_ARGUMENT,
   WINDOW_PAINTED_CHANNEL,
+  WINDOW_WORKSPACE_CHANNEL,
   WINDOW_ZOOM_CHANNEL,
 } from "../shared/ipc.ts";
 import type { CallHandler, CallRequest, CallTable, MainCallPath } from "../shared/ipc.ts";
@@ -95,7 +96,9 @@ import {
   themePreference,
   unsavedEditsHeld,
   viewedChat,
+  windowWorkspacePath,
 } from "../shared/ipc-inputs.ts";
+import { createWindowWorkspaces } from "../shared/window-workspace.ts";
 
 interface NyteWindow {
   readonly window: BrowserWindow;
@@ -247,9 +250,12 @@ const unsavedEdits = createUnsavedEdits((options, id) => {
     : dialog.showMessageBoxSync(window, options);
 });
 
+const windowWorkspaces = createWindowWorkspaces();
+
 const openWith = createOpenWith({
   host: startedHost,
   windows: () => [...windows.keys()],
+  workspace: (window) => windowWorkspaces.workspace(window),
   send: (window, path) => windows.get(window)?.menuCommands.dispatch({ kind: "open-file", path }),
   open: (opening) => createWindow(undefined, opening),
   failed: (path, message) => dialog.showErrorBox(`Couldn't open ${basename(path)}`, message),
@@ -548,6 +554,12 @@ function registerIpc(): void {
     if (unsavedEditsHeld.Check(held)) unsavedEdits.report(event.sender.id, held);
   });
 
+  ipcMain.on(WINDOW_WORKSPACE_CHANNEL, (event, path) => {
+    senderWindow(event);
+
+    if (windowWorkspacePath.Check(path)) windowWorkspaces.shown(event.sender.id, path ?? undefined);
+  });
+
   ipcMain.on(BROWSER_FOCUS_CHANNEL, (event, message) => {
     senderWindow(event);
 
@@ -587,8 +599,8 @@ function onScreen(bounds: Electron.Rectangle): boolean {
 const FIRST_FRAME_LIMIT_MS = 4_000;
 
 /**
- * A window Finder opened shows what it opened, not the last chat a launch returns to, and its
- * workspace is seeded before it loads, so every load of it shows the folder.
+ * A window Finder opened shows what it opened, not the last chat a launch returns to, and every
+ * load of it starts on the folder.
  */
 function createWindow(windowId: string = randomUUID(), opening?: DesktopWindowOpen): NyteWindow {
   const frame = openingFrame({
@@ -658,10 +670,10 @@ function createWindow(windowId: string = randomUUID(), opening?: DesktopWindowOp
 
   const windowEnded = (end: WindowEnd): void => {
     if (end === "closed") browserSurfaces.releaseWindow(id);
-    desktopHost?.windowEnded(id, end);
+    windowWorkspaces.windowEnded(id, end);
     alerts.windowEnded(id, end);
     unsavedEdits.windowEnded(id);
-    entry.menuCommands.windowEnded(end);
+    entry.menuCommands.windowEnded();
   };
 
   created.webContents.on("render-process-gone", () => windowEnded("crashed"));
@@ -705,7 +717,7 @@ function createWindow(windowId: string = randomUUID(), opening?: DesktopWindowOp
     if (url !== created.webContents.getURL()) event.preventDefault();
   });
 
-  if (opening?.workspace !== undefined) desktopHost?.seedWorkspace(id, opening.workspace);
+  windowWorkspaces.opened(id, opening?.workspace?.path);
   void created.loadURL(rendererUrl);
 
   created.on("close", (event) => {

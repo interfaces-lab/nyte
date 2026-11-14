@@ -1,4 +1,4 @@
-import type { PartView, SessionId, SessionView } from "@nyte-ai/sdk";
+import type { ActOutcome, PartView, SessionId, SessionView } from "@nyte-ai/sdk";
 import type { WaitingChat } from "../../chats/index.ts";
 
 export interface Ask<T> {
@@ -20,11 +20,53 @@ export function openAsks<T>(
       origin: undefined,
     })),
     ...waiting.flatMap((entry) =>
-      open(entry.view).map((request) => ({
+      open(entry).map((request) => ({
         sessionId: entry.id,
         request,
         origin: { title: entry.title, sessionId: entry.id },
       })),
     ),
   ];
+}
+
+/** What a person reads when an answer to an ask didn't land, by ask and by the host's outcome. */
+const ASK_WORDS = {
+  approval: {
+    closed: "This request is no longer waiting.",
+    "no-owner": "This host can't answer tool approvals.",
+    "unknown-action": "This host can't answer tool approvals.",
+  },
+  question: {
+    closed: "This question is no longer waiting.",
+    "no-owner": "This host cannot answer these questions yet.",
+    "unknown-action": "Question answers are unavailable on this host.",
+  },
+  secret: {
+    closed: "This request is no longer waiting.",
+    "no-owner": "This host can't take secrets from a chat.",
+    "unknown-action": "This host can't take secrets from a chat.",
+  },
+} as const satisfies Readonly<
+  Record<string, Readonly<Record<"closed" | "no-owner" | "unknown-action", string>>>
+>;
+
+/** Returns once the host took the answer; otherwise throws the reason in the person's words. */
+export function requireAnswered(outcome: ActOutcome<unknown>, ask: keyof typeof ASK_WORDS): void {
+  switch (outcome.kind) {
+    case "ok":
+      return;
+    case "rejected":
+      throw new Error(outcome.reason);
+    case "failed":
+      throw new Error(outcome.message);
+    case "closed":
+    case "no-owner":
+    case "unknown-action":
+      throw new Error(ASK_WORDS[ask][outcome.kind]);
+    default: {
+      const exhaustive: never = outcome;
+
+      return exhaustive;
+    }
+  }
 }

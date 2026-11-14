@@ -28,10 +28,10 @@ function describe(state: Layout<Note> | undefined): string {
 
   const node = (entry: LayoutNode<Note>): string =>
     entry.kind === "pane"
-      ? `${entry.hidden ? "~" : ""}${entry.id}[${entry.tabs.map((tab) => `${tab.content.text}${tab.id === entry.active ? "*" : ""}`).join(",")}]`
+      ? `${entry.id}[${entry.tab.content.text}]`
       : `${entry.direction}(${entry.children.map((child) => `${node(child.node)} ${typeof child.size === "number" ? String(child.size) : `${String(child.size.px)}px`}`).join(", ")})`;
 
-  return `${node(state.root)} focus ${state.focus.join(",")}${state.zoomed === null ? "" : ` zoom ${state.zoomed}`}`;
+  return `${node(state.root)} focus ${state.focus.join(",")}`;
 }
 
 const note = (id: string, text: string, kind = "note", fields: unknown = { text }) => ({
@@ -62,7 +62,7 @@ const row = (...children: readonly unknown[]) => ({
 
 test.each<{ readonly name: string; readonly stored: StoredLayout; readonly expected: string }>([
   {
-    name: "a saved layout comes back as it was",
+    name: "a saved layout comes back with each pane's active tab; hidden and zoomed marks drop",
     stored: {
       root: row(
         pane("A", [note("a1", "one"), note("a2", "two")], "a2"),
@@ -71,7 +71,7 @@ test.each<{ readonly name: string; readonly stored: StoredLayout; readonly expec
       focus: ["A", "E"],
       zoomed: "A",
     },
-    expected: "right(A[one,two*] 1, ~E[tree*] 1) focus A,E zoom A",
+    expected: "right(A[two] 1, E[tree] 1) focus A,E",
   },
   {
     name: "a tab of a kind this build doesn't know drops alone",
@@ -80,7 +80,7 @@ test.each<{ readonly name: string; readonly stored: StoredLayout; readonly expec
       focus: ["A"],
       zoomed: null,
     },
-    expected: "A[one*] focus A",
+    expected: "A[one] focus A",
   },
   {
     name: "a tab whose fields its kind rejects drops alone",
@@ -89,7 +89,7 @@ test.each<{ readonly name: string; readonly stored: StoredLayout; readonly expec
       focus: ["A"],
       zoomed: null,
     },
-    expected: "A[two*] focus A",
+    expected: "A[two] focus A",
   },
   {
     name: "a pane left with no tabs drops, and its split gives way to the sibling",
@@ -98,7 +98,7 @@ test.each<{ readonly name: string; readonly stored: StoredLayout; readonly expec
       focus: ["B", "A"],
       zoomed: "B",
     },
-    expected: "A[one*] focus A",
+    expected: "A[one] focus A",
   },
   {
     name: "an active tab that dropped hands over to the pane's first tab",
@@ -107,7 +107,7 @@ test.each<{ readonly name: string; readonly stored: StoredLayout; readonly expec
       focus: ["A"],
       zoomed: null,
     },
-    expected: "A[one*] focus A",
+    expected: "A[one] focus A",
   },
   {
     name: "sizes saved as a share or in pixels come back as a weight or px",
@@ -125,7 +125,7 @@ test.each<{ readonly name: string; readonly stored: StoredLayout; readonly expec
       focus: ["A", "B", "C"],
       zoomed: null,
     },
-    expected: "right(A[one*] 240px, B[two*] 2, C[three*] 300px) focus A,B,C",
+    expected: "right(A[one] 240px, B[two] 2, C[three] 300px) focus A,B,C",
   },
   {
     name: "a pane the focus list forgot joins it last",
@@ -134,7 +134,7 @@ test.each<{ readonly name: string; readonly stored: StoredLayout; readonly expec
       focus: ["B"],
       zoomed: null,
     },
-    expected: "right(A[one*] 1, B[two*] 1) focus B,A",
+    expected: "right(A[one] 1, B[two] 1) focus B,A",
   },
   {
     name: "two panes with one id make the layout corrupt",
@@ -159,14 +159,11 @@ test.each<{ readonly name: string; readonly stored: StoredLayout; readonly expec
   expect(describe(restoreLayout(row.stored, restore))).toBe(row.expected);
 });
 
-test("a tab its kind doesn't save is left out, and a pane with nothing saved drops on restore", () => {
+test("a pane saves its tab in the stored shape saved windows have, and a pane with nothing saved drops on restore", () => {
   const tab = (id: string, kind: Note["kind"], text: string) => ({
     id: asId<"pane-tab">(id),
     content: { kind, text },
   });
-
-  const one = tab("a1", "note", "one");
-  const draft = tab("b1", "scratch", "draft");
 
   const layout: Layout<Note> = {
     root: {
@@ -174,35 +171,24 @@ test("a tab its kind doesn't save is left out, and a pane with nothing saved dro
       id: asId<"split">("row"),
       direction: "right",
       children: [
+        { node: { kind: "pane", id: asId<"pane">("A"), tab: tab("a1", "note", "one") }, size: 1 },
         {
-          node: {
-            kind: "pane",
-            id: asId<"pane">("A"),
-            tabs: [one, tab("a2", "scratch", "x")],
-            active: one.id,
-            hidden: false,
-          },
-          size: 1,
-        },
-        {
-          node: {
-            kind: "pane",
-            id: asId<"pane">("B"),
-            tabs: [draft],
-            active: draft.id,
-            hidden: false,
-          },
+          node: { kind: "pane", id: asId<"pane">("B"), tab: tab("b1", "scratch", "draft") },
           size: 1,
         },
       ],
     },
     focus: [asId<"pane">("B"), asId<"pane">("A")],
-    zoomed: null,
   };
 
   const written: unknown = JSON.parse(JSON.stringify(persistLayout(layout, persist)));
 
+  expect(written).toEqual({
+    root: row(pane("A", [note("a1", "one")]), { ...pane("B", []), active: "b1" }),
+    focus: ["B", "A"],
+    zoomed: null,
+  });
   expect(describe(restoreLayout(Value.Parse(storedLayoutSchema, written), restore))).toBe(
-    "A[one*] focus A",
+    "A[one] focus A",
   );
 });

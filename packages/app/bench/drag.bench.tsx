@@ -104,20 +104,14 @@ export async function run(): Promise<string> {
 }
 
 function rowLayout(panes: readonly PaneId[]): Layout<PaneContent> {
-  const children = panes.map((pane, index): SplitChild<PaneContent> => {
-    const tab = asId<"pane-tab">(`t${String(index)}`);
-
-    return {
-      node: {
-        kind: "pane",
-        id: pane,
-        tabs: [{ id: tab, content: chatContent({ kind: "blank" }) }],
-        active: tab,
-        hidden: false,
-      },
-      size: 1,
-    };
-  });
+  const children = panes.map((pane, index): SplitChild<PaneContent> => ({
+    node: {
+      kind: "pane",
+      id: pane,
+      tab: { id: asId<"pane-tab">(`t${String(index)}`), content: chatContent({ kind: "blank" }) },
+    },
+    size: 1,
+  }));
   const first = children[0];
   const second = children[1];
   const focused = panes[0];
@@ -133,6 +127,5 @@ function rowLayout(panes: readonly PaneId[]): Layout<PaneContent> {
       children: [first, second, ...children.slice(2)],
     },
     focus: [focused],
-    zoomed: null,
   };
 }

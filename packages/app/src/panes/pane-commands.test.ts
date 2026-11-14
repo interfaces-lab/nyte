@@ -2,7 +2,7 @@ import type { ClientRect } from "@dnd-kit/core";
 import { expect, test } from "vitest";
 import { asId } from "@nyte-ai/schema";
 import { paneLayout, PRIMARY, runPane, selectSession, tabPanes } from "../../test/panes.ts";
-import { activeTab, layoutPanes } from "./layout.ts";
+import { layoutPanes } from "./layout.ts";
 import type { Layout, LayoutNode, PaneId } from "./layout.ts";
 import { dropTarget } from "./pane-commands.ts";
 import type { TabPanes } from "../tabs/window-store.ts";
@@ -43,7 +43,7 @@ const six: Fixture = (controller) => {
 /** Undoes hiding A from [A|B] after `between` ran on the pane A left, expecting `accepted`. */
 function unhide(between: Command, accepted: boolean): Command {
   return (controller, panes) => {
-    const restore = controller.window.hide(controller.tabId, A);
+    const restore = controller.window.hide(A);
     between(controller, panes);
     expect(restore()).toBe(accepted);
   };
@@ -64,11 +64,8 @@ function typeInto(controller: TabPanes, paneId: PaneId): void {
 function arrangement(node: LayoutNode<PaneContent>, before: Layout<PaneContent>): string {
   if (node.kind === "split")
     return `${node.direction}(${node.children.map((child) => arrangement(child.node, before)).join(",")})`;
-  const tab = activeTab(node);
-
-  const kept = layoutPanes(before.root).some((entry) =>
-    entry.tabs.some((candidate) => candidate.id === tab.id),
-  );
+  const tab = node.tab;
+  const kept = layoutPanes(before.root).some((entry) => entry.tab.id === tab.id);
 
   const label =
     tab.content.kind !== "chat"
@@ -239,7 +236,7 @@ test.each([
     "[A|B] focus B + hide A",
     two,
     (controller) => {
-      controller.window.hide(controller.tabId, A);
+      controller.window.hide(A);
     },
     "right(blank,B)",
     "1",
@@ -347,21 +344,44 @@ const ONE = measured(one, [rect(0, 0, 400, 400)]);
 
 const TWO = measured(two, [rect(0, 0, 400, 400), rect(400, 0, 400, 400)]);
 
+const WIDE = 1920;
+
+const SIX = measured(
+  six,
+  Array.from({ length: 6 }, (_, index) => rect(index * 100, 0, 100, 400)),
+);
+
 test.each([
   [
     "one pane, its middle: an edge only",
     ONE,
     { x: 200, y: 200 },
     C,
+    WIDE,
     { pane: 0, placement: "left" },
   ],
-  ["one pane, near its right edge", ONE, { x: 390, y: 200 }, C, { pane: 0, placement: "right" }],
-  ["one pane, near its bottom edge", ONE, { x: 200, y: 395 }, C, { pane: 0, placement: "bottom" }],
+  [
+    "one pane, near its right edge",
+    ONE,
+    { x: 390, y: 200 },
+    C,
+    WIDE,
+    { pane: 0, placement: "right" },
+  ],
+  [
+    "one pane, near its bottom edge",
+    ONE,
+    { x: 200, y: 395 },
+    C,
+    WIDE,
+    { pane: 0, placement: "bottom" },
+  ],
   [
     "two panes, the right one's central quarter",
     TWO,
     { x: 600, y: 200 },
     C,
+    WIDE,
     { pane: 1, placement: "center" },
   ],
   [
@@ -369,34 +389,82 @@ test.each([
     TWO,
     { x: 449, y: 200 },
     C,
+    WIDE,
     { pane: 1, placement: "left" },
   ],
-  ["two panes, the left one's top edge", TWO, { x: 200, y: 10 }, C, { pane: 0, placement: "top" }],
-  ["over the dragged chat's own pane", TWO, { x: 600, y: 200 }, B, undefined],
+  [
+    "two panes, the left one's top edge",
+    TWO,
+    { x: 200, y: 10 },
+    C,
+    WIDE,
+    { pane: 0, placement: "top" },
+  ],
+  ["over the dragged chat's own pane", TWO, { x: 600, y: 200 }, B, WIDE, undefined],
   [
     "over another pane than the dragged chat's",
     TWO,
     { x: 200, y: 200 },
     B,
+    WIDE,
     { pane: 0, placement: "center" },
   ],
-  ["a zero-size rect", measured(one, [rect(0, 0, 0, 400)]), { x: 0, y: 200 }, C, undefined],
+  ["a zero-size rect", measured(one, [rect(0, 0, 0, 400)]), { x: 0, y: 200 }, C, WIDE, undefined],
   [
-    "six panes still offer an edge the layout then refuses (D4)",
-    measured(
-      six,
-      Array.from({ length: 6 }, (_, index) => rect(index * 100, 0, 100, 400)),
-    ),
+    "six panes offer a new chat only the centre (D4)",
+    SIX,
     { x: 95, y: 200 },
     C,
-    { pane: 0, placement: "right" },
+    WIDE,
+    { pane: 0, placement: "center" },
   ],
-  ["outside every rect", TWO, { x: 900, y: 200 }, C, undefined],
+  [
+    "six panes still move a chat they show to an edge",
+    SIX,
+    { x: 195, y: 200 },
+    A,
+    WIDE,
+    { pane: 1, placement: "right" },
+  ],
+  [
+    "a window too narrow for Split offers a new chat only the centre (D4)",
+    TWO,
+    { x: 449, y: 200 },
+    C,
+    959,
+    { pane: 1, placement: "center" },
+  ],
+  [
+    "one pane in a window too narrow for Split: the centre",
+    ONE,
+    { x: 390, y: 200 },
+    C,
+    639,
+    { pane: 0, placement: "center" },
+  ],
+  [
+    "a window just wide enough for Split keeps the edge",
+    TWO,
+    { x: 449, y: 200 },
+    C,
+    960,
+    { pane: 1, placement: "left" },
+  ],
+  [
+    "a narrow window still moves a chat the panes show",
+    TWO,
+    { x: 449, y: 200 },
+    A,
+    640,
+    { pane: 1, placement: "left" },
+  ],
+  ["outside every rect", TWO, { x: 900, y: 200 }, C, WIDE, undefined],
   [
     "on the shared border, the first pane wins",
     TWO,
     { x: 400, y: 200 },
     C,
+    WIDE,
     { pane: 0, placement: "right" },
   ],
   [
@@ -404,6 +472,7 @@ test.each([
     measured(two, [undefined, rect(400, 0, 400, 400)]),
     { x: 200, y: 200 },
     C,
+    WIDE,
     undefined,
   ],
 ] satisfies readonly (readonly [
@@ -411,12 +480,13 @@ test.each([
   (controller: TabPanes) => ReadonlyMap<PaneId, ClientRect>,
   { readonly x: number; readonly y: number },
   typeof A,
+  number,
   { readonly pane: number; readonly placement: string } | undefined,
-])[])("dropTarget: %s", (_name, build, point, dragged, expected) => {
+])[])("dropTarget: %s", (_name, build, point, dragged, width, expected) => {
   const controller = tabPanes();
   const rects = build(controller);
   const layout = paneLayout(controller);
-  const target = dropTarget(layout, rects, point, dragged);
+  const target = dropTarget(layout, rects, point, dragged, width);
 
   expect(
     target === undefined

@@ -14,7 +14,7 @@ import { folderPicker, handleOpenOutcome } from "./open-workspace.tsx";
 import { clientActions } from "../contract/client-actions.ts";
 import { nyte } from "../contract/nyte.ts";
 import { useHostState } from "../data/host.ts";
-import { useRecentWorkspaces } from "../data/workspaces.ts";
+import { commitHostWorkspace, useRecentWorkspaces } from "../data/workspaces.ts";
 import { ContextSelector } from "./context-selector.tsx";
 import { contextStyles } from "./context-selector.stylex.ts";
 import { BranchSegment } from "./branch-segment.tsx";
@@ -62,7 +62,7 @@ export function WorkspaceContext({ active }: { readonly active: boolean }) {
           value={workspace?.path ?? "home"}
           onValueChange={(value) => {
             if (value === "home") {
-              if (workspace !== undefined) void nyte.host.closeWorkspace();
+              if (workspace !== undefined) commitHostWorkspace(undefined);
 
               return;
             }

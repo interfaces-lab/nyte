@@ -137,6 +137,7 @@ function collisionDetector(store: LayoutStore): CollisionDetection {
       rects,
       pointForCollision(pointerCoordinates, collisionRect),
       dragged.sessionId,
+      window.innerWidth,
     );
 
     const container =

@@ -1,16 +1,20 @@
 import { asId } from "@nyte-ai/schema";
 import type {
   Execution,
+  HeadInfo,
   PartStatus,
-  RunId,
+  RunEnd,
+  SessionInfo,
   ToolClass,
   ToolOutcome,
   ToolPartState,
 } from "@nyte-ai/schema";
-import { expect, it } from "vitest";
+import { expect, it, test } from "vitest";
 import {
   backgroundLabel,
   callTaskState,
+  groupMark,
+  headAttention,
   completionTrigger,
   executionMark,
   failureNotice,
@@ -18,14 +22,13 @@ import {
   rowMark,
   runMark,
   runStatus,
-  runStopping,
   sessionTitle,
   taskLabel,
   toolOutput,
   toolStatus,
   toolTitle,
 } from "../src/client/presentation.ts";
-import type { RunStatus } from "../src/client/presentation.ts";
+import type { TaskState } from "../src/client/presentation.ts";
 
 const READ: ToolClass = { kind: "read", path: "/repo/src/app.ts" };
 
@@ -234,26 +237,6 @@ it("keeps a run's outcome and an approval wait apart, and draws background work 
   ]);
 
   expect(runStatus(responding)).toEqual({ kind: "working", run: run.id, stopping: true });
-
-  const other = asId<"run">("other");
-  const replying = runStatus({ ...responding, stopping: false });
-
-  const stops: readonly [RunStatus, RunId | null, boolean][] = [
-    [replying, null, false],
-    [replying, run.id, true],
-    [replying, other, false],
-    [runStatus(responding), null, true],
-    [runStatus(approval), run.id, true],
-    [runStatus(retrying), run.id, true],
-    [runStatus(delegating), other, false],
-    [runStatus(stopped), run.id, false],
-    [runStatus(completed), run.id, false],
-    [runStatus(undefined), run.id, false],
-  ];
-
-  expect(stops.map(([status, asked]) => runStopping(status, asked))).toEqual(
-    stops.map(([, , shown]) => shown),
-  );
   expect(runStatus(approval)).toEqual({ kind: "waiting-for-approval", run: run.id });
   expect(runStatus(failed)).toEqual({ kind: "failed", failure });
 
@@ -293,4 +276,206 @@ it("finds the mention or command around the caret", () => {
     query: "src/ap",
   });
   expect(completionTrigger("plain words")).toBeUndefined();
+});
+
+const RUN = {
+  id: asId<"run">("run"),
+  head: asId<"head">("main"),
+  startedAt: 1,
+  attempt: 1,
+  origin: { kind: "input", message: asId<"message">("m") },
+} as const;
+
+const NO_USAGE = {
+  input: 0,
+  output: 0,
+  cacheRead: 0,
+  cacheWrite: 0,
+  reasoning: null,
+  total: 0,
+  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+};
+
+function lastRun(end: RunEnd): Execution {
+  return { kind: "idle", lastRun: { id: RUN.id, end, endedAt: 2 } };
+}
+
+const ASKING: Execution = { kind: "waiting", run: RUN, on: { kind: "part", part: asId("p1") } };
+
+const ON_SUBAGENT: Execution = {
+  kind: "waiting",
+  run: RUN,
+  on: { kind: "run", session: asId("child"), run: asId("child-run") },
+};
+
+const LIVE: Execution = { kind: "live", run: RUN, phase: "responding", stopping: false };
+
+const RETRYING: Execution = { kind: "retrying", run: RUN, until: 5, reason: "Overloaded" };
+
+const DONE = lastRun({ kind: "completed", usage: NO_USAGE });
+
+const FAILED = lastRun({
+  kind: "failed",
+  failure: { class: "provider", message: "Rate\n limited." },
+});
+
+const STOPPED = lastRun({ kind: "stopped" });
+
+function chat(
+  execution: Execution,
+  head: Partial<Pick<HeadInfo, "unread" | "background">> = {},
+  session: Partial<Pick<SessionInfo, "parent" | "project">> = {},
+): Pick<SessionInfo, "heads" | "project" | "parent"> {
+  return {
+    parent: session.parent ?? null,
+    project: session.project,
+    heads: [
+      {
+        name: asId<"head">("main"),
+        tip: { kind: "commit", id: asId<"commit">("tip") },
+        stack: null,
+        execution,
+        unread: head.unread ?? false,
+        background: head.background ?? { working: 0, waiting: 0 },
+      },
+    ],
+  };
+}
+
+const child = { parent: asId<"session">("parent") };
+
+test.each<{
+  readonly name: string;
+  readonly chat: Pick<SessionInfo, "heads" | "project" | "parent">;
+  readonly mark: string;
+  readonly unread: boolean;
+  readonly alert: string;
+}>([
+  {
+    name: "a chat's own approval waits",
+    chat: chat(ASKING),
+    mark: "waiting",
+    unread: false,
+    alert: "waiting waiting:p1 Needs your answer",
+  },
+  {
+    name: "a run waiting on its subagent's approval waits, since the person answers here",
+    chat: chat(ON_SUBAGENT, { background: { working: 0, waiting: 1 } }),
+    mark: "waiting",
+    unread: false,
+    alert: "waiting waiting:run:below Needs your answer",
+  },
+  {
+    name: "a run waiting on a subagent that works is working",
+    chat: chat(ON_SUBAGENT, { background: { working: 1, waiting: 0 } }),
+    mark: "working",
+    unread: false,
+    alert: "working:run",
+  },
+  {
+    name: "the waiting subagent waits on its own",
+    chat: chat(ASKING, {}, child),
+    mark: "waiting",
+    unread: false,
+    alert: "waiting waiting:p1 Needs your answer",
+  },
+  {
+    name: "a responding run stays working over background that waits",
+    chat: chat(LIVE, { background: { working: 0, waiting: 1 } }),
+    mark: "working",
+    unread: false,
+    alert: "working:run",
+  },
+  {
+    name: "a retrying run retries in the same run",
+    chat: chat(RETRYING),
+    mark: "retrying",
+    unread: false,
+    alert: "working:run",
+  },
+  {
+    name: "a completed, unread reply",
+    chat: chat(DONE, { unread: true }),
+    mark: "done",
+    unread: true,
+    alert: "done ended:run Done",
+  },
+  {
+    name: "a failed, unread reply is unread too",
+    chat: chat(FAILED, { unread: true }),
+    mark: "failed",
+    unread: true,
+    alert: "failed ended:run Failed: Rate limited.",
+  },
+  {
+    name: "a failed, read reply",
+    chat: chat(FAILED),
+    mark: "failed",
+    unread: false,
+    alert: "failed ended:run Failed: Rate limited.",
+  },
+  {
+    name: "a stopped run is quiet, even unread",
+    chat: chat(STOPPED, { unread: true }),
+    mark: "done",
+    unread: false,
+    alert: "ended:run",
+  },
+  {
+    name: "an idle chat whose subagent waits",
+    chat: chat(DONE, { background: { working: 0, waiting: 1 } }),
+    mark: "waiting",
+    unread: false,
+    alert: "done ended:run Done",
+  },
+  {
+    name: "a coordinator whose agents work isn't done or unread yet",
+    chat: chat(
+      DONE,
+      { unread: true, background: { working: 1, waiting: 0 } },
+      { project: asId("p") },
+    ),
+    mark: "working",
+    unread: false,
+    alert: "ended:run:agents",
+  },
+  {
+    name: "a chat outside a project with working background is done",
+    chat: chat(DONE, { unread: true, background: { working: 1, waiting: 0 } }),
+    mark: "background",
+    unread: true,
+    alert: "done ended:run Done",
+  },
+  {
+    name: "a chat that never ran",
+    chat: chat({ kind: "idle", lastRun: null }, { unread: true }),
+    mark: "done",
+    unread: false,
+    alert: "none",
+  },
+])(
+  "the one rule every surface reads (mark: tab, sidebar row, palette, side chat pill, composer status; unread: the app's unread set and the badge; alert: desktop and web notifications, the badge's waiting count, reminders): $name",
+  (row) => {
+    const attention = headAttention(row.chat);
+    const alert = attention.alert;
+
+    expect({
+      mark: attention.mark,
+      unread: attention.settledUnread,
+      alert: alert.state === undefined ? alert.key : `${alert.state} ${alert.key} ${alert.body}`,
+    }).toEqual({ mark: row.mark, unread: row.unread, alert: row.alert });
+    expect(attention.unreadTip === null).toBe(!row.chat.heads.some((head) => head.unread));
+  },
+);
+
+it("marks a group of tasks waiting first, then working, then failed", () => {
+  const groups: readonly (readonly TaskState[])[] = [
+    ["working", "waiting"],
+    ["done", "background"],
+    ["failed", "retrying"],
+    ["done", "failed"],
+    ["done"],
+  ];
+
+  expect(groups.map(groupMark)).toEqual(["waiting", "working", "working", "failed", "done"]);
 });

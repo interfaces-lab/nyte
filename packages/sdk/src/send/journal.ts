@@ -45,7 +45,21 @@ export interface JournalLoop {
    * `unknown`; a post already on its way that the host admits is withdrawn with `receipt.stop`.
    */
   discard(session: SessionId, message: Message["id"]): Promise<boolean>;
+  /** The send `id` while the journal shows it unsent, which `send` reaches before its first post, or `null`. */
+  sending(id: ReceiptId): Sending | null;
   subscribe(listener: () => void): Disposer;
+}
+
+/**
+ * How a journaled send ended without the host's answer: `kept` while the journal still holds it, to
+ * post on the next connection after a link closed under it or on `resend` after it expired;
+ * `removed` by `discard`; `dropped` when the host refused it and nothing holds it.
+ */
+export type Unanswered = "kept" | "removed" | "dropped";
+
+export interface Sending {
+  /** How the send ended without the host's answer, or `null` while it has not. */
+  unanswered(): Unanswered | null;
 }
 
 /** How long a journaled send is sent on its own. An older one that the host has not seen stays journaled and shown unsent, with `EXPIRED_REASON` as its retry reason, until it is sent again or removed. */
@@ -67,6 +81,7 @@ type Held = {
   answeredAfter: number | null;
   expired: boolean;
   discarded: AbortController;
+  unanswered: Unanswered | null;
 };
 
 /**
@@ -187,6 +202,7 @@ export function journalLoop(rows: Rows, journal: RequestJournal, host: HostId): 
           !(error instanceof SdkError && (error.code === "unavailable" || error.code === "stale"))
         ) {
           if (!closing) await journal.remove(id);
+          current.unanswered ??= closing ? "kept" : "dropped";
           held.delete(id);
           changed();
 
@@ -203,6 +219,7 @@ export function journalLoop(rows: Rows, journal: RequestJournal, host: HostId): 
     }
 
     current.expired = true;
+    current.unanswered = "kept";
     current.retrying = { at: current.entry.at + EXPIRES_MS, reason: EXPIRED_REASON };
     dev("sdk", "send expired", { receipt: id, attempts: current.attempts });
     changed();
@@ -243,6 +260,7 @@ export function journalLoop(rows: Rows, journal: RequestJournal, host: HostId): 
       answeredAfter: null,
       expired: false,
       discarded: new AbortController(),
+      unanswered: null,
     };
 
     const key = JSON.stringify([entry.session, entry.head]);
@@ -369,6 +387,7 @@ export function journalLoop(rows: Rows, journal: RequestJournal, host: HostId): 
 
       for (const current of gone) {
         held.delete(current.entry.id);
+        current.unanswered = "removed";
         current.discarded.abort(
           new SdkError("unknown", "The message was removed before the host had it."),
         );
@@ -379,6 +398,11 @@ export function journalLoop(rows: Rows, journal: RequestJournal, host: HostId): 
       if (gone.length > 0) changed();
 
       return gone.length > 0;
+    },
+    sending(id) {
+      const current = held.get(id);
+
+      return current === undefined ? null : { unanswered: () => current.unanswered };
     },
     subscribe(listener) {
       listeners.add(listener);

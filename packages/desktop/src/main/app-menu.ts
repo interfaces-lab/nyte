@@ -7,7 +7,6 @@ import type {
   BrowserKey,
   BrowserNavigationAction,
 } from "@nyte-ai/app/contract/bridge.ts";
-import type { WindowEnd } from "../shared/host-window.ts";
 import { clientActionAccelerator, clientActions } from "@nyte-ai/app/contract/client-actions.ts";
 import { shortcutCharacter } from "@nyte-ai/app/contract/browser-shortcuts.ts";
 
@@ -189,6 +188,10 @@ export function applicationMenuTemplate(options: {
   ];
 }
 
+/**
+ * A window's menu commands, held until its page listens. Any end of the page, a crash too, leaves
+ * nothing listening, so commands wait again for the next page to say it is ready.
+ */
 export function createMenuCommandDelivery(options: {
   openWindow: () => void;
   send: (command: AppMenuCommand) => void;
@@ -208,8 +211,8 @@ export function createMenuCommandDelivery(options: {
 
       for (const command of pending.splice(0)) options.send(command);
     },
-    windowEnded(end: WindowEnd): void {
-      if (end !== "crashed") ready = false;
+    windowEnded(): void {
+      ready = false;
     },
   };
 }

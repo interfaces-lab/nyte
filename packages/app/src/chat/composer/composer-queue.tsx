@@ -11,11 +11,7 @@ import { deliveryChoices } from "./composer-keys.ts";
 import { UserMessageText, messageImages } from "../transcript/message-content.tsx";
 import { contentDraftText } from "../../references/message-references.ts";
 import { composerStyles } from "./composer.stylex.ts";
-
-export type PendingRowAction =
-  | { readonly kind: "cancelling" }
-  | { readonly kind: "sending" }
-  | { readonly kind: "failed"; readonly message: string };
+import type { PendingRowAction } from "./composer-session.ts";
 
 interface ComposerQueueProps {
   readonly pending: readonly UserMessage[];

@@ -265,8 +265,6 @@ async function checkLayout(): Promise<string> {
           sizes: [0.35, 0.65],
         },
       ]),
-      await step("zoom", [{ kind: "zoom", pane: right.pane }]),
-      await step("unzoom", [{ kind: "zoom", pane: null }]),
       await step("move", [
         {
           kind: "move",

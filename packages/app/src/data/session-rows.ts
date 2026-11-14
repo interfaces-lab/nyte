@@ -19,7 +19,14 @@ export interface SessionRows {
   readonly missing: ReadonlySet<SessionId>;
 }
 
-export const sessionActions = new SessionActions({ client: queryClient, findRow: findSessionRow });
+export const sessionActions = new SessionActions({
+  client: queryClient,
+  findRow: findSessionRow,
+  hosted: {
+    row: (id) => sessionRows().hosted.get(id),
+    subscribe: (notice) => subscribeSessionRows(notice),
+  },
+});
 
 export const sessionRows = (): SessionRows => store.getSnapshot();
 
@@ -259,19 +266,17 @@ export function wantedReads(interest: RowInterest, lists: ListedRows): WantedRea
   };
 }
 
+/** Each list's store, held once: a family of three keys keeps every store it made, since it drops only idle stores past its sixteen newest. */
+const lists = {
+  all: sessionList("all"),
+  roots: sessionList("roots"),
+  pinned: sessionList("pinned"),
+};
+
 const sources = {
-  all: {
-    read: () => sessionList("all").value,
-    subscribe: (notice: () => void) => sessionList("all").subscribeByFrame(notice),
-  },
-  roots: {
-    read: () => sessionList("roots").value,
-    subscribe: (notice: () => void) => sessionList("roots").subscribeByFrame(notice),
-  },
-  pinned: {
-    read: () => sessionList("pinned").value,
-    subscribe: (notice: () => void) => sessionList("pinned").subscribeByFrame(notice),
-  },
+  all: { read: lists.all.read, subscribe: lists.all.subscribeByFrame },
+  roots: { read: lists.roots.read, subscribe: lists.roots.subscribeByFrame },
+  pinned: { read: lists.pinned.read, subscribe: lists.pinned.subscribeByFrame },
   recorded: {
     read: queryDataReader<readonly SessionInfo[]>(keys.firstFrameRoots),
     subscribe: (notice: () => void) =>

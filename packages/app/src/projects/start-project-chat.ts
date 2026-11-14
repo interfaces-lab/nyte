@@ -1,6 +1,7 @@
 import { asId } from "@nyte-ai/schema";
 import type { ProjectInfo } from "@nyte-ai/schema";
-import { composerMessageContent, startComposerChat } from "../chat/composer/composer-send.ts";
+import { composerMessageContent } from "../chat/composer/composer-plan.ts";
+import { startComposerChat } from "../chat/composer/composer-send.ts";
 import { connected } from "../data/connection.ts";
 import { queryClient } from "../data/query-client.ts";
 import { workspacePath, workspacesQuery } from "../data/workspaces.ts";

@@ -586,6 +586,63 @@ it("leaves a send the host admitted but never answered to the clipped prompt tha
   expect(landed.leadingPrompt?.id).toBe(clipped.leadingPrompt?.id);
 });
 
+/** What meets a chat send's posts, which wait until `send` resolved. */
+type Posts = "answers" | "refuses" | "lose the link" | "fail for a day" | "fail while removed";
+
+describe("a chat's send resolves once the journal holds the message, before the host answers", () => {
+  it.each<[Posts, "sent" | "unsent" | "removed" | "rejected", number]>([
+    ["answers", "sent", 1],
+    ["refuses", "rejected", 0],
+    ["lose the link", "unsent", 1],
+    ["fail for a day", "unsent", 1],
+    ["fail while removed", "removed", 0],
+  ])("when the posts %s, delivered ends %s and the journal keeps %i", chatSend);
+});
+
+async function chatSend(posts: Posts, delivered: string, journaled: number): Promise<void> {
+  const host = await open();
+  const journal = createSendJournal();
+  const connection = await liveClient(host, journal);
+  const session = await settledChat(host, connection);
+  host.fake.reply(text("Answered."));
+  const gate = Promise.withResolvers<void>();
+  const failed = Promise.withResolvers<void>();
+  let posted = 0;
+
+  host.intercept(async (request, next) => {
+    if (readOperation(request) !== "head.send") return next(request);
+    await gate.promise;
+    posted += 1;
+
+    if (posts === "answers" || posts === "refuses") return next(request);
+
+    if (posts === "fail for a day" && posted === 1) vi.setSystemTime(Date.now() + 86_400_001);
+    failed.resolve();
+
+    throw new TypeError("fetch failed");
+  });
+
+  vi.useFakeTimers({ toFake: ["Date"] });
+
+  try {
+    const chat = connection.chat(posts === "refuses" ? asId<"session">("missing") : session.id);
+    const sending = await chat.send("Journaled.", { delivery: "queue" });
+
+    expect([posted, (await journal.load()).map((entry) => entry.id)]).toEqual([0, [sending.id]]);
+    gate.resolve();
+
+    if (posts === "lose the link") await failed.promise.then(() => connection.close());
+
+    if (posts === "fail while removed")
+      await failed.promise.then(() => chat.remove(asId<"message">(sending.id)));
+    const ended = await sending.delivered.then((end) => end.kind).catch(() => "rejected");
+
+    expect([ended, (await journal.load()).length]).toEqual([delivered, journaled]);
+  } finally {
+    vi.useRealTimers();
+  }
+}
+
 interface Quit {
   readonly host: Served;
   readonly storage: JournalStorage;

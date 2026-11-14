@@ -1,4 +1,5 @@
 import type { SessionId } from "@nyte-ai/sdk";
+import type { HostState, SelectedWorkspace } from "../contract/bridge.ts";
 import { activeTab, tabPlace } from "./model.ts";
 import type { Place, Tab, WindowAction, WindowState } from "./model.ts";
 import { pageSection, samePlaceAt } from "./places.ts";
@@ -16,6 +17,28 @@ export type FollowStep =
 export interface FolderFollowed {
   readonly next: FolderFollow;
   readonly step: FollowStep;
+}
+
+/** The window's workspace as the page holds it, and whether the page chose it rather than remembering it from the last launch. */
+export interface ShownFolder {
+  readonly workspace: SelectedWorkspace | undefined;
+  readonly chosen: boolean;
+}
+
+/**
+ * What a window reopening on a chat shows once the host answers the chat's folder, `restored`, or
+ * undefined to keep what it shows. A window that showed a folder of its own when it asked, as one
+ * Finder opened does, keeps it, and so does one whose folder changed while the host answered, as
+ * when someone picked a folder meanwhile.
+ */
+export function restoredFolder(
+  asked: ShownFolder,
+  now: ShownFolder,
+  restored: SelectedWorkspace | undefined,
+): HostState | undefined {
+  if (asked.chosen || now.workspace !== asked.workspace) return undefined;
+
+  return { workspace: restored };
 }
 
 /**

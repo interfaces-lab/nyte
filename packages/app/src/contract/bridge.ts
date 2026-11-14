@@ -412,8 +412,6 @@ export type HostEvent =
   | { kind: "update_changed"; state: UpdateState }
   | { kind: "update_channel_changed"; channel: UpdateChannel }
   | { kind: "host_process_changed"; state: HostProcess }
-  | { kind: "workspace_opened"; workspace: SelectedWorkspace }
-  | { kind: "workspace_closed" }
   | { kind: "server_changed" }
   | { kind: "open_session"; session: SessionId }
   | { kind: "remote_access_changed" }
@@ -520,7 +518,10 @@ export interface AttentionBridge {
 export interface HostBridge {
   onMenuCommand(listener: (command: AppMenuCommand) => void): Disposer;
   setThemePreference(preference: ThemePreference): void;
-  readonly restore?: (input: { readonly session: string }) => Promise<HostState>;
+  /** The folder a window reopening on `session` shows, when the host can show it without asking. */
+  readonly restore?: (input: {
+    readonly session: string;
+  }) => Promise<SelectedWorkspace | undefined>;
   endpoint(): Promise<HostEndpoint>;
   readonly fetch?: (url: string, init?: RequestInit) => Promise<Response>;
   readonly socket?: OpenSocket;
@@ -531,7 +532,6 @@ export interface HostBridge {
   readonly pickWorkspace?: () => Promise<OpenWorkspaceOutcome>;
   readonly pickFolder?: () => Promise<string | undefined>;
   readonly trustWorkspace?: (input: { path: string }) => Promise<OpenWorkspaceOutcome>;
-  closeWorkspace(): Promise<void>;
   readonly usage?: (input: UsageWindow) => Promise<UsageSnapshot>;
   readonly updates?: {
     state(): Promise<UpdateState>;
@@ -575,6 +575,8 @@ export interface HostBridge {
   }) => Promise<number | undefined>;
   readonly browser?: BrowserBridge;
   readonly attention?: AttentionBridge;
+  /** The path of the workspace this window shows, so Finder's Open With sends its files here. */
+  readonly setWorkspacePath?: (path: string | null) => void;
   /** Whether this window holds unsaved editor edits, so closing or leaving it asks first. */
   readonly setUnsavedEdits?: (held: boolean) => void;
   onEvent(listener: (event: HostEvent) => void): Disposer;

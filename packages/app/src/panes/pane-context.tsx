@@ -33,7 +33,7 @@ export function PaneControllerProvider({
 }
 
 export function hideFromPanes(sessionId: SessionId): () => boolean {
-  return windowTabs.store.hide(windowTabs.paneTabId(), sessionId);
+  return windowTabs.store.hide(sessionId);
 }
 
 export function splitPanes(panes: TabPanes, direction: SplitDirection): boolean {

@@ -4,7 +4,7 @@ import type { WindowDrafts } from "../chat/composer/drafts.ts";
 import type { PaneId } from "../panes/layout.ts";
 import type { LayoutStore } from "../panes/layout-store.ts";
 import type { PaneCommand, PaneFocus } from "../panes/pane-commands.ts";
-import { chatPanes, paneForSession } from "../panes/pane-layout.ts";
+import { chatPanes } from "../panes/pane-layout.ts";
 import type { ChatPane, PaneSelection } from "../panes/pane-layout.ts";
 import { SessionViewStateStore } from "../panes/session-view-state.ts";
 import type { ComposerViewState } from "../panes/session-view-state.ts";
@@ -33,6 +33,7 @@ export class WindowStore {
   readonly #drafts: () => WindowDrafts;
   readonly #listeners = new Set<() => void>();
   readonly #focusListeners = new Set<(tabId: string, pane: PaneId) => void>();
+  readonly #tabs = new Map<string, TabPanes>();
 
   constructor(state: WindowState, drafts: () => WindowDrafts) {
     this.#state = state;
@@ -61,6 +62,9 @@ export class WindowStore {
 
     this.#state = after;
 
+    for (const tabId of this.#tabs.keys())
+      if (!after.tabs.some((tab) => tab.id === tabId)) this.#tabs.delete(tabId);
+
     if (after !== before) for (const listener of this.#listeners) listener();
 
     for (const [tabId, pane] of focusRequests(before, after, action))
@@ -86,14 +90,22 @@ export class WindowStore {
   }
 
   viewState(tabId: string): SessionViewStateStore {
-    return new SessionViewStateStore(this.#drafts(), tabId);
+    return this.tab(tabId).viewState;
   }
 
+  /**
+   * The same panes for a tab on every call while the tab is open, so a provider that renders again
+   * hands its components the value they already read.
+   */
   tab(tabId: string): TabPanes {
-    return {
+    const known = this.#tabs.get(tabId);
+
+    if (known !== undefined) return known;
+
+    const panes: TabPanes = {
       window: this,
       tabId,
-      viewState: this.viewState(tabId),
+      viewState: new SessionViewStateStore(this.#drafts(), tabId),
       layout: {
         subscribe: this.subscribe,
         getSnapshot: () => shownLayout(this.#state, tabId),
@@ -102,6 +114,10 @@ export class WindowStore {
         requestFocus: (pane) => this.requestFocus(tabId, pane),
       },
     };
+
+    this.#tabs.set(tabId, panes);
+
+    return panes;
   }
 
   newChat(tabId: string, project?: ProjectId): void {
@@ -153,20 +169,18 @@ export class WindowStore {
     viewState.removeDraft(draftId);
   }
 
-  /** Blanks the chat's pane and returns its undo, which reports whether the chat came back. */
-  hide(tabId: string, sessionId: SessionId): () => boolean {
-    const previous = shownLayout(this.#state, tabId);
-    const pane = paneForSession(previous, sessionId);
-
-    if (pane === undefined) return () => false;
-    const focused = previous.focus[0];
-    this.run(tabId, { kind: "hide", sessionId });
+  /**
+   * Blanks the chat in every tab that shows it and returns its undo, which reports whether the
+   * chat came back anywhere.
+   */
+  hide(sessionId: SessionId): () => boolean {
+    this.dispatch({ kind: "hide-chat", sessionId });
 
     return () => {
       const before = this.#state;
-      this.run(tabId, { kind: "unhide", sessionId, pane, focused });
+      this.dispatch({ kind: "unhide-chat", sessionId });
 
-      return this.#state !== before;
+      return this.#state.tabs !== before.tabs;
     };
   }
 

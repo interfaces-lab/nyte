@@ -109,11 +109,16 @@ export function SubagentTray({
           tasks={agents}
           expanded={view.kind !== "closed"}
           controls={trayId}
-          onClick={() =>
-            view.kind === "closed"
-              ? onViewChange({ kind: "list", openedOver: agents.map((agent) => agent.id) })
-              : close()
-          }
+          onClick={() => {
+            if (view.kind !== "closed") {
+              close();
+
+              return;
+            }
+
+            stop.reset();
+            onViewChange({ kind: "list", openedOver: agents.map((agent) => agent.id) });
+          }}
         />
       )}
       <Tray

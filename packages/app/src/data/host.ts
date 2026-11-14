@@ -29,12 +29,16 @@ export function useUpdateState() {
   });
 }
 
+/** The host process's state: read once per window, then kept by `host_process_changed`. */
+export const hostProcessQuery = {
+  queryKey: keys.hostProcess,
+  queryFn: async (): Promise<HostProcess> =>
+    (await nyte.host.hostProcess?.state()) ?? { kind: "offline" },
+  staleTime: Infinity,
+};
+
 export function useHostProcess() {
-  return useQuery({
-    queryKey: keys.hostProcess,
-    queryFn: async (): Promise<HostProcess> =>
-      (await nyte.host.hostProcess?.state()) ?? { kind: "offline" },
-  });
+  return useQuery(hostProcessQuery);
 }
 
 export function setUpdateStateForDemo(state: UpdateState): void {

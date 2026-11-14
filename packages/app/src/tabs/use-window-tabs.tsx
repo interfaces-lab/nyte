@@ -4,6 +4,7 @@ import type { SessionId } from "@nyte-ai/sdk";
 import { chatFolderPath, subscribeChats, useChats } from "../chats/index.ts";
 import { activateWorkspace } from "../sidebar/use-show-session.ts";
 import { nyte } from "../contract/nyte.ts";
+import type { HostState } from "../contract/nyte.ts";
 import { useProjects } from "../data/projects.ts";
 import { keys, queryClient } from "../data/query-client.ts";
 import { sessionRows, subscribeSessionRow, subscribeSessionRows } from "../data/session-rows.ts";
@@ -13,8 +14,8 @@ import { goneChats, watchedChats } from "./gone-chats.ts";
 import { activeTab, tabPlace } from "./model.ts";
 import type { WindowState } from "./model.ts";
 import { locationPlace, navigateTo } from "./places.ts";
-import { adoptLocation, followFolder, routeFor } from "./route-sync.ts";
-import type { FolderFollow } from "./route-sync.ts";
+import { adoptLocation, followFolder, restoredFolder, routeFor } from "./route-sync.ts";
+import type { FolderFollow, ShownFolder } from "./route-sync.ts";
 import { windowTabItems } from "./tab-items.ts";
 import type { WindowTabItem } from "./window-tab-strip.tsx";
 import { windowTabs } from "./window-tabs.ts";
@@ -23,11 +24,24 @@ export function useWindowTabsState(): WindowState {
   return useSyncExternalStore(windowTabs.subscribe, windowTabs.getSnapshot, windowTabs.getSnapshot);
 }
 
+/** The window's workspace now; the first frame remembers one from the last launch at time 0. */
+function shownFolder(): ShownFolder {
+  const state = queryClient.getQueryState<HostState>(keys.host);
+  const workspace = state?.data?.workspace;
+
+  return { workspace, chosen: workspace !== undefined && state?.dataUpdatedAt !== 0 };
+}
+
 async function restoreChatFolder(): Promise<void> {
   const place = tabPlace(activeTab(windowTabs.getSnapshot()));
+  const restore = nyte.host.restore;
 
-  if (place.kind !== "session" || nyte.host.restore === undefined) return;
-  queryClient.setQueryData(keys.host, await nyte.host.restore({ session: place.sessionId }));
+  if (place.kind !== "session" || restore === undefined) return;
+  const asked = shownFolder();
+  const restored = await restore({ session: place.sessionId });
+  const shown = restoredFolder(asked, shownFolder(), restored);
+
+  if (shown !== undefined) queryClient.setQueryData(keys.host, shown);
 }
 
 export function useWindowTabsSync(): void {

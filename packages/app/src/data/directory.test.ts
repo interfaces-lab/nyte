@@ -2,14 +2,13 @@ import type { SessionInfo } from "@nyte-ai/sdk";
 import type { SessionsSnapshot } from "@nyte-ai/sdk/client";
 import { asId } from "@nyte-ai/schema";
 import { expect, test } from "vitest";
-import { showSessions } from "./directory.ts";
+import { sessionList, showSessions } from "./directory.ts";
+import { installScripted, scriptedConnection, viewStream } from "../../test/scripted-connection.ts";
 import { sessionRow } from "../../test/view-fixtures.ts";
 
 const a = sessionRow("a");
 
 const b = sessionRow("b");
-
-const shownBefore: readonly SessionInfo[] = [a, b];
 
 function snapshot(ids: readonly string[], rows: readonly SessionInfo[]): SessionsSnapshot {
   return {
@@ -21,58 +20,61 @@ function snapshot(ids: readonly string[], rows: readonly SessionInfo[]): Session
 test.each<{
   readonly name: string;
   readonly snapshot: SessionsSnapshot | null;
-  readonly previous: readonly SessionInfo[] | undefined;
-  readonly shown: "waiting" | "previous" | readonly string[];
+  readonly shown: "waiting" | readonly string[];
 }>([
-  { name: "no snapshot yet waits", snapshot: null, previous: undefined, shown: "waiting" },
+  { name: "no snapshot yet waits", snapshot: null, shown: "waiting" },
   {
     name: "the rows show in the window's order",
     snapshot: snapshot(["b", "a"], [a, b]),
-    previous: undefined,
     shown: ["b", "a"],
-  },
-  {
-    name: "the same rows in the same order keep the array shown before",
-    snapshot: snapshot(["a", "b"], [a, b]),
-    previous: shownBefore,
-    shown: "previous",
-  },
-  {
-    name: "the same rows reordered are a new array",
-    snapshot: snapshot(["b", "a"], [a, b]),
-    previous: shownBefore,
-    shown: ["b", "a"],
-  },
-  {
-    name: "a changed row is a new array",
-    snapshot: snapshot(["a", "b"], [a, sessionRow("b", { name: "renamed" })]),
-    previous: shownBefore,
-    shown: ["a", "b"],
   },
   {
     name: "an id without a row is skipped",
     snapshot: snapshot(["a", "gone", "b"], [a, b]),
-    previous: undefined,
     shown: ["a", "b"],
   },
 ])("$name", (row) => {
-  const shown = showSessions(row.snapshot, row.previous);
+  const shown = showSessions(row.snapshot);
 
-  if (row.shown === "waiting") {
-    expect(shown).toEqual({ kind: "waiting" });
-
-    return;
-  }
-
-  if (row.shown === "previous") {
-    expect(shown).toEqual({ kind: "shown", value: row.previous });
-    expect(shown.kind === "shown" && shown.value === row.previous).toBe(true);
-
-    return;
-  }
-
-  expect(shown.kind === "shown" && shown.value !== row.previous).toBe(true);
   expect(shown.kind === "shown" ? shown.value.map((info) => info.id) : shown.kind).toEqual(
     row.shown,
   );
+});
+
+test.each<{
+  readonly name: string;
+  readonly next: (shown: readonly SessionInfo[]) => readonly SessionInfo[];
+  readonly kept: boolean;
+}>([
+  {
+    name: "the same snapshot heard again keeps the array shown",
+    next: (shown) => shown,
+    kept: true,
+  },
+  {
+    name: "a changed row is a new array",
+    next: () => [a, sessionRow("b", { name: "renamed" })],
+    kept: false,
+  },
+])("through sessionList: $name", async (row) => {
+  const lists = viewStream<readonly SessionInfo[]>([a, b]);
+  installScripted(scriptedConnection({ sessions: lists }));
+  const store = sessionList("roots");
+  const leave = store.subscribe(() => undefined);
+  const before = await store.until(() => true);
+  let heard = 0;
+
+  const count = store.subscribe(() => {
+    heard += 1;
+  });
+
+  lists.push(row.next(lists.latest() ?? []));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  expect({ kept: store.value === before, heard }).toEqual({
+    kept: row.kept,
+    heard: row.kept ? 0 : 1,
+  });
+  count();
+  leave();
 });

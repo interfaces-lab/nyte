@@ -43,11 +43,8 @@ const WHOLE: Box = {
 
 export function layoutGeometry<Content extends TabContent>(layout: Layout<Content>): Geometry {
   const placed = place(layout.root, WHOLE);
-  const panes = new Map(placed.panes);
 
-  if (layout.zoomed !== null && panes.has(layout.zoomed)) panes.set(layout.zoomed, WHOLE);
-
-  return { panes, separators: placed.separators };
+  return { panes: new Map(placed.panes), separators: placed.separators };
 }
 
 export function boxStyle(
@@ -93,17 +90,16 @@ function place<Content extends TabContent>(node: LayoutNode<Content>, box: Box):
   const across = node.direction === "right";
   const start = across ? box.x : box.y;
   const extent = across ? box.width : box.height;
-  const shown = node.children.filter((child) => !(child.node.kind === "pane" && child.node.hidden));
 
-  const pixels = shown.reduce(
+  const pixels = node.children.reduce(
     (sum, child) => sum + (typeof child.size === "number" ? 0 : child.size.px),
     0,
   );
 
-  const weights = shown.reduce((sum, child) => sum + sizeWeight(child.size), 0);
+  const weights = node.children.reduce((sum, child) => sum + sizeWeight(child.size), 0);
 
-  const free = add(extent, { px: -pixels, fraction: 0, gaps: 1 - shown.length });
-  const last = shown.at(-1);
+  const free = add(extent, { px: -pixels, fraction: 0, gaps: 1 - node.children.length });
+  const last = node.children.at(-1);
   const gap: Linear = { px: 0, fraction: 0, gaps: 1 };
 
   const along = (at: Linear, length: Linear): Box =>
@@ -111,12 +107,6 @@ function place<Content extends TabContent>(node: LayoutNode<Content>, box: Box):
 
   const laid = node.children.reduce(
     (state: { readonly offset: Linear; readonly placed: Placed }, child, index) => {
-      if (!shown.includes(child))
-        return {
-          offset: state.offset,
-          placed: merge(state.placed, place(child.node, along(state.offset, ZERO))),
-        };
-
       const length =
         child === last
           ? subtract(add(start, extent), state.offset)

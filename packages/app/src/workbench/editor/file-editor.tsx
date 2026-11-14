@@ -72,7 +72,10 @@ interface Caret {
   readonly lines?: { readonly start: number; readonly end: number };
 }
 
-const diskEvents = watchFamily((connection, path: string) => connection.documents.watch([path]));
+const diskEvents = watchFamily((connection, path: string) => ({
+  values: connection.documents.watch([path]),
+  ended: "reopen" as const,
+}));
 
 export interface FileEditorHandle {
   save(): Promise<void>;

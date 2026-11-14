@@ -326,6 +326,6 @@ export { SdkError } from "@nyte-ai/schema";
 
 export { operationsDigest } from "@nyte-ai/protocol";
 
-export { tracePaints } from "./view/paint-spans.ts";
+export { paintSpans, tracePaints } from "./view/paint-spans.ts";
 
 export type { DevRow } from "@nyte-ai/core";

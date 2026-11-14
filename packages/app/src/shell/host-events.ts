@@ -1,8 +1,8 @@
 import { toast } from "@nyte-ai/ui/toast";
 import type { HostProcess } from "../contract/bridge.ts";
 import { keys, queryClient } from "../data/query-client.ts";
-import { commitHostWorkspace } from "../data/workspaces.ts";
 import { currentConnection } from "../data/connection.ts";
+import { hostProcessQuery } from "../data/host.ts";
 import { nyte } from "../contract/nyte.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import {
@@ -13,13 +13,14 @@ import {
 } from "../workbench/browser/browser-surfaces.ts";
 import { applyBrowserHistory } from "../workbench/browser/browser-history.ts";
 import { workbench } from "../workbench/store.ts";
-import { windowTabs } from "../tabs/window-tabs.ts";
+import { showNotifiedChat } from "../settings/return.ts";
 
 export function useHostEvents(): void {
   useMountEffect(() => {
     const showHostProcess = followHostProcess();
 
-    void nyte.host.hostProcess?.state().then(showHostProcess);
+    if (nyte.host.hostProcess !== undefined)
+      void queryClient.fetchQuery(hostProcessQuery).then((state) => showHostProcess("reply", state));
 
     const reconnect = (): void => {
       if (document.visibilityState !== "hidden") currentConnection()?.retry();
@@ -31,15 +32,6 @@ export function useHostEvents(): void {
 
     const unsubscribe = nyte.host.onEvent((event) => {
       switch (event.kind) {
-        case "workspace_opened":
-          commitHostWorkspace(event.workspace);
-          void queryClient.invalidateQueries({ queryKey: keys.workspaces, exact: true });
-
-          return;
-        case "workspace_closed":
-          commitHostWorkspace(undefined);
-
-          return;
         case "update_changed":
           queryClient.setQueryData(keys.updates, event.state);
 
@@ -50,7 +42,7 @@ export function useHostEvents(): void {
           return;
         case "host_process_changed":
           queryClient.setQueryData(keys.hostProcess, event.state);
-          showHostProcess(event.state);
+          showHostProcess("event", event.state);
 
           if (event.state.kind === "current" || event.state.kind === "stale")
             currentConnection()?.retry();
@@ -61,7 +53,7 @@ export function useHostEvents(): void {
 
           return;
         case "open_session":
-          windowTabs.openChat(event.session, "permanent");
+          showNotifiedChat(event.session);
 
           return;
         case "remote_access_changed":
@@ -116,22 +108,35 @@ const HOST_RESTART = "host-restart";
 
 export type HostToast = "loading" | "restarted" | "close" | "none";
 
-export interface HostToastStep {
+/** `heard` once any state was applied, so the first state's reply, older than every event, can't undo one. */
+export interface HostToastState {
   readonly restarting: boolean;
+  readonly heard: boolean;
+}
+
+export interface HostToastStep extends HostToastState {
   readonly toast: HostToast;
 }
 
-/** The restart toast's next step: it loads from a restart until the host is current again, and an offline host mid-restart leaves it loading. */
-export function hostToast(restarting: boolean, state: HostProcess): HostToastStep {
+/** The restart toast's next step: it loads from a restart until the host is current again, and an offline host mid-restart leaves it loading. A reply that comes after an event changes nothing. */
+export function hostToast(
+  previous: HostToastState,
+  source: "reply" | "event",
+  state: HostProcess,
+): HostToastStep {
+  const restarting = previous.restarting;
+
+  if (source === "reply" && previous.heard) return { ...previous, toast: "none" };
+
   switch (state.kind) {
     case "restarting":
-      return { restarting: true, toast: "loading" };
+      return { restarting: true, heard: true, toast: "loading" };
     case "stale":
-      return { restarting: false, toast: "close" };
+      return { restarting: false, heard: true, toast: "close" };
     case "offline":
-      return { restarting, toast: restarting ? "none" : "close" };
+      return { restarting, heard: true, toast: restarting ? "none" : "close" };
     case "current":
-      return { restarting: false, toast: restarting ? "restarted" : "close" };
+      return { restarting: false, heard: true, toast: restarting ? "restarted" : "close" };
     default: {
       const _exhaustive: never = state;
 
@@ -140,13 +145,13 @@ export function hostToast(restarting: boolean, state: HostProcess): HostToastSte
   }
 }
 
-function followHostProcess(): (state: HostProcess) => void {
-  let restarting = false;
+function followHostProcess(): (source: "reply" | "event", state: HostProcess) => void {
+  let current: HostToastState = { restarting: false, heard: false };
 
-  return (state) => {
-    const next = hostToast(restarting, state);
+  return (source, state) => {
+    const next = hostToast(current, source, state);
 
-    restarting = next.restarting;
+    current = next;
     showHostToast(next.toast);
   };
 }

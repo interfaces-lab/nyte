@@ -67,7 +67,7 @@ test("live commands arrive immediately, but reloaded windows wait again", () => 
   delivery.ready();
   delivery.dispatch(about);
   expect(received).toEqual([about]);
-  delivery.windowEnded("navigated");
+  delivery.windowEnded();
   delivery.dispatch(about);
   delivery.dispatch(settings);
   expect(received).toEqual([about]);

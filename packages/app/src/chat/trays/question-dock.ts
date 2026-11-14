@@ -39,6 +39,8 @@ export type Reply =
     };
 
 export interface DockView {
+  /** Every request listed; a step keeps drafts only for these. */
+  readonly asks: readonly Ask<OpenQuestion>[];
   readonly ask: Ask<OpenQuestion>;
   readonly draft: RequestDraft;
   readonly field: QuestionInfo;
@@ -116,6 +118,7 @@ export function dockView(
   const customVisible = selected.kind === "multiple" || selected.selection.kind === "custom";
 
   return {
+    asks,
     ask,
     draft,
     field,
@@ -137,7 +140,10 @@ export function dockView(
   };
 }
 
-/** What one person's action does to the shown request; selection and typing never send. */
+/**
+ * What one person's action does to the shown request; selection and typing never send. A step
+ * that saves a draft drops the drafts of requests no longer listed.
+ */
 export function stepDock(
   view: DockView,
   drafts: readonly RequestDraft[],
@@ -151,6 +157,7 @@ export function stepDock(
   switch (event.kind) {
     case "select":
       return keep(
+        view,
         drafts,
         withField(
           draft,
@@ -169,11 +176,11 @@ export function stepDock(
 
       if (!view.customVisible && event.document.text === view.document.text) return none(drafts);
 
-      return keep(drafts, withField(draft, customDraft(selected, event.document)));
+      return keep(view, drafts, withField(draft, customDraft(selected, event.document)));
     case "jump":
       return draft.fields[event.index] === undefined
         ? none(drafts)
-        : keep(drafts, { ...draft, current: event.index });
+        : keep(view, drafts, { ...draft, current: event.index });
     case "advance": {
       const typed = event.document;
 
@@ -184,12 +191,12 @@ export function stepDock(
 
       if (!view.last)
         return {
-          drafts: saveDraft(drafts, { ...draft, fields, current: draft.current + 1 }),
+          drafts: saveDraft(view, drafts, { ...draft, fields, current: draft.current + 1 }),
           outcome: { kind: "next" },
         };
 
       return {
-        drafts: saveDraft(drafts, { ...draft, fields }),
+        drafts: saveDraft(view, drafts, { ...draft, fields }),
         outcome: { kind: "send", answers: fields.map(fieldAnswers) },
       };
     }
@@ -251,15 +258,23 @@ function withField(draft: RequestDraft, next: FieldDraft): RequestDraft {
   };
 }
 
-function saveDraft(drafts: readonly RequestDraft[], next: RequestDraft): readonly RequestDraft[] {
+function saveDraft(
+  view: DockView,
+  drafts: readonly RequestDraft[],
+  next: RequestDraft,
+): readonly RequestDraft[] {
   return [
-    ...drafts.filter((draft) => draft.sessionId !== next.sessionId || draft.part !== next.part),
+    ...drafts.filter(
+      (draft) =>
+        (draft.sessionId !== next.sessionId || draft.part !== next.part) &&
+        view.asks.some((ask) => draftFor(draft, ask)),
+    ),
     next,
   ];
 }
 
-function keep(drafts: readonly RequestDraft[], next: RequestDraft): DockStep {
-  return { drafts: saveDraft(drafts, next), outcome: { kind: "kept" } };
+function keep(view: DockView, drafts: readonly RequestDraft[], next: RequestDraft): DockStep {
+  return { drafts: saveDraft(view, drafts, next), outcome: { kind: "kept" } };
 }
 
 function none(drafts: readonly RequestDraft[]): DockStep {

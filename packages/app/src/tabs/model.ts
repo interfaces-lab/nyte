@@ -1,7 +1,7 @@
 import type { ProjectId, SessionId } from "@nyte-ai/sdk";
 import { createLayout, reduceLayout } from "../panes/layout.ts";
 import type { Layout, LayoutAction, PaneId } from "../panes/layout.ts";
-import { commandFocus, focusRequest, planPane } from "../panes/pane-commands.ts";
+import { commandFocus, focusRequest, planPane, waitsForChat } from "../panes/pane-commands.ts";
 import type { PaneCommand, PaneFocus } from "../panes/pane-commands.ts";
 import { paneRules } from "../panes/pane-kinds.ts";
 import type { PaneContent } from "../panes/pane-kinds.ts";
@@ -10,6 +10,7 @@ import {
   chatContent,
   chatPanes,
   findSessionTab,
+  paneForSession,
   sameSelection,
   showChat,
 } from "../panes/pane-layout.ts";
@@ -45,11 +46,20 @@ export interface ClosedTab {
   readonly index: number;
 }
 
+/** A pane gone blank while its chat goes away, and the pane focused before it did. */
+export interface HiddenPane {
+  readonly sessionId: SessionId;
+  readonly tabId: string;
+  readonly pane: PaneId;
+  readonly focused: PaneId;
+}
+
 export interface WindowState {
   readonly tabs: readonly Tab[];
   readonly activeTabId: string;
   readonly recent: readonly string[];
   readonly closed: readonly ClosedTab[];
+  readonly hidden: readonly HiddenPane[];
 }
 
 export type OpenIntent = "preview" | "permanent" | "background" | "next-to-parent";
@@ -85,6 +95,8 @@ export type WindowAction =
   | { readonly kind: "cycle-tab"; readonly step: 1 | -1 }
   | { readonly kind: "reorder"; readonly tabIds: readonly string[]; readonly tabId: string }
   | { readonly kind: "forget-closed"; readonly gone: ReadonlySet<SessionId> }
+  | { readonly kind: "hide-chat"; readonly sessionId: SessionId }
+  | { readonly kind: "unhide-chat"; readonly sessionId: SessionId }
   | { readonly kind: "close-chats"; readonly sessionIds: ReadonlySet<SessionId> };
 
 /** The blank draft a pane of a tab holds, which decides whether hiding a chat can be undone. */
@@ -167,6 +179,7 @@ export function initialWindow(id: string, createId: () => string): WindowState {
     activeTabId: id,
     recent: [],
     closed: [],
+    hidden: [],
   };
 }
 
@@ -211,7 +224,7 @@ function afterActive(state: WindowState): number {
 }
 
 function showsOneChat(layout: Layout<PaneContent>): boolean {
-  return layout.root.kind === "pane" && layout.root.tabs.length === 1;
+  return layout.root.kind === "pane";
 }
 
 function showsOnlyBlank(tab: Tab): boolean {
@@ -430,6 +443,7 @@ function changeLayout(
   tabId: string,
   layout: Layout<PaneContent>,
   createId: () => string,
+  blank: BlankDrafts,
 ): WindowState {
   const tab = state.tabs.find((candidate) => candidate.id === tabId);
 
@@ -445,7 +459,7 @@ function changeLayout(
   const before = new Set(shownChats(tab.view.layout));
   const arrived = new Set(shownChats(layout).filter((id) => !before.has(id)));
 
-  return closeChats(withTab(state, { ...tab, view }), arrived, createId, tab.id);
+  return closeChats(withTab(state, { ...tab, view }), arrived, createId, blank, tab.id);
 }
 
 function arrangeTab(
@@ -453,6 +467,7 @@ function arrangeTab(
   tabId: string,
   actions: (layout: Layout<PaneContent>) => readonly LayoutAction<PaneContent>[],
   createId: () => string,
+  blank: BlankDrafts,
 ): WindowState {
   const tab = state.tabs.find((candidate) => candidate.id === tabId);
 
@@ -464,7 +479,7 @@ function arrangeTab(
     tabLayout(tab),
   );
 
-  return layout === tabLayout(tab) ? state : changeLayout(state, tabId, layout, createId);
+  return layout === tabLayout(tab) ? state : changeLayout(state, tabId, layout, createId, blank);
 }
 
 type PaneAction = Extract<WindowAction, { readonly kind: "pane" }>;
@@ -491,24 +506,38 @@ function forgetClosed(state: WindowState, gone: ReadonlySet<SessionId>): WindowS
   return closed.length === state.closed.length ? state : { ...state, closed };
 }
 
+/**
+ * Closes the panes of chats that went away: a split keeps its other chats, and a tab they leave
+ * empty closes without being offered for reopening. A pane hidden for one of them closes too, while
+ * its undo could still bring the chat back, so a chat deleted here ends as one deleted elsewhere.
+ */
 function closeChats(
   state: WindowState,
   sessionIds: ReadonlySet<SessionId>,
   createId: () => string,
+  blank: BlankDrafts,
   kept?: string,
 ): WindowState {
   const closing = state.tabs.filter((tab) => tab.id !== kept);
 
-  const goneChats = (layout: Layout<PaneContent>) =>
+  const goneChats = (tabId: string, layout: Layout<PaneContent>) =>
     chatPanes(layout).filter(
-      (chat) => chat.selection.kind === "session" && sessionIds.has(chat.selection.sessionId),
+      (chat) =>
+        (chat.selection.kind === "session" && sessionIds.has(chat.selection.sessionId)) ||
+        state.hidden.some(
+          (entry) =>
+            entry.tabId === tabId &&
+            entry.pane === chat.pane &&
+            sessionIds.has(entry.sessionId) &&
+            waitsForChat(chat, blank(tabId, chat.pane)),
+        ),
     );
 
   const emptied = new Set(
     closing
       .filter((tab) => {
         if (tab.view.kind === "page") return false;
-        const gone = goneChats(tab.view.layout).length;
+        const gone = goneChats(tab.id, tab.view.layout).length;
 
         return gone > 0 && gone === chatPanes(tab.view.layout).length;
       })
@@ -517,7 +546,7 @@ function closeChats(
 
   const collapsed = closing.flatMap((tab): Tab[] => {
     if (tab.view.kind === "page" || emptied.has(tab.id)) return [];
-    const gone = goneChats(tab.view.layout);
+    const gone = goneChats(tab.id, tab.view.layout);
 
     if (gone.length === 0) return [];
 
@@ -529,17 +558,88 @@ function closeChats(
     return [{ ...tab, view: { kind: "panes", layout } }];
   });
 
-  return removeTabs(
+  const remaining = removeTabs(
     collapsed.reduce((current, tab) => withTab(current, tab), state),
     emptied,
     state.closed,
     createId,
   );
+
+  const unhidden = remaining.hidden.filter((entry) => !sessionIds.has(entry.sessionId));
+
+  return unhidden.length === remaining.hidden.length
+    ? remaining
+    : { ...remaining, hidden: unhidden };
 }
 
 /**
- * Reopening gives way to the tabs that show its chats now, as opening a chat does: their panes stay
- * closed, and when it has no other chat left the tab showing its focused chat is activated instead.
+ * A chat going away, deleted here with an undo pending, turns blank in every tab that shows it, and
+ * each blank pane is remembered so the undo or the commit can find it.
+ */
+function hideChat(
+  state: WindowState,
+  sessionId: SessionId,
+  createId: () => string,
+  blank: BlankDrafts,
+): WindowState {
+  const hiding = state.tabs.flatMap((tab): HiddenPane[] => {
+    const layout = tabLayout(tab);
+    const pane = paneForSession(layout, sessionId);
+
+    return tab.view.kind === "page" || pane === undefined
+      ? []
+      : [{ sessionId, tabId: tab.id, pane, focused: layout.focus[0] }];
+  });
+
+  if (hiding.length === 0) return state;
+
+  const hidden = hiding.reduce(
+    (current, entry) =>
+      reduce(
+        current,
+        { kind: "pane", tabId: entry.tabId, command: { kind: "hide", sessionId } },
+        createId,
+        blank,
+      ),
+    state,
+  );
+
+  return { ...hidden, hidden: [...hidden.hidden, ...hiding] };
+}
+
+/** Undoing a hide fills each pane it blanked that still waits, empty, for the chat. */
+function unhideChat(
+  state: WindowState,
+  sessionId: SessionId,
+  createId: () => string,
+  blank: BlankDrafts,
+): WindowState {
+  const hiding = state.hidden.filter((entry) => entry.sessionId === sessionId);
+
+  if (hiding.length === 0) return state;
+
+  const shown = hiding.reduce(
+    (current, entry) =>
+      reduce(
+        current,
+        {
+          kind: "pane",
+          tabId: entry.tabId,
+          command: { kind: "unhide", sessionId, pane: entry.pane, focused: entry.focused },
+        },
+        createId,
+        blank,
+      ),
+    state,
+  );
+
+  return { ...shown, hidden: shown.hidden.filter((entry) => entry.sessionId !== sessionId) };
+}
+
+/**
+ * Reopening gives way to the tabs that show its places now, as opening one does: a page open in
+ * another tab is activated there, a chat's pane stays closed, and when it has no other chat left
+ * the tab showing its focused chat is activated instead.
  */
 function reopenTab(state: WindowState, createId: () => string): WindowState {
   const last = state.closed[0];
@@ -547,7 +647,14 @@ function reopenTab(state: WindowState, createId: () => string): WindowState {
   if (last === undefined) return state;
   const rest: WindowState = { ...state, closed: state.closed.slice(1) };
 
-  if (last.tab.view.kind === "page") return restoreTab(rest, last.tab, last.index);
+  if (last.tab.view.kind === "page") {
+    const page = last.tab.view.page;
+
+    return rest.tabs.some((tab) => showing(tab, page))
+      ? open(rest, page, "permanent", createId)
+      : restoreTab(rest, last.tab, last.index);
+  }
+
   const layout = last.tab.view.layout;
 
   const taken = chatPanes(layout).filter((pane) =>
@@ -593,9 +700,10 @@ export function reduce(
         action.tabId,
         (layout) => planPane(layout, action.command, (pane) => blank(action.tabId, pane)).actions,
         createId,
+        blank,
       );
     case "arrange":
-      return arrangeTab(state, action.tabId, () => action.actions, createId);
+      return arrangeTab(state, action.tabId, () => action.actions, createId, blank);
     case "open-beside":
       return reduce(state, openBeside(state, action.sessionId), createId, blank);
     case "page-section": {
@@ -661,8 +769,12 @@ export function reduce(
 
     case "forget-closed":
       return forgetClosed(state, action.gone);
+    case "hide-chat":
+      return hideChat(state, action.sessionId, createId, blank);
+    case "unhide-chat":
+      return unhideChat(state, action.sessionId, createId, blank);
     case "close-chats":
-      return closeChats(state, action.sessionIds, createId);
+      return closeChats(state, action.sessionIds, createId, blank);
 
     default: {
       const _exhaustive: never = action;
@@ -676,13 +788,15 @@ export function reduce(
  * Which pane of which tab takes DOM focus once `action` turned `before` into `after`. A pane command
  * asks for its own tab's pane by its rule; a raw arrangement asks for none, as the pane it came from
  * focused itself; every other tab whose layout changed asks for its focused pane. A tab that opens
- * asks for none: its panes mount focused.
+ * asks for none: its panes mount focused. Hiding a chat asks for none, so focus stays where the
+ * delete was asked from.
  */
 export function focusRequests(
   before: WindowState,
   after: WindowState,
   action: WindowAction,
 ): ReadonlyMap<string, PaneId> {
+  if (action.kind === "hide-chat") return new Map();
   const acting = actingTab(before, action);
 
   const changed = after.tabs.flatMap((tab): [string, PaneId][] => {

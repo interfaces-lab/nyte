@@ -43,9 +43,9 @@ export async function loadLocalResources(): Promise<void> {
   const [workspaces, catalog] = await Promise.all([
     workspacesQuery.queryFn(),
     readModelCatalog(),
-    host.value === undefined ? host.next() : undefined,
+    host.value === undefined ? host.until(() => true) : undefined,
     directory.value === undefined
-      ? directory.next().then(() => performance.mark("nyte:directory-ready"))
+      ? directory.until(() => true).then(() => performance.mark("nyte:directory-ready"))
       : undefined,
   ]);
 

@@ -1,15 +1,14 @@
-import { runStatus } from "@nyte-ai/plugin/client/presentation";
 import { asId } from "@nyte-ai/schema";
-import type { SessionId } from "@nyte-ai/sdk";
-import type { ChatView } from "../data/chat-store.ts";
+import type { PartView, SessionId } from "@nyte-ai/sdk";
 import type { DerivedStore } from "../data/derived-store.ts";
 import { chatStore } from "../data/chat-store.ts";
 import { reconcile } from "../data/keep.ts";
 
+/** A descendant with an open ask, and its parts: the same array while its parts are unchanged. */
 export interface WaitingChat {
   readonly id: SessionId;
   readonly title: string;
-  readonly view: ChatView;
+  readonly parts: readonly PartView[];
 }
 
 interface WaitingChild {
@@ -30,11 +29,9 @@ export function waitingBelow(root: SessionId): DerivedStore<readonly WaitingChat
 
   const read = (): readonly WaitingChat[] => {
     const next = waitingChildren(root).flatMap((child) => {
-      const view = chatStore(child.id).value;
+      const parts = chatStore(child.id).value?.parts;
 
-      return view !== undefined && runStatus(view.execution).kind === "waiting-for-approval"
-        ? [{ ...child, view }]
-        : [];
+      return parts !== undefined && parts.some(asking) ? [{ ...child, parts }] : [];
     });
 
     const same =
@@ -43,7 +40,7 @@ export function waitingBelow(root: SessionId): DerivedStore<readonly WaitingChat
         (entry, index) =>
           entry.id === value[index]?.id &&
           entry.title === value[index].title &&
-          entry.view === value[index].view,
+          entry.parts === value[index].parts,
       );
 
     if (!same) value = next.length === 0 ? NONE : next;
@@ -83,11 +80,20 @@ export function waitingBelow(root: SessionId): DerivedStore<readonly WaitingChat
   return store;
 }
 
+/**
+ * Every child still running below `session`, at any depth. An ask can outlive its run's wait: a
+ * question past its minute stays open while the run goes on, so a working child is walked too.
+ */
 function waitingChildren(session: SessionId): readonly WaitingChild[] {
   return (chatStore(session).value?.background ?? []).flatMap((item) => {
-    if (item.kind !== "child" || item.state !== "waiting") return [];
+    if (item.kind !== "child" || (item.state !== "waiting" && item.state !== "working")) return [];
     const id = asId<"session">(item.id);
 
     return [{ id, title: item.title }, ...waitingChildren(id)];
   });
+}
+
+/** An approval, question or secret: a modal part its run hasn't ended. */
+function asking(part: PartView): boolean {
+  return part.placement.kind === "modal" && part.status.kind === "live";
 }

@@ -1,9 +1,11 @@
 import type { IconName } from "@nyte-ai/ui/icon";
+import { taskLabel } from "@nyte-ai/plugin/client/presentation";
 import type { ProjectInfo } from "@nyte-ai/sdk";
 import { chatTitle } from "../chats/index.ts";
 import type { ChatDirectory } from "../chats/index.ts";
 import { tabPlace, tabPlaces } from "./model.ts";
 import type { Place, Tab, WindowState } from "./model.ts";
+import type { ChatMark } from "../window/index.ts";
 import type { WindowTabItem } from "./window-tab-strip.tsx";
 
 const PLACE_ICONS = {
@@ -85,4 +87,20 @@ function placeTitle(place: Place, chats: ChatDirectory, projects: readonly Proje
       return _exhaustive;
     }
   }
+}
+
+/**
+ * A tab's accessible name: its title, its chat's mark once, and preview. A tab's content isn't
+ * read, so the mark it draws is said here.
+ */
+export function tabName(
+  tab: Pick<WindowTabItem, "tooltip" | "preview">,
+  mark: ChatMark | undefined,
+): string {
+  return [
+    tab.tooltip,
+    ...(mark === undefined || mark.state === "done" ? [] : [taskLabel(mark.state).toLowerCase()]),
+    ...(mark?.unread === true ? ["unread"] : []),
+    ...(tab.preview ? ["preview"] : []),
+  ].join(", ");
 }

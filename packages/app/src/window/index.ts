@@ -1,9 +1,13 @@
 import type { RegisteredRouter } from "@tanstack/react-router";
 import { useSyncExternalStoreWithSelector } from "use-sync-external-store/with-selector";
 import type { TaskState } from "@nyte-ai/plugin/client/presentation";
-import type { SessionId } from "@nyte-ai/sdk";
+import type { CommitId, SessionId } from "@nyte-ai/sdk";
 import { toast } from "@nyte-ai/ui/toast";
+import { CLOSED, nextSideChat } from "../chat/side-chat/side-chat-state.ts";
+import type { SideChatEvent, SideChatWindow } from "../chat/side-chat/side-chat-state.ts";
 import { chatDirectory, subscribeChats, useChat } from "../chats/index.ts";
+import { chatStore } from "../data/chat-store.ts";
+import { reconcile } from "../data/keep.ts";
 import type { HostState } from "../contract/nyte.ts";
 import { keys, queryClient, queryDataReader } from "../data/query-client.ts";
 import { connection } from "../data/connection.ts";
@@ -14,6 +18,7 @@ import { workbench } from "../workbench/store.ts";
 import { derivedStore } from "../data/derived-store.ts";
 import type { StoreSource } from "../data/derived-store.ts";
 import { expose } from "./exposure.ts";
+import { toSee } from "./seen.ts";
 import { reduceTrays } from "./tray.ts";
 import type { TrayAction, Trays, TrayView } from "./tray.ts";
 
@@ -23,19 +28,25 @@ export interface WindowSnapshot {
   readonly unread: ReadonlySet<SessionId>;
   readonly trays: ReadonlyMap<SessionId, TrayView>;
   readonly cleared: ReadonlyMap<SessionId, ReadonlySet<string>>;
+  readonly sides: ReadonlyMap<SessionId, SideChatWindow>;
   readonly covered: boolean;
 }
 
 export { showTray, type TrayView } from "./tray.ts";
 
-export { unreadOnHost } from "./exposure.ts";
+export { unreadOnHost, viewedChat } from "./exposure.ts";
 
 interface Own {
   readonly trays: Trays;
+  readonly sides: ReadonlyMap<SessionId, SideChatWindow>;
   readonly settings: boolean;
 }
 
-let own: Own = { trays: { views: new Map(), cleared: new Map() }, settings: false };
+let own: Own = {
+  trays: { views: new Map(), cleared: new Map() },
+  sides: new Map(),
+  settings: false,
+};
 
 const ownListeners = new Set<() => void>();
 
@@ -99,11 +110,13 @@ const store = derivedStore(
   (read, previous: WindowSnapshot) => {
     const trays = read.own.read().trays.views;
     const cleared = read.own.read().trays.cleared;
+    const sides = read.own.read().sides;
     const covered = read.covered.read();
 
     const exposure = expose({
       tabs: read.tabs.read(),
       trays,
+      sides,
       settings: read.own.read().settings,
       covered,
       focused: read.focused.read(),
@@ -116,6 +129,7 @@ const store = derivedStore(
       unread: sameSet(previous.unread, exposure.unread) ? previous.unread : exposure.unread,
       trays,
       cleared,
+      sides,
       covered,
     };
   },
@@ -125,12 +139,88 @@ const store = derivedStore(
     unread: new Set<SessionId>(),
     trays: new Map<SessionId, TrayView>(),
     cleared: new Map<SessionId, ReadonlySet<string>>(),
+    sides: new Map<SessionId, SideChatWindow>(),
     covered: false,
   },
 );
 
 function act(action: TrayAction): void {
   setOwn({ ...own, trays: reduceTrays(own.trays, action) });
+}
+
+function sideChat(parent: SessionId): SideChatWindow {
+  return own.sides.get(parent) ?? CLOSED;
+}
+
+/** Moves `parent`'s side-chat window by `event`; a step that changes nothing wakes no one. */
+function moveSideChat(parent: SessionId, event: SideChatEvent): void {
+  const before = sideChat(parent);
+  const next = nextSideChat(before, event);
+
+  if (next !== before) setOwn({ ...own, sides: new Map(own.sides).set(parent, next) });
+}
+
+/**
+ * Marks each chat read once it is looked at with its view arrived, again for each new tip. It runs
+ * while anything draws the window, so the window marks read what it shows. It decides a frame after
+ * a change, once the transcript has drawn the view and taken the unread mark its divider keeps.
+ */
+function followSeen(): () => void {
+  let sent: ReadonlyMap<SessionId, CommitId> = new Map();
+  const views = new Map<SessionId, () => void>();
+  let frame: number | undefined;
+
+  const step = (): void => {
+    frame ??= requestAnimationFrame(decide);
+  };
+
+  const decide = (): void => {
+    frame = undefined;
+    const looking = store.getSnapshot().looking;
+    const chats = chatDirectory();
+
+    reconcile(
+      views,
+      new Set([...looking].filter((id) => (chats.get(id)?.unreadTip ?? null) !== null)),
+      (id) => chatStore(id).subscribe(step),
+      (leave) => leave(),
+    );
+    const next = toSee(sent, looking, chats, (id) => chatStore(id).value !== undefined);
+    sent = next.sent;
+
+    if (next.see.length > 0) markRead(next.see);
+  };
+
+  const leave = store.subscribe(step);
+  step();
+
+  return () => {
+    leave();
+
+    if (frame !== undefined) cancelAnimationFrame(frame);
+
+    for (const unsubscribe of views.values()) unsubscribe();
+    views.clear();
+  };
+}
+
+let drawing = 0;
+
+let stopSeen: (() => void) | undefined;
+
+function subscribe(notice: () => void): () => void {
+  const leave = store.subscribe(notice);
+  drawing += 1;
+  stopSeen ??= followSeen();
+
+  return () => {
+    leave();
+    drawing -= 1;
+
+    if (drawing > 0) return;
+    stopSeen?.();
+    stopSeen = undefined;
+  };
 }
 
 function markRead(ids: readonly SessionId[]): void {
@@ -155,9 +245,11 @@ function markRead(ids: readonly SessionId[]): void {
 
 export const chatWindow = {
   getSnapshot: store.getSnapshot,
-  subscribe: store.subscribe,
+  subscribe,
   act,
   markRead,
+  sideChat,
+  moveSideChat,
 };
 
 export function useChatWindow<S>(
@@ -165,7 +257,7 @@ export function useChatWindow<S>(
   isEqual?: (previous: S, next: S) => boolean,
 ): S {
   return useSyncExternalStoreWithSelector(
-    store.subscribe,
+    subscribe,
     store.getSnapshot,
     store.getSnapshot,
     select,

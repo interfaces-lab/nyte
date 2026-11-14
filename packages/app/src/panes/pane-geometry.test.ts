@@ -9,10 +9,10 @@ interface Note {
 
 type Node = LayoutNode<Note>;
 
-function pane(id: string, hidden = false): Node {
+function pane(id: string): Node {
   const tab = { id: asId<"pane-tab">(`${id}-tab`), content: { kind: "note" as const } };
 
-  return { kind: "pane", id: asId<"pane">(id), tabs: [tab], active: tab.id, hidden };
+  return { kind: "pane", id: asId<"pane">(id), tab };
 }
 
 function split(
@@ -35,12 +35,8 @@ const share = (value: number): PaneSize => value;
 
 const pixels = (value: number): PaneSize => ({ px: value });
 
-function styles(root: Node, zoomed: string | null = null) {
-  const state: Layout<Note> = {
-    root,
-    focus: [asId<"pane">("A")],
-    zoomed: zoomed === null ? null : asId<"pane">(zoomed),
-  };
+function styles(root: Node) {
+  const state: Layout<Note> = { root, focus: [asId<"pane">("A")] };
 
   const geometry = layoutGeometry(state);
 
@@ -116,27 +112,6 @@ test.each([
     },
   },
   {
-    name: "a hidden pane gives its room and its separator to the others",
-    root: split("right", [pane("E", true), pixels(200)], [pane("A"), share(1)]),
-    expected: {
-      panes: {
-        E: {
-          insetInlineStart: "round(0px, 1px)",
-          insetBlockStart: "round(0px, 1px)",
-          inlineSize: "calc(round(0px, 1px) - round(0px, 1px))",
-          blockSize: "calc(round(calc(1 * 100cqb), 1px) - round(0px, 1px))",
-        },
-        A: {
-          insetInlineStart: "round(0px, 1px)",
-          insetBlockStart: "round(0px, 1px)",
-          inlineSize: "calc(round(calc(1 * 100cqi), 1px) - round(0px, 1px))",
-          blockSize: "calc(round(calc(1 * 100cqb), 1px) - round(0px, 1px))",
-        },
-      },
-      separators: [],
-    },
-  },
-  {
     name: "a column inside a row splits the row's child top to bottom",
     root: split(
       "right",
@@ -175,24 +150,4 @@ test.each([
   },
 ])("$name", (row) => {
   expect(styles(row.root)).toEqual(row.expected);
-});
-
-test("a zoomed pane covers the layout and the others keep their boxes", () => {
-  const root = split("right", [pane("A"), share(1)], [pane("B"), share(1)]);
-  const zoomed = styles(root, "B");
-
-  expect(zoomed.panes).toEqual({
-    A: {
-      insetInlineStart: "round(0px, 1px)",
-      insetBlockStart: "round(0px, 1px)",
-      inlineSize: "calc(round(calc(0.5 * 100cqi + -0.5 * var(--gap)), 1px) - round(0px, 1px))",
-      blockSize: "calc(round(calc(1 * 100cqb), 1px) - round(0px, 1px))",
-    },
-    B: {
-      insetInlineStart: "round(0px, 1px)",
-      insetBlockStart: "round(0px, 1px)",
-      inlineSize: "calc(round(calc(1 * 100cqi), 1px) - round(0px, 1px))",
-      blockSize: "calc(round(calc(1 * 100cqb), 1px) - round(0px, 1px))",
-    },
-  });
 });

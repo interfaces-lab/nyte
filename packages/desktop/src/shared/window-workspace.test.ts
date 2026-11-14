@@ -1,7 +1,8 @@
 import { expect, test } from "vitest";
 import { asId } from "@nyte-ai/schema";
 import type { WorkspaceInfo } from "@nyte-ai/sdk/client";
-import { restorableFolder } from "./window-workspace.ts";
+import type { WindowEnd } from "./host-window.ts";
+import { createWindowWorkspaces, restorableFolder } from "./window-workspace.ts";
 
 function workspace(change: Partial<WorkspaceInfo>): WorkspaceInfo {
   return {
@@ -72,4 +73,86 @@ test.each<{
   },
 ])("restoring a chat's folder: $name", (row) => {
   expect(restorableFolder(row.workspace)).toEqual(row.folder);
+});
+
+const seed = "/seed";
+
+const picked = "/picked";
+
+type Step =
+  | { readonly kind: "opened"; readonly seed?: string }
+  | { readonly kind: "shown"; readonly workspace: string | undefined }
+  | { readonly kind: "ended"; readonly end: WindowEnd };
+
+test.each<{
+  readonly name: string;
+  readonly steps: readonly Step[];
+  readonly shown: string | undefined;
+}>([
+  { name: "a new window shows Home", steps: [{ kind: "opened" }], shown: undefined },
+  {
+    name: "a window Finder opened starts on its folder",
+    steps: [{ kind: "opened", seed }],
+    shown: seed,
+  },
+  {
+    name: "the folder a page says it shows",
+    steps: [{ kind: "opened" }, { kind: "shown", workspace: picked }],
+    shown: picked,
+  },
+  {
+    name: "Home chosen in a window Finder opened",
+    steps: [
+      { kind: "opened", seed },
+      { kind: "shown", workspace: undefined },
+    ],
+    shown: undefined,
+  },
+  {
+    name: "a window Finder opened that chose Home starts on its folder after a reload, as its page does",
+    steps: [
+      { kind: "opened", seed },
+      { kind: "shown", workspace: undefined },
+      { kind: "ended", end: "navigated" },
+    ],
+    shown: seed,
+  },
+  {
+    name: "a folder the old page opened is gone after a reload until the new page says it",
+    steps: [
+      { kind: "opened" },
+      { kind: "shown", workspace: picked },
+      { kind: "ended", end: "navigated" },
+    ],
+    shown: undefined,
+  },
+  {
+    name: "a crashed page leaves the folder Finder opened",
+    steps: [
+      { kind: "opened", seed },
+      { kind: "shown", workspace: picked },
+      { kind: "ended", end: "crashed" },
+    ],
+    shown: seed,
+  },
+  {
+    name: "a closed window shows nothing, and a late word from it changes nothing",
+    steps: [
+      { kind: "opened", seed },
+      { kind: "ended", end: "closed" },
+      { kind: "shown", workspace: picked },
+    ],
+    shown: undefined,
+  },
+])("a window's workspace in main: $name", (row) => {
+  const workspaces = createWindowWorkspaces();
+  workspaces.opened(2, picked);
+
+  for (const step of row.steps) {
+    if (step.kind === "opened") workspaces.opened(1, step.seed);
+    else if (step.kind === "shown") workspaces.shown(1, step.workspace);
+    else workspaces.windowEnded(1, step.end);
+  }
+
+  expect([workspaces.workspace(1), workspaces.workspace(2)]).toEqual([row.shown, picked]);
 });

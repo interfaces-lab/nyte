@@ -26,7 +26,7 @@ import type {
   HostCallPath,
 } from "../shared/ipc.ts";
 import { HOST_PORT_ORIGIN } from "../shared/host-port.ts";
-import type { HostWindow, WindowEnd } from "../shared/host-window.ts";
+import type { HostWindow } from "../shared/host-window.ts";
 import { planAttention, reconcileReminders } from "../shared/attention.ts";
 import type { AttentionDelivery, AttentionReminder, AttentionSeen } from "../shared/attention.ts";
 import { DEFAULT_DESKTOP_SETTINGS } from "@nyte-ai/app/contract/desktop-settings.ts";
@@ -34,6 +34,7 @@ import type { DesktopSettings } from "@nyte-ai/app/contract/desktop-settings.ts"
 import { busyTaskCount } from "../shared/update-activity.ts";
 import type { DesktopUpdateActivity } from "../shared/update-activity.ts";
 import { restorableFolder } from "../shared/window-workspace.ts";
+import { registerFolder } from "@nyte-ai/app/contract/register-folder.ts";
 import { desktopSettings } from "./host-settings.ts";
 import { ExpectedHostError } from "../shared/errors.ts";
 import { callTable } from "../shared/ipc-call.ts";
@@ -54,7 +55,7 @@ export interface DesktopHostDependencies {
   readonly alert?: (delivery: AttentionDelivery) => void;
   readonly badge?: (count: number) => void;
   readonly mediaOrigin?: string;
-  emitHostEvent(event: HostEvent, window?: HostWindow): void;
+  emitHostEvent(event: HostEvent): void;
 }
 
 type HostCalls = { readonly [P in HostCallPath]: CallHandler<P> };
@@ -209,9 +210,6 @@ export class DesktopHost {
   readonly #connect: ConnectRuntime;
   readonly #usageScan: UsageScanReader;
   readonly #servers: ServerSettingsStore;
-  readonly #selections = new Map<HostWindow, SelectedWorkspace>();
-  /** The folder Finder opened a window for: it shows when the window has no selection, across reloads. */
-  readonly #seeds = new Map<HostWindow, SelectedWorkspace>();
   #settings: DesktopSettings = DEFAULT_DESKTOP_SETTINGS;
   #tailnet: string | undefined;
   #rows: readonly SessionInfo[] = [];
@@ -363,22 +361,10 @@ export class DesktopHost {
         ...(this.#deps.mediaOrigin === undefined ? {} : { mediaOrigin: this.#deps.mediaOrigin }),
       };
     },
-    "host.restore": async (window, { session }) => {
-      if (this.#state(window).workspace === undefined)
-        await this.#selectChatFolder(window, session);
-
-      return this.#state(window);
-    },
-    "host.openWorkspace": (window, { path }) => this.#openWorkspace(window, path),
-    "host.registerWorkspace": (_window, { path }) => this.#registerWorkspace(path),
-    "host.trustWorkspace": (window, { path }) => this.#openWorkspace(window, path, true),
-    "host.closeWorkspace": async (window) => {
-      const shown = this.#state(window).workspace !== undefined;
-      this.#selections.delete(window);
-      this.#seeds.delete(window);
-
-      if (shown) this.#deps.emitHostEvent({ kind: "workspace_closed" }, window);
-    },
+    "host.restore": (_window, { session }) => this.#chatFolder(session),
+    "host.openWorkspace": (_window, { path }) => this.#openWorkspace(path, false),
+    "host.registerWorkspace": (_window, { path }) => this.registerWorkspace(path),
+    "host.trustWorkspace": (_window, { path }) => this.#openWorkspace(path, true),
     "host.usage": async (_window, usageWindow) => this.#usageScan.scan({ window: usageWindow }),
     "host.server.state": () => this.#serverState(),
     "host.server.connect": (_window, input) => this.#connectServer(input),
@@ -447,24 +433,8 @@ export class DesktopHost {
     "host.connect.signOut": () => this.#connect.signOut(),
   } satisfies HostCalls;
 
-  /** A seed outlives every end but the window's closing. */
-  windowEnded(window: HostWindow, end: WindowEnd): void {
-    this.#selections.delete(window);
-
-    if (end === "closed") this.#seeds.delete(window);
-  }
-
   registerWorkspace(path: string): Promise<RegisterWorkspaceOutcome> {
-    return this.#registerWorkspace(path);
-  }
-
-  /** Shows `workspace` in a window before its first load, so it emits nothing. */
-  seedWorkspace(window: HostWindow, workspace: SelectedWorkspace): void {
-    this.#seeds.set(window, workspace);
-  }
-
-  selectedWorkspace(window: HostWindow): SelectedWorkspace | undefined {
-    return this.#state(window).workspace;
+    return registerFolder(() => this.#deps.link.connection(), path, false);
   }
 
   /** The host's available local folders. */
@@ -522,11 +492,7 @@ export class DesktopHost {
       : { kind: "busy", taskCount, terminalCommandCount };
   }
 
-  #state(window: HostWindow) {
-    return { workspace: this.#selections.get(window) ?? this.#seeds.get(window) };
-  }
-
-  async #selectChatFolder(window: HostWindow, session: string): Promise<void> {
+  async #chatFolder(session: string): Promise<SelectedWorkspace | undefined> {
     const host = await this.#deps.link.connection();
 
     const info = await host
@@ -534,52 +500,22 @@ export class DesktopHost {
       .info()
       .catch(() => null);
 
-    if (info === null) return;
+    if (info === null) return undefined;
 
-    const folder = restorableFolder(
+    return restorableFolder(
       await host
         .workspace(info.workspace)
         .info()
         .catch(() => null),
     );
-
-    if (folder !== undefined) this.#selections.set(window, folder);
   }
 
-  async #openWorkspace(
-    window: HostWindow,
-    path: string,
-    trust = false,
-  ): Promise<OpenWorkspaceOutcome> {
-    const registered = await this.#registerWorkspace(path, trust);
+  async #openWorkspace(path: string, trust: boolean): Promise<OpenWorkspaceOutcome> {
+    const registered = await registerFolder(() => this.#deps.link.connection(), path, trust);
 
-    if (registered.kind === "failed") return registered;
-    this.#selections.set(window, registered.workspace);
-    this.#deps.emitHostEvent({ kind: "workspace_opened", workspace: registered.workspace }, window);
-
-    return { kind: "opened", workspace: registered.workspace, needsTrust: registered.needsTrust };
-  }
-
-  async #registerWorkspace(path: string, trust = false): Promise<RegisterWorkspaceOutcome> {
-    const host = await this.#deps.link.connection();
-    const seen = await host.workspaces.inspect({ kind: "local", path });
-    const added = await host.workspaces.add(seen.target, { expect: { identity: seen.identity } });
-
-    if (added.kind === "stale")
-      return { kind: "failed", message: "The folder changed while it was opened. Open it again." };
-
-    if (added.kind === "unavailable")
-      return { kind: "failed", message: "This folder can't be opened here." };
-
-    if (trust) await host.workspace(added.workspace).update({ projectResources: true });
-    const workspace = await host.workspace(added.workspace).info();
-    const folder = "path" in workspace.target ? workspace.target.path : path;
-
-    return {
-      kind: "registered",
-      workspace: { id: workspace.id, path: folder, name: basename(folder) },
-      needsTrust: workspace.trusted === null && seen.projectSources.length > 0,
-    };
+    return registered.kind === "failed"
+      ? registered
+      : { kind: "opened", workspace: registered.workspace, needsTrust: registered.needsTrust };
   }
 
   async #serverState(): Promise<ServerState> {

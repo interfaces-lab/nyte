@@ -22,6 +22,7 @@ import type {
   SubmitDraft,
 } from "@nyte-ai/schema";
 import type { HookEntry, HookHandler, HookName, Plugin, PluginApi } from "../client.ts";
+import { headAttention } from "./presentation.ts";
 import type { PartMessage } from "./presentation.ts";
 
 type Notification = Parameters<PluginApi["ui"]["notify"]>[0];
@@ -52,7 +53,10 @@ export interface ClientPlugins {
   readonly ids: readonly string[];
   /** The view a plugin renderer draws for a part, or undefined when none draws its kind. */
   draw(session: Session, message: PartMessage, placement: Placement): unknown;
-  /** Feeds the session directory; each run that ends after the first list fires `run_ended_anywhere`. */
+  /**
+   * Feeds the session directory; each run that ends after the first list fires `run_ended_anywhere`,
+   * and each change of a session's attention after the first list fires `attention_changed_anywhere`.
+   */
   sessionsChanged(sessions: readonly SessionInfo[]): void;
   switched(previous: Session | null, next: Session): Promise<void>;
   beforeSubmit(draft: SubmitDraft): Promise<Decision<SubmitDraft>>;
@@ -204,6 +208,7 @@ function causeMessage(cause: unknown): string {
 export async function mountClientPlugins(options: MountOptions): Promise<ClientPlugins> {
   const handlers: Handlers = {
     run_ended_anywhere: [],
+    attention_changed_anywhere: [],
     app_ready: [],
     session_opened: [],
     before_submit: [],
@@ -313,6 +318,9 @@ export async function mountClientPlugins(options: MountOptions): Promise<ClientP
     if (hooks.run_ended_anywhere !== undefined)
       register(api, "run_ended_anywhere", hooks.run_ended_anywhere);
 
+    if (hooks.attention_changed_anywhere !== undefined)
+      register(api, "attention_changed_anywhere", hooks.attention_changed_anywhere);
+
     if (hooks.app_ready !== undefined) register(api, "app_ready", hooks.app_ready);
 
     if (hooks.session_opened !== undefined) register(api, "session_opened", hooks.session_opened);
@@ -346,6 +354,7 @@ export async function mountClientPlugins(options: MountOptions): Promise<ClientP
         renderers.set(renderer.kind.kind, renderer);
 
   const ends = new Map<string, RunId>();
+  const attention = new Map<SessionId, string>();
   let seeded = false;
 
   await observe(handlers.app_ready, { restored: false }, null);
@@ -365,6 +374,14 @@ export async function mountClientPlugins(options: MountOptions): Promise<ClientP
     },
     sessionsChanged(sessions) {
       for (const info of sessions) {
+        const key = headAttention(info).alert.key;
+
+        if (attention.get(info.id) !== key) {
+          attention.set(info.id, key);
+
+          if (seeded) void observe(handlers.attention_changed_anywhere, { info }, info.id, null);
+        }
+
         for (const head of info.heads) {
           const key = `${info.id}/${head.name}`;
           const last = head.execution.kind === "idle" ? head.execution.lastRun : null;

@@ -17,6 +17,7 @@ import type {
   RunView,
   Schema,
   SessionId,
+  SessionInfo,
   Submission,
   SubmitDraft,
   Thinking,
@@ -358,6 +359,9 @@ export type HookTable = {
     { readonly session: SessionId; readonly run: RunId; readonly end: RunEnd },
     "client"
   >;
+
+  /** A session's attention changed: it started or stopped waiting on the person, or a run ended. */
+  attention_changed_anywhere: Observe<{ readonly info: SessionInfo }, "client">;
 
   app_ready: Observe<{ readonly restored: boolean }, "client">;
 

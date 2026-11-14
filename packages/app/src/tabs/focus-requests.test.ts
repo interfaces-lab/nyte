@@ -24,7 +24,7 @@ interface Act {
   split(tab: number): void;
   close(tab: number, pane: number): void;
   drop(tab: number, sessionId: SessionId, pane: number, placement: DropPlacement): void;
-  hide(tab: number, sessionId: SessionId): void;
+  hide(sessionId: SessionId): void;
   newChat(tab: number): void;
   beside(sessionId: SessionId): void;
   arrange(
@@ -94,8 +94,8 @@ const act: Act = {
   close: (tab, pane) => command(tab, { kind: "close", pane: paneAt(tab, pane) }),
   drop: (tab, sessionId, pane, placement) =>
     command(tab, { kind: "drop", sessionId, pane: paneAt(tab, pane), placement }),
-  hide: (tab, sessionId) => {
-    windowTabs.store.hide(tabId(tab), sessionId);
+  hide: (sessionId) => {
+    windowTabs.store.hide(sessionId);
   },
   newChat: (tab) => windowTabs.store.newChat(tabId(tab)),
   beside: (sessionId) => send({ kind: "open-beside", sessionId }),
@@ -186,7 +186,7 @@ test.each<[string, Step, Step, string, readonly string[]]>([
     "[A|>B]",
     ["0:1"],
   ],
-  ["hide a chat: none", twoPanes, (row) => row.hide(0, A), "[blank|>B]", []],
+  ["hide a chat: none", twoPanes, (row) => row.hide(A), "[blank|>B]", []],
   [
     "new chat where one waits: the focused pane, unchanged",
     blank,
