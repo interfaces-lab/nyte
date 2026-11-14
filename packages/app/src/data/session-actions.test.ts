@@ -281,3 +281,32 @@ test("failed permanent deletion restores the chat and its pane", async () => {
   notification("Couldn't delete this chat. Try again.");
   f.client.clear();
 });
+
+test("undoing the delete of a chat being archived leaves it archived with no archive notification", async () => {
+  const f = fixture();
+  const id = asId<"session">("one");
+  let open = true;
+  f.actions.archive([id], true);
+  notification("1 chat archived");
+  f.actions.delete(id, () => {
+    open = false;
+
+    return () => {
+      open = true;
+    };
+  });
+  undo("1 chat deleted", f.toasts);
+  assert.equal(open, true);
+  assert.equal(f.directory()[0]?.archived, true);
+  assert.deepEqual(
+    [...notifications.values()].map((notice) => notice.title),
+    [],
+  );
+  f.writes.resolve();
+  await vi.waitFor(() => {
+    assert.equal(f.saved.get(id)?.archived, true);
+    assert.equal(f.actions.getSnapshot().length, 0);
+  });
+  assert.equal(f.directory()[0]?.archived, true);
+  f.client.clear();
+});

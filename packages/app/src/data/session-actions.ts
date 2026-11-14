@@ -62,8 +62,11 @@ export class SessionActions {
   readonly #toasts: ActionToasts;
   readonly #listeners = new Set<() => void>();
   readonly #queues = keyedSerial<SessionId>();
-  readonly #archiveVersions = new Map<SessionId, PendingChange>();
-  readonly #archiveNotifications = new Map<SessionId, () => void>();
+  /** Each session's current archive change, and how to drop its entry from the Undo notification. */
+  readonly #archives = new Map<
+    SessionId,
+    { readonly change: PendingChange; readonly discard: () => void }
+  >();
   #pending: readonly PendingChange[] = [];
 
   constructor({
@@ -115,24 +118,22 @@ export class SessionActions {
       const session = this.#find(sessionId);
 
       if (session === undefined || session.archived === archived) continue;
-      this.#archiveNotifications.get(sessionId)?.();
+      this.#archives.get(sessionId)?.discard();
       const pending = this.#add(sessionId, { kind: "archive", archived });
-      this.#archiveVersions.set(sessionId, pending);
       const closed = Promise.withResolvers<void>();
 
       const removeToastEntry = this.#toasts.add(archived ? "archived" : "restored", {
         undo: () => {
-          if (this.#archiveVersions.get(sessionId) !== pending) {
+          if (this.#archives.get(sessionId)?.change !== pending) {
             closed.resolve();
 
             return;
           }
 
           const inverse = this.#add(sessionId, { kind: "archive", archived: session.archived });
-          this.#archiveVersions.set(sessionId, inverse);
+          this.#archives.set(sessionId, { change: inverse, discard });
           void this.#run(inverse).then(() => {
-            if (this.#archiveVersions.get(sessionId) === inverse)
-              this.#archiveVersions.delete(sessionId);
+            if (this.#archives.get(sessionId)?.change === inverse) this.#archives.delete(sessionId);
             closed.resolve();
           });
         },
@@ -144,26 +145,22 @@ export class SessionActions {
         closed.resolve();
       };
 
-      this.#archiveNotifications.set(sessionId, discard);
+      this.#archives.set(sessionId, { change: pending, discard });
 
       const work = this.#run(pending).then((saved) => {
         if (!saved) discard();
       });
 
       void Promise.all([work, closed.promise]).then(() => {
-        if (this.#archiveNotifications.get(sessionId) === discard)
-          this.#archiveNotifications.delete(sessionId);
-
-        if (this.#archiveVersions.get(sessionId) === pending)
-          this.#archiveVersions.delete(sessionId);
+        if (this.#archives.get(sessionId)?.discard === discard) this.#archives.delete(sessionId);
       });
     }
   }
 
   restore(sessionId: SessionId): void {
     if (this.#find(sessionId)?.archived !== true) return;
-    this.#archiveNotifications.get(sessionId)?.();
-    this.#archiveVersions.delete(sessionId);
+    this.#archives.get(sessionId)?.discard();
+    this.#archives.delete(sessionId);
     void this.#run(this.#add(sessionId, { kind: "archive", archived: false }));
   }
 
@@ -174,8 +171,8 @@ export class SessionActions {
       )
     )
       return;
-    this.#archiveNotifications.get(sessionId)?.();
-    this.#archiveVersions.delete(sessionId);
+    this.#archives.get(sessionId)?.discard();
+    this.#archives.delete(sessionId);
     const pending = this.#add(sessionId, { kind: "delete" });
     const restore = hide(sessionId);
     this.#toasts.add("deleted", {

@@ -23,7 +23,8 @@ export interface Pace {
   readonly drainFrames: number | undefined;
 }
 
-interface Reveal {
+/** The text message being paced, the status it shows until its text has caught up, and how much of it shows. */
+export interface Reveal {
   readonly message: TextMessage;
   readonly status: TextMessage["status"];
   readonly pace: Pace;
@@ -99,6 +100,102 @@ export function chunkLength(pending: string, budget: number): number {
   return grapheme.index > 0 ? grapheme.index : grapheme.segment.length;
 }
 
+/** What to pace after a view arrives: the same message while it is still the newest live text, else the newest live text, whole when the chat is opening and from nothing otherwise. A hidden transcript shows everything at once. */
+export function receiveReveal(
+  current: Reveal | undefined,
+  messages: readonly Message[],
+  moment: { readonly showing: boolean; readonly opening: boolean; readonly now: number },
+): Reveal | undefined {
+  const live = messages.findLast(
+    (message): message is TextMessage => showsText(message) && message.status.kind === "live",
+  );
+
+  const same = messages.find((message) => message.id === current?.message.id);
+
+  if (
+    current === undefined ||
+    same === undefined ||
+    !showsText(same) ||
+    (live !== undefined && live.id !== same.id)
+  )
+    return settledReveal(
+      live === undefined
+        ? undefined
+        : {
+            message: live,
+            status: live.status,
+            pace: moment.opening
+              ? settledPace(live.state.markdown)
+              : extendPace(settledPace(""), live.state.markdown, moment.now),
+          },
+    );
+
+  const pace = extendPace(current.pace, same.state.markdown, moment.now);
+
+  if (same.status.kind === "live")
+    return settledReveal({
+      message: same,
+      status: same.status,
+      pace: moment.showing ? pace : flushPace(pace, moment.now),
+    });
+
+  return settledReveal({
+    message: same,
+    status: current.status,
+    pace: moment.showing ? drainPace(pace, moment.now) : flushPace(pace, moment.now),
+  });
+}
+
+/** One frame of `current`: the next slice while the transcript is showing, else all of it. */
+export function tickReveal(
+  current: Reveal,
+  moment: { readonly showing: boolean; readonly now: number },
+): Reveal | undefined {
+  return settledReveal({
+    ...current,
+    pace: moment.showing
+      ? framePace(current.pace, moment.now)
+      : flushPace(current.pace, moment.now),
+  });
+}
+
+/** A frame while text is still to show, and the barrier deadline while a drain is counting down. */
+export function revealTimers(reveal: Reveal | undefined) {
+  return {
+    frame: reveal !== undefined && reveal.pace.shown < reveal.pace.text.length,
+    deadline: reveal?.pace.drainFrames !== undefined,
+  };
+}
+
+/** `view` with the paced message cut to what has shown, or `view` itself when nothing is held back. */
+export function presentReveal<V extends { readonly messages: readonly Message[] }>(
+  view: V,
+  reveal: Reveal | undefined,
+): V {
+  if (reveal === undefined) return view;
+  const markdown = reveal.pace.text.slice(0, reveal.pace.shown);
+
+  if (markdown === reveal.message.state.markdown && reveal.status === reveal.message.status)
+    return view;
+
+  return {
+    ...view,
+    messages: view.messages.map((message) =>
+      message.id === reveal.message.id
+        ? { ...reveal.message, state: { ...reveal.message.state, markdown }, status: reveal.status }
+        : message,
+    ),
+  };
+}
+
+/** A reveal whose text has all shown and whose message has ended has nothing left to pace. */
+function settledReveal(next: Reveal | undefined): Reveal | undefined {
+  return next === undefined ||
+    (next.pace.shown === next.pace.text.length && next.message.status.kind !== "live")
+    ? undefined
+    : next;
+}
+
 export function createTextPacer<V extends { readonly messages: readonly Message[] }>(
   visible: () => boolean,
   revise: (view: V) => void,
@@ -108,43 +205,17 @@ export function createTextPacer<V extends { readonly messages: readonly Message[
   let frame: number | undefined;
   let deadline: ReturnType<typeof setTimeout> | undefined;
 
-  const present = (view: V): V => {
-    const current = reveal;
-
-    if (current === undefined) return view;
-    const markdown = current.pace.text.slice(0, current.pace.shown);
-
-    if (markdown === current.message.state.markdown && current.status === current.message.status)
-      return view;
-
-    return {
-      ...view,
-      messages: view.messages.map((message) =>
-        message.id === current.message.id
-          ? {
-              ...current.message,
-              state: { ...current.message.state, markdown },
-              status: current.status,
-            }
-          : message,
-      ),
-    };
-  };
-
   const settle = (next: Reveal | undefined): void => {
-    reveal =
-      next === undefined ||
-      (next.pace.shown === next.pace.text.length && next.message.status.kind !== "live")
-        ? undefined
-        : next;
+    reveal = next;
+    const timers = revealTimers(next);
 
-    if (reveal?.pace.drainFrames === undefined) {
+    if (timers.deadline) deadline ??= setTimeout(flush, BARRIER_MAX_WAIT_MS);
+    else {
       clearTimeout(deadline);
       deadline = undefined;
-    } else deadline ??= setTimeout(flush, BARRIER_MAX_WAIT_MS);
+    }
 
-    if (reveal !== undefined && reveal.pace.shown < reveal.pace.text.length)
-      frame ??= requestAnimationFrame(tick);
+    if (timers.frame) frame ??= requestAnimationFrame(tick);
     else if (frame !== undefined) {
       cancelAnimationFrame(frame);
       frame = undefined;
@@ -156,20 +227,17 @@ export function createTextPacer<V extends { readonly messages: readonly Message[
     const current = reveal;
 
     if (current === undefined || latest === undefined) return;
-    settle({
-      ...current,
-      pace: visible() ? framePace(current.pace, now) : flushPace(current.pace, now),
-    });
+    settle(tickReveal(current, { showing: visible(), now }));
 
-    if (reveal?.pace.shown !== current.pace.shown) revise(present(latest));
+    if (reveal?.pace.shown !== current.pace.shown) revise(presentReveal(latest, reveal));
   }
 
   function flush(): void {
     const current = reveal;
 
     if (current === undefined || latest === undefined) return;
-    settle({ ...current, pace: flushPace(current.pace, performance.now()) });
-    revise(present(latest));
+    settle(tickReveal(current, { showing: false, now: performance.now() }));
+    revise(presentReveal(latest, reveal));
   }
 
   return {
@@ -178,49 +246,10 @@ export function createTextPacer<V extends { readonly messages: readonly Message[
       const now = performance.now();
       const showing = visible();
       const opening = latest === undefined || !showing;
-      const current = reveal;
       latest = view;
+      settle(receiveReveal(reveal, view.messages, { showing, opening, now }));
 
-      const live = view.messages.findLast(
-        (message): message is TextMessage => showsText(message) && message.status.kind === "live",
-      );
-
-      const same = view.messages.find((message) => message.id === current?.message.id);
-
-      if (
-        current !== undefined &&
-        same !== undefined &&
-        showsText(same) &&
-        (live === undefined || live.id === same.id)
-      ) {
-        const pace = extendPace(current.pace, same.state.markdown, now);
-
-        if (same.status.kind === "live")
-          settle({
-            message: same,
-            status: same.status,
-            pace: showing ? pace : flushPace(pace, now),
-          });
-        else
-          settle({
-            message: same,
-            status: current.status,
-            pace: showing ? drainPace(pace, now) : flushPace(pace, now),
-          });
-      } else
-        settle(
-          live === undefined
-            ? undefined
-            : {
-                message: live,
-                status: live.status,
-                pace: opening
-                  ? settledPace(live.state.markdown)
-                  : extendPace(settledPace(""), live.state.markdown, now),
-              },
-        );
-
-      return present(view);
+      return presentReveal(view, reveal);
     },
     dispose(): void {
       settle(undefined);

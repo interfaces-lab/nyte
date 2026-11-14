@@ -6,6 +6,7 @@ import { QueryObserver, replaceEqualDeep, skipToken } from "@tanstack/react-quer
 import { connected } from "./connection.ts";
 import { derivedStore } from "./derived-store.ts";
 import type { StoreSource } from "./derived-store.ts";
+import { keepList, keepMap, keepSet, reconcile } from "./keep.ts";
 import { keys, queryClient, queryDataReader } from "./query-client.ts";
 import { SessionActions } from "./session-actions.ts";
 import { childList, sessionList } from "./directory.ts";
@@ -29,18 +30,18 @@ export function findSessionRow(id: SessionId): SessionInfo | undefined {
 }
 
 export function subscribeSessionRow(id: SessionId, notice: () => void): () => void {
-  return ask(asked, id, notice);
+  return ask(interest.rows, id, notice);
 }
 
 export function subscribeChildRows(parent: SessionId, notice: () => void): () => void {
-  return ask(askedParents, parent, notice);
+  return ask(interest.parents, parent, notice);
 }
 
 function ask(counts: Map<SessionId, number>, id: SessionId, notice: () => void): () => void {
   const leave = subscribeSessionRows(notice);
   counts.set(id, (counts.get(id) ?? 0) + 1);
 
-  for (const listener of askListeners) listener();
+  for (const listener of interest.changed) listener();
 
   return () => {
     const count = (counts.get(id) ?? 1) - 1;
@@ -48,7 +49,7 @@ function ask(counts: Map<SessionId, number>, id: SessionId, notice: () => void):
     if (count === 0) counts.delete(id);
     else counts.set(id, count);
 
-    for (const listener of askListeners) listener();
+    for (const listener of interest.changed) listener();
     leave();
   };
 }
@@ -94,147 +95,169 @@ export function missingAsNull(cause: unknown): null {
   throw cause;
 }
 
-const asked = new Map<SessionId, number>();
+/** Who reads which session row and which parent's child rows, counted, so a read stays open while anyone still asks. */
+const interest = {
+  rows: new Map<SessionId, number>(),
+  parents: new Map<SessionId, number>(),
+  changed: new Set<() => void>(),
+};
 
-const askedParents = new Map<SessionId, number>();
-
-const askListeners = new Set<() => void>();
-
-interface Unlisted {
-  readonly rows: readonly SessionInfo[];
-  readonly missing: ReadonlySet<SessionId>;
+export interface RowInterest {
+  readonly rows: ReadonlyMap<SessionId, number>;
+  readonly parents: ReadonlyMap<SessionId, number>;
 }
 
-const NOTHING_UNLISTED: Unlisted = { rows: [], missing: new Set() };
+export interface ListedRows {
+  readonly all: readonly SessionInfo[] | undefined;
+  readonly roots: readonly SessionInfo[] | undefined;
+  readonly pinned: readonly SessionInfo[] | undefined;
+  readonly children: readonly (readonly SessionInfo[] | undefined)[];
+}
 
-let unlistedReads = NOTHING_UNLISTED;
+export interface RowInputs extends ListedRows {
+  readonly recorded: readonly SessionInfo[] | undefined;
+  /** Each asked session no list holds: its row, or `null` once the host says it doesn't know it. */
+  readonly unlisted: ReadonlyMap<SessionId, SessionInfo | null>;
+  readonly project: (session: SessionInfo) => SessionInfo | null;
+}
 
-const unlisted: StoreSource<Unlisted> = {
-  read: () => unlistedReads,
-  subscribe(notice) {
-    const reads = new Map<
-      SessionId,
-      { readonly session: () => SessionInfo | null | undefined; readonly leave: () => void }
-    >();
+interface AskedRows {
+  readonly children: ListedRows["children"];
+  readonly unlisted: RowInputs["unlisted"];
+}
 
-    const collect = (): void => {
-      const found = [...reads].map(([id, read]) => [id, read.session()] as const);
+const NOTHING_ASKED: AskedRows = { children: [], unlisted: new Map() };
 
-      const rows = found.flatMap(([, session]) =>
-        session === undefined || session === null ? [] : [session],
-      );
+/** The child lists and lone sessions that `interest` asks for. Child lists open per asked parent; a session read opens once `all` has arrived and no list holds it. */
+function askedRows(): StoreSource<AskedRows> {
+  let found = NOTHING_ASKED;
 
-      const missing = found.flatMap(([id, session]) => (session === null ? [id] : []));
-      const known = unlistedReads;
+  return {
+    read: () => found,
+    subscribe(notice) {
+      const parents = new Map<SessionId, () => void>();
 
-      if (
-        rows.length === known.rows.length &&
-        rows.every((row, index) => row === known.rows[index]) &&
-        missing.length === known.missing.size &&
-        missing.every((id) => known.missing.has(id))
-      )
-        return;
-      unlistedReads = { rows, missing: new Set(missing) };
-      notice();
-    };
+      const reads = new Map<
+        SessionId,
+        { readonly session: () => SessionInfo | null | undefined; readonly leave: () => void }
+      >();
 
-    const sync = (): void => {
-      const all = sessionList("all").value;
+      const publish = (next: AskedRows): void => {
+        if (next.children === found.children && next.unlisted === found.unlisted) return;
+        found = next;
+        notice();
+      };
 
-      const listed = new Set(
-        [
-          ...(all ?? []),
-          ...(sessionList("roots").value ?? []),
-          ...(sessionList("pinned").value ?? []),
-          ...[...askedParents.keys()].flatMap((parent) => childList(parent).value ?? []),
-        ].map((session) => session.id),
-      );
+      const collectChildren = (): void =>
+        publish({
+          ...found,
+          children: keepList(
+            found.children,
+            [...parents.keys()].map((parent) => childList(parent).value),
+          ),
+        });
 
-      const wanted = new Set(
-        all === undefined ? [] : [...asked.keys()].filter((id) => !listed.has(id)),
-      );
+      const collectUnlisted = (): void =>
+        publish({
+          ...found,
+          unlisted: keepMap(
+            found.unlisted,
+            new Map(
+              [...reads].flatMap(([id, read]) => {
+                const session = read.session();
 
-      for (const [id, read] of reads)
-        if (!wanted.has(id)) {
-          read.leave();
-          reads.delete(id);
-        }
+                return session === undefined ? [] : [[id, session] as const];
+              }),
+            ),
+          ),
+        });
 
-      for (const id of wanted)
-        if (!reads.has(id)) {
-          const observer = new QueryObserver(queryClient, sessionQuery(id));
-          reads.set(id, {
-            session: () => observer.getCurrentResult().data,
-            leave: observer.subscribe(collect),
-          });
-        }
+      const wanted = (): WantedReads =>
+        wantedReads(interest, {
+          all: sessionList("all").value,
+          roots: sessionList("roots").value,
+          pinned: sessionList("pinned").value,
+          children: [...interest.parents.keys()].map((parent) => childList(parent).value),
+        });
 
-      collect();
-    };
+      const syncUnlisted = (unlisted: ReadonlySet<SessionId>): void => {
+        reconcile(
+          reads,
+          unlisted,
+          (id) => {
+            const observer = new QueryObserver(queryClient, sessionQuery(id));
 
-    askListeners.add(sync);
+            return {
+              session: () => observer.getCurrentResult().data,
+              leave: observer.subscribe(collectUnlisted),
+            };
+          },
+          (read) => read.leave(),
+        );
+        collectUnlisted();
+      };
 
-    const leave = [
-      sessionList("all").subscribeByFrame(sync),
-      sessionList("roots").subscribeByFrame(sync),
-      sessionList("pinned").subscribeByFrame(sync),
-    ];
+      const sync = (): void => {
+        const next = wanted();
+        reconcile(
+          parents,
+          next.parents,
+          (parent) => childList(parent).subscribeByFrame(collectChildren),
+          (leave) => leave(),
+        );
+        collectChildren();
+        syncUnlisted(next.unlisted);
+      };
 
-    sync();
+      const relist = (): void => syncUnlisted(wanted().unlisted);
 
-    return () => {
-      askListeners.delete(sync);
+      interest.changed.add(sync);
 
-      for (const unsubscribe of leave) unsubscribe();
+      const leave = [
+        sessionList("all").subscribeByFrame(relist),
+        sessionList("roots").subscribeByFrame(relist),
+        sessionList("pinned").subscribeByFrame(relist),
+      ];
 
-      for (const read of reads.values()) read.leave();
-      unlistedReads = NOTHING_UNLISTED;
-    };
-  },
-};
+      sync();
 
-const NO_CHILD_ROWS: readonly SessionInfo[] = [];
+      return () => {
+        interest.changed.delete(sync);
 
-let childRows = NO_CHILD_ROWS;
+        for (const unsubscribe of leave) unsubscribe();
 
-const children: StoreSource<readonly SessionInfo[]> = {
-  read: () => childRows,
-  subscribe(notice) {
-    const watched = new Map<SessionId, () => void>();
+        for (const unsubscribe of parents.values()) unsubscribe();
 
-    const collect = (): void => {
-      const rows = [...watched.keys()].flatMap((parent) => childList(parent).value ?? []);
+        for (const read of reads.values()) read.leave();
+        found = NOTHING_ASKED;
+      };
+    },
+  };
+}
 
-      if (rows.length === childRows.length && rows.every((row, index) => row === childRows[index]))
-        return;
-      childRows = rows.length === 0 ? NO_CHILD_ROWS : rows;
-      notice();
-    };
+export interface WantedReads {
+  readonly parents: ReadonlySet<SessionId>;
+  readonly unlisted: ReadonlySet<SessionId>;
+}
 
-    const sync = (): void => {
-      for (const [parent, leave] of watched)
-        if (!askedParents.has(parent)) {
-          leave();
-          watched.delete(parent);
-        }
+/** Every asked parent's child list, and each asked session no list holds. No session is read alone until `all` has arrived, which holds most of them. */
+export function wantedReads(interest: RowInterest, lists: ListedRows): WantedReads {
+  const listed = new Set(
+    [
+      ...(lists.all ?? []),
+      ...(lists.roots ?? []),
+      ...(lists.pinned ?? []),
+      ...lists.children.flatMap((list) => list ?? []),
+    ].map((session) => session.id),
+  );
 
-      for (const parent of askedParents.keys())
-        if (!watched.has(parent)) watched.set(parent, childList(parent).subscribeByFrame(collect));
-
-      collect();
-    };
-
-    askListeners.add(sync);
-    sync();
-
-    return () => {
-      askListeners.delete(sync);
-
-      for (const leave of watched.values()) leave();
-      childRows = NO_CHILD_ROWS;
-    };
-  },
-};
+  return {
+    parents: new Set(interest.parents.keys()),
+    unlisted: new Set(
+      lists.all === undefined ? [] : [...interest.rows.keys()].filter((id) => !listed.has(id)),
+    ),
+  };
+}
 
 const sources = {
   all: {
@@ -257,8 +280,7 @@ const sources = {
         queryFn: skipToken,
       }).subscribe(notice),
   },
-  children,
-  unlisted,
+  asked: askedRows(),
   pending: {
     read: () => sessionActions.getSnapshot(),
     subscribe: (notice: () => void) => sessionActions.subscribe(notice),
@@ -276,31 +298,59 @@ const NO_ROWS: SessionRows = {
 const store = derivedStore(
   sources,
   (read, previous: SessionRows): SessionRows => {
-    const roots = withPinned(read.roots.read() ?? read.recorded.read(), read.pinned.read());
     const pending = read.pending.read();
+    const asked = read.asked.read();
 
-    const merged = mergeSessionRows(
+    return deriveSessionRows(
       {
-        lists: [read.all.read(), roots, read.children.read(), read.unlisted.read().rows],
-        roots,
+        all: read.all.read(),
+        roots: read.roots.read(),
+        pinned: read.pinned.read(),
+        recorded: read.recorded.read(),
+        children: asked.children,
+        unlisted: asked.unlisted,
         project: (session) => sessionActions.projectSession(session, pending),
       },
       previous,
     );
-
-    const listed = read.all.read() !== undefined;
-    const missing = read.unlisted.read().missing;
-
-    return merged.rows === previous.rows &&
-      merged.hosted === previous.hosted &&
-      merged.roots === previous.roots &&
-      listed === previous.listed &&
-      missing === previous.missing
-      ? previous
-      : { ...merged, listed, missing };
   },
   NO_ROWS,
 );
+
+/** The rows every list and lone read hold, the first list naming a session winning, each projected through the pending actions. Whatever equals `previous` stays `previous`, the whole value included, so a reader of one row re-renders only when that row changes. */
+export function deriveSessionRows(inputs: RowInputs, previous: SessionRows): SessionRows {
+  const roots = withPinned(inputs.roots ?? inputs.recorded, inputs.pinned);
+  const unlisted = [...inputs.unlisted];
+
+  const merged = mergeSessionRows(
+    {
+      lists: [
+        inputs.all,
+        roots,
+        ...inputs.children,
+        unlisted.flatMap(([, session]) => (session === null ? [] : [session])),
+      ],
+      roots,
+      project: inputs.project,
+    },
+    previous,
+  );
+
+  const listed = inputs.all !== undefined;
+
+  const missing = keepSet(
+    previous.missing,
+    new Set(unlisted.flatMap(([id, session]) => (session === null ? [id] : []))),
+  );
+
+  return merged.rows === previous.rows &&
+    merged.hosted === previous.hosted &&
+    merged.roots === previous.roots &&
+    listed === previous.listed &&
+    missing === previous.missing
+    ? previous
+    : { ...merged, listed, missing };
+}
 
 /** The newest roots, then each pinned root they leave out, which is older than all of them, so a pinned chat stays listed however many chats came after it. */
 function withPinned(
@@ -329,12 +379,6 @@ export function mergeSessionRows(
   for (const list of sources.lists)
     for (const session of list ?? []) if (!merged.has(session.id)) merged.set(session.id, session);
 
-  const hosted =
-    merged.size === previous.hosted.size &&
-    [...merged].every(([id, row]) => previous.hosted.get(id) === row)
-      ? previous.hosted
-      : merged;
-
   const rows = new Map(
     [...merged.values()].flatMap((listed) => {
       const session = sources.project(listed);
@@ -346,21 +390,11 @@ export function mergeSessionRows(
   );
 
   const roots = sources.roots?.flatMap((session) => rows.get(session.id) ?? []);
-  const known = previous.roots;
 
   return {
-    hosted,
-    rows:
-      rows.size === previous.rows.size &&
-      [...rows].every(([id, row]) => previous.rows.get(id) === row)
-        ? previous.rows
-        : rows,
+    hosted: keepMap(previous.hosted, merged),
+    rows: keepMap(previous.rows, rows),
     roots:
-      roots !== undefined &&
-      known !== undefined &&
-      roots.length === known.length &&
-      roots.every((row, index) => row === known[index])
-        ? known
-        : roots,
+      roots === undefined || previous.roots === undefined ? roots : keepList(previous.roots, roots),
   };
 }

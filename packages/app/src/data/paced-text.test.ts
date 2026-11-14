@@ -1,3 +1,6 @@
+import { showsText } from "@nyte-ai/plugin/client/presentation";
+import type { Message } from "@nyte-ai/sdk";
+import { asId } from "@nyte-ai/schema";
 import { describe, expect, test } from "vitest";
 import {
   chunkLength,
@@ -5,9 +8,12 @@ import {
   extendPace,
   flushPace,
   framePace,
+  presentReveal,
+  receiveReveal,
+  revealTimers,
   settledPace,
 } from "./paced-text.ts";
-import type { Pace } from "./paced-text.ts";
+import type { Pace, Reveal } from "./paced-text.ts";
 
 const FRAME = 17;
 
@@ -126,5 +132,145 @@ describe("chunkLength", () => {
     },
   ])("$name", (row) => {
     expect(chunkLength(row.text, row.budget)).toBe(row.expected);
+  });
+});
+
+function text(id: string, markdown: string, live: boolean): Message {
+  return {
+    id: asId<"message">(id),
+    turn: asId<"turn">("turn"),
+    at: 1,
+    kind: "part",
+    part: asId<"part">(id),
+    partKind: "text",
+    role: "answer",
+    state: { markdown, signature: null },
+    version: 1,
+    status: live
+      ? { kind: "live", run: asId<"run">("run") }
+      : { kind: "settled", commit: asId<"commit">(id), endedAt: 1 },
+  };
+}
+
+const LONG = "lorem ipsum ".repeat(30);
+
+describe("receiveReveal", () => {
+  test.each<{
+    readonly name: string;
+    readonly steps: readonly { readonly messages: readonly Message[]; readonly showing: boolean }[];
+    readonly expected: {
+      readonly shown: readonly (readonly [string, number, string])[];
+      readonly frame: boolean;
+      readonly deadline: boolean;
+      readonly same: boolean;
+    };
+  }>([
+    {
+      name: "the first view shows the whole text",
+      steps: [{ messages: [text("a", LONG, true)], showing: true }],
+      expected: { shown: [["a", 360, "live"]], frame: false, deadline: false, same: true },
+    },
+    {
+      name: "a new live text while showing reveals from nothing",
+      steps: [
+        { messages: [], showing: true },
+        { messages: [text("a", LONG, true)], showing: true },
+      ],
+      expected: { shown: [["a", 0, "live"]], frame: true, deadline: false, same: false },
+    },
+    {
+      name: "the same message still live extends what was shown",
+      steps: [
+        { messages: [text("a", "lorem ", true)], showing: true },
+        { messages: [text("a", LONG, true)], showing: true },
+      ],
+      expected: { shown: [["a", 6, "live"]], frame: true, deadline: false, same: false },
+    },
+    {
+      name: "the same message ended drains and still reads as live",
+      steps: [
+        { messages: [text("a", "lorem ", true)], showing: true },
+        { messages: [text("a", LONG, false)], showing: true },
+      ],
+      expected: { shown: [["a", 6, "live"]], frame: true, deadline: true, same: false },
+    },
+    {
+      name: "a message ending within one frame's budget settles at once",
+      steps: [
+        { messages: [text("a", "lorem ", true)], showing: true },
+        { messages: [text("a", "lorem ipsum", false)], showing: true },
+      ],
+      expected: { shown: [["a", 11, "settled"]], frame: false, deadline: false, same: true },
+    },
+    {
+      name: "a hidden transcript shows the whole text",
+      steps: [
+        { messages: [text("a", "lorem ", true)], showing: true },
+        { messages: [text("a", LONG, true)], showing: false },
+      ],
+      expected: { shown: [["a", 360, "live"]], frame: false, deadline: false, same: true },
+    },
+    {
+      name: "a new live text while hidden opens whole",
+      steps: [
+        { messages: [], showing: true },
+        { messages: [text("a", LONG, true)], showing: false },
+      ],
+      expected: { shown: [["a", 360, "live"]], frame: false, deadline: false, same: true },
+    },
+    {
+      name: "a newer live text takes over from nothing and leaves the older one whole",
+      steps: [
+        { messages: [text("a", "lorem ", true)], showing: true },
+        { messages: [text("a", LONG, true), text("b", LONG, true)], showing: true },
+      ],
+      expected: {
+        shown: [
+          ["a", 360, "live"],
+          ["b", 0, "live"],
+        ],
+        frame: true,
+        deadline: false,
+        same: false,
+      },
+    },
+    {
+      name: "text that no longer extends what was shown appears at once",
+      steps: [
+        { messages: [text("a", "lorem ", true)], showing: true },
+        { messages: [text("a", LONG, true)], showing: true },
+        { messages: [text("a", "Goodbye", true)], showing: true },
+      ],
+      expected: { shown: [["a", 7, "live"]], frame: false, deadline: false, same: true },
+    },
+    {
+      name: "no live text leaves the view as it is",
+      steps: [
+        { messages: [], showing: true },
+        { messages: [text("a", LONG, false)], showing: true },
+      ],
+      expected: { shown: [["a", 360, "settled"]], frame: false, deadline: false, same: true },
+    },
+  ])("$name", (row) => {
+    const reveal = row.steps.reduce<Reveal | undefined>(
+      (current, step, index) =>
+        receiveReveal(current, step.messages, {
+          showing: step.showing,
+          opening: index === 0 || !step.showing,
+          now: 0,
+        }),
+      undefined,
+    );
+
+    const view = { messages: row.steps.at(-1)?.messages ?? [] };
+    const shown = presentReveal(view, reveal);
+
+    expect({
+      shown: shown.messages
+        .filter(showsText)
+        .map((message) => [message.id, message.state.markdown.length, message.status.kind]),
+      ...revealTimers(reveal),
+      same: shown === view,
+    }).toEqual(row.expected);
   });
 });
