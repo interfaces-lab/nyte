@@ -5,7 +5,7 @@ import type { TaskState } from "@nyte-ai/plugin/client/presentation";
 import { describeHostError } from "../connection/connection.ts";
 import { useHost } from "../connection/host-context.tsx";
 import { healthMessage, updatedLabel, useHealth, useSessions } from "../connection/live.ts";
-import type { LiveHost } from "../connection/live.ts";
+import type { ClientConnection } from "@nyte-ai/sdk/client";
 import type { Theme } from "../theme.ts";
 import { hasRun } from "../view-helpers.ts";
 
@@ -88,25 +88,25 @@ export function markTone(mark: TaskState, theme: Theme) {
 }
 
 /** Lists the newest roots a page at a time, with every pinned root after them however old; a search asks the host for the roots whose name holds it and keeps the last answer on screen until the next one arrives. */
-export function useSessionList(live: LiveHost, search = "") {
+export function useSessionList(client: ClientConnection, search = "") {
   const [limit, setLimit] = useState(PAGE);
   const needle = search.trim();
 
   const listed = useSessions(
-    live,
+    client,
     needle === ""
       ? { parents: { kind: "roots" }, limit }
       : { parents: { kind: "roots" }, query: needle, limit },
   );
 
-  const pinned = useSessions(live, {
+  const pinned = useSessions(client, {
     parents: { kind: "roots" },
     pinned: true,
     limit: Number.MAX_SAFE_INTEGER,
   })?.sessions;
 
   const { newerHost } = useHost();
-  const health = healthMessage(useHealth(live));
+  const health = healthMessage(useHealth(client));
   const failure = listed?.freshness.kind === "stale" ? listed.freshness.error : null;
   const current = listed?.sessions;
   const [seen, setSeen] = useState(current);
@@ -138,7 +138,7 @@ export function useSessionList(live: LiveHost, search = "") {
     busy: current === undefined && rows !== undefined,
     error: rows === undefined ? undefined : health,
     updated: rows === undefined ? undefined : updatedLabel(listed?.freshness),
-    refresh: () => live.retry(),
+    refresh: () => client.retry(),
     more,
   };
 }

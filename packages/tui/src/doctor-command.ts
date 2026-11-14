@@ -306,10 +306,10 @@ async function checkHostAndProviders(): Promise<readonly DoctorCheck[]> {
 async function askHost(running: RunningHost): Promise<readonly DoctorCheck[]> {
   const started = Date.now();
 
-  const host = await connectHost({
-    kind: "attached",
-    endpoint: { url: running.url, token: running.token },
-  });
+  const host = await connectHost(
+    { kind: "attached", endpoint: { url: running.url, token: running.token } },
+    "cli",
+  );
 
   try {
     const catalog = await host.connection.models.list();

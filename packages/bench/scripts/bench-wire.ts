@@ -18,9 +18,8 @@ import { CHANNEL_PATH, STREAM_HEADER } from "@nyte-ai/protocol";
 import type { SocketLike } from "@nyte-ai/protocol";
 import { API_REVISION, asId, isJsonObject, SOCKET_PATH } from "@nyte-ai/schema";
 import type { Json, SessionId } from "@nyte-ai/schema";
-import { headView, openHost, pagedViews, sdk, streamText } from "@nyte-ai/sdk/client";
-import { ticketSocket, withStreamedText } from "@nyte-ai/sdk/client";
-import type { HeadView, SessionsStore, StreamedText } from "@nyte-ai/sdk/client";
+import { connect as connectClient, createSendJournal, ticketSocket } from "@nyte-ai/sdk/client";
+import type { SessionsStore } from "@nyte-ai/sdk/client";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Value } from "typebox/value";
@@ -42,8 +41,6 @@ const parsed = parseArgs({
     gate: { type: "boolean", default: false },
   },
 });
-
-const MAIN = asId<"head">("main");
 
 /** The app's chat store opens a chat on its newest `tail` messages; its conversation view pages `page` older ones at a time. */
 const APP = { tail: 40, page: 200 } as const;
@@ -237,7 +234,7 @@ async function bench(): Promise<void> {
   for (let index = 2; index < SEED.chats; index += 1) fillers.push(await seed(index, "Filler."));
   progress(`seeded ${SEED.chats} chats in ${Math.round(performance.now() - started)} ms`);
   const a = await openClient("A", address, token, "open A");
-  const sidebar = a.live.directory({ parents: { kind: "roots" } });
+  const sidebar = a.connection.sessions.open({ parents: { kind: "roots" } });
   const chatA = openChat(a, streamed);
   await settle(a.meter, () => chatA.shown() !== null && fresh(sidebar));
 
@@ -251,14 +248,14 @@ async function bench(): Promise<void> {
   await measure(a.meter, "S2", turn("Run it."), () => idle(chatA));
   const b = await openClient("B", address, token, "S3");
   const chatH = openChat(b, history);
-  const loaded = () => chatH.shown() !== null && chatH.store.freshness().kind === "fresh";
+  const loaded = () => chatH.shown() !== null && chatH.chat.snapshot().freshness.kind === "fresh";
   await settle(b.meter, loaded);
   socketSteps.set("S3", b.meter.proxy.snapshot());
-  extras.set("S3", { "window messages": chatH.store.snapshot()?.order.length ?? 0 });
+  extras.set("S3", { "window messages": chatH.shown()?.messages.length ?? 0 });
   let pages = 0;
 
   const page = async () => {
-    while ((await chatH.views.earlier(APP.page)) > 0) pages += 1;
+    while ((await chatH.chat.earlier(APP.page)) > 0) pages += 1;
   };
 
   await measure(b.meter, "S3.all", page);
@@ -267,15 +264,20 @@ async function bench(): Promise<void> {
 
   const drop = async () => {
     b.meter.proxy.drop();
-    await until(() => b.live.health.snapshot().kind !== "open", "the drop");
+    await until(() => b.connection.health.snapshot().kind !== "open", "the drop");
   };
 
-  await measure(b.meter, "S6", drop, () => b.live.health.snapshot().kind === "open" && loaded());
+  await measure(
+    b.meter,
+    "S6",
+    drop,
+    () => b.connection.health.snapshot().kind === "open" && loaded(),
+  );
   chatH.close();
   await b.close();
   await until(() => clientsSeen("A") === 1, "client A to see client B leave");
   const c = await openClient("C", address, token, "S4");
-  const list = c.live.directory({ parents: { kind: "roots" } });
+  const list = c.connection.sessions.open({ parents: { kind: "roots" } });
   await settle(c.meter, () => fresh(list));
   socketSteps.set("S4", c.meter.proxy.snapshot());
   extras.set("S4", { "sessions listed": list.snapshot()?.ids.length ?? 0 });
@@ -400,85 +402,36 @@ function exchange(index: number): string {
   return `Exchange ${String(index).padStart(3, "0")} ${prose(index, 27)}`;
 }
 
-/** Connects the way the app's `connectHost` does: `sdk.connect` for requests and the host watch, then `openHost` on a ticketed socket, both through a meter and a counting proxy. */
+/** Connects the way the app's `connectHost` does: one connection for requests, the host watch and a ticketed socket, through a meter and a counting proxy. */
 async function openClient(name: string, address: string, token: string, step: string) {
   const proxy = await openProxy(address);
   const meter = openMeter(name, proxy, step);
-  const credentials = { kind: "token", token } as const;
-  const connection = await sdk.connect({ url: proxy.address, credentials, fetch: meter.fetch });
   const dial = ticketSocket({ fetch: meter.fetch });
 
-  const live = openHost(proxy.address, {
-    credentials,
+  const connection = await connectClient({
+    url: proxy.address,
+    credentials: { kind: "token", token },
     client: { kind: "app", name: "Nyte", version: `api-${String(API_REVISION)}` },
-    socket: (request) => meter.socket(dial(request)),
-    fetch: meter.fetch,
+    journal: createSendJournal(),
+    transport: { fetch: meter.fetch, socket: (request) => meter.socket(dial(request)) },
   });
 
   void Array.fromAsync(connection.watch());
 
   const close = async (): Promise<void> => {
-    live.release();
     await connection.close();
     await proxy.close();
   };
 
-  return { meter, connection, live, close };
+  return { meter, connection, close };
 }
 
-/** Opens a chat the way the app's chat store does: the head's newest messages with streamed text laid over them, older pages through `head.history`. */
+/** Opens a chat the way the app's chat store does: the head's newest messages with streamed text laid over them, older pages through `earlier`. */
 function openChat(client: Client, session: SessionId) {
-  const store = client.live.head(session, MAIN, { tail: APP.tail });
-  let texts: StreamedText = new Map();
+  const chat = client.connection.chat(session, { tail: APP.tail });
+  const leave = chat.subscribe(() => undefined);
 
-  const read = (): HeadView | null => {
-    const snapshot = store.snapshot();
-
-    return snapshot === null ? null : withStreamedText(headView(snapshot), texts);
-  };
-
-  async function* watch(): AsyncGenerator<HeadView> {
-    let dirty = true;
-    let wake: () => void = () => undefined;
-
-    const changed = (): void => {
-      dirty = true;
-      wake();
-    };
-
-    const stop = store.subscribe(changed);
-
-    const stopText = client.live.text((update) => {
-      texts = streamText(texts, update);
-      changed();
-    });
-
-    try {
-      for (;;) {
-        const value = dirty ? read() : null;
-        dirty = false;
-
-        if (value !== null) yield value;
-        else
-          await new Promise<void>((woken) => {
-            wake = woken;
-          });
-      }
-    } finally {
-      stop();
-      stopText();
-    }
-  }
-
-  const handle = client.connection.session(session);
-  const views = pagedViews<HeadView>({ watch, history: (query) => handle.history(query) });
-  let shown: HeadView | null = null;
-
-  void (async () => {
-    for await (const view of views) shown = view;
-  })();
-
-  return { store, views, shown: () => shown, close: () => store.close() };
+  return { chat, shown: () => chat.snapshot().view, close: leave };
 }
 
 function clientsSeen(client: string): number {
@@ -489,7 +442,7 @@ function clientsSeen(client: string): number {
 }
 
 function idle(chat: Chat): boolean {
-  return chat.shown()?.execution.kind === "idle" && chat.store.freshness().kind === "fresh";
+  return chat.shown()?.execution.kind === "idle" && chat.chat.snapshot().freshness.kind === "fresh";
 }
 
 function fresh(store: SessionsStore): boolean {

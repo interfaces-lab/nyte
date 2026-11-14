@@ -87,7 +87,7 @@ function SessionSection({
 
 export function InboxScreen() {
   const theme = useTheme();
-  const { live } = useHost();
+  const { client } = useHost();
   const insets = useSafeAreaInsets();
   const [search, setSearch] = useState("");
   const [searchActive, setSearchActive] = useState(false);
@@ -97,7 +97,7 @@ export function InboxScreen() {
   const [creating, setCreating] = useState(false);
   const [composerHeight, setComposerHeight] = useState(0);
   const searchTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const { list, busy, error, updated, refresh, more } = useSessionList(live, search);
+  const { list, busy, error, updated, refresh, more } = useSessionList(client, search);
   const [pulled, setPulled] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [filterCards] = useFilterCards();

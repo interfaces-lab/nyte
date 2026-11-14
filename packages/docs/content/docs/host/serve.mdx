@@ -5,8 +5,8 @@ description: Put a host on HTTP or behind your own server, decide who gets in, a
 
 A host you open with `sdk.open` runs only inside your process until you call `host.listen`. After
 that, other processes, browser pages and phones reach it with `sdk.connect` and get the same
-handles you have, or attach to its rows with
-[`openHost`](/docs/sdk/reference/entry-points#open-host). The desktop app's
+handles you have, or with [`connect`](/docs/sdk/reference/entry-points#connect), which adds its
+rows, kept current over one socket. The desktop app's
 [remote access](/docs/remote-access) and the `nyte host` command serve through the same listener.
 
 ```ts title="serve.ts"
@@ -27,7 +27,7 @@ A client connects with the same token:
 
 ```ts title="client.ts"
 import process from "node:process";
-import { sdk } from "@nyte-ai/sdk/client";
+import { sdk } from "@nyte-ai/sdk";
 
 const connection = await sdk.connect({
   url: "http://127.0.0.1:8787",
@@ -43,7 +43,7 @@ connections on every network interface. Without a `port`, the system picks a fre
 `listen` throw `SdkError("unavailable")`.
 
 The listener speaks plain HTTP. It answers each operation at `POST /<operation>` and serves the
-WebSocket at `/.nyte/ws` that `openHost` attaches to. To reach it from another machine, put
+WebSocket at `/.nyte/ws` that `connect` opens. To reach it from another machine, put
 something that serves HTTPS in front of it. The desktop app uses Tailscale Serve or a Cloudflare
 Tunnel for this.
 
@@ -205,8 +205,8 @@ credential.
 Any other `http://` origin makes `listen` throw `SdkError("invalid")`. A page from an origin that
 isn't listed gets `SdkError("denied")`.
 
-A browser can't set headers on a WebSocket. In a page, pass `socket: ticketSocket()` from
-`@nyte-ai/sdk/client` to `openHost`. It trades the page's credential for a one-time ticket at
+A browser can't set headers on a WebSocket. In a page, pass `transport: { socket: ticketSocket() }`
+from `@nyte-ai/sdk/client` to `connect`. It trades the page's credential for a one-time ticket at
 `POST /.nyte/ws/ticket`, then opens `/.nyte/ws?ticket=<ticket>`.
 
 ## Serve from your own server [#fetch-handler]
@@ -255,8 +255,8 @@ when its principal is revoked. The Nyte relay doesn't carry these links yet, so 
 through it can't stream. `mediaLink()` from `@nyte-ai/sdk/client` does the trade.
 
 A `Request` can't become a WebSocket, so the `fetch` transport doesn't serve `/.nyte/ws`. Clients
-reach a `fetch` listener with `sdk.connect`, which works over plain HTTP. `openHost` needs an
-`http` or `socket` listener.
+reach a `fetch` listener over plain HTTP: `sdk.connect` works, and so do the requests of a
+`connect` connection, whose chats and stores need an `http` or `socket` listener.
 
 `before(request)` runs ahead of every HTTP request, including sign-in. Return a `Response` to
 answer the request yourself, or `undefined` to pass it to the host. The WebSocket upgrade skips it.

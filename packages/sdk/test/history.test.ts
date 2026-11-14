@@ -3,96 +3,53 @@ import type { DurableEvent, HeadName, SessionView } from "@nyte-ai/schema";
 import { isPart, text } from "@nyte-ai/core";
 import type { Session } from "@nyte-ai/core";
 import { emptyFold, fold, readView } from "@nyte-ai/core/testing";
-import { listen } from "@nyte-ai/host";
 import { afterEach, assert, expect, it } from "vitest";
-import { connect } from "../src/connection/connect.ts";
-import { headView } from "../src/view/head-view.ts";
+import type { ClientConnection } from "../src/connect.ts";
 import type { HeadView } from "../src/view/head-view.ts";
-import { pagedViews } from "../src/view/history.ts";
-import { openHost } from "../src/live/host-connection.ts";
-import { createSendJournal } from "../src/send/journal.ts";
-import { unsentSends } from "../src/send/unsent.ts";
-import type { UnsentSends } from "../src/send/unsent.ts";
+import { pages } from "../src/view/history.ts";
 import { pushed } from "../src/connection/watch.ts";
-import { BASE, TOKEN_SECRET, readOperation, served } from "./served.ts";
-import type { Served } from "./served.ts";
+import { closeOpened, heldChat, liveClient } from "./connection.ts";
+import { readOperation, served } from "./served.ts";
 
 const cleanups: (() => Promise<void>)[] = [];
 
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
+  await closeOpened();
 });
 
 function users(view: Pick<SessionView, "messages">) {
   return view.messages.flatMap((message) => (message.kind === "user" ? [message.content] : []));
 }
 
-async function rowViews(
-  host: Served,
-  session: Session,
-  tail: number,
-  unsent: UnsentSends | null = null,
-) {
-  const listener = await listen(host.host, {
-    transport: { kind: "http" },
-    auth: { kind: "token", token: TOKEN_SECRET },
+/** The views `connection`'s chat of `session` draws, each one it notifies of, and its `earlier`. */
+function rowViews(connection: ClientConnection, session: Session, tail: number) {
+  const chat = heldChat(connection, session.id, { tail });
+
+  const views = pushed<HeadView>((sink) => {
+    const emit = (): void => {
+      const view = chat.snapshot().view;
+
+      if (view !== null) sink.next(view);
+    };
+
+    const stop = chat.subscribe(emit);
+    emit();
+
+    return stop;
   });
 
-  cleanups.push(() => listener.close());
-
-  const live = openHost(listener.address ?? "", {
-    credentials: { kind: "token", token: TOKEN_SECRET },
-    client: { kind: "other", name: "history-test", version: "1" },
-  });
-
-  cleanups.push(async () => live.release());
-
-  return pagedViews<HeadView>({
-    watch: () =>
-      pushed<HeadView>((sink) => {
-        const store = live.head(session.id, session.name, { tail });
-
-        const emit = (): void => {
-          const snapshot = store.snapshot();
-
-          if (snapshot === null) return;
-
-          if (unsent === null) {
-            sink.next(headView(snapshot));
-
-            return;
-          }
-
-          const freshness = store.freshness();
-          sink.next(
-            unsent.lay(headView(snapshot), freshness.kind === "fresh" ? freshness.seq : null),
-          );
-        };
-
-        const stops = [store.subscribe(emit), unsent?.subscribe(emit)];
-        emit();
-
-        return () => {
-          for (const stop of stops) stop?.();
-          store.close();
-        };
-      }),
-    history: (query) => session.history(query),
-  });
+  return {
+    [Symbol.asyncIterator]: () => views[Symbol.asyncIterator](),
+    earlier: (count: number) => chat.earlier(count),
+  };
 }
 
 it("pages a head's older messages and their turns into its views and keeps them while new ones slide the window", async () => {
   const host = await served();
   cleanups.push(() => host.close());
 
-  const connection = await connect({
-    url: BASE,
-    credentials: { kind: "token", token: TOKEN_SECRET },
-    fetch: host.fetch,
-    journal: createSendJournal(),
-  });
-
-  cleanups.push(() => connection.close());
+  const connection = await liveClient(host);
   host.fake.reply(
     ...["One.", "Two.", "Three.", "Four."].map((text) => ({
       content: [{ type: "text" as const, text }],
@@ -104,7 +61,7 @@ it("pages a head's older messages and their turns into its views and keeps them 
   for (const text of ["Second.", "Third."])
     await (await session.send(text, { delivery: "queue" })).settled();
 
-  const views = await rowViews(host, session, 3);
+  const views = rowViews(connection, session, 3);
   const iterator = views[Symbol.asyncIterator]();
 
   const next = async (done: (view: HeadView) => boolean): Promise<HeadView> => {
@@ -158,14 +115,7 @@ it("pages a turn cut after its prompt with the prompt alongside, every message o
   const host = await served();
   cleanups.push(() => host.close());
 
-  const connection = await connect({
-    url: BASE,
-    credentials: { kind: "token", token: TOKEN_SECRET },
-    fetch: host.fetch,
-    journal: createSendJournal(),
-  });
-
-  cleanups.push(() => connection.close());
+  const connection = await liveClient(host);
 
   const blocks = (prefix: string) => ({
     content: [1, 2, 3, 4, 5].map((index) => ({
@@ -179,7 +129,7 @@ it("pages a turn cut after its prompt with the prompt alongside, every message o
   await receipt.settled();
   await (await session.send("Second.", { delivery: "queue" })).settled();
 
-  const views = await rowViews(host, session, 4);
+  const views = rowViews(connection, session, 4);
   const iterator = views[Symbol.asyncIterator]();
 
   const next = async (done: (view: HeadView) => boolean): Promise<HeadView> => {
@@ -263,14 +213,7 @@ it("never pages an edit's unsent row: an edit of the running prompt shows once a
   const host = await served();
   cleanups.push(() => host.close());
 
-  const connection = await connect({
-    url: BASE,
-    credentials: { kind: "token", token: TOKEN_SECRET },
-    fetch: host.fetch,
-    journal: createSendJournal(),
-  });
-
-  cleanups.push(() => connection.close());
+  const connection = await liveClient(host);
   host.fake.reply(
     { content: [{ type: "text", text: "Working." }], hold: true },
     { content: [{ type: "text", text: "Working again." }], hold: true },
@@ -278,12 +221,7 @@ it("never pages an edit's unsent row: an edit of the running prompt shows once a
   const { session, receipt } = await connection.sessions.start({ content: "Draft." });
   await receipt.landed();
 
-  const views = await rowViews(
-    host,
-    session,
-    40,
-    unsentSends(connection, session.id, session.name),
-  );
+  const views = rowViews(connection, session, 40);
 
   const iterator = views[Symbol.asyncIterator]();
   const shown: HeadView[] = [];
@@ -449,51 +387,31 @@ it("refreshes a retained leading prompt from the host's newer record of the same
     ...answer(3),
   );
 
-  const wire: Omit<SessionView, "catalog">[] = [opening];
-  let deliver: (() => void) | null = null;
-
-  const views = pagedViews({
-    watch: () => ({
-      async *[Symbol.asyncIterator]() {
-        for (let at = 0; ; at += 1) {
-          while (wire[at] === undefined) await new Promise<void>((resolve) => (deliver = resolve));
-          yield wire[at] ?? opening;
-        }
-      },
-    }),
-    history: async () => ({ messages: [], leadingPrompt: null, turns: [] }),
-  });
-
-  const iterator = views[Symbol.asyncIterator]();
+  const paging = pages<Omit<SessionView, "catalog">>(async () => ({
+    messages: [],
+    leadingPrompt: null,
+    turns: [],
+  }));
 
   const next = async (view: Omit<SessionView, "catalog">) => {
-    wire.push(view);
-    deliver?.();
-    const step = await iterator.next();
-    assert(step.done !== true);
+    const shown = paging.show(view);
 
     return {
-      messages: step.value.messages.map(label),
-      lead: step.value.leadingPrompt?.id ?? null,
-      siblings: step.value.leadingPrompt?.siblings.count ?? null,
+      messages: shown.messages.map(label),
+      lead: shown.leadingPrompt?.id ?? null,
+      siblings: shown.leadingPrompt?.siblings.count ?? null,
     };
   };
 
-  try {
-    const first = await iterator.next();
-    assert(first.done !== true);
-    expect(first.value.messages.map(label)).toEqual(["a2", "a3"]);
-    expect(await next(play(...answer(4)))).toEqual({
-      messages: ["a2", "a3", "a4"],
-      lead: "p",
-      siblings: 1,
-    });
-    expect(await next(play(user(side, "q")))).toEqual({
-      messages: ["a2", "a3", "a4"],
-      lead: "p",
-      siblings: 2,
-    });
-  } finally {
-    await iterator.return?.();
-  }
+  expect(paging.show(opening).messages.map(label)).toEqual(["a2", "a3"]);
+  expect(await next(play(...answer(4)))).toEqual({
+    messages: ["a2", "a3", "a4"],
+    lead: "p",
+    siblings: 1,
+  });
+  expect(await next(play(user(side, "q")))).toEqual({
+    messages: ["a2", "a3", "a4"],
+    lead: "p",
+    siblings: 2,
+  });
 });

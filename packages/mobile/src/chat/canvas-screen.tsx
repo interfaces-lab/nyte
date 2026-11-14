@@ -15,10 +15,10 @@ const FILL = { kind: "fill" } as const;
 export function CanvasScreen({ sessionId, part }: { sessionId: SessionId; part: PartId }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const { client, live } = useHost();
+  const { client } = useHost();
   const handle = client.session(sessionId).part(part);
-  const chat = useChat(live, client, sessionId, undefined);
-  const unavailable = healthMessage(useHealth(live));
+  const chat = useChat(client, sessionId, undefined);
+  const unavailable = healthMessage(useHealth(client));
 
   if (chat === undefined && unavailable !== undefined)
     return <EmptyState title="Couldn't load the canvas" description={unavailable} />;

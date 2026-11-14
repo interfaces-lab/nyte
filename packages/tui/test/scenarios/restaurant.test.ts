@@ -43,7 +43,6 @@ test("scenario U from the keyboard: typed while the host opens, skill, places MC
   await using scenario = await simulate({ models: fake.models, home: home.home });
 
   await using tui = await startTui({
-    host: scenario.host,
     endpoint: await simulationEndpoint(scenario),
     size: SIZE,
     opened: false,
@@ -167,7 +166,6 @@ test("scenario U from the keyboard: typed while the host opens, skill, places MC
   await tui.dispose();
 
   await using resumed = await startTui({
-    host: scenario.host,
     endpoint: await simulationEndpoint(scenario),
     size: SIZE,
     target: { kind: "session", id: session },

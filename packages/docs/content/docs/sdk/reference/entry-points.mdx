@@ -1,17 +1,18 @@
 ---
 title: Entry points
-description: Options for sdk.open, host.listen, sdk.connect and openHost, and the helpers the SDK exports beside them.
+description: Options for sdk.open, host.listen, sdk.connect and connect, and the helpers the SDK exports beside them.
 ---
 
 `sdk.open` runs a host in your Node process, and `host.listen` serves it to other processes. From
-another process, `sdk.connect` reaches it over HTTP, and `openHost` attaches to its rows over the
-host WebSocket.
+another process, a script reaches it over HTTP with `sdk.connect`, and a client that draws it
+connects with [`connect`](#connect): HTTP, the host WebSocket and its live stores over one
+connection.
 [Choose an entry point](/docs/sdk/guides/choose-an-entry-point) helps you pick.
 
 | Import                | Has                                                                                                                               |
 | --------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `@nyte-ai/sdk`        | `sdk.open`, `sdk.connect`, `createSendJournal`, `pagedViews`, `SdkError` and the SDK's types                                      |
-| `@nyte-ai/sdk/client` | The same without `sdk.open`, plus [`openHost`](#open-host), its stores and the helpers that read them, so it never loads the host |
+| `@nyte-ai/sdk`        | `sdk.open`, `sdk.connect`, `createSendJournal`, `SdkError` and the SDK's types                                                    |
+| `@nyte-ai/sdk/client` | [`connect`](#connect), its stores and chats, `createSendJournal`, the helpers that read them and the SDK's types, never the host |
 
 In a browser or React Native bundle, `@nyte-ai/sdk` resolves to a build without the host, and its
 `sdk.open` rejects with `SdkError("unavailable")`.
@@ -89,7 +90,7 @@ host.listen(options: ListenOptions): Promise<Listener>
 ```
 
 Serves the host to other processes. Clients reach it with `sdk.connect` or
-[`openHost`](#open-host), or through the [HTTP API](/docs/sdk/reference/connection#http-api).
+[`connect`](#connect), or through the [HTTP API](/docs/sdk/reference/connection#http-api).
 [Serve a host](/docs/host/serve) walks through auth, pairing and origins.
 
 | Option         | What it does                                                                                                                                                                                                                                                                   |
@@ -113,7 +114,7 @@ someone else.
 `https://*.example.com` allows every subdomain of `example.com`, but not `example.com` itself.
 
 The `http` and `socket` transports also serve the
-[host WebSocket](/docs/sdk/reference/connection#websocket) at `/.nyte/ws`, which `openHost` opens.
+[host WebSocket](/docs/sdk/reference/connection#websocket) at `/.nyte/ws`, which [`connect`](#connect) opens.
 `fetch` serves HTTP only. Operations marked `local`, such as `host.execution.pause`, answer only on
 the `socket` transport.
 
@@ -132,8 +133,9 @@ The `Listener` it returns has:
 sdk.connect(options: ConnectOptions): Promise<Connection>
 ```
 
-Connects to a host over HTTP and resolves once the host has sent its first view, so a wrong URL or
-token fails here rather than on the first call.
+From `@nyte-ai/sdk`. Connects to a host over HTTP and resolves once the host has sent its first
+view, so a wrong URL or token fails here rather than on the first call. It is for scripts: it opens
+no socket, so it has no live stores or chats; a client that draws a host uses [`connect`](#connect).
 
 | Option        | What it does                                                                                  |
 | ------------- | --------------------------------------------------------------------------------------------- |
@@ -164,8 +166,8 @@ differs, the error says the host's identity key changed and to pair again.
 createSendJournal(storage?: JournalStorage): RequestJournal
 ```
 
-Without `storage`, the in-memory journal `connect` uses when you pass none: messages in it survive
-a dropped connection but not a restart. With `storage`, they survive a restart too. Each message is
+Without `storage`, an in-memory journal, the one `sdk.connect` uses when you pass none: messages in
+it survive a dropped connection but not a restart. With `storage`, they survive a restart too. Each message is
 one key, so every write and removal stands alone, and several clients, of one host or of several,
 can share one storage:
 
@@ -192,48 +194,30 @@ interface RequestJournal {
 `put` before the request. It calls `remove` once a view of the head shows the message, or when the
 send fails with an error it doesn't retry. A `JournalEntry` is plain JSON, so any key-value store
 works. An entry older than a day is resent only if the host already has its receipt; otherwise it
-stays journaled and shown as `unsent` until `unsentSends(...).resend(id)` sends it again or
-`session.receipt(id).stop()` removes it.
+stays journaled and shown as `unsent`, listed in a chat's `expired`, until `chat.resend(id)` sends it
+again or `chat.remove(id)` removes it.
 
-## pagedViews [#paged-views]
-
-```ts
-pagedViews<V>(
-  head: { watch(options?: ViewOptions): AsyncIterable<V> } & Pick<Head, "history">,
-  options?: ViewOptions,
-): PagedViews<V>
-```
-
-Reads the views the `watch` you pass yields and keeps the older messages you load at the front of
-each one. A `Head` has no `watch`, so pass a function that returns your own views, such as views
-built from a [head store](#open-host), with the head's `history`. `PagedViews` is an
-`AsyncIterable<V>` with one more method:
-
-- `earlier(limit)` loads up to `limit` messages before the oldest one shown through `head.history`,
-  and resolves with how many came: `0` once the chat's first message is shown. A call while one is
-  loading waits for it.
-
-If the head moves past the loaded pages, the next view drops them. Iterate it once.
-[Load older messages](/docs/sdk/guides/render-a-session#load-older-messages) shows it in use.
-
-## openHost [#open-host]
+## connect [#connect]
 
 ```ts
-openHost(address: string, options: HostOptions): HostConnection
+connect(options: ClientConnectOptions): Promise<ClientConnection>
 ```
 
-From `@nyte-ai/sdk/client`. Opens the [host WebSocket](/docs/sdk/reference/connection#websocket)
-at `address` and keeps the rows you attach to current, the way Nyte's own clients read a host.
-Every caller with the same address shares one connection, and a later caller's options are ignored.
-`release()` lets go of it, and the last release closes the socket.
+From `@nyte-ai/sdk/client`. Connects to a host the way Nyte's own clients do and resolves as
+[`sdk.connect`](#sdk-connect) does, once the host has answered and proved itself. The connection has
+everything a `Connection` has, plus the host's rows over the
+[host WebSocket](/docs/sdk/reference/connection#websocket), kept current. The socket dials on the
+first use of a store, a chat, `call`, `offer`, `text` or `health`, so a connection that only makes
+requests opens none. `close()` closes the requests and the socket.
 
-| Option        | What it sets                                                                                                                           |
-| ------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `credentials` | `{ kind: "token", token }` or `{ kind: "custom", headers() }`, as for `sdk.connect`. A pairing code goes through `sdk.connect` first   |
-| `client`      | `{ kind, name, version }`, what other clients see for this one. `kind` is `app`, `tui`, `cli`, `agent` or `other`                      |
-| `socket`      | How to open the WebSocket. The default sends the credentials as headers, which Node and Bun accept. In a browser pass `ticketSocket()` |
-| `fetch`       | Used instead of the global `fetch` to tell a refused credential from a host that is down                                               |
-| `online`      | `() => boolean`, asked before each dial. `false` skips the dial and leaves `health` `blocked` with reason `offline`                    |
+| Option        | What it sets                                                                                                                                         |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `url`         | The listener's address                                                                                                                               |
+| `credentials` | As for `sdk.connect`. A pairing code is traded for a device token, in `connection.credential`, before `connect` resolves                              |
+| `expect`      | As for `sdk.connect`                                                                                                                                 |
+| `client`      | `{ kind, name, version }`, what other clients see for this one. `kind` is `app`, `tui`, `cli`, `agent` or `other`                                    |
+| `journal`     | Required. Where a message waits until the host has it. Give it [storage](#create-send-journal) that outlives the process, or it's lost on quit       |
+| `transport`   | `{ fetch?, socket? }`. The global `fetch` and a socket that sends the credentials as headers, which Node and Bun accept. In a browser pass `ticketSocket()` |
 
 `ticketSocket({ fetch? })` trades the credentials for a one-use ticket at `POST /.nyte/ws/ticket`,
 then opens the socket with `?ticket=`.
@@ -243,23 +227,21 @@ element can stream the video at the absolute `path` from, with `Range` and no cr
 owner authority, and the URL stops answering after 15 minutes unused. See
 [streaming a file](/docs/host/serve#media).
 
-A `HostConnection` has:
+Beside a `Connection`'s members, a `ClientConnection` has:
 
 | Member                                     | What it does                                                                                                                                                                                                                                                                            |
 | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `chat(session, options?)`                  | The [chat](#chat) of one head, `options.head` or `main`, holding its newest `options.tail` messages, 200 by default                                                                                                                                                                      |
+| `sessions.open(window?)`                   | A store of the `sessions` table. `window` is what `sessions.read` takes: `{ parents?, pinned?, query?, limit? }`                                                                                                                                                                          |
 | `head(session, head, { tail })`            | A store of one head's last `tail` messages and the rows they need                                                                                                                                                                                                                       |
-| `chat(session, head, { tail, unsent? })`   | A store of the view a client draws: the head's view with `unsent`'s sends and streamed text laid in. See [chat store](#chat-store)                                                                                                                                                      |
 | `part(session, part)`                      | A store of one part by id, wherever it sits in the session, kept current from the session's changes                                                                                                                                                                                     |
-| `directory(window?)`                       | A store of the `sessions` table. `window` is `{ parents?, limit? }`, as for `sessions.read`                                                                                                                                                                                             |
 | `clients()`                                | A store of the connected clients, a `Map` of `ClientRow` by client id                                                                                                                                                                                                                   |
 | `text(listener)`                           | Opens the text channel and calls `listener` with each `TextUpdate`. Returns the unsubscribe                                                                                                                                                                                             |
 | `call(name, input)`                        | Calls any query, command or receipt operation over the socket                                                                                                                                                                                                                           |
 | `perform(client, action, input, options?)` | Asks another client to perform an action it declared, with `client.perform`. `options` is `{ timeoutMs? }`                                                                                                                                                                              |
 | `offer(action, handler)`                   | Declares `{ name, summary, input }` in this client's hello, reconnecting to do so, and answers each request with `handler(input, requester)`. Returns the disposer                                                                                                                      |
-| `health`                                   | A store of `connecting`, `open`, `retrying` with the next attempt's time, or `blocked` with reason `auth`, `version` or `offline`. A socket that stops answering leaves `open` within 15 s while a call waits, and within 40 s while idle                                               |
-| `retry()`                                  | Dials again now, with the backoff reset, when the connection is `retrying` or `blocked`. When it is `open`, sends the host one small call, keeps the socket if anything comes back, and dials again if nothing does within 2 s. Call it on foreground, focus or the network coming back |
-| `hostId`                                   | The host's id once its welcome arrived, else `null`                                                                                                                                                                                                                                     |
-| `release()`                                | Lets go of the connection                                                                                                                                                                                                                                                               |
+| `health`                                   | A store of the socket: `connecting`, `open`, `retrying` with the next attempt's time, or `blocked` with reason `auth` or `version`. A socket that stops answering leaves `open` within 15 s while a call waits, and within 40 s while idle                                              |
+| `retry()`                                  | Dials again now, with the backoff reset, when the socket is `retrying` or `blocked`. When it is `open`, sends the host one small call, keeps the socket if anything comes back, and dials again if nothing does within 2 s. Call it on foreground, focus or the network coming back     |
 
 Each store has `subscribe(listener)`, which returns the unsubscribe, `snapshot()` and `close()`.
 The head, part and session stores also have `freshness()`: `fresh` with the `seq` their rows are current
@@ -274,37 +256,48 @@ resumes from its seq once the socket is back.
   `rows`, a `Map` per table keyed by row id.
 - A session store's snapshot holds the listed `ids` in order and each one's `SessionInfo` in `rows`.
 
-### Chat store [#chat-store]
+### Chat [#chat]
 
 ```ts
-chat(session: SessionId, head: HeadName, options: { tail: number; unsent?: UnsentSends }): ChatStore
+connection.chat(session: SessionId, options?: { head?: HeadName; tail?: number }): Chat
 ```
 
-A `ChatStore` has only `subscribe` and `snapshot`. It opens its head store and its text listener
-when its first listener subscribes and closes both when its last leaves, so it needs no `close()`.
-Its snapshot is a `ChatSnapshot`:
+A `Chat` is what a chat screen draws and acts through. It holds nothing until its first listener
+subscribes: then it reads the head and follows its changes and its streamed text. When the last
+listener leaves, it closes them and goes back to its first snapshot, so it needs no `close()`. Each
+call returns its own chat. Its snapshot is a `ChatSnapshot`:
 
-| Field       | What it holds                                                                                                                    |
-| ----------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `view`      | The head's `HeadView` with the sends still in `unsent` and the text parts are streaming laid in, or `null` before the first read |
-| `seq`       | The seq `view` is current through. It stays at the last fresh seq while the store is stale                                       |
-| `freshness` | The head store's freshness. A read that failed before any view arrived is `stale` with its `error`                               |
+| Field       | What it holds                                                                                                                                                                                         |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `view`      | The head's `HeadView` with the journal's unsent messages, the older messages `earlier` loaded, and the text parts are streaming laid in, or `null` before the first read                              |
+| `seq`       | The seq `view` is current through. It stays at the last fresh seq while the chat is stale                                                                                                             |
+| `freshness` | The head's freshness. A read that failed before any view arrived is `stale` with its `error`                                                                                                          |
+| `expired`   | The unsent messages older than a day, which the journal no longer sends on its own. Each still shows as `unsent`                                                                                      |
+| `stopping`  | `host` while the host's row says the run is stopping. `asked` from `stop()` until the host answers with its row or ends the run, the stop fails, or `health` changes. `no` otherwise                  |
 
-`snapshot()` returns the same object until `view` or `freshness` changes, and a listener is called
-only for a new one. Text streaming for a part the view doesn't hold, such as another chat's, calls
-no listener. Pass `unsent: unsentSends(connection, session, head)` with the `Connection` you send
-through.
+`snapshot()` returns the same object until something drawn changes, and a listener is called only
+for a new one. Text streaming for a part the view doesn't hold, such as another chat's, calls no
+listener. `stopping: "asked"` only says this client sent a stop; the host decides, and its row
+takes over.
 
-The chat store is built from these helpers, which you can use on their own:
+| Method                        | What it does                                                                                                                                                         |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `send(content, options?)`     | Sends on the chat's head through the journal, as `Head.send` does                                                                                                     |
+| `stop()`                      | Asks the host to stop the run the view shows. Sends nothing while the view shows no run or already shows it stopping. Rejects only while it is the latest stop     |
+| `earlier(count)`              | Loads up to `count` older messages into `view`, and resolves with how many came: `0` once the chat's first message is shown. A call while one is loading waits for it |
+| `remove(message)`             | Withdraws a message that hasn't landed. An unsent one, expired or not, is never sent                                                                                  |
+| `resend(message)`             | Sends an expired message again, as if just sent                                                                                                                       |
+| `act(part, action, input)`    | Acts on a part of the session: an approval's decision, a question's `answer` or `skip`, or any action the part's kind declares                                        |
 
-| Helper                                   | What it does                                                                                                                                                                                                       |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `headView(snapshot)`                     | Builds a `HeadView`, a `SessionView` without `seq`, from a head store's snapshot                                                                                                                                   |
-| `streamText(texts, update)`              | Keeps the latest streamed text and tool progress of each part in a `StreamedText` map                                                                                                                              |
-| `withStreamedText(view, texts)`          | Lays the streamed text over a `HeadView`                                                                                                                                                                           |
-| `unsentSends(connection, session, head)` | The sends still in an `sdk.connect` connection's journal. `lay(view, seq)` adds them to a view; `expired()` lists the ones older than a day that are no longer sent on their own, and `resend(id)` sends one again |
+These helpers read a head store on their own:
 
-[Render a session](/docs/sdk/guides/render-a-session) shows a head store in use.
+| Helper                          | What it does                                                                          |
+| ------------------------------- | ------------------------------------------------------------------------------------- |
+| `headView(snapshot)`            | Builds a `HeadView`, a `SessionView` without `seq`, from a head store's snapshot      |
+| `streamText(texts, update)`     | Keeps the latest streamed text and tool progress of each part in a `StreamedText` map |
+| `withStreamedText(view, texts)` | Lays the streamed text over a `HeadView`                                              |
+
+[Render a session](/docs/sdk/guides/render-a-session) shows a chat in use.
 
 ## SdkError [#sdk-error]
 

@@ -33,7 +33,7 @@ chat with the latest activity first.
 
 `read` answers `{ seq, ids, rows }`. With `resume: { seq }`, `rows` holds only the selected rows
 that changed after `seq`. To keep a list current, use a session store from
-[`openHost`](/docs/sdk/reference/entry-points#open-host), which subscribes, reads and resumes for
+[`connect`](/docs/sdk/reference/entry-points#connect), which subscribes, reads and resumes for
 you.
 
 `start` takes the first message as `content`, and these optional inputs:
@@ -109,9 +109,8 @@ succeeds without recording a change.
 | `compact({ instructions? })`              | `Promise<...>`                  | Summarizes the transcript to free context. `started`, `busy` or `nothing-to-compact`                          |
 
 `tail` caps how many recent messages a view carries. The default is 200. `view` reads once. To
-follow a head as it changes, attach a head store with
-[`openHost`](/docs/sdk/reference/entry-points#open-host), and build a view from its rows with
-`headView`.
+follow a head as it changes, open its chat with `connection.chat` from
+[`connect`](/docs/sdk/reference/entry-points#connect).
 
 The guides cover these in use:
 [Render a session](/docs/sdk/guides/render-a-session) for `view`, head stores, `history` and `see`;

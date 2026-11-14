@@ -1,23 +1,8 @@
-import type { Disposer, HeadName, MessageId, QueuedMessage, SessionId } from "@nyte-ai/schema";
-import type { Connection } from "@nyte-ai/core";
-import { journals } from "../connection/client.ts";
+import type { HeadName, QueuedMessage, SessionId } from "@nyte-ai/schema";
+import type { JournalLoop } from "./journal.ts";
 import type { HeadView } from "../view/head-view.ts";
 import { withUnsent } from "../connection/watch.ts";
 import { sameJson } from "../live/store.ts";
-
-export interface UnsentSends {
-  subscribe(listener: () => void): Disposer;
-  /** Lays the head's unsent sends over `view`, returning the view it returned last when `view` and the sends are unchanged. */
-  lay(view: HeadView, seq: number | null): HeadView;
-  /**
-   * The ids of the unsent messages `lay` shows that waited more than a day without the host
-   * seeing them. The SDK no longer sends these on its own; each still shows as unsent, its
-   * `retrying` reason saying it waited too long. `resend` sends one again; `session.receipt(id).stop()` removes it.
-   */
-  expired(): readonly MessageId[];
-  /** Sends an expired message again, as if it had just been sent. */
-  resend(message: MessageId): Promise<void>;
-}
 
 type Laid = {
   readonly view: HeadView;
@@ -25,36 +10,21 @@ type Laid = {
   readonly result: HeadView;
 };
 
-export function unsentSends(
-  connection: Connection,
+/** Lays the head's journaled sends over each view it is given, returning the view it returned last when the view and the sends are unchanged. A view at a fresh `seq` tells the journal which sends the host now shows. */
+export function laidSends(
+  journal: JournalLoop,
   session: SessionId,
   head: HeadName,
-): UnsentSends {
-  const journal = journals.get(connection);
+): (view: HeadView, seq: number | null) => HeadView {
   let last: Laid | null = null;
 
-  if (journal === undefined)
-    return {
-      subscribe: () => () => undefined,
-      lay: (view) => view,
-      expired: () => [],
-      resend: async () => undefined,
-    };
+  return (view, seq) => {
+    if (seq !== null) journal.landed(session, head, view, seq);
+    const unsent = journal.unsent(session, head);
 
-  return {
-    subscribe: (listener) => journal.subscribe(listener),
-    expired: () => journal.expired(session, head),
-    async resend(message) {
-      await journal.resend(session, message);
-    },
-    lay(view, seq) {
-      if (seq !== null) journal.landed(session, head, view, seq);
-      const unsent = journal.unsent(session, head);
+    if (last !== null && last.view === view && sameJson(last.unsent, unsent)) return last.result;
+    last = { view, unsent, result: withUnsent(view, unsent) };
 
-      if (last !== null && last.view === view && sameJson(last.unsent, unsent)) return last.result;
-      last = { view, unsent, result: withUnsent(view, unsent) };
-
-      return last.result;
-    },
+    return last.result;
   };
 }

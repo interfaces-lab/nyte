@@ -234,22 +234,19 @@ const files: FilesApi = {
   upload: refuse,
 };
 
-const { connection, live } = scriptedConnection({
+const { connection } = scriptedConnection({
   sessions: NAMES.map((name) => sessionRow(name, { name })),
   views: new Map([...chats.values()].map((entry) => [asId<"session">(entry.name), entry.stream])),
 });
 
-installConnection(
-  {
-    ...connection,
-    workspace: (id) => ({
-      ...connection.workspace(id),
-      files: async () => ({ kind: "available", api: files }),
-      git: async () => ({ kind: "unsupported", reason: "Not a repository." }),
-    }),
-  },
-  live,
-);
+installConnection({
+  ...connection,
+  workspace: (id) => ({
+    ...connection.workspace(id),
+    files: async () => ({ kind: "available", api: files }),
+    git: async () => ({ kind: "unsupported", reason: "Not a repository." }),
+  }),
+});
 
 const catalog = {
   generation: asId<"catalog-generation">("initial"),

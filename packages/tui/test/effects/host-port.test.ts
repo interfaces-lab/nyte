@@ -49,7 +49,7 @@ async function viewWhere(
 
 test("a start under an id another start took answers taken, and a replay answers started", async () => {
   await using fixture = await openTestHost();
-  const port = hostPort(fixture.host, fixture.live, null);
+  const port = hostPort(fixture.client, null);
   fixture.reply({ content: [{ type: "text", text: "Hi." }] });
   const id = asId<"session">(crypto.randomUUID());
   const selection = fallbackSelection(await port.listModels(), "off");
@@ -67,7 +67,7 @@ test("a start under an id another start took answers taken, and a replay answers
 
 test("send, withdraw and stop round trips with real views", async () => {
   await using fixture = await openTestHost();
-  const port = hostPort(fixture.host, fixture.live, null);
+  const port = hostPort(fixture.client, null);
   fixture.reply({ content: [{ type: "text", text: "Working on it." }], hold: true });
   const { session, message: firstMessage } = await startChat(port, "first");
   const first = { message: firstMessage };
@@ -98,7 +98,7 @@ test("send, withdraw and stop round trips with real views", async () => {
 
 test("revise replaces a pending message in place and refuses one that landed", async () => {
   await using fixture = await openTestHost();
-  const port = hostPort(fixture.host, fixture.live, null);
+  const port = hostPort(fixture.client, null);
   fixture.reply({ content: [{ type: "text", text: "Hold." }], hold: true });
   const { session, message: firstMessage } = await startChat(port, "first");
   const first = { message: firstMessage };
@@ -123,7 +123,7 @@ test("revise replaces a pending message in place and refuses one that landed", a
 
 test("answer settles a question part once; a different answer afterwards is refused", async () => {
   await using fixture = await openTestHost();
-  const port = hostPort(fixture.host, fixture.live, null);
+  const port = hostPort(fixture.client, null);
   fixture.reply({ content: [{ type: "text", text: "Asking." }] });
   const { session, message: prompt } = await startChat(port, "ask me");
   await viewWhere(
@@ -187,11 +187,11 @@ test("--no-context-files starts the run's sessions without the folder's AGENTS.m
     const flags = parseFlags(["--no-context-files"]);
 
     const without = await startChat(
-      hostPort(fixture.host, fixture.live, null, undefined, { contextFiles: flags.contextFiles }),
+      hostPort(fixture.client, null, undefined, { contextFiles: flags.contextFiles }),
       "hi",
     );
 
-    const plain = await startChat(hostPort(fixture.host, fixture.live, null), "hi");
+    const plain = await startChat(hostPort(fixture.client, null), "hi");
 
     expect(await until(() => seen.get(without.session.id))).toEqual([]);
     expect((await until(() => seen.get(plain.session.id)))?.map((file) => file.content)).toEqual([
@@ -204,7 +204,7 @@ test("--no-context-files starts the run's sessions without the folder's AGENTS.m
 
 test("the host port lists the catalog, root sessions and tasks, and configures the head", async () => {
   await using fixture = await openTestHost();
-  const port = hostPort(fixture.host, fixture.live, null);
+  const port = hostPort(fixture.client, null);
   fixture.reply({ content: [{ type: "text", text: "Hello." }] });
   const { session, message: greeted } = await startChat(port, "hi");
   await viewWhere(

@@ -1,58 +1,46 @@
 import { API_REVISION } from "@nyte-ai/schema";
-import { sdk, SdkError } from "@nyte-ai/sdk";
-import type { ConnectOptions, Connection, CredentialSource } from "@nyte-ai/sdk";
-import { mediaLink, openHost, ticketSocket } from "@nyte-ai/sdk/client";
-import type { HostConnection, OpenSocket } from "@nyte-ai/sdk/client";
+import { SdkError } from "@nyte-ai/sdk";
+import type { CredentialSource } from "@nyte-ai/sdk";
+import { connect, mediaLink, ticketSocket } from "@nyte-ai/sdk/client";
+import type { ClientConnection, ClientConnectOptions, OpenSocket } from "@nyte-ai/sdk/client";
 import type { ConnectionProblem, HostEndpoint } from "../contract/connection.ts";
 import { localJournal } from "./send-journal.ts";
 
-let installed: Connection | undefined;
+type Fetch = NonNullable<NonNullable<ClientConnectOptions["transport"]>["fetch"]>;
 
-let installedLive: HostConnection | undefined;
+let installed: ClientConnection | undefined;
 
 let installedMedia: ((path: string) => Promise<string>) | undefined;
 
-const first = Promise.withResolvers<Connection>();
-
-const firstLive = Promise.withResolvers<HostConnection>();
+const first = Promise.withResolvers<ClientConnection>();
 
 let ready = first.promise;
-
-let liveReady = firstLive.promise;
 
 export async function connectHost(
   endpoint: HostEndpoint,
   options: {
-    readonly fetch?: ConnectOptions["fetch"];
+    readonly fetch?: Fetch;
     readonly socket?: OpenSocket;
     readonly remember?: (credential: CredentialSource) => void;
   } = {},
-): Promise<Connection> {
-  const connection = await sdk.connect({
+): Promise<ClientConnection> {
+  const connection = await connect({
     url: endpoint.url,
     credentials: endpoint.credentials,
-    ...(endpoint.expect === undefined ? {} : { expect: endpoint.expect }),
+    expect: endpoint.expect,
+    client: { kind: "app", name: "Nyte", version: `api-${String(API_REVISION)}` },
     journal: localJournal(),
-    ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
+    transport: {
+      fetch: options.fetch,
+      socket: options.socket ?? ticketSocket({ fetch: options.fetch }),
+    },
   });
 
   if (connection.credential !== endpoint.credentials) options.remember?.(connection.credential);
-  const credential = connection.credential;
-
-  if (credential.kind === "pairing")
-    throw new SdkError("unauthenticated", "The host did not trade the pairing code for a token.");
-
-  const live = openHost(endpoint.url, {
-    credentials: credential,
-    client: { kind: "app", name: "Nyte", version: `api-${String(API_REVISION)}` },
-    socket: options.socket ?? ticketSocket({ fetch: options.fetch }),
-    ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
-  });
-
-  installConnection(connection, live);
+  installConnection(connection);
   installedMedia = async (path) => {
     const link = await mediaLink(endpoint.url, path, {
-      credentials: credential,
+      credentials: connection.credential,
       fetch: options.fetch,
     });
 
@@ -73,33 +61,26 @@ export async function mediaUrl(path: string): Promise<string> {
   return installedMedia(path);
 }
 
-export function installConnection(connection: Connection, live: HostConnection): void {
-  const replaced = installed !== undefined;
-  const released = installedLive;
+export function installConnection(connection: ClientConnection): void {
+  const replaced = installed;
   installed = connection;
-  installedLive = live;
   first.resolve(connection);
-  firstLive.resolve(live);
   ready = Promise.resolve(connection);
-  liveReady = Promise.resolve(live);
 
-  if (replaced) for (const stores of registries) stores.clear();
+  if (replaced !== undefined) for (const stores of registries) stores.clear();
 
-  released?.release();
+  if (replaced !== connection) void replaced?.close();
 
   for (const listener of liveListeners) listener();
 }
 
-export function connected(): Promise<Connection> {
+export function connected(): Promise<ClientConnection> {
   return ready;
 }
 
-export function liveConnected(): Promise<HostConnection> {
-  return liveReady;
-}
-
-export function currentLive(): HostConnection | undefined {
-  return installedLive;
+/** The installed connection, for what follows its socket's health or asks it to retry. */
+export function currentLive(): ClientConnection | undefined {
+  return installed;
 }
 
 const liveListeners = new Set<() => void>();
@@ -110,11 +91,11 @@ export function subscribeLive(listener: () => void): () => void {
   return () => liveListeners.delete(listener);
 }
 
-export function currentConnection(): Connection | undefined {
+export function currentConnection(): ClientConnection | undefined {
   return installed;
 }
 
-export function connection(): Connection {
+export function connection(): ClientConnection {
   if (installed === undefined) throw new Error("No Nyte connection is installed");
 
   return installed;

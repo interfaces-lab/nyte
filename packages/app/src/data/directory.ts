@@ -1,35 +1,35 @@
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
-import type { HostConnection, SessionsWindow } from "@nyte-ai/sdk/client";
-import { liveFamily, liveValues } from "./watch-store.ts";
+import type { ClientConnection, SessionsWindow } from "@nyte-ai/sdk/client";
+import { liveValues, watchFamily } from "./watch-store.ts";
 
 /** `pinned` is every pinned root however old, which the sidebar lays over the newest roots; `roots` and `all` are the newest of each. */
-export const sessionList = liveFamily(
-  (live, list: "roots" | "all" | "pinned"): AsyncIterable<readonly SessionInfo[]> =>
+export const sessionList = watchFamily(
+  (connection, list: "roots" | "all" | "pinned"): AsyncIterable<readonly SessionInfo[]> =>
     directoryRows(
-      live,
+      connection,
       list === "pinned"
         ? { parents: { kind: "roots" }, pinned: true, limit: Number.MAX_SAFE_INTEGER }
         : { parents: { kind: list } },
     ),
 );
 
-export const childList = liveFamily(
-  (live, parent: SessionId): AsyncIterable<readonly SessionInfo[]> =>
-    directoryRows(live, { parents: { kind: "children", session: parent } }),
+export const childList = watchFamily(
+  (connection, parent: SessionId): AsyncIterable<readonly SessionInfo[]> =>
+    directoryRows(connection, { parents: { kind: "children", session: parent } }),
 );
 
 /** The newest roots whose name holds `query`, ignoring case, answered by the host from its index whatever the number of chats. */
-export const sessionSearch = liveFamily(
-  (live, query: string): AsyncIterable<readonly SessionInfo[]> =>
-    directoryRows(live, { parents: { kind: "roots" }, query }),
+export const sessionSearch = watchFamily(
+  (connection, query: string): AsyncIterable<readonly SessionInfo[]> =>
+    directoryRows(connection, { parents: { kind: "roots" }, query }),
 );
 
 function directoryRows(
-  live: HostConnection,
+  connection: ClientConnection,
   window: SessionsWindow,
 ): AsyncIterable<readonly SessionInfo[]> {
   return liveValues((changed) => {
-    const store = live.directory(window);
+    const store = connection.sessions.open(window);
     const stop = store.subscribe(changed);
     let shown: {
       readonly ids: readonly SessionId[];

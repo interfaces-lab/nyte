@@ -62,7 +62,7 @@ async function link(openBrowser: boolean, output: Output, signal: AbortSignal): 
       ],
     });
 
-  const local = await connectHost({ kind: "local" }, (phase) => output.progress(phase));
+  const local = await connectHost({ kind: "local" }, "cli", (phase) => output.progress(phase));
 
   try {
     return await share(local.endpoint, openBrowser && output.mode.browser, output, signal);
@@ -305,7 +305,7 @@ async function unlink(yes: boolean, output: Output, signal: AbortSignal): Promis
       },
     );
 
-  const local = await connectHost({ kind: "local" }, (phase) => output.progress(phase));
+  const local = await connectHost({ kind: "local" }, "cli", (phase) => output.progress(phase));
 
   try {
     return await unlinkFrom(local.endpoint, yes, output, signal);

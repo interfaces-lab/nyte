@@ -1,21 +1,12 @@
-import { asId } from "@nyte-ai/schema";
 import type { PartId, PartView, SessionId, SessionInfo } from "@nyte-ai/schema";
-import { openHost, unsentSends } from "@nyte-ai/sdk/client";
 import type {
-  ChatStore,
+  Chat,
+  ClientConnection,
   Freshness,
   HeadView,
   Health,
-  HostConnection,
   SessionsWindow,
 } from "@nyte-ai/sdk/client";
-import type { Connection } from "@nyte-ai/sdk";
-import type { LocalEndpoint } from "@nyte-ai/service";
-import { VERSION } from "./version.ts";
-
-const MAIN = asId<"head">("main");
-
-const TAIL = 200;
 
 interface Opened<T> {
   read(): T | null;
@@ -24,22 +15,7 @@ interface Opened<T> {
   close(): void;
 }
 
-export function openLiveHost(endpoint: LocalEndpoint, kind: "tui" | "cli"): HostConnection {
-  return openHost(endpoint.url, {
-    credentials: { kind: "token", token: endpoint.token },
-    client: { kind, name: "nyte", version: VERSION },
-  });
-}
-
-/** The chat of `session`'s main head; with `sends`, its journaled sends are laid in until the host has them. */
-export function openChat(live: HostConnection, session: SessionId, sends?: Connection): ChatStore {
-  return live.chat(session, MAIN, {
-    tail: TAIL,
-    unsent: sends === undefined ? undefined : unsentSends(sends, session, MAIN),
-  });
-}
-
-export function chatViews(chat: ChatStore): AsyncIterable<HeadView> {
+export function chatViews(chat: Chat): AsyncIterable<HeadView> {
   return liveValues((changed) => ({
     read: () => chat.snapshot().view,
     freshness: () => chat.snapshot().freshness,
@@ -48,13 +24,13 @@ export function chatViews(chat: ChatStore): AsyncIterable<HeadView> {
 }
 
 export async function readPart(
-  live: HostConnection,
+  connection: ClientConnection,
   session: SessionId,
   part: PartId,
   signal: AbortSignal,
 ): Promise<PartView | null> {
   const snapshots = liveValues((changed) => {
-    const store = live.part(session, part);
+    const store = connection.part(session, part);
     const stop = store.subscribe(changed);
 
     return {
@@ -82,11 +58,11 @@ export async function readPart(
 }
 
 export function sessionLists(
-  live: HostConnection,
+  connection: ClientConnection,
   window: SessionsWindow,
 ): AsyncIterable<readonly SessionInfo[]> {
   return liveValues((changed) => {
-    const store = live.directory(window);
+    const store = connection.sessions.open(window);
     const stop = store.subscribe(changed);
 
     return {
@@ -109,16 +85,16 @@ export function sessionLists(
   });
 }
 
-export function healthUpdates(live: HostConnection): AsyncIterable<Health> {
+export function healthUpdates(connection: ClientConnection): AsyncIterable<Health> {
   return liveValues((changed) => ({
-    read: () => live.health.snapshot(),
-    close: live.health.subscribe(changed),
+    read: () => connection.health.snapshot(),
+    close: connection.health.subscribe(changed),
   }));
 }
 
-export async function whenOpen<T>(live: HostConnection, ask: () => Promise<T>): Promise<T> {
+export async function whenOpen<T>(connection: ClientConnection, ask: () => Promise<T>): Promise<T> {
   for (;;) {
-    const since = await openSince(live);
+    const since = await openSince(connection);
 
     const answer = await ask().then(
       (value) => ({ value }),
@@ -127,16 +103,16 @@ export async function whenOpen<T>(live: HostConnection, ask: () => Promise<T>): 
 
     if ("value" in answer) return answer.value;
     await new Promise((resolve) => setTimeout(resolve, 0));
-    const health = live.health.snapshot();
+    const health = connection.health.snapshot();
 
     if (health.kind === "open" && health.since === since) throw answer.error;
   }
 }
 
-function openSince(live: HostConnection): Promise<number> {
+function openSince(connection: ClientConnection): Promise<number> {
   return new Promise((resolve, reject) => {
     const check = (): boolean => {
-      const health = live.health.snapshot();
+      const health = connection.health.snapshot();
 
       if (health.kind === "open") resolve(health.since);
       else if (health.kind === "blocked") reject(health.error);
@@ -147,7 +123,7 @@ function openSince(live: HostConnection): Promise<number> {
 
     if (check()) return;
 
-    const stop = live.health.subscribe(() => {
+    const stop = connection.health.subscribe(() => {
       if (check()) stop();
     });
   });

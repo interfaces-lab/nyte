@@ -102,7 +102,7 @@ const end = await receipt.settled({ signal: AbortSignal.timeout(60_000) });
 ## Retries are already handled
 
 `send` gives the message an id before anything reaches the network, and the message shows in the
-view at once as `unsent`: in `session.view()`, and in a head store's view through `unsentSends`, as
+view at once as `unsent`: in `session.view()`, and in a chat's view, as
 [Render a session](/docs/sdk/guides/render-a-session) shows. If the host can't be reached, the SDK
 resends under the same id until it answers, and the host admits the message once. You don't need
 your own retry loop. Sends to one head go out one at a time, in the order you made them.
@@ -110,17 +110,19 @@ your own retry loop. Sends to one head go out one at a time, in the order you ma
 Only connection failures are retried. Any other error, such as a hook refusing the message, rejects
 `send` and removes the message from the view.
 
-Unsent messages are kept in memory, so they survive a dropped connection but not a restart of your
-process. To survive one, pass `journal: createSendJournal(storage)` to `connect`, where `storage`
-reads, writes and removes text under a key in storage you own, such as `localStorage` or a folder.
+`connect` from `@nyte-ai/sdk/client` takes the journal they wait in. With
+`journal: createSendJournal(storage)`, where `storage` reads, writes and removes text under a key in
+storage you own, such as `localStorage` or a folder, they survive a restart of your process.
+`createSendJournal()` keeps them in memory, so they survive a dropped connection but not a
+restart; it is what `sdk.connect` uses when you pass none.
 On the next `connect` to the same host, the SDK resends what is left under each message's id, so
 a message the host already has is not sent twice, even when two clients load it.
 
 A message is sent on its own for a day. After that the SDK sends it only if the host already has
 it; otherwise the message stays in the view as `unsent`, its `retrying` reason saying it waited
-more than a day, and `send` rejects with `SdkError("timeout")`. `unsentSends(...).expired()` lists
-these messages so you can offer to send each again (`resend(id)`) or remove it
-(`session.receipt(id).stop()`).
+more than a day, and `send` rejects with `SdkError("timeout")`. A chat's `snapshot().expired` lists
+these messages so you can offer to send each again (`chat.resend(id)`) or remove it
+(`chat.remove(id)`).
 
 To keep the id yourself, pass it. The same id with the same content returns the first send's
 receipt:

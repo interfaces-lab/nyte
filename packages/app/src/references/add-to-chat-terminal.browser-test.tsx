@@ -1,6 +1,6 @@
 import "../../test/window-bridge.ts";
 import { QueryClientProvider } from "@tanstack/react-query";
-import type { Connection, Job, OutputFrame } from "@nyte-ai/sdk";
+import type { Job, OutputFrame } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import { createRef } from "react";
 import { flushSync } from "react-dom";
@@ -13,6 +13,7 @@ import { ComposerEditor } from "../chat/composer/composer-editor.tsx";
 import type { ComposerEditorHandle } from "../chat/composer/composer-editor.tsx";
 import { nyte } from "../contract/nyte.ts";
 import { queryClient } from "../data/query-client.ts";
+import type { ClientConnection } from "@nyte-ai/sdk/client";
 import { installConnection } from "../data/connection.ts";
 import { scriptedConnection } from "../../test/scripted-connection.ts";
 import { TerminalPanel } from "../workbench/terminal/terminal-panel.tsx";
@@ -123,7 +124,7 @@ export async function run(): Promise<string> {
   const scripted = scriptedSet.connection;
   const workspace = asId<"workspace">("terminal-workspace");
 
-  const connection: Connection = {
+  const connection: ClientConnection = {
     ...scripted,
     workspace: (target) => ({
       ...scripted.workspace(target),
@@ -141,7 +142,7 @@ export async function run(): Promise<string> {
     `nyte.terminal.${id}`,
     JSON.stringify({ workspace, key: "shell", printed: "" }),
   );
-  installConnection(connection, scriptedSet.live);
+  installConnection(connection);
 
   const container = document.createElement("div");
   container.style.cssText = "display:flex;flex-direction:column;height:480px;width:720px";

@@ -8,14 +8,12 @@ import { listen } from "@nyte-ai/host";
 import { chatOnly, fakeModels } from "@nyte-ai/bench";
 import type { FakeModels } from "@nyte-ai/bench";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { openHost } from "../src/live/host-connection.ts";
-import type {
-  Health,
-  HostConnection,
-  OpenSocket,
-  SocketRequest,
-} from "../src/live/host-connection.ts";
+import { connect } from "../src/connect.ts";
+import type { ClientConnection } from "../src/connect.ts";
+import type { Health, OpenSocket, SocketRequest } from "../src/live/host-connection.ts";
+import type { ChatSnapshot } from "../src/live/chat.ts";
 import type { HeadStore } from "../src/live/head.ts";
+import { createSendJournal } from "../src/send/journal.ts";
 
 const TOKEN = "a-token-of-at-least-16";
 
@@ -81,46 +79,53 @@ function global(request: SocketRequest): WebSocket {
   return new WebSocket(request.url, { headers: request.headers });
 }
 
-function attach(
+async function attach(
   listener: Listener,
   socket: OpenSocket = global,
-  input: { readonly name?: string; readonly address?: string; readonly token?: string } = {},
-): HostConnection {
-  const connection = openHost(input.address ?? listener.address ?? "", {
+  input: {
+    readonly name?: string;
+    readonly address?: string;
+    readonly token?: string;
+    readonly fetch?: typeof fetch;
+  } = {},
+): Promise<ClientConnection> {
+  const connection = await connect({
+    url: input.address ?? listener.address ?? "",
     credentials: { kind: "token", token: input.token ?? TOKEN },
     client: { ...CLIENT, name: input.name ?? CLIENT.name },
-    socket,
+    journal: createSendJournal(),
+    transport: { socket, fetch: input.fetch },
   });
 
-  cleanups.push(async () => connection.release());
+  cleanups.push(() => connection.close());
 
   return connection;
 }
 
-async function until(connection: HostConnection, kind: Health["kind"]): Promise<Health> {
+async function until(connection: ClientConnection, kind: Health["kind"]): Promise<Health> {
   await vi.waitFor(() => expect(connection.health.snapshot().kind).toBe(kind), { timeout: 5_000 });
 
   return connection.health.snapshot();
 }
 
-describe("openHost", () => {
-  it("returns one connection over one socket to every holder of the address, and closes it with the last", async () => {
+describe("a connection's socket", () => {
+  it("dials no socket until something live is used, and closes it with the connection", async () => {
     const served = await serve();
     const transport = counting();
-    const first = attach(served.listener, transport.socket);
-    const second = attach(served.listener, transport.socket);
+    const connection = await attach(served.listener, transport.socket);
 
-    expect(second).toBe(first);
-    await until(first, "open");
-    expect(first.hostId).toBe(served.host.server.hostId);
-    expect(attach(served.listener, transport.socket)).toBe(first);
+    await connection.sessions.list();
+    await new Promise((settle) => setTimeout(settle, 50));
+    expect(transport.opened).toHaveLength(0);
+
+    await until(connection, "open");
     expect(transport.opened).toHaveLength(1);
 
-    first.release();
-    first.release();
-    first.release();
+    await connection.close();
     await vi.waitFor(() => expect(transport.opened[0]?.readyState).toBe(WebSocket.CLOSED));
-    expect(attach(served.listener, transport.socket)).not.toBe(first);
+    await expect(connection.call("clients.read", {})).rejects.toMatchObject({
+      code: "unavailable",
+    });
   });
 
   it("blocks on a version the host does not serve and tries again only when asked", async () => {
@@ -130,7 +135,7 @@ describe("openHost", () => {
       (request) => new NewerClient(request.url, { headers: request.headers }),
     );
 
-    const connection = attach(served.listener, transport.socket);
+    const connection = await attach(served.listener, transport.socket);
 
     expect(await until(connection, "blocked")).toMatchObject({
       reason: "version",
@@ -160,14 +165,14 @@ async function send(served: Served, session: SessionId, text: string): Promise<v
   await (await served.host.session(session).head(MAIN).send(text)).settled();
 }
 
-function watched(connection: HostConnection, session: SessionId): HeadStore {
+function watched(connection: ClientConnection, session: SessionId): HeadStore {
   const store = connection.head(session, MAIN, { tail: TAIL });
   cleanups.push(async () => store.close());
 
   return store;
 }
 
-async function matchesRead(connection: HostConnection, store: HeadStore, session: SessionId) {
+async function matchesRead(connection: ClientConnection, store: HeadStore, session: SessionId) {
   await vi.waitFor(
     async () => {
       const window = await connection.call("head.read", {
@@ -203,7 +208,7 @@ describe("a refused login", () => {
     });
 
     const token = exchanged.headers.get("X-Nyte-Credential") ?? "";
-    const paired = attach(served.listener, global, { token });
+    const paired = await attach(served.listener, global, { token });
     await until(paired, "open");
 
     const principal = (await served.host.principals.list())[0]?.id;
@@ -217,12 +222,7 @@ describe("a refused login", () => {
       error: { code: "unauthenticated" },
     });
 
-    const unreachable = openHost("http://127.0.0.1:9", {
-      credentials: { kind: "token", token: TOKEN },
-      client: CLIENT,
-    });
-
-    cleanups.push(async () => unreachable.release());
+    const unreachable = await attach(served.listener, () => new WebSocket("ws://127.0.0.1:9"));
     expect(await until(unreachable, "retrying")).toMatchObject({ attempt: 1 });
   });
 });
@@ -231,7 +231,7 @@ describe("a head store", () => {
   it("ends equal to a fresh head.read after the head moves, and keeps unchanged rows", async () => {
     const served = await serve();
     const session = await startSession(served);
-    const connection = attach(served.listener);
+    const connection = await attach(served.listener);
     const store = watched(connection, session);
     const notified: number[] = [];
     store.subscribe(() => notified.push(notified.length));
@@ -254,7 +254,7 @@ describe("a head store", () => {
   it("goes stale when the host drops the socket and fresh again once it resumes on the next one", async () => {
     const served = await serve();
     const session = await startSession(served);
-    const connection = attach(served.listener);
+    const connection = await attach(served.listener);
     const store = watched(connection, session);
 
     await matchesRead(connection, store, session);
@@ -273,8 +273,8 @@ describe("a head store", () => {
   it("goes stale with unknown when its session is removed while the connection holds a session list, and keeps its rows", async () => {
     const served = await serve();
     const session = await startSession(served);
-    const connection = attach(served.listener);
-    const sessions = connection.directory();
+    const connection = await attach(served.listener);
+    const sessions = connection.sessions.open();
     cleanups.push(async () => sessions.close());
     const store = watched(connection, session);
 
@@ -293,7 +293,7 @@ describe("a head store", () => {
     const session = await startSession(served);
     const text = "x".repeat(1_200_000);
     await send(served, session, text);
-    const connection = attach(served.listener);
+    const connection = await attach(served.listener);
     await until(connection, "open");
     const kinds: Health["kind"][] = [];
     connection.health.subscribe(() => kinds.push(connection.health.snapshot().kind));
@@ -310,7 +310,7 @@ describe("a head store", () => {
 describe("a reconnect", () => {
   it("retries a host that welcomed it again on the first delay after every drop", async () => {
     const served = await serve();
-    const connection = attach(served.listener);
+    const connection = await attach(served.listener);
     await until(connection, "open");
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
     cleanups.push(async () => {
@@ -333,7 +333,7 @@ describe("a reconnect", () => {
     const session = await startSession(served);
     await send(served, session, "x".repeat(1_200_000));
 
-    const connection = attach(served.listener, (request) => {
+    const connection = await attach(served.listener, (request) => {
       const socket = global(request);
       const send = socket.send.bind(socket);
 
@@ -371,7 +371,7 @@ describe("a reconnect", () => {
   it("keeps one socket when a health listener wakes the connection as it starts retrying", async () => {
     const served = await serve();
     const transport = counting();
-    const connection = attach(served.listener, transport.socket);
+    const connection = await attach(served.listener, transport.socket);
     await until(connection, "open");
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
     cleanups.push(async () => {
@@ -452,7 +452,7 @@ describe("a silent link", () => {
         vi.useRealTimers();
       });
       const transport = deafening();
-      const connection = attach(served.listener, transport.socket);
+      const connection = await attach(served.listener, transport.socket);
       const store = watched(connection, session);
       await matchesRead(connection, store, session);
 
@@ -491,7 +491,7 @@ describe("a failed read", () => {
     const session = await startSession(served);
     let failed = false;
 
-    const connection = attach(served.listener, (request) => {
+    const connection = await attach(served.listener, (request) => {
       const socket = global(request);
       const send = socket.send.bind(socket);
 
@@ -518,8 +518,8 @@ describe("a sessions store", () => {
   it("resumes the host's session rows after a drop and ends equal to a fresh sessions.read", async () => {
     const served = await serve();
     const first = await startSession(served);
-    const connection = attach(served.listener);
-    const sessions = connection.directory();
+    const connection = await attach(served.listener);
+    const sessions = connection.sessions.open();
     cleanups.push(async () => sessions.close());
 
     const matches = () =>
@@ -553,7 +553,7 @@ describe("a sessions store's order", () => {
     const newer = await startSession(served);
     const reads: string[] = [];
 
-    const connection = attach(served.listener, (request) => {
+    const connection = await attach(served.listener, (request) => {
       const socket = global(request);
       const send = socket.send.bind(socket);
 
@@ -565,7 +565,7 @@ describe("a sessions store's order", () => {
       });
     });
 
-    const sessions = connection.directory({ limit: 2 });
+    const sessions = connection.sessions.open({ limit: 2 });
     cleanups.push(async () => sessions.close());
     const ids = () => sessions.snapshot()?.ids;
 
@@ -618,12 +618,12 @@ describe("a resume", () => {
       const frames: string[] = [];
       const Socket = welcomedAt(entry.revision, frames);
 
-      const connection = attach(
+      const connection = await attach(
         served.listener,
         (request) => new Socket(request.url, { headers: request.headers }),
       );
 
-      const sessions = connection.directory();
+      const sessions = connection.sessions.open();
       cleanups.push(async () => sessions.close());
       const store = watched(connection, session);
 
@@ -656,18 +656,17 @@ describe("offer", () => {
   it("answers another connection's client.perform with what the handler returns", async () => {
     const served = await serve();
 
-    const offerer = attach(served.listener, global, { name: "offerer" });
+    const offerer = await attach(served.listener, global, { name: "offerer" });
     offerer.offer({ name: "open", summary: "Opens a thing.", input: {} }, (input, requester) => ({
       opened: input,
       by: requester.client,
     }));
 
-    const asker = attach(served.listener, global, {
+    const asker = await attach(served.listener, global, {
       name: "asker",
       address: `${served.listener.address ?? ""}/`,
     });
 
-    expect(asker).not.toBe(offerer);
     const clients = asker.clients();
     cleanups.push(async () => clients.close());
 
@@ -684,5 +683,179 @@ describe("offer", () => {
       opened: { n: 1 },
       by: self?.id,
     });
+  });
+});
+
+/** Opens real sockets and counts the operations each one sends. */
+function operations() {
+  const sent = new Map<string, number>();
+
+  const socket: OpenSocket = (request) => {
+    const made = global(request);
+    const send = made.send.bind(made);
+
+    return Object.assign(made, {
+      send(data: string) {
+        const op = /"op":"([^"]+)"/u.exec(data)?.[1];
+
+        if (op !== undefined) sent.set(op, (sent.get(op) ?? 0) + 1);
+        send(data);
+      },
+    });
+  };
+
+  return { socket, sent: (op: string) => sent.get(op) ?? 0 };
+}
+
+/** A fetch that holds each `run.stop` until the test lets it go, then answers it or fails it as a lost link. */
+function slowStops() {
+  const held: PromiseWithResolvers<"answer" | "fail">[] = [];
+
+  const send: typeof fetch = async (input, init) => {
+    const request = new Request(input, init);
+
+    if (new URL(request.url).pathname.endsWith("/run.stop")) {
+      const gate = Promise.withResolvers<"answer" | "fail">();
+      held.push(gate);
+
+      if ((await gate.promise) === "fail") throw new TypeError("fetch failed");
+    }
+
+    return fetch(request);
+  };
+
+  return { fetch: send, held };
+}
+
+async function working(served: Served, session: SessionId): Promise<void> {
+  served.fake.reply({ content: [{ type: "text", text: "Working." }], hold: true });
+  await (await served.host.session(session).send("Go.")).landed();
+}
+
+describe("a chat", () => {
+  it("holds nothing until its first listener, keeps its snapshot until something drawn changes, and closes everything when the last leaves", async () => {
+    const served = await serve();
+    const first = await startSession(served);
+    const second = await startSession(served);
+    const counted = operations();
+    const connection = await attach(served.listener, counted.socket);
+    const chat = connection.chat(first);
+    const other = connection.chat(second);
+    await until(connection, "open");
+    await new Promise((settle) => setTimeout(settle, 50));
+
+    expect(counted.sent("head.read")).toBe(0);
+
+    const drawn: ChatSnapshot[] = [];
+    const elsewhere: ChatSnapshot[] = [];
+    const leave = [
+      chat.subscribe(() => drawn.push(chat.snapshot())),
+      chat.subscribe(() => undefined),
+      other.subscribe(() => elsewhere.push(other.snapshot())),
+    ];
+
+    await vi.waitFor(() => {
+      expect(chat.snapshot().freshness.kind).toBe("fresh");
+      expect(other.snapshot().freshness.kind).toBe("fresh");
+    });
+    expect(counted.sent("head.read")).toBe(2);
+    expect(chat.snapshot()).toBe(chat.snapshot());
+
+    const answer = "A streamed answer in many pieces. ".repeat(12);
+    const streamedFrom = drawn.length;
+    const quiet = elsewhere.length;
+    served.fake.reply({
+      content: [{ type: "text", text: answer }],
+      tokens: 60,
+      timing: { deltaMs: 2 },
+    });
+    await (await served.host.session(first).send("Stream.")).settled();
+
+    await vi.waitFor(() =>
+      expect(
+        chat
+          .snapshot()
+          .view?.messages.some(
+            (message) =>
+              message.kind === "part" && JSON.stringify(message.state).includes(answer.trim()),
+          ),
+      ).toBe(true),
+    );
+
+    const streamed = drawn.slice(streamedFrom);
+
+    expect(streamed.length).toBeGreaterThan(2);
+    expect(
+      streamed.every((shown, index) => shown !== (streamed[index - 1] ?? drawn[streamedFrom - 1])),
+    ).toBe(true);
+    expect(elsewhere.length).toBe(quiet);
+
+    for (const stop of leave) stop();
+    await vi.waitFor(() => expect(counted.sent("events.unsubscribe")).toBe(2));
+    expect(chat.snapshot().view).toBeNull();
+  });
+
+  it("shows a stop as asked at once, sends it once, and hands over to the host's row without claiming the run stopped", async () => {
+    const served = await serve();
+    const session = await startSession(served);
+    const stops = slowStops();
+    const connection = await attach(served.listener, global, { fetch: stops.fetch });
+    const chat = connection.chat(session);
+    const seen: ChatSnapshot[] = [];
+    chat.subscribe(() => seen.push(chat.snapshot()));
+    await working(served, session);
+    await vi.waitFor(() => expect(chat.snapshot().view?.execution.kind).toBe("live"));
+
+    const asked = seen.length;
+    const stopping = chat.stop();
+    expect(chat.snapshot().stopping).toBe("asked");
+    await chat.stop();
+    await vi.waitFor(() => expect(stops.held).toHaveLength(1));
+    stops.held[0]?.resolve("answer");
+    await stopping;
+
+    await vi.waitFor(() => expect(chat.snapshot().view?.execution.kind).toBe("idle"));
+
+    const kinds = seen
+      .slice(asked)
+      .map((shown) => shown.stopping)
+      .filter((kind, index, all) => kind !== all[index - 1]);
+
+    expect(stops.held).toHaveLength(1);
+    expect(kinds[0]).toBe("asked");
+    expect(kinds.at(-1)).toBe("no");
+    expect(kinds.filter((kind) => kind === "asked")).toHaveLength(1);
+    expect(
+      seen.filter((shown) => shown.stopping === "asked").map((shown) => shown.view?.execution.kind),
+    ).not.toContain("idle");
+  });
+
+  it("clears an asked stop when the link's health changes, and reports only the latest stop's failure", async () => {
+    const served = await serve();
+    const session = await startSession(served);
+    const stops = slowStops();
+    const connection = await attach(served.listener, global, { fetch: stops.fetch });
+    const chat = connection.chat(session);
+    chat.subscribe(() => undefined);
+    await working(served, session);
+    await vi.waitFor(() => expect(chat.snapshot().view?.execution.kind).toBe("live"));
+
+    const first = chat.stop();
+    expect(chat.snapshot().stopping).toBe("asked");
+    served.listener.disconnectClients();
+    await vi.waitFor(() => expect(chat.snapshot().stopping).toBe("no"));
+    await until(connection, "open");
+
+    const second = chat.stop();
+    expect(chat.snapshot().stopping).toBe("asked");
+    await vi.waitFor(() => expect(stops.held).toHaveLength(2));
+
+    stops.held[0]?.resolve("fail");
+    await expect(first).resolves.toBeUndefined();
+    expect(chat.snapshot().stopping).toBe("asked");
+
+    stops.held[1]?.resolve("fail");
+    await expect(second).rejects.toMatchObject({ code: "unavailable" });
+    expect(chat.snapshot().stopping).toBe("no");
   });
 });

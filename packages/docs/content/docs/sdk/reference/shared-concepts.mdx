@@ -89,7 +89,7 @@ Read again and decide. Other things use the same idea with their own version:
 ## The host builds the views [#views]
 
 The host folds a session's log into tables of rows: messages, turns, parts, file changes and each
-head's state. `view()` reads them as one `SessionView`. A head store from `openHost` attaches to a
+head's state. `view()` reads them as one `SessionView`. A head store from `connect` attaches to a
 head's window of rows and applies each change event by replacing rows by id. `headView` builds the
 same view from the store's snapshot, without `seq`, so a client never replays events itself. After
 a reconnect, the store resumes from the last seq it applied.

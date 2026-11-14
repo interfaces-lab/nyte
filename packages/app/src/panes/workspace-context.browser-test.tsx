@@ -308,18 +308,15 @@ async function checkBranches(): Promise<string> {
   queryClient.setQueryData(keys.host, {
     workspace: { id: asId<"workspace">("nyte"), path: "/u/dev/nyte", name: "nyte" },
   });
-  const { connection, live } = scriptedConnection({ workspaces, sessions, git });
+  const { connection } = scriptedConnection({ workspaces, sessions, git });
 
-  installConnection(
-    {
-      ...connection,
-      workspace: (id) => ({
-        ...connection.workspace(id),
-        files: async () => ({ kind: "available", api: files }),
-      }),
-    },
-    live,
-  );
+  installConnection({
+    ...connection,
+    workspace: (id) => ({
+      ...connection.workspace(id),
+      files: async () => ({ kind: "available", api: files }),
+    }),
+  });
   const container = document.createElement("div");
   container.style.cssText = "position:fixed;left:0;bottom:0;padding:16px";
   document.body.append(container);

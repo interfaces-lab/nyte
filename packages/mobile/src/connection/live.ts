@@ -1,23 +1,22 @@
 import { useSyncExternalStore } from "react";
-import Constants from "expo-constants";
 import { asId } from "@nyte-ai/schema";
-import type { Connection, HeadName, SdkError, SessionId, SessionInfo } from "@nyte-ai/sdk";
-import { openHost, unsentSends } from "@nyte-ai/sdk/client";
+import type { HeadName, SdkError, SessionId, SessionInfo } from "@nyte-ai/sdk";
 import type {
+  Chat,
+  ChatSnapshot as SdkChatSnapshot,
+  ClientConnection,
   Freshness,
   HeadView,
   Health,
-  HostConnection as LiveHost,
   OpenSocket,
   SessionsWindow,
 } from "@nyte-ai/sdk/client";
 import { SHARE_LOCATION } from "./connect-copy.ts";
 
-export type { LiveHost };
-
 export interface ChatSnapshot {
   readonly view: HeadView;
   readonly freshness: Freshness;
+  readonly stopping: SdkChatSnapshot["stopping"];
 }
 
 /** A head's snapshot, or the error its read failed with while the SDK retries it and holds none. */
@@ -53,82 +52,89 @@ const TAIL = 200;
 const NONE: Shared<ChatRead> = { subscribe: () => () => undefined, snapshot: () => undefined };
 
 const healths = new WeakMap<
-  LiveHost,
+  ClientConnection,
   { readonly subscribe: (listener: () => void) => () => void; readonly snapshot: () => Health }
 >();
 
-const chats = new WeakMap<LiveHost, Map<string, Shared<ChatRead>>>();
+const chats = new WeakMap<ClientConnection, Map<string, Shared<ChatRead>>>();
 
-const lists = new WeakMap<LiveHost, Map<string, Shared<ListSnapshot>>>();
+const opened = new WeakMap<ClientConnection, Map<string, Chat>>();
 
-export function openLiveHost(url: string, token: string): LiveHost {
-  return openHost(url, {
-    credentials: { kind: "token", token },
-    client: { kind: "app", name: "Nyte iOS", version: Constants.expoConfig?.version ?? "0.0.0" },
-    socket: (request) => new NativeWebSocket(request.url, undefined, { headers: request.headers }),
-  });
-}
+const lists = new WeakMap<ClientConnection, Map<string, Shared<ListSnapshot>>>();
 
-export function useHealth(live: LiveHost): Health {
-  const known = healths.get(live);
+export const nativeSocket: OpenSocket = (request) =>
+  new NativeWebSocket(request.url, undefined, { headers: request.headers });
+
+export function useHealth(client: ClientConnection): Health {
+  const known = healths.get(client);
 
   const health = known ?? {
-    subscribe: (listener: () => void) => live.health.subscribe(listener),
-    snapshot: () => live.health.snapshot(),
+    subscribe: (listener: () => void) => client.health.subscribe(listener),
+    snapshot: () => client.health.snapshot(),
   };
 
-  healths.set(live, health);
+  healths.set(client, health);
 
   return useSyncExternalStore(health.subscribe, health.snapshot);
 }
 
 export function useChat(
-  live: LiveHost,
-  client: Connection,
+  client: ClientConnection,
   session: SessionId | undefined,
   head: HeadName | undefined,
 ): ChatSnapshot | undefined {
-  const read = useChatRead(live, client, session, head);
+  const read = useChatRead(client, session, head);
 
   return read !== undefined && "view" in read ? read : undefined;
 }
 
 export function useChatRead(
-  live: LiveHost,
-  client: Connection,
+  client: ClientConnection,
   session: SessionId | undefined,
   head: HeadName | undefined,
 ): ChatRead | undefined {
-  const chat = session === undefined ? NONE : openChat(live, client, session, head ?? MAIN);
+  const chat = session === undefined ? NONE : sharedChat(client, session, head ?? MAIN);
 
   return useSyncExternalStore(chat.subscribe, chat.snapshot);
 }
 
-function openChat(
-  live: LiveHost,
-  client: Connection,
+/** The one chat of `session`'s `head` this app draws and acts on, so a stop asked from one screen shows in every screen of that chat. */
+export function chatFor(client: ClientConnection, session: SessionId, head: HeadName): Chat {
+  const byKey = opened.get(client) ?? new Map<string, Chat>();
+  opened.set(client, byKey);
+  const key = JSON.stringify([session, head]);
+  const known = byKey.get(key);
+
+  if (known !== undefined) return known;
+  const chat = client.chat(session, { head, tail: TAIL });
+  byKey.set(key, chat);
+
+  return chat;
+}
+
+function sharedChat(
+  client: ClientConnection,
   session: SessionId,
   name: HeadName,
 ): Shared<ChatRead> {
-  return sharedStore(chats, live, JSON.stringify([session, name]), (changed) => {
-    const chat = live.chat(session, name, {
-      tail: TAIL,
-      unsent: unsentSends(client, session, name),
-    });
+  return sharedStore(chats, client, JSON.stringify([session, name]), (changed) => {
+    const chat = chatFor(client, session, name);
 
     return {
       read(previous) {
         const snapshot = chat.snapshot();
         const view = snapshot.view;
         const freshness = snapshot.freshness;
+        const stopping = snapshot.stopping;
 
         if (view !== null)
           return previous !== undefined &&
             "view" in previous &&
             previous.view === view &&
-            previous.freshness === freshness
+            previous.freshness === freshness &&
+            previous.stopping === stopping
             ? previous
-            : { view, freshness };
+            : { view, freshness, stopping };
         const error = freshness.kind === "stale" ? freshness.error : null;
 
         if (error === null) return undefined;
@@ -142,9 +148,12 @@ function openChat(
   });
 }
 
-export function useSessions(live: LiveHost, window: SessionsWindow): ListSnapshot | undefined {
-  const list = sharedStore(lists, live, JSON.stringify(window), (changed) => {
-    const store = live.directory(window);
+export function useSessions(
+  client: ClientConnection,
+  window: SessionsWindow,
+): ListSnapshot | undefined {
+  const list = sharedStore(lists, client, JSON.stringify(window), (changed) => {
+    const store = client.sessions.open(window);
     const stop = store.subscribe(changed);
 
     return {
@@ -220,13 +229,13 @@ export function updatedLabel(freshness: Freshness | undefined): string | undefin
 }
 
 function sharedStore<T>(
-  stores: WeakMap<LiveHost, Map<string, Shared<T>>>,
-  live: LiveHost,
+  stores: WeakMap<ClientConnection, Map<string, Shared<T>>>,
+  client: ClientConnection,
   key: string,
   open: (changed: () => void) => Opened<T>,
 ): Shared<T> {
-  const byKey = stores.get(live) ?? new Map<string, Shared<T>>();
-  stores.set(live, byKey);
+  const byKey = stores.get(client) ?? new Map<string, Shared<T>>();
+  stores.set(client, byKey);
   const known = byKey.get(key);
 
   if (known !== undefined) return known;

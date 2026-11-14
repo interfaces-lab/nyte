@@ -16,7 +16,7 @@ export function useWholeToolState(
     | undefined,
   open: boolean,
 ): ToolPartState | undefined {
-  const live = useHost().live;
+  const client = useHost().client;
   const [whole, setWhole] = useState<ToolPartState>();
   const reads = open && tool?.elided === true;
   const part = tool?.part;
@@ -24,7 +24,7 @@ export function useWholeToolState(
   // oxlint-disable-next-line nyte-code/no-direct-effect -- holds the part's live store open while the row is open
   useEffect(() => {
     if (!reads || part === undefined) return;
-    const store = live.part(session, part);
+    const store = client.part(session, part);
 
     const show = (): void => {
       const state = store.snapshot()?.part?.state;
@@ -39,7 +39,7 @@ export function useWholeToolState(
       stop();
       store.close();
     };
-  }, [reads, live, session, part]);
+  }, [reads, client, session, part]);
 
   return reads && whole?.call === tool?.state.call ? whole : tool?.state;
 }

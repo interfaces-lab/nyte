@@ -1,15 +1,15 @@
 import { asId } from "@nyte-ai/schema";
 import type { PartId, PartView } from "@nyte-ai/schema";
-import { pagedViews, tracePaints } from "@nyte-ai/sdk";
-import type { MessageId, PagedViews, SessionId } from "@nyte-ai/sdk";
-import { unsentSends } from "@nyte-ai/sdk/client";
-import type { ChatSnapshot, Freshness, HeadView, HostConnection } from "@nyte-ai/sdk/client";
+import { tracePaints } from "@nyte-ai/sdk";
+import type { MessageId, SessionId } from "@nyte-ai/sdk";
+import type { Chat, ChatSnapshot, Freshness, HeadView } from "@nyte-ai/sdk/client";
+import { useSyncExternalStore } from "react";
 import { countWork } from "../lib/work-counts.ts";
 import { connection, registries } from "./connection.ts";
 import { createTextPacer } from "./paced-text.ts";
 import { sessionActivityProjector } from "./session-activity.ts";
 import type { SessionActivity } from "./session-activity.ts";
-import { liveFamily, liveValues } from "./watch-store.ts";
+import { liveValues, watchFamily } from "./watch-store.ts";
 
 export interface ChatView extends HeadView {
   readonly seq: number;
@@ -17,15 +17,10 @@ export interface ChatView extends HeadView {
   readonly activity: SessionActivity;
   /** The unsent messages the journal no longer sends on its own, the same array until it changes. */
   readonly expired: readonly MessageId[];
+  readonly stopping: ChatSnapshot["stopping"];
 }
 
-type LaidView = HeadView & {
-  readonly seq: number;
-  readonly freshness: Freshness;
-  readonly expired: readonly MessageId[];
-};
-
-const MAIN = asId<"head">("main");
+type LaidView = Omit<ChatView, "activity">;
 
 const OPENING_TAIL = 40;
 
@@ -39,23 +34,28 @@ export function paceTranscripts(shown: () => ReadonlySet<SessionId>): void {
   shownTranscripts = shown;
 }
 
-const pagers = new Map<SessionId, PagedViews<LaidView>>();
+/** The chat each session's store draws, while it is open: its stop and its older pages belong to that one. */
+const chats = new Map<SessionId, Chat>();
+
+/** Hear when a session's open chat is set or dropped. */
+const chatsChanged = new Set<() => void>();
+
+function changeChats(change: () => void): void {
+  change();
+
+  for (const listener of chatsChanged) listener();
+}
 
 function nextFrame(): Promise<void> {
   return new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
 }
 
-export const chatStore = liveFamily((live, session: SessionId): AsyncIterable<ChatView> => ({
+export const chatStore = watchFamily((opened, session: SessionId): AsyncIterable<ChatView> => ({
   [Symbol.asyncIterator]() {
     const known = chatStore(session).value?.messages.length ?? 0;
     const tail = Math.min(Math.max(OPENING_TAIL, known), REOPENING_TAIL);
-
-    const views = pagedViews<LaidView>({
-      watch: () => laidViews(live, session, tail),
-      history: (query) => connection().session(session).history(query),
-    });
-
-    const iterator = tracePaints(views, session, nextFrame)[Symbol.asyncIterator]();
+    const chat = opened.chat(session, { tail });
+    const iterator = tracePaints(laidViews(chat), session, nextFrame)[Symbol.asyncIterator]();
     const activity = sessionActivityProjector();
 
     const pacer = createTextPacer<ChatView>(
@@ -63,7 +63,7 @@ export const chatStore = liveFamily((live, session: SessionId): AsyncIterable<Ch
       (view) => chatStore(session).revise(view),
     );
 
-    pagers.set(session, views);
+    changeChats(() => chats.set(session, chat));
 
     return {
       async next() {
@@ -80,7 +80,7 @@ export const chatStore = liveFamily((live, session: SessionId): AsyncIterable<Ch
       async return() {
         pacer.dispose();
 
-        if (pagers.get(session) === views) pagers.delete(session);
+        if (chats.get(session) === chat) changeChats(() => chats.delete(session));
         await iterator.return?.();
 
         return { done: true, value: undefined };
@@ -89,12 +89,9 @@ export const chatStore = liveFamily((live, session: SessionId): AsyncIterable<Ch
   },
 }));
 
-function laidViews(live: HostConnection, session: SessionId, tail: number) {
+function laidViews(chat: Chat) {
   return liveValues<LaidView>((changed) => {
-    const unsent = unsentSends(connection(), session, MAIN);
-    const chat = live.chat(session, MAIN, { tail, unsent });
     let shown: { readonly snapshot: ChatSnapshot; readonly view: LaidView } | null = null;
-    let expired: readonly MessageId[] = [];
 
     return {
       read() {
@@ -107,13 +104,17 @@ function laidViews(live: HostConnection, session: SessionId, tail: number) {
           return null;
         }
 
-        if (shown?.snapshot !== snapshot) {
-          const ids = unsent.expired();
-
-          if (ids.length !== expired.length || ids.some((id, index) => id !== expired[index]))
-            expired = ids;
-          shown = { snapshot, view: { ...snapshot.view, seq: snapshot.seq, freshness, expired } };
-        }
+        if (shown?.snapshot !== snapshot)
+          shown = {
+            snapshot,
+            view: {
+              ...snapshot.view,
+              seq: snapshot.seq,
+              freshness,
+              expired: snapshot.expired,
+              stopping: snapshot.stopping,
+            },
+          };
 
         return shown.view;
       },
@@ -124,10 +125,10 @@ function laidViews(live: HostConnection, session: SessionId, tail: number) {
 
 export type ShownPart = { readonly part: PartView | null; readonly staleSince: number | null };
 
-const partStores = liveFamily((live, key: string): AsyncIterable<ShownPart> =>
+const partStores = watchFamily((opened, key: string): AsyncIterable<ShownPart> =>
   liveValues<ShownPart>((changed) => {
     const [session = "", part = ""] = key.split(" ");
-    const store = live.part(asId<"session">(session), asId<"part">(part));
+    const store = opened.part(asId<"session">(session), asId<"part">(part));
     const stop = store.subscribe(changed);
     let shown = partStores(key).value ?? null;
 
@@ -209,9 +210,40 @@ export function warmSession(session: SessionId): void {
 
 /** Sends an unsent message the journal stopped sending after a day again, as if just sent. */
 export function resendMessage(session: SessionId, message: MessageId): Promise<void> {
-  return unsentSends(connection(), session, MAIN).resend(message);
+  return connection().chat(session).resend(message);
+}
+
+/** Asks the host to stop the run the session's open chat shows; see `Chat.stop`. */
+export function stopChat(session: SessionId): Promise<void> {
+  return chats.get(session)?.stop() ?? Promise.resolve();
+}
+
+/**
+ * The open chat's `stopping`, read from the chat itself as soon as it changes, not on the next
+ * frame the chat store publishes, so a pressed Stop shows in the commit that pressed it.
+ */
+export function useChatStopping(session: SessionId): ChatSnapshot["stopping"] {
+  return useSyncExternalStore(
+    (notice) => {
+      let leave = chats.get(session)?.subscribe(notice);
+
+      const follow = (): void => {
+        leave?.();
+        leave = chats.get(session)?.subscribe(notice);
+        notice();
+      };
+
+      chatsChanged.add(follow);
+
+      return () => {
+        chatsChanged.delete(follow);
+        leave?.();
+      };
+    },
+    () => chats.get(session)?.snapshot().stopping ?? "no",
+  );
 }
 
 export async function loadEarlierMessages(session: SessionId, limit: number): Promise<number> {
-  return (await pagers.get(session)?.earlier(limit)) ?? 0;
+  return (await chats.get(session)?.earlier(limit)) ?? 0;
 }

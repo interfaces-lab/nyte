@@ -85,7 +85,6 @@ function Gate() {
                 key={host.key}
                 session={{
                   client: host.client,
-                  live: host.live,
                   connection: host.connection,
                   saved: host.saved,
                   scope: host.scope,

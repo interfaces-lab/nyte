@@ -12,30 +12,27 @@ Each has a default. The examples below change one of them or use one more handle
 
 ## Stream the answer [#stream-the-answer]
 
-`openHost` attaches to a host over its socket, so the host listens on a local port first. A head
-store holds the chat's rows, and `live.text` carries the text a part streams. `print` writes the
-new end of each text part from this message's run, and stops when that run ends.
+`connect` reaches a host over HTTP and its socket, so the host listens on a local port first. A
+chat holds the head's rows with the text a part is still streaming laid in. `print` writes the new
+end of each text part from this message's run, and stops when that run ends.
 
 ```ts tab="stream.ts"
 import process from "node:process";
 import { isPart, text } from "@nyte-ai/plugin/core";
 import type { SendReceipt, Session } from "@nyte-ai/sdk";
-import { headView, streamText, withStreamedText } from "@nyte-ai/sdk/client";
-import type { HostConnection, StreamedText } from "@nyte-ai/sdk/client";
+import type { ClientConnection } from "@nyte-ai/sdk/client";
 
-export async function print(live: HostConnection, session: Session, receipt: SendReceipt) {
+export async function print(connection: ClientConnection, session: Session, receipt: SendReceipt) {
   const landed = await receipt.landed();
   const run = landed.kind === "landed" ? landed.run : null;
   const written = new Map<string, number>();
-  const store = live.head(session.id, session.name, { tail: 20 });
+  const chat = connection.chat(session.id, { tail: 20 });
   const done = Promise.withResolvers<void>();
-  let texts: StreamedText = new Map();
 
   const show = () => {
-    const snapshot = store.snapshot();
+    const view = chat.snapshot().view;
 
-    if (snapshot === null) return;
-    const view = withStreamedText(headView(snapshot), texts);
+    if (view === null) return;
     const turns = new Set(view.turns.filter((turn) => turn.run === run).map((turn) => turn.id));
 
     for (const message of view.messages) {
@@ -48,24 +45,16 @@ export async function print(live: HostConnection, session: Session, receipt: Sen
     if (view.execution.kind === "idle" && view.execution.lastRun?.id === run) done.resolve();
   };
 
-  const stopRows = store.subscribe(show);
+  const leave = chat.subscribe(show);
 
-  const stopText = live.text((update) => {
-    texts = streamText(texts, update);
-    show();
-  });
-
-  show();
   await done.promise;
-  stopText();
-  stopRows();
-  store.close();
+  leave();
 }
 ```
 
 ```ts tab="answer.ts"
 import { sdk } from "@nyte-ai/sdk";
-import { openHost } from "@nyte-ai/sdk/client";
+import { connect, createSendJournal } from "@nyte-ai/sdk/client";
 import { print } from "./stream.ts";
 
 const host = await sdk.open();
@@ -76,15 +65,17 @@ const listener = await host.listen({
   auth: { kind: "token", token },
 });
 
-const live = openHost(listener.address ?? "", {
+const connection = await connect({
+  url: listener.address ?? "",
   credentials: { kind: "token", token },
   client: { kind: "other", name: "stream", version: "1.0.0" },
+  journal: createSendJournal(),
 });
 
 const { session, receipt } = await host.sessions.start({ content: "Explain this repository" });
 
-await print(live, session, receipt);
-live.release();
+await print(connection, session, receipt);
+await connection.close();
 await host.close();
 ```
 
@@ -100,7 +91,7 @@ The first message starts the chat. Every message after that is a `send`. This us
 import process from "node:process";
 import { createInterface } from "node:readline/promises";
 import { sdk } from "@nyte-ai/sdk";
-import { openHost } from "@nyte-ai/sdk/client";
+import { connect, createSendJournal } from "@nyte-ai/sdk/client";
 import { print } from "./stream.ts";
 
 const host = await sdk.open();
@@ -111,9 +102,11 @@ const listener = await host.listen({
   auth: { kind: "token", token },
 });
 
-const live = openHost(listener.address ?? "", {
+const connection = await connect({
+  url: listener.address ?? "",
   credentials: { kind: "token", token },
   client: { kind: "other", name: "chat", version: "1.0.0" },
+  journal: createSendJournal(),
 });
 
 const prompt = createInterface({ input: process.stdin, output: process.stdout });
@@ -121,7 +114,7 @@ const prompt = createInterface({ input: process.stdin, output: process.stdout })
 let { session, receipt } = await host.sessions.start({ content: await prompt.question("> ") });
 
 while (true) {
-  await print(live, session, receipt);
+  await print(connection, session, receipt);
   receipt = await session.send(await prompt.question("\n> "));
 }
 ```
@@ -174,7 +167,7 @@ import process from "node:process";
 import { createInterface } from "node:readline/promises";
 import { approvalPrompt, openApprovals } from "@nyte-ai/plugin/approvals/schema";
 import { sdk } from "@nyte-ai/sdk";
-import { headView, openHost } from "@nyte-ai/sdk/client";
+import { connect, createSendJournal } from "@nyte-ai/sdk/client";
 
 const host = await sdk.open();
 const token = crypto.randomUUID();
@@ -184,9 +177,11 @@ const listener = await host.listen({
   auth: { kind: "token", token },
 });
 
-const live = openHost(listener.address ?? "", {
+const connection = await connect({
+  url: listener.address ?? "",
   credentials: { kind: "token", token },
   client: { kind: "other", name: "approve", version: "1.0.0" },
+  journal: createSendJournal(),
 });
 
 const prompt = createInterface({ input: process.stdin, output: process.stdout });
@@ -198,16 +193,15 @@ const { session, receipt } = await host.sessions.start({
 });
 const landed = await receipt.landed();
 const run = landed.kind === "landed" ? landed.run : null;
-const store = live.head(session.id, session.name, { tail: 20 });
+const chat = connection.chat(session.id, { tail: 20 });
 const asked = new Set<string>();
 const done = Promise.withResolvers<void>();
 let answering = Promise.resolve();
 
 const check = () => {
-  const snapshot = store.snapshot();
+  const view = chat.snapshot().view;
 
-  if (snapshot === null) return;
-  const view = headView(snapshot);
+  if (view === null) return;
 
   for (const request of openApprovals(view)) {
     if (asked.has(request.part)) continue;
@@ -218,7 +212,7 @@ const check = () => {
         const { title, detail } = approvalPrompt(request);
         const answer = await prompt.question(`${title}\n${detail}\nAllow? [y/N] `);
 
-        await session.part(request.part).act(answer === "y" ? "once" : "deny", {});
+        await chat.act(request.part, answer === "y" ? "once" : "deny", {});
       })
       .catch((error: unknown) => console.error(error));
   }
@@ -226,13 +220,11 @@ const check = () => {
   if (view.execution.kind === "idle" && view.execution.lastRun?.id === run) done.resolve();
 };
 
-const stopRows = store.subscribe(check);
+const leave = chat.subscribe(check);
 
-check();
 await done.promise;
-stopRows();
-store.close();
-live.release();
+leave();
+await connection.close();
 await answering;
 prompt.close();
 await host.close();
@@ -374,12 +366,12 @@ await host.close();
 
 ## List chats as they change [#list-chats]
 
-`live.directory` is a store of the chat list, and its listener runs each time the list changes.
+`connection.sessions.open` is a store of the chat list, and its listener runs each time the list changes.
 `limit` caps it at 20 chats.
 
 ```ts title="sessions.ts"
 import { sdk } from "@nyte-ai/sdk";
-import { openHost } from "@nyte-ai/sdk/client";
+import { connect, createSendJournal } from "@nyte-ai/sdk/client";
 
 const host = await sdk.open();
 const token = crypto.randomUUID();
@@ -389,12 +381,14 @@ const listener = await host.listen({
   auth: { kind: "token", token },
 });
 
-const live = openHost(listener.address ?? "", {
+const connection = await connect({
+  url: listener.address ?? "",
   credentials: { kind: "token", token },
   client: { kind: "other", name: "sessions", version: "1.0.0" },
+  journal: createSendJournal(),
 });
 
-const sessions = live.directory({ limit: 20 });
+const sessions = connection.sessions.open({ limit: 20 });
 
 sessions.subscribe(() => {
   const snapshot = sessions.snapshot();
@@ -406,9 +400,9 @@ sessions.subscribe(() => {
 
 ## Serve it and connect from anywhere [#serve-it]
 
-Every example above works over the network. Put the host on HTTP, then swap `sdk.open` for
-`sdk.connect` in the client, and pass the host's URL to `openHost` in place of the local listener's
-address.
+Every example above works over the network. Put the host on HTTP, then pass the host's URL to
+`connect` in place of the local listener's address. A script that only makes requests can use
+`sdk.connect` instead.
 
 ```ts tab="serve.ts"
 import process from "node:process";
@@ -424,7 +418,7 @@ await host.listen({
 
 ```ts tab="client.ts"
 import process from "node:process";
-import { sdk } from "@nyte-ai/sdk/client";
+import { sdk } from "@nyte-ai/sdk";
 
 const connection = await sdk.connect({
   url: "http://127.0.0.1:8787",

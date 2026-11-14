@@ -1,10 +1,10 @@
 import { basename, join } from "node:path";
-import { asId } from "@nyte-ai/schema";
 import { serial } from "@nyte-ai/schema/serial";
 import { UsageScanner } from "@nyte-ai/host/usage-service";
 import type { UsageScanReader } from "@nyte-ai/host/usage-service";
-import { SdkError, sdk } from "@nyte-ai/sdk/client";
-import type { Connection, HostConnection, HostView, SessionInfo } from "@nyte-ai/sdk/client";
+import { API_REVISION, asId } from "@nyte-ai/schema";
+import { connect, createSendJournal, SdkError } from "@nyte-ai/sdk/client";
+import type { ClientConnection, Connection, HostView, SessionInfo } from "@nyte-ai/sdk/client";
 import { ConnectError, ConnectRuntime } from "@nyte-ai/connect/host";
 import type {
   HostEvent,
@@ -43,8 +43,7 @@ import type { SavedServer } from "./connections/server-settings.ts";
 export interface DesktopHostDependencies {
   readonly home: string;
   /** Main's one link to the host: the connection calls go over and the host view this follows. */
-  readonly link: Pick<HostLink, "connection" | "follow">;
-  readonly client: Pick<HostConnection, "call" | "directory">;
+  readonly link: Pick<HostLink, "connection" | "follow" | "attach">;
   readonly usageScan?: UsageScanReader;
   readonly remoteAccessPlugins?: RemoteAccessPlugins;
   readonly connect?: ConnectRuntime;
@@ -175,8 +174,20 @@ interface ServerWatch {
   state: ServerState | undefined;
 }
 
+/** How main names itself when it connects to another server, where it opens no socket. */
+const SERVER_CLIENT = {
+  kind: "app",
+  name: "Nyte",
+  version: `api-${String(API_REVISION)}`,
+} as const;
+
 async function probeServer(url: string, token: string) {
-  const connection = await sdk.connect({ url, credentials: { kind: "token", token } });
+  const connection = await connect({
+    url,
+    credentials: { kind: "token", token },
+    client: SERVER_CLIENT,
+    journal: createSendJournal(),
+  });
 
   try {
     for await (const view of connection.watch())
@@ -253,30 +264,34 @@ export class DesktopHost {
   #followRows(): void {
     if (this.#rowsFollowed || this.#watching.signal.aborted) return;
     this.#rowsFollowed = true;
-    const directory = this.#deps.client.directory({ parents: { kind: "all" } });
 
-    const stop = directory.subscribe(() => {
-      const snapshot = directory.snapshot();
+    const detach = this.#deps.link.attach((connection) => {
+      const directory = connection.sessions.open({ parents: { kind: "all" } });
 
-      if (snapshot === null) return;
-      this.#rows = snapshot.ids.flatMap((id) => {
-        const row = snapshot.rows.get(id);
+      const stop = directory.subscribe(() => {
+        const snapshot = directory.snapshot();
 
-        return row === undefined ? [] : [row];
+        if (snapshot === null) return;
+        this.#rows = snapshot.ids.flatMap((id) => {
+          const row = snapshot.rows.get(id);
+
+          return row === undefined ? [] : [row];
+        });
+        this.#holdAwake();
+        this.#attend();
       });
-      this.#holdAwake();
-      this.#attend();
-    });
 
-    this.#watching.signal.addEventListener(
-      "abort",
-      () => {
+      return () => {
         stop();
         directory.close();
-      },
-      { once: true },
-    );
+      };
+    });
+
+    this.#watching.signal.addEventListener("abort", detach, { once: true });
   }
+
+  readonly #call: ClientConnection["call"] = async (name, input) =>
+    (await this.#deps.link.connection()).call(name, input);
 
   #attend(): void {
     if (this.#closing !== undefined) return;
@@ -415,7 +430,7 @@ export class DesktopHost {
           message: "This Mac's Nyte host has no Tailscale node. Reinstall Nyte to get it back.",
         });
 
-      await this.#deps.client.call("host.tailnet.configure", {
+      await this.#call("host.tailnet.configure", {
         enabled,
         hostname: node.dnsName?.split(".")[0] ?? "nyte",
         tags: node.tags,
@@ -424,7 +439,7 @@ export class DesktopHost {
       this.#remoteChanged();
     },
     "host.remote.signOutTailnet": async () => {
-      await this.#deps.client.call("host.tailnet.logout", {});
+      await this.#call("host.tailnet.logout", {});
       this.#remoteChanged();
     },
     "host.connect.state": () => this.#connect.view(),
@@ -480,12 +495,12 @@ export class DesktopHost {
 
   suspend(): void {
     if (!this.#settings.pauseOnSleep) return;
-    void this.#deps.client.call("host.execution.pause", {}).catch(() => undefined);
+    void this.#call("host.execution.pause", {}).catch(() => undefined);
   }
 
   resume(): void {
     this.#connect.resume();
-    void this.#deps.client.call("host.execution.resume", {}).catch(() => undefined);
+    void this.#call("host.execution.resume", {}).catch(() => undefined);
   }
 
   accountChanged(): void {
@@ -641,9 +656,11 @@ export class DesktopHost {
   async #connectSaved(watch: ServerWatch): Promise<Connection> {
     const saved = watch.saved;
 
-    const connection = await sdk.connect({
+    const connection = await connect({
       url: saved.url,
       credentials: { kind: "token", token: saved.token },
+      client: SERVER_CLIENT,
+      journal: createSendJournal(),
       expect:
         saved.publicKey === null ? undefined : { hostId: saved.hostId, publicKey: saved.publicKey },
     });
@@ -729,7 +746,7 @@ export class DesktopHost {
   }
 
   #tailnetNode(): Promise<TailnetNode> {
-    return this.#deps.client.call("host.tailnet.status", {}).catch((cause: unknown) => {
+    return this.#call("host.tailnet.status", {}).catch((cause: unknown) => {
       if (cause instanceof SdkError && cause.code === "unavailable")
         return { state: "unavailable" as const };
 

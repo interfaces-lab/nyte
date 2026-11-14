@@ -17,7 +17,7 @@ reach them with `sdk.connect` and the deploy's token:
 
 ```ts title="client.ts"
 import process from "node:process";
-import { sdk } from "@nyte-ai/sdk/client";
+import { sdk } from "@nyte-ai/sdk";
 
 const connection = await sdk.connect({
   url: "https://nyte-host.example.workers.dev",
@@ -25,8 +25,8 @@ const connection = await sdk.connect({
 });
 ```
 
-A `fetch` listener doesn't serve the WebSocket at `/.nyte/ws`, so `openHost` from
-`@nyte-ai/sdk/client` can't attach to either template.
+A `fetch` listener doesn't serve the WebSocket at `/.nyte/ws`, so the chats and stores of a
+`connect` connection from `@nyte-ai/sdk/client` can't follow either template.
 [Serve from your own server](/docs/host/serve#fetch-handler) lists the routes they answer.
 
 ## Before you deploy [#before]

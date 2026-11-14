@@ -92,7 +92,7 @@ const scripted = scriptedConnection({
   session: (id) => (id === quiet.id ? { info: async () => quiet } : {}),
 });
 
-installConnection(scripted.connection, scripted.live);
+installConnection(scripted.connection);
 
 function painted(): Promise<void> {
   return new Promise((resolve) =>

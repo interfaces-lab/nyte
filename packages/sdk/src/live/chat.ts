@@ -1,74 +1,146 @@
-import type { Disposer } from "@nyte-ai/schema";
-import type { UnsentSends } from "../send/unsent.ts";
+import { asId } from "@nyte-ai/schema";
+import type {
+  ActOutcome,
+  Disposer,
+  HeadName,
+  Json,
+  MessageId,
+  PartId,
+  RunId,
+  SendOptions,
+  UserContent,
+} from "@nyte-ai/schema";
+import type { SendReceipt, Session } from "@nyte-ai/core";
+import type { JournalLoop } from "../send/journal.ts";
+import { laidSends } from "../send/unsent.ts";
 import { headView } from "../view/head-view.ts";
 import type { HeadView } from "../view/head-view.ts";
+import { pages } from "../view/history.ts";
 import { streamText, withStreamedText } from "../view/streamed-text.ts";
 import type { StreamedText } from "../view/streamed-text.ts";
 import type { HeadStore } from "./head.ts";
-import type { TextUpdate } from "./host-connection.ts";
+import type { Health, TextUpdate } from "./host-connection.ts";
 import type { Freshness, Live } from "./store.ts";
 
 export interface ChatSnapshot {
-  /** The head's view with its unsent sends and streamed text laid in, or `null` until the head's first read lands. */
+  /** The head's view with its unsent sends, the older messages `earlier` loaded and streamed text laid in, or `null` until the head's first read lands. */
   readonly view: HeadView | null;
-  /** The seq `view`'s rows are current through: the last fresh seq, kept while the store is stale, and 0 before the first read. */
+  /** The seq `view`'s rows are current through: the last fresh seq, kept while the chat is stale, and 0 before the first read. */
   readonly seq: number;
   readonly freshness: Freshness;
+  /** The unsent messages the journal no longer sends on its own because they waited more than a day. Each still shows unsent and is sent again only by `resend`. The same array until it changes. */
+  readonly expired: readonly MessageId[];
+  /**
+   * `host` while the host's row says the run is stopping. `asked` from a `stop()` until the host
+   * answers with its row or ends the run, the stop fails, or the link's health changes, so a stop
+   * sent into a link found lost can be sent again. `asked` only says a stop was sent; the host
+   * decides whether the run stops.
+   */
+  readonly stopping: "no" | "asked" | "host";
 }
 
-export type ChatStore = Live<ChatSnapshot>;
-
 export interface ChatOptions {
-  readonly tail: number;
-  readonly unsent?: UnsentSends;
+  /** `main` when absent. */
+  readonly head?: HeadName;
+  /** How many of the head's newest messages the chat holds before `earlier` loads more; 200 when absent. */
+  readonly tail?: number;
+}
+
+/**
+ * One head of a session, as a chat screen draws it and acts on it. It holds nothing until its
+ * first listener: that one reads the head and follows its changes and streamed text, and the last
+ * to leave closes them and returns the chat to its first snapshot. `snapshot()` returns the same
+ * object until something drawn changes, and listeners hear only of a new snapshot, so a text frame
+ * for another chat's part notifies no one.
+ */
+export interface Chat extends Live<ChatSnapshot> {
+  /** Sends through the connection's journal: it shows unsent until the host has it, survives a quit when the journal's storage does, and resolves or rejects as `Head.send` does. */
+  send(content: UserContent, options?: SendOptions): Promise<SendReceipt>;
+  /** Sends an expired unsent message again, as if just sent. */
+  resend(message: MessageId): Promise<void>;
+  /** Withdraws a message that has not landed: an unsent one, expired or not, is never sent; one the host holds is withdrawn there. */
+  remove(message: MessageId): Promise<void>;
+  /** Asks the host to stop the run the view shows, and shows `stopping: "asked"` at once. Sends nothing while the chat shows no run or already shows it stopping. Rejects with the host's error only while it is the latest stop; an earlier one that fails changes nothing. */
+  stop(): Promise<void>;
+  /** Loads up to `count` older messages into the view, and resolves how many came: 0 once the head's first message is shown. */
+  earlier(count: number): Promise<number>;
+  /** Acts on a part of the session: an approval's decision (`act(part, "allow", {})`), a question's `answer` or `skip`, or any other action its kind declares. */
+  act(part: PartId, action: string, input: Json): Promise<ActOutcome<unknown>>;
+}
+
+export interface ChatParts {
+  readonly session: Session;
+  readonly head: HeadName;
+  readonly open: () => HeadStore;
+  readonly text: (listener: (update: TextUpdate) => void) => Disposer;
+  readonly health: Live<Health>;
+  readonly journal: JournalLoop;
 }
 
 type Opened = { readonly head: HeadStore; readonly stops: readonly Disposer[] };
 
-/**
- * Returns the store a client draws a chat from: the head store `open` returns, with `unsent`'s sends
- * and the text `text` streams laid over its view. The store holds nothing until its first listener:
- * that one opens the head store and the text subscription, and the last to leave closes both and
- * returns the store to its first snapshot. `snapshot()` returns the same object until the drawn view
- * or the freshness changes, and listeners hear only of a new snapshot, so a text frame for a part
- * this view does not hold changes nothing. The text map is the store's own, pruned by
- * `withStreamedText` as each view is laid.
- */
-export function openChatStore(
-  open: () => HeadStore,
-  text: (listener: (update: TextUpdate) => void) => Disposer,
-  unsent: UnsentSends | undefined,
-): ChatStore {
+/** The latest stop this chat sent: shown while its run is the view's and the link's health is the one it was sent under. */
+type Ask = { readonly run: RunId; readonly health: Health };
+
+const NO_MESSAGES: readonly MessageId[] = [];
+
+export function openChat(parts: ChatParts): Chat {
   const listeners = new Set<() => void>();
+  const target = parts.session.head(parts.head);
+  const lay = laidSends(parts.journal, parts.session.id, parts.head);
+  const paged = () => pages<HeadView>((query) => target.history(query));
+  let paging = paged();
   let opened: Opened | null = null;
   let texts: StreamedText = new Map();
   let laid: HeadView | null = null;
+  let asked: Ask | null = null;
   let snapshot = unopened();
 
-  const show = (view: HeadView | null, freshness: Freshness): void => {
-    if (view === snapshot.view && freshness === snapshot.freshness) return;
-    snapshot = { view, seq: freshness.kind === "fresh" ? freshness.seq : snapshot.seq, freshness };
+  const showsStopping = (view: HeadView | null): ChatSnapshot["stopping"] => {
+    const execution = view?.execution;
+
+    if (execution === undefined || execution.kind === "idle") return "no";
+
+    if (execution.kind === "live" && execution.stopping) return "host";
+
+    return asked !== null &&
+      asked.run === execution.run.id &&
+      asked.health === parts.health.snapshot()
+      ? "asked"
+      : "no";
+  };
+
+  const draw = (freshness: Freshness, expired: readonly MessageId[]): void => {
+    const view = laid === null ? null : withStreamedText(paging.show(laid), texts);
+    const stopping = showsStopping(view);
+
+    if (
+      view === snapshot.view &&
+      freshness === snapshot.freshness &&
+      expired === snapshot.expired &&
+      stopping === snapshot.stopping
+    )
+      return;
+    const seq = freshness.kind === "fresh" ? freshness.seq : snapshot.seq;
+    snapshot = { view, seq, freshness, expired, stopping };
 
     for (const listener of listeners) listener();
   };
 
+  const redraw = (): void => draw(snapshot.freshness, snapshot.expired);
+
   const settle = (head: HeadStore): void => {
     const rows = head.snapshot();
     const freshness = head.freshness();
-    const view = rows === null ? null : headView(rows);
-
-    laid =
-      view === null || unsent === undefined
-        ? view
-        : unsent.lay(view, freshness.kind === "fresh" ? freshness.seq : null);
-
-    show(laid === null ? null : withStreamedText(laid, texts), freshness);
+    const seq = freshness.kind === "fresh" ? freshness.seq : null;
+    laid = rows === null ? null : lay(headView(rows), seq);
+    draw(freshness, keepIds(snapshot.expired, parts.journal.expired(parts.session.id, parts.head)));
   };
 
   const stream = (update: TextUpdate): void => {
     texts = streamText(texts, update);
 
-    if (laid !== null) show(withStreamedText(laid, texts), snapshot.freshness);
+    if (laid !== null) redraw();
   };
 
   return {
@@ -76,12 +148,18 @@ export function openChatStore(
       listeners.add(listener);
 
       if (opened === null) {
-        const head = open();
+        const head = parts.open();
         const changed = (): void => settle(head);
-        const stops = [head.subscribe(changed), text(stream)];
 
-        if (unsent !== undefined) stops.push(unsent.subscribe(changed));
-        opened = { head, stops };
+        opened = {
+          head,
+          stops: [
+            head.subscribe(changed),
+            parts.text(stream),
+            parts.journal.subscribe(changed),
+            parts.health.subscribe(redraw),
+          ],
+        };
       }
 
       return () => {
@@ -92,13 +170,68 @@ export function openChatStore(
         opened = null;
         texts = new Map();
         laid = null;
+        paging = paged();
         snapshot = unopened();
       };
     },
     snapshot: () => snapshot,
+    send: (content, options) => target.send(content, options),
+    async resend(message) {
+      await parts.journal.resend(parts.session.id, message);
+    },
+    async remove(message) {
+      await parts.session.receipt(asId<"receipt">(message)).stop();
+    },
+    stop() {
+      const execution = snapshot.view?.execution;
+
+      if (execution === undefined || execution.kind === "idle" || snapshot.stopping !== "no")
+        return Promise.resolve();
+      const ask = { run: execution.run.id, health: parts.health.snapshot() };
+      asked = ask;
+      redraw();
+
+      return parts.session
+        .run(ask.run)
+        .stop()
+        .then(
+          () => undefined,
+          (error: unknown) => {
+            if (asked !== ask) return;
+            asked = null;
+            redraw();
+
+            throw error;
+          },
+        );
+    },
+    async earlier(count) {
+      const loading = paging;
+      const loaded = await loading.earlier(count);
+
+      if (loaded > 0 && loading === paging) redraw();
+
+      return loaded;
+    },
+    act: (part, action, input) => parts.session.part(part).act(action, input),
   };
 }
 
+/** `next`, or `previous` when it holds the same ids, so the array changes only when they do. */
+function keepIds(previous: readonly MessageId[], next: readonly MessageId[]): readonly MessageId[] {
+  if (next.length === 0) return NO_MESSAGES;
+
+  return next.length === previous.length && next.every((id, index) => id === previous[index])
+    ? previous
+    : next;
+}
+
 function unopened(): ChatSnapshot {
-  return { view: null, seq: 0, freshness: { kind: "stale", since: Date.now(), error: null } };
+  return {
+    view: null,
+    seq: 0,
+    freshness: { kind: "stale", since: Date.now(), error: null },
+    expired: NO_MESSAGES,
+    stopping: "no",
+  };
 }

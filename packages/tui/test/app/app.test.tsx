@@ -76,7 +76,7 @@ test("Ctrl+Q then delete withdraws a queued message", async () => {
   await app.state(working);
   await app.mockInput.typeText("never mind");
   app.mockInput.pressEnter({ ctrl: true });
-  await app.state((store) => store.screen().queue.length === 1);
+  await app.state((store) => store.screen().queue.some((row) => row.withdrawable));
 
   app.mockInput.pressKey("q", { ctrl: true });
   await app.state((store) => store.screen().dialog?.kind === "list");

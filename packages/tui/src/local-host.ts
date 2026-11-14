@@ -3,7 +3,8 @@ import type { ChildProcess } from "node:child_process";
 import { homedir } from "node:os";
 import process from "node:process";
 import { setTimeout as sleep } from "node:timers/promises";
-import { sdk } from "@nyte-ai/sdk/client";
+import { connect } from "@nyte-ai/sdk/client";
+import type { ClientConnection } from "@nyte-ai/sdk/client";
 import type { Connection } from "@nyte-ai/sdk";
 import { tryLockFile } from "@nyte-ai/connect/host";
 import { SdkError } from "@nyte-ai/schema";
@@ -29,7 +30,7 @@ export type HostSource =
   | { readonly kind: "attached"; readonly endpoint: LocalEndpoint };
 
 export interface HostSession {
-  readonly connection: Connection;
+  readonly connection: ClientConnection;
   readonly endpoint: LocalEndpoint;
   close(): Promise<void>;
 }
@@ -41,19 +42,20 @@ const HOST_POLL_MS = 100;
 const HOST_WATCH_MS = 2_000;
 
 /**
- * `progress` hears the phase of a wait the person would otherwise sit through in silence, such as
+ * `kind` is how the connection names this client to the host. `progress` hears the phase of a wait the person would otherwise sit through in silence, such as
  * starting a host. One-shot commands pass `Output.progress`; the full-screen TUI passes nothing,
  * because its screen owns the terminal.
  */
 export async function connectHost(
   source: HostSource,
+  kind: "tui" | "cli",
   progress?: (phase: string) => void,
 ): Promise<HostSession> {
   switch (source.kind) {
     case "local":
-      return retireOutdatedHost(await attachHost(await ensureHost(progress)));
+      return retireOutdatedHost(await attachHost(await ensureHost(progress), kind));
     case "attached":
-      return attachHost(source.endpoint);
+      return attachHost(source.endpoint, kind);
     default: {
       const _exhaustive: never = source;
 
@@ -158,28 +160,27 @@ function hostLockHeld(): boolean {
 }
 
 /** A host that answers and refuses is reported with its wire error; one that never answers (`unavailable`) is `network_error`, its cause in a detail row. */
-async function attachHost(endpoint: LocalEndpoint): Promise<HostSession> {
-  const connection = await sdk
-    .connect({
-      url: endpoint.url,
-      credentials: { kind: "token", token: endpoint.token },
-      journal: fileJournal(),
-    })
-    .catch((cause: unknown) => {
-      if (cause instanceof SdkError && cause.code !== "unavailable")
-        hostFailure(`attach to the host at ${endpoint.url}`)(cause);
+async function attachHost(endpoint: LocalEndpoint, kind: "tui" | "cli"): Promise<HostSession> {
+  const connection = await connect({
+    url: endpoint.url,
+    credentials: { kind: "token", token: endpoint.token },
+    client: { kind, name: "nyte", version: VERSION },
+    journal: fileJournal(),
+  }).catch((cause: unknown) => {
+    if (cause instanceof SdkError && cause.code !== "unavailable")
+      hostFailure(`attach to the host at ${endpoint.url}`)(cause);
 
-      throw new CliError("network_error", `Couldn't reach the host at ${endpoint.url}.`, {
-        details: [
-          {
-            label: "Cause",
-            value: printable(cause instanceof Error ? cause.message : String(cause)),
-          },
-          { label: "Host file", value: "nyte host writes its URL and token to ~/.nyte/host.json" },
-        ],
-        next: [{ label: "Start a host on that machine", argv: ["nyte", "host"] }],
-      });
+    throw new CliError("network_error", `Couldn't reach the host at ${endpoint.url}.`, {
+      details: [
+        {
+          label: "Cause",
+          value: printable(cause instanceof Error ? cause.message : String(cause)),
+        },
+        { label: "Host file", value: "nyte host writes its URL and token to ~/.nyte/host.json" },
+      ],
+      next: [{ label: "Start a host on that machine", argv: ["nyte", "host"] }],
     });
+  });
 
   return {
     connection,

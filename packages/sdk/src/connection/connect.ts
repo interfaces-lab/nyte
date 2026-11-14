@@ -5,6 +5,7 @@ import type { ConnectOptions, Connection } from "@nyte-ai/core";
 import { createTransport, decodeError, decodeOutput } from "@nyte-ai/protocol";
 import type { Transport } from "@nyte-ai/protocol";
 import { createClient } from "./client.ts";
+import type { Client } from "./client.ts";
 import { createSendJournal } from "../send/journal.ts";
 import { parsed } from "./receipts.ts";
 
@@ -16,8 +17,18 @@ type HostPin = NonNullable<ConnectOptions["expect"]>;
 
 type Fetch = NonNullable<ConnectOptions["fetch"]>;
 
+/** A credential after any pairing code was traded: what every request and the socket send. */
+export type HostCredentials = Exclude<CredentialSource, { readonly kind: "pairing" }>;
+
+export type Dialed = Client & { readonly credential: HostCredentials };
+
 /** Connects to the host at `options.url`. With `expect`, the host proves the pinned key before any credential is sent, and every failure to is `stale`. Without it, the identity challenge runs beside the first view and decides nothing: the key it proves becomes `Connection.publicKey` when it names the host the first view names, and a challenge that fails leaves the connection without one. */
 export async function connect(options: ConnectOptions): Promise<Connection> {
+  return (await dial(options)).connection;
+}
+
+/** Connects as `connect` does, and returns the journal the connection sends through and the credential it settled on. */
+export async function dial(options: ConnectOptions): Promise<Dialed> {
   const { credentials } = options;
   const send = options.fetch ?? fetch;
   const key = credentials.kind === "pairing" ? `${options.url}\n${credentials.code}` : null;
@@ -52,7 +63,7 @@ async function openClient(
   key: string | null,
   kept: string | undefined,
   proved: HostPin | null,
-): Promise<Connection> {
+): Promise<Dialed> {
   const { credentials } = options;
   const answered = transport.host() ?? first.id;
 
@@ -63,10 +74,12 @@ async function openClient(
       hostId: answered,
     });
 
-  const token = credentials.kind === "pairing" ? deviceToken(transport, kept) : null;
+  const credential: HostCredentials =
+    credentials.kind === "pairing"
+      ? { kind: "token", token: deviceToken(transport, kept) }
+      : credentials;
 
-  if (key !== null && token !== null) paired.set(key, token);
-  const credential: CredentialSource = token === null ? credentials : { kind: "token", token };
+  if (key !== null && credential.kind === "token") paired.set(key, credential.token);
   const journal = options.journal ?? createSendJournal();
   const journaled = await journal.load();
 
@@ -76,7 +89,7 @@ async function openClient(
     journaled: journaled.length,
   });
 
-  return createClient(transport, {
+  const client = createClient(transport, {
     hostId: first.id,
     publicKey: named ? proved.publicKey : undefined,
     principal: first.principal,
@@ -85,6 +98,8 @@ async function openClient(
     journaled,
     hostFrames: frames,
   });
+
+  return { ...client, credential };
 }
 
 /** Returns the headers a credential sends; a pairing code sends the device token it was traded for once there is one. */

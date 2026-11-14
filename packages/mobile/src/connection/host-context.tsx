@@ -2,7 +2,7 @@ import { createContext, use, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
 import { AppState } from "react-native";
 import { skipToken, useQuery } from "@tanstack/react-query";
-import type { Connection as HostConnection } from "@nyte-ai/sdk";
+import type { ClientConnection } from "@nyte-ai/sdk/client";
 import Constants from "expo-constants";
 import { fetch } from "expo/fetch";
 import { gt, valid } from "semver";
@@ -10,7 +10,6 @@ import type { Connection, SavedConnection } from "./connection.ts";
 import type { ConnectFailure } from "./connect-copy.ts";
 import { connectionStore, hostVerifier } from "./host.ts";
 import { useHealth } from "./live.ts";
-import type { LiveHost } from "./live.ts";
 import { releaseCopy } from "../account/account-copy.ts";
 import { useAccount } from "../account/account-provider.tsx";
 import { RELEASE_TIMEOUT_MS, releaseOnHost } from "../account/revocation.ts";
@@ -20,8 +19,7 @@ import { useMountEffect } from "../use-mount-effect.ts";
 type HostTarget = {
   saved: SavedConnection;
   connection: Connection;
-  client: HostConnection;
-  live: LiveHost;
+  client: ClientConnection;
   scope: string;
   key: string;
 };
@@ -41,8 +39,7 @@ type HostConnectionState =
   | ({ kind: "connected" } & HostTarget);
 
 export type HostSession = {
-  readonly client: HostConnection;
-  readonly live: LiveHost;
+  readonly client: ClientConnection;
   readonly connection: Connection;
   readonly saved: SavedConnection;
   readonly scope: string;
@@ -62,10 +59,10 @@ export function useHost(): ConnectedHost {
 }
 
 export function HostProvider({ session, children }: { session: HostSession; children: ReactNode }) {
-  const health = useHealth(session.live);
+  const health = useHealth(session.client);
   useMountEffect(() => {
     const subscription = AppState.addEventListener("change", (state) => {
-      if (state === "active") session.live.retry();
+      if (state === "active") session.client.retry();
     });
 
     return () => subscription.remove();
@@ -109,7 +106,6 @@ export function useHostConnection() {
           saved,
           connection: saved.connection,
           client: current.host.connection,
-          live: current.host.live,
           scope: current.host.scope,
           key: current.host.key,
         };
@@ -167,7 +163,7 @@ export function useHostConnection() {
   return { host, disconnect };
 }
 
-async function readVersion(client: HostConnection): Promise<string | null> {
+async function readVersion(client: ClientConnection): Promise<string | null> {
   for await (const view of client.watch()) return view.version;
 
   return null;

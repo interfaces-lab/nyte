@@ -101,7 +101,7 @@ const scripted = scriptedConnection({
   ]),
 });
 
-installConnection(scripted.connection, scripted.live);
+installConnection(scripted.connection);
 
 async function readsElidedRowWhole(host: HTMLElement): Promise<void> {
   const root = createRoot(host);

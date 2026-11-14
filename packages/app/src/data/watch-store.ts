@@ -1,9 +1,8 @@
-import type { Connection } from "@nyte-ai/sdk";
-import type { HostConnection } from "@nyte-ai/sdk/client";
+import type { ClientConnection } from "@nyte-ai/sdk/client";
 import { useSyncExternalStore } from "react";
 import { useSyncExternalStoreWithSelector } from "use-sync-external-store/with-selector";
 import { countWork } from "../lib/work-counts.ts";
-import { connected, liveConnected, registries } from "./connection.ts";
+import { connected, registries } from "./connection.ts";
 
 export interface WatchState<T> {
   readonly value: T | undefined;
@@ -235,20 +234,7 @@ export class WatchStore<T> {
 const RETAINED_WATCHES = 16;
 
 export function watchFamily<K extends string, T>(
-  open: (connection: Connection, key: K) => AsyncIterable<T>,
-) {
-  return storeFamily(connected, open);
-}
-
-export function liveFamily<K extends string, T>(
-  open: (live: HostConnection, key: K) => AsyncIterable<T>,
-) {
-  return storeFamily(liveConnected, open);
-}
-
-function storeFamily<C, K extends string, T>(
-  connect: () => Promise<C>,
-  open: (connection: C, key: K) => AsyncIterable<T>,
+  open: (connection: ClientConnection, key: K) => AsyncIterable<T>,
 ) {
   const stores = new Map<K, WatchStore<T>>();
 
@@ -273,7 +259,7 @@ function storeFamily<C, K extends string, T>(
     if (existing !== undefined) return existing;
 
     const store: WatchStore<T> = new WatchStore(
-      async () => open(await connect(), key),
+      async () => open(await connected(), key),
       () => {
         if (stores.get(key) === store) {
           stores.delete(key);

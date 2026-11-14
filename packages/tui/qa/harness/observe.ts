@@ -2,7 +2,7 @@ import { writeFileSync } from "node:fs";
 import process from "node:process";
 import { asId } from "@nyte-ai/schema";
 import { sdk } from "@nyte-ai/sdk";
-import { headView, openHost } from "@nyte-ai/sdk/client";
+import { connect, createSendJournal, headView } from "@nyte-ai/sdk/client";
 
 const [session = "", output = "", expected = "0"] = process.argv.slice(2);
 
@@ -21,9 +21,11 @@ const listener = await host.listen({
 
 if (listener.address === null) throw new Error("The observer isn't listening.");
 
-const live = openHost(listener.address, {
+const live = await connect({
+  url: listener.address,
   credentials: { kind: "token", token },
   client: { kind: "other", name: "observer", version: "0.0.0" },
+  journal: createSendJournal(),
 });
 
 const head = live.head(asId<"session">(session), asId<"head">("main"), { tail: 200 });
@@ -58,6 +60,6 @@ writeFileSync(output, JSON.stringify(Object.fromEntries(seen)));
 
 head.close();
 
-live.release();
+await live.close();
 
 await host.close();

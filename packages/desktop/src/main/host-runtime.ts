@@ -12,11 +12,12 @@ import type { DesktopHostDependencies } from "../host/desktop-host.ts";
 import { CloudflareTunnelPlugin } from "../host/connections/cloudflare-tunnel.ts";
 import { hostAgent } from "./host-agent.ts";
 import type { AgentRegistration, HostAgent } from "./host-agent.ts";
-import type { HostConnection } from "@nyte-ai/sdk/client";
+import { connect, createSendJournal } from "@nyte-ai/sdk/client";
 import type { CanvasPreviewer } from "@nyte-ai/plugin/core/canvas-preview";
 import type { HostProcess } from "@nyte-ai/app/contract/bridge.ts";
 import type { BrowserAgent } from "../shared/browser-agent.ts";
-import { offerAppActions, openAppClient } from "../shared/host-client.ts";
+import { appSocket, offerAppActions } from "../shared/host-client.ts";
+import { HOST_PORT_ORIGIN } from "../shared/host-port.ts";
 import type { DialSocket } from "../shared/host-port.ts";
 import { HostLink } from "../host/host-link.ts";
 import type { HostLinkState } from "../host/host-link.ts";
@@ -36,7 +37,6 @@ export interface HostRuntime {
   readonly route: HostRoute;
   readonly link: HostLink;
   readonly hostProcess: HostProcessFollower;
-  readonly client: HostConnection;
   readonly desktop: DesktopHost;
   /** The machine woke: main dials the host now instead of waiting out a backoff, and tells every window the host process again, which has each window's socket do the same. */
   resume(): void;
@@ -74,13 +74,23 @@ export function startHostRuntime(options: HostRuntimeOptions): HostRuntime {
 
   const socket = join(options.nyteHome, "host.sock");
   const route: HostRoute = { fetch: socketFetch(socket), dial: socketDial(socket) };
-  const client = openAppClient({ socket, version: app.getVersion() });
-
-  const link = new HostLink(route.fetch, (state) => {
-    if (state.kind === "connected") client.retry();
-    options.linkChanged?.(state);
-    hostProcess.linkChanged();
-  });
+  const link = new HostLink(
+    () =>
+      connect({
+        url: HOST_PORT_ORIGIN,
+        credentials: { kind: "custom", headers: () => ({}) },
+        client: { kind: "app", name: "Nyte", version: app.getVersion() },
+        journal: createSendJournal(),
+        transport: {
+          fetch: (url, init) => route.fetch(new Request(url, init)),
+          socket: appSocket(socket),
+        },
+      }),
+    (state) => {
+      options.linkChanged?.(state);
+      hostProcess.linkChanged();
+    },
+  );
 
   const hostProcess = followHostProcess({
     agent,
@@ -99,16 +109,17 @@ export function startHostRuntime(options: HostRuntimeOptions): HostRuntime {
   );
   link.start();
 
-  const withdraw = offerAppActions(client, {
-    agent: options.agent,
-    preview: options.preview,
-    signal: () => options.previewSignal(),
-  });
+  const withdraw = link.attach((connection) =>
+    offerAppActions(connection, {
+      agent: options.agent,
+      preview: options.preview,
+      signal: () => options.previewSignal(),
+    }),
+  );
 
   const desktop = new DesktopHost({
     home: options.home,
     link,
-    client,
     usageScan: new UsageScanWorker(options.home, options.usageWorker),
     remoteAccessPlugins: {
       cloudflare: new CloudflareTunnelPlugin({ home: join(options.home, ".nyte") }),
@@ -127,11 +138,9 @@ export function startHostRuntime(options: HostRuntimeOptions): HostRuntime {
     route,
     link,
     hostProcess,
-    client,
     desktop,
     resume() {
       link.retry();
-      client.retry();
       desktop.resume();
       options.hostProcessChanged?.(hostProcess.state());
     },
@@ -140,7 +149,6 @@ export function startHostRuntime(options: HostRuntimeOptions): HostRuntime {
       link.close();
       await hostProcess.close();
       await desktop.close();
-      client.release();
     },
   };
 }

@@ -16,11 +16,18 @@ import type {
   SessionId,
   UserContent,
 } from "@nyte-ai/sdk";
+import type { ClientConnection } from "@nyte-ai/sdk/client";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { describeHostError } from "../connection/connection.ts";
 import { useHost } from "../connection/host-context.tsx";
-import { healthMessage, updatedLabel, useChatRead, useHealth } from "../connection/live.ts";
+import {
+  chatFor,
+  healthMessage,
+  updatedLabel,
+  useChatRead,
+  useHealth,
+} from "../connection/live.ts";
 import { uploadDraft, type DraftContent } from "../media/attachments.ts";
 
 export type SendAnswer =
@@ -72,14 +79,14 @@ async function configureModel(
 }
 
 /** `tip` and `heads` come from the session's info, read again whenever the head's revision, which moves with its tip, changes. */
-export function useRemoteChat(client: Connection, sessionId: SessionId, headName?: HeadName) {
-  const { newerHost, live } = useHost();
+export function useRemoteChat(client: ClientConnection, sessionId: SessionId, headName?: HeadName) {
+  const { newerHost } = useHost();
   const session = client.session(sessionId);
   const head = headName === undefined ? session : session.head(headName);
 
-  const read = useChatRead(live, client, sessionId, headName);
+  const read = useChatRead(client, sessionId, headName);
   const chat = read !== undefined && "view" in read ? read : undefined;
-  const health = useHealth(live);
+  const health = useHealth(client);
   const state = chat?.view;
 
   const info = useQuery({
@@ -170,7 +177,7 @@ export function useRemoteChat(client: Connection, sessionId: SessionId, headName
     setStopError(undefined);
 
     try {
-      await session.run(running.id).stop();
+      await chatFor(client, sessionId, head.name).stop();
     } catch (cause) {
       setStopError({ run: running.id, message: describeHostError(cause, newerHost) });
     }
@@ -199,6 +206,7 @@ export function useRemoteChat(client: Connection, sessionId: SessionId, headName
       (sendError?.head === head.name ? sendError?.message : undefined) ??
       (stopError?.run === running?.id ? stopError?.message : undefined),
     send,
+    stopping: chat !== undefined && chat.stopping !== "no",
     withdraw,
     steerNow,
     report,

@@ -2,7 +2,7 @@ import { isJson, isJsonObject, MEDIA_PATH, SdkError } from "@nyte-ai/schema";
 import { decodeError } from "@nyte-ai/protocol";
 import { credentialHeaders } from "../connection/connect.ts";
 import { hostUrl } from "./host-connection.ts";
-import type { HostCredentials } from "./host-connection.ts";
+import type { HostCredentials } from "../connection/connect.ts";
 
 /** A URL a `<video>` element can stream the video at the absolute `path` from, with `Range` and no credentials; it stops answering after 15 minutes unused. Needs owner authority. */
 export async function mediaLink(

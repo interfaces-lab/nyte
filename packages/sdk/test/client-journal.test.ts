@@ -2,17 +2,24 @@ import { asId } from "@nyte-ai/schema";
 import type { SessionView } from "@nyte-ai/schema";
 import type { Session } from "@nyte-ai/core";
 import { decodeInput } from "@nyte-ai/protocol";
-import { afterEach, assert, describe, expect, it } from "vitest";
+import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import { createSendJournal } from "../src/send/journal.ts";
 import type { JournalStorage } from "../src/send/journal.ts";
-import { unsentSends } from "../src/send/unsent.ts";
 import { readOperation } from "./served.ts";
 import type { Served } from "./served.ts";
-import { client, closeOpened, open, queued, settledChat, text, users } from "./connection.ts";
+import {
+  client,
+  closeOpened,
+  heldChat,
+  liveClient,
+  open,
+  queued,
+  settledChat,
+  text,
+  users,
+} from "./connection.ts";
 
 afterEach(closeOpened);
-
-const MAIN = asId<"head">("main");
 
 describe("client send journal", () => {
   it("keeps a send journaled and shown unsent while the link is down, and lands it once on the next connect", async () => {
@@ -708,20 +715,22 @@ async function restart(row: Restart): Promise<void> {
   });
 
   const windows = await Promise.all(
-    Array.from({ length: row.windows }, () => client(reached, createSendJournal(storage))),
+    Array.from({ length: row.windows }, () => liveClient(reached, createSendJournal(storage))),
   );
 
   if (row.shown === null) await new Promise((resolve) => setTimeout(resolve, 300));
   const views: SessionView[] = [];
+  const chats = windows.map((window) => heldChat(window, session.id));
 
-  for (const window of windows) {
+  for (const [index, window] of windows.entries()) {
     if (row.shown === null) break;
     const shown = row.shown;
-    const expired = unsentSends(window, session.id, MAIN);
+    const chat = chats[index];
+    assert(chat !== undefined);
 
     const settled = await viewWhen(
       () => window.session(session.id).view(),
-      (view) => view.execution.kind === "idle" && drawn(view, expired.expired()) === shown,
+      (view) => view.execution.kind === "idle" && drawn(view, chat.snapshot().expired) === shown,
     );
 
     views.push(settled);
@@ -736,10 +745,10 @@ async function restart(row: Restart): Promise<void> {
 
   if (row.shown !== "expired") return;
   const [window] = windows;
+  const [chat] = chats;
   const [stale] = views;
-  assert(window !== undefined && stale !== undefined);
-  const sends = unsentSends(window, session.id, MAIN);
-  const [id] = sends.expired();
+  assert(window !== undefined && chat !== undefined && stale !== undefined);
+  const [id] = chat.snapshot().expired;
   assert(id !== undefined);
 
   expect(stale.queue.find((message) => message.id === id)?.status).toEqual({
@@ -749,22 +758,20 @@ async function restart(row: Restart): Promise<void> {
   });
 
   if (row.choice === "remove") {
-    expect(await window.session(session.id).receipt(asId<"receipt">(id)).stop()).toEqual({
-      kind: "missing",
-    });
+    await chat.remove(id);
     expect(stored.size).toBe(0);
-    expect(sends.expired()).toEqual([]);
+    await vi.waitFor(() => expect(chat.snapshot().expired).toEqual([]));
     expect(drawn(await window.session(session.id).view(), [])).toBe("landed");
     expect(posts).toBe(0);
 
     return;
   }
 
-  await sends.resend(id);
+  await chat.resend(id);
 
   await viewWhen(
     () => window.session(session.id).view(),
-    (view) => view.execution.kind === "idle" && drawn(view, sends.expired()) === "landed",
+    (view) => view.execution.kind === "idle" && drawn(view, chat.snapshot().expired) === "landed",
   );
 
   expect(posts).toBe(1);

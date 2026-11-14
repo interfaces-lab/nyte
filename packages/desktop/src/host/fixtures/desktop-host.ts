@@ -10,9 +10,10 @@ import { TOKEN } from "@nyte-ai/core/server";
 import { desktopSettingsPlugin } from "@nyte-ai/plugin/core/desktop-settings";
 import { sdk } from "@nyte-ai/sdk";
 import type { Connection, CredentialSource, Host, Listener, OpenHostOptions } from "@nyte-ai/sdk";
-import type { HostConnection } from "@nyte-ai/sdk/client";
-import { openAppClient } from "../../shared/host-client.ts";
-import { messagePortEnd, portFetch, servePort } from "../../shared/host-port.ts";
+import { connect, createSendJournal } from "@nyte-ai/sdk/client";
+import type { ClientConnection } from "@nyte-ai/sdk/client";
+import { appSocket } from "../../shared/host-client.ts";
+import { HOST_PORT_ORIGIN, messagePortEnd, portFetch, servePort } from "../../shared/host-port.ts";
 import { DesktopHost } from "../desktop-host.ts";
 import { HostLink } from "../host-link.ts";
 import type { DesktopHostDependencies } from "../desktop-host.ts";
@@ -20,7 +21,8 @@ import type { DesktopHostDependencies } from "../desktop-host.ts";
 export interface TestDesktop {
   readonly host: DesktopHost;
   readonly served: Host;
-  readonly client: HostConnection;
+  /** Another app client of the host over `host.sock`, as a window's is. */
+  readonly client: ClientConnection;
   readonly home: string;
   readonly fake: FakeModels;
   readonly events: HostEvent[];
@@ -55,7 +57,6 @@ export async function testDesktop(
     auth: { kind: "custom", authorize: () => ({ principal: TOKEN, authority }) },
   });
 
-  const client = openAppClient({ socket, version: "test" });
   let answers = serving.reachable ?? true;
 
   const mainFetch = async (request: Request): Promise<Response> => {
@@ -69,13 +70,35 @@ export async function testDesktop(
   if (model !== undefined)
     await served.models.setDefault({ provider: fake.provider.id, id: model.id });
 
-  const link = new HostLink(mainFetch, () => undefined);
+  const dial = () =>
+    connect({
+      url: HOST_PORT_ORIGIN,
+      credentials: { kind: "custom", headers: () => ({}) },
+      client: { kind: "app", name: "Nyte", version: "test" },
+      journal: createSendJournal(),
+      transport: {
+        fetch: (url, init) => mainFetch(new Request(url, init)),
+        socket: appSocket(socket),
+      },
+    });
+
+  const client = await connect({
+    url: HOST_PORT_ORIGIN,
+    credentials: { kind: "custom", headers: () => ({}) },
+    client: { kind: "app", name: "Nyte", version: "test" },
+    journal: createSendJournal(),
+    transport: {
+      fetch: (url, init) => listener.fetch(new Request(url, init)),
+      socket: appSocket(socket),
+    },
+  });
+
+  const link = new HostLink(dial, () => undefined);
   link.start();
 
   const host = new DesktopHost({
     home,
     link,
-    client,
     emitHostEvent: (event) => events.push(event),
     ...overrides,
   });
@@ -111,7 +134,7 @@ export async function testDesktop(
       for (const port of ports) port.close();
       await host.close();
       link.close();
-      client.release();
+      await client.close();
       await listener.close();
       await served.close();
 

@@ -9,7 +9,8 @@ import { Host, Picker, Text } from "@expo/ui/swift-ui";
 import { pickerStyle, tag } from "@expo/ui/swift-ui/modifiers";
 import { readHunks } from "@nyte-ai/schema";
 import type { Hunk } from "@nyte-ai/schema";
-import type { Connection, FileStatus, PatchEntry, PatchSet, SessionId } from "@nyte-ai/sdk";
+import type { FileStatus, PatchEntry, PatchSet, SessionId } from "@nyte-ai/sdk";
+import type { ClientConnection } from "@nyte-ai/sdk/client";
 import { EmptyState } from "../ui/empty-state.tsx";
 import { GlassButton } from "../ui/glass-button.tsx";
 import { describeHostError } from "../connection/connection.ts";
@@ -122,7 +123,7 @@ export function ChangesScreen({
   initialPath,
   initialSource,
 }: {
-  client: Connection;
+  client: ClientConnection;
   sessionId: SessionId;
   initialPath: string | undefined;
   initialSource: Source | undefined;

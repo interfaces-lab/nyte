@@ -107,7 +107,7 @@ Either the host can't be reached right now, or the thing you asked for doesn't e
 
 - The network request failed, the listener is closed, or the connection was closed.
 - The host didn't answer: a read or a send over `sdk.connect` got no answer within 30 s, or the
-  `openHost` socket went quiet and didn't answer a probe. A link whose path died never fails by
+  `connect` socket went quiet and didn't answer a probe. A link whose path died never fails by
   itself, so the SDK fails it. Commands, streams, watches, uploads and waits have no such
   deadline, because the host runs some of them for as long as they take.
 - `sdk.open` was called in a browser or React Native bundle.
@@ -121,7 +121,7 @@ waits such as `receipt.settled()` try again, and `send` resends under the same r
 calls throw `unavailable` to you. Their outcome may be unknown: a delay or a restored connection
 doesn't make them safe to repeat. Follow the [safe retry rules](#retry-safely).
 
-Over `openHost`, the stores keep their rows, go stale, and resume once the socket is back, and
+Over the socket of a `connect` connection, the stores and chats keep their rows, go stale, and resume once the socket is back, and
 `health` shows `retrying` with the error. `call` and `perform` wait while the connection is
 `connecting`, and reject with the error `health` holds while it is `retrying` or `blocked`. A
 call pending on a socket that stops answering fails with `unavailable` within 15 s, and an idle
@@ -131,8 +131,8 @@ find out within 2 s.
 
 ### not_supported [#not_supported]
 
-A `client.perform` named an action the target client never declared in its hello. `openHost` also
-reports it in `health` when the runtime has no `WebSocket` and you passed no `socket`.
+A `client.perform` named an action the target client never declared in its hello. `connect` also
+reports it in `health` when the runtime has no `WebSocket` and you passed no `transport.socket`.
 
 ### timeout [#timeout]
 

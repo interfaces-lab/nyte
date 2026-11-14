@@ -26,14 +26,14 @@ import { useChatDraft } from "./drafts.ts";
 import { seeWhileForeground } from "./seen.ts";
 
 export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
-  const { client, live, newerHost } = useHost();
+  const { client, newerHost } = useHost();
   const insets = useSafeAreaInsets();
   const [head, setHead] = useState<HeadName>();
   const chat = useRemoteChat(client, sessionId, head);
 
   useFocusEffect(() => seeWhileForeground({ appState: AppState, tip: chat.tip, see: chat.see }));
 
-  const childSessions = useSessions(live, {
+  const childSessions = useSessions(client, {
     parents: { kind: "children", session: sessionId },
   })?.sessions;
 
@@ -45,7 +45,7 @@ export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
 
   const askingId = asking?.id;
 
-  const askingView = useChat(live, client, askingId, undefined)?.view;
+  const askingView = useChat(client, askingId, undefined)?.view;
 
   const ownQuestion = chat.state === undefined ? undefined : openQuestion(chat.state);
   const childQuestion = askingView === undefined ? undefined : openQuestion(askingView);

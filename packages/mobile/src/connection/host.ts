@@ -1,5 +1,7 @@
-import { createSendJournal, sdk, SdkError } from "@nyte-ai/sdk";
-import type { Connection as HostConnection } from "@nyte-ai/sdk";
+import { SdkError } from "@nyte-ai/sdk";
+import { connect, createSendJournal } from "@nyte-ai/sdk/client";
+import type { ClientConnection } from "@nyte-ai/sdk/client";
+import Constants from "expo-constants";
 import { fetch } from "expo/fetch";
 import { deleteItemAsync, getItemAsync, setItemAsync } from "expo-secure-store";
 import { createMMKV } from "react-native-mmkv";
@@ -7,8 +9,7 @@ import { displayAddress, type Connection, type SavedConnection } from "./connect
 import { classifyConnectFailure, type ConnectFailure } from "./connect-copy.ts";
 import { createConnectionStore } from "./connection-store.ts";
 import { journalStorage } from "./journal.ts";
-import { openLiveHost } from "./live.ts";
-import type { LiveHost } from "./live.ts";
+import { nativeSocket } from "./live.ts";
 import { createPinStore, pinRoute } from "./pins.ts";
 import type { HostPin } from "./pins.ts";
 import { readAccountConfig } from "../account/account-config.ts";
@@ -39,8 +40,7 @@ function hostFetch(saved: SavedConnection): typeof globalThis.fetch {
 }
 
 interface VerifiedHost {
-  readonly connection: HostConnection;
-  readonly live: LiveHost;
+  readonly connection: ClientConnection;
   readonly saved: SavedConnection;
   readonly scope: string;
   readonly key: string;
@@ -72,13 +72,14 @@ export async function verifyHost(input: {
   }
 
   if (signal.aborted) return { kind: "cancelled" };
-  let connection: HostConnection;
+  let connection: ClientConnection;
 
-  const connecting = sdk.connect({
+  const connecting = connect({
     url: saved.connection.url,
     credentials: { kind: "token", token: saved.connection.token },
+    client: { kind: "app", name: "Nyte iOS", version: Constants.expoConfig?.version ?? "0.0.0" },
     journal: createSendJournal(journal),
-    fetch: hostFetch(saved),
+    transport: { fetch: hostFetch(saved), socket: nativeSocket },
     expect: pinned,
   });
 
@@ -132,7 +133,6 @@ export async function verifyHost(input: {
 
   const host: VerifiedHost = {
     connection,
-    live: openLiveHost(saved.connection.url, saved.connection.token),
     saved,
     scope: JSON.stringify(["host", connection.hostId, ...principal]),
     key: String(adoptions),
@@ -283,5 +283,4 @@ export const hostVerifier = createHostVerifier();
 
 function closeHost(host: VerifiedHost): void {
   void host.connection.close();
-  host.live.release();
 }

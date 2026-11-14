@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { asId } from "@nyte-ai/schema";
-import type { Connection, Job, JobView, OutputFrame, WorkspaceInfo } from "@nyte-ai/sdk";
+import type { Job, JobView, OutputFrame, WorkspaceInfo } from "@nyte-ai/sdk";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { attachTerminalOutput, getTerminal, terminalActions } from "./terminal-store.ts";
 import { openJobTerminal } from "../commands.ts";
@@ -8,6 +8,7 @@ import { workbenchViewKey } from "../paths.ts";
 import type { WorkbenchPersistence } from "../persistence.ts";
 import { createWorkbenchStore, workbench } from "../store.ts";
 import type { TerminalOutput } from "./terminal-store.ts";
+import type { ClientConnection } from "@nyte-ai/sdk/client";
 import { installConnection } from "../../data/connection.ts";
 import { scriptedConnection } from "../../../test/scripted-connection.ts";
 import { sessionRow } from "../../../test/view-fixtures.ts";
@@ -106,7 +107,7 @@ const scriptedSet = scriptedConnection({
 
 const scripted = scriptedSet.connection;
 
-const connection: Connection = {
+const connection: ClientConnection = {
   ...scripted,
   workspace: (id) => ({
     ...scripted.workspace(id),
@@ -124,7 +125,7 @@ const connection: Connection = {
   }),
 };
 
-installConnection(connection, scriptedSet.live);
+installConnection(connection);
 
 function sink() {
   const decoder = new TextDecoder();

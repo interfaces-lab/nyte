@@ -28,7 +28,7 @@ type HostStatus = "checking" | "connected" | "unreachable" | "refused";
 
 export function SettingsScreen() {
   const theme = useTheme();
-  const { live, connection, saved, disconnect } = useHost();
+  const { client, connection, saved, disconnect } = useHost();
   const account = useAccount();
   const [connectionPage, setConnectionPage] = useState<ConnectionSheetPage>();
   const insets = useSafeAreaInsets();
@@ -40,7 +40,7 @@ export function SettingsScreen() {
   const [dateSections, setDateSections] = useDateSections();
   const [twoLinePreview, setTwoLinePreview] = useTwoLinePreview();
 
-  const health = useHealth(live);
+  const health = useHealth(client);
   const registry = useRegistryFolders();
 
   const version = Constants.expoConfig?.version ?? "0.0.0";
@@ -178,7 +178,7 @@ export function SettingsScreen() {
           <GroupRow
             busy={status === "checking"}
             onClick={() => {
-              live.retry();
+              client.retry();
 
               if (registry.kind !== "loading") registry.refresh();
             }}

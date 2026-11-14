@@ -1,10 +1,10 @@
-import { connect } from "./connection/connect.ts";
+export { connect } from "./connect.ts";
+
+export type { ClientConnectOptions, ClientConnection } from "./connect.ts";
 
 export { createSendJournal } from "./send/journal.ts";
 
 export type { JournalStorage } from "./send/journal.ts";
-
-export { openHost } from "./live/host-connection.ts";
 
 export { ticketSocket } from "./live/ticket-socket.ts";
 
@@ -18,21 +18,16 @@ export { streamText, withStreamedText } from "./view/streamed-text.ts";
 
 export type { StreamedPart, StreamedText } from "./view/streamed-text.ts";
 
-export { unsentSends } from "./send/unsent.ts";
-
-export type { UnsentSends } from "./send/unsent.ts";
-
 export type {
   ActionHandler,
   Health,
-  HostConnection,
-  HostCredentials,
-  HostOptions,
   OpenSocket,
   Requester,
   SocketRequest,
   TextUpdate,
 } from "./live/host-connection.ts";
+
+export type { HostCredentials } from "./connection/connect.ts";
 
 export type { ClientsStore } from "./live/clients.ts";
 
@@ -40,12 +35,10 @@ export type { SessionsStore, SessionsSnapshot, SessionsWindow } from "./live/ses
 
 export type { HeadRows, HeadSnapshot, HeadStore } from "./live/head.ts";
 
-export type { ChatOptions, ChatSnapshot, ChatStore } from "./live/chat.ts";
+export type { Chat, ChatOptions, ChatSnapshot } from "./live/chat.ts";
 
 export type { PartSnapshot, PartStore } from "./live/part.ts";
 
 export type { Freshness, Live } from "./live/store.ts";
 
 export * from "./surface.ts";
-
-export const sdk = { connect };

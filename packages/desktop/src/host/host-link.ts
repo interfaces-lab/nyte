@@ -1,7 +1,6 @@
-import { operationsDigest, SdkError, sdk } from "@nyte-ai/sdk/client";
-import type { Connection, HostView } from "@nyte-ai/sdk/client";
+import { operationsDigest, SdkError } from "@nyte-ai/sdk/client";
+import type { ClientConnection, HostView } from "@nyte-ai/sdk/client";
 import type { Disposer } from "@nyte-ai/schema";
-import { HOST_PORT_ORIGIN } from "../shared/host-port.ts";
 import { retainDiagnostic } from "../shared/errors.ts";
 
 export type HostLinkState =
@@ -16,29 +15,30 @@ export type HostLinkState =
 /** The waits between attempts while the host does not answer. The route is the home's local socket, where a refused connect costs one system call, so a host that starts or restarts is seen within a second of listening. */
 const RETRY_MS = [100, 250, 500, 1_000] as const;
 
+type Attached = (connection: ClientConnection) => Disposer;
+
 /**
- * Desktop main's one link to the host: the connection main calls it on, the host view main
- * follows, and whether the host answers. A connection lasts as long as the host process that
- * answered it: once its view says the link is lost, the link closes it and dials again on its own
- * short curve, so main sees a host that comes back, or one that takes its place, as soon as it
- * answers, and never holds a connection that closed for good.
+ * Desktop main's one connection to the host: the calls main makes, the host view and session rows
+ * it follows, the actions it offers, and whether the host answers. A connection lasts as long as
+ * the host process that answered it: once its view says the link is lost, the link closes it and
+ * dials again on its own short curve, so main sees a host that comes back, or one that takes its
+ * place, as soon as it answers, and never holds a connection that closed for good. What needs the
+ * connection's socket attaches through `attach`, and is attached again to each connection after.
  */
 export class HostLink {
-  readonly #fetch: (request: Request) => Promise<Response>;
+  readonly #dial: () => Promise<ClientConnection>;
   readonly #changed: (state: HostLinkState) => void;
   readonly #stop = new AbortController();
   readonly #viewers = new Set<(view: HostView) => void>();
+  readonly #attached = new Map<Attached, Disposer | null>();
   #state: HostLinkState = { kind: "connecting" };
   #view: HostView | undefined;
-  #held: Connection | undefined;
-  #waiting: PromiseWithResolvers<Connection> | undefined;
+  #held: ClientConnection | undefined;
+  #waiting: PromiseWithResolvers<ClientConnection> | undefined;
   #wake: (() => void) | undefined;
 
-  constructor(
-    fetch: (request: Request) => Promise<Response>,
-    changed: (state: HostLinkState) => void,
-  ) {
-    this.#fetch = fetch;
+  constructor(dial: () => Promise<ClientConnection>, changed: (state: HostLinkState) => void) {
+    this.#dial = dial;
     this.#changed = changed;
   }
 
@@ -47,7 +47,7 @@ export class HostLink {
   }
 
   /** The connection to the host. While the host does not answer, it dials at once and settles with that attempt. */
-  connection(): Promise<Connection> {
+  connection(): Promise<ClientConnection> {
     if (this.#stop.signal.aborted)
       return Promise.reject(new SdkError("unavailable", "The desktop's host link is closed."));
 
@@ -69,13 +69,24 @@ export class HostLink {
     };
   }
 
+  /** Runs `attached` on the connection the link holds now, when it holds one, and on each one after; what it returns runs when that connection is dropped, or when the returned disposer runs. */
+  attach(attached: Attached): Disposer {
+    this.#attached.set(attached, this.#held === undefined ? null : attached(this.#held));
+
+    return () => {
+      this.#attached.get(attached)?.();
+      this.#attached.delete(attached);
+    };
+  }
+
   start(): void {
     void this.#follow();
   }
 
-  /** Dials now instead of waiting out the pause, when something says the host may be back: the machine woke. */
+  /** Dials now instead of waiting out the pause, and has a held connection's socket check its host, when something says the host may be back: the machine woke. */
   retry(): void {
     this.#wake?.();
+    this.#held?.retry();
   }
 
   close(): void {
@@ -96,17 +107,11 @@ export class HostLink {
 
   /** Connects and follows the view until the link is lost. Returns whether the host answered. */
   async #hold(own: string): Promise<boolean> {
-    const connection = await sdk
-      .connect({
-        url: HOST_PORT_ORIGIN,
-        credentials: { kind: "custom", headers: () => ({}) },
-        fetch: (url, init) => this.#fetch(new Request(url, init)),
-      })
-      .catch((cause: unknown) => {
-        this.#unreachable(cause instanceof Error ? cause.message : String(cause), cause);
+    const connection = await this.#dial().catch((cause: unknown) => {
+      this.#unreachable(cause instanceof Error ? cause.message : String(cause), cause);
 
-        return undefined;
-      });
+      return undefined;
+    });
 
     if (connection === undefined) return false;
     const close = (): void => void connection.close().catch(() => undefined);
@@ -122,12 +127,21 @@ export class HostLink {
     this.#waiting?.resolve(connection);
     this.#waiting = undefined;
 
+    for (const attached of this.#attached.keys())
+      this.#attached.set(attached, attached(connection));
+
     const lost = await this.#watch(connection, own).then(
       () => "The Nyte host stopped answering.",
       (cause: unknown) => (cause instanceof Error ? cause.message : String(cause)),
     );
 
     this.#held = undefined;
+
+    for (const [attached, detach] of this.#attached) {
+      detach?.();
+      this.#attached.set(attached, null);
+    }
+
     this.#stop.signal.removeEventListener("abort", close);
     close();
 
@@ -136,7 +150,7 @@ export class HostLink {
     return true;
   }
 
-  async #watch(connection: Connection, own: string): Promise<void> {
+  async #watch(connection: ClientConnection, own: string): Promise<void> {
     for await (const view of connection.watch()) {
       if (view.link.kind !== "connected" || this.#stop.signal.aborted) return;
       this.#view = view;

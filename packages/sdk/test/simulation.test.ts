@@ -1,6 +1,7 @@
 import { fakeModels, lastUserText, simulate, titleReply } from "@nyte-ai/bench";
 import { expect, it, vi } from "vitest";
-import { openHost } from "../src/live/host-connection.ts";
+import { connect } from "../src/connect.ts";
+import { createSendJournal } from "../src/send/journal.ts";
 
 it("updates sidebar rows live: a chat another client starts appears, its title lands, and its next message moves it above an older chat", async () => {
   const fake = fakeModels({
@@ -14,12 +15,14 @@ it("updates sidebar rows live: a chat another client starts appears, its title l
 
   if (listening.kind !== "listening") throw new Error(`Expected listening, got ${listening.kind}.`);
 
-  const sidebar = openHost(listening.url, {
+  const sidebar = await connect({
+    url: listening.url,
     credentials: { kind: "token", token: listening.token },
     client: { kind: "other", name: "sidebar", version: "1" },
+    journal: createSendJournal(),
   });
 
-  const rows = sidebar.directory({ parents: { kind: "roots" } });
+  const rows = sidebar.sessions.open({ parents: { kind: "roots" } });
 
   const listed = () => {
     const snapshot = rows.snapshot();
@@ -56,6 +59,6 @@ it("updates sidebar rows live: a chat another client starts appears, its title l
     expect(bumped[0]?.lastActivityAt).toBeGreaterThan(bumped[1]?.lastActivityAt ?? Infinity);
   } finally {
     rows.close();
-    sidebar.release();
+    await sidebar.close();
   }
 });

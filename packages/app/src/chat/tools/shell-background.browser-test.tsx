@@ -126,17 +126,14 @@ const scriptedSet = scriptedConnection({
 
 const scripted = scriptedSet.connection;
 
-installConnection(
-  {
-    ...scripted,
-    workspace: (id) => {
-      const workspace = scripted.workspace(id);
+installConnection({
+  ...scripted,
+  workspace: (id) => {
+    const workspace = scripted.workspace(id);
 
-      return { ...workspace, jobs: { ...workspace.jobs, watch: () => jobs.watch() } };
-    },
+    return { ...workspace, jobs: { ...workspace.jobs, watch: () => jobs.watch() } };
   },
-  scriptedSet.live,
-);
+});
 
 function ShellStep({ density }: { readonly density: ToolCallDensity }): ReactElement | null {
   const message = useWatchSelect(chatStore(SESSION), ({ value }) => value?.messages[0]);

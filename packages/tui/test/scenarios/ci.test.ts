@@ -58,7 +58,6 @@ test("scenario D from the keyboard: CI MCP log tail, canvas, test, fix, rerun, t
   });
 
   await using tui = await startTui({
-    host: scenario.host,
     endpoint: await simulationEndpoint(scenario),
     size: SIZE,
     local: { shell: shellPort(), cwd: repo.root },
@@ -132,7 +131,6 @@ test("scenario D from the keyboard: CI MCP log tail, canvas, test, fix, rerun, t
   await tui.dispose();
 
   await using resumed = await startTui({
-    host: scenario.host,
     endpoint: await simulationEndpoint(scenario),
     size: SIZE,
     local: { shell: shellPort(), cwd: repo.root },

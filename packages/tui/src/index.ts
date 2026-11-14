@@ -257,7 +257,7 @@ async function openHost(
   source: HostSource = { kind: "local" },
 ): Promise<Connection> {
   const local = await import("./local-host.ts");
-  const host = await local.connectHost(source, (phase) => context.output.progress(phase));
+  const host = await local.connectHost(source, "cli", (phase) => context.output.progress(phase));
   context.invocation.defer(() => host.close());
 
   return host.connection;
@@ -355,15 +355,12 @@ async function print(
 
   stopIfCanceled();
   const localHost = await import("./local-host.ts");
-  const liveHost = await import("./live-host.ts");
   const setup = await import("./run.ts");
   const models = await import("./lib/catalog.ts");
   const printing = await import("./print.ts");
-  const local = await localHost.connectHost(source, (phase) => out.progress(phase));
+  const local = await localHost.connectHost(source, "cli", (phase) => out.progress(phase));
   context.invocation.defer(() => local.close());
   const host = local.connection;
-  const live = liveHost.openLiveHost(local.endpoint, "cli");
-  context.invocation.defer(() => live.release());
   stopIfCanceled();
   const catalog = await host.models.list();
 
@@ -421,7 +418,7 @@ async function print(
 
   await printing.printRun({
     session: started.session,
-    live,
+    connection: host,
     receipt: started.receipt,
     json: flags.json,
     quiet: flags.quiet,

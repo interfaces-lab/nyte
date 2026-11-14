@@ -4,10 +4,8 @@ import type {
   Awaitable,
   ClientId,
   ClientInfo,
-  CredentialSource,
   Disposer,
   HeadName,
-  HostId,
   Json,
   PartId,
   PerformEvent,
@@ -25,9 +23,8 @@ import type {
   SocketLike,
 } from "@nyte-ai/protocol";
 import { catalogCache } from "./catalogs.ts";
-import { openChatStore } from "./chat.ts";
-import type { ChatOptions, ChatStore } from "./chat.ts";
 import { credentialHeaders } from "../connection/connect.ts";
+import type { HostCredentials } from "../connection/connect.ts";
 import { performs } from "../event-checks.ts";
 import { openClientsStore } from "./clients.ts";
 import type { ClientsStore } from "./clients.ts";
@@ -62,14 +59,13 @@ export type SocketRequest = {
 
 export type OpenSocket = (request: SocketRequest) => SocketLike;
 
-export type HostCredentials = Exclude<CredentialSource, { readonly kind: "pairing" }>;
+export type Fetch = (url: string, init?: RequestInit) => Promise<Response>;
 
-export interface HostOptions {
+export interface LinkOptions {
   readonly credentials: HostCredentials;
   readonly client: Omit<ClientInfo, "actions">;
   readonly socket?: OpenSocket;
-  readonly fetch?: (url: string, init?: RequestInit) => Promise<Response>;
-  readonly online?: () => boolean;
+  readonly fetch?: Fetch;
 }
 
 export type TextUpdate = Exclude<TextFrame, { readonly type: "closed" }>;
@@ -78,18 +74,16 @@ export type Requester = PerformEvent["requester"];
 
 export type ActionHandler = (input: Json, requester: Requester) => Awaitable<Json>;
 
-export interface HostConnection {
-  readonly address: string;
-  readonly hostId: HostId | null;
+/** A connection's socket: the live stores, streamed text, client actions and the link's health. It dials on its first use, so a connection that never asks for any of these opens no socket. */
+export interface SocketLink {
   readonly health: Live<Health>;
-  /** Call it when the link may have come back or died: the app came to the foreground, the window got focus, the network came online, the host restarted. A connection that is retrying or blocked dials now; an open one asks the host something and redials if no answer comes within 2 s. A live socket stays, and costs one small call. */
+  /** Call it when the link may have come back or died: the app came to the foreground, the window got focus, the network came online, the host restarted. A link that is retrying or blocked dials now; an open one asks the host something and redials if no answer comes within 2 s. A live socket stays, and costs one small call. */
   retry(): void;
-  release(): void;
+  close(): void;
   call<N extends CallName>(name: N, input: OperationInput<N>): Promise<OperationOutput<N>>;
   head(session: SessionId, head: HeadName, options: { readonly tail: number }): HeadStore;
-  chat(session: SessionId, head: HeadName, options: ChatOptions): ChatStore;
   part(session: SessionId, part: PartId): PartStore;
-  directory(window?: SessionsWindow): SessionsStore;
+  sessions(window?: SessionsWindow): SessionsStore;
   text(listener: (update: TextUpdate) => void): Disposer;
   clients(): ClientsStore;
   perform(
@@ -100,10 +94,6 @@ export interface HostConnection {
   ): Promise<Json>;
   offer(action: ActionDeclaration, handler: ActionHandler): Disposer;
 }
-
-type Owned = { readonly connection: HostConnection; hold(credentials: HostCredentials): void };
-
-type Registry = { named(host: HostId): void; closed(): void };
 
 type Attempt = { opened: boolean; refusal: number | null; closed: SocketClosed | null };
 
@@ -116,44 +106,8 @@ type Offered = { readonly action: ActionDeclaration; readonly handler: ActionHan
 /** How long the check that tells a refused credential from an unreachable host may take, so a dead path can't hold a reconnect forever. */
 const LOGIN_STATUS_MS = 5_000;
 
-const hosts = new Map<string, Owned>();
-
-const dialed = new Map<string, HostId>();
-
-export function openHost(address: string, options: HostOptions): HostConnection {
-  const known = hosts.get(dialed.get(address) ?? address);
-
-  if (known !== undefined) {
-    known.hold(options.credentials);
-
-    return known.connection;
-  }
-
-  const owned = superviseHost(address, options, {
-    named(host) {
-      if (hosts.has(host)) return;
-      hosts.delete(address);
-      hosts.set(host, owned);
-      dialed.set(address, host);
-    },
-    closed() {
-      hosts.forEach((entry, key) => {
-        if (entry === owned) hosts.delete(key);
-      });
-      dialed.forEach((host, key) => {
-        if (!hosts.has(host)) dialed.delete(key);
-      });
-    },
-  });
-
-  hosts.set(address, owned);
-
-  return owned.connection;
-}
-
-function superviseHost(address: string, options: HostOptions, registry: Registry): Owned {
+export function openLink(address: string, options: LinkOptions): SocketLink {
   const openSocket = options.socket ?? openGlobalSocket;
-  const online = options.online ?? (() => true);
   const healthListeners = listenerSet();
   const joined = new Set<Joined>();
   const scopes = new Map<string, number>();
@@ -161,16 +115,15 @@ function superviseHost(address: string, options: HostOptions, registry: Registry
   const texts = new Set<(update: TextUpdate) => void>();
   const offers = new Map<string, Offered>();
   let subscribed = new Map<string, Promise<void>>();
-  let credentials = options.credentials;
+  const credentials = options.credentials;
   let health: Health = { kind: "connecting" };
-  let holders = 1;
+  let started = false;
   let attempt = 0;
   let sizeCloses = 0;
   let generation = 0;
   let released = false;
   let declared = "[]";
   let current: HostSocket | null = null;
-  let host: HostId | null = null;
   let retryTimer: ReturnType<typeof setTimeout> | undefined;
 
   const show = (next: Health): void => {
@@ -191,16 +144,6 @@ function superviseHost(address: string, options: HostOptions, registry: Registry
     generation += 1;
     const mine = generation;
     clearTimeout(retryTimer);
-
-    if (!online()) {
-      show({
-        kind: "blocked",
-        reason: "offline",
-        error: new SdkError("unavailable", "The network is offline."),
-      });
-
-      return;
-    }
 
     if (health.kind !== "connecting") show({ kind: "connecting" });
     const seen: Attempt = { opened: false, refusal: null, closed: null };
@@ -275,8 +218,6 @@ function superviseHost(address: string, options: HostOptions, registry: Registry
 
   const welcomed = (socket: HostSocket, welcome: WelcomeFrame): void => {
     if (current !== socket || released) return;
-    host = welcome.host_id;
-    registry.named(host);
     attempt = 0;
     show({ kind: "open", since: Date.now() });
 
@@ -362,7 +303,14 @@ function superviseHost(address: string, options: HostOptions, registry: Registry
     return made;
   };
 
+  const start = (): void => {
+    if (started) return;
+    started = true;
+    queueMicrotask(() => void connect());
+  };
+
   const join = (scope: string, attachment: Attachment): Disposer => {
+    start();
     const entry = { scope, attachment };
     joined.add(entry);
     scopes.set(scope, (scopes.get(scope) ?? 0) + 1);
@@ -390,13 +338,14 @@ function superviseHost(address: string, options: HostOptions, registry: Registry
   };
 
   const ready = (): Promise<HostSocket> => {
+    start();
+
     if (current !== null) return Promise.resolve(current);
 
     if (health.kind === "retrying" || health.kind === "blocked")
       return Promise.reject(health.error);
 
-    if (released)
-      return Promise.reject(new SdkError("unavailable", "This host connection was released."));
+    if (released) return Promise.reject(new SdkError("unavailable", "This connection is closed."));
 
     return new Promise((resolve, reject) => waiters.add({ resolve, reject }));
   };
@@ -433,15 +382,28 @@ function superviseHost(address: string, options: HostOptions, registry: Registry
 
   const catalogs = catalogCache(async (id) => request(await ready(), "catalogs.read", { id }));
 
-  const connection: HostConnection = {
-    address,
-    get hostId() {
-      return host;
+  const link: SocketLink = {
+    health: {
+      subscribe(listener) {
+        start();
+
+        return healthListeners.subscribe(listener);
+      },
+      snapshot() {
+        start();
+
+        return health;
+      },
     },
-    health: { subscribe: healthListeners.subscribe, snapshot: () => health },
     retry() {
       if (released) return;
       attempt = 0;
+
+      if (!started) {
+        start();
+
+        return;
+      }
 
       if (health.kind === "retrying" || health.kind === "blocked") {
         void connect();
@@ -453,34 +415,26 @@ function superviseHost(address: string, options: HostOptions, registry: Registry
         if (current === null && health.kind === "retrying") void connect();
       });
     },
-    release() {
-      holders -= 1;
-
-      if (holders > 0 || released) return;
+    close() {
+      if (released) return;
       released = true;
       generation += 1;
       clearTimeout(retryTimer);
 
       for (const waiter of waiters)
-        waiter.reject(new SdkError("unavailable", "This host connection was released."));
+        waiter.reject(new SdkError("unavailable", "This connection is closed."));
       waiters.clear();
       current?.close();
-      registry.closed();
     },
     async call(name, input) {
       return request(await ready(), name, input);
     },
     head: (session, head, view) =>
       openHeadStore({ session, head, tail: view.tail }, join, catalogs),
-    chat: (session, head, options) =>
-      openChatStore(
-        () => connection.head(session, head, options),
-        (listener) => connection.text(listener),
-        options.unsent,
-      ),
     part: (session, part) => openPartStore({ session, part }, join),
-    directory: (window) => openSessions(window ?? {}, join),
+    sessions: (window) => openSessions(window ?? {}, join),
     text(listener) {
+      start();
       texts.add(listener);
 
       if (texts.size === 1 && current !== null) openText(current);
@@ -491,13 +445,14 @@ function superviseHost(address: string, options: HostOptions, registry: Registry
     },
     clients: () => openClientsStore(join),
     perform: (client, action, input, perform) =>
-      connection.call("client.perform", {
+      link.call("client.perform", {
         client,
         action,
         input,
         timeoutMs: perform?.timeoutMs,
       }),
     offer(action, handler) {
+      start();
       const offered = { action, handler };
       offers.set(action.name, offered);
       reoffer();
@@ -510,35 +465,13 @@ function superviseHost(address: string, options: HostOptions, registry: Registry
     },
   };
 
-  queueMicrotask(() => void connect());
-
-  return {
-    connection,
-    hold(next) {
-      holders += 1;
-
-      const same =
-        next.kind === "token"
-          ? credentials.kind === "token" && credentials.token === next.token
-          : credentials.kind === "custom" && credentials.headers === next.headers;
-
-      if (same) return;
-      credentials = next;
-      attempt = 0;
-      const socket = current;
-      current = null;
-
-      for (const entry of joined) entry.attachment.detach();
-      socket?.close();
-      void connect();
-    },
-  };
+  return link;
 }
 
 async function loginStatus(
   address: string,
   credentials: HostCredentials,
-  send: (url: string, init?: RequestInit) => Promise<Response>,
+  send: Fetch,
 ): Promise<number | null> {
   const deadline = new AbortController();
   const timer = setTimeout(() => deadline.abort(), LOGIN_STATUS_MS);

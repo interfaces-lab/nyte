@@ -1,19 +1,21 @@
 ---
 title: Choose an entry point
-description: Run the host in your process with sdk.open, or reach one elsewhere with sdk.connect.
+description: Run the host in your process with sdk.open, or reach one elsewhere with connect or sdk.connect.
 ---
 
 The host is the process that runs the agent and stores its sessions. Decide where it runs, and the
 entry point follows:
 
-| You are writing                                    | Use                                      |
-| -------------------------------------------------- | ---------------------------------------- |
-| A script, server or CLI that runs the agent itself | `sdk.open` from `@nyte-ai/sdk`           |
-| A browser or mobile app                            | `sdk.connect` from `@nyte-ai/sdk`        |
-| A Node client of a host that runs elsewhere        | `sdk.connect` from `@nyte-ai/sdk/client` |
+| You are writing                                       | Use                                  |
+| ----------------------------------------------------- | ------------------------------------ |
+| A script, server or CLI that runs the agent itself    | `sdk.open` from `@nyte-ai/sdk`       |
+| A browser, mobile, desktop or terminal app            | `connect` from `@nyte-ai/sdk/client` |
+| A script that calls a host that runs elsewhere        | `sdk.connect` from `@nyte-ai/sdk`    |
 
-`sdk.open` returns a `Host` and `sdk.connect` returns a `Connection`. A `Host` is a `Connection`
-with a few extra members, so code written against `Connection` works with both. Starting with
+`sdk.open` returns a `Host`, `sdk.connect` returns a `Connection`, and `connect` returns a
+`ClientConnection`: a `Connection` that also keeps the host's chats and lists current over one
+socket. A `Host` is a `Connection` with a few extra members, so code written against `Connection`
+works with all three. Starting with
 `sdk.open` and moving the host into its own process later changes one line.
 
 ## Run the host in your process
@@ -93,26 +95,29 @@ the authority it holds, or denies it.
 ## Connect from another process
 
 ```ts title="client.ts"
-import { sdk } from "@nyte-ai/sdk/client";
+import { connect, createSendJournal } from "@nyte-ai/sdk/client";
 
-const connection = await sdk.connect({
+const connection = await connect({
   url: "https://agent.example.com",
   credentials: { kind: "token", token: process.env.NYTE_TOKEN ?? "" },
+  client: { kind: "app", name: "my-app", version: "1.0.0" },
+  journal: createSendJournal(storage),
 });
 ```
 
 `connect` resolves once the host has answered, so a bad URL or token fails here rather than on the
-first call. In a browser or React Native, import from `@nyte-ai/sdk`. Its build for those platforms
-has no host code, and `sdk.open` there throws `SdkError("unavailable")`. `openHost`, which attaches
-to a host's rows over its socket, comes from `@nyte-ai/sdk/client` on every platform.
+first call. `@nyte-ai/sdk/client` never loads host code, on any platform. A script that only makes
+requests can use `sdk.connect` from `@nyte-ai/sdk` instead, with the same `url`, `credentials`,
+`expect` and `journal`, and `fetch` in place of `transport`.
 
 The other options:
 
-| Option    | What it does                                                                                                           |
-| --------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `expect`  | Checks that the host answering is the one you expect. See below                                                        |
-| `journal` | Keeps unsent messages across restarts. See [Send messages](/docs/sdk/guides/send-messages#retries-are-already-handled) |
-| `fetch`   | Replaces the global `fetch`, for a proxy or a test                                                                     |
+| Option      | What it does                                                                                                                            |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `client`    | What other clients see for this one: `{ kind, name, version }`                                                                          |
+| `journal`   | Where a message waits until the host has it. See [Send messages](/docs/sdk/guides/send-messages#retries-are-already-handled)            |
+| `expect`    | Checks that the host answering is the one you expect. See below                                                                         |
+| `transport` | `{ fetch?, socket? }`, replacing the global `fetch` and WebSocket, for a proxy, a test, a desktop bridge, or `ticketSocket()` in a browser |
 
 By default, the listener token grants participant and owner authority, not maintenance authority.
 Keep it on machines you control, and never put it in a `VITE_*` or `NEXT_PUBLIC_*` variable.
@@ -134,7 +139,7 @@ console.log("Pairing code:", code);
 ```ts tab="device.ts"
 import { writeFile } from "node:fs/promises";
 import process from "node:process";
-import { sdk } from "@nyte-ai/sdk/client";
+import { sdk } from "@nyte-ai/sdk";
 
 const connection = await sdk.connect({
   url: "https://agent.example.com",
@@ -201,10 +206,10 @@ for await (const host of connection.watch()) {
 `connection.close()`, `revoked` when the host stopped accepting the credential, or `host-gone` when a
 different host now answers at the URL. A closed connection doesn't reopen. Call `connect` again.
 
-The connection `openHost` returns reports its socket in `health`, a store with `subscribe` and
+The connection `connect` returns reports its socket in `health`, a store with `subscribe` and
 `snapshot`. The snapshot's `kind` is `connecting`, `open`, `retrying` with the `attempt` and `at`,
-the time it dials again, or `blocked` with a `reason` of `auth`, `version` or `offline`. While it
-is `retrying` or `blocked`, `retry()` dials again at once.
+the time it dials again, or `blocked` with a `reason` of `auth` or `version`. While it is
+`retrying` or `blocked`, `retry()` dials again at once.
 
 ## What differs between the two
 

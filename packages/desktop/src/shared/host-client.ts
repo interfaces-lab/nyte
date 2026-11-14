@@ -1,14 +1,12 @@
 import { compile, isJson, SdkError, SOCKET_LIMITS } from "@nyte-ai/schema";
 import type { Disposer, Json } from "@nyte-ai/schema";
-import { openHost } from "@nyte-ai/sdk/client";
-import type { HostConnection } from "@nyte-ai/sdk/client";
+import type { ClientConnection, OpenSocket } from "@nyte-ai/sdk/client";
 import { BROWSER_ACTION, BrowserCallType } from "@nyte-ai/plugin/core/browser-client";
 import type { BrowserCall } from "@nyte-ai/plugin/core/browser-client";
 import { CANVAS_PREVIEW_ACTION, CanvasPreviewCallType } from "@nyte-ai/plugin/core/canvas-client";
 import type { CanvasPreviewer } from "@nyte-ai/plugin/core/canvas-preview";
 import WebSocket from "ws";
 import type { BrowserAgent } from "./browser-agent.ts";
-import { HOST_PORT_ORIGIN } from "./host-port.ts";
 
 const FRAME_MARGIN = 64 * 1024;
 
@@ -16,23 +14,17 @@ const browserCalls = compile(BrowserCallType);
 
 const previewCalls = compile(CanvasPreviewCallType);
 
-export function openAppClient(input: {
-  readonly socket: string;
-  readonly version: string;
-}): HostConnection {
-  return openHost(HOST_PORT_ORIGIN, {
-    credentials: { kind: "custom", headers: () => ({}) },
-    client: { kind: "app", name: "Nyte", version: input.version },
-    socket: (request) =>
-      new WebSocket(`ws+unix://${input.socket}:${new URL(request.url).pathname}`, {
-        headers: request.headers,
-        maxPayload: SOCKET_LIMITS.maxFrameBytes,
-      }),
-  });
+/** Opens main's socket to the host over `host.sock`. */
+export function appSocket(socket: string): OpenSocket {
+  return (request) =>
+    new WebSocket(`ws+unix://${socket}:${new URL(request.url).pathname}`, {
+      headers: request.headers,
+      maxPayload: SOCKET_LIMITS.maxFrameBytes,
+    });
 }
 
 export function offerAppActions(
-  connection: Pick<HostConnection, "offer">,
+  connection: Pick<ClientConnection, "offer">,
   app: { readonly agent: BrowserAgent; readonly preview: CanvasPreviewer; signal(): AbortSignal },
 ): Disposer {
   const stops = [

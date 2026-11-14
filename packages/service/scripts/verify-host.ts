@@ -20,7 +20,7 @@ import {
   operationsDigest,
 } from "@nyte-ai/protocol";
 import type { HostSocket, SocketLike } from "@nyte-ai/protocol";
-import { sdk } from "@nyte-ai/sdk/client";
+import { connect, createSendJournal } from "@nyte-ai/sdk/client";
 import type { Connection } from "@nyte-ai/sdk/client";
 import { hostFilePath, hostSocketPath } from "../src/host-endpoint.ts";
 
@@ -224,32 +224,33 @@ async function servedChecks(
     status(post(url, "/sessions.list", { limit: 1 }, bearer(need(token, "host.json"))), 200),
   );
 
-  const connection = await obtain("sdk connects", "sdk.connect, HTTP", async () => {
+  const connection = await obtain("sdk connects", "connect, HTTP", async () => {
     const value = await within(
       CALL_MS,
-      "sdk.connect",
-      sdk.connect({ url, credentials: { kind: "token", token: need(token, "host.json") } }),
+      "connect",
+      connect({
+        url,
+        credentials: { kind: "token", token: need(token, "host.json") },
+        client: { kind: "other", name: "verify-host", version: "1" },
+        journal: createSendJournal(),
+      }),
     );
 
     return { result: `host ${value.hostId}`, value };
   });
 
-  await step("sdk sessions.list", "sdk.connect, HTTP", async () => {
+  await step("sdk sessions.list", "connect, HTTP", async () => {
     const page = await within(
       CALL_MS,
       "sessions.list",
-      need(connection, "sdk.connect").sessions.list({ limit: 1 }),
+      need(connection, "connect").sessions.list({ limit: 1 }),
     );
 
     return `${String(page.items.length)} sessions`;
   });
 
-  await step("sdk models.list", "sdk.connect, HTTP", async () => {
-    const catalog = await within(
-      CALL_MS,
-      "models.list",
-      need(connection, "sdk.connect").models.list(),
-    );
+  await step("sdk models.list", "connect, HTTP", async () => {
+    const catalog = await within(CALL_MS, "models.list", need(connection, "connect").models.list());
 
     return `${String(catalog.providers.length)} providers`;
   });

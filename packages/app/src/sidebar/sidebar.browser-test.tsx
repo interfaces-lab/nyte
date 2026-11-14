@@ -130,7 +130,7 @@ const scripted = scriptedConnection({
   }),
 });
 
-installConnection(scripted.connection, scripted.live);
+installConnection(scripted.connection);
 
 function check(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);

@@ -11,7 +11,7 @@ The app runs as two processes:
 
 - `server.ts` starts a host with `sdk.open`. The host signs in to the model, runs the agent and its
   tools, keeps the chats in `agent.db`, and serves all of it over HTTP.
-- The page starts a chat with `sdk.connect`, attaches to the chat's rows with `openHost` and draws
+- The page starts a chat over one `connect` connection, follows it with `connection.chat` and draws
   the answer as it streams in.
 
 You need Node 26.4 or later and pnpm. The model is OpenAI's `openai-codex` provider, which signs in
@@ -205,20 +205,11 @@ function Composer({ onSend }: { onSend: (content: string) => Promise<unknown> })
 ```
 
 ```ts tab="src/api.ts"
-import {
-  headView,
-  openHost,
-  sdk,
-  streamText,
-  ticketSocket,
-  withStreamedText,
-} from "@nyte-ai/sdk/client";
-import type { HeadView, Live, Session, StreamedText } from "@nyte-ai/sdk/client";
+import { connect, createSendJournal, ticketSocket } from "@nyte-ai/sdk/client";
+import type { HeadView, Live, Session } from "@nyte-ai/sdk/client";
 
 // The address `node server.ts` printed.
 const url = "http://127.0.0.1:PORT";
-// No headers: authorize in server.ts lets every request in.
-const credentials = { kind: "custom", headers: () => ({}) } as const;
 
 // The chat as a store: subscribe for changes, snapshot for the view to draw.
 export interface OpenChat extends Live<HeadView | null> {
@@ -226,40 +217,25 @@ export interface OpenChat extends Live<HeadView | null> {
 }
 
 export async function startChat(content: string): Promise<OpenChat> {
-  const connection = await sdk.connect({ url, credentials });
-  const { session } = await connection.sessions.start({ content });
-
-  // The host's rows over one socket. A page can't put headers on a WebSocket, so it trades them
-  // for a ticket first.
-  const live = openHost(url, {
-    credentials,
+  // One connection for requests and for the host's rows over one socket. A page can't put headers
+  // on a WebSocket, so `ticketSocket` trades them for a ticket first.
+  const connection = await connect({
+    url,
+    // No headers: authorize in server.ts lets every request in.
+    credentials: { kind: "custom", headers: () => ({}) },
     client: { kind: "app", name: "agent-chat", version: "1.0.0" },
-    socket: ticketSocket(),
+    // Holds a message sent while the host is away until the host has it. Pass a storage that
+    // outlives the page to keep it across a reload.
+    journal: createSendJournal(),
+    transport: { socket: ticketSocket() },
   });
-  const store = live.head(session.id, session.name, { tail: 100 });
-  const listeners = new Set<() => void>();
-  const notify = () => listeners.forEach((listener) => listener());
-  // The text parts are still streaming. A part's row gets its text only when the part settles.
-  let texts: StreamedText = new Map();
-
-  store.subscribe(notify);
-  live.text((update) => {
-    texts = streamText(texts, update);
-    notify();
-  });
+  const { session } = await connection.sessions.start({ content });
+  const chat = connection.chat(session.id, { tail: 100 });
 
   return {
     session,
-    subscribe(listener) {
-      listeners.add(listener);
-
-      return () => listeners.delete(listener);
-    },
-    snapshot() {
-      const snapshot = store.snapshot();
-
-      return snapshot === null ? null : withStreamedText(headView(snapshot), texts);
-    },
+    subscribe: (listener) => chat.subscribe(listener),
+    snapshot: () => chat.snapshot().view,
   };
 }
 ```
@@ -386,20 +362,11 @@ function Composer({ onSend }: { onSend: (content: string) => Promise<unknown> })
 ```
 
 ```ts tab="app/api.ts"
-import {
-  headView,
-  openHost,
-  sdk,
-  streamText,
-  ticketSocket,
-  withStreamedText,
-} from "@nyte-ai/sdk/client";
-import type { HeadView, Live, Session, StreamedText } from "@nyte-ai/sdk/client";
+import { connect, createSendJournal, ticketSocket } from "@nyte-ai/sdk/client";
+import type { HeadView, Live, Session } from "@nyte-ai/sdk/client";
 
 // The address `node server.ts` printed.
 const url = "http://127.0.0.1:PORT";
-// No headers: authorize in server.ts lets every request in.
-const credentials = { kind: "custom", headers: () => ({}) } as const;
 
 // The chat as a store: subscribe for changes, snapshot for the view to draw.
 export interface OpenChat extends Live<HeadView | null> {
@@ -407,40 +374,25 @@ export interface OpenChat extends Live<HeadView | null> {
 }
 
 export async function startChat(content: string): Promise<OpenChat> {
-  const connection = await sdk.connect({ url, credentials });
-  const { session } = await connection.sessions.start({ content });
-
-  // The host's rows over one socket. A page can't put headers on a WebSocket, so it trades them
-  // for a ticket first.
-  const live = openHost(url, {
-    credentials,
+  // One connection for requests and for the host's rows over one socket. A page can't put headers
+  // on a WebSocket, so `ticketSocket` trades them for a ticket first.
+  const connection = await connect({
+    url,
+    // No headers: authorize in server.ts lets every request in.
+    credentials: { kind: "custom", headers: () => ({}) },
     client: { kind: "app", name: "agent-chat", version: "1.0.0" },
-    socket: ticketSocket(),
+    // Holds a message sent while the host is away until the host has it. Pass a storage that
+    // outlives the page to keep it across a reload.
+    journal: createSendJournal(),
+    transport: { socket: ticketSocket() },
   });
-  const store = live.head(session.id, session.name, { tail: 100 });
-  const listeners = new Set<() => void>();
-  const notify = () => listeners.forEach((listener) => listener());
-  // The text parts are still streaming. A part's row gets its text only when the part settles.
-  let texts: StreamedText = new Map();
-
-  store.subscribe(notify);
-  live.text((update) => {
-    texts = streamText(texts, update);
-    notify();
-  });
+  const { session } = await connection.sessions.start({ content });
+  const chat = connection.chat(session.id, { tail: 100 });
 
   return {
     session,
-    subscribe(listener) {
-      listeners.add(listener);
-
-      return () => listeners.delete(listener);
-    },
-    snapshot() {
-      const snapshot = store.snapshot();
-
-      return snapshot === null ? null : withStreamedText(headView(snapshot), texts);
-    },
+    subscribe: (listener) => chat.subscribe(listener),
+    snapshot: () => chat.snapshot().view,
   };
 }
 ```
@@ -562,20 +514,11 @@ async function signIn(host: Host) {
 ```
 
 ```ts tab="src/api.ts"
-import {
-  headView,
-  openHost,
-  sdk,
-  streamText,
-  ticketSocket,
-  withStreamedText,
-} from "@nyte-ai/sdk/client";
-import type { HeadView, Live, Session, StreamedText } from "@nyte-ai/sdk/client";
+import { connect, createSendJournal, ticketSocket } from "@nyte-ai/sdk/client";
+import type { HeadView, Live, Session } from "@nyte-ai/sdk/client";
 
 // The address `node server.ts` printed.
 const url = "http://127.0.0.1:PORT";
-// No headers: authorize in server.ts lets every request in.
-const credentials = { kind: "custom", headers: () => ({}) } as const;
 
 // The chat as a store: subscribe for changes, snapshot for the view to draw.
 export interface OpenChat extends Live<HeadView | null> {
@@ -583,40 +526,25 @@ export interface OpenChat extends Live<HeadView | null> {
 }
 
 export async function startChat(content: string): Promise<OpenChat> {
-  const connection = await sdk.connect({ url, credentials });
-  const { session } = await connection.sessions.start({ content });
-
-  // The host's rows over one socket. A page can't put headers on a WebSocket, so it trades them
-  // for a ticket first.
-  const live = openHost(url, {
-    credentials,
+  // One connection for requests and for the host's rows over one socket. A page can't put headers
+  // on a WebSocket, so `ticketSocket` trades them for a ticket first.
+  const connection = await connect({
+    url,
+    // No headers: authorize in server.ts lets every request in.
+    credentials: { kind: "custom", headers: () => ({}) },
     client: { kind: "app", name: "agent-chat", version: "1.0.0" },
-    socket: ticketSocket(),
+    // Holds a message sent while the host is away until the host has it. Pass a storage that
+    // outlives the page to keep it across a reload.
+    journal: createSendJournal(),
+    transport: { socket: ticketSocket() },
   });
-  const store = live.head(session.id, session.name, { tail: 100 });
-  const listeners = new Set<() => void>();
-  const notify = () => listeners.forEach((listener) => listener());
-  // The text parts are still streaming. A part's row gets its text only when the part settles.
-  let texts: StreamedText = new Map();
-
-  store.subscribe(notify);
-  live.text((update) => {
-    texts = streamText(texts, update);
-    notify();
-  });
+  const { session } = await connection.sessions.start({ content });
+  const chat = connection.chat(session.id, { tail: 100 });
 
   return {
     session,
-    subscribe(listener) {
-      listeners.add(listener);
-
-      return () => listeners.delete(listener);
-    },
-    snapshot() {
-      const snapshot = store.snapshot();
-
-      return snapshot === null ? null : withStreamedText(headView(snapshot), texts);
-    },
+    subscribe: (listener) => chat.subscribe(listener),
+    snapshot: () => chat.snapshot().view,
   };
 }
 ```
@@ -742,20 +670,11 @@ async function send() {
 ```
 
 ```ts tab="src/api.ts"
-import {
-  headView,
-  openHost,
-  sdk,
-  streamText,
-  ticketSocket,
-  withStreamedText,
-} from "@nyte-ai/sdk/client";
-import type { HeadView, Live, Session, StreamedText } from "@nyte-ai/sdk/client";
+import { connect, createSendJournal, ticketSocket } from "@nyte-ai/sdk/client";
+import type { HeadView, Live, Session } from "@nyte-ai/sdk/client";
 
 // The address `node server.ts` printed.
 const url = "http://127.0.0.1:PORT";
-// No headers: authorize in server.ts lets every request in.
-const credentials = { kind: "custom", headers: () => ({}) } as const;
 
 // The chat as a store: subscribe for changes, snapshot for the view to draw.
 export interface OpenChat extends Live<HeadView | null> {
@@ -763,40 +682,25 @@ export interface OpenChat extends Live<HeadView | null> {
 }
 
 export async function startChat(content: string): Promise<OpenChat> {
-  const connection = await sdk.connect({ url, credentials });
-  const { session } = await connection.sessions.start({ content });
-
-  // The host's rows over one socket. A page can't put headers on a WebSocket, so it trades them
-  // for a ticket first.
-  const live = openHost(url, {
-    credentials,
+  // One connection for requests and for the host's rows over one socket. A page can't put headers
+  // on a WebSocket, so `ticketSocket` trades them for a ticket first.
+  const connection = await connect({
+    url,
+    // No headers: authorize in server.ts lets every request in.
+    credentials: { kind: "custom", headers: () => ({}) },
     client: { kind: "app", name: "agent-chat", version: "1.0.0" },
-    socket: ticketSocket(),
+    // Holds a message sent while the host is away until the host has it. Pass a storage that
+    // outlives the page to keep it across a reload.
+    journal: createSendJournal(),
+    transport: { socket: ticketSocket() },
   });
-  const store = live.head(session.id, session.name, { tail: 100 });
-  const listeners = new Set<() => void>();
-  const notify = () => listeners.forEach((listener) => listener());
-  // The text parts are still streaming. A part's row gets its text only when the part settles.
-  let texts: StreamedText = new Map();
-
-  store.subscribe(notify);
-  live.text((update) => {
-    texts = streamText(texts, update);
-    notify();
-  });
+  const { session } = await connection.sessions.start({ content });
+  const chat = connection.chat(session.id, { tail: 100 });
 
   return {
     session,
-    subscribe(listener) {
-      listeners.add(listener);
-
-      return () => listeners.delete(listener);
-    },
-    snapshot() {
-      const snapshot = store.snapshot();
-
-      return snapshot === null ? null : withStreamedText(headView(snapshot), texts);
-    },
+    subscribe: (listener) => chat.subscribe(listener),
+    snapshot: () => chat.snapshot().view,
   };
 }
 ```
@@ -922,20 +826,11 @@ async function send() {
 ```
 
 ```ts tab="app/api.ts"
-import {
-  headView,
-  openHost,
-  sdk,
-  streamText,
-  ticketSocket,
-  withStreamedText,
-} from "@nyte-ai/sdk/client";
-import type { HeadView, Live, Session, StreamedText } from "@nyte-ai/sdk/client";
+import { connect, createSendJournal, ticketSocket } from "@nyte-ai/sdk/client";
+import type { HeadView, Live, Session } from "@nyte-ai/sdk/client";
 
 // The address `node server.ts` printed.
 const url = "http://127.0.0.1:PORT";
-// No headers: authorize in server.ts lets every request in.
-const credentials = { kind: "custom", headers: () => ({}) } as const;
 
 // The chat as a store: subscribe for changes, snapshot for the view to draw.
 export interface OpenChat extends Live<HeadView | null> {
@@ -943,40 +838,25 @@ export interface OpenChat extends Live<HeadView | null> {
 }
 
 export async function startChat(content: string): Promise<OpenChat> {
-  const connection = await sdk.connect({ url, credentials });
-  const { session } = await connection.sessions.start({ content });
-
-  // The host's rows over one socket. A page can't put headers on a WebSocket, so it trades them
-  // for a ticket first.
-  const live = openHost(url, {
-    credentials,
+  // One connection for requests and for the host's rows over one socket. A page can't put headers
+  // on a WebSocket, so `ticketSocket` trades them for a ticket first.
+  const connection = await connect({
+    url,
+    // No headers: authorize in server.ts lets every request in.
+    credentials: { kind: "custom", headers: () => ({}) },
     client: { kind: "app", name: "agent-chat", version: "1.0.0" },
-    socket: ticketSocket(),
+    // Holds a message sent while the host is away until the host has it. Pass a storage that
+    // outlives the page to keep it across a reload.
+    journal: createSendJournal(),
+    transport: { socket: ticketSocket() },
   });
-  const store = live.head(session.id, session.name, { tail: 100 });
-  const listeners = new Set<() => void>();
-  const notify = () => listeners.forEach((listener) => listener());
-  // The text parts are still streaming. A part's row gets its text only when the part settles.
-  let texts: StreamedText = new Map();
-
-  store.subscribe(notify);
-  live.text((update) => {
-    texts = streamText(texts, update);
-    notify();
-  });
+  const { session } = await connection.sessions.start({ content });
+  const chat = connection.chat(session.id, { tail: 100 });
 
   return {
     session,
-    subscribe(listener) {
-      listeners.add(listener);
-
-      return () => listeners.delete(listener);
-    },
-    snapshot() {
-      const snapshot = store.snapshot();
-
-      return snapshot === null ? null : withStreamedText(headView(snapshot), texts);
-    },
+    subscribe: (listener) => chat.subscribe(listener),
+    snapshot: () => chat.snapshot().view,
   };
 }
 ```
@@ -1114,20 +994,11 @@ function Composer(props: { onSend: (content: string) => Promise<unknown> }) {
 ```
 
 ```ts tab="src/api.ts"
-import {
-  headView,
-  openHost,
-  sdk,
-  streamText,
-  ticketSocket,
-  withStreamedText,
-} from "@nyte-ai/sdk/client";
-import type { HeadView, Live, Session, StreamedText } from "@nyte-ai/sdk/client";
+import { connect, createSendJournal, ticketSocket } from "@nyte-ai/sdk/client";
+import type { HeadView, Live, Session } from "@nyte-ai/sdk/client";
 
 // The address `node server.ts` printed.
 const url = "http://127.0.0.1:PORT";
-// No headers: authorize in server.ts lets every request in.
-const credentials = { kind: "custom", headers: () => ({}) } as const;
 
 // The chat as a store: subscribe for changes, snapshot for the view to draw.
 export interface OpenChat extends Live<HeadView | null> {
@@ -1135,40 +1006,25 @@ export interface OpenChat extends Live<HeadView | null> {
 }
 
 export async function startChat(content: string): Promise<OpenChat> {
-  const connection = await sdk.connect({ url, credentials });
-  const { session } = await connection.sessions.start({ content });
-
-  // The host's rows over one socket. A page can't put headers on a WebSocket, so it trades them
-  // for a ticket first.
-  const live = openHost(url, {
-    credentials,
+  // One connection for requests and for the host's rows over one socket. A page can't put headers
+  // on a WebSocket, so `ticketSocket` trades them for a ticket first.
+  const connection = await connect({
+    url,
+    // No headers: authorize in server.ts lets every request in.
+    credentials: { kind: "custom", headers: () => ({}) },
     client: { kind: "app", name: "agent-chat", version: "1.0.0" },
-    socket: ticketSocket(),
+    // Holds a message sent while the host is away until the host has it. Pass a storage that
+    // outlives the page to keep it across a reload.
+    journal: createSendJournal(),
+    transport: { socket: ticketSocket() },
   });
-  const store = live.head(session.id, session.name, { tail: 100 });
-  const listeners = new Set<() => void>();
-  const notify = () => listeners.forEach((listener) => listener());
-  // The text parts are still streaming. A part's row gets its text only when the part settles.
-  let texts: StreamedText = new Map();
-
-  store.subscribe(notify);
-  live.text((update) => {
-    texts = streamText(texts, update);
-    notify();
-  });
+  const { session } = await connection.sessions.start({ content });
+  const chat = connection.chat(session.id, { tail: 100 });
 
   return {
     session,
-    subscribe(listener) {
-      listeners.add(listener);
-
-      return () => listeners.delete(listener);
-    },
-    snapshot() {
-      const snapshot = store.snapshot();
-
-      return snapshot === null ? null : withStreamedText(headView(snapshot), texts);
-    },
+    subscribe: (listener) => chat.subscribe(listener),
+    snapshot: () => chat.snapshot().view,
   };
 }
 ```
@@ -1178,13 +1034,13 @@ export async function startChat(content: string): Promise<OpenChat> {
 In every framework, `startChat` returns the chat as a store of its own, with `subscribe` and
 `snapshot`:
 
-- `live.head` opens the head store. It reads the last 100 messages on the chat's head, then applies
-  each change event the host sends. After a dropped socket, it resumes from the last seq it applied.
-- A text part's row gets its text when the part settles. Until then, the text the model streams
-  arrives on `live.text`, and `streamText` keeps it.
-- `snapshot` builds the view from the rows with `headView`, and `withStreamedText` lays the streamed
-  text over it. Both return the same view until something changes, which `useSyncExternalStore`
-  needs.
+- `connection.chat` opens nothing until its first listener. Then it reads the last 100 messages on
+  the chat's head and applies each change event the host sends. After a dropped socket, it resumes
+  from the last seq it applied.
+- The text the model is still streaming is laid into the view as it arrives, and a message sent
+  while the host is away shows as unsent until the host has it.
+- `snapshot().view` is the same object until something drawn changes, which
+  `useSyncExternalStore` needs.
 
 ## Run it [#run-it]
 
@@ -1241,7 +1097,7 @@ This chat draws your messages and the text answers. Tool calls and other parts a
 
 ## Or a terminal app [#terminal-app]
 
-The same stores work outside a browser. There `openHost` puts the credential headers on the socket
+The same connection works outside a browser. There it puts the credential headers on the socket
 itself, so it needs no `ticketSocket()`. This script asks the host one question and reprints the
 latest answer each time it changes. Run it beside `server.ts`, with your question as the argument,
 and press Ctrl+C when you're done:
@@ -1249,38 +1105,24 @@ and press Ctrl+C when you're done:
 ```ts title="tui.ts"
 import process from "node:process";
 import { isPart, text } from "@nyte-ai/plugin/core";
-import { headView, openHost, sdk, streamText, withStreamedText } from "@nyte-ai/sdk/client";
-import type { StreamedText } from "@nyte-ai/sdk/client";
+import { connect, createSendJournal } from "@nyte-ai/sdk/client";
 
-// The address `node server.ts` printed.
-const url = "http://127.0.0.1:PORT";
-const credentials = { kind: "custom", headers: () => ({}) } as const;
-const connection = await sdk.connect({ url, credentials });
-const live = openHost(url, {
-  credentials,
+const connection = await connect({
+  // The address `node server.ts` printed.
+  url: "http://127.0.0.1:PORT",
+  credentials: { kind: "custom", headers: () => ({}) },
   client: { kind: "other", name: "tui", version: "1.0.0" },
+  journal: createSendJournal(),
 });
 const { session } = await connection.sessions.start({ content: process.argv[2] ?? "Hello" });
-const store = live.head(session.id, session.name, { tail: 20 });
-let texts: StreamedText = new Map();
+const chat = connection.chat(session.id, { tail: 20 });
 
-const show = () => {
-  const snapshot = store.snapshot();
-
-  if (snapshot === null) return;
-  const view = withStreamedText(headView(snapshot), texts);
-  const answer = view.messages.findLast((message) => isPart(message, text));
+chat.subscribe(() => {
+  const answer = chat.snapshot().view?.messages.findLast((message) => isPart(message, text));
 
   if (answer === undefined || !isPart(answer, text)) return;
   console.clear();
   console.log(answer.state.markdown);
-};
-
-store.subscribe(show);
-
-live.text((update) => {
-  texts = streamText(texts, update);
-  show();
 });
 ```
 

@@ -1,5 +1,5 @@
-import type { Connection, SessionId } from "@nyte-ai/sdk";
-import type { HostConnection } from "@nyte-ai/sdk/client";
+import type { SessionId } from "@nyte-ai/sdk";
+import type { ClientConnection } from "@nyte-ai/sdk/client";
 import { CliRenderEvents, MouseButton, engine, maybeMakeRenderable } from "@opentui/core";
 import type { CliRenderer, Renderable } from "@opentui/core";
 import { RendererContext, _render, createComponent } from "@opentui/solid";
@@ -34,8 +34,7 @@ import type { Typeahead } from "./typeahead.ts";
 export type LocalPorts = Omit<Ports, "host" | "plugins" | "clock">;
 
 export interface HostLink {
-  readonly connection: Connection;
-  readonly live: HostConnection;
+  readonly connection: ClientConnection;
   readonly folder: string | null;
   readonly contextFiles?: false;
 }
@@ -217,7 +216,7 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
   const onFocus = (): void => {
     store.dispatch({ kind: "terminal-focus", focused: true });
     void options.host.then(
-      (link) => link.live.retry(),
+      (link) => link.connection.retry(),
       () => undefined,
     );
   };
@@ -397,7 +396,7 @@ async function openHost(
     : options.plugins(link, dispatch));
 
   return {
-    host: hostPort(link.connection, link.live, link.folder, () => nextFrame(options.renderer), {
+    host: hostPort(link.connection, link.folder, () => nextFrame(options.renderer), {
       contextFiles: link.contextFiles,
     }),
     plugins,
@@ -412,7 +411,7 @@ function terminalPlugins(
   ports: LocalPorts,
   dispatch: (msg: Msg) => void,
 ): Promise<ClientPlugins> {
-  return pluginsPort(link.connection, link.live, {
+  return pluginsPort(link.connection, {
     notify: (title, body, sound) => ports.terminal.notify(title, body, sound),
     report: (plugin, message) =>
       dispatch({ kind: "inform", tone: "error", text: `plugin ${plugin}: ${message}` }),
