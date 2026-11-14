@@ -126,7 +126,6 @@ const bridge = {
     setThemePreference: (preference) => ipcRenderer.send(THEME_PREFERENCE_CHANNEL, preference),
     openPort: (nonce: string) => ipcRenderer.send(HOST_PORT_CHANNEL, nonce),
     endpoint: none("host.endpoint"),
-    state: none("host.state"),
     restore: object("host.restore"),
     fonts: none("host.fonts"),
     usage: object("host.usage"),
@@ -136,7 +135,6 @@ const bridge = {
     pickFolder: none("host.pickFolder"),
     trustWorkspace: object("host.trustWorkspace"),
     closeWorkspace: none("host.closeWorkspace"),
-    storeOpening: none("host.storeOpening"),
     updates: {
       state: none("host.updates.state"),
       check: none("host.updates.check"),
@@ -145,7 +143,6 @@ const bridge = {
     },
     hostProcess: {
       state: none("host.hostProcess.state"),
-      restart: none("host.hostProcess.restart"),
       confirm: object("host.hostProcess.confirm"),
       start: none("host.hostProcess.start"),
     },

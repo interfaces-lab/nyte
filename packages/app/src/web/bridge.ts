@@ -4,7 +4,6 @@ import type {
   NyteBridge,
   OpenWorkspaceOutcome,
   RegisterWorkspaceOutcome,
-  SelectedWorkspace,
 } from "../contract/bridge.ts";
 import { errorMessage } from "../contract/errors.ts";
 import { workspaceName } from "../data/workspaces.ts";
@@ -129,7 +128,6 @@ export function createWebBridge(): WebBridge {
   let endpoint: HostEndpoint | undefined;
   let connection: SdkConnection | undefined;
   let relay: true | undefined;
-  let selected: SelectedWorkspace | undefined;
   const listeners = new Set<(event: HostEvent) => void>();
 
   const emit = (event: HostEvent): void => {
@@ -173,10 +171,9 @@ export function createWebBridge(): WebBridge {
     const registered = await registerWorkspace(input);
 
     if (registered.kind === "failed") return registered;
-    selected = registered.workspace;
-    emit({ kind: "workspace_opened", workspace: selected });
+    emit({ kind: "workspace_opened", workspace: registered.workspace });
 
-    return { kind: "opened", workspace: selected, needsTrust: registered.needsTrust };
+    return { kind: "opened", workspace: registered.workspace, needsTrust: registered.needsTrust };
   };
 
   const bridge: NyteBridge = {
@@ -189,7 +186,6 @@ export function createWebBridge(): WebBridge {
     host: {
       onMenuCommand: () => () => undefined,
       setThemePreference: () => undefined,
-      state: async () => ({ workspace: selected }),
       endpoint: async () => {
         if (endpoint === undefined) throw new Error(NOT_CONNECTED);
 
@@ -205,7 +201,6 @@ export function createWebBridge(): WebBridge {
       },
       pickFolder: () => requestFolderPath(connected().hostId),
       closeWorkspace: async () => {
-        selected = undefined;
         emit({ kind: "workspace_closed" });
       },
       server: {
@@ -277,7 +272,6 @@ export function createWebBridge(): WebBridge {
       connection = opened;
       endpoint = next;
       relay = direct === undefined ? options?.relay : undefined;
-      selected = undefined;
       noteDirect(direct !== undefined);
 
       return opened;

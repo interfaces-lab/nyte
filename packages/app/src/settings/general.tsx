@@ -2,9 +2,10 @@ import { Button } from "@nyte-ai/ui/button";
 import { props } from "@stylexjs/stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import type { ReactElement } from "react";
+import { Type } from "typebox";
 import { modifierKeyLabel } from "../chat/composer/composer-keys.ts";
 import { DESKTOP_SETTING_SCHEMAS } from "../contract/desktop-settings.ts";
-import { hostSetting, preferences, useSetting } from "../preferences/index.ts";
+import { preferences, useSetting } from "../preferences/index.ts";
 import { pluginSetting } from "../preferences/plugin.ts";
 import { SelectRow, SettingsRow, SettingsSection, SwitchRow } from "./rows.tsx";
 import { settingsStyles as styles } from "./settings.stylex.ts";
@@ -13,6 +14,11 @@ import { nyte } from "../contract/nyte.ts";
 const keepAwake = pluginSetting("desktop.keepAwake", DESKTOP_SETTING_SCHEMAS.keepAwake);
 
 const pauseOnSleep = pluginSetting("desktop.pauseOnSleep", DESKTOP_SETTING_SCHEMAS.pauseOnSleep);
+
+const workspaceTrust = pluginSetting(
+  "workspaceTrust",
+  Type.Union([Type.Literal("ask"), Type.Literal("always"), Type.Literal("never")]),
+);
 
 const STARTUP = [
   { value: "new-chat", label: "New chat" },
@@ -95,7 +101,7 @@ export function GeneralSettings(): ReactElement {
       </SettingsSection>
       <SettingsSection title="Folders">
         <SelectRow
-          setting={hostSetting("workspaceTrust")}
+          setting={workspaceTrust}
           title="A folder's own plugins and skills"
           description="Found under .nyte, .agents, or .claude. Loading them runs their code. Never load still lets Nyte work in the folder"
           options={WORKSPACE_TRUST}

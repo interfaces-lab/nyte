@@ -46,7 +46,7 @@ void app.whenReady().then(async () => {
   ipcMain.handle(CALL_CHANNEL, async (event, request: CallRequest) => {
     authorize(event);
 
-    if (request.path === "host.fonts" || request.path === "host.state") {
+    if (request.path === "host.fonts" || request.path === "host.endpoint") {
       return callIpc(
         () => {
           throw request.path === "host.fonts"

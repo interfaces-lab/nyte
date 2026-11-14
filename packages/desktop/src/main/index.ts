@@ -328,7 +328,6 @@ const mainCalls: CallTable = {
       .catch(throwForRenderer);
   },
   "host.pickFolder": (window) => pickFolder(window),
-  "host.storeOpening": async () => "ready",
   "host.updates.state": async () => updates?.state() ?? { kind: "idle" },
   "host.updates.check": async () => updates?.click(),
   "host.updates.channel": async () => {
@@ -345,7 +344,6 @@ const mainCalls: CallTable = {
     return updates.setChannel(channel);
   },
   "host.hostProcess.state": async () => hostRuntime?.hostProcess.state() ?? { kind: "offline" },
-  "host.hostProcess.restart": async () => hostRuntime?.hostProcess.restart(),
   "host.hostProcess.confirm": async (window, { action }) =>
     hostRuntime?.hostProcess.confirm(action, windows.get(window)?.window),
   "host.hostProcess.start": async () => hostRuntime?.hostProcess.start(),

@@ -10,8 +10,6 @@ import { hostWatch } from "./watches.ts";
 import { useWatchSelect } from "./watch-store.ts";
 import { queryClient } from "./query-client.ts";
 
-export const readHost = () => nyte.host.state();
-
 const OPENING_HOST_STATE: HostState = { workspace: undefined };
 
 export function useHostState() {

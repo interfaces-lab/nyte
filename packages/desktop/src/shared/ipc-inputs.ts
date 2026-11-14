@@ -86,7 +86,6 @@ type CallInputParsers = { readonly [P in CallPath]: Parser<CallInput<P>> };
 
 export const CALL_INPUT_SCHEMAS: CallInputParsers = {
   "host.endpoint": compile(noInput),
-  "host.state": compile(noInput),
   "host.restore": compile(strict({ session: nonEmpty })),
   "host.fonts": compile(noInput),
   "host.usage": checkedUsageWindow,
@@ -96,13 +95,11 @@ export const CALL_INPUT_SCHEMAS: CallInputParsers = {
   "host.pickFolder": compile(noInput),
   "host.trustWorkspace": compile(strict({ path: nonEmpty })),
   "host.closeWorkspace": compile(noInput),
-  "host.storeOpening": compile(noInput),
   "host.updates.state": compile(noInput),
   "host.updates.check": compile(noInput),
   "host.updates.channel": compile(noInput),
   "host.updates.setChannel": compile(strict({ channel: Type.Enum(["stable", "nightly"]) })),
   "host.hostProcess.state": compile(noInput),
-  "host.hostProcess.restart": compile(noInput),
   "host.hostProcess.confirm": compile(strict({ action: Type.Enum(["restart", "stop"]) })),
   "host.hostProcess.start": compile(noInput),
   "host.bundledCli": compile(noInput),

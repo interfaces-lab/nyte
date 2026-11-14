@@ -5,7 +5,6 @@ export type StartupProblem = Exclude<ConnectionProblem["kind"], "network">;
 
 type StartupConnection =
   | { readonly kind: "connecting" }
-  | { readonly kind: "migrating" }
   | { readonly kind: "connected" }
   | { readonly kind: "unreachable" }
   | { readonly kind: "failed"; readonly problem: StartupProblem; readonly retry: () => void };

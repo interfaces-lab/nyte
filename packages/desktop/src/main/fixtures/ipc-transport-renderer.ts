@@ -21,7 +21,7 @@ export async function run(): Promise<string[]> {
 
   for (const [operation, code] of [
     [() => window.nyte.host.fonts(), "internal"],
-    [() => window.nyte.host.state(), "stale"],
+    [() => window.nyte.host.endpoint(), "stale"],
   ] as const) {
     const result = await operation().then(
       () => {

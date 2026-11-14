@@ -23,7 +23,7 @@ import { useHostProcessAction } from "../environments/host-process.tsx";
 import { startupConnection } from "../data/startup.ts";
 import type { StartupProblem } from "../data/startup.ts";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
-import { layer, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { shell, sidebar } from "../theme/schema.stylex.ts";
 import { nyte } from "../contract/nyte.ts";
 import {
@@ -81,39 +81,7 @@ const styles = create({
     fontSize: type.fontBase,
     lineHeight: type.leadingBase,
   },
-  migration: {
-    position: "fixed",
-    inset: 0,
-    zIndex: layer.dialogBackdrop,
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: space.s2,
-    backgroundColor: role.windowWash,
-    color: role.contentPrimary,
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
-    WebkitAppRegion: "drag",
-  },
-  migrationDetail: { color: role.contentSecondary },
 });
-
-function StoreMigration(): ReactElement | null {
-  const connection = useSyncExternalStore(startupConnection.subscribe, startupConnection.read);
-
-  if (connection.kind !== "migrating") return null;
-
-  return (
-    <div role="status" {...props(styles.migration)}>
-      <Loader />
-      <span>Updating your chats</span>
-      <span {...props(styles.migrationDetail)}>
-        This runs once after an update and can take a minute.
-      </span>
-    </div>
-  );
-}
 
 const STARTUP_FAILURE = {
   authentication: "The host refused this app. Pair with it again.",
@@ -272,7 +240,6 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
       </div>
       <WorkspaceDialogHost />
       <ProjectDialogHost />
-      <StoreMigration />
       {about !== undefined && (
         <AboutDialog
           info={about}

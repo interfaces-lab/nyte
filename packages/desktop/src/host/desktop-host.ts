@@ -363,7 +363,6 @@ export class DesktopHost {
         ...(this.#deps.mediaOrigin === undefined ? {} : { mediaOrigin: this.#deps.mediaOrigin }),
       };
     },
-    "host.state": async (window) => this.#state(window),
     "host.restore": async (window, { session }) => {
       if (this.#state(window).workspace === undefined)
         await this.#selectChatFolder(window, session);

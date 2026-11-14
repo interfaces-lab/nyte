@@ -2,7 +2,7 @@ import { toast } from "@nyte-ai/ui/toast";
 import type { HostProcess } from "../contract/bridge.ts";
 import { keys, queryClient } from "../data/query-client.ts";
 import { commitHostWorkspace } from "../data/workspaces.ts";
-import { currentLive } from "../data/connection.ts";
+import { currentConnection } from "../data/connection.ts";
 import { nyte } from "../contract/nyte.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import {
@@ -13,8 +13,6 @@ import {
 } from "../workbench/browser/browser-surfaces.ts";
 import { applyBrowserHistory } from "../workbench/browser/browser-history.ts";
 import { workbench } from "../workbench/store.ts";
-import { requestTrust } from "../panes/open-workspace.tsx";
-import { acceptHostSettings } from "../preferences/host.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
 
 export function useHostEvents(): void {
@@ -24,7 +22,7 @@ export function useHostEvents(): void {
     void nyte.host.hostProcess?.state().then(showHostProcess);
 
     const reconnect = (): void => {
-      if (document.visibilityState !== "hidden") currentLive()?.retry();
+      if (document.visibilityState !== "hidden") currentConnection()?.retry();
     };
 
     window.addEventListener("online", reconnect);
@@ -33,10 +31,6 @@ export function useHostEvents(): void {
 
     const unsubscribe = nyte.host.onEvent((event) => {
       switch (event.kind) {
-        case "workspace_trust_required":
-          requestTrust(event.path);
-
-          return;
         case "workspace_opened":
           commitHostWorkspace(event.workspace);
           void queryClient.invalidateQueries({ queryKey: keys.workspaces, exact: true });
@@ -59,11 +53,7 @@ export function useHostEvents(): void {
           showHostProcess(event.state);
 
           if (event.state.kind === "current" || event.state.kind === "stale")
-            currentLive()?.retry();
-
-          return;
-        case "settings_changed":
-          acceptHostSettings(event.settings);
+            currentConnection()?.retry();
 
           return;
         case "server_changed":

@@ -1,10 +1,8 @@
 import type { AppRouter } from "../shell/routes.tsx";
-import type { StoreOpening } from "../contract/bridge.ts";
 import {
   holdStartupReads,
   publishStartupConnection,
   releaseStartupReads,
-  startupConnection,
 } from "../data/startup.ts";
 import { connectionProblem } from "../data/connection.ts";
 
@@ -13,7 +11,6 @@ interface RendererStartupOptions {
   readonly router: Pick<AppRouter, "load">;
   readonly mountShell: () => void;
   readonly connect: () => Promise<void>;
-  readonly storeOpening?: () => Promise<StoreOpening>;
   readonly showError: (retry: () => void) => void;
 }
 
@@ -82,12 +79,5 @@ export function startRendererStartup(options: RendererStartupOptions): void {
   };
 
   open();
-  void options.storeOpening?.().then(
-    (opening) => {
-      if (opening === "migrating" && startupConnection.read().kind === "connecting")
-        publishStartupConnection({ kind: "migrating" });
-    },
-    () => undefined,
-  );
   load();
 }

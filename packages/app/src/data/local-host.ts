@@ -4,7 +4,6 @@ import { nyte } from "../contract/nyte.ts";
 import { hostWatch } from "./watches.ts";
 import { sessionList } from "./directory.ts";
 import { connectHost, currentConnection } from "./connection.ts";
-import { readHost } from "./host.ts";
 import { workspacesQuery } from "./workspaces.ts";
 import { readModelCatalog } from "./catalog.ts";
 import { queryClient } from "./query-client.ts";
@@ -20,7 +19,6 @@ export function connectLocalHost(): Promise<Connection> {
     .endpoint()
     .then((endpoint) =>
       connectHost(endpoint, {
-        remember: nyte.host.remember,
         fetch: nyte.host.fetch,
         socket: nyte.host.socket,
       }),
@@ -42,8 +40,7 @@ export async function loadLocalResources(): Promise<void> {
   const host = hostWatch("host");
   const directory = sessionList("roots");
 
-  const [state, workspaces, catalog] = await Promise.all([
-    readHost(),
+  const [workspaces, catalog] = await Promise.all([
     workspacesQuery.queryFn(),
     readModelCatalog(),
     host.value === undefined ? host.next() : undefined,
@@ -54,5 +51,4 @@ export async function loadLocalResources(): Promise<void> {
 
   queryClient.setQueryData(keys.workspaces, workspaces);
   queryClient.setQueryData(keys.modelCatalog(catalog.generation), catalog);
-  queryClient.setQueryData(keys.host, state);
 }

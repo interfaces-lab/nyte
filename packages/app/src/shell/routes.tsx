@@ -19,7 +19,6 @@ import { readSession, sessionRows } from "../data/session-rows.ts";
 import { routeSessionExists } from "./route-session.ts";
 import { sessionList } from "../data/directory.ts";
 import { preferences } from "../preferences/index.ts";
-import { loadHostSettings } from "../preferences/host.ts";
 import type { ShellSearch } from "../tabs/search.ts";
 import { SessionScreen } from "../panes/session-screen.tsx";
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
@@ -244,7 +243,6 @@ export const settingsRoute = createRoute({
     },
     stringify: ({ section }) => ({ section }),
   },
-  loader: () => loadHostSettings(),
   component: SettingsSurface,
 });
 

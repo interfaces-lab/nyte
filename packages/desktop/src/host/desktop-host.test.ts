@@ -225,11 +225,8 @@ socketTest(
     assert.ok(
       (await made.served.workspaces.list()).some((entry) => entry.id === opened.workspace.id),
     );
-    assert.equal(
-      (await made.host.call(1, "host.state", undefined)).workspace?.id,
-      opened.workspace.id,
-    );
-    assert.equal((await made.host.call(2, "host.state", undefined)).workspace, undefined);
+    assert.equal(made.host.selectedWorkspace(1)?.id, opened.workspace.id);
+    assert.equal(made.host.selectedWorkspace(2), undefined);
     assert.deepEqual(received, [
       { event: { kind: "workspace_opened", workspace: opened.workspace }, window: 1 },
     ]);
@@ -238,14 +235,11 @@ socketTest(
       (await made.host.call(1, "host.openWorkspace", { path: join(folder, "missing") })).kind,
       "failed",
     );
-    assert.equal(
-      (await made.host.call(1, "host.state", undefined)).workspace?.id,
-      opened.workspace.id,
-    );
+    assert.equal(made.host.selectedWorkspace(1)?.id, opened.workspace.id);
     assert.equal(received.length, 1);
 
     await made.host.call(1, "host.closeWorkspace", undefined);
-    assert.equal((await made.host.call(1, "host.state", undefined)).workspace, undefined);
+    assert.equal(made.host.selectedWorkspace(1), undefined);
     await made.host.call(1, "host.closeWorkspace", undefined);
     assert.deepEqual(received, [
       { event: { kind: "workspace_opened", workspace: opened.workspace }, window: 1 },

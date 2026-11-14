@@ -1,23 +1,10 @@
 import type { ExcerptSource, TailnetStatus } from "@nyte-ai/schema";
-import type { CredentialSource, SessionId, Usage, WorkspaceId } from "@nyte-ai/sdk";
+import type { SessionId, Usage, WorkspaceId } from "@nyte-ai/sdk";
 import type { OpenSocket } from "@nyte-ai/sdk/client";
 import type { ConnectionProblem, HostEndpoint } from "./connection.ts";
 import { clientActions } from "./client-actions.ts";
 
 type Disposer = () => void;
-
-export interface HostSettings {
-  readonly cacheWarming: "off" | "streaming" | "idle";
-  readonly autoCompaction: boolean;
-  readonly compactionKeepRecentTokens: number;
-  readonly compactionReserveTokens: number;
-  readonly workspaceTrust: "ask" | "always" | "never";
-  readonly browserAccess: "ask" | "full" | "read" | "off";
-}
-
-export type HostSettingKey = keyof HostSettings;
-
-export type HostSettingsPatch = Partial<HostSettings>;
 
 export interface UsageWindow {
   readonly sinceDay: string | null;
@@ -267,19 +254,11 @@ export interface SelectedWorkspace {
 
 export interface HostState {
   readonly workspace: SelectedWorkspace | undefined;
-  readonly binding?: { readonly hostId: string; readonly principal: string };
 }
 
 export interface LocalFontCatalog {
   readonly sans: readonly string[];
   readonly monospace: readonly string[];
-}
-
-export interface TrustConsent {
-  readonly hostId: string;
-  readonly id: string;
-  readonly path: string;
-  readonly identity: string;
 }
 
 export type RegisterWorkspaceOutcome =
@@ -292,7 +271,6 @@ export type RegisterWorkspaceOutcome =
 
 export type OpenWorkspaceOutcome =
   | { kind: "opened"; workspace: SelectedWorkspace; needsTrust: boolean }
-  | { kind: "needs_trust"; path: string; consent?: TrustConsent }
   | { kind: "cancelled" }
   | { kind: "failed"; message: string };
 
@@ -406,8 +384,6 @@ export interface BrowserFocusMessage {
 
 export type UpdateChannel = "stable" | "nightly";
 
-export type StoreOpening = "migrating" | "ready";
-
 export type UpdateState =
   | { readonly kind: "idle" }
   | { readonly kind: "downloading"; readonly version: string; readonly percent: number }
@@ -436,9 +412,7 @@ export type HostEvent =
   | { kind: "update_changed"; state: UpdateState }
   | { kind: "update_channel_changed"; channel: UpdateChannel }
   | { kind: "host_process_changed"; state: HostProcess }
-  | { kind: "settings_changed"; settings: HostSettings }
   | { kind: "workspace_opened"; workspace: SelectedWorkspace }
-  | { kind: "workspace_trust_required"; path: string }
   | { kind: "workspace_closed" }
   | { kind: "server_changed" }
   | { kind: "open_session"; session: SessionId }
@@ -543,31 +517,20 @@ export interface AttentionBridge {
   notify(notice: TerminalNotice): void;
 }
 
-export interface HostSettingsBridge {
-  get(): Promise<HostSettings>;
-  set(patch: HostSettingsPatch): Promise<HostSettings>;
-}
-
 export interface HostBridge {
-  readonly settings?: HostSettingsBridge;
   onMenuCommand(listener: (command: AppMenuCommand) => void): Disposer;
   setThemePreference(preference: ThemePreference): void;
-  state(): Promise<HostState>;
   readonly restore?: (input: { readonly session: string }) => Promise<HostState>;
   endpoint(): Promise<HostEndpoint>;
   readonly fetch?: (url: string, init?: RequestInit) => Promise<Response>;
   readonly socket?: OpenSocket;
-  readonly remember?: (credential: CredentialSource) => void;
   fonts(): Promise<LocalFontCatalog>;
   openWorkspace(input: { path: string }): Promise<OpenWorkspaceOutcome>;
   /** Adds the folder to the host's workspaces without selecting it for this window. */
   registerWorkspace(input: { path: string }): Promise<RegisterWorkspaceOutcome>;
   readonly pickWorkspace?: () => Promise<OpenWorkspaceOutcome>;
   readonly pickFolder?: () => Promise<string | undefined>;
-  readonly trustWorkspace?: (input: {
-    path: string;
-    consent?: TrustConsent;
-  }) => Promise<OpenWorkspaceOutcome>;
+  readonly trustWorkspace?: (input: { path: string }) => Promise<OpenWorkspaceOutcome>;
   closeWorkspace(): Promise<void>;
   readonly usage?: (input: UsageWindow) => Promise<UsageSnapshot>;
   readonly updates?: {
@@ -578,7 +541,6 @@ export interface HostBridge {
   };
   readonly hostProcess?: {
     state(): Promise<HostProcess>;
-    restart(): Promise<void>;
     /** Asks first, naming the running work, then restarts or stops the host. */
     confirm(input: { readonly action: "restart" | "stop" }): Promise<void>;
     start(): Promise<void>;

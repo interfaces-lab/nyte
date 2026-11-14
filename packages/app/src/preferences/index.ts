@@ -7,8 +7,6 @@ import { ThemeChoicesSchema, VscodeThemeSchema } from "../theme/vscode-theme.ts"
 import { definePreference } from "./store.ts";
 import type { Preference } from "./store.ts";
 
-export { hostSetting } from "./host.ts";
-
 export { useSetting } from "./store.ts";
 
 export type { Preference, Setting } from "./store.ts";

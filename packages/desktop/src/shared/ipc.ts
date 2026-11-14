@@ -1,4 +1,4 @@
-import type { HostBridge, NyteBridge, StoreOpening } from "@nyte-ai/app/contract/bridge.ts";
+import type { HostBridge, NyteBridge } from "@nyte-ai/app/contract/bridge.ts";
 import type { DesktopWindow } from "@nyte-ai/app/contract/desktop-window.ts";
 import type { IpcFailure } from "@nyte-ai/app/contract/errors.ts";
 
@@ -42,13 +42,11 @@ export const MAIN_OPERATION_PATHS = [
   "host.fonts",
   "host.pickWorkspace",
   "host.pickFolder",
-  "host.storeOpening",
   "host.updates.state",
   "host.updates.check",
   "host.updates.channel",
   "host.updates.setChannel",
   "host.hostProcess.state",
-  "host.hostProcess.restart",
   "host.hostProcess.confirm",
   "host.hostProcess.start",
   "host.bundledCli",
@@ -73,7 +71,6 @@ export const MAIN_OPERATION_PATHS = [
 
 const HOST_PROCESS_PATHS = [
   "host.endpoint",
-  "host.state",
   "host.restore",
   "host.usage",
   "host.openWorkspace",
@@ -121,12 +118,10 @@ export type DesktopBridge = {
   readonly canvasShell?: NyteBridge["canvasShell"];
   readonly host: {
     openPort(nonce: string): void;
-    storeOpening(): Promise<StoreOpening>;
   } & Pick<
     HostBridge,
     | "onMenuCommand"
     | "setThemePreference"
-    | "state"
     | "endpoint"
     | "fonts"
     | "openWorkspace"
