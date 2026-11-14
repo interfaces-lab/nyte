@@ -1,10 +1,7 @@
 import { useRouter } from "@tanstack/react-router";
-import { useSyncExternalStore } from "react";
-import { Icon } from "@nyte-ai/ui/icon";
-import type { IconName } from "@nyte-ai/ui/icon";
-import type { ProjectInfo, SessionId } from "@nyte-ai/sdk";
-import { chatFolderPath, chatTitle, subscribeChats, useChats } from "../chats/index.ts";
-import type { ChatDirectory } from "../chats/index.ts";
+import { useState, useSyncExternalStore } from "react";
+import type { SessionId } from "@nyte-ai/sdk";
+import { chatFolderPath, subscribeChats, useChats } from "../chats/index.ts";
 import { activateWorkspace } from "../sidebar/use-show-session.ts";
 import { nyte } from "../contract/nyte.ts";
 import { useProjects } from "../data/projects.ts";
@@ -12,9 +9,13 @@ import { keys, queryClient } from "../data/query-client.ts";
 import { sessionRows, subscribeSessionRow, subscribeSessionRows } from "../data/session-rows.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 
-import { activeTab, tabPlace, tabPlaces } from "./model.ts";
-import type { Place, WindowState } from "./model.ts";
-import { locationPlace, navigateTo, pageSection, samePlaceAt } from "./places.ts";
+import { goneChats, watchedChats } from "./gone-chats.ts";
+import { activeTab, tabPlace } from "./model.ts";
+import type { WindowState } from "./model.ts";
+import { locationPlace, navigateTo } from "./places.ts";
+import { adoptLocation, followFolder, routeFor } from "./route-sync.ts";
+import type { FolderFollow } from "./route-sync.ts";
+import { windowTabItems } from "./tab-items.ts";
 import type { WindowTabItem } from "./window-tab-strip.tsx";
 import { windowTabs } from "./window-tabs.ts";
 
@@ -33,36 +34,25 @@ export function useWindowTabsSync(): void {
   const router = useRouter();
 
   useMountEffect(() => {
-    let followed = "";
+    let follow: FolderFollow = { followed: "", wanted: null };
+
     let switching = restoreChatFolder().then(
       () => undefined,
       () => undefined,
     );
-    let wanted: string | null = null;
 
-    const follow = (): void => {
-      const tab = activeTab(windowTabs.getSnapshot());
-      const place = tabPlace(tab);
-      const location = locationPlace(router);
+    const sync = (): void => {
+      const state = windowTabs.getSnapshot();
+      const place = routeFor(state, locationPlace(router));
 
-      if (location !== undefined && !samePlaceAt(place, location)) navigateTo(router, place);
-      const focus = `${tab.id}:${place.kind === "session" ? place.sessionId : place.kind}`;
+      if (place !== undefined) navigateTo(router, place);
+      const followed = followFolder(follow, activeTab(state), chatFolderPath);
+      follow = followed.next;
 
-      if (focus === followed) return;
-
-      if (place.kind !== "session") {
-        followed = focus;
-
-        return;
-      }
-
-      const folder = chatFolderPath(place.sessionId);
-
-      if (folder === undefined) return;
-      followed = focus;
-      wanted = folder;
+      if (followed.step.kind === "none") return;
+      const folder = followed.step.folder;
       switching = switching
-        .then(() => (wanted === folder ? activateWorkspace(folder) : undefined))
+        .then(() => (follow.wanted === folder ? activateWorkspace(folder) : undefined))
         .then(
           () => undefined,
           () => undefined,
@@ -70,27 +60,16 @@ export function useWindowTabsSync(): void {
     };
 
     const adopt = (): void => {
-      const location = locationPlace(router);
+      const action = adoptLocation(windowTabs.getSnapshot(), locationPlace(router));
 
-      if (location === undefined) return;
-      const view = activeTab(windowTabs.getSnapshot()).view;
-
-      if (view.kind === "page" && view.page.kind === "customize" && location.kind === "customize") {
-        if (pageSection(view.page) !== pageSection(location))
-          windowTabs.dispatch({ kind: "page-section", section: pageSection(location) });
-
-        return;
-      }
-
-      if (!samePlaceAt(tabPlace(activeTab(windowTabs.getSnapshot())), location))
-        windowTabs.dispatch({ kind: "open", place: location, target: "permanent" });
+      if (action !== undefined) windowTabs.dispatch(action);
     };
 
     adopt();
-    follow();
+    sync();
     const unsubscribeRouter = router.subscribe("onResolved", adopt);
-    const unsubscribeTabs = windowTabs.subscribe(follow);
-    const unsubscribeChats = subscribeChats(follow);
+    const unsubscribeTabs = windowTabs.subscribe(sync);
+    const unsubscribeChats = subscribeChats(sync);
     const unsubscribeGone = forgetGoneChats();
 
     return () => {
@@ -107,26 +86,15 @@ function forgetGoneChats(): () => void {
   let known = sessionRows().hosted;
 
   const forget = (): void => {
-    const { hosted, missing } = sessionRows();
-
-    const archived = [...hosted.values()].flatMap((session) =>
-      session.archived ? [session.id] : [],
-    );
-
-    const archiving = archived.filter((id) => known.get(id)?.archived === false);
-    known = hosted;
-    windowTabs.dispatch({ kind: "close-chats", sessionIds: new Set([...missing, ...archiving]) });
-    windowTabs.dispatch({ kind: "forget-closed", gone: new Set([...missing, ...archived]) });
+    const rows = sessionRows();
+    const gone = goneChats(known, rows);
+    known = rows.hosted;
+    windowTabs.dispatch({ kind: "close-chats", sessionIds: gone.close });
+    windowTabs.dispatch({ kind: "forget-closed", gone: gone.forget });
   };
 
   const read = (): void => {
-    const state = windowTabs.getSnapshot();
-
-    const shown = new Set(
-      [...state.tabs, ...state.closed.map(({ tab }) => tab)].flatMap((tab) =>
-        tabPlaces(tab).flatMap((place) => (place.kind === "session" ? [place.sessionId] : [])),
-      ),
-    );
+    const shown = watchedChats(windowTabs.getSnapshot());
 
     for (const [id, leave] of reads)
       if (!shown.has(id)) {
@@ -155,59 +123,14 @@ function forgetGoneChats(): () => void {
   };
 }
 
-function placeTitle(place: Place, chats: ChatDirectory, projects: readonly ProjectInfo[]): string {
-  switch (place.kind) {
-    case "blank":
-      return "New chat";
-    case "session":
-      return chatTitle(chats.get(place.sessionId));
-    case "customize":
-      return "Customize";
-    case "project":
-      return projects.find((project) => project.id === place.projectId)?.name ?? "Project";
-    default: {
-      const _exhaustive: never = place;
-
-      return _exhaustive;
-    }
-  }
-}
-
-const PLACE_ICONS = {
-  blank: "new-chat",
-  customize: "customize",
-  project: "layers",
-} satisfies Record<Exclude<Place["kind"], "session">, IconName>;
+const NO_ITEMS: readonly WindowTabItem[] = [];
 
 export function useWindowTabItems(state: WindowState): readonly WindowTabItem[] {
-  const chats = useChats((directory) => directory);
   const projects = useProjects();
+  const [previous, keep] = useState(NO_ITEMS);
+  const items = useChats((chats) => windowTabItems(state, chats, projects, previous));
 
-  return state.tabs.map((tab) => {
-    const places = tabPlaces(tab);
-    const place = tabPlace(tab);
-    const view = tab.view;
-    const chat = place.kind === "session" ? chats.get(place.sessionId) : undefined;
-    const sessions = places.flatMap((candidate) =>
-      candidate.kind === "session" ? [candidate.sessionId] : [],
-    );
+  if (items !== previous) keep(items);
 
-    const glyph =
-      place.kind === "session" ? undefined : <Icon name={PLACE_ICONS[place.kind]} size="sm" />;
-
-    return {
-      id: tab.id,
-      title: placeTitle(place, chats, projects),
-      tooltip: places.map((candidate) => placeTitle(candidate, chats, projects)).join(" | "),
-      sessions,
-      parent: chat?.parent ?? undefined,
-      chat: place.kind === "session" ? place.sessionId : undefined,
-      glyph,
-      preview: view.kind === "preview",
-      split:
-        view.kind === "panes" && view.layout.root.kind === "split"
-          ? view.layout.root.direction
-          : undefined,
-    };
-  });
+  return items;
 }
