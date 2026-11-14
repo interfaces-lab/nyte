@@ -45,6 +45,8 @@ type ChatScreenProps = {
   error: string | undefined;
   onSend: (content: DraftContent, delivery?: Delivery) => Promise<SendOutcome>;
   onStop: () => void;
+  /** The host's row says the run is stopping, or this app asked it to stop and it hasn't answered. */
+  stopping: boolean;
   question: AskedQuestion | undefined;
   onAnswer: (
     asked: AskedQuestion,
@@ -72,6 +74,7 @@ export function ChatScreen({
   error,
   onSend,
   onStop,
+  stopping,
   question,
   onAnswer,
   queued,
@@ -98,7 +101,6 @@ export function ChatScreen({
   });
 
   const running = state.execution.kind !== "idle";
-  const stopping = state.execution.kind === "live" && state.execution.stopping;
   const { composerRef, onComposerLayout, anchorSend } = scroller;
   const answerable = question !== undefined;
   const gutters = { left: layout.paddingLeft, right: layout.paddingRight };

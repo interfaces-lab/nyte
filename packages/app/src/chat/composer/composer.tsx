@@ -3,8 +3,7 @@ import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 import { createPortal, flushSync } from "react-dom";
 import type { ReactElement, ReactNode } from "react";
-import type { Delivery, HeldMessage, MessageId, RunId, SessionId } from "@nyte-ai/sdk";
-import type { Health } from "@nyte-ai/sdk/client";
+import type { Delivery, HeldMessage, MessageId, SessionId } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import { PLANNING_LABEL, runMark, taskLabel } from "@nyte-ai/plugin/client/presentation";
 import type { RunStatus, UserMessage } from "@nyte-ai/plugin/client/presentation";
@@ -18,7 +17,7 @@ import { SIDECHAT_COMMAND, usePluginCatalog } from "../../data/plugins.ts";
 import { sessionActions } from "../../data/session-rows.ts";
 import { useSessionActivity, useSessionChoice } from "../../data/sessions.ts";
 import { connection } from "../../data/connection.ts";
-import { chatStore, resendMessage } from "../../data/chat-store.ts";
+import { chatStore, resendMessage, stopChat, useChatStopping } from "../../data/chat-store.ts";
 import { useWatchSelect } from "../../data/watch-store.ts";
 import { nyte } from "../../contract/nyte.ts";
 import { DEFAULT_COMPOSER_VIEW_STATE } from "../../panes/session-view-state.ts";
@@ -100,17 +99,6 @@ interface EditHold {
   held: HeldMessage | undefined;
 }
 
-/**
- * A Stop this composer sent and the host has not answered by showing the run stopping or ending
- * it. It shows as stopping while the run and the link's health are the ones it was sent under, so
- * a Stop sent into a link that is then found lost, or that fails, can be pressed again. Only the
- * latest Stop reports a failure: an earlier one sent into a dead link can fail after the run ended.
- */
-interface StopAsk {
-  readonly run: RunId;
-  readonly health: Health | undefined;
-}
-
 export function Composer({
   sessionId,
   status,
@@ -169,12 +157,9 @@ export function Composer({
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const mac = nyte.platform === "darwin";
   const health = useHostHealth();
-  const [stopAsked, setStopAsked] = useState<StopAsk>();
-  const latestStop = useRef<StopAsk>(undefined);
 
-  const stopping =
-    (status.kind === "working" && status.stopping) ||
-    (stopAsked !== undefined && stopAsked.run === liveRun && stopAsked.health === health);
+  const asked = useChatStopping(sessionId) === "asked";
+  const stopping = (status.kind === "working" && status.stopping) || asked;
 
   const staleSince = useWatchSelect(chatStore(sessionId), (state) =>
     state.value?.freshness.kind === "stale" ? state.value.freshness.since : undefined,
@@ -591,21 +576,12 @@ export function Composer({
 
   const abort = (): void => {
     if (liveRun === undefined || stopping) return;
-    const asked: StopAsk = { run: liveRun, health };
-    latestStop.current = asked;
-    setStopAsked(asked);
-    connection()
-      .session(sessionId)
-      .run(liveRun)
-      .stop()
-      .catch((cause: unknown) => {
-        if (latestStop.current !== asked) return;
-        setStopAsked(undefined);
-        setFeedback({
-          kind: "error",
-          message: `Couldn't stop the response: ${errorMessage(cause)}`,
-        });
-      });
+    stopChat(sessionId).catch((cause: unknown) =>
+      setFeedback({
+        kind: "error",
+        message: `Couldn't stop the response: ${errorMessage(cause)}`,
+      }),
+    );
   };
 
   const cancelPending = (item: UserMessage): void => {
