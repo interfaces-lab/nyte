@@ -701,6 +701,71 @@ export async function run() {
     await settle();
     check(expandedState() === "false", "A later live group starts from its density default");
 
+    const mixed = [
+      thought("lease", "**Checking the lease**\n\nThe lease length lives in heads.ts.", 1),
+      read("lease-read", 2),
+    ];
+
+    const detailed = (key: string, running: boolean) => (
+      <StepGroupView
+        key={key}
+        messages={mixed}
+        cwd={undefined}
+        added={0}
+        removed={0}
+        running={running}
+        density="detailed"
+      />
+    );
+
+    transcript(detailed("seen", true));
+    await settle();
+    transcript(detailed("seen", false));
+    await settle();
+    const seenLive = outer.innerText;
+    transcript(detailed("remounted", false));
+    await settle();
+    check(
+      outer.innerText === seenLive,
+      `Rule 24: a thought shown live paints the same after a remount (${JSON.stringify([seenLive, outer.innerText])})`,
+    );
+
+    const twoPanes = (key: string) =>
+      flushSync(() =>
+        root.render(
+          <QueryClientProvider client={queryClient}>
+            <PaneControllerProvider panes={panes}>
+              {[PRIMARY, asId<"pane">("beside")].map((paneId) => (
+                <TranscriptProvider
+                  key={paneId}
+                  paneId={paneId}
+                  sessionId={asId<"session">("step-group-test")}
+                >
+                  {compact(key, thought("shared", "Shared thought", 0))}
+                </TranscriptProvider>
+              ))}
+            </PaneControllerProvider>
+          </QueryClientProvider>,
+        ),
+      );
+
+    const states = () =>
+      Array.from(outer.querySelectorAll("button"), (button) =>
+        button.getAttribute("aria-expanded"),
+      );
+
+    twoPanes("shared");
+    await settle();
+    outer.querySelectorAll("button")[0]?.click();
+    await settle();
+    check(
+      states().join() === "true,true",
+      `Panes on one chat agree once one opens (${states().join()})`,
+    );
+    outer.querySelectorAll("button")[1]?.click();
+    await settle();
+    check(states().join() === "false,false", `Either pane closes both (${states().join()})`);
+
     return "passed";
   } finally {
     flushSync(() => root.unmount());

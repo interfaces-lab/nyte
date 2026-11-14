@@ -32,21 +32,16 @@ import { Prose } from "../markdown/prose.tsx";
 import { useReferenceOpener } from "../../references/reference-opener.tsx";
 import { SubagentGroupView, SubagentReportLine } from "../tools/subagent-call.tsx";
 import { AnswerLine } from "./answer-line.tsx";
-import type { ComposerDocumentState, ComposerSubmission } from "../composer/composer-document.ts";
+import type { ComposerSubmission } from "../composer/composer-document.ts";
 import { ComposerFrame } from "../composer/composer-frame.tsx";
 import type { ComposerEditorHandle } from "../composer/composer-editor.tsx";
 import { attachComposerFiles } from "../composer/composer-files.ts";
 import type { ComposerFile } from "../../references/composer-file-drop.ts";
-import type { ComposerImageAttachment } from "../../panes/session-view-state.ts";
 import { useChatFolder } from "../chat-folder.ts";
-import {
-  composerContentEmpty,
-  composerMessageContent,
-  uploadComposerContent,
-} from "../composer/composer-send.ts";
+import { composerMessageContent } from "../composer/composer-plan.ts";
+import { uploadComposerContent } from "../composer/composer-send.ts";
 import { composerSource } from "../composer/composer-suggestions.tsx";
-import { BlobImage, UserMessageText, messageFiles, messageImages } from "./message-content.tsx";
-import type { MessageFile } from "./message-content.tsx";
+import { BlobImage, UserMessageText, messageImages } from "./message-content.tsx";
 import { contentDraftText } from "../../references/message-references.ts";
 import { forkChat } from "../../data/session-actions.ts";
 import { ModelPicker } from "../composer/model-picker.tsx";
@@ -60,7 +55,7 @@ import {
 import { StatusMarker } from "./row-surfaces.tsx";
 import { RecoveryAction } from "./turn-recovery.tsx";
 import { ToolCallView } from "../tools/tool-call.tsx";
-import { StepEntryView, StepGroupView } from "./step-group.tsx";
+import { StepEntryView, StepGroupFactsView } from "./step-group.tsx";
 import { responseRowView, stepRowView, userRowView } from "./transcript-row-views.ts";
 import type { UserRowView } from "./transcript-row-views.ts";
 import { liveTurnStyles } from "./live-turn.tsx";
@@ -74,6 +69,8 @@ import type { PromptRow, TurnItemRow } from "./transcript-rows.ts";
 import { errorMessage } from "../../contract/errors.ts";
 import type { DesktopCatalog, DesktopModelOption } from "../../data/catalog.ts";
 import { ChangeStats } from "../../components/change-stats.tsx";
+import { beginEdit, decideSave, dismissible, nextEdit } from "./user-edit.ts";
+import type { UserEditEvent, UserEditState } from "./user-edit.ts";
 
 function UserMessagePreview({
   expandable,
@@ -165,16 +162,6 @@ type EditUserMessage = (
   choice: BranchModelChoice,
 ) => Promise<void>;
 
-interface UserEditState extends BranchModelChoice {
-  readonly document: ComposerDocumentState;
-  readonly attachments: readonly ComposerImageAttachment[];
-  readonly kept: readonly MessageFile[];
-  readonly attachmentReads: number;
-  readonly attachmentError: string | undefined;
-  readonly saving: boolean;
-  readonly error: string | undefined;
-}
-
 export function UserMessageView({
   content,
   pending = false,
@@ -194,16 +181,7 @@ export function UserMessageView({
   const editGeneration = useRef(0);
   const original = contentDraftText(content);
 
-  const canDismissEdit =
-    edit !== undefined &&
-    !edit.saving &&
-    edit.attachmentReads === 0 &&
-    edit.document.text === original &&
-    edit.attachments.length === 0 &&
-    edit.kept.length === messageFiles(content).length &&
-    edit.model?.key === branchModel?.model?.key &&
-    edit.thinkingLevel === branchModel?.thinkingLevel &&
-    edit.fast === (branchModel?.fast === true);
+  const canDismissEdit = edit !== undefined && dismissible(edit, content, branchModel);
 
   const keepWhileEditing = (element: HTMLDivElement | null): (() => void) | undefined =>
     element === null ? undefined : transcript.keep(element);
@@ -214,24 +192,7 @@ export function UserMessageView({
   const begin = (): void => {
     if (rowRef.current !== null) transcript.hold(rowRef.current);
     editGeneration.current += 1;
-    flushSync(() =>
-      setEdit({
-        document: {
-          text: original,
-          selectionStart: original.length,
-          selectionEnd: original.length,
-        },
-        attachments: [],
-        kept: messageFiles(content),
-        attachmentReads: 0,
-        attachmentError: undefined,
-        saving: false,
-        error: undefined,
-        model: branchModel?.model,
-        thinkingLevel: branchModel?.thinkingLevel,
-        fast: branchModel?.fast === true,
-      }),
-    );
+    flushSync(() => setEdit(beginEdit(content, branchModel)));
     editorRef.current?.focus({ preventScroll: true });
   };
 
@@ -240,19 +201,8 @@ export function UserMessageView({
     editButtonRef.current?.focus({ preventScroll: true });
   };
 
-  const reveal = (): void => {
-    const row = rowRef.current;
-    const messages = row?.closest<HTMLElement>('[role="region"]');
-
-    if (row === null || messages === null || messages === undefined) return;
-    const box = row.getBoundingClientRect();
-    const view = messages.getBoundingClientRect();
-
-    if (box.bottom <= view.top || box.top >= view.bottom) row.scrollIntoView({ block: "nearest" });
-  };
-
-  const patchEdit = (patch: (current: UserEditState) => UserEditState): void => {
-    setEdit((current) => (current === undefined ? current : patch(current)));
+  const patchEdit = (event: UserEditEvent): void => {
+    setEdit((current) => (current === undefined ? current : nextEdit(current, event)));
   };
 
   const addFiles = async (
@@ -261,51 +211,42 @@ export function UserMessageView({
   ): Promise<string | undefined> => {
     const generation = editGeneration.current;
 
-    const patchSameEdit = (patch: (current: UserEditState) => UserEditState): void => {
-      if (generation === editGeneration.current) patchEdit(patch);
+    const patchSameEdit = (event: UserEditEvent): void => {
+      if (generation === editGeneration.current) patchEdit(event);
     };
 
-    patchSameEdit((current) => ({ ...current, attachmentReads: current.attachmentReads + 1 }));
+    patchSameEdit({ kind: "reading", delta: 1 });
 
     return attachComposerFiles({ files, editor: editorRef.current })
       .then((result) => {
         signal?.throwIfAborted();
-        patchSameEdit((current) => ({
-          ...current,
-          attachments: [...current.attachments, ...result.attachments],
-          attachmentError: result.error,
-        }));
+        patchSameEdit({ kind: "attached", attachments: result.attachments, error: result.error });
 
         return result.error;
       })
-      .finally(() =>
-        patchSameEdit((current) => ({ ...current, attachmentReads: current.attachmentReads - 1 })),
-      );
+      .finally(() => patchSameEdit({ kind: "reading", delta: -1 }));
   };
 
   const save = async (submission: ComposerSubmission): Promise<void> => {
-    if (edit === undefined || edit.saving || onEdit === undefined) return;
+    if (edit === undefined || onEdit === undefined) return;
     const draft = composerMessageContent(submission.parts, edit.attachments, edit.kept);
+    const decision = decideSave(edit, draft);
 
-    if (composerContentEmpty(draft)) {
-      setEdit({ ...edit, error: "A message cannot be empty." });
+    if (decision.kind === "busy") return;
+    setEdit(decision.edit);
 
-      return;
-    }
-
-    setEdit({ ...edit, saving: true, error: undefined });
+    if (decision.kind === "empty") return;
     const messages = rowRef.current?.closest<HTMLElement>('[role="region"]');
-    const choice = { model: edit.model, thinkingLevel: edit.thinkingLevel, fast: edit.fast };
 
     const failure = await uploadComposerContent(draft)
-      .then((next) => onEdit(next, choice))
+      .then((next) => onEdit(next, decision.choice))
       .then(
         () => undefined,
         (cause: unknown) => errorMessage(cause),
       );
 
     if (failure !== undefined) {
-      patchEdit((current) => ({ ...current, saving: false, error: failure }));
+      patchEdit({ kind: "failed", error: failure });
 
       return;
     }
@@ -322,14 +263,7 @@ export function UserMessageView({
         thinkingLevel={edit.thinkingLevel}
         fast={edit.fast}
         disabled={edit.saving}
-        onChange={(change: ModelPickerChange) =>
-          setEdit({
-            ...edit,
-            model: change.option,
-            thinkingLevel: change.thinkingLevel,
-            fast: change.fast,
-          })
-        }
+        onChange={(change: ModelPickerChange) => patchEdit({ kind: "model", change })}
       />
     );
 
@@ -391,8 +325,9 @@ export function UserMessageView({
               surface="follow-up"
               document={edit.document}
               onDocumentChange={(document) => {
-                if (document.text !== edit.document.text) reveal();
-                patchEdit((current) => ({ ...current, document, error: undefined }));
+                if (document.text !== edit.document.text && rowRef.current !== null)
+                  transcript.reveal(rowRef.current);
+                patchEdit({ kind: "document", document });
               }}
               onSubmit={save}
               placeholder="Edit message"
@@ -402,22 +337,11 @@ export function UserMessageView({
               hasConversationContext
               attachments={edit.attachments}
               keptFiles={edit.kept}
-              onKeptFileRemove={(file) =>
-                patchEdit((current) => ({
-                  ...current,
-                  kept: current.kept.filter((kept) => kept !== file),
-                }))
-              }
+              onKeptFileRemove={(file) => patchEdit({ kind: "removed-kept", file })}
               attachmentBusy={edit.attachmentReads !== 0}
               attachmentError={edit.attachmentError}
               onFilesSelected={addFiles}
-              onAttachmentRemove={(id) =>
-                patchEdit((current) => ({
-                  ...current,
-                  attachments: current.attachments.filter((attachment) => attachment.id !== id),
-                  attachmentError: undefined,
-                }))
-              }
+              onAttachmentRemove={(id) => patchEdit({ kind: "removed-attachment", id })}
               model={modelPicker}
               inputRef={(handle) => {
                 editorRef.current = handle;
@@ -855,8 +779,9 @@ export function TurnItemView({
         );
 
       return (
-        <StepGroupView
-          messages={row.messages}
+        <StepGroupFactsView
+          facts={step.facts}
+          groupKey={row.messages[0]?.id}
           cwd={cwd}
           added={row.added}
           removed={row.removed}

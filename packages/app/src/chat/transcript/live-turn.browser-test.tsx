@@ -1,6 +1,6 @@
 import { tabPanes, PRIMARY } from "../../../test/panes.ts";
 import "../../../test/window-bridge.ts";
-import { Activity } from "react";
+import { Activity, useState } from "react";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import type {
@@ -23,8 +23,10 @@ import {
 import { USAGE } from "../../../test/view-fixtures.ts";
 import { PaneControllerProvider } from "../../panes/pane-context.tsx";
 import { chatStore } from "../../data/chat-store.ts";
+import { useWatchSelect } from "../../data/watch-store.ts";
 import { LiveTurn } from "./live-turn.tsx";
 import { TranscriptProvider } from "./transcript.tsx";
+import { transcriptProjector } from "./transcript-rows.ts";
 
 function check(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);
@@ -161,6 +163,13 @@ installScripted(
 
 const panes = tabPanes();
 
+function LiveRow({ session }: { readonly session: SessionId }) {
+  const [projector] = useState(() => transcriptProjector({ thinking: true }));
+  const row = useWatchSelect(chatStore(session), (state) => projector.row(state, "row:live"));
+
+  return row?.kind === "live" ? <LiveTurn live={row} /> : null;
+}
+
 function mount(session: SessionId) {
   const box = document.createElement("div");
   box.style.cssText = "width:640px";
@@ -173,7 +182,7 @@ function mount(session: SessionId) {
         <PaneControllerProvider panes={panes}>
           <TranscriptProvider paneId={PRIMARY} sessionId={session}>
             <Activity mode={mode}>
-              <LiveTurn state="planning" thinking />
+              <LiveRow session={session} />
             </Activity>
           </TranscriptProvider>
         </PaneControllerProvider>,

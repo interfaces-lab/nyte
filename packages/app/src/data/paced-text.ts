@@ -23,11 +23,19 @@ export interface Pace {
   readonly drainFrames: number | undefined;
 }
 
-/** The text message being paced, the status it shows until its text has caught up, and how much of it shows. */
-export interface Reveal {
+/** A text message and the status it shows until its text has caught up. */
+export interface Revealed {
   readonly message: TextMessage;
   readonly status: TextMessage["status"];
+}
+
+/**
+ * The text message being paced, the status it shows until its text has caught up, and how much of
+ * it shows; `next` is a newer live text held empty until this one has shown at its pace.
+ */
+export interface Reveal extends Revealed {
   readonly pace: Pace;
+  readonly next: Revealed | undefined;
 }
 
 export function settledPace(text: string): Pace {
@@ -100,7 +108,12 @@ export function chunkLength(pending: string, budget: number): number {
   return grapheme.index > 0 ? grapheme.index : grapheme.segment.length;
 }
 
-/** What to pace after a view arrives: the same message while it is still the newest live text, else the newest live text, whole when the chat is opening and from nothing otherwise. A hidden transcript shows everything at once. */
+/**
+ * What to pace after a view arrives: the same message while it is still the newest live text, else
+ * the newest live text, whole when the chat is opening and from nothing otherwise. A newer live
+ * text waits, empty, while the one before it still has text to show, so that text keeps its pace
+ * instead of appearing at once. A hidden transcript shows everything at once.
+ */
 export function receiveReveal(
   current: Reveal | undefined,
   messages: readonly Message[],
@@ -112,51 +125,84 @@ export function receiveReveal(
 
   const same = messages.find((message) => message.id === current?.message.id);
 
-  if (
-    current === undefined ||
-    same === undefined ||
-    !showsText(same) ||
-    (live !== undefined && live.id !== same.id)
-  )
+  if (current === undefined || same === undefined || !showsText(same))
     return settledReveal(
-      live === undefined
-        ? undefined
-        : {
-            message: live,
-            status: live.status,
-            pace: moment.opening
-              ? settledPace(live.state.markdown)
-              : extendPace(settledPace(""), live.state.markdown, moment.now),
-          },
+      live === undefined ? undefined : beginReveal({ message: live, status: live.status }, moment),
     );
 
   const pace = extendPace(current.pace, same.state.markdown, moment.now);
+  const waiting = waitingText(current, same, live, messages);
+
+  if (waiting !== undefined) {
+    const draining = drainPace(pace, moment.now);
+
+    if (!moment.showing || draining.shown === draining.text.length)
+      return settledReveal(beginReveal(waiting, moment));
+
+    return { message: same, status: current.status, pace: draining, next: waiting };
+  }
 
   if (same.status.kind === "live")
     return settledReveal({
       message: same,
       status: same.status,
       pace: moment.showing ? pace : flushPace(pace, moment.now),
+      next: undefined,
     });
 
   return settledReveal({
     message: same,
     status: current.status,
     pace: moment.showing ? drainPace(pace, moment.now) : flushPace(pace, moment.now),
+    next: undefined,
   });
 }
 
-/** One frame of `current`: the next slice while the transcript is showing, else all of it. */
+/** The newer text that waits behind `same`: the newest live text, or the one already waiting. */
+function waitingText(
+  current: Reveal,
+  same: TextMessage,
+  live: TextMessage | undefined,
+  messages: readonly Message[],
+): Revealed | undefined {
+  if (live !== undefined && live.id !== same.id) return { message: live, status: live.status };
+  const queued = messages.find((message) => message.id === current.next?.message.id);
+
+  return current.next === undefined || queued === undefined || !showsText(queued)
+    ? undefined
+    : { message: queued, status: current.next.status };
+}
+
+/** A text starting to show: whole while the chat opens, else from nothing, draining at once when it has already ended. */
+function beginReveal(
+  text: Revealed,
+  moment: { readonly opening: boolean; readonly now: number },
+): Reveal {
+  const markdown = text.message.state.markdown;
+
+  if (moment.opening) return { ...text, pace: settledPace(markdown), next: undefined };
+  const pace = extendPace(settledPace(""), markdown, moment.now);
+
+  return {
+    ...text,
+    pace: text.message.status.kind === "live" ? pace : drainPace(pace, moment.now),
+    next: undefined,
+  };
+}
+
+/** One frame of `current`: the next slice while the transcript is showing, else all of it. Once it has all shown, the text waiting behind it starts. */
 export function tickReveal(
   current: Reveal,
   moment: { readonly showing: boolean; readonly now: number },
 ): Reveal | undefined {
-  return settledReveal({
-    ...current,
-    pace: moment.showing
-      ? framePace(current.pace, moment.now)
-      : flushPace(current.pace, moment.now),
-  });
+  const pace = moment.showing
+    ? framePace(current.pace, moment.now)
+    : flushPace(current.pace, moment.now);
+
+  if (current.next !== undefined && pace.shown === pace.text.length)
+    return settledReveal(beginReveal(current.next, { opening: !moment.showing, now: moment.now }));
+
+  return settledReveal({ ...current, pace });
 }
 
 /** A frame while text is still to show, and the barrier deadline while a drain is counting down. */
@@ -174,17 +220,29 @@ export function presentReveal<V extends { readonly messages: readonly Message[] 
 ): V {
   if (reveal === undefined) return view;
   const markdown = reveal.pace.text.slice(0, reveal.pace.shown);
+  const next = reveal.next;
 
-  if (markdown === reveal.message.state.markdown && reveal.status === reveal.message.status)
+  if (
+    next === undefined &&
+    markdown === reveal.message.state.markdown &&
+    reveal.status === reveal.message.status
+  )
     return view;
 
   return {
     ...view,
-    messages: view.messages.map((message) =>
-      message.id === reveal.message.id
-        ? { ...reveal.message, state: { ...reveal.message.state, markdown }, status: reveal.status }
-        : message,
-    ),
+    messages: view.messages.map((message) => {
+      if (message.id === reveal.message.id)
+        return {
+          ...reveal.message,
+          state: { ...reveal.message.state, markdown },
+          status: reveal.status,
+        };
+
+      return message.id === next?.message.id
+        ? { ...next.message, state: { ...next.message.state, markdown: "" }, status: next.status }
+        : message;
+    }),
   };
 }
 
@@ -229,7 +287,8 @@ export function createTextPacer<V extends { readonly messages: readonly Message[
     if (current === undefined || latest === undefined) return;
     settle(tickReveal(current, { showing: visible(), now }));
 
-    if (reveal?.pace.shown !== current.pace.shown) revise(presentReveal(latest, reveal));
+    if (reveal?.pace.shown !== current.pace.shown || reveal?.message !== current.message)
+      revise(presentReveal(latest, reveal));
   }
 
   function flush(): void {

@@ -12,6 +12,7 @@ import {
   receiveReveal,
   revealTimers,
   settledPace,
+  tickReveal,
 } from "./paced-text.ts";
 import type { Pace, Reveal } from "./paced-text.ts";
 
@@ -219,19 +220,51 @@ describe("receiveReveal", () => {
       expected: { shown: [["a", 360, "live"]], frame: false, deadline: false, same: true },
     },
     {
-      name: "a newer live text takes over from nothing and leaves the older one whole",
+      name: "a newer live text waits, empty, while the older one drains at its pace",
       steps: [
         { messages: [text("a", "lorem ", true)], showing: true },
         { messages: [text("a", LONG, true), text("b", LONG, true)], showing: true },
       ],
       expected: {
         shown: [
-          ["a", 360, "live"],
+          ["a", 6, "live"],
+          ["b", 0, "live"],
+        ],
+        frame: true,
+        deadline: true,
+        same: false,
+      },
+    },
+    {
+      name: "a newer live text after the older one has all shown takes over from nothing",
+      steps: [
+        { messages: [text("a", "lorem ", true)], showing: true },
+        { messages: [text("a", "lorem ", false), text("b", LONG, true)], showing: true },
+      ],
+      expected: {
+        shown: [
+          ["a", 6, "settled"],
           ["b", 0, "live"],
         ],
         frame: true,
         deadline: false,
         same: false,
+      },
+    },
+    {
+      name: "a newer live text while hidden shows both whole",
+      steps: [
+        { messages: [text("a", "lorem ", true)], showing: true },
+        { messages: [text("a", LONG, false), text("b", LONG, true)], showing: false },
+      ],
+      expected: {
+        shown: [
+          ["a", 360, "settled"],
+          ["b", 360, "live"],
+        ],
+        frame: false,
+        deadline: false,
+        same: true,
       },
     },
     {
@@ -273,4 +306,57 @@ describe("receiveReveal", () => {
       same: shown === view,
     }).toEqual(row.expected);
   });
+});
+
+test("a reply that starts while the one before it drains shows only once that one has shown, then paces from nothing", () => {
+  const before = text("a", LONG, false);
+  const after = text("b", LONG, true);
+
+  const opened = receiveReveal(undefined, [text("a", "lorem ", true)], {
+    showing: true,
+    opening: true,
+    now: 0,
+  });
+
+  let reveal = receiveReveal(opened, [before, after], { showing: true, opening: false, now: 0 });
+  const frames: string[] = [];
+
+  for (let frame = 1; reveal !== undefined && frame <= 30; frame += 1) {
+    reveal = tickReveal(reveal, { showing: true, now: frame * FRAME });
+    const shown = presentReveal({ messages: [before, after] }, reveal).messages.filter(showsText);
+    frames.push(shown.map((message) => message.state.markdown.length).join("/"));
+  }
+
+  expect(frames).toEqual([
+    "48/0",
+    "90/0",
+    "132/0",
+    "174/0",
+    "216/0",
+    "264/0",
+    "312/0",
+    "360/0",
+    "360/42",
+    "360/78",
+    "360/114",
+    "360/144",
+    "360/168",
+    "360/192",
+    "360/216",
+    "360/240",
+    "360/264",
+    "360/288",
+    "360/312",
+    "360/336",
+    "360/360",
+    "360/360",
+    "360/360",
+    "360/360",
+    "360/360",
+    "360/360",
+    "360/360",
+    "360/360",
+    "360/360",
+    "360/360",
+  ]);
 });

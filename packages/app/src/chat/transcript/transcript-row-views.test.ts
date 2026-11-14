@@ -275,6 +275,9 @@ const live = (state: "idle" | "planning" | "grouped"): TranscriptRow => ({
   ...LAYOUT,
   kind: "live",
   state,
+  planning: false,
+  newest: undefined,
+  thought: undefined,
 });
 
 test.each<[string, TranscriptRow, boolean, TranscriptRow | "same"]>([

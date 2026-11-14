@@ -28,14 +28,27 @@ import { usePaneViewStateStore } from "../../panes/pane-context.tsx";
 import type { PaneId } from "../../panes/layout.ts";
 import type { ScrollViewState } from "../../panes/session-view-state.ts";
 import { messageScrollerStyles } from "./transcript.stylex.ts";
-import { initialMode, nextMode, NO_INPUT, steeringUp, touching } from "./transcript-mode.ts";
-import type { ReaderInput, TranscriptMode } from "./transcript-mode.ts";
+import {
+  adjustsOnResize,
+  IDLE_HISTORY,
+  initialScroll,
+  nextHistory,
+  nextMode,
+  NO_INPUT,
+  sampleScroll,
+  settleScroll,
+  touchScroll,
+  wroteScroll,
+} from "./transcript-mode.ts";
+import type { HistoryEvent, HistoryPager, TranscriptScroll } from "./transcript-mode.ts";
+import { stickySpans } from "./transcript-rows.ts";
 import type { RowLayout } from "./transcript-rows.ts";
 import {
   distanceFromEnd,
   frameHasInput,
   navigates,
   navigatesUp,
+  revealDistance,
   scrollsWithin,
   syncScrollButton,
   syncSticky,
@@ -57,35 +70,6 @@ const END_GAP_SHARE = 0.17;
 const MEASURED_TRANSCRIPTS = 16;
 
 const measured = new Map<string, VirtualItem[]>();
-
-function readStickyRows(rows: readonly RowLayout[]) {
-  const above: number[] = [];
-  const ends = new Map<number, number>();
-  let sticky = -1;
-
-  for (const [index, row] of rows.entries()) {
-    if (row.group === null || row.group !== rows[index - 1]?.group) sticky = -1;
-
-    if (row.sticky && row.group !== null) sticky = index;
-    above.push(sticky);
-  }
-
-  let end = rows.length - 1;
-
-  for (let index = rows.length - 1; index >= 0; index -= 1) {
-    const row = rows[index];
-
-    if (row === undefined) continue;
-
-    if (row.group === null || row.group !== rows[index + 1]?.group) end = index;
-
-    if (!row.sticky || row.group === null) continue;
-    ends.set(index, end);
-    end = index - 1;
-  }
-
-  return { above, ends };
-}
 
 function stickyRange(range: Range, above: readonly number[]): number[] {
   const indexes = defaultRangeExtractor(range);
@@ -116,6 +100,8 @@ interface TranscriptControls {
   readonly hold: (element: Element) => void;
   readonly keep: (element: Element) => () => void;
   readonly page: (direction: 1 | -1) => void;
+  readonly reveal: (element: Element) => void;
+  readonly history: () => void;
 }
 
 interface TranscriptOptions {
@@ -133,6 +119,8 @@ interface TranscriptState extends TranscriptOptions {
   readonly setDock: (dock: HTMLDivElement | null) => void;
   readonly controlsRef: RefObject<TranscriptControls | null>;
   readonly controls: TranscriptControls;
+  readonly historyFailed: boolean;
+  readonly setHistoryFailed: (failed: boolean) => void;
 }
 
 const ignore = (): void => {};
@@ -142,6 +130,8 @@ const NO_CONTROLS: TranscriptControls = {
   hold: () => undefined,
   keep: () => ignore,
   page: () => undefined,
+  reveal: () => undefined,
+  history: () => undefined,
 };
 
 const TranscriptContext = createContext<TranscriptState | null>(null);
@@ -163,7 +153,7 @@ export function useTranscriptControls(): TranscriptControls {
 }
 
 export function useTranscriptScope():
-  | Pick<TranscriptState, "paneId" | "sessionId" | "viewStore" | "loadEarlier">
+  | Pick<TranscriptState, "paneId" | "sessionId" | "viewStore" | "loadEarlier" | "historyFailed">
   | undefined {
   return useContext(TranscriptContext) ?? undefined;
 }
@@ -190,7 +180,11 @@ export function TranscriptProvider({
     hold: (element) => controlsRef.current?.hold(element),
     keep: (element) => controlsRef.current?.keep(element) ?? ignore,
     page: (direction) => controlsRef.current?.page(direction),
+    reveal: (element) => controlsRef.current?.reveal(element),
+    history: () => controlsRef.current?.history(),
   }));
+
+  const [historyFailed, setHistoryFailed] = useState(false);
 
   const transcript = {
     paneId,
@@ -204,6 +198,8 @@ export function TranscriptProvider({
     setDock,
     controlsRef,
     controls,
+    historyFailed,
+    setHistoryFailed,
   };
 
   return <TranscriptContext value={transcript}>{children}</TranscriptContext>;
@@ -229,22 +225,20 @@ export function TranscriptContent({
     initialPosition,
     dock,
     controlsRef,
+    setHistoryFailed,
   } = useTranscript();
 
   const [viewport, setViewport] = useState<HTMLDivElement | null>(null);
   const [dockHeight, setDockHeight] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(VIEWPORT_GUESS);
 
-  const mode = useRef<TranscriptMode>(initialMode(initialPosition));
-  const input = useRef<ReaderInput>(NO_INPUT);
-  const scrolled = useRef({ offset: 0, height: 0 });
-  const written = useRef<number | null>(null);
+  const position = useRef<TranscriptScroll>(initialScroll(initialPosition));
   const content = useRef<HTMLDivElement>(null);
   const scrollport = useRef<HTMLDivElement | null>(null);
 
   const measuredKey = `${sessionId}\u0000${paneId}`;
   const [initialMeasurements] = useState(() => measured.get(measuredKey) ?? []);
-  const sticky = useMemo(() => readStickyRows(rows), [rows]);
+  const sticky = useMemo(() => stickySpans(rows), [rows]);
 
   const indexes = useMemo(() => new Map(rows.map((row, index) => [row.key, index])), [rows]);
 
@@ -282,73 +276,84 @@ export function TranscriptContent({
     const scroll = instance.scrollElement;
 
     if (scroll === null) return;
-
-    if (!touching(input.current, performance.now()))
-      mode.current = nextMode(mode.current, { kind: "quiet", distance: distanceFromEnd(scroll) });
-    const current = mode.current;
-
-    if (current.kind === "following") {
-      if (distanceFromEnd(scroll) <= 1) {
-        if (current.opening && ready) mode.current = nextMode(current, { kind: "opened" });
-      } else if (!steeringUp(input.current, performance.now())) instance.scrollToEnd();
-
-      return;
-    }
-
-    const { anchor } = current;
+    const mode = position.current.mode;
+    const anchor = mode.kind === "reading" ? mode.anchor : null;
     const row = anchor === null ? undefined : instance.elementsCache.get(anchor.key);
+    const connected = anchor?.element === undefined || anchor.element.isConnected;
 
-    if (anchor === null || row === undefined) return;
+    const settled = settleScroll(position.current, {
+      now: performance.now(),
+      distance: distanceFromEnd(scroll),
+      ready,
+      anchor:
+        anchor === null
+          ? null
+          : {
+              connected,
+              rowTop: row === undefined ? undefined : topIn(scroll, row),
+              elementTop:
+                anchor.element === undefined || !connected
+                  ? undefined
+                  : topIn(scroll, anchor.element),
+            },
+    });
 
-    if (anchor.element !== undefined && !anchor.element.isConnected) {
-      mode.current = nextMode(current, {
-        kind: "held",
-        anchor: { key: anchor.key, element: undefined, top: topIn(scroll, row) },
-      });
+    position.current = settled.state;
 
-      return;
-    }
+    if (settled.action.kind === "end") instance.scrollToEnd();
 
-    const drift = topIn(scroll, anchor.element ?? row) - anchor.top;
-
-    if (Math.abs(drift) > 0.5) instance.scrollToOffset(scroll.scrollTop + drift);
+    if (settled.action.kind === "offset")
+      instance.scrollToOffset(scroll.scrollTop + settled.action.by);
   };
 
-  const historyLoading = useRef(false);
+  const history = useRef<HistoryPager>(IDLE_HISTORY);
+
+  const pageHistory = (instance: TranscriptVirtualizer, event: HistoryEvent): void => {
+    if (loadEarlier === undefined) return;
+    const step = nextHistory(history.current, event);
+
+    if (step.pager.failed !== history.current.failed) setHistoryFailed(step.pager.failed);
+    history.current = step.pager;
+
+    if (step.action === "next-frame") requestAnimationFrame(() => loadHistory(instance));
+
+    if (step.action === "load")
+      void loadEarlier().then(
+        (count) => pageHistory(instance, { kind: "loaded", count }),
+        () => pageHistory(instance, { kind: "failed" }),
+      );
+  };
 
   const loadHistory = (instance: TranscriptVirtualizer): void => {
     const scroll = instance.scrollElement;
+    const mode = position.current.mode;
 
-    if (
-      loadEarlier === undefined ||
-      historyLoading.current ||
-      (mode.current.kind === "following" && mode.current.opening) ||
-      scroll === null ||
-      scroll.scrollTop >= scroll.clientHeight * HISTORY_LEAD_SCREENS
-    )
-      return;
-    historyLoading.current = true;
-    void loadEarlier().then(
-      (loaded) => {
-        historyLoading.current = false;
-
-        if (loaded > 0) requestAnimationFrame(() => loadHistory(instance));
-      },
-      () => {
-        historyLoading.current = false;
-      },
-    );
+    if (scroll === null) return;
+    pageHistory(instance, {
+      kind: "present",
+      nearTop: scroll.scrollTop < scroll.clientHeight * HISTORY_LEAD_SCREENS,
+      opening: mode.kind === "following" && mode.opening,
+    });
   };
 
-  const present = (instance: TranscriptVirtualizer): void => {
+  const present = (
+    instance: TranscriptVirtualizer,
+    options: { readonly history: boolean },
+  ): void => {
     const scroll = instance.scrollElement;
+    stretchSpans(instance, sticky.ends);
 
     if (scroll === null || content.current === null) return;
-    stretchSpans(instance, sticky.ends);
+    const opening = position.current.mode.kind === "following" && position.current.mode.opening;
     settle(instance);
     syncSticky(scroll, content.current);
     queueMicrotask(() => syncScrollButton(scroll, dock));
-    loadHistory(instance);
+
+    if (
+      options.history ||
+      (opening && position.current.mode.kind === "following" && !position.current.mode.opening)
+    )
+      loadHistory(instance);
   };
 
   // oxlint-disable-next-line react/incompatible-library -- the bailout is the intended behaviour
@@ -360,26 +365,16 @@ export function TranscriptContent({
         const scroll = instance.scrollElement;
 
         if (scroll !== null) {
-          const previous = scrolled.current;
-          const height = scroll.scrollHeight;
-          const own = written.current !== null && Math.abs(offset - written.current) < 1.5;
-          scrolled.current = { offset, height };
-          written.current = null;
-          const upward = offset < previous.offset && height >= previous.height;
-
-          if (
-            !own &&
-            offset !== previous.offset &&
-            height >= previous.height &&
-            frameHasInput(scroll)
-          )
-            touch(upward);
-          mode.current = nextMode(mode.current, {
-            kind: "scrolled",
-            distance: height - scroll.clientHeight - offset,
-            upward,
-            reader: steeringUp(input.current, performance.now()),
+          const sampled = sampleScroll(position.current, {
+            offset,
+            height: scroll.scrollHeight,
+            clientHeight: scroll.clientHeight,
+            frameInput: frameHasInput(scroll),
+            now: performance.now(),
           });
+
+          if (sampled.cancel) instance.cancelScroll();
+          position.current = sampled.state;
         }
 
         flushSync(() => onOffset(offset, scrolling));
@@ -388,8 +383,9 @@ export function TranscriptContent({
       const scroll = instance.scrollElement;
 
       if (scroll !== null)
-        written.current = Math.min(
-          Math.max(offset + (options.adjustments ?? 0), 0),
+        position.current = wroteScroll(
+          position.current,
+          offset + (options.adjustments ?? 0),
           scroll.scrollHeight - scroll.clientHeight,
         );
       elementScroll(offset, options, instance);
@@ -413,7 +409,7 @@ export function TranscriptContent({
     directDomUpdates: true,
     directDomUpdatesMode: "position",
     useFlushSync: false,
-    onChange: (instance) => present(instance),
+    onChange: (instance) => present(instance, { history: true }),
   });
 
   const measureRow = useCallback(
@@ -442,31 +438,13 @@ export function TranscriptContent({
   );
 
   const virtualRows = virtualizer.getVirtualItems();
-  const settleRows = useEffectEvent((): void => settle(virtualizer));
+  const presentRows = useEffectEvent((): void => present(virtualizer, { history: false }));
+  const askHistory = useEffectEvent((): void => pageHistory(virtualizer, { kind: "asked" }));
 
   // oxlint-disable-next-line nyte-code/no-direct-effect -- measures virtual rows and syncs sticky headers before paint
   useLayoutEffect(() => {
-    const scroll = virtualizer.scrollElement;
-    stretchSpans(virtualizer, sticky.ends);
-
-    if (scroll !== null && content.current !== null) {
-      settleRows();
-      syncSticky(scroll, content.current);
-      queueMicrotask(() => syncScrollButton(scroll, dock));
-    }
+    presentRows();
   }, [dock, dockHeight, ready, sticky, viewportHeight, virtualRows, virtualizer]);
-
-  // oxlint-disable-next-line nyte-code/no-direct-effect -- installs the virtualizer's scroll adjustment before it measures
-  useLayoutEffect(() => {
-    virtualizer.shouldAdjustScrollPositionOnItemSizeChange = (item, _delta, instance) => {
-      const current = mode.current;
-
-      if (current.kind === "reading" && current.anchor !== null) return false;
-      const fold = instance.scrollOffset ?? 0;
-
-      return instance.itemSizeCache.has(item.key) ? item.end <= fold : item.start < fold;
-    };
-  }, [virtualizer]);
 
   const attachViewport = useCallback(
     (element: HTMLDivElement | null) => {
@@ -484,10 +462,13 @@ export function TranscriptContent({
 
       if (key === undefined || scroll === null) return;
       virtualizer.cancelScroll();
-      mode.current = nextMode(mode.current, {
-        kind: "held",
-        anchor: { key, element, top: topIn(scroll, element) },
-      });
+      position.current = {
+        ...position.current,
+        mode: nextMode(position.current.mode, {
+          kind: "held",
+          anchor: { key, element, top: topIn(scroll, element) },
+        }),
+      };
     },
     [virtualizer],
   );
@@ -510,18 +491,18 @@ export function TranscriptContent({
   const touch = useCallback(
     (upward: boolean): void => {
       virtualizer.cancelScroll();
-      input.current = { at: performance.now(), upward, pressed: input.current.pressed };
-      mode.current = nextMode(mode.current, { kind: "touched" });
+      position.current = touchScroll(position.current, upward, performance.now());
     },
     [virtualizer],
   );
 
   const press = useCallback((pressed: boolean): void => {
-    input.current = { ...input.current, pressed };
+    position.current = { ...position.current, input: { ...position.current.input, pressed } };
   }, []);
 
   const restoreAnchor = useEffectEvent((): void => {
-    const anchor = mode.current.kind === "reading" ? mode.current.anchor : null;
+    const mode = position.current.mode;
+    const anchor = mode.kind === "reading" ? mode.anchor : null;
 
     if (anchor === null || anchor.element !== undefined) return;
     const index = indexes.get(anchor.key);
@@ -538,7 +519,7 @@ export function TranscriptContent({
   useLayoutEffect(
     () => () => {
       const scroll = scrollport.current;
-      const current = mode.current;
+      const current = position.current.mode;
       const anchor = current.kind === "reading" ? current.anchor : null;
       const rows = [...virtualizer.elementsCache.entries()];
 
@@ -557,14 +538,14 @@ export function TranscriptContent({
 
       const row = anchor === null ? top : (rows.find(([key]) => key === anchor.key) ?? top);
 
-      const position: ScrollViewState =
+      const saved: ScrollViewState =
         scroll !== null && row !== undefined && current.kind === "reading"
           ? { kind: "anchor", key: String(row[0]), offset: topIn(scroll, row[1]) }
           : { kind: "end" };
 
       viewStore.updateSession(sessionId, (state) => ({
         ...state,
-        scroll: { ...state.scroll, [paneId]: position },
+        scroll: { ...state.scroll, [paneId]: saved },
       }));
       measured.delete(measuredKey);
       measured.set(measuredKey, virtualizer.takeSnapshot());
@@ -577,15 +558,25 @@ export function TranscriptContent({
     [measuredKey, paneId, sessionId, viewStore, virtualizer],
   );
 
-  // oxlint-disable-next-line nyte-code/no-direct-effect -- publishes scroll controls for the current viewport and virtualizer
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- installs the virtualizer's scroll adjustment before it measures, and publishes scroll controls for the current viewport
   useLayoutEffect(() => {
+    virtualizer.shouldAdjustScrollPositionOnItemSizeChange = (item, _delta, instance) =>
+      adjustsOnResize(
+        position.current.mode,
+        { start: item.start, end: item.end, measured: instance.itemSizeCache.has(item.key) },
+        instance.scrollOffset ?? 0,
+      );
+
     if (viewport === null) return undefined;
 
     controlsRef.current = {
       end: () => {
         virtualizer.cancelScroll();
-        input.current = { ...NO_INPUT, pressed: input.current.pressed };
-        mode.current = nextMode(mode.current, { kind: "ended" });
+        position.current = {
+          ...position.current,
+          input: { ...NO_INPUT, pressed: position.current.input.pressed },
+          mode: nextMode(position.current.mode, { kind: "ended" }),
+        };
         virtualizer.scrollToEnd();
       },
       hold,
@@ -593,6 +584,23 @@ export function TranscriptContent({
       page: (direction) => {
         touch(direction < 0);
         virtualizer.scrollBy(direction * viewport.clientHeight * 0.9);
+      },
+      history: () => askHistory(),
+      reveal: (element) => {
+        const by = revealDistance(viewport, element);
+
+        if (by === 0) return;
+        const mode = position.current.mode;
+        virtualizer.scrollToOffset(viewport.scrollTop + by);
+
+        if (mode.kind === "reading" && mode.anchor !== null)
+          position.current = {
+            ...position.current,
+            mode: nextMode(mode, {
+              kind: "held",
+              anchor: { ...mode.anchor, top: mode.anchor.top - by },
+            }),
+          };
       },
     };
 
@@ -604,7 +612,7 @@ export function TranscriptContent({
   const selectRow = (): void => {
     const selection = document.getSelection();
     const node = selection?.anchorNode;
-    const current = mode.current;
+    const current = position.current.mode;
     const anchor = current.kind === "reading" ? current.anchor : null;
 
     const row = (node instanceof Element ? node : node?.parentElement)?.closest("[data-row-key]");
@@ -635,10 +643,10 @@ export function TranscriptContent({
           <ViewportInput
             viewport={viewport}
             content={content}
-            onPresent={() => present(virtualizer)}
+            onPresent={() => present(virtualizer, { history: true })}
             onResize={(height) => {
               flushSync(() => setViewportHeight(height));
-              present(virtualizer);
+              present(virtualizer, { history: true });
             }}
             onHold={hold}
             onInput={touch}
@@ -651,7 +659,7 @@ export function TranscriptContent({
             dock={dock}
             onResize={(height) => {
               setDockHeight(height);
-              present(virtualizer);
+              present(virtualizer, { history: true });
             }}
             onWheel={(delta) => {
               touch(delta < 0);

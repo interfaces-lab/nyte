@@ -19,6 +19,7 @@ import type { StepGroupPinEvent } from "./step-group-pin.ts";
 import { useStepGroupOpen } from "./step-group-open.ts";
 import { stepGroupContent } from "./step-group-content.ts";
 import { stepGroupFacts } from "./step-group-presentation.ts";
+import type { StepGroupFacts } from "./step-group-presentation.ts";
 import type { StepEntry } from "./step-entries.ts";
 import { ChangeStats } from "../../components/change-stats.tsx";
 
@@ -65,7 +66,14 @@ export function StepEntryView({
         );
       }
 
-      return <ThinkingLine text={entry.markdown} streaming={streaming} live={live} />;
+      return (
+        <ThinkingLine
+          text={entry.markdown}
+          streaming={streaming}
+          live={live}
+          thoughtKey={entry.key}
+        />
+      );
     }
 
     default: {
@@ -91,14 +99,44 @@ export function StepGroupView({
   running: boolean;
   density: ToolCallDensity;
 }): ReactElement {
-  const facts = stepGroupFacts(messages, running);
+  return (
+    <StepGroupFactsView
+      facts={stepGroupFacts(messages, running)}
+      groupKey={messages[0]?.id}
+      cwd={cwd}
+      added={added}
+      removed={removed}
+      running={running}
+      density={density}
+    />
+  );
+}
+
+/** A step group drawn from facts its row already worked out; `groupKey` keeps its open state. */
+export function StepGroupFactsView({
+  facts,
+  groupKey,
+  cwd,
+  added,
+  removed,
+  running,
+  density,
+}: {
+  facts: StepGroupFacts;
+  groupKey: string | undefined;
+  cwd: string | undefined;
+  added: number;
+  removed: number;
+  running: boolean;
+  density: ToolCallDensity;
+}): ReactElement {
   const line = facts.line;
   const thinkingOnly = facts.thinkingOnly;
   const entries = facts.entries;
   const titled = facts.titled;
   const hasContent = facts.hasContent;
 
-  const [open, setOpen] = useStepGroupOpen(messages[0]?.id);
+  const [open, setOpen] = useStepGroupOpen(groupKey);
 
   const [showEarlier, setShowEarlier] = useState(false);
   const earlier = showEarlier ? 0 : Math.max(0, entries.length - STEP_LIMIT);

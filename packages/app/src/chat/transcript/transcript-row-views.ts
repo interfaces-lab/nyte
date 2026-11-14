@@ -1,7 +1,8 @@
 import type { CommitId, MessageSource, UserContent } from "@nyte-ai/sdk";
 import { showsAnswer, showsReport } from "@nyte-ai/plugin/client/presentation";
 import type { AnswerMessage, UserMessage } from "@nyte-ai/plugin/client/presentation";
-import { stepEntries } from "./step-entries.ts";
+import { stepGroupFacts } from "./step-group-presentation.ts";
+import type { StepGroupFacts } from "./step-group-presentation.ts";
 import type { StepEntry } from "./step-entries.ts";
 import { workedFor } from "./transcript-presentation.ts";
 import type { PromptRow, TranscriptRow, TurnItemRow } from "./transcript-rows.ts";
@@ -14,7 +15,7 @@ type PartRow = Extract<TurnItemRow, { readonly kind: "part" }>;
 
 export type StepRowView =
   | { readonly kind: "entry"; readonly entry: StepEntry }
-  | { readonly kind: "group" };
+  | { readonly kind: "group"; readonly facts: StepGroupFacts };
 
 export interface ResponseRowView {
   readonly markdown: string;
@@ -49,15 +50,19 @@ export type UserRowView =
       readonly editable: boolean;
     };
 
-/** A step that stopped running with one entry other than a thought draws that entry alone. */
+/**
+ * A step that stopped running with one entry other than a thought draws that entry alone. A row
+ * with a step besides thoughts merges its thoughts, so the entries that decide this are the ones
+ * the group would draw.
+ */
 export function stepRowView(row: StepRow): StepRowView {
-  const entries = stepEntries(row.messages, true);
-  const only = entries[0];
+  const facts = stepGroupFacts(row.messages, row.running);
+  const only = facts.entries[0];
 
-  if (!row.running && entries.length === 1 && only !== undefined && only.kind !== "thinking")
+  if (!row.running && facts.entries.length === 1 && only !== undefined && only.kind !== "thinking")
     return { kind: "entry", entry: only };
 
-  return { kind: "group" };
+  return { kind: "group", facts };
 }
 
 export function responseRowView(row: ResponseRow): ResponseRowView | null {

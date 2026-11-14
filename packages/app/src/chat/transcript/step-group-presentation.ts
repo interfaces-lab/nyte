@@ -7,7 +7,7 @@ import {
 import type { ToolMessage } from "@nyte-ai/plugin/client/presentation";
 import { basename } from "../tools/tool-facts.ts";
 import { reasoningHeading } from "./reasoning-heading.ts";
-import { stepEntries, topLevelSteps } from "./step-entries.ts";
+import { stepCalls, stepEntries } from "./step-entries.ts";
 import type { StepEntry } from "./step-entries.ts";
 import type { StepMessage } from "./transcript-presentation.ts";
 
@@ -52,12 +52,13 @@ export function stepGroupFacts(messages: readonly StepMessage[], running: boolea
     first === undefined || running ? 0 : Math.max(0, (lastAt ?? first.at) - first.at);
 
   const thinkingOnly = messages.every(showsThinking);
-  const entries = stepEntries(messages, !thinkingOnly);
+  const steps = stepCalls(messages);
+  const entries = stepEntries(steps, !thinkingOnly);
   const titled = !running && thinkingOnly && messages.length === 1 && first !== undefined;
 
   return {
     entries,
-    line: stepGroupLine({ messages: topLevelSteps(messages), durationMs, running }),
+    line: stepGroupLine({ messages: steps.steps, durationMs, running }),
     thinkingOnly,
     titled,
     hasContent:

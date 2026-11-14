@@ -7,18 +7,21 @@ import { activityStyles } from "./activity.stylex.ts";
 import { stepGroupStyles } from "./step-group.stylex.ts";
 import { Prose } from "../markdown/prose.tsx";
 import { reasoningHeading } from "./reasoning-heading.ts";
+import { useShownLive } from "./step-group-open.ts";
 
 export function ThinkingLine({
   text: reasoning,
   streaming,
   live = false,
+  thoughtKey,
 }: {
   text: string;
   streaming: boolean;
   live?: boolean;
+  thoughtKey?: string;
 }): ReactElement | null {
   const [open, setOpen] = useState<boolean | undefined>();
-  const [unfolded] = useState(live);
+  const unfolded = useShownLive(thoughtKey, live);
 
   if (reasoning.trim() === "" && !streaming) return null;
 

@@ -9,6 +9,7 @@ import { asId } from "@nyte-ai/schema";
 import { queryClient } from "../../data/query-client.ts";
 import { installScripted, scriptedConnection } from "../../../test/scripted-connection.ts";
 import { SubagentCitation } from "../tools/subagent-call.tsx";
+import { ToolCallView } from "../tools/tool-call.tsx";
 import { transcriptRows, type TurnItemRow } from "./transcript-rows.ts";
 import { TurnItemView } from "./turn-view.tsx";
 import "../../theme/tokens.stylex.ts";
@@ -90,6 +91,7 @@ const rows = transcriptRows({
   running: false,
   held: false,
   retrying: undefined,
+  live: { planning: false, newest: undefined, thought: undefined },
 }).filter((row) => row.kind === "response");
 
 function streamedReply(ended: boolean): TurnItemRow | undefined {
@@ -110,6 +112,7 @@ function streamedReply(ended: boolean): TurnItemRow | undefined {
     running: !ended,
     held: false,
     retrying: undefined,
+    live: { planning: false, newest: undefined, thought: undefined },
   }).find((row) => row.kind === "response");
 }
 
@@ -140,6 +143,11 @@ function Stage(): ReactElement {
             <TurnItemView row={row} density="compact" cwd={undefined} />
           </div>
         ))}
+        <ToolCallView
+          message={settledTool("sh", { kind: "shell", command: "pnpm test" })}
+          cwd={undefined}
+          density="detailed"
+        />
         <p>
           <SubagentCitation session={working.id} label="core" />{" "}
           <SubagentCitation session={finished.id} label="app" />
@@ -231,9 +239,18 @@ export async function run(): Promise<string> {
   check(code.hasAttribute("data-copied"), "copying code confirms it");
   check((await navigator.clipboard.readText()) === CODE, "the code block copies its code");
 
+  const command = find(stage, "[aria-label='Copy command']", HTMLButtonElement);
+  const confirmed = () => command.innerHTML.includes("IconCheckmark");
+  command.click();
+  await wait(100);
+  check(confirmed(), "copying a command confirms it");
+  check((await navigator.clipboard.readText()) === "pnpm test", "the command copies itself");
+
   await wait(2_000);
   check(!copy.hasAttribute("data-copied"), "the reply's confirmation resets after 2 s");
   check(!code.hasAttribute("data-copied"), "the code block's confirmation resets after 2 s");
+  await wait(500);
+  check(!confirmed(), "the command's confirmation resets after 2 s");
 
   const [busy, idle] = stage.querySelectorAll("a[data-citation='agent']");
   check(

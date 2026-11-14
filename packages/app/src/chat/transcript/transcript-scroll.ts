@@ -20,6 +20,18 @@ export function topIn(viewport: HTMLElement, element: Element): number {
   return element.getBoundingClientRect().top - viewport.getBoundingClientRect().top;
 }
 
+/** How far the view moves to bring `element` into it when it lies wholly outside, as `scrollIntoView({ block: "nearest" })` would; 0 when any of it shows. */
+export function revealDistance(viewport: HTMLElement, element: Element): number {
+  const box = element.getBoundingClientRect();
+  const view = viewport.getBoundingClientRect();
+
+  if (box.bottom <= view.top) return box.top - view.top;
+
+  if (box.top < view.bottom) return 0;
+
+  return box.height > view.height ? box.top - view.top : box.bottom - view.bottom;
+}
+
 export function syncSticky(viewport: HTMLElement, content: HTMLElement): void {
   const edge = viewport.getBoundingClientRect().top;
   const height = viewport.clientHeight;

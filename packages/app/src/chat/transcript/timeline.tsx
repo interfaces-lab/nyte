@@ -14,7 +14,7 @@ import { Loader } from "@nyte-ai/ui/loader";
 import { MarkerContent, MarkerIcon } from "@nyte-ai/ui/marker";
 import { TranscriptSkeleton } from "./transcript-skeleton.tsx";
 import { LiveTurn } from "./live-turn.tsx";
-import { TranscriptContent, useTranscriptScope } from "./transcript.tsx";
+import { TranscriptContent, useTranscriptControls, useTranscriptScope } from "./transcript.tsx";
 import { StatusMarker } from "./row-surfaces.tsx";
 import { ChangesFooter, TurnItemView } from "./turn-view.tsx";
 import type { BranchModelChoice, BranchModelPicker } from "./turn-view.tsx";
@@ -45,35 +45,14 @@ interface RowContext {
 }
 
 function EarlierSteps(): ReactElement {
-  const loadEarlier = useTranscriptScope()?.loadEarlier;
-  const [stuck, setStuck] = useState(loadEarlier === undefined);
-
-  const watch = (marker: HTMLSpanElement): (() => void) => {
-    let empty = 0;
-
-    const observer = new IntersectionObserver((entries) => {
-      if (!entries.some((entry) => entry.isIntersecting)) return;
-      observer.unobserve(marker);
-      void (loadEarlier?.() ?? Promise.resolve(0)).then(
-        (loaded) => {
-          empty = loaded === 0 ? empty + 1 : 0;
-
-          if (loaded > 0 || (loaded === 0 && empty < 2)) observer.observe(marker);
-          else setStuck(true);
-        },
-        () => setStuck(true),
-      );
-    });
-
-    observer.observe(marker);
-
-    return () => observer.disconnect();
-  };
+  const scope = useTranscriptScope();
+  const controls = useTranscriptControls();
+  const loadable = scope?.loadEarlier !== undefined;
 
   return (
     <StatusMarker role="status">
-      {stuck ? (
-        <Button variant="text" disabled={loadEarlier === undefined} onClick={() => setStuck(false)}>
+      {!loadable || scope.historyFailed ? (
+        <Button variant="text" disabled={!loadable} onClick={() => controls.history()}>
           Show Earlier Steps
         </Button>
       ) : (
@@ -81,7 +60,7 @@ function EarlierSteps(): ReactElement {
           <MarkerIcon>
             <Loader />
           </MarkerIcon>
-          <MarkerContent ref={watch}>Loading Earlier Steps</MarkerContent>
+          <MarkerContent>Loading Earlier Steps</MarkerContent>
         </>
       )}
     </StatusMarker>
@@ -152,7 +131,7 @@ const TranscriptRowView = memo(function TranscriptRowView({
         </StatusMarker>
       );
     case "live":
-      return <LiveTurn state={row.state} thinking={projector.thinking} />;
+      return <LiveTurn live={row} />;
     default: {
       const _exhaustive: never = row;
 

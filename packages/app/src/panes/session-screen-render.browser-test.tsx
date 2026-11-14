@@ -540,21 +540,22 @@ async function checkRules(): Promise<string> {
 
     step = "16, 18";
 
+    const findPrompt = (n: number): HTMLElement | null =>
+      stage.log.querySelector(`[data-row-key='prompt:prompt-${String(n)}'] [data-turn-span] > div`);
+
     const reading = (): HTMLElement | undefined =>
-      listRows().find(
-        (row) =>
-          answerIndex(row) !== undefined &&
-          answerIndex(row) !== TALL_PROMPT &&
-          measureTop(row) < -20 &&
-          measureTop(row) + row.getBoundingClientRect().height > 40,
-      );
+      listRows().find((row) => {
+        const index = answerIndex(row) ?? TALL_PROMPT;
+        const prompt = findPrompt(index)?.getBoundingClientRect().height ?? Infinity;
+        const top = measureTop(row);
+
+        return index !== TALL_PROMPT && top < -20 && top + row.offsetHeight > prompt + 40;
+      });
 
     await wheelUntil(() => reading() !== undefined, -50);
     const readIndex = first(answerIndex(first(reading(), "an answer being read")), "its turn");
 
-    const stuck = stage.log.querySelector<HTMLElement>(
-      `[data-row-key='prompt:prompt-${String(readIndex)}'] [data-sticky-user-message]`,
-    );
+    const stuck = findPrompt(readIndex);
 
     expectRule(
       "16",

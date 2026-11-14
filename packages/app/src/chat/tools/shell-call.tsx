@@ -27,6 +27,7 @@ import { ToolOutcome, toolLineStyles } from "./tool-line.tsx";
 import { useTranscriptScope } from "../transcript/transcript.tsx";
 import { useWholeToolState } from "./whole-tool-state.ts";
 import { toolFacts } from "./tool-facts.ts";
+import { useCopyConfirmation } from "../../components/copy-confirmation.ts";
 
 type ShellToolClass = Extract<ToolClass, { readonly kind: "shell" }>;
 
@@ -289,7 +290,8 @@ function CommandCode({
 }
 
 function CopyCommand({ command }: { readonly command: string }): ReactElement {
-  const [copied, setCopied] = useState(false);
+  const confirmation = useCopyConfirmation();
+  const copied = confirmation.copied;
 
   return (
     <Tooltip>
@@ -301,12 +303,7 @@ function CopyCommand({ command }: { readonly command: string }): ReactElement {
             iconOnly
             icon={copied ? "checkmark" : "copy"}
             aria-label="Copy command"
-            onClick={() => {
-              navigator.clipboard
-                .writeText(command)
-                .then(() => setCopied(true))
-                .catch(() => undefined);
-            }}
+            onClick={() => confirmation.copy(command)}
           />
         }
       />

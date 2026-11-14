@@ -1,4 +1,4 @@
-import type { Message, SessionView } from "@nyte-ai/sdk";
+import type { Message, MessageId, SessionView } from "@nyte-ai/sdk";
 import {
   showsAnswer,
   showsReport,
@@ -12,6 +12,7 @@ import type {
   UserMessage,
 } from "@nyte-ai/plugin/client/presentation";
 import type { ToolCallDensity } from "../../preferences/index.ts";
+import type { SessionActivity } from "../../data/session-activity.ts";
 import type { WatchStore } from "../../data/watch-store.ts";
 import type { HeadView } from "@nyte-ai/sdk/client";
 import { CHANGES_VISIBLE_FILES } from "../../diff/change-tree.ts";
@@ -24,6 +25,7 @@ import type {
   TranscriptSlot,
 } from "./transcript-presentation.ts";
 import type { Reply } from "./transcript-unread.ts";
+import { reasoningHeading } from "./reasoning-heading.ts";
 
 export interface RowLayout {
   readonly key: string;
@@ -33,6 +35,46 @@ export interface RowLayout {
 }
 
 const OUTSIDE = { group: null, leads: true, sticky: false } as const;
+
+export interface StickySpans {
+  /** For each row, the sticky prompt that is held rendered above it, or -1. */
+  readonly above: readonly number[];
+  /** For each sticky prompt, the last row its span covers. */
+  readonly ends: ReadonlyMap<number, number>;
+}
+
+/**
+ * Which prompt each row reads under. A prompt's span runs to the end of its group, or to the row
+ * before the group's next sticky prompt, so a prompt that joined the turn pushes the earlier one off.
+ */
+export function stickySpans(rows: readonly RowLayout[]): StickySpans {
+  const above: number[] = [];
+  const ends = new Map<number, number>();
+  let sticky = -1;
+
+  for (const [index, row] of rows.entries()) {
+    if (row.group === null || row.group !== rows[index - 1]?.group) sticky = -1;
+
+    if (row.sticky && row.group !== null) sticky = index;
+    above.push(sticky);
+  }
+
+  let end = rows.length - 1;
+
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
+    const row = rows[index];
+
+    if (row === undefined) continue;
+
+    if (row.group === null || row.group !== rows[index + 1]?.group) end = index;
+
+    if (!row.sticky || row.group === null) continue;
+    ends.set(index, end);
+    end = index - 1;
+  }
+
+  return { above, ends };
+}
 
 type Failure = Parameters<typeof failureNotice>[0];
 
@@ -74,7 +116,7 @@ export type TranscriptRow =
   | EarlierRow
   | PromptRow
   | (RowLayout & { readonly kind: "retry"; readonly message: string })
-  | (RowLayout & { readonly kind: "live"; readonly state: LiveRowState })
+  | (RowLayout & { readonly kind: "live" } & LiveRowFacts)
   | (RowLayout & {
       readonly kind: "changes";
       readonly state: "pending" | "ready";
@@ -82,6 +124,20 @@ export type TranscriptRow =
     });
 
 export type LiveRowState = "idle" | "planning" | "grouped";
+
+/** What the bottom row needs to say while a turn works. */
+export interface LivePlanning {
+  /** The run is live and nothing streams or runs. */
+  readonly planning: boolean;
+  /** The newest message, whose arrival restarts the planning clock. */
+  readonly newest: MessageId | undefined;
+  /** The live thought's heading, when the transcript hides thinking. */
+  readonly thought: string | undefined;
+}
+
+export interface LiveRowFacts extends LivePlanning {
+  readonly state: LiveRowState;
+}
 
 export type DividerRow = RowLayout & { readonly kind: "divider" };
 
@@ -300,6 +356,7 @@ export function transcriptRows({
   running,
   held,
   retrying,
+  live,
 }: {
   readonly loading: boolean;
   readonly failed: boolean;
@@ -309,6 +366,7 @@ export function transcriptRows({
   readonly running: boolean;
   readonly held: boolean;
   readonly retrying: string | undefined;
+  readonly live: LivePlanning;
 }): TranscriptRow[] {
   const rows: TranscriptRow[] = [];
 
@@ -358,15 +416,20 @@ export function transcriptRows({
   if (retrying !== undefined)
     rows.push({ kind: "retry", key: "row:retry", ...OUTSIDE, message: retrying });
 
+  const state: LiveRowState = !working
+    ? "idle"
+    : rows.some((row) => row.kind === "step" && row.running)
+      ? "grouped"
+      : "planning";
+
   rows.push({
     kind: "live",
     key: "row:live",
     ...OUTSIDE,
-    state: !working
-      ? "idle"
-      : rows.some((row) => row.kind === "step" && row.running)
-        ? "grouped"
-        : "planning",
+    state,
+    planning: live.planning,
+    newest: live.newest,
+    thought: state === "grouped" ? undefined : live.thought,
   });
 
   if (owner !== undefined)
@@ -381,7 +444,7 @@ export function transcriptRows({
   return rows;
 }
 
-type ProjectedView = HeadView & { readonly seq: number };
+type ProjectedView = HeadView & { readonly seq: number; readonly activity: SessionActivity };
 
 type SessionState = ReturnType<WatchStore<ProjectedView>["getState"]>;
 
@@ -466,6 +529,7 @@ function project(
     running: messages.running,
     held: messages.held,
     retrying: runState(view).retrying,
+    live: livePlanning(view, thinking),
   }).map((row) => {
     const known = previous?.rows.get(row.key);
 
@@ -575,7 +639,42 @@ function withMessage(row: TranscriptRow, slot: TranscriptSlot): TranscriptRow | 
   }
 }
 
-function streamed(previous: Projection, state: SessionState): Projection | undefined {
+/** A transcript that shows thinking draws the thought itself, so the bottom row names it only when thinking is hidden. */
+function livePlanning(view: ProjectedView | undefined, thinking: boolean): LivePlanning {
+  return {
+    planning: view?.execution.kind === "live" && view.activity.kind === "idle",
+    newest: view?.messages.at(-1)?.id,
+    thought:
+      thinking || view?.activity.kind !== "thinking" ? undefined : thoughtLabel(view.messages),
+  };
+}
+
+function thoughtLabel(messages: readonly Message[]): string {
+  const thought = messages.findLast(showsThinking);
+
+  return (
+    (thought === undefined ? undefined : reasoningHeading(thought.state.markdown).title) ??
+    "Thinking"
+  );
+}
+
+/** The live row with `live`'s facts, or the same row while they are unchanged. */
+function withPlanning(
+  row: Extract<TranscriptRow, { readonly kind: "live" }>,
+  live: LivePlanning,
+): Extract<TranscriptRow, { readonly kind: "live" }> {
+  const thought = row.state === "grouped" ? undefined : live.thought;
+
+  return row.planning === live.planning && row.newest === live.newest && row.thought === thought
+    ? row
+    : { ...row, planning: live.planning, newest: live.newest, thought };
+}
+
+function streamed(
+  previous: Projection,
+  state: SessionState,
+  thinking: boolean,
+): Projection | undefined {
   const before = previous.state.value;
   const after = state.value;
 
@@ -626,6 +725,14 @@ function streamed(previous: Projection, state: SessionState): Projection | undef
     changed.set(key, updated);
   }
 
+  const live = previous.rows.get("row:live");
+
+  if (live?.kind === "live") {
+    const planned = withPlanning(live, livePlanning(after, thinking));
+
+    if (planned !== live) changed.set(live.key, planned);
+  }
+
   for (const [key, row] of changed) previous.rows.set(key, row);
 
   return { ...previous, state };
@@ -641,7 +748,7 @@ export function transcriptProjector({
   const sync = (state: SessionState): Projection => {
     if (projection?.state === state) return projection;
     projection =
-      (projection === undefined ? undefined : streamed(projection, state)) ??
+      (projection === undefined ? undefined : streamed(projection, state, thinking)) ??
       project(state, projection, thinking);
 
     return projection;

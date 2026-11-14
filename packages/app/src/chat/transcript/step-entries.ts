@@ -20,14 +20,26 @@ export type StepEntry =
     }
   | { readonly kind: "browser"; readonly key: string; readonly steps: readonly BrowserCall[] };
 
-export function stepEntries(
-  messages: readonly StepMessage[],
-  mergeThinking: boolean,
-): readonly StepEntry[] {
+/** A step row's messages with the calls each script made folded under it: one pass over the row. */
+export interface StepCalls {
+  readonly steps: readonly StepMessage[];
+  readonly calls: ReadonlyMap<string, readonly ToolMessage[]>;
+}
+
+export function stepCalls(messages: readonly StepMessage[]): StepCalls {
   const calls = scriptCalls(messages);
+  const nested = new Set([...calls.values()].flat());
+
+  return {
+    steps: messages.filter((message) => !showsTool(message) || !nested.has(message)),
+    calls,
+  };
+}
+
+export function stepEntries(steps: StepCalls, mergeThinking: boolean): readonly StepEntry[] {
   const entries: StepEntry[] = [];
 
-  for (const message of topLevelSteps(messages)) {
+  for (const message of steps.steps) {
     const previous = entries.at(-1);
 
     if (showsThinking(message)) {
@@ -67,17 +79,11 @@ export function stepEntries(
       kind: "tool",
       key: message.id,
       message,
-      calls: calls.get(message.state.call) ?? [],
+      calls: steps.calls.get(message.state.call) ?? [],
     });
   }
 
   return entries;
-}
-
-export function topLevelSteps(messages: readonly StepMessage[]): readonly StepMessage[] {
-  const nested = new Set([...scriptCalls(messages).values()].flat());
-
-  return messages.filter((message) => !showsTool(message) || !nested.has(message));
 }
 
 function scriptCalls(
