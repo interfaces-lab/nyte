@@ -47,8 +47,9 @@ export function syncSticky(viewport: HTMLElement, content: HTMLElement): void {
 }
 
 /**
- * Wheel and touch inside an embedded frame never reach the viewport's listeners, but the scroll
- * they chain out still moves it. A hovered or focused frame is the only place that input can be.
+ * Wheel, touch and keys inside an embedded frame never reach the viewport's listeners, but the
+ * scroll they chain out still moves it. While a frame is hovered or focused, a scroll the
+ * transcript didn't write is the reader's.
  */
 export function frameHasInput(viewport: HTMLElement): boolean {
   const active = document.activeElement;

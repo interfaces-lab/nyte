@@ -79,7 +79,9 @@ function readStickyRows(rows: readonly RowLayout[]) {
 
     if (row.group === null || row.group !== rows[index + 1]?.group) end = index;
 
-    if (row.sticky && row.group !== null) ends.set(index, end);
+    if (!row.sticky || row.group === null) continue;
+    ends.set(index, end);
+    end = index - 1;
   }
 
   return { above, ends };
@@ -236,6 +238,7 @@ export function TranscriptContent({
   const mode = useRef<TranscriptMode>(initialMode(initialPosition));
   const input = useRef<ReaderInput>(NO_INPUT);
   const scrolled = useRef({ offset: 0, height: 0 });
+  const written = useRef<number | null>(null);
   const content = useRef<HTMLDivElement>(null);
   const scrollport = useRef<HTMLDivElement | null>(null);
 
@@ -359,11 +362,18 @@ export function TranscriptContent({
         if (scroll !== null) {
           const previous = scrolled.current;
           const height = scroll.scrollHeight;
+          const own = written.current !== null && Math.abs(offset - written.current) < 1.5;
           scrolled.current = { offset, height };
+          written.current = null;
           const upward = offset < previous.offset && height >= previous.height;
 
-          if (upward && mode.current.kind === "following" && frameHasInput(scroll))
-            input.current = { at: performance.now(), upward, pressed: input.current.pressed };
+          if (
+            !own &&
+            offset !== previous.offset &&
+            height >= previous.height &&
+            frameHasInput(scroll)
+          )
+            touch(upward);
           mode.current = nextMode(mode.current, {
             kind: "scrolled",
             distance: height - scroll.clientHeight - offset,
@@ -375,8 +385,14 @@ export function TranscriptContent({
         flushSync(() => onOffset(offset, scrolling));
       }),
     scrollToFn: (offset, options, instance) => {
-      elementScroll(offset, options, instance);
       const scroll = instance.scrollElement;
+
+      if (scroll !== null)
+        written.current = Math.min(
+          Math.max(offset + (options.adjustments ?? 0), 0),
+          scroll.scrollHeight - scroll.clientHeight,
+        );
+      elementScroll(offset, options, instance);
 
       if (scroll !== null) queueMicrotask(() => syncScrollButton(scroll, dock));
     },

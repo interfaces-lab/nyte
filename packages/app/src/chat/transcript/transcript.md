@@ -15,11 +15,11 @@ In Reading, the view holds its place. Rules 6, 7 and 8 give it an anchor, which 
 1. Opening a session that was left at the end, or that this pane hasn't shown before.
 2. Sending a message, including saving a queued message you edited in the composer.
 3. Clicking scroll-to-bottom. This also focuses the composer.
-4. Reaching the end while Reading has no anchor. The reader's own scroll input drops any anchor first, so scrolling to the end always follows.
+4. Reaching the end while Reading has no anchor. The reader's own scroll input, including input inside an embedded frame such as a canvas, drops any anchor first, so scrolling to the end always follows.
 
 ## Entering Reading
 
-5. The reader scrolling up. That covers the wheel, touch, dragging the scrollbar, and ↑, PageUp, Home or Shift+Space outside an editor. PageUp in a full chat's composer also counts. Any other upward scroll that leaves the view more than 4px from the end starts Reading too, once the session has finished opening. Content shrinking under the view doesn't count.
+5. The reader scrolling up. That covers the wheel, touch, dragging the scrollbar, and ↑, PageUp, Home or Shift+Space outside an editor. PageUp in a full chat's composer also counts. So does scrolling inside an embedded frame, such as a canvas, that carries on into the transcript: while a frame has the pointer or focus, any scroll of the view the transcript didn't make itself is the reader's, in either direction. Any other upward scroll that leaves the view more than 4px from the end starts Reading too, once the session has finished opening. Content shrinking under the view doesn't count.
 6. Clicking a control that expands or collapses, which is anything with `aria-expanded`, or clicking inside a live step-group preview. The anchor is the clicked element.
 7. Starting to edit an earlier message. The anchor is that message's row.
 8. Selecting text in the transcript. The anchor is the row where the selection starts.
@@ -42,7 +42,7 @@ Reading returns to Following only through rules 2, 3 and 4. Saving or cancelling
 ## Sticky prompts
 
 16. The prompt of the turn being read sticks to the top of the view. Reports from agents and jobs, and late answers to questions, don't stick.
-17. Following sticks prompts the same way Reading does. A prompt stays stuck until the last row of its turn scrolls past it, even at the end of the chat. Sending, streaming or a turn ending never makes a prompt jump on or off the top.
+17. Following sticks prompts the same way Reading does. A prompt stays stuck until the last row of its turn scrolls past it, even at the end of the chat. A prompt that joined a running turn pushes the turn's earlier prompt off the top, so only one prompt is ever stuck. Sending, streaming or a turn ending never makes a prompt jump on or off the top.
 18. A prompt as tall as the view, or taller, never sticks.
 
 ## Row identity
