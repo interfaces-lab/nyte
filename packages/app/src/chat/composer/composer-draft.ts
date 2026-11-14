@@ -16,6 +16,10 @@ export interface ComposerNotice {
   readonly restore: Restore | null;
 }
 
+export function errorNotice(message: string): ComposerNotice {
+  return { kind: "error", message, restore: null };
+}
+
 /**
  * How a send from the composer ended: `unsent` when the journal still holds it to send later, and
  * `removed` when the person removed its unsent row; only `refused` will never be sent.
@@ -27,7 +31,7 @@ export type SendEnd =
   | { readonly kind: "refused"; readonly message: string };
 
 /** A queued message opened in the composer over the person's own text. */
-export interface QueuedEdit {
+interface QueuedEdit {
   readonly message: UserMessage;
   readonly view: ComposerViewState;
 }
@@ -110,7 +114,7 @@ export function lostEdit(draft: SessionDraft): SessionDraft {
 
 /**
  * What closing the composer does to the chat's draft: an open edit the person changed joins their
- * text, and a notice with nothing to restore goes, as both did when the composer held them.
+ * text, and a notice with nothing to restore goes.
  */
 export function foldEdit(draft: SessionDraft): SessionDraft {
   if (draft.edit === null && draft.notice === null) return draft;
@@ -152,7 +156,7 @@ export function refusedDraft(draft: SessionDraft, message: string, sent: Restore
   return {
     ...draft,
     composer: draftWith(draft.composer, sent),
-    notice: { kind: "error", message, restore: null },
+    notice: errorNotice(message),
   };
 }
 

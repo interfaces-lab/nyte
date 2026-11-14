@@ -95,6 +95,11 @@ interface ComposerFrameProps {
   answering?: boolean;
 }
 
+/**
+ * Enter and Send decide on the editor's own document at the keypress. `document` is the last
+ * render's copy, which trails text that reached the editor outside an input event, so deciding on it
+ * could skip the send or steer the queued message instead.
+ */
 export function ComposerFrame({
   surface,
   document,
@@ -168,9 +173,10 @@ export function ComposerFrame({
     return carriesTreeFiles(event) ? "mention" : undefined;
   };
 
-  const hasInstructionChip = references.some((reference) => reference.kind !== "mention");
-  const hasSubmission = document.text.trim() !== "" || attached || hasInstructionChip;
-  const canSubmit = !disabled && !submitting && !attachmentBusy && hasSubmission;
+  const holdsSubmission = (text: string, held: readonly MessageReference[]): boolean =>
+    text.trim() !== "" || attached || held.some((reference) => reference.kind !== "mention");
+
+  const hasSubmission = holdsSubmission(document.text, references);
   const messageEdit = editing?.kind === "message";
   const collapsed = surface !== "new-chat" && narrow && !focused && !messageEdit && !submitting;
 
@@ -252,11 +258,12 @@ export function ComposerFrame({
   }, [surface, editorNeedsExpansion]);
 
   const submit = async (action: SubmitAction): Promise<void> => {
-    if (!canSubmit) return;
     const area = areaRef.current;
 
-    if (area === null) return;
+    if (disabled || submitting || attachmentBusy || area === null) return;
     const submission = area.read();
+
+    if (!holdsSubmission(submission.text, submission.references)) return;
     const currentDocument = area.readDocument();
 
     if (frameRef.current?.contains(window.document.activeElement)) {
@@ -270,18 +277,24 @@ export function ComposerFrame({
     ).finally(() => setSubmitting(false));
   };
 
-  const keySituation = (from: KeySituation["from"]): KeySituation => ({
-    from,
-    disabled,
-    submitting,
-    editing: editing !== undefined,
-    empty: draftEmpty(document.text, attachments.length) && references.length === 0,
-    steerQueued: onSteerQueued !== undefined,
-    trayOpen: tray?.open === true,
-    menuOpen: suggestionMenu.open,
-    canStop: busy && !stopping && onAbort !== undefined,
-    canRecall: onRecall !== undefined,
-  });
+  const keySituation = (from: KeySituation["from"]): KeySituation => {
+    const shown = areaRef.current?.read();
+
+    return {
+      from,
+      disabled,
+      submitting,
+      editing: editing !== undefined,
+      empty:
+        draftEmpty(shown?.text ?? document.text, attachments.length) &&
+        (shown?.references ?? references).length === 0,
+      steerQueued: onSteerQueued !== undefined,
+      trayOpen: tray?.open === true,
+      menuOpen: suggestionMenu.open,
+      canStop: busy && !stopping && onAbort !== undefined,
+      canRecall: onRecall !== undefined,
+    };
+  };
 
   const runKey = (action: KeyAction, event: KeyboardEvent): void => {
     switch (action.kind) {

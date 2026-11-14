@@ -30,9 +30,9 @@ type ReadEffect = Extract<ComposerSessionEffect, { readonly kind: "read-prompts"
 /**
  * One composer's session: `dispatch` steps it with `stepSession` over the chat's draft in the
  * window's store, writes back what changed and runs the effects, which answer with more events.
- * It keeps the composer's editor, and the holds the host handed over, by token, until a save goes through one or it is
- * released. `save` resolves once a save of the open edit, if one starts, has ended; its outcome
- * lands in `flushSync`, so the editor is enabled again before focus moves to it.
+ * It keeps the editor handle, and each hold the host granted under its token until a save uses it
+ * or it is released. `save` resolves once a save of the open edit, if one starts, has ended; its
+ * outcome lands in `flushSync`, so the editor is enabled again before focus moves to it.
  */
 export function composerSession(ports: ComposerPorts) {
   let state = CLOSED_SESSION;

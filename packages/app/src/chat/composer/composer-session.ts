@@ -3,6 +3,7 @@ import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import type { ComposerImageAttachment, ComposerViewState } from "../../panes/session-view-state.ts";
 import type { ComposerDocumentState, ComposerSubmission } from "./composer-document.ts";
 import {
+  errorNotice,
   leftDraft,
   foldEdit,
   lostEdit,
@@ -82,9 +83,7 @@ export const CLOSED_SESSION: ComposerSession = {
   token: 0,
 };
 
-export type HoldAnswer =
-  | { readonly kind: "held" }
-  | { readonly kind: "ended"; readonly notice: string };
+type HoldAnswer = { readonly kind: "held" } | { readonly kind: "ended"; readonly notice: string };
 
 export type ComposerSessionEvent =
   | { readonly kind: "shown" }
@@ -209,7 +208,7 @@ function transition(
         : step(state, draft);
     case "prompts-failed":
       return event.token === state.reading
-        ? noticed({ ...state, reading: null }, draft, error(event.message))
+        ? noticed({ ...state, reading: null }, draft, errorNotice(event.message))
         : step(state, draft);
     case "typed":
       return step(state, typedDraft(draft, event.document));
@@ -273,11 +272,7 @@ function step(
   return { state, draft, effects, handled };
 }
 
-function error(message: string): ComposerNotice {
-  return { kind: "error", message, restore: null };
-}
-
-/** A notice shows only while a composer does, as it did when the composer held it. */
+/** A notice shows only while a composer does. */
 function noticed(
   state: ComposerSession,
   draft: SessionDraft,
@@ -347,7 +342,7 @@ function leaveEdit(
   return noticed(
     { ...state, hold: null, intake: nextIntake(state.intake, { kind: "cleared" }) },
     lostEdit(draft),
-    error(notice),
+    errorNotice(notice),
     effects,
   );
 }
@@ -401,7 +396,10 @@ function saved(
 
       return outcome.kind === "empty"
         ? { ...again, effects: [...again.effects, focus] }
-        : noticed(again.state, again.draft, error(outcome.message), [...again.effects, focus]);
+        : noticed(again.state, again.draft, errorNotice(outcome.message), [
+            ...again.effects,
+            focus,
+          ]);
     }
 
     case "revised":

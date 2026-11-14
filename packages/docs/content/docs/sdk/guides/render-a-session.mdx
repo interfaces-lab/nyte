@@ -65,6 +65,10 @@ an unsent message, and `act` for an approval or a question. While a stop is on i
 `snapshot().stopping` is `asked`; the host's row takes over once it answers.
 [connect](/docs/sdk/reference/entry-points#chat) lists each.
 
+`chat.send` resolves once the journal holds the message, so clear the input then. Put the text back
+only when its `delivered` rejects. An `unsent` message is still in the journal and in the view, and
+sending its text again would send it twice.
+
 `connection.sessions.open({ parents: { kind: "roots" } })` is the same kind of store for the
 `sessions` table: its snapshot holds the listed `ids` in order and each one's `SessionInfo` in
 `rows`, whose `activation` is the session's live one.

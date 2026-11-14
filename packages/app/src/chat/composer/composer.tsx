@@ -38,7 +38,7 @@ import { loadedPrompts } from "./composer-history.ts";
 import { deliveryChoices, draftEmpty, nextToSteer } from "./composer-keys.ts";
 import { deliver, draftCommands } from "./composer-send.ts";
 import { planSubmission } from "./composer-plan.ts";
-import { endedDraft, shownDraft } from "./composer-draft.ts";
+import { endedDraft, errorNotice, shownDraft } from "./composer-draft.ts";
 import type { ComposerNotice } from "./composer-draft.ts";
 import { saving } from "./composer-session.ts";
 import type { PendingRowAction } from "./composer-session.ts";
@@ -73,18 +73,14 @@ function portalHost(): HTMLDivElement {
   return host;
 }
 
-function error(message: string): ComposerNotice {
-  return { kind: "error", message, restore: null };
-}
-
 /**
  * The chat's draft, its queued edit and its notice live in the window's draft store and change only
  * through it, so a send that settles after this composer closed still lands where the chat's next
  * composer reads it. `draft` is the store's value as the subscription last handed it over: a state
  * update shares a keystroke's commit with the editor's own updates, where `useSyncExternalStore`
  * would add a second commit per key. A notice other than a refusal is dropped once the composer is
- * gone, as it was when the composer held it. Everything else the composer keeps (the edit's hold,
- * a prompt walk, file reads, queue row actions) changes only through `stepSession`. The inline
+ * gone. Everything else the composer keeps (the edit's hold, a prompt walk, file reads, queue row
+ * actions) changes only through `stepSession`. The inline
  * slot's callback ref is made once, in `useState`, so it stays one function whether or not the
  * compiler memoizes this component: a new one each render would move the dock and blur the editor.
  */
@@ -274,7 +270,7 @@ export function Composer({
     if (plan.kind === "empty") return;
 
     if (plan.kind === "kept") {
-      notify(error(plan.message));
+      notify(errorNotice(plan.message));
 
       return;
     }
@@ -301,7 +297,7 @@ export function Composer({
   const abort = (): void => {
     if (liveRun === undefined || stopping) return;
     stopChat(sessionId).catch((cause: unknown) =>
-      notify(error(`Couldn't stop the response: ${errorMessage(cause)}`)),
+      notify(errorNotice(`Couldn't stop the response: ${errorMessage(cause)}`)),
     );
   };
 
@@ -370,13 +366,13 @@ export function Composer({
     messageReceipt(sessionId, row)
       .stop()
       .catch((cause: unknown) =>
-        notify(error(`Couldn't remove the message: ${errorMessage(cause)}`)),
+        notify(errorNotice(`Couldn't remove the message: ${errorMessage(cause)}`)),
       );
   };
 
   const resendOutboxRow = (row: UserMessage): void => {
     resendMessage(sessionId, row.id).catch((cause: unknown) =>
-      notify(error(`Couldn't send the message: ${errorMessage(cause)}`)),
+      notify(errorNotice(`Couldn't send the message: ${errorMessage(cause)}`)),
     );
   };
 

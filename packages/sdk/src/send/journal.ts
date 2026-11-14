@@ -31,6 +31,10 @@ export interface JournalStorage {
 }
 
 export interface JournalLoop {
+  /**
+   * Journals the entry and sends it until the host answers. Its write waits for the head's earlier
+   * sends to be journaled, so storage that finishes writes out of order can't reorder their posts.
+   */
   send(entry: Omit<JournalEntry, "host">): Promise<Sent>;
   replay(entries: readonly JournalEntry[]): void;
   unsent(session: SessionId, head: HeadName): readonly QueuedMessage[];
@@ -55,7 +59,7 @@ export interface JournalLoop {
  * post on the next connection after a link closed under it or on `resend` after it expired;
  * `removed` by `discard`; `dropped` when the host refused it and nothing holds it.
  */
-export type Unanswered = "kept" | "removed" | "dropped";
+type Unanswered = "kept" | "removed" | "dropped";
 
 export interface Sending {
   /** How the send ended without the host's answer, or `null` while it has not. */
@@ -160,6 +164,7 @@ function readEntry(text: string): JournalEntry | null {
  */
 export function journalLoop(rows: Rows, journal: RequestJournal, host: HostId): JournalLoop {
   const held = new Map<string, Held>();
+  const writes = new Map<string, Promise<void>>();
   const tails = new Map<string, Promise<void>>();
   const shown = new Map<string, number>();
   const listeners = new Set<() => void>();
@@ -329,9 +334,25 @@ export function journalLoop(rows: Rows, journal: RequestJournal, host: HostId): 
   return {
     async send(unhosted) {
       const entry = { ...unhosted, host };
-      await journal.put(entry);
+      const key = JSON.stringify([entry.session, entry.head]);
 
-      return hold(entry);
+      const written = (writes.get(key) ?? Promise.resolve()).then(async () => {
+        await journal.put(entry);
+
+        return { sent: hold(entry) };
+      });
+
+      const tail = written.then(
+        () => undefined,
+        () => undefined,
+      );
+
+      writes.set(key, tail);
+      void tail.then(() => {
+        if (writes.get(key) === tail) writes.delete(key);
+      });
+
+      return (await written).sent;
     },
     replay,
     unsent: (session, head) =>

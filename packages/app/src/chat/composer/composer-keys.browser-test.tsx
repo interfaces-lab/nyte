@@ -22,6 +22,7 @@ import {
   viewStream,
 } from "../../../test/scripted-connection.ts";
 import { COMPLETED, USAGE, endedTurn, sessionRow } from "../../../test/view-fixtures.ts";
+import { live, queued } from "./composer-states.fixture.ts";
 
 const SESSION = asId<"session">("composer-keys");
 
@@ -102,25 +103,34 @@ const historyReads: string[] = [];
 
 let historyGate = Promise.resolve();
 
-installScripted(
-  scriptedConnection({
-    sessions: [sessionRow(SESSION)],
-    views: new Map([[SESSION, viewStream(view)]]),
-    session: () => ({
-      history: async (input) => {
-        historyReads.push(input.before);
-        await historyGate;
-        const page = input.before === leading?.id ? turns.slice(0, 1) : [];
+const views = viewStream(view);
 
-        return {
-          messages: page.flatMap((turn) => [turn.prompt, turn.reply]),
-          leadingPrompt: null,
-          turns: page.map((turn) => turn.info),
-        };
-      },
-    }),
+const steered: string[] = [];
+
+const scripted = scriptedConnection({
+  sessions: [sessionRow(SESSION)],
+  views: new Map([[SESSION, views]]),
+  session: () => ({
+    revise: async (message) => {
+      steered.push(message);
+
+      return { kind: "revised" };
+    },
+    history: async (input) => {
+      historyReads.push(input.before);
+      await historyGate;
+      const page = input.before === leading?.id ? turns.slice(0, 1) : [];
+
+      return {
+        messages: page.flatMap((turn) => [turn.prompt, turn.reply]),
+        leadingPrompt: null,
+        turns: page.map((turn) => turn.info),
+      };
+    },
   }),
-);
+});
+
+installScripted(scripted);
 
 async function until<T>(read: () => T | null | undefined, what: string): Promise<T> {
   const deadline = performance.now() + 5_000;
@@ -260,6 +270,43 @@ async function pasteFromNowhere(editor: HTMLElement): Promise<void> {
   );
 }
 
+/**
+ * Enter acts on the text the editor holds, though the composer has not drawn it yet: text the
+ * editor read outside an input event lands before React's next render, and an Enter in between
+ * sent nothing or steered the queued message.
+ */
+async function enterBeforeTheDraw(editor: HTMLElement): Promise<void> {
+  views.push({
+    ...view,
+    seq: asSeq(2),
+    execution: live(),
+    queue: [queued("waiting", "Then run the tests.")],
+  });
+  await until(
+    () => editor.closest("[data-composer-region]")?.querySelector("[data-queue-row='waiting']"),
+    "the queued message",
+  );
+  editor.focus();
+  document.execCommand("selectAll");
+  document.execCommand("delete");
+  await until(() => (editor.innerText.trim() === "" ? true : null), "an empty composer");
+  await new Promise<void>((resolve) => window.setTimeout(resolve, 50));
+  const sends = scripted.sent.length;
+  document.execCommand("insertText", false, "Now.");
+  await Promise.resolve();
+  press(editor, "Enter");
+  await until(
+    () => (scripted.sent.length > sends || steered.length > 0 ? true : null),
+    "Enter to do something",
+  );
+  const content = scripted.sent.at(-1)?.content;
+
+  if (steered.length > 0 || content !== "Now.")
+    throw new Error(
+      `Enter right after "Now." ${steered.length > 0 ? "steered the queued message" : `sent ${JSON.stringify(content)}`}`,
+    );
+}
+
 export async function run(): Promise<string> {
   queryClient.setQueryData(keys.host, { workspace: undefined } satisfies HostState);
   queryClient.setQueryData(keys.modelCatalog("initial"), {
@@ -313,6 +360,7 @@ export async function run(): Promise<string> {
     await typeWhileRecalling(editor);
     await openModelPicker(editor);
     await pasteFromNowhere(editor);
+    await enterBeforeTheDraw(editor);
 
     flushSync(() => panes.window.newChat(panes.tabId));
     await openModelPicker(
