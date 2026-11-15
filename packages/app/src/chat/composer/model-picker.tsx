@@ -556,7 +556,7 @@ function ModelCard({
   readonly settings: Settings;
 }): ReactElement {
   const limits = useAccountLimits();
-  const usage = usageLine(limits.data, option);
+  const usage = usageLine(limits.data?.accounts, option);
   const levels = thinkingLevelsFor(option);
 
   const reasoning = AGENT_PROVIDERS.has(option.provider)

@@ -82,9 +82,10 @@ const styles = create({
 /** A card per signed-in plan, beside the spend card; nothing at all when no plan reports limits. */
 export function LimitCards(): ReactElement | null {
   const limits = useAccountLimits();
+  const read = limits.data;
 
-  const accounts = limits.data
-    ?.map((usage) => deriveAccount(usage, limits.dataUpdatedAt))
+  const accounts = read?.accounts
+    .map((usage) => deriveAccount(usage, read.readAt))
     .filter((account) => account !== null);
 
   const refresh = (
@@ -94,7 +95,7 @@ export function LimitCards(): ReactElement | null {
       iconOnly
       icon="refresh"
       aria-label="Refresh Plan Limits"
-      loading={limits.isFetching}
+      loading={limits.isFetching && !limits.isPlaceholderData}
       onClick={() => void limits.refetch({ cancelRefetch: false })}
     />
   );
