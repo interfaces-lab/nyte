@@ -75,7 +75,7 @@ function LinkedConnection({
         description={
           view.enabled
             ? standing.status
-            : "Devices signed in to this account can connect from any network"
+            : "Let devices signed in to this account connect from any network"
         }
         checked={view.enabled}
         disabled={setEnabled.isPending || unlink.isPending}
