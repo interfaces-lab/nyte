@@ -47,3 +47,14 @@ __pycache__/
 
 # Git only: the lab stays on your machine, and `vercel deploy` still uploads it.
 /packages/lab/
+
+# The brand kit and what `pnpm brand` draws stay on your machine
+/scripts/brand/
+/output/brand/
+
+# The Good Nyte pages stay on your machine
+/packages/docs/src/components/good-nyte/
+/packages/docs/src/lib/visitor.ts
+/packages/docs/src/routes/good-nyte.tsx
+/packages/docs/src/routes/_site/_landing/good-nyte-3.tsx
+/packages/docs/src/styles/good-nyte.css
