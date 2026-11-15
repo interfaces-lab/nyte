@@ -1,43 +1,11 @@
-export const moon = [
-  "    ###.    ",
-  "  ####.#..  ",
-  " ########.. ",
-  " ###.#.#... ",
-  "#######.#...",
-  "##.#.#.#....",
-  "#####.#.#...",
-  ".#.#.#......",
-  " ##.#.#.... ",
-  " #......... ",
-  "  #.......  ",
-  "    ....    ",
-];
-
-export const moonCells = moon.flatMap((row, y) =>
-  row.split("").flatMap((cell, x) => (cell === " " ? [] : [{ x, y, lit: cell === "#" }])),
-);
-
 export function DesignMark({ size = 24 }: { size?: number }) {
   return (
-    <svg
-      viewBox="0 0 12 12"
-      width={size}
-      height={size}
-      aria-hidden="true"
-      // oxlint-disable-next-line anti-slop/no-shape-in-symbol-names -- React's name for the SVG shape-rendering attribute
-      shapeRendering="crispEdges"
-      className="design-mark"
-    >
-      {moonCells.map((cell) => (
-        <rect
-          key={`${cell.x}-${cell.y}`}
-          x={cell.x}
-          y={cell.y}
-          width="1"
-          height="1"
-          opacity={cell.lit ? 1 : 0.24}
-        />
-      ))}
+    <svg viewBox="0 0 96 96" width={size} height={size} aria-hidden="true" className="design-mark">
+      <path
+        className="design-mark-moon"
+        d="M56.817.817A48 48 0 1 0 95.183 39.183 32 32 0 1 1 56.817.817Z"
+      />
+      <circle className="design-mark-light" cx="64" cy="32" r="32" />
     </svg>
   );
 }

@@ -3,7 +3,6 @@ import pixelFace from "~/fonts/GeistPixel-Square.woff2?inline";
 // oxlint-disable-next-line import/default -- Vite's ?inline query makes the file a data URL.
 import monoFace from "@fontsource-variable/geist-mono/files/geist-mono-latin-wght-normal.woff2?inline";
 import type { ReactNode } from "react";
-import { moonCells } from "~/components/design-site/mark";
 import { findEntry } from "~/lib/design-catalog";
 import type { DocPage } from "~/lib/docs";
 import { designName } from "~/lib/shared";
@@ -18,6 +17,8 @@ const ink = {
   muted: "#6b6a67",
   faint: "#a3a19d",
   accent: "#2222dd",
+  // The accent at 58% over the paper, as the design mark draws its light.
+  light: "#7d7de9",
   dot: "#d9d8d4",
 };
 
@@ -83,25 +84,23 @@ function Sheet({ ticks, children }: { ticks: readonly number[]; children: ReactN
   );
 }
 
-function Moon({ size }: { size: number }) {
-  const cell = size / 12;
+function Mark({ size }: { size: number }) {
+  const light = (size * 2) / 3;
 
   return (
     <div style={{ position: "relative", display: "flex", width: size, height: size }}>
-      {moonCells.map((moonCell) => (
-        <div
-          key={`${moonCell.x}-${moonCell.y}`}
-          style={{
-            position: "absolute",
-            left: moonCell.x * cell,
-            top: moonCell.y * cell,
-            width: cell,
-            height: cell,
-            background: ink.accent,
-            opacity: moonCell.lit ? 1 : 0.24,
-          }}
-        />
-      ))}
+      <div style={{ width: size, height: size, borderRadius: size / 2, background: ink.accent }} />
+      <div
+        style={{
+          position: "absolute",
+          left: size - light,
+          top: 0,
+          width: light,
+          height: light,
+          borderRadius: light / 2,
+          background: ink.light,
+        }}
+      />
     </div>
   );
 }
@@ -120,7 +119,7 @@ function Masthead({ trail }: { trail: string }) {
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-        <Moon size={24} />
+        <Mark size={24} />
         <div style={{ fontFamily: pixel, fontSize: 26, lineHeight: 1 }}>{designName}</div>
       </div>
       <div style={{ fontFamily: mono, fontSize: 18, color: ink.faint }}>{trail}</div>
@@ -410,7 +409,7 @@ export function PageCard({ page }: { page: DocPage }) {
             {entry.number}
           </div>
         ) : (
-          <Moon size={160} />
+          <Mark size={160} />
         )}
       </div>
       <div

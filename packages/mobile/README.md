@@ -441,8 +441,8 @@ larger message text, and compact activity summaries that open native sheets.
   folder glyphs, and a virtualized list that fits above the composer and keyboard.
   They use 4pt gaps and 44pt minimum touch targets. Moving the caret through a
   completed file reference doesn't reopen search.
-- The welcome screen uses Nyte's dithered moon. The account button shows the
-  signed-in user's image.
+- The welcome screen shows Nyte's mark in the text color. The account button
+  shows the signed-in user's image.
 
 React Strict DOM supplies the StyleX-compatible `css` API for native layout. Colors
 come from the shared roles in `packages/ui` through `@nyte-ai/ui/platform-colors`,

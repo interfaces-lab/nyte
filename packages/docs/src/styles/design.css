@@ -104,7 +104,21 @@
 
   .design-mark {
     flex: none;
-    fill: var(--design-accent);
+  }
+
+  /* The light is always the lighter of the two shapes, so the dimmed one swaps with the theme. */
+  .design-mark-moon {
+    fill: light-dark(
+      var(--design-accent),
+      color-mix(in oklab, var(--design-accent) 47%, transparent)
+    );
+  }
+
+  .design-mark-light {
+    fill: light-dark(
+      color-mix(in oklab, var(--design-accent) 58%, transparent),
+      var(--design-accent)
+    );
   }
 
   .design-home {
