@@ -41,7 +41,7 @@ export class Alerts {
 
     if (delivery.notify)
       this.#post({ title: delivery.title, body: delivery.body, silent: !delivery.sound }, () =>
-        this.#openChat(delivery.session),
+        this.openChat(delivery.session),
       );
 
     if (!delivery.bounce || app.dock === undefined) return;
@@ -75,8 +75,8 @@ export class Alerts {
     this.#step({ kind: "ended", window, end });
   }
 
-  /** `latest()` runs only when no window views the chat, because it restores windows when none is open. */
-  #openChat(session: SessionId): void {
+  /** Brings a chat forward: for a notification the user clicked, or for another client of the host that asked. `latest()` runs only when no window views the chat, because it restores windows when none is open. */
+  openChat(session: SessionId): void {
     this.#step({
       kind: "clicked",
       window: findViewer(this.#windowStates, session) ?? this.#windows.latest(),

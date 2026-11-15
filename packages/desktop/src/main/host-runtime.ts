@@ -12,6 +12,7 @@ import type { DesktopHostDependencies } from "../host/desktop-host.ts";
 import { CloudflareTunnelPlugin } from "../host/connections/cloudflare-tunnel.ts";
 import { hostAgent } from "./host-agent.ts";
 import type { AgentRegistration, HostAgent } from "./host-agent.ts";
+import type { SessionId } from "@nyte-ai/sdk";
 import { connect, createSendJournal } from "@nyte-ai/sdk/client";
 import type { CanvasPreviewer } from "@nyte-ai/plugin/core/canvas-preview";
 import type { HostProcess } from "@nyte-ai/app/contract/bridge.ts";
@@ -56,6 +57,7 @@ export type HostRuntimeOptions = Pick<
   readonly agent: BrowserAgent;
   readonly preview: CanvasPreviewer;
   previewSignal(): AbortSignal;
+  openChat(session: SessionId): void;
   readonly linkChanged?: (state: HostLinkState) => void;
   readonly hostProcessChanged?: (state: HostProcess) => void;
   readonly registrationChanged?: (registration: AgentRegistration) => void;
@@ -114,6 +116,7 @@ export function startHostRuntime(options: HostRuntimeOptions): HostRuntime {
       agent: options.agent,
       preview: options.preview,
       signal: () => options.previewSignal(),
+      openChat: (session) => options.openChat(session),
     }),
   );
 

@@ -1,12 +1,27 @@
-import { compile, isJson, SdkError, SOCKET_LIMITS } from "@nyte-ai/schema";
-import type { Disposer, Json } from "@nyte-ai/schema";
+import { compile, idSchema, isJson, SdkError, SOCKET_LIMITS } from "@nyte-ai/schema";
+import type { ActionDeclaration, Disposer, Json } from "@nyte-ai/schema";
+import type { SessionId } from "@nyte-ai/sdk";
 import type { ClientConnection, OpenSocket } from "@nyte-ai/sdk/client";
 import { BROWSER_ACTION, BrowserCallType } from "@nyte-ai/plugin/core/browser-client";
 import type { BrowserCall } from "@nyte-ai/plugin/core/browser-client";
 import { CANVAS_PREVIEW_ACTION, CanvasPreviewCallType } from "@nyte-ai/plugin/core/canvas-client";
 import type { CanvasPreviewer } from "@nyte-ai/plugin/core/canvas-preview";
+import { Type } from "typebox";
 import WebSocket from "ws";
 import type { BrowserAgent } from "./browser-agent.ts";
+
+/** Another client of the host, such as Nyte Studio, hands a chat over to this app with this action. */
+export const OPEN_ACTION = {
+  name: "open",
+  summary: "Opens a chat in this app and brings its window forward.",
+  input: {
+    type: "object",
+    properties: { session: { type: "string" } },
+    required: ["session"],
+  },
+} as const satisfies ActionDeclaration;
+
+const openCalls = compile(Type.Object({ session: idSchema<"session">() }));
 
 const FRAME_MARGIN = 64 * 1024;
 
@@ -25,9 +40,21 @@ export function appSocket(socket: string): OpenSocket {
 
 export function offerAppActions(
   connection: Pick<ClientConnection, "offer">,
-  app: { readonly agent: BrowserAgent; readonly preview: CanvasPreviewer; signal(): AbortSignal },
+  app: {
+    readonly agent: BrowserAgent;
+    readonly preview: CanvasPreviewer;
+    signal(): AbortSignal;
+    openChat(session: SessionId): void;
+  },
 ): Disposer {
   const stops = [
+    connection.offer(OPEN_ACTION, async (input) => {
+      if (!openCalls.Check(input))
+        throw new SdkError("invalid", "Name the chat to open as session.");
+      app.openChat(input.session);
+
+      return { opened: true };
+    }),
     connection.offer(BROWSER_ACTION, async (input) => {
       if (!browserCalls.Check(input))
         throw new SdkError("invalid", "The host asked the browser for something unreadable.");

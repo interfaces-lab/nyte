@@ -144,6 +144,7 @@ socketTest(
       agent: recording.agent,
       preview: chromium,
       signal: () => new AbortController().signal,
+      openChat: () => undefined,
     });
     await offered(made);
 
@@ -246,6 +247,7 @@ socketTest(
         };
       },
       signal: () => new AbortController().signal,
+      openChat: () => undefined,
     });
     await offered(made);
 

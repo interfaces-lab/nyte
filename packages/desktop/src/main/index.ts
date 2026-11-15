@@ -420,6 +420,7 @@ function startHost(): DesktopHost {
     agent: browserSurfaces.agent,
     preview: (request, signal) => previewCanvas(request, signal),
     previewSignal: () => previewsOpen.signal,
+    openChat: (session) => alerts.openChat(session),
     mediaOrigin: mediaOrigin(accountScheme(build)),
     emitHostEvent,
     keepAwake,
