@@ -1,0 +1,31 @@
+<use src="../tokens.lune" />
+<use src="../controls.lune" />
+
+<component name="Moon" size="168">
+  <box w="{size}" h="{size}">
+    <ellipse w="fill" h="fill" fill="linear(135, $moon.rim, $moon 70%)" />
+    <ellipse x="33%" y="0" w="67%" h="67%" fill="$moonlight" shadow="-6 6 18 #0c102066" />
+  </box>
+</component>
+
+<component name="PhaseCard" phase="Waxing gibbous" lit="82% lit" next="Full in 3 nights">
+  <col w="fill" pad="24" gap="20" radius="$radius.card" fill="$plate" stroke="$line" shadow="0 18 40 #0c102014" align="center">
+    <Moon />
+    <col gap="6" align="center">
+      <text style="$title" color="$ink">{phase}</text>
+      <text style="$body" color="$ink.soft">{lit} · {next}</text>
+    </col>
+    <row gap="8">
+      <Chip label="Waxing" />
+      <Chip label="Clear sky" icon="sparkles" />
+    </row>
+  </col>
+</component>
+
+<frame name="Phase card" x="0" y="0" w="390" pad="24" radius="24" fill="$sky">
+  <PhaseCard />
+</frame>
+
+<frame name="Phase card · night" theme="dark" x="430" y="0" w="390" pad="24" radius="24" fill="$sky">
+  <PhaseCard phase="Full moon" lit="100% lit" next="Wanes tomorrow" />
+</frame>

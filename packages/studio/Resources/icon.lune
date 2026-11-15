@@ -1,0 +1,9 @@
+<!-- Nyte Studio's icon: Nyte's moon by day. The build renders this file into the app's .icns. -->
+<frame name="Icon" x="0" y="0" w="1024" h="1024" layout="box" align="center">
+  <box w="824" h="824" radius="186" fill="linear(180, #e6ebfc, #b3c0ef)" stroke="#ffffff66" stroke-w="4" shadow="0 12 24 #1b203640" align="center">
+    <box w="620" h="620">
+      <ellipse w="fill" h="fill" fill="linear(225, #5b6db4, #27305a)" />
+      <ellipse x="33.3%" y="0" w="66.7%" h="66.7%" fill="#ffffff" shadow="-14 14 36 #0c102080" />
+    </box>
+  </box>
+</frame>

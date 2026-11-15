@@ -1,0 +1,52 @@
+<use src="../tokens.lune" />
+<use src="../controls.lune" />
+<use src="../blocks/phase-card.lune" />
+
+<frame name="Tonight" x="0" y="0" w="390" h="844" radius="44" fill="$sky" clip>
+  <col w="fill" h="fill" pad="68 24 34 24" gap="24">
+    <col gap="4">
+      <text style="$caption" color="$ink.faint">THURSDAY · 14 NOVEMBER</text>
+      <text style="$display" color="$ink">Tonight</text>
+    </col>
+
+    <PhaseCard />
+
+    <row gap="12" w="fill">
+      <Stat />
+      <Stat label="Moonset" value="06:15" icon="sunset.fill" />
+    </row>
+
+    <row w="fill" pad="14 16" gap="14" radius="$radius.tile" fill="$plate" stroke="$line" align="center">
+      <box w="44" h="44" radius="12" fill="$plate.raised" align="center">
+        <icon name="waveform" size="18" color="$moon" />
+      </box>
+      <col w="fill" gap="2">
+        <text style="$label" color="$ink">Low tide, slow water</text>
+        <text style="$caption" color="$ink.faint">NIGHT SOUNDS · 42 MIN</text>
+      </col>
+      <icon name="play.fill" size="18" color="$ink" />
+    </row>
+
+    <box h="fill" />
+    <Button w="fill" label="Wake me at moonset" />
+  </col>
+</frame>
+
+<frame name="Tonight · night" theme="dark" x="450" y="0" w="390" h="844" radius="44" fill="$sky" clip>
+  <col w="fill" h="fill" pad="68 24 34 24" gap="24">
+    <col gap="4">
+      <text style="$caption" color="$ink.faint">THURSDAY · 14 NOVEMBER</text>
+      <text style="$display" color="$ink">Tonight</text>
+    </col>
+
+    <PhaseCard />
+
+    <row gap="12" w="fill">
+      <Stat />
+      <Stat label="Moonset" value="06:15" icon="sunset.fill" />
+    </row>
+
+    <box h="fill" />
+    <Button w="fill" label="Wake me at moonset" />
+  </col>
+</frame>

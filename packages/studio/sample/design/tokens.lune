@@ -1,0 +1,25 @@
+<!-- Tide, a quiet companion for the night sky. Every color is a pair: its value by day, `dark` by night. -->
+<tokens>
+  <color name="sky" value="#eef1fb" dark="#0c1020" />
+  <color name="plate" value="#ffffff" dark="#161b2e" />
+  <color name="plate.raised" value="#f5f6fc" dark="#1e2540" />
+  <color name="ink" value="#1b2036" dark="#f3f1e7" />
+  <color name="ink.soft" value="#5d6480" dark="#a9b0cb" />
+  <color name="ink.faint" value="#9aa0b8" dark="#6b7391" />
+  <color name="line" value="#1b203614" dark="#ffffff1a" />
+  <color name="moon" value="#647fcb" dark="#7a93d6" />
+  <color name="moon.rim" value="#c1d0f6" dark="#c1d0f6" />
+  <color name="moonlight" value="#fff9d8" />
+  <color name="accent" value="#3f58a8" dark="#c1d0f6" />
+  <color name="on.accent" value="#ffffff" dark="#0c1020" />
+
+  <number name="radius.card" value="28" />
+  <number name="radius.tile" value="20" />
+  <number name="radius.control" value="14" />
+
+  <type name="display" size="34" weight="650" leading="38" tracking="-0.7" />
+  <type name="title" size="20" weight="600" leading="26" tracking="-0.3" />
+  <type name="body" size="15" weight="400" leading="22" />
+  <type name="label" size="13" weight="550" leading="18" />
+  <type name="caption" size="11" weight="550" leading="14" tracking="0.4" />
+</tokens>
