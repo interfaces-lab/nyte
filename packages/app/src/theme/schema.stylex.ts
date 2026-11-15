@@ -111,10 +111,10 @@ export const imageViewer = defineConsts({
   thumbnailSize: "var(--nyte-image-thumbnail-size)",
   thumbnailCompactSize: "var(--nyte-image-thumbnail-compact-size)",
   width: "var(--nyte-image-viewer-width)",
-  headerHeight: "var(--nyte-image-viewer-header-height)",
+  dialMinWidth: "var(--nyte-image-viewer-dial-min-width)",
+  dialMaxWidth: "var(--nyte-image-viewer-dial-max-width)",
   footerHeight: "var(--nyte-image-viewer-footer-height)",
   compactFooterHeight: "var(--nyte-image-viewer-compact-footer-height)",
-  modeWidth: "var(--nyte-image-viewer-mode-width)",
 });
 
 export const diffView = defineConsts({

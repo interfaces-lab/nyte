@@ -757,9 +757,9 @@
       "--nyte-image-thumbnail-compact-size",
       "--nyte-image-thumbnail-size",
       "--nyte-image-viewer-compact-footer-height",
+      "--nyte-image-viewer-dial-max-width",
+      "--nyte-image-viewer-dial-min-width",
       "--nyte-image-viewer-footer-height",
-      "--nyte-image-viewer-header-height",
-      "--nyte-image-viewer-mode-width",
       "--nyte-image-viewer-width",
       "--nyte-pane-divider-gap",
       "--nyte-pane-sash-size",
@@ -1064,9 +1064,9 @@
     "app/src/theme/schema.stylex.ts diffView": ["lineHeight", "previewMaxHeight"],
     "app/src/theme/schema.stylex.ts imageViewer": [
       "compactFooterHeight",
+      "dialMaxWidth",
+      "dialMinWidth",
       "footerHeight",
-      "headerHeight",
-      "modeWidth",
       "thumbnailCompactSize",
       "thumbnailSize",
       "width"

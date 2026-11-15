@@ -101,13 +101,12 @@ export const layout = defineVars({
   "--nyte-image-thumbnail-size": "80px",
   "--nyte-image-thumbnail-compact-size": "64px",
   "--nyte-image-viewer-width": "960px",
-  "--nyte-image-viewer-header-height":
-    "calc(var(--nyte-control-height-lg) + var(--nyte-space-unit) * 4)",
+  "--nyte-image-viewer-dial-min-width": "96px",
+  "--nyte-image-viewer-dial-max-width": "360px",
   "--nyte-image-viewer-footer-height":
-    "calc(var(--nyte-control-height-lg) + var(--nyte-space-unit) * 6)",
+    "calc(var(--nyte-control-height-lg) + var(--nyte-space-unit) * 2)",
   "--nyte-image-viewer-compact-footer-height":
     "calc(var(--nyte-control-height-lg) * 2 + var(--nyte-space-unit) * 8)",
-  "--nyte-image-viewer-mode-width": "100px",
   "--nyte-diff-line-height": "round(up, calc(var(--nyte-font-size-code) * 20 / 12), 1px)",
   "--nyte-diff-preview-max-height": "min(480px, 60vh)",
 });

@@ -5,7 +5,8 @@ import type { ComposerEditorHandle } from "../composer/composer-editor.tsx";
 import { attachComposerFiles } from "../composer/composer-files.ts";
 import { receiveChatExcerpts } from "../../references/add-to-chat.ts";
 import { capture, check, openViewer, paint, until } from "./image-viewer.fixture.tsx";
-import { flattenMarkup } from "./markup.ts";
+import { exportMarkup } from "./markup-export.tsx";
+import { wholeImage } from "./markup-geometry.ts";
 
 export async function run(): Promise<string> {
   await readFailure();
@@ -61,7 +62,7 @@ async function readFailure(): Promise<void> {
   );
 
   try {
-    const before = document.querySelector('[data-image-mark="box"]')?.innerHTML;
+    const before = document.querySelector('[data-image-markup] [data-image-mark="box"]')?.innerHTML;
     flushSync(() => viewer.add.click());
     await until(() => readError !== undefined, "the real FileReader failure");
     await until(
@@ -73,7 +74,7 @@ async function readFailure(): Promise<void> {
       "The viewer must report the actual composer read failure",
     );
     check(
-      document.querySelector('[data-image-mark="box"]')?.innerHTML === before,
+      document.querySelector('[data-image-markup] [data-image-mark="box"]')?.innerHTML === before,
       "A failed read must keep the existing mark",
     );
     check(
@@ -159,7 +160,14 @@ async function unmounting(): Promise<void> {
       gate.resolve(undefined);
 
       if (phase === "delivery") await finished.promise;
-      else await flattenMarkup(viewer.source, [], "encoding-barrier.png");
+      else
+        await exportMarkup(
+          viewer.source,
+          wholeImage({ width: viewer.source.naturalWidth, height: viewer.source.naturalHeight }),
+          [],
+          "light",
+          "encoding-barrier.png",
+        );
       await paint();
       check(
         calls === (phase === "flatten" ? 0 : 1),
