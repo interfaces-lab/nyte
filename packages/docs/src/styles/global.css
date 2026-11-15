@@ -8,6 +8,7 @@
 @import "./docs.css";
 @import "./components.css";
 @import "./design.css";
+@import "./field-trip.css";
 
 /*
  * Site chrome reads the @nyte-ai/ui tokens, which StyleX declares on :root

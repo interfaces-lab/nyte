@@ -9,12 +9,18 @@ import { SpecimenTile } from "./tile";
 const sectionNotes = new Map([
   ["Foundations", "Colour, shape, space, type, elevation, and motion, drawn from the live tokens."],
   ["Components", "Browse the component reference and try the live examples."],
+  [
+    "Field trips",
+    "Long reads on how a piece of Nyte's design was made, from the brief to the files.",
+  ],
 ]);
 
 export function DesignLanding({ page }: { page: DocPage }) {
-  const counts = catalog.map(
-    (section) => `${section.entries.length} ${section.label.toLowerCase()}`,
-  );
+  const counts = catalog.map((section) => {
+    const noun = section.label.toLowerCase();
+
+    return `${section.entries.length} ${section.entries.length === 1 ? noun.replace(/s$/, "") : noun}`;
+  });
 
   return (
     <DesignMain>

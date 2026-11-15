@@ -1,7 +1,8 @@
 import { componentSpecimens } from "./components";
+import { fieldTripSpecimens } from "./field-trips";
 import { foundationSpecimens } from "./foundations";
 
-const specimens = { ...foundationSpecimens, ...componentSpecimens };
+const specimens = { ...foundationSpecimens, ...componentSpecimens, ...fieldTripSpecimens };
 
 type SpecimenSlug = keyof typeof specimens;
 

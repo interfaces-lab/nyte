@@ -14,6 +14,7 @@ import {
 import { splitHref } from "~/lib/href";
 import { componentsMdxComponents } from "~/components/components/mdx";
 import { foundationsMdxComponents } from "~/components/design/mdx";
+import { fieldTripsMdxComponents } from "~/components/field-trips/mdx";
 import { DocCard } from "~/components/mdx/doc-card";
 import {
   BenchmarkHighlights,
@@ -51,6 +52,7 @@ export const mdxComponents = {
   table: ScrollTable,
   ...componentsMdxComponents,
   ...foundationsMdxComponents,
+  ...fieldTripsMdxComponents,
   Cards,
   CodeBlockTab,
   CodeBlockTabs,
