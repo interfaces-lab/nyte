@@ -109,6 +109,7 @@ export const ICON_NAMES = [
   "mouse-scroll-up",
   "new-chat",
   "new-chat-folder",
+  "nyte",
   "panel-left",
   "panel-right",
   "paperclip",

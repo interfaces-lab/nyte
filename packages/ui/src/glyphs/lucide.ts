@@ -145,6 +145,7 @@ import {
 } from "simple-icons";
 
 import type { FilledIconName, Glyph, GlyphProps, IconName } from "../icon-names.ts";
+import { NyteGlyph } from "./nyte.ts";
 
 export const LUCIDE_STROKE_WIDTH = 1.5;
 
@@ -291,6 +292,7 @@ export const GLYPHS = {
   "mouse-scroll-up": lucide(Mouse),
   "new-chat": lucide(SquarePen),
   "new-chat-folder": lucide(Plus),
+  nyte: NyteGlyph,
   "panel-left": lucide(PanelLeft),
   "panel-right": lucide(PanelRight),
   paperclip: lucide(Paperclip),

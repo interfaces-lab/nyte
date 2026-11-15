@@ -634,7 +634,7 @@ const USAGE_TOOL_LABELS: Readonly<Record<UsageTool, string>> = {
 };
 
 const USAGE_TOOL_ICONS: Readonly<Record<UsageTool, IconName>> = {
-  nyte: "sparkle",
+  nyte: "nyte",
   claudeCode: "provider-claude-code",
   codex: "provider-openai-codex",
 };

@@ -154,6 +154,7 @@ import {
 } from "central-icons-filled";
 
 import type { FilledIconName, Glyph, IconName } from "../icon-names.ts";
+import { NyteGlyph } from "./nyte.ts";
 
 const IconOpenrouter: Glyph = (iconProps) => (
   <CentralIconBase {...iconProps} ariaLabel="openrouter">
@@ -320,6 +321,7 @@ export const GLYPHS = {
   "mouse-scroll-up": IconMouseScrollUp,
   "new-chat": IconCollaborationPointerRight,
   "new-chat-folder": IconPlusMedium,
+  nyte: NyteGlyph,
   "panel-left": IconSidebarHiddenLeftWide,
   "panel-right": IconSidebarHiddenRightWide,
   paperclip: IconPaperclip1,
