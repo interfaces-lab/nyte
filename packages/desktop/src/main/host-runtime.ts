@@ -27,7 +27,6 @@ import { followHostProcess } from "./host-process.ts";
 import type { HostProcessFollower } from "./host-process.ts";
 import type { PackagedBuild } from "../shared/desktop-builds.ts";
 
-/** How main reaches `host.sock`: one request, or one WebSocket. Each window's port is served over it. */
 export interface HostRoute {
   readonly fetch: (request: Request) => Promise<Response>;
   readonly dial: DialSocket;
@@ -39,7 +38,6 @@ export interface HostRuntime {
   readonly link: HostLink;
   readonly hostProcess: HostProcessFollower;
   readonly desktop: DesktopHost;
-  /** The machine woke: main dials the host now instead of waiting out a backoff, and tells every window the host process again, which has each window's socket do the same. */
   resume(): void;
   close(): Promise<void>;
 }

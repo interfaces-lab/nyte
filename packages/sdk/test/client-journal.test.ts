@@ -583,7 +583,6 @@ it("leaves a send the host admitted but never answered to the clipped prompt tha
   expect(landed.leadingPrompt?.id).toBe(clipped.leadingPrompt?.id);
 });
 
-/** What meets a chat send's posts, which wait until `send` resolved. */
 type Posts = "answers" | "refuses" | "lose the link" | "fail for a day" | "fail while removed";
 
 describe("a chat's send resolves once the journal holds the message, before the host answers", () => {
@@ -642,7 +641,6 @@ async function chatSend(posts: Posts, delivered: string, journaled: number): Pro
 
 interface Removal {
   readonly name: string;
-  /** Whether the person removes the message while a post of it is on its way, which the host then admits; otherwise between two failed posts. */
   readonly inFlight: boolean;
 }
 

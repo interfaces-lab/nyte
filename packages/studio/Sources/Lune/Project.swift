@@ -1,6 +1,5 @@
 import Foundation
 
-/// Names one element in one file by its index path among element children.
 public struct ElementRef: Hashable, Sendable {
   public var file: String
   public var path: [Int]
@@ -22,7 +21,6 @@ public struct ComponentDeclaration: Sendable {
   public let path: [Int]
   public let element: SyntaxElement
 
-  /// The declared props and their defaults: every attribute of `<component>` except `name`.
   public var defaults: [String: String] {
     var out: [String: String] = [:]
     for attribute in element.attributes where attribute.name != "name" {
@@ -32,7 +30,6 @@ public struct ComponentDeclaration: Sendable {
   }
 }
 
-/// What a file can name: its own tokens and components, and those of every file it uses.
 public struct Scope: Sendable {
   public var colors: [String: (light: String, dark: String?)] = [:]
   public var numbers: [String: String] = [:]
@@ -46,7 +43,6 @@ public struct Scope: Sendable {
     components.merge(other.components) { _, new in new }
   }
 
-  /// Replaces every `$token` in a value with what it stands for in a theme mode.
   public func substitute(_ value: String, mode: ThemeMode, depth: Int = 0) -> String {
     guard depth < 8, value.contains("$") else { return value }
     var out = ""
@@ -91,7 +87,6 @@ public struct ProjectFile: Sendable {
   public let error: Diagnostic?
 }
 
-/// A set of Lune files that use each other, keyed by path relative to the project root.
 public struct Project: Sendable {
   public private(set) var files: [String: ProjectFile] = [:]
 
@@ -111,7 +106,6 @@ public struct Project: Sendable {
     files[path] = nil
   }
 
-  /// The files a file uses, directly or through another file, nearest last.
   public func dependencies(of path: String) -> [String] {
     var seen: Set<String> = [path]
     var order: [String] = []
@@ -172,7 +166,6 @@ public struct Project: Sendable {
   }
 }
 
-/// Resolves a `src` against the folder of the file that names it.
 public func resolvePath(_ source: String, from file: String) -> String {
   var parts = source.hasPrefix("/") ? [] : file.split(separator: "/").dropLast().map(String.init)
   for part in source.split(separator: "/") {

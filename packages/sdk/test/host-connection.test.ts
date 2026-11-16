@@ -115,7 +115,6 @@ describe("a connection's socket", () => {
     const connection = await attach(served.listener, transport.socket);
 
     await connection.sessions.list();
-    await new Promise((settle) => setTimeout(settle, 50));
     expect(transport.opened).toHaveLength(0);
 
     await until(connection, "open");
@@ -136,12 +135,16 @@ describe("a connection's socket", () => {
     );
 
     const connection = await attach(served.listener, transport.socket);
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    cleanups.push(async () => {
+      vi.useRealTimers();
+    });
 
     expect(await until(connection, "blocked")).toMatchObject({
       reason: "version",
       error: { message: expect.stringMatching(/^Update the host/) },
     });
-    await new Promise((settle) => setTimeout(settle, 50));
+    await vi.advanceTimersByTimeAsync(30_000);
     expect(transport.opened).toHaveLength(1);
 
     connection.retry();
@@ -385,8 +388,6 @@ describe("a reconnect", () => {
     await vi.waitFor(() => expect(transport.opened).toHaveLength(2));
     await until(connection, "open");
     await vi.advanceTimersByTimeAsync(30_000);
-    vi.useRealTimers();
-    await new Promise((settle) => setTimeout(settle, 50));
 
     expect(transport.opened.map((socket) => socket.readyState)).toEqual([
       WebSocket.CLOSED,
@@ -395,7 +396,6 @@ describe("a reconnect", () => {
   });
 });
 
-/** Opens real sockets, and lets `cut` kill the ones open now: they drop every frame both ways and never close, as a TCP flow does once its path dies silently. Sockets opened later work. */
 function deafening() {
   const transport = counting();
   const dead = new Set<WebSocket>();
@@ -581,7 +581,6 @@ describe("a sessions store's order", () => {
   });
 });
 
-/** Says the host serves `revision` in its welcome, the way a host at that revision does, and keeps every frame either side sends. */
 function welcomedAt(revision: number, frames: string[]) {
   return class extends WebSocket {
     override send(data: string): void {
@@ -686,7 +685,6 @@ describe("offer", () => {
   });
 });
 
-/** Opens real sockets and counts the operations each one sends. */
 function operations() {
   const sent = new Map<string, number>();
 
@@ -707,7 +705,6 @@ function operations() {
   return { socket, sent: (op: string) => sent.get(op) ?? 0 };
 }
 
-/** A fetch that holds each `run.stop` until the test lets it go, then answers it or fails it as a lost link. */
 function slowStops() {
   const held: PromiseWithResolvers<"answer" | "fail">[] = [];
 
@@ -742,7 +739,6 @@ describe("a chat", () => {
     const chat = connection.chat(first);
     const other = connection.chat(second);
     await until(connection, "open");
-    await new Promise((settle) => setTimeout(settle, 50));
 
     expect(counted.sent("head.read")).toBe(0);
 

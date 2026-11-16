@@ -57,10 +57,17 @@ const frame = (): Promise<void> =>
     requestAnimationFrame(() => resolve());
   });
 
-async function settle(): Promise<void> {
-  for (let pass = 0; pass < 4; pass += 1) await frame();
-  await new Promise<void>((resolve) => window.setTimeout(resolve, 30));
-  await frame();
+async function until(done: () => boolean, what: string): Promise<void> {
+  const deadline = performance.now() + 5_000;
+
+  while (!done()) {
+    if (performance.now() > deadline) throw new Error(`Timed out waiting for ${what}`);
+    await frame();
+  }
+}
+
+function submit(): HTMLButtonElement | null {
+  return document.querySelector<HTMLButtonElement>('form button[type="submit"]');
 }
 
 const refuse = async (): Promise<never> => {
@@ -181,11 +188,11 @@ async function menuItems(): Promise<readonly HTMLElement[]> {
   check(trigger !== null, "the action menu trigger renders");
 
   if (trigger.getAttribute("aria-expanded") !== "true") trigger.click();
-  await settle();
+  await until(() => document.querySelector('[role="menuitemradio"]') !== null, "the action menu");
   const items = [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')];
   document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
   trigger.click();
-  await settle();
+  await until(() => trigger.getAttribute("aria-expanded") !== "true", "the action menu to close");
 
   return items;
 }
@@ -215,7 +222,10 @@ export async function run(): Promise<string> {
 
   seed(null, null, undefined);
   mount(root);
-  await settle();
+  await until(
+    () => submit()?.textContent === "Commit and Push Changes",
+    "the stored pull request action to fall back",
+  );
   const offered = (await menuItems()).map((item) => item.textContent ?? "");
   check(
     !offered.some((label) => label.includes("Pull Request")),
@@ -243,7 +253,7 @@ export async function run(): Promise<string> {
     const blockedRoot = createRoot(container);
     seed(github, login, state);
     mount(blockedRoot);
-    await settle();
+    await until(() => submit()?.title === reason, `${login.kind} to say why`);
     check(primary().textContent === "Create Pull Request", "the stored action is offered");
     check(disabled(primary()), `${login.kind} disables the pull request`);
     check(primary().title === reason, `${login.kind} says why: ${primary().title}`);
@@ -259,17 +269,24 @@ export async function run(): Promise<string> {
     { repository: REPOSITORY, pullRequest: { kind: "none" } },
   );
   mount(readyRoot);
-  await settle();
+  await until(
+    () => submit()?.textContent === "Create Pull Request" && !disabled(primary()),
+    "a ready repository to offer a pull request",
+  );
   check(!disabled(primary()), "a ready repository can open a pull request");
   check(
     document.querySelector('section[aria-label="Pull request"]') === null,
     "no pull request shows before one exists",
   );
   typeMessage("Fix tab close");
-  await settle();
+  await frame();
   primary().click();
-  await settle();
-  await settle();
+  await until(
+    () =>
+      document.querySelector('[role="status"]')?.textContent?.includes("Opened a pull request") ===
+      true,
+    "the pull request to open",
+  );
   check(pushes.length === 1, "the branch is pushed before the pull request opens");
   check(
     JSON.stringify(created) === JSON.stringify([{ title: "Fix tab close" }]),
@@ -295,7 +312,13 @@ export async function run(): Promise<string> {
     { repository: REPOSITORY, pullRequest: { kind: "ready", pullRequest: PULL_REQUEST } },
   );
   mount(pullRoot);
-  await settle();
+  await until(
+    () =>
+      document
+        .querySelector('section[aria-label="Pull request"]')
+        ?.textContent?.includes("1 failing, 1 pending, 1 passed") === true,
+    "the branch's pull request and its checks",
+  );
   const section = document.querySelector<HTMLElement>('section[aria-label="Pull request"]');
   check(section !== null, "the branch's pull request shows");
   check(
@@ -314,7 +337,10 @@ export async function run(): Promise<string> {
   );
   check(section.querySelector('ul[aria-label="Checks"]') === null, "the checks start folded");
   summary.click();
-  await settle();
+  await until(
+    () => section.querySelector('ul[aria-label="Checks"]') !== null,
+    "the checks to unfold",
+  );
   const checks = [...section.querySelectorAll('ul[aria-label="Checks"] li')];
   check(checks.length === 3, `every check is listed: ${String(checks.length)}`);
   checks[1]?.querySelector("a")?.click();

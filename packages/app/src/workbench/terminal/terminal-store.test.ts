@@ -89,7 +89,6 @@ const folder: WorkspaceInfo = {
   trusted: true,
   projectSources: [],
   addedBy: asId("tester"),
-  sessions: 0,
   writers: [],
   isolation: null,
 };

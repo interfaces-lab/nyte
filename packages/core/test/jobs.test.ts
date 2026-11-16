@@ -274,7 +274,7 @@ describe("jobs", () => {
       process.emit("built\n");
       process.exit(0);
       await job.settled();
-      await new Promise((resolve) => setTimeout(resolve, 20));
+      await until(() => (killed.dead ? true : undefined));
 
       const reopened = createHost(
         kernelOver(store, provider, { execution: { kind: "admit-only" } }),
@@ -606,13 +606,18 @@ describe("jobs", () => {
   it("leaves a job end the store refused to the wait holding it: repair settles it with the exit, and no report is sent (B F4, B-2 P5)", async () => {
     const inner = await memoryStore().open();
     let refusing = false;
+    const refused: string[] = [];
 
     const store = {
       ...inner,
       refs: {
         ...inner.refs,
-        set: (updates: Parameters<typeof inner.refs.set>[0]) =>
-          refusing ? Promise.reject(new Error("The store went away.")) : inner.refs.set(updates),
+        set: (updates: Parameters<typeof inner.refs.set>[0]) => {
+          if (!refusing) return inner.refs.set(updates);
+          refused.push(...updates.map((update) => update.name));
+
+          return Promise.reject(new Error("The store went away."));
+        },
       },
     };
 
@@ -642,7 +647,7 @@ describe("jobs", () => {
     refusing = true;
     (await started(provider.processes, 1)).exit(2);
     await job.settled();
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await until(() => (refused.includes(callRef(session.id, call)) ? true : undefined));
     refusing = false;
     process.off("unhandledRejection", unhandled);
 

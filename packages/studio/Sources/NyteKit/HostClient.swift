@@ -1,6 +1,5 @@
 import Foundation
 
-/// Where a host listens and the token that gets in.
 public struct HostEndpoint: Sendable, Equatable {
   public let url: URL
   public let token: String
@@ -10,8 +9,6 @@ public struct HostEndpoint: Sendable, Equatable {
     self.token = token
   }
 
-  /// Finds this machine's host the way `nyte` does: `NYTE_HOST_URL` and `NYTE_HOST_TOKEN` when
-  /// both are set, otherwise the `host.json` a running host keeps in its home folder.
   public static func discover(
     environment: [String: String] = ProcessInfo.processInfo.environment
   ) throws -> HostEndpoint {
@@ -36,7 +33,6 @@ public struct HostEndpoint: Sendable, Equatable {
   }
 }
 
-/// An error a host answered with, or a failure to reach it.
 public struct HostError: Error, Sendable, LocalizedError {
   public let code: String
   public let message: String
@@ -54,8 +50,6 @@ public struct HostError: Error, Sendable, LocalizedError {
   }
 }
 
-/// Calls a host's operations over HTTP: one JSON value for a query or command, server-sent
-/// events for a watch or stream, raw bytes for file contents.
 public final class HostClient: Sendable {
   public let endpoint: HostEndpoint
   private let session: URLSession
@@ -75,7 +69,6 @@ public final class HostClient: Sendable {
     return request
   }
 
-  /// Calls a query, command or receipt operation.
   public func call(_ operation: String, _ input: JSON = [:]) async throws -> JSON {
     var request = request(operation)
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -85,7 +78,6 @@ public final class HostClient: Sendable {
     return try answer(data, response)
   }
 
-  /// Calls an operation that takes bytes: the body is the contents and the input rides in a header.
   public func upload(_ operation: String, _ input: JSON, body: Data) async throws -> JSON {
     var request = request(operation)
     request.setValue(base64url(input.data()), forHTTPHeaderField: "X-Nyte-Input")
@@ -95,7 +87,6 @@ public final class HostClient: Sendable {
     return try answer(data, response)
   }
 
-  /// Calls an operation that answers raw bytes, such as `files.bytes`.
   public func bytes(_ operation: String, _ input: JSON) async throws -> Data {
     var request = request(operation)
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -107,8 +98,6 @@ public final class HostClient: Sendable {
     return data
   }
 
-  /// Follows a watch or stream operation, one JSON value per frame, until the task is cancelled
-  /// or the host ends it.
   public func frames(_ operation: String, _ input: JSON) -> AsyncThrowingStream<JSON, Error> {
     var request = request(operation)
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")

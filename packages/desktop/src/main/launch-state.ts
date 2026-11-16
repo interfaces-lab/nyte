@@ -44,11 +44,6 @@ export interface OpeningFrame {
 
 const INITIAL: LaunchState = { theme: "system" };
 
-/**
- * A window reopens where it closed while that is on a screen. Otherwise it takes the last closed
- * window's size, and its place and state too only as the launch's first window with no frame of
- * its own.
- */
 export function openingFrame(input: {
   readonly own: WindowFrame | undefined;
   readonly last: WindowFrame | undefined;
@@ -70,10 +65,6 @@ export function openingFrame(input: {
   };
 }
 
-/**
- * Quitting or closing the last window keeps every window for the next launch, so this returns
- * `undefined`; closing any other window drops it.
- */
 export function windowsAfterClose(
   kept: readonly string[],
   closed: string,

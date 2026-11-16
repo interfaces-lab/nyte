@@ -15,8 +15,10 @@ declare global {
 
 type Linked = Extract<ConnectView, { kind: "linked" }>;
 
-const wait = (duration: number) =>
-  new Promise<void>((resolve) => window.setTimeout(resolve, duration));
+const nextFrame = () =>
+  new Promise<void>((resolve) =>
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve())),
+  );
 
 const tray = () => document.querySelector<HTMLElement>('[data-slot="popover-popup"]') ?? undefined;
 
@@ -25,9 +27,11 @@ const confirmation = () => document.querySelector<HTMLElement>('[role="alertdial
 const trayText = () => tray()?.textContent ?? "";
 
 async function until(condition: () => boolean, what: string): Promise<void> {
-  for (let elapsed = 0; elapsed < 3_000; elapsed += 20) {
+  const deadline = performance.now() + 3_000;
+
+  while (performance.now() < deadline) {
     if (condition()) return;
-    await wait(20);
+    await nextFrame();
   }
 
   throw new Error(`Timed out waiting for ${what}: ${document.body.textContent ?? ""}`);
@@ -150,7 +154,11 @@ export async function run() {
     );
 
     await until(() => switchNamed("Serve over Tailscale", container) !== undefined, "the page");
-    await wait(100);
+    await until(
+      () => client.getQueryState(keys.remoteAccess)?.status === "success",
+      "the connect state",
+    );
+    await nextFrame();
     check(!container.textContent.includes("Nyte account"), "An unconfigured build showed the row");
 
     await remoteAccessChanged({

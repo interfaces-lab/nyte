@@ -172,7 +172,6 @@ export function slashNamespace(state: State): readonly SlashCommand[] {
   );
 }
 
-/** `state` with its slash namespace indexed in canonical order, for a reducer whose transition changed the catalog. */
 export function indexSlash(state: State): State {
   return { ...state, facts: { ...state.facts, slash: slashIndex(slashNamespace(state)) } };
 }

@@ -90,7 +90,6 @@ async function readFailure(): Promise<void> {
   }
 }
 
-/** Native decode yields even for loaded images, so synchronous unmount precedes PNG completion. */
 async function unmounting(): Promise<void> {
   for (const phase of ["ready", "flatten", "delivery"] as const) {
     const gate = Promise.withResolvers<string | undefined>();

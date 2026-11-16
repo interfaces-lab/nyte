@@ -83,23 +83,6 @@ function mirrorTool(live: ReadonlyMap<string, Live>): ToolDefinition<MirrorArgum
   };
 }
 
-/**
- * Agent Client Protocol agents as one model API: each ACP registry agent
- * installed on this machine is a model of the `acp` provider, run as a
- * process in the session's environment. Its text and thoughts stream as the
- * assistant's, each of its tool calls is recorded as a hidden `acp` mirror
- * call, and a permission it asks for waits until Nyte records that call and
- * is then decided by `PluginApi.approve` under the call's ACP kind (a call
- * Nyte settles without running is refused). A stopped run cancels the
- * agent's turn. Which agents there are, and the command, arguments and
- * environment each starts with, come from the registry list shipped in
- * `registry-seed.json` and the user's `agentsFile`, never from the network,
- * so no remote entry picks what runs on this machine; a user agent replaces
- * a registry agent of the same id. An agent with a `mode` has each new
- * session set to it. An installed agent is listed but runs only once the
- * user picks it, never as a default the host chooses. `agents`, when given,
- * replaces both lookups, as tests do.
- */
 export function acpAgents(options?: {
   readonly agents?: () => Promise<readonly AcpAgent[]>;
   readonly agentsFile?: string;

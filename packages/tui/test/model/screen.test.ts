@@ -26,7 +26,6 @@ function child(view: SessionView, id = "c1"): Task {
   return { kind: "agent", id: asId(id), info, view };
 }
 
-/** `info` with its run waiting on a subagent whose own subagent asks the person. */
 function waitingOnAsk(info: SessionInfo): SessionInfo {
   return {
     ...info,

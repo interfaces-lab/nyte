@@ -63,7 +63,6 @@ export async function mediaUrl(path: string): Promise<string> {
   return installedMedia(path);
 }
 
-/** Installs `connection`, resets the host reads cached from another host it replaces, tells every `onInstall` listener whether it replaced one and whether that one was to the same host, then closes the one it replaced. */
 export function installConnection(connection: ClientConnection): void {
   const replaced = installed;
   installed = connection;
@@ -81,18 +80,12 @@ export function connected(): Promise<ClientConnection> {
   return installed === undefined ? first.promise : Promise.resolve(installed);
 }
 
-/** Hears every install; `replaced` is false only for the first, and `sameHost` says whether the connection it replaced was to the same host. */
 export function onInstall(listener: (replaced: boolean, sameHost: boolean) => void): () => void {
   installs.add(listener);
 
   return () => installs.delete(listener);
 }
 
-/**
- * `open`'s value on the installed connection, followed onto each connection that replaces it: a
- * listener hears its changes and each install. `open` runs once per connection; with `close`, what
- * it opened closes when a connection replaces it or the last listener leaves.
- */
 export function installedLive<S, L>(
   open: (current: ClientConnection) => Live<S> & L,
   close: (live: L) => void = () => undefined,
@@ -197,7 +190,6 @@ export function connectionProblem(cause: unknown): ConnectionProblem {
   }
 }
 
-/** Whether `next` is a link that opened since `previous`: a host read that failed while it was down may answer now. */
 export function linkReopened(previous: Health | undefined, next: Health | undefined): boolean {
   return next?.kind === "open" && (previous?.kind !== "open" || previous.since !== next.since);
 }

@@ -34,7 +34,6 @@ export interface TuiOptions {
   readonly size?: { readonly width: number; readonly height: number };
   readonly renderer?: Omit<TestRendererOptions, "width" | "height" | "clock" | "kittyKeyboard">;
   readonly fixture?: TestHost;
-  /** A host to connect to instead of the fixture's. */
   readonly endpoint?: LocalEndpoint;
   readonly opened?: boolean;
   readonly target?: BootOptions["target"];

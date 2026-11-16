@@ -15,7 +15,7 @@ const BADGE_CAP = 9;
 /**
  * Base UI traps focus in a popover only when it holds a close part, so the list renders a hidden one.
  *
- * The title bar clips the bell while the workbench covers the content, and Chromium hides a box
+ * The title bar clips the bell when the workbench leaves the chat side no room, and Chromium hides a box
  * anchored to a clipped anchor, so the stack lets go of the bell until it shows again. A bell
  * clipped flush to the edge still counts as intersecting, so only a visible area counts as shown.
  */

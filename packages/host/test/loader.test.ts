@@ -167,16 +167,18 @@ describe("directory", () => {
     await mkdir(join(dir, "slow"));
     await writeFile(
       join(dir, "slow", "index.mjs"),
-      'import { id } from "./id.mjs";\nawait new Promise((resolve) => setTimeout(resolve, 300));\nexport default { id };\n',
+      'import { id } from "./id.mjs";\nawait new Promise((resolve) => process.emit("plugin-evaluating", resolve) || resolve());\nexport default { id };\n',
     );
     await writeFile(join(dir, "slow", "id.mjs"), 'export const id = "old";\n');
 
     expect(
       await inNode(`
         const loader = createPluginLoader({ dirs: async () => [] });
+        const evaluating = new Promise((resolve) => process.once("plugin-evaluating", resolve));
         const first = loader.directory(${JSON.stringify(dir)});
-        await new Promise((resolve) => setTimeout(resolve, 100));
+        const release = await evaluating;
         await writeFile(${JSON.stringify(join(dir, "slow", "id.mjs"))}, 'export const id = "new";\\n');
+        release();
         const during = (await first).loaded[0]?.plugin.id;
         const after = (await loader.directory(${JSON.stringify(dir)})).loaded[0]?.plugin.id;
         loader.close();

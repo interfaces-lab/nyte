@@ -4,7 +4,6 @@ import type { DesktopWindowOpen } from "@nyte-ai/app/contract/desktop-window.ts"
 import type { DesktopHost } from "../host/desktop-host.ts";
 import type { HostWindow } from "../shared/host-window.ts";
 
-/** A path Finder asked Nyte to open, once `stat` has said whether it's a folder. */
 export interface OpenedPath {
   readonly path: string;
   readonly folder: boolean;
@@ -16,16 +15,9 @@ export type OpenRoute =
 
 const BATCH_MS = 100;
 
-/**
- * Finder's Open With. Paths wait until the windows are restored (`ready`) and the host link is
- * connected (`reachable`), then open in batches 100 ms after the last one arrives, in the order
- * Finder named them. A path that can't open is reported through `failed`, never dropped.
- */
 export function createOpenWith(options: {
   host: () => DesktopHost;
-  /** Open windows, least recently focused first. */
   windows: () => readonly HostWindow[];
-  /** The path of the workspace a window shows, as its page last said. */
   workspace: (window: HostWindow) => string | undefined;
   send: (window: HostWindow, path: string) => void;
   open: (opening: DesktopWindowOpen) => void;
@@ -106,11 +98,6 @@ export function createOpenWith(options: {
   };
 }
 
-/**
- * A folder always gets a new window. A file goes to the window whose workspace holds it most
- * closely, or to a new window when none holds it. `windows` runs from least to most recently
- * focused, so a tie goes to the most recent.
- */
 export function routeOpenedPath(
   opened: OpenedPath,
   windows: readonly { readonly window: HostWindow; readonly root: string }[],
@@ -121,7 +108,6 @@ export function routeOpenedPath(
   return owner === undefined ? { kind: "new-window" } : { kind: "window", window: owner.window };
 }
 
-/** The candidate whose `root` holds `path` most closely; a tie goes to the later candidate. */
 function deepestRoot<Candidate extends { readonly root: string }>(
   path: string,
   candidates: readonly Candidate[],

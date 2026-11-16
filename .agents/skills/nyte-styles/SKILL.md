@@ -40,6 +40,10 @@ Rule numbers are stable ids that other skills and reviews cite. A removed rule l
    loads.
 6. **Use `!important` for two cases only.** `!important` in `base` beats every other layer, so use
    it only for `[hidden]` and the iOS 16px input floor.
+42. **Give a conditional ui custom property no default.** An unconditional custom-property value
+    compiles outside the cascade layers, while a conditional one from ui lands inside one, so write
+    `{ default: null, ":not(<state>)": value }` and let the registered initial value cover the
+    rest, as Button's `--nyte-hairline-elevation` does.
 
 ## Invariants
 
@@ -99,6 +103,16 @@ A rule here that names no lint or test is not enforced.
     lint `nyte-restyle/no-restyle` enforces this.
 21. **Use logical properties.** The one exception is the symmetric `left: "50%"` centre. The lint
     `nyte-design/logical-properties` enforces this.
+43. **Follow Cursor's spatial scale.** Spacing, box sizes, radii and type pairs follow Cursor's
+    scale, and colours stay Nyte's.
+44. **Fix a grid miss at its source.** Fix it at a token or a shared component, never at one
+    element.
+45. **Read a `defineConsts` number as a string.** Numeric `defineConsts` entries become strings in
+    production exports, so wrap them in `Number()` before JavaScript arithmetic and add them with
+    CSS `calc()`.
+46. **Preview a dynamic style through `props()`.** StyleX rewrites a dynamic custom property's key,
+    so an imperative preview applies `props(panelWidth(pixels)).style`, never a write to
+    `--_workbench-width`.
 
 ## Colour stairs
 
@@ -134,6 +148,13 @@ A rule here that names no lint or test is not enforced.
     ```sh
     pnpm --dir packages/app exec vitest --run test/tokens.test.ts
     ```
+
+47. **Show an error with `intent.danger`.** Its secondary ink is `contentAccent`.
+    `surfaceTheme.red` is decorative and keeps the tinted secondary ink.
+48. **Check which role an element selects.** A danger scope doesn't recolour a `color` the element
+    already inherits, so read the role it selects before calling its text red.
+49. **Measure contrast on the composited fill.** Stack the selected fill with the hover or active
+    layers, as a ghost Button does, and measure ink on the result, never on one fill alone.
 
 ## Adding or changing a token
 

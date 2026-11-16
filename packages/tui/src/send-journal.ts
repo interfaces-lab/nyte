@@ -5,18 +5,12 @@ import process from "node:process";
 import { createSendJournal } from "@nyte-ai/sdk/client";
 import type { JournalStorage, RequestJournal } from "@nyte-ai/sdk/client";
 
-/**
- * The send journal in `journal/` under the Nyte home, one file per message, readable only by this
- * user because it holds what the person typed. Every `nyte` process on the home shares it, so a
- * message journaled by one is sent by the next to reach that host.
- */
 export function fileJournal(
   folder = join(process.env["NYTE_HOME"] ?? join(homedir(), ".nyte"), "journal"),
 ): RequestJournal {
   return createSendJournal(fileStorage(folder));
 }
 
-/** Writes each entry to a temporary file and renames it into place, so a reader sees a whole entry or none. */
 function fileStorage(folder: string): JournalStorage {
   const path = (key: string): string => join(folder, `${encodeURIComponent(key)}.json`);
 
@@ -46,7 +40,6 @@ function fileStorage(folder: string): JournalStorage {
   };
 }
 
-/** A file another process removed between the listing and the read is one fewer entry. */
 function missing<T>(fallback: T): (error: unknown) => T {
   return (error) => {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") return fallback;

@@ -149,7 +149,6 @@ export const MODEL_DETAILS = [
 
 export type ModelDetail = (typeof MODEL_DETAILS)[number]["value"];
 
-/** Every model by one measure: what a chat costs, what a token costs, or how much cache it hit. */
 export function ModelTable({
   usage,
   detail,
@@ -492,7 +491,6 @@ function RowTip({
   );
 }
 
-/** Folders, chats or tools by share of the total, with the long tail behind a toggle. */
 export function ShareRows({
   rows,
   noun,

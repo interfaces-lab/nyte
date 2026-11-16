@@ -1,7 +1,7 @@
 import { Buffer } from "node:buffer";
 import process from "node:process";
 import { stripVTControlCharacters } from "node:util";
-import { EmbeddedTerminalRenderable, KeyEvent } from "@opentui/core";
+import { CliRenderEvents, EmbeddedTerminalRenderable, KeyEvent } from "@opentui/core";
 import type { EmbeddedTerminalScreen } from "@opentui/core";
 import { createTestRenderer } from "@opentui/core/testing";
 import { keyStrokes } from "../src/lib/constants.ts";
@@ -16,7 +16,10 @@ export interface Pty extends AsyncDisposable {
   screen(): EmbeddedTerminalScreen;
   press(command: ChatCommand): void;
   type(text: string): void;
-  waitFor(predicate: (screen: EmbeddedTerminalScreen) => boolean): Promise<EmbeddedTerminalScreen>;
+  waitFor(
+    predicate: (screen: EmbeddedTerminalScreen) => boolean,
+    timeoutMs?: number,
+  ): Promise<EmbeddedTerminalScreen>;
   signal(name: Ending): void;
   hangUp(): void;
   exited(): Promise<number>;
@@ -67,19 +70,33 @@ export async function openPty(options: {
 
   if (options.typed !== undefined) pty?.write(options.typed);
 
-  const waitFor = async (
+  const waitFor = (
     predicate: (screen: EmbeddedTerminalScreen) => boolean,
+    timeoutMs = WAIT_MS,
   ): Promise<EmbeddedTerminalScreen> => {
-    const deadline = performance.now() + WAIT_MS;
+    const matched = Promise.withResolvers<EmbeddedTerminalScreen>();
 
-    while (performance.now() < deadline) {
+    const check = (): void => {
       const screen = emulator.screen();
 
-      if (predicate(screen)) return screen;
-      await Bun.sleep(10);
-    }
+      if (predicate(screen)) matched.resolve(screen);
+    };
 
-    throw new Error(`The screen never matched. Last screen:\n${emulator.screen().text}`);
+    const timer = setTimeout(
+      () =>
+        matched.reject(
+          new Error(`The screen never matched. Last screen:\n${emulator.screen().text}`),
+        ),
+      timeoutMs,
+    );
+
+    setup.renderer.on(CliRenderEvents.FRAME, check);
+    check();
+
+    return matched.promise.finally(() => {
+      clearTimeout(timer);
+      setup.renderer.off(CliRenderEvents.FRAME, check);
+    });
   };
 
   const close = async (): Promise<void> => {

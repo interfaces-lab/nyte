@@ -103,6 +103,8 @@ const historyReads: string[] = [];
 
 let historyGate = Promise.resolve();
 
+let historyPending = 0;
+
 const views = viewStream(view);
 
 const steered: string[] = [];
@@ -118,7 +120,9 @@ const scripted = scriptedConnection({
     },
     history: async (input) => {
       historyReads.push(input.before);
+      historyPending += 1;
       await historyGate;
+      historyPending -= 1;
       const page = input.before === leading?.id ? turns.slice(0, 1) : [];
 
       return {
@@ -141,8 +145,14 @@ async function until<T>(read: () => T | null | undefined, what: string): Promise
     if (value !== null && value !== undefined) return value;
 
     if (performance.now() > deadline) throw new Error(`Timed out waiting for ${what}`);
-    await new Promise<void>((resolve) => window.setTimeout(resolve, 10));
+    await nextFrame();
   }
+}
+
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) =>
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve())),
+  );
 }
 
 function press(target: EventTarget, key: string, modifiers: KeyboardEventInit = {}): void {
@@ -218,7 +228,8 @@ async function typeWhileRecalling(editor: HTMLElement): Promise<void> {
   await until(() => (editor.innerText === typed ? true : null), "the typed text");
   gate.resolve();
   historyGate = Promise.resolve();
-  await new Promise<void>((resolve) => window.setTimeout(resolve, 100));
+  await until(() => (historyPending === 0 ? true : null), "the late recall to answer");
+  await nextFrame();
 
   if (editor.innerText !== typed)
     throw new Error(`a late recall replaced the typed text with "${editor.innerText}"`);
@@ -270,11 +281,6 @@ async function pasteFromNowhere(editor: HTMLElement): Promise<void> {
   );
 }
 
-/**
- * Enter acts on the text the editor holds, though the composer has not drawn it yet: text the
- * editor read outside an input event lands before React's next render, and an Enter in between
- * sent nothing or steered the queued message.
- */
 async function enterBeforeTheDraw(editor: HTMLElement): Promise<void> {
   views.push({
     ...view,
@@ -290,7 +296,15 @@ async function enterBeforeTheDraw(editor: HTMLElement): Promise<void> {
   document.execCommand("selectAll");
   document.execCommand("delete");
   await until(() => (editor.innerText.trim() === "" ? true : null), "an empty composer");
-  await new Promise<void>((resolve) => window.setTimeout(resolve, 50));
+  await until(
+    () =>
+      editor
+        .closest("[data-composer-region]")
+        ?.querySelector("button[aria-label='Send message']") === null
+        ? true
+        : null,
+    "the empty draft to draw",
+  );
   const sends = scripted.sent.length;
   document.execCommand("insertText", false, "Now.");
   await Promise.resolve();

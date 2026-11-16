@@ -42,14 +42,14 @@
     "@nyte-ai/schema": "workspace:*",
     "@nyte-ai/sdk": "workspace:*",
     "@nyte-ai/service": "workspace:*",
-    "@oxlint/plugins": "^1.89.0",
-    "@shadcn/lint": "^0.2.3",
-    "@types/node": "^26.6.5",
+    "@oxlint/plugins": "^1.94.0",
+    "@shadcn/lint": "^0.2.5",
+    "@types/node": "^26.6.6",
     "@typescript/native": "catalog:",
-    "oxfmt": "^0.76.0",
-    "oxlint": "~1.89.0",
-    "oxlint-tsgolint": "^7.0.2005",
-    "turbo": "^2.11.10",
+    "oxfmt": "^0.79.0",
+    "oxlint": "~1.94.0",
+    "oxlint-tsgolint": "^7.0.2007",
+    "turbo": "^2.11.11",
     "typescript": "catalog:"
   },
   "release": {
@@ -69,7 +69,7 @@
       "@nyte-ai/example-vercel"
     ]
   },
-  "packageManager": "pnpm@12.16.1",
+  "packageManager": "pnpm@12.21.0",
   "intent": {
     "skills": [
       "@tanstack/*"

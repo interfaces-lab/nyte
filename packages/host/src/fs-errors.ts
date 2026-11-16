@@ -1,4 +1,3 @@
-/** Returns null for a path that is not there, and throws any other error. */
 export function missing(error: unknown): null {
   const code = readErrorCode(error);
 

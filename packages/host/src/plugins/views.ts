@@ -77,7 +77,6 @@ async function readGraph(entry: string): Promise<
   return { kind: "read", entry: relative(root, entry).split(sep).join("/"), sources, read };
 }
 
-/** Records each candidate it passes over as absent in `read`, so creating one invalidates the build. */
 async function resolveLocal(
   from: string,
   specifier: string,

@@ -108,26 +108,21 @@ async function until<T>(read: () => T | null | undefined | false, what: string):
     if (value !== null && value !== undefined && value !== false) return value;
 
     if (performance.now() > deadline) throw new Error(`Timed out waiting for ${what}`);
-    await new Promise<void>((resolve) => window.setTimeout(resolve, 10));
+    await new Promise((resolve) => window.requestAnimationFrame(resolve));
   }
-}
-
-function painted(): Promise<void> {
-  return new Promise((resolve) =>
-    window.requestAnimationFrame(() => window.setTimeout(() => resolve(), 0)),
-  );
 }
 
 async function send(container: HTMLElement, text: string): Promise<void> {
   const editor = await until(
-    () => container.querySelector<HTMLElement>("[data-placeholder]"),
-    "the editor",
+    () =>
+      container.querySelector<HTMLElement>(
+        "[aria-disabled='false'][data-placeholder='Ask Nyte, or type / for skills and @ for context']",
+      ),
+    "a new chat's editor",
   );
 
-  await painted();
   editor.focus();
   document.execCommand("insertText", false, text);
-  await painted();
 
   const button = await until(() => {
     const found = container.querySelector<HTMLButtonElement>("button[aria-label='Send message']");
@@ -193,10 +188,9 @@ async function checkSends(): Promise<string> {
     await until(() => statusText(container)?.includes("Sends when Nyte connects"), "the hold");
     flushSync(() => root.unmount());
     root = mount(container);
-    await painted();
-    expectRule(
-      statusText(container)?.includes("Sends when Nyte connects") === true,
-      "a remount dropped the held send",
+    await until(
+      () => statusText(container)?.includes("Sends when Nyte connects"),
+      "the held send after a remount",
     );
 
     connect([asId<"session">(parked), asId<"session">(shown)]);
@@ -204,20 +198,18 @@ async function checkSends(): Promise<string> {
       () => starts.length === 2 && panes.viewState.readDraft(shown) === undefined,
       "both starts",
     );
-    await painted();
     expectRule(
       starts.toSorted().join() === [parked, shown].toSorted().join(),
       `each held draft starts once: ${starts.join()}`,
     );
-    const selection = activeSelection(paneLayout(panes));
-    expectRule(
-      selection.kind === "session" && selection.sessionId === shown,
-      `the chat opens in the pane that shows its draft: ${JSON.stringify(selection)}`,
-    );
+    await until(() => {
+      const selection = activeSelection(paneLayout(panes));
+
+      return selection.kind === "session" && selection.sessionId === shown;
+    }, "the chat to open in the pane that shows its draft");
     expectRule(panes.viewState.readDraft(parked) === undefined, "the parked draft stayed a draft");
 
     panes.window.newChat(panes.tabId);
-    await painted();
     hostCatalog = catalog("missing");
     await send(container, "On a model the host no longer lists");
     const refused = panes.viewState.readBlank(PRIMARY).id;

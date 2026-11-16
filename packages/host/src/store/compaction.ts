@@ -37,12 +37,6 @@ const REMOVE_BATCH = `DELETE FROM objects WHERE rowid > ?1 AND rowid <= ?2
 const FIRST_RECENT =
   "SELECT min(rowid) AS recent FROM objects WHERE rowid > ?1 AND rowid <= ?2 AND json_extract(body, '$.at') >= ?3";
 
-/**
- * Removes unreferenced objects at least `WORKING_MS` old, 30 seconds after the store opens and
- * then hourly. `PRAGMA user_version` holds the objects rowid every row at or below has been
- * checked once old enough to remove, and a pass resumes above it; it stops at the first object
- * still too recent, so that object is checked again by a later pass.
- */
 export async function compactStore(
   database: DatabaseSync,
   signal: AbortSignal,

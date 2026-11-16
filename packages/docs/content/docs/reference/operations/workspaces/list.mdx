@@ -3,8 +3,8 @@ title: workspaces.list
 description: Lists the workspaces the host knows.
 ---
 
-Lists the workspaces registered on the host, each with its target, identity, availability, trust,
-session count and the runs writing to it.
+Lists the workspaces registered on the host, each with its target, identity, availability, trust
+and the runs writing to it.
 
 ## When to call it
 
@@ -36,7 +36,6 @@ Response:
     "trusted": true,
     "projectSources": [".nyte/plugins/review.ts", ".nyte/mcp.json"],
     "addedBy": "local",
-    "sessions": 3,
     "writers": [],
     "isolation": null
   }
@@ -83,7 +82,6 @@ Only the [errors every operation can raise](/docs/reference/operations#errors).
       "trusted",
       "projectSources",
       "addedBy",
-      "sessions",
       "writers",
       "isolation"
     ],
@@ -178,9 +176,6 @@ Only the [errors every operation can raise](/docs/reference/operations#errors).
       },
       "addedBy": {
         "type": "string"
-      },
-      "sessions": {
-        "type": "number"
       },
       "writers": {
         "type": "array",

@@ -440,7 +440,6 @@ function memoryArea(): StorageArea & { readonly values: Map<string, string> } {
   };
 }
 
-/** What a window that loads `area` shows for the chat: its text, images, notice and Restore Draft's images. */
 function reloaded(area: StorageArea) {
   const shown = new WindowDrafts({ storage: area, storageKey: STORE_KEY }).sessions.get(
     CHAT,

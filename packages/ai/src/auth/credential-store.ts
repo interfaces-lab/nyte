@@ -55,7 +55,6 @@ export class InMemoryCredentialStore implements CredentialStore {
     );
   }
 
-  /** Stores what `fn` returns even after abort: a rotated token has no second copy. */
   modify(
     providerId: string,
     fn: (current: CredentialAccounts | undefined) => Promise<CredentialAccounts | undefined>,

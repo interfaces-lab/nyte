@@ -1,6 +1,5 @@
 import type { JournalStorage } from "@nyte-ai/sdk";
 
-/** The MMKV calls the send journal uses, over an instance that holds nothing else. */
 export interface KeyValues {
   getString(key: string): string | undefined;
   set(key: string, value: string): void;

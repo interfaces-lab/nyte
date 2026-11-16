@@ -41,11 +41,6 @@ export function selectedLines(
   return { start: start.line + 1, end: last + 1 };
 }
 
-/**
- * Selects whole lines `start` to `end` of `text`, one-based and inclusive, clamped to the file: up to
- * the next line's start, or the last line's end at the end of the file. Backward, so the caret stays
- * on the first line.
- */
 export function wholeLineSelection(
   text: string,
   lines: { readonly start: number; readonly end: number },

@@ -23,7 +23,6 @@ export function blankLayout(): Layout<PaneContent> {
   return { root: { kind: "pane", id: PRIMARY, tab }, focus: [PRIMARY] };
 }
 
-/** A window of one blank tab whose pane is `PRIMARY`, apart from the app's window. */
 export function tabPanes(drafts?: {
   readonly storage: StorageArea;
   readonly storageKey: string;
@@ -56,7 +55,6 @@ export function paneLayout(panes: TabPanes): Layout<PaneContent> {
   return panes.layout.getSnapshot();
 }
 
-/** Blank drafts of a window nobody typed in. */
 export const noDrafts: BlankDrafts = (tabId, pane) =>
   new SessionViewStateStore(new WindowDrafts(), tabId).readBlank(pane);
 

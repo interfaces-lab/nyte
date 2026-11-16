@@ -12,7 +12,6 @@ import type { HostAgent } from "./host-agent.ts";
 import type { HostLinkState } from "../host/host-link.ts";
 import { readHostUpdate, retiresHost } from "./host-status.ts";
 
-/** How long a restart reads as restarting before the link's own state shows again. */
 const RESTART_LIMIT_MS = 30_000;
 
 const RESTART_POLL_MS = 250;
@@ -23,7 +22,6 @@ export interface HostProcessFollower {
   state(): HostProcess;
   linkChanged(): void;
   restart(): Promise<void>;
-  /** Asks in a dialog that names the running work, then restarts or stops the host. */
   confirm(action: ConfirmedAction, window: BrowserWindow | undefined): Promise<void>;
   start(): Promise<void>;
   close(): Promise<void>;

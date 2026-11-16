@@ -9,6 +9,7 @@ import type { Kernel } from "@nyte-ai/core/testing";
 import { asId } from "@nyte-ai/schema";
 import { composeServer } from "@nyte-ai/core/testing";
 import type { Api, AssistantMessage, Model, TranscriptContext } from "@nyte-ai/schema/model";
+import { vi } from "vitest";
 
 export type Block =
   | { readonly type: "text"; readonly text: string }
@@ -164,11 +165,6 @@ export function open(
   });
 }
 
-/**
- * Starts a `main` chat, a `side` chat of a main chat, or a `subagent` of a side
- * chat, each ancestor answering "Done." first, and the request index of the
- * chat's own first turn, which `replies` answer.
- */
 export async function startChat(
   host: ServedHost,
   fake: FakeModels,
@@ -204,16 +200,16 @@ export async function until<T>(
   read: () => Promise<T | undefined> | T | undefined,
   timeout = 3000,
 ): Promise<T> {
-  const deadline = Date.now() + timeout;
+  return await vi.waitFor(
+    async () => {
+      const value = await read();
 
-  for (;;) {
-    const value = await read();
+      if (value === undefined) throw new Error("Timed out waiting for a condition.");
 
-    if (value !== undefined) return value;
-
-    if (Date.now() > deadline) throw new Error("Timed out waiting for a condition.");
-    await new Promise((resolve) => setTimeout(resolve, 5));
-  }
+      return value;
+    },
+    { timeout, interval: 5 },
+  );
 }
 
 function streamReply(

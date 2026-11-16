@@ -5,8 +5,6 @@ import NyteDesign
 import NyteKit
 import Observation
 
-/// Everything the window shows: the host it is attached to, the project on the canvas, the
-/// selection and the chat.
 @MainActor
 @Observable
 final class StudioModel {
@@ -22,15 +20,24 @@ final class StudioModel {
     case chat
   }
 
+  enum Skill: Equatable {
+    case unknown
+    case missing
+    case outdated
+    case current
+  }
+
   private(set) var phase: Phase = .connecting
   private(set) var hostName = ""
   private(set) var online = false
+  private(set) var offlineReason: String?
   private(set) var workspaces: [WorkspaceInfo] = []
   private(set) var workspace: WorkspaceInfo?
   private(set) var project: ProjectStore?
   private(set) var transcript: Transcript?
   private(set) var models: [ModelChoice] = []
   private(set) var others: [ConnectedClient] = []
+  private(set) var skill: Skill = .unknown
   let directory = SessionDirectory()
 
   var model: ModelChoice?
@@ -38,13 +45,12 @@ final class StudioModel {
   var panel: Panel = .design
   var draft = ""
   var zoom: CGFloat = 1
-  /// Only the canvas: no sidebar, inspector, toolbar or composer until one is asked for.
   var zen = false
-  /// Set by a view that wants the canvas to move; the canvas clears it.
   var cameraRequest: CameraRequest?
-  /// Counts requests to put the caret in the composer.
+  private(set) var askedAbout: String?
   private(set) var composerFocus = 0
-  /// Edits register with this, so Undo and Redo in the Edit menu reach the canvas.
+  var inspectorShown = true
+  private(set) var chatRequests = 0
   weak var undoManager: UndoManager? { didSet { project?.undoManager = undoManager } }
 
   private var client: HostClient?
@@ -59,20 +65,17 @@ final class StudioModel {
     case zoom(CGFloat)
   }
 
-  /// The sessions of the open workspace, newest first.
   var sessions: [SessionInfo] {
     guard let workspace else { return [] }
     return directory.sessions.filter { $0.workspace == workspace.id }
   }
 
-  /// The Nyte desktop app, when it is attached to the same host.
   var nyte: ConnectedClient? {
     others.first { $0.kind == "app" && $0.name == "Nyte" }
   }
 
   // MARK: Connecting
 
-  /// Attaches to the host. Asking again while attached, or while trying, changes nothing.
   func start() {
     guard socket == nil, !starting else { return }
     starting = true
@@ -149,13 +152,29 @@ final class StudioModel {
     switch state {
     case .connected:
       online = true
+      offlineReason = nil
       guard let socket else { return }
       Task {
-        await directory.read(from: socket)
-        await transcript?.read(from: socket)
+        await reading("Couldn't read the chats") {
+          try await self.directory.read(from: socket)
+          try await self.transcript?.read(from: socket)
+        }
       }
-    case .connecting, .waiting:
+    case .connecting:
       online = false
+    case .waiting(let reason):
+      online = false
+      offlineReason = reason
+    }
+  }
+
+  private func reading(_ what: String, _ read: () async throws -> Void) async {
+    do {
+      try await read()
+    } catch let error as HostError where error.code == "unavailable" {
+      return
+    } catch {
+      project?.notice = "\(what): \(error.localizedDescription)"
     }
   }
 
@@ -174,6 +193,8 @@ final class StudioModel {
     store.undoManager = undoManager
     project = store
     phase = .ready
+    skill = .unknown
+    refreshSkill()
     await store.open()
   }
 
@@ -182,7 +203,32 @@ final class StudioModel {
   }
 
   func focusComposer() {
+    if !zen, inspectorShown { panel = .chat }
     composerFocus += 1
+  }
+
+  var chatUnseen = false
+
+  private(set) var textEdits = 0
+
+  func editText() {
+    zen = false
+    panel = .design
+    textEdits += 1
+  }
+
+  private(set) var canvasFocus = 0
+
+  func focusCanvas() {
+    canvasFocus += 1
+  }
+
+  var chatShown: Bool { !zen && inspectorShown && panel == .chat }
+
+  func showChat() {
+    zen = false
+    panel = .chat
+    chatRequests += 1
   }
 
   // MARK: Chat
@@ -193,7 +239,7 @@ final class StudioModel {
     let next = Transcript(session: id)
     transcript = next
     panel = .chat
-    Task { await next.read(from: socket) }
+    Task { await reading("Couldn't open the chat") { try await next.read(from: socket) } }
   }
 
   func newChat() {
@@ -203,12 +249,11 @@ final class StudioModel {
     transcript = nil
   }
 
-  /// Sends the draft, with the selection as context. The first message of a chat starts the
-  /// session and teaches the agent the design language in a prompt layer.
   func send() {
     let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !text.isEmpty, let client, let workspace, let socket else { return }
     draft = ""
+    askedAbout = selection.map { "\($0.sheet)#\($0.frame)" }
     var parts: [MessagePart] = []
     if let excerpt = selectionExcerpt() { parts.append(excerpt) }
     parts.append(.text(text))
@@ -222,7 +267,7 @@ final class StudioModel {
             workspace: workspace.id, content: parts, model: model, prompt: Self.guide)
           let next = Transcript(session: sent.session)
           transcript = next
-          await next.read(from: socket)
+          await reading("Couldn't read the chat") { try await next.read(from: socket) }
         }
       } catch {
         draft = text
@@ -233,11 +278,15 @@ final class StudioModel {
 
   func stop() {
     guard let transcript, let client else { return }
-    Task { await client.stop(session: transcript.session) }
+    Task {
+      do {
+        try await client.stop(session: transcript.session)
+      } catch {
+        project?.notice = "Couldn't stop: \(error.localizedDescription)"
+      }
+    }
   }
 
-  /// The selected element as the agent can find it: its file, its lines, and its markup. It is
-  /// the excerpt Nyte sends for a selection in a diff, so Nyte draws it as the same chip.
   private func selectionExcerpt() -> MessagePart? {
     guard let selection, let project, let tree = project.tree(selection.site.file),
       let line = tree.line(at: selection.site.path), let markup = tree.markup(at: selection.site.path)
@@ -246,7 +295,6 @@ final class StudioModel {
     return .excerpt(path: selection.site.file, start: line, end: line + lines - 1, text: markup)
   }
 
-  /// What the selection reads as in the composer.
   var selectionLabel: String? {
     guard let selection, let node = selectedNode else { return nil }
     let file = URL(filePath: selection.site.file).lastPathComponent
@@ -255,20 +303,23 @@ final class StudioModel {
 
   // MARK: Hand-off
 
-  /// Brings Nyte forward on the same chat. Until Nyte declares an action for it, this opens the
-  /// app, where the chat is already in the sidebar: both apps read the same host.
   func openInNyte() {
     Task {
       if let nyte, nyte.actions.contains("open"), let socket, let transcript {
         _ = try? await socket.perform("open", on: nyte.id, input: ["session": .string(transcript.session)])
       }
-      if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "ai.nyte.desktop") {
-        _ = try? await NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
+      guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "ai.nyte.desktop") else {
+        project?.notice = "Nyte isn't installed on this Mac."
+        return
+      }
+      do {
+        _ = try await NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
+      } catch {
+        project?.notice = "Couldn't open Nyte: \(error.localizedDescription)"
       }
     }
   }
 
-  /// Answers another client of the host: Nyte, a script, or a tool the agent calls.
   private func perform(_ action: String, _ input: JSON) async throws -> JSON {
     guard let project, let path = input["path"].string,
       let sheet = project.sheets.first(where: { $0.path == path })
@@ -289,11 +340,17 @@ final class StudioModel {
       return ["revealed": true]
 
     case "snapshot":
-      guard let frame = sheet.frames[safe: index ?? 0],
-        let image = frame.image(scale: CGFloat(input["scale"].double ?? 2)),
-        let data = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])
-      else { throw HostError(code: "unavailable", message: "That frame couldn't be rendered.") }
-      return ["png": .string(data.base64EncodedString()), "frame": .string(frame.root.node.name)]
+      guard let frame = sheet.frames[safe: index ?? 0] else {
+        throw HostError(code: "unavailable", message: "That file has no frame to render.")
+      }
+      let scale = CGFloat(input["scale"].double ?? 2)
+      let environment = project.environment
+      let png = await Task.detached(priority: .userInitiated) { () -> String? in
+        guard let image = frame.image(scale: scale, environment: environment) else { return nil }
+        return NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])?.base64EncodedString()
+      }.value
+      guard let png else { throw HostError(code: "unavailable", message: "That frame couldn't be rendered.") }
+      return ["png": .string(png), "frame": .string(frame.root.node.name)]
 
     default:
       throw HostError(code: "not_supported", message: "Nyte Studio doesn't perform \(action).")
@@ -306,18 +363,27 @@ final class StudioModel {
     guard let selection, let sheet = project?.sheets.first(where: { $0.path == selection.sheet }),
       sheet.frames.indices.contains(selection.frame)
     else { return nil }
-    return sheet.frames[selection.frame].placed().first { $0.box.node.site == selection.site }?.box.node
+    return sheet.frames[selection.frame].box(at: selection.occurrence)?.box.node
   }
 
   var selectedBox: PlacedBox? {
     guard let selection, let sheet = project?.sheets.first(where: { $0.path == selection.sheet }),
       sheet.frames.indices.contains(selection.frame)
     else { return nil }
-    return sheet.frames[selection.frame].placed().first { $0.box.node.site == selection.site }
+    return sheet.frames[selection.frame].box(at: selection.occurrence)
   }
 
-  /// Sets or removes attributes of the selected element. With `commit` false the change shows
-  /// on the canvas only, for a drag in flight; the commit that ends it saves and is one undo.
+  var editedComponent: (name: String, instances: Int)? {
+    guard let selection, selection.isInComponent, let project, let use = selection.trail.last,
+      let name = project.tree(use.file)?.element(at: use.path)?.tag
+    else { return nil }
+    func count(_ node: Node) -> Int { (node.component == name ? 1 : 0) + node.children.reduce(0) { $0 + count($1) } }
+    let instances = project.sheets.reduce(0) { total, sheet in
+      total + sheet.frames.reduce(0) { $0 + count($1.root.node) }
+    }
+    return (name, instances)
+  }
+
   func set(_ attributes: [String: String?], commit: Bool = true, named name: String = "Change") {
     guard let selection, let project else { return }
     let path = selection.site.file
@@ -335,6 +401,12 @@ final class StudioModel {
       project.commitStaged(path, named: name)
       dragTree = nil
     }
+  }
+
+  func retag(_ tag: String) {
+    guard let selection, let project, let tree = project.tree(selection.site.file) else { return }
+    let edits = tree.retag(tag, at: selection.site.path)
+    if !edits.isEmpty { project.edit(selection.site.file, edits, named: "Change Direction") }
   }
 
   func setText(_ text: String) {
@@ -366,7 +438,6 @@ final class StudioModel {
     project.edit(target.site.file, [edit], named: "Delete")
   }
 
-  /// The markup of the selected element, as written.
   var selectedMarkup: String? {
     guard let selection else { return nil }
     return project?.tree(selection.site.file)?.markup(at: selection.site.path)
@@ -374,15 +445,12 @@ final class StudioModel {
 
   static let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
 
-  /// The Lune skill as shipped: the language reference, with the `lune` command's real path.
   static let skill: String = {
     let cli = Bundle.main.executableURL?.deletingLastPathComponent().appending(path: "lune").path ?? "lune"
     let text = NyteResources.url("lune-skill.md").flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? ""
     return text.replacingOccurrences(of: "/Applications/Nyte Studio.app/Contents/MacOS/lune", with: cli)
   }()
 
-  /// The prompt layer a chat started in Studio carries: who the agent is working with, then the
-  /// skill's body, so the first message needs no file read to speak the language.
   static let guide: String = {
     let body = skill.components(separatedBy: "\n---\n").dropFirst().joined(separator: "\n---\n")
     return """
@@ -393,40 +461,43 @@ final class StudioModel {
       """
   }()
 
-  /// Writes the Lune skill into the project, so a chat started anywhere on this host (Nyte, the
-  /// terminal, a phone) knows the language too.
+  func refreshSkill() {
+    guard let client, let workspace else { return }
+    Task {
+      do {
+        let file = try await client.read(workspace: workspace.id, path: Self.skillPath)
+        guard workspace.id == self.workspace?.id else { return }
+        skill = file == nil ? .missing : file?.contents == Self.skill ? .current : .outdated
+      } catch {
+        skill = .unknown
+      }
+    }
+  }
+
   func installSkill() {
     guard let client, let workspace else { return }
     Task {
-      let path = ".agents/skills/lune/SKILL.md"
       do {
-        let current = try await client.read(workspace: workspace.id, path: path)
-        if current?.contents == Self.skill {
-          project?.notice = "This project's agents already know Lune."
-          return
+        let current = try await client.read(workspace: workspace.id, path: Self.skillPath)
+        if current?.contents != Self.skill {
+          _ = try await client.write(
+            workspace: workspace.id, path: Self.skillPath, contents: Self.skill, expect: current?.version)
         }
-        _ = try await client.write(
-          workspace: workspace.id, path: path, contents: Self.skill, expect: current?.version)
-        project?.notice = "Added the Lune skill. Agents in this project now read and write designs."
+        skill = .current
       } catch {
         project?.notice = "Couldn't add the skill: \(error.localizedDescription)"
       }
     }
   }
+
+  private static let skillPath = ".agents/skills/lune/SKILL.md"
 }
 
 extension HostClient {
-  /// The machine name a host reports about itself, without a credential.
   func describe() async throws -> String? {
     var request = URLRequest(url: endpoint.url.appending(path: ".nyte/describe"))
     request.timeoutInterval = 5
     let (data, _) = try await URLSession.shared.data(for: request)
     return try JSON.parse(data)["name"].string
-  }
-}
-
-extension Array {
-  subscript(safe index: Int) -> Element? {
-    indices.contains(index) ? self[index] : nil
   }
 }

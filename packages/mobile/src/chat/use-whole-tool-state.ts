@@ -5,10 +5,6 @@ import { useHost } from "../connection/host-context.tsx";
 
 const TOOL_STATE = compile(withJson(ToolPartStateType));
 
-/**
- * A tool's state, read whole from its part while `open` when its row carries a cut view.
- * The row's state shows until the part arrives.
- */
 export function useWholeToolState(
   session: SessionId,
   tool:

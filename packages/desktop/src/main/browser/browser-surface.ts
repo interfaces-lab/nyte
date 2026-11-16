@@ -208,12 +208,6 @@ function show(surface: Surface, focus: boolean): void {
   if (focus) surface.view.webContents.focus();
 }
 
-/**
- * Puts the view where its holder measured it. A page nobody shows stays hidden at the window's
- * top-left at its last real size, sized before it is hidden: Electron gives a view outside the
- * window's content area, or one hidden before its bounds were set, a 0×0 viewport, so an agent's
- * page there could neither lay out, be clicked nor be captured.
- */
 export function placeSurface(surface: Surface, window: BrowserWindow, focus: boolean): void {
   if (surface.attachedTo !== window) {
     if (surface.attachedTo !== undefined && !surface.attachedTo.isDestroyed()) {

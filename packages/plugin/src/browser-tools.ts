@@ -120,15 +120,6 @@ const capture: ToolDefinition<{ page?: string }> = {
     }),
 };
 
-/**
- * The browser tools: open, snapshot, click, type, press, scroll, wait,
- * console, capture and evaluate, over the workspace's browser capability
- * (`workspace.browser()`, which a desktop adds through `wrapEnv`). Actions
- * address nodes by the refs of the latest snapshot.
- *
- * @category plugins
- * @since 0.1.0
- */
 export const browserTools: readonly ToolDefinition[] = [
   open,
   browserTool({
@@ -235,13 +226,6 @@ export const browserTools: readonly ToolDefinition[] = [
   }),
 ];
 
-/**
- * Adds the browser tools to every session; a session whose workspace has no
- * browser answers each call with why.
- *
- * @category plugins
- * @since 0.1.0
- */
 export default {
   id: "browser-tools",
   contribute: { tools: browserTools },

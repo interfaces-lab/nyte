@@ -20,11 +20,6 @@ env:
   TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
   TURBO_TEAM: ${{ vars.TURBO_TEAM }}
 
-# GitHub-hosted runners are free for this public repository; Blacksmith bills per minute, so
-# only release builds use it. A push to main runs only the checks, since most changes land
-# there directly: pull requests test what they change, and the nightly run tests everything
-# on main, on macOS as well. The test jobs wait for plan, not check, so a lint or format
-# failure does not hide the test results.
 jobs:
   plan:
     runs-on: ubuntu-latest
@@ -82,6 +77,9 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm operations
+      # New Go advisories land without a code change, so check them daily rather than per PR.
+      - if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: pnpm --dir packages/tailnet vulncheck
 
   binary:
     needs: plan
@@ -128,8 +126,6 @@ jobs:
           if [ "$RUNNER_OS" = Linux ]; then display="xvfb-run --auto-servernum"; fi
           $display pnpm exec turbo run test $FILTER --concurrency=3 --continue
 
-  # Its tests take seconds; setup takes a minute, so one job runs both projects.
-  # `timed` depends on `web` in the config, so it runs afterwards on one worker.
   e2e-web:
     name: e2e web
     needs: plan
@@ -159,7 +155,6 @@ jobs:
             packages/app/e2e/playwright-report
           retention-days: 7
 
-  # The packages as npm installs them; the release runs the same pair before it publishes.
   sdk:
     needs: plan
     if: needs.plan.outputs.sdk == 'true'

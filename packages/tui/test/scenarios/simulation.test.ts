@@ -11,6 +11,7 @@ import {
 } from "@nyte-ai/bench";
 import type { Simulation } from "@nyte-ai/bench";
 import type { Store } from "../../src/app/store.ts";
+import { until } from "../fixture/host.ts";
 import { simulationEndpoint, startTui } from "../harness/tui.ts";
 
 const idle = (store: Store): boolean => store.screen().run.kind === "idle";
@@ -35,10 +36,9 @@ test("a tool call replayed from an Anthropic Messages cassette reads the file, d
 
   expect(tui.captureCharFrame()).toContain("notes.txt");
 
-  for (let poll = 0; !(await rootNames(simulation)).includes("Reading my notes"); poll += 1) {
-    if (poll > 300) throw new Error("The title never landed.");
-    await Bun.sleep(10);
-  }
+  await until(async () =>
+    (await rootNames(simulation)).includes("Reading my notes") ? true : undefined,
+  );
 });
 
 test("follows its host through a kill and a restart on the same store and endpoint: the next message lands once, on the whole history", async () => {

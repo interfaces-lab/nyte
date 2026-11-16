@@ -16,7 +16,6 @@ import { ToolActivitySheet, useActivitySheet } from "./tool-activity-sheet.tsx";
 
 type TimelineProps = {
   state: HeadView;
-  /** The chat's mark, from `chatMark`. */
   mark: TaskState;
   sessionId: SessionId;
   delegateNames: ReadonlyMap<SessionId, string>;

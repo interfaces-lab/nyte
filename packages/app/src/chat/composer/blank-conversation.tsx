@@ -32,7 +32,6 @@ import { useMentionFiles } from "../../data/files.ts";
 import { useProjects } from "../../data/projects.ts";
 import { useWorkspaceCatalog } from "../../data/plugins.ts";
 import { draftModel, modelRefFor, selectedModelOption } from "./model-picker-state.ts";
-import { StartupReadsRelease } from "../../data/startup.ts";
 import { useChatFolder } from "../chat-folder.ts";
 import { ChatScope } from "../chat-scope.tsx";
 
@@ -165,7 +164,6 @@ function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement
 
   return (
     <div {...props(sessionScreenStyles.screen)}>
-      <StartupReadsRelease />
       {split && <PaneHeader paneId={paneId} title="New chat" />}
       <div
         ref={bindFileDrop}

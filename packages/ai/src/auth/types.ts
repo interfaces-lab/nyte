@@ -9,10 +9,6 @@ export interface ModelAuth {
   baseUrl?: string;
 }
 
-/**
- * Stored api-key credential. `env` holds provider-scoped environment/config
- * values such as Cloudflare account/gateway ids.
- */
 export interface ApiKeyCredential {
   type: "api_key";
   key?: string;
@@ -166,7 +162,6 @@ export interface AuthResult {
   /** Local stored-account id captured for this request; absent for ambient or explicit auth. */
   accountId?: string;
   env?: ProviderEnv;
-  /** Human-readable label for status UI: "ANTHROPIC_API_KEY", "OAuth", "~/.aws/credentials". */
   source?: string;
 }
 

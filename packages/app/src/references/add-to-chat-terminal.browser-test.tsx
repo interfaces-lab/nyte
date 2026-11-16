@@ -26,7 +26,6 @@ async function paint(): Promise<void> {
   await new Promise<void>((resolve) =>
     requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
   );
-  await new Promise<void>((resolve) => window.setTimeout(resolve, 30));
 }
 
 async function until(condition: () => boolean, message: string): Promise<void> {

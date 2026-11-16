@@ -118,7 +118,7 @@ test("a create call finds its child in the parent's background by the call that 
         running: false,
         held: false,
         retrying: undefined,
-        live: { planning: false, newest: undefined, thought: undefined },
+        live: { planning: false, newest: undefined, thought: undefined, awaiting: undefined },
       }).map((row) =>
         row.kind === "agents" ? (
           <TurnItemView key={row.key} row={row} density="compact" cwd={undefined} />

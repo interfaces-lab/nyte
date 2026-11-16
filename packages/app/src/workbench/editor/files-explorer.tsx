@@ -54,7 +54,6 @@ import type { WorktreeFile } from "./worktree-files.ts";
 
 type Scope = "all" | "changed";
 
-/** A row the tree is naming: a new file or folder that doesn't exist on disk yet, under its placeholder. */
 type Naming =
   | {
       readonly kind: "file" | "folder";
@@ -771,7 +770,6 @@ function expandAncestors(model: FileTreeModel, path: string): void {
   }
 }
 
-/** A tree path without the slash that marks a folder: how the files API names it. */
 function bare(path: string): string {
   return path.replace(/\/$/u, "");
 }

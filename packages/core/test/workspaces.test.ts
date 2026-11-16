@@ -127,7 +127,6 @@ describe("workspaces", () => {
           trusted: false,
           projectSources: [".nyte/plugins/x.ts"],
           addedBy: LOCAL,
-          sessions: 0,
           writers: [],
           isolation: null,
         },
@@ -462,7 +461,12 @@ describe("workspaces", () => {
     const { host, provider, workspace, run, write } = await writingRun();
     const paths = Array.from({ length: 150 }, (_value, index) => `f${index}.ts`);
     await write(Object.fromEntries(paths.map((path) => [path, `${path}\n`])));
-    const { last } = await patches(host.workspace(workspace).patches({ kind: "run", run }, paths));
+    const held = Promise.withResolvers<void>();
+    provider.holdPatches = held.promise;
+    const reading = patches(host.workspace(workspace).patches({ kind: "run", run }, paths));
+    await until(() => (provider.peakReads === 4 ? true : undefined));
+    held.resolve();
+    const { last } = await reading;
 
     expect(last.entries.size).toBe(150);
     expect(provider.patchReads.map((read) => read.length)).toEqual([32, 32, 32, 32, 22]);

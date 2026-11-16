@@ -14,6 +14,7 @@ export type FileStructureState =
   | { readonly kind: "ready"; readonly value: FileStructure };
 
 export function useFileStructure(input: {
+  /** From `resolveLanguage`; the hook and worker never detect a language from a filename. */
   readonly language: string;
   readonly contents: string;
   readonly active: boolean;

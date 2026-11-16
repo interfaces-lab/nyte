@@ -26,7 +26,6 @@ export interface ChatView extends HeadView {
   readonly seq: number;
   readonly freshness: Freshness;
   readonly activity: SessionActivity;
-  /** The unsent messages the journal no longer sends on its own, the same array until it changes. */
   readonly expired: readonly MessageId[];
   readonly stopping: ChatSnapshot["stopping"];
 }
@@ -43,10 +42,8 @@ export function paceTranscripts(shown: () => ReadonlySet<SessionId>): void {
   shownTranscripts = shown;
 }
 
-/** The chat each session's store draws, while it is open: its stop and its older pages belong to that one. */
 const chats = new Map<SessionId, Chat>();
 
-/** Hear when a session's open chat is set or dropped. */
 const chatsChanged = new Set<() => void>();
 
 function changeChats(change: () => void): void {
@@ -59,7 +56,6 @@ function nextFrame(): Promise<void> {
   return new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
 }
 
-/** A chat keeps its view across a new connection to the same host, as stale, and opens again with the tail it held. */
 export const chatStore = watchFamily(openChat, (view) => staleChat(view, Date.now()));
 
 function openChat(opened: ClientConnection, session: SessionId): LiveView<ChatView> {
@@ -100,14 +96,12 @@ function openChat(opened: ClientConnection, session: SessionId): LiveView<ChatVi
   };
 }
 
-/** The view a chat keeps while a new connection reads it again: stale since `since`, or since it went stale. */
 function staleChat(view: ChatView, since: number): ChatView {
   return view.freshness.kind === "stale"
     ? view
     : { ...view, freshness: { kind: "stale", since, error: null } };
 }
 
-/** The chat's view with its seq, freshness, expired sends, stop and activity laid in; a chat with no view yet fails with its stale error, or waits. */
 export function showChat(
   snapshot: ChatSnapshot,
   activity: (view: HeadView) => SessionActivity,
@@ -148,7 +142,6 @@ const partStores = watchFamily((opened, key: string): LiveView<ShownPart> => {
   };
 });
 
-/** The part, or the one shown before while the store has none, with when it went stale; `previous` itself while neither changed. A store with no part to show fails with its error, or waits. */
 export function showPart(
   store: { readonly snapshot: PartSnapshot | null; readonly freshness: Freshness },
   previous: ShownPart | undefined,
@@ -178,7 +171,6 @@ const held = new Map<SessionId, () => void>();
 
 let expiry: ReturnType<typeof setTimeout> | undefined;
 
-/** Applies `event` to the holds, holds each chat they name and releases the rest, and sets the one timer at the next warm hold's end. */
 function hold(event: HoldEvent): void {
   holds = nextHolds(holds, event);
   reconcile(
@@ -206,7 +198,6 @@ onInstall((replaced) => {
   if (replaced) hold({ kind: "replaced" });
 });
 
-/** Whether the chat's session is one the host no longer has: its read failed as unknown, before or after the chat showed. */
 export function chatGone(state: WatchState<ChatView>): boolean {
   const freshness = state.value?.freshness;
   const error = state.error ?? (freshness?.kind === "stale" ? freshness.error : null);
@@ -222,20 +213,14 @@ export function warmSession(session: SessionId): void {
   hold({ kind: "warm", session, now: Date.now() });
 }
 
-/** Sends an unsent message the journal stopped sending after a day again, as if just sent. */
 export function resendMessage(session: SessionId, message: MessageId): Promise<void> {
   return connection().chat(session).resend(message);
 }
 
-/** Asks the host to stop the run the session's open chat shows; see `Chat.stop`. */
 export function stopChat(session: SessionId): Promise<void> {
   return chats.get(session)?.stop() ?? Promise.resolve();
 }
 
-/**
- * The open chat's `stopping`, read from the chat itself as soon as it changes, not on the next
- * frame the chat store publishes, so a pressed Stop shows in the commit that pressed it.
- */
 export function useChatStopping(session: SessionId): ChatSnapshot["stopping"] {
   return useSyncExternalStore(
     (notice) => {

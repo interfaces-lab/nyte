@@ -1,9 +1,5 @@
 import type { ComponentType } from "react";
 
-/**
- * Every icon name @nyte-ai/ui draws. Both icon sets map exactly these names,
- * and test/icons.test.ts fails when the Lucide set misses one.
- */
 export const ICON_NAMES = [
   "agent",
   "agent-amp",
@@ -162,7 +158,6 @@ export const ICON_NAMES = [
 
 export type IconName = (typeof ICON_NAMES)[number];
 
-/** The names that also have a filled variant. */
 export const FILLED_ICON_NAMES = [
   "bubble-question",
   "star",
@@ -171,7 +166,6 @@ export const FILLED_ICON_NAMES = [
 
 export type FilledIconName = (typeof FILLED_ICON_NAMES)[number];
 
-/** What `Icon` passes every glyph: it fills its frame and is hidden from assistive tech. */
 export interface GlyphProps {
   readonly size: number | string;
 }

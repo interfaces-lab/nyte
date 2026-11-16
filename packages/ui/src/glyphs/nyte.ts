@@ -2,10 +2,6 @@ import { createElement } from "react";
 
 import type { Glyph } from "../icon-names.ts";
 
-/**
- * The app icon's moon at its smallest: five cells, lit from the upper left.
- * Cells are 2 wide on a pitch of 3, so the 14-unit box lands on whole pixels at `sm`.
- */
 const MOON = [" ##. ", "##.#.", "###..", ".#...", " ... "];
 
 const squares = (mark: string): string =>

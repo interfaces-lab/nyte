@@ -106,7 +106,6 @@ function controlledStore(
 
 const processA: OsProcess = { boot: "boot", pid: 101, group: 101, started: "test:1" };
 
-/** A machine that says A's process is `answer`, and that this one is `self`. */
 function machine(self: OsProcess | null, answer: "running" | "gone" | "unknown"): Machine {
   return {
     self: async () => self,

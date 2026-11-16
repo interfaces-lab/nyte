@@ -1,7 +1,5 @@
 import Foundation
 
-/// A JSON value. The host's rows are open-ended (plugins add part kinds, releases add fields), so
-/// a client reads what it needs by key and carries the rest untouched.
 public enum JSON: Sendable, Hashable {
   case null
   case bool(Bool)

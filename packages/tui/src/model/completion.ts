@@ -24,7 +24,6 @@ export interface MentionFile {
   readonly label: string;
 }
 
-/** A workspace file the `@` list ranks, with its fuzzy-search targets prepared once with the list. */
 export interface IndexedMention extends MentionFile {
   readonly search: { readonly display: Prepared; readonly label: Prepared };
 }

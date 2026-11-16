@@ -84,7 +84,6 @@ export function composerHasContent(composer: ComposerViewState): boolean {
   return composer.draft.trim() !== "" || composer.attachments.length > 0;
 }
 
-/** Whether the window keeps the chat's draft: the person's own text or images, or a refused send to restore. */
 export function draftKept(draft: SessionDraft): boolean {
   return composerHasContent(persistedDraft(draft)) || restorable(draft) !== null;
 }
@@ -137,7 +136,6 @@ export class SessionViewStateStore {
 
   readonly listedDrafts = (): readonly ChatDraft[] => this.#window.listedDrafts();
 
-  /** Calls `listener` when the chat's draft changes, and for nothing else. */
   subscribeDraft(sessionId: SessionId, listener: () => void): () => void {
     return this.#window.subscribeKey(`session:${sessionId}`, listener);
   }

@@ -13,7 +13,6 @@ import type { TabPanes } from "../tabs/window-store.ts";
 
 const PaneControllerContext = createContext<TabPanes | undefined>(undefined);
 
-/** Hands the panes of the window's chat tab, or of `panes`, to the components inside it. */
 export function PaneControllerProvider({
   panes,
   children,

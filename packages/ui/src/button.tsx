@@ -196,6 +196,13 @@ const buttonVariants = create({
   ghost: { backgroundColor: ghostFill },
   outline: {
     backgroundColor: { default: role.bgElevated, [disabled]: role.fillTertiary },
+    backgroundImage: {
+      default: "none",
+      ":hover:not([data-disabled])": { [media.hover]: role.layerHover },
+      ":active:not([data-disabled])": role.layerPressed,
+      "[data-pressed]:not([data-disabled])": role.layerPressed,
+      '[aria-expanded="true"]:not([data-disabled])': role.layerPressed,
+    },
     "--nyte-hairline-elevation": { default: null, [`:not(${disabled})`]: shadow.shadowSm },
   },
   solid: {

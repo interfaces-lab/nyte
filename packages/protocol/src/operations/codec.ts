@@ -333,7 +333,6 @@ function encode(plan: Plan, value: unknown): Json | undefined {
   return encodeFields(value, plan.properties, plan.rest, plan.nulled);
 }
 
-/** Returns `value` itself when every item encodes to itself, so an output that is already wire JSON is not copied; a copy starts at the first item that differs. */
 function encodeItems(value: readonly unknown[], plan: Plan): Json {
   let copy: Json[] | null = null;
 
@@ -352,7 +351,6 @@ function encodeItems(value: readonly unknown[], plan: Plan): Json {
   return copy ?? walked(value);
 }
 
-/** Returns a plain object itself when every field encodes to itself and none is stripped or nulled; a `Map`, or an object of any other prototype, is always copied, as is any object from its first field that differs. */
 function encodeFields(
   value: object,
   properties: ReadonlyMap<string, Plan> | null,
@@ -416,7 +414,6 @@ function copyFields(
   return copy;
 }
 
-/** Types as JSON a value the walk handed back unchanged, which it checked down to every leaf. */
 function walked(value: unknown): Json {
   return unchecked.Check(value) ? value : null;
 }

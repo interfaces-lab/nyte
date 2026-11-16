@@ -12,7 +12,6 @@ export interface ComposerContent {
   readonly files: readonly MessageFile[];
 }
 
-/** The commands a draft may name, or why they couldn't be read. */
 export type DraftCommands =
   | { readonly kind: "loaded"; readonly commands: readonly CommandInfo[] }
   | { readonly kind: "failed"; readonly reason: string };
@@ -22,7 +21,6 @@ export type ComposerSendPlan =
   | { readonly kind: "command"; readonly command: ParsedPluginCommand; readonly delivery: Delivery }
   | { readonly kind: "message"; readonly content: ComposerContent; readonly delivery: Delivery };
 
-/** What a submitted draft becomes: nothing, a draft kept with the reason, a command or a message. */
 export type SubmissionPlan = ComposerSendPlan | { readonly kind: "kept"; readonly message: string };
 
 interface PlanInput {
@@ -69,7 +67,6 @@ export function composerSendPlan(input: {
   };
 }
 
-/** A command goes alone: one beside an image or an instruction chip keeps the draft instead. */
 export function planSubmission(input: PlanInput): SubmissionPlan {
   if (input.commands.kind === "failed") return commandsFailed(input.commands);
   const commands = input.commands.commands;
@@ -89,7 +86,6 @@ export function planSubmission(input: PlanInput): SubmissionPlan {
   return { kind: "kept", message: `Send /${blocked.name} by itself.` };
 }
 
-/** A queued message can't become a command, and an edit keeps the message's files. */
 export function planEdit(
   input: PlanInput & { readonly files: readonly MessageFile[] },
 ): Exclude<SubmissionPlan, { readonly kind: "command" }> {

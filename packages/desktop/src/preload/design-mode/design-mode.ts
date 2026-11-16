@@ -101,13 +101,6 @@ export interface DesignMode {
   receive(message: DesignMainMessage): void;
 }
 
-/**
- * The preload runs before any page script, so these window capture listeners see each event first.
- * A page modal makes the host inert, so pointer events are taken whatever they target, except on
- * the page's own scrollbar, which sits outside the host's box. A page can dispatch events at the
- * host; only trusted ones count. A pick waits a second frame because the first only queues the
- * paint that hides the overlay from the crop.
- */
 export function designMode(send: (message: DesignPageMessage) => void): DesignMode {
   let design: BrowserDesign | undefined;
   let overlay: Overlay | undefined;

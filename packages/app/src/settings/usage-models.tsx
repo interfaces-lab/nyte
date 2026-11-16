@@ -29,7 +29,6 @@ const figure = { fontVariantNumeric: "tabular-nums" } as const;
 
 const CHART_HEIGHT = 128;
 
-/** Below this many pixels a layer would only draw its own separator. */
 const MIN_LAYER_PX = 2;
 
 const LEADERS = 3;
@@ -201,7 +200,6 @@ const cards = create({
   sparkLit: { backgroundColor: role.chartSeries },
 });
 
-/** Spend per day or week stacked by model, the top few in rank order from the baseline up. */
 export function ModelColumns({ usage }: { readonly usage: UsageDerived }): ReactElement {
   const focus = useUsageFocus();
   const [active, setActive] = useState<number | undefined>(undefined);
@@ -425,7 +423,6 @@ function ColumnTip({
   );
 }
 
-/** The three models that took the most. Each is a handle that focuses its model everywhere. */
 export function TopModels({ usage }: { readonly usage: UsageDerived }): ReactElement {
   return (
     <div role="list" aria-label="Top models" {...props(cards.grid)}>

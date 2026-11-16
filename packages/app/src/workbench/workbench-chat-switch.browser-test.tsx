@@ -256,16 +256,14 @@ const catalog = {
 
 const host = { workspace: WORKSPACE } satisfies HostState;
 
-function painted(): Promise<void> {
-  return new Promise((resolve) =>
-    window.requestAnimationFrame(() => window.setTimeout(() => resolve(), 0)),
-  );
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
 }
 
 async function pause(ms: number): Promise<void> {
   const until = performance.now() + ms;
 
-  while (performance.now() < until) await painted();
+  while (performance.now() < until) await nextFrame();
 }
 
 async function until(condition: () => boolean, what: string): Promise<void> {
@@ -273,7 +271,7 @@ async function until(condition: () => boolean, what: string): Promise<void> {
 
   while (!condition()) {
     if (performance.now() - started > 10_000) throw new Error(`Timed out waiting for ${what}`);
-    await painted();
+    await nextFrame();
   }
 }
 
@@ -312,7 +310,6 @@ export async function run(): Promise<string> {
       trusted: true,
       projectSources: [],
       addedBy: asId<"principal">("tester"),
-      sessions: 0,
       writers: [],
       isolation: null,
     },

@@ -52,6 +52,14 @@ Rule numbers are stable ids that other skills and reviews cite. A removed rule l
 18. **Wait for state, never for time.** Use no fixed sleeps. Wait for the state the next action needs, and register an event wait before the action that fires the event.
 19. **Replay the whole chapter when tests depend on each other.** A chapter's tests share one window and run in file order, so a failure that depends on earlier tests needs the whole chapter replayed.
 20. **Use the shared locators.** Locators and helpers such as `setTheme` live in `packages/desktop/e2e/ui.ts`. Assert the transcript through `messages(page)`, which is the `Messages` region.
+79. **Split a single pane by dragging a sidebar row.** A single pane has no header, so press the row, move about 20px first (the drag activates at 8px), move to the pane's edge, wait for `[data-nyte-drop-preview]`, then release. With two panes, scope the composer to its pane, since each has a `Message` combobox.
+80. **Hover before clicking a hover-revealed control.** File-tab close buttons stay hidden until their tab is hovered; never force the click.
+81. **Match names as the app writes them.** File tab and tabpanel names are workspace-relative paths, and search palette options carry their shortcut (`New Chat ⌘ N`), so match by the full name or a leading pattern.
+82. **Return a value from an `expect.poll` callback.** `expect.poll` fails at once when its callback rejects, so turn a transient error such as `ENOENT` into a value that doesn't match.
+83. **Size the real window.** Call `setContentBounds` through `desktop.application.evaluate` at a size inside the display's work area; never emulate the viewport.
+84. **Keep the pointer off the left edge.** Within `REVEAL_EDGE` of the window's left edge a hidden sidebar starts its floating reveal.
+85. **Wait only for document-timeline animations.** The tab strip's edge fade is scroll-driven and runs forever, so skip animations whose timeline isn't the `DocumentTimeline`.
+86. **Run a probe as a spec.** Run it through `packages/desktop/e2e/playwright.config.ts`; a separate script that imports Playwright loads it a second time and fails.
 
 ## TUI runner
 
@@ -67,6 +75,8 @@ Rule numbers are stable ids that other skills and reviews cite. A removed rule l
 23. **Run one journey with `--test-name-pattern`.** Each journey is one test. Steps after a failed step stay unverified.
 24. **Do not look for playback.** There is no command that plays a journey back visibly.
 25. **Drive the TUI the way a user does.** Press keys by command name, and change state through keys and the host, never by importing state setters.
+87. **Run the CLI from outside the repository root.** Bun loads the root `.env.local`, whose credentials make an empty home look signed in.
+88. **Wait for output before sending SIGINT on a fresh `HOME`.** The CLI installs its signal handlers only after its source loads, which is slow without Bun's cache, so an earlier SIGINT kills it with no output.
 
 ## Web runner
 
@@ -77,6 +87,19 @@ Rule numbers are stable ids that other skills and reviews cite. A removed rule l
 ## Stored shapes
 
 29. **Check old stores separately.** No runner opens a store that an older build wrote. `pnpm --dir packages/host check:store [path]` without a path reads the real home's store read-only and exits 1 on any row it cannot read.
+89. **Copy a live store with `node:sqlite`.** Open `nyte.db` read-only and call `backup(db, dest, { rate: 2147483647 })`, which copies in one step; `sqlite3 .backup` restarts on every write the host makes. Inspect a copy with `sqlite3 "file:<copy>?immutable=1"`.
+
+## Served host
+
+90. **Verify a served host after changing serving, auth or `host.sock`.** The first command starts its own host in a temp home and checks HTTP, the socket, auth, the SDK, WebSocket, MCP, one host per home and SIGTERM. `--attach` reads the live host over `host.sock` without a token.
+
+    ```sh
+    pnpm --dir packages/service verify:host
+    pnpm --dir packages/service verify:host --attach
+    ```
+
+91. **Keep unix socket paths under 104 bytes.** That is macOS's limit, so use a short temp prefix and don't `realpath` the temp directory, which adds `/private`.
+92. **Guard WebSocket `{ headers }`.** Node's WebSocket accepts `{ headers }` at runtime, but the DOM type forbids it, so narrow the class with a guard like the SDK's `webSocketClass`.
 
 ## Conversation
 

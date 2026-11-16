@@ -76,10 +76,6 @@ async function configureModel(
   }
 }
 
-/**
- * `send` resolves `taken` once the journal holds the message, so a send cut off by the link, or one
- * that waits a day, stays the journal's, and only a refusal answers `refused`.
- * `tip` and `heads` come from the session's info, read again whenever the head's revision, which moves with its tip, its run's state or its background work's states change, so the info's `headAttention` follows a subagent that asks. */
 export function useRemoteChat(client: ClientConnection, sessionId: SessionId, headName?: HeadName) {
   const { newerHost } = useHost();
   const session = client.session(sessionId);

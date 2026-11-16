@@ -10,10 +10,6 @@ import type { ReactElement, ReactNode } from "react";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
 import { usageStyles as styles } from "./usage-settings.stylex.ts";
 
-/**
- * One model is in focus at a time across the page: the one under the pointer, else the one the
- * person pinned. Every section paints it the same way, so a model reads as one thing everywhere.
- */
 export interface UsageFocus {
   readonly active: string | undefined;
   readonly pinned: string | undefined;
@@ -34,7 +30,6 @@ export function useUsageFocus(): UsageFocus {
   return use(UsageFocusContext);
 }
 
-/** At rest nothing is lit: only the hovered or pinned model takes the accent. */
 export function modelTint(focus: UsageFocus, key: string): Tint | undefined {
   return key === focus.active ? "blue" : undefined;
 }
@@ -45,7 +40,6 @@ export function tintScope(tint: Tint | undefined): (typeof surfaceTheme)[Tint] |
 
 export const focusRing = focus.ringInset;
 
-/** A chart or row tooltip, on the popup material so what's behind it blurs. */
 export const tipSurface = [floatingSurfaceStyles.material, styles.tip] as const;
 
 export function SectionHead({
@@ -65,7 +59,6 @@ export function SectionHead({
   );
 }
 
-/** A share bar. The fill scales on the compositor, so a range switch never reflows the row. */
 export function ShareBar({
   share,
   tint,
@@ -138,7 +131,6 @@ export function Empty({
   );
 }
 
-/** Names the pinned model wherever its highlight shows, and unpins it. */
 export function PinnedModel(): ReactElement | null {
   const focus = useUsageFocus();
 

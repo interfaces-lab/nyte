@@ -99,7 +99,6 @@ const styles = create({
   statMeta: { ...figure, margin: 0, color: role.contentTertiary },
 });
 
-/** Spend for the range, its change, and a running total that runs on to month end at this pace. */
 export function SpendCard({
   usage,
   rangeLabel,
@@ -275,7 +274,6 @@ export function SpendBone(): ReactElement {
   );
 }
 
-/** The totals worth a glance, one small card each. */
 export function UsageFigures({ usage }: { readonly usage: UsageDerived }): ReactElement {
   const prompt = promptTokens(usage.totals);
 

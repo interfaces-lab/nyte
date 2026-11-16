@@ -63,7 +63,6 @@ export interface LoopInput {
   readonly source: MessageSource;
 }
 
-/** How long requests that provably never reached the provider keep retrying, and the longest gap between them. */
 export interface OutagePolicy {
   readonly budgetMs: number;
   readonly maxDelayMs: number;
@@ -74,7 +73,6 @@ export interface FailedResponse<P extends PreparedRequest = PreparedRequest> {
   readonly prepared: P;
 }
 
-/** A response that finished: its message, the tool calls in it, and what it cost. */
 export interface SettledResponse<P extends PreparedRequest = PreparedRequest> {
   readonly message: AssistantMessage;
   readonly calls: readonly ModelToolCall[];
@@ -82,7 +80,6 @@ export interface SettledResponse<P extends PreparedRequest = PreparedRequest> {
   readonly prepared: P;
 }
 
-/** A request the loop makes again: the attempt it becomes, when it is sent, why, and the response that failed, which the caller charges. */
 export interface LoopRetry<P extends PreparedRequest = PreparedRequest> {
   readonly attempt: number;
   readonly until: number;
@@ -90,7 +87,6 @@ export interface LoopRetry<P extends PreparedRequest = PreparedRequest> {
   readonly response: FailedResponse<P>;
 }
 
-/** What the loop asks of its caller and tells it. `agentLoop` calls these in the order a run happens and awaits each before its next step, so what one writes is stored before the next step reads; the loop itself never touches the store. `blockUpdated` is the one synchronous member, since it runs once per streamed delta. */
 export interface LoopConfig<P extends PreparedRequest = PreparedRequest> {
   readonly attempt: number;
   readonly retry: RetryPolicy;
@@ -150,7 +146,6 @@ export const INTERRUPTED: Failure = {
   message: "The response was interrupted before it finished.",
 };
 
-/** Runs one run's requests in order: prepare, stream, settle the response, run its tool calls one by one, land what arrived at the boundary, and go again until the model is done, a call parks, the run stops or a request fails past its retries. */
 export async function agentLoop<P extends PreparedRequest>(
   config: LoopConfig<P>,
   signal: AbortSignal,

@@ -19,7 +19,6 @@ export type AgentRegistration = Electron.LoginItemSettings["status"];
 
 export interface ServingHost {
   readonly pid: number;
-  /** The job this app registered, not a host another install or `nyte host` serves. */
   readonly own: boolean;
 }
 
@@ -30,7 +29,6 @@ export interface HostAgent {
   pid(): Promise<number | null>;
   serving(): Promise<ServingHost | null>;
   restart(): Promise<void>;
-  /** Stops the job and keeps it stopped until `start`, which every launch of the app calls. */
   stop(): Promise<void>;
 }
 
@@ -51,7 +49,6 @@ export function hostAgent(options: HostAgentOptions): HostAgent {
   return options.build === null ? developmentAgent(options) : loginItemAgent(options);
 }
 
-/** When `ps` says the process started, or null where there is no `ps` or no such process. */
 export async function processStarted(pid: number): Promise<number | null> {
   const printed = await execute("ps", ["-o", "lstart=", "-p", String(pid)], {
     env: { ...process.env, LC_ALL: "C" },
@@ -163,7 +160,6 @@ async function servedPid(nyteHome: string): Promise<number | null> {
   return host !== null && processAlive(host.pid) ? host.pid : null;
 }
 
-/** `restart` starts the new host without waiting for the old one to exit: it stands by on the host lock (`whenTaken: "wait"`) and serves once the old one is gone. No job of this app's runs the host, so none is `own` and none starts again after it retires; this app's own host stands by only during `restart`. */
 function detachedHost(options: HostAgentOptions): HostAgent {
   const label = options.label ?? `${appId(options)}.host`;
   const pid = (): Promise<number | null> => servedPid(options.nyteHome);

@@ -7,6 +7,8 @@ package's AGENTS.md.
 - Ask for workspace trust once; child tasks inherit it. Extra approval checks belong
   in plugins. Keep API/IPC input validation.
 - Background agents get no ask-question tool.
+- Replacing the app leaves the launchd host running; a newer app asks it to retire once no run
+  or job is active. A changed operations digest offers Restart Host, which stops running agents.
 - Use Electron and Node APIs, not Bun-only APIs. Keep desktop-owned imports static.
   The `account` deferred entry (Clerk) is the desktop's only one: `loadDeferred("account")`
   loads it for an account command, never from the workspace startup graph.

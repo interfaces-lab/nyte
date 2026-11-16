@@ -4,8 +4,8 @@ description: Reads the workspace's folder, trust and state.
 ---
 
 Reads one workspace: its target, identity, availability, whether its project files are trusted,
-the project sources it would load, who added it, how many sessions use it, the runs writing to it,
-and the worktree it isolates, if any.
+the project sources it would load, who added it, the runs writing to it, and the worktree it
+isolates, if any.
 
 `projectResources` is the trust decision saved for the folder or a folder above it, or `null` when
 none was made; `trusted` is whether project files load now, which may come from the host's default
@@ -39,7 +39,6 @@ Response:
   "trusted": false,
   "projectSources": [".nyte/mcp.json"],
   "addedBy": "local",
-  "sessions": 1,
   "writers": ["4e2a6c8f-1b3d-4f5a-9c7e-0a2b4d6f8c1e"],
   "isolation": null
 }
@@ -88,7 +87,6 @@ Response:
     "trusted",
     "projectSources",
     "addedBy",
-    "sessions",
     "writers",
     "isolation"
   ],
@@ -183,9 +181,6 @@ Response:
     },
     "addedBy": {
       "type": "string"
-    },
-    "sessions": {
-      "type": "number"
     },
     "writers": {
       "type": "array",

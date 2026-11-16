@@ -64,12 +64,6 @@ export type BrowserStep = {
   readonly [T in BrowserTool]: { readonly tool: T; readonly args: Infer<BrowserParameters[T]> };
 }[BrowserTool];
 
-/**
- * A recorded browser call's step, or null when the tool isn't a browser tool or its arguments
- * don't parse.
- *
- * @category plugins
- */
 export function readBrowserStep(name: string, args: Json): BrowserStep | null {
   switch (name) {
     case "browser_open":

@@ -23,9 +23,8 @@ const report: CanvasPreviewReport = {
   console: [{ level: "warn", text: "three: low precision" }],
 };
 
-it("drives a shell page: installs the harness once the shell runs, captures at the chat width, then measures a phone", async () => {
+it("drives a shell page: installs the harness, captures at the chat width, then measures a phone", async () => {
   const heights = [300, 312, 640];
-  let starts = 0;
   let width = 0;
   let captured = 0;
   const page: CanvasPreviewPage = {
@@ -36,11 +35,9 @@ it("drives a shell page: installs the harness once the shell runs, captures at t
           errors: [],
           console: [{ level: "log", text: "hi" }],
         };
-      starts += 1;
-
       expect(expression).toContain('"method":"nyte/notifications/render"');
 
-      return starts > 1;
+      return true;
     },
     async resize(next) {
       width = next;

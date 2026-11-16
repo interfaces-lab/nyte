@@ -22,7 +22,6 @@ function users(view: Pick<SessionView, "messages">) {
   return view.messages.flatMap((message) => (message.kind === "user" ? [message.content] : []));
 }
 
-/** The views `connection`'s chat of `session` draws, each one it notifies of, and its `earlier`. */
 function rowViews(connection: ClientConnection, session: Session, tail: number) {
   const chat = heldChat(connection, session.id, { tail });
 

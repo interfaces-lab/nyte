@@ -90,7 +90,6 @@ export interface StoredObject {
   readonly body: string;
 }
 
-/** A ref the migration creates at the object `target` with `body`, written unless the store holds it, unless the ref exists. */
 interface Creation {
   readonly name: string;
   readonly target: ObjectId;
@@ -102,7 +101,6 @@ export interface LoggedRow {
   readonly event: string;
 }
 
-/** A session's logged events, in seq order. */
 interface SessionLog {
   readonly session: string;
   readonly events: readonly LoggedRow[];
@@ -732,7 +730,6 @@ const sessionCatalogs: SchemaStep = {
   },
 };
 
-/** Changes nothing and moves the version: a store from here on may hold `report` receipts, which an older Nyte cannot decode, so that Nyte refuses the store instead of failing its recovery on one. */
 const reportReceipts: SchemaStep = {
   kind: "schema",
   name: "2026-11-13-report-receipts",

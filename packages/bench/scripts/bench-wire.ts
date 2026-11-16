@@ -28,7 +28,6 @@ import type { Reply, Request } from "../src/index.ts";
 
 const SELF = fileURLToPath(import.meta.url);
 
-/** The saved loopback run `--gate` compares against. */
 const SAVED = fileURLToPath(new URL("../wire/loopback.json", import.meta.url));
 
 const parsed = parseArgs({
@@ -42,21 +41,16 @@ const parsed = parseArgs({
   },
 });
 
-/** The app's chat store opens a chat on its newest `tail` messages; its conversation view pages `page` older ones at a time. */
 const APP = { tail: 40, page: 200 } as const;
 
-/** The host holds `chats` chats, one of them `exchanges` exchanges long; S4 renames the chat at `renamed`. */
 const SEED = { chats: 200, exchanges: 100, renamed: 7 } as const;
 
-/** A measured turn streams deltas of `chars` characters `ms` apart; S1 streams `streamed` characters. */
 const DELTA = { chars: 10, ms: 5, streamed: 4_400 } as const;
 
 const QUIET_MS = 750;
 
-/** How much a step's server-to-client bytes may grow over the compared run. The host gathers pushes on timers, so a streamed step lands a few percent apart between runs. */
 const GROWTH_LIMIT = 0.1;
 
-/** A request head's `Host` line, and the name `--remote` puts in it. */
 const HOST_HEADER = /^(host:\s*)[^\r\n]*/imu;
 
 const REMOTE_HOST = "nyte-bench.invalid";
@@ -360,7 +354,6 @@ function answer(request: Request): Reply {
   return { content: [text(numbered === null ? "Ok." : prose(Number(numbered[1]) + 1_000, 400))] };
 }
 
-/** Re-cuts each streamed delta of the two measured turns into `DELTA` pieces, since the scripted model streams a thinking block in two halves. */
 function paced(request: Request, source: AssistantMessageEventStream): AssistantMessageEventStream {
   const asked = lastUserText(request);
 
@@ -402,7 +395,6 @@ function exchange(index: number): string {
   return `Exchange ${String(index).padStart(3, "0")} ${prose(index, 27)}`;
 }
 
-/** Connects the way the app's `connectHost` does: one connection for requests, the host watch and a ticketed socket, through a meter and a counting proxy. */
 async function openClient(name: string, address: string, token: string, step: string) {
   const proxy = await openProxy(address);
   const meter = openMeter(name, proxy, step);
@@ -426,7 +418,6 @@ async function openClient(name: string, address: string, token: string, step: st
   return { meter, connection, close };
 }
 
-/** Opens a chat the way the app's chat store does: the head's newest messages with streamed text laid over them, older pages through `earlier`. */
 function openChat(client: Client, session: SessionId) {
   const chat = client.connection.chat(session, { tail: APP.tail });
   const leave = chat.subscribe(() => undefined);
@@ -464,7 +455,6 @@ async function measure(
   meter.step = "between";
 }
 
-/** Waits until `ready` holds, no request waits for its answer, and the client's wire has been silent for `QUIET_MS`. */
 async function settle(meter: Meter, ready: () => boolean): Promise<void> {
   await until(
     () => ready() && meter.flying === 0 && performance.now() - meter.last >= QUIET_MS,
@@ -492,7 +482,6 @@ async function save(path: string, contents: string): Promise<string> {
   return absolute;
 }
 
-/** Counts every message the client's socket carries and every HTTP body its `fetch` sends and reads, under the meter's current step; a stream-channel body counts per server-sent event, named for the stream it carries. */
 function openMeter(name: string, proxy: Proxy, step: string): Meter {
   const calls = new Map<string, string>();
   const streams = new Map<string, string>();
@@ -625,7 +614,6 @@ function frameKind(frame: Frame, named: (id: string) => string): string {
   return `event ${frame.kind ?? "?"} ${scope}${tables.length === 0 ? "" : ` ${tables.join("+")}`}`;
 }
 
-/** Forwards a client's TCP connections to the host, so `bytesRead` and `bytesWritten` count what crosses the socket, HTTP headers, the upgrade, framing and ping/pong included; `drop` cuts its WebSockets the way a lost network does. The host compresses for a client that addressed it by a name off loopback, so `--remote` renames the host in each request head. */
 async function openProxy(target: string) {
   const url = new URL(target);
   const pipes: Pipe[] = [];
@@ -779,7 +767,6 @@ function side(
   };
 }
 
-/** Counts the tool call's own rows inside change frames by their JSON length, and the text-channel frames of its part whole. */
 function toolBytes(down: readonly Entry[]) {
   const pattern = /"part":"([^"]+)","partKind":"tool"/u;
   const parts = new Set(down.flatMap((entry) => pattern.exec(entry.text)?.slice(1) ?? []));
@@ -801,7 +788,6 @@ function toolBytes(down: readonly Entry[]) {
   };
 }
 
-/** Sizes each WebSocket message deflated two ways: alone (RFC 7692 without context takeover) and with one context per socket direction, which is how the host's deflating listener sends it. Each drops the 4-byte sync-flush tail the extension strips. `--remote` measures the real thing in the on-socket column. */
 async function deflateAll(): Promise<ReadonlyMap<Entry, Deflated>> {
   const sized = new Map<Entry, Deflated>();
   const ws = entries.filter((entry) => entry.channel === "ws");
@@ -899,7 +885,6 @@ function table(rows: readonly (readonly string[])[]): string {
   return rows.map((row) => row.map(cell).join("  ")).join("\n");
 }
 
-/** Prints every number of this run beside the saved run's, and fails when a step's server-to-client bytes grew by more than `GROWTH_LIMIT`. */
 async function compare(report: Report, path: string): Promise<boolean> {
   const saved = Value.Parse(ReportSchema, JSON.parse(await readFile(path, "utf8")));
   const then = new Map(numbers(saved.steps, ""));

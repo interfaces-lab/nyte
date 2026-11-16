@@ -69,7 +69,6 @@ export async function uploadComposerContent(content: ComposerContent): Promise<U
   return [...content.parts, ...content.files, ...uploaded];
 }
 
-/** Puts a planned message in the chat's send journal, resolving once the journal holds it. */
 async function journalComposerMessage(
   chat: Chat,
   session: SessionId,
@@ -144,11 +143,6 @@ export async function draftCommands(sessionId: SessionId, text: string): Promise
   );
 }
 
-/**
- * Sends a planned draft and resolves once the composer may take the next one: a command once it
- * ran, a message once the send journal holds it. `ended` settles with how the send ended.
- * `receipt` is also the id of the message's unsent row.
- */
 export async function deliver(
   connection: ClientConnection,
   session: SessionId,

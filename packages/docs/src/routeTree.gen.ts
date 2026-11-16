@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as SiteRouteImport } from './routes/_site'
 import { Route as DesignRouteRouteImport } from './routes/design/route'
 import { Route as DocsPreviewRouteImport } from './routes/docs-preview'
+import { Route as GoodNyteRouteImport } from './routes/good-nyte'
 import { Route as LlmsFullDottxtRouteImport } from './routes/llms-full[.]txt'
 import { Route as LlmsDottxtRouteImport } from './routes/llms[.]txt'
 import { Route as McpRouteImport } from './routes/mcp'
@@ -27,6 +28,7 @@ import { Route as DesignSplatRouteImport } from './routes/design/$'
 import { Route as LlmsDotmdxSplatRouteImport } from './routes/llms[.]mdx/$'
 import { Route as OgSplatRouteImport } from './routes/og/$'
 import { Route as SiteLandingIndexRouteImport } from './routes/_site/_landing/index'
+import { Route as SiteLandingGoodNyte3RouteImport } from './routes/_site/_landing/good-nyte-3'
 import { Route as SiteLegalPrivacyRouteImport } from './routes/_site/_legal/privacy'
 import { Route as SiteLegalTermsRouteImport } from './routes/_site/_legal/terms'
 import { Route as SiteDesktopSignedInRouteImport } from './routes/_site/desktop/signed-in'
@@ -44,6 +46,11 @@ const DesignRouteRoute = DesignRouteRouteImport.update({
 const DocsPreviewRoute = DocsPreviewRouteImport.update({
   id: '/docs-preview',
   path: '/docs-preview',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GoodNyteRoute = GoodNyteRouteImport.update({
+  id: '/good-nyte',
+  path: '/good-nyte',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LlmsFullDottxtRoute = LlmsFullDottxtRouteImport.update({
@@ -119,6 +126,11 @@ const SiteLandingIndexRoute = SiteLandingIndexRouteImport.update({
   path: '/',
   getParentRoute: () => SiteLandingRoute,
 } as any)
+const SiteLandingGoodNyte3Route = SiteLandingGoodNyte3RouteImport.update({
+  id: '/good-nyte-3',
+  path: '/good-nyte-3',
+  getParentRoute: () => SiteLandingRoute,
+} as any)
 const SiteLegalPrivacyRoute = SiteLegalPrivacyRouteImport.update({
   id: '/privacy',
   path: '/privacy',
@@ -144,6 +156,7 @@ export interface FileRoutesByFullPath {
   '/design': typeof DesignRouteRouteWithChildren
   '/': typeof SiteLandingIndexRoute
   '/docs-preview': typeof DocsPreviewRoute
+  '/good-nyte': typeof GoodNyteRoute
   '/llms-full.txt': typeof LlmsFullDottxtRoute
   '/llms.txt': typeof LlmsDottxtRoute
   '/mcp': typeof McpRoute
@@ -156,6 +169,7 @@ export interface FileRoutesByFullPath {
   '/llms.mdx/$': typeof LlmsDotmdxSplatRoute
   '/og/$': typeof OgSplatRoute
   '/design/': typeof DesignIndexRoute
+  '/good-nyte-3': typeof SiteLandingGoodNyte3Route
   '/privacy': typeof SiteLegalPrivacyRoute
   '/terms': typeof SiteLegalTermsRoute
   '/desktop/signed-in': typeof SiteDesktopSignedInRoute
@@ -164,6 +178,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof SiteLandingIndexRoute
   '/docs-preview': typeof DocsPreviewRoute
+  '/good-nyte': typeof GoodNyteRoute
   '/llms-full.txt': typeof LlmsFullDottxtRoute
   '/llms.txt': typeof LlmsDottxtRoute
   '/mcp': typeof McpRoute
@@ -176,6 +191,7 @@ export interface FileRoutesByTo {
   '/llms.mdx/$': typeof LlmsDotmdxSplatRoute
   '/og/$': typeof OgSplatRoute
   '/design': typeof DesignIndexRoute
+  '/good-nyte-3': typeof SiteLandingGoodNyte3Route
   '/privacy': typeof SiteLegalPrivacyRoute
   '/terms': typeof SiteLegalTermsRoute
   '/desktop/signed-in': typeof SiteDesktopSignedInRoute
@@ -186,6 +202,7 @@ export interface FileRoutesById {
   '/design': typeof DesignRouteRouteWithChildren
   '/_site': typeof SiteRouteWithChildren
   '/docs-preview': typeof DocsPreviewRoute
+  '/good-nyte': typeof GoodNyteRoute
   '/llms-full.txt': typeof LlmsFullDottxtRoute
   '/llms.txt': typeof LlmsDottxtRoute
   '/mcp': typeof McpRoute
@@ -200,6 +217,7 @@ export interface FileRoutesById {
   '/llms.mdx/$': typeof LlmsDotmdxSplatRoute
   '/og/$': typeof OgSplatRoute
   '/design/': typeof DesignIndexRoute
+  '/_site/_landing/good-nyte-3': typeof SiteLandingGoodNyte3Route
   '/_site/_legal/privacy': typeof SiteLegalPrivacyRoute
   '/_site/_legal/terms': typeof SiteLegalTermsRoute
   '/_site/desktop/signed-in': typeof SiteDesktopSignedInRoute
@@ -212,6 +230,7 @@ export interface FileRouteTypes {
     | '/design'
     | '/'
     | '/docs-preview'
+    | '/good-nyte'
     | '/llms-full.txt'
     | '/llms.txt'
     | '/mcp'
@@ -224,6 +243,7 @@ export interface FileRouteTypes {
     | '/llms.mdx/$'
     | '/og/$'
     | '/design/'
+    | '/good-nyte-3'
     | '/privacy'
     | '/terms'
     | '/desktop/signed-in'
@@ -232,6 +252,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/docs-preview'
+    | '/good-nyte'
     | '/llms-full.txt'
     | '/llms.txt'
     | '/mcp'
@@ -244,6 +265,7 @@ export interface FileRouteTypes {
     | '/llms.mdx/$'
     | '/og/$'
     | '/design'
+    | '/good-nyte-3'
     | '/privacy'
     | '/terms'
     | '/desktop/signed-in'
@@ -253,6 +275,7 @@ export interface FileRouteTypes {
     | '/design'
     | '/_site'
     | '/docs-preview'
+    | '/good-nyte'
     | '/llms-full.txt'
     | '/llms.txt'
     | '/mcp'
@@ -267,6 +290,7 @@ export interface FileRouteTypes {
     | '/llms.mdx/$'
     | '/og/$'
     | '/design/'
+    | '/_site/_landing/good-nyte-3'
     | '/_site/_legal/privacy'
     | '/_site/_legal/terms'
     | '/_site/desktop/signed-in'
@@ -278,6 +302,7 @@ export interface RootRouteChildren {
   DesignRouteRoute: typeof DesignRouteRouteWithChildren
   SiteRoute: typeof SiteRouteWithChildren
   DocsPreviewRoute: typeof DocsPreviewRoute
+  GoodNyteRoute: typeof GoodNyteRoute
   LlmsFullDottxtRoute: typeof LlmsFullDottxtRoute
   LlmsDottxtRoute: typeof LlmsDottxtRoute
   McpRoute: typeof McpRoute
@@ -311,6 +336,13 @@ declare module '@tanstack/react-router' {
       path: '/docs-preview'
       fullPath: '/docs-preview'
       preLoaderRoute: typeof DocsPreviewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/good-nyte': {
+      id: '/good-nyte'
+      path: '/good-nyte'
+      fullPath: '/good-nyte'
+      preLoaderRoute: typeof GoodNyteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/llms-full.txt': {
@@ -418,6 +450,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SiteLandingIndexRouteImport
       parentRoute: typeof SiteLandingRoute
     }
+    '/_site/_landing/good-nyte-3': {
+      id: '/_site/_landing/good-nyte-3'
+      path: '/good-nyte-3'
+      fullPath: '/good-nyte-3'
+      preLoaderRoute: typeof SiteLandingGoodNyte3RouteImport
+      parentRoute: typeof SiteLandingRoute
+    }
     '/_site/_legal/privacy': {
       id: '/_site/_legal/privacy'
       path: '/privacy'
@@ -464,10 +503,12 @@ const DesignRouteRouteWithChildren = DesignRouteRoute._addFileChildren(
 )
 
 interface SiteLandingRouteChildren {
+  SiteLandingGoodNyte3Route: typeof SiteLandingGoodNyte3Route
   SiteLandingIndexRoute: typeof SiteLandingIndexRoute
 }
 
 const SiteLandingRouteChildren: SiteLandingRouteChildren = {
+  SiteLandingGoodNyte3Route: SiteLandingGoodNyte3Route,
   SiteLandingIndexRoute: SiteLandingIndexRoute,
 }
 
@@ -509,6 +550,7 @@ const rootRouteChildren: RootRouteChildren = {
   DesignRouteRoute: DesignRouteRouteWithChildren,
   SiteRoute: SiteRouteWithChildren,
   DocsPreviewRoute: DocsPreviewRoute,
+  GoodNyteRoute: GoodNyteRoute,
   LlmsFullDottxtRoute: LlmsFullDottxtRoute,
   LlmsDottxtRoute: LlmsDottxtRoute,
   McpRoute: McpRoute,

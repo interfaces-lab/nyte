@@ -103,7 +103,6 @@ const parameters = standard(
   }),
 );
 
-/** Each library family once: the compiler names every module of a family when an import misses. */
 const libraryFamilies = [
   ...new Set(
     Object.keys(LIBRARY_VERSIONS).map((name) =>
@@ -114,10 +113,6 @@ const libraryFamilies = [
   ),
 ];
 
-/**
- * The kit by what a canvas uses it for, with the props a model gets wrong when it guesses. Every
- * export in `KIT` appears here once; the compiler rejects an import the kit doesn't export.
- */
 const KIT_GUIDE = [
   'Layout: Stack {direction, gap 0-6, align, justify, wrap}, Grid {columns | "auto", minWidth, gap}, Card {title, description, padding}, Section {title, description}, Panes {areas: string[], rows} with Pane {area, title, height}, Divider',
   'Text: Heading {level}, Text {size, tone: "primary" | "secondary" | "tertiary", weight, mono}, Code {block}, FileLink {path, line}, Badge {tone}, Callout {tone, title}, Kbd {keys}',
@@ -127,7 +122,6 @@ const KIT_GUIDE = [
   'Other tone props: "neutral" | "info" | "success" | "warning" | "danger". tint: a colour name such as "blue" or "green".',
 ].join("\n");
 
-/** When to draw, in the system prompt: a tool description says how, and models read it only once they have chosen the tool. */
 export const CANVAS_PROMPT = {
   id: "canvas",
   order: 50,

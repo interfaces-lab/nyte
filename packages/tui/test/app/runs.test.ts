@@ -403,11 +403,9 @@ function heartbeat(signal: AbortSignal | undefined, stopped: PromiseWithResolver
     key: null,
     write: async () => undefined,
     async *output() {
-      for (let tick = 1; !done.aborted; tick++) {
+      for (const tick of [1, 2])
         yield { kind: "bytes", data: new TextEncoder().encode(`tick ${String(tick)}\n`) };
-        await Bun.sleep(5);
-      }
-
+      await ended.promise;
       yield { kind: "exit", code: null };
     },
     resize: async () => ({ kind: "not-pty" }),

@@ -21,13 +21,12 @@ import type { DesktopHostDependencies } from "../desktop-host.ts";
 
 export interface TestDesktop {
   readonly host: DesktopHost;
+  readonly link: HostLink;
   readonly served: Host;
-  /** Another app client of the host over `host.sock`, as a window's is. */
   readonly client: ClientConnection;
   readonly home: string;
   readonly fake: FakeModels;
   readonly events: HostEvent[];
-  /** Whether main's route to the host answers, as `host.sock` does once the host listens. */
   reachable(answers: boolean): void;
   connect(credentials?: CredentialSource): Promise<Connection>;
   close(): Promise<void>;
@@ -109,6 +108,7 @@ export async function testDesktop(
 
   return {
     host,
+    link,
     served,
     client,
     home,

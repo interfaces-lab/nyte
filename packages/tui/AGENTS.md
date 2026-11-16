@@ -31,6 +31,17 @@ The boundaries test enforces:
 - The TUI's working directory still picks a new chat's workspace (`addFolder`), whichever folder the host opened on. A running host doesn't see API keys exported only in the current shell.
 - `pnpm dev:tui` takes the same path: it attaches to whatever host runs, the installed one included, where `NYTE_DB` doesn't apply; with none, the host it starts runs this checkout on `NYTE_DB`, and every other client attaches to it until it stops.
 - `nyte host` serves one host (`serveHost`, shared with the desktop app's host) and publishes `~/.nyte/host.json`. On a signal it has 12 s to stop its worker and release its leases (`extendShutdown`), where every other command has 1.5 s; a second signal exits at once. It runs on Bun, which can't run `@lydell/node-pty`, so a pty `jobs.start` answers `unavailable`; terminals open on the desktop app's host, which runs on Electron's Node. It keeps its port and token across restarts, clean or not, so attached clients resume; a port another process holds gets a new one and a line on stderr. `--host-url` with `NYTE_HOST_TOKEN` attaches to a named host instead (`HostSource`), and never starts one.
+- Resolve a `HostSource` once: `attachedSource` deletes `NYTE_HOST_TOKEN` on first use.
+
+## CLI
+
+- How output, options, help, errors and exit codes should read is in the cli-design skill.
+- `resolveMode` decides interactivity, browser opening and colour; one-shot commands take its `Mode` and never read `isTTY`, `CI`, `NO_COLOR`, `FORCE_COLOR` or `TERM` to decide.
+- Write through `Output`: the result and JSON go to stdout, everything else to stderr. Only prompts (`confirm`, `cliLoginDriver`) write to stderr past it. Never `console`: Bun paints `console.error` red on a TTY.
+- Fail with `CliError(reason)`; `REASONS` sets the class, exit code and JSON status. Next steps carry argv, and `shellCommand` renders them.
+- `COMMANDS` is the one command list: `route`, help and `parseCommandArgs` derive from it, and `HANDLERS` is typed against it.
+- Switching the update channel never installs an older release; only a named version rolls back.
+- An agent's Bash stdin never reaches EOF, so print mode reads stdin beside a prompt argument only from a FIFO or a file.
 
 ## Theme tokens
 

@@ -96,12 +96,10 @@ describe("openai-codex streaming", () => {
 
     const context = TEXT_CONTEXT;
 
-    const result = await Promise.race([
-      stream(model, normalizeContext(context), { apiKey: token, transport: "sse" }).result(),
-      new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error("Timed out waiting for completed SSE stream")), 1000);
-      }),
-    ]);
+    const result = await stream(model, normalizeContext(context), {
+      apiKey: token,
+      transport: "sse",
+    }).result();
 
     expect(result.content.find((c) => c.type === "text")?.text).toBe("Hello");
     expect(result.stopReason).toBe("stop");
@@ -153,8 +151,8 @@ describe("openai-codex streaming", () => {
   it("aborts SSE body reads after response headers arrive", async () => {
     const token = mockToken();
     const encoder = new TextEncoder();
-    const timers: ReturnType<typeof setTimeout>[] = [];
     let cancelled = false;
+    let deliverRest = () => {};
     const responseStream = new ReadableStream<Uint8Array>({
       start(controller) {
         const enqueue = (chunk: string) => {
@@ -176,49 +174,42 @@ describe("openai-codex streaming", () => {
             `data: ${JSON.stringify({ type: "response.output_text.delta", delta: "one" })}`,
           ].join("\n\n")}\n\n`,
         );
-        timers.push(
-          setTimeout(() => {
-            enqueue(
-              `data: ${JSON.stringify({ type: "response.output_text.delta", delta: "two" })}\n\n`,
-            );
-          }, 10),
-        );
-        timers.push(
-          setTimeout(() => {
-            if (cancelled) return;
-            enqueue(
-              `${[
-                `data: ${JSON.stringify({
-                  type: "response.output_item.done",
-                  item: {
-                    type: "message",
-                    id: "msg_1",
-                    role: "assistant",
-                    status: "completed",
-                    content: [{ type: "output_text", text: "onetwo" }],
+        deliverRest = () => {
+          if (cancelled) return;
+          enqueue(
+            `data: ${JSON.stringify({ type: "response.output_text.delta", delta: "two" })}\n\n`,
+          );
+          enqueue(
+            `${[
+              `data: ${JSON.stringify({
+                type: "response.output_item.done",
+                item: {
+                  type: "message",
+                  id: "msg_1",
+                  role: "assistant",
+                  status: "completed",
+                  content: [{ type: "output_text", text: "onetwo" }],
+                },
+              })}`,
+              `data: ${JSON.stringify({
+                type: "response.completed",
+                response: {
+                  status: "completed",
+                  usage: {
+                    input_tokens: 5,
+                    output_tokens: 3,
+                    total_tokens: 8,
+                    input_tokens_details: { cached_tokens: 0 },
                   },
-                })}`,
-                `data: ${JSON.stringify({
-                  type: "response.completed",
-                  response: {
-                    status: "completed",
-                    usage: {
-                      input_tokens: 5,
-                      output_tokens: 3,
-                      total_tokens: 8,
-                      input_tokens_details: { cached_tokens: 0 },
-                    },
-                  },
-                })}`,
-              ].join("\n\n")}\n\n`,
-            );
-            controller.close();
-          }, 20),
-        );
+                },
+              })}`,
+            ].join("\n\n")}\n\n`,
+          );
+          controller.close();
+        };
       },
       cancel() {
         cancelled = true;
-        for (const timer of timers) clearTimeout(timer);
       },
     });
 
@@ -247,6 +238,7 @@ describe("openai-codex streaming", () => {
       events.push(event.type === "text_delta" ? `text_delta:${event.delta}` : event.type);
       if (event.type === "text_delta" && event.delta === "one") {
         controller.abort();
+        deliverRest();
       }
     }
 

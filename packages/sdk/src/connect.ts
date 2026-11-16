@@ -36,7 +36,6 @@ export interface ClientConnectOptions {
   /** A token, custom headers, or a pairing code, which the first request trades for a device token that becomes `credential`. */
   readonly credentials: CredentialSource;
   readonly expect?: ConnectOptions["expect"];
-  /** How this client names itself to the host and to the other clients. */
   readonly client: Omit<ClientInfo, "actions">;
   /** Where a send waits until the host has it. Give it storage that outlives the process (`createSendJournal(storage)`), or a message sent while the host is away is lost on quit. */
   readonly journal: RequestJournal;

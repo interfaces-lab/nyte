@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -15,13 +16,14 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"tailscale.com/client/local"
-	"tailscale.com/ipn/ipnstate"
 	"tailscale.com/ipn/store/mem"
 	"tailscale.com/net/netns"
 	"tailscale.com/tailcfg"
@@ -152,6 +154,8 @@ func TestSidecarAdmitsByWhoIs(t *testing.T) {
 }
 
 func startControl(t *testing.T) *testcontrol.Server {
+	t.Helper()
+
 	netns.SetEnabled(false)
 	t.Cleanup(func() { netns.SetEnabled(true) })
 
@@ -169,6 +173,8 @@ func startControl(t *testing.T) *testcontrol.Server {
 }
 
 func startSidecar(t *testing.T, ctx context.Context, controlURL, socket, hostname, access string) *sidecar {
+	t.Helper()
+
 	ctx, stop := context.WithCancel(ctx)
 	running := &sidecar{statuses: &statusLines{}, stop: stop, done: make(chan struct{})}
 	opts := options{
@@ -195,11 +201,13 @@ func startSidecar(t *testing.T, ctx context.Context, controlURL, socket, hostnam
 	return running
 }
 
-func listenPlain(_ context.Context, node *tsnet.Server, _ *local.Client, _ *ipnstate.Status) (net.Listener, error) {
+func listenPlain(_ context.Context, node *tsnet.Server, _ *local.Client) (net.Listener, error) {
 	return node.Listen("tcp", ":80")
 }
 
 func startClient(t *testing.T, ctx context.Context, controlURL, hostname string) (*tsnet.Server, key.NodePublic) {
+	t.Helper()
+
 	node := &tsnet.Server{
 		Dir:        filepath.Join(t.TempDir(), hostname),
 		Hostname:   hostname,
@@ -219,6 +227,8 @@ func startClient(t *testing.T, ctx context.Context, controlURL, hostname string)
 }
 
 func findNode(t *testing.T, control *testcontrol.Server, hostname string) *tailcfg.Node {
+	t.Helper()
+
 	for _, node := range control.AllNodes() {
 		if node.Hostinfo.Hostname() == hostname {
 			return node
@@ -235,7 +245,7 @@ func principalFor(node *tailcfg.Node, user tailcfg.UserID, owner bool) principal
 	}
 	return principal{
 		Kind:      "tailscale",
-		UserID:    fmt.Sprint(int64(user)),
+		UserID:    strconv.FormatInt(int64(user), 10),
 		LoginName: fmt.Sprintf("user-%d@fake-control.example.net", user),
 		Node:      string(node.StableID),
 		Tags:      tags,
@@ -249,9 +259,7 @@ func get(ctx context.Context, from *tsnet.Server, address, path string, header h
 	if err != nil {
 		return 0, err.Error()
 	}
-	for name, values := range header {
-		request.Header[name] = values
-	}
+	maps.Copy(request.Header, header)
 
 	response, err := client.Do(request)
 	if err != nil {
@@ -264,6 +272,8 @@ func get(ctx context.Context, from *tsnet.Server, address, path string, header h
 }
 
 func upgrade(t *testing.T, ctx context.Context, from *tsnet.Server, address string) string {
+	t.Helper()
+
 	conn, err := from.Dial(ctx, "tcp", address)
 	if err != nil {
 		t.Fatal(err)
@@ -276,6 +286,7 @@ func upgrade(t *testing.T, ctx context.Context, from *tsnet.Server, address stri
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer response.Body.Close()
 	if response.StatusCode != http.StatusSwitchingProtocols {
 		t.Fatalf("the upgrade answered %d", response.StatusCode)
 	}
@@ -291,20 +302,23 @@ func upgrade(t *testing.T, ctx context.Context, from *tsnet.Server, address stri
 }
 
 func startFakeHost(t *testing.T) *fakeHost {
-	dir, err := os.MkdirTemp("", "nyte-tailnet-")
+	t.Helper()
+
+	// t.TempDir is too long for a unix socket path, which macOS caps at 104 bytes.
+	dir, err := os.MkdirTemp("", "nyte-tailnet-") //nolint:usetesting // See above.
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(dir) })
 
 	host := &fakeHost{socket: filepath.Join(dir, "host.sock")}
-	listener, err := net.Listen("unix", host.socket)
+	listener, err := new(net.ListenConfig).Listen(t.Context(), "unix", host.socket)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	server := &http.Server{Handler: http.HandlerFunc(host.serve)}
-	go server.Serve(listener)
+	server := &http.Server{Handler: http.HandlerFunc(host.serve), ReadHeaderTimeout: 10 * time.Second}
+	go func() { _ = server.Serve(listener) }()
 	t.Cleanup(func() { server.Close() })
 
 	return host
@@ -326,12 +340,14 @@ func (h *fakeHost) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	defer conn.Close()
 
-	buffered.WriteString("HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n")
+	_, _ = buffered.WriteString("HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n")
 	buffered.Flush()
-	io.Copy(conn, buffered)
+	_, _ = io.Copy(conn, buffered)
 }
 
 func (h *fakeHost) last(t *testing.T) principal {
+	t.Helper()
+
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -395,11 +411,8 @@ func expectStatus(t *testing.T, running *sidecar, match func(status) bool) {
 	t.Helper()
 
 	waitFor(t, func() error {
-		lines := running.statuses.all()
-		for _, line := range lines {
-			if match(line) {
-				return nil
-			}
+		if slices.ContainsFunc(running.statuses.all(), match) {
+			return nil
 		}
 		return errors.New("no status matched yet")
 	})

@@ -600,7 +600,6 @@ export const workspaceInfo = {
   trusted: true,
   projectSources: [],
   addedBy: principal,
-  sessions: 0,
   writers: [],
   isolation: null,
 };

@@ -130,7 +130,6 @@ app.whenReady().then(async () => {
       return;
     }
     window.webContents.debugger.attach("1.3");
-    // Hidden test windows need focus emulation to dispatch native focus/blur events.
     await window.webContents.debugger.sendCommand("Emulation.setFocusEmulationEnabled", { enabled: true });
     await window.webContents.debugger.sendCommand("Emulation.setEmulatedMedia", {
       features: [

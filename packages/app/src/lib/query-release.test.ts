@@ -6,11 +6,12 @@ import { releaseWithQuery } from "./query-release.ts";
 import { blobUrlQuery } from "./use-blob-url.ts";
 
 function gatedReads() {
-  const gates: (() => void)[] = [];
+  const reads: { readonly gate: () => void; readonly closed: Promise<void> }[] = [];
 
   const open = async (): Promise<ByteReader> => {
     const gate = Promise.withResolvers<void>();
-    gates.push(gate.resolve);
+    const closed = Promise.withResolvers<void>();
+    reads.push({ gate: gate.resolve, closed: closed.promise });
 
     return {
       size: null,
@@ -20,11 +21,16 @@ function gatedReads() {
         yield new TextEncoder().encode("bytes");
       },
       close: async () => {},
-      [Symbol.asyncDispose]: async () => {},
+      [Symbol.asyncDispose]: async () => closed.resolve(),
     };
   };
 
-  return { open, started: () => gates.length, finish: (read: number) => gates[read]() };
+  return {
+    open,
+    started: () => reads.length,
+    finish: (read: number) => reads[read].gate(),
+    closed: (read: number) => reads[read].closed,
+  };
 }
 
 test("a cancelled read that lands last leaves the current object URL alone", async () => {
@@ -41,7 +47,7 @@ test("a cancelled read that lands last leaves the current object URL alone", asy
   await expect.poll(() => observer.getCurrentResult().data).toBeDefined();
   const current = observer.getCurrentResult().data ?? "";
   reads.finish(0);
-  await new Promise((resolve) => setTimeout(resolve, 10));
+  await reads.closed(0);
 
   expect(observer.getCurrentResult().data).toBe(current);
   expect(resolveObjectURL(current)).toBeDefined();

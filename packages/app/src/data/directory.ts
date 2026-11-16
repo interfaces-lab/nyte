@@ -3,7 +3,6 @@ import type { ClientConnection, SessionsSnapshot, SessionsWindow } from "@nyte-a
 import { watchFamily } from "./watch-store.ts";
 import type { LiveView, Shown } from "./watch-store.ts";
 
-/** `pinned` is every pinned root however old, which the sidebar lays over the newest roots; `roots` and `all` are the newest of each. */
 export const sessionList = watchFamily(
   (connection, list: "roots" | "all" | "pinned"): LiveView<readonly SessionInfo[]> =>
     directoryRows(
@@ -19,13 +18,11 @@ export const childList = watchFamily(
     directoryRows(connection, { parents: { kind: "children", session: parent } }),
 );
 
-/** The newest roots whose name holds `query`, ignoring case, answered by the host from its index whatever the number of chats. */
 export const sessionSearch = watchFamily(
   (connection, query: string): LiveView<readonly SessionInfo[]> =>
     directoryRows(connection, { parents: { kind: "roots" }, query }),
 );
 
-/** The window's rows, read again only when the store's snapshot changes: the SDK keeps a snapshot while its ids and rows stay the same. */
 function directoryRows(
   connection: ClientConnection,
   window: SessionsWindow,
@@ -47,7 +44,6 @@ function directoryRows(
   };
 }
 
-/** The window's rows in its order, skipping an id without a row. */
 export function showSessions(snapshot: SessionsSnapshot | null): Shown<readonly SessionInfo[]> {
   if (snapshot === null) return { kind: "waiting" };
 

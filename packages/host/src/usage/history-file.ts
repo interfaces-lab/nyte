@@ -21,7 +21,6 @@ export type HistoryParser<Scan> = (from: Scan | undefined) => HistoryFold<Scan>;
 export interface FileScan<Scan> {
   readonly size: number;
   readonly mtimeMs: number;
-  /** The byte after the last newline, where a grown file resumes. */
   readonly position: number;
   readonly committed: Scan;
 }
@@ -35,7 +34,6 @@ export function fileScanSchema<Scan extends TSchema>(scan: Scan) {
   });
 }
 
-/** Scans keyed by path. A scan answers while its file keeps the size and mtime it was read at. */
 export class UsageScanCache<Scan> {
   readonly #files: Map<string, FileScan<Scan>>;
   #changed = false;

@@ -33,7 +33,6 @@ export const preferences = {
     Type.Enum(["new-chat", "last-session"]),
     "new-chat",
   ),
-  /** Each model's own effort and Fast, by model key, so picking a model brings them back. */
   modelSettings: definePreference(
     { key: "nyte:model-settings:v1" },
     Type.Record(

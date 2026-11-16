@@ -273,7 +273,6 @@ export async function watchHost(context: HandlerContext): Promise<void> {
   await Promise.all([catalogs, infos]);
 }
 
-/** Gives each replayed send the host refused back to its chat, as a live refusal is. */
 export function watchRefused(context: HandlerContext): Promise<void> {
   return each(context.ports.host.refusedSends(), context.signal, (refused) => {
     for (const send of refused)

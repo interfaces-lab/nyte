@@ -185,7 +185,6 @@ export function view(
   };
 }
 
-/** The view with `count` steps after the live reply, the last still running, so its group previews. */
 export function previewView(liveText: string, count: number): SessionView {
   return view(
     liveText,

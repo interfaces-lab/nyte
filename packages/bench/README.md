@@ -172,6 +172,18 @@ Three of these moved for a reason other than size work. The "before" S2 ran a co
 
 What is left, largest first: the host view's first frame, which crosses base64 inside SSE (7 KB of S3 and S4), session rows of about 870 bytes for a 40-character title (S4), and in S6 the welcome (249 bytes) and a resume's answer that names all nine tables when none changed (483).
 
+## Streaming patches
+
+`pnpm --dir packages/bench bench:stream` measures host CPU per streamed text patch on `openHost` over `memoryStore()` and `fakeModels`, in a temp home: K sessions stream at once over H prior messages, with or without one socket client per session. `--profile <prefix>` writes a CPU profile and its measured windows per row.
+
+```sh
+pnpm --dir packages/bench bench:stream --delta-ms 0
+```
+
+- Compare runs with `--delta-ms 0`, the saturated loop. The default paced mode isn't reproducible between invocations.
+- The socket's append check (`part.markdown.startsWith(previous.markdown)`) is O(reply length) per patch per subscriber; after the ws write, it is the next limiter.
+- The profile's samples don't line up with the hrtime windows: `Profiler.start` resolves late. Fit the offset, by maximising the `publishPatch` samples inside windows, before filtering samples.
+
 ## Development
 
 ```sh

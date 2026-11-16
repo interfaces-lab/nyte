@@ -53,7 +53,6 @@ import {
 } from "./session-index.ts";
 import type { HostStamp } from "./session-index.ts";
 
-/** Returns one pooled client: what `PostgresPool.connect` lends, a query at a time, released once. */
 export type PostgresClient = {
   query(
     text: string,
@@ -72,7 +71,6 @@ const MIGRATION_LOCK = "SELECT pg_advisory_xact_lock(hashtextextended('nyte:stor
 const SHARED_MIGRATION_LOCK =
   "SELECT pg_advisory_xact_lock_shared(hashtextextended('nyte:store', 0))";
 
-/** Returns a `Store` over Postgres: a `pg` `Pool` of its own from `connectionString`, ended by `close()`, its idle clients' errors logged rather than thrown, or the caller's `pool` (any `PostgresPool`, §41c), left open. The first `open()` brings it to core's `STORE_VERSION` with `migrateStore`, the sqlite store's tables with `bytes` as `BYTEA`, `seq`/`at` as `BIGINT` and `refs.name` collated `"C"` so `list` ranges and orders by code point as the other stores do; each commit is one transaction under an exclusive advisory lock, so instances opening at once serialize, and the open rejects with `SdkError("unavailable")` for a store a newer Nyte migrated. There is no backup. Semantics are the sqlite store's (§41f); each `refs.set` is one transaction on one pooled client that shares the migration's advisory lock, rejects with `SdkError("unavailable")` when a newer Nyte has migrated the store, then takes `pg_advisory_xact_lock` on every ref name and session it touches, in sorted order (a row lock cannot hold an absent ref or a session's next seq), then reads those refs and applies `RefStore.set`, rolling back on any error. Every `open()` returns a connection whose reads go through the pool. */
 export function postgresStore(
   input:
     | { readonly connectionString: string }

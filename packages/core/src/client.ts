@@ -1,4 +1,3 @@
-/** What client code runs from core: part definitions and checks, trace spans, the dev log and iterable helpers. Every module here does no work at import, so a client never loads the kernel's record decoders. */
 export { holdMessage } from "./api/hold.ts";
 
 export { fitsActionOutput, fitsAnswer, fitsState } from "./api/part-schema.ts";

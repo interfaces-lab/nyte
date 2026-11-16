@@ -2,18 +2,15 @@ import AppKit
 import NyteDesign
 import NyteKit
 
-/// Where you ask Nyte for a design. What is selected on the canvas rides along as context.
 @MainActor
 final class ComposerView: NSView, NSTextViewDelegate {
-  /// Escape was pressed in the text.
   var onCancel: (() -> Void)?
-  /// A message went out.
   var onSend: (() -> Void)?
 
   private let model: StudioModel
   private let text = ComposerTextView()
   private let chip = ChipButton()
-  private let models = NSPopUpButton(frame: .zero, pullsDown: false)
+  private let models = MenuButton(label: "Model")
   private let send = SendButton()
   private var textHeight: NSLayoutConstraint?
   private var observers: [Observer] = []
@@ -45,30 +42,22 @@ final class ComposerView: NSView, NSTextViewDelegate {
 
     chip.target = self
     chip.action = #selector(dropSelection(_:))
-
-    models.isBordered = false
-    models.controlSize = .small
-    models.font = .nyte(.sm)
-    models.target = self
-    models.action = #selector(chooseModel(_:))
-    models.translatesAutoresizingMaskIntoConstraints = false
-
     send.target = self
-    send.action = #selector(sendOrStop(_:))
+    send.action = #selector(sendDraft(_:))
 
-    let bottom = NSStackView(views: [models, NSView(), send])
-    bottom.spacing = 8
-    let stack = NSStackView(views: [chip, scroll, bottom])
-    stack.orientation = .vertical
-    stack.alignment = .leading
-    stack.spacing = 8
-    addSubview(stack)
-    stack.pin(to: self, insets: NSEdgeInsets(top: 12, left: 14, bottom: 10, right: 12))
-    let height = scroll.heightAnchor.constraint(equalToConstant: 18)
+    let content = NSStackView.column(gap: .s2, [chip, scroll])
+    for subview in [content, models, send] as [NSView] { addSubview(subview) }
+    content.pin(to: self, insets: NyteInsets(top: .s3, leading: .s3, trailing: .s3), edges: [.top, .leading, .trailing])
+    send.pin(to: self, insets: NyteInsets(bottom: .s2, trailing: .s2), edges: [.bottom, .trailing])
+    let height = scroll.heightAnchor.constraint(equalToConstant: NyteText.base.lineHeight)
     textHeight = height
     NSLayoutConstraint.activate([
-      height, scroll.widthAnchor.constraint(equalTo: stack.widthAnchor),
-      bottom.widthAnchor.constraint(equalTo: stack.widthAnchor),
+      height,
+      scroll.widthAnchor.constraint(equalTo: content.widthAnchor),
+      send.topAnchor.below(content.bottomAnchor, .s2),
+      models.leadingAnchor.after(leadingAnchor, .s1),
+      models.centerYAnchor.constraint(equalTo: send.centerYAnchor),
+      models.trailingAnchor.atLeastBefore(send.leadingAnchor, .s2),
     ])
 
     observers = [
@@ -85,30 +74,30 @@ final class ComposerView: NSView, NSTextViewDelegate {
     window?.makeFirstResponder(text)
   }
 
-  var isFocused: Bool { window?.firstResponder === text }
-
   private func refresh() {
     let label = model.selectionLabel
     chip.isHidden = label == nil
     chip.title = label ?? ""
-    text.placeholder = model.selection == nil
-      ? "Ask Nyte for a design, or select something first" : "Ask Nyte to change this"
+    text.placeholder = !model.online
+      ? "Reconnecting to Nyte…"
+      : model.selection == nil ? "Ask Nyte for a design, or select something first" : "Ask Nyte to change this"
 
-    let chosen = model.model
-    if models.itemTitles != model.models.map(\.name) {
-      models.removeAllItems()
-      models.addItems(withTitles: model.models.map(\.name))
+    let menu = NSMenu()
+    for choice in model.models {
+      let item = NSMenuItem(title: choice.name, action: #selector(chooseModel(_:)), keyEquivalent: "")
+      item.target = self
+      item.state = choice.name == model.model?.name ? .on : .off
+      menu.addItem(item)
     }
-    if let chosen { models.selectItem(withTitle: chosen.name) }
+    models.menu = menu
+    models.title = model.model?.name ?? ""
     models.isHidden = model.models.isEmpty
     models.isEnabled = model.transcript == nil && model.models.count > 1
 
-    let busy = model.transcript?.execution.isBusy ?? false
-    let ready = !model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    send.mode = ready ? .send : busy ? .stop : .idle
+    let ready = model.online && !model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    send.mode = ready ? .send : model.transcript?.execution.isBusy == true ? .stop : .idle
   }
 
-  /// Takes the model's draft when something else changed it: a failed send putting it back.
   private func adoptDraft() {
     if text.string != model.draft {
       text.string = model.draft
@@ -121,12 +110,12 @@ final class ComposerView: NSView, NSTextViewDelegate {
     fit()
   }
 
-  /// Grows the text from one line to six, then scrolls.
   private func fit() {
     guard let container = text.textContainer, let manager = text.layoutManager else { return }
     manager.ensureLayout(for: container)
     let used = manager.usedRect(for: container).height
-    textHeight?.constant = min(max(used, 18), 108)
+    let line = NyteText.base.lineHeight
+    textHeight?.constant = min(max(used, line), line * 6)
     text.needsDisplay = true
   }
 
@@ -148,27 +137,30 @@ final class ComposerView: NSView, NSTextViewDelegate {
   }
 
   private func submit() {
-    guard !model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+    guard model.online, !model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
     model.send()
     text.string = ""
     fit()
     onSend?()
   }
 
-  @objc private func sendOrStop(_ sender: Any?) {
-    if send.mode == .stop { model.stop() } else { submit() }
+  @objc private func sendDraft(_ sender: Any?) {
+    if send.mode == .stop {
+      model.stop()
+    } else {
+      submit()
+    }
   }
 
   @objc private func dropSelection(_ sender: Any?) {
     model.selection = nil
   }
 
-  @objc private func chooseModel(_ sender: Any?) {
-    model.model = model.models.first { $0.name == models.titleOfSelectedItem }
+  @objc private func chooseModel(_ sender: NSMenuItem) {
+    model.model = model.models.first { $0.name == sender.title }
   }
 }
 
-/// A text view that shows a placeholder while it is empty.
 private final class ComposerTextView: NSTextView {
   var placeholder = "" { didSet { needsDisplay = true } }
 
@@ -186,9 +178,13 @@ private final class ComposerTextView: NSTextView {
   }
 }
 
-/// The selection as a chip: its name, and a way to send without it.
 private final class ChipButton: NSButton {
   override var title: String { didSet { invalidateIntrinsicContentSize() } }
+
+  private static let size = NyteControl.sm
+  private static let pad = NyteSpace.s2.rawValue
+  private static let scope = NyteGlyph.xs
+  private static let close = NyteGlyph.xxs
 
   init() {
     super.init(frame: .zero)
@@ -196,6 +192,7 @@ private final class ChipButton: NSButton {
     translatesAutoresizingMaskIntoConstraints = false
     toolTip = "Sent with your message. Click to send without it."
     setButtonType(.momentaryChange)
+    setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
   }
 
   required init?(coder: NSCoder) {
@@ -203,40 +200,60 @@ private final class ChipButton: NSButton {
   }
 
   private var attributes: [NSAttributedString.Key: Any] {
-    [.font: NSFont.nyte(.sm, .medium), .foregroundColor: NSColor.nyte(.contentAccent, hue: .blue)]
+    let paragraph = NSMutableParagraphStyle()
+    paragraph.lineBreakMode = .byTruncatingMiddle
+    return [
+      .font: NSFont.nyte(.sm, .medium), .foregroundColor: NSColor.nyte(.contentAccent, hue: .blue),
+      .paragraphStyle: paragraph,
+    ]
   }
 
+  private var leadingWidth: CGFloat { ChipButton.pad + ChipButton.scope.rawValue + NyteSpace.s1.rawValue }
+  private var trailingWidth: CGFloat { NyteSpace.s1_5.rawValue + ChipButton.close.rawValue + ChipButton.pad }
+
   override var intrinsicContentSize: NSSize {
-    let width = (title as NSString).size(withAttributes: attributes).width
-    return NSSize(width: ceil(width) + 44, height: 22)
+    let width = ceil((title as NSString).size(withAttributes: attributes).width)
+    return NSSize(width: leadingWidth + width + trailingWidth, height: ChipButton.size.rawValue)
   }
 
   override func draw(_ dirtyRect: NSRect) {
-    NSColor.nyte(.fillTertiary, hue: .blue).setFill()
-    NSBezierPath(roundedRect: bounds, xRadius: 11, yRadius: 11).fill()
+    NSColor.nyte(isHighlighted ? .fillSecondary : .fillTertiary, hue: .blue).setFill()
+    NSBezierPath(roundedRect: bounds, xRadius: bounds.height / 2, yRadius: bounds.height / 2).fill()
     let tint = NSColor.nyte(.contentAccent, hue: .blue)
-    func symbol(_ name: String, size: CGFloat, x: CGFloat) {
+    func symbol(_ name: String, _ glyph: NyteGlyph, x: CGFloat) {
       guard
         let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
-          .withSymbolConfiguration(.init(pointSize: size, weight: .semibold).applying(.init(paletteColors: [tint])))
+          .withSymbolConfiguration(
+            .init(pointSize: glyph.pointSize, weight: .semibold).applying(.init(paletteColors: [tint])))
       else { return }
-      image.draw(in: NSRect(x: x, y: (bounds.height - image.size.height) / 2, width: image.size.width, height: image.size.height))
+      let box = NSRect(x: x, y: (bounds.height - glyph.rawValue) / 2, width: glyph.rawValue, height: glyph.rawValue)
+      image.draw(
+        in: NSRect(
+          x: box.midX - image.size.width / 2, y: box.midY - image.size.height / 2, width: image.size.width,
+          height: image.size.height),
+        from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
     }
-    symbol("scope", size: 10, x: 8)
-    let size = (title as NSString).size(withAttributes: attributes)
-    (title as NSString).draw(at: NSPoint(x: 24, y: (bounds.height - size.height) / 2), withAttributes: attributes)
-    symbol("xmark", size: 8, x: bounds.width - 18)
+    symbol("scope", ChipButton.scope, x: ChipButton.pad)
+    let height = ceil((title as NSString).size(withAttributes: attributes).height)
+    (title as NSString).draw(
+      with: NSRect(
+        x: leadingWidth, y: ((bounds.height - height) / 2).rounded(),
+        width: max(0, bounds.width - leadingWidth - trailingWidth), height: height),
+      options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine], attributes: attributes)
+    symbol("xmark", ChipButton.close, x: bounds.width - ChipButton.pad - ChipButton.close.rawValue)
   }
 }
 
-/// The round button at the composer's corner: send, or stop while the agent works.
 private final class SendButton: NSButton {
   enum Mode {
     case idle, send, stop
   }
 
-  var mode: Mode = .idle {
+  private static let size = NyteControl.md
+
+  var mode = Mode.idle {
     didSet {
+      guard mode != oldValue else { return }
       isEnabled = mode != .idle
       toolTip = mode == .stop ? "Stop" : "Send"
       setAccessibilityLabel(mode == .stop ? "Stop" : "Send")
@@ -250,7 +267,10 @@ private final class SendButton: NSButton {
     title = ""
     translatesAutoresizingMaskIntoConstraints = false
     setButtonType(.momentaryChange)
-    NSLayoutConstraint.activate([widthAnchor.constraint(equalToConstant: 26), heightAnchor.constraint(equalToConstant: 26)])
+    toolTip = "Send"
+    setAccessibilityLabel("Send")
+    isEnabled = false
+    square(SendButton.size)
   }
 
   required init?(coder: NSCoder) {
@@ -258,21 +278,34 @@ private final class SendButton: NSButton {
   }
 
   override func draw(_ dirtyRect: NSRect) {
-    let active = mode != .idle
-    (active ? NSColor.nyte(.bgInteractiveStrong, hue: .blue) : NSColor.nyte(.fillTertiary)).setFill()
-    NSBezierPath(ovalIn: bounds).fill()
+    let radius = SendButton.size.cornerRadius
+    let shape = NSBezierPath(roundedRect: bounds, xRadius: radius, yRadius: radius)
+    switch mode {
+    case .send: NSColor.nyte(.bgInteractiveStrong, hue: .blue).setFill()
+    case .stop: NSColor.nyte(.fillSecondary).setFill()
+    case .idle: NSColor.nyte(.fillTertiary).setFill()
+    }
+    shape.fill()
     if isHighlighted {
       NSColor.black.withAlphaComponent(0.12).setFill()
-      NSBezierPath(ovalIn: bounds).fill()
+      shape.fill()
     }
-    let tint: NSColor = active ? .white : .nyte(.contentDisabled)
+    let tint: NSColor
+    switch mode {
+    case .send: tint = .nyte(.contentOnInteractiveStrong, hue: .blue)
+    case .stop: tint = .nyte(.contentPrimary)
+    case .idle: tint = .nyte(.contentDisabled)
+    }
     guard
       let image = NSImage(systemSymbolName: mode == .stop ? "stop.fill" : "arrow.up", accessibilityDescription: nil)?
-        .withSymbolConfiguration(.init(pointSize: 11, weight: .bold).applying(.init(paletteColors: [tint])))
+        .withSymbolConfiguration(
+          .init(pointSize: (mode == .stop ? NyteGlyph.xs : NyteGlyph.sm).pointSize, weight: .bold)
+            .applying(.init(paletteColors: [tint])))
     else { return }
     image.draw(
       in: NSRect(
         x: (bounds.width - image.size.width) / 2, y: (bounds.height - image.size.height) / 2,
-        width: image.size.width, height: image.size.height))
+        width: image.size.width, height: image.size.height),
+      from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
   }
 }

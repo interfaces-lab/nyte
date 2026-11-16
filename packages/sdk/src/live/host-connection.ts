@@ -74,10 +74,8 @@ export type Requester = PerformEvent["requester"];
 
 export type ActionHandler = (input: Json, requester: Requester) => Awaitable<Json>;
 
-/** A connection's socket: the live stores, streamed text, client actions and the link's health. It dials on its first use, so a connection that never asks for any of these opens no socket. */
 export interface SocketLink {
   readonly health: Live<Health>;
-  /** Call it when the link may have come back or died: the app came to the foreground, the window got focus, the network came online, the host restarted. A link that is retrying or blocked dials now; an open one asks the host something and redials if no answer comes within 2 s. A live socket stays, and costs one small call. */
   retry(): void;
   close(): void;
   call<N extends CallName>(name: N, input: OperationInput<N>): Promise<OperationOutput<N>>;
@@ -103,7 +101,6 @@ type Waiter = { resolve(socket: HostSocket): void; reject(error: SdkError): void
 
 type Offered = { readonly action: ActionDeclaration; readonly handler: ActionHandler };
 
-/** How long the check that tells a refused credential from an unreachable host may take, so a dead path can't hold a reconnect forever. */
 const LOGIN_STATUS_MS = 5_000;
 
 export function openLink(address: string, options: LinkOptions): SocketLink {

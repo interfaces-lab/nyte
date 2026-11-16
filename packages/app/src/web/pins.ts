@@ -27,7 +27,6 @@ function formatPinKey(route: PinRoute): string {
   return `nyte:host-identity:${JSON.stringify(parts)}`;
 }
 
-/** Connects to a route and holds it to the host id and identity key it proved the first time, or since a repair. A first connection or a repair saves what the host proved, and removes the pin when it proved no key, so a host without an identity key is connected unpinned. */
 export async function connectPinned(input: {
   readonly bridge: Pick<WebBridge, "connect">;
   readonly storage: StorageArea;

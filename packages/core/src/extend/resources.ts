@@ -65,10 +65,8 @@ export const SKILL_PATHS = "skills.paths";
 
 const scanIssues = new WeakMap<Resources, readonly ValidationIssue[]>();
 
-/** Watches whose events ended or threw. One stays listed with its sessions until the next scan of one of them restarts it. */
 const ended = new WeakSet<RootWatch>();
 
-/** The session whose attachment each workspace watch reads through. Every session on the workspace shares the watch, and detaching that one session ends it. */
 const openers = new WeakMap<RootWatch, SessionId>();
 
 const WORKSPACE_PATHS = [...SKILL_DIRECTORIES, SHARED_DOCS, PLUGIN_FOLDER];
@@ -103,7 +101,6 @@ export async function scanResources(kernel: Kernel, session: SessionId): Promise
   return entry.resources;
 }
 
-/** Drops the chosen sessions' scans and takes them off the watches; a watch with no session left stops, and a workspace watch whose opener left while others stay moves onto one of theirs before the opener's attachment closes under it. */
 export function forgetScans(
   kernel: Kernel,
   chosen: (session: SessionId) => boolean = () => true,
@@ -390,7 +387,6 @@ async function follow(kernel: Kernel, session: SessionId, workspace: WorkspaceId
   if (env !== null) watchRoot(kernel, workspace, env.files, session, WORKSPACE_PATHS);
 }
 
-/** Restarts the workspace watch `key` through the attachment of a session still on it, the first that attaches. */
 async function rewatch(kernel: Kernel, key: string, watch: RootWatch): Promise<void> {
   for (const session of watch.sessions) {
     const env = await kernel.environments.attach(session).catch(() => null);
@@ -511,7 +507,6 @@ async function refreshRoot(
   for (const session of watch.sessions) await refresh(kernel, session);
 }
 
-/** Holds the session's runtime while it rescans, so the sweep cannot close it under the scan and leave a scan and a watch membership behind for a session with no runtime. */
 async function refresh(kernel: Kernel, session: SessionId): Promise<void> {
   const before = kernel.workspaceState.scans.get(session);
   dropScans(kernel, (key) => key === session);

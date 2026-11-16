@@ -16,7 +16,6 @@ const B = asId<"session">("B");
 
 const C = asId<"session">("C");
 
-/** What a row does to the window, by tab and pane index, through the window's real entry points. */
 interface Act {
   window(action: (state: WindowState) => WindowAction): void;
   show(tab: number, sessionId: SessionId): void;
@@ -103,7 +102,6 @@ const act: Act = {
     windowTabs.store.tab(tabId(tab)).layout.dispatch(...actions(layoutAt(tab))),
 };
 
-/** Starts each row from one blank tab, whatever the rows before it left. */
 function reset(): void {
   windowTabs.dispatch({ kind: "new-tab" });
   windowTabs.dispatch({ kind: "close-others", tabId: windowTabs.getSnapshot().activeTabId });
@@ -119,10 +117,6 @@ function listen(onRequest: (tabId: string, pane: PaneId) => void): () => void {
   };
 }
 
-/**
- * Draws each tab as its panes' chats, the focused pane marked `>`, the active tab in brackets:
- * `[A|>B] / C`.
- */
 function drawWindow(state: WindowState): string {
   return state.tabs
     .map((tab) => {

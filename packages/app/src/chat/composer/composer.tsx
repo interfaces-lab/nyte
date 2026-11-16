@@ -73,17 +73,6 @@ function portalHost(): HTMLDivElement {
   return host;
 }
 
-/**
- * The chat's draft, its queued edit and its notice live in the window's draft store and change only
- * through it, so a send that settles after this composer closed still lands where the chat's next
- * composer reads it. `draft` is the store's value as the subscription last handed it over: a state
- * update shares a keystroke's commit with the editor's own updates, where `useSyncExternalStore`
- * would add a second commit per key. A notice other than a refusal is dropped once the composer is
- * gone. Everything else the composer keeps (the edit's hold, a prompt walk, file reads, queue row
- * actions) changes only through `stepSession`. The inline
- * slot's callback ref is made once, in `useState`, so it stays one function whether or not the
- * compiler memoizes this component: a new one each render would move the dock and blur the editor.
- */
 export function Composer({
   sessionId,
   status,

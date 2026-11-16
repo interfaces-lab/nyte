@@ -47,10 +47,6 @@ export function useUsageReport(window: UsageWindow): UsageQueryView {
   };
 }
 
-/**
- * Each change in a provider's limits bumps the catalog generation, so the previous read stays on
- * screen until the new key lands. `readAt` travels with it: a placeholder's `dataUpdatedAt` is 0.
- */
 function accountLimitsOptions(generation: string) {
   return {
     queryKey: keys.accountLimits(generation),

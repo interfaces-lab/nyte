@@ -20,7 +20,6 @@ import type {
 export interface ComposerPorts {
   readonly sessionId: SessionId;
   readonly drafts: SessionViewStateStore;
-  /** A queued edit was revised: the chat comes back to the sidebar and the transcript to its end. */
   readonly revised: () => void;
 }
 
@@ -28,11 +27,6 @@ type SaveEffect = Extract<ComposerSessionEffect, { readonly kind: "save" }>;
 
 const refusedSends = installedLive((current) => current.refused);
 
-/**
- * Gives each replayed send the host refused back to its chat's draft in this window, whether or not
- * a composer shows the chat, then takes it off the connection's list. It reads the list again after
- * each one, since `take` notifies and the call it starts gives back the rest.
- */
 function giveBackRefused(): void {
   for (;;) {
     const refused = refusedSends.read()?.[0];
@@ -50,13 +44,6 @@ giveBackRefused();
 
 type ReadEffect = Extract<ComposerSessionEffect, { readonly kind: "read-prompts" }>;
 
-/**
- * One composer's session: `dispatch` steps it with `stepSession` over the chat's draft in the
- * window's store, writes back what changed and runs the effects, which answer with more events.
- * It keeps the editor handle, and each hold the host granted under its token until a save uses it
- * or it is released. `save` resolves once a save of the open edit, if one starts, has ended; its
- * outcome lands in `flushSync`, so the editor is enabled again before focus moves to it.
- */
 export function composerSession(ports: ComposerPorts) {
   let state = CLOSED_SESSION;
   const listeners = new Set<() => void>();

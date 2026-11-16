@@ -79,7 +79,6 @@ const styles = create({
   message: { margin: 0, color: role.contentTertiary },
 });
 
-/** A card per signed-in plan, beside the spend card; nothing at all when no plan reports limits. */
 export function LimitCards(): ReactElement | null {
   const limits = useAccountLimits();
   const read = limits.data;

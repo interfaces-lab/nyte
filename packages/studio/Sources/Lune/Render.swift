@@ -1,39 +1,77 @@
 import AppKit
 import CoreGraphics
 import CoreText
+import CoreVideo
+import IOSurface
 
 extension FrameLayout {
-  /// Draws the frame into a context whose origin is the frame's top-left corner, y pointing down.
   public func draw(in context: CGContext, environment: LayoutEnvironment = LayoutEnvironment()) {
     Painter(context: context, environment: environment).draw(root)
   }
 
-  /// Rasterizes the frame at a scale. `region` limits the bitmap to part of the frame, in the
-  /// frame's own points.
   public func image(
     scale: CGFloat, region: CGRect? = nil, environment: LayoutEnvironment = LayoutEnvironment()
   ) -> CGImage? {
+    let pixels = pixelSize(scale: scale, region: region)
+    guard pixels.width > 0, pixels.height > 0,
+      let context = CGContext(
+        data: nil, width: pixels.width, height: pixels.height, bitsPerComponent: 8, bytesPerRow: 0,
+        space: FrameLayout.colorSpace, bitmapInfo: FrameLayout.bitmapInfo)
+    else { return nil }
+    paint(into: context, pixels: pixels, scale: scale, environment: environment)
+    return context.makeImage()
+  }
+
+  public func surface(
+    scale: CGFloat, region: CGRect? = nil, environment: LayoutEnvironment = LayoutEnvironment()
+  ) -> IOSurface? {
+    let pixels = pixelSize(scale: scale, region: region)
+    guard pixels.width > 0, pixels.height > 0,
+      let surface = IOSurface(properties: [
+        .width: pixels.width, .height: pixels.height, .bytesPerElement: 4,
+        .pixelFormat: kCVPixelFormatType_32BGRA,
+      ])
+    else { return nil }
+    surface.lock(options: [], seed: nil)
+    defer { surface.unlock(options: [], seed: nil) }
+    guard
+      let context = CGContext(
+        data: surface.baseAddress, width: pixels.width, height: pixels.height, bitsPerComponent: 8,
+        bytesPerRow: surface.bytesPerRow, space: FrameLayout.colorSpace, bitmapInfo: FrameLayout.bitmapInfo)
+    else { return nil }
+    paint(into: context, pixels: pixels, scale: scale, environment: environment)
+    if let profile = FrameLayout.colorSpace.copyPropertyList() {
+      IOSurfaceSetValue(surface, kIOSurfaceColorSpace, profile)
+    }
+    return surface
+  }
+
+  private static let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+  private static let bitmapInfo = CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
+
+  public static let mostPixels = 100_000_000
+
+  private func pixelSize(scale: CGFloat, region: CGRect?) -> (width: Int, height: Int, area: CGRect) {
     let bounds = CGRect(origin: .zero, size: size)
     let area = (region ?? bounds).intersection(bounds)
-    let width = Int((area.width * scale).rounded(.up))
-    let height = Int((area.height * scale).rounded(.up))
-    guard width > 0, height > 0,
-      let context = CGContext(
-        data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
-        space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
-        bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue
-          | CGBitmapInfo.byteOrder32Little.rawValue)
-    else { return nil }
+    guard !area.isNull, area.width * scale * area.height * scale <= CGFloat(FrameLayout.mostPixels) else {
+      return (0, 0, .zero)
+    }
+    return (Int((area.width * scale).rounded(.up)), Int((area.height * scale).rounded(.up)), area)
+  }
 
-    context.translateBy(x: 0, y: CGFloat(height))
+  private func paint(
+    into context: CGContext, pixels: (width: Int, height: Int, area: CGRect), scale: CGFloat,
+    environment: LayoutEnvironment
+  ) {
+    context.translateBy(x: 0, y: CGFloat(pixels.height))
     context.scaleBy(x: scale, y: -scale)
-    context.translateBy(x: -area.minX, y: -area.minY)
+    context.translateBy(x: -pixels.area.minX, y: -pixels.area.minY)
     context.setAllowsFontSubpixelPositioning(true)
     context.setShouldSubpixelPositionFonts(true)
     context.setAllowsFontSubpixelQuantization(false)
     context.setShouldSubpixelQuantizeFonts(false)
     draw(in: context, environment: environment)
-    return context.makeImage()
   }
 }
 
@@ -57,18 +95,8 @@ private struct Painter {
 
     let outline = path(for: box, in: rect, inset: 0)
 
-    for shadow in style.shadows where style.fill != nil {
-      context.saveGState()
-      context.addRect(rect.insetBy(dx: -shadow.blur * 3 - abs(shadow.x), dy: -shadow.blur * 3 - abs(shadow.y)))
-      context.addPath(outline)
-      context.clip(using: .evenOdd)
-      context.setShadow(
-        offset: CGSize(width: shadow.x * scaleX, height: -shadow.y * scaleY),
-        blur: shadow.blur * scaleX, color: shadow.color.cgColor)
-      context.addPath(outline)
-      context.setFillColor(CGColor(gray: 0, alpha: 1))
-      context.fillPath()
-      context.restoreGState()
+    if let fill = style.fill {
+      for shadow in style.shadows { draw(shadow, of: outline, in: rect, under: fill) }
     }
 
     if let fill = style.fill { paint(fill, outline, rect) }
@@ -91,9 +119,72 @@ private struct Painter {
       context.addPath(path(for: box, in: rect, inset: style.strokeWidth / 2))
       context.setStrokeColor(stroke.cgColor)
       context.setLineWidth(style.strokeWidth)
+      if box.node.missing { context.setLineDash(phase: 0, lengths: [4, 3]) }
       context.strokePath()
     }
   }
+
+  private func draw(_ shadow: Shadow, of outline: CGPath, in rect: CGRect, under fill: Paint) {
+    let spread = shadow.blur * 3
+    let reach = rect.insetBy(dx: -spread - abs(shadow.x), dy: -spread - abs(shadow.y))
+    context.saveGState()
+    defer { context.restoreGState() }
+    if !fill.isOpaque {
+      context.addRect(reach)
+      context.addPath(outline)
+      context.clip(using: .evenOdd)
+    }
+
+    let blur = shadow.blur * scaleX
+    let away = reach.width + rect.width
+    if blur > Painter.widestBlur, let stamp = stamp(of: shadow, outline, away: away, within: reach) {
+      context.setFillColor(shadow.color.cgColor)
+      context.interpolationQuality = .high
+      context.draw(stamp.mask, in: stamp.area)
+      return
+    }
+    context.setShadow(
+      offset: CGSize(width: (shadow.x - away) * scaleX, height: -shadow.y * scaleY), blur: blur,
+      color: shadow.color.cgColor)
+    context.translateBy(x: away, y: 0)
+    context.addPath(outline)
+    context.setFillColor(CGColor(gray: 0, alpha: 1))
+    context.fillPath()
+  }
+
+  private func stamp(
+    of shadow: Shadow, _ outline: CGPath, away: CGFloat, within reach: CGRect
+  ) -> (mask: CGImage, area: CGRect)? {
+    let area = reach.intersection(context.boundingBoxOfClipPath)
+    guard !area.isNull, area.width > 0, area.height > 0 else { return nil }
+    let step = scaleX / (shadow.blur * scaleX / Painter.widestBlur).rounded(.up)
+    let width = Int((area.width * step).rounded(.up))
+    let height = Int((area.height * step).rounded(.up))
+    guard width > 0, height > 0,
+      let small = CGContext(
+        data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width,
+        space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.alphaOnly.rawValue)
+    else { return nil }
+    small.scaleBy(x: CGFloat(width) / area.width, y: CGFloat(height) / area.height)
+    small.translateBy(x: -area.minX, y: -area.minY)
+    small.setShadow(
+      offset: CGSize(width: (shadow.x - away) * step, height: shadow.y * step), blur: shadow.blur * step,
+      color: CGColor(gray: 0, alpha: 1))
+    small.translateBy(x: away, y: 0)
+    small.addPath(outline)
+    small.setFillColor(CGColor(gray: 0, alpha: 1))
+    small.fillPath()
+    // An image mask paints where its samples are low, so full coverage is decoded to nought.
+    guard let bytes = small.data,
+      let provider = CGDataProvider(data: Data(bytes: bytes, count: width * height) as CFData),
+      let mask = CGImage(
+        maskWidth: width, height: height, bitsPerComponent: 8, bitsPerPixel: 8, bytesPerRow: width,
+        provider: provider, decode: [1, 0], shouldInterpolate: true)
+    else { return nil }
+    return (mask, area)
+  }
+
+  private static let widestBlur: CGFloat = 16
 
   /// The context's scale, which `setShadow` ignores: shadows are measured in device pixels.
   private var scaleX: CGFloat { abs(context.ctm.a) }
@@ -229,7 +320,6 @@ private func symbolWeight(_ weight: CGFloat) -> NSFont.Weight {
   }
 }
 
-/// A rectangle with a radius per corner, each clamped so opposite corners never overlap.
 public func roundedPath(_ rect: CGRect, _ radii: Radii) -> CGPath {
   if radii.isZero { return CGPath(rect: rect, transform: nil) }
   let limit = min(rect.width, rect.height) / 2

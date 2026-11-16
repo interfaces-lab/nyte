@@ -2,11 +2,6 @@ import type { Api, AssistantMessage, Model, ProviderStreams } from "../types.ts"
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { emptyAssistantOutput } from "./assistant-stream.ts";
 
-/**
- * Returns a stream synchronously while running async setup (auth resolution,
- * lazy module loading) behind it. Setup failures terminate the stream with an
- * error event.
- */
 export function lazyStream(
   model: Model<Api>,
   setup: () => Promise<AssistantMessageEventStream>,

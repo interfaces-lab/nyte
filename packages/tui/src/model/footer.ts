@@ -76,7 +76,6 @@ function hintText(hint: Hint): string {
   return `${hint.keycap} ${hint.label}`;
 }
 
-/** The hints the interactions show, in `HINT_ORDER`: every primary one, then each secondary one that still fits `width`. */
 export function hintsFor(interactions: Interactions, width: number): readonly Hint[] {
   const interruptShown =
     interactions["chat.interrupt"].intent !== null && !interactions["chat.interrupt"].hidden;

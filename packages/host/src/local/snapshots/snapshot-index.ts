@@ -47,7 +47,6 @@ const VERBOSE_LINE = /^(add|remove) '(.*?)\/?'$/;
 
 const RULE_FILES = new Set([".gitignore", ".gitattributes", ".gitmodules"]);
 
-/** Returns the index `localSnapshots` writes a repository's snapshots into, kept between snapshots so `git add -A` only does work for what moved since the last one, and always the tree a fresh copy of the real index would give. `write(repo)` answers `git write-tree` (`--prefix` below the root) after `git add -A --verbose -- .` in `cwd` against the kept index `<store>/indexes/<host>-<pid>-<uuid>`, one per instance. It reuses that index only while (a) none of the files that change what `add` sees or how it hashes moved (device, inode, mode, size, mtime and ctime in nanoseconds, or appearing or vanishing) since the previous snapshot: the real index and HEAD, the repository's and the worktree's config, the global, XDG and system config and every file `git config --list --show-origin` read, `info/exclude`, `info/attributes` and `info/sparse-checkout` in the git and common directories, `core.excludesFile` and `core.attributesFile` (default the XDG `git/ignore` and `git/attributes`), and `.gitignore`, `.gitattributes` and `.gitmodules` in every directory from the root to `cwd`, nor the `GIT_*`, `HOME` and `XDG_CONFIG_HOME` variables; (b) every path its `add`s added or removed since it was seeded is spelled on disk as git spelled it, with no sibling that differs only in case or Unicode normalisation, no removed path is back, no directory on its way but the root holds a `.git`, and an added path that is now a directory still holds one (an entry only one of the kept and the real index has would otherwise meet ignore rules, case folding or a repository boundary differently); and (c) its `add` reports no `.gitignore`, `.gitattributes` or `.gitmodules` added, changed or removed, else the snapshot is taken again from a fresh seed. Any other outcome, and any failure, seeds it again: the watched files stamped, a fresh copy of the real index, its `add` output the paths to check from then on. A `write` while another is in flight, a seed that fails, and `writeEmpty` use a temporary index of their own, as before the index was kept. The index is deleted after five idle minutes, and the first seed deletes the ones this machine's dead processes left. */
 export function snapshotIndex(cwd: string, store: string, git: Git): SnapshotIndex {
   const indexDirectory = resolve(store, "indexes");
   const indexPath = join(indexDirectory, `${HOST}-${process.pid}-${randomUUID()}`);
@@ -275,7 +274,6 @@ function parseVerbose(stdout: Buffer): Map<string, Change> | null {
   return changes.length === lines.length ? new Map(changes) : null;
 }
 
-/** Whether every path the kept index added or removed since its seed is spelled on disk as git spelled it (no sibling that differs only in case or normalisation), no removed path is back, no directory on the way holds a `.git`, and an added path that is now a directory is still a repository. Otherwise the kept index's entries could steer `add -A` away from what a fresh copy of the real index gives. */
 async function matchesDisk(root: string, touched: ReadonlyMap<string, Change>): Promise<boolean> {
   const checks = [...touched].flatMap((entry) => {
     const names = entry[0].split("/");
@@ -352,7 +350,6 @@ function foldName(name: string): string {
   return name.normalize("NFC").toLowerCase();
 }
 
-/** Removes the kept indexes this machine's dead processes left in `directory` (named `<host>-<pid>-<uuid>`); a live process's, or another machine's on a shared home, stay. */
 async function sweepIndexes(directory: string): Promise<void> {
   const names = await readdir(directory).catch(() => []);
 

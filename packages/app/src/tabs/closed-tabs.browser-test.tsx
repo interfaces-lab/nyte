@@ -43,19 +43,18 @@ function closedChats(): readonly SessionId[] {
     );
 }
 
-function painted(): Promise<void> {
-  return new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
 }
 
 async function until(done: () => boolean): Promise<void> {
-  for (let frame = 0; frame < 200 && !done(); frame += 1) await painted();
+  for (let frame = 0; frame < 200 && !done(); frame += 1) await nextFrame();
 }
 
 const chat = (index: number): SessionId => asId<"session">(`other-${String(index)}`);
 
 type AppRouter = ReturnType<typeof createAppRouter>;
 
-/** What happens while Settings covers the chat in `other-1`, and the chat the window ends on. */
 const OVER_SETTINGS: readonly (readonly [string, (router: AppRouter) => void, SessionId])[] = [
   ["a notification shows its chat", () => showNotifiedChat(chat(2)), chat(2)],
   [
@@ -77,8 +76,15 @@ async function overSettings(
   void router.navigate({ to: "/settings/$section", params: { section: "general" } });
   await until(() => router.state.matches.some((match) => match.routeId === "/settings/$section"));
   act(router);
+  await until(() => {
+    const active = tabPlace(activeTab(windowTabs.getSnapshot()));
 
-  for (let frame = 0; frame < 20; frame += 1) await painted();
+    return (
+      router.history.location.pathname === `/session/${expected}` &&
+      active.kind === "session" &&
+      active.sessionId === expected
+    );
+  });
   const place = tabPlace(activeTab(windowTabs.getSnapshot()));
   const shown = place.kind === "session" ? place.sessionId : place.kind;
 
@@ -117,7 +123,7 @@ export async function run(): Promise<string> {
   );
 
   for (let frame = 0; frame < 200 && closedChats().join(", ") !== quiet.id; frame += 1)
-    await painted();
+    await nextFrame();
   const kept = closedChats().join(", ");
   const settings: string[] = [];
 

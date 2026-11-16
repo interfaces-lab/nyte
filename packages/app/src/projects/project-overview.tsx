@@ -312,11 +312,6 @@ function Question({ id }: { readonly id: SessionId }): ReactNode {
   );
 }
 
-/**
- * The coordinator's reply box takes the composer's rule: it is free once the send journal holds the
- * reply, so a reconnect never holds it, and only a reply the host refused comes back, as
- * `endedDraft` gives a refused send back to a composer.
- */
 function CoordinatorReply({ id }: { readonly id: SessionId }): ReactElement {
   const [draft, setDraft] = useState("");
 

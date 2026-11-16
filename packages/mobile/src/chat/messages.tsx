@@ -338,7 +338,6 @@ export const MessageRow = memo(function MessageRow({
 }: {
   item: ChatRow;
   layout: ConversationLayout;
-  /** The chat's mark, from `chatMark`. */
   mark: TaskState;
   delegateNames: ReadonlyMap<SessionId, string>;
   queued: QueuedActions;

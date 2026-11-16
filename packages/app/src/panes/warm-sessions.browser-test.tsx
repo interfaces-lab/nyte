@@ -136,8 +136,8 @@ async function moveTip(session: SessionId, tip: number): Promise<void> {
     ),
   );
   await moved;
-  await painted();
-  await painted();
+  await nextFrame();
+  await nextFrame();
 }
 
 const catalog = {
@@ -191,13 +191,13 @@ async function until(predicate: () => boolean, what: string): Promise<void> {
     if (renderFailure !== undefined) throw renderFailure;
 
     if (performance.now() > deadline) throw new Error(`Timed out waiting for ${what}`);
-    await new Promise<void>((resolve) => window.setTimeout(resolve, 10));
+    await new Promise((resolve) => window.requestAnimationFrame(resolve));
   }
 }
 
-function painted(): Promise<void> {
+function nextFrame(): Promise<void> {
   return new Promise((resolve) =>
-    window.requestAnimationFrame(() => window.setTimeout(() => resolve(), 0)),
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve())),
   );
 }
 
@@ -238,7 +238,7 @@ async function show(container: HTMLElement, sessionId: SessionId): Promise<Shown
 
     return shown !== undefined;
   }, `session ${sessionId}`);
-  await painted();
+  await nextFrame();
 
   if (shown === undefined) throw new Error(`Session ${sessionId} is not shown`);
 
@@ -248,9 +248,9 @@ async function show(container: HTMLElement, sessionId: SessionId): Promise<Shown
 async function type(editor: HTMLElement, text: string): Promise<void> {
   editor.focus();
   window.getSelection()?.collapse(editor, editor.childNodes.length);
-  await painted();
+  await nextFrame();
   document.execCommand("insertText", false, text);
-  await painted();
+  await nextFrame();
 }
 
 function readScroll(sessionId: SessionId): ScrollViewState | undefined {
@@ -286,7 +286,7 @@ async function checkRules(): Promise<string> {
     await until(() => seen.includes(`${D}-tip-1`), "the shown chat to be marked read");
     warmSession(C);
     await until(() => chatStore(C).value !== undefined, "warming an unread chat to open it");
-    await painted();
+    await nextFrame();
     expectRule(!seen.includes(`${C}-tip-1`), "warming an unread chat marked it read");
     const a = await show(container, A);
     expectRule(!d.viewport.isConnected, "a chat the pane left stayed mounted");
@@ -296,11 +296,11 @@ async function checkRules(): Promise<string> {
     expectRule(!seen.includes(`${D}-tip-2`), "a hidden chat was marked read through its new tip");
     await type(a.editor, "Draft for A");
     a.viewport.scrollTop = 600;
-    await painted();
+    await nextFrame();
     const aScrollTop = a.viewport.scrollTop;
 
     const b = await show(container, B);
-    await painted();
+    await nextFrame();
     expectRule(!a.viewport.isConnected, "a chat the pane left stayed mounted");
     expectRule(chatStore(A).active, "a chat the pane left dropped its rows");
     const aSnapshot = readScroll(A);

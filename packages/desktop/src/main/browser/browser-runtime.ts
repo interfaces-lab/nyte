@@ -71,7 +71,6 @@ function snapshotScript(generation: number, maxNodes: number, subtreeRef?: strin
   var ACTIONABLE = new Set(["link","button","textbox","searchbox","checkbox","radio","combobox","listbox","option","switch","slider","spinbutton","tab","menuitem"]);
   function clean(s) { return (s || "").replace(/\\s+/g, " ").trim(); }
   var SENS_AUTOCOMPLETE = new Set(["one-time-code","current-password","new-password"]);
-  // A "show password" toggle flips type to text, so autocomplete decides too.
   function sensitive(el) {
     if ((el.type || "").toLowerCase() === "password") return true;
     return SENS_AUTOCOMPLETE.has((el.getAttribute("autocomplete") || "").trim().toLowerCase());
@@ -120,7 +119,6 @@ function snapshotScript(generation: number, maxNodes: number, subtreeRef?: strin
   function walk(el) {
     if (SKIP.has(el.tagName) || !vis(el)) return;
     var r = role(el), n = nm(el);
-    // An unnamed node the model cannot act on is noise repeated on every report.
     if (!n && !ACTIONABLE.has(r)) { for (var c of el.children) walk(c); return; }
     if (nodes.length >= M) return;
     var rect = el.getBoundingClientRect();
@@ -870,10 +868,6 @@ export async function performCapture(contents: WebContents): Promise<Uint8Array 
   }
 }
 
-/**
- * A page that was hidden has no frame for its first capture and Electron answers
- * `UnknownVizError`; one comes within a frame or two, so the capture tries again.
- */
 async function capturePageRetrying(contents: WebContents, attempts: number): Promise<NativeImage> {
   try {
     return await contents.capturePage(undefined, { stayHidden: true });

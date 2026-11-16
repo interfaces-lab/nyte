@@ -98,7 +98,6 @@ export function projectedCommit(message: Message): CommitId | null {
   return projections.get(message) ?? null;
 }
 
-/** Whether the transcript projected `message` from a compaction's summary. */
 export function projectsSummary(message: Message): boolean {
   return summaries.has(message);
 }

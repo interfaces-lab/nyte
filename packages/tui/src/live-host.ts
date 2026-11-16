@@ -12,7 +12,6 @@ import type {
 
 interface Opened<T> {
   read(): T | null;
-  /** Read after `read`; a change here alone yields the same value again. */
   freshness?(): Freshness;
   close(): void;
 }
@@ -94,7 +93,6 @@ export function healthUpdates(connection: ClientConnection): AsyncIterable<Healt
   }));
 }
 
-/** Each replayed send the host refused, once: a read takes what it yields off the connection's list. */
 export function refusedSends(connection: ClientConnection): AsyncIterable<readonly RefusedSend[]> {
   return liveValues((changed) => ({
     read() {
@@ -124,7 +122,6 @@ export async function whenOpen<T>(connection: ClientConnection, ask: () => Promi
     );
 
     if ("value" in answer) return answer.value;
-    await new Promise((resolve) => setTimeout(resolve, 0));
     const health = connection.health.snapshot();
 
     if (health.kind === "open" && health.since === since) throw answer.error;

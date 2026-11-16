@@ -324,7 +324,6 @@ export const MenuSub = MenuPrimitive.SubmenuRoot;
 
 export const MenuFilterProvider = MenuPrimitive.FilterProvider;
 
-/** The search field of a filtered menu: a bare input that keeps focus while the arrows move the highlight. */
 export function MenuInput({
   xstyle,
   className,
@@ -340,7 +339,6 @@ export function MenuInput({
   );
 }
 
-/** Holds a filtered menu's items, so the input and other content can share the popup. */
 export function MenuList({
   xstyle,
   className,

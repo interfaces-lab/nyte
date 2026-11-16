@@ -16,7 +16,6 @@ const ARROW_UP = "M0 8 L7.3 0.7 A1 1 0 0 1 8.7 0.7 L16 8 Z";
 
 const ARROW_DOWN = "M0 0 L7.3 7.3 A1 1 0 0 0 8.7 7.3 L16 0 Z";
 
-/** App tokens and fonts don't reach a guest page, so the label's colours and family are literal. */
 export const LABEL_CSS = `
 .callout {
   --surface: rgb(24 24 27);

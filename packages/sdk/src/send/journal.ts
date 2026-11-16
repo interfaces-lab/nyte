@@ -34,25 +34,13 @@ export interface JournalStorage {
 }
 
 export interface JournalLoop {
-  /**
-   * Journals the entry and sends it until the host answers. Its write waits for the head's earlier
-   * sends to be journaled, so storage that finishes writes out of order can't reorder their posts.
-   */
   send(entry: Omit<JournalEntry, "host">): Promise<Sent>;
   replay(entries: readonly JournalEntry[]): void;
   unsent(session: SessionId, head: HeadName): readonly QueuedMessage[];
   landed(session: SessionId, head: HeadName, view: Landed, seq: number): void;
-  /** The ids `unsent` shows for the head's expired sends, which are no longer sent on their own. */
   expired(session: SessionId, head: HeadName): readonly Message["id"][];
-  /** Sends the expired sends shown as `message` in `session` again, as if just made, and whether there were any. */
   resend(session: SessionId, message: Message["id"]): Promise<boolean>;
-  /**
-   * Removes the sends shown as `message` in `session` that the host has not answered, expired or
-   * not, so they are never posted again, and whether there were any. Each one's `send` rejects with
-   * `unknown`; a post already on its way that the host admits is withdrawn with `receipt.stop`.
-   */
   discard(session: SessionId, message: Message["id"]): Promise<boolean>;
-  /** The send `id` while the journal shows it unsent, which `send` reaches before its first post, or `null`. */
   sending(id: ReceiptId): Sending | null;
   subscribe(listener: () => void): Disposer;
   readonly refused: RefusedSends;
@@ -76,20 +64,12 @@ export interface RefusedSends extends Live<readonly RefusedSend[]> {
   take(id: ReceiptId): void;
 }
 
-/**
- * How a journaled send ended without the host's answer: `kept` while the journal still holds it, to
- * post on the next connection to its own host after a link closed under it, or on `resend` after it
- * expired;
- * `removed` by `discard`; `dropped` when the host refused it and nothing holds it.
- */
 type Unanswered = "kept" | "removed" | "dropped";
 
 export interface Sending {
-  /** How the send ended without the host's answer, or `null` while it has not. */
   unanswered(): Unanswered | null;
 }
 
-/** How long a journaled send is sent on its own. An older one that the host has not seen stays journaled and shown unsent, with `EXPIRED_REASON` as its retry reason, until it is sent again or removed. */
 const EXPIRES_MS = 24 * 60 * 60 * 1000;
 
 const EXPIRED_REASON = "it waited more than a day";
@@ -170,7 +150,6 @@ function memoryStorage(): JournalStorage {
   };
 }
 
-/** The entry `text` holds, or `null` for text that is not JSON or not an entry. */
 function readEntry(text: string): JournalEntry | null {
   try {
     return parsed(JournalEntrySchema, JSON.parse(text));
@@ -179,13 +158,6 @@ function readEntry(text: string): JournalEntry | null {
   }
 }
 
-/**
- * Sends each journaled entry until the host answers, the link closes, or the entry outlives
- * `EXPIRES_MS` without the host having its receipt. An expired entry stays journaled and shown
- * unsent, its `retrying` reason `EXPIRED_REASON`, until `resend` sends it again or `discard`
- * removes it; its `send` rejects with `timeout`. A replayed send has no caller to hear its end, so
- * one the host refused is listed in `refused`.
- */
 export function journalLoop(rows: Rows, journal: RequestJournal, host: HostId): JournalLoop {
   const held = new Map<string, Held>();
   const writes = new Map<string, Promise<void>>();

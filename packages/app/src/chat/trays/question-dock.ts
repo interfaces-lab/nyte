@@ -26,7 +26,6 @@ export interface RequestDraft {
   readonly fields: readonly FieldDraft[];
 }
 
-/** Where the last answer or dismissal stands. `pending` holds every request; the others hold only the one they were for. */
 export type Reply =
   | { readonly kind: "idle" }
   | { readonly kind: "pending" }
@@ -39,13 +38,11 @@ export type Reply =
     };
 
 export interface DockView {
-  /** Every request listed; a step keeps drafts only for these. */
   readonly asks: readonly Ask<OpenQuestion>[];
   readonly ask: Ask<OpenQuestion>;
   readonly draft: RequestDraft;
   readonly field: QuestionInfo;
   readonly selected: FieldDraft;
-  /** The custom answer box's document, empty while the box is hidden. */
   readonly document: ComposerDocumentState;
   readonly customVisible: boolean;
   readonly chosen: readonly string[];
@@ -71,7 +68,6 @@ export type DockOutcome =
   | { readonly kind: "next" }
   | { readonly kind: "send"; readonly answers: QuestionAnswers | null };
 
-/** `drafts` is the input array itself unless the event changed a draft. */
 export interface DockStep {
   readonly drafts: readonly RequestDraft[];
   readonly outcome: DockOutcome;
@@ -79,7 +75,6 @@ export interface DockStep {
 
 const EMPTY_DOCUMENT: ComposerDocumentState = { text: "", selectionStart: 0, selectionEnd: 0 };
 
-/** Shows the request whose draft was touched last while it is still listed, else the first one. */
 export function dockView(
   asks: readonly Ask<OpenQuestion>[],
   drafts: readonly RequestDraft[],
@@ -140,10 +135,6 @@ export function dockView(
   };
 }
 
-/**
- * What one person's action does to the shown request; selection and typing never send. A step
- * that saves a draft drops the drafts of requests no longer listed.
- */
 export function stepDock(
   view: DockView,
   drafts: readonly RequestDraft[],
@@ -211,7 +202,6 @@ export function stepDock(
   }
 }
 
-/** A field's answers: the chosen options, then the typed answer, trimmed and without repeats. */
 export function fieldAnswers(field: FieldDraft): string[] {
   const custom = field.document.text.trim();
 

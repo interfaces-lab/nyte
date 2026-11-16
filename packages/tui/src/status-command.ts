@@ -6,14 +6,8 @@ import { formatCommand, formatTable } from "./cli/format.ts";
 import { parseCommandArgs } from "./cli/options.ts";
 import type { Output } from "./cli/output.ts";
 
-/** How long `status` waits for a host that just started to finish checking its credentials. */
 const CHECK_WAIT_MS = 5000;
 
-/**
- * `nyte status [--json]`: every provider credential the running host sees, saved or from the
- * environment. A read, so it attaches to the running host and never starts one. A credential the
- * host is still checking after `CHECK_WAIT_MS` shows as `checking`.
- */
 export async function statusCommand(input: {
   readonly args: readonly string[];
   readonly output: Output;
@@ -69,11 +63,6 @@ export async function statusCommand(input: {
   out.result(`${table.join("\n")}\n`);
 }
 
-/**
- * `models.list` answers without waiting for the host's credential checks, so a host that just
- * started lists every provider as `unknown`. Each check that settles bumps the catalog generation
- * in `watch()`; re-read on each bump until no credential is `unknown` or `signal` aborts.
- */
 async function checkedCatalog(host: Connection, signal: AbortSignal): Promise<ModelCatalogView> {
   let catalog = await host.models.list();
 

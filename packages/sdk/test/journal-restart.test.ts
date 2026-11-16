@@ -29,21 +29,13 @@ interface Quit {
 
 interface Restart {
   readonly name: string;
-  /** What the client that quit leaves in the storage. */
   readonly quit: (left: Quit) => Promise<void>;
-  /** Clients that start over the storage at once, as windows do after a reload. */
   readonly windows: number;
-  /** Whether they start against another host than the one the message was sent to. */
   readonly elsewhere: boolean;
-  /** `head.send` requests they make. */
   readonly sends: number;
-  /** User messages the host the message was sent to holds once they settle. */
   readonly users: readonly string[];
-  /** How each window draws the message, `refused` when it lists the host's refusal in `connection.refused`, or `null` when it does not reach the chat's host. */
   readonly shown: "landed" | "expired" | "refused" | null;
-  /** Whether a client of the host the message was sent to starts over the storage afterwards, and shows it unsent until it lands. */
   readonly back?: true;
-  /** What the person then does with an expired message. */
   readonly choice?: "remove" | "send again";
 }
 
@@ -256,7 +248,6 @@ async function restart(row: Restart): Promise<void> {
   await expect.poll(() => stored.size).toBe(0);
 }
 
-/** Sends `content` from a client over `left.storage` whose request the host never answers, admitted first or `dropped` on the way, and closes the client as a quit does. */
 async function quitSending(
   left: Quit,
   content: string,
@@ -282,7 +273,6 @@ async function quitSending(
   left.host.intercept(null);
 }
 
-/** A client of the host the message was sent to, started over the storage: it shows the kept message unsent while its post waits, then lands it once. */
 async function comeBack(
   host: Served,
   storage: JournalStorage,
@@ -324,7 +314,6 @@ async function comeBack(
   await expect.poll(() => stored.size).toBe(0);
 }
 
-/** Points every stored entry at a session the host does not have, so the host refuses its replay. */
 async function strand(storage: JournalStorage): Promise<void> {
   const journal = createSendJournal(storage);
 
@@ -332,7 +321,6 @@ async function strand(storage: JournalStorage): Promise<void> {
     await journal.put({ ...entry, session: asId<"session">("stranded") });
 }
 
-/** Moves every stored entry's send time back past the day a journal sends on its own. */
 async function age(storage: JournalStorage): Promise<void> {
   const journal = createSendJournal(storage);
 
@@ -340,7 +328,6 @@ async function age(storage: JournalStorage): Promise<void> {
     await journal.put({ ...entry, at: entry.at - 24 * 60 * 60 * 1000 - 1 });
 }
 
-/** How the chat's last user message stands: landed, or unsent and among `expired`; anything else is `null`. */
 function drawn(view: SessionView, expired: readonly string[]): "landed" | "expired" | null {
   const last = [...view.messages, ...view.queue].findLast((message) => message.kind === "user");
 

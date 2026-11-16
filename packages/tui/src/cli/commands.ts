@@ -1,15 +1,10 @@
-/** Root help groups commands by task, in this order. Each heading replaces `Commands:`. */
 export type HelpGroup = "Chat" | "Sign-in" | "Tools" | "Host" | "Maintenance";
 
 export interface OptionSpec {
-  /** Long name without dashes. */
   readonly name: string;
   readonly short?: string;
-  /** Value hint such as `<URL>`; absent for a switch. */
   readonly value?: string;
-  /** Imperative fragment, no period. Includes `(default: X)` when there is one. */
   readonly summary: string;
-  /** May be given more than once; `parseOptions` keeps every value in order. Otherwise a repeat fails. */
   readonly repeatable?: boolean;
 }
 
@@ -18,16 +13,11 @@ export interface Example {
   readonly argv: readonly string[];
 }
 
-/** One action of a group, with its own help page: `nyte mcp add --help`. */
 export interface ActionSpec {
   readonly name: string;
-  /** Imperative, no period. */
   readonly summary: string;
-  /** After `nyte <group> <name> `: `<NAME> [options]`. */
   readonly usage: string;
-  /** What the group runs with no action word, such as `nyte account` linking this machine. One per group at most. */
   readonly default?: true;
-  /** Taken by this action only, on top of the group's `options`. */
   readonly options?: readonly OptionSpec[];
   readonly examples?: readonly Example[];
   readonly notes?: readonly string[];
@@ -35,17 +25,12 @@ export interface ActionSpec {
 
 export interface CommandSpec {
   readonly name: string;
-  /** Imperative, no period: `Manage MCP servers`. */
   readonly summary: string;
-  /** After `nyte <name> `: `<command> [options]`. */
   readonly usage: string;
   readonly group: HelpGroup;
-  /** For groups: the actions. A group with no `default` action shows its help when run with no action. */
   readonly subcommands?: readonly ActionSpec[];
-  /** A command's options; for a group, the ones every action takes. */
   readonly options?: readonly OptionSpec[];
   readonly examples?: readonly Example[];
-  /** Material behavior only: streams, stdin, side effects, waiting. */
   readonly notes?: readonly string[];
 }
 
@@ -67,7 +52,6 @@ const SKILL_AGENT = {
   summary: "Choose claude, codex or all (default: all)",
 } as const;
 
-/** The one list of commands. Dispatch, help, suggestions and the handler table in the entry all derive from it. */
 export const COMMANDS = [
   {
     name: "trust",

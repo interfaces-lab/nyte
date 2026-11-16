@@ -393,12 +393,10 @@ describe("dispatch (§42p, §42s)", () => {
     const { session } = await host.sessions.start({ content: "One." });
     await session.send("Two.");
     await until(() => (calls.length === 1 ? true : undefined));
-    await new Promise((resolve) => setTimeout(resolve, 10));
 
     expect(calls).toHaveLength(1);
 
     gates[0]?.resolve();
-    await new Promise((resolve) => setTimeout(resolve, 10));
     await session.send("Three.");
     await until(() => (calls.length === 2 ? true : undefined));
     gates[1]?.resolve();

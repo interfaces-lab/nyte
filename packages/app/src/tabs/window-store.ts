@@ -15,7 +15,6 @@ const BLANK: PaneSelection = { kind: "blank" };
 
 const newId = (): string => crypto.randomUUID();
 
-/** One tab's panes, as the pane context hands them to the components inside it. */
 export interface TabPanes {
   readonly window: WindowStore;
   readonly tabId: string;
@@ -23,11 +22,6 @@ export interface TabPanes {
   readonly viewState: SessionViewStateStore;
 }
 
-/**
- * The window's tabs and their panes behind one reducer, with the DOM focus requests each change
- * sends to the panes of a tab. Blank drafts live outside the reducer, so the draft operations
- * compose a draft change with a pane command.
- */
 export class WindowStore {
   #state: WindowState;
   readonly #drafts: () => WindowDrafts;
@@ -48,7 +42,6 @@ export class WindowStore {
 
   readonly getSnapshot = (): WindowState => this.#state;
 
-  /** Replaces the state without notifying, before anything reads it: the window's saved tabs. */
   restore(state: WindowState): void {
     this.#state = state;
   }
@@ -93,10 +86,6 @@ export class WindowStore {
     return this.tab(tabId).viewState;
   }
 
-  /**
-   * The same panes for a tab on every call while the tab is open, so a provider that renders again
-   * hands its components the value they already read.
-   */
   tab(tabId: string): TabPanes {
     const known = this.#tabs.get(tabId);
 
@@ -169,7 +158,6 @@ export class WindowStore {
     viewState.removeDraft(draftId);
   }
 
-  /** Blanks the chat in every tab that shows it and returns its undo. */
   hide(sessionId: SessionId): () => void {
     this.dispatch({ kind: "hide-chat", sessionId });
 

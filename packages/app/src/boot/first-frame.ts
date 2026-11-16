@@ -68,11 +68,6 @@ export function forgetFirstFrame(): void {
   removeStored(localArea(), FIRST_FRAME_KEY);
 }
 
-/**
- * Seeds the window's first frame from the last run's snapshot of `host`. The window's own folder,
- * `workspace`, which Finder opened it for, is its choice and outranks the folder the snapshot
- * remembers for its chat.
- */
 export function seedFirstFrame(host: string, workspace: SelectedWorkspace | undefined): boolean {
   if (workspace !== undefined)
     queryClient.setQueryData(keys.host, { workspace } satisfies HostState);
@@ -199,7 +194,6 @@ export async function windowContentReady(): Promise<void> {
   }
 }
 
-/** The store's first value or error, settled at once when it has one or nobody watches it, and never rejecting. */
 function arrived<T>(store: WatchStore<T>): Promise<void> | undefined {
   return store.active && store.error === undefined
     ? store

@@ -355,7 +355,6 @@ function foldTo(recorded: Recorded, point: number): FoldState {
     );
 }
 
-/** The points after which the main head's whole order differs from the point before, so `orderMoves(recorded)[n]` is the first point whose order has moved `n` times. */
 function orderMoves(recorded: Recorded): readonly number[] {
   let state = emptyFold({ session: recorded.session, principal: asId(PRINCIPAL) });
   const read = () => JSON.stringify(readWindow(state, MAIN, { tail: 1_000_000 }, null).order);
@@ -563,7 +562,6 @@ function step(client: Client, state: FoldState, point: number, next: () => numbe
   return compare(client, store.snapshot(), state);
 }
 
-/** Resumes as a client at revision 27 or later does half the time, describing the order it holds, and as an older client otherwise. */
 function resume(
   client: Client,
   store: SessionStore,

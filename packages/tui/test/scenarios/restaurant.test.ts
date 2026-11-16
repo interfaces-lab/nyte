@@ -172,7 +172,9 @@ test("scenario U from the keyboard: typed while the host opens, skill, places MC
     record: true,
   });
 
-  await resumed.frame((frame) => frame.includes("I picked Luigi's Trattoria"));
+  await resumed.frame(
+    (frame) => frame.includes("I picked Luigi's Trattoria") && frame.includes("╰─ workspace │"),
+  );
   await resumed.state((store) => store.screen().run.kind === "idle");
   await resumed.highlighted();
   await saveFrame(resumed, "U-07-resumed");

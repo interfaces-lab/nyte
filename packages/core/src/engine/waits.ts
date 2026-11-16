@@ -44,10 +44,8 @@ import type { Indexed } from "../store/wait-index.ts";
 import { dev, fault } from "../util/dev-log.ts";
 import type { StoreConnection } from "../contract/store.ts";
 
-/** The end of a job whose process is gone without recording one. */
 export const LOST: JobEnd = { kind: "lost" };
 
-/** The outcome of a wait that its call's or its run's stop ended. */
 export const WAIT_STOPPED: WaitOutcome = { kind: "stopped" };
 
 export function createWaitRegistry(
@@ -476,7 +474,6 @@ export async function jobOutcome(kernel: Kernel, id: JobId): Promise<JobEnd | nu
   return found.record.instance === kernel.instance || kernel.presence === null ? LOST : null;
 }
 
-/** Wakes a call that is not parked: an action whose rerun lapsed reruns here, and a run's woken call wakes its head. */
 function wake(kernel: Kernel, session: SessionId, record: CallRecord): void {
   if (record.head === null && lapsed(kernel, record)) kernel.waits.rerun(session, record.id);
   else if (record.head !== null && callPhase(record).kind === "woken")
@@ -646,7 +643,6 @@ function formatWaitKey(session: SessionId, call: CallId): string {
   return `${session}/${call}`;
 }
 
-/** Whether an action's rerun was reserved by another process that stopped renewing it before the call parked or settled. */
 export function lapsed(kernel: Kernel, record: CallRecord): boolean {
   const phase = callPhase(record).kind;
 

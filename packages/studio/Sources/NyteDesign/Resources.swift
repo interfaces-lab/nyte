@@ -2,8 +2,6 @@ import CoreText
 import Foundation
 import Lune
 
-/// Finds the files the build places beside the executable: in the app bundle's Resources once
-/// packaged, and in the package's folder while running from the build directory.
 public enum NyteResources {
   public static let interFile = "inter-latin-opsz-normal.woff2"
 
@@ -22,8 +20,6 @@ public enum NyteResources {
     return candidates.first { fileManager.fileExists(atPath: $0.path) }
   }
 
-  /// Registers Inter, the face Nyte sets its interface in, as the default family for designs
-  /// and for the app's own text. Returns false when the file is missing.
   @discardableResult
   public static func registerFonts() -> Bool {
     guard let file = url(interFile) else { return false }

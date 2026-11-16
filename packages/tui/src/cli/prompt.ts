@@ -3,12 +3,6 @@ import { createInterface } from "node:readline/promises";
 import { formatStatus } from "./format.ts";
 import type { Output } from "./output.ts";
 
-/**
- * The destructive tier's question: `? <question> (y/N) ` on stderr, one line from stdin, and only
- * `y` or `yes` is yes. Ask only when `output.mode.interactive`; without it, fail with `missing_input`
- * naming `--yes`. Readline stays in cooked mode, so Ctrl+C reaches the invocation as SIGINT and
- * aborts `signal`. An abort and an ended stdin both answer no; readline ends the prompt's line.
- */
 export async function confirm(
   output: Output,
   question: string,

@@ -5,13 +5,11 @@ import type { ComposerImageAttachment, ComposerViewState } from "../../panes/ses
 import { contentDraftText } from "../../references/message-references.ts";
 import type { ComposerDocumentState } from "./composer-document.ts";
 
-/** The text and images a refused send gives back. */
 export interface Restore {
   readonly text: string;
   readonly attachments: readonly ComposerImageAttachment[];
 }
 
-/** The notice above the composer; `restore` is what its Restore Draft button puts back. */
 export interface ComposerNotice {
   readonly kind: "status" | "command" | "error";
   readonly message: string;
@@ -22,30 +20,23 @@ export function errorNotice(message: string): ComposerNotice {
   return { kind: "error", message, restore: null };
 }
 
-/**
- * How a send from the composer ended: `unsent` when the journal still holds it to send later, and
- * `removed` when the person removed its unsent row; only `refused` will never be sent.
- */
 export type SendEnd =
   | { readonly kind: "sent"; readonly note: string | undefined }
   | { readonly kind: "unsent" }
   | { readonly kind: "removed" }
   | { readonly kind: "refused"; readonly message: string };
 
-/** A queued message opened in the composer over the person's own text. */
 interface QueuedEdit {
   readonly message: UserMessage;
   readonly view: ComposerViewState;
 }
 
-/** A chat's composer as the window keeps it, whether or not a composer shows it. */
 export interface SessionDraft {
   readonly composer: ComposerViewState;
   readonly edit: QueuedEdit | null;
   readonly notice: ComposerNotice | null;
 }
 
-/** The notice whose Restore Draft still has a refused send's text, which the window stores with the draft. */
 export function restorable(draft: SessionDraft): ComposerNotice | null {
   const notice = draft.notice;
 
@@ -56,10 +47,6 @@ export function shownDraft(draft: SessionDraft): ComposerViewState {
   return draft.edit?.view ?? draft.composer;
 }
 
-/**
- * What the window stores for the chat: an open edit the person changed sits on top of their own
- * text. An unchanged one is still the queued message, so it is left out rather than shown twice.
- */
 export function persistedDraft(draft: SessionDraft): ComposerViewState {
   const edit = draft.edit;
 
@@ -82,7 +69,6 @@ export function updateShown(
   return { ...draft, edit: { ...draft.edit, view: update(draft.edit.view) } };
 }
 
-/** A keystroke: a change to the text clears any notice that is not an error. */
 export function typedDraft(draft: SessionDraft, document: ComposerDocumentState): SessionDraft {
   const typed = updateShown(draft, (view) => ({
     ...view,
@@ -114,18 +100,12 @@ export function openedEdit(draft: SessionDraft, message: UserMessage): SessionDr
   };
 }
 
-/** The edited message left the queue: an unchanged edit goes, a changed one joins the person's text. */
 export function lostEdit(draft: SessionDraft): SessionDraft {
   if (draft.edit === null) return draft;
 
   return { ...draft, composer: persistedDraft(draft), edit: null };
 }
 
-/**
- * What closing the composer does to the chat's draft: a notice with nothing to restore goes, and an
- * open edit the person changed joins their text when `edit` is `folded`. A `kept` edit stays open,
- * for a save in flight whose outcome decides it.
- */
 export function foldEdit(draft: SessionDraft, edit: "folded" | "kept"): SessionDraft {
   if (draft.edit === null && draft.notice === null) return draft;
   const notice = draft.notice?.restore === null ? null : draft.notice;
@@ -135,7 +115,6 @@ export function foldEdit(draft: SessionDraft, edit: "folded" | "kept"): SessionD
   return { composer: persistedDraft(draft), edit: null, notice };
 }
 
-/** A send left the composer: its text goes if nothing changed it since, and its images go. */
 export function leftDraft(
   draft: SessionDraft,
   sent: ComposerDocumentState,
@@ -153,11 +132,6 @@ export function leftDraft(
   };
 }
 
-/**
- * A send was refused. An empty draft gets the text back at once; a draft with text keeps it and
- * the notice offers Restore Draft. Either way the text goes to the person's own draft, never into
- * a queued edit.
- */
 export function refusedDraft(draft: SessionDraft, message: string, sent: Restore): SessionDraft {
   if (draft.composer.draft !== "")
     return { ...draft, notice: { kind: "error", message, restore: sent } };
@@ -169,19 +143,10 @@ export function refusedDraft(draft: SessionDraft, message: string, sent: Restore
   };
 }
 
-/**
- * A send ended. Only a refused one gives its text back, as `refusedDraft` does: one the journal
- * still holds shows as an unsent row and goes later, and one the person removed is gone on purpose.
- */
 export function endedDraft(draft: SessionDraft, end: SendEnd, sent: Restore): SessionDraft {
   return end.kind === "refused" ? refusedDraft(draft, end.message, sent) : draft;
 }
 
-/**
- * A send the journal replayed, which no composer waits on, that the host refused: it comes back
- * as a live refusal does, through `refusedDraft`, with the text it was sent with. Its images were
- * uploaded as files, so only the text comes back, as an opened queued edit's does.
- */
 export function replayedDraft(draft: SessionDraft, refused: RefusedSend): SessionDraft {
   return refusedDraft(draft, refusalMessage(refused.error), {
     text: contentDraftText(refused.content),
@@ -189,12 +154,10 @@ export function replayedDraft(draft: SessionDraft, refused: RefusedSend): Sessio
   });
 }
 
-/** What a composer says of a send the host refused, live or replayed. */
 export function refusalMessage(cause: unknown): string {
   return `Couldn't send the message: ${errorMessage(cause)}`;
 }
 
-/** Restore Draft: the notice's text goes in front of the person's own draft and the button goes. */
 export function restoredDraft(draft: SessionDraft): SessionDraft {
   const notice = draft.notice;
 

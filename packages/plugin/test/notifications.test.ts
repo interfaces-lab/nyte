@@ -85,7 +85,6 @@ function row(
 test.each<{
   readonly name: string;
   readonly before: SessionInfo;
-  /** Heard between `before` and `after`. */
   readonly through?: SessionInfo;
   readonly after: SessionInfo;
   readonly notified: readonly Parameters<ClientApi["ui"]["notify"]>[0][];

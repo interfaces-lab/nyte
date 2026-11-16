@@ -25,7 +25,7 @@ export const settingsDensity = defineVars({
 
 export const layout = defineVars({
   "--nyte-titlebar-height": "40px",
-  "--nyte-titlebar-traffic-light-inset": "calc(72px / var(--nyte-window-zoom, 1))",
+  "--nyte-titlebar-traffic-light-inset": "calc(77px / var(--nyte-window-zoom, 1))",
   "--nyte-shell-card-inset": "8px",
   "--nyte-shell-region-padding-block-start": "6px",
   "--nyte-shell-card-radius": "6px",

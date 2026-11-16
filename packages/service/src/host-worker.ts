@@ -43,7 +43,6 @@ interface Opened {
   close(): Promise<void>;
 }
 
-/** A host asked to retire reports `replaced` and keeps serving until its process has withdrawn host.json and sent `stop`, so no client finds it in host.json once it closes. */
 export function serveHostThread(runtime: HostWorkerRuntime): void {
   const port = parentPort;
 

@@ -41,11 +41,6 @@ const HOST_POLL_MS = 100;
 
 const HOST_WATCH_MS = 2_000;
 
-/**
- * `kind` is how the connection names this client to the host. `progress` hears the phase of a wait the person would otherwise sit through in silence, such as
- * starting a host. One-shot commands pass `Output.progress`; the full-screen TUI passes nothing,
- * because its screen owns the terminal.
- */
 export async function connectHost(
   source: HostSource,
   kind: "tui" | "cli",
@@ -146,12 +141,6 @@ async function retireWhenOutdated(connection: Connection, signal: AbortSignal): 
   await request.withdraw();
 }
 
-/**
- * Whether a host holds `host.lock`, so one is starting or serving even though `host.json` doesn't
- * name it yet. Asked only while this command has no host of its own starting: before it starts one,
- * and after the one it started has exited, having lost the lock or failed. Taking the lock to ask
- * holds it for one SQLite open, so a host claiming it in that instant sees it taken.
- */
 function hostLockHeld(): boolean {
   const release = tryLockFile(hostLockPath());
   release?.();
@@ -159,7 +148,6 @@ function hostLockHeld(): boolean {
   return release === null;
 }
 
-/** A host that answers and refuses is reported with its wire error; one that never answers (`unavailable`) is `network_error`, its cause in a detail row. */
 async function attachHost(endpoint: LocalEndpoint, kind: "tui" | "cli"): Promise<HostSession> {
   const connection = await connect({
     url: endpoint.url,

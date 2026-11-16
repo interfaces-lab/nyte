@@ -1,6 +1,7 @@
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import { conversation } from "../../theme/schema.stylex.ts";
+import { useAwaitLabel } from "../../data/sessions.ts";
 import { activityStyles } from "./activity.stylex.ts";
 import { usePlanningTime } from "./planning-time.ts";
 import { stepGroupStyles } from "./step-group.stylex.ts";
@@ -30,9 +31,11 @@ export function LiveTurn({ live }: { live: LiveRowFacts }): ReactElement | null 
 
 function PlanningLine({ live }: { live: LiveRowFacts }): ReactElement {
   const planningMs = usePlanningTime(live.planning, live.newest);
+  const waiting = useAwaitLabel(live.awaiting);
 
   const label =
     live.thought ??
+    waiting ??
     (live.planning && (live.state !== "grouped" || planningMs >= SLOW_PLANNING_MS)
       ? planningLabel(planningMs)
       : undefined);

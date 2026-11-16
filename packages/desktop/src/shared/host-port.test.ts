@@ -1,4 +1,4 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { hostPort, messagePortEnd, servePort } from "./host-port.ts";
 import type { PortEnd, PortMessage, SocketLike } from "./host-port.ts";
 
@@ -10,7 +10,6 @@ interface ScriptedEnd {
   closed(): boolean;
 }
 
-/** One end of the port as the code under test sees it: what it posts is kept, and messages are handed to it by the test. */
 function scriptedEnd(): ScriptedEnd {
   const posted: PortMessage[] = [];
   let handlers: Parameters<PortEnd["open"]>[0] | undefined;
@@ -55,8 +54,6 @@ function fakeSocket() {
   return { socket, sent, closes };
 }
 
-const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
-
 const REQUEST = {
   kind: "request",
   id: 0,
@@ -66,28 +63,36 @@ const REQUEST = {
   body: false,
 } as const;
 
-async function mainEnd() {
+function mainEnd() {
   const port = scriptedEnd();
   const dialed = fakeSocket();
   let aborted = false;
+  let answering: Promise<void> = Promise.resolve();
 
   servePort(
     port.end,
-    (request) =>
-      new Promise<Response>((_resolve, reject) => {
+    (request) => {
+      const answer = new Promise<Response>((_resolve, reject) => {
         request.signal.addEventListener("abort", () => {
           aborted = true;
           reject(request.signal.reason);
         });
-      }),
+      });
+
+      answering = answer.then(
+        () => undefined,
+        () => undefined,
+      );
+
+      return answer;
+    },
     () => dialed.socket,
   );
 
   port.deliver(REQUEST);
   port.deliver({ kind: "socket", id: 1, path: "/v1/socket" });
-  await settle();
 
-  return { port, dialed, aborted: () => aborted };
+  return { port, dialed, aborted: () => aborted, answering: () => answering };
 }
 
 test.each<{
@@ -163,9 +168,10 @@ test.each<{
     socket: { sent: [], closes: [] },
   },
 ])("main's end: $name", async (row) => {
-  const made = await mainEnd();
+  const made = mainEnd();
   made.port.deliver(row.message);
-  await settle();
+
+  if (row.aborted) await made.answering();
 
   expect({
     closed: made.port.closed(),
@@ -180,8 +186,8 @@ test.each<{
   });
 });
 
-test("main's end: the window's port closing abandons the request and shuts sockets 1001", async () => {
-  const made = await mainEnd();
+test("main's end: the window's port closing abandons the request and shuts sockets 1001", () => {
+  const made = mainEnd();
   made.port.drop();
 
   expect({ aborted: made.aborted(), closes: made.dialed.closes }).toEqual({
@@ -198,8 +204,8 @@ test.each<{ readonly code: number; readonly sent: number }>([
   { code: 3000, sent: 3000 },
   { code: 4999, sent: 4999 },
   { code: 5000, sent: 1000 },
-])("main's end: a window's shut $code closes the host's socket with $sent", async (row) => {
-  const made = await mainEnd();
+])("main's end: a window's shut $code closes the host's socket with $sent", (row) => {
+  const made = mainEnd();
   made.port.deliver({ kind: "shut", id: 1, code: row.code, reason: "bye" });
 
   expect(made.dialed.closes).toEqual([`${row.sent} bye`]);
@@ -217,7 +223,7 @@ async function windowEnd() {
   socket.addEventListener("message", (event) => events.push(`message ${String(event.data)}`));
   socket.addEventListener("error", () => events.push("error"));
   socket.addEventListener("close", (event) => events.push(`close ${event.code} ${event.reason}`));
-  await settle();
+  await vi.waitFor(() => expect(port.posted).toHaveLength(2));
 
   const ids = {
     request: port.posted.find((message) => message.kind === "request")?.id ?? -1,
@@ -332,7 +338,7 @@ test.each<{
 
   if (row.act === "drop") made.port.drop();
 
-  const answered = await Promise.race([made.answered, settle().then(() => undefined)]);
+  const answered = row.answered === undefined ? undefined : await made.answered;
 
   expect({
     closed: made.port.closed(),
@@ -434,11 +440,12 @@ test.each<{
   );
 
   if (row.read) await response.arrayBuffer();
-  await new Promise((resolve) => setTimeout(resolve, 50));
-  channel.port1.close();
 
-  expect({
-    frames: fromMain.filter((message) => message.kind === "data").length,
-    credits: fromWindow.flatMap((message) => (message.kind === "credit" ? [message.bytes] : [])),
-  }).toEqual({ frames: row.frames, credits: row.credits });
+  await vi.waitFor(() =>
+    expect({
+      frames: fromMain.filter((message) => message.kind === "data").length,
+      credits: fromWindow.flatMap((message) => (message.kind === "credit" ? [message.bytes] : [])),
+    }).toEqual({ frames: row.frames, credits: row.credits }),
+  );
+  channel.port1.close();
 });

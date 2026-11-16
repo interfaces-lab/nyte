@@ -20,7 +20,6 @@ type Step =
 
 const NAMES = "abcdefghix";
 
-/** The one session the scripted host doesn't have: its chat's read fails as unknown. */
 const GONE = "x";
 
 const id = (name: string) => asId<"session">(`hold-${name}`);
@@ -404,7 +403,6 @@ test.each<{
   ).toEqual(row.shown);
 });
 
-/** A chat's view stream whose first read hasn't landed until `push`. */
 function unread(): ViewStream {
   let latest: SessionView | undefined;
   const listeners = new Set<() => void>();

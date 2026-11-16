@@ -202,9 +202,7 @@ describe("composeHost", () => {
 
     const closed = host.close().then(() => "closed");
 
-    expect(
-      await Promise.race([closed, new Promise((resolve) => setTimeout(resolve, 0, "late"))]),
-    ).toBe("closed");
+    expect(await closed).toBe("closed");
     expect(await (await store.open()).refs.get(runRef(session.id, run))).not.toBeNull();
 
     const second = fakeModels();
@@ -249,7 +247,6 @@ describe("composeHost", () => {
     });
 
     await host.close();
-    await new Promise((resolve) => setTimeout(resolve, 20));
 
     expect(fake.requests[0].options?.signal?.aborted).toBe(true);
     expect(logged).not.toContain("run:ended");

@@ -302,7 +302,6 @@ export function suggestionReference(suggestion: ChipSuggestion): MessageReferenc
   }
 }
 
-/** The open menu's token, the active row, and whether a key or the pointer has moved onto it. */
 export interface MenuState {
   readonly token: SuggestionToken | undefined;
   readonly index: number;
@@ -311,16 +310,11 @@ export interface MenuState {
 
 export const CLOSED_MENU: MenuState = { token: undefined, index: 0, highlighted: false };
 
-/** `count` is how many rows show; `to` may fall outside them and is clamped. */
 export type MenuEvent =
   | { readonly kind: "token"; readonly token: SuggestionToken | undefined }
   | { readonly kind: "move"; readonly to: number; readonly count: number }
   | { readonly kind: "point"; readonly index: number; readonly count: number };
 
-/**
- * A token that continues the open one (same kind, same start) keeps the active row; any other,
- * or none, starts over at the first row unhighlighted. Returns `menu` itself when nothing changes.
- */
 export function nextMenu(menu: MenuState, event: MenuEvent): MenuState {
   switch (event.kind) {
     case "token":
@@ -361,7 +355,6 @@ export type MenuKey =
   | { readonly kind: "close" }
   | { readonly kind: "pass" };
 
-/** An open menu's reading of a key: `active` is the active row and `count` the rows shown. */
 export function menuKey(
   key: Pick<KeyboardEvent, "key" | "ctrlKey" | "shiftKey" | "metaKey" | "isComposing">,
   active: number,
@@ -386,10 +379,6 @@ export function menuKey(
   return { kind: "pass" };
 }
 
-/**
- * The row Enter or Tab picks. While the deferred query lags the typed one, the shown rows are
- * stale, so the first live match wins.
- */
 export function pickFor(
   token: SuggestionToken,
   deferredQuery: string,

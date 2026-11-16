@@ -3,17 +3,6 @@ import type { SessionId } from "@nyte-ai/schema";
 import { alertsOnChat } from "./alerts.ts";
 import { alertNews, headAttention, sessionTitle } from "./presentation.ts";
 
-/**
- * Tells the user what the desktop's alerts tell them, for a session this client can see but nobody
- * is looking at: that it waits on their answer, finished, or failed with the reason. It reads the
- * same `headAttention` alert and `alertsOnChat` rule the desktop does, so a stopped run stays quiet
- * because someone asked for it, and so do the ends of sessions a parent spawned, so a delegation
- * does not ring once per child; a subagent's question rings on its parent, which always asks for
- * it, a side chat's on the side chat, and an answered one does not ring its parent's end again.
- *
- * @category plugins
- * @since 0.1.0
- */
 export default {
   id: "notifications",
   activate(api) {

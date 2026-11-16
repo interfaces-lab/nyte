@@ -49,12 +49,9 @@ type Entry = {
   readonly listeners: Set<(state: FoldState) => void>;
 };
 
-/** The log and bus feeding one session's fold, every durable event once and in seq order. */
 interface FoldFeed {
   readonly ready: Promise<void>;
-  /** Reads what the log holds past the fold into it. */
   sync(): Promise<void>;
-  /** Reads what the log holds past the fold and publishes it on the bus, for every subscriber of the session, then reconciles the session's children with the store. */
   refresh(): Promise<void>;
   dispose(): void;
 }
@@ -66,7 +63,6 @@ type Feeds = Pick<
 
 type LiveStreams = ReadonlyMap<SessionId, ReadonlyMap<PartId, LiveStream>>;
 
-/** One session's publishing: the last seq on the bus, the highest this process logged, and the publishes in line. */
 type Sequence = {
   published: number | null;
   logged: number;
@@ -78,12 +74,10 @@ const LOG_PAGE = 512;
 
 const FOLD_LINGER = 30_000;
 
-/** How long an unwatched session's publishing sequence outlives its last publish: long past any write of this process still on its way to the bus. */
 const PUBLISH_LINGER = 30_000;
 
 const NO_PAIRS: ReadonlyMap<HeadName, HeadPair> = new Map();
 
-/** Returns the kernel's folds, one per session shared by its holders: each starts from the session's fold checkpoint where the store keeps one, reads the log past it, and offers itself for a new checkpoint once read and as each run ends. */
 export function createFoldCache(kernel: Feeds): FoldCache {
   const entries = new Map<SessionId, Entry>();
   const streams = trackStreams(kernel.bus);
@@ -217,7 +211,6 @@ export function createFoldCache(kernel: Feeds): FoldCache {
   };
 }
 
-/** Publishes a set's events through the kernel's publisher as the set logged them, from the updates in hand: each event at the seq and time the store gave it, each head-moving event with its head's ref pair (the one this set wrote, else read). */
 export async function publishSet(
   kernel: Pick<Kernel, "store" | "publisher" | "hostChanges">,
   updates: readonly RefUpdate[],
@@ -284,7 +277,6 @@ export async function publishSet(
   for (const listener of kernel.hostChanges) listener(outcome.host);
 }
 
-/** Returns the kernel's {@link LogPublisher} over `bus`, reading gaps from `store`'s log. */
 export function createLogPublisher(kernel: Pick<Kernel, "store" | "bus">): LogPublisher {
   const sessions = new Map<SessionId, Sequence>();
 
@@ -437,7 +429,6 @@ function trackStreams(bus: SessionBus): LiveStreams {
   return streams;
 }
 
-/** Opens `session`'s feed: the fold restored by `restore`, then the log past it, then the bus in seq order, reading the log over any gap. A read that fails releases only the items it held that are still in order and drops those past the gap, so a failing store never starts another read; the log keeps them for the next bus event or `sync`. */
 function openFoldFeed(
   kernel: Feeds,
   streams: LiveStreams,

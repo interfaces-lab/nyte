@@ -44,7 +44,6 @@ import type { SavedServer } from "./connections/server-settings.ts";
 
 export interface DesktopHostDependencies {
   readonly home: string;
-  /** Main's one link to the host: the connection calls go over and the host view this follows. */
   readonly link: Pick<HostLink, "connection" | "follow" | "attach">;
   readonly usageScan: UsageScanReader;
   readonly remoteAccessPlugins?: RemoteAccessPlugins;
@@ -176,7 +175,6 @@ interface ServerWatch {
   state: ServerState | undefined;
 }
 
-/** How main names itself when it connects to another server, where it opens no socket. */
 const SERVER_CLIENT = {
   kind: "app",
   name: "Nyte",
@@ -436,7 +434,6 @@ export class DesktopHost {
     return registerFolder(() => this.#deps.link.connection(), path, false, "local");
   }
 
-  /** The host's available local folders. */
   async localWorkspaces(): Promise<readonly SelectedWorkspace[]> {
     const host = await this.#deps.link.connection();
 
@@ -574,7 +571,6 @@ export class DesktopHost {
     return watch;
   }
 
-  /** Connects to the watched server. One with a saved key is held to it. One without is held to its id alone, and the first key it proves is saved, so a server saved before keys were pinned is pinned by its next connection; a write that fails is tried again by the connection after. */
   async #connectSaved(watch: ServerWatch): Promise<Connection> {
     const saved = watch.saved;
 

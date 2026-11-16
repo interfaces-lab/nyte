@@ -18,11 +18,6 @@ import type { PluginsPort } from "./ports.ts";
 import type { HandlerContext } from "./scope.ts";
 import { blankWorkspace, defaultSelection, follow } from "./session.ts";
 
-/**
- * Sends a submission and dispatches `sent` once the journal holds it, so a link that drops or a
- * day's wait leaves it to the journal's unsent row; only a send the host refused comes back, as
- * `send-refused`.
- */
 export async function submit(
   submission: Submission,
   delivery: Delivery,

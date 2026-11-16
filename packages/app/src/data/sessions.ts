@@ -1,15 +1,16 @@
 import { useMutation, useMutationState } from "@tanstack/react-query";
 import { useState } from "react";
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
+import { toolTitle } from "@nyte-ai/plugin/client/presentation";
 import type { ChatView } from "./chat-store.ts";
 import { projectSessionChoice, sessionConfigurationOptions } from "./session-configuration.ts";
 import type { PendingConfiguration } from "./session-configuration.ts";
 import { chatStore } from "./chat-store.ts";
 import { sessionSearch } from "./directory.ts";
 import { useWatch, useWatchSelect } from "./watch-store.ts";
-import { subagentActivity } from "./session-activity.ts";
+import { awaitedChild, subagentActivity } from "./session-activity.ts";
+import { useSessionRow } from "./session-rows.ts";
 
-/** Asks the host for the newest roots named like `search` on each change, and keeps the last answer on screen until the next one arrives, so typing never blanks the list. */
 export function useSessionSearch(search: string, enabled = true) {
   const needle = search.trim();
   const found = useWatch(enabled && needle !== "" ? sessionSearch(needle) : undefined).value;
@@ -31,9 +32,23 @@ export function useSessionActivity(
   sessionId: SessionId | undefined,
   cwd: string | undefined,
 ): string | undefined {
-  return useWatchSelect(sessionId === undefined ? undefined : chatStore(sessionId), (state) =>
-    subagentActivity(state.value?.activity, cwd),
+  const store = sessionId === undefined ? undefined : chatStore(sessionId);
+
+  const waiting = useAwaitLabel(
+    useWatchSelect(store, (state) => awaitedChild(state.value?.activity)),
   );
+
+  const activity = useWatchSelect(store, (state) => subagentActivity(state.value?.activity, cwd));
+
+  return waiting ?? activity;
+}
+
+export function useAwaitLabel(child: SessionId | undefined): string | undefined {
+  const name = useSessionRow(child, (session) => session.name);
+
+  if (child === undefined) return undefined;
+
+  return toolTitle({ kind: "delegate", child, role: "await", title: name ?? null }, "running");
 }
 
 export function useSessionChoice(sessionId: SessionId) {

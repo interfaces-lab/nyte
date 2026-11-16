@@ -34,7 +34,6 @@ export interface ResponseRowView {
   readonly commit: CommitId | undefined;
 }
 
-/** A prompt row's report or answer sits in the live turn's frame; a part row's sits in its turn. */
 export type UserRowView =
   | {
       readonly kind: "report";
@@ -57,11 +56,6 @@ export type UserRowView =
       readonly editable: boolean;
     };
 
-/**
- * A step that stopped running with one entry other than a thought draws that entry alone. A row
- * with a step besides thoughts merges its thoughts, so the entries that decide this are the ones
- * the group would draw.
- */
 export function stepRowView(row: StepRow): StepRowView {
   const facts = stepGroupFacts(row.messages, row.running);
   const only = facts.entries[0];
@@ -94,23 +88,23 @@ export function responseRowView(row: ResponseRow): ResponseRowView | null {
   };
 }
 
-/**
- * A reply's text parts as paragraphs. A part written by a later attempt of the same run carries on
- * the text an interruption cut off, mid-word if that is where it stopped, so it joins the part
- * before it with nothing between.
- */
 function replyParagraphs(messages: ResponseRow["messages"]): readonly string[] {
-  return messages.reduce<readonly string[]>((paragraphs, message, index) => {
+  return messages.reduce<string[]>((paragraphs, message, index) => {
     const before = messages[index - 1];
     const last = paragraphs.at(-1);
 
-    return before !== undefined && last !== undefined && resumesText(before.id, message.id)
-      ? [...paragraphs.slice(0, -1), last + message.state.markdown]
-      : [...paragraphs, message.state.markdown];
+    if (before !== undefined && last !== undefined && resumesText(before.id, message.id)) {
+      paragraphs[paragraphs.length - 1] = last + message.state.markdown;
+
+      return paragraphs;
+    }
+
+    paragraphs.push(message.state.markdown);
+
+    return paragraphs;
   }, []);
 }
 
-/** Whether `next` is a part of a later attempt of the run that wrote `before`: a turn's parts are named `<run>:a<attempt>:<index>`. */
 function resumesText(before: string, next: string): boolean {
   const earlier = ATTEMPT_PART.exec(before);
   const later = ATTEMPT_PART.exec(next);
@@ -152,7 +146,6 @@ export function userRowView(row: PromptRow | PartRow): UserRowView | undefined {
   };
 }
 
-/** While an edit is saved, the turn's changes wait and an idle live row plans. */
 export function shownRow(row: TranscriptRow, navigating: boolean): TranscriptRow {
   if (!navigating) return row;
 
@@ -163,12 +156,6 @@ export function shownRow(row: TranscriptRow, navigating: boolean): TranscriptRow
   return row;
 }
 
-/**
- * How a thought line draws. While it streams it reads "Thinking" over its whole text. Once it
- * ends it folds under its heading, or "Thought" without one, and unfolds under that label when it
- * was shown while its group ran. A thought with no text left under its label draws the label alone,
- * and an empty one that ended draws nothing.
- */
 export type ThoughtView =
   | { readonly kind: "label"; readonly streaming: boolean; readonly label: string }
   | {
@@ -200,7 +187,6 @@ export interface ThoughtProse {
   readonly streaming: boolean;
 }
 
-/** A thought drawn bare in a group of thoughts: once it ends, without the heading the group's line already shows. */
 export function thoughtProse(
   message: ThinkingMessage,
   markdown: string,
@@ -211,7 +197,6 @@ export function thoughtProse(
   return { markdown: titled && !streaming ? reasoningHeading(markdown).body : markdown, streaming };
 }
 
-/** The turn's summary row: a reservation while the turn works, the card once it ended with changes, else nothing. */
 export type ChangesRowView =
   | { readonly kind: "reserved" }
   | { readonly kind: "card"; readonly files: ChangesRow["files"] };

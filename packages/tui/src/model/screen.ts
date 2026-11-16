@@ -106,10 +106,6 @@ function placeholderFor(
   return COMPOSER_PLACEHOLDER;
 }
 
-/**
- * The tasks line asks for attention while a task's mark waits on the person, as the task list
- * shows it: `headAttention`'s for a subagent.
- */
 function tasksLine(state: State): TasksLine | null {
   const active = state.facts.tasks.filter(unfinishedTask);
 
@@ -148,7 +144,6 @@ function livePreview(state: State, markers: readonly MarkerSpan[]): PreviewModel
   return { marker, part };
 }
 
-/** `held` is the last screen drawn: while the pointer drags a selection its hints stay as they were. */
 export function deriveScreen(state: State, held: Pick<ScreenModel, "hints"> | null): ScreenModel {
   const session = followedSession(state);
   const view = session?.view ?? null;
@@ -255,11 +250,6 @@ function healthNotice(health: Health): HealthNotice | null {
   }
 }
 
-/**
- * What the terminal is told the chat is blocked on: a sign-in, an approval or a question this client
- * shows, else any ask `headAttention` says the chat waits on, such as a subagent's it hasn't read,
- * named as a question.
- */
 function blockedStatus(state: State, question: QuestionModel | null): ProgramState | null {
   const auth = state.local.dialogs.findLast((dialog) => dialog.kind === "auth");
 

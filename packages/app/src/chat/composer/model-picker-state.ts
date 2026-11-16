@@ -22,7 +22,6 @@ export function selectedModelOption(
   return undefined;
 }
 
-/** The model a chat runs on as its composer shows it: one that can't steer only queues. */
 export interface SessionModel {
   readonly option: DesktopModelOption | undefined;
   readonly fast: boolean;
@@ -46,7 +45,6 @@ export function sessionModel(
   };
 }
 
-/** A new chat's model: the draft's pick, else its project's coordinator, else the default. */
 export function draftModel(
   choice: { readonly model: ModelRef } | undefined,
   project: { readonly models: { readonly coordinator: ModelRef | null } } | undefined,
@@ -115,7 +113,6 @@ const ACP_AGENT_ICONS = new Map<string, IconName>(
   } satisfies Record<string, IconName>),
 );
 
-/** Providers whose entries are agents, shown by name and icon and switched on or off like one model. */
 export const AGENT_PROVIDERS: ReadonlySet<string> = new Set(["acp", "claude-code"]);
 
 export function providerIcon(providerId: string): IconName {

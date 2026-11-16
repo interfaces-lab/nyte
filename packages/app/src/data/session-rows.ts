@@ -104,7 +104,6 @@ export function missingAsNull(cause: unknown): null {
   throw cause;
 }
 
-/** Who reads which session row and which parent's child rows, counted, so a read stays open while anyone still asks. */
 const interest = {
   rows: new Map<SessionId, number>(),
   parents: new Map<SessionId, number>(),
@@ -125,7 +124,6 @@ export interface ListedRows {
 
 export interface RowInputs extends ListedRows {
   readonly recorded: readonly SessionInfo[] | undefined;
-  /** Each asked session no list holds: its row, or `null` once the host says it doesn't know it. */
   readonly unlisted: ReadonlyMap<SessionId, SessionInfo | null>;
   readonly project: (session: SessionInfo) => SessionInfo | null;
 }
@@ -137,7 +135,6 @@ interface AskedRows {
 
 const NOTHING_ASKED: AskedRows = { children: [], unlisted: new Map() };
 
-/** The child lists and lone sessions that `interest` asks for. Child lists open per asked parent; a session read opens once `all` has arrived and no list holds it. */
 function askedRows(): StoreSource<AskedRows> {
   let found = NOTHING_ASKED;
 
@@ -249,7 +246,6 @@ export interface WantedReads {
   readonly unlisted: ReadonlySet<SessionId>;
 }
 
-/** Every asked parent's child list, and each asked session no list holds. No session is read alone until `all` has arrived, which holds most of them. */
 export function wantedReads(interest: RowInterest, lists: ListedRows): WantedReads {
   const listed = new Set(
     [
@@ -268,7 +264,6 @@ export function wantedReads(interest: RowInterest, lists: ListedRows): WantedRea
   };
 }
 
-/** Each list's store, held once: a family of three keys keeps every store it made, since it drops only idle stores past its sixteen newest. */
 const lists = {
   all: sessionList("all"),
   roots: sessionList("roots"),
@@ -324,7 +319,6 @@ const store = derivedStore(
   NO_ROWS,
 );
 
-/** The rows every list and lone read hold, the first list naming a session winning, each projected through the pending actions. Whatever equals `previous` stays `previous`, the whole value included, so a reader of one row re-renders only when that row changes. */
 export function deriveSessionRows(inputs: RowInputs, previous: SessionRows): SessionRows {
   const roots = withPinned(inputs.roots ?? inputs.recorded, inputs.pinned);
   const unlisted = [...inputs.unlisted];
@@ -359,7 +353,6 @@ export function deriveSessionRows(inputs: RowInputs, previous: SessionRows): Ses
     : { ...merged, listed, missing };
 }
 
-/** The newest roots, then each pinned root they leave out, which is older than all of them, so a pinned chat stays listed however many chats came after it. */
 function withPinned(
   roots: readonly SessionInfo[] | undefined,
   pinned: readonly SessionInfo[] | undefined,

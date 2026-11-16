@@ -246,7 +246,6 @@ export function LogoScaling() {
   );
 }
 
-/** The drawings let labels run past their box, so this one cuts its circle to the view by hand. */
 export function LogoEdgeReading() {
   const centre = { x: 80, y: 150 };
   const radius = 110;

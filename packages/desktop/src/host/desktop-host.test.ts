@@ -129,7 +129,7 @@ socketTest(
       { reachable: false },
     );
 
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await vi.waitFor(() => assert.equal(made.link.state.kind, "unreachable"));
     made.reachable(true);
     const finish = Promise.withResolvers<void>();
     made.fake.reply({ content: [{ type: "text", text: "working" }], until: finish.promise });

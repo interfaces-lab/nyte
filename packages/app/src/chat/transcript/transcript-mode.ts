@@ -88,10 +88,8 @@ export function nextMode(mode: TranscriptMode, event: TranscriptEvent): Transcri
   }
 }
 
-/** Within this distance, a scroll event reports the transcript's own last write, not the reader. */
 const OWN_WRITE_TOLERANCE = 1.5;
 
-/** Below this, an anchor's drift is rounding, not movement. */
 const DRIFT_TOLERANCE = 0.5;
 
 export interface TranscriptScroll {
@@ -110,7 +108,6 @@ export function initialScroll(position: ScrollViewState): TranscriptScroll {
   };
 }
 
-/** The reader's own input: the anchor drops, and the transcript stops its own smooth scroll. */
 export function touchScroll(
   state: TranscriptScroll,
   upward: boolean,
@@ -125,7 +122,6 @@ export function touchScroll(
 
 export interface SampledScroll {
   readonly state: TranscriptScroll;
-  /** The reader took over, so the transcript's own smooth scroll stops. */
   readonly cancel: boolean;
 }
 
@@ -137,10 +133,6 @@ export interface ScrollSample {
   readonly now: number;
 }
 
-/**
- * A scroll event. While an embedded frame has input, a move the transcript didn't write is the
- * reader's, either way; content shrinking under the view never is.
- */
 export function sampleScroll(state: TranscriptScroll, sample: ScrollSample): SampledScroll {
   const own =
     state.written !== null && Math.abs(sample.offset - state.written) < OWN_WRITE_TOLERANCE;
@@ -166,7 +158,6 @@ export function sampleScroll(state: TranscriptScroll, sample: ScrollSample): Sam
   };
 }
 
-/** The offset the transcript just wrote, clamped to where the view can go. */
 export function wroteScroll(
   state: TranscriptScroll,
   target: number,
@@ -179,10 +170,6 @@ export interface SettleMeasure {
   readonly now: number;
   readonly distance: number;
   readonly ready: boolean;
-  /**
-   * The anchor's tops in the view: its row's, undefined while the row isn't rendered, and its
-   * element's, undefined when it has none or it left the DOM, which `connected` tells apart.
-   */
   readonly anchor: {
     readonly connected: boolean;
     readonly rowTop: number | undefined;
@@ -202,11 +189,6 @@ export interface SettledScroll {
 
 const NO_ACTION: SettleAction = { kind: "none" };
 
-/**
- * After rows change or the view moves: Following goes back to the end unless the reader is
- * steering up, and Reading moves the view so its anchor stays where it was. An anchor element
- * that left the DOM is replaced by its row.
- */
 export function settleScroll(state: TranscriptScroll, measure: SettleMeasure): SettledScroll {
   const mode = touching(state.input, measure.now)
     ? state.mode
@@ -254,11 +236,6 @@ export function settleScroll(state: TranscriptScroll, measure: SettleMeasure): S
   };
 }
 
-/**
- * Whether a row's size change above the fold moves the view with it. A held anchor compensates
- * through `settleScroll` instead; a measured row counts once it ends above the fold, an unmeasured
- * one once it starts there.
- */
 export function adjustsOnResize(
   mode: TranscriptMode,
   item: { readonly start: number; readonly end: number; readonly measured: boolean },
@@ -269,7 +246,6 @@ export function adjustsOnResize(
   return item.measured ? item.end <= fold : item.start < fold;
 }
 
-/** Where a page was asked from: the top row, and whether the view said older messages exist. */
 export interface HistoryTop {
   readonly top: string | undefined;
   readonly older: boolean;
@@ -277,20 +253,11 @@ export interface HistoryTop {
 
 export interface HistoryPager {
   readonly loading: boolean;
-  /**
-   * "Show Earlier Steps" shows instead of the loader: the last page failed, or `EMPTY_PAGES` came
-   * back empty in a row while the view said older messages exist. A click asks again.
-   */
   readonly stalled: boolean;
-  /** Failed pages in a row. */
   readonly failures: number;
-  /** After a failure, a present asks nothing before this time. */
   readonly retryAt: number;
-  /** Empty pages in a row while the view said older messages exist. */
   readonly empty: number;
-  /** Where the page loading now was asked from. */
   readonly from: HistoryTop | null;
-  /** The top row when a page came back empty and the view showed nothing older: the head has none until the top changes. */
   readonly exhausted: string | null;
 }
 
@@ -304,10 +271,8 @@ export const IDLE_HISTORY: HistoryPager = {
   exhausted: null,
 };
 
-/** A page comes back empty when the view moved while it loaded, so this many in a row stall the pager. */
 const EMPTY_PAGES = 3;
 
-/** The wait after the first failure, doubling with each one after it up to `RETRY_MAX_MS`. */
 const RETRY_MS = 1_000;
 
 const RETRY_MAX_MS = 30_000;
@@ -325,17 +290,9 @@ export type HistoryEvent =
 
 export interface HistoryStep {
   readonly pager: HistoryPager;
-  /** `next-frame` presents again on the next frame, so pages keep coming while the view stays near the top. */
   readonly action: "none" | "load" | "next-frame";
 }
 
-/**
- * Rule 27: one page at a time while the view is near the top, once the session has settled.
- * An empty page with nothing older shown means the head has no more, so the pager asks nothing
- * until the top row changes. An empty page while the view says older messages exist is asked
- * again on the next frame, `EMPTY_PAGES` times in a row before the button shows. After a failure
- * the button shows and a present waits out a doubling delay; a click asks at once.
- */
 export function nextHistory(pager: HistoryPager, event: HistoryEvent): HistoryStep {
   switch (event.kind) {
     case "present":

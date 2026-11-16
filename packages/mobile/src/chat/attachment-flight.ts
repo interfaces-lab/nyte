@@ -7,6 +7,7 @@ import {
   withTiming,
   type SharedValue,
 } from "react-native-reanimated";
+import { scheduleOnRN } from "react-native-worklets";
 import { useMountEffect } from "../use-mount-effect.ts";
 
 export type AttachmentFrame = { x: number; y: number; width: number; height: number };
@@ -40,19 +41,33 @@ export function useAttachmentFlight({
   const opacity = useSharedValue(0);
   const source = useSharedValue(EMPTY_FRAME);
   const targetLayout = useSharedValue(EMPTY_FRAME);
-  const timers = useRef(new Set<ReturnType<typeof setTimeout>>());
   const generation = useRef(0);
   const activeId = useRef<string | undefined>(undefined);
 
   useMountEffect(() => () => {
     generation.current += 1;
     activeId.current = undefined;
-
-    for (const timer of timers.current) clearTimeout(timer);
   });
 
   const reportFrame = (id: string, frame: AttachmentFrame) => {
     if (activeId.current === id && frame.width > 0 && frame.height > 0) targetLayout.set(frame);
+  };
+
+  const hideSurface = (attempt: number) => {
+    if (generation.current === attempt) setSurfaceHidden(true);
+  };
+
+  const reveal = (attempt: number, id: string) => {
+    if (generation.current === attempt) setRevealedId(id);
+  };
+
+  const land = (id: string) => {
+    if (activeId.current !== id) return;
+    activeId.current = undefined;
+    setPhoto(undefined);
+    setPendingId(undefined);
+    setRevealedId(undefined);
+    close();
   };
 
   const run = (next: { id: string; uri: string }, commit: () => void, frame: AttachmentFrame) => {
@@ -66,33 +81,24 @@ export function useAttachmentFlight({
     setSurfaceHidden(false);
     setPhoto(next);
     setPendingId(next.id);
-    opacity.set(withTiming(1, { duration: DISSOLVE_MS }));
+    opacity.set(
+      withTiming(1, { duration: DISSOLVE_MS }, (finished) => {
+        "worklet";
+
+        if (finished) scheduleOnRN(hideSurface, current);
+      }),
+    );
     requestAnimationFrame(() => {
       if (generation.current === current) commit();
     });
-    timers.current.add(
-      setTimeout(() => {
-        if (generation.current === current) setSurfaceHidden(true);
-      }, DISSOLVE_MS),
-    );
-    progress.set(withDelay(DISSOLVE_MS + HOLD_MS, withTiming(1, TRAVEL)));
-    timers.current.add(
-      setTimeout(
-        () => {
-          if (generation.current !== current) return;
-          setRevealedId(next.id);
-          timers.current.add(
-            setTimeout(() => {
-              if (generation.current !== current) return;
-              activeId.current = undefined;
-              setPhoto(undefined);
-              setPendingId(undefined);
-              setRevealedId(undefined);
-              close();
-            }, 80),
-          );
-        },
-        DISSOLVE_MS + HOLD_MS + TRAVEL.duration + 40,
+    progress.set(
+      withDelay(
+        DISSOLVE_MS + HOLD_MS,
+        withTiming(1, TRAVEL, (finished) => {
+          "worklet";
+
+          if (finished) scheduleOnRN(reveal, current, next.id);
+        }),
       ),
     );
   };
@@ -120,9 +126,6 @@ export function useAttachmentFlight({
   const reset = () => {
     generation.current += 1;
     activeId.current = undefined;
-
-    for (const timer of timers.current) clearTimeout(timer);
-    timers.current.clear();
     progress.set(0);
     opacity.set(0);
     targetLayout.set(EMPTY_FRAME);
@@ -132,7 +135,17 @@ export function useAttachmentFlight({
     setSurfaceHidden(false);
   };
 
-  return { pendingId, revealedId, photo, surfaceHidden, overlayStyle, reportFrame, run, reset };
+  return {
+    pendingId,
+    revealedId,
+    photo,
+    surfaceHidden,
+    overlayStyle,
+    reportFrame,
+    run,
+    land,
+    reset,
+  };
 }
 
 export type AttachmentFlight = ReturnType<typeof useAttachmentFlight>;

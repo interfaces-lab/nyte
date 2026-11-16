@@ -12,19 +12,10 @@ export type HostLinkState =
     }
   | { readonly kind: "unreachable"; readonly message: string };
 
-/** The waits between attempts while the host does not answer. The route is the home's local socket, where a refused connect costs one system call, so a host that starts or restarts is seen within a second of listening. */
 const RETRY_MS = [100, 250, 500, 1_000] as const;
 
 type Attached = (connection: ClientConnection) => Disposer;
 
-/**
- * Desktop main's one connection to the host: the calls main makes, the host view and session rows
- * it follows, the actions it offers, and whether the host answers. A connection lasts as long as
- * the host process that answered it: once its view says the link is lost, the link closes it and
- * dials again on its own short curve, so main sees a host that comes back, or one that takes its
- * place, as soon as it answers, and never holds a connection that closed for good. What needs the
- * connection's socket attaches through `attach`, and is attached again to each connection after.
- */
 export class HostLink {
   readonly #dial: () => Promise<ClientConnection>;
   readonly #changed: (state: HostLinkState) => void;
@@ -46,7 +37,6 @@ export class HostLink {
     return this.#state;
   }
 
-  /** The connection to the host. While the host does not answer, it dials at once and settles with that attempt. */
   connection(): Promise<ClientConnection> {
     if (this.#stop.signal.aborted)
       return Promise.reject(new SdkError("unavailable", "The desktop's host link is closed."));
@@ -58,7 +48,6 @@ export class HostLink {
     return this.#waiting.promise;
   }
 
-  /** Calls `viewer` with the host's view now, when the link has one, and with every view after. */
   follow(viewer: (view: HostView) => void): Disposer {
     this.#viewers.add(viewer);
 
@@ -69,7 +58,6 @@ export class HostLink {
     };
   }
 
-  /** Runs `attached` on the connection the link holds now, when it holds one, and on each one after; what it returns runs when that connection is dropped, or when the returned disposer runs. */
   attach(attached: Attached): Disposer {
     this.#attached.set(attached, this.#held === undefined ? null : attached(this.#held));
 
@@ -83,7 +71,6 @@ export class HostLink {
     void this.#follow();
   }
 
-  /** Dials now instead of waiting out the pause, and has a held connection's socket check its host, when something says the host may be back: the machine woke. */
   retry(): void {
     this.#wake?.();
     this.#held?.retry();
@@ -105,7 +92,6 @@ export class HostLink {
     }
   }
 
-  /** Connects and follows the view until the link is lost. Returns whether the host answered. */
   async #hold(own: string): Promise<boolean> {
     const connection = await this.#dial().catch((cause: unknown) => {
       this.#unreachable(cause instanceof Error ? cause.message : String(cause), cause);

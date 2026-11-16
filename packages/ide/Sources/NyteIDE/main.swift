@@ -1,4 +1,5 @@
 import AppKit
+import NyteShell
 
 let application = NSApplication.shared
 let delegate = AppDelegate()

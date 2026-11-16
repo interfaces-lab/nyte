@@ -62,7 +62,6 @@ export function installMiniScrollback(options: {
       syntaxStyle: style,
       fg: kit.theme().foreground,
       streaming: true,
-      internalBlockMode: "top-level",
     });
 
     surface.root.add(body);
@@ -225,10 +224,7 @@ export function installMiniScrollback(options: {
 }
 
 function settledRows(body: MarkdownRenderable): number {
-  // oxlint-disable-next-line no-underscore-dangle -- the only view of the parsed blocks
-  const blocks = body._blockStates;
-  // oxlint-disable-next-line no-underscore-dangle -- the only view of which blocks are final
-  const last = blocks[body._stableBlockCount - 1];
+  const last = body.getChildren()[body.committedBlockCount - 1];
 
-  return last === undefined ? 0 : last.renderable.y + last.renderable.height;
+  return last === undefined ? 0 : last.y + last.height;
 }

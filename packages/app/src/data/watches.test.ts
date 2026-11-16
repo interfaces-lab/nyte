@@ -67,7 +67,7 @@ test("a chat pages in earlier messages while it is watched, and none once nobody
   );
 
   leave();
-  await new Promise((resolve) => setTimeout(resolve, 0));
+  await Promise.resolve();
 
   assert.equal(await loadEarlierMessages(session, 10), 0);
 });

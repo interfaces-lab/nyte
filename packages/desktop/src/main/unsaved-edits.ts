@@ -2,11 +2,6 @@ import type { MessageBoxSyncOptions } from "electron";
 
 const DISCARD = 0;
 
-/**
- * The windows whose renderers report unsaved editor edits, and the question asked before closing
- * one of them or quitting would lose those edits. `ask` shows the message box over `window`, or
- * over the app, and returns the chosen button.
- */
 export function createUnsavedEdits(
   ask: (options: MessageBoxSyncOptions, window: number | undefined) => number,
 ) {

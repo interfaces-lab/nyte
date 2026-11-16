@@ -32,7 +32,6 @@ export type Row =
 
 export interface TranscriptModel {
   readonly rows: readonly Row[];
-  /** The keys of the mounted rows, `rows.slice(window.start, window.end)`, in order. */
   readonly visible: readonly RowKey[];
   readonly window: MountWindow;
   readonly following: boolean;
@@ -74,7 +73,6 @@ export function rowWeight(row: Row): number {
   return row.kind === "turn" ? Math.max(1, row.turn.blocks.length) : 1;
 }
 
-/** `info` is the chat's row, whose `headAttention` says whether the live turn waits on the person. */
 export function deriveTranscript(
   view: HeadView | null,
   shells: readonly ShellJob[],
@@ -220,7 +218,6 @@ function firstReachedTurn(
   return first;
 }
 
-/** `asked` is true while the chat waits on the person, as `headAttention` says: the live turn then waits too, also when its run waits on a subagent that asks. */
 export function turnStatus(
   info: TurnInfo,
   blocks: readonly Message[],

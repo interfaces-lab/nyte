@@ -35,7 +35,6 @@ export class Alerts {
     });
   }
 
-  /** Alerts only reach someone who is away: while any Nyte window is focused, the sidebar already shows it. */
   agent(delivery: AttentionDelivery): void {
     if (this.#windows.focused() !== undefined) return;
 
@@ -75,7 +74,6 @@ export class Alerts {
     this.#step({ kind: "ended", window, end });
   }
 
-  /** Brings a chat forward: for a notification the user clicked, or for another client of the host that asked. `latest()` runs only when no window views the chat, because it restores windows when none is open. */
   openChat(session: SessionId): void {
     this.#step({
       kind: "clicked",

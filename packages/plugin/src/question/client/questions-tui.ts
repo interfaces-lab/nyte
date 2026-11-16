@@ -1,33 +1,34 @@
-import { Box, Text } from "@opentui/core";
-import type { VNode } from "@opentui/core";
 import { defineRenderer } from "@nyte-ai/plugin/client";
 import type { Plugin, Renderer } from "@nyte-ai/plugin/client";
+import { box, text } from "../../client/tui-view.ts";
+import type { TuiView } from "../../client/tui-view.ts";
 import { question } from "../schema.ts";
 
-const unreadable = (kind: string): VNode => Text({ content: `This ${kind} part cannot be shown.` });
+const unreadable = (kind: string): TuiView =>
+  text({ content: `This ${kind} part cannot be shown.` });
 
 export const questionRenderers: readonly Renderer[] = [
   defineRenderer(
     question,
     "tui",
     (state) =>
-      Box(
+      box(
         { border: true, title: "Questions", flexDirection: "column" },
         ...state.questions.map((item, index) =>
-          Box(
+          box(
             { flexDirection: "column" },
-            Text({ content: `${item.header}: ${item.question}` }),
+            text({ content: `${item.header}: ${item.question}` }),
             ...item.options.map((option) =>
-              Text({ content: `${option.label}: ${option.description}` }),
+              text({ content: `${option.label}: ${option.description}` }),
             ),
             ...(state.phase.kind === "answered"
               ? [
-                  Text({
+                  text({
                     content: `Answer: ${state.phase.answers[index].join(", ") || "Unanswered"}`,
                   }),
                 ]
               : state.phase.kind === "skipped"
-                ? [Text({ content: "Skipped" })]
+                ? [text({ content: "Skipped" })]
                 : []),
           ),
         ),

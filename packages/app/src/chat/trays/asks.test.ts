@@ -320,7 +320,6 @@ function source(first: SessionView | undefined): ViewStream {
 
 async function settled(ids: readonly SessionId[]): Promise<void> {
   await Promise.all(ids.map((id) => chatStore(id).until(() => true)));
-  await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 test("a chat's open asks are its own, then each waiting descendant's in walk order", async () => {

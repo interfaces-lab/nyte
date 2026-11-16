@@ -62,6 +62,7 @@ export function attachInput(host: InputHost): () => void {
 
   const keydown = (event: KeyboardEvent): void => {
     if (event.isComposing || event.keyCode === 229 || event.key === "Dead") return;
+    committed = "";
 
     if (event.ctrlKey && event.code === "Backquote") return;
 
@@ -136,9 +137,6 @@ export function attachInput(host: InputHost): () => void {
     preedit(null);
     committed = textarea.value;
     commit();
-    setTimeout(() => {
-      committed = "";
-    });
   };
 
   const beforeinput = (event: InputEvent): void => {

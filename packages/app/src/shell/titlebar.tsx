@@ -181,6 +181,7 @@ export function Titlebar(): ReactElement {
   const workspaceVisible = !settingsOpen && page === undefined;
   const workbenchOpen = workspaceVisible && view.expanded;
   const maximized = view.layout.kind === "maximized";
+  const workbenchCovers = workbenchOpen && maximized;
   const strip = windowTabs.strip;
   const tabs = useWindowTabsState();
 
@@ -228,28 +229,28 @@ export function Titlebar(): ReactElement {
               )}
             </span>
           )}
-          {(workspaceVisible || (strip && !settingsOpen)) &&
-            onePane &&
-            !(workbenchOpen && maximized) && (
-              <span role="group" aria-label="Split Chat" {...props(titlebarStyles.splitGroup)}>
-                {(["right", "down"] as const).map((side) => (
-                  <SplitChatButton
-                    key={side}
-                    side={side}
-                    mac={mac}
-                    disabled={!canSplit || !workspaceVisible}
-                    onSplit={() => panes.split(side)}
-                  />
-                ))}
-              </span>
-            )}
-          <span
-            {...props(titlebarStyles.trailing, !workspaceVisible && titlebarStyles.trailingLast)}
-          >
-            <span {...props(titlebarStyles.control)}>
-              <NeedsYou />
+          {(workspaceVisible || (strip && !settingsOpen)) && onePane && !workbenchCovers && (
+            <span role="group" aria-label="Split Chat" {...props(titlebarStyles.splitGroup)}>
+              {(["right", "down"] as const).map((side) => (
+                <SplitChatButton
+                  key={side}
+                  side={side}
+                  mac={mac}
+                  disabled={!canSplit || !workspaceVisible}
+                  onSplit={() => panes.split(side)}
+                />
+              ))}
             </span>
-          </span>
+          )}
+          {!workbenchCovers && (
+            <span
+              {...props(titlebarStyles.trailing, !workspaceVisible && titlebarStyles.trailingLast)}
+            >
+              <span {...props(titlebarStyles.control)}>
+                <NeedsYou />
+              </span>
+            </span>
+          )}
         </span>
         {workspaceVisible && (
           <div
@@ -270,6 +271,11 @@ export function Titlebar(): ReactElement {
                   capabilities={capabilities}
                   sessionId={selection.kind === "session" ? selection.sessionId : undefined}
                 />
+                {maximized && (
+                  <span {...props(titlebarStyles.control)}>
+                    <NeedsYou />
+                  </span>
+                )}
                 <span {...props(titlebarStyles.control)}>
                   <Tooltip>
                     <TooltipTrigger

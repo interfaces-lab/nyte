@@ -43,7 +43,6 @@ const PinSchema = Type.Object({
   publicKey: Type.String({ minLength: 1 }),
 });
 
-/** Names a route's pin in the keychain. The `nyte.host-key.` prefix is apart from the id-only pins an earlier version kept under `nyte.pin.`, which are never read. */
 async function pinKey(crypto: DeviceCrypto, route: PinRoute): Promise<string> {
   const parts =
     route.kind === "address"

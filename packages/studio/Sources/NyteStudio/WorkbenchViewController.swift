@@ -3,22 +3,14 @@ import Lune
 import NyteDesign
 import NyteKit
 
-/// The canvas and the little that floats on it: the composer, what the agent is doing, and a
-/// notice now and then. In zen mode the composer stays away until it is asked for.
 @MainActor
 final class WorkbenchViewController: NSViewController {
   private let model: StudioModel
   private let canvas = CanvasView(frame: .zero)
-  private let composer: ComposerView
-  /// Holds the composer over one of two backdrops.
-  private let dock = NSView()
-  /// The composer's everyday backdrop: plain, steady, used all day.
-  private let plain = FloatingSurface(radius: 14)
-  /// Its backdrop when it is summoned in zen mode: a moment, so it gets glass.
-  private let glass = GlassSurface(radius: 14)
-  private let activity = Pill()
-  private let notice = Pill()
+  private let dock: DockView
   private let hint = GlassPill()
+  private var canvasFocusCount = 0
+  private let editing = ComponentBanner()
   private let empty = NSStackView()
   private var observers: [Observer] = []
   private var revision = -1
@@ -26,12 +18,15 @@ final class WorkbenchViewController: NSViewController {
   private var shownSelection: CanvasSelection?
   private var focusCount = 0
   private var wasBusy = false
+  private var said: (session: String, tail: DockTail)?
+  private var notice: String?
   private var noticeTimer: Timer?
+  private var hintTimer: DispatchWorkItem?
   private var whisperShown = false
 
   init(model: StudioModel) {
     self.model = model
-    composer = ComposerView(model: model)
+    dock = DockView(composer: ComposerView(model: model))
     super.init(nibName: nil, bundle: nil)
   }
 
@@ -46,55 +41,36 @@ final class WorkbenchViewController: NSViewController {
     canvas.pin(to: view)
 
     empty.orientation = .vertical
-    empty.spacing = 8
+    empty.spacing = NyteSpace.s2.rawValue
     empty.translatesAutoresizingMaskIntoConstraints = false
-    empty.addArrangedSubview(MoonView(side: 36))
+    empty.addArrangedSubview(MoonView(.xl))
     empty.addArrangedSubview(NSTextField.nyteLabel("No designs here yet", .lg, .medium))
     let line = NSTextField.nyteWrapping(
       "Ask for a screen below. Nyte writes it as a .lune file in this project, and it appears here.",
       .base, .contentTertiary)
     line.alignment = .center
-    line.preferredMaxLayoutWidth = 320
+    line.preferredMaxLayoutWidth = NyteMetric.emptyLine.rawValue
     empty.addArrangedSubview(line)
     empty.isHidden = true
 
     hint.label.stringValue = "Zen  ·  / to ask  ·  ⌘. to leave"
-    hint.alphaValue = 0
-    glass.isHidden = true
-    activity.isHidden = true
-    notice.isHidden = true
+    hint.isHidden = true
+    editing.isHidden = true
 
-    dock.translatesAutoresizingMaskIntoConstraints = false
-    for (name, tagged) in [("canvas", canvas), ("composer", dock), ("activity", activity), ("notice", notice), ("zen-hint", hint)]
-      as [(String, NSView)]
-    {
+    for (name, tagged) in [("canvas", canvas), ("composer", dock), ("zen-hint", hint)] as [(String, NSView)] {
       tagged.identifier = NSUserInterfaceItemIdentifier(name)
     }
-    dock.wantsLayer = true
-    for subview in [empty, dock, activity, notice, hint] as [NSView] { view.addSubview(subview) }
-    for backdrop in [plain, glass] as [NSView] {
-      dock.addSubview(backdrop)
-      backdrop.pin(to: dock)
-    }
-    dock.addSubview(composer)
-    composer.pin(to: dock)
-
-    let width = dock.widthAnchor.constraint(equalToConstant: 560)
-    width.priority = .defaultHigh
+    for subview in [empty, dock, hint, editing] as [NSView] { view.addSubview(subview) }
+    dock.fitWidth(in: view, margin: .s6)
     NSLayoutConstraint.activate([
       empty.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-      empty.centerYAnchor.constraint(equalTo: view.centerYAnchor, constant: -40),
+      empty.centerYAnchor.above(view.centerYAnchor, .s8),
       dock.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-      dock.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -NyteSpace.s4),
-      dock.widthAnchor.constraint(lessThanOrEqualTo: view.widthAnchor, constant: -NyteSpace.s6 * 2),
-      width,
-      activity.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-      activity.bottomAnchor.constraint(equalTo: dock.topAnchor, constant: -NyteSpace.s2),
-      notice.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-      notice.bottomAnchor.constraint(equalTo: activity.topAnchor, constant: -NyteSpace.s2),
-      notice.widthAnchor.constraint(lessThanOrEqualTo: view.widthAnchor, constant: -NyteSpace.s6 * 2),
+      dock.bottomAnchor.above(view.bottomAnchor, .s4),
+      editing.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+      editing.topAnchor.below(view.safeAreaLayoutGuide.topAnchor, .s1),
       hint.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-      hint.topAnchor.constraint(equalTo: view.topAnchor, constant: NyteSpace.s4),
+      hint.bottomAnchor.above(view.bottomAnchor, .s6),
     ])
 
     wire()
@@ -102,6 +78,7 @@ final class WorkbenchViewController: NSViewController {
       Observer { [weak self] in self?.syncCanvas() },
       Observer { [weak self] in self?.syncChrome() },
       Observer { [weak self] in self?.syncFocus() },
+      Observer { [weak self] in self?.syncCanvasFocus() },
     ]
   }
 
@@ -110,18 +87,19 @@ final class WorkbenchViewController: NSViewController {
     updateInsets()
   }
 
-  /// Keeps "zoom to fit" clear of the toolbar above and the composer below.
   private func updateInsets() {
-    let top = model.zen ? 28 : view.safeAreaInsets.top + 36
-    let bottom = model.zen ? 36 : dock.frame.height + 56
-    canvas.insets = NSEdgeInsets(top: top, left: 36, bottom: bottom, right: 36)
+    let margin = NyteSpace.s8.rawValue
+    let top = model.zen ? 0 : view.safeAreaInsets.top
+    let bottom = model.zen || dock.isHidden ? 0 : dock.frame.height + NyteSpace.s4.rawValue
+    canvas.insets = NSEdgeInsets(top: top + margin, left: margin, bottom: bottom + margin, right: margin)
   }
 
   private func wire() {
     let model = model
-    canvas.onSelect = { selection in
+    canvas.onSelect = { [weak self] selection in
       model.selection = selection
       if selection != nil, model.panel == .chat, model.transcript == nil { model.panel = .design }
+      if model.zen { self?.putAway() }
     }
     canvas.onMoveFrame = { selection, origin, commit in model.moveFrame(selection, to: origin, commit: commit) }
     canvas.onResize = { selection, size, origin, commit in
@@ -129,15 +107,26 @@ final class WorkbenchViewController: NSViewController {
     }
     canvas.onDelete = { model.delete($0) }
     canvas.onZoom = { zoom in
-      DispatchQueue.main.async { if abs(model.zoom - zoom) > 0.0005 { model.zoom = zoom } }
+      DispatchQueue.main.async {
+        if (model.zoom * 100).rounded() != (zoom * 100).rounded() { model.zoom = zoom }
+      }
     }
     canvas.onAsk = { model.focusComposer() }
+    canvas.onEditText = { DispatchQueue.main.async { model.editText() } }
     canvas.onEscape = { if model.zen { model.zen = false } }
     canvas.markupForSelection = { model.selectedMarkup }
-    composer.onCancel = { [weak self] in self?.leaveComposer() }
-    composer.onSend = { [weak self] in
-      guard let self, self.model.zen else { return }
-      self.leaveComposer()
+    dock.composer.onCancel = { [weak self] in self?.leaveComposer() }
+    dock.composer.onSend = { [weak self] in
+      guard let self else { return }
+      self.putAway()
+      if self.model.zen { self.leaveComposer() }
+    }
+    dock.onStop = { model.stop() }
+    dock.onOpenNyte = { model.openInNyte() }
+    dock.onDismiss = { [weak self] in self?.putAway() }
+    dock.onOpenChat = { [weak self] in
+      self?.putAway()
+      model.showChat()
     }
   }
 
@@ -175,42 +164,90 @@ final class WorkbenchViewController: NSViewController {
       DispatchQueue.main.async { model.cameraRequest = nil }
     }
     empty.isHidden = !(project?.loaded == true && project?.sheets.isEmpty == true)
+
+    if let component = model.editedComponent {
+      editing.show(component.name, instances: component.instances)
+      NyteMotion.show(editing, true, enter: .fast)
+    } else {
+      NyteMotion.show(editing, false, exit: .fast)
+    }
   }
 
   private func syncChrome() {
     let transcript = model.transcript
     let busy = transcript?.execution.isBusy ?? false
-    activity.isHidden = !busy
-    activity.spins = busy
-    if let transcript, busy { activity.label.stringValue = activityLine(transcript) }
+    canvas.working = busy ? workingFiles(transcript) : []
 
-    // In zen mode the chat is put away, so the agent's last word shows here for a moment.
-    if wasBusy, !busy, model.zen, let answer = transcript?.items.last(where: { item in
-      if case .answer = item.body { return true }
-      return false
-    }), case .answer(let markdown, _) = answer.body {
-      show(notice: String(markdown.prefix(160)))
-    }
+    if let transcript, wasBusy, !busy, let word = lastWord(transcript) { said = (transcript.session, word) }
+    if busy || said?.session != transcript?.session || model.chatShown { said = nil }
     wasBusy = busy
 
     if let text = model.project?.notice {
-      show(notice: text)
       model.project?.notice = nil
+      notice = text
+      noticeTimer?.invalidate()
+      noticeTimer = Timer.scheduledTimer(withTimeInterval: Dwell.notice, repeats: false) { [weak self] _ in
+        MainActor.assumeIsolated {
+          self?.notice = nil
+          self?.settleDock(fade: true)
+        }
+      }
+    }
+    settleDock(fade: true)
+  }
+
+  private var tail: DockTail? {
+    if let notice { return .notice(notice) }
+    guard let transcript = model.transcript, transcript.execution.isBusy else { return said?.tail }
+    return transcript.execution == .waiting ? .waiting : .working(activityLine(transcript))
+  }
+
+  private func lastWord(_ transcript: Transcript) -> DockTail? {
+    if case .idle(let failed?) = transcript.execution { return .failed(failed) }
+    guard let turn = transcript.items.last?.turn else { return nil }
+    for item in transcript.items.reversed() where item.turn == turn {
+      if case .answer(let markdown, _) = item.body, !markdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        return .answer(markdown)
+      }
+    }
+    return nil
+  }
+
+  private func putAway() {
+    guard said != nil || notice != nil else { return }
+    said = nil
+    notice = nil
+    noticeTimer?.invalidate()
+    settleDock(fade: true)
+  }
+
+  private func settleDock(fade: Bool) {
+    let floating = model.zen || !model.inspectorShown
+    let input = floating && (!model.zen || whisperShown)
+    let tail = floating ? tail : notice.map { DockTail.notice($0) }
+    let shown = input || tail != nil
+    if shown {
+      dock.showsInput = input
+      dock.tail = tail
+    }
+    if fade {
+      NyteMotion.show(dock, shown, enter: .slow, exit: .normal)
+    } else {
+      dock.layer?.removeAnimation(forKey: "nyte.fade")
+      dock.alphaValue = shown ? 1 : 0
+      dock.isHidden = !shown
     }
   }
 
-  private func show(notice text: String) {
-    notice.label.stringValue = text
-    notice.isHidden = false
-    notice.alphaValue = 0
-    NyteMotion.animate(0.2) { notice.animator().alphaValue = 1 }
-    noticeTimer?.invalidate()
-    noticeTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: false) { [weak self] _ in
-      MainActor.assumeIsolated {
-        guard let self else { return }
-        NyteMotion.animate(0.2, { self.notice.animator().alphaValue = 0 }) { self.notice.isHidden = true }
-      }
+  private func workingFiles(_ transcript: Transcript?) -> Set<String> {
+    guard let transcript, let files = model.project?.files, let turn = transcript.items.last?.turn else { return [] }
+    var out: Set<String> = []
+    if let asked = model.askedAbout { out.insert(asked) }
+    for item in transcript.items where item.turn == turn {
+      guard case .tool(let step) = item.body, step.kind == "edit", let path = step.path else { continue }
+      for file in files where path == file || path.hasSuffix("/" + file) { out.insert(file) }
     }
+    return out
   }
 
   private func activityLine(_ transcript: Transcript) -> String {
@@ -227,19 +264,28 @@ final class WorkbenchViewController: NSViewController {
         return [verb, step.kind == "shell" ? nil : step.path].compactMap { $0 }.joined(separator: " ")
       }
     }
-    switch transcript.execution {
-    case .waiting: return "Waiting for you in the chat"
-    case .retrying(let reason): return "Retrying: \(reason)"
-    default: return transcript.activity ?? "Thinking"
+    if case .answer(let markdown, true) = transcript.items.last?.body {
+      let line = markdown.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+      if !line.isEmpty { return line }
     }
+    if case .retrying(let reason) = transcript.execution { return "Retrying: \(reason)" }
+    return transcript.activity ?? "Thinking"
   }
 
   private func syncFocus() {
     let count = model.composerFocus
     guard count != focusCount else { return }
     focusCount = count
+    guard !model.chatShown else { return }
     showWhisper(true)
-    composer.focus()
+    dock.composer.focus()
+  }
+
+  private func syncCanvasFocus() {
+    let count = model.canvasFocus
+    guard count != canvasFocusCount else { return }
+    canvasFocusCount = count
+    view.window?.makeFirstResponder(canvas)
   }
 
   private func leaveComposer() {
@@ -249,110 +295,96 @@ final class WorkbenchViewController: NSViewController {
 
   // MARK: Zen
 
-  /// Called by the window when zen mode turns on or off.
   func zenChanged() {
-    let zen = model.zen
     whisperShown = false
-    dock.layer?.removeAllAnimations()
-    plain.isHidden = zen
-    glass.isHidden = !zen
-    dock.isHidden = false
-    NyteMotion.animate(0.24, { dock.animator().alphaValue = zen ? 0 : 1 }) { [weak self] in
-      guard let self else { return }
-      self.dock.isHidden = self.model.zen && !self.whisperShown
-    }
-    updateInsets()
-    if zen {
+    hintTimer?.cancel()
+    if model.zen {
       view.window?.makeFirstResponder(canvas)
-      hint.alphaValue = 0
-      NyteMotion.animate(0.3) { hint.animator().alphaValue = 1 }
-      DispatchQueue.main.asyncAfter(deadline: .now() + 2.6) { [weak self] in
+      NyteMotion.show(hint, true)
+      let work = DispatchWorkItem { [weak self] in
         guard let self else { return }
-        NyteMotion.animate(0.4) { self.hint.animator().alphaValue = 0 }
+        NyteMotion.show(self.hint, false)
       }
+      hintTimer = work
+      DispatchQueue.main.asyncAfter(deadline: .now() + Dwell.hint, execute: work)
     } else {
-      hint.alphaValue = 0
+      NyteMotion.show(hint, false, exit: .fast)
     }
+    settleDock(fade: true)
+    updateInsets()
   }
 
-  /// Brings the composer up on glass, or puts it away. It rises a few points on a spring.
   private func showWhisper(_ show: Bool) {
     guard model.zen, show != whisperShown else { return }
     whisperShown = show
-    if show {
-      dock.isHidden = false
-      if !NyteMotion.reduced, let layer = dock.layer {
-        let rise = CASpringAnimation(keyPath: "transform.translation.y")
-        rise.fromValue = -12
-        rise.toValue = 0
-        rise.mass = 1
-        rise.stiffness = CGFloat(NyteSpring.travel.stiffness)
-        rise.damping = CGFloat(NyteSpring.travel.damping)
-        rise.duration = rise.settlingDuration
-        layer.add(rise, forKey: "rise")
-      }
-      NyteMotion.animate(0.16) { dock.animator().alphaValue = 1 }
-    } else {
-      NyteMotion.animate(0.14, { dock.animator().alphaValue = 0 }) { [weak self] in
-        guard let self, !self.whisperShown, self.model.zen else { return }
-        self.dock.isHidden = true
-      }
-    }
+    settleDock(fade: false)
   }
 }
 
-/// A small capsule on the floating surface: a spinner and a line of text.
-private final class Pill: NSView {
-  let label = NSTextField.nyteLabel("", .sm, .regular, .contentSecondary)
-  private let spinner = NSProgressIndicator()
-  var spins = false {
-    didSet {
-      spinner.isHidden = !spins
-      spins ? spinner.startAnimation(nil) : spinner.stopAnimation(nil)
-    }
-  }
-
-  init() {
-    super.init(frame: .zero)
-    translatesAutoresizingMaskIntoConstraints = false
-    let surface = FloatingSurface(radius: 14)
-    addSubview(surface)
-    surface.pin(to: self)
-    spinner.style = .spinning
-    spinner.controlSize = .small
-    spinner.isHidden = true
-    spinner.translatesAutoresizingMaskIntoConstraints = false
-    label.lineBreakMode = .byTruncatingMiddle
-    let stack = NSStackView(views: [spinner, label])
-    stack.spacing = 7
-    surface.contentView.addSubview(stack)
-    stack.pin(to: surface.contentView, insets: NSEdgeInsets(top: 0, left: 11, bottom: 0, right: 12))
-    NSLayoutConstraint.activate([
-      heightAnchor.constraint(equalToConstant: 28), spinner.widthAnchor.constraint(equalToConstant: 14),
-      spinner.heightAnchor.constraint(equalToConstant: 14),
-    ])
-  }
-
-  required init?(coder: NSCoder) {
-    fatalError("Made in code.")
-  }
+private enum Dwell {
+  static let notice: TimeInterval = 5
+  static let hint: TimeInterval = 2.5
 }
 
-/// A capsule of glass with one line in it, for a hint that comes and goes.
 private final class GlassPill: NSView {
   let label = NSTextField.nyteLabel("", .sm, .medium, .contentSecondary)
 
   init() {
     super.init(frame: .zero)
     translatesAutoresizingMaskIntoConstraints = false
-    let glass = GlassSurface(radius: 15)
+    wantsLayer = true
+    let glass = GlassSurface(.pill(.md))
     addSubview(glass)
     glass.pin(to: self)
     glass.contentView.addSubview(label)
-    label.pin(to: glass.contentView, insets: NSEdgeInsets(top: 7, left: 14, bottom: 7, right: 14))
+    label.pin(to: glass.contentView, insets: NyteInsets(horizontal: .s3), edges: .horizontal)
+    label.centerYAnchor.constraint(equalTo: glass.contentView.centerYAnchor).isActive = true
+    height(.md)
   }
 
   required init?(coder: NSCoder) {
     fatalError("Made in code.")
+  }
+}
+
+private final class ComponentBanner: NSView {
+  private let name = NSTextField.nyteLabel("", .sm, .medium)
+  private let count = NSTextField.nyteLabel("", .sm, .regular)
+  private let mark = NSImageView()
+
+  init() {
+    super.init(frame: .zero)
+    translatesAutoresizingMaskIntoConstraints = false
+    wantsLayer = true
+    let surface = FloatingSurface(.pill(.md))
+    addSubview(surface)
+    surface.pin(to: self)
+    mark.image = NSImage(systemSymbolName: "diamond.fill", accessibilityDescription: nil)
+    mark.symbolConfiguration = .init(pointSize: NyteGlyph.xs.pointSize, weight: .medium)
+    mark.square(NyteGlyph.sm)
+    for view in [mark, name, count] as [NSView] {
+      view.setContentCompressionResistancePriority(.required, for: .horizontal)
+    }
+    mark.contentTintColor = .nyte(.contentAccent, hue: .purple)
+    name.textColor = .nyte(.contentAccent, hue: .purple)
+    count.textColor = .nyte(.contentSecondary)
+    let row = NSStackView.row(gap: .s1_5, [mark, name, count])
+    row.setCustomSpacing(NyteSpace.s2.rawValue, after: name)
+    surface.contentView.addSubview(row)
+    row.pin(to: surface.contentView, insets: NyteInsets(horizontal: .s3), edges: .horizontal)
+    row.centerYAnchor.constraint(equalTo: surface.contentView.centerYAnchor).isActive = true
+    height(.md)
+    setAccessibilityElement(true)
+    setAccessibilityRole(.staticText)
+  }
+
+  required init?(coder: NSCoder) {
+    fatalError("Made in code.")
+  }
+
+  func show(_ component: String, instances: Int) {
+    name.stringValue = "Editing \(component)"
+    count.stringValue = instances == 1 ? "1 instance" : "\(instances) instances"
+    setAccessibilityLabel("Editing the component \(component), used \(instances) times")
   }
 }

@@ -18,6 +18,7 @@ import { watchUnsavedEdits } from "./workbench/editor/file-store.ts";
 import { reattachShells } from "./workbench/terminal/terminal-store.ts";
 import { watchClientPlugins } from "./canvas/client-plugins.tsx";
 import { paceTranscripts } from "./data/chat-store.ts";
+import { releaseStartupReads } from "./data/startup.ts";
 import { chatWindow, followStage, viewedChat } from "./window/index.ts";
 import { useHostEvents } from "./shell/host-events.ts";
 
@@ -60,7 +61,6 @@ function useViewedChat(): void {
   });
 }
 
-/** Tells main the workspace this window shows whenever it changes, from the first one on. */
 function useShownWorkspace(): void {
   useMountEffect(() => {
     const show = nyte.host.setWorkspacePath;
@@ -106,6 +106,7 @@ export function App({ appIcon, router }: { appIcon: string; router: AppRouter })
   useShownWorkspace();
   useSavedShells();
   useMountEffect(() => watchUnsavedEdits((held) => nyte.host.setUnsavedEdits?.(held)));
+  useMountEffect(releaseStartupReads);
   useMountEffect(() => {
     const frame = requestAnimationFrame(() => {
       performance.mark("nyte:shell-ready");

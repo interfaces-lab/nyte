@@ -11,6 +11,7 @@ const directories: string[] = [];
 const execute = promisify(execFile);
 
 afterEach(async () => {
+  vi.useRealTimers();
   vi.unstubAllEnvs();
   await Promise.all(
     directories.splice(0).map((path) => rm(path, { recursive: true, force: true })),
@@ -74,7 +75,8 @@ printf 'goodbye\\n'
     expect(env.PATH).toBe("/inherited");
   });
 
-  it("preserves absent PATH when the shell cannot start and does not retry", async () => {
+  it("reads again in the background after a failed read, not on the next call", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
     const local = await fixture('PATH=/recovered /bin/sh -c "$2"');
     const env: NodeJS.ProcessEnv = { SHELL: join(local.directory, "missing") };
     const repair = createShellEnvironmentRepair({ env });
@@ -82,6 +84,8 @@ printf 'goodbye\\n'
     env.SHELL = local.shell;
     await repair();
     expect(env.PATH).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(30_000);
+    await vi.waitFor(() => expect(env.PATH).toBe("/recovered"));
   });
 
   it.skipIf(process.platform !== "darwin")(

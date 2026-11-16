@@ -274,12 +274,6 @@ function readHeld(
   return before === undefined ? null : { seq: resume.seq, before };
 }
 
-/**
- * How many ids at the end of the order the client holds start `order`, or undefined when `held` does
- * not prove what the client holds. The client's order starts at `from`; `held` proves it is the
- * `held.count` shown messages from there on. The ids it keeps are checked against `order` one by one,
- * so a client that applies the answer to the order it described ends with `order` exactly.
- */
 function readKept(
   path: Path,
   order: readonly MessageId[],

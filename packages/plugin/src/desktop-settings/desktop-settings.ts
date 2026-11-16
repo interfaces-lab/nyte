@@ -2,7 +2,6 @@ import { standard } from "@nyte-ai/schema";
 import type { Plugin } from "@nyte-ai/plugin/core";
 import { DESKTOP_SETTING_SCHEMAS, DEFAULT_DESKTOP_SETTINGS } from "./schema.ts";
 
-/** Declares the desktop app's host-scoped settings, so a host the app connects to reads and writes them as `desktop.<key>`. */
 export const desktopSettingsPlugin = {
   id: "desktop",
   contribute: {

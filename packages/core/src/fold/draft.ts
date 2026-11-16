@@ -104,10 +104,6 @@ export function updatePart(
   touchRow(draft, "parts", id);
 }
 
-/**
- * A part's state as its transcript row carries it: a tool's long result texts as excerpts and a
- * compaction's provider material without its data. `part.read` returns the whole state.
- */
 export function rowState(
   partKind: string,
   state: unknown,

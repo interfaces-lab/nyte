@@ -12,7 +12,6 @@ export function backgroundItems(
   ];
 }
 
-/** A held page is not work: it stays held until its session or client goes. */
 export function countBackground(items: readonly BackgroundItem[]): HeadInfo["background"] {
   const counted = items.filter((item) => item.kind !== "page");
 

@@ -18,14 +18,12 @@ export interface PaneTab<Content extends TabContent> {
   readonly content: Content;
 }
 
-/** A pane shows one tab; new content opened into it replaces the tab, so it mounts afresh. */
 export interface Pane<Content extends TabContent> {
   readonly kind: "pane";
   readonly id: PaneId;
   readonly tab: PaneTab<Content>;
 }
 
-/** A weight shared with the split's other weighted children, or a fixed width in pixels. */
 export type PaneSize = number | { readonly px: number };
 
 export interface SplitChild<Content extends TabContent> {
@@ -115,7 +113,6 @@ export function paneOfTab<Content extends TabContent>(
   return layoutPanes(layout.root).find((pane) => pane.tab.id === tab);
 }
 
-/** Whether the layout shows the tab, as every pane shows its one tab. */
 export function tabShown<Content extends TabContent>(
   layout: Layout<Content>,
   tab: PaneTabId,
@@ -252,7 +249,6 @@ function focus<Content extends TabContent>(
   return { ...layout, focus: [paneId, ...layout.focus.filter((id) => id !== paneId)] };
 }
 
-/** A tab opened into a pane replaces the one it showed. */
 function placeTab<Content extends TabContent>(
   layout: Layout<Content>,
   tab: PaneTab<Content>,

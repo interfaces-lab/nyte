@@ -182,7 +182,6 @@ function surveyReply(request: Request): Reply | undefined {
 
 const BROWSE_PROMPT = "/browse ";
 
-/** `/browse <url>` opens the page, reads its viewport and captures it, then reports what came back. */
 function browseReply(request: Request): Reply | undefined {
   const first = request.context.messages.find((message) => message.role === "user");
 

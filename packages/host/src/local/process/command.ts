@@ -82,7 +82,6 @@ export async function run(
 
 let gitLookup: Promise<string> | undefined;
 
-/** The `git` a shell would run, found once: its path on the PATH, so a spawn skips the PATH walk, and on macOS the developer directory's git behind the `/usr/bin/git` xcrun shim (`xcrun -f git`), so it skips the shim's own lookup. The bare name when neither is found; a failed spawn finds it again. */
 function gitExecutable(): Promise<string> {
   gitLookup ??= findGit();
 

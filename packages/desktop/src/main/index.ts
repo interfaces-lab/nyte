@@ -599,10 +599,6 @@ function onScreen(bounds: Electron.Rectangle): boolean {
 
 const FIRST_FRAME_LIMIT_MS = 4_000;
 
-/**
- * A window Finder opened shows what it opened, not the last chat a launch returns to, and every
- * load of it starts on the folder.
- */
 function createWindow(windowId: string = randomUUID(), opening?: DesktopWindowOpen): NyteWindow {
   const frame = openingFrame({
     own: launchState.frame(windowId),

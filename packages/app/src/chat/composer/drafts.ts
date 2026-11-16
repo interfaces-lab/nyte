@@ -30,14 +30,12 @@ const FLUSH_DEBOUNCE_MS = 200;
 
 const STORED_IMAGE_LIMIT = 256 * 1024;
 
-/** A chat's stored step groups and thoughts shown live: at most this much JSON, the newest kept. */
 const STORED_STEPS_LIMIT = 16 * 1024;
 
 const stepsSchema = Type.Array(Type.Tuple([Type.String({ minLength: 1 }), Type.Boolean()]));
 
 type StoredSteps = Static<typeof stepsSchema>;
 
-/** The newest of `groups` that fit in `STORED_STEPS_LIMIT`, or `undefined` when there are none. */
 function storedSteps(groups: ReadonlyMap<string, boolean>): StoredSteps | undefined {
   const entries = [...groups];
   let size = 2;
@@ -90,7 +88,6 @@ const storedDraftSchema = Type.Object(
   strict,
 );
 
-/** A chat's draft with what its Restore Draft notice gives back; a draft stored before it has no `refused`. */
 const sessionDraftSchema = Type.Object(
   {
     ...composerSchema.properties,
@@ -146,7 +143,6 @@ function composerView(
   };
 }
 
-/** The images stored for `key`, each small enough to keep, or `undefined` when none is. */
 function storedImages(
   attachments: readonly ComposerImageAttachment[],
 ): readonly ComposerImageAttachment[] | undefined {
@@ -194,7 +190,6 @@ export class WindowDrafts {
     return () => this.#listeners.delete(listener);
   };
 
-  /** Calls `listener` on `notify(key)`, so one chat's keystrokes wake only what shows that chat. */
   subscribeKey(key: string, listener: () => void): () => void {
     const listeners = this.#keyed.get(key) ?? new Set<() => void>();
     this.#keyed.set(key, listeners);
@@ -284,10 +279,6 @@ export class WindowDrafts {
     this.#publishTimer = setTimeout(this.emit, FLUSH_DEBOUNCE_MS);
   }
 
-  /**
-   * Stores the chat's draft and, beside it, the text and images its Restore Draft notice gives back,
-   * so a reload still offers them; the notice's images are kept as a draft's are.
-   */
   saveSession(sessionId: SessionId, previous: SessionDraft, next: SessionDraft): void {
     const after = persistedDraft(next);
     const notice = restorable(next);
@@ -310,7 +301,6 @@ export class WindowDrafts {
     this.#pending.set(`${persistence.storageKey}:session:${sessionId}:refused`, storedImages(kept));
   }
 
-  /** Stores the chat's step groups and thoughts shown live beside its draft, on the drafts' debounce. */
   saveSteps(sessionId: SessionId, stepGroups: ReadonlyMap<string, boolean>): void {
     const persistence = this.#persistence;
 

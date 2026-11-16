@@ -1,8 +1,3 @@
-/*
- * The live previews in design pages. The design site's frame, catalogue, and
- * the way previews sit on its grid live in design.css, which loads after.
- */
-
 @layer components {
   .cloud-preview {
     display: flex;

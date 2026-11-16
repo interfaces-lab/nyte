@@ -87,9 +87,17 @@ public struct GradientStop: Equatable, Sendable {
 
 public enum Paint: Equatable, Sendable {
   case color(RGBA)
-  /// Angle in degrees, clockwise from pointing up, as in CSS.
   case linear(angle: CGFloat, stops: [GradientStop])
   case radial(center: CGPoint, stops: [GradientStop])
+}
+
+extension Paint {
+  var isOpaque: Bool {
+    switch self {
+    case .color(let color): return color.alpha >= 1
+    case .linear(_, let stops), .radial(_, let stops): return stops.allSatisfy { $0.color.alpha >= 1 }
+    }
+  }
 }
 
 public struct Shadow: Equatable, Sendable {
@@ -146,7 +154,6 @@ public struct Style: Sendable {
 }
 
 extension Style {
-  /// Reads a node's attributes into a style, resolving tokens for a theme mode.
   public init(node: Node, scope: Scope, mode: ThemeMode) {
     func raw(_ name: String) -> String? {
       guard let value = node.attributes[name] else { return nil }
@@ -215,8 +222,12 @@ extension Style {
   }
 }
 
+private let widestNumber = 100_000.0
+
 func parseNumber(_ value: String) -> CGFloat? {
-  Double(value.trimmingCharacters(in: .whitespaces)).map { CGFloat($0) }
+  guard let number = Double(value.trimmingCharacters(in: .whitespaces)), number.isFinite, abs(number) <= widestNumber
+  else { return nil }
+  return CGFloat(number)
 }
 
 func parseDimension(_ value: String) -> Dimension? {
@@ -331,7 +342,6 @@ func parseShadows(_ value: String) -> [Shadow] {
   }
 }
 
-/// Writes a number the way a person would: no trailing zeros, at most two decimals.
 public func formatNumber(_ value: CGFloat) -> String {
   let rounded = (value * 100).rounded() / 100
   if rounded == rounded.rounded() { return String(Int(rounded)) }

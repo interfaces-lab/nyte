@@ -20,7 +20,6 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-/** A host at the far end of a socket that answers the hello, and then answers `answering` and nothing else, as a host behind a dead path answers nothing. */
 function farEnd(answering: Answering) {
   const listeners = new Map<string, Set<Listener>>();
   const calls: string[] = [];

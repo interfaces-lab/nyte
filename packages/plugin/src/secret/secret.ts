@@ -338,7 +338,6 @@ async function sweep(api: PluginApi<"core">): Promise<void> {
   if (expired.length > 0) await removeSaved(api, expired);
 }
 
-/** @category plugins */
 export default {
   id: "secrets",
   contribute: {

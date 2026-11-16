@@ -60,7 +60,6 @@ export type SessionIndexEntry =
       readonly session: SessionId;
     };
 
-/** Returns the index entry a ref's record gives, or null for one the index does not hold. A receipt stored under another id points at the receipt that settles and is never settled itself, so it is never pending work. */
 export function projectSessionIndex(name: string, object: Json | null): SessionIndexEntry | null {
   const ref = sessionIndexRef(name);
 

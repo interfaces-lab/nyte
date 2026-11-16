@@ -59,7 +59,6 @@ const runtimeLoadImports = ["node:module", "module"].map((name) => ({
   message: runtimeLoadMessage,
 }));
 
-/** The lab's shell owns the display mode, the document root and the dial panel; prototypes ask it. */
 const labShellImports = [
   {
     name: "dialkit",
@@ -80,7 +79,6 @@ const reflectGlobal = {
 };
 
 export default defineConfig({
-  // Generated code, vendored upstream code, brand assets, and audit evidence are not ours to edit.
   ignorePatterns: [
     "output/**",
     ".agents/**",
@@ -89,11 +87,9 @@ export default defineConfig({
     "**/routeTree.gen.ts",
     "**/*.gen.*",
     "**/models.generated*",
-    // Local-only material, such as the lab's film and research notes.
     "**/.local/**",
   ],
   plugins: ["react", "eslint", "typescript", "unicorn", "import", "oxc"],
-  // The desktop design scale: enforced on StyleX sources, not wrapped in tokens.
   jsPlugins: [
     "./packages/app/lint/design-scale.js",
     "./packages/app/lint/interactions.js",
@@ -117,7 +113,6 @@ export default defineConfig({
     ],
     "react/rules-of-hooks": "error",
     "react/no-unstable-nested-components": "error",
-    // A component React Compiler cannot compile ships without memoization.
     "react/todo": "warn",
     "typescript/no-explicit-any": "error",
     "typescript/consistent-type-assertions": ["error", { assertionStyle: "never" }],
@@ -125,7 +120,6 @@ export default defineConfig({
     "eslint/max-lines": ["error", { max: 1000, skipBlankLines: false, skipComments: false }],
     "nyte-code/declarative-comments": "error",
     "nyte-code/no-cross-package-relative-imports": "error",
-    // Effects sync outside systems; each direct one says which.
     "nyte-code/no-direct-effect": "error",
     "nyte-code/no-is-helper-names": "error",
     "nyte-code/no-lab-imports": "error",
@@ -165,7 +159,6 @@ export default defineConfig({
       rules: { "shadcn/no-inline-styles": "off" },
     },
     {
-      // CommonJS configs, tests, and scripts run from the repository and never ship in a bundle.
       files: ["**/*.cjs", "**/*.test.{ts,tsx}", "scripts/**"],
       rules: {
         "eslint/no-restricted-globals": ["error", reflectGlobal],
@@ -173,7 +166,6 @@ export default defineConfig({
       },
     },
     {
-      // Vendored from opencode v2 (dmmulroy/anti-slop); see scripts/oxlint/anti-slop/UPSTREAM.md.
       files: ["packages/**", "scripts/**"],
       excludeFiles: ["scripts/oxlint/**", "packages/ai/**"],
       rules: {
@@ -195,11 +187,6 @@ export default defineConfig({
       },
     },
     {
-      /**
-       * Solid components run once and read refs after the tree is built; the
-       * React render-purity rules describe a different runtime, and React
-       * Compiler never compiles them.
-       */
       files: ["packages/tui/src/**/*.tsx"],
       rules: {
         "react/refs": "off",
@@ -215,11 +202,6 @@ export default defineConfig({
       },
     },
     {
-      /**
-       * The terminal client and the plugin examples carry every suspicious and
-       * perf rule as an error. Sequential awaits are how a shell is written, so
-       * that one rule stays off; `_exhaustive` is the never-check idiom.
-       */
       files: ["packages/tui/**", "packages/plugin/**"],
       rules: {
         "eslint/block-scoped-var": "error",
@@ -292,7 +274,6 @@ export default defineConfig({
       },
     },
     {
-      // Test harnesses drive components from effects.
       files: ["**/*.test.{ts,tsx}", "**/*.browser-test.tsx", "**/e2e/**", "**/test/**"],
       rules: {
         "nyte-code/no-direct-effect": "off",
@@ -359,7 +340,6 @@ export default defineConfig({
       rules: { "nyte-design/no-light-dark-outside-tokens": "error" },
     },
     {
-      // The content stairs live in the role layer; components pick one rather than fading or mixing.
       files: [
         "packages/app/src/**/*.{ts,tsx}",
         "packages/desktop/src/renderer/**/*.{ts,tsx}",
@@ -407,19 +387,12 @@ export default defineConfig({
       },
     },
     {
-      /**
-       * The restriction above keeps Node-only core code out of the shipped
-       * renderer bundle. A Node-run unit test is not part of that bundle, so it
-       * may import the full surface; `*.browser-test.tsx` still loads in a real
-       * browser and stays restricted.
-       */
       files: ["packages/app/src/**/*.test.{ts,tsx}"],
       rules: {
         "eslint/no-restricted-imports": ["error", { patterns: uiLibraryImports }],
       },
     },
     {
-      // Fixtures render bare controls to drive the component under test.
       files: ["packages/app/src/**/*.browser-test.tsx"],
       rules: {
         "react/forbid-elements": "off",
@@ -427,10 +400,6 @@ export default defineConfig({
       },
     },
     {
-      /**
-       * The QR code needs a white quiet zone a camera can read, which no
-       * token guarantees in every appearance.
-       */
       files: ["packages/app/src/environments/pairing-code.tsx"],
       rules: {
         "nyte-design/no-raw-colors": "off",
@@ -455,10 +424,6 @@ export default defineConfig({
       },
     },
     {
-      /**
-       * Lab prototypes paint with tokens so the shell's appearance and token overrides reach them,
-       * and leave the root, the display mode and the dial panel to the shell.
-       */
       files: ["packages/lab/src/**/*.{ts,tsx}"],
       excludeFiles: ["packages/lab/src/shell/**"],
       rules: {
@@ -479,17 +444,14 @@ export default defineConfig({
       },
     },
     {
-      /** Not Nyte's surface: Design Mode's overlay paints into pages the app's tokens don't reach. */
       files: ["packages/lab/src/design-mode/overlay.tsx"],
       rules: { "nyte-design/no-raw-colors": "off" },
     },
     {
-      /** Not Nyte's surface: the stand-in app a Design Canvas frame runs declares its own colours. */
       files: ["packages/lab/src/design-canvas/northstar.tsx"],
       rules: { "nyte-design/no-raw-colors": "off" },
     },
     {
-      /** Not Nyte's surface: a studio film is rendered to video, so its look is fixed values. */
       files: ["packages/lab/src/studio/films/**"],
       rules: { "nyte-design/no-raw-colors": "off" },
     },

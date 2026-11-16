@@ -61,11 +61,11 @@
   "dependencies": {
     "@nyte-ai/ai": "workspace:*",
     "@nyte-ai/schema": "workspace:*",
-    "typebox": "^1.4.6",
+    "typebox": "^1.4.7",
     "yaml": "^2.9.1"
   },
   "devDependencies": {
-    "@cfworker/json-schema": "^4.1.4",
+    "@cfworker/json-schema": "^4.1.6",
     "@types/node": "^26.6.6",
     "typescript": "catalog:",
     "vitest": "^5.1.0"

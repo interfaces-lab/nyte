@@ -10,7 +10,6 @@ export type Sink<T> = {
 
 const DONE = { done: true, value: undefined } as const;
 
-/** Yields the host's view, with the link's state laid over it as the link changes. A link that comes back is not laid over the view it dropped with: any watch's first frame restores the link, and the view held then may be another host process's, so the view says connected only with the frame this watch reads next. */
 export function watchHost(rows: Rows, opened?: AsyncIterator<Json>): AsyncIterable<HostView> {
   return coalesce(
     pushed<HostView>((sink) => {

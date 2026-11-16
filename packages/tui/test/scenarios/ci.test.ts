@@ -137,9 +137,11 @@ test("scenario D from the keyboard: CI MCP log tail, canvas, test, fix, rerun, t
     target: { kind: "session", id: session },
   });
 
-  await resumed.frame((frame) => frame.includes("Fixed src/sum.js:2"));
+  await resumed.frame(
+    (frame) => frame.includes("Fixed src/sum.js:2") && frame.includes("╰─ repo fix-sum* │"),
+  );
   await resumed.state((store) => store.screen().run.kind === "idle");
-  await resumed.renderOnce();
+  await resumed.highlighted();
   await saveFrame(resumed, "D-05-resumed");
 
   expect(framedCells(resumed.captureSpans())).toEqual(framedCells(beforeSpans));

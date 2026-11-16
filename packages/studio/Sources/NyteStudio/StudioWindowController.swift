@@ -2,32 +2,22 @@ import AppKit
 import NyteDesign
 import NyteKit
 
-private extension NSToolbarItem.Identifier {
-  static let night = NSToolbarItem.Identifier("studio.night")
-  static let zoom = NSToolbarItem.Identifier("studio.zoom")
-  static let zen = NSToolbarItem.Identifier("studio.zen")
-  static let handOff = NSToolbarItem.Identifier("studio.handOff")
-}
-
-/// The window: a native split of sidebar, canvas and inspector under a unified toolbar, and
-/// zen mode, which puts all of that away.
 @MainActor
-final class StudioWindowController: NSWindowController, NSToolbarDelegate, NSWindowDelegate, NSMenuItemValidation {
+final class StudioWindowController: NSWindowController, NSWindowDelegate, NSMenuItemValidation {
   private let model: StudioModel
   private let root = NSViewController()
-  private let split = NSSplitViewController()
+  private let split = SidesViewController()
   private let status: StatusViewController
   private let workbench: WorkbenchViewController
   private let sidebarItem: NSSplitViewItem
   private let panelItem: NSSplitViewItem
-  private let toolbar = NSToolbar(identifier: "studio")
-  private let zoomItem = NSMenuToolbarItem(itemIdentifier: .zoom)
-  private let nightItem = NSToolbarItem(itemIdentifier: .night)
-  private let handOffItem = NSToolbarItem(itemIdentifier: .handOff)
+  private var bar: StudioToolbar?
   private var observers: [Observer] = []
-  /// Whether the sidebar and inspector were collapsed before zen mode put them away.
   private var beforeZen: (sidebar: Bool, panel: Bool)?
   private var lightsTracking: NSTrackingArea?
+  private var panelWatch: NSKeyValueObservation?
+  private var chatRequests = 0
+  private static let splitAutosave = "studio.split"
 
   init(model: StudioModel) {
     self.model = model
@@ -37,17 +27,18 @@ final class StudioWindowController: NSWindowController, NSToolbarDelegate, NSWin
     panelItem = NSSplitViewItem(inspectorWithViewController: PanelViewController(model: model))
 
     let window = NSWindow(
-      contentRect: NSRect(x: 0, y: 0, width: 1440, height: 900),
+      contentRect: NSRect(x: 0, y: 0, width: NyteMetric.windowWidth.rawValue, height: NyteMetric.windowHeight.rawValue),
       styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered,
       defer: false)
     super.init(window: window)
 
     window.title = "Nyte Studio"
     window.titleVisibility = .hidden
-    window.titlebarAppearsTransparent = true
     window.toolbarStyle = .unified
+    window.titlebarAppearsTransparent = true
     window.titlebarSeparatorStyle = .none
-    window.minSize = NSSize(width: 900, height: 560)
+    window.backgroundColor = CanvasView.desk
+    window.minSize = NSSize(width: NyteMetric.windowMinWidth.rawValue, height: NyteMetric.windowMinHeight.rawValue)
     window.tabbingMode = .disallowed
     window.delegate = self
     window.center()
@@ -55,30 +46,36 @@ final class StudioWindowController: NSWindowController, NSToolbarDelegate, NSWin
 
     sidebarItem.viewController.view.identifier = NSUserInterfaceItemIdentifier("sidebar")
     panelItem.viewController.view.identifier = NSUserInterfaceItemIdentifier("inspector")
-    sidebarItem.minimumThickness = 208
-    sidebarItem.maximumThickness = 340
+    sidebarItem.minimumThickness = NyteMetric.sidebarMin.rawValue
+    sidebarItem.maximumThickness = NyteMetric.sidebarMax.rawValue
     sidebarItem.canCollapse = true
-    panelItem.minimumThickness = 264
-    panelItem.maximumThickness = 400
+    panelItem.minimumThickness = NyteMetric.inspectorMin.rawValue
+    panelItem.maximumThickness = NyteMetric.inspectorMax.rawValue
     panelItem.canCollapse = true
     let canvasItem = NSSplitViewItem(viewController: workbench)
-    canvasItem.minimumThickness = 420
+    canvasItem.minimumThickness = NyteMetric.canvasMin.rawValue
     split.splitViewItems = [sidebarItem, canvasItem, panelItem]
-    split.splitView.autosaveName = "studio.split"
+    split.splitView.autosaveName = StudioWindowController.splitAutosave
+
+    let bar = StudioToolbar(model: model, split: split.splitView)
+    window.toolbar = bar.toolbar
+    self.bar = bar
 
     root.view = NSView()
     window.contentViewController = root
-    window.setContentSize(NSSize(width: 1440, height: 900))
+    window.setContentSize(NSSize(width: NyteMetric.windowWidth.rawValue, height: NyteMetric.windowHeight.rawValue))
 
-    toolbar.delegate = self
-    toolbar.displayMode = .iconOnly
-    window.toolbar = toolbar
     model.undoManager = window.undoManager
 
+    panelWatch = panelItem.observe(\.isCollapsed, options: [.initial, .new]) { _, change in
+      let shown = change.newValue == false
+      MainActor.assumeIsolated { model.inspectorShown = shown }
+    }
     observers = [
       Observer { [weak self] in self?.showPhase() },
-      Observer { [weak self] in self?.refreshToolbar() },
       Observer { [weak self] in self?.applyZen() },
+      Observer { [weak self] in self?.showToolbar() },
+      Observer { [weak self] in self?.showChat() },
     ]
   }
 
@@ -88,7 +85,6 @@ final class StudioWindowController: NSWindowController, NSToolbarDelegate, NSWin
 
   // MARK: Phases
 
-  /// Shows the split once a project is open, and a quiet status screen until then.
   private func showPhase() {
     let ready = model.phase == .ready
     let wanted: NSViewController = ready ? split : status
@@ -101,90 +97,16 @@ final class StudioWindowController: NSWindowController, NSToolbarDelegate, NSWin
       root.view.addSubview(wanted.view)
       wanted.view.pin(to: root.view)
     }
-    toolbar.isVisible = ready && !model.zen
     status.refresh()
-  }
-
-  // MARK: Toolbar
-
-  func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-    [
-      .toggleSidebar, .sidebarTrackingSeparator, .flexibleSpace, .handOff, .night, .zoom, .zen,
-      .inspectorTrackingSeparator, .flexibleSpace, .toggleInspector,
-    ]
-  }
-
-  func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-    toolbarDefaultItemIdentifiers(toolbar)
-  }
-
-  func toolbar(
-    _ toolbar: NSToolbar, itemForItemIdentifier identifier: NSToolbarItem.Identifier,
-    willBeInsertedIntoToolbar flag: Bool
-  ) -> NSToolbarItem? {
-    switch identifier {
-    case .night:
-      configure(nightItem, "Night", symbol: "sun.max", #selector(toggleNight(_:)))
-      return nightItem
-    case .zoom:
-      zoomItem.label = "Zoom"
-      zoomItem.toolTip = "Zoom"
-      zoomItem.showsIndicator = true
-      zoomItem.menu = zoomMenu()
-      return zoomItem
-    case .zen:
-      let item = NSToolbarItem(itemIdentifier: identifier)
-      configure(item, "Zen", symbol: "viewfinder", #selector(toggleZen(_:)))
-      item.toolTip = "Only the canvas (⌘.)"
-      return item
-    case .handOff:
-      handOffItem.label = "Continue in Nyte"
-      handOffItem.toolTip = "Nyte is attached to the same host. Open this chat there."
-      handOffItem.image = MoonView.image(side: 16)
-      handOffItem.target = self
-      handOffItem.action = #selector(continueInNyte(_:))
-      handOffItem.isBordered = true
-      return handOffItem
-    default:
-      return nil
-    }
-  }
-
-  private func configure(_ item: NSToolbarItem, _ label: String, symbol: String, _ action: Selector) {
-    item.label = label
-    item.toolTip = label
-    item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
-    item.target = self
-    item.action = action
-    item.isBordered = true
-  }
-
-  private func zoomMenu() -> NSMenu {
-    let menu = NSMenu()
-    menu.addItem(withTitle: "Zoom to Fit", action: #selector(CanvasView.zoomToFit(_:)), keyEquivalent: "")
-    menu.addItem(withTitle: "Zoom to Selection", action: #selector(CanvasView.zoomToSelection(_:)), keyEquivalent: "")
-    menu.addItem(.separator())
-    for percent in [50, 100, 200, 400] {
-      let item = NSMenuItem(title: "\(percent)%", action: #selector(zoomTo(_:)), keyEquivalent: "")
-      item.target = self
-      item.tag = percent
-      menu.addItem(item)
-    }
-    return menu
-  }
-
-  private func refreshToolbar() {
-    zoomItem.title = "\(Int((model.zoom * 100).rounded()))%"
-    let night = model.project?.mode == .dark
-    nightItem.image = NSImage(systemSymbolName: night ? "moon.fill" : "sun.max", accessibilityDescription: nil)
-    nightItem.toolTip = night ? "Show designs by day" : "Show designs by night"
-    handOffItem.isHidden = model.nyte == nil
   }
 
   // MARK: Zen
 
-  /// Puts the chrome away or brings it back as it was. The split view and the toolbar do their
-  /// own native animation; the traffic lights fade and come back under the pointer.
+  private func showToolbar() {
+    let shown = model.phase == .ready && !model.zen
+    if window?.toolbar?.isVisible != shown { window?.toolbar?.isVisible = shown }
+  }
+
   private func applyZen() {
     let zen = model.zen && model.phase == .ready
     guard let window, zen != (beforeZen != nil) else { return }
@@ -192,34 +114,37 @@ final class StudioWindowController: NSWindowController, NSToolbarDelegate, NSWin
 
     if zen {
       beforeZen = (sidebarItem.isCollapsed, panelItem.isCollapsed)
-      NyteMotion.animate(0.28) {
-        sidebarItem.animator().isCollapsed = true
-        panelItem.animator().isCollapsed = true
-        lights?.animator().alphaValue = 0
-      }
-      toolbar.isVisible = false
+      split.splitView.autosaveName = nil
+      sidebarItem.isCollapsed = true
+      panelItem.isCollapsed = true
+      if let lights { NyteMotion.fade(lights, to: 0, .normal) }
       trackLights(true)
     } else if let before = beforeZen {
       beforeZen = nil
-      toolbar.isVisible = true
       trackLights(false)
-      NyteMotion.animate(0.28) {
-        sidebarItem.animator().isCollapsed = before.sidebar
-        panelItem.animator().isCollapsed = before.panel
-        lights?.animator().alphaValue = 1
-      }
+      sidebarItem.isCollapsed = before.sidebar
+      panelItem.isCollapsed = before.panel
+      split.splitView.autosaveName = StudioWindowController.splitAutosave
+      if let lights { NyteMotion.fade(lights, to: 1, .slow) }
     }
     workbench.zenChanged()
   }
 
-  /// In zen mode the close, minimise and zoom buttons show only while the pointer is near them.
+  private func showChat() {
+    let requests = model.chatRequests
+    guard requests != chatRequests else { return }
+    chatRequests = requests
+    if panelItem.isCollapsed { panelItem.isCollapsed = false }
+  }
+
   private func trackLights(_ on: Bool) {
     guard let view = window?.contentView else { return }
     if let lightsTracking { view.removeTrackingArea(lightsTracking) }
     lightsTracking = nil
     guard on else { return }
+    let zone = NSSize(width: NyteMetric.lightsZoneWidth.rawValue, height: NyteMetric.lightsZoneHeight.rawValue)
     let area = NSTrackingArea(
-      rect: NSRect(x: 0, y: view.bounds.height - 44, width: 96, height: 44),
+      rect: NSRect(x: 0, y: view.bounds.height - zone.height, width: zone.width, height: zone.height),
       options: [.mouseEnteredAndExited, .activeAlways], owner: self)
     view.addTrackingArea(area)
     lightsTracking = area
@@ -234,8 +159,8 @@ final class StudioWindowController: NSWindowController, NSToolbarDelegate, NSWin
   }
 
   private func fadeLights(to alpha: CGFloat) {
-    let lights = window?.standardWindowButton(.closeButton)?.superview
-    NyteMotion.animate(0.12) { lights?.animator().alphaValue = alpha }
+    guard let lights = window?.standardWindowButton(.closeButton)?.superview else { return }
+    NyteMotion.fade(lights, to: alpha, .fast)
   }
 
   func windowDidResize(_ notification: Notification) {
@@ -251,10 +176,6 @@ final class StudioWindowController: NSWindowController, NSToolbarDelegate, NSWin
   @objc func toggleNight(_ sender: Any?) {
     guard let project = model.project else { return }
     project.mode = project.mode == .dark ? .light : .dark
-  }
-
-  @objc private func zoomTo(_ sender: NSMenuItem) {
-    model.cameraRequest = .zoom(CGFloat(sender.tag) / 100)
   }
 
   @objc func newChat(_ sender: Any?) {
@@ -296,10 +217,30 @@ final class StudioWindowController: NSWindowController, NSToolbarDelegate, NSWin
       return model.transcript?.execution.isBusy ?? false
     case #selector(continueInNyte(_:)):
       return model.nyte != nil
-    case #selector(newChat(_:)), #selector(focusComposer(_:)), #selector(installSkill(_:)), #selector(zoomTo(_:)):
+    case #selector(newChat(_:)), #selector(focusComposer(_:)), #selector(installSkill(_:)):
       return ready
     default:
       return true
     }
   }
+}
+
+private final class SidesViewController: NSSplitViewController {
+  override func toggleSidebar(_ sender: Any?) {
+    guard cuts, let side = splitViewItems.first(where: { $0.behavior == .sidebar }) else {
+      super.toggleSidebar(sender)
+      return
+    }
+    side.isCollapsed.toggle()
+  }
+
+  override func toggleInspector(_ sender: Any?) {
+    guard cuts, let side = splitViewItems.first(where: { $0.behavior == .inspector }) else {
+      super.toggleInspector(sender)
+      return
+    }
+    side.isCollapsed.toggle()
+  }
+
+  private var cuts: Bool { NSApp.currentEvent?.type == .keyDown || NyteMotion.reduced }
 }

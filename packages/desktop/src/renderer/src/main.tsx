@@ -51,7 +51,9 @@ firstFrame.observe({ entryTypes: ["mark"] });
 
 void shellReady.promise
   .then(windowContentReady)
-  .then(() => requestAnimationFrame(() => setTimeout(() => window.nyte.windowPainted(), 0)));
+  .then(() =>
+    requestAnimationFrame(() => requestAnimationFrame(() => window.nyte.windowPainted())),
+  );
 
 focusManager.setEventListener((setFocused) => {
   const update = (): void => {

@@ -10,7 +10,6 @@ type Laid = {
   readonly result: HeadView;
 };
 
-/** Lays the head's journaled sends over each view it is given, returning the view it returned last when the view and the sends are unchanged. A view at a fresh `seq` tells the journal which sends the host now shows. */
 export function laidSends(
   journal: JournalLoop,
   session: SessionId,

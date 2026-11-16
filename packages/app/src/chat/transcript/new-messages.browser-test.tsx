@@ -182,14 +182,12 @@ const catalog = {
 
 const host = { workspace: undefined } satisfies HostState;
 
-function painted(): Promise<void> {
-  return new Promise((resolve) =>
-    window.requestAnimationFrame(() => window.setTimeout(() => resolve(), 0)),
-  );
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
 }
 
 async function frames(count: number): Promise<void> {
-  for (let frame = 0; frame < count; frame += 1) await painted();
+  for (let frame = 0; frame < count; frame += 1) await nextFrame();
 }
 
 async function until(predicate: () => boolean, what: string): Promise<void> {
@@ -197,7 +195,7 @@ async function until(predicate: () => boolean, what: string): Promise<void> {
 
   while (!predicate()) {
     if (performance.now() > deadline) throw new Error(`Timed out waiting for ${what}`);
-    await painted();
+    await nextFrame();
   }
 }
 

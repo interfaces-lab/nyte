@@ -69,7 +69,6 @@ interface ComposerFrameProps {
   busy?: boolean;
   stopping?: boolean;
   onAbort?: () => void;
-  /** The tray or question Escape closes before it stops the run. */
   tray?: { readonly open: boolean; readonly close: () => void };
   floating?: boolean;
   onSteerQueued?: () => void;
@@ -95,11 +94,6 @@ interface ComposerFrameProps {
   answering?: boolean;
 }
 
-/**
- * Enter and Send decide on the editor's own document at the keypress. `document` is the last
- * render's copy, which trails text that reached the editor outside an input event, so deciding on it
- * could skip the send or steer the queued message instead.
- */
 export function ComposerFrame({
   surface,
   document,

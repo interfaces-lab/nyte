@@ -75,13 +75,6 @@ const EMPTY_CATALOG: SessionCatalogView = {
   tools: [],
 };
 
-/**
- * Holds one head's window over the session scope and keeps it current. A session scope has no event
- * for its session's removal, so the store also listens to the host scope's `change` events, which
- * the connection's session lists subscribe to: when one drops the store's session, the store reads
- * the head again, and the host's `unknown` answer leaves it stale with that error. A connection
- * that holds no session list hears no drop, and its store learns of the removal at its next read.
- */
 export function openHeadStore(
   input: { readonly session: SessionId; readonly head: HeadName; readonly tail: number },
   join: Join,
@@ -295,7 +288,6 @@ function rebuild(
   return { head, order, leadingPrompt: source.leadingPrompt, activation, rows, catalog };
 }
 
-/** Keeps the previous table for each table `touched` leaves out, so a table's identity changes only when its rows do. */
 function keepTables(
   source: SessionRows,
   previous: HeadRows | undefined,

@@ -77,11 +77,6 @@ function workspacePath(cwd: string, path: string): string | null {
   return target.startsWith(`${root}/`) ? target.slice(root.length + 1) : null;
 }
 
-/**
- * Whether `tool` may change something, which is what `ask` asks before:
- * reads, listings, delegation and tools whose `approval` is not `policy`
- * change nothing (a subagent's own calls are judged in its session).
- */
 function changes(tool: ApprovalTool): boolean {
   const kind = tool.class.kind;
 
@@ -93,12 +88,6 @@ function changes(tool: ApprovalTool): boolean {
   );
 }
 
-/**
- * Whether a call of `definition` may change something, judged by the class
- * it gives a call without arguments: every class takes its kind from the
- * tool, not from the arguments. A class that needs arguments counts as
- * changing.
- */
 export function mayChange(definition: ToolDefinition): boolean {
   try {
     return changes({
@@ -250,21 +239,6 @@ async function approveRuntimeCall(
   }
 }
 
-/**
- * Gates tool calls on the session's `permissions` policy, keying grants on
- * each tool's own name. A call in Nyte's loop that asks parks its
- * before_tool hook on an approval part, so the request outlives a host
- * restart and any client watching the session can answer it; a denial
- * reaches the model as the rejected call's reason. A call another agent
- * runtime asks to run comes through `approve` and waits on the same part
- * while its runtime runs; its mirror call (`approval: "runtime"`) is not
- * asked about again. Only a principal with owner authority can allow. A
- * session that only reads (see `readsOnly`) is offered no tool that changes
- * something, under every policy, and a call to one is refused at once.
- *
- * @category plugins
- * @since 0.1.0
- */
 export default {
   id: "approvals",
   contribute: { parts: [approval], settings: [permissions] },

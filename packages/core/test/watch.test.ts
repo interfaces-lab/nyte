@@ -21,6 +21,7 @@ import { envelope, headRef, inboxRef, memoryStore, sessionRef } from "../src/sto
 import type { Kernel } from "../src/contract/kernel.ts";
 import type { CommitRecord, SessionRecord } from "../src/store.ts";
 import { fakeModels, open } from "./fake-models.ts";
+import { until } from "../src/harness.ts";
 
 const first: SessionId = asId("s1");
 
@@ -262,7 +263,7 @@ describe("watch", () => {
     assert(seen !== null);
 
     expect(opened.messages.map((message) => message.at <= seen)).toEqual([true, true]);
-    await new Promise((resolve) => setTimeout(resolve, 2));
+    await until(() => (Date.now() > seen ? true : undefined));
     await (await session.send("Again.")).settled();
     const current = await session.view();
     const again = current.messages.at(-2);

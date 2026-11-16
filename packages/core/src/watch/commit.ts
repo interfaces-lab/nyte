@@ -27,7 +27,6 @@ export interface CallChange {
   readonly events?: readonly DurableEvent[];
   readonly updates?: readonly RefUpdate[];
   readonly under?: RunScope;
-  /** Refs that must exist for the change to land, beside `under`'s. */
   readonly fences?: readonly string[];
   readonly index?: { readonly add: readonly string[]; readonly drop: readonly string[] };
 }

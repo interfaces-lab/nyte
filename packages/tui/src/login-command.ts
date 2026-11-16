@@ -17,17 +17,8 @@ interface AuthInput {
   readonly connection: () => Promise<Connection>;
 }
 
-/** The prompt's Ctrl+C, Esc and Ctrl+D end the run the way a signal does: exit 130, nothing printed. */
 const interrupt = (): void => void process.emit("SIGINT");
 
-/**
- * `nyte login [<PROVIDER>] [--method oauth|api_key] [--key -] [--label <LABEL>] [--no-open]`.
- * Prompts need an interactive terminal; `--key -` reads an API key from piped stdin instead. The
- * browser opens only when `mode.browser`; with `--no-open` or over SSH the link is printed and the
- * provider's copy-code or device-code flow runs instead. A piped key has no one to ask for a
- * login name, so it takes the provider's default name. The host bounds the wait: it ends a sign-in
- * that isn't finished after 10 minutes. A failed sign-in gets this command as its retry.
- */
 export async function loginCommand(input: AuthInput): Promise<void> {
   const args = parseCommandArgs("login", input.args, 1);
   const providerId = args.positionals[0];
@@ -98,7 +89,6 @@ export async function loginCommand(input: AuthInput): Promise<void> {
   out.say(formatCommand(["nyte"], out.mode.stderr));
 }
 
-/** `nyte logout [<PROVIDER>]`: removes the provider's active saved login and says what still signs it in. */
 export async function logoutCommand(input: AuthInput): Promise<void> {
   const args = parseCommandArgs("logout", input.args, 1);
   const providerId = args.positionals[0];
@@ -126,10 +116,6 @@ export async function logoutCommand(input: AuthInput): Promise<void> {
   if (!out.mode.tty.stdout || !out.mode.interactive) out.result(`${receipt.provider.id}\n`);
 }
 
-/**
- * The key piped to stdin for `--key -`, minus one trailing newline. The key is never an argument,
- * and no error here repeats `--key`'s value, which may be a key typed by mistake.
- */
 async function readKey(
   option: string,
   providerId: string | undefined,
@@ -176,7 +162,6 @@ async function readKey(
   return key;
 }
 
-/** Answers the provider's secret prompt once with the piped key. Anything else it asks needs a terminal, which the prompts refuse. */
 function answerKey(prompts: LoginDriver, key: string): LoginDriver {
   let unused = true;
 

@@ -266,7 +266,7 @@ test.each<[string, SendEnd | null, readonly ("sent" | "send-refused")[]]>([
     await app.runner.settled();
     app.runner.run({ kind: "send", submission: SUBMISSION, delivery: "queue" });
     await app.runner.settled();
-    await Bun.sleep(0);
+    await until(() => (app.dispatched.some((msg) => msg.kind === kinds.at(-1)) ? true : undefined));
 
     expect(
       app.dispatched.flatMap((msg) =>
@@ -433,7 +433,7 @@ test("a watch that throws is logged once, even when it ends before any view", as
   await app.runner.settled();
   session.end("link lost");
   await until(() => (app.ports.log.entries.length > 0 ? true : undefined));
-  await Bun.sleep(10);
+  await app.runner.dispose();
   expect(app.ports.log.entries).toMatchObject([
     { origin: "watch", error: { message: "link lost" } },
   ]);
@@ -451,7 +451,7 @@ test("following another session stops the previous watch; its late views are dro
   second.push(LANDED);
   const view = await app.received("view");
   expect(view).toMatchObject({ session: asId("s2") });
-  await Bun.sleep(10);
+  await app.runner.dispose();
   expect(app.dispatched.filter((msg) => msg.kind === "view")).toHaveLength(1);
 });
 
@@ -747,7 +747,7 @@ test("before the host opens, local effects run at once and host effects wait, th
   app.runner.run({ kind: "follow", target: "new", announce: false });
   app.runner.run({ kind: "copy", text: "now" });
   app.runner.run({ kind: "follow", target: asId("s1"), announce: false });
-  await Bun.sleep(5);
+  await until(() => (app.ports.terminal.copies.length > 0 ? true : undefined));
 
   expect(app.ports.terminal.copies).toEqual(["now"]);
   expect(app.dispatched).toEqual([]);

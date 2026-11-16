@@ -180,8 +180,14 @@ async function until<T>(read: () => T | null | undefined, what: string): Promise
     if (value !== null && value !== undefined) return value;
 
     if (performance.now() > deadline) throw new Error(`Timed out waiting for ${what}`);
-    await new Promise<void>((resolve) => window.setTimeout(resolve, 10));
+    await nextFrame();
   }
+}
+
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) =>
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve())),
+  );
 }
 
 async function failedReplies(): Promise<readonly string[]> {
@@ -333,7 +339,7 @@ async function secondQuestion(step: (host: HTMLElement) => Promise<void>) {
   await click(within(host, "button", "Next"));
   await until(() => (asking?.current === 1 ? true : null), "the second question");
   await step(host);
-  await new Promise((resolve) => setTimeout(resolve, 150));
+  await nextFrame();
 
   const outcome = {
     sent: JSON.stringify(sent),
@@ -525,7 +531,10 @@ export async function mount(): Promise<void> {
       <QuestionTray disabled={false} viewport={null} />
     </QuestionDockContext>,
   );
-  await new Promise((resolve) => setTimeout(resolve, 50));
+  await until(
+    () => document.querySelector("[data-slot='tray'] [data-slot='questionnaire-title']"),
+    "the question tray",
+  );
 }
 
 export async function show(theme: "light" | "dark") {

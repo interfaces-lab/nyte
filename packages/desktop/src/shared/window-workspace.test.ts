@@ -14,7 +14,6 @@ function workspace(change: Partial<WorkspaceInfo>): WorkspaceInfo {
     trusted: true,
     projectSources: [],
     addedBy: asId("owner"),
-    sessions: 1,
     writers: [],
     isolation: null,
     ...change,

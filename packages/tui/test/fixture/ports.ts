@@ -54,7 +54,6 @@ export interface FakeSession extends SessionPort {
     readonly stoppedTasks: unknown[];
   };
   withdrawResult: "withdrawn" | "landed-first" | "gone";
-  /** How each send ends once the journal holds it; `sent` by default. */
   sendEnd: SendEnd | null;
   answerResult: boolean | Error;
   readonly toolStates: Map<string, ToolPartState>;
@@ -66,7 +65,6 @@ export interface FakeHost extends HostPort {
   readonly sessions: ReadonlyMap<string, FakeSession>;
   publishCatalog(catalog: ModelCatalogView): void;
   publishSessions(sessions: readonly SessionInfo[]): void;
-  /** Lists replayed sends the host refused, as a connection that just loaded its journal does. */
   refuseReplays(sends: readonly RefusedSend[]): void;
   readonly hostSettings: { readonly id: string; readonly value: unknown }[];
   readonly starts: Parameters<HostPort["start"]>[0][];

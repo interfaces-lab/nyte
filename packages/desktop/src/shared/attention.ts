@@ -49,7 +49,6 @@ export type WindowAttention =
   | { readonly kind: "ready"; readonly viewed: string | null }
   | { readonly kind: "loading"; readonly opening: SessionId };
 
-/** Least recently focused first: the last viewer of a chat is where a notification click goes. */
 export type AttentionWindows = ReadonlyMap<HostWindow, WindowAttention>;
 
 export type WindowAttentionEvent =
@@ -70,10 +69,6 @@ export function findViewer(windows: AttentionWindows, session: SessionId): HostW
   )?.[0];
 }
 
-/**
- * A page that ends without its window closing keeps `loading`, so a click that raced the window's
- * load opens its chat once the new page reports what it views. A focused window moves last.
- */
 export function stepWindowAttention(
   windows: AttentionWindows,
   event: WindowAttentionEvent,
@@ -108,10 +103,6 @@ export function stepWindowAttention(
   };
 }
 
-/**
- * Leaves a running reminder whose interval and delivery are unchanged; stops the others held and
- * starts the new or changed ones.
- */
 export function reconcileReminders(
   held: ReadonlyMap<string, { readonly signature: string }>,
   wanted: readonly AttentionReminder[],
@@ -130,12 +121,6 @@ export function reconcileReminders(
   };
 }
 
-/**
- * An ask always reaches the person, once, where `alertsOnChat` says: a subagent's on the chat above
- * it while that chat alerts for it, which a parent does for any ask below it, and a side chat's on
- * the side chat, whatever `notifySubagents` says. `notifySubagents` decides only whether a
- * subagent's or side chat's own end alerts.
- */
 export function planAttention(input: {
   readonly previous: AttentionSeen | undefined;
   readonly rows: readonly SessionInfo[];

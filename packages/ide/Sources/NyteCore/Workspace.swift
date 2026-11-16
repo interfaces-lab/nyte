@@ -1,6 +1,4 @@
 import Foundation
-
-/// The folder a window is working in.
 public struct Workspace: Sendable, Equatable {
     public let root: URL
 
@@ -9,8 +7,6 @@ public struct Workspace: Sendable, Equatable {
     }
 
     public var name: String { root.lastPathComponent }
-
-    /// A path relative to the root, or the full path for a file outside it.
     public func relativePath(of url: URL) -> String {
         let path = url.standardizedFileURL.path
         let prefix = root.path.hasSuffix("/") ? root.path : root.path + "/"

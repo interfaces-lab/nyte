@@ -17,7 +17,6 @@ const ink = {
   muted: "#6b6a67",
   faint: "#a3a19d",
   accent: "#2222dd",
-  // The accent at 58% over the paper, as the design mark draws its light.
   light: "#7d7de9",
   dot: "#d9d8d4",
 };
@@ -85,22 +84,29 @@ function Sheet({ ticks, children }: { ticks: readonly number[]; children: ReactN
 }
 
 function Mark({ size }: { size: number }) {
-  const light = (size * 2) / 3;
+  const unit = size / 100.507;
+
+  const circles = [
+    { x: 48, y: 50.253, radius: 48, background: ink.accent },
+    { x: 68.507, y: 40.691, radius: 32, background: ink.light },
+  ];
 
   return (
     <div style={{ position: "relative", display: "flex", width: size, height: size }}>
-      <div style={{ width: size, height: size, borderRadius: size / 2, background: ink.accent }} />
-      <div
-        style={{
-          position: "absolute",
-          left: size - light,
-          top: 0,
-          width: light,
-          height: light,
-          borderRadius: light / 2,
-          background: ink.light,
-        }}
-      />
+      {circles.map((circle) => (
+        <div
+          key={circle.radius}
+          style={{
+            position: "absolute",
+            left: (circle.x - circle.radius) * unit,
+            top: (circle.y - circle.radius) * unit,
+            width: circle.radius * 2 * unit,
+            height: circle.radius * 2 * unit,
+            borderRadius: circle.radius * unit,
+            background: circle.background,
+          }}
+        />
+      ))}
     </div>
   );
 }

@@ -339,7 +339,6 @@ export const workspaceCases = {
       trusted: true,
       projectSources: [],
       addedBy: principal,
-      sessions: 2,
       writers: [run],
       isolation: null,
     },

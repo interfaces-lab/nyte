@@ -4,7 +4,6 @@ import type { DerivedStore } from "../data/derived-store.ts";
 import { chatStore } from "../data/chat-store.ts";
 import { reconcile } from "../data/keep.ts";
 
-/** A descendant with an open ask, and its parts: the same array while its parts are unchanged. */
 export interface WaitingChat {
   readonly id: SessionId;
   readonly title: string;
@@ -80,10 +79,6 @@ export function waitingBelow(root: SessionId): DerivedStore<readonly WaitingChat
   return store;
 }
 
-/**
- * Every child still running below `session`, at any depth. An ask can outlive its run's wait: a
- * question past its minute stays open while the run goes on, so a working child is walked too.
- */
 function waitingChildren(session: SessionId): readonly WaitingChild[] {
   return (chatStore(session).value?.background ?? []).flatMap((item) => {
     if (item.kind !== "child" || (item.state !== "waiting" && item.state !== "working")) return [];
@@ -93,7 +88,6 @@ function waitingChildren(session: SessionId): readonly WaitingChild[] {
   });
 }
 
-/** An approval, question or secret: a modal part its run hasn't ended. */
 function asking(part: PartView): boolean {
   return part.placement.kind === "modal" && part.status.kind === "live";
 }

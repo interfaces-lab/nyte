@@ -316,12 +316,6 @@ export default {
   },
 } satisfies Plugin;
 
-/**
- * A chat that runs as a registered agent starts subagents of its own type: its agent, and its
- * model and thinking level unless the call names a model. Any other chat's subagents run on what
- * the call names and the defaults. An agent no plugin registers is read as the model it names,
- * alone or with `model`, as a model asked for loosely ("astra", or "sol" with "6.1") often is.
- */
 async function childConfiguration(
   invocation: ToolInvocation,
   args: Pick<Infer<typeof taskParameters>, "agent" | "model" | "thinking">,
@@ -377,7 +371,6 @@ async function findModel(invocation: ToolInvocation, name: string): Promise<Mode
   );
 }
 
-/** The one model `agent`, which no plugin registers, names with `model`, with `model` alone or by itself. */
 async function findAgentModel(
   invocation: ToolInvocation,
   agent: string,
@@ -407,7 +400,6 @@ async function listModels(invocation: ToolInvocation): Promise<readonly ModelInf
   );
 }
 
-/** The refs `name` means: its exact `provider/id`, else its exact id, else the closest loose match. */
 function matchModels(models: readonly ModelInfo[], name: string): readonly ModelRef[] {
   const refs = models.flatMap((info) => (info.fast === null ? [info.ref] : [info.ref, info.fast]));
   const exact = refs.filter((ref) => `${ref.provider}/${ref.id}` === name);
@@ -418,11 +410,6 @@ function matchModels(models: readonly ModelInfo[], name: string): readonly Model
   return ids.length > 0 ? ids : closestModels(refs, name);
 }
 
-/**
- * The refs a loosely written name means: those whose `provider/id` holds every word of `name`,
- * letters and numbers apart, with the fewest other words in the id. "sol 6.1" finds gpt-6.1-sol
- * and "astra" gpt-6-astra over its fast variant. A name with no letters means none.
- */
 function closestModels(refs: readonly ModelRef[], name: string): readonly ModelRef[] {
   const wanted = modelWords(name);
 

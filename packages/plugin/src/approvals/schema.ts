@@ -16,7 +16,6 @@ export const PERMISSIONS = "permissions";
 
 export const approvalPolicy = policy;
 
-/** Each policy with the words every client shows for it, in menu order. */
 export const APPROVAL_POLICIES = [
   { value: "ask", label: "Ask first", badge: "Asks before commands, file edits and other tools" },
   {

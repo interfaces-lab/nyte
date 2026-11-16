@@ -1,7 +1,5 @@
-// A host for working on Nyte Studio without a model account: the real host and its file tools
-// over a copy of the sample project, with a scripted model that edits the designs.
-
 import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { cp, mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -53,7 +51,8 @@ const moves: readonly Move[] = [
     path: "design/screens/tonight.lune",
     edits: [
       {
-        oldText: '    <box h="fill" />\n    <Button w="fill" label="Wake me at moonset" />\n  </col>\n</frame>\n\n<frame name="Tonight · night"',
+        oldText:
+          '    <box h="fill" />\n    <Button w="fill" label="Wake me at moonset" />\n  </col>\n</frame>\n\n<frame name="Tonight · night"',
         newText:
           '    <row gap="12" w="fill">\n      <Stat label="High tide" value="23:08" icon="water.waves" />\n      <Stat label="Low tide" value="05:21" icon="water.waves" />\n    </row>\n\n    <box h="fill" />\n    <Button w="fill" label="Wake me at moonset" />\n  </col>\n</frame>\n\n<frame name="Tonight · night"',
       },
@@ -78,7 +77,36 @@ const moves: readonly Move[] = [
         newText: '<number name="radius.control" value="26" />',
       },
     ],
-    done: "Everything is rounder: cards at 36, tiles and controls at 26.",
+    done: [
+      "Everything is rounder now:",
+      "",
+      "1. `radius.card` went from 28 to **36**",
+      "2. `radius.tile` and `radius.control` are both **26**",
+      "",
+      "The change is in `design/tokens.lune`, so every screen picked it up:",
+      "",
+      "```xml",
+      '<number name="radius.card" value="36" />',
+      "```",
+      "",
+      "| Token | Before | Now |",
+      "| --- | --- | --- |",
+      "| `radius.card` | 28 | 36 |",
+      "| `radius.tile` | 20 | 26 |",
+      "",
+      "- [x] Cards, tiles and controls",
+      "- [ ] The app icon keeps its own corner",
+      "",
+      "> Radii are in https://example.com/tokens if you want the reasoning.",
+      "",
+      "```mermaid",
+      "graph LR",
+      "  T[tokens.lune] --> C[controls.lune]",
+      "  T --> B[phase-card.lune]",
+      "  C --> S[tonight.lune]",
+      "  B --> S",
+      "```",
+    ].join("\n"),
   },
 ];
 
@@ -88,7 +116,8 @@ const fallbackMove: Move = {
   path: "design/screens/tonight.lune",
   edits: [
     {
-      oldText: '<text style="$display" color="$ink">Tonight</text>\n    </col>\n\n    <PhaseCard />\n\n    <row gap="12" w="fill">\n      <Stat />\n      <Stat label="Moonset" value="06:15" icon="sunset.fill" />\n    </row>\n\n    <row w="fill" pad="14 16"',
+      oldText:
+        '<text style="$display" color="$ink">Tonight</text>\n    </col>\n\n    <PhaseCard />\n\n    <row gap="12" w="fill">\n      <Stat />\n      <Stat label="Moonset" value="06:15" icon="sunset.fill" />\n    </row>\n\n    <row w="fill" pad="14 16"',
       newText:
         '<text style="$display" color="$ink">Clear tonight</text>\n    </col>\n\n    <PhaseCard />\n\n    <row gap="12" w="fill">\n      <Stat />\n      <Stat label="Moonset" value="06:15" icon="sunset.fill" />\n    </row>\n\n    <row w="fill" pad="14 16"',
     },
@@ -134,27 +163,33 @@ const { models } = fakeModels({
   fallback: answer,
 });
 
-const root = await realpath(await mkdtemp(join(tmpdir(), "nyte-studio-dev-")));
+const kept = process.env.NYTE_STUDIO_DEV_ROOT;
+
+if (kept !== undefined) await mkdir(kept, { recursive: true });
+
+const root = await realpath(kept ?? (await mkdtemp(join(tmpdir(), "nyte-studio-dev-"))));
 
 const project = join(root, "tide");
 
 const home = join(root, "home");
 
-await cp(join(import.meta.dirname, "../sample"), project, { recursive: true });
-
 await mkdir(home, { recursive: true });
 
-for (const args of [
-  ["init", "-q"],
-  ["config", "user.name", "Studio Dev"],
-  ["config", "user.email", "studio@example.test"],
-  ["add", "--all"],
-  ["commit", "-qm", "Seed the Tide designs"],
-])
-  execFileSync("git", args, { cwd: project });
+if (!existsSync(project)) {
+  await cp(join(import.meta.dirname, "../sample"), project, { recursive: true });
+
+  for (const args of [
+    ["init", "-q"],
+    ["config", "user.name", "Studio Dev"],
+    ["config", "user.email", "studio@example.test"],
+    ["add", "--all"],
+    ["commit", "-qm", "Seed the Tide designs"],
+  ])
+    execFileSync("git", args, { cwd: project });
+}
 
 const host = await sdk.open({
-  store: sqliteStore({ memory: true }),
+  store: sqliteStore(kept === undefined ? { memory: true } : { path: join(root, "store.db") }),
   models,
   workspace: { kind: "local", path: project },
   home,
@@ -163,7 +198,7 @@ const host = await sdk.open({
 await host.settings.apply("permissions", "full");
 
 const listener = await host.listen({
-  transport: { kind: "http", hostname: "127.0.0.1", ...(port === 0 ? {} : { port }) },
+  transport: { kind: "http", hostname: "127.0.0.1", port },
   auth: { kind: "token", token },
 });
 
@@ -179,7 +214,7 @@ const stop = (): void => {
   void listener
     .close()
     .then(() => host.close())
-    .then(() => rm(root, { recursive: true, force: true }))
+    .then(() => (kept === undefined ? rm(root, { recursive: true, force: true }) : undefined))
     .finally(() => process.exit(0));
 };
 

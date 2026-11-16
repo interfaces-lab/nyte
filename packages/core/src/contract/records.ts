@@ -186,10 +186,8 @@ const ReportedEndType = Type.Union([
   record({ kind: Type.Literal("job"), job: idSchema<"job">() }),
 ]);
 
-/** The end a report tells of: a child's run or a job. */
 export type ReportedEnd = Static<typeof ReportedEndType>;
 
-/** A `report` receipt reserves the report a child's run or a job owes `head`, in the set that ends it. Admitting the report replaces it with the `send` receipt of the same id, a waiter that takes the end deletes it, and a delivery refused for good settles it `undelivered`. */
 const ReceiptRecordType = Type.Union([
   record({
     ...RECEIPT,
@@ -341,7 +339,6 @@ const ProcessRecordType = record({
   pid: nullable(Type.Number()),
   capabilities: list(Type.String()),
   startedAt: Type.Number(),
-  /** The OS process it runs as, for a peer on the same machine to tell at once that it is gone; absent where its host cannot tell. */
   os: Type.Optional(OsProcessType),
 });
 
@@ -350,7 +347,6 @@ export type ProcessRecord = Static<typeof ProcessRecordType>;
 const JobRecordType = record({
   id: idSchema<"job">(),
   instance: Type.String(),
-  /** The process group the job runs as, recorded once it started where its host can tell; absent on a job started before, or by a provider that cannot. */
   os: Type.Optional(OsProcessType),
   workspace: idSchema<"workspace">(),
   session: idSchema<"session">(),

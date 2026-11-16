@@ -18,7 +18,6 @@ import type { FileBuffer, FileDocumentSnapshot } from "./file-document.ts";
 
 type FileLineRange = NonNullable<Extract<MessageReference, { readonly kind: "file" }>["lines"]>;
 
-/** Where to put the caret or selection: lines are one-based, a range includes both ends. */
 type FileTarget =
   | { readonly kind: "position"; readonly line: number; readonly column?: number }
   | {
@@ -36,27 +35,19 @@ interface FileLocation {
 
 type FileDraft = Pick<FileDocumentSnapshot, "contents" | "savedContents" | "version">;
 
-/** Where a tab was last asked to show its file. */
 interface FileNavigation {
   readonly target?: FileTarget;
   readonly navigationRevision: number;
 }
 
-/** What every tab showing one file shares: its contents, how they're shown, and whether they're saved. */
 interface FileState {
-  /** Opening at a target shows the source. */
   readonly showSource: boolean;
   readonly saving: boolean;
   readonly draft: FileDraft | undefined;
 }
 
 export interface FileTab extends FileNavigation, FileState {
-  /** The path inside the view's workspace, or the absolute path of a file outside it. */
   readonly displayPath: string;
-  /**
-   * Outside the view's workspace: not under its folder, or, once its document loads, scoped outside
-   * by the host, as a symlink out of the workspace is. It has no place in the workspace tree.
-   */
   readonly external: boolean;
   readonly id: WorkbenchTabId;
   readonly path: string;
@@ -150,7 +141,6 @@ function sameTarget(first: FileTarget | undefined, second: FileTarget | undefine
   }
 }
 
-/** Moves the entries of `key`'s files that `target` maps to their new paths. */
 function rekey<Value>(
   map: Map<string, Value>,
   key: WorkbenchViewKey,
@@ -167,17 +157,10 @@ function rekey<Value>(
   }
 }
 
-/** One file in one view: tabs in different groups share it, views don't. */
 function fileKey(key: WorkbenchViewKey, path: string): string {
   return `${key}\n${path}`;
 }
 
-/**
- * Open files over the workbench's file tabs. Tabs showing one file share its buffer, draft and
- * save state, kept until the last of them closes; closing one of several never asks. `split`
- * opens a tab's file, by default the strip's, in a new group beside its own; `place` drops a tab
- * into a group or beside it.
- */
 export function createFileTabStore(store: WorkbenchStore = workbench) {
   const navigations = new Map<WorkbenchTabId, FileNavigation>();
   const files = new Map<string, FileState>();
@@ -639,7 +622,6 @@ const fileStore = createFileTabStore();
 
 export const fileActions = fileStore.actions;
 
-/** Reports whether this window holds unsaved edits whenever that changes. A window starts with none. */
 export function watchUnsavedEdits(report: (held: boolean) => void): () => void {
   let held = false;
 

@@ -60,10 +60,6 @@ function setPrompt(next: TrustPrompt | undefined): void {
   for (const listener of listeners) listener();
 }
 
-/**
- * Shows what opening a folder came to, once the bridge answers: an opened folder becomes the
- * window's workspace, asking for trust when it needs it, and a failure says why.
- */
 export function handleOpenOutcome(outcome: OpenWorkspaceOutcome): void {
   switch (outcome.kind) {
     case "failed":

@@ -54,19 +54,10 @@ const styles = create({
 
 type DiagramState = DiagramResult | { readonly kind: "pending" };
 
-async function renderMermaid(source: string): Promise<DiagramResult> {
-  const runtime = await loadDeferred("mermaid");
-  await new Promise<void>((resolve) => {
-    setTimeout(resolve);
-  });
-
-  return runtime.renderDiagram(source);
-}
-
 export function MermaidDiagram({ source }: { readonly source: string }): ReactElement {
   const render = useQuery({
     queryKey: keys.mermaid(source),
-    queryFn: () => renderMermaid(source),
+    queryFn: () => loadDeferred("mermaid").then((runtime) => runtime.renderDiagram(source)),
   });
 
   const [sourceVisible, setSourceVisible] = useState(false);

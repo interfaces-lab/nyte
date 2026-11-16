@@ -39,3 +39,22 @@ These rules hold in every package.
 - Choose at the call site. A component that can show either takes the fact that decides, as
   `TaskMark` takes `job`, never a style.
 - Never restyle a shared indicator to look like the other.
+
+## Workbench editor
+
+- `WorkbenchViewState.tabs` is the only file-tab list. The strip shows Editor as one slot, and
+  `move-slot` moves its file records as a block.
+- Resolve Editor's target file with `activeEditorFile`.
+- Close requests append to the view's `closeQueue` and never replace it. Cancel empties the queue
+  and keeps those files open with their drafts. A saving entry can't be discarded.
+- Split placement uses the source file's group, not the focused one. Native drag (`FILE_TAB_DRAG`)
+  is the only drag owner on file tabs; never wrap them in the strip's `SortableList`.
+- The focused group's marker reads `appearance.focusColor`, not `focusRing`, which pointer modality
+  clears.
+
+## Renderer tests
+
+- A renderer test is a vitest test that calls `testRenderer(url, setup, { captures })`, plus a
+  browser file exporting a `run()` that returns a string.
+- To capture, call `window.rendererCapture(name)`, then await the `renderer-captured` document event.
+- The window is 800×600. Size the layout with a container element, not the window.

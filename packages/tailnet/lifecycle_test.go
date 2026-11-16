@@ -18,7 +18,6 @@ const runMainVariable = "NYTE_TAILNET_TEST_RUN_MAIN"
 func TestMain(m *testing.M) {
 	if os.Getenv(runMainVariable) == "1" {
 		main()
-		os.Exit(0)
 	}
 
 	os.Exit(m.Run())
@@ -77,7 +76,10 @@ func TestOneNodePerStateDirectoryAndStdinIsItsLease(t *testing.T) {
 	first.lease.Close()
 
 	select {
-	case <-first.done:
+	case err := <-first.done:
+		if err != nil {
+			t.Fatalf("the node ended with %v after stdin closed, not exit code 0", err)
+		}
 	case <-time.After(1500 * time.Millisecond):
 		t.Fatal("the node kept running after stdin closed")
 	}
@@ -87,6 +89,8 @@ func TestOneNodePerStateDirectoryAndStdinIsItsLease(t *testing.T) {
 }
 
 func startProcess(t *testing.T, dir, controlURL, socket string) *process {
+	t.Helper()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	cmd := exec.CommandContext(ctx, os.Args[0], "--dir", dir, "--socket", socket, "--hostname", "locked", "--control-url", controlURL)
 	cmd.Env = append(os.Environ(), runMainVariable+"=1", "TS_NO_LOGS_NO_SUPPORT=true")

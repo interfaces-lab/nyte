@@ -1,6 +1,5 @@
 import type { SessionId } from "@nyte-ai/sdk";
 
-/** The chats held open with nobody drawing them: `kept` the newest chats a pane showed, `warm` the ones a person may open next, each until its time. Oldest first. */
 export interface ChatHolds {
   readonly kept: readonly SessionId[];
   readonly warm: readonly { readonly session: SessionId; readonly until: number }[];
@@ -21,7 +20,6 @@ const WARM_MS = 5_000;
 
 export const NO_HOLDS: ChatHolds = { kept: [], warm: [] };
 
-/** Keeping or warming a chat makes it the newest of its kind and drops the oldest past the limit; a warm hold lapses at its `until`; a chat the host no longer has drops from both; a replaced connection drops the kept ones and leaves the warm ones. */
 export function nextHolds(holds: ChatHolds, event: HoldEvent): ChatHolds {
   switch (event.kind) {
     case "keep":
@@ -60,7 +58,6 @@ export function heldSessions(holds: ChatHolds): ReadonlySet<SessionId> {
   return new Set([...holds.kept, ...holds.warm.map((hold) => hold.session)]);
 }
 
-/** When the first warm hold lapses, or `null` with none. */
 export function nextExpiry(holds: ChatHolds): number | null {
   return holds.warm.length === 0 ? null : Math.min(...holds.warm.map((hold) => hold.until));
 }

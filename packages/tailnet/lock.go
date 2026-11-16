@@ -31,7 +31,7 @@ func lockState(dir string) (*os.File, error) {
 	}
 
 	path := filepath.Join(dir, lockName)
-	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
+	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600) //nolint:gosec // The host chooses --dir.
 	if err != nil {
 		return nil, err
 	}
@@ -45,9 +45,10 @@ func lockState(dir string) (*os.File, error) {
 	if !acquired {
 		defer file.Close()
 
+		// A holder that hasn't written its pid yet reads as 0, which the status omits.
 		var held lockHolder
 		data, _ := io.ReadAll(io.LimitReader(file, 4096))
-		json.Unmarshal(data, &held)
+		_ = json.Unmarshal(data, &held)
 
 		return nil, &lockedError{path: path, holder: held.PID}
 	}

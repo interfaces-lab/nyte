@@ -26,7 +26,6 @@ function chat(id: string): SessionInfo {
   };
 }
 
-/** A page's held deletes, kept in memory: `ids` is what a reload of the page would find. */
 function pageLedger(): HeldDeletes & { readonly ids: () => readonly SessionId[] } {
   let ids: readonly SessionId[] = [];
 
@@ -39,7 +38,6 @@ function pageLedger(): HeldDeletes & { readonly ids: () => readonly SessionId[] 
   };
 }
 
-/** Sessions on a scripted host whose updates wait for `writes`. While `lag.held` is set, the host's rows wait for `release` after an answer, as a socket change that comes after the HTTP answer does. */
 function fixture(
   chats: readonly SessionInfo[] = [chat("one"), chat("two"), chat("three")],
   held: HeldDeletes = pageLedger(),
@@ -459,9 +457,7 @@ test.each<{
 test.each<{
   readonly name: string;
   readonly fails: boolean;
-  /** Renames back to the old name once the first rename is answered. */
   readonly back?: true;
-  /** Ms waited after the answer before the host's row arrives; null when it never does. */
   readonly rowAfter: number | null;
   readonly afterAnswer: { readonly name: string; readonly pending: number };
   readonly settled: { readonly name: string; readonly pending: number };

@@ -134,7 +134,6 @@ export interface AppInfo {
 export type AppMenuCommand =
   | { readonly kind: "action"; readonly action: AppMenuAction }
   | { readonly kind: "about"; readonly info: AppInfo }
-  /** A file Finder opened with Nyte, inside this window's workspace. */
   | { readonly kind: "open-file"; readonly path: string };
 
 export type ServerState =
@@ -391,7 +390,6 @@ export type UpdateState =
   | { readonly kind: "installing"; readonly version: string }
   | { readonly kind: "failed"; readonly version: string; readonly message: string };
 
-/** This machine's host against the app's build. `stale` runs another build until it restarts. */
 export type HostProcess =
   | { readonly kind: "current"; readonly version: string; readonly startedAt: number | null }
   | { readonly kind: "stale"; readonly version: string; readonly startedAt: number | null }
@@ -517,7 +515,6 @@ export interface AttentionBridge {
 export interface HostBridge {
   onMenuCommand(listener: (command: AppMenuCommand) => void): Disposer;
   setThemePreference(preference: ThemePreference): void;
-  /** The folder a window reopening on `session` shows, when the host can show it without asking. */
   readonly restore?: (input: {
     readonly session: string;
   }) => Promise<SelectedWorkspace | undefined>;
@@ -526,7 +523,6 @@ export interface HostBridge {
   readonly socket?: OpenSocket;
   fonts(): Promise<LocalFontCatalog>;
   openWorkspace(input: { path: string }): Promise<OpenWorkspaceOutcome>;
-  /** Adds the folder to the host's workspaces without selecting it for this window. */
   registerWorkspace(input: { path: string }): Promise<RegisterWorkspaceOutcome>;
   readonly pickWorkspace?: () => Promise<OpenWorkspaceOutcome>;
   readonly pickFolder?: () => Promise<string | undefined>;
@@ -540,7 +536,6 @@ export interface HostBridge {
   };
   readonly hostProcess?: {
     state(): Promise<HostProcess>;
-    /** Asks first, naming the running work, then restarts or stops the host. */
     confirm(input: { readonly action: "restart" | "stop" }): Promise<void>;
     start(): Promise<void>;
   };
@@ -574,9 +569,7 @@ export interface HostBridge {
   }) => Promise<number | undefined>;
   readonly browser?: BrowserBridge;
   readonly attention?: AttentionBridge;
-  /** The path of the workspace this window shows, so Finder's Open With sends its files here. */
   readonly setWorkspacePath?: (path: string | null) => void;
-  /** Whether this window holds unsaved editor edits, so closing or leaving it asks first. */
   readonly setUnsavedEdits?: (held: boolean) => void;
   onEvent(listener: (event: HostEvent) => void): Disposer;
 }

@@ -42,14 +42,6 @@ export async function seedSigner(
   };
 }
 
-/**
- * Imports an Ed25519 seed in its PKCS#8 form (the fixed prefix
- * `302e020100300506032b657004220420` and the seed; Web Crypto imports no raw
- * private seed). It imports it twice (§43j): once extractable, only to read
- * the public key back through its JWK `x`, and once non-extractable with
- * usage `sign`, the only key it keeps. A seed that is not 32 bytes rejects
- * `SdkError("invalid")`.
- */
 async function identityKeys(
   seed: Uint8Array,
 ): Promise<{ readonly signing: CryptoKey; readonly publicKey: string }> {

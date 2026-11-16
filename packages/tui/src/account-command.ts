@@ -53,7 +53,6 @@ export async function accountCommand(
   }
 }
 
-/** Links this machine and exits once the host shares it; the host keeps sharing after that. */
 async function link(openBrowser: boolean, output: Output, signal: AbortSignal): Promise<number> {
   if (!output.mode.interactive)
     throw new CliError("missing_input", "Can't link this machine in non-interactive mode.", {
@@ -71,11 +70,6 @@ async function link(openBrowser: boolean, output: Output, signal: AbortSignal): 
   }
 }
 
-/**
- * Waits for the first linked view with sharing on. A linked view with sharing off comes first when
- * the host has just linked or still has to turn sharing on. On a signal it returns 0 and the
- * invocation exits 128 + n.
- */
 async function share(
   endpoint: LocalEndpoint,
   openBrowser: boolean,
@@ -168,7 +162,6 @@ function showApproval(linking: Awaiting, openBrowser: boolean, output: Output): 
   output.status("none", "Waiting for approval…");
 }
 
-/** `linked` after an approval in this run, `shared` when this run turned sharing on, `unchanged` otherwise. */
 function showLinked(
   view: Linked,
   outcome: "linked" | "shared" | "unchanged",
@@ -289,7 +282,6 @@ function unlinkedRows(view: Unlinked): Row[] {
   }
 }
 
-/** Destructive: preview what goes, then ask, or require `--yes` without a terminal. */
 async function unlink(yes: boolean, output: Output, signal: AbortSignal): Promise<number> {
   if (!yes && !output.mode.interactive)
     throw new CliError(
@@ -529,7 +521,6 @@ function unavailable(reason: ConnectUnavailable): CliError {
   }
 }
 
-/** One action word, then only that action's options; every mistake fails before any host work. */
 function parseAccountArgs(args: readonly string[]): Request {
   const found = readAction("account", args);
   const action = found.action;

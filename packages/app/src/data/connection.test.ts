@@ -37,10 +37,9 @@ function nameFor(current: ClientConnection | undefined): string | undefined {
 }
 
 async function settled(waiter: Promise<ClientConnection>): Promise<string | undefined> {
-  return Promise.race([
-    waiter.then(nameFor),
-    new Promise<string>((resolve) => setTimeout(() => resolve("pending"), 0)),
-  ]);
+  const won = await Promise.race([waiter, Promise.resolve("pending" as const)]);
+
+  return won === "pending" ? won : nameFor(won);
 }
 
 const heard: boolean[] = [];
@@ -161,7 +160,6 @@ test.each<{
   queryClient.setQueryData(keys.document("notes.md"), "cached");
   queryClient.setQueryData(keys.server, "cached");
   installConnection(onHost(row.host));
-  await new Promise((resolve) => setTimeout(resolve, 0));
 
   expect({
     hostRead: queryClient.getQueryData(keys.document("notes.md")),
@@ -220,7 +218,6 @@ test.each<{
   const leave = observer.subscribe(() => undefined);
   await vi.waitFor(() => expect(observer.getCurrentResult().status).toBe("error"));
   health.push(row.next);
-  await new Promise((resolve) => setTimeout(resolve, 10));
 
   expect(reads).toBe(row.reads);
   leave();

@@ -32,7 +32,7 @@ async function until(predicate: () => boolean, what: string): Promise<void> {
 
   while (!predicate()) {
     if (performance.now() > deadline) throw new Error(what);
-    await new Promise<void>((resolve) => setTimeout(resolve, 10));
+    await new Promise((resolve) => requestAnimationFrame(resolve));
   }
 }
 
@@ -96,8 +96,13 @@ export async function run(): Promise<string> {
     if (height() !== 400)
       return `A remount should paint at the reported height, not ${String(height())}`;
 
+    const heard = new Promise((resolve) =>
+      window.addEventListener("message", resolve, { once: true }),
+    );
+
     window.postMessage(sizeChangedNotification(900), "*");
-    await new Promise<void>((resolve) => setTimeout(resolve, 50));
+    await heard;
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
     if (height() !== 400) return "A message from another source changed the height";
 
@@ -106,12 +111,10 @@ export async function run(): Promise<string> {
 
     if (reported.join() !== "boom") return `Reported ${JSON.stringify(reported)}`;
     draw(part('{"height":500,"error":"boom"}'));
-    await new Promise<void>((resolve) => setTimeout(resolve, 50));
-
-    if (reported.join() !== "boom") return "The same error was reported twice";
-
     preferences.theme.set("dark");
     await until(() => caption() === "context:dark", "The theme change did not reach the shell");
+
+    if (reported.join() !== "boom,context:dark") return "The same error was reported twice";
 
     if (frame()?.style.colorScheme !== "dark") return "The frame did not follow the scheme";
 

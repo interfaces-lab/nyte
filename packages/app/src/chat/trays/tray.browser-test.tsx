@@ -13,8 +13,11 @@ const CASES: readonly { readonly name: string; readonly steps: readonly Step[] }
   { name: "left open while its chat is hidden", steps: ["focus-composer", "hide", "show"] },
 ];
 
-function wait(ms: number): Promise<void> {
-  return new Promise((resolve) => window.setTimeout(resolve, ms));
+async function until(done: () => boolean): Promise<void> {
+  const deadline = performance.now() + 2_000;
+
+  while (!done() && performance.now() < deadline)
+    await new Promise((resolve) => window.requestAnimationFrame(resolve));
 }
 
 async function play(steps: readonly Step[]): Promise<string> {
@@ -37,15 +40,17 @@ async function play(steps: readonly Step[]): Promise<string> {
     );
 
   render();
-  await wait(300);
 
   for (const step of steps) {
     if (step === "focus-composer") container.querySelector("input")?.focus();
     open = open && step !== "close" && step !== "close+hide";
     hidden = step === "show" ? false : hidden || step === "hide" || step === "close+hide";
     render();
-    await wait(300);
+
+    if (hidden) await until(() => !container.contains(document.activeElement));
   }
+
+  if (!open) await until(() => container.querySelector("section") === null);
 
   const tray = container.querySelector("section") === null ? "gone" : "shown";
   const focus = document.activeElement?.tagName.toLowerCase() ?? "none";

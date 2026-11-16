@@ -90,7 +90,6 @@ export async function openHost(options: OpenHostOptions = {}): Promise<Host> {
   }
 }
 
-/** Opens the default store with its files readable by their owner alone: the file holds every chat, and SQLite gives the write-ahead log and shared memory beside it the mode of the file. A folder that already existed keeps its own mode, so the file's is what protects it. */
 async function defaultStore(home: string, onMigrate?: () => void): Promise<Store> {
   const path = storePath(home);
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
@@ -101,7 +100,6 @@ async function defaultStore(home: string, onMigrate?: () => void): Promise<Store
   return sqliteStore({ path, onMigrate });
 }
 
-/** Defers the release of each thing it starts on `opened`, which runs them newest first and each at most once: when a later step throws, or when the returned host closes. A store the caller gave is never deferred, so it stays open. */
 async function composeOpen(options: OpenHostOptions, opened: AsyncDisposableStack): Promise<Host> {
   const home = options.home ?? homedir();
   const workspace = options.workspace ?? { kind: "local", path: process.cwd() };

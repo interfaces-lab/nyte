@@ -191,7 +191,6 @@ export function workbenchReferenceOpener(view: WorkbenchViewKey): ReferenceOpene
   };
 }
 
-/** A single line puts the caret on it; a longer range selects every line. */
 function lineTarget(lines: { readonly start: number; readonly end: number }) {
   return lines.start === lines.end
     ? { kind: "position" as const, line: lines.start }

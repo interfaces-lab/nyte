@@ -38,7 +38,6 @@ const NOT_RUNNING = "Claude Code is no longer running this turn. Send a message 
 
 const BASE_URL = "process://claude-code";
 
-/** One agent, like an ACP agent: Claude Code runs the model its account defaults to. */
 const CLAUDE_CODE_MODEL: Model<Api> = {
   id: CLAUDE_CODE_PROVIDER,
   name: "Claude Code",

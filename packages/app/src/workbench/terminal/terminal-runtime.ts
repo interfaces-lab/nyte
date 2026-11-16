@@ -225,7 +225,7 @@ async function buildView(id: string): Promise<TerminalView | undefined> {
     send: sendToRunning,
     focus: focusInput,
     selecting: () => surface.draw(true),
-    settled: () => setTimeout(() => notifySelection(id)),
+    settled: () => notifySelection(id),
     scrolled: () => surface.draw(true),
     linkModifier: (event) => (nyte.platform === "darwin" ? event.metaKey : event.ctrlKey),
     link: (at) =>

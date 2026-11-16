@@ -106,7 +106,6 @@ printTable(rows);
 
 process.exitCode = rows.every((row) => row.ok) ? 0 : 1;
 
-/** Read-only checks against the host serving `~/.nyte`, over `host.sock` alone: the socket admits its caller as the owner, so no token is read. */
 async function verifyAttached(): Promise<void> {
   const socket = hostSocketPath();
 
@@ -359,7 +358,6 @@ async function servedChecks(
   );
 }
 
-/** The OAuth sign-in and tool calls of `mcp-agents` and the MCP server's tests, against the served host. */
 async function mcpChecks(url: string, socket: string): Promise<void> {
   const resource = `${url}/mcp`;
 
@@ -623,7 +621,6 @@ async function closeConnection(connection: Connection | undefined): Promise<void
   await connection?.close().catch(() => undefined);
 }
 
-/** Starts `nyte host --json` from this checkout's TUI on `env`'s home, the way the TUI runs from source. */
 function spawnHost(root: string, env: NodeJS.ProcessEnv, hosts: Set<HostProcess>): HostProcess {
   const child = spawn("bun", [TUI_ENTRY, "host", "--json"], {
     cwd: root,
@@ -658,7 +655,6 @@ function spawnHost(root: string, env: NodeJS.ProcessEnv, hosts: Set<HostProcess>
   return host;
 }
 
-/** Sends SIGTERM to this script's own child and waits for it, then SIGKILL if it outlives `STOP_MS`. */
 async function stopHost(host: HostProcess): Promise<Exit> {
   if (host.child.exitCode !== null || host.child.signalCode !== null) return host.exited;
   host.child.kill("SIGTERM");

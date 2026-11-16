@@ -188,10 +188,6 @@ export function applicationMenuTemplate(options: {
   ];
 }
 
-/**
- * A window's menu commands, held until its page listens. Any end of the page, a crash too, leaves
- * nothing listening, so commands wait again for the next page to say it is ready.
- */
 export function createMenuCommandDelivery(options: {
   openWindow: () => void;
   send: (command: AppMenuCommand) => void;

@@ -81,7 +81,6 @@ export function startSpan(name: SpanName, trace: string | null, detail?: SpanDet
   };
 }
 
-/** Runs `work` inside the span `name` of `trace`, ending it however `work` settles. */
 export async function traced<T>(
   name: SpanName,
   trace: string | null,
@@ -97,7 +96,6 @@ export async function traced<T>(
   }
 }
 
-/** Remembers `trace` as the submit `scope` (a session id) is serving, so hops that see only the session join it. */
 export function followTrace(scope: string, trace: string): void {
   if (!tracing.enabled) return;
   followed.set(scope, trace);

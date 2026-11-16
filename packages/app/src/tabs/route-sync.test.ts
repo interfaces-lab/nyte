@@ -301,7 +301,6 @@ function listed(folder: SelectedWorkspace, readable: boolean): WorkspaceInfo {
     trusted: null,
     projectSources: [],
     addedBy: asId("principal"),
-    sessions: 0,
     writers: [],
     isolation: null,
   };

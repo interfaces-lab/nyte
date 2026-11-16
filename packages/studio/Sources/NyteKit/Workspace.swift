@@ -2,7 +2,6 @@ import Foundation
 
 public struct WorkspaceInfo: Identifiable, Hashable, Sendable {
   public let id: String
-  /// The folder on the host's machine, or nil for a workspace that isn't a local folder.
   public let path: String?
   public let available: Bool
   public let sessions: Int
@@ -38,7 +37,6 @@ public struct FileChange: Hashable, Sendable {
 
 public enum WriteOutcome: Equatable, Sendable {
   case saved(version: String)
-  /// Someone else changed the file since the version the write expected.
   case stale(current: String?)
 }
 
@@ -55,11 +53,9 @@ public struct SentMessage: Sendable {
   public let receipt: String
 }
 
-/// A piece of a message: plain text, a file the agent should read, or lines taken from one.
 public enum MessagePart: Sendable {
   case text(String)
   case reference(path: String)
-  /// Lines `start` through `end` of a workspace file as it is now, with their text.
   case excerpt(path: String, start: Int, end: Int, text: String)
 
   var json: JSON {
@@ -85,7 +81,6 @@ extension HostClient {
     try await call("workspaces.list").array.map(WorkspaceInfo.init)
   }
 
-  /// Lists every file and folder under a directory of a workspace.
   public func scan(workspace: String, directory: String? = nil) async throws -> [FileEntry] {
     var input: [String: JSON] = ["workspace": .string(workspace)]
     if let directory { input["directory"] = .string(directory) }
@@ -99,7 +94,6 @@ extension HostClient {
     return entries
   }
 
-  /// Reads a text file and its version, or nil when nothing readable is there.
   public func read(workspace: String, path: String) async throws -> (contents: String, version: String)? {
     let output = try await call("files.read", ["workspace": .string(workspace), "path": .string(path)])
     guard output["kind"].string == "text", let contents = output["contents"].string,
@@ -108,8 +102,6 @@ extension HostClient {
     return (contents, version)
   }
 
-  /// Writes a file only if it still has the version `expect` names, so a write never lands on
-  /// top of a change this client hasn't seen.
   public func write(
     workspace: String, path: String, contents: String, expect: String?
   ) async throws -> WriteOutcome {
@@ -129,7 +121,6 @@ extension HostClient {
     try await bytes("files.bytes", ["workspace": .string(workspace), "path": .string(path)])
   }
 
-  /// Follows changes to a workspace's files until the task is cancelled.
   public func watch(workspace: String) -> AsyncThrowingStream<[FileChange], Error> {
     let source = frames("files.watch", ["workspace": .string(workspace)])
     return AsyncThrowingStream { continuation in
@@ -153,7 +144,6 @@ extension HostClient {
     }
   }
 
-  /// The models a chat can run on, the host's default first.
   public func models() async throws -> (choices: [ModelChoice], preferred: ModelChoice?) {
     let output = try await call("models.list")
     var choices: [ModelChoice] = []
@@ -172,7 +162,6 @@ extension HostClient {
     return (choices, preferred)
   }
 
-  /// Starts a chat with its first message. `prompt` adds a layer to the system prompt.
   public func startSession(
     workspace: String, content: [MessagePart], model: ModelChoice?, prompt: String?
   ) async throws -> SentMessage {
@@ -199,7 +188,7 @@ extension HostClient {
     return SentMessage(session: session, receipt: output["receipt"].string ?? "")
   }
 
-  public func stop(session: String) async {
-    _ = try? await call("session.stop", ["session": .string(session)])
+  public func stop(session: String) async throws {
+    _ = try await call("session.stop", ["session": .string(session)])
   }
 }

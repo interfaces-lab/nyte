@@ -245,7 +245,6 @@ export function createHost(
   };
 }
 
-/** Throws the loader's `unavailable` on a host that loads no plugin files, so a wire replace, even an empty one, never touches such a host's plugins. On a host with a loader it imports nothing. */
 async function requireLoader(kernel: Kernel): Promise<void> {
   await kernel.plugins.load([]);
 }

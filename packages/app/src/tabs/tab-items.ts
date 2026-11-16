@@ -14,10 +14,6 @@ const PLACE_ICONS = {
   project: "layers",
 } satisfies Record<Exclude<Place["kind"], "session">, IconName>;
 
-/**
- * The strip's items for `state`. An item equal to the one `previous` held for its tab is that same
- * object, and when every item is unchanged the result is `previous` itself.
- */
 export function windowTabItems(
   state: WindowState,
   chats: ChatDirectory,
@@ -89,10 +85,6 @@ function placeTitle(place: Place, chats: ChatDirectory, projects: readonly Proje
   }
 }
 
-/**
- * A tab's accessible name: its title, its chat's mark once, and preview. A tab's content isn't
- * read, so the mark it draws is said here.
- */
 export function tabName(
   tab: Pick<WindowTabItem, "tooltip" | "preview">,
   mark: ChatMark | undefined,

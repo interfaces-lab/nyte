@@ -9,19 +9,7 @@
 @import "./components.css";
 @import "./design.css";
 @import "./field-trip.css";
-
-/*
- * Site chrome reads the @nyte-ai/ui tokens, which StyleX declares on :root
- * when it compiles @nyte-ai/ui from source. Colours are light-dark() pairs, so
- * appearance follows color-scheme. Fumadocs UI theme CSS is not loaded; docs
- * and the design site paint with their own sheets.
- *
- * Layer order: StyleX (`priority1` to `priority6`) sits above preflight and
- * below components and utilities, so a Tailwind class on an element wins, as
- * does any rule here. This sheet loads before the StyleX sheet so its layer
- * order is the one the browser keeps. Hand-written rules stay inside a layer;
- * unlayered CSS would beat every utility.
- */
+@import "./good-nyte.css";
 
 @font-face {
   font-family: "Geist Pixel Square";
@@ -51,10 +39,8 @@
 
     --site-inner: 1072px;
     --site-pad: clamp(1.25rem, 1.25rem + 0.25 * var(--fluid-step), 1.5rem);
-    /* 4 + 32 + 4: the same pad sits above the controls, below them, and before a dropdown. */
     --site-nav-height: 40px;
     --site-nav-pad: 4px;
-    /* The bar's offset from the top. Its pills sit concentric in a plate's corner. */
     --site-nav-top: calc(var(--plate-inset) + var(--plate-nav-drop));
     --site-nav-control: calc(var(--site-nav-height) - 2 * var(--site-nav-pad));
 
@@ -62,7 +48,6 @@
 
     --plate-inset: clamp(0.5rem, 0.5rem + 0.25 * var(--fluid-step), 0.75rem);
     --plate-radius: clamp(1.5rem, 1.5rem + 0.25 * var(--fluid-step), 1.75rem);
-    /* Header top below the plate edge, so nav pills sit concentric in its corner. */
     --plate-nav-drop: calc(var(--plate-inset) - var(--site-nav-pad));
     --plate-ink: #0e0e5c;
 
@@ -75,7 +60,6 @@
     --site-panel: color-mix(in oklab, var(--color-foreground) 4%, var(--color-background));
   }
 
-  /* Set by viewport only, never by page, so the nav keeps its edges across routes. */
   @media (min-width: 1400px) {
     :root {
       --site-inner: 1312px;
@@ -139,7 +123,6 @@
   }
 }
 
-/* A page that opens with a plate repaints the nav white until the plate scrolls away or the phone menu covers it. */
 @custom-variant hero (html:not([data-nav-stuck], [data-menu-open]) body:has(.landing-plate) &);
 @custom-variant dark (&:where(.dark, .dark *));
 
@@ -164,7 +147,6 @@
 }
 
 @layer components {
-  /* The phone menu: the whole screen beneath the sticky nav, which keeps its close control on top. */
   .site-menu {
     position: fixed;
     inset: 0;
@@ -209,8 +191,6 @@
     max-width: 100%;
   }
 
-  /* ----------------------------------------------------- landing plate --- */
-
   .landing-plate {
     --plate-top: #0a0a6e;
     --plate-blue: var(--hero-blue);
@@ -246,7 +226,6 @@
     opacity: 0.32;
   }
 
-  /* Facts pop out of a word: scale and tilt overshoot, then drift after the pointer. */
   .fact-pill {
     position: absolute;
     left: 50%;

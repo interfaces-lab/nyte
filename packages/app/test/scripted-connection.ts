@@ -44,11 +44,9 @@ export interface ConnectionScript {
   readonly children?: ReadonlyMap<SessionId, readonly SessionInfo[]>;
   readonly workspaces?: readonly WorkspaceInfo[];
   readonly session?: (id: SessionId) => Partial<Session>;
-  /** The chat's `send`; by default it holds the message at once and delivers it through the session's `send`. */
   readonly send?: (id: SessionId) => Chat["send"];
   readonly host?: ViewStream<HostView>;
   readonly health?: ViewStream<Health>;
-  /** The replayed sends the host refused, which `take` removes. */
   readonly refused?: ViewStream<readonly RefusedSend[]>;
   readonly models?: Partial<ModelsApi>;
   readonly github?: Partial<GitHubAccountApi>;
@@ -137,7 +135,6 @@ const NO_MESSAGES: readonly MessageId[] = [];
 
 const NO_REFUSALS: readonly RefusedSend[] = [];
 
-/** A connection that answers what `script` holds and refuses the rest. Its stores and chats read the script's views and lists, and its health is the script's, open by default. */
 export function scriptedConnection(script: ConnectionScript = {}): {
   readonly connection: ClientConnection;
   readonly sent: readonly ScriptedSend[];
@@ -386,14 +383,6 @@ export function installScripted(scripted: { readonly connection: ClientConnectio
   installConnection(scripted.connection);
 }
 
-/**
- * A chat over a scripted head, keeping the SDK chat's stop rule: `asked` from a stop until the
- * view's row says stopping, the run changes, the stop fails or the health changes; a second stop
- * while it shows stopping sends nothing; only the latest stop's failure rejects. `earlier` lays the
- * scripted history's pages before the view while anyone listens, as the SDK's pager does: their
- * messages before the view's, their turns the view lacks before its own, and the oldest page's
- * leading prompt.
- */
 function scriptedChat(store: HeadStore, handle: Session, health: LiveSource<Health>): Chat {
   let asked: { readonly run: RunId; readonly health: Health | undefined } | null = null;
   let older: Paged = NO_PAGES;
@@ -518,7 +507,6 @@ function scriptedChat(store: HeadStore, handle: Session, health: LiveSource<Heal
   };
 }
 
-/** The older pages a scripted chat has loaded. */
 type Paged = Pick<SessionView, "messages" | "turns" | "leadingPrompt">;
 
 const NO_PAGES: Paged = { messages: [], turns: [], leadingPrompt: null };

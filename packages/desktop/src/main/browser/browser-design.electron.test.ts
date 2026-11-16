@@ -72,8 +72,7 @@ app.whenReady().then(async () => {
   surfaces.open({ surface, url }, id);
   surfaces.setBounds({ surface, bounds: { x: 0, y: 0, width: 600, height: 400 }, visible: true, focus: true }, id);
   const wc = surfaces.surface(surface).view.webContents;
-  while (wc.isLoading() || wc.getURL() === "") await sleep(50);
-  await sleep(200);
+  if (wc.isLoading() || wc.getURL() === "") await new Promise((r) => wc.once("did-stop-loading", r));
   const children = () => wc.executeJavaScript("document.documentElement.children.length");
   const before = await children();
 
@@ -104,7 +103,7 @@ app.whenReady().then(async () => {
 
   await wc.executeJavaScript('document.querySelector("#field").focus(); true');
   surfaces.design({ surface, change: { kind: "on" } });
-  await sleep(300);
+  await until(async () => (await children()) > before);
   const during = await children();
 
   click(100, 60);
@@ -130,12 +129,12 @@ app.whenReady().then(async () => {
   await sleep(300);
   const forgedPicks = picks().length - 2;
 
-  await sleep(200);
+  await until(async () => (await opacity()) === "1");
   const shown = await opacity();
   const seen = await wc.executeJavaScript("window.__seen");
   stroke("Escape");
   await until(() => designs().at(-1)?.on === false);
-  await sleep(200);
+  await until(async () => (await children()) === before);
   const after = await children();
   const seenAfter = await wc.executeJavaScript("window.__seen");
 
@@ -146,13 +145,12 @@ app.whenReady().then(async () => {
     'JSON.parse(JSON.stringify(document.querySelector("#confirm").getBoundingClientRect()))',
   );
   surfaces.design({ surface, change: { kind: "on" } });
-  await sleep(300);
+  await until(async () => (await children()) > before);
   click(confirm.x + 20, confirm.y + 10);
   await until(() => picks().length === 3);
   const modal = picks()[2]?.pick;
   const confirmed = await wc.executeJavaScript("window.__confirmed");
   await until(async () => (await opacity()) === "1");
-  await sleep(200);
   const frame = await wc.executeJavaScript(
     'JSON.parse(JSON.stringify(document.querySelector("iframe").getBoundingClientRect()))',
   );

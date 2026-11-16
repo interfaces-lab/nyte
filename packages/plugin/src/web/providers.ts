@@ -14,13 +14,6 @@ export const PROVIDERS = [
 
 export type ShippedProvider = (typeof PROVIDERS)[number]["id"];
 
-/**
- * Returns what one adapter call needs: the query, the provider's key or
- * undefined for its keyless route, the fetch to send with, and a signal.
- *
- * @category plugins
- * @since 0.1.0
- */
 export interface SearchInput {
   readonly query: string;
   readonly key: string | undefined;

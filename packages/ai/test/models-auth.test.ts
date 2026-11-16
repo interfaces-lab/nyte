@@ -130,7 +130,7 @@ describe("Models runtime auth", () => {
     await expect(second).rejects.toMatchObject({ name: "AbortError" });
     finishFirst?.();
     await first;
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await credentials.modify("p1", async (current) => current);
 
     expect(secondRan).toBe(false);
     expect(await credentials.read("p1")).toEqual(storedAccounts({ type: "api_key", key: "first" }));
@@ -179,7 +179,7 @@ describe("Models runtime auth", () => {
     expect(receivedSignal?.reason).toBe(controller.signal.reason);
     const rotated = { ...previous, access: "new", expires: Date.now() + 60_000 };
     finishRefresh?.(rotated);
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await credentials.modify("p1", async (current) => current);
     expect(await credentials.read("p1")).toEqual(storedAccounts(rotated));
   });
 
@@ -392,10 +392,13 @@ describe("Models runtime auth", () => {
     );
 
     let refreshes = 0;
+    const refreshStarted = Promise.withResolvers<void>();
+    const refreshReleased = Promise.withResolvers<void>();
     const oauth = testOAuth({
       refresh: async () => {
         refreshes++;
-        await new Promise((resolve) => setTimeout(resolve, 10));
+        refreshStarted.resolve();
+        await refreshReleased.promise;
         return {
           type: "oauth",
           access: `new-${refreshes}`,
@@ -408,10 +411,10 @@ describe("Models runtime auth", () => {
     models.setProvider(testProvider({ id: "p1", auth: { oauth } }));
     const model = testModel("p1", "model-a");
 
-    const [a, b] = await Promise.all([
-      models.getAuth(model.provider),
-      models.getAuth(model.provider),
-    ]);
+    const pending = Promise.all([models.getAuth(model.provider), models.getAuth(model.provider)]);
+    await refreshStarted.promise;
+    refreshReleased.resolve();
+    const [a, b] = await pending;
     expect(refreshes).toBe(1);
     expect(a?.auth.apiKey).toBe("new-1");
     expect(b?.auth.apiKey).toBe("new-1");

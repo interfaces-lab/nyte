@@ -147,10 +147,8 @@ const BUILTINS: readonly Plugin<"core">[] = [
 
 const CLEAN_WORKTREES_MS = 24 * 60 * 60 * 1000;
 
-/** How long a session's plugin runtime outlives its last use. Bringing one back scans the workspace again and runs every plugin's `activate` again, so a chat someone returns to within a sitting stays warm; past it, a host that stays up for weeks holds runtimes for the chats in use rather than every chat it has touched. */
 const RUNTIME_IDLE_MS = 10 * 60 * 1000;
 
-/** How often the host looks for idle plugin runtimes: one closes between {@link RUNTIME_IDLE_MS} and this much after its last use. */
 const EVICT_RUNTIMES_MS = 60 * 1000;
 
 export async function composeHost(options: ComposeOptions): Promise<ServedHost> {
@@ -706,9 +704,6 @@ async function release(kernel: Kernel, driver: Owned | null): Promise<void> {
   );
 }
 
-/**
- * Closes, through `kernel.plugins.close`, every runtime unused for {@link RUNTIME_IDLE_MS}. One stays while a hold is out or it is activating, while a run of its session drives here, while its fold is cached (a client has the chat open), while it has session plugins (they live only in memory), while a job it owns runs, and while a part action or answer of it is awaited in this process. A parked run keeps none: whatever wakes it fetches the runtime again. Every chosen runtime leaves the table before anything awaits. An evicted session whose activation was `active` is forgotten without an event, so it reads `inactive`, as on a host that has not touched it since it started; `unavailable` and `failed` stay, so their notice and a workspace reload's retry stay too.
- */
 async function evictIdleRuntimes(kernel: Kernel): Promise<void> {
   const now = Date.now();
   const driving = new Set(kernel.executionState.driving.values());

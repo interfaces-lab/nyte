@@ -103,6 +103,7 @@ it.each([
 
 it("runs a script's nested gated calls when each gate is answered as it opens", async () => {
   const ran: string[] = [];
+  const asked: PartId[] = [];
   const fake = fakeModels();
 
   const counted: ToolDefinition<{ text: string }> = {
@@ -151,7 +152,7 @@ it("runs a script's nested gated calls when each gate is answered as it opens", 
               placement: { kind: "modal" },
             });
 
-            setTimeout(() => void context.api.session.part(part.id).act("allow", {}), 0);
+            if (!asked.includes(part.id)) asked.push(part.id);
             await context.wait({ kind: "part", part: part.id });
 
             return { action: "continue" };
@@ -161,7 +162,10 @@ it("runs a script's nested gated calls when each gate is answered as it opens", 
     ],
   });
 
-  const { receipt } = await host.sessions.start({ content: "Run the script." });
+  const { session, receipt } = await host.sessions.start({ content: "Run the script." });
+
+  for (const index of [0, 1])
+    await session.part(await until(() => asked.at(index))).act("allow", {});
 
   expect((await receipt.settled()).kind).toBe("completed");
   expect(ran).toEqual(["one", "two"]);

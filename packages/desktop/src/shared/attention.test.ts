@@ -102,7 +102,6 @@ function chat(
 
 const child = { parent: asId<"session">("parent") };
 
-/** A delivery as one line: session, state, title, body, then the channels it reaches. */
 function line(delivery: AttentionDelivery): string {
   const channels = (["notify", "sound", "bounce"] as const).filter((channel) => delivery[channel]);
 

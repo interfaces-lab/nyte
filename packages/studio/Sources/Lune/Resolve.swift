@@ -4,26 +4,23 @@ public enum NodeKind: String, Sendable {
   case frame, col, row, box, text, image, icon, ellipse
 }
 
-/// One drawable node of a sheet, after components are expanded and props filled in.
 public final class Node: Sendable {
   public let kind: NodeKind
-  /// Attribute values with props filled in. Tokens stay as written, since a theme resolves them.
   public let attributes: [String: String]
   public let text: String?
   public let children: [Node]
-  /// The element in the sheet's own file that puts this node on the sheet. Inside an expanded
-  /// component, that is the instance.
   public let site: ElementRef
-  /// The element that literally declares this node, wherever it lives.
   public let definition: ElementRef
-  /// The file whose scope resolves this node's tokens.
+  public let origin: ElementRef
+  public let trail: [ElementRef]
   public let scopeFile: String
-  /// The component this node is the root of, when it is an instance's root.
   public let component: String?
+  public let missing: Bool
 
   init(
     kind: NodeKind, attributes: [String: String], text: String?, children: [Node],
-    site: ElementRef, definition: ElementRef, scopeFile: String, component: String?
+    site: ElementRef, definition: ElementRef, origin: ElementRef, trail: [ElementRef], scopeFile: String,
+    component: String?, missing: Bool = false
   ) {
     self.kind = kind
     self.attributes = attributes
@@ -31,8 +28,21 @@ public final class Node: Sendable {
     self.children = children
     self.site = site
     self.definition = definition
+    self.origin = origin
+    self.trail = trail
     self.scopeFile = scopeFile
     self.component = component
+    self.missing = missing
+  }
+
+  public var occurrence: Occurrence { Occurrence(element: origin, trail: trail) }
+
+  public var componentRoot: Occurrence? {
+    component == nil ? nil : Occurrence(element: definition, trail: trail + [origin])
+  }
+
+  public func isAt(_ occurrence: Occurrence) -> Bool {
+    self.occurrence == occurrence || componentRoot == occurrence
   }
 
   public var name: String {
@@ -43,12 +53,22 @@ public final class Node: Sendable {
   }
 }
 
+public struct Occurrence: Hashable, Sendable {
+  public var element: ElementRef
+  public var trail: [ElementRef]
+
+  public init(element: ElementRef, trail: [ElementRef] = []) {
+    self.element = element
+    self.trail = trail
+  }
+}
+
 public struct SheetWarning: Sendable, Hashable {
   public let message: String
   public let site: ElementRef
+  public var missingImport: String? = nil
 }
 
-/// One file's frames, ready to lay out.
 public struct Sheet: Sendable {
   public let file: String
   public let frames: [Node]
@@ -57,7 +77,6 @@ public struct Sheet: Sendable {
 }
 
 extension Project {
-  /// Expands a file's top-level frames. A file that fails to parse yields no frames and its error.
   public func sheet(_ path: String) -> Sheet {
     guard let file = files[path] else {
       return Sheet(file: path, frames: [], warnings: [], error: nil)
@@ -73,7 +92,15 @@ extension Project {
         frames.append(node)
       }
     }
-    return Sheet(file: path, frames: frames, warnings: expander.warnings, error: nil)
+    let missing = tree.roots.enumerated().compactMap { index, root -> SheetWarning? in
+      guard root.tag == "use", let source = root.value("src") else { return nil }
+      let target = resolvePath(source, from: path)
+      guard files[target] == nil else { return nil }
+      return SheetWarning(
+        message: "It uses \(source), which isn't here.", site: ElementRef(file: path, path: [index]),
+        missingImport: target)
+    }
+    return Sheet(file: path, frames: frames, warnings: missing + expander.warnings, error: nil)
   }
 }
 
@@ -95,13 +122,16 @@ private struct Expander {
     return scope
   }
 
-  /// `site` is nil while expanding the sheet's own elements, and the instance once inside a
-  /// component body.
   mutating func expand(
     _ element: SyntaxElement, ref: ElementRef, site: ElementRef?, props: [String: String],
-    file: String, depth: Int
+    file: String, depth: Int, level: Int = 0, trail: [ElementRef] = []
   ) -> Node? {
     let owner = site ?? ref
+    guard level < maxLuneDepth else {
+      warnings.append(
+        SheetWarning(message: "Elements are nested more than \(maxLuneDepth) deep once components are expanded.", site: owner))
+      return nil
+    }
 
     if let kind = NodeKind(rawValue: element.tag) {
       var attributes: [String: String] = [:]
@@ -117,7 +147,8 @@ private struct Expander {
         for (index, child) in element.elements.enumerated() {
           let childRef = ElementRef(file: ref.file, path: ref.path + [index])
           if let node = expand(
-            child, ref: childRef, site: site, props: props, file: file, depth: depth)
+            child, ref: childRef, site: site, props: props, file: file, depth: depth, level: level + 1,
+            trail: trail)
           {
             children.append(node)
           }
@@ -125,7 +156,8 @@ private struct Expander {
       }
       return Node(
         kind: kind, attributes: attributes, text: kind == .text ? fill(element.text, props) : nil,
-        children: children, site: owner, definition: ref, scopeFile: file, component: nil)
+        children: children, site: owner, definition: ref, origin: ref, trail: trail, scopeFile: file,
+        component: nil)
     }
 
     guard let first = element.tag.first, first.isUppercase else {
@@ -135,7 +167,7 @@ private struct Expander {
     guard let declaration = scope(file).components[element.tag] else {
       warnings.append(
         SheetWarning(message: "No component named \(element.tag) is in scope.", site: owner))
-      return nil
+      return placeholder(for: element.tag, element, ref: ref, owner: owner, props: props, file: file, trail: trail)
     }
     guard depth < 24 else {
       warnings.append(SheetWarning(message: "\(element.tag) contains itself.", site: owner))
@@ -165,25 +197,45 @@ private struct Expander {
     let bodyRef = ElementRef(file: declaration.file, path: declaration.path + [0])
     guard
       let root = expand(
-        body, ref: bodyRef, site: owner, props: inner, file: declaration.file, depth: depth + 1)
+        body, ref: bodyRef, site: owner, props: inner, file: declaration.file, depth: depth + 1, level: level,
+        trail: trail + [ref])
     else { return nil }
 
     return Node(
       kind: root.kind, attributes: root.attributes.merging(overrides) { _, new in new },
-      text: root.text, children: root.children, site: owner, definition: root.definition,
-      scopeFile: root.scopeFile, component: declaration.name)
+      text: root.text, children: root.children, site: owner, definition: root.definition, origin: ref,
+      trail: trail, scopeFile: root.scopeFile, component: declaration.name)
   }
 }
 
-/// Every attribute an element can take. A name outside it is a typo worth reporting, since it
-/// would otherwise change nothing and say nothing.
+extension Expander {
+  func placeholder(
+    for name: String, _ element: SyntaxElement, ref: ElementRef, owner: ElementRef, props: [String: String],
+    file: String, trail: [ElementRef]
+  ) -> Node {
+    var attributes = [
+      "w": "160", "h": "48", "radius": "8", "align": "center", "fill": "#8e8b8614", "stroke": "#8e8b8699",
+    ]
+    for size in ["w", "h", "x", "y", "self"] {
+      if let value = element.value(size) { attributes[size] = fill(value, props) }
+    }
+    let label = Node(
+      kind: .text, attributes: ["size": "12", "weight": "500", "color": "#8e8b86", "lines": "1"],
+      text: name, children: [], site: owner, definition: ref, origin: ref, trail: trail, scopeFile: file,
+      component: nil)
+    return Node(
+      kind: .box, attributes: attributes, text: nil, children: [label], site: owner, definition: ref, origin: ref,
+      trail: trail, scopeFile: file, component: name, missing: true)
+  }
+}
+
 private let knownAttributes: Set<String> = [
-  "name", "x", "y", "w", "h", "pad", "gap", "align", "justify", "self", "layout", "theme", "fill",
+  "name", "x", "y", "w", "h", "min-w", "max-w", "min-h", "max-h", "pad", "gap", "wrap", "align", "justify",
+  "self", "layout", "theme", "fill",
   "stroke", "stroke-w", "radius", "shadow", "opacity", "clip", "hidden", "style", "font", "size",
   "weight", "color", "leading", "tracking", "lines", "italic", "src", "fit",
 ]
 
-/// Fills `{prop}` placeholders. A placeholder that names no prop stays as written.
 private func fill(_ value: String, _ props: [String: String]) -> String {
   guard !props.isEmpty, value.contains("{") else { return value }
   var out = ""

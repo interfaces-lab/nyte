@@ -69,7 +69,7 @@ test.each<{
   });
 
   lists.push(row.next(lists.latest() ?? []));
-  await new Promise((resolve) => setTimeout(resolve, 0));
+  await Promise.resolve();
 
   expect({ kept: store.value === before, heard }).toEqual({
     kept: row.kept,

@@ -1,10 +1,3 @@
-/*
- * Field trips: long reads on the design site. Pictures, drawings and the
- * designer's feedback sit in the article's content columns; the drawings take
- * their lines and labels from the theme, and only the mark's own colours are
- * fixed. Inside an SVG, px is a user unit, so label sizes scale with the drawing.
- */
-
 @layer components {
   .design-trip-figure {
     margin: 16px 0 40px;
@@ -96,8 +89,6 @@
     font-size: 11px;
     line-height: 16px;
   }
-
-  /* ---- drawings --------------------------------------------------------- */
 
   .design-trip-plate {
     display: grid;
@@ -247,8 +238,6 @@
     fill: none;
     stroke-width: 0.5;
   }
-
-  /* ---- catalogue specimen ---------------------------------------------- */
 
   .design-trip-specimen {
     max-width: 100%;

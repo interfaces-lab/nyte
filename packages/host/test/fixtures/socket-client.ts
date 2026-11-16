@@ -40,7 +40,6 @@ export function hello(
   };
 }
 
-/** Waits until the run a child's report started on `session` has ended, so a resume and the fresh read after it see the same state. */
 export async function reportSettled(host: Composed, session: SessionId): Promise<void> {
   await vi.waitFor(async () => {
     const view = await host.session(session).view();

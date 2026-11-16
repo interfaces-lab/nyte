@@ -1,15 +1,3 @@
-/*
- * design.nyte.sh. The page is a sheet ruled into columns: the rail, a gutter
- * for numbers and section names, then content columns. Hairlines sit on
- * column edges nothing crosses, ticks mark every column at the top, and the
- * catalogue's specimens fill cells of the same grid.
- *
- * A line on column edge x paints the pixel column just left of x, the way a
- * column's own right border would, so lines drawn by different boxes land on
- * the same pixels. Lines mix into the page colour instead of sitting on it
- * translucent, so two that overlap stay one weight.
- */
-
 @layer components {
   .design,
   .design-menu {
@@ -73,8 +61,6 @@
     color: var(--color-background);
   }
 
-  /* ---- frame ------------------------------------------------------------ */
-
   .design-frame {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
@@ -106,7 +92,6 @@
     flex: none;
   }
 
-  /* The light is always the lighter of the two shapes, so the dimmed one swaps with the theme. */
   .design-mark-moon {
     fill: light-dark(
       var(--design-accent),
@@ -130,8 +115,6 @@
   .design-home:hover {
     opacity: 0.7;
   }
-
-  /* ---- phone bar -------------------------------------------------------- */
 
   .design-bar {
     position: sticky;
@@ -186,8 +169,6 @@
     padding: 24px var(--design-inset) 0;
     border-top: 1px solid var(--design-line);
   }
-
-  /* ---- rail ------------------------------------------------------------- */
 
   .design-rail {
     display: none;
@@ -252,7 +233,6 @@
     border-top: 1px solid var(--design-line);
   }
 
-  /* The package's toggle group, stretched so its three choices share the rail. */
   .design-theme > [role="group"] {
     display: flex;
     width: 100%;
@@ -279,8 +259,6 @@
   .design-elsewhere a:hover {
     color: var(--color-foreground);
   }
-
-  /* ---- index ------------------------------------------------------------ */
 
   .design-nav {
     display: flex;
@@ -329,7 +307,6 @@
     color: var(--design-accent);
   }
 
-  /* The rail's left hairline lights up beside the current page. */
   .design-nav-link[aria-current="page"]::before {
     content: "";
     position: absolute;
@@ -379,12 +356,6 @@
     line-height: 24px;
   }
 
-  /* ---- page column ------------------------------------------------------ */
-
-  /*
-   * The query container for `cqi`, which section rules use to cross every
-   * column. A subgrid cannot be one, since containment would detach it.
-   */
   .design-main {
     position: relative;
     display: grid;
@@ -399,7 +370,6 @@
     grid-column: 1 / -1;
   }
 
-  /* The frame's lines: the right edge always, the left too where no rail draws it. */
   .design-main::before,
   .design-main::after {
     content: "";
@@ -421,10 +391,6 @@
     }
   }
 
-  /*
-   * Ticks on every column edge at the top of the sheet: the frame's left edge,
-   * the gutter's end, then the end of each content column.
-   */
   .design-ruler {
     position: relative;
     height: 24px;
@@ -456,8 +422,6 @@
     }
   }
 
-  /* ---- canvases --------------------------------------------------------- */
-
   .design-canvas {
     position: relative;
     display: grid;
@@ -473,7 +437,6 @@
     isolation: isolate;
   }
 
-  /* Graph paper under the specimen, drawn on the canvas's centre. */
   .design-canvas::before {
     content: "";
     position: absolute;
@@ -486,8 +449,6 @@
     transition: opacity 240ms ease-out;
     pointer-events: none;
   }
-
-  /* ---- landing ---------------------------------------------------------- */
 
   .design-hero {
     display: grid;
@@ -503,7 +464,6 @@
     padding-inline: var(--design-inset);
     color: var(--color-foreground);
     font-family: var(--design-pixel);
-    /* "Design" sets 3.62em wide; the size fills the columns the title spans. */
     font-size: min(
       216px,
       calc(
@@ -524,7 +484,6 @@
     width: fit-content;
   }
 
-  /* The name types itself in, a cell of the pixel face at a time: Nyte, then Design. */
   @media (prefers-reduced-motion: no-preference) {
     .design-hero-title > span {
       animation: design-type 480ms steps(4) both;
@@ -612,7 +571,6 @@
     border-top: 1px solid var(--design-line);
   }
 
-  /* A sheet's rule lands on the pixels of the cells' last edge above it. */
   .design-sheet + .design-sheet,
   .design-sheet + .design-footer {
     margin-top: -1px;
@@ -780,7 +738,6 @@
     -webkit-line-clamp: 2;
   }
 
-  /* A tile in use sets --design-active for specimens that move when pointed at. */
   .design-tile:focus-within,
   .design-head-portrait:focus-within {
     --design-active: 1;
@@ -815,14 +772,12 @@
     }
   }
 
-  /* Parts with no look of their own, outlined and named. */
   .design-xray {
     color: var(--color-foreground);
     font-size: 12px;
     line-height: 16px;
   }
 
-  /* A glyph-sized specimen, enlarged so its cells can be counted. */
   .design-magnify {
     display: inline-flex;
     zoom: 4;
@@ -837,7 +792,6 @@
     background: color-mix(in oklab, var(--design-accent) 3%, transparent);
   }
 
-  /* Parts laid out in a row keep the label on a line of its own above them. */
   .design-xray :is([data-xray="Attachment"], [data-xray="Marker"], [data-xray="Message"]) {
     flex-flow: row wrap;
     align-items: flex-end;
@@ -852,8 +806,6 @@
     line-height: 10px;
     white-space: nowrap;
   }
-
-  /* ---- page head -------------------------------------------------------- */
 
   .design-head {
     display: grid;
@@ -958,8 +910,6 @@
     }
   }
 
-  /* ---- article ---------------------------------------------------------- */
-
   .design-article {
     display: grid;
     grid-template-columns: subgrid;
@@ -979,7 +929,6 @@
     max-width: calc(var(--design-measure) + 2 * var(--design-inset));
   }
 
-  /* Framed figures sit on the grid: their edges are column lines, and text keeps its inset. */
   .design .design-article > :is(.cloud-preview, .doc-code, .doc-table-scroll) {
     padding-inline: 0;
   }
@@ -1019,7 +968,6 @@
     letter-spacing: 0;
   }
 
-  /* Each section opens on a rule across the gutter and the content. */
   .design .design-article > h2::after {
     content: "";
     position: absolute;
@@ -1166,8 +1114,6 @@
   .design .design-article td:first-child code {
     color: var(--color-foreground);
   }
-
-  /* ---- pager and footer ------------------------------------------------- */
 
   .design-pager {
     display: grid;

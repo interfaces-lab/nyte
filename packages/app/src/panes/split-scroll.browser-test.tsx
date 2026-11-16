@@ -118,9 +118,9 @@ const catalog = {
 
 const host = { workspace: undefined } satisfies HostState;
 
-function painted(): Promise<void> {
+function nextFrame(): Promise<void> {
   return new Promise((resolve) =>
-    window.requestAnimationFrame(() => window.setTimeout(() => resolve(), 0)),
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve())),
   );
 }
 
@@ -129,7 +129,7 @@ async function until(predicate: () => boolean, what: string): Promise<void> {
 
   while (!predicate()) {
     if (performance.now() > deadline) throw new Error(`Timed out waiting for ${what}`);
-    await new Promise<void>((resolve) => window.setTimeout(resolve, 10));
+    await new Promise((resolve) => window.requestAnimationFrame(resolve));
   }
 }
 
@@ -194,7 +194,7 @@ async function journey(name: string, split: SplitDirection | null, second: Sessi
       "the first transcript",
     );
 
-    for (let frame = 0; frame < 10; frame += 1) await painted();
+    for (let frame = 0; frame < 10; frame += 1) await nextFrame();
 
     if (split !== null) {
       runPane(panes, { kind: "split", direction: split });
@@ -208,7 +208,7 @@ async function journey(name: string, split: SplitDirection | null, second: Sessi
       "every transcript",
     );
 
-    for (let frame = 0; frame < 20; frame += 1) await painted();
+    for (let frame = 0; frame < 20; frame += 1) await nextFrame();
     window.rendererCapture(name);
     await new Promise((resolve) =>
       document.addEventListener("renderer-captured", resolve, { once: true }),

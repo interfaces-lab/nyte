@@ -1,8 +1,3 @@
-/**
- * The Nyte mark's numbers, as the scripts that drew it set them. Everything is in cells of the icon's 8-cell
- * grid, counted from the tile's top left corner, and drawn at 16 units a cell, so the tile is 128 units across.
- */
-
 export const cell = 16;
 
 export const tile = 8 * cell;
@@ -11,13 +6,11 @@ export const moon = { x: 4, y: 4, r: 3 } as const;
 
 export const light = { x: 5, y: 3, r: 2 } as const;
 
-/** Where the top and right margin lines meet: the point the light is the moon scaled toward. */
 export const corner = { x: 7, y: 1 } as const;
 
 export const night = {
   plate: ["#232a44", "#0c1020"],
   light: "#fff9d8",
-  // logo.py's colour mark: from the light's rim to the moon's far side, walked in OKLCH
   ramp: [
     "#647fcb",
     "#6a84ce",
@@ -39,20 +32,16 @@ export const night = {
   ],
 } as const;
 
-/** How dark the shadow is at the moon's edge, how many cells it reaches across the light, and the hour it is deepest. */
 export const shadow = { strength: 0.55, reach: 0.4, hour: 9 } as const;
 
-/** The flat tile's corner radius, as a share of its side. */
 export const tileCorner = 0.268;
 
 export const apart = Math.hypot(light.x - moon.x, light.y - moon.y);
 
-/** A length in cells, in the drawing's units. */
 export function units(value: number): number {
   return Number((value * cell).toFixed(3));
 }
 
-/** The moon with the light's circle taken out: one arc round the back, one along the light. */
 export function crescentPath(): string {
   const ux = (light.x - moon.x) / apart;
   const uy = (light.y - moon.y) / apart;
@@ -65,7 +54,6 @@ export function crescentPath(): string {
   return `M ${start} A ${units(moon.r)} ${units(moon.r)} 0 1 0 ${units(second[0])} ${units(second[1])} A ${units(light.r)} ${units(light.r)} 0 1 1 ${start} Z`;
 }
 
-/** The moon's gradient: rings round the light's centre, from its rim to the moon's far side. */
 export function rampStops(): { offset: number; color: string }[] {
   const first = light.r / (apart + moon.r);
 
@@ -75,10 +63,6 @@ export function rampStops(): { offset: number; color: string }[] {
   }));
 }
 
-/**
- * The painted shadow: the part of the light outside a circle its own size, slid `reach` cells away from the
- * edge the moon lies over, shaded from nothing to `strength` as it nears that edge.
- */
 export function shadowRing() {
   const turn = (shadow.hour * 30 * Math.PI) / 180;
   const outer = light.r + shadow.reach;
@@ -108,12 +92,10 @@ function ratio(a: number, b: number): number {
   return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
 }
 
-/** The WCAG contrast ratio between two hex colours: 1 is no difference, 21 is black on white. */
 export function contrast(a: string, b: string): number {
   return ratio(luminance(channels(a)), luminance(channels(b)));
 }
 
-/** The WCAG contrast between `against` and `ink` laid over `ground` at `opacity`, mixed in sRGB as logo.py mixes it. */
 export function contrastOver(
   ink: string,
   ground: string,

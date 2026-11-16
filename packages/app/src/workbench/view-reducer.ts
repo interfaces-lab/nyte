@@ -41,14 +41,8 @@ type WorkbenchTabPatch =
 export type ChangesTabPatch = Extract<WorkbenchTabPatch, { readonly kind: "changes" }>["patch"];
 
 export type WorkbenchViewAction =
-  /** Focuses the open tab `tab` names, or adds `tab`. */
   | { readonly kind: "open"; readonly tab: WorkbenchTab; readonly activate: boolean }
-  /** Adds `tab` even when an open tab has its identity. */
   | { readonly kind: "add"; readonly tab: WorkbenchTab }
-  /**
-   * Focuses the file's tab, pinning it unless this open is a preview, or adds it in place of
-   * `replace`, the clean preview the file store chose.
-   */
   | {
       readonly kind: "open-file";
       readonly tab: KindTab<"file">;
@@ -364,7 +358,6 @@ function insertFile(
   return activate({ ...state, tabs: [...kept.slice(0, index), tab, ...kept.slice(index)] }, tab.id);
 }
 
-/** Moves `tab` into `group`; the group it leaves closes once it holds nothing, unless it's the last. */
 function withGroup(
   state: WorkbenchViewState,
   tab: KindTab<"file">,
@@ -385,7 +378,6 @@ function withGroup(
   return pruneGroups({ ...state, tabs, groups: left });
 }
 
-/** The file tab a group shows once `tab` leaves it: the one after it, else the one before. */
 function groupNeighbour(
   tabs: readonly WorkbenchTab[],
   tab: KindTab<"file">,

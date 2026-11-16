@@ -129,7 +129,6 @@ export function emptyFold(input: {
   };
 }
 
-/** Folds `event` into `state`. `pair` is the ref of the head a commit or head event moved, as the store holds it: the head carries its revision while its tip is that ref's target, and none otherwise. */
 export function fold(
   state: FoldState,
   event: SessionEvent | PatchEvent,
@@ -858,7 +857,6 @@ function applyPatch(draft: Draft, event: PatchEvent): boolean {
   return true;
 }
 
-/** Changes the named head, or every head for null. Session events decide which heads exist, so an event for a head the fold doesn't hold changes nothing. */
 function eachHead(draft: Draft, name: HeadName | null, change: (head: FoldHead) => FoldHead): void {
   if (name !== null && !draft.heads.has(name)) return;
 

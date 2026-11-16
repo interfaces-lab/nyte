@@ -37,6 +37,10 @@ Size and place:
   what follows to the bottom.
 - `x`, `y`: on a frame, where it sits in its file. On anything else, the element leaves the flow
   and is placed from its parent's top-left corner. A number or a percentage.
+- `min-w`, `max-w`, `min-h`, `max-h`: limits in points on what `fill` and `hug` work out.
+
+A number is finite and at most 100000 either way. Anything else, `nan` and `inf` included, reads
+as if the attribute were not written.
 
 Stacks (`frame`, `col`, `row`, `box`):
 
@@ -46,6 +50,7 @@ Stacks (`frame`, `col`, `row`, `box`):
   axes or two for horizontal then vertical.
 - `justify`: along the stack: `start`, `center`, `end` or `between`.
 - `self` on a child overrides its parent's `align` for that child.
+- `wrap` on a `row`: children that don't fit go on to the next line.
 
 Paint:
 
@@ -110,6 +115,21 @@ component and use it in two frames:
 
 ## Files
 
+A project is small pieces, connected, in three folders:
+
+- `controls/`: the UI basics, such as a button, a chip, a field.
+- `blocks/`: groups of controls, such as a card or a list row.
+- `screens/`: complete views.
+
+Each component gets its own file, named after it: `controls/Button.lune` holds `Button`. Import
+controls into blocks and blocks into screens. Tokens live in a file of their own. Nyte Studio
+lists the files under Controls, Blocks and Screens by these folders.
+
+A component that isn't in scope draws as a dashed box with its name, and `lune check` names
+the instance and any `use` whose file isn't there. To send a design to someone, run
+`lune pack screens/Tonight.lune --out Tonight.lune`: it copies in every token and component
+the file uses, so the one file draws the same anywhere.
+
 ```xml
 <use src="./tokens.lune" />
 <use src="../controls.lune" />
@@ -128,7 +148,10 @@ token or a component then reaches every screen.
    find again.
 4. Edit the smallest part of the file that does the job. The designer's own edits are in the same
    file, and a small diff is one they can read.
-5. Check before you say it is done.
+5. Build a new screen in two passes: first the frame with its main sections at their sizes, then
+   an edit that fills them in. The designer is watching the canvas, and a screen that grows in
+   front of them tells them more than a wait.
+6. Check before you say it is done.
 
 ## Check your work
 
@@ -147,8 +170,9 @@ line numbers. It can't see taste: a line that wraps badly or a button nobody can
 `render` a frame and open the PNG. It is drawn by the renderer the canvas uses. Without `--frame`,
 every frame is written into the `--out` folder, named after the frame in lower case with hyphens
 (`Welcome · night` becomes `welcome-night.png`). `--theme dark` renders by night and `--scale 1`
-makes a smaller image. Paths in `use` and `src` resolve from the project root: the nearest folder
-above the file that holds `.git`, or the folder `--root` names.
+makes a smaller image. A frame that would take more than 100 megapixels is refused with its size,
+which nearly always means a padding or a size is wrong. Paths in `use` and `src` resolve from the
+project root: the nearest folder above the file that holds `.git`, or the folder `--root` names.
 
 ## Turning a design into code
 

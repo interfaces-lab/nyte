@@ -25,17 +25,11 @@ export interface Pace {
   readonly drainFrames: number | undefined;
 }
 
-/** A text message and the status it shows until its text has caught up. */
 export interface Revealed {
   readonly message: TextMessage;
   readonly status: TextMessage["status"];
 }
 
-/**
- * The text message being paced, the status it shows until its text has caught up, and how much of
- * it shows; `waiting` holds the newer live texts, oldest first, each empty until the ones before it
- * have all shown.
- */
 export interface Reveal extends Revealed {
   readonly pace: Pace;
   readonly waiting: readonly Revealed[];
@@ -59,7 +53,6 @@ export function flushPace(pace: Pace, now: number): Pace {
   return { text: pace.text, shown: pace.text.length, flushedAt: now, drainFrames: undefined };
 }
 
-/** The backlog shows within `frames` frames, or fewer when its countdown is already lower. */
 export function drainPace(pace: Pace, now: number, frames = MAX_LAG_FRAMES): Pace {
   const pending = pace.text.length - pace.shown;
 
@@ -114,13 +107,6 @@ export function chunkLength(pending: string, budget: number): number {
   return grapheme.index > 0 ? grapheme.index : grapheme.segment.length;
 }
 
-/**
- * What to pace after a view arrives: the same message while it is still the newest live text, else
- * the newest live text, whole when the chat is opening and from nothing otherwise. Newer live texts
- * wait, empty and in order, while the one before each shows its tail within three frames, so a tail
- * neither appears at once nor holds the newer text back at reading pace. A hidden transcript shows
- * everything at once.
- */
 export function receiveReveal(
   current: Reveal | undefined,
   messages: readonly Message[],
@@ -165,10 +151,6 @@ export function receiveReveal(
   });
 }
 
-/**
- * The newer texts that wait behind `same`, oldest first: those already waiting that the view still
- * holds, each with the status it showed when it began to wait, then the newest live text.
- */
 function waitingTexts(
   current: Reveal,
   same: TextMessage,
@@ -191,10 +173,6 @@ function waitingTexts(
   return [...queued, { message: live, status: live.status }];
 }
 
-/**
- * The next waiting text starts: from nothing while the transcript is showing, draining within
- * three frames while another waits behind it; while hidden, every waiting text shows whole.
- */
 function revealWaiting(
   waiting: readonly Revealed[],
   moment: { readonly opening: boolean; readonly now: number },
@@ -214,7 +192,6 @@ function revealWaiting(
   };
 }
 
-/** A text starting to show: whole while the chat opens, else from nothing, draining at once when it has already ended. */
 function beginReveal(
   text: Revealed,
   moment: { readonly opening: boolean; readonly now: number },
@@ -231,7 +208,6 @@ function beginReveal(
   };
 }
 
-/** One frame of `current`: the next slice while the transcript is showing, else all of it. Once it has all shown, the text waiting behind it starts. */
 export function tickReveal(
   current: Reveal,
   moment: { readonly showing: boolean; readonly now: number },
@@ -241,10 +217,6 @@ export function tickReveal(
     : flushReveal(current, moment);
 }
 
-/**
- * The drain's deadline: all of `current` shows at once. The text waiting behind it still starts
- * from nothing while the transcript is showing, so a late deadline never dumps it whole.
- */
 export function flushReveal(
   current: Reveal,
   moment: { readonly showing: boolean; readonly now: number },
@@ -265,7 +237,6 @@ function revealAfter(
   return settledReveal({ ...current, pace });
 }
 
-/** A frame while text is still to show, and the barrier deadline while a drain is counting down. */
 export function revealTimers(reveal: Reveal | undefined) {
   return {
     frame: reveal !== undefined && reveal.pace.shown < reveal.pace.text.length,
@@ -273,7 +244,6 @@ export function revealTimers(reveal: Reveal | undefined) {
   };
 }
 
-/** `view` with the paced message cut to what has shown, or `view` itself when nothing is held back. */
 export function presentReveal<V extends { readonly messages: readonly Message[] }>(
   view: V,
   reveal: Reveal | undefined,
@@ -308,7 +278,6 @@ export function presentReveal<V extends { readonly messages: readonly Message[] 
   };
 }
 
-/** A reveal whose text has all shown and whose message has ended has nothing left to pace. */
 function settledReveal(next: Reveal | undefined): Reveal | undefined {
   return next === undefined ||
     (next.pace.shown === next.pace.text.length &&

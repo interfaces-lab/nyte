@@ -69,10 +69,6 @@ export type StoredLayout = Static<typeof storedLayoutSchema>;
 
 type StoredNode = Static<typeof paneSchema> | Static<typeof splitSchema>;
 
-/**
- * Writes a layout in the stored shape every saved window has, whose `tabs`, `hidden` and `zoomed`
- * fields predate panes holding one tab each.
- */
 export function persistLayout<Content extends TabContent>(
   layout: Layout<Content>,
   persist: (content: Content) => StoredContent | undefined,
@@ -152,7 +148,6 @@ function restoreNode<Content extends TabContent>(
   };
 }
 
-/** A pane shows the tab stored as active, or the first one that restores. */
 function restorePane<Content extends TabContent>(
   stored: Static<typeof paneSchema>,
   restore: (stored: StoredContent) => Content | undefined,

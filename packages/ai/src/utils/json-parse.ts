@@ -84,8 +84,7 @@ export function repairJson(json: string): string {
 
 /**
  * Attempts to parse potentially incomplete JSON during streaming.
- * Always returns a valid object, even if the JSON is incomplete. Partial parsing runs on the
- * repaired text, because it can silently drop fields containing raw control characters.
+ * Always returns a valid object, even if the JSON is incomplete.
  *
  * @param partialJson The partial JSON string from streaming
  * @returns Parsed object or empty object if parsing fails

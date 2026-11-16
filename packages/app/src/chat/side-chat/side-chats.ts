@@ -13,7 +13,6 @@ import { chatWindow, useChatWindow } from "../../window/index.ts";
 import { CLOSED } from "./side-chat-state.ts";
 import type { SideChatShown, SideChatWindow } from "./side-chat-state.ts";
 
-/** The most of the parent's history a side chat starts with, counted back from its newest message. */
 const CONTEXT_CHARS = 24_000;
 
 const FRAMING = [
@@ -22,24 +21,20 @@ const FRAMING = [
   "The main chat's recent history, as it stood when this side chat opened, is below. It may have moved on since.",
 ].join(" ");
 
-/** The side-chat window of `parent`'s chat. */
 export function useSideChatWindow(parent: SessionId): SideChatWindow {
   return useChatWindow((snapshot) => snapshot.sides.get(parent) ?? CLOSED);
 }
 
-/** `parent`'s side chats that aren't archived, oldest first. */
 export function useSideChats(parent: SessionId): readonly SessionInfo[] {
   return sideChats(useWatch(childList(parent)).value ?? []);
 }
 
-/** The side chats among a chat's children that aren't archived, oldest first. */
 function sideChats(children: readonly SessionInfo[]): readonly SessionInfo[] {
   return children
     .filter((child) => child.side === true && !child.archived)
     .toSorted((left, right) => left.createdAt - right.createdAt);
 }
 
-/** Opens `parent`'s window on a new side chat, starting it at once when there's a question. */
 export function openSideChat(parent: SessionId, question: string): Promise<void> {
   if (question.trim() === "") {
     chatWindow.moveSideChat(parent, { kind: "open", shown: newQuestion("", null) });
@@ -50,7 +45,6 @@ export function openSideChat(parent: SessionId, question: string): Promise<void>
   return startSideChat(parent, question.trim());
 }
 
-/** Shows the window's side chat, or the newest side chat, or a new one. */
 export function summonSideChat(parent: SessionId): void {
   chatWindow.moveSideChat(parent, {
     kind: "summon",
@@ -67,12 +61,6 @@ export function foldSideChat(parent: SessionId, folded: boolean): void {
   chatWindow.moveSideChat(parent, { kind: "fold", folded });
 }
 
-/**
- * Starts a side chat of `parent` with `question` as its first message, on `parent`'s model, and
- * shows it. The window shows the question while the host starts the chat, and the question again
- * with the reason when it can't. Once someone moves the window off the start, it stays where they
- * put it; the started chat is still listed among the side chats.
- */
 export async function startSideChat(parent: SessionId, question: string): Promise<void> {
   const starting: SideChatShown = { kind: "starting", question };
   chatWindow.moveSideChat(parent, { kind: "open", shown: starting });
@@ -111,11 +99,6 @@ export async function startSideChat(parent: SessionId, question: string): Promis
   }
 }
 
-/**
- * Archives side chat `id`, closing `parent`'s window when it showed it. When the host refuses and
- * the window is still closed, it opens again as it was, so the chat never looks archived when it
- * isn't.
- */
 export async function archiveSideChat(parent: SessionId, id: SessionId): Promise<void> {
   const before = chatWindow.sideChat(parent);
   chatWindow.moveSideChat(parent, { kind: "archive", id });
@@ -128,12 +111,10 @@ export async function archiveSideChat(parent: SessionId, id: SessionId): Promise
   }
 }
 
-/** The prompt layer a side chat starts with: what it is, and its parent's recent history. */
 export function sideChatPrompt(messages: readonly Message[]): string {
   return `${FRAMING}\n\n<main_chat>\n${conversationText(messages, CONTEXT_CHARS)}\n</main_chat>`;
 }
 
-/** Side chat `session` as an excerpt for its parent's next message. */
 export function sideChatExcerpt(
   session: SessionId,
   title: string,
@@ -146,12 +127,6 @@ export function sideChatExcerpt(
   };
 }
 
-/**
- * A conversation's newest `budget` characters as plain text: what each side said and the tools
- * the assistant used. It reads from the newest message back and stops once the budget is spent, so
- * a long chat costs only what it keeps. The newest line keeps its end when it alone is over the
- * budget; an older line that doesn't fit whole is left out.
- */
 function conversationText(messages: readonly Message[], budget: number): string {
   const kept: string[] = [];
   let used = 0;

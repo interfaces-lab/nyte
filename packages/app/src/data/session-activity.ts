@@ -1,5 +1,5 @@
 import { showsTool, toolDetail, toolStatus, toolVerbs } from "@nyte-ai/plugin/client/presentation";
-import type { Message, SessionView, ToolClass } from "@nyte-ai/sdk";
+import type { Message, SessionId, SessionView, ToolClass } from "@nyte-ai/sdk";
 import { countWork } from "../lib/work-counts.ts";
 
 export type SessionActivity =
@@ -33,11 +33,6 @@ interface Folded {
 
 const NOTHING: Folded = { tool: undefined, live: IDLE };
 
-/**
- * The latest running tool, else the latest live part. It folds again only from the last message of
- * the view before when every message ahead of it is the same object, as while text streams into
- * the last one, so a delta costs a comparison per message rather than a lookup.
- */
 export function sessionActivityProjector(): (
   view: Pick<SessionView, "messages">,
 ) => SessionActivity {
@@ -78,6 +73,15 @@ function sameLead(next: readonly Message[], previous: readonly Message[], count:
   for (let index = 0; index < count; index += 1) if (next[index] !== previous[index]) return false;
 
   return true;
+}
+
+export function awaitedChild(activity: SessionActivity | undefined): SessionId | undefined {
+  if (activity?.kind !== "tool") return undefined;
+  const toolClass = activity.toolClass;
+
+  return toolClass.kind === "delegate" && toolClass.role === "await"
+    ? (toolClass.child ?? undefined)
+    : undefined;
 }
 
 export function subagentActivity(

@@ -54,22 +54,16 @@ type Waiting = {
 
 type Probe = { readonly deadline: number; readonly answered: PromiseWithResolvers<void> };
 
-/** How long a socket may take to open. A path that drops packets never fails a connect on its own; the operating system gives up after a minute or more. */
 const OPEN_MS = 10_000;
 
-/** How long a socket that owes nothing may hear nothing before it asks the host something. The host pings every 30 s, so at 30 s an idle client's probe wakes the radio no more often than the host's ping already does. */
 const IDLE_PROBE_MS = 30_000;
 
-/** How long a socket that owes an answer (a call, or the welcome) may hear nothing before it asks the host something. Answers come in milliseconds, so the probe tells a slow call on a live link, which it leaves to finish, from a dead link. */
 const OWED_PROBE_MS = 5_000;
 
-/** How long a probe waits for any frame before the socket counts as lost. Its answer queues behind every event the host has queued, and 10 s leaves a whole 1 MiB frame room at 100 KB/s. */
 const PROBE_MS = 10_000;
 
-/** How long a probe someone asked for waits: the app came to the foreground or the network came back, and a dead link should be redialed in a second or two. A live one answers in well under a second, even on a phone. */
 const ASKED_PROBE_MS = 2_000;
 
-/** The probe: the cheapest call every host answers, with no scope to leave and a null answer of about 50 bytes. Its id never collides with a call's. */
 const PROBE_FRAME = { c: "e", type: "call", op: "events.unsubscribe", input: { scopes: [] } };
 
 const LOST_REASON = "The host stopped answering.";

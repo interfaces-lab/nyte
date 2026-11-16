@@ -16,15 +16,10 @@ import { VERSION } from "./version.ts";
 type UpdateRequest =
   | { readonly kind: "check" }
   | { readonly kind: "models" }
-  /**
-   * A version (a leading `v` is fine), `stable` or `nightly`; none follows the saved channel. `yes`
-   * installs a named version older than this build without asking; a channel never needs it.
-   */
   | { readonly kind: "install"; readonly target?: string; readonly yes: boolean };
 
 const HELP = { next: [{ label: "See the options", argv: ["nyte", "update", "--help"] }] };
 
-/** `nyte update [<VERSION> | stable | nightly] [--check | --models]`. */
 export async function updateCommand(input: {
   readonly args: readonly string[];
   readonly output: Output;
@@ -80,10 +75,8 @@ function parseUpdateArgs(args: readonly string[]): UpdateRequest {
   );
 }
 
-/** Ctrl+C before anything changed. The invocation prints it and exits 130. */
 const CANCELED = new CliError("canceled", "Canceled.");
 
-/** The answer goes to stdout; a failed check throws, so "latest" always means GitHub said so. */
 async function check(out: Output, signal: AbortSignal): Promise<void> {
   const release = await findUpdate(signal).catch((cause: unknown) => {
     throw signal.aborted ? CANCELED : cause;
@@ -101,12 +94,6 @@ async function check(out: Output, signal: AbortSignal): Promise<void> {
   out.say(formatCommand(["nyte", "update"], out.mode.stderr));
 }
 
-/**
- * Progress is one redrawn line on an interactive terminal and one line per phase otherwise; the
- * percentage comes from the download's Content-Length and shows only when redrawn. A named version
- * older than this build needs a yes or `--yes` before the download starts; a channel only installs
- * an upgrade, which never asks. A saved channel is reported even when the lookup after it fails.
- */
 async function install(
   out: Output,
   request: Extract<UpdateRequest, { readonly kind: "install" }>,
@@ -215,10 +202,6 @@ async function install(
   }
 }
 
-/**
- * Nothing on the followed channel is newer than this build. `follow` is a bare `nyte update`;
- * `switched` and `already` answer `nyte update <channel>`, which saved the channel either way.
- */
 function waiting(
   out: Output,
   outcome: Extract<UpdateOutcome, { readonly kind: "waiting" }>,
@@ -256,10 +239,6 @@ function waiting(
   if (!out.mode.tty.stdout || !out.mode.interactive) out.result(`${channel}\n`);
 }
 
-/**
- * The destructive tier for a named version: an older nyte may not open data a newer one saved. On
- * a terminal it warns and asks; otherwise only `--yes` goes ahead.
- */
 async function confirmDowngrade(
   out: Output,
   version: string,
@@ -290,7 +269,6 @@ async function confirmDowngrade(
   if (!(await confirm(out, `Install ${version} over ${VERSION}?`, signal))) throw CANCELED;
 }
 
-/** Partial success is a failure: the rows show every provider, and a provider that failed exits 1. */
 async function refreshModels(out: Output, host: Connection, signal: AbortSignal): Promise<void> {
   out.progress("Refreshing the model catalog…");
 

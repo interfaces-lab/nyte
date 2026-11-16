@@ -1,3 +1,4 @@
+import os
 import CoreGraphics
 import Foundation
 import ImageIO
@@ -5,22 +6,17 @@ import Lune
 import NyteKit
 import Observation
 
-/// One design file placed on the canvas: its frames, laid out, and where the file sits.
 struct SheetModel: Identifiable {
   let path: String
   let sheet: Sheet
   let frames: [FrameLayout]
-  /// Where the file's own (0, 0) sits on the canvas.
   var origin: CGPoint
-  /// Counts the times this file's rendering changed, so the canvas knows what to redraw.
   let revision: Int
-  /// The parse error of a file that is broken right now. Its last good frames stay up.
   let error: Diagnostic?
 
   var id: String { path }
   var name: String { URL(filePath: path).lastPathComponent }
 
-  /// The frames' union in the file's own coordinates.
   var extent: CGRect {
     frames.reduce(CGRect.null) { $0.union($1.rect) }
   }
@@ -30,27 +26,22 @@ struct SheetModel: Identifiable {
   }
 }
 
-/// A place on the canvas an agent or another person just changed.
 struct ChangeMark: Identifiable {
   let id = UUID()
   let sheet: String
   let frame: Int
-  /// In the frame's coordinates.
-  let rect: CGRect
 }
 
-/// The design files of one workspace, read and written through the host, never the disk:
-/// the same code works when the host runs on another machine.
 @MainActor
 @Observable
 final class ProjectStore {
+  private static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "sh.nyte.studio", category: "ProjectStore")
+
   let workspace: WorkspaceInfo
   private(set) var sheets: [SheetModel] = []
   private(set) var files: [String] = []
   private(set) var loaded = false
-  /// Bumped on every change to `sheets`.
   private(set) var revision = 0
-  /// The newest outside changes, for the canvas to light up.
   private(set) var marks: [ChangeMark] = []
   var mode: ThemeMode = .light { didSet { if mode != oldValue { relayout(marking: []) } } }
   var notice: String?
@@ -59,11 +50,19 @@ final class ProjectStore {
   private let client: HostClient
   private var project = Project()
   private var versions: [String: String] = [:]
-  /// The files with an unsaved preview, each with the source it had before the preview began.
+  private var undoKeys: [String: UndoKey] = [:]
   private var staged: [String: String] = [:]
   private var unsaved: [String: String] = [:]
   private var saving: Set<String> = []
   private var revisions: [String: Int] = [:]
+  private var places: [String: CGPoint] = [:]
+  private var shelf: Shelf?
+
+  private struct Shelf {
+    var x: CGFloat
+    var y: CGFloat
+    var height: CGFloat
+  }
   private var signatures: [String: [[BoxSignature]]] = [:]
   private let images = ImageStore()
   private var watcher: Task<Void, Never>?
@@ -73,7 +72,6 @@ final class ProjectStore {
     self.client = client
   }
 
-  /// Where the renderer finds the images designs reference.
   var environment: LayoutEnvironment {
     LayoutEnvironment(image: { [images] path in images.image(path) })
   }
@@ -82,7 +80,6 @@ final class ProjectStore {
   func source(_ path: String) -> String? { project.files[path]?.source }
   func scope(_ path: String) -> Scope { project.scope(of: path) }
 
-  /// Reads every `.lune` file in the workspace, then follows changes until `close`.
   func open() async {
     do {
       let entries = try await client.scan(workspace: workspace.id)
@@ -110,19 +107,21 @@ final class ProjectStore {
           for try await changes in self.client.watch(workspace: self.workspace.id) {
             await self.absorb(changes)
           }
-        } catch {}
+        } catch {
+          Self.log.error("watching the project stopped: \(String(describing: error), privacy: .public)")
+        }
         try? await Task.sleep(for: .seconds(1))
       }
     }
   }
 
-  /// Takes file changes from the host. A change whose version this client wrote itself is its
-  /// own echo; anything else came from an agent or another person.
   private func absorb(_ changes: [FileChange]) async {
     var outside: Set<String> = []
+    var everything = false
     for change in changes {
       if change.path.hasSuffix(".lune") {
         if change.kind == .removed {
+          everything = true
           project.remove(change.path)
           versions[change.path] = nil
           files.removeAll { $0 == change.path }
@@ -131,73 +130,82 @@ final class ProjectStore {
         }
         if change.version != nil, change.version == versions[change.path] { continue }
         if staged[change.path] != nil || saving.contains(change.path) { continue }
+        let before = project.files[change.path]?.source
         await read(change.path)
+        if project.files[change.path]?.source != before { forgetUndo(change.path) }
         if !files.contains(change.path) { files = (files + [change.path]).sorted() }
         outside.insert(change.path)
       } else if images.holds(change.path) {
+        everything = true
         images.forget(change.path)
         outside.insert(change.path)
       }
     }
-    if !outside.isEmpty { relayout(marking: outside) }
+    if !outside.isEmpty { relayout(marking: outside, only: everything ? nil : outside) }
   }
 
   private func read(_ path: String) async {
-    guard let file = try? await client.read(workspace: workspace.id, path: path) else { return }
-    project.set(path, source: file.contents)
-    versions[path] = file.version
+    do {
+      guard let file = try await client.read(workspace: workspace.id, path: path) else { return }
+      project.set(path, source: file.contents)
+      versions[path] = file.version
+    } catch {
+      notice = "Couldn't read \(URL(filePath: path).lastPathComponent): \(error.localizedDescription)"
+    }
   }
 
   // MARK: Editing
 
-  /// Shows an edit on the canvas without saving it, for a drag in progress. `from` is the tree
-  /// the drag started with, so repeated previews never compound.
   func stage(_ path: String, from tree: SyntaxTree, _ edits: [TextEdit]) {
     if staged[path] == nil { staged[path] = tree.source }
     project.set(path, source: tree.applying(edits))
-    relayout(marking: [])
+    relayout(marking: [], only: [path])
   }
 
-  /// Saves what `stage` showed, as one step to undo.
   func commitStaged(_ path: String, named name: String) {
     guard let before = staged.removeValue(forKey: path), let source = project.files[path]?.source else { return }
     guard source != before else { return }
-    registerUndo(path, restoring: before, named: name)
+    registerUndo(path, restoring: before, over: source, named: name)
     save(path, source)
   }
 
-  /// Applies edits to a file and saves it.
   func edit(_ path: String, _ edits: [TextEdit], named name: String) {
     guard let file = project.files[path], let tree = file.tree, !edits.isEmpty else { return }
     let source = tree.applying(edits)
     guard source != file.source else { return }
-    registerUndo(path, restoring: file.source, named: name)
+    registerUndo(path, restoring: file.source, over: source, named: name)
     project.set(path, source: source)
-    relayout(marking: [])
+    relayout(marking: [], only: [path])
     save(path, source)
   }
 
-  /// Undo puts a file's whole text back. That is safe against an agent's edit in between: the
-  /// write still names the version it expects, so it comes back stale instead of erasing it.
-  private func registerUndo(_ path: String, restoring source: String, named name: String) {
+  private func registerUndo(_ path: String, restoring source: String, over expected: String, named name: String) {
     guard let undoManager else { return }
-    undoManager.registerUndo(withTarget: self) { store in
-      MainActor.assumeIsolated { store.restore(path, source, named: name) }
+    let key = undoKeys[path] ?? UndoKey()
+    undoKeys[path] = key
+    undoManager.registerUndo(withTarget: key) { [weak self] _ in
+      MainActor.assumeIsolated { self?.restore(path, source, over: expected, named: name) }
     }
     undoManager.setActionName(name)
   }
 
-  private func restore(_ path: String, _ source: String, named name: String) {
+  private func restore(_ path: String, _ source: String, over expected: String, named name: String) {
     guard let current = project.files[path]?.source else { return }
-    registerUndo(path, restoring: current, named: name)
+    guard current == expected else {
+      notice = "\(URL(filePath: path).lastPathComponent) changed since that edit, so it can't be undone."
+      return
+    }
+    registerUndo(path, restoring: current, over: source, named: name)
     project.set(path, source: source)
-    relayout(marking: [])
+    relayout(marking: [], only: [path])
     save(path, source)
   }
 
-  /// Saves one file at a time, newest contents last. Each write expects the version this client
-  /// last saw, so it can't land on top of a change from an agent: that write comes back stale,
-  /// and the file on the host wins.
+  private func forgetUndo(_ path: String) {
+    guard let key = undoKeys[path] else { return }
+    undoManager?.removeAllActions(withTarget: key)
+  }
+
   private func save(_ path: String, _ source: String) {
     unsaved[path] = source
     guard saving.insert(path).inserted else { return }
@@ -212,33 +220,39 @@ final class ProjectStore {
             versions[path] = version
           case .stale:
             unsaved[path] = nil
+            forgetUndo(path)
             await read(path)
-            relayout(marking: [path])
+            relayout(marking: [path], only: [path])
             notice = "\(URL(filePath: path).lastPathComponent) changed underneath you, so your edit was dropped."
           }
         } catch {
           notice = "Couldn't save \(URL(filePath: path).lastPathComponent): \(error.localizedDescription)"
         }
       }
-      // Changes that arrived while this file was saving were skipped, so look once more.
       guard staged[path] == nil else { return }
       let known = versions[path]
+      let before = project.files[path]?.source
       await read(path)
-      if versions[path] != known { relayout(marking: [path]) }
+      if project.files[path]?.source != before { forgetUndo(path) }
+      if versions[path] != known { relayout(marking: [path], only: [path]) }
     }
   }
 
   // MARK: Layout
 
-  /// Lays out every file again and places the files on the canvas. `marking` names the files
-  /// that changed from outside.
-  private func relayout(marking outside: Set<String>) {
+  private func relayout(marking outside: Set<String>, only changed: Set<String>? = nil) {
     let previous = Dictionary(uniqueKeysWithValues: sheets.map { ($0.path, $0) })
     let environment = environment
     var next: [SheetModel] = []
     var nextMarks: [ChangeMark] = []
 
     for path in files {
+      if let changed, let kept = previous[path], kept.error == nil, !changed.contains(path),
+        changed.isDisjoint(with: project.dependencies(of: path))
+      {
+        next.append(kept)
+        continue
+      }
       let sheet = project.sheet(path)
       let old = previous[path]
       if sheet.error != nil, let old {
@@ -261,9 +275,7 @@ final class ProjectStore {
       signatures[path] = signed
 
       let touched = outside.contains(path) || !outside.isDisjoint(with: project.dependencies(of: path))
-      if changed, touched, let before {
-        nextMarks += marks(path: path, before: before, after: signed)
-      }
+      if changed, touched { nextMarks += marks(path: path, before: before ?? [], after: signed) }
       next.append(
         SheetModel(
           path: path, sheet: sheet, frames: frames, origin: .zero,
@@ -277,53 +289,45 @@ final class ProjectStore {
     fetchMissingImages()
   }
 
-  /// Shelves the files left to right in path order, starting a new shelf when one is as wide as
-  /// a canvas of about three by two would be. Neighbours in a folder stay neighbours, and a
-  /// file moves only when a file before it grows.
   private func place(_ sheets: inout [SheetModel]) {
     let gap = CGSize(width: 240, height: 300)
-    let sizes = sheets.map { sheet in
-      CGSize(width: max(sheet.extent.maxX, 320), height: max(sheet.extent.maxY, 320))
-    }
-    let area = sizes.reduce(0) { $0 + ($1.width + gap.width) * ($1.height + gap.height) }
-    let shelf = max(sizes.map(\.width).max() ?? 0, (area * 1.5).squareRoot())
-
-    var x: CGFloat = 0
-    var y: CGFloat = 0
-    var height: CGFloat = 0
-    for index in sheets.indices {
-      if x > 0, x + sizes[index].width > shelf {
-        x = 0
-        y += height + gap.height
-        height = 0
+    let shelfWidth: CGFloat = 3200
+    if places.isEmpty { places = savedPlaces() }
+    let fresh = sheets.indices.filter { places[sheets[$0].path] == nil && !sheets[$0].frames.isEmpty }
+    if !fresh.isEmpty {
+      if shelf == nil {
+        let bottom = sheets.compactMap { sheet -> CGFloat? in
+          places[sheet.path].map { $0.y + max(sheet.extent.maxY, 320) }
+        }.max()
+        shelf = Shelf(x: 0, y: bottom.map { $0 + gap.height } ?? 0, height: 0)
       }
-      sheets[index].origin = CGPoint(x: x, y: y)
-      x += sizes[index].width + gap.width
-      height = max(height, sizes[index].height)
+      for index in fresh {
+        guard var cursor = shelf else { break }
+        let size = CGSize(width: max(sheets[index].extent.maxX, 320), height: max(sheets[index].extent.maxY, 320))
+        if cursor.x > 0, cursor.x + size.width > shelfWidth {
+          cursor = Shelf(x: 0, y: cursor.y + cursor.height + gap.height, height: 0)
+        }
+        places[sheets[index].path] = CGPoint(x: cursor.x, y: cursor.y)
+        cursor.x += size.width + gap.width
+        cursor.height = max(cursor.height, size.height)
+        shelf = cursor
+      }
+      UserDefaults.standard.set(
+        places.mapValues { [Double($0.x), Double($0.y)] }, forKey: "studio.places.\(workspace.id)")
+    }
+    for index in sheets.indices { sheets[index].origin = places[sheets[index].path] ?? .zero }
+  }
+
+  private func savedPlaces() -> [String: CGPoint] {
+    let saved = UserDefaults.standard.dictionary(forKey: "studio.places.\(workspace.id)") ?? [:]
+    return saved.compactMapValues { value in
+      guard let pair = value as? [Double], pair.count == 2 else { return nil }
+      return CGPoint(x: pair[0], y: pair[1])
     }
   }
 
   private func marks(path: String, before: [[BoxSignature]], after: [[BoxSignature]]) -> [ChangeMark] {
-    var out: [ChangeMark] = []
-    for (index, boxes) in after.enumerated() {
-      guard index < before.count else {
-        if let root = boxes.first { out.append(ChangeMark(sheet: path, frame: index, rect: root.rect)) }
-        continue
-      }
-      let known = Set(before[index])
-      let changed = boxes.dropFirst().filter { !known.contains($0) }
-      // A change that touches most of a frame reads better as one glow around the frame.
-      if changed.isEmpty { continue }
-      if changed.count > 8 || changed.count * 2 > boxes.count {
-        if let root = boxes.first { out.append(ChangeMark(sheet: path, frame: index, rect: root.rect)) }
-        continue
-      }
-      let rects = changed.map(\.rect)
-      for rect in rects where !rects.contains(where: { $0 != rect && $0.contains(rect) }) {
-        out.append(ChangeMark(sheet: path, frame: index, rect: rect))
-      }
-    }
-    return out
+    after.indices.filter { $0 >= before.count || before[$0] != after[$0] }.map { ChangeMark(sheet: path, frame: $0) }
   }
 
   private func fetchMissingImages() {
@@ -339,7 +343,6 @@ final class ProjectStore {
   }
 }
 
-/// What makes a box look the way it does. Two layouts with the same signatures draw the same.
 private struct BoxSignature: Hashable {
   let site: ElementRef
   let rect: CGRect
@@ -365,7 +368,6 @@ private struct BoxSignature: Hashable {
   }
 }
 
-/// The images designs reference, fetched from the host once and kept decoded.
 final class ImageStore: @unchecked Sendable {
   private let lock = NSLock()
   private var images: [String: CGImage?] = [:]
@@ -407,3 +409,5 @@ final class ImageStore: @unchecked Sendable {
     lock.unlock()
   }
 }
+
+private final class UndoKey: NSObject {}

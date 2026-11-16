@@ -45,7 +45,6 @@ export async function viewHead(
   }
 }
 
-/** The `limit` messages of a head before `before`, with the turns they belong to and the prompt of the earliest of those turns when it is before them. */
 export async function historyHead(
   kernel: Kernel,
   input: {

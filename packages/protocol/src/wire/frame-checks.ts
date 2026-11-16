@@ -11,10 +11,6 @@ import {
 import type { Json } from "@nyte-ai/schema";
 import { Type } from "typebox";
 
-/**
- * The socket's frame validators, checked on every frame. The compiled binary's build replaces this
- * module with the same checks generated ahead of time, which have only `Check`.
- */
 function checkOnly<V extends { readonly Check: unknown }>(validator: V): Pick<V, "Check"> {
   return validator;
 }

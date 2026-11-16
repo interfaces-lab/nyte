@@ -51,7 +51,6 @@ export interface ListContext {
   readonly openWorkspace: WorkspaceId | null;
   readonly unavailable: ReadonlySet<WorkspaceId>;
   readonly chats: ChatDirectory;
-  /** The window's unread answer, which leaves out chats the user is looking at. */
   readonly unread: ReadonlySet<SessionId>;
   readonly reveal: ListReveal;
   readonly onClearFilters: () => void;
@@ -450,13 +449,11 @@ export function PinnedSection({
   );
 }
 
-/** One row per project. A row opens the project's page; its settings open from the gear. */
 export function ProjectsSection({
   projects,
   selected,
 }: {
   readonly projects: readonly ProjectInfo[];
-  /** The project whose page or coordinator chat is in front. */
   readonly selected: ProjectId | undefined;
 }): ReactElement {
   return (
@@ -529,7 +526,6 @@ export function WorkspaceRow({
   readonly onMarkAllRead?: () => void;
   readonly onArchiveAll: (() => void) | undefined;
   readonly onRemove: () => void;
-  /** The open chat, kept under the header while the workspace is folded. */
   readonly retained?: ReactNode;
   readonly children: ReactNode;
 }): ReactElement {

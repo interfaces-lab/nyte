@@ -19,11 +19,6 @@ import { placementInRect } from "./session-dnd-geometry.ts";
 import type { SessionDragPoint } from "./session-dnd-geometry.ts";
 import type { ChatDraft } from "./session-view-state.ts";
 
-/**
- * What a person asks of the panes. `show` opens a new pane tab in the focused pane, so its chat
- * mounts afresh; `show-in` swaps the content of the pane's tab, so the pane stays mounted. `unhide`
- * is refused, with no actions, when the pane now shows something else or its blank draft has text.
- */
 export type PaneCommand =
   | { readonly kind: "show"; readonly selection: PaneSelection }
   | { readonly kind: "show-in"; readonly pane: PaneId; readonly selection: PaneSelection }
@@ -76,16 +71,10 @@ export function planPane(
   return { actions: paneActions(layout, command, blank), focus: commandFocus(command) };
 }
 
-/** Hiding a chat keeps DOM focus where it is; every other command follows the change. */
 export function commandFocus(command: PaneCommand): PaneFocus {
   return command.kind === "hide" ? "never" : "if-changed";
 }
 
-/**
- * The pane to move DOM focus to once a command turned `before` into `after`: the focused chat's
- * pane when the layout changed, the focused pane when the command always focuses, and none
- * otherwise.
- */
 export function focusRequest(
   before: Layout<PaneContent>,
   after: Layout<PaneContent>,
@@ -98,12 +87,6 @@ export function focusRequest(
   return focus === "always" ? after.focus[0] : undefined;
 }
 
-/**
- * Where a chat dragged to `point` would land: the first pane whose rect holds the point, unless it
- * already shows the dragged chat. A lone pane offers only its edges. An edge is offered only where
- * the drop can lay out another pane: a chat the layout shows moves, and another chat needs room
- * that Split would have in a window `width` wide; without it, the drop replaces the pane's chat.
- */
 export function dropTarget(
   layout: Layout<PaneContent>,
   rects: ReadonlyMap<PaneId, ClientRect>,
@@ -225,7 +208,6 @@ function inPane(
   ];
 }
 
-/** The last pane turns blank instead of closing. */
 function closePane(
   layout: Layout<PaneContent>,
   pane: PaneId,
@@ -239,11 +221,6 @@ function closePane(
   return [{ kind: "close", tab: closing.tab.id }];
 }
 
-/**
- * A center drop swaps with the pane already showing the chat, or replaces the target's chat; an
- * edge drop moves that pane's tab there, or opens the chat there. A drop on the chat's own pane does
- * nothing.
- */
 function dropSession(
   layout: Layout<PaneContent>,
   sessionId: SessionId,
@@ -274,7 +251,6 @@ function dropSession(
   ];
 }
 
-/** A pane a hidden chat left: blank, with nothing typed in it, so the chat may come back. */
 export function waitsForChat(pane: ChatPane, draft: ChatDraft): boolean {
   return (
     pane.selection.kind === "blank" &&
@@ -283,7 +259,6 @@ export function waitsForChat(pane: ChatPane, draft: ChatDraft): boolean {
   );
 }
 
-/** Keeps focus where it is unless the focused pane is blank, then returns it to `focused`. */
 function unhideSession(
   layout: Layout<PaneContent>,
   command: Extract<PaneCommand, { readonly kind: "unhide" }>,

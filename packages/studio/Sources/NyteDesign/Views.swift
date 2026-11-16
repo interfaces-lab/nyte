@@ -1,7 +1,5 @@
 import AppKit
 
-/// A view that redraws its layer colours when the appearance changes. Layer colours are
-/// resolved CGColors, so they don't follow light and dark on their own.
 open class AppearanceView: NSView {
   public override init(frame: NSRect) {
     super.init(frame: frame)
@@ -22,13 +20,11 @@ open class AppearanceView: NSView {
     applyColors()
   }
 
-  /// Sets every layer colour for the current appearance.
   open func applyColors() {}
 
   public var isDark: Bool { effectiveAppearance.isDark }
 }
 
-/// A one-pixel separator.
 public final class Hairline: AppearanceView {
   private let role: NyteRole
 
@@ -36,7 +32,7 @@ public final class Hairline: AppearanceView {
     self.role = role
     super.init(frame: .zero)
     translatesAutoresizingMaskIntoConstraints = false
-    heightAnchor.constraint(equalToConstant: 1).isActive = true
+    heightAnchor.constraint(equalToConstant: NyteSpace.px.rawValue).isActive = true
   }
 
   public required init?(coder: NSCoder) {
@@ -48,17 +44,26 @@ public final class Hairline: AppearanceView {
   }
 }
 
-/// Nyte's floating surface for chrome people use all the time: the popup material over a blur
-/// of what is behind it, a hairline ring and a soft shadow. It keeps its own colour over any
-/// content, which a control floating above someone's design has to.
+public enum NyteShape: Sendable {
+  case radius(NyteRadius)
+  case pill(NyteControl)
+
+  public var cornerRadius: CGFloat {
+    switch self {
+    case .radius(let radius): return radius.rawValue
+    case .pill(let control): return control.rawValue / 2
+    }
+  }
+}
+
 public final class FloatingSurface: AppearanceView {
   public let contentView = NSView()
   private let blur = NSVisualEffectView()
   private let tint = NSView()
   private let radius: CGFloat
 
-  public init(radius: CGFloat) {
-    self.radius = radius
+  public init(_ shape: NyteShape) {
+    radius = shape.cornerRadius
     super.init(frame: .zero)
     translatesAutoresizingMaskIntoConstraints = false
     layer?.masksToBounds = false
@@ -107,18 +112,15 @@ public final class FloatingSurface: AppearanceView {
   }
 }
 
-/// The system's glass, for the few surfaces that are a moment rather than a tool: what you
-/// summon in zen mode, the hand-off to Nyte, the project picker. Controls used many times a
-/// minute sit on `FloatingSurface` instead, where nothing shimmers under the pointer.
 public final class GlassSurface: NSView {
   public let contentView = NSView()
 
-  public init(radius: CGFloat) {
+  public init(_ shape: NyteShape) {
     super.init(frame: .zero)
     translatesAutoresizingMaskIntoConstraints = false
     contentView.translatesAutoresizingMaskIntoConstraints = false
     let glass = NSGlassEffectView()
-    glass.cornerRadius = radius
+    glass.cornerRadius = shape.cornerRadius
     glass.contentView = contentView
     glass.translatesAutoresizingMaskIntoConstraints = false
     addSubview(glass)
@@ -133,18 +135,20 @@ public final class GlassSurface: NSView {
   }
 }
 
-/// A square button with no fill until the pointer is over it: one step of fill on hover, two
-/// when pressed or on.
 public final class GhostButton: NSButton {
   public var isOn = false { didSet { needsDisplay = true } }
   private var hovered = false
   private var tracking: NSTrackingArea?
-  private let side: CGFloat
+  private let size: NyteControl
+  private let radius: CGFloat
 
-  public init(symbol: String, label: String, side: CGFloat = NyteControl.md, target: AnyObject?, action: Selector?) {
-    self.side = side
+  public init(
+    symbol: String, label: String, size: NyteControl = .md, round: Bool = false, target: AnyObject?,
+    action: Selector?
+  ) {
+    self.size = size
+    radius = round ? size.rawValue / 2 : size.cornerRadius
     super.init(frame: .zero)
-    translatesAutoresizingMaskIntoConstraints = false
     isBordered = false
     bezelStyle = .regularSquare
     imagePosition = .imageOnly
@@ -154,9 +158,7 @@ public final class GhostButton: NSButton {
     toolTip = label
     setAccessibilityLabel(label)
     setSymbol(symbol)
-    NSLayoutConstraint.activate([
-      widthAnchor.constraint(equalToConstant: side), heightAnchor.constraint(equalToConstant: side),
-    ])
+    square(size)
   }
 
   public required init?(coder: NSCoder) {
@@ -165,9 +167,11 @@ public final class GhostButton: NSButton {
 
   public func setSymbol(_ name: String) {
     image = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
-      .withSymbolConfiguration(.init(pointSize: side * 0.46, weight: .medium))
+      .withSymbolConfiguration(.init(pointSize: size.glyph.pointSize, weight: .medium))
     contentTintColor = .nyte(.contentSecondary)
   }
+
+  public override var alignmentRectInsets: NSEdgeInsets { NSEdgeInsetsZero }
 
   public override func updateTrackingAreas() {
     super.updateTrackingAreas()
@@ -191,23 +195,25 @@ public final class GhostButton: NSButton {
     let pressed = isHighlighted || isOn
     if pressed || hovered {
       NSColor.nyte(pressed ? .fillSecondary : .fillTertiary).setFill()
-      NSBezierPath(roundedRect: bounds, xRadius: NyteRadius.sm, yRadius: NyteRadius.sm).fill()
+      NSBezierPath(roundedRect: bounds, xRadius: radius, yRadius: radius).fill()
     }
     super.draw(dirtyRect)
   }
 }
 
-/// The Nyte mark: a moon lit from the upper right.
 public final class MoonView: NSView {
   private let side: CGFloat
 
-  public init(side: CGFloat) {
-    self.side = side
+  public init(_ size: NyteControl) {
+    side = size.rawValue
     super.init(frame: NSRect(x: 0, y: 0, width: side, height: side))
-    translatesAutoresizingMaskIntoConstraints = false
-    NSLayoutConstraint.activate([
-      widthAnchor.constraint(equalToConstant: side), heightAnchor.constraint(equalToConstant: side),
-    ])
+    square(size)
+  }
+
+  public init(_ metric: NyteMetric) {
+    side = metric.rawValue
+    super.init(frame: NSRect(x: 0, y: 0, width: side, height: side))
+    square(metric)
   }
 
   public required init?(coder: NSCoder) {
@@ -225,9 +231,7 @@ public final class MoonView: NSView {
     context.saveGState()
     context.addEllipse(in: rect)
     context.clip()
-    let colors = [
-      CGColor(srgbRed: 0.757, green: 0.816, blue: 0.965, alpha: 1), CGColor(srgbRed: 0.392, green: 0.498, blue: 0.796, alpha: 1),
-    ]
+    let colors = [NyteMoon.rim, NyteMoon.body]
     if let gradient = CGGradient(colorsSpace: CGColorSpace(name: CGColorSpace.sRGB), colors: colors as CFArray, locations: [0, 0.7]) {
       context.drawLinearGradient(
         gradient, start: CGPoint(x: rect.minX, y: rect.minY), end: CGPoint(x: rect.maxX, y: rect.maxY), options: [])
@@ -238,14 +242,13 @@ public final class MoonView: NSView {
     context.setShadow(
       offset: CGSize(width: -rect.width * 0.03, height: -rect.width * 0.03), blur: rect.width * 0.1,
       color: CGColor(srgbRed: 0.05, green: 0.06, blue: 0.13, alpha: 0.4))
-    context.setFillColor(CGColor(srgbRed: 1, green: 0.976, blue: 0.847, alpha: 1))
+    context.setFillColor(NyteMoon.light)
     context.fillEllipse(in: light)
     context.restoreGState()
   }
 
-  /// The mark as an image, for a menu item or a toolbar button.
-  public static func image(side: CGFloat) -> NSImage {
-    NSImage(size: NSSize(width: side, height: side), flipped: false) { rect in
+  public static func image(_ glyph: NyteGlyph) -> NSImage {
+    NSImage(size: NSSize(width: glyph.rawValue, height: glyph.rawValue), flipped: false) { rect in
       draw(in: rect)
       return true
     }
@@ -253,7 +256,6 @@ public final class MoonView: NSView {
 }
 
 extension NSTextField {
-  /// A label in a step of the type scale and a content role.
   public static func nyteLabel(
     _ text: String = "", _ style: NyteText = .base, _ weight: NSFont.Weight = .regular,
     _ role: NyteRole = .contentPrimary
@@ -266,7 +268,6 @@ extension NSTextField {
     return label
   }
 
-  /// A label that wraps onto as many lines as it needs.
   public static func nyteWrapping(
     _ text: String = "", _ style: NyteText = .base, _ role: NyteRole = .contentPrimary
   ) -> NSTextField {
@@ -276,18 +277,5 @@ extension NSTextField {
     label.isSelectable = false
     label.translatesAutoresizingMaskIntoConstraints = false
     return label
-  }
-}
-
-extension NSView {
-  /// Pins this view to all four edges of another, with optional insets.
-  public func pin(to other: NSView, insets: NSEdgeInsets = NSEdgeInsetsZero) {
-    translatesAutoresizingMaskIntoConstraints = false
-    NSLayoutConstraint.activate([
-      leadingAnchor.constraint(equalTo: other.leadingAnchor, constant: insets.left),
-      trailingAnchor.constraint(equalTo: other.trailingAnchor, constant: -insets.right),
-      topAnchor.constraint(equalTo: other.topAnchor, constant: insets.top),
-      bottomAnchor.constraint(equalTo: other.bottomAnchor, constant: -insets.bottom),
-    ])
   }
 }

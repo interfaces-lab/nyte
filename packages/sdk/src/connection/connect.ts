@@ -17,7 +17,6 @@ type HostPin = NonNullable<ConnectOptions["expect"]>;
 
 type Fetch = NonNullable<ConnectOptions["fetch"]>;
 
-/** A credential after any pairing code was traded: what every request and the socket send. */
 export type HostCredentials = Exclude<CredentialSource, { readonly kind: "pairing" }>;
 
 export type Dialed = Client & { readonly credential: HostCredentials };
@@ -27,7 +26,6 @@ export async function connect(options: ConnectOptions): Promise<Connection> {
   return (await dial(options)).connection;
 }
 
-/** Connects as `connect` does, and returns the journal the connection sends through and the credential it settled on. */
 export async function dial(options: ConnectOptions): Promise<Dialed> {
   const { credentials } = options;
   const send = options.fetch ?? fetch;
@@ -102,7 +100,6 @@ async function openClient(
   return { ...client, credential };
 }
 
-/** Returns the headers a credential sends; a pairing code sends the device token it was traded for once there is one. */
 export async function credentialHeaders(
   credentials: CredentialSource,
   device: string | null = null,
@@ -167,12 +164,6 @@ function replayFirst(first: Json, rest: AsyncIterator<Json>): AsyncIterator<Json
   };
 }
 
-/**
- * Proves the pinned host before a credential is sent: its answer to a fresh nonce must name
- * `expected.hostId`, carry `expected.publicKey`, and verify under that key. A host that answers no
- * challenge (404) fails, because the pinned key is one it proved before. Every failure is
- * `SdkError("stale")`, and a changed key says to pair again.
- */
 async function verifyIdentity(url: string, send: Fetch, expected: HostPin): Promise<HostPin> {
   const nonce = crypto.randomUUID();
   const challenge = await askIdentity(url, send, nonce);
@@ -204,12 +195,6 @@ async function verifyIdentity(url: string, send: Fetch, expected: HostPin): Prom
   return expected;
 }
 
-/**
- * Learns the key of a host this client has not pinned: `null` when it answers no challenge (404),
- * and a rejection, which `connect` reads as no key, when the answer fails. The key is as
- * trustworthy as the channel this connection is made over, exactly as the host id the first view
- * carries is.
- */
 async function learnIdentity(url: string, send: Fetch): Promise<HostPin | null> {
   const nonce = crypto.randomUUID();
   const challenge = await askIdentity(url, send, nonce);
@@ -220,7 +205,6 @@ async function learnIdentity(url: string, send: Fetch): Promise<HostPin | null> 
   return { hostId: challenge.hostId, publicKey: challenge.publicKey };
 }
 
-/** Asks `/.nyte/identity` to sign `nonce`: `null` for a 404, the host's error for any other failure, and `SdkError("invalid")` for an answer that is not a challenge for this nonce. */
 async function askIdentity(
   url: string,
   send: Fetch,
@@ -251,7 +235,6 @@ async function askIdentity(
   return challenge;
 }
 
-/** Throws `SdkError("stale")` unless the challenge's signature over `nyte/identity\n<hostId>\n<nonce>` verifies under the key it carries. */
 async function checkSignature(challenge: IdentityChallenge, nonce: string): Promise<void> {
   const key = await crypto.subtle.importKey(
     "raw",

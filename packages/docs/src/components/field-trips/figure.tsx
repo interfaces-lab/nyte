@@ -5,11 +5,8 @@ interface PictureProps {
   alt: string;
   width: number;
   height: number;
-  /** `icon` keeps a single icon at a size that reads as one, `sheet` lets a wide sheet use the column. */
   size?: "icon" | "sheet";
-  /** A full-bleed square that the operating system would round: drawn with rounded corners. */
   rounded?: boolean;
-  /** A sheet with its own paper colour: framed by a hairline so its edge reads in both themes. */
   framed?: boolean;
   children?: ReactNode;
 }
@@ -43,7 +40,6 @@ export function TripGallery(props: { size?: "small" | "large"; children: ReactNo
   );
 }
 
-/** A clip that plays only when the reader starts it. */
 export function TripVideo(props: {
   src: string;
   poster: string;
@@ -76,7 +72,6 @@ export function TripVideo(props: {
   );
 }
 
-/** What the designer said in a round, in the page's words: the record keeps a summary, not quotes. */
 export function TripFeedback(props: { children: ReactNode }) {
   return (
     <div className="design-trip-feedback">

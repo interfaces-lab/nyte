@@ -25,15 +25,8 @@ const UNITS = new Map([
 
 type Parsed = ReturnType<typeof parseEventsArgs>;
 
-/**
- * Prints events until a signal, a closed stdout or `--timeout`. A lost connection retries with
- * backoff and warns once about the gap after it reconnects; 5 minutes without one ends as
- * `network_error`. A signal exits 128 + n through the invocation and prints nothing; a closed
- * stdout and `--timeout` exit 0.
- */
 export async function eventsCommand(input: {
   readonly args: readonly string[];
-  /** Resolves `--host-url` once, then dials the same host on every call. */
   readonly dialer: (hostUrl: string | undefined) => () => Promise<HostSocket>;
   readonly signal: AbortSignal;
   readonly output: Output;
@@ -77,7 +70,6 @@ export async function eventsCommand(input: {
   }
 }
 
-/** One connection: dial, print every event, subscribe. A failed subscribe closes the socket. */
 async function follow(
   dial: () => Promise<HostSocket>,
   scopes: readonly string[],
@@ -95,12 +87,6 @@ async function follow(
   return socket;
 }
 
-/**
- * Dials again after 1 s, doubling to 30 s between attempts, until one subscribes. `undefined` when
- * `stop` ends the wait. Only a host that is down (`host_not_running`) or unreachable
- * (`network_error`) is worth another attempt; any other failure ends at once. After `GIVE_UP_MS`
- * without a connection it ends as `network_error`.
- */
 async function reconnect(
   open: () => Promise<HostSocket>,
   stop: AbortSignal,
@@ -150,12 +136,6 @@ async function reconnect(
   });
 }
 
-/**
- * `events.subscribe` takes no starting point, so a reconnect can't resume and the events sent
- * while offline are gone. The host scope's are recoverable: its change events carry the sessions
- * table's seq, and `sessions.read` resumes from one. `--json` keeps stdout for host events, so the
- * warning is one JSON line on stderr there.
- */
 function warnGap(
   output: Output,
   parsed: Parsed,
@@ -228,7 +208,6 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
-/** `18 s`, `2 min 10 s`, `5 min`: spaced, for a sentence. */
 function spoken(ms: number): string {
   const seconds = Math.max(1, Math.round(ms / 1_000));
   const minutes = Math.floor(seconds / 60);
@@ -239,7 +218,6 @@ function spoken(ms: number): string {
   return rest === 0 ? `${minutes} min` : `${minutes} min ${rest} s`;
 }
 
-/** Scopes are checked against the subscribe schema before connecting, so a typo needs no host. */
 function parseEventsArgs(args: readonly string[], mode: Mode) {
   const parsed = parseCommandArgs("events", args, 0);
   const given = parsed.values("scope");
@@ -279,7 +257,6 @@ function parseEventsArgs(args: readonly string[], mode: Mode) {
   };
 }
 
-/** `500ms`, `30s`, `10m`, `1h` or a sum such as `1m30s`, in milliseconds; more than 0. */
 function readTimeout(text: string | undefined): number | undefined {
   if (text === undefined) return undefined;
   const parts = [...text.matchAll(/(\d+)(ms|s|m|h)/gu)];

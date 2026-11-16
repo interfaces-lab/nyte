@@ -17,7 +17,6 @@ const GAP_MS = 2 * BEAT_MS;
 export const REVOKED =
   "Another Nyte took over this one's work while it was paused, so this host stopped; it reopens on its own.";
 
-/** Registers this process at `processes/<instance>`, with its OS process where its machine can tell, beats it every 5 s and fences every write on it. `holder` judges a peer dead after 20 s unchanged while this process wrote within 10 s, or at once when the peer's record names an OS process its machine says is gone; a peer whose process the machine cannot tell about waits out the 20 s. */
 export async function openPresence(
   raw: StoreConnection,
   input: { readonly instance: string; readonly holder: HostId; readonly member: Member },

@@ -1,8 +1,6 @@
 import Foundation
 import Observation
 
-/// Runs a closure now, and again after anything observable it read has changed. This is how an
-/// AppKit view follows the model without a binding layer.
 @MainActor
 final class Observer {
   private let apply: () -> Void
@@ -22,7 +20,7 @@ final class Observer {
     guard !stopped else { return }
     scheduled = false
     withObservationTracking(apply) { [weak self] in
-      DispatchQueue.main.async {
+      DispatchQueue.main.async { [weak self] in
         guard let self, !self.scheduled else { return }
         self.scheduled = true
         self.track()

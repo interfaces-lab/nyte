@@ -359,7 +359,7 @@ describe("GitHub Copilot transport", () => {
       },
     };
     const transport = fakeFetch({
-      [`POST ${ORIGIN}/v1/messages?beta=true`]: () => {
+      [`POST ${ORIGIN}/v1/messages`]: () => {
         turn += 1;
         return turn === 1
           ? anthropicSse([
@@ -424,9 +424,7 @@ describe("GitHub Copilot transport", () => {
     assert.equal(second.stopReason, "stop");
     assert.equal(second.usage.input, 1);
 
-    const sent = transport.requests.filter(
-      (request) => request.url === `${ORIGIN}/v1/messages?beta=true`,
-    );
+    const sent = transport.requests.filter((request) => request.url === `${ORIGIN}/v1/messages`);
     assert.equal(sent.length, 2);
     const initial = sent[0];
     const followUp = sent[1];
@@ -465,7 +463,7 @@ describe("GitHub Copilot transport", () => {
 
   test("a budget Messages definition sends token thinking and clamps unavailable effort to the low budget", async () => {
     const transport = fakeFetch({
-      [`POST ${ORIGIN}/v1/messages?beta=true`]: () =>
+      [`POST ${ORIGIN}/v1/messages`]: () =>
         anthropicSse([
           {
             type: "message_start",
@@ -500,9 +498,7 @@ describe("GitHub Copilot transport", () => {
         fetch: transport.fetch,
       })
       .result();
-    const request = transport.requests.find(
-      (entry) => entry.url === `${ORIGIN}/v1/messages?beta=true`,
-    );
+    const request = transport.requests.find((entry) => entry.url === `${ORIGIN}/v1/messages`);
     assert.ok(request);
     const body = requestBody(request.body);
     assert.ok(matchesRecord(body.thinking));

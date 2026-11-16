@@ -11,7 +11,6 @@ export function formatUsd(dollars: number): string {
   return `$${groupDigits(fixed.slice(0, -3))}${fixed.slice(-3)}`;
 }
 
-/** Whole dollars and thousands, for a figure read at a glance. */
 export function formatUsdShort(dollars: number): string {
   if (dollars >= 10_000) return `$${(dollars / 1000).toFixed(0)}K`;
 
@@ -22,7 +21,6 @@ export function formatUsdShort(dollars: number): string {
   return formatUsd(dollars);
 }
 
-/** Prices and per-chat averages: enough digits that two cheap models never print the same. */
 export function formatUsdPrecise(dollars: number): string {
   if (dollars === 0 || dollars >= 1) return formatUsd(dollars);
 

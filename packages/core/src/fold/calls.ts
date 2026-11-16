@@ -15,7 +15,6 @@ const TOOL_CLASS = compile(ToolClassType);
 
 const SUMMARY_PATHS = 100;
 
-/** Applies a call event to the fold. An intent switches the call's part, opened in the same write with the call's name, args and class, to running. */
 export function applyCall(draft: Draft, event: Logged<"call">): void {
   const call = draft.calls.get(event.call);
 

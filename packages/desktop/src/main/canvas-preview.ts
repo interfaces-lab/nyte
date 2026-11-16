@@ -107,20 +107,19 @@ function painted(window: BrowserWindow): Promise<void> {
   return new Promise((resolve) => {
     let frames = 0;
 
-    const done = (): void => {
-      clearTimeout(fallback);
-
-      if (!window.isDestroyed()) window.webContents.off("paint", paint);
-      resolve();
-    };
-
     const paint = (): void => {
       frames += 1;
 
-      if (frames >= 2) done();
+      if (frames < 2) {
+        window.webContents.invalidate();
+
+        return;
+      }
+
+      window.webContents.off("paint", paint);
+      resolve();
     };
 
-    const fallback = setTimeout(done, 500);
     window.webContents.on("paint", paint);
     window.webContents.invalidate();
   });

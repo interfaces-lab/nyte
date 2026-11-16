@@ -151,10 +151,6 @@ function activityPart(message: Message): ActivityPart | undefined {
   return undefined;
 }
 
-/**
- * The words under a chat's live run. `mark` is the chat's, from `chatMark`: a run that waits while
- * the chat waits on the person waits for their answer, also when it waits on a subagent that asks.
- */
 export function runStatusLabel(
   execution: Extract<ChatRow, { kind: "status" }>["execution"],
   mark: TaskState,

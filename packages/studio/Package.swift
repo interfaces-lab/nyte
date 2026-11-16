@@ -12,15 +12,20 @@ let package = Package(
     .executable(name: "lune", targets: ["LuneCLI"]),
   ],
   dependencies: [
-    // Flexbox layout: the engine React Native lays out with.
-    .package(url: "https://github.com/react/yoga", from: "3.2.2")
+    .package(url: "https://github.com/react/yoga", from: "3.2.2"),
+    .package(url: "https://github.com/lukilabs/beautiful-mermaid-swift", from: "1.0.0"),
   ],
   targets: [
     .target(name: "Lune", dependencies: [.product(name: "yoga", package: "yoga")]),
     .target(name: "NyteKit"),
     .target(name: "NyteDesign", dependencies: ["Lune"]),
-    .executableTarget(name: "NyteStudio", dependencies: ["Lune", "NyteKit", "NyteDesign"]),
+    .executableTarget(
+      name: "NyteStudio",
+      dependencies: [
+        "Lune", "NyteKit", "NyteDesign",
+        .product(name: "BeautifulMermaid", package: "beautiful-mermaid-swift"),
+      ]),
     .executableTarget(name: "LuneCLI", dependencies: ["Lune", "NyteDesign"]),
   ],
-  swiftLanguageModes: [.v5]
+  swiftLanguageModes: [.v6]
 )

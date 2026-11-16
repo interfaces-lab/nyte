@@ -24,7 +24,6 @@ const drawn = new WeakMap<StreamedPart, Drawn>();
 
 const indexed = new WeakMap<readonly Message[], ReadonlyMap<string, number>>();
 
-/** The successor of a map without the parts a view it was laid on holds settled; `streamText` continues from it. */
 const pruned = new WeakMap<StreamedText, StreamedText>();
 
 export function streamText(texts: StreamedText, update: TextUpdate): StreamedText {
@@ -101,7 +100,6 @@ export function withStreamedText(view: HeadView, texts: StreamedText): HeadView 
   return result;
 }
 
-/** Copies `messages` with each laid message in its place. V8 copies a long array of messages through `Array.prototype.with` about sixty times slower than through `slice`, and this runs once per streamed delta. */
 function replaced(
   messages: readonly Message[],
   laid: ReadonlyMap<number, Message>,

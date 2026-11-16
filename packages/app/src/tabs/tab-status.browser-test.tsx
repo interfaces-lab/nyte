@@ -83,7 +83,6 @@ function folder(id: string): WorkspaceInfo {
     trusted: true,
     projectSources: [],
     addedBy: asId("tester"),
-    sessions: 0,
     writers: [],
     isolation: null,
   };
@@ -128,9 +127,9 @@ const scripted = scriptedConnection({
 
 installConnection(scripted.connection);
 
-function painted(): Promise<void> {
+function nextFrame(): Promise<void> {
   return new Promise((resolve) =>
-    window.requestAnimationFrame(() => window.setTimeout(() => resolve(), 0)),
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve())),
   );
 }
 
@@ -139,7 +138,7 @@ async function until(predicate: () => boolean, what: string): Promise<void> {
 
   while (!predicate()) {
     if (performance.now() > deadline) throw new Error(`Timed out waiting for ${what}`);
-    await painted();
+    await nextFrame();
   }
 }
 
@@ -165,7 +164,6 @@ function tabMark(tooltip: string): string {
   return tab === undefined ? "no tab" : markLabel(tab);
 }
 
-/** What the tab's accessible name adds after its title; the mark inside a tab isn't part of it. */
 function tabName(tooltip: string): string {
   const name = [...document.querySelectorAll('[role="tab"]')]
     .map((element) => element.getAttribute("aria-label") ?? "")
@@ -299,7 +297,7 @@ export async function run(): Promise<string> {
     const rightUnread = await split({ Right: "unread" }, "Right");
     const leftWorking = await split({ Left: "working" }, "Left");
 
-    for (let frame = 0; frame < 100 && tabMark("Quiet") === "no tab"; frame += 1) await painted();
+    for (let frame = 0; frame < 100 && tabMark("Quiet") === "no tab"; frame += 1) await nextFrame();
 
     const unlisted = {
       row: sidebarMark("Quiet"),

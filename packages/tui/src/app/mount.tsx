@@ -1,7 +1,7 @@
 import type { SessionId } from "@nyte-ai/sdk";
 import type { ClientConnection } from "@nyte-ai/sdk/client";
-import { CliRenderEvents, MouseButton, engine, maybeMakeRenderable } from "@opentui/core";
-import type { CliRenderer, Renderable } from "@opentui/core";
+import { CliRenderEvents, MouseButton, Renderable, engine } from "@opentui/core";
+import type { CliRenderer } from "@opentui/core";
 import { RendererContext, _render, createComponent } from "@opentui/solid";
 import { createRoot, createSignal } from "solid-js";
 import type { PartMessage } from "@nyte-ai/plugin/client/presentation";
@@ -419,7 +419,10 @@ function terminalPlugins(
 }
 
 export function drawnPart(renderer: CliRenderer, drawn: unknown): Renderable | null {
-  return drawn === undefined || drawn === null ? null : maybeMakeRenderable(renderer, drawn);
+  if (typeof drawn !== "function") return null;
+  const node: unknown = drawn(renderer);
+
+  return node instanceof Renderable ? node : null;
 }
 
 export function nextFrame(renderer: CliRenderer): Promise<void> {

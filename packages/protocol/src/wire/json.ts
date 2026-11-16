@@ -2,7 +2,6 @@ import { Type } from "typebox";
 import { compile, isJsonObject, SdkError } from "@nyte-ai/schema";
 import type { Json } from "@nyte-ai/schema";
 
-/** Types a value as JSON without looking at it, for a value known to be JSON already: what the codec walked to every leaf, or what `JSON.parse` returns once its numbers are known to be finite. */
 export const unchecked = compile(Type.Unsafe<Json>({}));
 
 export function parseJson(text: string): Json {

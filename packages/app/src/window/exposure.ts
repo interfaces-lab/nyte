@@ -32,13 +32,6 @@ export function expose(view: WindowView): Exposure {
   return { ...placed, unread };
 }
 
-/**
- * The chat this window tells main it views, so a notification's click comes back to it: the active
- * tab's focused chat. Unlike `expose` it stays under Settings and a workbench that covers the panes,
- * because the click should still come to this window, and it names one pane of a split, because
- * every pane's chat is already kept from alerting while the window is focused and only the click's
- * window depends on it.
- */
 export function viewedChat(tabs: WindowState): SessionId | null {
   const place = tabPlace(activeTab(tabs));
 

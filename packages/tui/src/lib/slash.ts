@@ -136,7 +136,6 @@ export function availableSlashCommands(
   return claimed;
 }
 
-/** Slash commands in canonical order: by name. */
 export type SlashIndex = readonly SlashCommand[];
 
 export function slashIndex(commands: readonly SlashCommand[]): SlashIndex {

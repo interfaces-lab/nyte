@@ -7,7 +7,7 @@ import { landing } from "../src/engine/admission.ts";
 import { stopRun } from "../src/engine/fence.ts";
 import { move } from "../src/engine/move.ts";
 import { ALL_AUTHORITY, LOCAL } from "../src/index.ts";
-import { callRef, headRef, memoryStore, partRef } from "../src/store.ts";
+import { callRef, headRef, leaseRef, memoryStore, partRef } from "../src/store.ts";
 import type { Kernel } from "../src/contract/kernel.ts";
 import type {
   ConnectionContext,
@@ -239,10 +239,12 @@ describe("ADV A-3", () => {
       };
 
       await until(async () =>
-        (await session.view()).execution.kind === "waiting" ? true : undefined,
+        (await session.view()).execution.kind === "waiting" &&
+        (await host.kernel.store.refs.get(leaseRef(session.id, main))) === null
+          ? true
+          : undefined,
       );
 
-      await new Promise((resolve) => setTimeout(resolve, 50));
       armed = reloadAt === "claim";
       await host.kernel.waits.tick(at);
 

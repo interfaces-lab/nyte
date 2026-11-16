@@ -36,24 +36,6 @@ const PREFIX = kvRef("secret", "models", "");
 
 const RETRIES = 5;
 
-/**
- * Returns `@nyte-ai/ai`'s `CredentialStore` over a host `Store`, so a host's
- * model logins live with its sessions and pass to
- * `createModels({ credentials })` (§42e); a Durable Object and a Vercel
- * instance keep theirs.
- *
- * Each call opens a store connection and closes it when done; the `Store` is
- * the caller's. `read` is `unsealCredential` over the record, `list` answers
- * non-secret account metadata per ref under `kv/secret/models/`, `modify` is
- * `modifyCredential`, and `delete` sets the ref to null, serialised as
- * `modify` is. Building it touches nothing, `list` never calls `key()` and
- * `read` calls it only when that provider's record exists (§50b, §55); the
- * imported key is kept once `key()` resolves, a rejection is not (§43k). While `key()` rejects (a deploy
- * without `NYTE_SECRET_KEY`), `read` answers undefined, `list` and `delete`
- * work (they need no key) and `modify` rejects that error, so provider keys
- * from the environment still resolve and logins answer `unavailable`. Web
- * Crypto only, no `node:*` (the `./credentials` subpath).
- */
 export function credentialStore(store: Store, secrets: SecretsSource): CredentialStore {
   let key: Promise<CryptoKey> | null = null;
   const writes = keyedSerial<string>();

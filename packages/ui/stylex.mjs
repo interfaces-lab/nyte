@@ -6,22 +6,24 @@ const ATOMIC_PRIORITY = 1000;
 
 const APP_OFFSET = 10_000;
 
+/**
+ * StyleX prices a `defineConsts` key as a property (3000) in each file's rules and swaps in the
+ * at-rule's own price (200) only when it assembles the stylesheet.
+ */
 const CONST_KEY_OVERPRICE = 3000 - 200;
 
 const CONST_WRAPPERS = /^(?:var\(--[\w-]+\)\{)*/;
 
-const CONDITION = /^[@:]/;
-
-function assertMediaConsts(rules) {
+function assertAtRuleConsts(rules) {
   for (const [, rule] of rules) {
     if (rule.constKey == null) continue;
     const value = String(rule.constVal);
 
-    if (!CONDITION.test(value) || value.startsWith("@media")) continue;
+    if (!value.startsWith(":")) continue;
 
     throw new Error(
-      `The defineConsts value "${value}" is a condition other than @media. ` +
-        "nyte-stylex-order prices every const key as @media; write this condition as a literal key.",
+      `The defineConsts value "${value}" is a pseudo-class condition. ` +
+        "StyleX orders a const key like the condition it stands for only when it is an at-rule; write this condition as a literal key.",
     );
   }
 }
@@ -33,17 +35,13 @@ function nyteStylexOrder({ types }) {
       const rules = file.metadata.stylex;
 
       if (!Array.isArray(rules)) return;
-      assertMediaConsts(rules);
-
-      for (const rule of rules) {
-        const wrappers = rule[1].ltr.match(CONST_WRAPPERS)[0].split("{").length - 1;
-
-        rule[2] -= wrappers * CONST_KEY_OVERPRICE;
-      }
+      assertAtRuleConsts(rules);
 
       const atomic = rules.filter(
         ([name, rule, priority]) =>
-          name.startsWith("x") && rule.constKey == null && priority >= ATOMIC_PRIORITY,
+          name.startsWith("x") &&
+          rule.constKey == null &&
+          priority - constWrappers(rule.ltr) * CONST_KEY_OVERPRICE >= ATOMIC_PRIORITY,
       );
 
       if (atomic.length === 0) return;
@@ -55,6 +53,10 @@ function nyteStylexOrder({ types }) {
       }
     },
   };
+}
+
+function constWrappers(ltr) {
+  return ltr.match(CONST_WRAPPERS)[0].split("{").length - 1;
 }
 
 function renameComponentClasses(file, atomic, types) {

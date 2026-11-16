@@ -337,7 +337,6 @@ function createRegistryDraft<T>(draft: Map<string, Entry<T>>, owner: string): Re
   };
 }
 
-/** Holds the runtime while it reads, so the sweep cannot close it mid-read and have an emptied catalog recorded. */
 async function sessionCatalog(
   kernel: Kernel,
   session: SessionId,

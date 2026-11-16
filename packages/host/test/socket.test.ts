@@ -564,7 +564,7 @@ describe("the host's WebSocket", () => {
         input: { scopes: [`session/${session}`] },
       }),
     );
-    await new Promise((settle) => setTimeout(settle, 50));
+    await raw.answered("1");
 
     for (let index = 0; index < 40; index += 1)
       await (await send(host, fake, session, `${index} ${"x".repeat(700_000)}`)).settled();

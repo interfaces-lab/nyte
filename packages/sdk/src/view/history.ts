@@ -4,17 +4,10 @@ import type { Head } from "@nyte-ai/core";
 type Pageable = Pick<SessionView, "messages" | "turns" | "leadingPrompt">;
 
 export interface Pages<V extends Pageable> {
-  /** `view` with the older messages loaded so far laid in before its own: the view itself while none are, and the same object for the same view until a page loads. */
   show(view: V): V;
-  /** Loads up to `limit` messages before the oldest one shown, and resolves how many came: 0 once the head's first message is shown, asking the host only the first time. A call while one loads waits for that one. The next `show` lays them in. */
   earlier(limit: number): Promise<number>;
 }
 
-/**
- * Pages a head's older messages in through `history`. A view keeps every message shown before its
- * own first one, so messages that leave the head's window stay; a view whose first message was
- * never shown (the head moved, or the window jumped past the pages) drops the pages.
- */
 export function pages<V extends Pageable>(history: Head["history"]): Pages<V> {
   let paged: readonly Message[] = [];
   let turns: readonly TurnInfo[] = [];

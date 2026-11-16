@@ -2,10 +2,6 @@
 
 @import "@nyte-ai/ui/styles/base.css";
 
-/*
- * Drags rewrite these on every pointer move. Each element that reads one carries it, and they don't
- * inherit, so a write restyles only those elements and not their content.
- */
 @property --nyte-sidebar-width {
   syntax: "<length>";
   inherits: false;

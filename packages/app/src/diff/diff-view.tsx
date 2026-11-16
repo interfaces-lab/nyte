@@ -42,7 +42,6 @@ export const DIFF_SEPARATOR_CSS = `
   display: none;
 }
 
-/* Split wrapping lays both sides out in one grid, with no box per side. */
 [data-diff-type="split"][data-overflow="wrap"] {
   container-type: inline-size;
 }
@@ -118,11 +117,6 @@ ${PIERRE_TOKEN_CSS}
 :host {
   color-scheme: inherit;
 }
-/*
- * Context rows and gutter spacers take the plain editor background. This also
- * opts them out of Pierre's hover and selected-line mixes, which the flat
- * surface does not use.
- */
 [data-line-type="context"],
 [data-gutter-buffer] {
   --diffs-line-bg: var(--diffs-bg);

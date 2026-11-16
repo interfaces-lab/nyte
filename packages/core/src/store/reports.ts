@@ -8,12 +8,10 @@ import { load, put, readReceipt, readSession } from "./session.ts";
 
 export type Report = Extract<ReceiptRecord, { readonly kind: "report" }>;
 
-/** The receipt id of the report `ended` owes, one per end, so a second delivery replays the first. */
 export function reportId(ended: ReportedEnd): ReceiptId {
   return asId<"receipt">(`${ended.kind === "run" ? ended.run : ended.job}:report`);
 }
 
-/** Reserves `report` under `session`, for the set that ends what owes it. The update is fenced on the session, so a set that races the session's removal fails instead of leaving a receipt no session holds. */
 export async function reserveReport(
   store: StoreConnection,
   session: SessionId,
@@ -29,7 +27,6 @@ export async function reserveReport(
   };
 }
 
-/** Deletes the pending report of the end `outcome` brings, for the set in which a waiter takes that end, so no report is sent for an end somebody awaited. */
 export async function withdrawReport(
   store: StoreConnection,
   outcome: WaitOutcome,

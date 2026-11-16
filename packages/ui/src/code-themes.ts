@@ -13,11 +13,6 @@ const TERTIARY_TOKENS = new Set([
   "predictive",
 ]);
 
-/**
- * Pierre's palettes, each syntax colour moved along its hue until it meets the text floor on every
- * code surface. `@pierre/diffs` tints a changed line with the git hue at 12% (light) or 20% (dark),
- * and a changed word at 15% or 20% over it.
- */
 export const codeThemes = {
   light: meetTextFloor(pierreLight, "light"),
   dark: meetTextFloor(pierreDark, "dark"),

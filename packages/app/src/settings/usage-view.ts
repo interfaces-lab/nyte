@@ -33,7 +33,6 @@ export type UsageGrain = "day" | "week";
 
 export type UsageMeasure = "cost" | "tokens";
 
-/** Catalog list prices in dollars per 1M tokens. */
 export type ListPrice = ModelInfo["cost"];
 
 export interface CacheUse {
@@ -64,7 +63,6 @@ export interface ModelUsage {
 export interface UsageSeries {
   readonly key: string;
   readonly label: string;
-  /** Rank among the charted models; `undefined` for the rest folded into Other. */
   readonly rank: number | undefined;
 }
 
@@ -200,14 +198,12 @@ export function timeLabel(at: number): string {
   return new Date(at).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 }
 
-/** The span a window covers, for copy: "the last 30 days" or "all time". */
 export function windowLabel(window: UsageWindow): string {
   return window.sinceDay === null
     ? "all time"
     : `the last ${plural(daysBetween(window.sinceDay, window.untilDay), "day")}`;
 }
 
-/** The window just before this one, for comparisons: "the prior 30 days". */
 export function priorLabel(window: UsageWindow): string {
   return window.sinceDay === null
     ? "the prior period"
@@ -437,7 +433,6 @@ export function deriveUsage({
   };
 }
 
-/** Calendar-aligned ticks: weekdays for a week, Mondays for a month, month starts beyond. */
 function tickFor(
   first: string,
   previous: string | undefined,
@@ -457,10 +452,6 @@ function tickFor(
   return first.endsWith("-01") ? monthLabel(first) : undefined;
 }
 
-/**
- * The running total, and where it lands by the end of the month at the pace of the last full
- * week. Today is partial, so it never sets the pace, and days before the first use don't dilute it.
- */
 function derivePace(days: readonly string[], daily: readonly number[]): UsagePace {
   let running = 0;
 
@@ -688,7 +679,6 @@ function toolSpend(report: UsageSnapshot, tool: UsageTool): ToolSpend {
   };
 }
 
-/** Nyte beside the agents whose local history this Mac keeps, by the same measure. */
 export function deriveTools(report: UsageSnapshot): readonly ShareRow[] {
   const spends = USAGE_TOOLS.map((tool) => ({ tool, spend: toolSpend(report, tool) }));
   const counted = spends.flatMap(({ spend }) => ("absent" in spend ? [] : [spend]));
@@ -715,7 +705,6 @@ export function deriveTools(report: UsageSnapshot): readonly ShareRow[] {
   });
 }
 
-/** The lab of a model, read from its id, so a model served through a gateway keeps its own mark. */
 const VENDORS: readonly {
   readonly prefix: RegExp;
   readonly name: string;

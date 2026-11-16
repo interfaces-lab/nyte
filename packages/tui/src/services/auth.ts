@@ -5,7 +5,6 @@ import { printable } from "../cli/format.ts";
 
 type Provider = ModelCatalogView["providers"][number];
 
-/** A choice the driver lists; `description` is context such as `signed in`, shown beside the label. */
 export interface Choice {
   readonly id: string;
   readonly label: string;
@@ -20,29 +19,22 @@ export interface LoginDriver {
   progress(message: string): void;
 }
 
-/** What a logout removed, and what still signs the provider in. */
 export interface LogoutReceipt {
   readonly provider: Pick<Provider, "id" | "name">;
-  /** The label of the saved login it removed. */
   readonly removed: string;
   readonly left:
     | { readonly kind: "nothing" }
-    /** Other saved logins stay, none of them active, so the provider is signed out. */
     | { readonly kind: "saved"; readonly labels: readonly string[] }
-    /** A credential from outside Nyte, such as an environment variable, still signs it in. */
     | { readonly kind: "external" };
 }
 
-/** A logout receipt in words: the receipt line, then one row per thing left. */
 export interface LogoutSummary {
   readonly done: string;
   readonly left: readonly DetailRow[];
 }
 
-/** `nyte status` lists every credential; a next step for errors that name a provider. */
 const SEE_CREDENTIALS: NextStep = { label: "See your credentials", argv: ["nyte", "status"] };
 
-/** The detail row for a credential `logout` can't remove. */
 const EXTERNAL = {
   label: "Still active",
   value: "A credential from outside Nyte, such as an environment variable",
@@ -52,11 +44,6 @@ function methodLabel(method: LoginMethod): string {
   return method.kind === "oauth" ? "Sign in with a browser" : "Paste an API key";
 }
 
-/**
- * `browser` answers the provider's own method question: `host` signs in with a browser on this
- * machine, `elsewhere` with a copy-code or device-code flow for a browser anywhere. Without it the
- * provider asks.
- */
 export async function loginProvider(input: {
   readonly connection: Connection;
   readonly driver: LoginDriver;
@@ -144,12 +131,6 @@ export async function loginProvider(input: {
   return provider;
 }
 
-/**
- * Drives a login's steps through the driver until `done`: shows `open`
- * links, asks `paste` and `choose` questions and answers them, and throws
- * on `failed` or when the driver's signal aborts. The host ends the steps without an outcome when
- * a sign-in isn't finished within its lifetime (10 minutes).
- */
 export async function runLogin(login: Login, driver: LoginDriver, name: string): Promise<void> {
   const steps = login.steps()[Symbol.asyncIterator]();
   const failure = Promise.withResolvers<never>();
@@ -211,13 +192,6 @@ export async function runLogin(login: Login, driver: LoginDriver, name: string):
   }
 }
 
-/**
- * Removes the provider's active saved login. `models.logout` keeps its other saved logins, and a
- * credential from outside Nyte, such as an environment variable, stays active, so the receipt
- * says what was removed and what is left. Without `providerId` it takes the one provider with an
- * active saved login, and asks only when there are more. Throws without removing anything when the
- * provider has no active saved login.
- */
 export async function logoutProvider(input: {
   readonly connection: Connection;
   readonly driver: LoginDriver;
@@ -277,10 +251,6 @@ export async function logoutProvider(input: {
   };
 }
 
-/**
- * A logout receipt as the CLI and the full-screen TUI show it: what was removed, then what is still
- * saved or still signs the provider in.
- */
 export function describeLogout(receipt: LogoutReceipt): LogoutSummary {
   const done = `Removed ${receipt.provider.name}'s saved login "${printable(receipt.removed)}"`;
 
@@ -307,14 +277,12 @@ export function describeLogout(receipt: LogoutReceipt): LogoutSummary {
   }
 }
 
-/** `"work" and "personal"`, the way receipts and errors list saved logins. */
 function quoteLabels(labels: readonly string[]): string {
   return new Intl.ListFormat("en", { type: "conjunction" }).format(
     labels.map((label) => `"${label}"`),
   );
 }
 
-/** Ids are exact; a near id is suggested, never used. */
 function requireProvider(catalog: ModelCatalogView, id: string, next: NextStep): Provider {
   const provider = catalog.providers.find((candidate) => candidate.id === id);
 
@@ -332,7 +300,6 @@ function requireProvider(catalog: ModelCatalogView, id: string, next: NextStep):
   );
 }
 
-/** `models.refresh` settles the credential check even when its model list refresh fails. */
 async function stillSignedIn(connection: Connection, providerId: string): Promise<boolean> {
   await connection.models.refresh(providerId).catch(() => undefined);
 

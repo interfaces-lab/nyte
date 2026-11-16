@@ -50,7 +50,6 @@ const CONFIGURED: ConfigureOutcome = {
 
 let sessions = 0;
 
-/** A chat on the old model whose configure answers when `answer` is called, and a picker's choice of the new model made through the real mutation. */
 async function picked(configure: (patch: ConfigureSessionPatch) => Promise<ConfigureOutcome>) {
   sessions += 1;
   const session = asId<"session">(`configured-${String(sessions)}`);

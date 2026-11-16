@@ -69,7 +69,6 @@ interface Sending {
   readonly content: UserContent;
   readonly options: SendOptions;
   readonly stop: AbortSignal | null;
-  /** Admits the report reserved at the send's id, and nothing once that reservation is gone. */
   readonly reserved: boolean;
 }
 
@@ -794,7 +793,6 @@ async function announce(
   if (message.source.kind === "user") await kernel.waits.inputAdmitted(session, head, message.id);
 }
 
-/** The revision of the pending report reserved at `id`, which a reserved send adopts, or null when there is none left to adopt: it was admitted, withdrawn or settled. */
 async function readReservation(
   store: StoreConnection,
   session: SessionId,

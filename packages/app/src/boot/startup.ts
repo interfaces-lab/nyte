@@ -1,9 +1,5 @@
 import type { AppRouter } from "../shell/routes.tsx";
-import {
-  holdStartupReads,
-  publishStartupConnection,
-  releaseStartupReads,
-} from "../data/startup.ts";
+import { holdStartupReads, publishStartupConnection } from "../data/startup.ts";
 import { connectionProblem } from "../data/connection.ts";
 
 interface RendererStartupOptions {
@@ -13,8 +9,6 @@ interface RendererStartupOptions {
   readonly connect: () => Promise<void>;
   readonly showError: (retry: () => void) => void;
 }
-
-const STARTUP_READS_FALLBACK_MS = 1000;
 
 const RETRY_MS = [250, 500, 1_000, 2_000] as const;
 
@@ -30,10 +24,7 @@ export function startRendererStartup(options: RendererStartupOptions): void {
 
   const open = (): void => {
     connect().then(
-      () => {
-        publishStartupConnection({ kind: "connected" });
-        setTimeout(releaseStartupReads, STARTUP_READS_FALLBACK_MS);
-      },
+      () => publishStartupConnection({ kind: "connected" }),
       (cause: unknown) => {
         const problem = connectionProblem(cause).kind;
 

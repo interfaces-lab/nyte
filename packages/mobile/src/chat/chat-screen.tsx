@@ -35,7 +35,6 @@ import { Timeline } from "./timeline.tsx";
 
 type ChatScreenProps = {
   state: HeadView;
-  /** The chat's mark, from `chatMark`. */
   mark: TaskState;
   heads: readonly HeadName[];
   health: string | undefined;
@@ -48,7 +47,6 @@ type ChatScreenProps = {
   error: string | undefined;
   onSend: (content: DraftContent, delivery?: Delivery) => Promise<SendOutcome>;
   onStop: () => void;
-  /** The host's row says the run is stopping, or this app asked it to stop and it hasn't answered. */
   stopping: boolean;
   question: AskedQuestion | undefined;
   onAnswer: (

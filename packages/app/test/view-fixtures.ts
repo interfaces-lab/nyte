@@ -73,7 +73,6 @@ export function workspaceRow(
     trusted: true,
     projectSources: [],
     addedBy: asId<"principal">("tester"),
-    sessions: 0,
     writers: [],
     isolation,
   };

@@ -40,7 +40,6 @@ const six: Fixture = (controller) => {
     runPane(controller, { kind: "split", direction: "right" });
 };
 
-/** Undoes hiding A from [A|B] after `between` ran on the pane A left, expecting A back when `accepted`. */
 function unhide(between: Command, accepted: boolean): Command {
   return (controller, panes) => {
     const restore = controller.window.hide(A);
@@ -58,10 +57,6 @@ function typeInto(controller: TabPanes, paneId: PaneId): void {
   });
 }
 
-/**
- * Draws the layout as nested splits of what each pane shows: `right(A,B*)`. A star marks a pane
- * whose shown tab is new since `before`.
- */
 function arrangement(node: LayoutNode<PaneContent>, before: Layout<PaneContent>): string {
   if (node.kind === "split")
     return `${node.direction}(${node.children.map((child) => arrangement(child.node, before)).join(",")})`;
@@ -323,7 +318,6 @@ function rect(left: number, top: number, width: number, height: number): ClientR
   return { left, top, width, height, right: left + width, bottom: top + height };
 }
 
-/** Lays `fixture` out and gives its panes, in order, the rects present in `rects`. */
 function measured(
   fixture: Fixture,
   rects: readonly (ClientRect | undefined)[],

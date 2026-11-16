@@ -1,11 +1,17 @@
 export function DesignMark({ size = 24 }: { size?: number }) {
   return (
-    <svg viewBox="0 0 96 96" width={size} height={size} aria-hidden="true" className="design-mark">
+    <svg
+      viewBox="0 0 100.507 100.507"
+      width={size}
+      height={size}
+      aria-hidden="true"
+      className="design-mark"
+    >
       <path
         className="design-mark-moon"
-        d="M56.817.817A48 48 0 1 0 95.183 39.183 32 32 0 1 1 56.817.817Z"
+        d="M72.423 8.931A48 48 0 1 0 95.353 58.106 32 32 0 1 1 72.423 8.931Z"
       />
-      <circle className="design-mark-light" cx="64" cy="32" r="32" />
+      <circle className="design-mark-light" cx="68.507" cy="40.691" r="32" />
     </svg>
   );
 }

@@ -2,14 +2,27 @@ import AppKit
 import NyteDesign
 import NyteKit
 
-/// One row of the sidebar outline.
+enum ChatState: Equatable {
+  case idle
+  case working
+  case waiting
+  case failed(String)
+
+  init(_ execution: Execution) {
+    switch execution {
+    case .idle(let failed): self = failed.map(ChatState.failed) ?? .idle
+    case .waiting: self = .waiting
+    case .responding, .executing, .retrying: self = .working
+    }
+  }
+}
+
 private final class SidebarNode: NSObject {
   enum Kind: Equatable {
     case group(String)
-    case folder(String)
     case file(path: String, frames: Int, broken: Bool)
     case newChat
-    case chat(id: String, busy: Bool)
+    case chat(id: String, state: ChatState)
   }
 
   let kind: Kind
@@ -22,15 +35,10 @@ private final class SidebarNode: NSObject {
   }
 }
 
-/// The project's design files and chats, in a native source list. A file is a place on the
-/// canvas: choosing one moves the camera there, it doesn't swap a document.
 @MainActor
 final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate {
   private let model: StudioModel
   private let outline = NSOutlineView()
-  private let project = NSPopUpButton(frame: .zero, pullsDown: true)
-  private let statusDot = NSView()
-  private let statusLabel = NSTextField.nyteLabel("", .sm, .regular, .contentTertiary)
   private var roots: [SidebarNode] = []
   private var signature = ""
   private var observers: [Observer] = []
@@ -47,12 +55,6 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
   override func loadView() {
     view = NSView()
 
-    project.isBordered = false
-    project.font = .nyte(.base, .semibold)
-    project.translatesAutoresizingMaskIntoConstraints = false
-    project.toolTip = "Open another project"
-    (project.cell as? NSPopUpButtonCell)?.arrowPosition = .arrowAtBottom
-
     let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("main"))
     column.resizingMask = .autoresizingMask
     outline.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
@@ -61,50 +63,25 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
     outline.headerView = nil
     outline.style = .sourceList
     outline.rowSizeStyle = .default
-    outline.indentationPerLevel = 12
+    outline.indentationPerLevel = NyteSpace.s3.rawValue
     outline.floatsGroupRows = false
     outline.dataSource = self
     outline.delegate = self
     outline.target = self
     outline.action = #selector(rowClicked(_:))
+    outline.setAccessibilityLabel("Designs and chats")
 
     let scroll = NSScrollView()
     scroll.documentView = outline
     scroll.drawsBackground = false
     scroll.hasVerticalScroller = true
     scroll.automaticallyAdjustsContentInsets = true
-    scroll.translatesAutoresizingMaskIntoConstraints = false
 
-    statusDot.wantsLayer = true
-    statusDot.layer?.cornerRadius = 3.5
-    statusDot.translatesAutoresizingMaskIntoConstraints = false
-    let footer = NSStackView(views: [statusDot, statusLabel])
-    footer.spacing = 7
-    footer.edgeInsets = NSEdgeInsets(top: 0, left: 16, bottom: 0, right: 12)
-    footer.translatesAutoresizingMaskIntoConstraints = false
-
-    for subview in [project, scroll, footer] as [NSView] { view.addSubview(subview) }
-    let safe = view.safeAreaLayoutGuide
-    NSLayoutConstraint.activate([
-      project.topAnchor.constraint(equalTo: safe.topAnchor, constant: 2),
-      project.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 10),
-      project.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -10),
-      scroll.topAnchor.constraint(equalTo: project.bottomAnchor, constant: 4),
-      scroll.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-      scroll.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-      scroll.bottomAnchor.constraint(equalTo: footer.topAnchor),
-      footer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-      footer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-      footer.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-      footer.heightAnchor.constraint(equalToConstant: 32),
-      statusDot.widthAnchor.constraint(equalToConstant: 7),
-      statusDot.heightAnchor.constraint(equalToConstant: 7),
-    ])
+    view.addSubview(scroll)
+    scroll.pin(to: view)
 
     observers = [
-      Observer { [weak self] in self?.refreshProject() },
       Observer { [weak self] in self?.refreshRows() },
-      Observer { [weak self] in self?.refreshStatus() },
     ]
   }
 
@@ -115,32 +92,6 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
 
   // MARK: Following the model
 
-  private func refreshProject() {
-    let menu = NSMenu()
-    let title = NSMenuItem(title: model.workspace?.name ?? "Project", action: nil, keyEquivalent: "")
-    title.image = MoonView.image(side: 16)
-    menu.addItem(title)
-    for workspace in model.workspaces {
-      let item = NSMenuItem(title: workspace.name, action: #selector(chooseProject(_:)), keyEquivalent: "")
-      item.target = self
-      item.representedObject = workspace.id
-      item.toolTip = workspace.path
-      item.state = workspace.id == model.workspace?.id ? .on : .off
-      menu.addItem(item)
-    }
-    project.menu = menu
-  }
-
-  private func refreshStatus() {
-    statusDot.layer?.backgroundColor = (model.online
-      ? NyteRole.contentQuaternary.color(hue: .green) : NyteRole.contentQuaternary.color()).cgColor
-    statusLabel.stringValue = model.online ? model.hostName : "Reconnecting"
-    statusLabel.toolTip = model.online
-      ? "Attached to the Nyte host on \(model.hostName). Chats, models and files all come from it."
-      : "The host went away. Studio keeps trying."
-  }
-
-  /// Rebuilds the outline when what it lists changed, and follows the selection either way.
   private func refreshRows() {
     let files = model.project?.files ?? []
     let sheets = model.project?.sheets ?? []
@@ -157,37 +108,37 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
   }
 
   private func buildRoots(files: [String], sheets: [SheetModel], sessions: [SessionInfo]) -> [SidebarNode] {
-    let designs = SidebarNode(.group("Designs"), title: "Designs")
-    var folders: [String: SidebarNode] = [:]
+    let kinds = ["Controls", "Blocks", "Screens"]
+    var groups: [String: [String]] = [:]
     for path in files {
-      let parts = path.split(separator: "/").map(String.init)
-      var parent = designs
-      var prefix = ""
-      for folder in parts.dropLast() {
-        prefix += folder + "/"
-        if let known = folders[prefix] {
-          parent = known
-          continue
-        }
-        let node = SidebarNode(.folder(prefix), title: folder)
-        folders[prefix] = node
-        parent.children.append(node)
-        parent = node
+      let parts = path.lowercased().split(separator: "/").map { String($0.hasSuffix(".lune") ? $0.dropLast(5) : $0) }
+      let kind = parts.reversed().lazy.compactMap { part in kinds.first { $0.lowercased() == part } }.first ?? "Other"
+      groups[kind, default: []].append(path)
+    }
+    let names = files.map { URL(filePath: $0).deletingPathExtension().lastPathComponent }
+    var roots: [SidebarNode] = []
+    for kind in kinds + ["Other"] {
+      guard let paths = groups[kind] else { continue }
+      let group = SidebarNode(.group(kind), title: kind)
+      for path in paths.sorted(by: { $0.localizedStandardCompare($1) == .orderedAscending }) {
+        let url = URL(filePath: path)
+        let name = url.deletingPathExtension().lastPathComponent
+        let title = names.filter { $0 == name }.count > 1
+          ? "\(name) · \(url.deletingLastPathComponent().lastPathComponent)" : name
+        let sheet = sheets.first { $0.path == path }
+        group.children.append(
+          SidebarNode(.file(path: path, frames: sheet?.frames.count ?? 0, broken: sheet?.error != nil), title: title))
       }
-      let sheet = sheets.first { $0.path == path }
-      parent.children.append(
-        SidebarNode(
-          .file(path: path, frames: sheet?.frames.count ?? 0, broken: sheet?.error != nil),
-          title: String(parts.last?.dropLast(5) ?? "")))
+      roots.append(group)
     }
 
     let chats = SidebarNode(.group("Chats"), title: "Chats")
     chats.children.append(SidebarNode(.newChat, title: "New Chat"))
     for session in sessions {
       chats.children.append(
-        SidebarNode(.chat(id: session.id, busy: session.execution.isBusy), title: session.name ?? "New chat"))
+        SidebarNode(.chat(id: session.id, state: ChatState(session.execution)), title: session.name ?? "New chat"))
     }
-    return [designs, chats]
+    return roots + [chats]
   }
 
   private func describe(_ nodes: [SidebarNode]) -> String {
@@ -217,12 +168,6 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
 
   // MARK: Actions
 
-  @objc private func chooseProject(_ sender: NSMenuItem) {
-    guard let id = sender.representedObject as? String, let workspace = model.workspaces.first(where: { $0.id == id })
-    else { return }
-    Task { await model.open(workspace) }
-  }
-
   @objc private func rowClicked(_ sender: Any?) {
     guard let node = outline.item(atRow: outline.clickedRow) as? SidebarNode else { return }
     switch node.kind {
@@ -235,7 +180,7 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
     case .newChat:
       model.newChat()
       model.focusComposer()
-    case .group, .folder:
+    case .group:
       break
     }
   }
@@ -285,28 +230,20 @@ private final class SidebarCell: NSTableCellView {
   init(_ identifier: NSUserInterfaceItemIdentifier) {
     super.init(frame: .zero)
     self.identifier = identifier
-    imageView = icon
     textField = label
     label.lineBreakMode = .byTruncatingMiddle
     spinner.style = .spinning
     spinner.controlSize = .small
-    spinner.isDisplayedWhenStopped = false
-    warning.image = NSImage(systemSymbolName: "exclamationmark.triangle.fill", accessibilityDescription: "Has an error")
-    warning.contentTintColor = .systemOrange
-    warning.toolTip = "This file has an error. The canvas shows its last good version."
+    warning.symbolConfiguration = .init(pointSize: NyteGlyph.sm.pointSize, weight: .medium)
     badge.setContentCompressionResistancePriority(.required, for: .horizontal)
     label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
-    let stack = NSStackView(views: [icon, label, NSView(), badge, spinner, warning])
-    stack.spacing = 6
+    let stack = NSStackView.row(gap: .s1_5, [icon, label, .spacer(), badge, spinner, warning])
     stack.setHuggingPriority(.defaultLow, for: .horizontal)
     addSubview(stack)
-    stack.pin(to: self, insets: NSEdgeInsets(top: 0, left: 2, bottom: 0, right: 6))
-    NSLayoutConstraint.activate([
-      icon.widthAnchor.constraint(equalToConstant: 16),
-      spinner.widthAnchor.constraint(equalToConstant: 14),
-      spinner.heightAnchor.constraint(equalToConstant: 14),
-    ])
+    stack.pin(to: self, insets: NyteInsets(leading: .s0_5, trailing: .s1_5))
+    icon.widthAnchor.constraint(equalToConstant: NyteGlyph.md.rawValue).isActive = true
+    spinner.square(NyteGlyph.sm)
   }
 
   required init?(coder: NSCoder) {
@@ -317,6 +254,7 @@ private final class SidebarCell: NSTableCellView {
     label.stringValue = title
     badge.isHidden = true
     warning.isHidden = true
+    spinner.isHidden = true
     spinner.stopAnimation(nil)
     icon.isHidden = false
     let symbol: String?
@@ -324,19 +262,33 @@ private final class SidebarCell: NSTableCellView {
     case .group:
       symbol = nil
       icon.isHidden = true
-    case .folder:
-      symbol = "folder"
     case .file(_, let frames, let broken):
       symbol = frames == 0 ? "paintpalette" : "rectangle.on.rectangle"
       badge.stringValue = "\(frames)"
       badge.isHidden = frames == 0 || broken
-      warning.isHidden = !broken
+      if broken {
+        mark("exclamationmark.triangle.fill", .orange, "This file has an error. The canvas shows its last good version.")
+      }
     case .newChat:
       symbol = "plus"
-    case .chat(_, let busy):
+    case .chat(_, let state):
       symbol = "bubble.left"
-      if busy { spinner.startAnimation(nil) }
+      switch state {
+      case .idle: break
+      case .working:
+        spinner.isHidden = false
+        spinner.startAnimation(nil)
+      case .waiting: mark("questionmark.bubble.fill", .blue, "Waiting for your answer.")
+      case .failed(let reason): mark("exclamationmark.triangle.fill", .orange, "Stopped: \(reason)")
+      }
     }
     icon.image = symbol.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: nil) }
+  }
+
+  private func mark(_ symbol: String, _ hue: NyteHue, _ meaning: String) {
+    warning.image = NSImage(systemSymbolName: symbol, accessibilityDescription: meaning)
+    warning.contentTintColor = .nyte(.contentAccent, hue: hue)
+    warning.toolTip = meaning
+    warning.isHidden = false
   }
 }

@@ -635,7 +635,6 @@ export function bindConnection(connection: Connection, options: BindingOptions):
   };
 }
 
-/** Returning it returns the jobs watch at once, even while a `next()` waits on the watch. */
 function jobChanges(lists: AsyncIterable<readonly JobView[]>): AsyncIterable<JobsChange> {
   return {
     [Symbol.asyncIterator]() {
@@ -715,7 +714,6 @@ async function readBytes(body: ReadableStream<Uint8Array> | null): Promise<Uint8
   return bytes;
 }
 
-/** Answers a reader's file version, when it carries one, as `X-Nyte-Version`. */
 function versioned(reader: ByteReader): ByteBody {
   const version = "version" in reader && typeof reader.version === "string" ? reader.version : null;
 

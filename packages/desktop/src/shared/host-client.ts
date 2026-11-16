@@ -10,7 +10,6 @@ import { Type } from "typebox";
 import WebSocket from "ws";
 import type { BrowserAgent } from "./browser-agent.ts";
 
-/** Another client of the host, such as Nyte Studio, hands a chat over to this app with this action. */
 export const OPEN_ACTION = {
   name: "open",
   summary: "Opens a chat in this app and brings its window forward.",
@@ -29,7 +28,6 @@ const browserCalls = compile(BrowserCallType);
 
 const previewCalls = compile(CanvasPreviewCallType);
 
-/** Opens main's socket to the host over `host.sock`. */
 export function appSocket(socket: string): OpenSocket {
   return (request) =>
     new WebSocket(`ws+unix://${socket}:${new URL(request.url).pathname}`, {

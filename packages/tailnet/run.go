@@ -18,7 +18,12 @@ import (
 	"tailscale.com/tsnet"
 )
 
-type listenFunc func(ctx context.Context, node *tsnet.Server, client *local.Client, st *ipnstate.Status) (net.Listener, error)
+type listenFunc func(ctx context.Context, node *tsnet.Server, client *local.Client) (net.Listener, error)
+
+const (
+	firstListenRetry = 10 * time.Second
+	lastListenRetry  = 5 * time.Minute
+)
 
 var states = map[string]string{
 	ipn.NoState.String():          "starting",
@@ -45,12 +50,23 @@ func run(ctx context.Context, opts options, authKey string, out io.Writer, liste
 
 	watcher, err := client.WatchIPNBus(ctx, ipn.NotifyInitialState)
 	if err != nil {
-		return err
+		if ctx.Err() == nil {
+			return err
+		}
+		report.update(func(now *status) { now.State = "stopped" })
+		return nil
 	}
 	defer watcher.Close()
 
 	gate := newGate(client, opts)
-	server := &http.Server{Handler: gate, ConnContext: gate.connContext}
+	// Callers reach the server before the gate reads WhoIs, so a peer the gate
+	// denies could otherwise hold connections open without sending a request.
+	server := &http.Server{
+		Handler:           gate,
+		ConnContext:       gate.connContext,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       2 * time.Minute,
+	}
 	var serving sync.Once
 	var served sync.WaitGroup
 
@@ -76,7 +92,7 @@ func run(ctx context.Context, opts options, authKey string, out io.Writer, liste
 		if st.BackendState == ipn.Running.String() {
 			serving.Do(func() {
 				served.Go(func() {
-					serve(ctx, server, report, func() (net.Listener, error) { return listen(ctx, node, client, st) })
+					serve(ctx, server, report, func() (net.Listener, error) { return listen(ctx, node, client) })
 				})
 			})
 		}
@@ -84,31 +100,46 @@ func run(ctx context.Context, opts options, authKey string, out io.Writer, liste
 
 	shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	server.Shutdown(shutdown)
+	if err := server.Shutdown(shutdown); err != nil {
+		log.Printf("closing connections: %v", err)
+	}
 	served.Wait()
 	report.update(func(now *status) { now.State = "stopped" })
 
 	return nil
 }
 
+// serve retries until shutdown, so HTTPS turned on in the admin console after
+// the node runs, or a certificate fetch that failed once, recovers on its own.
 func serve(ctx context.Context, server *http.Server, report *reporter, listen func() (net.Listener, error)) {
-	listener, err := listen()
-	if err != nil {
-		if ctx.Err() == nil {
-			log.Printf("serving HTTPS: %v", err)
+	for wait := firstListenRetry; ; wait = min(wait*2, lastListenRetry) {
+		listener, err := listen()
+		if err == nil {
+			report.update(func(now *status) { now.HTTPS = "available" })
+			err = server.Serve(listener)
 		}
+
+		if errors.Is(err, http.ErrServerClosed) || ctx.Err() != nil {
+			return
+		}
+
+		log.Printf("serving HTTPS: %v; trying again in %v", err, wait)
 		report.update(func(now *status) { now.HTTPS = "unavailable" })
-		return
-	}
 
-	report.update(func(now *status) { now.HTTPS = "available" })
-
-	if err := server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		log.Printf("serving: %v", err)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(wait):
+		}
 	}
 }
 
-func listenTLS(ctx context.Context, node *tsnet.Server, client *local.Client, st *ipnstate.Status) (net.Listener, error) {
+func listenTLS(ctx context.Context, node *tsnet.Server, client *local.Client) (net.Listener, error) {
+	st, err := client.StatusWithoutPeers(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	if st.CurrentTailnet == nil || !st.CurrentTailnet.MagicDNSEnabled {
 		return nil, errors.New("MagicDNS is off for this tailnet")
 	}

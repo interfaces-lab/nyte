@@ -43,10 +43,8 @@ interface Place {
   readonly signal: AbortSignal;
 }
 
-/** How long a lease holds without renewal. A head's lease and an action rerun's reservation both lapse after it. */
 export const LEASE_MS = 30_000;
 
-/** How often a lease's holder renews it: three times within one lease. */
 export const RENEW_MS = LEASE_MS / 3;
 
 const parkedExecutions = new WeakSet<Durable>();
@@ -57,33 +55,24 @@ class Parked extends Error {
   }
 }
 
-/**
- * Why a host aborts its runs' signals when it shuts down or loses its presence. A wait reached
- * under it parks, so the host that takes the run over resumes it with the wait intact; a wait
- * reached under any other abort is a Stop and ends stopped.
- */
 export const HOST_CLOSING = new Error("The host is closing.");
 
-/** Whether a wait reached under an aborted signal ends stopped: always, unless the host's shutdown aborted it and nobody has asked its run to stop. */
 async function endsStopped(kernel: Kernel, place: Place): Promise<boolean> {
   if (place.signal.reason !== HOST_CLOSING) return true;
 
   return place.run !== null && stopRequested(kernel.store, place.session, place.run);
 }
 
-/** Whether an error is the throw that ends a parked step's body. A `catch` between a body and `runStep` re-throws it so the body stops at the park. */
 export function signalsPark(error: unknown): boolean {
   return error instanceof Parked;
 }
 
-/** Ends a durable step's body because it parked. `runStep` reads the park from `parkedExecutions` before it looks at what the body returned or threw, so a `catch` that swallows `Parked` cannot turn a park into a result; it only lets the body run on past the park. */
 export function parkStep(durable: Durable): never {
   parkedExecutions.add(durable);
 
   throw new Parked();
 }
 
-/** Runs a durable call to an outcome, opening it unless it is already open; what it does with the record it finds follows `CallPhase`. */
 export async function runStep<T>(
   kernel: Kernel,
   input: {
@@ -189,7 +178,6 @@ export async function runStep<T>(
   return { kind: "done", value };
 }
 
-/** Writes `call`'s result and the updates `settle` gives in one set, unless the call is gone or already settled, and answers the record the call is left with. A run's call settles only while the run's record exists: once the run ended, the set is `fenced` and writes nothing. */
 export function settleCall(
   kernel: Kernel,
   scope: { readonly session: SessionId; readonly call: CallId; readonly run: RunId | null },

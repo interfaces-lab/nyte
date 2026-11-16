@@ -103,9 +103,9 @@ interface Step {
   readonly commits: Readonly<Record<(typeof COUNTED)[number], number>>;
 }
 
-function painted(): Promise<void> {
+function nextFrame(): Promise<void> {
   return new Promise((resolve) =>
-    window.requestAnimationFrame(() => window.setTimeout(() => resolve(), 0)),
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve())),
   );
 }
 
@@ -114,7 +114,7 @@ async function until(predicate: () => boolean, what: string): Promise<void> {
 
   while (!predicate()) {
     if (performance.now() > deadline) throw new Error(`Timed out waiting for ${what}`);
-    await new Promise<void>((resolve) => window.setTimeout(resolve, 10));
+    await new Promise((resolve) => window.requestAnimationFrame(resolve));
   }
 }
 
@@ -138,9 +138,9 @@ async function readTo(scroller: HTMLElement, offset: number): Promise<void> {
   const steering = window.setInterval(wheel, 50);
   scroller.scrollTop = offset;
   await landed;
-  await painted();
+  await nextFrame();
   window.clearInterval(steering);
-  await painted();
+  await nextFrame();
 }
 
 function topRow(scroller: HTMLElement): string | null {
@@ -204,7 +204,7 @@ async function checkLayout(): Promise<string> {
         ),
       "both transcripts",
     );
-    await painted();
+    await nextFrame();
 
     const scroller = transcript(tabBody(container, left.tab));
 
@@ -226,8 +226,8 @@ async function checkLayout(): Promise<string> {
     ): Promise<Step> => {
       window.nyteWorkCounts = {};
       store.dispatch(...actions);
-      await painted();
-      await painted();
+      await nextFrame();
+      await nextFrame();
       const counts = window.nyteWorkCounts;
 
       const now = [left.tab, right.tab].flatMap((tab) => {

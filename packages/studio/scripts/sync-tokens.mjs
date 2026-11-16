@@ -1,6 +1,3 @@
-// Writes the Swift colour tokens from the same generated hex table mobile reads, so Studio's
-// colours can't drift from the web tokens. Run after pnpm --filter @nyte-ai/ui sync:tokens.
-
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import process from "node:process";
@@ -59,7 +56,9 @@ if (process.argv.includes("--check")) {
   const current = await readFile(target, "utf8").catch(() => "");
 
   if (current !== source) {
-    process.stderr.write("Tokens.generated.swift is stale. Run pnpm --filter @nyte-ai/studio sync:tokens.\n");
+    process.stderr.write(
+      "Tokens.generated.swift is stale. Run pnpm --filter @nyte-ai/studio sync:tokens.\n",
+    );
     process.exit(1);
   }
 } else {

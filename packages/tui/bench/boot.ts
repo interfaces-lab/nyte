@@ -30,21 +30,11 @@ function median(values: readonly number[]): number {
 async function bootOnce(home: Awaited<ReturnType<typeof freshHome>>) {
   await rm(join(home.nyteHome, "tui-first-frame.json"), { force: true });
   await using pty = await openPty({ binary: BINARY, cwd: home.cwd, env: home.env });
-  const deadline = performance.now() + 15_000;
-
-  while (!(pty.screen().text.includes("❯") && pty.screen().text.includes("enter send"))) {
-    if (performance.now() > deadline) throw new Error(`No paint:\n${pty.screen().text}`);
-    await Bun.sleep(1);
-  }
-
+  await pty.waitFor((screen) => screen.text.includes("❯") && screen.text.includes("enter send"));
   const paintMs = performance.now() - pty.spawnedAt;
   const paintRss = rssKb(pty.pid);
 
-  while (!pty.screen().text.includes("ctrl+p model")) {
-    if (performance.now() > deadline) throw new Error(`Never ready:\n${pty.screen().text}`);
-    await Bun.sleep(1);
-  }
-
+  await pty.waitFor((screen) => screen.text.includes("ctrl+p model"));
   const readyMs = performance.now() - pty.spawnedAt;
   await Bun.sleep(SETTLE_MS);
 

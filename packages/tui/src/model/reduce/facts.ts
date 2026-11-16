@@ -226,7 +226,6 @@ function latestRun(execution: Execution): RunId | null {
   return execution.kind === "idle" ? (execution.lastRun?.id ?? null) : execution.run.id;
 }
 
-/** The commit `headAttention` says the person marks read, or null while nothing is unread. */
 function unreadTip(info: SessionInfo): CommitId | null {
   return headAttention(info).unreadTip?.commit ?? null;
 }

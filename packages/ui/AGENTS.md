@@ -45,6 +45,22 @@ Each ui module sits on one engine. Find it before changing the module.
 - There is no shared Pierre helper. A browser test that runs through `testRenderer` uses DOM
   queries, which stop at a shadow root: read the host element's `shadowRoot`, then query by `role`
   or by Pierre's `data-*` attributes.
+- Gutter cells carry `data-column-number`; source cells carry `data-line`.
+
+## Base UI
+
+- A trigger that shrinks on `:active` must not anchor a `Select` with `alignItemWithTrigger`: Base
+  UI reads the scale as zoom and opens the popup off the trigger. Give it `scale: 1`, as
+  `PickerTrigger` does.
+- To animate a popup with Motion, keep the Root controlled, wrap `{open && <X.Portal keepMounted>}`
+  in `AnimatePresence`, and pass the element form `render={<motion.div />}`. The function form
+  needs a cast.
+- Base UI ends the closing phase only for a Motion exit that animates `opacity`. Otherwise call
+  `eventDetails.preventUnmountOnClose()` and later `actionsRef.current.unmount()`.
+
+# Tests
+
+- ui has no test script, so an empty, zero-exit `pnpm --dir packages/ui test` is not a pass.
 
 # Typography
 
@@ -56,7 +72,7 @@ Reserve line-height: 1 and leading-none for non-text glyphs, icons, or deliberat
 
 <!-- STYLEX-CAPS:START -->
 
-StyleX v0.19.1. Use CSS-native solutions. Don't build JS workarounds for supported features.
+StyleX v0.19.2. Use CSS-native solutions. Don't build JS workarounds for supported features.
 
 | Group | Works | Doesn't work |
 | --- | --- | --- |

@@ -33,7 +33,6 @@ export function useWindowTabsState(): WindowState {
   return useSyncExternalStore(windowTabs.subscribe, windowTabs.getSnapshot, windowTabs.getSnapshot);
 }
 
-/** The window's workspace now; the first frame remembers one from the last launch at time 0. */
 function shownFolder(): ShownFolder {
   const state = queryClient.getQueryState<HostState>(keys.host);
   const workspace = state?.data?.workspace;
@@ -106,11 +105,6 @@ export function useWindowTabsSync(): void {
   });
 }
 
-/**
- * Asks the host to open the window's folder again whenever its list says it can't read it, and
- * reads that list again each time the window comes to the front, so a folder deleted while the
- * window shows it is noticed there.
- */
 function checkShownFolder(): () => void {
   const listKey = hashKey(keys.workspaces);
   let asking: string | undefined;

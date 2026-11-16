@@ -185,12 +185,10 @@ function storedVersion(database: DatabaseSync): number {
   return row === undefined ? 0 : parseNumber(row.version);
 }
 
-/** Returns SQLite's counter of commits other connections made to this file, as this connection last saw it. It does not move for this connection's own writes. */
 function peerCommits(database: DatabaseSync): number {
   return parseNumber(database.prepare("PRAGMA data_version").get()?.data_version ?? 0);
 }
 
-/** The migration reads records before the transaction that commits it, so that a long read blocks no one. `stamp` notes the file's count of peer commits and `commit` answers `conflict` when it has moved: another Nyte wrote in between, perhaps a ref the read never saw, which would keep its old shape under the new version. `migrateStore` reads again on a conflict. */
 function sqliteTarget(database: DatabaseSync, path: string | null): MigrationTarget {
   let read = 0;
 
@@ -691,7 +689,6 @@ function updateSessionIndex(
     prepared(change.text).run(...change.values);
 }
 
-/** Returns `database`'s statement for a text, prepared on its first use and kept as long as the cache, which never evicts: only texts from a fixed set go through it. */
 function statementCache(database: DatabaseSync): (text: string) => StatementSync {
   const statements = new Map<string, StatementSync>();
 
@@ -703,14 +700,6 @@ function statementCache(database: DatabaseSync): (text: string) => StatementSync
   };
 }
 
-/**
- * Returns the main connection's write lock: each attempt is an autocommit write or a whole
- * `BEGIN IMMEDIATE` transaction. When no attempt waits, it runs at the call and its result or
- * error comes back synchronously. An attempt SQLite refuses with `SQLITE_BUSY` changed nothing;
- * it waits off the thread with backoff and runs again until `BUSY_TIMEOUT_MS` after its call, and
- * the returned promise rejects with SQLite's error after that. Attempts run in call order, so one
- * called while another waits runs after it.
- */
 function writeLock(): <T>(attempt: () => T) => T | Promise<T> {
   let waiting: Promise<void> | null = null;
 

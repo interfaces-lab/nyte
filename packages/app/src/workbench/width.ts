@@ -39,11 +39,6 @@ export function workbenchWidthBounds(availableWidth: number): WorkbenchWidthBoun
   });
 }
 
-/**
- * The resize separator's range and value, as whole percentages of the stage. The panel's floor is
- * a fixed width, so on a stage narrower than it, as at a high zoom, each is held to 100% and the
- * value to the range.
- */
 export function workbenchSeparatorValue(panelWidth: number, stageWidth: number) {
   const bounds = workbenchWidthBounds(stageWidth);
 

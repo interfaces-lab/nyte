@@ -175,9 +175,7 @@ export interface Probe {
   readonly region: HTMLElement;
   readonly editor: HTMLElement;
   readonly button: (name: string) => HTMLButtonElement | null;
-  /** The draft text the window keeps for this chat. */
   readonly stored: () => string;
-  /** Opens another chat, runs `meanwhile`, comes back, and probes the composer drawn anew. */
   readonly revisit: (meanwhile: () => Promise<void>) => Promise<Probe>;
 }
 
@@ -188,7 +186,6 @@ export interface ComposerState {
   readonly name: string;
   readonly view: SessionView | undefined;
   readonly draft?: string;
-  /** The unsent rows the journal no longer sends on its own, which only the lone composer can be handed. */
   readonly expired?: readonly MessageId[];
   readonly check: (probe: Probe) => readonly string[] | Promise<readonly string[]>;
 }
@@ -215,10 +212,8 @@ export const health = viewStream<Health>(OPEN);
 
 export const stops: PromiseWithResolvers<StopOutcome<never>>[] = [];
 
-/** The connection's list of sends the journal replayed and the host refused. */
 export const refusals = viewStream<readonly RefusedSend[]>([]);
 
-/** How a send the composer made ends; `unsent` leaves it with the journal, as a link that closed under it or a day's wait does. */
 export type SendEnding = "refused" | "unsent" | "removed";
 
 export const sends: { readonly end: (ending: SendEnding) => void }[] = [];
@@ -572,7 +567,6 @@ const REFUSALS: readonly Refusal[] = [
   },
 ];
 
-/** Refuses a send in each situation of `REFUSALS` and checks where its text lands and which notice shows. */
 export async function refuseSend(probe: Probe): Promise<readonly string[]> {
   const failures: string[] = [];
   let shown = probe;
@@ -714,7 +708,6 @@ async function eventually(done: () => boolean): Promise<void> {
   while (!done() && performance.now() < deadline) await painted();
 }
 
-/** Sends twice in a row: once the journal holds the first message, the composer is free for the next. */
 export async function sendTwice(probe: Probe): Promise<readonly string[]> {
   const failures: string[] = [];
   const first = sends.length;
@@ -747,11 +740,6 @@ export async function sendTwice(probe: Probe): Promise<readonly string[]> {
   return failures;
 }
 
-/**
- * Lists a replayed send the host refused for a chat no composer shows, over an empty draft and then
- * over text, and checks the window's draft store takes it back as a live refusal and the connection's
- * list is emptied.
- */
 export async function replayRefused(): Promise<readonly string[]> {
   const failures: string[] = [];
   const drafts = windowTabs.panes().viewState;
@@ -914,7 +902,6 @@ export function painted(): Promise<void> {
   );
 }
 
-/** Records the error the stage's root threw, or clears it for the next stage, so `until` stops waiting. */
 export function failRender(error: unknown): void {
   renderFailure = error;
 }

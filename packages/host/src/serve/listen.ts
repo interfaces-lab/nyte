@@ -22,7 +22,6 @@ import { serveSession } from "./socket.ts";
 import type { SocketPeer } from "./socket.ts";
 import type { TailnetControl } from "./tailnet.ts";
 
-/** The smallest JSON answer worth gzipping for a client off loopback; a smaller one would grow. */
 const GZIP_MIN_BYTES = 1024;
 
 const compress = promisify(gzip);
@@ -33,7 +32,6 @@ export type HostListenOptions = ListenOptions & {
   readonly media?: MediaLinks | undefined;
 };
 
-/** Serves a composed host, the `Host.listen` `openHost` attaches: everything but the socket is `listenFetch`'s, and the `fetch` transport answers with it directly. The `http` transport binds `node:http` on `hostname` (default 127.0.0.1) and `port` (default 0); the `socket` transport binds a unix socket at `path`, owner-only, replacing a stale one, and is the one route that answers `local` operations. Both stream each request body in and each response body out chunk by chunk, with a client gone aborting its request; a failed bind throws `SdkError("unavailable")` after releasing the execution. `disconnectClients()` also destroys every open Node response, and `close()` closes the socket once. */
 export async function listen(host: ServedHost, options: HostListenOptions): Promise<Listener> {
   const transport = options.transport;
 
@@ -345,7 +343,6 @@ async function respond(
   );
 }
 
-/** Returns a JSON answer of `GZIP_MIN_BYTES` or more gzipped, and any other response as it is: an event stream or an octet stream is written as it comes, which a compressor would hold back. */
 async function gzipped(response: Response): Promise<Response> {
   if (
     response.body === null ||
@@ -397,7 +394,6 @@ function readRequest(
   return new Request(url.href, { method, headers, signal, ...body });
 }
 
-/** Cancelling the body discards the rest of it instead of destroying the socket, so the response still reaches the client; `respond` closes a connection whose body never ended once that response is written. */
 function streamBody(incoming: IncomingMessage): ReadableStream<Uint8Array> {
   let cancelled = false;
 

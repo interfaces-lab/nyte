@@ -41,7 +41,6 @@ export function highlightCode(code: string, language: string): readonly string[]
   return highlightTokens(code, language)?.map(lineHtml);
 }
 
-/** Tokenizes one code fence while it streams; `streamCode` feeds what each call appended. */
 export interface CodeStream {
   readonly tokenizer: StreamTokenizer;
   lines: readonly string[];
@@ -54,7 +53,6 @@ export function openCodeStream(language: string): CodeStream | undefined {
   return { tokenizer: new StreamTokenizer(tokenOptions(language)), lines: [], fed: "" };
 }
 
-/** Answers the lines so far, the unfinished last one plain, or undefined when `code` doesn't extend what was fed. */
 export function streamCode(stream: CodeStream, code: string): readonly string[] | undefined {
   const added = appended(stream, code);
 
@@ -66,7 +64,6 @@ export function streamCode(stream: CodeStream, code: string): readonly string[] 
   return stream.lines.concat(escapeHtml(code.slice(code.lastIndexOf("\n") + 1)));
 }
 
-/** Ends the stream with its last line, or answers undefined when `code` doesn't extend what was fed. */
 export function finishCode(stream: CodeStream, code: string): readonly string[] | undefined {
   const added = appended(stream, code);
 

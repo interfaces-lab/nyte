@@ -14,10 +14,6 @@ export interface CiDesktopHome extends AsyncDisposable {
   readonly repo: CiRepo;
 }
 
-/**
- * The scenario's home with the CI repo as a workspace. The host runs as a launchd job and takes
- * its PATH from the home's login shell, so the shell files put node and the repo's `gh` on it.
- */
 export async function ciDesktopHome(parent: string, route: CiRoute): Promise<CiDesktopHome> {
   const repo = await pushedCiRepo(parent);
   const home = await ciHome({ route, root: parent });

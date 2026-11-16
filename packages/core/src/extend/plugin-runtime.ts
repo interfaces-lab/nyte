@@ -432,11 +432,6 @@ export function createPluginRuntime(
   return runtime;
 }
 
-/**
- * Activates the valid ones of `plugins` in `host` for stand-in chat `session`, with no
- * environment and `inputs` as its resources; one whose activation fails is left out. `dispose`
- * ends them all.
- */
 export async function activateApart(
   kernel: Kernel,
   session: SessionId,
@@ -815,7 +810,6 @@ function installHook<N extends HookName<"core">>(
   if (entry !== undefined) api.hook(name, entry);
 }
 
-/** Registers `definition` while any runtime holds it. Releasing the last hold has every runtime that contributes its kind sync its parts again, since one that found the kind taken skipped its own definition. */
 function holdPart(kernel: Kernel, definition: PartDefinition, owner: string): Disposer {
   const { holds } = kernel.plugins.state;
 

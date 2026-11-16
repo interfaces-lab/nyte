@@ -152,7 +152,6 @@ function sideChat(parent: SessionId): SideChatWindow {
   return own.sides.get(parent) ?? CLOSED;
 }
 
-/** Moves `parent`'s side-chat window by `event`; a step that changes nothing wakes no one. */
 function moveSideChat(parent: SessionId, event: SideChatEvent): void {
   const before = sideChat(parent);
   const next = nextSideChat(before, event);
@@ -160,11 +159,6 @@ function moveSideChat(parent: SessionId, event: SideChatEvent): void {
   if (next !== before) setOwn({ ...own, sides: new Map(own.sides).set(parent, next) });
 }
 
-/**
- * Marks each chat read once it is looked at with its view arrived, again for each new tip. It runs
- * while anything draws the window, so the window marks read what it shows. It decides a frame after
- * a change, once the transcript has drawn the view and taken the unread mark its divider keeps.
- */
 function followSeen(): () => void {
   let sent: ReadonlyMap<SessionId, CommitId> = new Map();
   const views = new Map<SessionId, () => void>();

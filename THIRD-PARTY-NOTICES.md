@@ -696,6 +696,40 @@ wherever the gameplay is used: "Gameplay – youtube.com/@Naybr".
 
 License: every one is public domain or CC0. None requires attribution.
 
+## Yoga (`facebook/yoga`)
+
+- Repository: https://github.com/facebook/yoga
+- What: the flexbox layout engine. Nyte Studio builds version 3.2.2 from source
+  as a Swift package and links it into `NyteStudio` and `lune`, where it lays
+  out the frames of a Lune design. Nyte Studio also bundles Inter, under the
+  entry above, and ships both licenses in its app bundle.
+
+License: MIT, with the following notice:
+
+```text
+MIT License
+
+Copyright (c) Facebook, Inc. and its affiliates.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
 ## Appendix: Apache License 2.0
 
 This is the license for Pierre, Grok Build, and OpenAI Codex above. Section 4
@@ -910,3 +944,22 @@ here.
    See the License for the specific language governing permissions and
    limitations under the License.
 ```
+
+## BeautifulMermaid (`lukilabs/beautiful-mermaid-swift`)
+
+- Repository: https://github.com/lukilabs/beautiful-mermaid-swift
+- What: draws Mermaid diagrams with Core Graphics. Nyte Studio builds version
+  1.0.4 from source as a Swift package and links it into `NyteStudio`, where it
+  draws the diagrams in a chat reply. Its license ships in the app bundle.
+
+License: MIT, Copyright (c) 2026 Craft Docs.
+
+## ElkSwift (`lukilabs/elk-swift`)
+
+- Repository: https://github.com/lukilabs/elk-swift
+- What: a Swift port of the Eclipse Layout Kernel's layered layout, which
+  BeautifulMermaid depends on. Nyte Studio builds version 1.0.2 from source,
+  unmodified, and links it into `NyteStudio`. The source is available at the
+  repository above, and the full license ships in the app bundle.
+
+License: Eclipse Public License 2.0, https://www.eclipse.org/legal/epl-2.0/.

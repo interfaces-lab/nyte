@@ -20,14 +20,12 @@ import { secretFilesIn } from "./secrets.ts";
 import { findUpdate } from "./releases.ts";
 import { VERSION } from "./version.ts";
 
-/** `skip` is a check that didn't run, on purpose or because another check failed; it is no problem. */
 export type CheckStatus = "ok" | "warn" | "fail" | "skip";
 
 export interface DoctorCheck {
   readonly id: string;
   readonly status: CheckStatus;
   readonly detail: string;
-  /** The command or change that fixes a warn or fail. */
   readonly fix?: string;
 }
 
@@ -51,7 +49,6 @@ export function nyteHome(): string {
   return process.env["NYTE_HOME"] ?? join(homedir(), ".nyte");
 }
 
-/** Prints the report, as one JSON document with `--json`. Exits 1 when a check fails. */
 export async function doctorCommand(args: readonly string[], output: Output): Promise<number> {
   const help = { next: [{ label: "See the options", argv: ["nyte", "doctor", "--help"] }] };
   const extra = args.find((arg) => arg !== "--json");
@@ -76,7 +73,6 @@ export async function doctorCommand(args: readonly string[], output: Output): Pr
   return report.summary.fail > 0 ? 1 : 0;
 }
 
-/** Runs every check. Changes nothing and starts no host: without one, the host check says so and providers go unchecked. */
 export async function runDoctor(mode: Mode): Promise<DoctorReport> {
   const [binary, path, update, home, secrets, hostChecks, crashes, faults] = await Promise.all([
     checkBinary(),
@@ -108,7 +104,6 @@ export async function runDoctor(mode: Mode): Promise<DoctorReport> {
   return { version: VERSION, target: `${process.platform}-${process.arch}`, checks, summary };
 }
 
-/** One row per check, problems marked in the gutter, each fix on the line below at the value column; then the summary. */
 export function renderDoctor(report: DoctorReport, presentation: Presentation): string[] {
   const rows: Row[] = [
     { label: "Version", value: `${report.version}, ${report.target}` },
@@ -141,7 +136,6 @@ export function renderDoctor(report: DoctorReport, presentation: Presentation): 
   ];
 }
 
-/** Counts the entries in the logs at `paths` from the last week. Each entry starts with an ISO time; a missing log counts none. */
 export async function recentEntries(paths: readonly string[], now = Date.now()): Promise<number> {
   const logs = await Promise.all(paths.map((path) => readFile(path, "utf8").catch(() => "")));
   const log = logs.join("\n");
@@ -255,7 +249,6 @@ async function checkHome(): Promise<DoctorCheck> {
   }
 }
 
-/** Checks secret files' modes with stat. Their contents are never read. */
 async function checkSecrets(): Promise<DoctorCheck> {
   const home = nyteHome();
   const names = existsSync(home) ? secretFilesIn(await readdir(home)) : [];
@@ -282,7 +275,6 @@ async function checkSecrets(): Promise<DoctorCheck> {
   );
 }
 
-/** Asks the host `host.json` names for the model catalog. Never starts one: a missing host is a finding. */
 async function checkHostAndProviders(): Promise<readonly DoctorCheck[]> {
   const running = await findRunningHost(hostFilePath());
 
@@ -379,7 +371,6 @@ async function checkCrashes(): Promise<DoctorCheck> {
       };
 }
 
-/** Reads the rotated generation too, so a rotation doesn't hide a recent fault. */
 async function checkFaults(): Promise<DoctorCheck> {
   const log = hostFaultsPath();
   const faults = await recentEntries([log, `${log}.1`]);

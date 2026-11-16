@@ -52,7 +52,6 @@ export function watchTerminal(
 
 let armed = false;
 
-/** Gives every later `exitWithin` `ms` instead of 1.5 s, for a command whose own stop takes longer. */
 export function extendShutdown(ms: number): void {
   shutdownDeadlineMs = ms;
 }

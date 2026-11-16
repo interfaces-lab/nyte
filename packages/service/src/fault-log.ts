@@ -5,7 +5,6 @@ import type { Fault } from "@nyte-ai/core";
 const ROTATE_AT = 1024 * 1024;
 const LINE_MAX = 16 * 1024;
 
-/** Appends one line per fault to `path`, `<ISO time> [<area>] <message> <json>`, cut at 16 KiB, moving the file to `<path>.1` at 1 MiB. Never throws. */
 export function openFaultLog(path: string): (fault: Fault) => void {
   return (fault) => {
     try {

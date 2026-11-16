@@ -9,7 +9,6 @@ import { hostDocsPath } from "./host-endpoint.ts";
 
 export type DocsFiles = Readonly<Record<string, string>>;
 
-/** A checkout's docs are read where they are; a compiled binary carries its own to write out. */
 export type DocsSource =
   | { readonly kind: "folder"; readonly path: string }
   | { readonly kind: "files"; readonly files: DocsFiles };

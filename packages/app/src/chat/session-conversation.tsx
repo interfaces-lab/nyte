@@ -36,7 +36,7 @@ import { transcriptProjector } from "./transcript/transcript-rows.ts";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { listAgents, SubagentTray, type SubagentTrayView } from "./trays/agents.tsx";
 import { modelRefFor, sessionModel } from "./composer/model-picker-state.ts";
-import { StartupReadsRelease } from "../data/startup.ts";
+import { StartupReadsHold } from "../data/startup.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { useCommitCount } from "../lib/work-counts.ts";
 import { chatTitle, useChat, useChatTasks, useChatWorkspace } from "../chats/index.ts";
@@ -428,7 +428,7 @@ function ConversationScreen(conversation: SessionConversationProps): ReactElemen
           focusComposer={() => composerRef.current?.focus({ preventScroll: true })}
         >
           <TranscriptColumn paging={presentation === "full"} onColumn={setColumn}>
-            {((ready && chat.kind !== "loading") || failed) && <StartupReadsRelease />}
+            {!((ready && chat.kind !== "loading") || failed) && <StartupReadsHold />}
             {presentation === "full" && activation !== undefined && (
               <ActivationNotice key={JSON.stringify(activation)} activation={activation} />
             )}

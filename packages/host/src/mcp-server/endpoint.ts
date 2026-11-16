@@ -288,7 +288,6 @@ async function run(
   return callOperation(bound.binding, tool.operation, value, signal);
 }
 
-/** Every session an MCP tool's input names sits in a field called `session`, at any depth, or `parent`, `sessions.start`'s; `sessions.start`'s `id` is the session it starts. */
 function namedSessions(value: Json, key: string): string[] {
   if (typeof value === "string") return key === "session" || key === "parent" ? [value] : [];
 
@@ -297,7 +296,6 @@ function namedSessions(value: Json, key: string): string[] {
   return Object.entries(value).flatMap((entry) => namedSessions(entry[1], entry[0]));
 }
 
-/** A workspace without a local folder has no root to check against, so its paths are denied. */
 async function confine(
   connection: Connection,
   workspace: Json | undefined,

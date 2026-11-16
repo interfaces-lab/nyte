@@ -132,7 +132,6 @@ export async function attachComposerFiles(args: {
   return { attachments, error };
 }
 
-/** Files being read into a composer, and what the last read could not take. */
 export interface Intake {
   readonly reads: number;
   readonly error: string | undefined;
@@ -140,7 +139,6 @@ export interface Intake {
 
 export const NO_INTAKE: Intake = { reads: 0, error: undefined };
 
-/** A read starts, reports what it could not take, settles however it ended, or the error is cleared. */
 export type IntakeEvent =
   | { readonly kind: "reading" }
   | { readonly kind: "read"; readonly error: string | undefined }
@@ -165,11 +163,6 @@ export function nextIntake(intake: Intake, event: IntakeEvent): Intake {
   }
 }
 
-/**
- * Reads `files` into a composer, the one intake the follow-up composer and the new-chat screen
- * share: `step` hears the read start, its error and its end, and `attach` gets the images it read,
- * unless `signal` aborted it first. Resolves the error.
- */
 export async function takeFiles(input: {
   readonly files: readonly ComposerFile[];
   readonly editor: ComposerEditorHandle | null;

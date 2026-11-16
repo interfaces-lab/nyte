@@ -35,7 +35,6 @@ async function paint(): Promise<void> {
   await new Promise<void>((resolve) =>
     requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
   );
-  await new Promise<void>((resolve) => window.setTimeout(resolve, 20));
 }
 
 async function click(element: Element, shift: boolean): Promise<void> {

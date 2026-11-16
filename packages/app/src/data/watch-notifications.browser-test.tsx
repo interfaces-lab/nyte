@@ -37,8 +37,10 @@ function numbers() {
   };
 }
 
-function painted(): Promise<void> {
-  return new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+  );
 }
 
 function elapsed(ms: number): Promise<void> {
@@ -109,7 +111,7 @@ export async function run(): Promise<string> {
     source.push(0);
     await opened;
     flushSync(() => root.render(<Shown store={store} />));
-    await painted();
+    await nextFrame();
     const first = { heard: [...heard], rendered: [...rendered], shown: shown() };
 
     commits = 0;
@@ -119,7 +121,7 @@ export async function run(): Promise<string> {
 
     for (const value of [1, 2, 3, 4, 5]) source.push(value);
     const beforeFlush = await atFrame;
-    await painted();
+    await nextFrame();
 
     const burst = {
       heard: heard.slice(1),
@@ -133,7 +135,7 @@ export async function run(): Promise<string> {
 
     for (const value of [6, 7, 8]) {
       source.push(value);
-      await painted();
+      await nextFrame();
     }
 
     const perFrame = { commits, shown: shown() };
@@ -169,7 +171,7 @@ export async function run(): Promise<string> {
     source.push(11);
     await eleven;
     const rescheduled = pending.size;
-    await painted();
+    await nextFrame();
     const retry = { ...retried, rescheduled, afterFrame: rendered.slice(beforeRetry) };
 
     const beforeDispose = rendered.length;
@@ -185,7 +187,7 @@ export async function run(): Promise<string> {
       rendered: rendered.slice(beforeDispose),
     };
 
-    await painted();
+    await nextFrame();
     const dispose = { ...disposed, afterFrame: rendered.slice(beforeDispose), shown: shown() };
 
     return JSON.stringify({ first, burst, perFrame, hidden, retry, dispose });

@@ -394,7 +394,6 @@ test("previews don't outlast the window, and chats deleted or archived don't reo
 
 const drafts = tabPanes().viewState;
 
-/** What the sidebar's and tab strip's "Open beside" (`right`) and a drop on the focused pane do. */
 function dropOnFocused(id: string, placement: DropPlacement): PaneChange {
   return (layout) =>
     planPane(
@@ -527,7 +526,6 @@ const inActiveTab =
     store.run(tab.id, command(tabLayout(tab)));
   };
 
-/** What deleting a chat does here: its rows' and title bar's Delete hide it, with an undo. */
 const deleteChat =
   (id: string, undo = false) =>
   (store: Window): void => {
@@ -536,7 +534,6 @@ const deleteChat =
     if (undo) restore();
   };
 
-/** The delete's Undo, pressed after whatever came between. */
 const undoDelete =
   (id: string) =>
   (store: Window): void =>
@@ -578,7 +575,6 @@ const typeInBlank = (store: Window): void => {
   });
 };
 
-/** [a] [b|c], with c's pane focused in the active tab. */
 const splitWindow = [
   openChat("a"),
   openChat("b"),

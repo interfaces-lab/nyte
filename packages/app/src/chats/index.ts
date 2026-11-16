@@ -37,7 +37,6 @@ export type ChatResult =
   | { readonly kind: "missing" }
   | { readonly kind: "ready"; readonly chat: Chat };
 
-/** Asking for a chat the lists don't carry yet, such as one just started, reads it on its own. */
 export function useChat(id: SessionId): ChatResult {
   return useSyncExternalStore(
     (notice) => subscribeChat(id, notice),
@@ -118,7 +117,6 @@ export function useWaitingDescendants(session: SessionId): readonly WaitingChat[
   return useSyncExternalStore(walk.subscribe, walk.getSnapshot, walk.getSnapshot);
 }
 
-/** Includes every child of `parent`, however many chats the host's lists carry. */
 function useChildChats<S>(
   parent: SessionId | undefined,
   select: (chats: ChatDirectory) => S,
@@ -169,7 +167,6 @@ function sameTasks(previous: readonly ChildTask[], next: readonly ChildTask[]): 
   );
 }
 
-/** The folder a chat runs in, whatever folder the window has open; undefined for Home, an unreachable folder, or while the lists load. */
 export function useChatWorkspace(id: SessionId): SelectedWorkspace | undefined {
   return useChats(
     (chats) => {
@@ -184,7 +181,6 @@ export function useChatWorkspace(id: SessionId): SelectedWorkspace | undefined {
   );
 }
 
-/** Null for Home, undefined until the folder list loads. */
 export function chatFolderPath(id: SessionId): string | null | undefined {
   const location = chatDirectory().get(id)?.location;
 
@@ -232,7 +228,6 @@ const readWorkspaces = queryDataReader<readonly WorkspaceInfo[]>(keys.workspaces
 
 const refetchedFor = new Set<WorkspaceId>();
 
-/** Other clients add folders this window never hears about; a row naming one refetches the list, once per folder, so one that is gone can't refetch it again. */
 function fetchUnknownWorkspaces(): void {
   const workspaces = readWorkspaces();
 

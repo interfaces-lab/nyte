@@ -226,13 +226,6 @@ async function readHistoryInWindow<Scan>(
   return readHistory(path, info, read.parser, read.cache, read.signal);
 }
 
-/**
- * Reads Claude Code's local usage under `<configDir>/projects`. The configured root may be a
- * symlink (as may a system ancestor such as macOS `/tmp`), but links below it are skipped, to
- * avoid loops and duplicate history. Every read prices cached snapshots again on a copy, since
- * the catalog can change between reads while a transcript does not; a snapshot that records its
- * own cost keeps that total, with no invented breakdown.
- */
 export async function readClaudeCodeUsage(
   options: ClaudeCodeUsageOptions,
 ): Promise<ClaudeCodeUsage> {
@@ -456,13 +449,6 @@ function codexUsage(raw: CodexTokens): Usage {
 
 const FORK_COPY_MAX_GAP_MS = 1000;
 
-/**
- * Reads Codex's local usage from `sessions` and `archived_sessions` (where the legacy format
- * lives). A `response_id` is unique across files, so one map dedups a forked rollout's repeated
- * parent responses as well as repeats within a file; a file with modern records counts only
- * those, since the legacy event is written beside them. Rows are priced on a copy against the
- * `openai-codex` catalog, the ChatGPT-backend model ids Codex writes.
- */
 export async function readCodexUsage(options: CodexUsageOptions): Promise<CodexUsage> {
   options.signal?.throwIfAborted();
 
@@ -694,7 +680,6 @@ const usageScanCacheDocument = Type.Object({
 
 const usageScanCacheValidator = Compile(usageScanCacheDocument);
 
-/** Restores the scans {@link saveUsageScanCaches} wrote to `path`; each still answers only while its file is unchanged. */
 export async function loadUsageScanCaches(path: string): Promise<UsageScanCaches> {
   const document = await readCacheDocument(path, usageScanCacheValidator);
 
@@ -706,7 +691,6 @@ export async function loadUsageScanCaches(path: string): Promise<UsageScanCaches
   };
 }
 
-/** Writes `caches` to `path` when a read changed them since they were last saved; a failed write is tried again on the next save. */
 export async function saveUsageScanCaches(path: string, caches: UsageScanCaches): Promise<void> {
   if (!caches.claudeCode.changed && !caches.codex.changed) return;
 

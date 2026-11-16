@@ -30,13 +30,6 @@ __pycache__/
 .dev.vars*
 !.dev.vars.example
 
-# Nyte's per-workspace folders. The repo dogfoods its plugins, skills and MCP servers
-**/.nyte/*
-!/.nyte/plugins/
-!/.nyte/skills/
-!/.nyte/mcp.json
-.uji/
-
 # Anything personal or machine-specific lives in a .local folder
 .local/
 

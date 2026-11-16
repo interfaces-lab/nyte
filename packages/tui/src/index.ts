@@ -263,7 +263,6 @@ async function openHost(
   return host.connection;
 }
 
-/** `--host-url` attaches to that host with the token in `NYTE_HOST_TOKEN`, which leaves the environment so nothing this process starts inherits it. */
 function hostSource(flags: RunFlags): HostSource {
   return flags.hostUrl === undefined ? { kind: "local" } : attachedSource(flags.hostUrl);
 }
@@ -280,7 +279,6 @@ function attachedSource(url: string): HostSource {
   return { kind: "attached", endpoint: { url, token } };
 }
 
-/** The TUI, or one prompt with `-p`. Every argv mistake fails here, before any host work. */
 async function chat(args: readonly string[], context: Context): Promise<CommandEnd> {
   const misplaced = misplacedCommand(
     args,
@@ -339,7 +337,6 @@ async function chat(args: readonly string[], context: Context): Promise<CommandE
   );
 }
 
-/** One prompt. Everything the flags name is checked before the first change: trust, model settings or the send. */
 async function print(
   flags: RunFlags,
   prompt: string,

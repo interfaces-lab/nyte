@@ -139,30 +139,6 @@ export async function hasBranch(
     .catch(() => false);
 }
 
-/**
- * Returns git worktrees for local workspaces (`git`, default `git` on the
- * PATH), each under `<home>/.nyte/worktrees/<repository>/<branch>` on a branch
- * named by `branchName`: at most three hyphenated words from the title.
- *
- * `create` refuses a folder outside a repository or one without a commit, then
- * answers the worktree on the branch whose `branch.<branch>.nyte-session`
- * config is `name`, or claims the first name with no folder or listed worktree
- * at its path by creating its branch at HEAD (git refuses an existing branch,
- * which also settles a race with a concurrent create: the loser tries the next
- * name), records `name` in that config, and adds a worktree for it; then it
- * copies the workspace's uncommitted changes in: the worktree's tracked and
- * untracked files, ignored ones aside, are written to a tree through a
- * temporary index seeded from the real one (which is never touched), and the
- * new checkout moves to that tree with its index left at HEAD, so the changes
- * show as uncommitted there too. A workspace below the repository's root gets
- * the same folder below the worktree's.
- *
- * `remove` keeps a worktree, folder and branch, while it holds uncommitted
- * changes or ignored files, since none were copied in and one may be a
- * `.env` or a local database (a wholly ignored folder such as `node_modules`
- * or a build's output aside); otherwise it removes the folder
- * (`git worktree remove`) and deletes the branch unless it moved past `base`.
- */
 export function localWorktrees(options?: {
   readonly home?: string;
   readonly git?: string;

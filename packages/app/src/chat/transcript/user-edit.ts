@@ -11,7 +11,6 @@ import type { BranchModelChoice, BranchModelPicker } from "./turn-view.tsx";
 
 const EMPTY_MESSAGE = "A message cannot be empty.";
 
-/** An edit of an earlier message: its draft, the model it branches with, and the save underway. */
 export interface UserEditState extends BranchModelChoice {
   readonly document: ComposerDocumentState;
   readonly attachments: readonly ComposerImageAttachment[];
@@ -40,7 +39,6 @@ export type SaveDecision =
   | { readonly kind: "empty"; readonly edit: UserEditState }
   | { readonly kind: "send"; readonly edit: UserEditState; readonly choice: BranchModelChoice };
 
-/** The message's text with the caret at its end, its files kept, and the branch's model. */
 export function beginEdit(
   content: UserContent,
   branch: BranchModelPicker | undefined,
@@ -61,7 +59,6 @@ export function beginEdit(
   };
 }
 
-/** A click outside closes the edit only while nothing in it differs from the message and nothing is underway. */
 export function dismissible(
   edit: UserEditState,
   content: UserContent,
@@ -116,7 +113,6 @@ export function nextEdit(edit: UserEditState, event: UserEditEvent): UserEditSta
   }
 }
 
-/** A save while one is underway does nothing; an empty message says so; anything else sends with the edit's model. */
 export function decideSave(edit: UserEditState, draft: ComposerContent): SaveDecision {
   if (edit.saving) return { kind: "busy" };
 

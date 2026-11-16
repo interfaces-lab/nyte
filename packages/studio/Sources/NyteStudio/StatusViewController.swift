@@ -2,18 +2,16 @@ import AppKit
 import NyteDesign
 import NyteKit
 
-/// What the window shows before a project is open: looking for the host, not finding one, or
-/// the host's projects to choose from.
 @MainActor
 final class StatusViewController: NSViewController {
   private let model: StudioModel
   private let backdrop = NSVisualEffectView()
-  private let column = NSStackView()
+  private let column = NSStackView.column(gap: .s3, align: .centerX)
   private let heading = NSTextField.nyteLabel("", .xl, .semibold)
-  private let detail = NSTextField.nyteWrapping("", .base, .contentTertiary)
+  private let detail = NSTextField.nyteWrapping("", .base, .contentSecondary)
   private let retry = NSButton(title: "Try Again", target: nil, action: nil)
-  private let card = GlassSurface(radius: NyteRadius.panel)
-  private let list = NSStackView()
+  private let card = GlassSurface(.radius(.surface))
+  private let list = NSStackView.column(gap: .s0_5)
   private var observer: Observer?
 
   init(model: StudioModel) {
@@ -34,30 +32,25 @@ final class StatusViewController: NSViewController {
     backdrop.pin(to: view)
 
     detail.alignment = .center
-    detail.preferredMaxLayoutWidth = 380
+    detail.preferredMaxLayoutWidth = NyteMetric.picker.rawValue
     retry.bezelStyle = .push
-    retry.controlSize = .large
+    retry.controlSize = NyteControl.md.system
     retry.keyEquivalent = "\r"
     retry.target = self
     retry.action = #selector(tryAgain(_:))
 
-    list.orientation = .vertical
-    list.alignment = .leading
-    list.spacing = 2
     card.contentView.addSubview(list)
-    list.pin(to: card.contentView, insets: NSEdgeInsets(top: 8, left: 8, bottom: 8, right: 8))
-    card.widthAnchor.constraint(equalToConstant: 460).isActive = true
+    list.pin(to: card.contentView, insets: .all(.s2))
+    card.width(.picker)
 
-    column.orientation = .vertical
-    column.spacing = 10
-    column.translatesAutoresizingMaskIntoConstraints = false
-    for subview in [MoonView(side: 44), heading, detail, card, retry] as [NSView] { column.addArrangedSubview(subview) }
-    column.setCustomSpacing(16, after: column.arrangedSubviews[0])
-    column.setCustomSpacing(18, after: detail)
+    let mark = MoonView(NyteMetric.hero)
+    for subview in [mark, heading, detail, card, retry] as [NSView] { column.addArrangedSubview(subview) }
+    column.setCustomSpacing(NyteSpace.s4.rawValue, after: mark)
+    column.setCustomSpacing(NyteSpace.s5.rawValue, after: detail)
     view.addSubview(column)
     NSLayoutConstraint.activate([
       column.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-      column.centerYAnchor.constraint(equalTo: view.centerYAnchor, constant: -20),
+      column.centerYAnchor.above(view.centerYAnchor, .s5),
     ])
     observer = Observer { [weak self] in self?.refresh() }
   }
@@ -93,7 +86,6 @@ final class StatusViewController: NSViewController {
   }
 }
 
-/// One project in the picker: its name, and where it lives.
 private final class ProjectRow: NSButton {
   private let choose: () -> Void
   private var hovered = false
@@ -112,15 +104,16 @@ private final class ProjectRow: NSButton {
     let icon = NSImageView(image: NSImage(systemSymbolName: "folder", accessibilityDescription: nil) ?? NSImage())
     icon.contentTintColor = .nyte(.contentTertiary)
     let name = NSTextField.nyteLabel(workspace.name, .base, .medium)
-    let path = NSTextField.nyteLabel(workspace.path ?? "", .sm, .regular, .contentTertiary)
+    let path = NSTextField.nyteLabel(workspace.path ?? "", .sm, .regular, .contentSecondary)
+    path.toolTip = workspace.path
     path.lineBreakMode = .byTruncatingHead
     path.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
     name.setContentCompressionResistancePriority(.required, for: .horizontal)
-    let stack = NSStackView(views: [icon, name, NSView(), path])
-    stack.spacing = 8
+    icon.widthAnchor.constraint(equalToConstant: NyteGlyph.md.rawValue).isActive = true
+    let stack = NSStackView.row(gap: .s2, [icon, name, .spacer(), path])
     addSubview(stack)
-    stack.pin(to: self, insets: NSEdgeInsets(top: 0, left: 10, bottom: 0, right: 10))
-    heightAnchor.constraint(equalToConstant: 32).isActive = true
+    stack.pin(to: self, insets: NyteInsets(horizontal: .s3))
+    height(.lg)
   }
 
   required init?(coder: NSCoder) {
@@ -152,6 +145,6 @@ private final class ProjectRow: NSButton {
   override func draw(_ dirtyRect: NSRect) {
     guard hovered || isHighlighted else { return }
     NSColor.nyte(isHighlighted ? .fillSecondary : .fillTertiary).setFill()
-    NSBezierPath(roundedRect: bounds, xRadius: NyteRadius.md, yRadius: NyteRadius.md).fill()
+    NSBezierPath(roundedRect: bounds, xRadius: NyteRadius.control.rawValue, yRadius: NyteRadius.control.rawValue).fill()
   }
 }

@@ -19,7 +19,6 @@ import {
 } from "../wire/wire.ts";
 import { createStreamClient, hostAnswer } from "./stream-client.ts";
 
-/** Describes where a transport sends requests, the headers each carries (credentials, read again per request), and the `fetch` it uses. */
 export type TransportOptions = {
   readonly url: string;
   headers(): Promise<Readonly<Record<string, string>>>;
@@ -48,9 +47,6 @@ export type Transport = {
 
 const DONE = { done: true, value: undefined } as const;
 
-/**
- * How long a query or a receipt may go unanswered before it fails as a lost link. A request on a connection whose path died silently is never answered and never fails, and nothing else on HTTP notices. Both answer in milliseconds: a query reads, and a receipt is admission's one write. A command has no deadline, because the host runs some for as long as they take (a compaction, a push, a commit hook) and failing one here would report a lost link while the host finishes it. Streams, watches, uploads, byte reads and `wait` calls have none either.
- */
 const CALL_MS = 30_000;
 
 /** Returns a transport over `fetch` and `ReadableStream`, with no `EventSource`, so headers reach every request and it runs in browsers and React Native; a host off loopback is asked for deflated stream frames. */
@@ -180,7 +176,6 @@ export function createTransport(options: TransportOptions): Transport {
   };
 }
 
-/** Runs a query or a receipt under `CALL_MS`; past it, the request is aborted and fails as the `unavailable` a failed `fetch` fails with, so `linkLost` holds it a lost link. The caller's own abort reaches the caller as it was. */
 async function answered<T>(
   name: OperationName,
   outer: AbortSignal | undefined,
@@ -262,7 +257,6 @@ function cancellable<T>(open: (signal: AbortSignal) => AsyncIterable<T>): AsyncI
   };
 }
 
-/** Parses a stream's body, marking an error the body carries as the host's answer; an error reading the body reaches the caller as the stream raised it. */
 async function* answering<T>(
   body: ReadableStream<Uint8Array>,
   parse: (body: ReadableStream<Uint8Array>) => AsyncGenerator<T>,

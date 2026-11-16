@@ -343,7 +343,6 @@ export function UserMessageView({
   );
 }
 
-/** Base UI removes an open popup's backdrop on the press, so the click that follows lands outside every popup; the press decides. */
 function DismissOnOutsideClick({
   rowRef,
   onDismiss,

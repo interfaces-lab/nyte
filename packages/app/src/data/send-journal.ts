@@ -6,12 +6,6 @@ export type JournalArea = Pick<Storage, "getItem" | "setItem" | "removeItem" | "
 
 const PREFIX = "nyte:journal:v1:";
 
-/**
- * The send journal in `localStorage`, which every window and tab of one origin shares and a reload
- * or a closed tab keeps. Its writes are synchronous, so a message is stored before the window can
- * close. A write the storage refuses reports that storage is full and the message is still sent;
- * it then lasts only as long as this window.
- */
 export function localJournal(area: JournalArea | undefined = localArea()): RequestJournal {
   return area === undefined ? createSendJournal() : createSendJournal(journalStorage(area));
 }

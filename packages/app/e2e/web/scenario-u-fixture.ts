@@ -147,7 +147,6 @@ export function restaurantReplies(input: {
   };
 }
 
-/** The rest of the answer after the host says the last response was interrupted: a resumed run ends its request with that notice as a user message, after the text the model had already written. */
 function resumedAnswer(request: Request): Reply {
   const written = request.context.messages
     .findLast((message) => message.role === "assistant")

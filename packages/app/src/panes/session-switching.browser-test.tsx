@@ -39,7 +39,6 @@ const LIVE_TOOLS = 60;
 
 const ROUND_TRIP_MS = 300;
 
-/** The turns a chat's view holds; older ones arrive a page at a time through `history`. */
 const SHOWN_TURNS = 40;
 
 const ended: TurnInfo["state"] = { kind: "ended", end: { kind: "completed", usage: USAGE } };
@@ -256,23 +255,18 @@ function frame(): Promise<number> {
   return new Promise((resolve) => window.requestAnimationFrame(resolve));
 }
 
-function painted(): Promise<void> {
+function nextFrame(): Promise<void> {
   return new Promise((resolve) =>
-    window.requestAnimationFrame(() => window.setTimeout(() => resolve(), 0)),
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve())),
   );
 }
 
 async function pause(ms: number): Promise<void> {
   const until = performance.now() + ms;
 
-  while (performance.now() < until) await painted();
+  while (performance.now() < until) await nextFrame();
 }
 
-/**
- * Rule 27 through the real pager: from the top of `name`'s chat, pages load one after another
- * until none older remain, the chat's first prompt draws at the top, and then more scrolling at the
- * top asks the host nothing.
- */
 async function pageToStart(container: HTMLElement, name: Name) {
   const viewport = container.querySelector<HTMLElement>("[aria-label='Messages']");
 

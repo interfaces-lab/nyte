@@ -468,7 +468,6 @@ function splitMarkdown(markdown: string): string[] {
   ];
 }
 
-/** Streamdown returns one block for the whole input when `/\[\^[\w-]+\]/` matches anywhere, code included. */
 function splitBlocks(source: string): readonly string[] {
   if (REFERENCE_DEFINITION.test(source)) return parseMarkdownIntoBlocks(source);
 

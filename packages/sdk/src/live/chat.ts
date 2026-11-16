@@ -79,7 +79,6 @@ export interface Chat extends Live<ChatSnapshot> {
    * journal's storage does. Rejects when it never reached the journal.
    */
   send(content: UserContent, options?: SendOptions): Promise<ChatSend>;
-  /** Sends an expired unsent message again, as if just sent. */
   resend(message: MessageId): Promise<void>;
   /** Withdraws a message that has not landed: an unsent one, expired or not, is never sent; one the host holds is withdrawn there. */
   remove(message: MessageId): Promise<void>;
@@ -102,7 +101,6 @@ export interface ChatParts {
 
 type Opened = { readonly head: HeadStore; readonly stops: readonly Disposer[] };
 
-/** The latest stop this chat sent: shown while its run is the view's and the link's health is the one it was sent under. */
 type Ask = { readonly run: RunId; readonly health: Health };
 
 const NO_MESSAGES: readonly MessageId[] = [];
@@ -260,7 +258,6 @@ export function openChat(parts: ChatParts): Chat {
   };
 }
 
-/** What `sent` ended as: a rejection the journal kept or removed resolves, a dropped one rejects. */
 function delivered(sent: Promise<SendReceipt>, sending: Sending): Promise<ChatDelivered> {
   return sent.then(
     (receipt) => ({ kind: "sent", receipt }),
@@ -276,7 +273,6 @@ function delivered(sent: Promise<SendReceipt>, sending: Sending): Promise<ChatDe
   );
 }
 
-/** `next`, or `previous` when it holds the same ids, so the array changes only when they do. */
 function keepIds(previous: readonly MessageId[], next: readonly MessageId[]): readonly MessageId[] {
   if (next.length === 0) return NO_MESSAGES;
 

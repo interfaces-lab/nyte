@@ -1,12 +1,3 @@
-/*
- * One stylesheet for /docs. Elements carry `doc-*` classes. Group-local
- * surfaces (component previews and CTAs, docs cards) stay in components.css
- * and docs.css, which load after this file.
- *
- * Geometry: 1072 inner, 1312 on wide screens, 24 pad, 220 sidebar, 48
- * gutter, 72ch article. Mono for eyebrows and group labels; never uppercase.
- */
-
 @layer components {
   .doc {
     --doc-side: 220px;
@@ -32,8 +23,6 @@
     text-decoration: none;
   }
 
-  /* ---- frame ----------------------------------------------------------- */
-
   .doc-frame {
     --doc-rail-top: calc(var(--site-nav-top) + var(--site-nav-height) + 24px);
     display: grid;
@@ -51,8 +40,6 @@
     }
   }
 
-  /* ---- sidebar --------------------------------------------------------- */
-
   .doc-side {
     position: sticky;
     top: var(--doc-rail-top);
@@ -61,8 +48,6 @@
     overscroll-behavior: contain;
     scrollbar-width: none;
   }
-
-  /* ---- article --------------------------------------------------------- */
 
   .doc-article {
     max-width: var(--doc-article);
@@ -104,8 +89,6 @@
     letter-spacing: -0.01em;
     text-wrap: pretty;
   }
-
-  /* ---- prose ----------------------------------------------------------- */
 
   .doc-prose > :first-child {
     margin-top: 0;
@@ -225,8 +208,6 @@
     overflow-wrap: anywhere;
   }
 
-  /* ---- code blocks ----------------------------------------------------- */
-
   .doc-code {
     margin: 0 0 21px;
     border: 0.5px solid;
@@ -240,7 +221,6 @@
     position: relative;
   }
 
-  /* An editor's tab strip: the open file shares the code's surface. */
   .doc-code-tabs {
     display: flex;
     gap: 0;
@@ -350,8 +330,6 @@
     opacity: 0.7;
   }
 
-  /* ---- the current page's sections, branching under its row ---------- */
-
   .doc-side-branches {
     display: grid;
     grid-template-rows: 1fr;
@@ -445,8 +423,6 @@
   .doc-side-branch a[aria-current] {
     @apply text-foreground;
   }
-
-  /* ---- footer nav ------------------------------------------------------ */
 
   .doc-pager {
     display: grid;
@@ -567,8 +543,6 @@
     opacity: 0.85;
   }
 
-  /* ---- tables ---------------------------------------------------------- */
-
   .doc-prose table {
     width: 100%;
     margin: 0 0 34px;
@@ -600,11 +574,6 @@
     @apply border-b-border-subtle;
   }
 
-  /*
-   * A props table is prop, type, description. Left nowrap so a name never
-   * breaks; everything else wraps, or a long union takes the width the
-   * description needs and the row grows to eight lines of nothing.
-   */
   .doc-prose td code,
   .doc-prose th code {
     overflow-wrap: anywhere;

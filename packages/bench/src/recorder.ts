@@ -292,7 +292,7 @@ function replay(input: {
         this.#frames = [];
         this.#cursor = null;
         const message = fail(`Cassette ${name} has no socket exchange for ${seen.url}.`);
-        setTimeout(() => this.#end({ message }), 0);
+        queueMicrotask(() => this.#end({ message }));
 
         return;
       }
@@ -302,11 +302,11 @@ function replay(input: {
       this.#cursor = { frames: this.#frames.length, next: 0 };
       sockets.set(claimed.index, this.#cursor);
 
-      setTimeout(() => {
+      queueMicrotask(() => {
         this.readyState = 1;
         this.#emit("open", {});
         this.#serve();
-      }, 0);
+      });
     }
 
     send(data: string): void {
@@ -326,7 +326,7 @@ function replay(input: {
           }`,
         );
 
-        setTimeout(() => this.#end({ message }), 0);
+        queueMicrotask(() => this.#end({ message }));
 
         return;
       }
@@ -358,11 +358,11 @@ function replay(input: {
       if (cursor === null || frame?.from !== "server") return;
       cursor.next += 1;
 
-      setTimeout(() => {
+      queueMicrotask(() => {
         if (this.readyState !== 1) return;
         this.#emit("message", { data: restorePaths(frame.data, places) });
         this.#serve();
-      }, 0);
+      });
     }
 
     #end(error: { readonly message: string }): void {

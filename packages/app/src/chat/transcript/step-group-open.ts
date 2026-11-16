@@ -22,11 +22,6 @@ function readGroup(scope: Scope | undefined, key: string | undefined): boolean |
     : scope.viewStore.readSession(scope.sessionId).stepGroups.get(key);
 }
 
-/**
- * Every step group reads its entry from the chat's view state, so panes on one chat agree; a write
- * tells them all. Open states and thoughts shown live are each kept for the latest 64, so a long
- * run of thoughts never pushes out a group the reader opened or closed.
- */
 function writeGroup(scope: Scope, key: string, value: boolean): void {
   scope.viewStore.updateSession(scope.sessionId, (current) => {
     const groups = new Map(current.stepGroups);
@@ -60,10 +55,6 @@ export function useStepGroupOpen(
   return [stored, (next) => writeGroup(scope, key, next)];
 }
 
-/**
- * Whether a thought unfolds under "Thought": it does once it has been shown while its group ran,
- * in this mount or an earlier one, so a remount paints what the first mount showed.
- */
 export function useShownLive(thoughtKey: string | undefined, live: boolean): boolean {
   const scope = useTranscriptScope();
   const key = thoughtKey === undefined ? undefined : `${SHOWN_LIVE}${thoughtKey}`;

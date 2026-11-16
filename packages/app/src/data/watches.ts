@@ -3,12 +3,10 @@ import { startupReadsReleased } from "./startup.ts";
 import { watchFamily } from "./watch-store.ts";
 import type { Stream } from "./watch-store.ts";
 
-/** What a folder with no git to read shows: no repository, for good, until the store opens again. */
 async function* noGit(): AsyncIterable<GitStatus> {
   yield { kind: "none" };
 }
 
-/** The host's watches end only when their link closes; each opens again on the reopen backoff, which a replaced connection cuts short. */
 export const hostWatch = watchFamily((current, _key: "host"): Stream<HostView> => ({
   values: current.watch(),
   ended: "reopen",

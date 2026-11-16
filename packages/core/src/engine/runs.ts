@@ -93,7 +93,6 @@ export function begin(kernel: Kernel, session: SessionId, view: RunView): void {
   });
 }
 
-/** Retires a run in one set, which also reserves the report a child's run owes its parent, then tells who waits on it. A wait that takes the end withdraws the report; otherwise it is delivered here, or by recovery after a crash. */
 export async function endRun(
   kernel: Kernel,
   session: SessionId,
@@ -278,7 +277,6 @@ export function publishPatch(
   kernel.bus.publish(session, patch);
 }
 
-/** The reservation of the report `run` of `child` owes its parent, or null for a root, a side chat or a parent that is gone. */
 async function reserveChildReport(
   kernel: Kernel,
   child: SessionRecord,

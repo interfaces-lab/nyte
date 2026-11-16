@@ -11,7 +11,7 @@ import type {
   WaitTarget,
 } from "@nyte-ai/schema";
 import { Type } from "typebox";
-import { assert, describe, expect, it, vi } from "vitest";
+import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import { holdLease } from "../src/engine/lease.ts";
 import { createKernel } from "../src/compose.ts";
 import { HOST_CLOSING, runAction, runStep } from "../src/engine/durable.ts";
@@ -141,6 +141,10 @@ async function liveRun(kernel: Kernel, session: SessionId): Promise<RunId> {
 
 const STOPPED = { kind: "stopped" } as const;
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 describe("durable steps", () => {
   it("records a memo and clock readings once and replays them on a re-run", async () => {
     const { kernel, host } = await setup();
@@ -166,7 +170,7 @@ describe("durable steps", () => {
     await expect(step(kernel, { session: session.id, call, body })).rejects.toThrow(
       "The host died.",
     );
-    await new Promise((resolve) => setTimeout(resolve, 5));
+    vi.useFakeTimers({ toFake: ["Date"], now: Date.now() + 5 });
 
     expect(await step(kernel, { session: session.id, call, body })).toEqual({
       kind: "done",

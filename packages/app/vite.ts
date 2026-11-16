@@ -10,13 +10,6 @@ import { normalizePath, type Plugin } from "vite";
 
 export { stylex } from "@nyte-ai/ui/stylex";
 
-/**
- * Each Central glyph module (`Icon*\/index.mjs`) is bundled standalone and
- * inlines its own copy of the icon base component, about 1.3 KB per glyph.
- * The import resolves every glyph against the package's one `CentralIconBase`
- * module instead, so the base ships once. A glyph module that no longer has
- * the bundled shape fails the build rather than shipping its copy.
- */
 export function shareCentralIconBase(): Plugin {
   const inlinedBase =
     /^(import \w+ from"react";)import \w+ from"react";.*?;(\w+)\.displayName="CentralIconBase";.*?;(var \w+=\w+\.memo\()/su;
@@ -47,7 +40,6 @@ const STREAMDOWN_STANDIN = "\0nyte:streamdown/";
 
 const PARSE_ONLY = "?nyte-parse-only";
 
-/** Streamdown's default for each of these tags still renders. Prose's `markdownComponents` overrides every other tag. */
 const STREAMDOWN_DEFAULTS = new Set(["thead", "tbody", "tr", "sup", "sub", "section"]);
 
 function unbundled(name: string): string {
@@ -64,23 +56,9 @@ const STREAMDOWN_STANDINS = new Map([
   ["tailwind-merge", `export const twMerge=(...classes)=>classes.filter(Boolean).join(" ");`],
 ]);
 
-/** Renders the plain element, so a tag prose stops overriding loses Streamdown's styling instead of the chat. */
 const PLAIN_COMPONENT =
   "function nytePlain(tag){return({node,...props})=>createElement(tag,props)}";
 
-/**
- * Streamdown imports what its defaults need, and the bundler can't tell that prose
- * replaces those defaults: its own `rehypePlugins`, so the raw-HTML parser, the
- * sanitizer and the hardener never run, and its own component for every tag but
- * `STREAMDOWN_DEFAULTS`, so the default code block, table controls, link dialog and
- * image download never render. Streamdown also merges its own fixed class lists with
- * tailwind-merge, which has nothing to resolve in them, and registers remark-gfm's
- * markdown serializer, which nothing reads.
- *
- * The build drops all of it. A dropped rehype plugin throws if reached, a dropped
- * component renders the plain element, and a Streamdown or remark-gfm that no longer
- * has the expected shape fails the build.
- */
 export function trimStreamdown(): Plugin {
   return {
     name: "nyte:trim-streamdown",

@@ -37,14 +37,9 @@ export interface StepGroupFacts {
   readonly thinkingOnly: boolean;
   readonly titled: boolean;
   readonly hasContent: boolean;
-  /** Where the group's open state is kept: its first message, so it holds while the group grows. */
   readonly openKey: string | undefined;
 }
 
-/**
- * What a step group draws. A running group's line ignores its duration, so the duration is
- * measured only once the group settles: from its first step to the last one's end.
- */
 export function stepGroupFacts(messages: readonly StepMessage[], running: boolean): StepGroupFacts {
   const first = messages[0];
   const last = messages.at(-1);

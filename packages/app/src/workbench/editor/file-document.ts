@@ -154,5 +154,4 @@ export function createFileDocument(document: TextFile, draft?: string) {
   };
 }
 
-/** An open text file's contents, shared by every tab that shows it. */
 export type FileBuffer = ReturnType<typeof createFileDocument>;

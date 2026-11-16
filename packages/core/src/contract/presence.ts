@@ -28,7 +28,6 @@ export type Holder =
       readonly kind: "dead";
       readonly name: string;
       readonly expect: Revision;
-      /** `exited` when its machine says its OS process is gone; `lapsed` when it only stopped beating, as a paused process does too. */
       readonly why: "exited" | "lapsed";
     };
 

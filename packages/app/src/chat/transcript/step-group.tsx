@@ -106,7 +106,6 @@ export function StepGroupView({
   );
 }
 
-/** A step group drawn from facts its row already worked out. */
 export function StepGroupFactsView({
   facts,
   cwd,

@@ -87,7 +87,6 @@ export function markTone(mark: TaskState, theme: Theme) {
   }
 }
 
-/** Lists the newest roots a page at a time, with every pinned root after them however old; a search asks the host for the roots whose name holds it and keeps the last answer on screen until the next one arrives. */
 export function useSessionList(client: ClientConnection, search = "") {
   const [limit, setLimit] = useState(PAGE);
   const needle = search.trim();

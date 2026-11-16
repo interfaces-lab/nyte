@@ -21,10 +21,6 @@ interface EnterKeyState {
 
 export type SubmitAction = "submit" | "submit-alternate";
 
-/**
- * What the composer knows when a key reaches it after the suggestion menu passed on it. `from` is
- * the editor itself or the form around it, which sees the key after the editor did.
- */
 export interface KeySituation {
   readonly from: "editor" | "form";
   readonly disabled: boolean;
@@ -43,7 +39,6 @@ type KeyState = EnterKeyState & {
   readonly defaultPrevented: boolean;
 };
 
-/** `recall` counts as handled only when the walk moved. `dismiss-tray` closes an open tray or question. */
 export type KeyAction =
   | { readonly kind: "pass" }
   | { readonly kind: "submit"; readonly action: SubmitAction }
@@ -86,10 +81,6 @@ export function composerKey(situation: KeySituation, key: KeyState): KeyAction {
   return situation.canStop ? { kind: "stop" } : PASS;
 }
 
-/**
- * Whether a draft holds nothing to send: whitespace and no images, which Send leaves alone. Enter
- * on it steers the next queued message, and the queue's hint says so on the same rule.
- */
 export function draftEmpty(text: string, attachments: number): boolean {
   return text.trim() === "" && attachments === 0;
 }

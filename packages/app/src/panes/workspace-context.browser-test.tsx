@@ -32,7 +32,6 @@ function folder(
     trusted: true,
     projectSources: [],
     addedBy: asId<"principal">("tester"),
-    sessions: 0,
     writers: [],
     isolation: null,
     ...change,
@@ -87,7 +86,7 @@ async function until<T>(read: () => T | null | undefined | false, what: string):
     if (value !== null && value !== undefined && value !== false) return value;
 
     if (performance.now() > deadline) throw new Error(`Timed out waiting for ${what}`);
-    await new Promise<void>((resolve) => window.setTimeout(resolve, 10));
+    await new Promise((resolve) => window.requestAnimationFrame(resolve));
   }
 }
 
@@ -121,12 +120,15 @@ async function checkMenu(): Promise<string> {
     await until(() => queryClient.getQueryData(keys.workspaces), "the workspace list");
     window.dispatchEvent(new KeyboardEvent("keydown", { key: ".", ctrlKey: true, bubbles: true }));
 
-    const menu = await until(
-      () =>
-        document.querySelector("[role='menu']")?.textContent?.includes("docs") === true &&
-        document.querySelector("[role='menu']"),
-      "the workspace menu with its folders",
-    );
+    const menu = await until(() => {
+      const found = document.querySelector("[role='menu']");
+
+      return (
+        found?.textContent?.includes("docs") === true &&
+        found.getBoundingClientRect().bottom <= window.innerHeight &&
+        found
+      );
+    }, "the workspace menu with its folders, placed in the window");
 
     expectRule(
       rows(menu).join("|") === "Home|nyte|tuipackages|tuidemo|lazy|docs",

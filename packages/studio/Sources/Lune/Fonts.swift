@@ -4,7 +4,6 @@ import CoreText
 private let weightAxis = 0x7767_6874
 private let opticalSizeAxis = 0x6F70_737A
 
-/// Makes fonts for a family name, a size and a CSS weight from 100 to 900.
 public final class FontBook: @unchecked Sendable {
   public static let shared = FontBook()
 
@@ -25,8 +24,6 @@ public final class FontBook: @unchecked Sendable {
   private var cache: [Key: CTFont] = [:]
   private var fallback = "system"
 
-  /// Registers a variable font file under a family name and makes it the default family. The
-  /// file is read directly, so an installed font of the same name can't shadow it.
   @discardableResult
   public func register(family: String, file: URL, asDefault: Bool = true) -> Bool {
     guard

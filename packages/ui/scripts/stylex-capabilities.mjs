@@ -392,7 +392,7 @@ const block = [
   "",
   "- Hover on touch: guard it with `@media (hover: hover)`.",
   "- Dialog or popover entry: `@starting-style` with `transitionBehavior: allow-discrete`, not `useState` plus `requestAnimationFrame`.",
-  "- Parent state that styles a child: `stylex.when.ancestor(':hover', marker)` with a `stylex.defineMarker()` from a `.stylex.ts` file, not CSS nesting. The ancestor must pass `marker` to its `stylex.props()` call. Prefer a component-scoped `defineMarker()` over `defaultMarker()`, which leaks state from outer containers.",
+  "- Parent state that styles a child: `stylex.when.ancestor(':hover', marker)` with a `stylex.defineMarker()` exported from a StyleX module, not CSS nesting. The ancestor must pass `marker` to its `stylex.props()` call. Prefer a component-scoped `defineMarker()` over `defaultMarker()`, which leaks state from outer containers.",
   "- Responsive to a container: `@container`, not `ResizeObserver`.",
   "- Zebra striping: `:nth-child(even)`, not `index % 2` in JS.",
   "- CSS fallback values: `stylex.firstThatWorks()`, not a manual fallback.",

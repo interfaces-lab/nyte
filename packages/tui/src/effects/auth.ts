@@ -11,10 +11,6 @@ import { fallback, readSelection } from "./session.ts";
 
 type Of<K extends Effect["kind"]> = Extract<Effect, { readonly kind: K }>;
 
-/**
- * A login driver that shows each step in the auth dialog and takes its
- * answers from `login-answer`; `end` releases the dialog's channel.
- */
 function dialogDriver(
   dialog: Of<"login">["dialog"],
   context: HandlerContext,
@@ -253,7 +249,6 @@ export async function renameAccount(
   }
 }
 
-/** A failed sign-in keeps the host's reason, which the shared login loop puts in a detail row. */
 function signInErrorNotice(context: HandlerContext, error: unknown): Notice {
   if (!(error instanceof CliError)) return errorNotice(context, error);
 

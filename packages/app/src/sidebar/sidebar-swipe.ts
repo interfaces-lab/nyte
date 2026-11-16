@@ -1,5 +1,6 @@
 import { createTheme } from "@stylexjs/stylex";
 import { useEffectEvent, useRef, useState, type RefObject } from "react";
+import { flushSync } from "react-dom";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { sidebarMotion } from "../theme/tokens.stylex.ts";
 import { useSidebar } from "./use-sidebar.ts";
@@ -43,7 +44,7 @@ export function useSidebarSwipe(root: RefObject<HTMLElement | null>): boolean {
   const [pushing, setPushing] = useState(false);
   const gesture = useRef<Swipe | undefined>(undefined);
   const idleTimer = useRef<number | undefined>(undefined);
-  const pushTimer = useRef<number | undefined>(undefined);
+  const pushes = useRef(0);
 
   const onWheel = useEffectEvent((event: WheelEvent): void => {
     const element = root.current;
@@ -76,10 +77,20 @@ export function useSidebarSwipe(root: RefObject<HTMLElement | null>): boolean {
     }, IDLE_MS);
 
     if (!step.toggles) return;
-    setPushing(true);
-    sidebar.setOpen(step.swipe.toward < 0);
-    window.clearTimeout(pushTimer.current);
-    pushTimer.current = window.setTimeout(() => setPushing(false), PUSH_MS);
+    const push = pushes.current + 1;
+    pushes.current = push;
+    flushSync(() => {
+      setPushing(true);
+      sidebar.setOpen(step.swipe.toward < 0);
+    });
+
+    const transitions = element
+      .getAnimations({ subtree: true })
+      .filter((animation) => animation instanceof CSSTransition);
+
+    void Promise.allSettled(transitions.map((transition) => transition.finished)).then(() => {
+      if (pushes.current === push) setPushing(false);
+    });
   });
 
   useMountEffect(() => {
@@ -92,7 +103,6 @@ export function useSidebarSwipe(root: RefObject<HTMLElement | null>): boolean {
     return () => {
       element.removeEventListener("wheel", listener);
       window.clearTimeout(idleTimer.current);
-      window.clearTimeout(pushTimer.current);
     };
   });
 

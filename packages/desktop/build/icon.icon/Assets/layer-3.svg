@@ -1,4 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <defs><clipPath id="light"><circle cx="640" cy="384" r="256"/></clipPath><clipPath id="moon"><circle cx="512" cy="512" r="384"/></clipPath><radialGradient id="fall" gradientUnits="userSpaceOnUse" cx="691.2" cy="384" r="307.2"><stop offset="0.8333" stop-color="#0c1020" stop-opacity="0.000"/><stop offset="0.8667" stop-color="#0c1020" stop-opacity="0.049"/><stop offset="0.9000" stop-color="#0c1020" stop-opacity="0.139"/><stop offset="0.9333" stop-color="#0c1020" stop-opacity="0.256"/><stop offset="0.9667" stop-color="#0c1020" stop-opacity="0.394"/><stop offset="1.0000" stop-color="#0c1020" stop-opacity="0.550"/></radialGradient></defs>
-  <g clip-path="url(#moon)"><circle cx="691.2" cy="384" r="307.2" fill="url(#fall)" clip-path="url(#light)"/></g>
-</svg>

@@ -5,7 +5,6 @@ import type { WaitingChat } from "./waiting.ts";
 
 const walks = new Map<SessionId, DerivedStore<readonly WaitingChat[]>>();
 
-/** The one walk below `root` that every reader shares; it is dropped when its last listener leaves. */
 export function waitingWalk(root: SessionId): DerivedStore<readonly WaitingChat[]> {
   const existing = walks.get(root);
 

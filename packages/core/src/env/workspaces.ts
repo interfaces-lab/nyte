@@ -99,8 +99,11 @@ export function createWorkspaces(
 ): Workspaces {
   return {
     async list() {
-      const records = await workspaceRecords(kernel.store);
-      const trust = await readFolderTrust(kernel);
+      const [records, trust] = await Promise.all([
+        workspaceRecords(kernel.store),
+        readFolderTrust(kernel),
+      ]);
+
       const infos = await Promise.all(
         records.map((record) => workspaceInfo(kernel, record.id, trust)),
       );
@@ -213,7 +216,6 @@ export function createWorkspaces(
   };
 }
 
-/** The sessions on `workspace` or one of its worktrees, with every session below them, children before their parents. */
 async function sessionsUnder(
   store: StoreConnection,
   workspace: WorkspaceId,
@@ -425,9 +427,10 @@ async function workspaceInfo(
 
   if (record === null) return null;
 
-  const [availability, sessions] = await Promise.all([
+  const [availability, trusted, writers] = await Promise.all([
     inspectWorkspaceAvailability(kernel, record),
-    sessionsOn(kernel.store, id),
+    workspaceTrust(kernel, record, trust),
+    readWriters(kernel.store, id),
   ]);
 
   return {
@@ -435,11 +438,10 @@ async function workspaceInfo(
     target: record.target,
     identity: record.identity,
     availability,
-    ...(await workspaceTrust(kernel, record, trust)),
+    ...trusted,
     projectSources: record.projectSources,
     addedBy: record.addedBy,
-    sessions: sessions.length,
-    writers: await readWriters(kernel.store, id),
+    writers,
     isolation: record.isolation,
   };
 }
@@ -789,7 +791,6 @@ export async function readTrust(kernel: Kernel): Promise<TrustSnapshot> {
   );
 }
 
-/** Answers a trust write against `before`, read ahead of it: only workspaces whose shown trust moved are announced, and only sessions whose workspace gained or lost trust rescan and reload. */
 export async function trustChanged(kernel: Kernel, before: TrustSnapshot): Promise<void> {
   const moved = [...(await readTrust(kernel))].filter(([id, trust]) => {
     const was = before.get(id);

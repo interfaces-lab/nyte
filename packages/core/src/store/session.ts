@@ -323,7 +323,6 @@ export async function readCall(
   return load(store, await store.refs.get(callRef(session, call)), decodeCallRecord);
 }
 
-/** Reads a session's calls, or only those whose id `reads` accepts, told from the ref's name before its record is read. */
 export async function readCalls(
   store: StoreConnection,
   session: SessionId,

@@ -6,11 +6,6 @@ export interface SeenStep {
   readonly see: readonly SessionId[];
 }
 
-/**
- * The chats to mark read now: each looked at, unread, with its view arrived, at a tip not yet
- * sent. `sent` keeps only those, so a chat looked away from and back at, or read and unread again,
- * is sent again.
- */
 export function toSee(
   sent: ReadonlyMap<SessionId, CommitId>,
   looking: ReadonlySet<SessionId>,

@@ -7,7 +7,6 @@ import process from "node:process";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { setTimeout as sleep } from "node:timers/promises";
 import { openApprovals } from "@nyte-ai/plugin/approvals/schema";
 import { isPart, text } from "@nyte-ai/plugin/core";
 import { sdk } from "@nyte-ai/sdk/client";
@@ -176,7 +175,7 @@ async function attachHost() {
       `${BINARY} is too old to run \`nyte host\`. Run \`pnpm install:tui\` or \`nyte update\`, then retry.`,
     );
 
-  const child = spawn(BINARY, ["host", "--json"], { stdio: ["ignore", "ignore", "pipe"] });
+  const child = spawn(BINARY, ["host", "--json"], { stdio: ["ignore", "pipe", "pipe"] });
   let stderr = "";
 
   child.stderr.on("data", (chunk) => {
@@ -192,20 +191,35 @@ async function attachHost() {
     clearTimeout(timer);
   };
 
-  for (let waited = 0; waited < HOST_START_MS; waited += 100) {
-    const host = await findRunningHost(path);
+  const deadline = AbortSignal.timeout(HOST_START_MS);
 
-    if (host !== null && host.pid === child.pid) return { host, started: true, stop };
+  const listening = await Promise.race([
+    announced(child.stdout),
+    exited.then(() => false),
+    new Promise((resolve) =>
+      deadline.addEventListener("abort", () => resolve(false), { once: true }),
+    ),
+  ]);
 
-    if (child.exitCode !== null)
-      throw new Error(`${BINARY} host exited with ${String(child.exitCode)}.\n${stderr.trim()}`);
-    await sleep(100);
-  }
+  child.stdout.resume();
+
+  if (child.exitCode !== null)
+    throw new Error(`${BINARY} host exited with ${String(child.exitCode)}.\n${stderr.trim()}`);
+  const host = listening ? await findRunningHost(path) : null;
+
+  if (host !== null && host.pid === child.pid) return { host, started: true, stop };
 
   await stop();
   throw new Error(
     `${BINARY} host didn't publish ${path} within ${String(HOST_START_MS / 1_000)} s.`,
   );
+}
+
+async function announced(stdout) {
+  for await (const line of createInterface({ input: stdout, crlfDelay: Infinity }))
+    if (line.includes('"type":"listening"')) return true;
+
+  return false;
 }
 
 function placeGuard() {

@@ -8,10 +8,8 @@ const encoder = new TextEncoder();
 
 const CHUNK_BYTES = 48 * 1024;
 
-/** The smallest chunk worth deflating for a client that asked: below it the envelope outweighs what deflate saves. */
 const DEFLATE_MIN_BYTES = 1024;
 
-/** A cancel can overtake the start it cancels, which travels on another request, so a channel remembers this many ids it was asked to cancel before their start; a start for one of them ends at once. */
 const CANCELLED_LIMIT = 256;
 
 export function createStreamChannels() {

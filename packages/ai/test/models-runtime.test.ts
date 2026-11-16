@@ -448,11 +448,11 @@ describe("Models runtime", () => {
     models.setProvider(
       testProvider({
         id: "dynamic",
-        refreshModels: async () => {
+        refreshModels: () => {
           calls++;
-          if (calls !== 1) return;
+          if (calls !== 1) return Promise.resolve();
           markStarted?.();
-          await stalled;
+          return stalled;
         },
       }),
     );
@@ -466,7 +466,7 @@ describe("Models runtime", () => {
     expect(result.errors.size).toBe(0);
 
     rejectRefresh?.(new Error("late provider failure"));
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await expect(stalled).rejects.toThrow("late provider failure");
     expect(result.errors.size).toBe(0);
   });
 
@@ -482,6 +482,7 @@ describe("Models runtime", () => {
     const firstBlocked = new Promise<void>((resolve) => {
       finishFirst = resolve;
     });
+    const latePublished = Promise.withResolvers<void>();
     const models = createModels({ modelsStore: store });
     models.setProvider(
       testProvider({
@@ -495,12 +496,18 @@ describe("Models runtime", () => {
             await firstBlocked;
           }
           const value = `generation-${current}`;
-          await context.publish({
-            persist: { models: [testModel("dynamic", value)] },
-            update: () => {
-              state = value;
-            },
-          });
+          const published = context.publish(
+            current === 3
+              ? {}
+              : {
+                  persist: { models: [testModel("dynamic", value)] },
+                  update: () => {
+                    state = value;
+                  },
+                },
+          );
+          if (current === 1) latePublished.resolve();
+          await published;
         },
       }),
     );
@@ -511,7 +518,8 @@ describe("Models runtime", () => {
     await second;
     await first;
     finishFirst?.();
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await latePublished.promise;
+    await models.refresh({ providers: ["dynamic"] });
 
     expect(state).toBe("generation-2");
     expect((await store.read("dynamic"))?.models).toEqual([testModel("dynamic", "generation-2")]);

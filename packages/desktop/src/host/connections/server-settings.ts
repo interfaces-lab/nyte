@@ -20,7 +20,6 @@ const serverFile = Compile(
 export interface SavedServer {
   readonly url: string;
   readonly hostId: HostId;
-  /** The identity key the server proved, passed with `hostId` as `expect`. `null` for a server that has proved none: one saved before keys were pinned, whose file has no such field, or one that answers no identity challenge. */
   readonly publicKey: string | null;
   readonly token: string;
 }

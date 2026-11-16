@@ -19,7 +19,6 @@ export interface ChatSnapshot {
   readonly stopping: SdkChatSnapshot["stopping"];
 }
 
-/** A head's snapshot, or the error its read failed with while the SDK retries it and holds none. */
 export type ChatRead = ChatSnapshot | { readonly error: SdkError };
 
 export interface ListSnapshot {
@@ -98,7 +97,6 @@ export function useChatRead(
   return useSyncExternalStore(chat.subscribe, chat.snapshot);
 }
 
-/** The one chat of `session`'s `head` this app draws and acts on, so a stop asked from one screen shows in every screen of that chat. */
 export function chatFor(client: ClientConnection, session: SessionId, head: HeadName): Chat {
   const byKey = opened.get(client) ?? new Map<string, Chat>();
   opened.set(client, byKey);

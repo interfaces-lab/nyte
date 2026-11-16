@@ -179,7 +179,6 @@ export interface Keybinding {
   readonly when?: string;
 }
 
-/** A tool call another agent runtime asks to run: the runtime's own tool name (`Bash`, `execute`), which grants key on, and the class Nyte shows it by. */
 export interface RuntimeCall {
   readonly name: string;
   readonly class: ToolClass;
@@ -207,7 +206,6 @@ export type SideTable = {
     };
     plugin: {
       readonly environment?: EnvironmentProvider;
-      /** Decides a call another agent runtime (Claude Code, an ACP agent) asks to run in the session, outside Nyte's agent loop, with this plugin's own api. */
       readonly approve?: (
         call: RuntimeCall,
         context: { readonly api: PluginApi<"core">; readonly signal: AbortSignal },

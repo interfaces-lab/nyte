@@ -2,7 +2,7 @@
 <use src="../controls.lune" />
 <use src="../blocks/phase-card.lune" />
 
-<frame name="Tonight" x="0" y="0" w="390" h="844" radius="44" fill="$sky" clip>
+<frame name="Tonight" x="1892" y="125" w="390" h="844" radius="44" fill="$sky" clip>
   <col w="fill" h="fill" pad="68 24 34 24" gap="24">
     <col gap="4">
       <text style="$caption" color="$ink.faint">THURSDAY · 14 NOVEMBER</text>
@@ -32,7 +32,7 @@
   </col>
 </frame>
 
-<frame name="Tonight · night" theme="dark" x="450" y="0" w="390" h="844" radius="44" fill="$sky" clip>
+<frame name="Tonight · night" theme="dark" x="1400" y="125" w="390" h="844" radius="44" fill="$sky" clip>
   <col w="fill" h="fill" pad="68 24 34 24" gap="24">
     <col gap="4">
       <text style="$caption" color="$ink.faint">THURSDAY · 14 NOVEMBER</text>

@@ -96,7 +96,6 @@ export function describeChats(
     : chats;
 }
 
-/** A row's chat, valid while the folder and project lists are the ones it was described with. */
 const described = new WeakMap<
   SessionInfo,
   {

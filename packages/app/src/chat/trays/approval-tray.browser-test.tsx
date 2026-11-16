@@ -208,14 +208,12 @@ async function until<T>(read: () => T | null | undefined, what: string): Promise
     if (value !== null && value !== undefined) return value;
 
     if (performance.now() > deadline) throw new Error(`Timed out waiting for ${what}`);
-    await new Promise<void>((resolve) => window.setTimeout(resolve, 10));
+    await nextFrame();
   }
 }
 
-function painted(): Promise<void> {
-  return new Promise((resolve) =>
-    window.requestAnimationFrame(() => window.setTimeout(() => resolve(), 0)),
-  );
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
 }
 
 async function capture(name: string): Promise<void> {
@@ -258,7 +256,7 @@ export async function run(): Promise<string> {
   flushSync(() => root.render(<Stage />));
 
   const card = await until(() => stage.querySelector("[data-part='ask/approval']"), "the approval");
-  await painted();
+  await nextFrame();
   await capture("approval-arrived");
 
   if (card.querySelector("h2")?.textContent !== "Run this command?")
@@ -273,7 +271,6 @@ export async function run(): Promise<string> {
     failures.push(`focus starts on ${document.activeElement?.textContent ?? "nothing"}`);
 
   press("Enter");
-  await painted();
 
   if (acts.length > 0) failures.push(`Enter on the arriving card sent ${acts.join()}`);
 
@@ -302,10 +299,10 @@ export async function run(): Promise<string> {
     );
 
   press("ArrowRight");
-  await painted();
+  await nextFrame();
   await capture("approval-light");
   applyDisplayMode("dark");
-  await painted();
+  await nextFrame();
   await capture("approval-dark");
   applyDisplayMode("light");
 
@@ -323,7 +320,7 @@ export async function run(): Promise<string> {
     () => (stage.querySelector("[data-part='ask/approval']") === null ? true : null),
     "the tray to close",
   );
-  await painted();
+  await nextFrame();
   await capture("approval-answered");
 
   refusal = "This approval was already answered.";
@@ -345,7 +342,7 @@ export async function run(): Promise<string> {
   if (alert.textContent !== refusal) failures.push(`the refusal reads ${alert.textContent ?? ""}`);
 
   if (acts.join() !== "first:session,second:deny") failures.push(`Escape sent ${acts.join()}`);
-  await painted();
+  await nextFrame();
   await capture("approval-refused");
 
   flushSync(() => root.unmount());

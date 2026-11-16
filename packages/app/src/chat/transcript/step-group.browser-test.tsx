@@ -29,6 +29,12 @@ async function settle() {
   for (let index = 0; index < 4; index += 1) await frame();
 }
 
+async function within(done: () => boolean, ms: number) {
+  const deadline = performance.now() + ms;
+
+  while (!done() && performance.now() < deadline) await frame();
+}
+
 function thought(id: string, text: string, at: number, live = false): StepMessage {
   return {
     id: asId<"message">(id),
@@ -223,7 +229,7 @@ function timeline(changes: readonly Change[], from: number): string {
 
 async function quickSteps(outer: HTMLElement, render: (messages: readonly StepMessage[]) => void) {
   render([read("quick-a", 0, true)]);
-  await wait(300);
+  await within(() => header(outer) === "Exploring quick-a.ts", 2_000);
   check(header(outer) === "Exploring quick-a.ts", "A live group counts the read in flight");
   const labels = recordLabels(outer, () => header(outer));
   const a = read("quick-a", 0);
@@ -244,7 +250,7 @@ async function quickSteps(outer: HTMLElement, render: (messages: readonly StepMe
     await frame();
   }
 
-  await wait(450);
+  await within(() => header(outer) === "Editing lease.ts, explored 2 files, ran 1 command", 2_000);
   labels.stop();
   const seen = timeline(labels.changes, started);
 
@@ -270,7 +276,7 @@ async function thinkingSteps(
   const labels = recordLabels(outer, () => header(outer));
   const settled = performance.now();
   render([thought("plan-a", "Weighing the lease", 0)], false);
-  await wait(300);
+  await within(() => header(outer) === "Thought", 2_000);
   labels.stop();
   const seen = timeline(labels.changes, settled);
 

@@ -588,7 +588,6 @@ async function releaseNow(kernel: Kernel, session: SessionId, head: HeadName): P
   await commit(kernel, [{ name, target: null, expect: mine }]);
 }
 
-/** Brings a live run nobody drives to where it can be driven or ended. A stop that lands while its owed calls resume fences every call not yet opened, which stay runnable, so the run ends as stopped rather than resuming them again. */
 async function settleLive(
   kernel: Kernel,
   session: SessionId,

@@ -1,5 +1,5 @@
 {
-  "revision": 27,
+  "revision": 28,
   "operations": {
     "connection.watch": "17957128114e6a29",
     "connection.blob": "d661f9695af8afc2",
@@ -22,7 +22,7 @@
     "projects.create": "62335755421d77eb",
     "projects.draft": "32a2b3bc6cf3e592",
     "project.update": "78b9566dec5d40a2",
-    "workspaces.list": "74737c483cc7102f",
+    "workspaces.list": "672eadfc19e7f992",
     "workspaces.inspect": "95fdd7acad5303a6",
     "workspaces.add": "25ec29b4e37786af",
     "workspaces.forget": "8aea8d47ef4e422c",
@@ -79,8 +79,8 @@
     "part.act": "0ef71b38ebf2cdf0",
     "part.answer": "4fd6ca406398bcaa",
     "part.close": "3bea393b101cda0a",
-    "workspace.info": "4585eee20b66e729",
-    "workspace.watch": "c41e3363092789cd",
+    "workspace.info": "9dbbc1772cd4aed6",
+    "workspace.watch": "20fa212e48777862",
     "workspace.catalog": "3b6711054c0d3acf",
     "workspace.command": "6b1ec7287d48964e",
     "workspace.completeCommand": "24c4e6030ff47775",

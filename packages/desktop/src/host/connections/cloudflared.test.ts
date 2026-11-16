@@ -88,7 +88,16 @@ const next = () => {
   while (index < steps.length) {
     const step = steps[index];
     if (step.kind === "await") {
-      if (!fs.existsSync(path.join(root, step.file))) return setTimeout(next, 10);
+      const awaited = path.join(root, step.file);
+      if (!fs.existsSync(awaited)) {
+        const watcher = fs.watch(root, () => {
+          if (!fs.existsSync(awaited)) return;
+          watcher.close();
+          next();
+        });
+        if (!fs.existsSync(awaited)) return;
+        watcher.close();
+      }
     } else if (step.kind === "emit") {
       process.stderr.write(step.line + "\\n");
     } else {

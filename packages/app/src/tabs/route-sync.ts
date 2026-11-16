@@ -4,7 +4,6 @@ import { activeTab, tabPlace } from "./model.ts";
 import type { Place, Tab, WindowAction, WindowState } from "./model.ts";
 import { pageSection, samePlaceAt } from "./places.ts";
 
-/** The tab and chat the window last followed, and the folder it asked the host for last. */
 export interface FolderFollow {
   readonly followed: string;
   readonly wanted: string | null;
@@ -19,18 +18,11 @@ export interface FolderFollowed {
   readonly step: FollowStep;
 }
 
-/** The window's workspace as the page holds it, and whether the page chose it rather than remembering it from the last launch. */
 export interface ShownFolder {
   readonly workspace: SelectedWorkspace | undefined;
   readonly chosen: boolean;
 }
 
-/**
- * What a window reopening on a chat shows once the host answers the chat's folder, `restored`, or
- * undefined to keep what it shows. A window that showed a folder of its own when it asked, as one
- * Finder opened does, keeps it, and so does one whose folder changed while the host answered, as
- * when someone picked a folder meanwhile.
- */
 export function restoredFolder(
   asked: ShownFolder,
   now: ShownFolder,
@@ -41,11 +33,6 @@ export function restoredFolder(
   return { workspace: restored };
 }
 
-/**
- * The window's folder when the host lists it as one it can't read, as when it was deleted while the
- * window showed it or before a window Finder opened reloaded; the window then asks the host to open
- * it again.
- */
 export function unreadableFolder(
   shown: SelectedWorkspace | undefined,
   workspaces: readonly WorkspaceInfo[] | undefined,
@@ -55,12 +42,6 @@ export function unreadableFolder(
   return listed?.availability.kind === "unavailable" ? shown : undefined;
 }
 
-/**
- * What the window shows once the host answered whether it can open `asked` again, or undefined to
- * keep what it shows: a folder it can't open gives way to Home, as a chat's unreadable folder does,
- * a folder made again at the same path is shown as the host now knows it, and a window that left
- * the folder while the host answered stays where it went.
- */
 export function checkedFolder(
   asked: SelectedWorkspace,
   now: SelectedWorkspace | undefined,
@@ -75,20 +56,12 @@ export function checkedFolder(
     : undefined;
 }
 
-/**
- * The place to navigate to so the URL shows the active tab, or undefined when it already does or
- * the location is outside the tabs, as Settings is.
- */
 export function routeFor(state: WindowState, location: Place | undefined): Place | undefined {
   const place = tabPlace(activeTab(state));
 
   return location === undefined || samePlaceAt(place, location) ? undefined : place;
 }
 
-/**
- * The action that makes the active tab show `location`: a customize tab changes section, any other
- * tab opens the place for good.
- */
 export function adoptLocation(
   state: WindowState,
   location: Place | undefined,
@@ -107,10 +80,6 @@ export function adoptLocation(
     : { kind: "open", place: location, target: "permanent" };
 }
 
-/**
- * Whether showing `tab` asks the host for its chat's folder. A chat whose folder is not known yet
- * is not remembered, so it is followed again once the chats load.
- */
 export function followFolder(
   previous: FolderFollow,
   tab: Tab,

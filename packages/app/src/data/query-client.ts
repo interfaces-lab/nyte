@@ -58,12 +58,6 @@ export const keys = {
   mermaid: (source: string) => ["mermaid", source] as const,
 };
 
-/**
- * The first key segment of every read the host answers, here once rather than at each query: a
- * host read heals when the link opens again (`linkReopened`) and is dropped when a connection to
- * another host replaces this one. The rest are the window's, the desktop's, or caches seeded at
- * startup.
- */
 const HOST_READS: ReadonlySet<unknown> = new Set([
   "workspaces",
   "catalog",
@@ -97,10 +91,6 @@ export const queryClient = new QueryClient({
   },
 });
 
-/**
- * For store sources, which read on every snapshot: `getQueryData` merges the defaults and hashes
- * the key on each call, so the reader hashes it once.
- */
 export function queryDataReader<T>(queryKey: QueryKey): () => T | undefined {
   const queryHash = hashKey(queryKey);
 

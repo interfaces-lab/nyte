@@ -46,11 +46,6 @@ export interface HostTray {
   refresh(): void;
 }
 
-/**
- * The menu reads the host's status as it opens. With the menu closed the tooltip is the only status
- * shown, and it reads it as the pointer enters the icon and on every link change: a host that exits
- * after its link drops, or a Login Items change, changes no link state.
- */
 export function createHostTray(options: HostTrayOptions): HostTray {
   const icon = nativeImage.createFromPath(resourcePath("trayTemplate.png"));
   icon.setTemplateImage(true);

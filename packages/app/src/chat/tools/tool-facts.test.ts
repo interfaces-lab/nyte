@@ -58,7 +58,6 @@ type Policy = "settled" | "while running" | "while unsettled";
 
 const POLICY_COLUMN = { settled: 0, "while running": 1, "while unsettled": 2 } as const;
 
-/** Each card's output policy: the column of `outputs` its output follows. */
 const CARDS: readonly (readonly [ToolCardKind, Policy])[] = [
   ["edit", "settled"],
   ["mcp", "settled"],

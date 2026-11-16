@@ -207,7 +207,7 @@ it("keeps one set of connections per trust view of a workspace without flapping 
   expect(hub.tools({ id, root: null, trusted: false }).map((info) => info.name)).toEqual([
     "mcp__fake__echo",
   ]);
-  await new Promise((resolve) => setTimeout(resolve, 100));
+  await hub.ready(id, new AbortController().signal);
 
   expect(connects).toBe(2);
   await untrusted.return?.();
@@ -332,7 +332,8 @@ it("waits for sign-in when the server needs OAuth, and refuses to sign in to a c
 });
 
 it("stops a sign-in at once when its steps end, so the next one can start", async () => {
-  const silent = createServer(() => undefined);
+  let heard = Promise.withResolvers<void>();
+  const silent = createServer(() => heard.resolve());
   await new Promise<void>((resolve) => silent.listen(0, "127.0.0.1", resolve));
   const address = silent.address();
   assert(address !== null && typeof address === "object");
@@ -350,7 +351,7 @@ it("stops a sign-in at once when its steps end, so the next one can start", asyn
   const workspace = { id: asId<"workspace">("w"), root: null, trusted: false };
   const first = hub.login(workspace, "slow").steps()[Symbol.asyncIterator]();
   const pending = first.next();
-  await new Promise((resolve) => setTimeout(resolve, 200));
+  await heard.promise;
   const started = Date.now();
   await first.return?.();
 
@@ -358,14 +359,13 @@ it("stops a sign-in at once when its steps end, so the next one can start", asyn
   expect(Date.now() - started).toBeLessThan(500);
   await new Promise((resolve) => setTimeout(resolve, 100));
 
+  heard = Promise.withResolvers<void>();
   const second = hub.login(workspace, "slow").steps()[Symbol.asyncIterator]();
-  const next = await Promise.race([
-    second.next(),
-    new Promise((resolve) => setTimeout(() => resolve("still running"), 300)),
-  ]);
-
-  expect(next).toBe("still running");
+  const next = second.next();
+  await heard.promise;
   await second.return?.();
+
+  expect(await next).toEqual({ done: true, value: undefined });
   await hub.close();
   silent.closeAllConnections();
   silent.close();

@@ -18,7 +18,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       NSApp.activate()
     }
     model.start()
-    Probe.start(model)  // TEMPORARY
   }
 
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -30,8 +29,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   }
 }
 
-/// The menu bar. Items name actions the responder chain answers: the window controller for the
-/// window's own, the canvas for the camera, AppKit for the standard ones.
+@MainActor
 enum MainMenu {
   static func build() -> NSMenu {
     let main = NSMenu()

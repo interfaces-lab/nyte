@@ -399,14 +399,6 @@ async function readAccountState(gh: Gh, cwd: string): Promise<GitHubAccountState
     : { kind: "ready", account };
 }
 
-/**
- * Returns the machine's GitHub CLI login through `gh` (`gh`, default `gh` on
- * the PATH), run in `home` (default `os.homedir()`). Nothing runs until it is
- * asked for. `account` reads the github.com account (`gh auth status`, then
- * `gh api user`); while a sign-in runs, it answers its code until it ends,
- * then what the login became. `signIn` starts at most one `gh auth login`
- * for the whole machine and `signOut` cancels it or runs `gh auth logout`.
- */
 export function localGitHubAccount(options?: {
   readonly gh?: string;
   readonly home?: string;
@@ -488,19 +480,6 @@ export function localGitHubAccount(options?: {
   };
 }
 
-/**
- * Returns GitHub for each local workspace through the machine's `gh` (`gh`,
- * default `gh` on the PATH) and `git`. Nothing runs until a state is asked
- * for. `state` reads the repository from the remotes in gh's
- * base-repository order (`upstream`, `github`, `origin`, then the rest; only
- * github.com remotes) and, while gh has a login, the checked-out branch's
- * pull request with its check rollup (`gh pr view <branch> --json`, the
- * branch as `<owner>:<branch>` when it tracks a fork); without one the pull
- * request is `unavailable`. `createPullRequest` answers each precondition, an
- * open pull request as `exists`, and otherwise runs
- * `gh pr create --head <branch>` with the title as an argument, the body on
- * stdin, and `--fill` for whichever of the two is missing.
- */
 export function localGitHub(options?: {
   readonly gh?: string;
   readonly git?: string;

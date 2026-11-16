@@ -95,7 +95,6 @@ export type ToolIntent = Static<typeof ToolIntentType>;
 export interface OwedCall {
   readonly record: CallRecord;
 
-  /** The call, its `before_tool` call or a call nested in it is in the `parked` phase; recovery leaves it to the wake that unparks it. */
   readonly parked: boolean;
 }
 
@@ -204,7 +203,6 @@ export async function executeCall(
   }
 }
 
-/** Returns the calls a run still owes: its tool calls and intents short of `settled` that no other call of the run encloses, opened ones first and then its intents in the order the model asked. A run's tool calls, the calls nested in them and each one's `before_tool` call carry the run's id at their head, so a call that names another run there is skipped without reading its record. */
 export async function owedCalls(
   store: StoreConnection,
   session: SessionId,
@@ -722,7 +720,6 @@ function fileChanges(set: ChangeSet): readonly FileChange[] {
   });
 }
 
-/** The updates that settle a tool call's part with `settled`'s outcome and file changes, in one set with its result. */
 export async function settlement(
   kernel: Kernel,
   where: Pick<Where, "session" | "head" | "run" | "call" | "name">,

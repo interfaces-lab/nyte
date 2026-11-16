@@ -54,7 +54,6 @@ const verified = new WeakMap<SavedConnection, VerifiedHost>();
 
 let adoptions = 0;
 
-/** Connects to a saved host and holds it to the key it proved when it was paired: a pinned host is connected with `expect`, so it proves that key before the token is sent, and a pin that does not hold is `identityChanged`. A first connection or a repair pins what the host proves, and a host that proves no key is `unverified`. */
 export async function verifyHost(input: {
   readonly saved: SavedConnection;
   readonly repair: boolean;

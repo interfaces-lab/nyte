@@ -22,10 +22,6 @@ export function tuiPlugins(): readonly Plugin[] {
   return [notificationsPlugin, tuiRenderersPlugin, questionsPlugin];
 }
 
-/**
- * The model and effort the flags ask for, checked against the catalog. They configure this run's
- * chat only; the saved default model stays. An unknown or unusable model fails before any change.
- */
 export function flagConfiguration(
   catalog: ModelCatalogView,
   flags: Pick<RunFlags, "provider" | "model" | "effort">,
@@ -136,7 +132,6 @@ export async function trustFolder(
   if (outcome.kind === "missing") throw new Error("This folder is no longer registered.");
 }
 
-/** The session a print run continues, or `null` when it starts a new chat. */
 export async function targetSession(
   connection: Connection,
   target: ResumeTarget,

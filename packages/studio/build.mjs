@@ -1,6 +1,3 @@
-// Builds Nyte Studio.app: the Swift executables, the font the designs are set in, and an icon
-// rendered from a Lune file by the app's own renderer.
-
 import { execFileSync } from "node:child_process";
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -22,10 +19,14 @@ const run = (command, args) => execFileSync(command, args, { cwd: here, stdio: "
 for (const product of ["NyteStudio", "lune"])
   run("swift", ["build", "--configuration", configuration, "--product", product]);
 
-const built = execFileSync("swift", ["build", "--configuration", configuration, "--show-bin-path"], {
-  cwd: here,
-  encoding: "utf8",
-}).trim();
+const built = execFileSync(
+  "swift",
+  ["build", "--configuration", configuration, "--show-bin-path"],
+  {
+    cwd: here,
+    encoding: "utf8",
+  },
+).trim();
 
 const app = resolve(here, "dist", "Nyte Studio.app");
 
@@ -41,6 +42,10 @@ cpSync(join(built, "NyteStudio"), join(contents, "MacOS", "NyteStudio"));
 
 cpSync(join(built, "lune"), join(contents, "MacOS", "lune"));
 
+const stripped = debug ? [] : ["NyteStudio", "lune"];
+
+for (const name of stripped) run("strip", ["-x", "-S", join(contents, "MacOS", name)]);
+
 const font = "inter-latin-opsz-normal.woff2";
 
 cpSync(
@@ -48,7 +53,8 @@ cpSync(
   join(contents, "Resources", font),
 );
 
-cpSync(join(here, "Resources", "lune-skill.md"), join(contents, "Resources", "lune-skill.md"));
+for (const name of ["lune-skill.md", "THIRD-PARTY-NOTICES.md"])
+  cpSync(join(here, "Resources", name), join(contents, "Resources", name));
 
 const iconset = join(here, ".build", "icon.iconset");
 
@@ -74,7 +80,13 @@ for (const [points, scale] of [16, 32, 128, 256, 512].flatMap((size) => [
   ]);
 }
 
-run("iconutil", ["--convert", "icns", "--output", join(contents, "Resources", "icon.icns"), iconset]);
+run("iconutil", [
+  "--convert",
+  "icns",
+  "--output",
+  join(contents, "Resources", "icon.icns"),
+  iconset,
+]);
 
 writeFileSync(
   join(contents, "Info.plist"),

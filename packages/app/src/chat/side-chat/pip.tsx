@@ -142,10 +142,9 @@ export function Pip({
 
     if (!moved.current) return;
 
+    if (event.type === "pointercancel") moved.current = false;
+
     if (element == null || area === undefined) return;
-    setTimeout(() => {
-      moved.current = false;
-    });
     const rect = element.getBoundingClientRect();
     const velocity = throwVelocity(current);
     const throwX = rect.left + rect.width / 2 + velocity.x * THROW_MS;
@@ -186,6 +185,7 @@ export function Pip({
         }}
         transition={spring}
         onPointerDown={(event) => {
+          moved.current = false;
           const target = event.target;
           const handle = target instanceof Element ? target.closest("[data-pip-grip]") : null;
           const element = card.current;
@@ -198,7 +198,6 @@ export function Pip({
           handle.setPointerCapture(event.pointerId);
           x.stop();
           y.stop();
-          moved.current = false;
           drag.current = {
             pointer: event.pointerId,
             origin: { x: event.clientX - x.get(), y: event.clientY - y.get() },
@@ -234,6 +233,7 @@ export function Pip({
             event.preventDefault();
         }}
         onKeyDown={(event: KeyboardEvent<HTMLDivElement>) => {
+          moved.current = false;
           const next = cornerToward(corner, event.key);
           const target = event.target;
 

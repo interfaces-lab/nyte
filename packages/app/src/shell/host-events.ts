@@ -104,7 +104,6 @@ const HOST_RESTART = "host-restart";
 
 export type HostToast = "loading" | "restarted" | "close" | "none";
 
-/** `heard` once any state was applied, so the first state's reply, older than every event, can't undo one. */
 export interface HostToastState {
   readonly restarting: boolean;
   readonly heard: boolean;
@@ -114,7 +113,6 @@ export interface HostToastStep extends HostToastState {
   readonly toast: HostToast;
 }
 
-/** The restart toast's next step: it loads from a restart until the host is current again, and an offline host mid-restart leaves it loading. A reply that comes after an event changes nothing. */
 export function hostToast(
   previous: HostToastState,
   source: "reply" | "event",

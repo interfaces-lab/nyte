@@ -28,7 +28,6 @@ function withRevision(state: FoldState, head: HeadName, revision: Revision | nul
   return { ...state };
 }
 
-/** The prompt of the turn the message at `start` of `path` belongs to, when that prompt is on `path` before `start`; found through the path's indexes, never by walking its messages. */
 export function findLeadingPrompt(
   path: Path | undefined,
   start: number,

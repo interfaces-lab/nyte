@@ -46,7 +46,6 @@ export interface ClosedTab {
   readonly index: number;
 }
 
-/** A pane gone blank while its chat goes away, and the pane focused before it did. */
 export interface HiddenPane {
   readonly sessionId: SessionId;
   readonly tabId: string;
@@ -99,7 +98,6 @@ export type WindowAction =
   | { readonly kind: "unhide-chat"; readonly sessionId: SessionId }
   | { readonly kind: "close-chats"; readonly sessionIds: ReadonlySet<SessionId> };
 
-/** The blank draft a pane of a tab holds, which decides whether hiding a chat can be undone. */
 export type BlankDrafts = (tabId: string, pane: PaneId) => ChatDraft;
 
 const BLANK: PaneSelection = { kind: "blank" };
@@ -138,7 +136,6 @@ export function findChatTab(state: WindowState): Tab | undefined {
   return state.tabs.find((tab) => tab.id === id);
 }
 
-/** The tab whose panes the window shows and pane commands act on: the active or last chat tab. */
 export function paneTabId(state: WindowState): string {
   return findChatTab(state)?.id ?? state.activeTabId;
 }
@@ -147,7 +144,6 @@ export function tabLayout(tab: Tab): Layout<PaneContent> {
   return tab.view.kind === "page" ? PAGE_LAYOUT : tab.view.layout;
 }
 
-/** A tab that has closed shows no chat. */
 export function shownLayout(state: WindowState, tabId: string): Layout<PaneContent> {
   const tab = state.tabs.find((candidate) => candidate.id === tabId);
 
@@ -434,10 +430,6 @@ function removeTabs(
   return { ...remaining, tabs: [fresh], activeTabId: fresh.id };
 }
 
-/**
- * A chat that enters the tab's layout, by a drop or "Open beside", leaves every other tab, as a
- * move: a tab it leaves empty closes without being offered for reopening.
- */
 function changeLayout(
   state: WindowState,
   tabId: string,
@@ -484,7 +476,6 @@ function arrangeTab(
 
 type PaneAction = Extract<WindowAction, { readonly kind: "pane" }>;
 
-/** "Open beside" is a drop on the right of the focused pane of the tab pane commands act on. */
 function openBeside(state: WindowState, sessionId: SessionId): PaneAction {
   const tabId = paneTabId(state);
   const pane = shownLayout(state, tabId).focus[0];
@@ -506,11 +497,6 @@ function forgetClosed(state: WindowState, gone: ReadonlySet<SessionId>): WindowS
   return closed.length === state.closed.length ? state : { ...state, closed };
 }
 
-/**
- * Closes the panes of chats that went away: a split keeps its other chats, and a tab they leave
- * empty closes without being offered for reopening. A pane hidden for one of them closes too, while
- * its undo could still bring the chat back, so a chat deleted here ends as one deleted elsewhere.
- */
 function closeChats(
   state: WindowState,
   sessionIds: ReadonlySet<SessionId>,
@@ -572,11 +558,6 @@ function closeChats(
     : { ...remaining, hidden: unhidden };
 }
 
-/**
- * A window saved before a chat could be in only one tab keeps each chat in the tab looked at last:
- * the active tab, then the recent ones, then the strip's order. A saved window hides no pane, so
- * no blank draft is read.
- */
 export function withChatsInOneTab(state: WindowState, createId: () => string): WindowState {
   const order = new Set([state.activeTabId, ...state.recent, ...state.tabs.map((tab) => tab.id)]);
 
@@ -593,10 +574,6 @@ function readsNoBlank(): never {
   throw new Error("A saved window hides no pane.");
 }
 
-/**
- * A chat going away, deleted here with an undo pending, turns blank in every tab that shows it, and
- * each blank pane is remembered so the undo or the commit can find it.
- */
 function hideChat(
   state: WindowState,
   sessionId: SessionId,
@@ -628,11 +605,6 @@ function hideChat(
   return { ...hidden, hidden: [...hidden.hidden, ...hiding] };
 }
 
-/**
- * Undoing a hide brings the chat back in one place: the pane hidden last that still waits, empty,
- * for it, then an earlier one. A chat reopened meanwhile stays where it was reopened, and the panes
- * it left stay blank.
- */
 function unhideChat(
   state: WindowState,
   sessionId: SessionId,
@@ -662,11 +634,6 @@ function unhideChat(
   );
 }
 
-/**
- * Reopening gives way to the tabs that show its places now, as opening one does: a page open in
- * another tab is activated there, a chat's pane stays closed, and when it has no other chat left
- * the tab showing its focused chat is activated instead.
- */
 function reopenTab(state: WindowState, createId: () => string): WindowState {
   const last = state.closed[0];
 
@@ -720,10 +687,6 @@ export function reduce(
   return withLiveHidden(step(state, action, createId, blank));
 }
 
-/**
- * A hidden pane is remembered only while its tab is open and it still shows the blank: once it
- * closes or shows something else, neither an undo nor a commit can act on it.
- */
 function withLiveHidden(state: WindowState): WindowState {
   const hidden = state.hidden.filter((entry) =>
     state.tabs.some(
@@ -837,13 +800,6 @@ function step(
   }
 }
 
-/**
- * Which pane of which tab takes DOM focus once `action` turned `before` into `after`. A pane command
- * asks for its own tab's pane by its rule; a raw arrangement asks for none, as the pane it came from
- * focused itself; every other tab whose layout changed asks for its focused pane. A tab that opens
- * asks for none: its panes mount focused. Hiding a chat asks for none, so focus stays where the
- * delete was asked from.
- */
 export function focusRequests(
   before: WindowState,
   after: WindowState,

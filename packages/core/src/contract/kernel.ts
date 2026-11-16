@@ -154,7 +154,6 @@ export interface Kernel {
 
   readonly connections: ConnectionRegistry;
 
-  /** One request outside any run. With a session it runs that session's request hooks and charges the session; with `null` it runs no plugin hooks and charges nothing. */
   request<T>(
     session: SessionId | null,
     input: ModelRequestInput<T>,
@@ -196,7 +195,6 @@ export interface PluginHost {
 
   runtimes(): ReadonlyMap<SessionId, PluginRuntime>;
 
-  /** Closes `session`'s runtime, detaches its environment and takes it off the folder watches, which stop once no session is left on them. The runtime leaves the table and the environment its slot before anything awaits, so a `runtime(session)` meanwhile builds a fresh one on a fresh attachment. */
   close(session: SessionId): Promise<void>;
 
   api(owner: string, session: SessionId): PluginApi<"core">;
@@ -207,10 +205,8 @@ export interface PluginHost {
 
   load(paths: readonly string[]): Promise<readonly Plugin<"core">[]>;
 
-  /** Loads the plugin files in `dir` one by one, so a bad file is reported without dropping the others; the same plugin object while none of a file's graph changed. */
   directory(dir: string): Promise<PluginDirectory>;
 
-  /** The same build while none of the view's files changed; null on a host that reads no files. */
   readonly compileView: ((view: URL) => Promise<ViewBuild>) | null;
 }
 
@@ -231,7 +227,6 @@ interface Handles {
 }
 
 export interface ChildTable {
-  /** Follows `record` when it has a parent and takes `own`, read from the store after the {@link ChildTable.heard} count `since`, unless a run event for the child arrived on the bus after `since`: then it returns false and takes nothing. A `since` of 0 takes `own` only while this process has heard no run event for the child. */
   link(record: SessionRecord, own: BackgroundItem["state"] | null, since: number): boolean;
   heard(): number;
   forget(session: SessionId): void;
@@ -369,7 +364,6 @@ export interface PluginRuntime {
 
   load(plugins: readonly Plugin<"core">[]): Promise<readonly PluginLoadOutcome[]>;
 
-  /** The plugins its last `load` was asked for, in order, whether or not each activated. */
   requested(): readonly Plugin<"core">[];
 
   outcomes(): readonly PluginLoadOutcome[];
@@ -387,10 +381,8 @@ export interface PluginRuntime {
 
   hold(): Disposer;
 
-  /** When it was created, last fetched or let go of its last hold; null while a hold is out or it is still activating. */
   idleSince(): number | null;
 
-  /** Marks it used now; `kernel.plugins.runtime` calls it on every fetch. */
   touch(): void;
 
   close(): Promise<void>;

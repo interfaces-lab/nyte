@@ -56,17 +56,6 @@ const parameters = standard(
 
 const output = standard(Type.Object({ loaded: Type.Array(Type.String()) }));
 
-/**
- * The `tool_search` tool: ranks the `code` and `deferred` tools the head
- * has not loaded yet and loads the matches, so the model sees them declared
- * from its next request on. Loads live in the call's output, so they follow
- * the head's history through restarts, branches and compaction. The tool is
- * declared only while some `deferred` tool is not. A session that only reads
- * is never offered a tool that changes something, so it finds none.
- *
- * @category plugins
- * @since 0.1.0
- */
 export default {
   id: "tool-search",
   activate(api) {
@@ -172,11 +161,6 @@ function stem(term: string): string {
   return term;
 }
 
-/**
- * A tool's search text: its name, the name with `_` as spaces, its
- * description, every parameter's name and description, and its namespace's
- * name, description and instructions.
- */
 export function createToolSearchDocument(
   tool: Pick<ToolInfo, "name" | "description" | "parameters">,
   namespace: ToolNamespace | undefined,

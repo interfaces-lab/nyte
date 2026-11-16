@@ -67,7 +67,6 @@ async function print(
   };
 }
 
-/** The one JSON error document a failed `--json` run ends stderr with. */
 function errorDocument(stderr: string) {
   return Value.Parse(ErrorDocument, JSON.parse(stderr.trim().split("\n").at(-1) ?? ""));
 }

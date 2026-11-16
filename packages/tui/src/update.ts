@@ -1,12 +1,3 @@
-/**
- * Self-update for the compiled `nyte` binary. Downloads the release tarball
- * for this platform, verifies its sha256, and swaps the binary in place with
- * one rename. A build running from source has no binary to replace and is
- * told so.
- *
- * Release assets are the ones `scripts/package.sh` stages:
- * `nyte-v<version>-<os>-<arch>.tar.gz` plus a `.sha256` beside it.
- */
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createWriteStream, lstatSync } from "node:fs";
@@ -46,40 +37,26 @@ const execFileAsync = promisify(execFile);
 
 export type UpdateOutcome =
   | { readonly kind: "updated"; readonly from: string; readonly to: string; readonly path: string }
-  /** The version named is this build. */
   | { readonly kind: "current"; readonly version: string }
-  /** The followed channel's newest release, `newest`, isn't newer than this build: nothing was installed until the channel passes it. */
   | { readonly kind: "waiting"; readonly channel: UpdateChannel; readonly newest: string }
-  /** This install can't replace itself: it runs from source, or no release is built for this platform. Found before any network work. */
   | { readonly kind: "unsupported"; readonly blocker: "source" | "platform" }
   | { readonly kind: "failed"; readonly message: string };
 
-/** What the update is doing, as data. Clients word it. */
 export type UpdateProgress =
-  /** Asking GitHub for the newest release on `channel`; a named version skips it. */
   | { readonly kind: "checking"; readonly channel: UpdateChannel }
-  /** Updates now follow `channel`: saved before a channel's lookup, or after installing a version from another channel. */
   | { readonly kind: "switched"; readonly channel: UpdateChannel }
   | { readonly kind: "downloading"; readonly asset: string; readonly version: string }
   | { readonly kind: "percent"; readonly percent: number }
   | { readonly kind: "verified" };
 
 interface UpdateOptions {
-  /** A release to install (a leading `v` is fine), or `stable` or `nightly` to follow that channel; none follows the saved channel. */
   readonly target?: string | undefined;
   readonly report?: (event: UpdateProgress) => void;
-  /** Aborts the release lookup and the download; the outcome is then `failed`. */
   readonly signal?: AbortSignal;
-  /**
-   * Runs before a named version older than this build downloads; a channel never installs one.
-   * Without it the downgrade goes ahead. What it throws, `selfUpdate` throws.
-   */
   readonly confirmDowngrade?: (version: string) => Promise<void>;
-  /** The binary to replace. Defaults to the running compiled binary. */
   readonly binaryPath?: string;
 }
 
-/** `darwin-arm64`, the suffix of a release asset's name, or `undefined` when no release is built for this platform. */
 function releasePlatform(): string | undefined {
   if (process.platform !== "darwin" && process.platform !== "linux") return undefined;
 
@@ -88,18 +65,12 @@ function releasePlatform(): string | undefined {
   return `${process.platform}-${process.arch}`;
 }
 
-/** The hex digest from a `sha256sum`/`shasum` line: `<hex>  <file>`. */
 function parseSha256(text: string): string | undefined {
   const digest = text.trim().split(/\s+/u)[0]?.toLowerCase();
 
   return digest !== undefined && /^[0-9a-f]{64}$/u.test(digest) ? digest : undefined;
 }
 
-/**
- * The compiled binary's path, or `undefined` when running from source. A Bun
- * standalone executable serves its modules from the `/$bunfs/` virtual
- * filesystem and reports itself as `process.execPath`.
- */
 function installedBinaryPath(
   moduleUrl: string = import.meta.url,
   execPath: string = process.execPath,
@@ -119,11 +90,6 @@ type UpdateTarget =
   | { readonly kind: "install"; readonly version: string }
   | Extract<UpdateOutcome, { readonly kind: "current" | "waiting" | "failed" }>;
 
-/**
- * Decide what to install. A channel is saved first and installs only a release newer than this
- * build, so a store a newer build migrated stays readable; it waits for the channel to pass this
- * build instead. Only a named version can go back.
- */
 async function resolveUpdateTarget(
   options: Pick<UpdateOptions, "target" | "signal">,
   report: (event: UpdateProgress) => void,
@@ -168,10 +134,6 @@ async function newestOn(
   return { kind: "install", version: latest.version };
 }
 
-/**
- * Makes updates follow `channel` and reports `switched`. Writes only a change, so an update on the
- * followed channel never pins it for a build installed later from elsewhere.
- */
 async function follow(
   channel: UpdateChannel,
   report: (event: UpdateProgress) => void,
@@ -182,7 +144,6 @@ async function follow(
   report({ kind: "switched", channel });
 }
 
-/** `signal` plus a timeout of `ms`. */
 function bounded(ms: number, signal: AbortSignal | undefined): AbortSignal {
   return AbortSignal.any([AbortSignal.timeout(ms), ...(signal === undefined ? [] : [signal])]);
 }
@@ -230,8 +191,6 @@ async function fetchText(url: string, signal: AbortSignal | undefined): Promise<
 
 class UpdateError extends Error {}
 
-/** Inspect the archive before tar is allowed to write anything. Tar resolves PAX
- * names for both listings; only regular files and directories may be extracted. */
 async function planArchive(archive: string) {
   const listing = await execFileAsync("tar", ["-tzf", archive]);
   const verbose = await execFileAsync("tar", ["-tvzf", archive]);
@@ -283,9 +242,6 @@ async function pathStat(path: string) {
   return lstatSync(path, { throwIfNoEntry: false });
 }
 
-/** The existing install root is trusted and canonicalized, including system aliases.
- * Below it, docs directories must be plain directories. The install root must
- * not be renamed or modified by another writer during an update. */
 async function checkDestination(path: string, root: string): Promise<void> {
   if (path === root) return;
   const parent = dirname(path);
@@ -366,7 +322,6 @@ async function stageDocs(source: string, binaryPath: string, version: string) {
   }
 }
 
-/** Downloads, verifies and installs a release over the running binary. The host runs the `nyte-tailnet` sidecar from beside the binary, so a release's sidecar is swapped in first. The new binary is staged in a private directory on the binary's filesystem and swapped in by one atomic rename once its docs are complete, leaving older versioned docs alone; a cleanup failure afterwards never turns that swap into a failed result. Updates then follow the installed version's channel; if that fails to save, the old channel stays followed and no `switched` is reported. */
 export async function selfUpdate(options: UpdateOptions = {}): Promise<UpdateOutcome> {
   const report = options.report ?? (() => undefined);
   const binaryPath = options.binaryPath ?? installedBinaryPath();
@@ -502,7 +457,6 @@ export async function selfUpdate(options: UpdateOptions = {}): Promise<UpdateOut
   }
 }
 
-/** What a lookup on `channel` that found nothing newer than this build says; shared with `nyte update --check`. */
 export function latestReleaseText(channel: UpdateChannel): string {
   if (releaseChannel(VERSION) !== channel)
     return `No ${channel} release is newer than nyte ${VERSION}.`;
@@ -510,7 +464,6 @@ export function latestReleaseText(channel: UpdateChannel): string {
   return `nyte ${VERSION} is the latest ${channel === "nightly" ? "nightly" : "release"}.`;
 }
 
-/** One line per outcome, shared by `nyte update` and `/update`. */
 export function describeUpdateOutcome(outcome: UpdateOutcome): string {
   switch (outcome.kind) {
     case "updated":

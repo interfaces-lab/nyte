@@ -15,7 +15,6 @@ type SessionChange =
   | { readonly kind: "rename"; readonly name: string }
   | { readonly kind: "delete" };
 
-/** The rows the host's lists and reads hold, before any pending change: what a change waits to see. */
 interface HostedRows {
   readonly row: (sessionId: SessionId) => SessionInfo | undefined;
   readonly subscribe: (notice: () => void) => () => void;
@@ -28,10 +27,8 @@ interface PendingChange {
 
 type HideSession = (sessionId: SessionId) => () => void;
 
-/** The longest a change the host took stays over its row while the row has yet to show it. */
 const SHOWN_WITHIN_MS = 2_000;
 
-/** The deletes a page made and hasn't committed: kept where a reload of the page finds them. */
 export interface HeldDeletes {
   read(): readonly SessionId[];
   write(sessions: readonly SessionId[]): void;
@@ -41,11 +38,6 @@ const HELD_DELETES = "nyte:pending-deletes";
 
 const heldDeletesSchema = Type.Array(sessionIdSchema);
 
-/**
- * The page's session storage, which outlives a reload and not the page. A delete is held here, not
- * sent when the page hides, because a request a page sends as it unloads may die with it, while
- * this write is done before the page can go.
- */
 const pageDeletes: HeldDeletes = {
   read() {
     const stored: unknown = JSON.parse(sessionStorage.getItem(HELD_DELETES) ?? "[]");
@@ -58,7 +50,6 @@ const pageDeletes: HeldDeletes = {
   },
 };
 
-/** Whether the host's row shows `change`: a deleted session has no row, and a session with no row left shows nothing older. */
 export function reflects(row: SessionInfo | undefined, change: SessionChange): boolean {
   if (row === undefined) return true;
 
@@ -122,11 +113,9 @@ export class SessionActions {
   readonly #connection: () => Pick<Connection, "session">;
   readonly #toasts: ActionToasts;
   readonly #held: HeldDeletes;
-  /** The deletes an earlier load of the page held and never committed, until `commitHeld`. */
   #resumed: readonly PendingChange[];
   readonly #listeners = new Set<() => void>();
   readonly #queues = keyedSerial<SessionId>();
-  /** Each session's current archive change, and how to drop its entry from the Undo notification. */
   readonly #archives = new Map<
     SessionId,
     { readonly change: PendingChange; readonly discard: () => void }
@@ -157,7 +146,6 @@ export class SessionActions {
     this.#resumed = held.read().map((sessionId) => this.#add(sessionId, { kind: "delete" }));
   }
 
-  /** Commits the deletes the page held when it reloaded, which stay hidden until then: a reload ends their Undo. */
   commitHeld(): void {
     const resumed = this.#resumed;
     this.#resumed = [];
@@ -346,7 +334,6 @@ export class SessionActions {
     });
   }
 
-  /** Keeps `pending` over its row until the host's row shows it, or `SHOWN_WITHIN_MS` passes, so the row never shows the old value between the answer and the change that brings the new one. Dropping it drops the earlier changes of its kind to its row too, which the host took first, so a change back to the value the row still shows can't leave the one it replaced showing. */
   #keepUntilShown(pending: PendingChange): void {
     let kept = true;
 

@@ -1,27 +1,34 @@
 import assert from "node:assert/strict";
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { deriveSessionRows, sessionRows, subscribeSessionRows } from "./session-rows.ts";
 import type { RowInputs, SessionRows } from "./session-rows.ts";
 import { installScripted, scriptedConnection, viewStream } from "../../test/scripted-connection.ts";
 import { sessionRow } from "../../test/view-fixtures.ts";
 
-const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
-
 test("the rows keep hearing the host after another connection replaces the first", async () => {
   installScripted(scriptedConnection({ sessions: [sessionRow("chat")] }));
   const leave = subscribeSessionRows(() => undefined);
-  await settle();
-  assert.equal(sessionRows().roots?.[0]?.name, "chat");
+  await vi.waitFor(() => assert.equal(sessionRows().roots?.[0]?.name, "chat"));
 
-  const sessions = viewStream<readonly SessionInfo[]>([sessionRow("chat")]);
+  const stream = viewStream<readonly SessionInfo[]>([sessionRow("chat")]);
+  const heard = Promise.withResolvers<void>();
+
+  const sessions = {
+    ...stream,
+    subscribe: (listener: () => void) => {
+      heard.resolve();
+
+      return stream.subscribe(listener);
+    },
+  };
+
   installScripted(scriptedConnection({ sessions }));
-  await settle();
+  await heard.promise;
   sessions.push([sessionRow("chat", { name: "renamed" })]);
-  await settle();
 
-  assert.equal(sessionRows().roots?.[0]?.name, "renamed");
+  await vi.waitFor(() => assert.equal(sessionRows().roots?.[0]?.name, "renamed"));
   leave();
 });
 

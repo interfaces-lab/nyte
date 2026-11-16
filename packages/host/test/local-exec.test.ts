@@ -1,10 +1,10 @@
 import { spawn } from "node:child_process";
-import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { OutputFrame } from "@nyte-ai/schema";
 import type { Job, OsProcess } from "@nyte-ai/core";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { localExec } from "../src/index.ts";
 import { identifyProcess, localMachine } from "../src/local/process/machine.ts";
 
@@ -22,6 +22,25 @@ async function folder(): Promise<string> {
 }
 
 const decoder = new TextDecoder();
+
+/**
+ * A node grandchild, not `sh -c 'sleep & sleep'`: bash can swallow a signal that lands between its
+ * fork and exec, which libuv's spawn can't. It says ready only once its handler is in place.
+ */
+const PROCESS_TREE = `
+const grandchild = \`
+process.on("SIGTERM", () => {
+  require("node:fs").writeFileSync(process.argv[1], "SIGTERM");
+  process.exit(0);
+});
+console.log("ready");
+setInterval(() => undefined, 1000);
+\`;
+require("node:child_process").spawn(process.execPath, ["-e", grandchild, process.argv[1]], {
+  stdio: ["ignore", "inherit", "inherit"],
+});
+setInterval(() => undefined, 1000);
+`;
 
 const windows = process.platform === "win32";
 
@@ -91,19 +110,17 @@ describe("localExec over pipes", () => {
     expect((await read(job)).text).toBe("typed line\n");
   });
 
-  it("stops the process group and reports terminated", async () => {
-    const exec = localExec(await folder());
-
-    const job = await exec(
-      windows ? 'node -e "setTimeout(() => {}, 30000)"' : "sleep 30 & sleep 30; wait",
-    );
-    const started = Date.now();
+  it.skipIf(windows)("stops the process group with SIGTERM and reports terminated", async () => {
+    const root = await folder();
+    const received = join(root, "received");
+    const job = await localExec(root)([process.execPath, "-e", PROCESS_TREE, received]);
+    await job.output()[Symbol.asyncIterator]().next();
 
     expect(await job.stop()).toEqual({
       kind: "settled",
       outcome: { kind: "exited", code: null, reason: "terminated" },
     });
-    expect(Date.now() - started).toBeLessThan(1_500);
+    expect(await readFile(received, "utf8")).toBe("SIGTERM");
     expect(await job.stop()).toMatchObject({ kind: "settled" });
   });
 
@@ -139,13 +156,14 @@ describe("localExec over pipes", () => {
 
   it("rejects an aborted settled wait without stopping the process", async () => {
     const job = await localExec(await folder())(
-      "node -e \"setTimeout(() => console.log('done'), 300)\"",
+      "node -e \"process.stdin.once('data', () => process.stdin.destroy())\"",
     );
     const controller = new AbortController();
     const waiting = job.settled({ signal: controller.signal });
     controller.abort();
 
     await expect(waiting).rejects.toMatchObject({ code: "unavailable" });
+    await job.write(new TextEncoder().encode("go\n"));
     expect(await job.settled()).toMatchObject({ code: 0 });
   });
 
@@ -199,7 +217,9 @@ describe("localExec over pipes", () => {
   it("detaches readers on close and on the environment's signal, leaving the process running", async () => {
     const environment = new AbortController();
     const exec = localExec(await folder(), { signal: environment.signal });
-    const job = await exec("node -e \"setTimeout(() => console.log('late'), 400)\"");
+    const job = await exec(
+      "node -e \"process.stdin.once('data', () => { console.log('late'); process.stdin.destroy(); })\"",
+    );
     const first = job.output()[Symbol.asyncIterator]();
     const pending = first.next();
     await job.close();
@@ -210,6 +230,7 @@ describe("localExec over pipes", () => {
     environment.abort();
 
     expect(await waiting).toEqual({ done: true, value: undefined });
+    await job.write(new TextEncoder().encode("go\n"));
     expect(await job.settled()).toEqual({ kind: "exited", code: 0, reason: "exited" });
     expect((await read(job)).text).toBe("late\n");
   });
@@ -319,7 +340,7 @@ describe.skipIf(windows)("the local machine", () => {
 
   it("tells a process gone once it exited, and this host's own process running", async () => {
     const finished = await started("sleep 0.2");
-    await new Promise((resolve) => setTimeout(resolve, 600));
+    await vi.waitFor(() => expect(running(finished.pid)).toBe(false), { timeout: 5_000 });
     const self = await localMachine.self();
 
     expect({
@@ -330,7 +351,7 @@ describe.skipIf(windows)("the local machine", () => {
 
   it("signals nothing when the leader exited and its group still runs, and answers gone once nothing does", async () => {
     const orphaned = await started("sleep 30 & sleep 0.3");
-    await new Promise((resolve) => setTimeout(resolve, 800));
+    await vi.waitFor(() => expect(running(orphaned.pid)).toBe(false), { timeout: 5_000 });
 
     expect({ leader: running(orphaned.pid), group: running(-orphaned.group) }).toEqual({
       leader: false,
@@ -340,7 +361,7 @@ describe.skipIf(windows)("the local machine", () => {
     expect(running(-orphaned.group)).toBe(true);
 
     const finished = await started("sleep 0.2");
-    await new Promise((resolve) => setTimeout(resolve, 600));
+    await vi.waitFor(() => expect(running(finished.pid)).toBe(false), { timeout: 5_000 });
 
     expect(await localMachine.end(finished)).toBe("gone");
   });
@@ -489,9 +510,8 @@ describe.skipIf(!ptyLoads)("localExec in a pty", () => {
       expect(await job.idle()).toBe(true);
       await job.write(new TextEncoder().encode("printf 'nyte$ '; sleep 30\r"));
       await until(() => text.includes("\r\nnyte$ "));
-      await new Promise((resolve) => setTimeout(resolve, 500));
 
-      expect(await job.idle()).toBe(false);
+      await vi.waitFor(async () => expect(await job.idle()).toBe(false), { timeout: 5_000 });
     } finally {
       await job.stop();
     }
@@ -505,10 +525,17 @@ describe.skipIf(!ptyLoads)("localExec in a pty", () => {
 
     const reader = job.output()[Symbol.asyncIterator]();
     await reader.next();
-    await new Promise((resolve) => setTimeout(resolve, 100));
 
     expect(await job.idle()).toBe(false);
-    await new Promise((resolve) => setTimeout(resolve, 700));
+
+    for (let text = ""; !text.includes("\u001b]133;C");) {
+      const next = await reader.next();
+
+      if (next.done === true) break;
+
+      if (next.value.kind === "bytes") text += decoder.decode(next.value.data);
+    }
+
     expect(await job.idle()).toBe(false);
     await job.stop();
   }, 10_000);

@@ -430,10 +430,16 @@ export async function run(): Promise<string> {
       container.querySelector("[aria-busy='true']") === null,
     "the agent cards",
   );
-  await new Promise((resolve) => window.setTimeout(resolve, 500));
 
   await record(container, () => agentsPill(container).click(), "list");
-  await new Promise((resolve) => window.setTimeout(resolve, 500));
+  await until(() => {
+    const tray = container.querySelector("section[data-slot='tray']");
+
+    if (tray === null) return false;
+    const style = getComputedStyle(tray);
+
+    return style.opacity === "1" && style.transform === "none";
+  }, "the list to finish opening");
 
   const opened = await record(
     container,

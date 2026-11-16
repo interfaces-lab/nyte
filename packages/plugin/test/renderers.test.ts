@@ -1,8 +1,9 @@
-import { isVNode } from "@opentui/core";
+import { Renderable } from "@opentui/core";
+import { createTestRenderer } from "@opentui/core/testing";
 import type { Part, PartDefinition, Renderer } from "@nyte-ai/core";
 import type { Json } from "@nyte-ai/schema";
 import { isValidElement } from "react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 import reactPlugin, { transcriptRenderers as reactTranscript } from "../src/client/transcript.tsx";
 import tuiPlugin, { transcriptRenderers as tuiTranscript } from "../src/client/transcript-tui.ts";
 
@@ -78,6 +79,44 @@ function press(node: unknown): void {
   if ("children" in node) press(node.children);
 }
 
+type Shown = {
+  readonly isView: boolean;
+  readonly text: string;
+  readonly press: () => Promise<void>;
+};
+
+async function showReact(view: unknown): Promise<Shown> {
+  return {
+    isView: isValidElement(view),
+    text: JSON.stringify(view),
+    press: async () => press(view),
+  };
+}
+
+async function showTerminal(view: unknown): Promise<Shown> {
+  const setup = await createTestRenderer({ width: 80, height: 24 });
+  onTestFinished(() => setup.dispose());
+  const node: unknown = typeof view === "function" ? view(setup.renderer) : null;
+
+  if (!(node instanceof Renderable)) return { isView: false, text: "", press: async () => {} };
+  setup.renderer.root.add(node);
+  await setup.renderOnce();
+
+  return {
+    isView: true,
+    text: setup.captureCharFrame(),
+    press: async () => {
+      for (const leaf of leaves(node)) await setup.mockMouse.click(leaf.x, leaf.y);
+    },
+  };
+}
+
+function leaves(node: Renderable): Renderable[] {
+  const children = node.getChildren();
+
+  return children.length === 0 ? [node] : children.flatMap(leaves);
+}
+
 function draw(
   renderers: readonly Renderer[],
   kind: string,
@@ -99,71 +138,73 @@ describe.each([
     framework: "react",
     renderers: reactRenderers,
     plugins: [reactPlugin, reactQuestions],
-    isView: (value: unknown) => isValidElement(value),
+    show: showReact,
   },
   {
     framework: "tui",
     renderers: tuiRenderers,
     plugins: [tuiPlugin, tuiQuestions],
-    isView: (value: unknown) => isVNode(value),
+    show: showTerminal,
   },
-])("$framework renderers", ({ framework, renderers, plugins, isView }) => {
-  it("render a view for every kind, and an unreadable note for a state the schema rejects", () => {
+])("$framework renderers", ({ framework, renderers, plugins, show }) => {
+  it("render a view for every kind, and an unreadable note for a state the schema rejects", async () => {
     expect(plugins.flatMap((plugin) => plugin.contribute.renderers)).toEqual(renderers);
     expect(renderers.map((renderer) => [renderer.kind.kind, renderer.framework])).toEqual(
       Object.keys(states).map((kind) => [kind, framework]),
     );
 
     for (const kind of Object.keys(states))
-      expect(isView(draw(renderers, kind, recorder().act))).toBe(true);
+      expect((await show(draw(renderers, kind, recorder().act))).isView).toBe(true);
 
     expect(
-      JSON.stringify(draw(renderers, "ask/question", recorder().act, { prompt: 1 })),
+      (await show(draw(renderers, "ask/question", recorder().act, { prompt: 1 }))).text,
     ).toContain("cannot be shown");
   });
 
-  it("wire act: a running tool stops", () => {
+  it("wire act: a running tool stops", async () => {
     const running = recorder();
-    press(draw(renderers, "tool", running.act));
+    await (await show(draw(renderers, "tool", running.act))).press();
 
     expect(running.acted).toEqual([{ action: "stop", input: {} }]);
   });
 });
 
-it("draws terminal question summaries with descriptions and committed answers", () => {
+it("draws terminal question summaries with descriptions and committed answers", async () => {
   const waiting = recorder();
-  const pending = draw(tuiRenderers, "ask/question", waiting.act);
-  press(pending);
-  expect(JSON.stringify(pending)).toContain("Yes: Deploy now.");
+  const pending = await showTerminal(draw(tuiRenderers, "ask/question", waiting.act));
+  await pending.press();
+  expect(pending.text).toContain("Yes: Deploy now.");
   expect(waiting.acted).toEqual([]);
 
-  const answered = draw(tuiRenderers, "ask/question", waiting.act, {
-    questions: [
-      {
-        question: "Deploy?",
-        header: "Deployment",
-        options: [{ label: "Yes", description: "Deploy now." }],
-      },
-      {
-        question: "When?",
-        header: "Timing",
-        options: [{ label: "Today", description: "Ship today." }],
-      },
-    ],
-    call: "c1",
-    phase: { kind: "answered", answers: [["After review"], []], head: null },
-  });
+  const answered = await showTerminal(
+    draw(tuiRenderers, "ask/question", waiting.act, {
+      questions: [
+        {
+          question: "Deploy?",
+          header: "Deployment",
+          options: [{ label: "Yes", description: "Deploy now." }],
+        },
+        {
+          question: "When?",
+          header: "Timing",
+          options: [{ label: "Today", description: "Ship today." }],
+        },
+      ],
+      call: "c1",
+      phase: { kind: "answered", answers: [["After review"], []], head: null },
+    }),
+  );
 
-  expect(JSON.stringify(answered)).toContain("Answer: After review");
-  expect(JSON.stringify(answered)).toContain("Answer: Unanswered");
+  expect(answered.text).toContain("Answer: After review");
+  expect(answered.text).toContain("Answer: Unanswered");
 });
 
-it("draws the tool part's settled outcome without a stop", () => {
+it("draws the tool part's settled outcome without a stop", async () => {
   const settled = recorder();
   const state = { ...call, phase: "settled", outcome: { kind: "interrupted" }, changes: null };
 
   press(draw(reactRenderers, "tool", settled.act, state));
-  press(draw(tuiRenderers, "tool", settled.act, state));
+  await (await showTerminal(draw(tuiRenderers, "tool", settled.act, state))).press();
 
   expect(settled.acted).toEqual([]);
 });

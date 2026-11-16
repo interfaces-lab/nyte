@@ -62,7 +62,6 @@ beforeAll(async () => {
     join(directory, "index.html"),
     `<!doctype html><html data-display-mode="light"><meta charset="utf-8"><link rel="stylesheet" href="latency.css"><body>
 <script>
-// The renderer reads window.nyte at module load; the harness never calls the host.
 const stub = () => new Proxy(function () {}, {
   get: (_, key) => key === "then" ? undefined : key === "landing" ? { deliverys: [{ delivery: "steer", lands: "boundary" }, { delivery: "next", lands: "idle" }] } : stub(),
   apply: () => Promise.reject(new Error("stub")),

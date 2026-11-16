@@ -143,26 +143,23 @@ async function arrowTo(item: Locator, limit = 12): Promise<void> {
   throw new Error(`The arrow keys never reached ${String(item)}.`);
 }
 
-const READ_SHIFTS = `new Promise((done) => {
-  const entries = [];
-  const observer = new PerformanceObserver((list) => entries.push(...list.getEntries()));
+const READ_SHIFTS = `(() => {
+  const observer = new PerformanceObserver(() => undefined);
   observer.observe({ type: "layout-shift", buffered: true });
-  setTimeout(() => {
-    entries.push(...observer.takeRecords());
-    observer.disconnect();
-    const name = (node) => node === null ? "" : [node.nodeName, node.getAttribute?.("aria-label") ?? "", (node.textContent ?? "").slice(0, 48)].join(" ").trim();
-    done(JSON.stringify(entries.map((entry) => ({
-      startTime: entry.startTime,
-      value: entry.value,
-      hadRecentInput: entry.hadRecentInput,
-      sources: entry.sources.map((source) => ({
-        node: name(source.node),
-        previous: source.previousRect.toJSON(),
-        current: source.currentRect.toJSON(),
-      })),
-    }))));
-  }, 100);
-})`;
+  const entries = observer.takeRecords();
+  observer.disconnect();
+  const name = (node) => node === null ? "" : [node.nodeName, node.getAttribute?.("aria-label") ?? "", (node.textContent ?? "").slice(0, 48)].join(" ").trim();
+  return JSON.stringify(entries.map((entry) => ({
+    startTime: entry.startTime,
+    value: entry.value,
+    hadRecentInput: entry.hadRecentInput,
+    sources: entry.sources.map((source) => ({
+      node: name(source.node),
+      previous: source.previousRect.toJSON(),
+      current: source.currentRect.toJSON(),
+    })),
+  })));
+})()`;
 
 const RectSchema = Type.Object({
   x: Type.Number(),

@@ -7,17 +7,8 @@ import type { Output } from "./cli/output.ts";
 import { HOST_WORKER } from "./host-thread.ts";
 import { extendShutdown } from "./lifecycle.ts";
 
-/** Longer than the host thread's 10 s stop grace, so a signal never cuts the host's stop short. */
 const HOST_SHUTDOWN_MS = 12_000;
 
-/**
- * Serves the store on 127.0.0.1 until `signal` aborts, publishing the URL and token in `host.json`
- * for clients to attach to. stdout gets the URL, or with `--json` one listening line; where it
- * listens goes to stderr. With `--log` the listening line goes to the host log instead of stdout.
- * With `--supervised`, which only `ensureHost` passes, the host retires once a newer `nyte` asks
- * and nothing runs, and that `nyte` starts its own build. Throws a `conflict` when another host
- * already serves this home.
- */
 export async function hostCommand(
   args: readonly string[],
   signal: AbortSignal,

@@ -3,10 +3,6 @@ import type { SelectedWorkspace } from "@nyte-ai/app/contract/bridge.ts";
 import type { WorkspaceInfo } from "@nyte-ai/sdk/client";
 import type { HostWindow, WindowEnd } from "./host-window.ts";
 
-/**
- * The folder a window reopening on a chat shows: the chat's local folder, unless the host can't
- * reach it or it has project sources nobody has trusted yet, which the window asks about instead.
- */
 export function restorableFolder(workspace: WorkspaceInfo | null): SelectedWorkspace | undefined {
   if (
     workspace === null ||
@@ -26,11 +22,6 @@ interface WindowWorkspace {
   readonly shown: string | undefined;
 }
 
-/**
- * Main's mirror of the path of the workspace each window shows, read only to route Finder's Open
- * With. The window's page owns the fact and says every change; a new page starts on the folder
- * Finder opened the window for, as the page itself does, until it says otherwise.
- */
 export function createWindowWorkspaces() {
   const windows = new Map<HostWindow, WindowWorkspace>();
 

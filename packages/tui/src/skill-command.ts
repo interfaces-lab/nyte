@@ -31,7 +31,6 @@ type SkillState = "current" | "outdated" | "missing";
 
 type HookState = "present" | "missing" | "unreadable";
 
-/** One file setup or remove touches, decided before anything is written. `prune` lists folders to delete once they are empty. */
 type Step =
   | { readonly label: "Unchanged"; readonly path: string }
   | {
@@ -305,7 +304,6 @@ async function applyStep(step: Step): Promise<void> {
   await writeFile(step.path, step.text);
 }
 
-/** Every path on stderr; the paths that changed alone on stdout when a script reads it. */
 function receipt(output: Output, steps: readonly Step[]): void {
   output.rows(steps.map((step) => ({ label: step.label, value: step.path })));
 
@@ -345,7 +343,6 @@ async function skillState(path: string): Promise<SkillState> {
   return text === skillText() ? "current" : "outdated";
 }
 
-/** `undefined` when the file doesn't exist. */
 async function readSettings(
   path: string,
   rerun: readonly string[],
@@ -364,7 +361,6 @@ async function readSettings(
   return value;
 }
 
-/** Bun's JSON parser reports no line or column, so the error names the file and the parser's message. */
 function parseSettings(path: string, text: string, rerun: readonly string[]): Json {
   try {
     return toJson(JSON.parse(text));

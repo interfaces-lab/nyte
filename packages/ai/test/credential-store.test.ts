@@ -1,4 +1,4 @@
-import { spawn, execFile, execFileSync } from "node:child_process";
+import { spawn, execFileSync } from "node:child_process";
 import { once } from "node:events";
 import {
   mkdtempSync,
@@ -12,13 +12,11 @@ import {
 import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
-import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { storedAccounts } from "./credential-fixture.ts";
 import { FileCredentialStore } from "../src/auth/store.ts";
 
 const STORE_URL = new URL("../src/auth/store.ts", import.meta.url).href;
-const runNode = promisify(execFile);
 
 let home = "";
 const authPath = () => join(home, "auth.json");
@@ -33,22 +31,45 @@ afterEach(() => {
   rmSync(home, { recursive: true, force: true });
 });
 
-function modifyInChildProcess(providerId: string, holdMs: number): Promise<unknown> {
-  return runNode(process.execPath, [
-    "--input-type=module",
-    "-e",
-    `
-      const { FileCredentialStore } = await import(${JSON.stringify(STORE_URL)});
-      const store = new FileCredentialStore(${JSON.stringify(authPath())});
-      await store.modify(${JSON.stringify(providerId)}, async () => {
-        await new Promise((resolve) => setTimeout(resolve, ${holdMs}));
-        return {
-          active: "default",
-          accounts: [{ id: "default", label: "Default", credential: { type: "api_key", key: ${JSON.stringify(providerId)} } }],
-        };
-      });
-    `,
-  ]);
+function modifyInChildProcess(providerId: string) {
+  const child = spawn(
+    process.execPath,
+    [
+      "--input-type=module",
+      "-e",
+      `
+        import { text } from "node:stream/consumers";
+        const { FileCredentialStore } = await import(${JSON.stringify(STORE_URL)});
+        const store = new FileCredentialStore(${JSON.stringify(authPath())});
+        const released = text(process.stdin);
+        const modified = store.modify(${JSON.stringify(providerId)}, async () => {
+          await released;
+          return {
+            active: "default",
+            accounts: [{ id: "default", label: "Default", credential: { type: "api_key", key: ${JSON.stringify(providerId)} } }],
+          };
+        });
+        process.stdout.write("waiting");
+        await modified;
+      `,
+    ],
+    { stdio: ["pipe", "pipe", "inherit"] },
+  );
+
+  return {
+    waiting: once(child.stdout, "data"),
+    release: () => child.stdin.end(),
+    exited: once(child, "exit"),
+  };
+}
+
+async function modifyInChildProcessesAtOnce(providers: readonly string[]): Promise<void> {
+  const children = providers.map((providerId) => modifyInChildProcess(providerId));
+  await Promise.all(children.map((child) => child.waiting));
+  for (const child of children) child.release();
+  expect(await Promise.all(children.map((child) => child.exited))).toEqual(
+    providers.map(() => [0, null]),
+  );
 }
 
 async function exitedProcessId(): Promise<number> {
@@ -216,7 +237,7 @@ describe("file credential store", () => {
   test("keeps every credential when separate processes write at once", async () => {
     const providers = ["anthropic", "openai", "github-copilot", "opencode"];
 
-    await Promise.all(providers.map((providerId) => modifyInChildProcess(providerId, 120)));
+    await modifyInChildProcessesAtOnce(providers);
 
     const stored = await new FileCredentialStore(authPath()).list();
     expect(stored.map((info) => info.providerId).sort()).toEqual([...providers].sort());
@@ -226,7 +247,7 @@ describe("file credential store", () => {
     const providers = ["anthropic", "openai", "github-copilot", "opencode"];
     writeFileSync(lockPath(), `${await exitedProcessId()} ${hostname()}`);
 
-    await Promise.all(providers.map((providerId) => modifyInChildProcess(providerId, 60)));
+    await modifyInChildProcessesAtOnce(providers);
 
     const stored = await new FileCredentialStore(authPath()).list();
     expect(stored.map((info) => info.providerId).sort()).toEqual([...providers].sort());
@@ -282,18 +303,22 @@ describe("file credential store", () => {
     const store = new FileCredentialStore(authPath());
     await store.modify("openai", async () => storedAccounts({ type: "api_key", key: "kept" }));
     let sibling: Promise<unknown> = Promise.resolve();
+    const siblingHolds = Promise.withResolvers<void>();
+    const siblingReleased = Promise.withResolvers<void>();
 
     const reclaimed = store.modify("anthropic", async () => {
       ageLock(300);
       sibling = store.modify("github-copilot", async () => {
-        await new Promise((resolve) => setTimeout(resolve, 150));
+        siblingHolds.resolve();
+        await siblingReleased.promise;
         return storedAccounts({ type: "api_key", key: "sibling" });
       });
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await siblingHolds.promise;
       return storedAccounts({ type: "api_key", key: "reclaimed" });
     });
 
     await expect(reclaimed).rejects.toThrow("took over");
+    siblingReleased.resolve();
     await sibling;
     expect(storedJson()).toEqual({
       openai: storedAccounts({ type: "api_key", key: "kept" }),
@@ -327,7 +352,6 @@ describe("file credential store", () => {
     async () => {
       const store = new FileCredentialStore(authPath());
       await store.modify("anthropic", async () => storedAccounts({ type: "api_key", key: "T1" }));
-      const marker = join(home, "refreshed");
       const staging = `${authPath()}.${process.pid}.tmp`;
       execFileSync("mkfifo", [staging]);
       const taker = spawn(
@@ -336,12 +360,11 @@ describe("file credential store", () => {
           "--input-type=module",
           "-e",
           `
-            import { existsSync, readFileSync, rmSync, utimesSync } from "node:fs";
+            import { readFileSync, utimesSync } from "node:fs";
+            import { text } from "node:stream/consumers";
             const { FileCredentialStore } = await import(${JSON.stringify(STORE_URL)});
-            const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
             try {
-              while (!existsSync(${JSON.stringify(marker)})) await sleep(5);
-              await sleep(150);
+              await text(process.stdin);
               const aged = new Date(Date.now() - 120_000);
               utimesSync(${JSON.stringify(lockPath())}, aged, aged);
               await new FileCredentialStore(${JSON.stringify(authPath())}).modify("openai", async () => ({
@@ -349,17 +372,16 @@ describe("file credential store", () => {
                 accounts: [{ id: "default", label: "Default", credential: { type: "api_key", key: "taker" } }],
               }));
             } finally {
-              rmSync(${JSON.stringify(marker)}, { force: true });
               readFileSync(${JSON.stringify(staging)});
             }
           `,
         ],
-        { stdio: "inherit" },
+        { stdio: ["pipe", "inherit", "inherit"] },
       );
       const exited = once(taker, "exit");
 
       const paused = store.modify("anthropic", async () => {
-        writeFileSync(marker, "");
+        await new Promise<void>((resolve) => taker.stdin.end(() => resolve()));
         return storedAccounts({ type: "api_key", key: "T2" });
       });
 

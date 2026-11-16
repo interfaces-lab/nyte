@@ -3,13 +3,15 @@ import Lune
 import NyteDesign
 import QuartzCore
 
-/// What is selected on the canvas: an element of a file, seen in one of that file's frames.
 struct CanvasSelection: Hashable {
   var sheet: String
   var frame: Int
   var site: ElementRef
+  var trail: [ElementRef] = []
 
-  var isFrame: Bool { site.file == sheet && site.path.count == 1 }
+  var occurrence: Occurrence { Occurrence(element: site, trail: trail) }
+  var isFrame: Bool { trail.isEmpty && site.file == sheet && site.path.count == 1 }
+  var isInComponent: Bool { !trail.isEmpty }
 }
 
 enum CanvasTool {
@@ -17,25 +19,18 @@ enum CanvasTool {
   case hand
 }
 
-/// The infinite canvas. Core Animation composites it on the GPU; each frame is rasterized off
-/// the main thread by the same Core Graphics renderer the `lune` command uses, at exactly the
-/// pixel scale it is shown at, and re-rasterized once a zoom settles.
 final class CanvasView: NSView {
   var onSelect: ((CanvasSelection?) -> Void)?
-  /// A frame dragged to a new place in its file. `commit` is false while the drag continues.
+  var onEditText: (() -> Void)?
   var onMoveFrame: ((_ selection: CanvasSelection, _ origin: CGPoint, _ commit: Bool) -> Void)?
-  /// A selection resized. `origin` is set when a frame's top or left edge moved.
   var onResize: ((_ selection: CanvasSelection, _ size: CGSize, _ origin: CGPoint?, _ commit: Bool) -> Void)?
   var onDelete: ((CanvasSelection) -> Void)?
   var onZoom: ((CGFloat) -> Void)?
-  /// The person wants to talk about what is selected: `/`, or Ask Nyte in the context menu.
   var onAsk: (() -> Void)?
-  /// Escape with nothing left to step out of.
   var onEscape: (() -> Void)?
 
   var tool: CanvasTool = .select { didSet { window?.invalidateCursorRects(for: self) } }
-  /// The parts of the view that chrome covers. Fitting keeps frames clear of them.
-  var insets = NSEdgeInsets(top: 64, left: 32, bottom: 150, right: 32)
+  var insets = NSEdgeInsetsZero
 
   private(set) var zoom: CGFloat = 1
   private(set) var pan = CGPoint.zero
@@ -45,14 +40,13 @@ final class CanvasView: NSView {
   private var artboards: [String: Artboard] = [:]
   private var order: [String] = []
   private var sheetLabels: [String: CATextLayer] = [:]
-  private var glows: [Glow] = []
   private var fitted = false
 
   private let grid = CAReplicatorLayer()
   private let gridRow = CAReplicatorLayer()
   private let dot = CALayer()
+  private let lights = CALayer()
   private let boards = CALayer()
-  private let effects = CALayer()
   private let overlay = CALayer()
   private let hoverOutline = CAShapeLayer()
   private let selectionOutline = CAShapeLayer()
@@ -60,12 +54,32 @@ final class CanvasView: NSView {
   private let badge = CALayer()
   private let badgeText = CATextLayer()
 
-  private var hover: (sheet: String, frame: Int, site: ElementRef)?
+  private var hover: CanvasSelection?
+  private var entered: [ElementRef] = []
   private var drag: Drag = .none
   private var spaceHeld = false
   private var settle: DispatchWorkItem?
-  private var flight: Flight?
+  private var trim: DispatchWorkItem?
+  var working: Set<String> = [] {
+    didSet {
+      guard working != oldValue else { return }
+      for key in order where lit(key, by: oldValue) && !lit(key, by: working) { hold(key) }
+      arrange()
+    }
+  }
+  private var halos: [String: GlowLayer] = [:]
+  private var held: [String: DispatchWorkItem] = [:]
+  private var arranged: (zoom: CGFloat, pan: CGPoint) = (1, .zero)
+  private var retired: [IOSurface] = []
+  private var flight: Flight? { didSet { if flight == nil { shownTime = nil } } }
+  private var shownTime: CFTimeInterval?
   private var link: CADisplayLink?
+  private let renderQueue: OperationQueue = {
+    let queue = OperationQueue()
+    queue.maxConcurrentOperationCount = max(2, ProcessInfo.processInfo.activeProcessorCount / 2)
+    queue.qualityOfService = .userInitiated
+    return queue
+  }()
   private var tracking: NSTrackingArea?
   private var leftEdge: CGFloat?
 
@@ -82,34 +96,33 @@ final class CanvasView: NSView {
     wantsLayer = true
     root.masksToBounds = true
 
-    dot.cornerRadius = 1
     gridRow.addSublayer(dot)
     grid.addSublayer(gridRow)
-    for layer in [grid, boards, effects, overlay] as [CALayer] { root.addSublayer(layer) }
+    for layer in [grid, lights, boards, overlay] as [CALayer] { root.addSublayer(layer) }
 
     for outline in [hoverOutline, selectionOutline] {
       outline.fillColor = nil
       outline.isHidden = true
       overlay.addSublayer(outline)
     }
-    hoverOutline.lineWidth = 1
-    selectionOutline.lineWidth = 1.5
+    hoverOutline.lineWidth = Overlay.hoverLine
+    selectionOutline.lineWidth = Overlay.selectionLine
 
     for _ in 0..<4 {
       let handle = CALayer()
-      handle.bounds = CGRect(x: 0, y: 0, width: 8, height: 8)
-      handle.cornerRadius = 4
-      handle.borderWidth = 1.5
+      handle.bounds = CGRect(x: 0, y: 0, width: Overlay.handle, height: Overlay.handle)
+      handle.cornerRadius = Overlay.handle / 2
+      handle.borderWidth = Overlay.selectionLine
       handle.isHidden = true
       overlay.addSublayer(handle)
       handles.append(handle)
     }
 
-    badge.cornerRadius = 6
+    badge.cornerRadius = Overlay.badge.cornerRadius
     badge.cornerCurve = .continuous
     badge.isHidden = true
     badgeText.font = NSFont.nyte(.xs, .medium)
-    badgeText.fontSize = 11
+    badgeText.fontSize = NyteText.xs.size
     badgeText.alignmentMode = .center
     badge.addSublayer(badgeText)
     overlay.addSublayer(badge)
@@ -120,18 +133,25 @@ final class CanvasView: NSView {
     fatalError("CanvasView is made in code.")
   }
 
+  static func desk(dark: Bool) -> CGColor {
+    (dark ? NyteRole.bgChrome : NyteRole.bgMuted).cgColor(dark: dark)
+  }
+
+  static let desk = NSColor(name: "nyte.desk") { appearance in
+    NSColor(cgColor: desk(dark: appearance.isDark)) ?? .windowBackgroundColor
+  }
+
   override var acceptsFirstResponder: Bool { true }
   override var isOpaque: Bool { true }
 
-  /// A click on the canvas of a window in the background selects, as it does in Nyte.
   override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
   // MARK: Scene
 
-  /// Shows a new set of sheets. A frame is redrawn only when its sheet's revision moved.
   func update(sheets next: [SheetModel], selection nextSelection: CanvasSelection?) {
     sheets = next
     selection = nextSelection
+    if let nextSelection { entered = nextSelection.trail }
     var seen: Set<String> = []
     var nextOrder: [String] = []
 
@@ -147,17 +167,16 @@ final class CanvasView: NSView {
           artboard.world = world
           if redraw {
             artboard.revision = sheet.revision
-            artboard.baseScale = 0
-            artboard.detailRegion = nil
+            artboard.invalidate()
           }
         } else {
           let artboard = Artboard(sheet: sheet.path, index: index, layout: layout, world: world, revision: sheet.revision)
+          if fitted { for layer in [artboard.base, artboard.shadow] { layer.fade(from: 0, to: 1) } }
           artboard.label.font = NSFont.nyte(.sm, .medium)
-          artboard.label.fontSize = 12
+          artboard.label.fontSize = NyteText.sm.size
           artboard.label.truncationMode = .end
           boards.addSublayer(artboard.shadow)
           boards.addSublayer(artboard.base)
-          boards.addSublayer(artboard.detail)
           overlay.insertSublayer(artboard.label, at: 0)
           artboards[key] = artboard
         }
@@ -166,16 +185,23 @@ final class CanvasView: NSView {
       let label = sheetLabels[sheet.path] ?? {
         let label = CATextLayer()
         label.font = NSFont.nyte(.sm, .regular)
-        label.fontSize = 12
+        label.fontSize = NyteText.sm.size
         label.truncationMode = .middle
         overlay.insertSublayer(label, at: 0)
         sheetLabels[sheet.path] = label
         return label
       }()
-      label.string = sheet.error.map { "\(sheet.path)  ·  line \($0.line): \($0.message)" } ?? sheet.path
+      let name = URL(filePath: sheet.path).deletingPathExtension().lastPathComponent
+      let missing = sheet.sheet.warnings.filter { $0.missingImport != nil }.count
+      label.string = sheet.error.map { "\(name)  ·  line \($0.line): \($0.message)" }
+        ?? (missing == 0 ? name : "\(name)  ·  missing \(missing) file\(missing == 1 ? "" : "s")")
     }
 
     for (key, artboard) in artboards where !seen.contains(key) {
+      artboard.baseWork?.cancel()
+      artboard.detailWork?.cancel()
+      retire(artboard.baseSurface)
+      retire(artboard.detailSurface)
       for layer in [artboard.shadow, artboard.base, artboard.detail, artboard.label] as [CALayer] {
         layer.removeFromSuperlayer()
       }
@@ -198,43 +224,28 @@ final class CanvasView: NSView {
 
   func select(_ next: CanvasSelection?) {
     selection = next
+    entered = next?.trail ?? []
     arrangeOverlay()
   }
 
-  /// Lights up places an agent just changed, then lets them fade.
   func flash(_ marks: [ChangeMark]) {
-    for mark in marks {
-      guard let sheet = sheets.first(where: { $0.path == mark.sheet }), sheet.frames.indices.contains(mark.frame)
-      else { continue }
-      let frame = sheet.worldRect(of: mark.frame)
-      let glow = Glow(world: mark.rect.offsetBy(dx: frame.minX, dy: frame.minY))
-      let tint = CGColor(srgbRed: 0.48, green: 0.58, blue: 0.84, alpha: 1)
-      glow.layer.strokeColor = tint
-      glow.layer.fillColor = tint.copy(alpha: 0.1)
-      glow.layer.lineWidth = 2
-      glow.layer.shadowColor = tint
-      glow.layer.shadowOpacity = 1
-      glow.layer.shadowRadius = 12
-      glow.layer.shadowOffset = .zero
-      glow.layer.opacity = 0
-      effects.addSublayer(glow.layer)
-      glows.append(glow)
-
-      let fade = CAKeyframeAnimation(keyPath: "opacity")
-      fade.values = [0, 1, 1, 0]
-      fade.keyTimes = [0, 0.12, 0.45, 1]
-      fade.duration = 1.8
-      fade.timingFunction = CAMediaTimingFunction(name: .easeOut)
-      CATransaction.begin()
-      CATransaction.setCompletionBlock { [weak self, weak glow] in
-        guard let glow else { return }
-        glow.layer.removeFromSuperlayer()
-        self?.glows.removeAll { $0 === glow }
-      }
-      glow.layer.add(fade, forKey: "fade")
-      CATransaction.commit()
-    }
+    for mark in marks { hold("\(mark.sheet)#\(mark.frame)") }
     arrange()
+  }
+
+  private func lit(_ key: String, by working: Set<String>) -> Bool {
+    guard let artboard = artboards[key] else { return false }
+    return working.contains(artboard.sheet) || working.contains(key)
+  }
+
+  private func hold(_ key: String) {
+    held[key]?.cancel()
+    let work = DispatchWorkItem { [weak self] in
+      self?.held[key] = nil
+      self?.arrange()
+    }
+    held[key] = work
+    DispatchQueue.main.asyncAfter(deadline: .now() + GlowLayer.linger, execute: work)
   }
 
   // MARK: Camera
@@ -253,8 +264,6 @@ final class CanvasView: NSView {
     CGPoint(x: (point.x - pan.x) / zoom, y: (point.y - pan.y) / zoom)
   }
 
-  /// Converts a rectangle measured from the view's top-left corner into the layer tree's
-  /// coordinates, which count up from the bottom.
   private func layerRect(_ rect: CGRect) -> CGRect {
     CGRect(x: rect.minX, y: bounds.height - rect.maxY, width: rect.width, height: rect.height)
   }
@@ -274,9 +283,10 @@ final class CanvasView: NSView {
 
   private func fitCamera(to rect: CGRect, maxZoom: CGFloat = 1) -> (zoom: CGFloat, pan: CGPoint) {
     guard !rect.isNull, rect.width > 0, rect.height > 0 else { return (zoom, pan) }
+    let top = insets.top + Overlay.labelBand
     let area = CGRect(
-      x: insets.left, y: insets.top, width: max(120, bounds.width - insets.left - insets.right),
-      height: max(120, bounds.height - insets.top - insets.bottom))
+      x: insets.left, y: top, width: max(120, bounds.width - insets.left - insets.right),
+      height: max(120, bounds.height - top - insets.bottom))
     let scale = min(maxZoom, min(area.width / rect.width, area.height / rect.height))
     return (
       scale,
@@ -290,20 +300,36 @@ final class CanvasView: NSView {
     onZoom?(zoom)
   }
 
-  /// Flies the camera on a critically damped spring: it leaves at once and lands without
-  /// overshoot. Under Reduce Motion it cuts.
+  private var cameraState: [Double] {
+    let middle = toWorld(CGPoint(x: bounds.midX, y: bounds.midY))
+    return [log(Double(zoom)), Double(middle.x), Double(middle.y)]
+  }
+
+  private func cut(to camera: (zoom: CGFloat, pan: CGPoint)) {
+    flight = nil
+    apply(camera)
+    arrange()
+    rasterize()
+  }
+
   private func fly(to camera: (zoom: CGFloat, pan: CGPoint)) {
-    guard !NyteMotion.reduced, window != nil else {
-      flight = nil
-      apply(camera)
-      arrange()
-      rasterize()
+    guard !NyteMotion.reduced, window != nil, camera.zoom > 0 else {
+      cut(to: camera)
       return
     }
-    let center = CGPoint(x: bounds.midX, y: bounds.midY)
+    let middle = CGPoint(x: bounds.midX, y: bounds.midY)
+    let target = [
+      log(Double(camera.zoom)), Double((middle.x - camera.pan.x) / camera.zoom),
+      Double((middle.y - camera.pan.y) / camera.zoom),
+    ]
+    let now = shownTime ?? CACurrentMediaTime()
+    let moving = flight?.state(at: now)
+    let from = moving?.value ?? cameraState
     flight = Flight(
-      start: CACurrentMediaTime(), fromZoom: zoom, toZoom: camera.zoom, fromCenter: toWorld(center),
-      toCenter: CGPoint(x: (center.x - camera.pan.x) / camera.zoom, y: (center.y - camera.pan.y) / camera.zoom))
+      start: now, target: target, offset: zip(from, target).map { $0 - $1 },
+      velocity: moving?.velocity ?? [0, 0, 0])
+    shownTime = now
+    rasterize(ahead: camera)
     if link == nil {
       link = displayLink(target: self, selector: #selector(step(_:)))
       link?.add(to: .main, forMode: .common)
@@ -316,27 +342,30 @@ final class CanvasView: NSView {
       self.link = nil
       return
     }
-    let elapsed = CACurrentMediaTime() - flight.start
-    let done = elapsed >= NyteSpring.travel.settling
-    let progress = done ? 1 : NyteSpring.travel.progress(at: elapsed)
-    zoom = flight.fromZoom * pow(flight.toZoom / flight.fromZoom, progress)
-    let center = CGPoint(
-      x: flight.fromCenter.x + (flight.toCenter.x - flight.fromCenter.x) * progress,
-      y: flight.fromCenter.y + (flight.toCenter.y - flight.fromCenter.y) * progress)
-    pan = CGPoint(x: bounds.midX - center.x * zoom, y: bounds.midY - center.y * zoom)
-    onZoom?(zoom)
-    arrange()
-    if done {
+    let time = max(link.targetTimestamp, flight.start)
+    shownTime = time
+    let state = flight.state(at: time)
+    let scale = exp(state.value[0])
+    let apart = zip(state.value, flight.target).map { $0 - $1 }
+    let landed =
+      abs(apart[0]) < 0.0005 && hypot(apart[1], apart[2]) * scale < 0.25 && abs(state.velocity[0]) < 0.01
+      && hypot(state.velocity[1], state.velocity[2]) * scale < 4
+    let value = landed || time - flight.start > 2 ? flight.target : state.value
+    zoom = CGFloat(exp(value[0]))
+    pan = CGPoint(x: bounds.midX - CGFloat(value[1]) * zoom, y: bounds.midY - CGFloat(value[2]) * zoom)
+    follow()
+    if value == flight.target {
       self.flight = nil
       link.invalidate()
       self.link = nil
+      onZoom?(zoom)
       rasterize()
     }
   }
 
   func fitAll(animated: Bool = true) {
     let camera = fitCamera(to: contentBounds())
-    if animated { fly(to: camera) } else { apply(camera); arrange(); rasterize() }
+    if animated { fly(to: camera) } else { cut(to: camera) }
   }
 
   func reveal(sheet path: String) {
@@ -345,23 +374,24 @@ final class CanvasView: NSView {
     fly(to: fitCamera(to: rect.insetBy(dx: -40, dy: -60)))
   }
 
-  func reveal(_ selection: CanvasSelection) {
+  func reveal(_ selection: CanvasSelection, animated: Bool = true) {
     guard let rect = worldRect(of: selection) else { return }
     let padded = rect.insetBy(dx: -max(80, rect.width * 0.2), dy: -max(80, rect.height * 0.2))
-    fly(to: fitCamera(to: padded, maxZoom: 2))
+    let camera = fitCamera(to: padded, maxZoom: 2)
+    if animated { fly(to: camera) } else { cut(to: camera) }
   }
 
-  func setZoom(_ next: CGFloat, animated: Bool = true) {
+  func setZoom(_ next: CGFloat, animated: Bool = false) {
     let center = CGPoint(x: bounds.midX, y: bounds.midY)
     let world = toWorld(center)
     let camera = (zoom: next, pan: CGPoint(x: center.x - world.x * next, y: center.y - world.y * next))
-    if animated { fly(to: camera) } else { apply(camera); arrange(); rasterize() }
+    if animated { fly(to: camera) } else { cut(to: camera) }
   }
 
-  // The View menu reaches these through the responder chain.
+  private var keyed: Bool { NSApp.currentEvent?.type == .keyDown }
 
-  @objc func zoomToFit(_ sender: Any?) { fitAll() }
-  @objc func zoomToSelection(_ sender: Any?) { if let selection { reveal(selection) } }
+  @objc func zoomToFit(_ sender: Any?) { fitAll(animated: !keyed) }
+  @objc func zoomToSelection(_ sender: Any?) { if let selection { reveal(selection, animated: !keyed) } }
   @objc func zoomToActualSize(_ sender: Any?) { setZoom(1) }
   @objc func zoomIn(_ sender: Any?) { setZoom(min(64, zoom * 1.5)) }
   @objc func zoomOut(_ sender: Any?) { setZoom(max(0.02, zoom / 1.5)) }
@@ -372,7 +402,7 @@ final class CanvasView: NSView {
     zoom = min(64, max(0.02, zoom * factor))
     pan = CGPoint(x: point.x - world.x * zoom, y: point.y - world.y * zoom)
     onZoom?(zoom)
-    arrange()
+    follow()
     rasterizeSoon()
   }
 
@@ -381,6 +411,9 @@ final class CanvasView: NSView {
   private func arrange() {
     CATransaction.begin()
     CATransaction.setDisableActions(true)
+    arranged = (zoom, pan)
+    boards.setAffineTransform(.identity)
+    lights.setAffineTransform(.identity)
     arrangeGrid()
 
     for key in order {
@@ -398,88 +431,140 @@ final class CanvasView: NSView {
         var detail = toScreen(region.offsetBy(dx: artboard.world.minX, dy: artboard.world.minY))
         detail.origin = CGPoint(x: snap(detail.minX), y: snap(detail.minY))
         artboard.detail.frame = layerRect(detail)
-        artboard.detail.isHidden = false
-      } else {
-        artboard.detail.isHidden = true
       }
 
       let selected = selection.map { $0.sheet == artboard.sheet && $0.frame == artboard.index && $0.isFrame } ?? false
-      artboard.label.string = artboard.layout.root.node.name
+      let name = artboard.layout.root.node.name
+      if artboard.label.string as? String != name { artboard.label.string = name }
       artboard.label.foregroundColor = selected
-        ? NyteRole.strokeAccent.cgColor(dark: isDark, hue: .blue) : NyteRole.contentTertiary.cgColor(dark: isDark)
-      artboard.label.isHidden = rect.width < 56
+        ? NyteRole.contentAccent.cgColor(dark: isDark, hue: .blue) : NyteRole.contentTertiary.cgColor(dark: isDark)
       artboard.label.contentsScale = backing
-      artboard.label.frame = layerRect(CGRect(x: rect.minX + 1, y: rect.minY - 22, width: max(40, rect.width), height: 16))
     }
 
     for sheet in sheets {
       guard let label = sheetLabels[sheet.path], !sheet.frames.isEmpty else { continue }
-      let extent = toScreen(sheet.extent.offsetBy(dx: sheet.origin.x, dy: sheet.origin.y))
       label.contentsScale = backing
       label.foregroundColor = sheet.error == nil
-        ? NyteRole.contentQuaternary.cgColor(dark: isDark)
+        ? NyteRole.contentTertiary.cgColor(dark: isDark)
         : NyteRole.contentAccent.cgColor(dark: isDark, hue: .red)
-      label.frame = layerRect(CGRect(x: snap(extent.minX) + 1, y: snap(extent.minY) - 46, width: max(240, extent.width), height: 16))
     }
 
-    for glow in glows {
-      let rect = toScreen(glow.world).insetBy(dx: -3, dy: -3)
-      glow.layer.frame = layerRect(rect)
-      let path = CGPath(
-        roundedRect: CGRect(origin: .zero, size: rect.size), cornerWidth: min(8, rect.width / 2),
-        cornerHeight: min(8, rect.height / 2), transform: nil)
-      glow.layer.path = path
-      glow.layer.shadowPath = path.copy(strokingWithWidth: 2, lineCap: .round, lineJoin: .round, miterLimit: 1)
-    }
+    arrangeHalos()
+    arrangeLabels()
     CATransaction.commit()
     arrangeOverlay()
   }
 
-  /// Keeps the dots between 14 and 28 points apart on screen, doubling their spacing in the
-  /// design as the camera pulls back.
+  private func arrangeHalos() {
+    var wanted: Set<String> = []
+    for key in order {
+      guard let artboard = artboards[key], lit(key, by: working) || held[key] != nil else { continue }
+      wanted.insert(key)
+      let halo = halos[key] ?? {
+        let halo = GlowLayer()
+        halo.opacity = 0
+        halo.tone(dark: isDark)
+        halos[key] = halo
+        lights.addSublayer(halo)
+        halo.turn(true)
+        halo.rise()
+        artboard.shadow.fade(to: 0)
+        return halo
+      }()
+      var rect = toScreen(artboard.world)
+      rect.origin = CGPoint(x: snap(rect.minX), y: snap(rect.minY))
+      halo.surround(layerRect(rect), radius: artboard.layout.root.style.radii.topLeft * zoom)
+    }
+    for (key, halo) in halos where !wanted.contains(key) {
+      halos[key] = nil
+      artboards[key]?.shadow.fade(to: 1)
+      halo.fall { [weak halo] in halo?.removeFromSuperlayer() }
+    }
+  }
+
+  private func follow() {
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    let scale = zoom / arranged.zoom
+    let move = CGAffineTransform(
+      a: scale, b: 0, c: 0, d: scale, tx: pan.x - scale * arranged.pan.x,
+      ty: bounds.height * (1 - scale) - pan.y + scale * arranged.pan.y)
+    boards.setAffineTransform(move)
+    lights.setAffineTransform(move)
+    arrangeGrid()
+    arrangeLabels()
+    CATransaction.commit()
+    arrangeOverlay()
+  }
+
+  private func arrangeLabels() {
+    for key in order {
+      guard let artboard = artboards[key] else { continue }
+      let rect = toScreen(artboard.world)
+      artboard.label.isHidden = rect.width < Overlay.shortestLabelled
+      artboard.label.frame = layerRect(
+        CGRect(
+          x: snap(rect.minX), y: snap(rect.minY) - Overlay.frameLabelGap - Overlay.labelHeight,
+          width: max(Overlay.shortestLabelled, rect.width), height: Overlay.labelHeight))
+    }
+    for sheet in sheets {
+      guard let label = sheetLabels[sheet.path], !sheet.frames.isEmpty else { continue }
+      let extent = toScreen(sheet.extent.offsetBy(dx: sheet.origin.x, dy: sheet.origin.y))
+      label.frame = layerRect(
+        CGRect(
+          x: snap(extent.minX), y: snap(extent.minY) - Overlay.labelBand,
+          width: max(Overlay.sheetLabelWidth, extent.width), height: Overlay.labelHeight))
+    }
+  }
+
   private func arrangeGrid() {
-    var spacing = 16 * zoom
-    while spacing < 14 { spacing *= 2 }
-    while spacing >= 28 { spacing /= 2 }
-    let columns = Int(bounds.width / spacing) + 2
-    let rows = Int(bounds.height / spacing) + 2
-    let offsetX = pan.x.truncatingRemainder(dividingBy: spacing)
-    let offsetY = pan.y.truncatingRemainder(dividingBy: spacing)
+    var pitch = Overlay.gridPitch * zoom
+    while pitch < Overlay.gridClosest { pitch *= 2 }
+    while pitch >= Overlay.gridClosest * 2 { pitch /= 2 }
+    let columns = Int(bounds.width / pitch) + 2
+    let rows = Int(bounds.height / pitch) + 2
+    let offsetX = pan.x.truncatingRemainder(dividingBy: pitch)
+    let offsetY = pan.y.truncatingRemainder(dividingBy: pitch)
     let size = max(1, (1.5 * backing).rounded() / backing)
     dot.frame = CGRect(x: 0, y: 0, width: size, height: size)
     dot.cornerRadius = size / 2
     gridRow.instanceCount = columns
-    gridRow.instanceTransform = CATransform3DMakeTranslation(spacing, 0, 0)
+    gridRow.instanceTransform = CATransform3DMakeTranslation(pitch, 0, 0)
     grid.instanceCount = rows
-    grid.instanceTransform = CATransform3DMakeTranslation(0, -spacing, 0)
+    grid.instanceTransform = CATransform3DMakeTranslation(0, -pitch, 0)
     grid.frame = bounds
     gridRow.frame = CGRect(
-      x: snap(offsetX - spacing), y: snap(bounds.height - offsetY - size / 2), width: bounds.width,
+      x: snap(offsetX - pitch), y: snap(bounds.height - offsetY - size / 2), width: bounds.width,
       height: size)
   }
 
   private func worldRect(of selection: CanvasSelection) -> CGRect? {
     guard let sheet = sheets.first(where: { $0.path == selection.sheet }),
       sheet.frames.indices.contains(selection.frame),
-      let rect = sheet.frames[selection.frame].rect(of: selection.site)
+      let rect = sheet.frames[selection.frame].box(at: selection.occurrence)?.rect
     else { return nil }
     let frame = sheet.worldRect(of: selection.frame)
     return rect.offsetBy(dx: frame.minX, dy: frame.minY)
+  }
+
+  private func hue(of selection: CanvasSelection) -> NyteHue {
+    if selection.isInComponent { return .purple }
+    guard let sheet = sheets.first(where: { $0.path == selection.sheet }),
+      sheet.frames.indices.contains(selection.frame),
+      let box = sheet.frames[selection.frame].box(at: selection.occurrence)
+    else { return .blue }
+    return box.box.node.component == nil ? .blue : .purple
   }
 
   private func arrangeOverlay() {
     CATransaction.begin()
     CATransaction.setDisableActions(true)
     defer { CATransaction.commit() }
-    let accent = NyteRole.strokeAccent.cgColor(dark: isDark, hue: .blue)
-
-    if let hover, hover.site != selection?.site || hover.frame != selection?.frame,
-      let rect = worldRect(of: CanvasSelection(sheet: hover.sheet, frame: hover.frame, site: hover.site))
-    {
+    if let hover, hover != selection, let rect = worldRect(of: hover) {
       let screen = toScreen(rect)
       hoverOutline.frame = layerRect(screen)
       hoverOutline.path = CGPath(rect: CGRect(origin: .zero, size: screen.size), transform: nil)
-      hoverOutline.strokeColor = accent.copy(alpha: 0.7)
+      hoverOutline.strokeColor = NyteRole.strokeAccent.cgColor(dark: isDark, hue: hue(of: hover)).copy(alpha: 0.7)
       hoverOutline.isHidden = false
     } else {
       hoverOutline.isHidden = true
@@ -492,6 +577,7 @@ final class CanvasView: NSView {
       return
     }
 
+    let accent = NyteRole.strokeAccent.cgColor(dark: isDark, hue: hue(of: selection))
     var screen = toScreen(rect)
     screen.origin = CGPoint(x: snap(screen.minX), y: snap(screen.minY))
     selectionOutline.frame = layerRect(screen)
@@ -507,26 +593,28 @@ final class CanvasView: NSView {
       handle.position = CGPoint(x: corner.x, y: bounds.height - corner.y)
       handle.backgroundColor = CGColor(gray: 1, alpha: 1)
       handle.borderColor = accent
-      handle.isHidden = screen.width < 24 || screen.height < 24
+      handle.isHidden = screen.width < Overlay.smallestHandled || screen.height < Overlay.smallestHandled
     }
 
     let text = "\(formatNumber(rect.width)) × \(formatNumber(rect.height))"
     let font = NSFont.nyte(.xs, .medium)
-    let width = ceil((text as NSString).size(withAttributes: [.font: font]).width) + 14
-    badge.frame = layerRect(CGRect(x: snap(screen.midX - width / 2), y: snap(screen.maxY + 8), width: width, height: 20))
-    badge.backgroundColor = accent
+    let height = Overlay.badge.rawValue
+    let width = ceil((text as NSString).size(withAttributes: [.font: font]).width) + Overlay.badgePad * 2
+    badge.frame = layerRect(
+      CGRect(x: snap(screen.midX - width / 2), y: snap(screen.maxY + Overlay.badgeGap), width: width, height: height))
+    badge.backgroundColor = NyteRole.contentPrimary.cgColor(dark: isDark)
     badgeText.string = text
-    badgeText.foregroundColor = CGColor(gray: 1, alpha: 1)
+    badgeText.foregroundColor = NyteRole.bgBase.cgColor(dark: isDark)
     badgeText.contentsScale = backing
-    badgeText.frame = CGRect(x: 0, y: 2.5, width: width, height: 14)
+    let line = NyteText.xs.lineHeight
+    badgeText.frame = CGRect(x: 0, y: snap((height - line) / 2), width: width, height: line)
     badge.isHidden = false
   }
 
   private func refreshColors() {
     CATransaction.begin()
     CATransaction.setDisableActions(true)
-    // The desk sits one step under the surfaces that float on it, in either appearance.
-    layer?.backgroundColor = (isDark ? NyteRole.bgChrome : NyteRole.bgMuted).cgColor(dark: isDark)
+    layer?.backgroundColor = CanvasView.desk(dark: isDark)
     dot.backgroundColor = NyteRole.contentQuaternary.cgColor(dark: isDark).copy(alpha: isDark ? 0.34 : 0.3)
     for artboard in artboards.values {
       artboard.shadow.shadowColor = CGColor(gray: 0, alpha: 1)
@@ -534,6 +622,7 @@ final class CanvasView: NSView {
       artboard.shadow.shadowRadius = 14
       artboard.shadow.shadowOffset = CGSize(width: 0, height: -5)
     }
+    for halo in halos.values { halo.tone(dark: isDark) }
     CATransaction.commit()
   }
 
@@ -546,80 +635,113 @@ final class CanvasView: NSView {
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: work)
   }
 
-  /// Brings every frame's bitmap to the scale it is shown at. A frame larger than the pixel
-  /// budget gets a sharp tile over just the part in view.
-  private func rasterize() {
-    settle?.cancel()
+  private func rasterize(ahead camera: (zoom: CGFloat, pan: CGPoint)? = nil) {
     guard bounds.width > 0 else { return }
+    if camera == nil {
+      settle?.cancel()
+      if arranged.zoom != zoom || arranged.pan != pan { arrange() }
+    }
+    let zoom = camera?.zoom ?? self.zoom
+    let pan = camera?.pan ?? self.pan
     let exact = zoom * backing
-    let viewport = CGRect(origin: .zero, size: bounds.size)
-    let budget: CGFloat = 12_000_000
+    let viewport = CGRect(origin: .zero, size: bounds.size).insetBy(dx: -Raster.margin, dy: -Raster.margin)
 
     for artboard in artboards.values {
       let size = artboard.layout.size
       guard size.width > 0, size.height > 0 else { continue }
-      let screen = toScreen(artboard.world)
-      let visible = screen.intersects(viewport.insetBy(dx: -200, dy: -200))
-      let cap = sqrt(budget / (size.width * size.height))
-      let target = visible ? min(exact, cap) : min(exact, cap, backing)
-
-      if artboard.baseScale == 0 || abs(artboard.baseScale - target) / target > 0.01 {
-        artboard.baseScale = target
-        artboard.baseGeneration += 1
-        render(artboard, scale: target, region: nil, generation: artboard.baseGeneration)
+      let screen = CGRect(
+        x: artboard.world.minX * zoom + pan.x, y: artboard.world.minY * zoom + pan.y,
+        width: artboard.world.width * zoom, height: artboard.world.height * zoom)
+      let visible = screen.intersects(viewport)
+      let budget = visible ? Raster.base : Raster.thumbnail
+      let target = min(exact, (budget / (size.width * size.height)).squareRoot())
+      let wanted = artboard.basePending ?? artboard.baseScale
+      let coarser = target < wanted
+      if wanted == 0 || (abs(wanted - target) / target > 0.01 && !(camera != nil && coarser)) {
+        render(artboard, scale: target, region: nil)
       }
 
-      guard visible, exact > cap * 1.02 else {
-        if artboard.detailRegion != nil {
-          artboard.detailRegion = nil
-          artboard.detail.contents = nil
-          artboard.detail.isHidden = true
-        }
+      guard visible, exact > target * 1.02 else {
+        if camera == nil { retire(artboard.dropDetail()) }
         continue
       }
-      let seen = screen.intersection(viewport.insetBy(dx: -120, dy: -120))
+      let seen = screen.intersection(viewport)
       let region = CGRect(
         x: (seen.minX - screen.minX) / zoom, y: (seen.minY - screen.minY) / zoom,
         width: seen.width / zoom, height: seen.height / zoom
       ).integral.intersection(CGRect(origin: .zero, size: size))
-      artboard.detailGeneration += 1
-      render(artboard, scale: exact, region: region, generation: artboard.detailGeneration)
-    }
-  }
-
-  /// Draws off the main thread and shows the bitmap if nothing newer was asked for meanwhile.
-  private func render(_ artboard: Artboard, scale: CGFloat, region: CGRect?, generation: Int) {
-    let layout = artboard.layout
-    let environment = imageEnvironment
-    DispatchQueue.global(qos: .userInitiated).async { [weak self, weak artboard] in
-      let image = layout.image(scale: scale, region: region, environment: environment)
-      DispatchQueue.main.async {
-        guard let self, let artboard else { return }
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        if let region {
-          if artboard.detailGeneration == generation {
-            artboard.detail.contents = image
-            artboard.detailRegion = region
-            self.arrange()
-          }
-        } else if artboard.baseGeneration == generation {
-          artboard.base.contents = image
-        }
-        CATransaction.commit()
+      let tile = Tile(region: region, scale: exact)
+      if artboard.detailPending != tile, artboard.detailTile != tile {
+        render(artboard, scale: exact, region: region)
       }
     }
   }
 
-  /// Where the renderer finds the images designs reference.
+  private func render(_ artboard: Artboard, scale: CGFloat, region: CGRect?) {
+    let layout = artboard.layout
+    let environment = imageEnvironment
+    let work = BlockOperation()
+    let show: @MainActor @Sendable (IOSurface?) -> Void = { [weak self, weak artboard, weak work] image in
+      guard let self, let artboard, work?.isCancelled == false else { return }
+      CATransaction.begin()
+      CATransaction.setDisableActions(true)
+      if let region {
+        if artboard.detail.superlayer == nil { self.boards.insertSublayer(artboard.detail, above: artboard.base) }
+        self.retire(artboard.detailSurface)
+        artboard.detailSurface = image
+        artboard.detail.contents = image
+        artboard.detailRegion = region
+        artboard.detailTile = Tile(region: region, scale: scale)
+        artboard.detailPending = nil
+        self.arrange()
+      } else {
+        self.retire(artboard.baseSurface)
+        artboard.baseSurface = image
+        artboard.base.contents = image
+        artboard.baseScale = scale
+        artboard.basePending = nil
+      }
+      CATransaction.commit()
+    }
+    work.addExecutionBlock {
+      let image = layout.surface(scale: scale, region: region, environment: environment)
+      DispatchQueue.main.async { MainActor.assumeIsolated { show(image) } }
+    }
+    if let region {
+      artboard.detailWork?.cancel()
+      artboard.detailWork = work
+      artboard.detailPending = Tile(region: region, scale: scale)
+    } else {
+      artboard.baseWork?.cancel()
+      artboard.baseWork = work
+      artboard.basePending = scale
+    }
+    renderQueue.addOperation(work)
+  }
+
+  private func retire(_ surface: IOSurface?) {
+    guard let surface else { return }
+    retired.append(surface)
+    trimSoon()
+  }
+
+  private func trimSoon() {
+    trim?.cancel()
+    let work = DispatchWorkItem { [weak self] in
+      guard let self else { return }
+      for surface in self.retired { surface.setPurgeable(.purgeableVolatile, oldState: nil) }
+      self.retired = []
+    }
+    trim = work
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
+  }
+
   var imageEnvironment = LayoutEnvironment()
 
   // MARK: View events
 
   override func layout() {
     super.layout()
-    // When the sidebar opens or closes, the view's edge moves under the design. Shift the
-    // camera by the same amount, so the design stays where it was on screen.
     if window != nil {
       let left = convert(NSPoint.zero, to: nil).x
       if let known = leftEdge, fitted { pan.x += known - left }
@@ -635,7 +757,7 @@ final class CanvasView: NSView {
 
   override func viewDidChangeBackingProperties() {
     super.viewDidChangeBackingProperties()
-    for artboard in artboards.values { artboard.baseScale = 0 }
+    for artboard in artboards.values { artboard.invalidate() }
     arrange()
     rasterize()
   }
@@ -650,7 +772,7 @@ final class CanvasView: NSView {
     super.updateTrackingAreas()
     if let tracking { removeTrackingArea(tracking) }
     let area = NSTrackingArea(
-      rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
+      rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect],
       owner: self, userInfo: nil)
     addTrackingArea(area)
     tracking = area
@@ -671,7 +793,7 @@ final class CanvasView: NSView {
     let scale: CGFloat = event.hasPreciseScrollingDeltas ? 1 : 12
     pan.x += event.scrollingDeltaX * scale
     pan.y += event.scrollingDeltaY * scale
-    arrange()
+    follow()
     rasterizeSoon()
   }
 
@@ -690,17 +812,67 @@ final class CanvasView: NSView {
 
   override func mouseMoved(with event: NSEvent) {
     guard tool == .select, !spaceHeld else { return }
-    let world = toWorld(location(event))
-    let next = hit(world).map { (sheet: $0.selection.sheet, frame: $0.selection.frame, site: $0.selection.site) }
-    if next?.site != hover?.site || next?.frame != hover?.frame || next?.sheet != hover?.sheet {
+    let point = location(event)
+    let next = hit(toWorld(point))?.selection
+    if next != hover {
       hover = next
       arrangeOverlay()
     }
+    cursor(at: point).set()
+  }
+
+  private func cursor(at point: CGPoint) -> NSCursor {
+    if tool == .hand || spaceHeld { return .openHand }
+    if selection != nil, let corner = handle(at: point) {
+      let position: NSCursor.FrameResizePosition = [.topLeft, .topRight, .bottomRight, .bottomLeft][corner]
+      return .frameResize(position: position, directions: .all)
+    }
+    return label(at: point) == nil ? .arrow : .openHand
   }
 
   override func mouseExited(with event: NSEvent) {
+    guard case .none = drag else { return }
     hover = nil
     arrangeOverlay()
+  }
+
+  // MARK: Losing the keyboard
+
+  override func viewDidMoveToWindow() {
+    super.viewDidMoveToWindow()
+    NotificationCenter.default.removeObserver(self, name: NSWindow.didResignKeyNotification, object: nil)
+    guard let window else { return }
+    NotificationCenter.default.addObserver(
+      self, selector: #selector(releaseKeys(_:)), name: NSWindow.didResignKeyNotification, object: window)
+  }
+
+  override func resignFirstResponder() -> Bool {
+    releaseKeys(nil)
+    return super.resignFirstResponder()
+  }
+
+  @objc private func releaseKeys(_ sender: Any?) {
+    guard spaceHeld else { return }
+    spaceHeld = false
+    window?.invalidateCursorRects(for: self)
+  }
+
+  // MARK: The middle button
+
+  override func otherMouseDown(with event: NSEvent) {
+    guard event.buttonNumber == 2 else { return super.otherMouseDown(with: event) }
+    drag = .pan(last: location(event), hand: true)
+    NSCursor.closedHand.set()
+  }
+
+  override func otherMouseDragged(with event: NSEvent) {
+    guard event.buttonNumber == 2 else { return super.otherMouseDragged(with: event) }
+    mouseDragged(with: event)
+  }
+
+  override func otherMouseUp(with event: NSEvent) {
+    guard event.buttonNumber == 2 else { return super.otherMouseUp(with: event) }
+    mouseUp(with: event)
   }
 
   override func mouseDown(with event: NSEvent) {
@@ -710,7 +882,7 @@ final class CanvasView: NSView {
 
     if tool == .hand || spaceHeld {
       drag = .pan(last: point, hand: true)
-      NSCursor.closedHand.push()
+      NSCursor.closedHand.set()
       return
     }
 
@@ -728,16 +900,23 @@ final class CanvasView: NSView {
       return
     }
 
-    guard let found = hit(world) else {
+    let found: Hit?
+    if event.clickCount == 2 {
+      found = enter(at: world) ?? hit(world)
+      if let found, isText(found.selection) { onEditText?() }
+    } else {
+      found = hit(world, deep: event.modifierFlags.contains(.command))
+    }
+    guard let found else {
       selection = nil
+      entered = []
       onSelect?(nil)
       drag = .pan(last: point, hand: false)
       arrangeOverlay()
       return
     }
+    entered = found.selection.trail
 
-    // A press on the selected frame may become a drag of it; released in place, it selects
-    // what is under the pointer instead.
     let frame = CanvasSelection(sheet: found.selection.sheet, frame: found.selection.frame, site: found.root)
     if selection == frame {
       drag = .press(selection: frame, start: world, origin: frameOrigin(frame), drill: found.selection)
@@ -758,7 +937,7 @@ final class CanvasView: NSView {
       pan.x += point.x - last.x
       pan.y += point.y - last.y
       drag = .pan(last: point, hand: hand)
-      arrange()
+      follow()
       rasterizeSoon()
 
     case .press(let selection, let start, let origin, _):
@@ -781,7 +960,7 @@ final class CanvasView: NSView {
     let world = toWorld(location(event))
     switch drag {
     case .pan(_, let hand):
-      if hand { NSCursor.pop() }
+      if hand { cursor(at: location(event)).set() }
     case .press(_, _, _, let drill):
       if let drill {
         selection = drill
@@ -809,7 +988,6 @@ final class CanvasView: NSView {
     let resized = resize(
       rect, corner: corner, by: CGSize(width: world.x - start.x, height: world.y - start.y),
       keepRatio: event.modifierFlags.contains(.shift))
-    // Only a frame has a place of its own; anything inside one is placed by its parent.
     let place = selection.isFrame
       ? CGPoint(
         x: (origin.x + resized.minX - rect.minX).rounded(), y: (origin.y + resized.minY - rect.minY).rounded())
@@ -819,51 +997,60 @@ final class CanvasView: NSView {
 
   override func keyDown(with event: NSEvent) {
     let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-    switch event.keyCode {
-    case 49:
+      .subtracting([.capsLock, .numericPad, .function])
+
+    if flags.subtracting(.shift).isEmpty, let typed = event.charactersIgnoringModifiers?.lowercased() {
+      switch typed {
+      case "/", "?":
+        onAsk?()
+        return
+      case "v" where flags.isEmpty:
+        tool = .select
+        return
+      case "h" where flags.isEmpty:
+        tool = .hand
+        return
+      default:
+        break
+      }
+    }
+
+    switch Key(rawValue: event.keyCode) {
+    case .space:
       if !event.isARepeat {
         spaceHeld = true
         window?.invalidateCursorRects(for: self)
       }
-    case 53:
+    case .escape:
       guard let selection else {
         onEscape?()
         return
       }
       let parent = parent(of: selection)
       self.selection = parent
+      entered = parent?.trail ?? []
       onSelect?(parent)
       arrangeOverlay()
-    case 44 where flags.subtracting(.shift).isEmpty:
-      onAsk?()
-    case 9 where flags.isEmpty:
-      tool = .select
-    case 4 where flags.isEmpty:
-      tool = .hand
-    case 51, 117:
+    case .delete, .forwardDelete:
       if let selection, !selection.isFrame { onDelete?(selection) }
-    case 18 where flags == .shift:
-      fitAll()
-    case 19 where flags == .shift:
-      if let selection { reveal(selection) }
-    case 123, 124, 125, 126:
-      guard let selection, selection.isFrame else { return }
+    case .left, .right, .down, .up:
+      guard let selection, selection.isFrame, let key = Key(rawValue: event.keyCode) else { return }
       let step: CGFloat = flags.contains(.shift) ? 10 : 1
       var origin = frameOrigin(selection)
-      switch event.keyCode {
-      case 123: origin.x -= step
-      case 124: origin.x += step
-      case 125: origin.y += step
+      switch key {
+      case .left: origin.x -= step
+      case .right: origin.x += step
+      case .down: origin.y += step
       default: origin.y -= step
       }
       onMoveFrame?(selection, origin, true)
-    default:
+    case nil:
       super.keyDown(with: event)
     }
   }
 
   override func keyUp(with event: NSEvent) {
-    if event.keyCode == 49 {
+    if Key(rawValue: event.keyCode) == .space {
       spaceHeld = false
       window?.invalidateCursorRects(for: self)
       return
@@ -895,7 +1082,6 @@ final class CanvasView: NSView {
     return menu
   }
 
-  /// Asked for the selected element's markup, when Copy Markup is chosen.
   var markupForSelection: (() -> String?)?
 
   @objc private func askFromMenu(_ sender: Any?) { onAsk?() }
@@ -903,6 +1089,7 @@ final class CanvasView: NSView {
   @objc private func selectParentFromMenu(_ sender: Any?) {
     guard let selection, let parent = parent(of: selection) else { return }
     self.selection = parent
+    entered = parent.trail
     onSelect?(parent)
     arrangeOverlay()
   }
@@ -932,13 +1119,33 @@ final class CanvasView: NSView {
     return nil
   }
 
-  private func hit(_ world: CGPoint) -> Hit? {
+  private func hit(_ world: CGPoint, deep: Bool = false) -> Hit? {
     guard let (artboard, local) = artboard(at: world) else { return nil }
     let boxes = artboard.layout.hit(local)
-    guard let deepest = boxes.last else { return nil }
-    return Hit(
-      selection: CanvasSelection(sheet: artboard.sheet, frame: artboard.index, site: deepest.box.node.site),
-      root: artboard.layout.root.node.site)
+    guard let found = deep ? boxes.last : boxes.last(where: { entered.starts(with: $0.box.node.trail) })
+    else { return nil }
+    return Hit(selection: selection(found.box.node.occurrence, on: artboard), root: artboard.layout.root.node.site)
+  }
+
+  private func enter(at world: CGPoint) -> Hit? {
+    guard let (artboard, local) = artboard(at: world) else { return nil }
+    let boxes = artboard.layout.hit(local)
+    guard let instance = boxes.last(where: { entered.starts(with: $0.box.node.trail) })?.box.node,
+      let root = instance.componentRoot
+    else { return nil }
+    let inside = boxes.last { $0.box.node.trail == root.trail }?.box.node.occurrence ?? root
+    return Hit(selection: selection(inside, on: artboard), root: artboard.layout.root.node.site)
+  }
+
+  private func isText(_ selection: CanvasSelection) -> Bool {
+    guard let sheet = sheets.first(where: { $0.path == selection.sheet }),
+      sheet.frames.indices.contains(selection.frame)
+    else { return false }
+    return sheet.frames[selection.frame].box(at: selection.occurrence)?.box.node.kind == .text
+  }
+
+  private func selection(_ occurrence: Occurrence, on artboard: Artboard) -> CanvasSelection {
+    CanvasSelection(sheet: artboard.sheet, frame: artboard.index, site: occurrence.element, trail: occurrence.trail)
   }
 
   private func label(at point: CGPoint) -> CanvasSelection? {
@@ -956,7 +1163,9 @@ final class CanvasView: NSView {
   private func handle(at point: CGPoint) -> Int? {
     for (index, handle) in handles.enumerated() where !handle.isHidden {
       let center = CGPoint(x: handle.position.x, y: bounds.height - handle.position.y)
-      if abs(center.x - point.x) <= 7, abs(center.y - point.y) <= 7 { return index }
+      if abs(center.x - point.x) <= Overlay.handleReach, abs(center.y - point.y) <= Overlay.handleReach {
+        return index
+      }
     }
     return nil
   }
@@ -965,18 +1174,21 @@ final class CanvasView: NSView {
     sheets.first { $0.path == selection.sheet }?.frames[selection.frame].origin ?? .zero
   }
 
-  /// The selection one step out: the nearest ancestor box that a different element put there.
   private func parent(of selection: CanvasSelection) -> CanvasSelection? {
     guard let sheet = sheets.first(where: { $0.path == selection.sheet }),
       sheet.frames.indices.contains(selection.frame)
     else { return nil }
     let placed = sheet.frames[selection.frame].placed()
-    guard let index = placed.firstIndex(where: { $0.box.node.site == selection.site }) else { return nil }
-    let depth = placed[index].depth
-    for candidate in placed[..<index].reversed() where candidate.depth < depth && candidate.box.node.site != selection.site {
-      return CanvasSelection(sheet: selection.sheet, frame: selection.frame, site: candidate.box.node.site)
+    guard let index = placed.firstIndex(where: { $0.box.node.isAt(selection.occurrence) }) else { return nil }
+    let node = placed[index].box.node
+    func step(_ occurrence: Occurrence) -> CanvasSelection {
+      CanvasSelection(sheet: selection.sheet, frame: selection.frame, site: occurrence.element, trail: occurrence.trail)
     }
-    return nil
+    if node.componentRoot == selection.occurrence { return step(node.occurrence) }
+    let depth = placed[index].depth
+    guard let outer = placed[..<index].last(where: { $0.depth < depth })?.box.node else { return nil }
+    if let root = outer.componentRoot, root.trail == selection.trail { return step(root) }
+    return step(outer.occurrence)
   }
 
   private func resize(_ rect: CGRect, corner: Int, by delta: CGSize, keepRatio: Bool) -> CGRect {
@@ -998,6 +1210,36 @@ final class CanvasView: NSView {
   }
 }
 
+private enum Overlay {
+  static let labelHeight = NyteText.sm.lineHeight
+  static let frameLabelGap = NyteSpace.s1_5.rawValue
+  static let sheetLabelGap = NyteSpace.s2.rawValue
+  static let labelBand = labelHeight * 2 + frameLabelGap + sheetLabelGap
+  static let shortestLabelled: CGFloat = 56
+  static let sheetLabelWidth: CGFloat = 240
+  static let handle = NyteSpace.s2.rawValue
+  static let handleReach = NyteControl.sm.rawValue / 2
+  static let smallestHandled = NyteControl.sm.rawValue
+  static let hoverLine = NyteSpace.px.rawValue
+  static let selectionLine: CGFloat = 1.5
+  static let badge = NyteControl.xs
+  static let badgePad = NyteSpace.s2.rawValue
+  static let badgeGap = NyteSpace.s2.rawValue
+  static let gridPitch = NyteSpace.s4.rawValue
+  static let gridClosest = NyteSpace.s3.rawValue
+}
+
+private enum Raster {
+  static let thumbnail: CGFloat = 16_384
+  static let base: CGFloat = 1_048_576
+  static let margin: CGFloat = 64
+}
+
+private struct Tile: Equatable {
+  let region: CGRect
+  let scale: CGFloat
+}
+
 private final class Artboard {
   let sheet: String
   let index: Int
@@ -1005,9 +1247,14 @@ private final class Artboard {
   var world: CGRect
   var revision: Int
   var baseScale: CGFloat = 0
+  var basePending: CGFloat?
+  var baseWork: Operation?
   var detailRegion: CGRect?
-  var baseGeneration = 0
-  var detailGeneration = 0
+  var detailTile: Tile?
+  var detailPending: Tile?
+  var detailWork: Operation?
+  var baseSurface: IOSurface?
+  var detailSurface: IOSurface?
   let shadow = CALayer()
   let base = CALayer()
   let detail = CALayer()
@@ -1025,30 +1272,70 @@ private final class Artboard {
       layer.magnificationFilter = .linear
     }
   }
-}
 
-private final class Glow {
-  let world: CGRect
-  let layer = CAShapeLayer()
+  func invalidate() {
+    baseWork?.cancel()
+    detailWork?.cancel()
+    baseScale = 0
+    basePending = nil
+    detailTile = nil
+    detailPending = nil
+  }
 
-  init(world: CGRect) {
-    self.world = world
+  func dropDetail() -> IOSurface? {
+    detailWork?.cancel()
+    detailPending = nil
+    guard detailRegion != nil || detail.contents != nil else { return nil }
+    detailRegion = nil
+    detailTile = nil
+    detail.contents = nil
+    detail.removeFromSuperlayer()
+    defer { detailSurface = nil }
+    return detailSurface
   }
 }
 
 private struct Flight {
   let start: CFTimeInterval
-  let fromZoom: CGFloat
-  let toZoom: CGFloat
-  let fromCenter: CGPoint
-  let toCenter: CGPoint
+  let target: [Double]
+  let offset: [Double]
+  let velocity: [Double]
+
+  func state(at time: CFTimeInterval) -> (value: [Double], velocity: [Double]) {
+    let elapsed = max(0, time - start)
+    let parts = (0..<target.count).map {
+      NyteSpring.travel.state(offset: offset[$0], velocity: velocity[$0], after: elapsed)
+    }
+    return (zip(target, parts).map { $0 + $1.offset }, parts.map(\.velocity))
+  }
 }
 
 private enum Drag {
   case none
   case pan(last: CGPoint, hand: Bool)
-  /// The button is down on a frame and hasn't moved far enough to be a drag yet.
   case press(selection: CanvasSelection, start: CGPoint, origin: CGPoint, drill: CanvasSelection?)
   case move(selection: CanvasSelection, start: CGPoint, origin: CGPoint)
   case resize(selection: CanvasSelection, corner: Int, start: CGPoint, rect: CGRect, origin: CGPoint)
+}
+
+private enum Key: UInt16 {
+  case space = 49
+  case delete = 51
+  case escape = 53
+  case forwardDelete = 117
+  case left = 123
+  case right = 124
+  case down = 125
+  case up = 126
+}
+
+// MARK: Menu validation
+
+extension CanvasView: NSMenuItemValidation {
+  func validateMenuItem(_ item: NSMenuItem) -> Bool {
+    switch item.action {
+    case #selector(zoomToSelection(_:)): return selection != nil
+    default: return true
+    }
+  }
 }

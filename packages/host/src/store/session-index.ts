@@ -183,7 +183,6 @@ export function stampedSessions(stamped: Rows, removed: Rows): readonly SessionI
   ].toSorted();
 }
 
-/** `query` matches as a substring of the folded name: it is folded the same way and its LIKE wildcards are escaped. */
 function selection(
   filter: {
     readonly parents: ParentFilter;

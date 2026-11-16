@@ -203,14 +203,12 @@ async function until<T>(read: () => T | null | undefined, what: string): Promise
     if (value !== null && value !== undefined) return value;
 
     if (performance.now() > deadline) throw new Error(`Timed out waiting for ${what}`);
-    await new Promise<void>((resolve) => window.setTimeout(resolve, 10));
+    await nextFrame();
   }
 }
 
-function painted(): Promise<void> {
-  return new Promise((resolve) =>
-    window.requestAnimationFrame(() => window.setTimeout(() => resolve(), 0)),
-  );
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
 }
 
 async function capture(name: string): Promise<void> {
@@ -244,14 +242,11 @@ export async function run(): Promise<string> {
   flushSync(() => root.render(<Stage density="compact" viewport={stage} />));
 
   const inline = await until(() => button(stage, "Move to background"), "the inline control");
-  await painted();
-  await painted();
+  await until(() => button(stage, "Open in terminal"), "the foreground step's terminal link");
 
   if (stage.querySelector("button[aria-description^='Open terminals']") !== null)
     failures.push("a foreground step shows the terminals pill");
-
-  if (button(stage, "Open in terminal") === undefined)
-    failures.push("a foreground step doesn't open its job in a terminal");
+  await nextFrame();
   await capture("shell-running-compact");
   inline.click();
   await until(() => (acts.length > 0 ? acts : null), "the background action");
@@ -282,10 +277,10 @@ export async function run(): Promise<string> {
 
   if (button(stage, "Move to Background") !== undefined)
     failures.push("the tray offers a background move");
-  await painted();
+  await nextFrame();
   await capture("terminals-background");
   applyDisplayMode("dark");
-  await painted();
+  await nextFrame();
   await capture("terminals-background-dark");
   applyDisplayMode("light");
 
@@ -310,7 +305,7 @@ export async function run(): Promise<string> {
   if (header.parentElement !== button(stage, "Copy command")?.parentElement)
     failures.push("the card control is not beside Copy command");
   header.focus();
-  await painted();
+  await nextFrame();
   await capture("shell-running-detailed");
   flushSync(() => detailed.unmount());
   stage.remove();

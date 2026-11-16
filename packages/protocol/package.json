@@ -43,12 +43,12 @@
     "@nyte-ai/core": "workspace:*",
     "@nyte-ai/schema": "workspace:*",
     "fflate": "^0.8.3",
-    "typebox": "^1.4.6"
+    "typebox": "^1.4.7"
   },
   "devDependencies": {
     "@nyte-ai/ai": "workspace:*",
-    "@types/node": "^26.6.5",
-    "vitest": "^5.0.5"
+    "@types/node": "^26.6.6",
+    "vitest": "^5.1.0"
   },
   "engines": {
     "node": ">=26.4.0"

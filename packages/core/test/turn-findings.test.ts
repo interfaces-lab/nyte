@@ -71,13 +71,12 @@ describe("turn findings (CORE-DIET D3)", () => {
 
     await using host = await open(fake, { plugins: [slow] });
     const id = asId<"session">("chat");
-
-    reload = () => {
-      void host.kernel.plugins.reload(id);
-      setTimeout(() => gate.resolve(), 20);
-    };
-
+    const logged = events(host.kernel, id);
+    reload = () => void host.kernel.plugins.reload(id);
     const { receipt: first } = await host.sessions.start({ id, content: "Go." });
+
+    await until(() => (logged.some((event) => label(event) === "part:settled") ? true : undefined));
+    gate.resolve();
     expect((await first.settled()).kind).toBe("completed");
     expect(seen).toEqual(["before_request:1", "before_request:2"]);
 

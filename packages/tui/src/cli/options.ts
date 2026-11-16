@@ -12,17 +12,14 @@ type Names<T> = T extends { readonly options: readonly { readonly name: infer N 
   ? N
   : never;
 
-/** A command with actions, such as `mcp`. */
 export type GroupName = {
   [C in CommandName]: [Action<C>] extends [never] ? never : C;
 }[CommandName];
 
 type ActionNames<T> = T extends { readonly name: infer N extends string } ? N : never;
 
-/** The actions `COMMANDS` lists for a group. */
 export type ActionName<C extends CommandName> = ActionNames<Action<C>>;
 
-/** The long option names a command takes: a group's shared ones plus action `A`'s own. */
 export type OptionName<C extends CommandName, A extends ActionName<C> = never> =
   | Names<Spec<C>>
   | Names<Extract<Action<C>, { readonly name: A }>>;
@@ -30,24 +27,15 @@ export type OptionName<C extends CommandName, A extends ActionName<C> = never> =
 export interface CommandArgs<C extends CommandName, A extends ActionName<C> = never> {
   readonly positionals: readonly string[];
   has(name: OptionName<C, A>): boolean;
-  /** The value of an option that takes one (`--a=b` or `--a b`), or `undefined`. */
   value(name: OptionName<C, A>): string | undefined;
-  /** Every value of a `repeatable` option, in order. */
   values(name: OptionName<C, A>): readonly string[];
 }
 
 export interface ActionArgs<C extends GroupName> {
   readonly action: ActionName<C>;
-  /** What follows the action word, for `parseCommandArgs`. */
   readonly args: readonly string[];
 }
 
-/**
- * Splits a group's arguments into the action its first word names and the rest. No first word, or
- * an option there, runs the group's `default` action when it has one; without one, an option there
- * fails, because options follow the action. A word that names no action fails as a usage error with
- * at most one "Did you mean".
- */
 export function readAction<C extends GroupName>(name: C, args: readonly string[]): ActionArgs<C> {
   const word = args[0];
   const actions = findCommand(name)?.subcommands ?? [];
@@ -81,14 +69,6 @@ export function readAction<C extends GroupName>(name: C, args: readonly string[]
   );
 }
 
-/**
- * Reads a command's arguments against the options its `COMMANDS` entry lists, so help and parsing
- * share one list. A group passes the action `readAction` found, and gets the group's options plus
- * that action's. Every mistake is a usage `CliError` naming the token and the full command path,
- * before any work: an unknown option (with at most one "Did you mean"), a missing or unexpected
- * value, a repeated option, or more than `maxPositionals` arguments. Never accepts a prefix. A
- * lone `-` is a value, which by convention names stdin.
- */
 export function parseCommandArgs<C extends CommandName, A extends ActionName<C> = never>(
   name: C,
   args: readonly string[],

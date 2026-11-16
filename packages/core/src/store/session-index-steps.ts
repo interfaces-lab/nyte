@@ -58,7 +58,6 @@ export const sessionSeqs: SchemaStep = {
   indexed: { sqlite: SESSION_SEQS, postgres: SESSION_SEQS },
 };
 
-/** Lets the directory select pinned roots and match a name from the index alone: `pinned` is 1 or 0 and `name_folded` the name in lower case. `session_index_pinned` leads with `pinned` and `parent` so the planner finds pinned roots by equality, in activity order, and a pinned read costs what it returns; a partial index on `pinned = 1` lost to `session_index_parent_activity`, which walks every root. SQLite rebuilds the table, as `sessionSeqs` does, because it cannot add a column only if it is missing. The migration projects every ref again to fill both, which keeps each row's `seq`. */
 export const sessionIndexFilters: SchemaStep = {
   kind: "schema",
   name: "2026-11-05-session-index-filters",

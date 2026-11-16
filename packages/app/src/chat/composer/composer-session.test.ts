@@ -79,7 +79,6 @@ function effectName(effect: ComposerSessionEffect): string {
   }
 }
 
-/** Runs `events` from an open composer over `DRAFT`, and sums up where they leave it. */
 function after(events: readonly ComposerSessionEvent[]) {
   let state: ComposerSession = CLOSED_SESSION;
   let draft = DRAFT;
@@ -398,7 +397,6 @@ test.each<{
 test.each<{
   readonly name: string;
   readonly saved: EditSaved;
-  /** Whether the reopened composer's hold is granted before the closed one's save settles. */
   readonly grantedFirst: boolean;
   readonly shown: string;
 }>([

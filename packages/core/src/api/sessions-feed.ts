@@ -3,7 +3,6 @@ import type { HostChange, Kernel } from "../contract/kernel.ts";
 import { closable, coalesce, latest } from "../util/iterable.ts";
 import { readSessions, sessionInfo } from "./session.ts";
 
-/** Returns the host's session rows as they change, for one principal. Another process's commit re-reads the whole directory only when the directory's seq moved, which every change to it stamps in any process; a presence beat or a write elsewhere in the store costs one row. */
 export function sessionChanges(
   kernel: Kernel,
   principal: PrincipalId,

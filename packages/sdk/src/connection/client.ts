@@ -219,7 +219,6 @@ function sessionHandle(bound: Bound, session: SessionId): Session {
   };
 }
 
-/** A receipt whose `stop` first removes a send the journal still shows under its id and the host has not answered, which the host would answer `missing` for while the journal kept posting it. */
 function journaledReceipt(bound: Bound, session: SessionId, id: ReceiptId): Receipt<unknown> {
   const receipt = receiptHandle(bound.rows, session, id, (outcome): unknown => outcome);
 

@@ -46,7 +46,6 @@ const profile = dir + "/profile";
 fs.mkdirSync(profile);
 app.setPath("userData", profile);
 app.setPath("sessionData", profile);
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 app.whenReady().then(async () => {
   const pages = {
@@ -77,8 +76,9 @@ app.whenReady().then(async () => {
 
   const runtime = rt.createSurfaceRuntime();
   await wc.loadURL(base + "/one");
+  const shown = new Promise((r) => win.once("show", r));
   win.show();
-  await sleep(300);
+  await shown;
 
   const first = await rt.takeSnapshot(wc, runtime);
   const button = first.nodes.find((n) => n.name === "Alpha Button");
@@ -93,7 +93,6 @@ app.whenReady().then(async () => {
 
   const staleRef = (await rt.takeSnapshot(wc, runtime)).nodes.find((n) => n.name === "Alpha Button").ref;
   await wc.loadURL(base + "/two");
-  await sleep(200);
   const stale = await rt.performClick(wc, runtime, staleRef, "left", false, true);
   const staleTarget = await wc.executeJavaScript("window.__clicked");
 

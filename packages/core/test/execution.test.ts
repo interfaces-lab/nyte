@@ -366,7 +366,6 @@ describe("execution", () => {
   it("holds the lease of a session created after cover while its turn runs, and releases it on close", async () => {
     const { kernel, host, script } = await setup();
     const driver = driveInProcess(kernel, { kind: "all" });
-    await new Promise((resolve) => setTimeout(resolve, 20));
     const { session } = await host.sessions.start({ content: "Go." });
     await script.started(1);
 

@@ -198,16 +198,9 @@ export async function runCanvasPreview(
 ): Promise<CanvasPreviewReport> {
   const { chat, phone } = CANVAS_PREVIEW_WIDTHS;
   await page.resize(chat, 900);
-  const install = harness(request);
 
-  let attempts = 0;
-
-  while ((await page.evaluate(install)) !== true) {
-    attempts += 1;
-
-    if (attempts > 50) throw new Error("The canvas shell did not start in the preview.");
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
+  if ((await page.evaluate(harness(request))) !== true)
+    throw new Error("The canvas shell did not start in the preview.");
 
   const wide = await settle(page);
   await page.resize(chat, clampCanvasHeight(wide.height > 0 ? wide.height : 240));

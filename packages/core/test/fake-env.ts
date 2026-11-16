@@ -70,6 +70,7 @@ export interface FakeProvider extends EnvironmentProvider {
   failure: string | null;
   script: (process: Process) => void;
   failPatches: ((paths: readonly string[]) => string | null) | null;
+  holdPatches: Promise<void> | null;
   readonly opened: PageId[];
   readonly closed: PageId[];
 }
@@ -132,7 +133,6 @@ export function fakeProvider(
     readonly git?: boolean;
     readonly browser?: boolean;
     readonly confined?: boolean;
-    /** The boot its jobs report as their machine's; without it a job reports no process. */
     readonly boot?: string;
   },
 ): FakeProvider {
@@ -190,6 +190,7 @@ export function fakeProvider(
     patchReads: [],
     peakReads: 0,
     failPatches: null,
+    holdPatches: null,
     opened: [],
     closed: [],
     attaches: 0,
@@ -243,7 +244,8 @@ export function fakeProvider(
         provider.patchReads.push(paths);
         reading += 1;
         provider.peakReads = Math.max(provider.peakReads, reading);
-        await new Promise((resolve) => setTimeout(resolve, 1));
+
+        if (provider.holdPatches !== null) await provider.holdPatches;
         reading -= 1;
         const failure = provider.failPatches?.(paths) ?? null;
 

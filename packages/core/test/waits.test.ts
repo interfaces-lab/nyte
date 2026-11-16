@@ -421,9 +421,7 @@ describe("waits as store facts", () => {
 
     expect(await failed.act("answer", { choice: "late" })).toEqual({ kind: "closed" });
     expect(await cold.host.session(session.id).part(failed.id).answer()).toBeNull();
-    expect(
-      await Promise.race([pending, new Promise((resolve) => setTimeout(resolve, 10, "pending"))]),
-    ).toBeNull();
+    expect(await pending).toBeNull();
   });
 
   it("resolves a pending answer() null when the stop fence fails its modal, on a host with no poll (ADV B-3 N1)", async () => {
@@ -463,9 +461,7 @@ describe("waits as store facts", () => {
     expect(kernel.poll).toBeNull();
     expect((await session.run(run).stop()).kind).toBe("requested");
     expect(await partStatus(kernel, session.id, part.id)).toMatchObject({ kind: "failed" });
-    expect(
-      await Promise.race([pending, new Promise((resolve) => setTimeout(resolve, 10, "pending"))]),
-    ).toBeNull();
+    expect(await pending).toBeNull();
   });
 
   it("keeps an early answer on the part when a step takes it: a cold answer() returns it and a later act does not replace it, even on the host that acted (ADV B N2, D6 audit 4)", async () => {

@@ -1,7 +1,6 @@
 import Foundation
 import Observation
 
-/// What a session's head is doing right now.
 public enum Execution: Equatable, Sendable {
   case idle(failed: String?)
   case responding
@@ -48,7 +47,6 @@ public struct SessionInfo: Identifiable, Equatable, Sendable {
   }
 }
 
-/// The host's sessions table, kept current by the `host` scope's change events.
 @MainActor
 @Observable
 public final class SessionDirectory {
@@ -58,10 +56,8 @@ public final class SessionDirectory {
 
   public init() {}
 
-  /// Reads the table. Call it after the socket subscribes to `host`, and again on reconnect.
-  public func read(from socket: HostSocket) async {
-    guard let output = try? await socket.call("sessions.read", ["parents": ["kind": "roots"], "limit": 200])
-    else { return }
+  public func read(from socket: HostSocket) async throws {
+    let output = try await socket.call("sessions.read", ["parents": ["kind": "roots"], "limit": 200])
     rows = [:]
     for row in output["rows"].array {
       let info = SessionInfo(row)
@@ -91,10 +87,8 @@ public final class SessionDirectory {
   }
 }
 
-/// One line of a transcript: something a person sent, or a part the agent produced.
 public struct TranscriptItem: Identifiable, Equatable, Sendable {
   public enum Body: Equatable, Sendable {
-    /// What a person sent: their words, and a label for each file or excerpt that rode along.
     case user(String, attachments: [String])
     case answer(markdown: String, live: Bool)
     case thinking(live: Bool)
@@ -113,10 +107,8 @@ public struct TranscriptItem: Identifiable, Equatable, Sendable {
   }
 }
 
-/// A tool call, reduced to what a designer needs to see of it.
 public struct ToolStep: Equatable, Sendable {
   public let name: String
-  /// `read`, `list`, `edit`, `shell`, `delegate` or `custom`.
   public let kind: String
   public let path: String?
   public let label: String?
@@ -126,7 +118,6 @@ public struct ToolStep: Equatable, Sendable {
   public let removed: Int?
 }
 
-/// One session head's transcript, kept current by its scope's change events and the text channel.
 @MainActor
 @Observable
 public final class Transcript {
@@ -134,7 +125,6 @@ public final class Transcript {
   public let head: String
   public private(set) var items: [TranscriptItem] = []
   public private(set) var execution: Execution = .idle(failed: nil)
-  /// What the running turn says it is doing, such as `Editing`.
   public private(set) var activity: String?
   public private(set) var loaded = false
 
@@ -149,14 +139,11 @@ public final class Transcript {
     self.head = head
   }
 
-  /// Subscribes to the session and reads its window. Call again on reconnect.
-  public func read(from socket: HostSocket, tail: Int = 200) async {
-    try? await socket.subscribe("session/\(session)")
-    guard
-      let output = try? await socket.call(
-        "head.read",
-        ["session": .string(session), "head": .string(head), "window": ["tail": .number(Double(tail))]])
-    else { return }
+  public func read(from socket: HostSocket, tail: Int = 200) async throws {
+    try await socket.subscribe("session/\(session)")
+    let output = try await socket.call(
+      "head.read",
+      ["session": .string(session), "head": .string(head), "window": ["tail": .number(Double(tail))]])
     messages = [:]
     turns = [:]
     order = output["order"].array.compactMap(\.string)

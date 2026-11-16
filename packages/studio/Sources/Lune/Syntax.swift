@@ -1,6 +1,5 @@
 import Foundation
 
-/// A half-open range of UTF-8 byte offsets in a file's source.
 public struct Span: Hashable, Sendable {
   public var lower: Int
   public var upper: Int
@@ -13,11 +12,8 @@ public struct Span: Hashable, Sendable {
 
 public struct SyntaxAttribute: Sendable {
   public let name: String
-  /// The decoded value, or nil for a bare attribute such as `clip`.
   public let value: String?
-  /// From the first byte of the name through the closing quote.
   public let span: Span
-  /// The bytes between the quotes.
   public let valueSpan: Span?
 }
 
@@ -30,13 +26,9 @@ public final class SyntaxElement: Sendable {
   public let tag: String
   public let attributes: [SyntaxAttribute]
   public let children: [SyntaxNode]
-  /// From `<` of the opening tag through `>` of the closing one.
   public let span: Span
-  /// Where a new attribute is inserted: just after the last attribute, or after the tag name.
   public let attributeInsert: Int
-  /// The offset of the `>` or `/>` that ends the opening tag.
   public let openEnd: Int
-  /// The offset of `</`, or nil when the element closes itself.
   public let closeStart: Int?
 
   init(
@@ -72,7 +64,6 @@ public final class SyntaxElement: Sendable {
     attribute(name)?.value
   }
 
-  /// The element's text: its text children joined, with `<br/>` as a line break.
   public var text: String {
     var out = ""
     for child in children {
@@ -84,12 +75,21 @@ public final class SyntaxElement: Sendable {
     return out
   }
 
-  /// The span of the first text child, where an edit of the text lands.
   public var textSpan: Span? {
+    var lower: Int?
+    var upper = 0
     for child in children {
-      if case .text(_, let span) = child { return span }
+      switch child {
+      case .text(_, let span):
+        lower = lower ?? span.lower
+        upper = span.upper
+      case .element(let element):
+        guard element.tag == "br" else { return nil }
+        lower = lower ?? element.span.lower
+        upper = element.span.upper
+      }
     }
-    return nil
+    return lower.map { Span($0, upper) }
   }
 }
 
@@ -108,7 +108,6 @@ public struct SyntaxTree: Sendable {
 
   public var source: String { String(decoding: bytes, as: UTF8.self) }
 
-  /// The element at an index path that counts element children only.
   public func element(at path: [Int]) -> SyntaxElement? {
     guard let first = path.first, roots.indices.contains(first) else { return nil }
     var current = roots[first]
@@ -121,15 +120,16 @@ public struct SyntaxTree: Sendable {
   }
 }
 
-/// Parses Lune markup. The grammar is the tag-and-attribute subset of XML: elements, quoted
-/// attributes, bare attributes, text, comments and the five named entities.
 public func parseLune(_ source: String) throws -> SyntaxTree {
   var parser = Parser(bytes: Array(source.utf8))
   let roots = try parser.parseDocument()
   return SyntaxTree(bytes: parser.bytes, roots: roots)
 }
 
+public let maxLuneDepth = 128
+
 private struct Parser {
+  private var depth = 0
   let bytes: [UInt8]
   var index = 0
 
@@ -151,6 +151,11 @@ private struct Parser {
 
   private mutating func parseElement() throws -> SyntaxElement {
     let start = index
+    depth += 1
+    defer { depth -= 1 }
+    guard depth <= maxLuneDepth else {
+      throw fail("Elements are nested more than \(maxLuneDepth) deep.", at: start)
+    }
     index += 1
     let tag = try parseName(what: "a tag name")
     var attributes: [SyntaxAttribute] = []
@@ -341,12 +346,12 @@ private func decode(_ bytes: [UInt8]) -> String {
   return string
 }
 
-/// Encodes text for an attribute value or element content.
 public func encodeLune(_ string: String) -> String {
-  var out = string.replacingOccurrences(of: "&", with: "&amp;")
-  out = out.replacingOccurrences(of: "<", with: "&lt;")
-  out = out.replacingOccurrences(of: "\"", with: "&quot;")
-  return out
+  string.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;")
+}
+
+public func encodeLuneAttribute(_ string: String) -> String {
+  encodeLune(string).replacingOccurrences(of: "\"", with: "&quot;").replacingOccurrences(of: "'", with: "&apos;")
 }
 
 private func collapse(_ string: String) -> String {

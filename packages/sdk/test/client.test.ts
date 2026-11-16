@@ -5,7 +5,7 @@ import type { WorkspaceId } from "@nyte-ai/schema";
 import { dev } from "@nyte-ai/core";
 import type { Connection } from "@nyte-ai/core";
 import { CHANNEL_PATH, encodeError, STREAM_HEADER } from "@nyte-ai/protocol";
-import { afterEach, assert, describe, expect, it } from "vitest";
+import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import { connect } from "../src/connection/connect.ts";
 import { createSendJournal } from "../src/send/journal.ts";
 import type { JournalStorage } from "../src/send/journal.ts";
@@ -256,14 +256,17 @@ describe("client", () => {
     const files = await connection.workspace(info.id).files();
     assert(files.kind === "available");
 
+    const pulled = Promise.withResolvers<void>();
+
     const uploading = files.api.upload(
       (async function* () {
         yield new Uint8Array([1]);
+        pulled.resolve();
         await new Promise(() => undefined);
       })(),
     );
 
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await pulled.promise;
     await connection.close();
 
     await expect(uploading).rejects.toMatchObject({ code: "unavailable" });
@@ -344,25 +347,31 @@ describe("client", () => {
       content: "Hi.",
     });
 
-    const failed = Promise.withResolvers<void>();
+    const lines: string[] = [];
+    dev.on((line) => lines.push(line));
+    cleanups.push(async () => dev.off());
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    cleanups.push(async () => {
+      vi.useRealTimers();
+    });
     let waits = 0;
 
     host.intercept(async (request, next) => {
       if (readOperation(request) !== "receipt.settled") return next(request);
       waits += 1;
-      failed.resolve();
 
       throw new TypeError("fetch failed");
     });
 
     const controller = new AbortController();
     const settled = receipt.settled({ signal: controller.signal });
-    await failed.promise;
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await vi.waitFor(() =>
+      expect(lines).toContainEqual(expect.stringContaining("DEV:sdk wait retrying")),
+    );
     controller.abort(new Error("Gave up."));
 
     await expect(settled).rejects.toThrow("Gave up.");
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await vi.advanceTimersByTimeAsync(10_000);
     expect(waits).toBe(1);
   });
 
@@ -504,7 +513,6 @@ describe("client", () => {
       session.send(words, { delivery: "queue" }),
     );
 
-    await new Promise((resolve) => setTimeout(resolve, 0));
     slower.resolve();
     await Promise.all((await Promise.all(sending)).map((receipt) => receipt.settled()));
 

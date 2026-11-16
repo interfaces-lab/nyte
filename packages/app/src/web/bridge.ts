@@ -22,7 +22,6 @@ export interface ConnectOptions {
 
 export interface WebBridge {
   readonly bridge: NyteBridge;
-  /** Connects and answers the host's id with the key it proved, which is absent for a host that answers no identity challenge. */
   connect(
     connection: Connection,
     options?: ConnectOptions,

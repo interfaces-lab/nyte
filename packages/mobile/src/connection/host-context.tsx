@@ -60,10 +60,6 @@ export function useHost(): ConnectedHost {
   return host;
 }
 
-/**
- * Also gives each replayed send the host refused back to its chat's draft, whether or not its chat
- * is open, reading the list again after each since `take` notifies.
- */
 export function HostProvider({ session, children }: { session: HostSession; children: ReactNode }) {
   const health = useHealth(session.client);
   useMountEffect(() => {

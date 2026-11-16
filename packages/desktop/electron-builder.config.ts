@@ -182,7 +182,6 @@ const SOURCE_TYPES = [
   },
 ] as const;
 
-/** Finder's Open With: text and source files, and folders. No `LSHandlerRank`, so Nyte is never the default. */
 const DOCUMENT_TYPES = [
   ...SOURCE_TYPES.map((type) => ({
     CFBundleTypeName: type.name,

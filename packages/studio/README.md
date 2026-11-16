@@ -1,83 +1,46 @@
-# @nyte-ai/studio
+# Nyte Studio
 
-Nyte Studio is a design canvas for the Mac. It is a second client of the Nyte host, next to the Nyte desktop app, built for designers the way the desktop app is built for developers. It is an exploration, not a shipped product.
+A design canvas for the Mac that is a second client of the Nyte host. It is AppKit only, with no SwiftUI and no web view. It brings no host, no model sign-in and no browser engine of its own, so the agent, its models and its chats are the ones Nyte already has.
 
-It doesn't bundle a host, a model login or a browser engine. It attaches to the host Nyte already runs, so the projects, chats, models and permissions in Studio are the ones in Nyte. A chat started on the canvas is in Nyte's sidebar, and the other way round.
+A design is a `.lune` text file in the project. Every `.lune` file sits on one canvas. You edit on the canvas, the agent edits the file, and both see the result. A canvas edit rewrites only the bytes of the attribute it changed.
 
-| | Nyte Studio | Nyte desktop |
-| --- | --- | --- |
-| Built with | Swift, AppKit and SwiftUI | Electron |
-| App size | 4.2 MB | hundreds of MB |
-| Memory, project open, idle | about 40 MB in one process | one renderer process per window and tab, plus GPU and utility processes |
-| Runs the agent | no, the host does | no, the host does |
+| Read              | For                                                         |
+| ----------------- | ----------------------------------------------------------- |
+| [Spec](docs/SPEC.md)           | What it does, its budgets and how each was measured |
+| [Design](docs/DESIGN.md)       | The choices behind the chrome, with what each avoids |
+| [Motion](docs/MOTION.md)       | What moves, on which curve, and what doesn't         |
+| [Benchmark](docs/BENCHMARK.md) | Two measured reviews, before and after their findings |
+| [Lune](Resources/lune-skill.md) | The design language, as the agent reads it           |
 
-## Run it
-
-```sh
-pnpm --dir packages/studio build
-open "packages/studio/dist/Nyte Studio.app"
-```
-
-Studio finds the host through `~/.nyte/host.json`, the file `nyte host` and the desktop app keep. Open Nyte first, or run `nyte host`. It needs macOS 26.
-
-To work on Studio without a model account, run the development host. It is the real host and its real file tools over a copy of `sample/`, with a scripted model that edits the designs:
+## Build and run
 
 ```sh
-pnpm --dir packages/studio dev:host
-# prints {"type":"listening", "endpoint": ".../home/host.json", ...}
-open -n "packages/studio/dist/Nyte Studio.app" --env NYTE_HOME=<the folder holding that host.json>
+pnpm --dir packages/studio build        # dist/Nyte Studio.app
+pnpm --dir packages/studio dev:host     # a host with a scripted model, for working without an account
+pnpm --dir packages/studio typecheck    # the scripts, the colour tokens and the layout check
 ```
 
-Ask it for something "warm", "rounder" or "a tide row" and watch the canvas.
+The app attaches to the host named in `~/.nyte/host.json`, or under `NYTE_HOME`. `dev:host` prints the home to point it at. It starts on a fresh copy of the sample project each time; with `NYTE_STUDIO_DEV_ROOT` set to a folder it keeps the project and the chats there, so the host can be stopped and started again under a running app.
 
-## How the two apps share one host
+Requires macOS 26, Swift 6.2 and Node 26.
 
-- **Discovery.** `HostEndpoint.discover` reads `host.json` for the URL and token, as `nyte` does.
-- **Files.** Studio never touches the disk. It lists, reads, writes and watches the project through `files.scan`, `files.read`, `files.write` and `files.watch`, so it works the same against a host on another machine.
-- **Writes can't clobber.** Every write names the version it expects. If an agent changed the file first, the host answers `stale`, Studio reloads, and the agent's change stands.
-- **Chat.** The composer calls `sessions.start` and `head.send`. The transcript is the head's rows over the host WebSocket, with streamed text from the text channel.
-- **Selection is context.** What is selected on the canvas is sent as an `excerpt` part naming the file and lines, the same part Nyte sends for a selection in a diff.
-- **Hand-off.** Both apps declare actions in their WebSocket hello and call each other with `client.perform`. Studio offers `reveal` and `snapshot`. The desktop app offers `open`, which Studio's **Continue in Nyte** calls with the chat's session.
+## Targets
 
-## Lune
+| Target       | What it is                                                                                    |
+| ------------ | --------------------------------------------------------------------------------------------- |
+| `Lune`       | The markup. A parser that keeps byte spans, tokens, components, Yoga layout, a Core Graphics renderer, hit testing and text patches |
+| `NyteKit`    | The host client. Discovery, HTTP, server-sent events, the WebSocket, sessions and files       |
+| `NyteDesign` | Nyte's design language in AppKit. Colour roles, the scales, layout that only takes tokens, the glow |
+| `LuneCLI`    | The `lune` command, with `check`, `frames`, `render` and `pack`                                       |
+| `NyteStudio` | The app                                                                                       |
 
-A design is a `.lune` file: markup with frames, stacks, text, tokens and components, kept in the repository beside the code. `Resources/lune-skill.md` is the language reference, written as an agent skill. Studio adds it to a project from **File > Teach This Project's Agents Lune**, and sends its body as a prompt layer with every chat it starts.
+Dependencies:
 
-The canvas shows every `.lune` file of the project in one space. Files are places: choosing one in the sidebar moves the camera, it doesn't switch a document.
+- [Yoga](https://github.com/react/yoga) 3.2.2, MIT, for flexbox layout.
+- [BeautifulMermaid](https://github.com/lukilabs/beautiful-mermaid-swift) 1.0.4, MIT, which draws the Mermaid diagrams in a reply. It brings [ElkSwift](https://github.com/lukilabs/elk-swift) 1.0.2, EPL-2.0, for graph layout. Together they add about 7 MB to the app.
 
-An edit on the canvas rewrites only the bytes it changes. Dragging a frame turns `x="0" y="0"` into `x="412" y="137"` and leaves the rest of the file, comments and formatting included, as the agent or the person wrote it.
+Markdown is parsed by Foundation and laid out with TextKit, so it adds nothing to the app's size.
 
-The `lune` command ships inside the app and needs neither the app nor a display:
+## What is not built
 
-```sh
-LUNE="packages/studio/dist/Nyte Studio.app/Contents/MacOS/lune"
-"$LUNE" check sample/design/screens/tonight.lune --root sample
-"$LUNE" render sample/design/screens/tonight.lune --root sample --out /tmp/tide
-```
-
-An agent checks its own design this way: `check` for errors, `render` for a PNG it can look at. The app's icon is `Resources/icon.lune`, rendered by this command during the build.
-
-## The Swift package
-
-Three libraries and two executables. The libraries are the part meant to outlive this app: a second native Nyte client would start from them.
-
-| Target | What it is |
-| --- | --- |
-| `NyteKit` | A host client: discovery, operations over HTTP, watches as server-sent events, the WebSocket with its hello, calls, events, text channel and client actions, and stores for the sessions table and a head's transcript. Foundation only |
-| `NyteDesign` | The Nyte design language outside the browser: the colour roles generated from `@nyte-ai/ui`, the type, space, control and motion scales, Inter, and the SwiftUI pieces built from them |
-| `Lune` | The design language: parser with source spans, tokens and components, layout, a Core Graphics renderer, hit testing and text patches |
-| `NyteStudio` | The app |
-| `LuneCLI` | The `lune` command |
-
-`pnpm --dir packages/studio sync:tokens` regenerates `Tokens.generated.swift` from the hex table `@nyte-ai/ui` generates for mobile. `typecheck` fails when it is stale.
-
-## The canvas
-
-Core Animation composites the canvas on the GPU. Each frame is a layer whose bitmap the Lune renderer draws off the main thread, at exactly the pixel scale it is shown at, with its origin snapped to a device pixel. While a zoom is in flight the bitmaps scale; when it settles they are redrawn. A frame larger than the pixel budget gets a sharp tile over the part in view. Nothing draws while nothing changes.
-
-## What is not here yet
-
-- Drawing tools. Frames move and resize, and the inspector edits attributes; new content comes from the agent or the file.
-- Variants on components and vector paths.
-- Signing, notarization and an updater. The build signs ad hoc.
-- A way for the desktop app to fetch and install Studio. Today you build it.
+Drawing tools, component variants, signing, notarization, an updater, and the desktop app fetching and installing Studio. Tool input does not stream from the host, so a screen appears when its write lands, not as it is written.

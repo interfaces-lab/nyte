@@ -370,7 +370,7 @@ describe("plugin api", () => {
     api.contribute.tools.add({ ...echo, name: "b" });
     api.reload();
     api.reload();
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await until(() => (passes > before ? true : undefined));
 
     expect(passes).toBe(before + 1);
     expect(

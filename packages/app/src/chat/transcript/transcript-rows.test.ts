@@ -146,7 +146,7 @@ const rowsFor = (turns: Parameters<typeof transcriptRows>[0]["turns"], running =
     running,
     held: false,
     retrying: undefined,
-    live: { planning: false, newest: undefined, thought: undefined },
+    live: { planning: false, newest: undefined, thought: undefined, awaiting: undefined },
   });
 
 test("a finished turn's final reply carries how long the turn worked, from its start to the later of the reply and its last work", () => {
@@ -242,7 +242,7 @@ test("a turn's last step group stays active between its run's steps and leaves t
       running: true,
       held: false,
       retrying: entry.retrying,
-      live: { planning: false, newest: undefined, thought: undefined },
+      live: { planning: false, newest: undefined, thought: undefined, awaiting: undefined },
     });
 
     expect({

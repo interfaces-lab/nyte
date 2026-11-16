@@ -11,7 +11,6 @@ export function liveRun(session: SessionInfo): RunView | undefined {
   return execution === undefined || execution.kind === "idle" ? undefined : execution.run;
 }
 
-/** The chat's mark as every surface shows it, `headAttention`'s from its row once the row is read; until then, its own run's. */
 export function chatMark(
   info: SessionInfo | undefined,
   execution: Execution | undefined,

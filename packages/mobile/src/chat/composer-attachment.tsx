@@ -8,6 +8,7 @@ import Animated, {
   withSpring,
   withTiming,
 } from "react-native-reanimated";
+import { scheduleOnRN } from "react-native-worklets";
 import { css, html } from "react-strict-dom";
 import { AttachmentThumb } from "../media/attachment-thumb.tsx";
 import type { StagedImage } from "../media/attachments.ts";
@@ -33,7 +34,6 @@ export function ComposerAttachment({
   const enter = useSharedValue(landing ? 1 : 0);
   const collapse = useSharedValue(1);
   const reveal = useSharedValue(landing ? 0 : 1);
-  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const removing = useRef(false);
 
   useMountEffect(() => {
@@ -41,9 +41,10 @@ export function ComposerAttachment({
   });
   // oxlint-disable-next-line nyte-code/no-direct-effect -- reveals the thumbnail when the flight lands this image
   useEffect(() => {
-    if (landing && flight.revealedId === image.id) reveal.set(1);
-  }, [flight.revealedId, image.id, landing, reveal]);
-  useMountEffect(() => () => clearTimeout(timer.current));
+    if (!landing || flight.revealedId !== image.id) return;
+    reveal.set(1);
+    flight.land(image.id);
+  }, [flight, image.id, landing, reveal]);
 
   const style = useAnimatedStyle(() => ({
     width: 68 * collapse.get(),
@@ -76,8 +77,13 @@ export function ComposerAttachment({
           onPress={() => {
             if (removing.current) return;
             removing.current = true;
-            collapse.set(withTiming(0, { duration: 240, easing: Easing.inOut(Easing.cubic) }));
-            timer.current = setTimeout(onRemove, 240);
+            collapse.set(
+              withTiming(0, { duration: 240, easing: Easing.inOut(Easing.cubic) }, (finished) => {
+                "worklet";
+
+                if (finished) scheduleOnRN(onRemove);
+              }),
+            );
           }}
           style={{
             position: "absolute",

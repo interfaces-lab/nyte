@@ -6,7 +6,6 @@
     "remote-access",
     "environment-variables",
     "agents",
-    "benchmarks",
     "---Desktop app---",
     "desktop/editor",
     "desktop/design-mode",

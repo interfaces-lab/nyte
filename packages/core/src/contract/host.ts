@@ -255,7 +255,6 @@ export interface Connection {
 }
 
 export interface Projects {
-  /** Creates a project in a registered workspace. Its coordinator is the top-level chat started in it. */
   create(input: ProjectInput): Promise<ProjectInfo>;
 
   /** Drafts a setup for `input.goal` from the workspace's skills, shared docs and MCP servers with one request to `input.model`, saving nothing. An unknown workspace throws `SdkError("unknown")`, a model outside the catalog `SdkError("invalid")`; a refusal or a failed or unreadable answer throws `SdkError("unavailable")`. */
@@ -318,7 +317,6 @@ export interface ModelsApi {
     readonly browser?: "host" | "elsewhere";
   }): Login;
 
-  /** Removes the provider's active saved login while keeping its other accounts. */
   logout(provider: string): Promise<void>;
 }
 

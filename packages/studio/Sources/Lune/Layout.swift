@@ -6,7 +6,6 @@ import yoga
 public struct TextLine: @unchecked Sendable {
   public let line: CTLine
   public let width: CGFloat
-  /// The baseline's distance below the top of the text box.
   public let baseline: CGFloat
 }
 
@@ -15,13 +14,11 @@ public struct TextLayout: @unchecked Sendable {
   public let size: CGSize
 }
 
-/// A node with its style and where layout put it.
 public final class LayoutBox: @unchecked Sendable {
   public let node: Node
   public let style: Style
   public let mode: ThemeMode
   public let children: [LayoutBox]
-  /// Relative to the parent box's origin.
   public fileprivate(set) var frame: CGRect = .zero
   public fileprivate(set) var text: TextLayout?
 
@@ -33,9 +30,7 @@ public final class LayoutBox: @unchecked Sendable {
   }
 }
 
-/// What a layout needs from outside the markup.
 public struct LayoutEnvironment: Sendable {
-  /// Returns the image at a project path, or nil while it isn't loaded.
   public var image: @Sendable (String) -> CGImage?
 
   public init(image: @escaping @Sendable (String) -> CGImage? = { _ in nil }) {
@@ -43,7 +38,6 @@ public struct LayoutEnvironment: Sendable {
   }
 }
 
-/// A frame laid out: its box tree and where the frame sits on its sheet.
 public struct FrameLayout: Sendable {
   public let root: LayoutBox
   public let origin: CGPoint
@@ -66,7 +60,6 @@ extension Project {
   }
 }
 
-/// Turns nodes into boxes: each with its style resolved for the theme it sits in.
 private struct BoxBuilder {
   let project: Project
   var scopes: [String: Scope] = [:]
@@ -84,9 +77,6 @@ private struct BoxBuilder {
   }
 }
 
-/// Lays a frame out with Yoga, the flexbox engine React Native uses, so a stack in a design
-/// resolves the way the same stack will in code. Lune adds one thing flexbox lacks: `box`, whose
-/// children are layered and which, left unsized, fits the largest of them.
 private struct FlexLayout {
   let environment: LayoutEnvironment
 
@@ -231,7 +221,6 @@ private struct FlexLayout {
       break
     case .fill:
       if absolute {
-        // Between its own offset and the far edge of the parent.
         if offset == nil { YGNodeStyleSetPosition(node, horizontal ? .left : .top, 0) }
         YGNodeStyleSetPosition(node, horizontal ? .right : .bottom, 0)
       } else if let parent, (parent == .row) == horizontal {
@@ -272,7 +261,6 @@ private struct FlexLayout {
     box.node.attributes[name].flatMap(parseNumber).map { Float($0) }
   }
 
-  /// Copies Yoga's answer onto the boxes, and sets each text once more at its final width.
   private func read(_ node: YGNodeRef?, into box: LayoutBox) {
     box.frame = CGRect(
       x: CGFloat(YGNodeLayoutGetLeft(node)), y: CGFloat(YGNodeLayoutGetTop(node)),
@@ -286,7 +274,6 @@ private struct FlexLayout {
   }
 }
 
-/// Yoga asks a text how big it is under a width. The node's context is its box.
 private func measureText(
   _ node: YGNodeConstRef?, _ width: Float, _ widthMode: YGMeasureMode, _ height: Float,
   _ heightMode: YGMeasureMode

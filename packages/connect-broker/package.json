@@ -11,15 +11,15 @@
     "deploy": "node scripts/deploy.mjs"
   },
   "dependencies": {
-    "@clerk/backend": "^3.26.5",
+    "@clerk/backend": "^3.29.0",
     "@nyte-ai/connect": "workspace:*",
-    "jose": "^6.2.15",
-    "typebox": "^1.4.6"
+    "jose": "^6.2.17",
+    "typebox": "^1.4.7"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20261103.1",
+    "@cloudflare/workers-types": "^5.20261116.1",
     "@types/node": "^26.6.6",
     "vitest": "^5.1.0",
-    "wrangler": "^4.157.0"
+    "wrangler": "^4.163.0"
   }
 }

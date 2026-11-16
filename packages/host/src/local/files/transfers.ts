@@ -26,7 +26,6 @@ const holds = new Map<TrashToken, { readonly held: string; readonly original: st
 
 const purged = new Set<string>();
 
-/** Judges each path where its real parent folder puts it, so a symlinked folder cannot lead out of `root`, while a symlink entry itself still moves and copies as a link. */
 export function localTransfers(root: string): Transfers {
   const inside = async (path: string): Promise<Inside> => {
     const target = resolve(root, path);

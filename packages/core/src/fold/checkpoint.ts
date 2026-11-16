@@ -170,17 +170,12 @@ const validator = compile(
   cyclicWithJson({ Root: FoldCheckpointType, WaitOutcome: WaitOutcomeType }, "Root"),
 );
 
-/** One session's fold checkpoints: the fold restored from the store's, and the settled fold written whenever replaying to it from the last checkpoint would pass the replay budget. */
 export interface FoldCheckpointing {
-  /** The fold the session's checkpoint holds as `principal` sees it, or null to fold the log from its start. */
   restore(principal: PrincipalId): Promise<FoldState | null>;
-  /** Offers the fold for a checkpoint about a second later, written when no head runs, nothing streams and the replay budget is spent; offers made while one is written wait for it and run once. */
   settle(): void;
-  /** Writes the offered checkpoint now instead of after the delay and waits for any write in flight; offers after it do nothing. */
   close(): Promise<void>;
 }
 
-/** Returns the checkpointing of `session`'s fold over the kernel's store, inert where the store keeps no checkpoints. `folded` reads the fold as it stands, its maps changing in place under each event, so a checkpoint encodes it in the same tick it reads it; `streaming` tells whether a part of the session streams. */
 export function foldCheckpointing(
   kernel: Pick<Kernel, "store">,
   session: SessionId,

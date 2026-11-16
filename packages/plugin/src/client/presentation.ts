@@ -52,12 +52,6 @@ export function showsThinking(message: Message): message is ThinkingMessage {
  */
 export type RawPart = { readonly format: "text" | "json"; readonly body: string };
 
-/**
- * Reads a part's state raw, for a part kind or state shape this client does
- * not know, such as one a newer host or an absent plugin sent.
- *
- * @category presentation
- */
 export function readRawPart(message: PartMessage): RawPart {
   const { state } = message;
 
@@ -131,11 +125,6 @@ export function toolStatus(message: Pick<ToolMessage, "state" | "status">): Tool
   }
 }
 
-/**
- * A settled call's text: its text content, failure message or rejection reason.
- *
- * @category presentation
- */
 export function toolOutput(state: ToolPartState): string {
   if (state.phase !== "settled") return "";
 
@@ -198,11 +187,6 @@ export function taskEnded(state: TaskState): boolean {
   return state === "done" || state === "failed";
 }
 
-/**
- * The heading over a group of agents: how many still run, else how many finished and failed.
- *
- * @category presentation
- */
 export function agentGroupSummary(states: readonly TaskState[]): {
   readonly title: string;
   readonly detail: string | undefined;
@@ -336,11 +320,6 @@ export function rowMark(status: RunStatus, background: BackgroundWork): TaskStat
   return background.working > 0 ? "background" : runMark(status);
 }
 
-/**
- * Words for a chat's background work, or `undefined` while none is working or waiting.
- *
- * @category presentation
- */
 export function backgroundLabel(background: BackgroundWork): string | undefined {
   if (background.waiting > 0) return `${taskLabel("waiting")} in the background`;
 
@@ -537,11 +516,6 @@ export function groupMark(states: readonly TaskState[]): TaskState {
   return states.includes("failed") ? "failed" : "done";
 }
 
-/**
- * A session's title: its name, else "New chat" for a top-level chat or {@link SUBAGENT_TITLE}.
- *
- * @category presentation
- */
 export function sessionTitle(session: Pick<SessionInfo, "name" | "parent">): string {
   return session.name ?? (session.parent === null ? "New chat" : SUBAGENT_TITLE);
 }
@@ -585,11 +559,6 @@ export interface CompletionTrigger {
   readonly query: string;
 }
 
-/**
- * Finds the completion trigger around the caret, or undefined outside one.
- *
- * @category presentation
- */
 export function completionTrigger(
   value: string,
   cursor = value.length,
@@ -817,11 +786,6 @@ export function toolTitle(
   return [subject, toolNoun(toolClass)].filter((word) => word !== undefined).join(" ");
 }
 
-/**
- * A path relative to the working directory when it lies inside it.
- *
- * @category presentation
- */
 export function tidyPath(path: string, cwd: string | undefined): string {
   if (cwd !== undefined && path.startsWith(`${cwd}/`)) return path.slice(cwd.length + 1);
 
@@ -914,11 +878,6 @@ export interface ToolDetail {
   readonly title?: string;
 }
 
-/**
- * The compact subject of a call, relative to the working directory.
- *
- * @category presentation
- */
 export function toolDetail(toolClass: ToolClass, cwd: string | undefined): ToolDetail | undefined {
   switch (toolClass.kind) {
     case "edit": {

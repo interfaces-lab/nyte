@@ -29,7 +29,6 @@ export interface UsageRecord {
   readonly usage: Usage;
 }
 
-/** A session's charged requests on one local day for one subject. */
 export interface UsageCell {
   readonly day: string;
   readonly subject: UsageSubject;
@@ -88,10 +87,6 @@ function addTotals(left: UsageTotals, right: UsageTotals): UsageTotals {
   };
 }
 
-/**
- * Adds a request to its session's cells. A request that charged nothing is skipped, so it
- * moves neither the earliest day nor the last activity.
- */
 export function foldUsage(cells: Map<string, UsageCell>, record: UsageRecord): void {
   const usage = record.usage;
 
@@ -239,9 +234,7 @@ export function projectUsageReport(
 
 export interface StoreUsageCache {
   path: string;
-  /** Cells bucket requests by local day, so another time zone refolds them. */
   timeZone: string;
-  /** The store version the cells were folded at; a migration may rewrite requests in place, keeping their rowids and count. */
   store: number;
   through: number;
   requests: number;
@@ -472,7 +465,6 @@ const storeUsageCacheDocument = Type.Object({
 
 const storeUsageCacheValidator = Compile(storeUsageCacheDocument);
 
-/** Restores the cells {@link saveStoreUsageCache} wrote to `path`; a missing or outdated document starts empty. */
 export async function loadStoreUsageCache(path: string): Promise<StoreUsageCache> {
   const document = await readCacheDocument(path, storeUsageCacheValidator);
 
@@ -502,7 +494,6 @@ export async function loadStoreUsageCache(path: string): Promise<StoreUsageCache
   };
 }
 
-/** Writes `cache` to `path` when a read folded rows since it was last saved; a failed write is tried again on the next save. */
 export async function saveStoreUsageCache(path: string, cache: StoreUsageCache): Promise<void> {
   if (!cache.changed) return;
 

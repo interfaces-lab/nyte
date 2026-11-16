@@ -23,13 +23,17 @@ declare global {
 
 const ADDRESS = "https://nyte.example.test";
 
-const wait = (duration: number) =>
-  new Promise<void>((resolve) => window.setTimeout(resolve, duration));
+const nextFrame = () =>
+  new Promise<void>((resolve) =>
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve())),
+  );
 
 async function until(condition: () => boolean, what: string): Promise<void> {
-  for (let elapsed = 0; elapsed < 3_000; elapsed += 20) {
+  const deadline = performance.now() + 3_000;
+
+  while (performance.now() < deadline) {
     if (condition()) return;
-    await wait(20);
+    await nextFrame();
   }
 
   throw new Error(`Timed out waiting for ${what}`);
@@ -137,9 +141,12 @@ export async function run() {
     await refresh();
 
     await addDevice();
-    await wait(100);
+    await until(
+      () => client.isFetching({ queryKey: keys.remoteAccess }) === 0,
+      "the pairing to finish reading",
+    );
     await refresh();
-    await wait(50);
+    await nextFrame();
 
     if (code() === null) throw new Error("A stale device list dropped the new code");
 
@@ -150,7 +157,7 @@ export async function run() {
 
     devices = [pending("device-1")];
     await refresh();
-    await wait(50);
+    await nextFrame();
 
     if (code() === null) throw new Error("The code left while its device was still waiting");
 
@@ -161,7 +168,7 @@ export async function run() {
     await addDevice();
     devices = [devices[0] ?? pending("device-1"), pending("device-2")];
     await refresh();
-    await wait(50);
+    await nextFrame();
     devices = devices.filter((device) => device.id !== "device-2");
     await refresh();
     await until(() => code() === null, "a removed code to leave");

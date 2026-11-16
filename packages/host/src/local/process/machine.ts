@@ -14,11 +14,6 @@ let booting: Promise<string | null> | undefined;
 
 let self: Promise<Seen | null> | undefined;
 
-/**
- * The machine this host runs on, through the OS's process table. A process is named by its boot, its pid and its start time as the platform reports it: on Linux the start in clock ticks since boot from `/proc/<pid>/stat`, exact; on macOS `ps`'s `lstart` read in UTC, to the second, set once at fork, so two reads of one process always agree and a pid reused within the second it was first taken reads as the same process. The boot is Linux's boot id with this process's pid namespace, so a host in another container never acts on a pid it cannot see, or macOS's boot session. Elsewhere, Windows included, it has no boot and answers `unknown`, so jobs keep today's report there.
- *
- * A token's prefix names how it was read; change the prefix whenever the reading changes, so a token read another way is never taken for a different process.
- */
 export const localMachine: Machine = {
   self: () => identifyProcess(process.pid),
   async state(target) {
@@ -59,7 +54,6 @@ export const localMachine: Machine = {
   },
 };
 
-/** The process `pid` names as this machine identifies it, for a job's record; null where the platform cannot tell or the process is already gone. */
 export async function identifyProcess(pid: number): Promise<OsProcess | null> {
   const [boot, seen] = await Promise.all([currentBoot(), readProcess(pid)]);
 
@@ -68,7 +62,6 @@ export async function identifyProcess(pid: number): Promise<OsProcess | null> {
     : { boot, pid, group: seen.group, started: seen.started };
 }
 
-/** Whether this host may signal `target` at all: it is on this boot, and neither pid 0 or 1 nor this host's own process or group. */
 async function mayAct(target: OsProcess): Promise<boolean> {
   const [boot, own] = await Promise.all([currentBoot(), (self ??= readProcess(process.pid))]);
 
@@ -105,7 +98,6 @@ async function readBoot(): Promise<string | null> {
   return id === "" ? null : `darwin:${id}`;
 }
 
-/** The group and start of `pid`, and whether it has exited and waits to be reaped; null when it cannot be read: no such process, or a table this host cannot read. */
 async function readProcess(pid: number): Promise<Seen | null> {
   if (!Number.isSafeInteger(pid) || pid <= 0) return null;
 
@@ -141,7 +133,6 @@ async function readProcess(pid: number): Promise<Seen | null> {
       };
 }
 
-/** Whether two start tokens were read the same way, so that they can be compared at all. */
 function sameReading(left: string, right: string): boolean {
   return left.slice(0, left.indexOf(":")) === right.slice(0, right.indexOf(":"));
 }

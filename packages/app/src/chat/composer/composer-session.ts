@@ -24,29 +24,18 @@ export type PendingRowAction =
   | { readonly kind: "sending" }
   | { readonly kind: "failed"; readonly message: string };
 
-/** How saving a queued edit ended: nothing to save, a draft kept with the reason, a refusal, or the host's answer. */
 export type EditSaved =
   | { readonly kind: "empty" }
   | { readonly kind: "kept"; readonly message: string }
   | { readonly kind: "refused"; readonly message: string }
   | ReviseOutcome;
 
-/**
- * The host's hold on the queued message open for editing: `asking` until the host answers,
- * `held` once it holds it, `saving` while a save that took the hold runs. Each hold asked for gets
- * a token of its own, so an answer to an older one is told apart and released.
- */
 interface EditHold {
   readonly message: MessageId;
   readonly token: number;
   readonly phase: "asking" | "held" | "saving";
 }
 
-/**
- * A walk through the chat's earlier prompts: `saved` is the draft from before it, which stepping
- * newer past the newest prompt brings back, and `edits` keeps what the person typed over each
- * prompt while the walk lasts.
- */
 interface RecallWalk {
   readonly position: number;
   readonly saved: ComposerViewState;
@@ -54,16 +43,13 @@ interface RecallWalk {
   readonly edits: ReadonlyMap<number, ComposerViewState>;
 }
 
-/** What one composer keeps beside the chat's draft, which the window's draft store holds. */
 export interface ComposerSession {
   readonly open: boolean;
   readonly hold: EditHold | null;
   readonly recall: RecallWalk | null;
-  /** The token of the read of earlier prompts in flight. */
   readonly reading: number | null;
   readonly intake: Intake;
   readonly rows: ReadonlyMap<string, PendingRowAction>;
-  /** The last token handed out. */
   readonly token: number;
 }
 
@@ -73,7 +59,6 @@ export const EDIT_ENDED_NOTICES = {
   lapsed: "Couldn't keep the message on hold.",
 } satisfies Record<Awaited<HeldMessage["lost"]>["kind"], string>;
 
-/** What attaching says while a save runs, when the composer takes no files. */
 export const FILES_WHILE_SAVING = "Finish editing the message, then attach the image again.";
 
 export const CLOSED_SESSION: ComposerSession = {
@@ -136,7 +121,6 @@ export type ComposerSessionEffect =
       readonly kind: "save";
       readonly message: UserMessage;
       readonly token: number;
-      /** The token of the hold to save through, or `null` to save through `revise`. */
       readonly held: number | null;
       readonly submission: ComposerSubmission;
       readonly delivery: Delivery;
@@ -151,10 +135,6 @@ export type ComposerSessionEffect =
   | { readonly kind: "focus"; readonly preventScroll: boolean }
   | { readonly kind: "revised" };
 
-/**
- * `handled` is false for a recall that moved nothing, so the key goes on, and for a `submit` or
- * `files` the composer can't take now, so nothing is sent or read.
- */
 export interface SessionStep {
   readonly state: ComposerSession;
   readonly draft: SessionDraft;
@@ -162,12 +142,6 @@ export interface SessionStep {
   readonly handled: boolean;
 }
 
-/**
- * The composer's next state, the chat's next draft, and the effects to run. A change to the shown
- * text drops a read of earlier prompts still in flight. A hold whose edit left the chat's draft is
- * released, as when a composer that closed during a save settles the draft a reopened one holds
- * the message for; `draft-changed` tells a composer the window's store changed its draft.
- */
 export function stepSession(
   state: ComposerSession,
   draft: SessionDraft,
@@ -277,14 +251,12 @@ function transition(
   }
 }
 
-/** Why a queued message can't open for editing now: a question takes the composer, or another edit is open. */
 export function editBlock(draft: SessionDraft, asking: boolean): "asking" | "editing" | null {
   if (asking) return "asking";
 
   return draft.edit === null ? null : "editing";
 }
 
-/** Whether a save is running, which keeps the composer from taking input. */
 export function saving(state: ComposerSession): boolean {
   return state.hold?.phase === "saving";
 }
@@ -298,7 +270,6 @@ function step(
   return { state, draft, effects, handled };
 }
 
-/** A notice shows only while a composer does. */
 function noticed(
   state: ComposerSession,
   draft: SessionDraft,
@@ -352,7 +323,6 @@ function beginEdit(
   return { ...held, effects: [...held.effects, { kind: "focus", preventScroll: false }] };
 }
 
-/** A hold the host answered: kept while it is the edit's, released once something replaced it. */
 function holdAnswered(
   state: ComposerSession,
   draft: SessionDraft,
@@ -371,7 +341,6 @@ function holdAnswered(
   return current === null ? step(state, draft) : leaveEdit(state, draft, answer.notice);
 }
 
-/** The edited message left the queue: the edit ends as `lostEdit` decides and says why. */
 function leaveEdit(
   state: ComposerSession,
   draft: SessionDraft,
@@ -386,7 +355,6 @@ function leaveEdit(
   );
 }
 
-/** A save goes through the host's hold once it arrived, else through `revise`; either way later answers to that hold are stale. */
 function save(
   state: ComposerSession,
   draft: SessionDraft,
@@ -415,12 +383,6 @@ function save(
   );
 }
 
-/**
- * A save ended: one the host did not take holds the message again, a revision ends the edit, and a
- * message that left ends it with the reason. A save that outlived its composer settles the draft
- * as closing would have once the outcome is known: a revision leaves the person's own text, and an
- * edit the host did not take joins it.
- */
 function saved(
   state: ComposerSession,
   draft: SessionDraft,
@@ -487,10 +449,6 @@ function recall(
   ]);
 }
 
-/**
- * One step through the prompts: what the person typed over the prompt it leaves is kept for it,
- * and stepping past the newest brings back the draft from before the walk.
- */
 function walk(
   state: ComposerSession,
   draft: SessionDraft,
@@ -530,7 +488,6 @@ function at(text: string): ComposerViewState {
   return { draft: text, attachments: [], selectionStart: text.length, selectionEnd: text.length };
 }
 
-/** Row actions, kept only for rows still pending. */
 function nextRows(
   rows: ReadonlyMap<string, PendingRowAction>,
   id: string,

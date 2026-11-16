@@ -25,6 +25,7 @@ import Animated, {
   withSpring,
   type SharedValue,
 } from "react-native-reanimated";
+import { scheduleOnRN } from "react-native-worklets";
 import {
   Camera,
   useCameraDevice,
@@ -120,8 +121,6 @@ export function AttachmentsMenu({
   const permissionRunning = useRef(false);
   const pendingPanel = useRef<ExtendMode | undefined>(undefined);
   const openingStarted = useRef(false);
-  const collapseTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  useMountEffect(() => () => clearTimeout(collapseTimer.current));
   const [mode, setMode] = useState<ExtendMode>("photos");
   const [requesting, setRequesting] = useState<ExtendMode | "manage">();
   const [notice, setNotice] = useState<string>();
@@ -142,7 +141,6 @@ export function AttachmentsMenu({
   const sharedSelection = selectedPhotos.filter((photo) => availableIds.has(photo.id));
 
   const showPanel = (next: ExtendMode) => {
-    clearTimeout(collapseTimer.current);
     setMode(next);
     setExtended(true);
     setPanelMounted(true);
@@ -201,8 +199,13 @@ export function AttachmentsMenu({
   const collapseToMenu = () => {
     setSelectedPhotos([]);
     setExtended(false);
-    extendProgress.set(withSpring(0));
-    collapseTimer.current = setTimeout(() => setPanelMounted(false), 450);
+    extendProgress.set(
+      withSpring(0, undefined, (finished) => {
+        "worklet";
+
+        if (finished) scheduleOnRN(setPanelMounted, false);
+      }),
+    );
   };
 
   const addPhotos = async (selected: readonly RecentPhoto[]) => {

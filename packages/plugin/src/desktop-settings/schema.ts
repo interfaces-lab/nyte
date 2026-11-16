@@ -20,7 +20,6 @@ export const ALERT_SETTING = {
   done: "alertsDone",
 } as const satisfies Readonly<Record<AlertState, string>>;
 
-/** Settings the desktop's main and host processes read; the app reads and writes them as `desktop.<key>`. */
 export const DESKTOP_SETTING_SCHEMAS = {
   keepAwake: Type.Boolean(),
   pauseOnSleep: Type.Boolean(),

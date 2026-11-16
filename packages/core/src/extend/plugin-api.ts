@@ -117,7 +117,6 @@ export function build(
 
 const ALLOWED: RuntimeVerdict = { kind: "allow" };
 
-/** Holds the runtime across the approvals, so the sweep cannot close it between two of them and skip the rest. */
 async function approveRuntimeCall(
   kernel: Kernel,
   session: SessionId,

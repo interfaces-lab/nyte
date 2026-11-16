@@ -32,6 +32,8 @@ const head = live.head(asId<"session">(session), asId<"head">("main"), { tail: 2
 
 const seen = new Map<string, number>();
 
+const all = Promise.withResolvers<void>();
+
 const check = (): void => {
   const snapshot = head.snapshot();
 
@@ -43,6 +45,8 @@ const check = (): void => {
       !seen.has(message.content)
     )
       seen.set(message.content, Date.now());
+
+  if (seen.size >= Number(expected)) all.resolve();
 };
 
 head.subscribe(check);
@@ -51,10 +55,12 @@ check();
 
 process.stdout.write("observing\n");
 
-const deadline = Date.now() + 120_000;
+const deadline = AbortSignal.timeout(120_000);
 
-while (seen.size < Number(expected) && Date.now() < deadline)
-  await new Promise((done) => setTimeout(done, 50));
+await Promise.race([
+  all.promise,
+  new Promise((done) => deadline.addEventListener("abort", done, { once: true })),
+]);
 
 writeFileSync(output, JSON.stringify(Object.fromEntries(seen)));
 

@@ -43,7 +43,7 @@ async function settle() {
 const STALL_MS = 5_000;
 
 async function until(done: () => boolean, deadline: number) {
-  while (!done() && performance.now() < deadline) await wait(50);
+  while (!done() && performance.now() < deadline) await frame();
 }
 
 const CONFIGURATION: Configuration = {

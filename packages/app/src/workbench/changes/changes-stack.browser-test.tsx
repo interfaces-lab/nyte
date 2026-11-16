@@ -39,10 +39,23 @@ const frame = (): Promise<void> =>
     requestAnimationFrame(() => resolve());
   });
 
-async function settle(): Promise<void> {
-  for (let pass = 0; pass < 4; pass += 1) await frame();
-  await new Promise<void>((resolve) => window.setTimeout(resolve, 20));
-  await frame();
+async function until(done: () => boolean, what: string): Promise<void> {
+  const deadline = performance.now() + 10_000;
+
+  while (!done()) {
+    if (performance.now() > deadline) throw new Error(`Timed out waiting for ${what}`);
+    await frame();
+  }
+}
+
+function deepText(root: ParentNode): string {
+  return [...root.querySelectorAll("*")]
+    .map((element) =>
+      element.shadowRoot === null
+        ? ""
+        : `${element.shadowRoot.textContent} ${deepText(element.shadowRoot)}`,
+    )
+    .join(" ");
 }
 
 const RESTORED_SCROLL = 48;
@@ -75,17 +88,22 @@ async function mountedScroll(hidden: boolean): Promise<number> {
       ),
     );
 
+  const scrollport = (): HTMLElement => {
+    const found = container.querySelector("[data-nyte-scrollport]");
+
+    if (!(found instanceof HTMLElement)) throw new Error("Missing scrollport");
+
+    return found;
+  };
+
   try {
     render(!hidden);
-    await settle();
+    await frame();
     container.style.display = "flex";
     render(true);
-    await settle();
-    const scrollport = container.querySelector("[data-nyte-scrollport]");
+    await until(() => scrollport().scrollTop > 0, "the stack to restore its scroll");
 
-    if (!(scrollport instanceof HTMLElement)) throw new Error("Missing scrollport");
-
-    return scrollport.scrollTop;
+    return scrollport().scrollTop;
   } finally {
     root.unmount();
     container.remove();
@@ -154,26 +172,28 @@ export async function run(): Promise<string> {
 
   try {
     render();
-    await settle();
+    await frame();
     render();
-    const deadline = performance.now() + 10_000;
-
-    while (container.querySelector('[data-change-path="src/beta.ts"]') === null) {
-      if (performance.now() > deadline) throw new Error("Timed out waiting for the headers");
-      await settle();
-    }
-
-    await settle();
+    await until(
+      () => deepText(container).includes("alpha 15") && deepText(container).includes("beta 15"),
+      "both diffs",
+    );
     const expandedHeight = height();
 
     header("src/alpha.ts").click();
-    await settle();
+    await until(
+      () =>
+        header("src/alpha.ts").getAttribute("aria-expanded") === "false" &&
+        height() < expandedHeight,
+      "alpha to collapse",
+    );
     check(header("src/alpha.ts").getAttribute("aria-expanded") === "false", "Alpha collapses");
     check(header("src/beta.ts").getAttribute("aria-expanded") === "true", "Beta stays expanded");
     check(height() < expandedHeight, "Collapsing alpha removes its body from the stack");
 
     container.style.width = "520px";
-    await settle();
+    await frame();
+    await frame();
     check(
       header("src/alpha.ts").getAttribute("aria-expanded") === "false",
       "Resize keeps alpha collapsed",
@@ -188,18 +208,27 @@ export async function run(): Promise<string> {
     );
 
     header("src/alpha.ts").click();
-    await settle();
+    await until(
+      () =>
+        header("src/alpha.ts").getAttribute("aria-expanded") === "true" &&
+        Math.abs(height() - expandedHeight) < 8,
+      "alpha to expand again",
+    );
     check(header("src/alpha.ts").getAttribute("aria-expanded") === "true", "Alpha expands again");
     check(Math.abs(height() - expandedHeight) < 8, "Expanding alpha restores its body");
     container.style.width = "760px";
-    await settle();
+    await frame();
+    await frame();
     check(
       container.querySelector("[data-nyte-scrollport]")?.getBoundingClientRect().width === 760,
       "The diff follows the restored container width",
     );
 
     header("src/alpha.ts").click();
-    await settle();
+    await until(
+      () => header("src/alpha.ts").getAttribute("aria-expanded") === "false",
+      "alpha to collapse again",
+    );
     const scrollport = container.querySelector("[data-nyte-scrollport]");
 
     if (!(scrollport instanceof HTMLElement)) throw new Error("Missing scrollport");
@@ -207,18 +236,27 @@ export async function run(): Promise<string> {
     scrollport.dispatchEvent(
       new KeyboardEvent("keydown", { key: "f", code: "KeyF", ctrlKey: true, bubbles: true }),
     );
-    await settle();
+    await until(
+      () => container.querySelector('input[aria-label="Find in changes"]') !== null,
+      "Ctrl+F to open find",
+    );
     const find = container.querySelector('input[aria-label="Find in changes"]');
 
     if (!(find instanceof HTMLInputElement)) throw new Error("Ctrl+F in the stack opens find");
     check(document.activeElement === find, "Find takes focus");
 
     document.execCommand("insertText", false, "alpha 9");
-    await settle();
-    await settle();
 
     const count = (): string =>
       container.querySelector('[role="search"] [aria-live]')?.textContent ?? "";
+
+    await until(
+      () =>
+        count() === "1 of 1" &&
+        header("src/alpha.ts").getAttribute("aria-expanded") === "true" &&
+        CSS.highlights.get("diffs-search-current")?.size === 1,
+      "find to reveal the match inside collapsed alpha",
+    );
 
     check(count() === "1 of 1", `Find counts the match inside collapsed alpha, not ${count()}`);
     check(
@@ -237,7 +275,12 @@ export async function run(): Promise<string> {
     );
 
     find.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-    await settle();
+    await until(
+      () =>
+        container.querySelector('[role="search"]') === null &&
+        CSS.highlights.get("diffs-search-current")?.size === 0,
+      "Escape to close find",
+    );
     check(container.querySelector('[role="search"]') === null, "Escape closes find");
     check(CSS.highlights.get("diffs-search-current")?.size === 0, "Closing find clears highlights");
 

@@ -24,7 +24,6 @@ for await (const path of glob("src/**/*.{ts,tsx}", { cwd: desktopRoot })) {
   }
 }
 
-/** Picks the files worth parsing. Bundled strings, such as the docs, can quote an import, so only the parsed module requests decide. */
 const workspaceImport = /(?:from\s*|import\s*\(?\s*|require\s*\(\s*)["']@nyte-ai\//u;
 
 for await (const path of glob("out/main/**/*.js", { cwd: desktopRoot })) {

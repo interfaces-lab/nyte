@@ -159,13 +159,10 @@ const MISSED_PONGS = 3;
 
 const HIGH_WATER = 64 * 1024;
 
-/** How long a session's first unsent change waits for the ones right behind it, so a burst of events goes out as one change with each row once. */
 const GATHER_MS = 8;
 
-/** The shortest time between two pushes of a session's changes and streamed text: a fast model's deltas reach a client as about thirty frames a second. */
 const PUSH_MS = 33;
 
-/** The shortest time between two pushes of the host's session rows to one client. A turn moves its session's row at every step, a tool turn nine times in under a second, and each push carries the row whole; the list a person scans does not need thirty frames a second. The first change after a quiet spell goes out at once and the feed merges what moves meanwhile, so the last state always arrives. */
 const SESSIONS_PUSH_MS = 250;
 
 const FRAGMENT_REVISION = 23;
@@ -180,16 +177,10 @@ const PIECE_UNITS = Math.floor(
 
 const hellos = compile(withJson(HelloFrameType));
 
-/** A call frame's `input` is checked against its operation's schema when it is decoded, so the frame check takes it as it parsed. */
 const calls = compile(
   Type.Object({ ...CallFrameType.properties, input: Type.Optional(Type.Unsafe<Json>({})) }),
 );
 
-/**
- * Serves one client's socket: the hello, its calls, and what its subscribed scopes push.
- *
- * A session's changes and streamed text are gathered before they are pushed: `GATHER_MS` after the first unsent one, and `PUSH_MS` after the last push at the earliest, so a burst of events is one change with each row once and a fast model's deltas are a few appends. Every answer goes out behind what was gathered, so an answer read at a seq follows every change through that seq. A client that takes no fragments gets each change as it happens, since several gathered into one frame could pass `maxFrameBytes`.
- */
 export function serveSession(socket: WebSocket, peer: SocketPeer): void {
   const binding = bindConnection(peer.connection, {
     server: peer.server,

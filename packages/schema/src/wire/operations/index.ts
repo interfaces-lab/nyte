@@ -14,7 +14,7 @@ import { HOST_OPERATIONS, MAINTENANCE_OPERATIONS } from "./host.ts";
 import { SESSION_OPERATIONS } from "./session.ts";
 import { WORKSPACE_OPERATIONS } from "./workspace.ts";
 
-export const API_REVISION = 27;
+export const API_REVISION = 28;
 
 export const API_MIN_REVISION = 17;
 

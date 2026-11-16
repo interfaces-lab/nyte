@@ -121,7 +121,6 @@ const CLAUDE_FABLE_52: ModelsDevModel = {
   cost: { input: 8, output: 40, cache_read: 0.2, cache_write: 10 },
 };
 
-/** Lists Claude Fable 5.2 under the models.dev providers that serve it until models.dev does. */
 export function addUnlistedClaudeFable52(data: ModelsDevCatalog): void {
   const anthropic = data.anthropic?.models;
   const openrouter = data.openrouter?.models;

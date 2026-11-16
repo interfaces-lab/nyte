@@ -64,9 +64,13 @@ describe("the store is the truth", () => {
 
     await a.host.session(session.id).heads.create(asId("side"));
     const unpoll = pollStore(a.kernel);
-    await new Promise((resolve) => setTimeout(resolve, 40));
-    const view = await a.host.session(session.id).head(main).view();
     const stored = await store.refs.get(headRef(session.id, main));
+
+    const view = await until(async () => {
+      const shown = await a.host.session(session.id).head(main).view();
+
+      return shown.revision === stored?.revision ? shown : undefined;
+    });
 
     expect(
       view.messages.flatMap((message) => (message.kind === "user" ? [message.content] : [])),

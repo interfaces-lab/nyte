@@ -60,7 +60,6 @@ app.whenReady().then(async () => {
 
   const opened = await surfaces.agent.open({ session: "agent", url, owner });
   const surface = surfaces.agent.sessionSurfaceId("agent");
-  // Every window that receives the broadcast mounts a Browser tab for the agent's page.
   for (const window of windows.keys()) surfaces.open({ surface, url, owner }, window);
   surfaces.setBounds(
     { surface, bounds: { x: 0, y: 0, width: 400, height: 300 }, visible: true, focus: false },

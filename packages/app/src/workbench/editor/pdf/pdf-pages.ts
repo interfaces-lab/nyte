@@ -39,7 +39,6 @@ export interface Anchor {
   readonly left: number;
 }
 
-/** A ref callback with a cleanup, which React never calls with null; its type still admits null. */
 type Attach = (element: HTMLElement | null) => (() => void) | undefined;
 
 export interface PageEvents {

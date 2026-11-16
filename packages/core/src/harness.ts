@@ -83,13 +83,11 @@ export const env: ExecutionEnv = {
   close: async () => undefined,
 };
 
-/** One turn the scripted driver started: its input, and `finish` to end it (`completed` by default). */
 export interface Turn {
   readonly input: Parameters<TurnDriver["run"]>[0];
   finish(end?: Awaited<ReturnType<TurnDriver["run"]>>): void;
 }
 
-/** A turn driver whose turns wait until a test finishes them; a stopped run ends its turn `stopped`. */
 export interface Script {
   readonly driver: TurnDriver;
   readonly turns: readonly Turn[];
@@ -133,7 +131,6 @@ export async function until<T>(
   }
 }
 
-/** Returns a kernel over `options.store` (default a fresh memory store) with the test workspace added, a connected host over it, and the {@link Script} driving its turns. */
 export async function setup(
   options?: Partial<
     Pick<
@@ -148,10 +145,8 @@ export async function setup(
     >
   > & {
     readonly script?: Script;
-    /** Plugins every session loads after the test environment, for the tools and hooks a test needs. */
     readonly plugins?: readonly Plugin<"core">[];
     readonly poll?: number;
-    /** The snapshots the workspace's environment takes; default none. */
     readonly snapshots?: SnapshotsApi;
   },
 ): Promise<{
@@ -246,7 +241,6 @@ function provider(snapshots: SnapshotsApi | undefined): EnvironmentProvider {
   return { ...base, attach: async () => folder, snapshots: () => snapshots };
 }
 
-/** Starts a chat and drives its first message's run to completion, for a test that needs an idle chat with nothing pending. */
 export async function settledChat(
   host: Pick<Host, "sessions" | "execution">,
   turns: Script,
@@ -359,7 +353,6 @@ export function recording(store: StoreConnection) {
   };
 }
 
-/** A connection whose process dies once a set `kill` names has committed: every later set throws, as no write reaches the store after a crash. */
 export function killable(store: StoreConnection) {
   let after: ((updates: readonly RefUpdate[]) => boolean) | null = null;
   let dead = false;
@@ -367,6 +360,9 @@ export function killable(store: StoreConnection) {
   return {
     kill(match: (updates: readonly RefUpdate[]) => boolean): void {
       after = match;
+    },
+    get dead() {
+      return dead;
     },
     store: {
       ...store,

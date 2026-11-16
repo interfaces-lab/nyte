@@ -36,13 +36,6 @@ __pycache__/
 .dev.vars*
 !.dev.vars.example
 
-# Nyte's per-workspace folders
-**/.nyte/*
-!/.nyte/plugins/
-!/.nyte/skills/
-!/.nyte/mcp.json
-.uji/
-
 # Anything personal or machine-specific lives in a .local folder
 .local/
 
@@ -53,7 +46,6 @@ __pycache__/
 
 # Nested .gitignore files
 /.agents/skills/pnpm-*
-/packages/nyte-bench/runs/
 /packages/mobile/.expo/
 /packages/mobile/.voltra/
 /packages/mobile/ios/

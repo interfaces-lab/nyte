@@ -1,6 +1,6 @@
 import Foundation
+import os
 
-/// An action this client offers other clients of the same host, declared in its hello.
 public struct ClientAction: Sendable {
   public let name: String
   public let summary: String
@@ -13,7 +13,6 @@ public struct ClientAction: Sendable {
   }
 }
 
-/// A client connected to the host, as the host lists it.
 public struct ConnectedClient: Sendable, Identifiable, Hashable {
   public let id: String
   public let kind: String
@@ -30,10 +29,10 @@ public struct ConnectedClient: Sendable, Identifiable, Hashable {
   }
 }
 
-/// The host's WebSocket: calls, the events of the scopes subscribed to, streamed text, and
-/// requests from other clients to perform an action this one declared.
 @MainActor
 public final class HostSocket {
+  private static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "sh.nyte.studio", category: "HostSocket")
+
   public enum State: Equatable, Sendable {
     case connecting
     case connected(host: String, client: String)
@@ -50,15 +49,10 @@ public final class HostSocket {
     return nil
   }
 
-  /// Called on every change of `state`. A `.connected` after the first means the socket was
-  /// lost and found again: subscriptions are restored first, and readers should read again.
   public var onState: ((State) -> Void)?
   public var onClients: (([ConnectedClient]) -> Void)?
-  /// Every event frame of a subscribed scope, with its `scope`, `seq` and `kind`.
   public var onEvent: ((JSON) -> Void)?
-  /// Every frame of the text channel: `part` with `text`, `append` or `progress`.
   public var onText: ((JSON) -> Void)?
-  /// Answers another client's request to perform an action declared in `actions`.
   public var onPerform: ((_ action: String, _ input: JSON) async throws -> JSON)?
 
   private let endpoint: HostEndpoint
@@ -115,7 +109,6 @@ public final class HostSocket {
     failPending(HostError(code: "unavailable", message: "The connection closed."))
   }
 
-  /// Calls an operation on the socket and returns its output.
   public func call(_ operation: String, _ input: JSON = [:]) async throws -> JSON {
     guard let task, case .connected = state else {
       throw HostError(code: "unavailable", message: "The host isn't connected.")
@@ -128,7 +121,6 @@ public final class HostSocket {
     }
   }
 
-  /// Subscribes to a scope and keeps it across reconnects.
   public func subscribe(_ scope: String) async throws {
     scopes.insert(scope)
     _ = try await call("events.subscribe", ["scopes": [.string(scope)]])
@@ -139,7 +131,6 @@ public final class HostSocket {
     _ = try? await call("events.unsubscribe", ["scopes": [.string(scope)]])
   }
 
-  /// Asks another connected client to perform an action it declared.
   public func perform(_ action: String, on client: String, input: JSON = [:]) async throws -> JSON {
     try await call("client.perform", ["client": .string(client), "action": .string(action), "input": input])
   }
@@ -165,7 +156,10 @@ public final class HostSocket {
   }
 
   private func handle(_ text: String, on task: URLSessionWebSocketTask) {
-    guard let frame = try? JSON.parse(Data(text.utf8)) else { return }
+    guard let frame = try? JSON.parse(Data(text.utf8)) else {
+      Self.log.error("dropped a frame from the host that is not JSON, \(text.utf8.count, privacy: .public) bytes")
+      return
+    }
     if frame["c"].string == "t" {
       onText?(frame)
       return
@@ -187,12 +181,16 @@ public final class HostSocket {
       state = connected
       let restore = scopes.union(["host", "client/\(client)"])
       scopes = restore.filter { !$0.hasPrefix("client/") || $0 == "client/\(client)" }
-      // Readers hear about the connection only once its scopes are subscribed, so a read they
-      // start in answer can't miss a change.
       Task {
-        _ = try? await call("events.subscribe", ["scopes": .array(scopes.sorted().map { .string($0) })])
-        _ = try? await call("text.open")
-        if state == connected { onState?(connected) }
+        do {
+          _ = try await call("events.subscribe", ["scopes": .array(scopes.sorted().map { .string($0) })])
+          _ = try await call("text.open")
+          if state == connected { onState?(connected) }
+        } catch {
+          guard self.task === task else { return }
+          task.cancel(with: .goingAway, reason: nil)
+          lost("The host didn't open its events: \(error.localizedDescription)")
+        }
       }
 
     case "result":

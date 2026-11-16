@@ -48,15 +48,19 @@ var credentialVariables = []string{
 }
 
 func main() {
-	opts, err := parseOptions(os.Args[1:])
+	os.Exit(runCommand(os.Args[1:]))
+}
+
+func runCommand(args []string) int {
+	opts, err := parseOptions(args)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "nyte-tailnet:", err)
-		os.Exit(2)
+		return 2
 	}
 
 	if opts.version {
-		fmt.Println(version)
-		return
+		fmt.Println(version) //nolint:forbidigo // --version runs no protocol.
+		return 0
 	}
 
 	for _, name := range credentialVariables {
@@ -69,13 +73,15 @@ func main() {
 	if opts.logout {
 		err = logout(ctx, opts)
 	} else {
-		err = serveNode(ctx, opts, os.Stdin, os.Stdout)
+		err = serveNode(ctx, opts, os.Stdin, os.Stdout) //nolint:forbidigo // The protocol's only writer.
 	}
 
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "nyte-tailnet:", err)
-		os.Exit(1)
+		return 1
 	}
+
+	return 0
 }
 
 func serveNode(ctx context.Context, opts options, lease io.Reader, out io.Writer) error {
@@ -83,7 +89,7 @@ func serveNode(ctx context.Context, opts options, lease io.Reader, out io.Writer
 	defer cancel()
 
 	go func() {
-		io.Copy(io.Discard, lease)
+		_, _ = io.Copy(io.Discard, lease)
 		cancel()
 		time.AfterFunc(time.Second, func() { os.Exit(0) })
 	}()
@@ -93,13 +99,12 @@ func serveNode(ctx context.Context, opts options, lease io.Reader, out io.Writer
 	}
 
 	lock, err := lockState(opts.dir)
-	var locked *lockedError
-	if errors.As(err, &locked) {
+	if locked, ok := errors.AsType[*lockedError](err); ok {
 		tags := opts.tags
 		if tags == nil {
 			tags = []string{}
 		}
-		writeLine(out, status{State: "stopped", Reason: "locked", Holder: locked.holder, HTTPS: "unavailable", Access: opts.access, Tags: tags})
+		_ = writeLine(out, status{State: "stopped", Reason: "locked", Holder: locked.holder, HTTPS: "unavailable", Access: opts.access, Tags: tags})
 	}
 	if err != nil {
 		return err
@@ -205,7 +210,8 @@ func logout(ctx context.Context, opts options) error {
 	node := newNode(opts, "")
 	defer node.Close()
 
-	if err := node.Start(); err != nil {
+	err = node.Start()
+	if err != nil {
 		return err
 	}
 

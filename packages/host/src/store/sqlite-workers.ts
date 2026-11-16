@@ -7,10 +7,8 @@ import { Compile } from "typebox/compile";
 
 type Role = "reader" | "checkpoint";
 
-/** How long a connection that may block its thread waits on another connection's lock before SQLite answers busy. */
 export const BUSY_TIMEOUT_MS = 5_000;
 
-/** Parameters past this many string characters and bytes in total run on a statement prepared for that call, not a cached one. */
 export const LARGE_PARAMS_SIZE = 64 * 1024;
 
 const rowSchema = Type.Record(

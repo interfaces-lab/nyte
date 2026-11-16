@@ -10,7 +10,7 @@ import type { ToolDefinition } from "@nyte-ai/core";
 import { openApprovals, PERMISSIONS } from "@nyte-ai/plugin/approvals/schema";
 import { memoryStore } from "@nyte-ai/core/store";
 import type { Host, Listener } from "@nyte-ai/core";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { localProvider, openHost } from "../src/index.ts";
 import { fetchClientMetadata } from "../src/mcp-server/client-metadata.ts";
 import type { ClientMetadataFetch } from "../src/mcp-server/client-metadata.ts";
@@ -107,17 +107,6 @@ async function folder(prefix: string): Promise<string> {
   cleanups.push(() => rm(path, { recursive: true, force: true }));
 
   return path;
-}
-
-async function eventually<T>(check: () => Promise<readonly T[]>): Promise<readonly T[]> {
-  for (let attempt = 0; attempt < 200; attempt += 1) {
-    const found = await check();
-
-    if (found.length > 0) return found;
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
-
-  return check();
 }
 
 async function read<T extends TSchema>(response: Response, type: T): Promise<Static<T>> {
@@ -603,8 +592,14 @@ describe.skipIf(process.platform === "win32")("the MCP server", () => {
 
     expect(started.result.isError).toBeUndefined();
     const session = opened.host.session(asId<"session">("capped"));
-    const pending = await eventually(async () =>
-      openApprovals(await session.head(asId<"head">("main")).view()),
+    const pending = await vi.waitFor(
+      async () => {
+        const found = openApprovals(await session.head(asId<"head">("main")).view());
+        expect(found).not.toHaveLength(0);
+
+        return found;
+      },
+      { timeout: 5_000 },
     );
 
     expect(pending).toEqual([expect.objectContaining({ tool: "shell", reason: "shell" })]);

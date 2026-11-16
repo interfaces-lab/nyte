@@ -253,7 +253,6 @@ interface SessionsWindow {
   readonly limit?: number;
 }
 
-/** Reads the sessions window. A `resume.held` that describes the set of ids the window selects gets `kept`, their count, in place of the ids. */
 export async function readSessions(
   kernel: Kernel,
   principal: PrincipalId,

@@ -38,7 +38,6 @@ export async function client(host: Served, journal = createSendJournal()): Promi
   return connection;
 }
 
-/** A client connection whose requests go through `host.fetch`, so `host.intercept` sees them, and whose socket reaches the host on a listener of its own. */
 export async function liveClient(
   host: Served,
   journal = createSendJournal(),
@@ -70,7 +69,6 @@ export async function liveClient(
   return connection;
 }
 
-/** `connection`'s chat of `session`, held open until the test ends. */
 export function heldChat(
   connection: ClientConnection,
   session: Session["id"],
@@ -162,7 +160,6 @@ export function tapped(
   });
 }
 
-/** Reads the view until `done` accepts it, for up to 5 s. */
 export async function viewWhen(
   read: () => Promise<SessionView>,
   done: (view: SessionView) => boolean,

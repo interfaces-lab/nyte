@@ -42,7 +42,6 @@ export function projectSessionChoice(
   );
 }
 
-/** The configure mutations of `sessionId` still in flight, oldest first, for a reader outside React; `useMutationState` gives the same list to a component. */
 export function pendingConfigurations(
   sessionId: SessionId,
 ): readonly Pick<PendingConfiguration, "variables">[] {
@@ -56,7 +55,6 @@ export function pendingConfigurations(
     });
 }
 
-/** Whether `view` shows `selected`'s model and thinking, the parts of a configuration the chat shows. */
 export function showsChoice(
   view: Pick<SessionView, "configuration">,
   selected: Pick<Configuration, "model" | "thinking">,
@@ -70,13 +68,10 @@ export function showsChoice(
   );
 }
 
-/** The longest a chosen model shows over the chat after the host has taken it, while the chat's view has yet to show it. */
 const SHOWN_WITHIN_MS = 2_000;
 
-/** Each chat's latest answered choice still waiting for its view. */
 const waits = new Map<SessionId, AbortController>();
 
-/** The pending choice overlays the chat until its view shows what the host configured, or `SHOWN_WITHIN_MS` passes, or the chat's store fails, or a later choice is answered, so a pick back to the model the view still shows can't leave the earlier pick showing; the wait starts only once the host has answered. */
 export function sessionConfigurationOptions({ sessionId }: { readonly sessionId: SessionId }) {
   return mutationOptions({
     mutationKey: ["session", sessionId, "configure"],

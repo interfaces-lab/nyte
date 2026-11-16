@@ -11,12 +11,10 @@ interface Entry {
 
 const MAX_WIDTH = 80;
 
-/** Where descriptions start at most; each section starts them 2 columns past its widest syntax. */
 const MAX_COLUMN = 32;
 
 const GROUPS: readonly HelpGroup[] = ["Chat", "Sign-in", "Tools", "Host", "Maintenance"];
 
-/** The chat entry has no command name: `nyte` with root options opens the app or runs one prompt. */
 const CHAT: readonly Entry[] = [
   { syntax: "nyte", summary: "Open the full-screen app" },
   { syntax: "nyte -p <PROMPT>", summary: "Send one prompt and print the answer" },
@@ -83,14 +81,6 @@ const VERSION_OPTION: OptionSpec = {
   summary: "Print the installed version",
 };
 
-/**
- * Help for `path` (`[]` for the root, `[group, action]` for an action), rendered from `COMMANDS` in
- * the baseline's order: usage and summary, Commands (root: one section per `HelpGroup`), Options
- * (alphabetical), Global Options (listed at the root, a pointer to it elsewhere), Examples, Notes. Headings are Title Case with a colon, bold magenta when colored; command
- * and option names bold; everything else normal foreground, never faint. Entries indent 2, example
- * commands 4. A description that doesn't fit beside its syntax at `width` moves to the next line.
- * Fits 80 columns.
- */
 export function renderHelp(
   path: readonly string[],
   presentation: Presentation,
@@ -134,7 +124,6 @@ export function renderHelp(
   ].join("\n");
 }
 
-/** A heading over entries, or a heading with one line beside it. */
 type Section =
   | { readonly kind: "entries"; readonly title: string; readonly entries: readonly Entry[] }
   | { readonly kind: "line"; readonly title: string; readonly line: string };
@@ -147,7 +136,6 @@ interface Page {
   readonly notes: readonly string[];
 }
 
-/** Every page but the root's points to the root for the options every command takes. */
 const GLOBAL_POINTER: Section = { kind: "line", title: "Global Options", line: "See nyte --help" };
 
 function rootPage(): Page {
@@ -178,7 +166,6 @@ function rootPage(): Page {
   };
 }
 
-/** A leaf command's page, or a group's: its actions, then the options every action shares. */
 function commandPage(command: CommandSpec): Page {
   const sections = [
     {
@@ -201,7 +188,6 @@ function commandPage(command: CommandSpec): Page {
   };
 }
 
-/** `nyte mcp add --help`: the group's shared options and the action's own, in one list. A default action's name is optional in its usage. */
 function actionPage(command: CommandSpec, action: ActionSpec): Page {
   const options = optionEntries([...(command.options ?? []), ...(action.options ?? [])]);
   const name = action.default === true ? `[${action.name}]` : action.name;
@@ -262,7 +248,6 @@ function heading(text: string, presentation: Presentation): string {
   return paint(presentation, "bold", paint(presentation, "magenta", text));
 }
 
-/** Breaks between words only, so a command or path longer than `width` stays whole. */
 function wrap(text: string, width: number): string[] {
   const lines: string[] = [];
   let line = "";

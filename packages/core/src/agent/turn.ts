@@ -156,7 +156,6 @@ export function createTurnDriver(kernel: Kernel, models: Models): TurnDriver {
   };
 }
 
-/** Drives one run: resumes what a crash left, then hands `agentLoop` the steps it orders. Every write the run makes goes through the functions below, each of which takes the attempt it works on; `turn` keeps the three values that outlive a step and replaces them from what the steps return: the attempt, which a retry replaces, and the run's charged usage and its tool call ids, which a settled response replaces. */
 async function turn(
   context: Turn,
   given: RunView,
@@ -231,7 +230,6 @@ async function turn(
   }
 }
 
-/** Builds the next request from the head's path: compacts first when the last request overflowed or the estimate passes the threshold, then runs `before_request`. Holds the session's plugin runtime until the response streams. */
 async function prepareRequest(
   context: Turn,
   state: AttemptState,
@@ -330,7 +328,6 @@ async function prepareRequest(
   }
 }
 
-/** Releases every runtime hold but the newest, marks the run responding and starts the model stream. */
 async function streamResponse(
   context: Turn,
   state: AttemptState,
@@ -379,7 +376,6 @@ async function streamResponse(
   };
 }
 
-/** Settles a finished response in one set: charges it, settles the attempt's open parts and writes an intent for each tool call unless the run is stopping. Returns the run's charged usage and the id each call got, and empties the attempt's open parts for the next response. */
 async function settleResponse(
   context: Turn,
   state: AttemptState,
@@ -443,7 +439,6 @@ async function settleResponse(
   return { charged, callIds };
 }
 
-/** Runs one of the settled response's tool calls under the id its intent got. */
 function executeTool(
   context: Turn,
   state: AttemptState,

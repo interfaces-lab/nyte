@@ -34,10 +34,8 @@ export const MACHINE_NAME_ARGUMENT = "--nyte-machine-name";
 
 export const WINDOW_ID_ARGUMENT = "--nyte-window";
 
-/** Given only to a window opened while no other was: every window id worth keeping. */
 export const LAUNCH_WINDOWS_ARGUMENT = "--nyte-launch-windows";
 
-/** Given only to a window Finder opened: its `DesktopWindowOpen` as JSON. */
 export const WINDOW_OPEN_ARGUMENT = "--nyte-open";
 
 export const MAIN_OPERATION_PATHS = [

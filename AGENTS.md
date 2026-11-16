@@ -37,6 +37,7 @@
 - Use the repo's fakes (`@nyte-ai/bench` models, `fakeHost`, `fakePorts`), not mocks or `globalThis` patches.
 - Write contract tests (wire formats, input validation, store migrations, packaging) as tables: one table across the cases, not one test per case.
 - No test-only parameters or exports in production code (`now`, `delay`, `budget`). Use fake timers (`vi.setSystemTime`).
+- Wait for an observable state, not a fixed sleep or an elapsed-time bound. Advance fake timers only after the test has seen the state the timer guards: real I/O lags behind fake time.
 - No source-grep or tombstone tests that assert a file, export or feature is gone.
 
 ## Live desktop diagnostics
@@ -56,6 +57,7 @@
 - Branch names: at most three hyphenated words, no slashes or prefixes (`fix-scroll-state`).
 - Commits and PR titles: `type(scope): summary`. Types: feat, fix, docs, refactor, test, perf, build, ci, chore, revert. Scope is a package dir or area (`scripts`, `ci`), omitted for repo-wide changes. Breaking: `!` before the colon and a `BREAKING CHANGE:` footer.
 - Before committing, stage your files, then run `pnpm guidance`.
+- Your change may already be in a work-in-progress sweep commit on `main`. Never reset, amend or rewrite it; review it with `git show <sha> -- <files>`. Check `git log -- <file>` before waiting on another chat's file.
 
 ## Verification
 

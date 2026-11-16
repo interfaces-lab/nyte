@@ -326,7 +326,6 @@ export function jobHandle(kernel: Kernel, id: JobId): Job {
   };
 }
 
-/** Records a job's end with the report it owes its session, unless it runs in the foreground or is being stopped, then tells who waits on it. A wait that takes the end withdraws the report; otherwise it is delivered here, or by recovery after a crash. */
 async function endJob(kernel: Kernel, id: JobId, end: JobEnd): Promise<void> {
   const entry = kernel.jobs.get(id);
 
@@ -517,7 +516,6 @@ async function spawn(
   void pump(kernel, id, process, output);
 }
 
-/** Records `id`'s end in one set with the report `owed` gives, reserved under the job's session while that session exists. */
 function recordJobEnd(
   kernel: Kernel,
   id: JobId,
@@ -543,7 +541,6 @@ function recordJobEnd(
   });
 }
 
-/** Records the process group job `id` runs as, so a host on the same machine can end it once this one is gone. */
 function recordJobProcess(kernel: Kernel, id: JobId, os: OsProcess): Promise<void> {
   return attempt(`Recording job ${id}'s process`, async () => {
     const found = await readJob(kernel.store, id);
@@ -562,7 +559,6 @@ function recordJobProcess(kernel: Kernel, id: JobId, os: OsProcess): Promise<voi
   });
 }
 
-/** Ends the jobs whose host is dead or gone. Where the job's process group was recorded on this machine, it is ended first and only then is the job reported ended; where that cannot be established, the report says the command may still be running. A holder that only stopped beating has its process ref deleted before anything is signalled, so one that was paused and beats again keeps its jobs; one whose process is gone keeps its ref for the claim that takes over its leases, which would otherwise wait out the lease. */
 export async function reapJobs(kernel: Kernel): Promise<void> {
   const presence = kernel.presence;
 

@@ -20,7 +20,6 @@ export type StepEntry =
     }
   | { readonly kind: "browser"; readonly key: string; readonly steps: readonly BrowserCall[] };
 
-/** A step row's messages with the calls each script made folded under it: one pass over the row. */
 export interface StepCalls {
   readonly steps: readonly StepMessage[];
   readonly calls: ReadonlyMap<string, readonly ToolMessage[]>;

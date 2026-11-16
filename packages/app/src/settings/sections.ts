@@ -10,7 +10,6 @@ export interface SectionInfo {
   readonly keywords: readonly string[];
 }
 
-/** What every settings page is called and needs, without the pages themselves, so code outside Settings can ask about a section without loading its page. */
 export const SETTINGS_SECTIONS = {
   server: {
     icon: "server",
@@ -266,7 +265,6 @@ export function settingsSectionGroups(
   return groups;
 }
 
-/** Where Settings opens: the first page its sidebar lists for this client. */
 export function firstSettingsSection(): SettingsSection {
   return settingsSectionGroups().flat()[0] ?? "general";
 }

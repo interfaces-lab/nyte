@@ -7,10 +7,6 @@ import { useTranscriptScope } from "../transcript/transcript.tsx";
 
 const TOOL_STATE = compile(withJson(ToolPartStateType));
 
-/**
- * A tool row's state, read whole from its part while `open` when the row carries a cut view,
- * on whichever connection is installed. The row's state shows until the part arrives.
- */
 export function useWholeToolState(message: ToolMessage, open: boolean): ToolPartState {
   const session = useTranscriptScope()?.sessionId;
   const [whole, setWhole] = useState<ToolPartState>();

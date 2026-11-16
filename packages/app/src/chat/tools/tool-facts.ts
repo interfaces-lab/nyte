@@ -10,19 +10,8 @@ export interface ToolFacts {
   readonly verb: string | undefined;
 }
 
-/**
- * Which text a card shows as its output. `settled` shows only a settled call's output.
- * `progress-while-running` shows progress while the message runs, so a call cut off before it
- * settled shows nothing. `progress-while-unsettled` shows progress while the part is unsettled,
- * so a cut-off call keeps its last progress.
- */
 type OutputPolicy = "settled" | "progress-while-running" | "progress-while-unsettled";
 
-/**
- * Each tool card's output policy. A shell call and a tool line stream their progress; a subagent
- * keeps its last progress when cut off; the rest show only what a settled call returned, and the
- * script, browser, web and secret cards show even that only for a failure or not at all.
- */
 const OUTPUT_POLICY = {
   edit: "settled",
   mcp: "settled",
@@ -37,10 +26,6 @@ const OUTPUT_POLICY = {
 
 export type ToolCardKind = keyof typeof OUTPUT_POLICY;
 
-/**
- * What a tool card reads from its message: the status and tense come from `message`, the output
- * from `state`, which is the whole state while a cut row is open.
- */
 export function toolFacts(
   message: ToolMessage,
   state: ToolPartState,

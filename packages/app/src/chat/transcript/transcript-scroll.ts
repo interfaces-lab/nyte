@@ -21,7 +21,6 @@ export function topIn(viewport: HTMLElement, element: Element): number {
   return element.getBoundingClientRect().top - viewport.getBoundingClientRect().top;
 }
 
-/** How far the view moves to bring `element` into it when it lies wholly outside, as `scrollIntoView({ block: "nearest" })` would; 0 when any of it shows. */
 export function revealDistance(viewport: HTMLElement, element: Element): number {
   const box = element.getBoundingClientRect();
   const view = viewport.getBoundingClientRect();
@@ -33,7 +32,6 @@ export function revealDistance(viewport: HTMLElement, element: Element): number 
   return box.height > view.height ? box.top - view.top : box.bottom - view.bottom;
 }
 
-/** Marks the prompt `stuckPrompt` picks, which prompts are too tall to stick, and the top fade. */
 export function syncSticky(
   viewport: HTMLElement,
   content: HTMLElement,
@@ -68,11 +66,6 @@ export function syncSticky(
   setDataState(viewport, "topFade", scrolled && active === undefined);
 }
 
-/**
- * Wheel, touch and keys inside an embedded frame never reach the viewport's listeners, but the
- * scroll they chain out still moves it. While a frame is hovered or focused, a scroll the
- * transcript didn't write is the reader's.
- */
 export function frameHasInput(viewport: HTMLElement): boolean {
   const active = document.activeElement;
 

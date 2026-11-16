@@ -108,10 +108,6 @@ function toggleMarkdownSource(): boolean {
   return true;
 }
 
-/**
- * Seeds a window Finder opened: its workspace, which no host call reads at boot, then that
- * folder's Editor, with the file when there is one, filling the window.
- */
 export function openWindowInEditor(open: DesktopWindowOpen): void {
   if (open.workspace !== undefined) commitHostWorkspace(open.workspace);
   const view = workbenchViewKey(open.workspace?.path);
@@ -121,7 +117,6 @@ export function openWindowInEditor(open: DesktopWindowOpen): void {
   workbench.dispatch(view, { kind: "maximize" });
 }
 
-/** Opens a file Finder sent to this window in the current view's Editor. */
 export function openFileInEditor(router: RegisteredRouter, path: string): void {
   uncoverPanes(router);
   fileActions.open(workbenchViewKey(currentWorkspacePath()), { path });

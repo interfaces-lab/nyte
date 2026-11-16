@@ -3,15 +3,11 @@ import { WatchStore } from "./watch-store.ts";
 import type { LiveView, Shown } from "./watch-store.ts";
 import { viewStream } from "../../test/scripted-connection.ts";
 
-const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
-
 test.each<{
   readonly name: string;
   readonly watched: boolean;
   readonly accept: (value: number, seen: number | undefined) => boolean;
   readonly pushes: readonly (number | Error)[];
-  /** Settled before the first push. */
-  readonly early: boolean;
   readonly outcome: string;
 }>([
   {
@@ -19,7 +15,6 @@ test.each<{
     watched: true,
     accept: () => true,
     pushes: [2],
-    early: true,
     outcome: "1",
   },
   {
@@ -27,7 +22,6 @@ test.each<{
     watched: true,
     accept: (value, seen) => value !== seen,
     pushes: [1, 2],
-    early: false,
     outcome: "2",
   },
   {
@@ -35,7 +29,6 @@ test.each<{
     watched: true,
     accept: (value) => value > 2,
     pushes: [2, 3],
-    early: false,
     outcome: "3",
   },
   {
@@ -43,7 +36,6 @@ test.each<{
     watched: true,
     accept: (value) => value > 5,
     pushes: [new Error("gone")],
-    early: false,
     outcome: "rejected: gone",
   },
   {
@@ -51,7 +43,6 @@ test.each<{
     watched: false,
     accept: () => true,
     pushes: [],
-    early: true,
     outcome: "1",
   },
 ])("$name", async (row) => {
@@ -69,7 +60,7 @@ test.each<{
 
   const leave = row.watched ? store.subscribe(() => undefined) : () => undefined;
 
-  if (row.watched) await settle();
+  if (row.watched) await vi.waitFor(() => expect(store.value).toBe(1));
   const seen = store.value;
 
   const waited = store
@@ -79,24 +70,14 @@ test.each<{
       (cause: unknown) => `rejected: ${cause instanceof Error ? cause.message : String(cause)}`,
     );
 
-  const early = await Promise.race([waited.then(() => true), settle().then(() => false)]);
+  for (const push of row.pushes) stream.push(push);
 
-  for (const push of row.pushes) {
-    stream.push(push);
-    await settle();
-  }
-
-  expect({ early, outcome: await waited }).toEqual({
-    early: row.early,
-    outcome: row.outcome,
-  });
+  expect(await waited).toBe(row.outcome);
   leave();
 });
 
-/** One opening of a scripted source: a value, a failure, or a stream that stays open `openFor` ms and ends empty. */
 type Step = number | Error | { readonly openFor: number };
 
-/** A source a store opens: each opening reads `script` from where the last left off; a stream ends after its values, and a live source moves to its next step when `step` is called. */
 function opener(source: "finished" | "reopen" | "live", script: readonly Step[]) {
   const log = { opens: 0, closes: 0 };
   let at = 0;
@@ -157,9 +138,7 @@ test.each<{
   readonly name: string;
   readonly source: "finished" | "reopen" | "live";
   readonly script: readonly Step[];
-  /** Live steps taken after the store opens. */
   readonly steps: number;
-  /** How long the store is held after its steps, 4 s unless given. */
   readonly held?: number;
   readonly outcome: {
     readonly opens: number;

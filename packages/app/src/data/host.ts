@@ -29,7 +29,6 @@ export function useUpdateState() {
   });
 }
 
-/** The host process's state: read once per window, then kept by `host_process_changed`. */
 export const hostProcessQuery = {
   queryKey: keys.hostProcess,
   queryFn: async (): Promise<HostProcess> =>

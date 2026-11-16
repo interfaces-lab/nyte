@@ -26,7 +26,6 @@ export type ProviderRequest = FakeModels["requests"][number];
 export interface TestHost extends AsyncDisposable {
   readonly host: TestHostHandle;
   readonly endpoint: LocalEndpoint;
-  /** The TUI's connection to `host`, over HTTP and its socket. */
   readonly client: ClientConnection;
   readonly models: FakeModels;
   readonly requests: readonly ProviderRequest[];
@@ -43,7 +42,6 @@ export async function openTestHost(options?: {
   readonly workspace?: WorkspaceTarget;
   readonly loadPlugins?: (paths: readonly string[]) => Promise<readonly Plugin<"core">[]>;
   readonly loadPluginDirectory?: (dir: string) => Promise<PluginDirectory>;
-  /** The client's requests go through it, so a test can lose one on the way. */
   readonly fetch?: NonNullable<ClientConnectOptions["transport"]>["fetch"];
 }): Promise<TestHost> {
   dev.off();

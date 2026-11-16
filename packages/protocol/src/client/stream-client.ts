@@ -20,7 +20,6 @@ type Post = (
 
 const answers = new WeakSet<SdkError>();
 
-/** Marks an error the host answered an operation with, so `linkLost` holds it final; an answer with `retry` set, the host asking the client to come back later, stays a link failure. */
 export function hostAnswer(error: SdkError): SdkError {
   if (!error.retry) answers.add(error);
 
@@ -32,7 +31,6 @@ export function linkLost(error: unknown): error is SdkError {
   return error instanceof SdkError && error.code === "unavailable" && !answers.has(error);
 }
 
-/** How long a stream channel may deliver no byte, from the request that opens it, before it counts as lost. The host writes a ping on it every 15 s, so this is three missed pings. A path that dies without a close never ends the body, and a watch or a wait on it would otherwise hang for good. */
 const QUIET_MS = 45_000;
 
 /** Multiplex streams over one channel opened through `post`, asking for `deflated` frames when `deflate`; the channel closes when its last stream is released. */
@@ -220,7 +218,6 @@ export function createStreamClient(post: Post, deflate: boolean) {
   };
 }
 
-/** Passes the body on, calling `heard` for each chunk that arrives, pings included, and turning a read that fails into `unavailable`. */
 function networkBody(
   body: ReadableStream<Uint8Array>,
   heard: () => void,

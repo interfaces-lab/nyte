@@ -51,7 +51,6 @@ export interface MountOptions {
 
 export interface ClientPlugins {
   readonly ids: readonly string[];
-  /** The view a plugin renderer draws for a part, or undefined when none draws its kind. */
   draw(session: Session, message: PartMessage, placement: Placement): unknown;
   /**
    * Feeds the session directory; each run that ends after the first list fires `run_ended_anywhere`,

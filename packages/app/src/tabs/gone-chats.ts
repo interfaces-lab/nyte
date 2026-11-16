@@ -8,10 +8,6 @@ export interface GoneChats {
   readonly forget: ReadonlySet<SessionId>;
 }
 
-/**
- * Every chat a tab shows, closed-tab history could reopen, or a pane hidden for it waits on, so a
- * delete made here closes that pane when it commits as one made elsewhere does.
- */
 export function watchedChats(state: WindowState): ReadonlySet<SessionId> {
   return new Set([
     ...[...state.tabs, ...state.closed.map((closed) => closed.tab)].flatMap((tab) =>
@@ -21,11 +17,6 @@ export function watchedChats(state: WindowState): ReadonlySet<SessionId> {
   ]);
 }
 
-/**
- * Chats to close in the open tabs and to forget from closed-tab history. A missing chat goes from
- * both. An archived chat leaves history, but closes only when `previous` saw it unarchived, so a
- * chat opened while archived stays open.
- */
 export function goneChats(
   previous: ReadonlyMap<SessionId, SessionInfo>,
   now: Pick<SessionRows, "hosted" | "missing">,

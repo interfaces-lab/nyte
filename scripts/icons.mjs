@@ -46,9 +46,6 @@ function centralInstalled(consumer) {
 }
 
 /**
- * The set a package builds with. Throws when NYTE_ICONS asks for Central and
- * it isn't installed, since a silent fallback would hide the mismatch.
- *
  * @returns {"central" | "lucide"}
  */
 export function iconSet(name, env = process.env) {

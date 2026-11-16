@@ -96,7 +96,6 @@ let shown: ReadonlySet<SessionId> = new Set();
 
 paceTranscripts(() => shown);
 
-/** Each view carries the next seq, as each change from a host does: a chat store publishes only when its rows or its seq move, and a draw of the same text awaits that. */
 function answerView(session: SessionId, markdown: string, live: boolean): SessionView {
   const answer: Message = {
     id: asId<"message">(`${session}-answer`),
@@ -175,15 +174,15 @@ function drawer(root: Root): Draw {
   };
 }
 
-const painted = (): Promise<number> =>
+const nextFrame = (): Promise<void> =>
   new Promise((resolve) => {
-    requestAnimationFrame(() => setTimeout(() => resolve(performance.now()), 0));
+    requestAnimationFrame(() => resolve());
   });
 
 async function still(host: HTMLElement): Promise<void> {
   const since = performance.now();
 
-  while (fading(host).length > 0 && performance.now() - since < 2_000) await painted();
+  while (fading(host).length > 0 && performance.now() - since < 2_000) await nextFrame();
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
@@ -323,7 +322,7 @@ export async function run(): Promise<string> {
 
   try {
     await draw(ANSWER, false);
-    await painted();
+    await nextFrame();
     const final = paragraphText(host);
     const blocks = host.querySelectorAll("p").length;
     const staticSpans = host.querySelectorAll(FADES).length;
@@ -360,7 +359,7 @@ async function stream(host: HTMLElement, draw: Draw, final: string) {
   for (const word of WORDS.slice(0, -1)) {
     markdown += word;
     await draw(markdown, true);
-    await painted();
+    await nextFrame();
     frames.push(watcher.observe());
   }
 
@@ -368,7 +367,7 @@ async function stream(host: HTMLElement, draw: Draw, final: string) {
   const lastDelta = performance.now();
 
   while (frames.at(-1) !== final && performance.now() - lastDelta < 2_000) {
-    await painted();
+    await nextFrame();
     frames.push(watcher.observe());
   }
 
@@ -379,7 +378,7 @@ async function stream(host: HTMLElement, draw: Draw, final: string) {
   const spansAtEnd = spanParagraphs(host);
 
   while (host.querySelector(FADES) !== null && performance.now() - lastFadeAt < 2_000) {
-    await painted();
+    await nextFrame();
     watcher.observe();
   }
 
@@ -410,7 +409,7 @@ async function stream(host: HTMLElement, draw: Draw, final: string) {
 
 async function burst(host: HTMLElement, draw: Draw, streaming: boolean) {
   await draw(LEAD, true);
-  await painted();
+  await nextFrame();
   await still(host);
   const watcher = watch(host);
   const whole = `${LEAD}\n\n${BURST}`;
@@ -419,7 +418,7 @@ async function burst(host: HTMLElement, draw: Draw, streaming: boolean) {
   const steps: number[] = [];
 
   while (steps.at(-1) !== BURST.length && performance.now() - startedAt < 5_000) {
-    await painted();
+    await nextFrame();
     watcher.observe();
     const length = host.querySelectorAll("p").item(1)?.textContent.length ?? 0;
 
@@ -436,7 +435,7 @@ async function burst(host: HTMLElement, draw: Draw, streaming: boolean) {
 
 async function mount(host: HTMLElement, draw: Draw, final: string) {
   await draw(ANSWER, true);
-  await painted();
+  await nextFrame();
 
   const result = {
     firstFrameWhole: paragraphText(host) === final,
@@ -452,18 +451,21 @@ async function mount(host: HTMLElement, draw: Draw, final: string) {
 
 async function hidden(host: HTMLElement, draw: Draw) {
   await draw(LEAD, true);
-  await painted();
+  await nextFrame();
   const whole = `${LEAD}\n\n${BURST}`;
   await draw(whole, true);
-  await painted();
+  await nextFrame();
   const pacingBeforeHiding = paragraphText(host) !== `${LEAD}\n${BURST}`;
   await draw(whole, true, "hidden");
-  await painted();
+  await nextFrame();
   const more = `${whole} ${WHILE_HIDDEN}`;
   await draw(more, true, "hidden");
-  await sleep(100);
+  const since = performance.now();
+
+  while (!host.textContent.includes(WHILE_HIDDEN) && performance.now() - since < 2_000)
+    await nextFrame();
   await draw(more, true);
-  await painted();
+  await nextFrame();
   const firstFrameWhole = paragraphText(host) === `${LEAD}\n${BURST} ${WHILE_HIDDEN}`;
 
   await still(host);
@@ -471,7 +473,7 @@ async function hidden(host: HTMLElement, draw: Draw) {
   await draw(`${more} ${AFTER_RESUME}`, true);
 
   for (let frame = 0; frame < 6; frame += 1) {
-    await painted();
+    await nextFrame();
     watcher.observe();
   }
 

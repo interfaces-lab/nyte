@@ -124,11 +124,6 @@ export interface GitApi {
   push(input?: { readonly setUpstream?: boolean }, options?: GitWrite): Promise<GitOutcome>;
 }
 
-/**
- * GitHub for one workspace through the serving machine's GitHub CLI (`gh`):
- * the workspace picks the repository (its remotes) and the branch (its HEAD);
- * the login is the machine's, `Connection.github`.
- */
 export interface GitHubApi {
   /** The repository the remotes name, read from `git` alone; null without a GitHub remote. */
   repository(): Promise<GitHubRepository | null>;
@@ -138,7 +133,6 @@ export interface GitHubApi {
   createPullRequest(input: GitHubPullRequestInput): Promise<GitHubPullRequestOutcome>;
 }
 
-/** The serving machine's GitHub CLI login, one for the whole machine and every workspace on it. */
 export interface GitHubAccountApi {
   /** The github.com account `gh` is signed in as; `signing_in` while a sign-in waits for its code. */
   account(): Promise<GitHubAccountState>;
@@ -653,14 +647,11 @@ export type ScanEntry = {
   readonly resources: Promise<Resources>;
 };
 
-/** One watch on the folders a root (`home`, or a workspace by id) loads plugins and skills from, shared by the sessions that read them and kept until the last one goes. */
 export type RootWatch = {
   readonly paths: string;
   readonly sessions: Set<SessionId>;
-  /** Whether the host keeps it with no session on it: the home's, whose `.nyte/plugins` the host loads its own plugins from. */
   readonly kept: boolean;
   readonly stop: Disposer;
-  /** Resolves once the changes it is answering are answered. */
   settled(): Promise<void>;
 };
 
@@ -669,7 +660,6 @@ export interface WorkspaceState {
   readonly patches: Map<string, PatchCache>;
   readonly scans: Map<SessionId, ScanEntry>;
   readonly watches: Map<string, RootWatch>;
-  /** Set once the host closes its watches: no watch starts and no change is answered after. */
   closed: boolean;
   home: Promise<ExecutionEnv | null> | null;
   readonly batches: Map<ReceiptId, AbortController>;

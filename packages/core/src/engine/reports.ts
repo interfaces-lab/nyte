@@ -13,7 +13,6 @@ import { jobOutcome } from "./waits.ts";
 
 const RETRIED: ReadonlySet<string> = new Set(["stale", "unavailable", "timeout"]);
 
-/** Delivers the report reserved at `id` under `session` as an attached message with that id, so a second delivery replays the first and one after a withdrawal admits nothing. A delivery refused for good, by a session or head that is gone or a before_send that rejects it, settles the report `undelivered`; one a store or a closing kernel failed stays pending for the next recovery. */
 export async function deliverReport(
   kernel: Kernel,
   session: SessionId,
@@ -32,7 +31,6 @@ export async function deliverReport(
   });
 }
 
-/** Delivers the reports pending under `session`, which a crash left between the set that reserved them and their delivery. Each end goes to the waits still parked on it first, as at the end itself, and a wait that takes it withdraws the report. */
 export async function recoverReports(kernel: Kernel, session: SessionId): Promise<void> {
   for (const ref of await kernel.store.sessions.pending({ kind: "receipt", sessions: [session] })) {
     const found = await load(kernel.store, ref, decodeReceiptRecord);

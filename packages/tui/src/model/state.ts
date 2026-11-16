@@ -36,7 +36,6 @@ export interface Facts {
   readonly chat: Chat | null;
   readonly catalog: CatalogFacts;
   readonly hostSettings: readonly SettingInfo[];
-  /** The slash namespace in canonical order; the reducer rebuilds it when the catalog changes. */
   readonly slash: SlashIndex;
   readonly folderCatalog: FolderCatalog | null;
   readonly settings: ResolvedSettings;
@@ -248,7 +247,6 @@ export interface TranscriptLocal {
   readonly window: WindowStart;
   readonly toolOutput: "collapsed" | "expanded";
   readonly disclosures: ReadonlySet<string>;
-  /** Whole states of tool parts whose rows carry a cut view, read while output is expanded. */
   readonly wholeTools: ReadonlyMap<PartId, ToolPartState>;
 }
 

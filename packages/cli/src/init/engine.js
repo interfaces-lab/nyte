@@ -4,18 +4,18 @@
  * @typedef {object} Step
  * @property {string} id
  * @property {string} title
- * @property {"install" | "setup"} group  Plans list installs first.
- * @property {(ctx: any) => boolean} [applies]  False skips the step on this machine.
- * @property {(ctx: any) => Promise<Check>} check  Must not change anything.
- * @property {(ctx: any) => string} plan  What applying does, for the plan.
- * @property {(ctx: any, io: StepIO) => Promise<string | void>} apply  Returns what it did.
- * @property {(ctx: any) => string | undefined} [person]  Why a person must act, if one must.
- * @property {(ctx: any) => string} [manual]  The command a person runs instead, without a terminal.
- * @property {readonly string[]} [after]  Steps whose apply can undo this one.
+ * @property {"install" | "setup"} group
+ * @property {(ctx: any) => boolean} [applies]
+ * @property {(ctx: any) => Promise<Check>} check
+ * @property {(ctx: any) => string} plan
+ * @property {(ctx: any, io: StepIO) => Promise<string | void>} apply
+ * @property {(ctx: any) => string | undefined} [person]
+ * @property {(ctx: any) => string} [manual]
+ * @property {readonly string[]} [after]
  *
  * @typedef {object} StepIO
- * @property {(line: string) => void} line  Streams a line of command output.
- * @property {(message: string) => void} handOver  Says a vendor tool takes the terminal next.
+ * @property {(line: string) => void} line
+ * @property {(message: string) => void} handOver
  *
  * @typedef {"apply" | "recheck" | "done"} Mark
  * @typedef {{ step: Step, check: Check, mark: Mark }} PlanRow
@@ -51,11 +51,11 @@ export function planFrom(steps, checks) {
  * @param {readonly Step[]} options.steps
  * @param {any} options.ctx
  * @param {import("./ui.js").InitUI} options.ui
- * @param {boolean} options.yes  Apply without asking.
- * @param {boolean} options.checkOnly  Print the plan and stop.
- * @param {boolean} options.interactive  A person can answer prompts.
+ * @param {boolean} options.yes
+ * @param {boolean} options.checkOnly
+ * @param {boolean} options.interactive
  * @param {() => boolean} [options.interrupted]
- * @returns {Promise<number>} An exit code from EXIT.
+ * @returns {Promise<number>}
  */
 export async function runSteps({ steps, ctx, ui, yes, checkOnly, interactive, interrupted }) {
   const active = steps.filter((step) => step.applies?.(ctx) ?? true);

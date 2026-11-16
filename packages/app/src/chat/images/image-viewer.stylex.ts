@@ -11,9 +11,7 @@ const surfaceWidth = {
 
 export const imageViewerStyles = create({
   popup: { width: "max-content", overflow: "visible" },
-  /** Preview's footer holds one row of controls at every width; markup's wraps to two when narrow. */
   preview: { "--nyte-image-viewer-compact-footer-height": imageViewer.footerHeight },
-  /** Hidden, not faded: Motion owns the popup's and backdrop's inline opacity. */
   away: { visibility: "hidden" },
   frame: {
     position: "relative",

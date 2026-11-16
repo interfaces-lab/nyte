@@ -7,7 +7,6 @@ export interface Ask<T> {
   readonly origin: { readonly title: string; readonly sessionId: SessionId } | undefined;
 }
 
-/** The chat's own open asks first, then each waiting descendant's in the walk's order. */
 export function openAsks<T>(
   open: (view: Pick<SessionView, "parts"> | undefined) => readonly T[],
   own: { readonly sessionId: SessionId; readonly parts: readonly PartView[] | undefined },
@@ -29,7 +28,6 @@ export function openAsks<T>(
   ];
 }
 
-/** What a person reads when an answer to an ask didn't land, by ask and by the host's outcome. */
 const ASK_WORDS = {
   approval: {
     closed: "This request is no longer waiting.",
@@ -50,7 +48,6 @@ const ASK_WORDS = {
   Record<string, Readonly<Record<"closed" | "no-owner" | "unknown-action", string>>>
 >;
 
-/** Returns once the host took the answer; otherwise throws the reason in the person's words. */
 export function requireAnswered(outcome: ActOutcome<unknown>, ask: keyof typeof ASK_WORDS): void {
   switch (outcome.kind) {
     case "ok":

@@ -14,7 +14,6 @@ const RunningHostType = Type.Object({
   socket: Type.Optional(Type.String()),
 });
 
-/** What `nyte host` writes to `host.json` while it serves: where it listens, its token, its process and its local socket. */
 export type RunningHost = Static<typeof RunningHostType>;
 
 const HostAddressType = Type.Object({ port: Type.Integer(), token: Type.String() });
@@ -25,7 +24,6 @@ export function hostFilePath(env: Readonly<Record<string, string | undefined>> =
   return join(hostStateDirectory(env), "host.json");
 }
 
-/** The lock that elects the one served host for this home; the store itself stays shared. */
 export function hostLockPath(
   env: Readonly<Record<string, string | undefined>> = process.env,
 ): string {
@@ -40,7 +38,6 @@ export function hostLogPath(env: Readonly<Record<string, string | undefined>> = 
   return join(hostStateDirectory(env), "logs", "host.log");
 }
 
-/** The host's own record of the failures that can leave a run stuck. `host.log` can be launchd's stdout, which the host cannot rotate, so this is a separate file. */
 export function hostFaultsPath(env: Readonly<Record<string, string | undefined>> = process.env) {
   return join(hostStateDirectory(env), "logs", "host-faults.log");
 }
@@ -57,7 +54,6 @@ function hostStateDirectory(env: Readonly<Record<string, string | undefined>>): 
   return env["NYTE_HOME"] ?? join(homedir(), ".nyte");
 }
 
-/** The host `path` names when its process is alive and its URL answers; `null` when there is none or it is stale. */
 export async function findRunningHost(path: string): Promise<RunningHost | null> {
   const host = await readHostFile(path);
 
@@ -66,7 +62,6 @@ export async function findRunningHost(path: string): Promise<RunningHost | null>
   return (await hostAnswers(host.url)) ? host : null;
 }
 
-/** Whether a Nyte host, one that names itself in its host header, answers at `url` within a second. */
 export async function hostAnswers(url: string): Promise<boolean> {
   return fetch(new URL("/.nyte/describe", url), { signal: AbortSignal.timeout(1_000) }).then(
     async (response) => {
@@ -78,11 +73,6 @@ export async function hostAnswers(url: string): Promise<boolean> {
   );
 }
 
-/**
- * Makes `path` name `host`, readable only by this user, replacing whatever it held. Only the holder
- * of the host lock calls it, after finding no live host in the file, so a pid or port the file
- * still names belongs to no host. Readers see the old file or the new one, never a partial one.
- */
 export async function publishHost(path: string, host: RunningHost): Promise<void> {
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   const draft = `${path}.tmp`;
@@ -101,12 +91,10 @@ export async function saveHostAddress(path: string, address: HostAddress): Promi
   await writeFile(path, `${JSON.stringify(address)}\n`, { mode: 0o600 });
 }
 
-/** Removes `path` if it still names process `pid`. */
 export async function withdrawHost(path: string, pid: number): Promise<void> {
   if ((await readHostFile(path))?.pid === pid) await rm(path, { force: true });
 }
 
-/** The host `path` names, or `null` when it is missing, empty or not a host file. */
 export async function readHostFile(path: string): Promise<RunningHost | null> {
   const parsed = await readJson(path);
 

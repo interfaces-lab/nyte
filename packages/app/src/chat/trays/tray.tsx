@@ -6,7 +6,7 @@ import type { ReactElement, ReactNode, Ref, RefObject } from "react";
 import { Icon } from "@nyte-ai/ui/icon";
 import type { IconName } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
-import { glyph, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { glyph, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { groupMark, taskEnded, taskLabel } from "@nyte-ai/plugin/client/presentation";
 import type { Task } from "../../chats/index.ts";
 import { tray } from "../../theme/schema.stylex.ts";
@@ -30,22 +30,6 @@ export const trayParts = create({
     width: glyph.md,
     height: glyph.md,
     marginInlineStart: `calc(-1 * ${space.s0_5})`,
-  },
-  pillFrame: {
-    position: "relative",
-    display: "inline-flex",
-    width: "fit-content",
-    borderRadius: radius.pill,
-  },
-  pillOpen: {
-    "::after": {
-      content: '""',
-      position: "absolute",
-      inset: 0,
-      borderRadius: "inherit",
-      boxShadow: `inset 0 0 0 1px ${role.strokePrimary}`,
-      pointerEvents: "none",
-    },
   },
   notice: {
     paddingBlock: space.s2,
@@ -118,27 +102,25 @@ export function TrayPill({
   const state = groupMark(tasks.map((task) => task.state));
 
   return (
-    <span {...props(trayParts.pillFrame, expanded && trayParts.pillOpen)}>
-      <Button
-        ref={ref}
-        variant="outline"
-        pill
-        size="sm"
-        title={title}
-        aria-description={description}
-        aria-controls={controls}
-        aria-expanded={expanded}
-        onClick={onClick}
-      >
-        <Icon name={icon} size="sm" label={title} />
-        <span {...props(trayParts.pillCount)}>{String(tasks.length)}</span>
-        {state !== "done" && (
-          <span {...props(trayParts.pillMark)}>
-            <TaskGlyph state={state} job={tasks.some((task) => task.kind === "job")} />
-          </span>
-        )}
-      </Button>
-    </span>
+    <Button
+      ref={ref}
+      variant="outline"
+      pill
+      size="sm"
+      title={title}
+      aria-description={description}
+      aria-controls={controls}
+      aria-expanded={expanded}
+      onClick={onClick}
+    >
+      <Icon name={icon} size="sm" label={title} />
+      <span {...props(trayParts.pillCount)}>{String(tasks.length)}</span>
+      {state !== "done" && (
+        <span {...props(trayParts.pillMark)}>
+          <TaskGlyph state={state} job={tasks.some((task) => task.kind === "job")} />
+        </span>
+      )}
+    </Button>
   );
 }
 
