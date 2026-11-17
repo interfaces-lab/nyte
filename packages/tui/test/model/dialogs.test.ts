@@ -682,7 +682,7 @@ describe("model picker", () => {
 
     expect(picker?.kind === "model" && row !== undefined ? rowDraft(picker, row) : null).toEqual({
       effort: "off",
-      fast: false,
+      modes: [],
     });
 
     const chosen = play(next.state, key("model.increase"), key("picker.accept"));
@@ -690,7 +690,7 @@ describe("model picker", () => {
     expect(chosen.effects).toContainEqual({
       kind: "configure",
       session: S1,
-      selection: { model: { provider: "test", id: "other" }, effort: "high", fast: false },
+      selection: { model: { provider: "test", id: "other" }, effort: "high", modes: [] },
     });
     expect(chosen.state.local.notice?.text).toBe("Model: test/other · high");
     expect(top(chosen.state)).toBeNull();

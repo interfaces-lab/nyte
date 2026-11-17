@@ -422,7 +422,7 @@ test("with nothing selected, the shown selection follows the view's effective co
   expect(selection).toEqual({
     kind: "selection",
     session: asId("s1"),
-    selection: { model: CONFIGURATION.model, effort: "minimal", fast: false },
+    selection: { model: CONFIGURATION.model, effort: "minimal", modes: [] },
   });
 });
 
@@ -463,7 +463,7 @@ test("configure goes through the configurator: the session port receives the pat
   app.runner.run({
     kind: "configure",
     session: asId("s1"),
-    selection: { effort: "high", fast: true },
+    selection: { effort: "high", modes: ["fast"] },
   });
   await app.runner.settled();
 
@@ -475,7 +475,7 @@ test("configure goes through the configurator: the session port receives the pat
   expect(selection).toEqual({
     kind: "selection",
     session: asId("s1"),
-    selection: { model: { provider: "test", id: "model-fast" }, effort: "high", fast: true },
+    selection: { model: { provider: "test", id: "model-fast" }, effort: "high", modes: ["fast"] },
   });
 });
 
@@ -537,7 +537,7 @@ test("the first send from a blank chat starts it with that message, then follows
     kind: "blank",
     id: asId<"session">("b1"),
     folder: { kind: "folder", id: asId<"workspace">("workspace") },
-    selection: { model: CONFIGURATION.model, effort: "low", fast: false },
+    selection: { model: CONFIGURATION.model, effort: "low", modes: [] },
   } as const;
 
   const first: Submission = {
@@ -583,7 +583,7 @@ test("a first message on a signed-out provider's model goes back with the fix, a
     kind: "blank",
     id: asId<"session">("b-signed-out"),
     folder: { kind: "folder", id: asId<"workspace">("workspace") },
-    selection: { model: CONFIGURATION.model, effort: "low", fast: false },
+    selection: { model: CONFIGURATION.model, effort: "low", modes: [] },
   } as const;
 
   const first: Submission = {
@@ -624,7 +624,7 @@ test("a first message sent while boot settles the launch folder registers that f
     kind: "blank",
     id: asId<"session">("b-launch"),
     folder: { kind: "launch-folder" },
-    selection: { model: CONFIGURATION.model, effort: "low", fast: false },
+    selection: { model: CONFIGURATION.model, effort: "low", modes: [] },
   } as const;
 
   const first: Submission = {

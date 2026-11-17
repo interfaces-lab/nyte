@@ -23,7 +23,7 @@ import type {
   CredentialStore,
 } from "./auth/types.ts";
 import { InMemoryModelsStore, type ModelsStore } from "./models-store.ts";
-import { baseModel, providerRequest, withFastVariants } from "./model-variants.ts";
+import { baseModel, providerRequest, withModeVariants } from "./model-variants.ts";
 import type {
   AccountLimits,
   AccountLimitsResult,
@@ -162,7 +162,7 @@ class ModelsImpl implements MutableModels {
       if (!entry) return [];
 
       try {
-        return withFastVariants(entry.getModels());
+        return withModeVariants(entry.getModels());
       } catch {
         return [];
       }
@@ -172,7 +172,7 @@ class ModelsImpl implements MutableModels {
 
     for (const entry of this.providers.values()) {
       try {
-        models.push(...withFastVariants(entry.getModels()));
+        models.push(...withModeVariants(entry.getModels()));
       } catch {
         continue;
       }
@@ -617,7 +617,7 @@ class ModelsImpl implements MutableModels {
         if (!auth) return [];
         const models = provider.getModels();
 
-        return withFastVariants(provider.filterModels?.(models, credential) ?? models);
+        return withModeVariants(provider.filterModels?.(models, credential) ?? models);
       });
     })();
 

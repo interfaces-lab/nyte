@@ -9,7 +9,7 @@ import { rootSessions } from "../../src/run.ts";
 import { FileSettingsStore } from "../../src/services/settings.ts";
 import { composerShows, cursorCell, footerShows, shownAt, startTui } from "../harness/tui.ts";
 
-const CURRENT: Selection = { model: { provider: "test", id: "model" }, effort: "off", fast: false };
+const CURRENT: Selection = { model: { provider: "test", id: "model" }, effort: "off", modes: [] };
 
 function layoutRows(tui: Pick<TestRendererSetup, "captureSpans">): readonly number[] {
   const rows = tui.captureSpans().lines.map((line) => line.spans.map((span) => span.text).join(""));

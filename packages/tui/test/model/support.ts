@@ -19,7 +19,7 @@ export function model(
     reasoning: true,
     thinking,
     defaultThinking: thinking.find((level) => level !== "off") ?? "off",
-    fast: null,
+    variants: [],
     contextWindow: 100_000,
     compactAt: 90_000,
     maxOutput: 8_000,

@@ -1,36 +1,50 @@
+import { MODEL_MODES } from "@nyte-ai/schema/model";
+import type { ModelMode } from "@nyte-ai/schema/model";
 import { getFastModeCostMultiplier } from "./model-pricing.ts";
 import type { Api, Model } from "./types.ts";
 
-export const FAST_MODEL_SUFFIX = "-fast";
+const MODE_NAMES: Readonly<Record<ModelMode, string>> = { fast: "Fast", daybreak: "Daybreak" };
 
-export function fastModelId(base: string): string {
-  return `${base}${FAST_MODEL_SUFFIX}`;
+/** The id of `base` with `modes` on, such as `<base>-fast` or `<base>-fast-daybreak`. */
+export function variantModelId(base: string, modes: readonly ModelMode[]): string {
+  return [base, ...modes].join("-");
 }
 
-export function supportsFastMode(model: Model<Api>): boolean {
-  return (
-    model.variant === undefined &&
-    model.modes?.includes("fast") === true &&
-    getFastModeCostMultiplier(model) !== undefined
+/** The switches a base model offers, in `MODEL_MODES` order; fast only where its price is known. */
+export function supportedModes(model: Model<Api>): readonly ModelMode[] {
+  if (model.variant !== undefined) return [];
+
+  return MODEL_MODES.filter(
+    (mode) =>
+      model.modes?.includes(mode) === true &&
+      (mode !== "fast" || getFastModeCostMultiplier(model) !== undefined),
   );
 }
 
-/** The catalog with a fast sibling after each eligible model; a real `<id>-fast` keeps its place. */
-export function withFastVariants(models: readonly Model<Api>[]): readonly Model<Api>[] {
+/**
+ * The catalog with a sibling after each model for every combination of its switches.
+ * A real model that already has a variant's id keeps its place instead.
+ */
+export function withModeVariants(models: readonly Model<Api>[]): readonly Model<Api>[] {
   const ids = new Set(models.map((model) => model.id));
 
-  return models.flatMap((model) =>
-    supportsFastMode(model) && !ids.has(fastModelId(model.id))
-      ? [
-          model,
-          {
-            ...model,
-            id: fastModelId(model.id),
-            name: `${model.name} Fast`,
-            variant: { mode: "fast", base: model.id },
-          },
-        ]
-      : [model],
+  return models.flatMap((model) => [
+    model,
+    ...modeCombinations(supportedModes(model))
+      .filter((modes) => !ids.has(variantModelId(model.id, modes)))
+      .map((modes): Model<Api> => ({
+        ...model,
+        id: variantModelId(model.id, modes),
+        name: [model.name, ...modes.map((mode) => MODE_NAMES[mode])].join(" "),
+        variant: { modes: [...modes], base: model.id },
+      })),
+  ]);
+}
+
+/** Every non-empty subset of `modes`, each in `modes` order. */
+function modeCombinations(modes: readonly ModelMode[]): readonly (readonly ModelMode[])[] {
+  return Array.from({ length: 2 ** modes.length - 1 }, (_, index) =>
+    modes.filter((_, bit) => Math.floor((index + 1) / 2 ** bit) % 2 === 1),
   );
 }
 
@@ -50,11 +64,19 @@ export function providerIdentity(model: Pick<Model<Api>, "provider" | "api" | "i
   return { provider: model.provider, api: model.api, model: model.variant?.base ?? model.id };
 }
 
-export function providerRequest<M extends Model<Api>, O extends { fast?: boolean } | undefined>(
-  model: M,
-  options: O,
-): { readonly model: M; readonly options: O } {
-  if (model.variant?.mode !== "fast") return { model, options };
+export function providerRequest<
+  M extends Model<Api>,
+  O extends { fast?: boolean; daybreak?: boolean } | undefined,
+>(model: M, options: O): { readonly model: M; readonly options: O } {
+  if (model.variant === undefined) return { model, options };
+  const modes = model.variant.modes;
 
-  return { model: baseModel(model), options: { ...options, fast: true } };
+  return {
+    model: baseModel(model),
+    options: {
+      ...options,
+      ...(modes.includes("fast") ? { fast: true } : {}),
+      ...(modes.includes("daybreak") ? { daybreak: true } : {}),
+    },
+  };
 }

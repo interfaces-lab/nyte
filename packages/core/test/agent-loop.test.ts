@@ -45,7 +45,7 @@ const INFO: ModelInfo = {
   reasoning: false,
   thinking: ["off"],
   defaultThinking: "off",
-  fast: null,
+  variants: [],
   contextWindow: MODEL.contextWindow,
   compactAt: MODEL.contextWindow,
   maxOutput: 1_000,

@@ -1,5 +1,7 @@
 import { Type } from "typebox";
 import { idSchema } from "./ids.ts";
+import { MODEL_MODES } from "./model/model.ts";
+import type { ModelMode } from "./model/model.ts";
 import { standard } from "./schema.ts";
 import type { Decoded, Schema } from "./schema.ts";
 import { nullable } from "./wire/nullable.ts";
@@ -103,7 +105,10 @@ export const ModelInfoType = Type.Object({
   thinking: Type.Array(ThinkingType),
   /** The level a chat on this model thinks at when it names none: in the catalog, the level last chosen for this model while it still accepts it, else its lowest level above off. */
   defaultThinking: ThinkingType,
-  fast: nullable(ModelRefType),
+  /** The model under each set of switches the user can turn on, such as fast mode; switches combine. */
+  variants: Type.Array(
+    Type.Object({ modes: Type.Array(Type.Enum([...MODEL_MODES])), ref: ModelRefType }),
+  ),
   contextWindow: Type.Number(),
   compactAt: Type.Number(),
   maxOutput: Type.Number(),
@@ -118,6 +123,37 @@ export const ModelInfoType = Type.Object({
 });
 
 export type ModelInfo = Decoded<typeof ModelInfoType>;
+
+/** The switches `info` offers, in `MODEL_MODES` order. */
+export function availableModes(info: ModelInfo): readonly ModelMode[] {
+  return MODEL_MODES.filter((mode) =>
+    info.variants.some((variant) => variant.modes.includes(mode)),
+  );
+}
+
+/** The model to run for `info` with `modes` on; a switch `info` doesn't offer is ignored. */
+export function modelWithModes(info: ModelInfo, modes: readonly ModelMode[]): ModelRef {
+  const wanted = availableModes(info).filter((mode) => modes.includes(mode));
+
+  return (
+    info.variants.find(
+      (variant) =>
+        variant.modes.length === wanted.length &&
+        variant.modes.every((mode) => wanted.includes(mode)),
+    )?.ref ?? info.ref
+  );
+}
+
+/** The switches `ref` turns on when it is `info` or one of its variants, else null. */
+export function selectedModes(info: ModelInfo, ref: ModelRef): readonly ModelMode[] | null {
+  if (info.ref.provider === ref.provider && info.ref.id === ref.id) return [];
+
+  return (
+    info.variants.find(
+      (variant) => variant.ref.provider === ref.provider && variant.ref.id === ref.id,
+    )?.modes ?? null
+  );
+}
 
 export const ModelListingType = Type.Enum(["shown", "hidden", "favorite"]);
 

@@ -803,7 +803,7 @@ describe("session and view intents", () => {
       {
         kind: "configure",
         session: S1,
-        selection: { model: { provider: "test", id: "other" }, effort: "off", fast: false },
+        selection: { model: { provider: "test", id: "other" }, effort: "off", modes: [] },
       },
     ]);
     expect(model.state.local.notice?.text).toBe("Model: test/other · off");

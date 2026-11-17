@@ -25,7 +25,7 @@ const MODEL: ModelInfo = {
   reasoning: false,
   thinking: ["off"],
   defaultThinking: "off",
-  fast: null,
+  variants: [],
   contextWindow: 1_000,
   compactAt: 900,
   maxOutput: 100,

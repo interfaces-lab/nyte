@@ -2,7 +2,9 @@ import { create, props, when } from "@stylexjs/stylex";
 import { useNavigate } from "@tanstack/react-router";
 import { createContext, use, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
-import type { ModelThinkingLevel } from "@nyte-ai/schema/model";
+import { availableModes } from "@nyte-ai/schema";
+import type { ModelMode, ModelThinkingLevel } from "@nyte-ai/schema/model";
+import { MODEL_MODES } from "@nyte-ai/schema/model";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
 import {
@@ -35,9 +37,11 @@ import { preferences, useSetting } from "../../preferences/index.ts";
 import { showsSettingsSection } from "../../settings/sections.ts";
 import {
   AGENT_PROVIDERS,
+  MODE_LABELS,
   modelIcon,
   modelTriggerLabel,
   pickerGroups,
+  supportedModes,
   supportedThinkingLevel,
   THINKING_LABELS,
   thinkingLevelsFor,
@@ -47,12 +51,12 @@ import {
 export interface ModelPickerChange {
   readonly option: DesktopModelOption;
   readonly thinkingLevel: ModelThinkingLevel;
-  readonly fast: boolean;
+  readonly modes: readonly ModelMode[];
 }
 
 interface Settings {
   readonly thinking: ModelThinkingLevel;
-  readonly fast: boolean;
+  readonly modes: readonly ModelMode[];
 }
 
 const FADE = "linear-gradient(to left, transparent 15px, black 35px)";
@@ -176,7 +180,7 @@ interface ModelPickerProps {
   catalog: DesktopCatalog | undefined;
   current: DesktopModelOption | undefined;
   thinkingLevel: ModelThinkingLevel | undefined;
-  fast: boolean;
+  modes: readonly ModelMode[];
   disabled?: boolean;
   loading?: boolean;
   open?: boolean;
@@ -188,7 +192,7 @@ export function ModelPicker({
   catalog,
   current,
   thinkingLevel,
-  fast,
+  modes,
   disabled = false,
   loading = false,
   open: openProp,
@@ -205,25 +209,35 @@ export function ModelPicker({
   const [editing, setEditing] = useState<string | null>(null);
 
   const level = supportedThinkingLevel(current, thinkingLevel);
-  const fastOn = current?.fastMode.kind === "available" && fast;
-  const label = modelTriggerLabel(current, level, fastOn);
+  const active = current === undefined ? [] : supportedModes(current, modes);
+  const label = modelTriggerLabel(current, level, active);
 
   const groups = catalog === undefined ? [] : pickerGroups(catalog, current, query);
 
   const settingsFor = (option: DesktopModelOption): Settings => {
-    if (option.key === current?.key) return { thinking: level, fast: fastOn };
+    if (option.key === current?.key) return { thinking: level, modes: active };
 
     const stored = saved[option.key];
 
     return {
       thinking: supportedThinkingLevel(option, stored?.thinking),
-      fast: option.fastMode.kind === "available" && stored?.fast === true,
+      modes: supportedModes(
+        option,
+        MODEL_MODES.filter((mode) => stored?.[mode] === true),
+      ),
     };
   };
 
   const choose = (option: DesktopModelOption, next: Settings) => {
-    preferences.modelSettings.set({ ...saved, [option.key]: next });
-    onChange({ option, thinkingLevel: next.thinking, fast: next.fast });
+    preferences.modelSettings.set({
+      ...saved,
+      [option.key]: {
+        thinking: next.thinking,
+        fast: next.modes.includes("fast"),
+        daybreak: next.modes.includes("daybreak"),
+      },
+    });
+    onChange({ option, thinkingLevel: next.thinking, modes: next.modes });
   };
 
   return (
@@ -400,11 +414,11 @@ function ModelRow({
 }): ReactElement {
   const setListing = useSetListing();
   const levels = thinkingLevelsFor(option);
-  const fastAvailable = option.fastMode.kind === "available";
+  const offered = availableModes(option.info);
   const starred = option.listing === "favorite";
-  const defaults: Settings = { thinking: supportedThinkingLevel(option, undefined), fast: false };
-  const moved = settings.thinking !== defaults.thinking || settings.fast !== defaults.fast;
-  const detail = modelTriggerLabel(option, settings.thinking, settings.fast).detail;
+  const defaults: Settings = { thinking: supportedThinkingLevel(option, undefined), modes: [] };
+  const moved = settings.thinking !== defaults.thinking || settings.modes.length !== 0;
+  const detail = modelTriggerLabel(option, settings.thinking, settings.modes).detail;
 
   const marks = (
     <span aria-hidden="true" {...props(styles.marks)}>
@@ -500,18 +514,26 @@ function ModelRow({
             </MenuRadioGroup>
           </MenuGroup>
         )}
-        {levels.length > 1 && fastAvailable && <MenuSeparator />}
-        {fastAvailable && (
+        {levels.length > 1 && offered.length !== 0 && <MenuSeparator />}
+        {offered.map((mode) => (
           <MenuSwitchItem
+            key={mode}
             layout="plain"
             closeOnClick={false}
-            checked={settings.fast}
-            onCheckedChange={(fast) => onChange({ ...settings, fast })}
+            checked={settings.modes.includes(mode)}
+            onCheckedChange={(checked) =>
+              onChange({
+                ...settings,
+                modes: MODEL_MODES.filter((entry) =>
+                  entry === mode ? checked : settings.modes.includes(entry),
+                ),
+              })
+            }
           >
-            Fast
+            {MODE_LABELS[mode]}
           </MenuSwitchItem>
-        )}
-        {(levels.length > 1 || fastAvailable) && <MenuSeparator />}
+        ))}
+        {(levels.length > 1 || offered.length !== 0) && <MenuSeparator />}
         <MenuItem
           layout="plain"
           closeOnClick={false}

@@ -15,7 +15,7 @@ import { failureNotice, showsThinking, showsTool } from "@nyte-ai/plugin/client/
 import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { drawPart } from "../../canvas/client-plugins.tsx";
 import { useTranscriptControls, useTranscriptScope } from "./transcript.tsx";
-import type { ModelThinkingLevel } from "@nyte-ai/schema/model";
+import type { ModelMode, ModelThinkingLevel } from "@nyte-ai/schema/model";
 import { isPart, branchSummary, compaction } from "@nyte-ai/plugin/client";
 import { Button } from "@nyte-ai/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
@@ -137,7 +137,7 @@ function UserMessageImages({ content }: { content: UserContent }): ReactElement 
 export interface BranchModelChoice {
   readonly model: DesktopModelOption | undefined;
   readonly thinkingLevel: ModelThinkingLevel | undefined;
-  readonly fast: boolean;
+  readonly modes: readonly ModelMode[];
 }
 
 export interface BranchModelPicker extends BranchModelChoice {
@@ -249,7 +249,7 @@ export function UserMessageView({
         catalog={branchModel.catalog}
         current={edit.model}
         thinkingLevel={edit.thinkingLevel}
-        fast={edit.fast}
+        modes={edit.modes}
         disabled={edit.saving}
         onChange={(change: ModelPickerChange) => patchEdit({ kind: "model", change })}
       />

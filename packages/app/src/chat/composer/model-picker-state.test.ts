@@ -1,10 +1,14 @@
 import { expect, test } from "vitest";
-import type { ModelRef, Thinking } from "@nyte-ai/sdk";
+import type { ModelInfo, ModelRef, Thinking } from "@nyte-ai/sdk";
 import type { DesktopModelOption } from "../../data/catalog.ts";
 import { draftModel, sessionModel } from "./model-picker-state.ts";
 import type { SessionModel } from "./model-picker-state.ts";
 
-function option(id: string, change: Partial<DesktopModelOption> = {}): DesktopModelOption {
+function option(
+  id: string,
+  change: Partial<DesktopModelOption> = {},
+  variants: ModelInfo["variants"] = [],
+): DesktopModelOption {
   return {
     key: `test/${id}`,
     provider: "test",
@@ -14,7 +18,20 @@ function option(id: string, change: Partial<DesktopModelOption> = {}): DesktopMo
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     thinkingLevels: ["off", "high"],
     defaultThinking: "off",
-    fastMode: { kind: "unavailable" },
+    info: {
+      ref: { provider: "test", id },
+      name: id,
+      reasoning: true,
+      thinking: ["off", "high"],
+      defaultThinking: "off",
+      variants,
+      contextWindow: 1_000,
+      compactAt: 900,
+      maxOutput: 100,
+      input: ["text"],
+      capabilities: { steer: true },
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    },
     input: ["text"],
     capabilities: { steer: true },
     listing: "shown",
@@ -23,7 +40,9 @@ function option(id: string, change: Partial<DesktopModelOption> = {}): DesktopMo
   };
 }
 
-const SWIFT = option("swift", { fastMode: { kind: "available", id: "swift-fast" } });
+const SWIFT = option("swift", {}, [
+  { modes: ["fast"], ref: { provider: "test", id: "swift-fast" } },
+]);
 
 const QUEUER = option("queuer", { capabilities: { steer: false } });
 
@@ -31,7 +50,7 @@ const CATALOG = { models: [SWIFT, QUEUER] };
 
 const ref = (id: string, provider = "test"): ModelRef => ({ provider, id });
 
-const NONE: SessionModel = { option: undefined, fast: false, thinking: undefined, steers: true };
+const NONE: SessionModel = { option: undefined, modes: [], thinking: undefined, steers: true };
 
 test.each<{
   readonly name: string;
@@ -52,13 +71,13 @@ test.each<{
     name: "a listed model",
     catalog: CATALOG,
     choice: { model: ref("swift"), thinking: "off" },
-    model: { option: SWIFT, fast: false, thinking: "off", steers: true },
+    model: { option: SWIFT, modes: [], thinking: "off", steers: true },
   },
   {
-    name: "a model's fast id picks the model in fast mode",
+    name: "a model's fast variant picks the model in fast mode",
     catalog: CATALOG,
     choice: { model: ref("swift-fast"), thinking: undefined },
-    model: { option: SWIFT, fast: true, thinking: undefined, steers: true },
+    model: { option: SWIFT, modes: ["fast"], thinking: undefined, steers: true },
   },
   {
     name: "a model the catalog doesn't list steers",
@@ -76,7 +95,7 @@ test.each<{
     name: "a model that can't steer only queues",
     catalog: CATALOG,
     choice: { model: ref("queuer"), thinking: undefined },
-    model: { option: QUEUER, fast: false, thinking: undefined, steers: false },
+    model: { option: QUEUER, modes: [], thinking: undefined, steers: false },
   },
 ])("the session model: $name", (row) => {
   expect(sessionModel(row.catalog, row.choice)).toEqual(row.model);

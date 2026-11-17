@@ -25,9 +25,7 @@ export interface DesktopModelOption {
   readonly cost: ModelInfo["cost"];
   readonly thinkingLevels: readonly Thinking[];
   readonly defaultThinking: Thinking;
-  readonly fastMode:
-    | { readonly kind: "unavailable" }
-    | { readonly kind: "available"; readonly id: string };
+  readonly info: ModelInfo;
   readonly input: ModelInfo["input"];
   readonly capabilities: ModelInfo["capabilities"];
   readonly listing: ModelListing;
@@ -83,8 +81,7 @@ export function toDesktopCatalog(view: ModelCatalogView): DesktopCatalog {
         cost: model.cost,
         thinkingLevels: model.thinking,
         defaultThinking: model.defaultThinking,
-        fastMode:
-          model.fast === null ? { kind: "unavailable" } : { kind: "available", id: model.fast.id },
+        info: model,
         input: model.input,
         capabilities: model.capabilities,
         listing,

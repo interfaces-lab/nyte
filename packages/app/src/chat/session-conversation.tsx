@@ -78,7 +78,7 @@ async function applyMessageEdit({
 
   if (choice.model !== undefined) {
     const configured = await session.configure(
-      modelConfiguration(modelRefFor(choice.model, choice.fast), choice.thinkingLevel),
+      modelConfiguration(modelRefFor(choice.model, choice.modes), choice.thinkingLevel),
     );
 
     if (configured.kind !== "configured")
@@ -337,7 +337,7 @@ function ConversationScreen(conversation: SessionConversationProps): ReactElemen
     catalog: catalog.data,
     model: model.option,
     thinkingLevel: model.thinking,
-    fast: model.fast,
+    modes: model.modes,
   };
 
   const title = chatTitle(chat.kind === "ready" ? chat.chat : undefined);

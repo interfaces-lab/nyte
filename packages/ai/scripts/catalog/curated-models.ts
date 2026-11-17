@@ -1,5 +1,4 @@
 import type { Api, Model, OpenAICompletionsCompat } from "../../src/types.ts";
-import { OPENAI_DAYBREAK_BLUE_MODEL_ID } from "./compat-metadata.ts";
 import {
   KIMI_K3_MAX_TOKENS,
   OPENAI_GPT_56_LUNA_STANDARD_COST,
@@ -49,6 +48,8 @@ const OPENAI_LONG_CONTEXT_PRICING_MODEL_IDS = new Set([
   "gpt-5.6-terra",
   "gpt-5.6-luna",
   "gpt-6-astra",
+  "gpt-6.2-astra",
+  "gpt-6.2-sol",
 ]);
 
 const OPENROUTER_KIMI_K3_MODEL_IDS = new Set(["moonshotai/kimi-k3", "~moonshotai/kimi-latest"]);
@@ -300,6 +301,32 @@ const CODEX_MODELS: Model<"openai-codex-responses">[] = [
     modes: ["fast"],
   },
   {
+    id: "gpt-6.2-astra",
+    name: "GPT-6.2 Astra",
+    api: "openai-codex-responses",
+    provider: "openai-codex",
+    baseUrl: CODEX_BASE_URL,
+    reasoning: true,
+    input: ["text", "image"],
+    cost: withOpenAiLongContextPricing({ input: 8, output: 40, cacheRead: 0.4, cacheWrite: 10 }),
+    contextWindow: CODEX_CONTEXT,
+    maxTokens: CODEX_MAX_TOKENS,
+    modes: ["fast"],
+  },
+  {
+    id: "gpt-6.2-sol",
+    name: "GPT-6.2 Sol",
+    api: "openai-codex-responses",
+    provider: "openai-codex",
+    baseUrl: CODEX_BASE_URL,
+    reasoning: true,
+    input: ["text", "image"],
+    cost: withOpenAiLongContextPricing({ input: 2, output: 10, cacheRead: 0.1, cacheWrite: 2.5 }),
+    contextWindow: CODEX_CONTEXT,
+    maxTokens: CODEX_MAX_TOKENS,
+    modes: ["fast"],
+  },
+  {
     id: "gpt-6.1-sol",
     name: "GPT-6.1 Sol",
     api: "openai-codex-responses",
@@ -373,28 +400,6 @@ const CODEX_MODELS: Model<"openai-codex-responses">[] = [
     reasoning: true,
     input: ["text", "image"],
     cost: withOpenAiLongContextPricing(OPENAI_GPT_56_TERRA_STANDARD_COST),
-    contextWindow: CODEX_GPT_56_CONTEXT,
-    maxTokens: CODEX_MAX_TOKENS,
-  },
-  /**
-   * Codex ships this as a hidden cyber-specialty alias of GPT-5.6 Sol. Nyte lists it so
-   * ChatGPT-authenticated TUI and desktop sessions can select it.
-   * https://github.com/openai/codex/blob/main/codex-rs/models-manager/models.json
-   */
-  {
-    id: OPENAI_DAYBREAK_BLUE_MODEL_ID,
-    name: "Daybreak Blue",
-    api: "openai-codex-responses",
-    provider: "openai-codex",
-    baseUrl: CODEX_BASE_URL,
-    reasoning: true,
-    input: ["text", "image"],
-    cost: withOpenAiLongContextPricing({
-      input: 5,
-      output: 30,
-      cacheRead: 0.5,
-      cacheWrite: 6.25,
-    }),
     contextWindow: CODEX_GPT_56_CONTEXT,
     maxTokens: CODEX_MAX_TOKENS,
   },

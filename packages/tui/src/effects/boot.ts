@@ -115,7 +115,7 @@ export async function boot(options: BootOptions, context: HandlerContext): Promi
         session: target,
         selection: {
           model: options.model === null ? undefined : flagged.model,
-          fast: options.model === null ? undefined : flagged.fast,
+          modes: options.model === null ? undefined : flagged.modes,
           effort: options.effort === null ? undefined : flagged.effort,
         },
       },
@@ -172,7 +172,7 @@ function flagSelection(
     const model = { provider, id: rest.join("/") };
     const listed = findModel(availableModels(catalog), model);
 
-    return { model, effort: options.effort ?? listed?.defaultThinking ?? "medium", fast: false };
+    return { model, effort: options.effort ?? listed?.defaultThinking ?? "medium", modes: [] };
   }
 
   const found = availableModels(catalog).find((model) => model.ref.id === options.model);
@@ -182,7 +182,7 @@ function flagSelection(
   return {
     model: found.ref,
     effort: options.effort ?? found.defaultThinking,
-    fast: false,
+    modes: [],
   };
 }
 

@@ -37,7 +37,11 @@ export const preferences = {
     { key: "nyte:model-settings:v1" },
     Type.Record(
       Type.String(),
-      Type.Object({ thinking: Type.Enum([...MODEL_THINKING_LEVELS]), fast: Type.Boolean() }),
+      Type.Object({
+        thinking: Type.Enum([...MODEL_THINKING_LEVELS]),
+        fast: Type.Boolean(),
+        daybreak: Type.Optional(Type.Boolean()),
+      }),
     ),
     {},
   ),

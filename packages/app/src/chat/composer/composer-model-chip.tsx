@@ -22,7 +22,7 @@ export function SessionModelChip({
 
   const handleChange = (change: ModelPickerChange) =>
     configure.mutate({
-      model: modelRefFor(change.option, change.fast),
+      model: modelRefFor(change.option, change.modes),
       thinking: change.thinkingLevel,
     });
 
@@ -32,7 +32,7 @@ export function SessionModelChip({
         catalog={catalog.data}
         current={model.option}
         thinkingLevel={model.thinking}
-        fast={model.fast}
+        modes={model.modes}
         loading={catalog.isPending}
         disabled={catalog.isError}
         open={open}

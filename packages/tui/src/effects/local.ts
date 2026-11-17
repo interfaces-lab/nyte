@@ -1,5 +1,5 @@
 import type { McpServerView, WorkspaceId } from "@nyte-ai/sdk";
-import { availableModels, findModel, modelId } from "../lib/catalog.ts";
+import { availableModels, modelId } from "../lib/catalog.ts";
 import { usageCard, usageLines } from "../lib/usage.ts";
 import { pluginCommands } from "../model/commands.ts";
 import type { DialogData } from "../model/dialogs/dialog.ts";
@@ -174,17 +174,13 @@ async function loaded(effect: Of<"load">, context: HandlerContext): Promise<Dial
       context.dispatch({ kind: "catalog", generation, catalog });
       const models = availableModels(catalog);
 
-      const fastRefs = new Set(
-        models.flatMap((model) => (model.fast === null ? [] : [modelId(model.fast)])),
+      const variantRefs = new Set(
+        models.flatMap((model) => model.variants.map((variant) => modelId(variant.ref))),
       );
 
       const rows = models
-        .filter((model) => !fastRefs.has(modelId(model.ref)))
-        .map((model): ModelRow => ({
-          ref: model.ref,
-          info: model,
-          fast: model.fast === null ? null : (findModel(models, model.fast) ?? null),
-        }));
+        .filter((model) => !variantRefs.has(modelId(model.ref)))
+        .map((model): ModelRow => ({ ref: model.ref, info: model }));
 
       const costCeiling = rows.reduce(
         (ceiling, row) => Math.max(ceiling, row.info.cost.input + row.info.cost.output),

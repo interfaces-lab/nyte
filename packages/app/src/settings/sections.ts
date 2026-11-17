@@ -227,7 +227,7 @@ export const SETTINGS_SECTIONS = {
     title: "Providers",
     group: "providers",
     needs: ["providers"],
-    keywords: ["api key", "sign in", "anthropic", "openai", "opencode", "fast"],
+    keywords: ["api key", "sign in", "anthropic", "openai", "opencode", "fast", "daybreak"],
   },
 } as const satisfies Record<string, SectionInfo>;
 

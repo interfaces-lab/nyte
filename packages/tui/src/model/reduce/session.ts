@@ -263,7 +263,7 @@ export const sessionHandlers = {
 
     return configure(
       state,
-      { model: model.ref, effort: clampThinking(model, followed.selection.effort), fast: false },
+      { model: model.ref, effort: clampThinking(model, followed.selection.effort), modes: [] },
       now,
     );
   },

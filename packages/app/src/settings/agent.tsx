@@ -29,11 +29,11 @@ export function AgentSettings(): ReactElement {
           catalog={catalog.data}
           current={selected?.option}
           thinkingLevel={selected === undefined ? undefined : saved[selected.option.key]?.thinking}
-          fast={selected?.fast === true}
+          modes={selected?.modes ?? []}
           loading={catalog.isPending || setPreference.isPending}
           onChange={(change) => {
             if (setPreference.isPending) return;
-            setPreference.mutate(modelRefFor(change.option, change.fast));
+            setPreference.mutate(modelRefFor(change.option, change.modes));
           }}
         />
       </SettingsRow>

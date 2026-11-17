@@ -128,7 +128,7 @@ describe("settings", () => {
     expect(run("model")).toEqual({ kind: "open", dialog: { kind: "model" } });
     expect(run("model", "other")).toEqual({
       kind: "configure",
-      selection: { model: { provider: "test", id: "other" }, effort: "off", fast: false },
+      selection: { model: { provider: "test", id: "other" }, effort: "off", modes: [] },
     });
   });
 

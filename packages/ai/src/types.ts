@@ -136,6 +136,8 @@ export type AccountLimitsFetchOptions = Pick<
 export interface ProviderRequestOptions<TModel = Model<Api>> {
   signal?: AbortSignal;
   fast?: boolean;
+  /** Asks OpenAI for Daybreak's reduced cyber refusals; the account must be approved for it. */
+  daybreak?: boolean;
   apiKey?: string;
   /**
    * Optional fetch implementation for provider HTTP requests.

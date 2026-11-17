@@ -291,7 +291,7 @@ export const modelInfo: ModelInfo = {
   reasoning: true,
   thinking: ["off", "high"],
   defaultThinking: "high",
-  fast: null,
+  variants: [],
   contextWindow: 200000,
   compactAt: 160000,
   maxOutput: 64000,

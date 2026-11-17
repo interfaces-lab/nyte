@@ -55,7 +55,7 @@ export function beginEdit(
     error: undefined,
     model: branch?.model,
     thinkingLevel: branch?.thinkingLevel,
-    fast: branch?.fast === true,
+    modes: branch?.modes ?? [],
   };
 }
 
@@ -72,7 +72,8 @@ export function dismissible(
     edit.kept.length === messageFiles(content).length &&
     edit.model?.key === branch?.model?.key &&
     edit.thinkingLevel === branch?.thinkingLevel &&
-    edit.fast === (branch?.fast === true)
+    edit.modes.length === (branch?.modes.length ?? 0) &&
+    edit.modes.every((mode) => branch?.modes.includes(mode) === true)
   );
 }
 
@@ -93,7 +94,7 @@ export function nextEdit(edit: UserEditState, event: UserEditEvent): UserEditSta
         ...edit,
         model: event.change.option,
         thinkingLevel: event.change.thinkingLevel,
-        fast: event.change.fast,
+        modes: event.change.modes,
       };
     case "failed":
       return { ...edit, saving: false, error: event.error };
@@ -122,6 +123,6 @@ export function decideSave(edit: UserEditState, draft: ComposerContent): SaveDec
   return {
     kind: "send",
     edit: { ...edit, saving: true, error: undefined },
-    choice: { model: edit.model, thinkingLevel: edit.thinkingLevel, fast: edit.fast },
+    choice: { model: edit.model, thinkingLevel: edit.thinkingLevel, modes: edit.modes },
   };
 }

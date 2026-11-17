@@ -234,14 +234,14 @@ function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement
                 catalog={catalog.data}
                 current={current}
                 thinkingLevel={choice?.thinking}
-                fast={selected?.fast === true}
+                modes={selected?.modes ?? []}
                 open={pickerOpen}
                 onOpenChange={setPickerOpen}
                 onChange={(change) =>
                   updateViewState((state) => ({
                     ...state,
                     choice: {
-                      model: modelRefFor(change.option, change.fast),
+                      model: modelRefFor(change.option, change.modes),
                       thinking: change.thinkingLevel,
                     },
                   }))

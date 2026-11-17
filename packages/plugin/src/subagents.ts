@@ -365,7 +365,7 @@ async function findModel(invocation: ToolInvocation, name: string): Promise<Mode
     `/model has no ${name}. Choose one of:\n${models
       .map(
         (info) =>
-          `- ${info.ref.provider}/${info.ref.id} (thinking: ${info.thinking.join(", ")})${info.fast === null ? "" : `, fast: ${info.fast.provider}/${info.fast.id}`}`,
+          `- ${info.ref.provider}/${info.ref.id} (thinking: ${info.thinking.join(", ")})${info.variants.map((variant) => `, ${variant.modes.join(" + ")}: ${variant.ref.provider}/${variant.ref.id}`).join("")}`,
       )
       .join("\n")}`,
   );
@@ -401,7 +401,7 @@ async function listModels(invocation: ToolInvocation): Promise<readonly ModelInf
 }
 
 function matchModels(models: readonly ModelInfo[], name: string): readonly ModelRef[] {
-  const refs = models.flatMap((info) => (info.fast === null ? [info.ref] : [info.ref, info.fast]));
+  const refs = models.flatMap((info) => [info.ref, ...info.variants.map((variant) => variant.ref)]);
   const exact = refs.filter((ref) => `${ref.provider}/${ref.id}` === name);
 
   if (exact.length > 0) return exact;

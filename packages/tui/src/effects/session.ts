@@ -1,4 +1,5 @@
-import { asId } from "@nyte-ai/schema";
+import { asId, modelWithModes, selectedModes } from "@nyte-ai/schema";
+import type { ModelMode } from "@nyte-ai/schema/model";
 import type {
   Configuration,
   ModelCatalogView,
@@ -27,7 +28,7 @@ const HISTORY_PAGE = 200;
 export const PLACEHOLDER_SELECTION: Selection = {
   model: { provider: "none", id: "none" },
   effort: "medium",
-  fast: false,
+  modes: [],
 };
 
 export async function openBlank(chat: BlankChat, context: HandlerContext): Promise<void> {
@@ -387,13 +388,19 @@ function toRunChoice(selection: Selection): RunChoice {
 }
 
 export function toSelection(choice: RunChoice, catalog: ModelCatalogView | null): Selection {
-  const fast =
-    catalog !== null &&
-    catalog.providers.some((provider) =>
-      provider.models.some((model) => model.fast !== null && sameRef(model.fast, choice.model)),
-    );
+  const info =
+    catalog === null
+      ? undefined
+      : findModel(
+          catalog.providers.flatMap((provider) => provider.models),
+          choice.model,
+        );
 
-  return { model: choice.model, effort: choice.thinkingLevel, fast };
+  return {
+    model: choice.model,
+    effort: choice.thinkingLevel,
+    modes: info === undefined ? [] : (selectedModes(info, choice.model) ?? []),
+  };
 }
 
 export function buildConfigPatch(
@@ -402,8 +409,7 @@ export function buildConfigPatch(
   catalog: ModelCatalogView | null,
 ): ConfigPatch {
   const model = selection.model ?? current.model;
-  const fast = selection.fast ?? current.fast;
-  const resolved = resolveModel(model, fast, catalog);
+  const resolved = resolveModel(model, selection.modes ?? current.modes, catalog);
   const changed = !sameRef(resolved, current.model);
 
   return {
@@ -412,15 +418,19 @@ export function buildConfigPatch(
   };
 }
 
-function resolveModel(model: ModelRef, fast: boolean, catalog: ModelCatalogView | null): ModelRef {
+function resolveModel(
+  model: ModelRef,
+  modes: readonly ModelMode[],
+  catalog: ModelCatalogView | null,
+): ModelRef {
   if (catalog === null) return model;
-  const models = catalog.providers.flatMap((provider) => provider.models);
-  const base = models.find((info) => info.fast !== null && sameRef(info.fast, model));
-  const info = findModel(models, model);
 
-  if (fast) return info?.fast ?? model;
+  const info = findModel(
+    catalog.providers.flatMap((provider) => provider.models),
+    model,
+  );
 
-  return base?.ref ?? model;
+  return info === undefined ? model : modelWithModes(info, modes);
 }
 
 function configurePatch(patch: ConfigPatch): {
@@ -449,7 +459,10 @@ function sameRef(left: ModelRef, right: ModelRef): boolean {
 
 export function sameSelection(left: Selection, right: Selection): boolean {
   return (
-    sameRef(left.model, right.model) && left.effort === right.effort && left.fast === right.fast
+    sameRef(left.model, right.model) &&
+    left.effort === right.effort &&
+    left.modes.length === right.modes.length &&
+    left.modes.every((mode) => right.modes.includes(mode))
   );
 }
 

@@ -99,7 +99,7 @@ export function settingRows(state: State): readonly SettingRow[] {
           selection: {
             model: model.ref,
             effort: clampThinking(model, selection?.effort ?? "medium"),
-            fast: false,
+            modes: [],
           },
         },
       })),

@@ -16,7 +16,20 @@ function model(key: string): DesktopModelOption {
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     thinkingLevels: ["off", "high"],
     defaultThinking: "off",
-    fastMode: { kind: "unavailable" },
+    info: {
+      ref: { provider: "test", id: key },
+      name: key,
+      reasoning: true,
+      thinking: ["off", "high"],
+      defaultThinking: "off",
+      variants: [],
+      contextWindow: 1_000,
+      compactAt: 900,
+      maxOutput: 100,
+      input: ["text"],
+      capabilities: { steer: true },
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    },
     input: ["text"],
     capabilities: { steer: true },
     listing: "shown",
@@ -37,7 +50,7 @@ const branch: BranchModelPicker = {
   catalog: undefined,
   model: model("sonnet"),
   thinkingLevel: "off",
-  fast: false,
+  modes: [],
 };
 
 const image = {
@@ -60,7 +73,7 @@ test("an edit opens on the message's text with the caret at its end, its files k
     kept: [file],
     model: branch.model,
     thinkingLevel: "off",
-    fast: false,
+    modes: [],
     saving: false,
   });
 });
@@ -107,17 +120,17 @@ test.each<[string, readonly UserEditEvent[], boolean]>([
   ],
   [
     "another model keeps it open",
-    [{ kind: "model", change: { option: model("opus"), thinkingLevel: "off", fast: false } }],
+    [{ kind: "model", change: { option: model("opus"), thinkingLevel: "off", modes: [] } }],
     false,
   ],
   [
     "another thinking level keeps it open",
-    [{ kind: "model", change: { option: model("sonnet"), thinkingLevel: "high", fast: false } }],
+    [{ kind: "model", change: { option: model("sonnet"), thinkingLevel: "high", modes: [] } }],
     false,
   ],
   [
     "fast mode keeps it open",
-    [{ kind: "model", change: { option: model("sonnet"), thinkingLevel: "off", fast: true } }],
+    [{ kind: "model", change: { option: model("sonnet"), thinkingLevel: "off", modes: ["fast"] } }],
     false,
   ],
   ["a failed save with nothing changed closes", [{ kind: "failed", error: "Offline." }], true],
@@ -139,7 +152,7 @@ test("an empty message says so and stays open; a message sends with the edit's m
 
   const picked = nextEdit(opened, {
     kind: "model",
-    change: { option: model("opus"), thinkingLevel: "high", fast: true },
+    change: { option: model("opus"), thinkingLevel: "high", modes: ["fast"] },
   });
 
   const sent = decideSave({ ...picked, error: "A message cannot be empty." }, draft("Fix it."));
@@ -151,7 +164,7 @@ test("an empty message says so and stays open; a message sends with the edit's m
   expect(sent).toEqual({
     kind: "send",
     edit: { ...picked, saving: true, error: undefined },
-    choice: { model: model("opus"), thinkingLevel: "high", fast: true },
+    choice: { model: model("opus"), thinkingLevel: "high", modes: ["fast"] },
   });
   expect(
     nextEdit(

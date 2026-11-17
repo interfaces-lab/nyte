@@ -13,6 +13,7 @@ import type {
   WorkspaceCatalogView,
   WorkspaceId,
 } from "@nyte-ai/sdk";
+import type { ModelMode } from "@nyte-ai/schema/model";
 import type { Freshness, HeadView, Health } from "@nyte-ai/sdk/client";
 import type { ResolvedSettings } from "../lib/settings-schema.ts";
 import type { Task } from "../lib/tasks.ts";
@@ -72,7 +73,7 @@ export interface FollowedSession {
 export interface Selection {
   readonly model: ModelRef;
   readonly effort: Thinking;
-  readonly fast: boolean;
+  readonly modes: readonly ModelMode[];
 }
 
 interface FolderCatalog {

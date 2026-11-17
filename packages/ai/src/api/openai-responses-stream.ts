@@ -36,6 +36,13 @@ import {
   TerminalReasoningItemSchema,
 } from "./openai-responses-events.ts";
 
+/**
+ * The `access_programs.cyber` value a Daybreak request sends. OpenAI asks for Blue on every
+ * mainline model, Red-approved accounts included.
+ * https://developers.openai.com/api/docs/guides/daybreak
+ */
+export const DAYBREAK_ACCESS_PROGRAM = "daybreak_blue";
+
 export function withPriorityTier<
   O extends { fast?: boolean; serviceTier?: ResponseCreateParamsStreaming["service_tier"] },
 >(options: O | undefined): O | undefined {
