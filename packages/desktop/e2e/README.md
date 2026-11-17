@@ -56,7 +56,7 @@ Closing a chapter's desktop fails if any process of Electron's tree is still run
 | File | Covers |
 | --- | --- |
 | `first-run.spec.ts` | An empty home: new chat, nothing listed |
-| `startup.spec.ts` | A relaunch with the host held: the last run's chats and model, and a draft that sends once the host opens |
+| `startup.spec.ts` | A relaunch with the host held: the last run's chats and model, and a draft that sends once the host opens. With `NYTE_PERF_DIR`, also a relaunch into a long chat with the host left running, traced from before the window loads. Saves `startup.json`: each startup mark since launch, how long the skeleton was mounted and on screen, and the renderer's time split into host wait, transfer, React, layout and other |
 | `host-restart.spec.ts` | The host killed under a chat. launchd restarts it, the window reconnects, and a message sent during the outage lands once. Quitting the app leaves the host running, and a relaunch reconnects to the same process |
 | `navigation.spec.ts` | Tabs, the chat card, history, Chat actions, Customize, Search |
 | `panes.spec.ts` | Dragging chats onto pane edges and centers: the drop preview, splits and restacks, Escape cancelling, and the open pane never remounting. The split sash, sidebar and workbench handles dragged with the mouse, clamped, reset and stepped from the keyboard. The ratio across a reload |
@@ -68,7 +68,7 @@ Closing a chapter's desktop fails if any process of Electron's tree is still run
 | `transcript.spec.ts` | A 36-turn chat: the virtualized window, scrolling to the top and back. Unread replies: the divider clearing after a visit, and a new divider for replies that arrive while the window is away |
 | `chat-rendering.spec.ts` | Chat switching, native history scrolling, the latest-turn footer handoff, and message edit, cancel and save. Observes row coverage and identity through transitions and saves a video, screenshots and accessibility snapshots |
 | `subagent-load.spec.ts` | Runs only with `NYTE_PERF_DIR`. Typing while five agents stream, a child chat open, and the agents row evicted and remounted. Gates keydown-to-paint p99 at 50 ms and maximum at 100 ms, whole-run render work p99 at 16.67 ms, and no renderer task over 50 ms from the start of typing to completion. Saves the trace, frame cadence, latency, row churn and work counts |
-| `chat-switching.spec.ts` | Runs only with `NYTE_PERF_DIR`. Six seeded 120-turn chats switched in a fixed order 20 times in one launch, each switch timed from the click to the new chat's last message painted. Saves `chat-switching.json` with the median, p95, and each switch's main-thread time by kind and hottest functions, plus the CPU profile |
+| `chat-switching.spec.ts` | Runs only with `NYTE_PERF_DIR`. Six seeded 120-turn chats switched in a fixed order 20 times in one launch, each switch timed from the click to the new chat's last message painted. Saves `chat-switching.json` with the median, p95, and each switch's time split into host wait, transfer, React, layout and other, its forced layouts and skeleton time, and the hottest functions of the slowest switches, plus the CPU profile and the renderer thread's trace |
 | `workbench.spec.ts` | The panel, the Editor, Changes, Terminal and Browser tabs, Expand, closing tabs |
 | `browser.spec.ts` | The integrated browser against a local HTTP server |
 | `remote-access.spec.ts` | Settings > Server reading the host's own Tailscale node |

@@ -53,6 +53,8 @@ interface LaunchOptions {
   readonly hostDelayMs?: number;
   readonly host?: E2eHost;
   readonly typeAtFirstFrame?: string;
+  /** Traces the first window from before it navigates; `globalThis.nyteStopTrace()` in the main process writes the events to `file` as JSON. */
+  readonly trace?: { readonly categories: string; readonly file: string };
 }
 
 interface LaunchedDesktop {
@@ -129,9 +131,14 @@ export async function launchDesktop(options: LaunchOptions): Promise<LaunchedDes
       ? ""
       : `ipcMain.once(${JSON.stringify(WINDOW_PAINTED_CHANNEL)}, (event) => {\n  for (const character of ${JSON.stringify(Array.from(new Intl.Segmenter().segment(options.typeAtFirstFrame), ({ segment }) => segment))}) {\n    const key = character === " " ? "Space" : character;\n    event.sender.sendInputEvent({ type: "keyDown", keyCode: key });\n    event.sender.sendInputEvent({ type: "char", keyCode: character });\n    event.sender.sendInputEvent({ type: "keyUp", keyCode: key });\n  }\n});\n`;
 
+  const tracing =
+    options.trace === undefined
+      ? ""
+      : `const traced = [];\nlet traceSession;\napp.on("web-contents-created", (_, contents) => {\n  if (traceSession !== undefined || contents.getType() !== "window") return;\n  traceSession = contents.debugger;\n  traceSession.attach("1.3");\n  traceSession.on("message", (_, method, params) => {\n    if (method === "Tracing.dataCollected") traced.push(...params.value);\n  });\n  void traceSession.sendCommand("Tracing.start", { categories: ${JSON.stringify(options.trace.categories)}, transferMode: "ReportEvents" });\n});\nglobalThis.nyteStopTrace = () => new Promise((resolve) => {\n  traceSession.on("message", (_, method) => {\n    if (method === "Tracing.tracingComplete") writeFile(${JSON.stringify(options.trace.file)}, JSON.stringify(traced)).then(resolve);\n  });\n  void traceSession.sendCommand("Tracing.end");\n});\n`;
+
   await writeFile(
     join(root, "environment.mjs"),
-    `import { app, ipcMain } from "electron";\napp.setPath("appData", ${JSON.stringify(appData)});\napp.setPath("userData", ${JSON.stringify(join(appData, "user-data"))});\n${downloads}${typing}`,
+    `import { app, ipcMain } from "electron";\nimport { writeFile } from "node:fs/promises";\napp.setPath("appData", ${JSON.stringify(appData)});\napp.setPath("userData", ${JSON.stringify(join(appData, "user-data"))});\n${downloads}${typing}${tracing}`,
   );
   await writeFile(
     join(root, "entry.mjs"),

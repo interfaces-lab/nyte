@@ -1,8 +1,9 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import process from "node:process";
-import type { CDPSession, Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
+import { markTimes, splitMainThread, startTrace, findThread } from "./main-thread.ts";
 import { chatPane, chatTab, revealChat } from "./ui.ts";
 
 const output = process.env.NYTE_PERF_DIR;
@@ -43,19 +44,20 @@ test.use({
 
 test.skip(output === undefined, "Set NYTE_PERF_DIR to record chat switching.");
 
-const TRACE_CATEGORIES = [
-  "devtools.timeline",
-  "disabled-by-default-devtools.timeline",
-  "blink.user_timing",
-  "toplevel",
-  "v8.execute",
-].join(",");
+interface AppMarks {
+  readonly requestedMs: number | undefined;
+  readonly arrivedMs: number | undefined;
+  readonly skeletonShownMs: number | undefined;
+  readonly skeletonRemovedMs: number | undefined;
+  readonly lastPaintedMs: number;
+}
 
 interface SwitchTiming {
   readonly chat: string;
   readonly clickMs: number;
   readonly paintedMs: number;
   readonly spanMs: number;
+  readonly marks: AppMarks;
 }
 
 interface Profile {
@@ -72,15 +74,6 @@ interface Profile {
   readonly timeDeltas?: readonly number[];
 }
 
-interface TraceEvent {
-  readonly name: string;
-  readonly ph: string;
-  readonly ts: number;
-  readonly dur?: number;
-  readonly pid: number;
-  readonly tid: number;
-}
-
 declare global {
   interface Window {
     nyteSwitch?: {
@@ -90,6 +83,10 @@ declare global {
       frame: number;
     };
   }
+}
+
+function round(ms: number): number {
+  return Math.round(ms * 10) / 10;
 }
 
 function percentile(values: readonly number[], fraction: number): number {
@@ -178,80 +175,43 @@ async function switchTo(page: Page, chat: string): Promise<SwitchTiming> {
     clickMs: state.clickMs,
     paintedMs: state.paintedMs,
     spanMs: state.paintedMs - state.clickMs,
+    marks: await readAppMarks(page, state.clickMs),
   };
 }
 
-async function startTrace(session: CDPSession): Promise<() => Promise<TraceEvent[]>> {
-  const events: TraceEvent[] = [];
+/** The app's marks for the chat the switch opened: the one whose transcript painted its last message after the click. */
+async function readAppMarks(page: Page, since: number): Promise<AppMarks> {
+  const handle = await page.waitForFunction((after) => {
+    const marks = (name: string) =>
+      performance
+        .getEntriesByName(name)
+        .filter((entry) => entry instanceof PerformanceMark && entry.startTime >= after)
+        .map((entry) => ({
+          at: entry.startTime,
+          session: entry instanceof PerformanceMark ? String(entry.detail) : "",
+        }));
 
-  session.on("Tracing.dataCollected", (event) => {
-    for (const value of event.value) {
-      const name: unknown = value["name"];
-      const ph: unknown = value["ph"];
-      const ts: unknown = value["ts"];
-      const pid: unknown = value["pid"];
-      const tid: unknown = value["tid"];
-      const dur: unknown = value["dur"];
+    const painted = marks("nyte:last-message-painted")[0];
 
-      if (
-        typeof name === "string" &&
-        typeof ph === "string" &&
-        typeof ts === "number" &&
-        typeof pid === "number" &&
-        typeof tid === "number"
-      )
-        events.push({ name, ph, ts, pid, tid, dur: typeof dur === "number" ? dur : undefined });
-    }
-  });
-  await session.send("Tracing.start", {
-    categories: TRACE_CATEGORIES,
-    transferMode: "ReportEvents",
-  });
+    if (painted === undefined) return undefined;
 
-  return async () => {
-    const complete = new Promise<void>((resolve) =>
-      session.once("Tracing.tracingComplete", () => resolve()),
-    );
-    await session.send("Tracing.end");
-    await complete;
+    const first = (name: string) =>
+      marks(name).find((mark) => mark.session === painted.session && mark.at <= painted.at)?.at;
 
-    return events;
-  };
-}
+    return {
+      requestedMs: first("nyte:session-requested"),
+      arrivedMs: first("nyte:session-view"),
+      skeletonShownMs: first("nyte:skeleton-shown"),
+      skeletonRemovedMs: first("nyte:skeleton-removed"),
+      lastPaintedMs: painted.at,
+    };
+  }, since);
 
-function busyBy(
-  events: readonly TraceEvent[],
-  window: { readonly from: number; readonly to: number },
-): Record<string, number> {
-  const names = {
-    script: ["FunctionCall", "EvaluateScript", "V8.Execute", "RunMicrotasks"],
-    style: ["UpdateLayoutTree", "RecalculateStyles"],
-    layout: ["Layout"],
-    paint: ["Paint", "PrePaint", "Layerize", "UpdateLayer"],
-    gc: ["MinorGC", "MajorGC", "V8.GC_SCAVENGER", "V8.GC_MARK_COMPACTOR"],
-  } as const;
+  const marks = await handle.jsonValue();
 
-  const totals: Record<string, number> = { task: 0 };
+  if (marks === undefined) throw new Error("The switch has no last-message-painted mark");
 
-  for (const kind of Object.keys(names)) totals[kind] = 0;
-
-  for (const event of events) {
-    if (event.ph !== "X" || event.dur === undefined) continue;
-    const from = Math.max(window.from, event.ts);
-    const to = Math.min(window.to, event.ts + event.dur);
-
-    if (to <= from) continue;
-
-    if (event.name === "RunTask") totals["task"] = (totals["task"] ?? 0) + (to - from) / 1_000;
-
-    for (const [kind, list] of Object.entries(names))
-      if (list.some((name) => name === event.name))
-        totals[kind] = (totals[kind] ?? 0) + (to - from) / 1_000;
-  }
-
-  return Object.fromEntries(
-    Object.entries(totals).map(([name, ms]) => [name, Math.round(ms * 10) / 10]),
-  );
+  return marks;
 }
 
 function hotFunctions(
@@ -318,8 +278,8 @@ test("measures how long switching between long chats takes to paint the last mes
   await session.detach();
 
   const spans = timings.map((timing) => timing.spanMs);
-  const main = mainThread(events);
-  const painted = markTimes(events, "nyte:switch:painted");
+  const main = findThread(events, "nyte:switch:painted");
+  const painted = markTimes(main, "nyte:switch:painted");
 
   if (painted.length !== SWITCHES)
     throw new Error(`The trace has ${String(painted.length)} painted marks`);
@@ -327,72 +287,71 @@ test("measures how long switching between long chats takes to paint the last mes
   const switches = timings.map((timing, index) => {
     const to = painted[index] ?? 0;
     const from = to - timing.spanMs * 1_000;
-    const busy = busyBy(main, { from, to });
+
+    const trace = (ms: number | undefined) =>
+      ms === undefined ? undefined : to + (ms - timing.paintedMs) * 1_000;
+
+    const marks = timing.marks;
+    const waited = marks.skeletonShownMs !== undefined;
 
     return {
       index: index + 1,
-      ...timing,
-      busy,
-      idleMs: Math.round((timing.spanMs - (busy["task"] ?? 0)) * 10) / 10,
+      chat: timing.chat,
+      spanMs: round(timing.spanMs),
+      lastPaintedMs: round(marks.lastPaintedMs - timing.clickMs),
+      skeletonMs:
+        marks.skeletonShownMs === undefined || marks.skeletonRemovedMs === undefined
+          ? 0
+          : round(marks.skeletonRemovedMs - marks.skeletonShownMs),
+      layouts: main.filter((event) => event.name === "Layout" && event.ts >= from && event.ts < to)
+        .length,
+      split: splitMainThread(main, {
+        from,
+        to,
+        waitFrom: trace(marks.requestedMs) ?? from,
+        requested: waited ? trace(marks.requestedMs) : undefined,
+        arrived: waited ? trace(marks.arrivedMs) : undefined,
+      }),
       window: { from, to },
-      hot: hotFunctions(profiled.profile, [{ from, to }]),
     };
   });
 
-  const slowest = switches.toSorted((first, second) => second.spanMs - first.spanMs).slice(0, 3);
+  const slowest = switches
+    .toSorted((first, second) => second.spanMs - first.spanMs)
+    .slice(0, 3)
+    .map((entry) => ({ ...entry, hot: hotFunctions(profiled.profile, [entry.window]) }));
+
+  const splitAcrossSwitches = switches.reduce<Record<string, number>>((totals, entry) => {
+    for (const [part, ms] of Object.entries(entry.split))
+      totals[part] = round((totals[part] ?? 0) + ms);
+
+    return totals;
+  }, {});
 
   const summary = {
     switches: spans.length,
-    medianMs: percentile(spans, 0.5),
-    p95Ms: percentile(spans, 0.95),
-    maxMs: Math.max(...spans),
-    spansMs: spans.map((span) => Math.round(span * 10) / 10),
+    medianMs: round(percentile(spans, 0.5)),
+    p95Ms: round(percentile(spans, 0.95)),
+    maxMs: round(Math.max(...spans)),
+    skeletonShown: switches.filter((entry) => entry.skeletonMs > 0).length,
+    splitAcrossSwitches,
+    largestPart: Object.entries(splitAcrossSwitches)
+      .filter(([part]) => part !== "otherMs")
+      .toSorted((first, second) => second[1] - first[1])[0]?.[0],
     slowest,
-    all: switches.map((entry) => ({
-      index: entry.index,
-      chat: entry.chat,
-      spanMs: Math.round(entry.spanMs * 10) / 10,
-      busy: entry.busy,
-      idleMs: entry.idleMs,
-      window: entry.window,
-    })),
+    all: switches,
     hotAcrossSwitches: hotFunctions(
       profiled.profile,
       switches.map((entry) => entry.window),
     ),
-    busyAcrossSwitches: switches.reduce<Record<string, number>>((totals, entry) => {
-      for (const [kind, ms] of Object.entries(entry.busy))
-        totals[kind] = Math.round(((totals[kind] ?? 0) + ms) * 10) / 10;
-
-      return totals;
-    }, {}),
   };
 
   await writeFile(join(output, "chat-switching.json"), JSON.stringify(summary, null, 2));
   await writeFile(join(output, "chat-switching.cpuprofile"), JSON.stringify(profiled.profile));
+  await writeFile(join(output, "chat-switching-trace.json"), JSON.stringify(main));
   await testInfo.attach("summary", {
     body: JSON.stringify(summary, null, 2),
     contentType: "application/json",
   });
   expect(spans).toHaveLength(SWITCHES);
 });
-
-function mainThread(events: readonly TraceEvent[]): TraceEvent[] {
-  const counts = new Map<string, number>();
-
-  for (const event of events)
-    if (event.name === "FunctionCall" || event.name === "UpdateLayoutTree") {
-      const key = `${String(event.pid)}:${String(event.tid)}`;
-      counts.set(key, (counts.get(key) ?? 0) + 1);
-    }
-
-  const busiest = [...counts].toSorted((first, second) => second[1] - first[1])[0]?.[0];
-
-  return events.filter((event) => `${String(event.pid)}:${String(event.tid)}` === busiest);
-}
-
-function markTimes(events: readonly TraceEvent[], name: string): number[] {
-  return [
-    ...new Set(events.filter((event) => event.name === name).map((event) => event.ts)),
-  ].toSorted((first, second) => first - second);
-}
