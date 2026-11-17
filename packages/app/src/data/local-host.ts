@@ -1,4 +1,5 @@
 import type { Connection } from "@nyte-ai/sdk";
+import type { Health, Live } from "@nyte-ai/sdk/client";
 import { keys } from "./query-client.ts";
 import { nyte } from "../contract/nyte.ts";
 import { hostWatch } from "./watches.ts";
@@ -25,6 +26,7 @@ export function connectLocalHost(): Promise<Connection> {
     )
     .then((opened) => {
       performance.mark("nyte:sdk-connected");
+      markSocketOpen(opened.health);
 
       return opened;
     })
@@ -34,6 +36,17 @@ export function connectLocalHost(): Promise<Connection> {
     });
 
   return connecting;
+}
+
+function markSocketOpen(health: Live<Health>): void {
+  const check = (): void => {
+    if (health.snapshot().kind !== "open") return;
+    leave();
+    performance.mark("nyte:socket-connected");
+  };
+
+  const leave = health.subscribe(check);
+  check();
 }
 
 export async function loadLocalResources(): Promise<void> {

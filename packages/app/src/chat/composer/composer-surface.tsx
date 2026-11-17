@@ -8,7 +8,7 @@ import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { EditorContent, NodeViewWrapper, ReactNodeViewRenderer } from "@tiptap/react";
 import type { EditorContentProps, ReactNodeViewProps } from "@tiptap/react";
 import { useLayoutEffect, useState } from "react";
-import type { KeyboardEvent, MouseEvent, ReactElement } from "react";
+import type { KeyboardEvent, MouseEvent, ReactElement, ReactNode } from "react";
 import { ComposerChipView } from "./composer-chip.tsx";
 import {
   ComposerDocument,
@@ -23,6 +23,7 @@ import {
 } from "./composer-document.ts";
 import type { MentionFile } from "../../data/files.ts";
 import { openConversationLink } from "../markdown/external-link.ts";
+import { messageParts } from "../../references/message-references.ts";
 import { useReferenceOpener } from "../../references/reference-opener.tsx";
 import type { ReferenceOpener } from "../../references/reference-opener.tsx";
 import { composerStyles } from "./composer.stylex.ts";
@@ -53,6 +54,26 @@ function balancedUrl(text: string): string {
   return url;
 }
 
+interface UrlRange {
+  readonly start: number;
+  readonly end: number;
+  readonly href: string;
+}
+
+function urlRanges(text: string, startsLine: boolean, endsLine: boolean): readonly UrlRange[] {
+  return [...text.matchAll(URL_PATTERN)].flatMap((match) => {
+    const url = balancedUrl(match[0]);
+    const start = match.index;
+    const end = start + url.length;
+
+    const valid =
+      (start > 0 ? URL_SEPARATOR.test(text[start - 1] ?? "") : startsLine) &&
+      (end < text.length ? URL_SEPARATOR.test(text[end] ?? "") : endsLine);
+
+    return valid ? [{ start, end, href: url.startsWith("http") ? url : `https://${url}` }] : [];
+  });
+}
+
 function linkDecorations(doc: ProseMirrorNode, className: string): DecorationSet {
   const decorations: Decoration[] = [];
   doc.descendants((node, pos, parent, index) => {
@@ -63,41 +84,30 @@ function linkDecorations(doc: ProseMirrorNode, className: string): DecorationSet
     const lineEdge = (sibling: ProseMirrorNode | null): boolean =>
       sibling === null || sibling.type.name === ComposerHardBreak.name;
 
-    for (const match of text.matchAll(URL_PATTERN)) {
-      const url = balancedUrl(match[0]);
-      const start = match.index;
-      const end = start + url.length;
-
-      const valid =
-        (start > 0
-          ? URL_SEPARATOR.test(text[start - 1] ?? "")
-          : lineEdge(parent.maybeChild(index - 1))) &&
-        (end < text.length
-          ? URL_SEPARATOR.test(text[end] ?? "")
-          : lineEdge(parent.maybeChild(index + 1)));
-
-      if (valid) {
-        decorations.push(
-          Decoration.inline(pos + start, pos + end, {
-            nodeName: "a",
-            href: url.startsWith("http") ? url : `https://${url}`,
-            class: className,
-          }),
-        );
-      }
-    }
+    for (const range of urlRanges(
+      text,
+      lineEdge(parent.maybeChild(index - 1)),
+      lineEdge(parent.maybeChild(index + 1)),
+    ))
+      decorations.push(
+        Decoration.inline(pos + range.start, pos + range.end, {
+          nodeName: "a",
+          href: range.href,
+          class: className,
+        }),
+      );
   });
 
   return DecorationSet.create(doc, decorations);
 }
 
-function composerLinks(): Plugin {
-  const className = props(intent.primary, composerStyles.composerUrlPill).className ?? "";
+const LINK_CLASS = props(intent.primary, composerStyles.composerUrlPill).className ?? "";
 
+function composerLinks(): Plugin {
   return new Plugin<DecorationSet>({
     state: {
-      init: (_, state) => linkDecorations(state.doc, className),
-      apply: (tr, links) => (tr.docChanged ? linkDecorations(tr.doc, className) : links),
+      init: (_, state) => linkDecorations(state.doc, LINK_CLASS),
+      apply: (tr, links) => (tr.docChanged ? linkDecorations(tr.doc, LINK_CLASS) : links),
     },
     props: {
       decorations(state) {
@@ -142,12 +152,7 @@ export function focusComposer(editor: Editor, options?: FocusOptions): void {
   if (options?.preventScroll !== true) editor.view.dispatch(editor.state.tr.scrollIntoView());
 }
 
-function ReferenceChip({
-  node,
-  editor,
-  getPos,
-  removable,
-}: Pick<ReactNodeViewProps, "node" | "editor" | "getPos"> & { readonly removable: boolean }) {
+function ReferenceChip({ node, editor, getPos }: ReactNodeViewProps) {
   const reference = composerReference(node);
 
   const remove = (): void => {
@@ -160,9 +165,7 @@ function ReferenceChip({
 
   return (
     <NodeViewWrapper as="span">
-      {reference !== undefined && (
-        <ComposerChipView reference={reference} onRemove={removable ? remove : undefined} />
-      )}
+      {reference !== undefined && <ComposerChipView reference={reference} onRemove={remove} />}
     </NodeViewWrapper>
   );
 }
@@ -170,62 +173,41 @@ function ReferenceChip({
 export function useComposerSurface({
   text,
   files,
-  editable,
 }: {
   readonly text: string;
   readonly files: () => ReadonlyMap<string, MentionFile>;
-  readonly editable: boolean;
 }): Editor {
-  const [editor] = useState(() => {
-    const chip = (nodeView: ReactNodeViewProps) => (
-      <ReferenceChip {...nodeView} removable={editable} />
-    );
-
-    const surface = {
-      extensions: [
-        ComposerDocument,
-        ComposerParagraph.configure({
-          HTMLAttributes: { class: props(composerStyles.editorParagraph).className ?? "" },
-        }),
-        ComposerText,
-        ComposerHardBreak,
-        ComposerReference.extend({
-          addNodeView: () =>
-            ReactNodeViewRenderer(chip, {
-              as: "span",
-              attrs: ({ node }) => ({
-                "data-composer-reference": composerReference(node)?.kind ?? "",
-                style:
-                  "display: inline-block; vertical-align: baseline; white-space: nowrap; max-width: 100%",
+  const [editor] = useState(
+    () =>
+      new Editor({
+        extensions: [
+          ComposerDocument,
+          ComposerParagraph.configure({
+            HTMLAttributes: { class: props(composerStyles.editorParagraph).className ?? "" },
+          }),
+          ComposerText,
+          ComposerHardBreak,
+          ComposerReference.extend({
+            addNodeView: () =>
+              ReactNodeViewRenderer(ReferenceChip, {
+                as: "span",
+                attrs: ({ node }) => ({
+                  "data-composer-reference": composerReference(node)?.kind ?? "",
+                  style:
+                    "display: inline-block; vertical-align: baseline; white-space: nowrap; max-width: 100%",
+                }),
               }),
-            }),
-        }),
-        Extension.create({
-          name: "composerPlugins",
-          addProseMirrorPlugins: () => [composerReferencesPlugin(files), composerLinks()],
-        }),
-        ...(editable ? [ComposerEditing] : []),
-      ],
-      content: composerContent(text, files()),
-      injectCSS: false,
-    };
-
-    return new Editor(
-      editable
-        ? surface
-        : {
-            ...surface,
-            editable: false,
-            editorProps: {
-              attributes: {
-                role: "",
-                class: props(composerStyles.readOnly).className ?? "",
-                "data-composer-readonly": "",
-              },
-            },
-          },
-    );
-  });
+          }),
+          Extension.create({
+            name: "composerPlugins",
+            addProseMirrorPlugins: () => [composerReferencesPlugin(files), composerLinks()],
+          }),
+          ComposerEditing,
+        ],
+        content: composerContent(text, files()),
+        injectCSS: false,
+      }),
+  );
 
   return editor;
 }
@@ -256,14 +238,83 @@ export function ComposerSurfaceContent({
 
 const noFiles: ReadonlyMap<string, MentionFile> = new Map();
 
-function ReadOnlyMessage({ draft }: { readonly draft: string }) {
-  const editor = useComposerSurface({ text: draft, files: () => noFiles, editable: false });
+const REFERENCE_STYLE = {
+  display: "inline-block",
+  verticalAlign: "baseline",
+  whiteSpace: "nowrap",
+  maxWidth: "100%",
+} as const;
 
-  return <ComposerSurfaceContent editor={editor} style={editorContentStyle} />;
+function LinkedText({
+  text,
+  startsLine,
+  endsLine,
+}: {
+  readonly text: string;
+  readonly startsLine: boolean;
+  readonly endsLine: boolean;
+}): ReactNode {
+  const ranges = urlRanges(text, startsLine, endsLine);
+
+  if (ranges.length === 0) return text;
+
+  return ranges.flatMap((range, index) => [
+    text.slice(ranges[index - 1]?.end ?? 0, range.start),
+    <a key={range.start} href={range.href} className={LINK_CLASS}>
+      {text.slice(range.start, range.end)}
+    </a>,
+    ...(index === ranges.length - 1 ? [text.slice(range.end)] : []),
+  ]);
+}
+
+/** Draws a sent message the way the composer lays it out, without an editor: chips, links and line breaks match, and nothing here is editable. */
+function ReadOnlyMessage({ draft }: { readonly draft: string }): ReactElement {
+  const opener = useReferenceOpener();
+
+  const lines = draft
+    .split(/\r?\n/u)
+    .map((line) => messageParts(line, { files: noFiles, complete: true }));
+
+  return (
+    <div style={editorContentStyle} {...composerLinkHandlers(opener)}>
+      <div
+        contentEditable={false}
+        translate="no"
+        data-composer-readonly=""
+        {...props(composerStyles.readOnly)}
+      >
+        <p {...props(composerStyles.editorParagraph)}>
+          {lines.flatMap((parts, line) => [
+            ...(line === 0 ? [] : [<br key={`${String(line)}:break`} />]),
+            ...parts.map((part, index) =>
+              part.kind === "text" ? (
+                <LinkedText
+                  key={`${String(line)}:${String(index)}`}
+                  text={part.text}
+                  startsLine={index === 0}
+                  endsLine={index === parts.length - 1}
+                />
+              ) : (
+                <span
+                  key={`${String(line)}:${String(index)}`}
+                  data-composer-reference={part.reference.kind}
+                  style={REFERENCE_STYLE}
+                >
+                  <span data-node-view-wrapper="" style={{ whiteSpace: "normal" }}>
+                    <ComposerChipView reference={part.reference} />
+                  </span>
+                </span>
+              ),
+            ),
+          ])}
+        </p>
+      </div>
+    </div>
+  );
 }
 
 export function ComposerReadOnly({ text }: { readonly text: string }) {
   const draft = text.replaceAll(/\n{3,}/gu, "\n\n").replace(/^\n+|\n+$/gu, "");
 
-  return <ReadOnlyMessage key={draft} draft={draft} />;
+  return <ReadOnlyMessage draft={draft} />;
 }

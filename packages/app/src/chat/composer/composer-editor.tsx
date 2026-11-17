@@ -170,7 +170,6 @@ export function ComposerEditor({
   const editor = useComposerSurface({
     text: externalDocument.text,
     files: () => catalogRef.current,
-    editable: true,
   });
 
   const caretRef = useRef<HTMLSpanElement>(null);

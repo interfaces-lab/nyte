@@ -71,7 +71,7 @@ const END_GAP_SHARE = 0.17;
 
 const MEASURED_TRANSCRIPTS = 16;
 
-const measured = new Map<string, VirtualItem[]>();
+const measured = new Map<SessionId, { readonly width: number; readonly items: VirtualItem[] }>();
 
 function stickyRange(range: Range, above: readonly number[]): number[] {
   const indexes = defaultRangeExtractor(range);
@@ -237,9 +237,9 @@ export function TranscriptContent({
   const position = useRef<TranscriptScroll>(initialScroll(initialPosition));
   const content = useRef<HTMLDivElement>(null);
   const scrollport = useRef<HTMLDivElement | null>(null);
+  const width = useRef<number>(undefined);
 
-  const measuredKey = `${sessionId}\u0000${paneId}`;
-  const [initialMeasurements] = useState(() => measured.get(measuredKey) ?? []);
+  const [initialMeasurements] = useState(() => measured.get(sessionId));
   const sticky = useMemo(() => stickySpans(rows), [rows]);
 
   const indexes = useMemo(() => new Map(rows.map((row, index) => [row.key, index])), [rows]);
@@ -360,6 +360,7 @@ export function TranscriptContent({
 
     if (scroll === null || content.current === null) return;
     const opening = position.current.mode.kind === "following" && position.current.mode.opening;
+    width.current = scroll.clientWidth;
     settle(instance);
     syncSticky(scroll, content.current, sticky.handovers);
     queueMicrotask(() => syncScrollButton(scroll, dock));
@@ -369,6 +370,28 @@ export function TranscriptContent({
       (opening && position.current.mode.kind === "following" && !position.current.mode.opening)
     )
       loadHistory(instance);
+  };
+
+  const queued = useRef<{ readonly history: boolean } | null>(null);
+
+  const presentQueued = (): void => {
+    const pending = queued.current;
+
+    if (pending === null) return;
+    queued.current = null;
+    present(virtualizer, pending);
+  };
+
+  const queuePresent = (history: boolean): void => {
+    const pending = queued.current;
+    queued.current = { history: history || pending?.history === true };
+
+    if (pending === null) queueMicrotask(presentQueued);
+  };
+
+  const presentNow = (history: boolean): void => {
+    queued.current = { history: history || queued.current?.history === true };
+    presentQueued();
   };
 
   // oxlint-disable-next-line react/incompatible-library -- the bailout is the intended behaviour
@@ -410,7 +433,7 @@ export function TranscriptContent({
     estimateSize,
     getItemKey,
     initialOffset,
-    initialMeasurementsCache: initialMeasurements,
+    initialMeasurementsCache: initialMeasurements?.items ?? [],
     rangeExtractor,
     overscan: OVERSCAN,
     paddingStart: TRANSCRIPT_PADDING_START,
@@ -424,7 +447,7 @@ export function TranscriptContent({
     directDomUpdates: true,
     directDomUpdatesMode: "position",
     useFlushSync: false,
-    onChange: (instance) => present(instance, { history: true }),
+    onChange: () => queuePresent(true),
   });
 
   const measureRow = useCallback(
@@ -453,8 +476,32 @@ export function TranscriptContent({
   );
 
   const virtualRows = virtualizer.getVirtualItems();
-  const presentRows = useEffectEvent((): void => present(virtualizer, { history: false }));
+  const lastPainted = useRef(false);
+
+  const presentRows = useEffectEvent((): void => {
+    presentNow(false);
+
+    if (lastPainted.current || !ready || virtualRows.at(-1)?.index !== rows.length - 1) return;
+    lastPainted.current = true;
+    requestAnimationFrame(() => {
+      const channel = new MessageChannel();
+      channel.port1.onmessage = () =>
+        performance.mark("nyte:last-message-painted", { detail: sessionId });
+      channel.port2.postMessage(null);
+    });
+  });
+
   const askHistory = useEffectEvent((): void => pageHistory({ kind: "asked", ...historyTop }));
+
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- drops sizes measured at another width before the first present reads them
+  useLayoutEffect(() => {
+    if (
+      viewport !== null &&
+      initialMeasurements !== undefined &&
+      viewport.clientWidth !== initialMeasurements.width
+    )
+      virtualizer.measure();
+  }, [initialMeasurements, viewport, virtualizer]);
 
   // oxlint-disable-next-line nyte-code/no-direct-effect -- measures virtual rows and syncs sticky headers before paint
   useLayoutEffect(() => {
@@ -538,23 +585,24 @@ export function TranscriptContent({
       const anchor = current.kind === "reading" ? current.anchor : null;
       const rows = [...virtualizer.elementsCache.entries()];
 
-      const top =
-        scroll === null
-          ? undefined
-          : rows
-              .filter(
-                ([, row]) =>
-                  row.getBoundingClientRect().bottom > scroll.getBoundingClientRect().top,
-              )
-              .sort(
-                ([, first], [, second]) =>
-                  virtualizer.indexFromElement(first) - virtualizer.indexFromElement(second),
-              )[0];
+      const topRow = (viewport: HTMLDivElement) => {
+        const edge = viewport.getBoundingClientRect().top;
 
-      const row = anchor === null ? top : (rows.find(([key]) => key === anchor.key) ?? top);
+        return rows
+          .filter(([, element]) => element.getBoundingClientRect().bottom > edge)
+          .sort(
+            ([, first], [, second]) =>
+              virtualizer.indexFromElement(first) - virtualizer.indexFromElement(second),
+          )[0];
+      };
+
+      const row =
+        scroll === null || current.kind !== "reading"
+          ? undefined
+          : (rows.find(([key]) => key === anchor?.key) ?? topRow(scroll));
 
       const saved: ScrollViewState =
-        scroll !== null && row !== undefined && current.kind === "reading"
+        scroll !== null && row !== undefined
           ? { kind: "anchor", key: String(row[0]), offset: topIn(scroll, row[1]) }
           : { kind: "end" };
 
@@ -562,15 +610,17 @@ export function TranscriptContent({
         ...state,
         scroll: { ...state.scroll, [paneId]: saved },
       }));
-      measured.delete(measuredKey);
-      measured.set(measuredKey, virtualizer.takeSnapshot());
+      measured.delete(sessionId);
+
+      if (width.current !== undefined)
+        measured.set(sessionId, { width: width.current, items: virtualizer.takeSnapshot() });
 
       for (const key of measured.keys()) {
         if (measured.size <= MEASURED_TRANSCRIPTS) break;
         measured.delete(key);
       }
     },
-    [measuredKey, paneId, sessionId, viewStore, virtualizer],
+    [paneId, sessionId, viewStore, virtualizer],
   );
 
   // oxlint-disable-next-line nyte-code/no-direct-effect -- installs the virtualizer's scroll adjustment before it measures, and publishes scroll controls for the current viewport
@@ -658,10 +708,10 @@ export function TranscriptContent({
           <ViewportInput
             viewport={viewport}
             content={content}
-            onPresent={() => present(virtualizer, { history: true })}
+            onPresent={() => presentNow(true)}
             onResize={(height) => {
               flushSync(() => setViewportHeight(height));
-              present(virtualizer, { history: true });
+              presentNow(true);
             }}
             onHold={hold}
             onInput={touch}
@@ -674,7 +724,7 @@ export function TranscriptContent({
             dock={dock}
             onResize={(height) => {
               setDockHeight(height);
-              present(virtualizer, { history: true });
+              presentNow(true);
             }}
             onWheel={(delta) => {
               touch(delta < 0);

@@ -65,6 +65,7 @@ function openChat(opened: ClientConnection, session: SessionId): LiveView<ChatVi
   const activity = sessionActivityProjector();
   const paint = paintSpans<ChatView>(session, nextFrame);
   let drawn: ChatSnapshot | undefined;
+  performance.mark("nyte:session-requested", { detail: session });
 
   const pacer = createTextPacer<ChatView>(
     () => shownTranscripts().has(session),
@@ -82,6 +83,8 @@ function openChat(opened: ClientConnection, session: SessionId): LiveView<ChatVi
       const shown = showChat(snapshot, activity);
 
       if (shown.kind !== "shown") return shown;
+
+      if (drawn === undefined) performance.mark("nyte:session-view", { detail: session });
       drawn = snapshot;
       paint(shown.value);
       countWork(`publish:view:${session}`);

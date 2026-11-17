@@ -72,19 +72,19 @@ function UserMessagePreview({
   const [overflowing, setOverflowing] = useState(false);
   const [expanded, setExpanded] = useState(false);
 
-  // oxlint-disable-next-line nyte-code/no-direct-effect -- measures the message before paint for the expand control
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- measures the message before paint for the expand control; the observer's first report arrives after the frame's own layout, so the read forces none
   useLayoutEffect(() => {
     const content = contentRef.current;
 
     if (content === null) return undefined;
 
-    const measure = (): void => {
+    const observer = new ResizeObserver(() => {
       const lineHeight = Number.parseFloat(getComputedStyle(content).lineHeight);
-      setOverflowing(content.scrollHeight > lineHeight * USER_MESSAGE_PREVIEW_LINES);
-    };
+      flushSync(() =>
+        setOverflowing(content.scrollHeight > lineHeight * USER_MESSAGE_PREVIEW_LINES),
+      );
+    });
 
-    measure();
-    const observer = new ResizeObserver(measure);
     observer.observe(content);
 
     return () => observer.disconnect();

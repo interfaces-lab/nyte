@@ -231,7 +231,7 @@ export function ComposerFrame({
 
   const resizeEditor = useEffectEvent((): void => measureExpansion());
 
-  // oxlint-disable-next-line nyte-code/no-direct-effect -- observes frame and textarea sizes before paint
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- observes frame and textarea sizes before paint; the observer's first report arrives after the frame's own layout, so the first read forces none
   useLayoutEffect(() => {
     const area = areaRef.current?.readElement();
     const frame = frameRef.current;
@@ -243,7 +243,6 @@ export function ComposerFrame({
       resizeEditor();
     };
 
-    measure();
     const observer = new ResizeObserver(() => flushSync(measure));
     observer.observe(area);
     observer.observe(frame);
