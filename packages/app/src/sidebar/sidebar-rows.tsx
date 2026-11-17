@@ -61,6 +61,7 @@ export function DraftRow({
   const onOpen = (): void => windowTabs.showDraft(draft.id);
   const onDelete = () => windowTabs.removeDraft(draft.id);
   const title = draftPreviewText(useDebouncedValue(draft.composer.draft, 100));
+  const starting = draft.status.kind === "starting";
 
   const row = (
     <Row
@@ -69,20 +70,24 @@ export function DraftRow({
       xstyle={[
         styles.rowSurface,
         styles.sessionRow,
-        styles.draftRow,
+        !starting && styles.draftRow,
         selected && styles.rowSelected,
       ]}
     >
       {selected && <Row.Backdrop xstyle={styles.sessionSelection} />}
       <Row.Primary
-        title={`Draft: ${title}`}
+        title={starting ? title : `Draft: ${title}`}
         aria-current={selected ? "page" : undefined}
         onClick={onOpen}
       >
         <Row.Leading xstyle={styles.rowIcon}>
-          <span role="img" aria-label="Draft" {...props(styles.draftDot)} />
+          {starting ? (
+            <TaskMark state="working" />
+          ) : (
+            <span role="img" aria-label="Draft" {...props(styles.draftDot)} />
+          )}
         </Row.Leading>
-        <Row.Label xstyle={styles.draftLabel}>{title}</Row.Label>
+        <Row.Label xstyle={starting ? styles.sessionLabel : styles.draftLabel}>{title}</Row.Label>
         <Row.Meta xstyle={styles.rowMeta}>
           <TimeAgo timestamp={draft.updatedAt} />
         </Row.Meta>

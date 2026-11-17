@@ -93,6 +93,18 @@ export function useDrafts(): OpenDrafts {
   };
 }
 
+/** A draft keeps its row while it starts the chat of the same id, so the host's row for that chat waits until the draft is gone. */
+function withoutDrafted<T>(
+  rows: readonly T[],
+  drafts: readonly ChatDraft[],
+  id: (row: T) => string,
+): readonly T[] {
+  if (drafts.length === 0) return rows;
+  const drafted = new Set(drafts.map((draft) => draft.id));
+
+  return rows.filter((row) => !drafted.has(id(row)));
+}
+
 function groupsWithin(
   groups: readonly SessionViewGroup[],
   limit: number,
@@ -242,7 +254,7 @@ export function ChatsList({
   const drafts = context.showDrafts ? openDrafts : [];
 
   if (listed === undefined && drafts.length === 0) return null;
-  const rows = listed ?? [];
+  const rows = withoutDrafted(listed ?? [], drafts, (row) => row.session.id);
 
   const newChat = <AddRow label="New Chat" onClick={() => panes.newChat()} />;
 
@@ -381,7 +393,15 @@ export function FolderList({
   if (sessions === undefined && drafts.length === 0) return null;
 
   const groups =
-    sessions === undefined ? [] : folderView(sessions, view, now, context.chats, context.unread);
+    sessions === undefined
+      ? []
+      : folderView(
+          withoutDrafted(sessions, drafts, (session) => session.id),
+          view,
+          now,
+          context.chats,
+          context.unread,
+        );
 
   const listed = groups.flatMap((group) => group.sessions);
   const selected = listed.findIndex((session) => session.id === context.activeSessionId);
