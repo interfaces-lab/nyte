@@ -16,20 +16,19 @@ the current terminal without changing the system setting:
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 ```
 
-From the repository root, generate the native project and install Pods:
+From the repository root, generate the native project (`ios/`) and install Pods:
 
 ```sh
 pnpm install
-pnpm --dir packages/ios prebuild:dev --clean
-pod install --project-directory=packages/ios/ios
+pnpm --dir packages/ios native
 ```
 
-Start Metro in one terminal, then build and launch from another terminal with the
-same `DEVELOPER_DIR`:
+Start Metro in one terminal, then build and launch the app in the Simulator from
+another terminal with the same `DEVELOPER_DIR`:
 
 ```sh
-pnpm --dir packages/ios dev
-pnpm --dir packages/ios ios
+pnpm dev:ios
+pnpm --dir packages/ios simulator
 ```
 
 Connect a host from the welcome screen. For a connected iPhone, see
@@ -283,10 +282,10 @@ EAS profiles live in [`eas.json`](eas.json). Each sets `APP_VARIANT`, its EAS
 environment, and the update channel of the same name:
 
 ```sh
-pnpm --dir packages/ios build:dev         # simulator dev client, internal
-pnpm --dir packages/ios build:preview     # internal distribution
-pnpm --dir packages/ios build:production  # App Store and TestFlight, build number auto-increments
-pnpm --dir packages/ios submit            # upload the production build
+pnpm --dir packages/ios eas:dev         # simulator dev client, internal
+pnpm --dir packages/ios eas:preview     # internal distribution
+pnpm --dir packages/ios eas:production  # App Store and TestFlight, build number auto-increments
+pnpm --dir packages/ios eas:submit      # upload the production build
 ```
 
 The EAS project is `@nameisdaniel/nyte-ios`, id `5f78a9e7-057f-490e-ae2a-1dcdb12827d9`,
@@ -510,22 +509,22 @@ with Reanimated's Metro config for clearer error stacks.
 ```sh
 pnpm --dir packages/ios typecheck
 pnpm --dir packages/ios test
-pnpm --dir packages/ios bundle
+pnpm --dir packages/ios export
 ```
 
 `test` runs without native modules. It covers address and pairing-code policy,
 account configuration, enrollment, release and revocation against a fake broker and
 host, the saved-connection store's ordering, rollback, and restore policy, the
-request journal, transcript rows, and the canvas bridge. `bundle` writes a production
-Hermes bundle for iOS to `build/export` without a dev server. `dev`, `bundle`,
-`typecheck`, `ios:release`, and `ios:build` build `@nyte-ai/canvas` first with
+request journal, transcript rows, and the canvas bridge. `export` writes a production
+Hermes bundle for iOS to `build/export` without a dev server. `dev`, `export`,
+`typecheck`, `simulator:release`, and `build:app` build `@nyte-ai/canvas` first with
 `canvas:build`.
 
 Read [AGENTS.md](AGENTS.md) before changing the app.
 
 ### Local builds
 
-`dev`, `ios`, and `prebuild:dev` select the development variant from
+`dev`, `simulator`, `device` and `native` select the development variant from
 [Builds and variants](#builds-and-variants). The Debug build includes `expo-dev-client`, so
 local testing needs Xcode and Metro but no EAS build. Only the development variant
 registers Expo's generated scheme, so a Metro QR code opens Nyte Dev even when other
@@ -534,27 +533,27 @@ variants are installed.
 To run on a connected iPhone, enable Developer Mode on the phone, then run:
 
 ```sh
-pnpm --dir packages/ios ios --device
+pnpm --dir packages/ios device
 ```
 
 Pick your Apple team when Xcode asks. Real-device signing needs your own Apple team.
 
-For a local production build, regenerate the project for production and install Pods
-again:
+For a local production build, regenerate the project for production, which also
+installs Pods:
 
 ```sh
-APP_VARIANT=production pnpm --dir packages/ios prebuild --clean
-pod install --project-directory=packages/ios/ios
+pnpm --dir packages/ios native:release
 ```
 
-Then use `ios:release` or `ios:build`. `ios:release` builds and launches a Release
-app without Metro. `ios:build` skips Pods and copies the `.app` into `build/app`.
+Then use `simulator:release` or `build:app`. `simulator:release` builds and launches a Release
+app without Metro. `build:app` skips Pods and copies the `.app` into `build/app`.
 Git ignores `build/`, `ios/`, and `dist/`.
 
 Expo Go can't run this app. Native Markdown, SF Symbols, MMKV, VisionCamera, speech
 recognition, Live Activities, and the photo access module all need a development or
-Release build. Run `prebuild --clean` and `pod install` again after you change
-native dependencies, config plugins, or anything under `modules/`.
+Release build. Run `native` (or `native:release`) again after you change native
+dependencies, config plugins, or anything under `modules/`. It deletes `ios/` and
+generates it from scratch, Pods included.
 
 Expo generates the native Xcode project from `app.json` and `app.config.ts`. Change
 the app config, not the generated files.
@@ -567,7 +566,7 @@ If CocoaPods picks an SDK from mismatched Command Line Tools, use the selected
 Xcode's SDK:
 
 ```sh
-SDKROOT="$(xcrun --sdk macosx --show-sdk-path)" pod install --project-directory=packages/ios/ios
+SDKROOT="$(xcrun --sdk macosx --show-sdk-path)" pnpm --dir packages/ios native
 ```
 
 ### Native notes

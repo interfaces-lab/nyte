@@ -9,5 +9,5 @@
 - Use a clean border to indicate selected cards, not an added checkmark. The composer dock stays transparent around one elevated glass capsule.
 - In React Strict DOM `css.create`, use pixel strings for fixed line heights, such as `"24px"`; numeric line heights are CSS ratios. Native TextInput and Markdown style props still use numeric pixels.
 - Keep upstream reference provenance in the README. Do not copy unlicensed demo source or bundle provider keys.
-- Leave Metro and other dev servers to the user. Use bundle, typecheck, tests, and simulator build commands for verification.
+- Leave Metro and other dev servers to the user. Use export, typecheck, tests, and simulator build commands for verification.
 - Follow the [source layout](README.md#source-layout). Keep feature code in its owning flat folder; do not add generic `services`, `hooks`, or `utils` directories or barrel exports. The Expo Router folder holds route files only: keep the root layout limited to startup, providers, and the connection gate, and keep route files thin (parse params, render the owning feature's screen).
