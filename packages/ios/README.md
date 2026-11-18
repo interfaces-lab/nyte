@@ -517,7 +517,7 @@ account configuration, enrollment, release and revocation against a fake broker 
 host, the saved-connection store's ordering, rollback, and restore policy, the
 request journal, transcript rows, and the canvas bridge. `export` writes a production
 Hermes bundle for iOS to `build/export` without a dev server. `dev`, `export`,
-`typecheck`, `simulator:release`, and `build:app` build `@nyte-ai/canvas` first with
+and `typecheck` build `@nyte-ai/canvas` first with
 `canvas:build`.
 
 Read [AGENTS.md](AGENTS.md) before changing the app.
@@ -538,20 +538,15 @@ pnpm --dir packages/ios device
 
 Pick your Apple team when Xcode asks. Real-device signing needs your own Apple team.
 
-For a local production build, regenerate the project for production, which also
-installs Pods:
-
-```sh
-pnpm --dir packages/ios native:release
-```
-
-Then use `simulator:release` or `build:app`. `simulator:release` builds and launches a Release
-app without Metro. `build:app` skips Pods and copies the `.app` into `build/app`.
-Git ignores `build/`, `ios/`, and `dist/`.
+TestFlight and App Store builds go through EAS, which generates `ios/` itself. To try
+the production variant locally, run `APP_VARIANT=production pnpm exec expo prebuild
+--platform ios`, then `APP_VARIANT=production pnpm exec expo run:ios --configuration
+Release` from this package, and run `native` afterwards to go back to the development
+variant. Git ignores `build/`, `ios/`, and `dist/`.
 
 Expo Go can't run this app. Native Markdown, SF Symbols, MMKV, VisionCamera, speech
 recognition, Live Activities, and the photo access module all need a development or
-Release build. Run `native` (or `native:release`) again after you change native
+Release build. Run `native` again after you change native
 dependencies, config plugins, or anything under `modules/`. It deletes `ios/` and
 generates it from scratch, Pods included.
 
