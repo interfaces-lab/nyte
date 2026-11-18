@@ -53,6 +53,7 @@ test.each<{
 ])("a page of $name", (row) => {
   const window: DesktopWindow = {
     id: "w",
+    app: "nyte",
     launch: undefined,
     open: row.open,
     reloaded: row.reloaded,

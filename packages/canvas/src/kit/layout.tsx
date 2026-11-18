@@ -1,11 +1,64 @@
 import { create, props } from "@stylexjs/stylex";
+import { Children } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
+import { GRID_COLUMN_FLOOR, findLayoutRole, flowItems, pairFloor, snapStep } from "./floor.ts";
+import type { FlowItem } from "./floor.ts";
 
 export type Gap = 0 | 1 | 2 | 3 | 4 | 6;
+
+const GAPS: readonly Gap[] = [0, 1, 2, 3, 4, 6];
+
+const GAP_SPACE = {
+  0: "0px",
+  1: space.s1,
+  2: space.s2,
+  3: space.s3,
+  4: space.s4,
+  6: space.s6,
+} as const;
+
+const spacers = create({
+  block: { flexShrink: 0 },
+  1: { flexBasis: space.s1, blockSize: space.s1 },
+  2: { flexBasis: space.s2, blockSize: space.s2 },
+  3: { flexBasis: space.s3, blockSize: space.s3 },
+  4: { flexBasis: space.s4, blockSize: space.s4 },
+  6: { flexBasis: space.s6, blockSize: space.s6 },
+  inline1: { flexBasis: space.s1 },
+  inline2: { flexBasis: space.s2 },
+  inline3: { flexBasis: space.s3 },
+  inline4: { flexBasis: space.s4 },
+  inline6: { flexBasis: space.s6 },
+});
+
+const INLINE_SPACERS = {
+  1: spacers.inline1,
+  2: spacers.inline2,
+  3: spacers.inline3,
+  4: spacers.inline4,
+  6: spacers.inline6,
+} as const;
+
+export function spaceFlow(items: readonly FlowItem[], axis: "block" | "inline"): ReactNode[] {
+  return items.flatMap((item, index) => {
+    const step = snapStep(item.space, GAPS, 0);
+
+    if (step === 0) return [item.node];
+
+    return [
+      <div
+        key={`floor-${String(index)}`}
+        aria-hidden="true"
+        {...props(spacers.block, axis === "block" ? spacers[step] : INLINE_SPACERS[step])}
+      />,
+      item.node,
+    ];
+  });
+}
 
 const gaps = create({
   0: { gap: 0 },
@@ -47,7 +100,7 @@ const justifies = {
 
 export function Stack({
   direction = "column",
-  gap = 2,
+  gap: asked = 2,
   align,
   justify,
   wrap = false,
@@ -60,18 +113,27 @@ export function Stack({
   readonly wrap?: boolean;
   readonly children?: ReactNode;
 }): ReactElement {
+  const gap = snapStep(asked, GAPS, 2);
+  const axis = direction === "row" ? "inline" : "block";
+  const items = flowItems(children, gap, axis);
+
+  const raised =
+    wrap && items !== undefined
+      ? snapStep(Math.max(...items.map((item) => item.space)), GAPS, gap)
+      : gap;
+
   return (
     <div
       {...props(
         stack.base,
         stack[direction],
-        gaps[gap],
+        gaps[items === undefined || wrap ? raised : 0],
         wrap && stack.wrap,
         align !== undefined && aligns[align],
         justify !== undefined && justifies[justify],
       )}
     >
-      {children}
+      {items === undefined || wrap ? children : spaceFlow(items, axis)}
     </div>
   );
 }
@@ -81,15 +143,15 @@ const grid = create({
   auto: (minWidth: number) => ({
     gridTemplateColumns: `repeat(auto-fill, minmax(min(${String(minWidth)}px, 100%), 1fr))`,
   }),
-  fixed: (columns: number) => ({
-    gridTemplateColumns: `repeat(${String(columns)}, minmax(0, 1fr))`,
+  fixed: (columns: number, gap: string) => ({
+    gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, max(calc(${space.s1} * ${String(GRID_COLUMN_FLOOR)}), calc((100% - ${String(columns - 1)} * ${gap}) / ${String(columns)}))), 1fr))`,
   }),
 });
 
 export function Grid({
-  columns = "auto",
+  columns: askedColumns = "auto",
   minWidth = 160,
-  gap = 2,
+  gap: asked = 2,
   children,
 }: {
   readonly columns?: number | "auto";
@@ -97,12 +159,19 @@ export function Grid({
   readonly gap?: Gap;
   readonly children?: ReactNode;
 }): ReactElement {
+  const roles = Children.toArray(children).map(findLayoutRole);
+  const floor = Math.max(0, ...roles.map((role) => pairFloor(role, role, "inline")));
+  const gap = snapStep(Math.max(snapStep(asked, GAPS, 2), floor), GAPS, 2);
+  const columns = askedColumns === "auto" ? Number.NaN : Math.round(Number(askedColumns));
+
   return (
     <div
       {...props(
         grid.base,
         gaps[gap],
-        columns === "auto" ? grid.auto(minWidth) : grid.fixed(columns),
+        Number.isFinite(columns) && columns >= 1
+          ? grid.fixed(columns, GAP_SPACE[gap])
+          : grid.auto(Number.isFinite(Number(minWidth)) ? Number(minWidth) : 160),
       )}
     >
       {children}

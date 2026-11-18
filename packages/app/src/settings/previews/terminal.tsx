@@ -25,6 +25,7 @@ function mountTerminalPreview(host: HTMLDivElement | null): (() => void) | undef
   void loadGhostty()
     .then((engine) =>
       openTerminalSurface(engine, host, {
+        grid: "element",
         cursor: "always",
         newlineMode: false,
         reply: () => undefined,

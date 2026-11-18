@@ -8,10 +8,6 @@ import { storeConformance, storeMigrationConformance } from "./store-conformance
 
 true satisfies Pool extends PostgresPool ? true : false;
 
-/**
- * Booting PGlite runs initdb for seconds; cloning a booted, untouched one takes a fraction of that.
- * A clone started before the template is ready never settles.
- */
 const template = new PGlite();
 
 afterAll(() => template.close());

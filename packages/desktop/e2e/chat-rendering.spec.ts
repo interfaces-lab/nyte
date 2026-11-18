@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { FIXTURES } from "./baseline.ts";
 import { expect, test } from "./fixtures.ts";
 import { chatPane, composer, messages, openChat, openNewChat, send } from "./ui.ts";
+import { captureWindow, recordWindow } from "./window-capture.ts";
+import type { ShownWindow } from "./window-capture.ts";
 
 test.use({ chapter: "chat-rendering" });
 
@@ -33,10 +35,9 @@ declare global {
   }
 }
 
-async function capture(page: Page, testInfo: TestInfo, name: string): Promise<void> {
-  const screenshot = testInfo.outputPath(`${name}.png`);
-  await page.screenshot({ path: screenshot });
-  await testInfo.attach(name, { path: screenshot, contentType: "image/png" });
+async function capture(shown: ShownWindow, testInfo: TestInfo, name: string): Promise<void> {
+  const page = shown.page;
+  await testInfo.attach(name, await captureWindow(shown, testInfo.outputPath(`${name}.png`)));
   const accessibility = testInfo.outputPath(`${name}-accessibility.txt`);
   await writeFile(accessibility, await page.locator("body").ariaSnapshot());
   await testInfo.attach(`${name}-accessibility`, {
@@ -259,16 +260,10 @@ test("chat preserves visible rows, the latest summary and message editing", asyn
   await expect(card).toBeVisible();
   await expect(card.getByText("render-proof.txt", { exact: true })).toBeVisible();
   await observeFrames(page);
-  const replay = testInfo.outputPath("replay.webm");
-  await page.screencast.start({
-    path: replay,
-    fps: 30,
-    quality: 80,
-    size: { width: 1440, height: 1000 },
-  });
+  const replay = await recordWindow(desktop, testInfo.outputPath("replay"));
 
   try {
-    await capture(page, testInfo, "01-files-changed");
+    await capture(desktop, testInfo, "01-files-changed");
     await phase(page, "review changes from the summary");
     await card.getByRole("button", { name: "Review", exact: true }).click();
     const changes = page
@@ -276,7 +271,7 @@ test("chat preserves visible rows, the latest summary and message editing", asyn
       .getByRole("tabpanel", { name: "Changes" });
     await expect(changes.getByRole("button", { name: /^This Chat\b/u })).toBeVisible();
     await expect(changes.getByRole("code")).toContainText("render proof");
-    await capture(page, testInfo, "01a-review-changes");
+    await capture(desktop, testInfo, "01a-review-changes");
     await page.getByRole("button", { name: "Close workbench panel" }).click();
     await card.getByRole("button", { name: "Open render-proof.txt in Changes" }).click();
     await expect(
@@ -291,11 +286,11 @@ test("chat preserves visible rows, the latest summary and message editing", asyn
       await expect(card).toBeVisible();
     }
 
-    await capture(page, testInfo, "02-two-follow-ups");
+    await capture(desktop, testInfo, "02-two-follow-ups");
     await phase(page, "switch away", false);
     await openChat(page, FIXTURES.alpha);
     await expect(messages(page).getByText("Echo: Hello from alpha", { exact: true })).toBeVisible();
-    await capture(page, testInfo, "03-alpha");
+    await capture(desktop, testInfo, "03-alpha");
     await openChat(page, "/render-change");
     await expect(card).toBeVisible();
     await phase(page, "native history scrolling");
@@ -303,7 +298,7 @@ test("chat preserves visible rows, the latest summary and message editing", asyn
 
     for (let turn = 0; turn < 6; turn += 1)
       await observeAction(page, `history up ${String(turn + 1)}`, () => page.mouse.wheel(0, -600));
-    await capture(page, testInfo, "04-scrolled-up");
+    await capture(desktop, testInfo, "04-scrolled-up");
 
     for (let turn = 0; turn < 6; turn += 1)
       await observeAction(page, `history down ${String(turn + 1)}`, () => page.mouse.wheel(0, 600));
@@ -311,7 +306,7 @@ test("chat preserves visible rows, the latest summary and message editing", asyn
 
     if (await bottom.isVisible()) await bottom.click();
     await expect(card).toBeInViewport();
-    await capture(page, testInfo, "05-back-at-end");
+    await capture(desktop, testInfo, "05-back-at-end");
 
     await phase(page, "new turn footer handoff");
     await log.locator("[data-row-key^='changes:']").evaluate((element, text) => {
@@ -333,10 +328,10 @@ test("chat preserves visible rows, the latest summary and message editing", asyn
     await observeAction(page, "send the recorded prompt", () => field.press("Enter"));
     await expect(chatPane(page).getByRole("button", { name: "Stop response" })).toBeVisible();
     await expect(card).toHaveCount(0);
-    await capture(page, testInfo, "06-pending-reservation");
+    await capture(desktop, testInfo, "06-pending-reservation");
     await expect(log.getByText(`Echo: ${PROMPT}`, { exact: true })).toBeVisible();
     await expect(card).toBeVisible();
-    await capture(page, testInfo, "07-completed-reservation");
+    await capture(desktop, testInfo, "07-completed-reservation");
 
     const pending = await page.evaluate(() => ({
       seen: window.chatRenderingProbe?.handoff?.seen,
@@ -371,11 +366,11 @@ test("chat preserves visible rows, the latest summary and message editing", asyn
       editor.pressSequentially(appended),
     );
     await expect(editor).toHaveText(edited);
-    await capture(page, testInfo, "08-edited-prompt");
+    await capture(desktop, testInfo, "08-edited-prompt");
     await observeAction(page, "cancel the message edit", () => editor.press("Escape"));
     await expect(editor).toHaveCount(0);
     await expect(prompt.locator("[data-composer-readonly]")).toHaveText(original);
-    await capture(page, testInfo, "09-cancelled-edit");
+    await capture(desktop, testInfo, "09-cancelled-edit");
 
     await phase(page, "edit and save");
     await observeAction(page, "reopen the message editor", () =>
@@ -392,13 +387,12 @@ test("chat preserves visible rows, the latest summary and message editing", asyn
     });
     await observeAction(page, "submit the message edit", () => editor.press("Enter"));
     await expect(card).toHaveCount(0);
-    await capture(page, testInfo, "10-edit-submitted");
+    await capture(desktop, testInfo, "10-edit-submitted");
     await expect(log.getByText(`Echo: ${edited}`, { exact: true })).toBeVisible();
     await expect(card).toBeVisible();
-    await capture(page, testInfo, "11-edit-completed");
+    await capture(desktop, testInfo, "11-edit-completed");
   } finally {
-    await page.screencast.stop();
-    await testInfo.attach("replay", { path: replay, contentType: "video/webm" });
+    await testInfo.attach("replay", await replay.stop());
 
     const observations = await page.evaluate(() => {
       const probe = window.chatRenderingProbe;
@@ -418,7 +412,7 @@ test("chat preserves visible rows, the latest summary and message editing", asyn
       path: frames,
       contentType: "application/json",
     });
-    await capture(page, testInfo, "12-final-state");
+    await capture(desktop, testInfo, "12-final-state");
     expect(observations.frames).toBeGreaterThan(0);
     expect(observations.failures).toEqual([]);
   }

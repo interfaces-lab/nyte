@@ -29,6 +29,7 @@ import { windowTabs } from "../tabs/window-tabs.ts";
 import { parseWindowOpen } from "../contract/desktop-window.ts";
 import type { DesktopWindow } from "../contract/desktop-window.ts";
 import { CustomizeSurface } from "../customize/customize.tsx";
+import { openAppWindow } from "../commands/apps.ts";
 import { openWindowInEditor } from "../commands/window-commands.ts";
 import { ProjectOverview } from "../projects/project-overview.tsx";
 import {
@@ -253,7 +254,11 @@ const routeTree = rootRoute.addChildren([workspaceRouteTree, settingsRoute]);
 export function startWindowTabs(desktopWindow: DesktopWindow): void {
   windowTabs.start(desktopWindow);
 
-  if (desktopWindow.open !== undefined) openWindowInEditor(parseWindowOpen(desktopWindow.open));
+  if (desktopWindow.open === undefined) return;
+  const open = parseWindowOpen(desktopWindow.open);
+
+  if (open.kind === "app") openAppWindow(open);
+  else openWindowInEditor(open);
 }
 
 export function windowTabRoute(): string {

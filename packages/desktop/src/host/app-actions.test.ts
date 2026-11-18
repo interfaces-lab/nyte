@@ -243,6 +243,7 @@ socketTest(
             heights: { chat: 312, phone: 640 },
             errors: [],
             console: [{ level: "log", text: "hi" }],
+            findings: [],
           },
         };
       },

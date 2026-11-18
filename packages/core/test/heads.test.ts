@@ -218,7 +218,7 @@ describe("heads", () => {
     ).toEqual(["One.", "Two."]);
 
     const summary = await (
-      await session.move({ kind: "commit", id: two.id }, { abandoned: { summarize: {} } })
+      await session.move({ kind: "commit", id: two.id }, { abandoned: { kind: "summarize" } })
     ).settled();
 
     assert(summary.kind === "moved");

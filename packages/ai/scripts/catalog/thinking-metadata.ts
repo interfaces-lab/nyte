@@ -49,7 +49,6 @@ const OPENAI_RESPONSES_NONE_REASONING_MODELS = new Set([
   "gpt-5.6-luna",
 ]);
 
-/** The API rejects `reasoning.effort: "none"` for these models. */
 const OPENAI_EFFORT_REQUIRED_MODEL_IDS = new Set(["gpt-6-astra", "gpt-6.2-astra", "gpt-6.2-sol"]);
 
 const ANTHROPIC_ADAPTIVE_THINKING_ID_PARTS = [
@@ -70,10 +69,6 @@ const ANTHROPIC_ADAPTIVE_THINKING_ID_PARTS = [
   "fable-5",
 ];
 
-/**
- * Claude models that accept `thinking: {type: "disabled"}` although models.dev lists no thinking
- * toggle for them. https://platform.claude.com/docs/en/build-with-claude/thinking#configuring-thinking
- */
 const ANTHROPIC_DISABLED_THINKING_MODEL = /(?:^|[./])claude-opus-5(?:-\d{8})?$/;
 
 const ANTHROPIC_FIXED_TEMPERATURE_ID_PARTS = [

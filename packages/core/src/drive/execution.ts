@@ -56,7 +56,6 @@ const PAGE = 100;
 
 const ADVANCE_RETRY = { baseDelayMs: 1_000, maxAgentDelayMs: 60_000 } as const;
 
-/** The longest delay a timer takes; a longer one fires after 1 ms. A timer set to it fires early, finds nothing due and is set again. */
 const MAX_TIMER_MS = 2 ** 31 - 1;
 
 type Refused = Extract<AdvanceReport, { readonly kind: "busy" | "fenced" }>;

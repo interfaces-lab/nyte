@@ -6,4 +6,6 @@ Playwright tests for the Electron app. Read `README.md` for how to run them. The
 - The `problems` fixture fails a test on any page error or `console.error`, except lines starting with `DEV:`. An expected error is asserted by name.
 - A new seeded chat belongs in the seeded baseline next to `FIXTURES`, answered by the scripted catalog (`e2eAnswers`); that rebuilds the cache.
 - No real providers. Each launch's own host reaches the scripted catalog over a local endpoint under an isolated `HOME`; `startE2eHost` owns that host and its launchd job.
+- The page and the window's vibrancy both follow the native theme. Change the theme with `setTheme`; never emulate `colorScheme`, or the page and the material behind it disagree.
 - Collect errors on any page a test opens itself with `collectErrors` from `@nyte-ai/app/e2e/errors`, and assert them.
+- A chapter over Nyte, Code and Studio together takes its windows from the `desk` fixture, one launch per test. A window the others cover stops drawing, so a change that must show live in several windows needs `desk.tile()` first.

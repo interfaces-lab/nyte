@@ -55,7 +55,7 @@ async function elevatedRows(sdk: Connection, at: Workspace): Promise<Record<stri
     "git.stage": () => git.api.stage([]),
     "git.unstage": () => git.api.unstage([]),
     "git.discard": () => git.api.discard([]),
-    "git.commit": () => git.api.commit({ message: "no", files: "staged" }),
+    "git.commit": () => git.api.commit({ message: "no", files: { kind: "staged" } }),
     "git.branch": () => git.api.branch({ name: "no", checkout: false }),
     "git.checkout": () => git.api.checkout({ name: "no" }),
     "git.push": () => git.api.push(),
@@ -190,7 +190,7 @@ describe("connection gate (§52 rule 5)", () => {
 
     assert(git.kind === "available");
     expect(await git.api.status()).toEqual({ kind: "none" });
-    await expect(git.api.commit({ message: "no", files: "all" })).rejects.toMatchObject({
+    await expect(git.api.commit({ message: "no", files: { kind: "all" } })).rejects.toMatchObject({
       code: "denied",
     });
   });

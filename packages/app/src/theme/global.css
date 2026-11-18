@@ -33,6 +33,10 @@
     display: inline;
   }
 
+  [data-composer-selected] ::selection {
+    background: transparent;
+  }
+
   [data-nyte-session-drag-active],
   [data-nyte-session-drag-active] * {
     cursor: grabbing !important;

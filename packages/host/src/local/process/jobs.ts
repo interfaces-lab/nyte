@@ -500,9 +500,11 @@ function createOutputLog(limit: number): OutputLog {
     if (!paused && lag > PAUSE_BYTES) {
       paused = true;
       source.pause();
+      dev("jobs", "output paused", { behind: lag });
     } else if (paused && lag < RESUME_BYTES) {
       paused = false;
       source.resume();
+      dev("jobs", "output resumed", { behind: lag });
     }
   };
 

@@ -203,7 +203,6 @@ const mac = {
   forceCodeSigning: true,
   entitlements: "build/entitlements.mac.plist",
   entitlementsInherit: "build/entitlements.mac.plist",
-  // macOS 26 and later draw the icon from the catalog; older ones fall back to the ICNS.
   extendInfo: { CFBundleDocumentTypes: DOCUMENT_TYPES, CFBundleIconName: "Icon" },
   extraResources: [
     ...CLI,
@@ -255,6 +254,7 @@ export default {
     { from: "resources/adblock.generated.bin", to: "adblock.bin" },
     { from: "../app/dist", to: "app" },
     { from: "../canvas/dist/shell", to: "canvas" },
+    { from: "../canvas/dist/board", to: "board" },
   ],
   mac: build === PACKAGED_BUILDS.production ? mac : { ...mac, notarize: false },
   dmg: {

@@ -16,7 +16,11 @@ const turn = asId<"turn">("turn-1");
 
 const run = asId<"run">("run-1");
 
-function user<S extends UserMessage["status"]>(id: string, content: string, status: S) {
+function user<const S extends UserMessage["status"]>(
+  id: string,
+  content: string,
+  status: S,
+): UserMessage & { readonly status: S } {
   return {
     id: asId<"message">(id),
     turn,
@@ -27,7 +31,7 @@ function user<S extends UserMessage["status"]>(id: string, content: string, stat
     delivery: "steer",
     status,
     siblings: { index: 0, count: 1, ids: [] },
-  } satisfies UserMessage;
+  };
 }
 
 const landed = { kind: "landed", commit: asId<"commit">("prompt-1"), run, replaced: null } as const;
@@ -53,6 +57,16 @@ function part<K extends PartDefinition>(
 
 const untouched = { count: 0, paths: [] };
 
+const noUsage = {
+  input: 0,
+  output: 0,
+  cacheRead: 0,
+  cacheWrite: 0,
+  reasoning: null,
+  total: 0,
+  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+};
+
 const ended: TurnInfo = {
   id: turn,
   run: null,
@@ -61,15 +75,7 @@ const ended: TurnInfo = {
     kind: "ended",
     end: {
       kind: "completed",
-      usage: {
-        input: 0,
-        output: 0,
-        cacheRead: 0,
-        cacheWrite: 0,
-        reasoning: null,
-        total: 0,
-        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-      },
+      usage: noUsage,
     },
   },
   startedAt: 0,
@@ -103,6 +109,7 @@ function view(messages: readonly Message[], overrides: Partial<SessionView> = {}
     execution: { kind: "idle", lastRun: null },
     reportsHeld: false,
     seenThrough: null,
+    usage: noUsage,
     background: [],
     configuration: { selected: null, effective: null },
     context: { tokens: 0, window: 1, lastRequest: null },
@@ -152,14 +159,6 @@ describe("conversationRows", () => {
         head: asId<"head">("main"),
         startedAt: 0,
         attempt: 1,
-        configuration: {
-          kind: "exact",
-          model: { provider: "test", id: "test" },
-          thinking: "off",
-          agent: null,
-          settings: {},
-          settingsVersion: "test",
-        },
         origin: { kind: "input", message: asId<"message">("prompt-1") },
       },
       phase: "responding",

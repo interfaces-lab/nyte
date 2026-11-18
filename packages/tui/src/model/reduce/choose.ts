@@ -210,9 +210,9 @@ const CHOOSERS: Choosers = {
       case "chat.queue.delete":
         return reduce(closed, { kind: "withdraw", message: row.id }, now);
       case "chat.queue.up":
-        return reduce(state, { kind: "reorder", message: row.id, to: "earlier" }, now);
+        return reduce(state, { kind: "reorder", message: row.id, to: { kind: "earlier" } }, now);
       case "chat.queue.down":
-        return reduce(state, { kind: "reorder", message: row.id, to: "later" }, now);
+        return reduce(state, { kind: "reorder", message: row.id, to: { kind: "later" } }, now);
       default:
         return reduce(closed, { kind: "promote", message: row.id }, now);
     }
@@ -304,10 +304,10 @@ const CHOOSERS: Choosers = {
 
     const abandoned =
       msg.typed !== null
-        ? { summarize: { instructions: msg.typed } }
+        ? { kind: "summarize" as const, instructions: msg.typed }
         : msg.choice === "summarize"
-          ? { summarize: { instructions: null } }
-          : ("keep" as const);
+          ? { kind: "summarize" as const, instructions: null }
+          : { kind: "keep" as const };
 
     return reduce(
       withoutTree,

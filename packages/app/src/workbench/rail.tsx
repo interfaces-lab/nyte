@@ -15,6 +15,7 @@ import { formatTokens, formatUsd } from "../lib/format.ts";
 import { chatStore } from "../data/chat-store.ts";
 import { useWatchSelect } from "../data/watch-store.ts";
 import { useVcsChanges, useVcsSnapshot } from "../data/vcs.ts";
+import { folderName, useHomeWorkspace } from "../data/workspaces.ts";
 import { usePaneLayout } from "../panes/pane-context.tsx";
 import { activeSelection, sameSelection } from "../panes/pane-layout.ts";
 import { ProjectRail } from "../projects/project-rail.tsx";
@@ -262,7 +263,7 @@ function ChangesRow({
   );
 }
 
-function RailRow({
+export function RailRow({
   icon,
   label,
   title,
@@ -321,6 +322,7 @@ export function Rail({
   const head = project && vcs.data?.kind === "repository" ? vcs.data : undefined;
   const statusShown = sessionId !== undefined || head !== undefined;
   const rail = railModel({ view, scope, capabilities, repository: head !== undefined });
+  const home = useHomeWorkspace();
 
   const collapse = (
     <Button
@@ -356,7 +358,7 @@ export function Rail({
 
       {sessionId !== undefined && <ProjectRail sessionId={sessionId} />}
 
-      {(rail.openTabs.length > 0 || !statusShown) && (
+      {rail.openTabs.length > 0 && (
         <section {...props(workbenchStyles.railSection)}>
           <div {...props(workbenchStyles.railHeading)}>
             <span {...props(workbenchStyles.railHeadingText)}>Open Tabs</span>
@@ -385,8 +387,9 @@ export function Rail({
       <section {...props(workbenchStyles.railSection)}>
         <div {...props(workbenchStyles.railHeading)}>
           <span {...props(workbenchStyles.railHeadingText)}>
-            {workspace === undefined ? "On This Mac" : `On ${workspace.name}`}
+            {`On ${folderName(workspace, home)}`}
           </span>
+          {!statusShown && rail.openTabs.length === 0 && collapse}
         </div>
         {rail.launchers.map((launcher) => (
           <RailRow

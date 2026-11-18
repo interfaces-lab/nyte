@@ -15,12 +15,11 @@
     "test": "install-electron && vitest --run",
     "update:test": "node scripts/update-test.mjs",
     "install:local": "node scripts/install-local.mjs",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p e2e",
+    "typecheck": "node ../../node_modules/@typescript/native/bin/tsc --noEmit && node ../../node_modules/@typescript/native/bin/tsc --noEmit -p e2e",
     "grid": "playwright test --config e2e/playwright.config.ts e2e/grid.spec.ts --workers=1 --retries=0 --reporter=list",
     "grid:diff": "node e2e/grid/diff.ts",
     "package": "node scripts/build.mjs --package --publish never",
-    "package:app": "node scripts/build.mjs --package --dir",
-    "package:bench": "NYTE_DESKTOP_BUILD='Nyte Bench' node scripts/build.mjs --package --dir"
+    "package:app": "node scripts/build.mjs --package --dir"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.325",
@@ -35,7 +34,6 @@
     "@electron/osx-sign": "^2.7.2",
     "@fontsource-variable/inter": "^5.3.0",
     "@fontsource-variable/jetbrains-mono": "^5.3.0",
-    "@hona/strobe": "catalog:",
     "@nyte-ai/ai": "workspace:*",
     "@nyte-ai/app": "workspace:*",
     "@nyte-ai/bench": "workspace:*",

@@ -372,7 +372,7 @@ describe("admission", () => {
 
     const edit = await session.send("Use v2.", {
       replace: original.message,
-      abandoned: { summarize: {} },
+      abandoned: { kind: "summarize" },
     });
 
     await step;
@@ -412,7 +412,7 @@ describe("admission", () => {
 
     const edit = await session.send("Use v2.", {
       replace: original.message,
-      abandoned: { summarize: {} },
+      abandoned: { kind: "summarize" },
     });
 
     const outcome = { kind: "summary-failed", reason: "No model." };

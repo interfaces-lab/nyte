@@ -32,12 +32,10 @@ const FIELD_NAMES = {
   daybreak: "Daybreak",
 } as const satisfies Record<ModelField, string>;
 
-/** Width a switch's column takes in a row, arrows included: `  ← Daybreak Off →`. */
 function switchWidth(mode: ModelMode): number {
   return MODE_LABELS[mode].length + 10;
 }
 
-/** The narrowest body that shows `mode` in each row; Fast fits beside the effort column at 62. */
 function switchMinWidth(mode: ModelMode): number {
   return mode === "fast" ? 62 : 62 + switchWidth(mode);
 }

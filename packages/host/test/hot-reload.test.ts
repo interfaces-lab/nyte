@@ -2,11 +2,12 @@ import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promi
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { memoryStore } from "@nyte-ai/core/store";
+import { dev } from "@nyte-ai/core";
 import type { Host, Session } from "@nyte-ai/core";
 import type { HostView } from "@nyte-ai/schema";
 import { getSystemMessageText } from "@nyte-ai/schema/model";
 import type { Message } from "@nyte-ai/schema/model";
-import { afterEach, assert, describe, expect, it } from "vitest";
+import { afterEach, assert, describe, expect, it, onTestFinished } from "vitest";
 import { localProvider, openHost } from "../src/index.ts";
 import { fakeModels } from "./fixtures/fake-models.ts";
 import type { FakeModels } from "./fixtures/fake-models.ts";
@@ -178,9 +179,18 @@ describe("hot reload", () => {
       await addPlugin(opened.session, join(dir, "fresh.mjs"), "fresh", "fresh-name"),
     ).toContain("fresh-name");
     const reloaded = await readFile(log, "utf8");
+    const refreshed = Promise.withResolvers<unknown>();
+    dev.on((line) => {
+      if (line.startsWith("DEV:resources refreshed ") && line.includes(".nyte/plugins/README.md"))
+        refreshed.resolve(JSON.parse(line.slice("DEV:resources refreshed ".length)));
+    });
+    onTestFinished(() => dev.off());
     await writeFile(join(dir, "README.md"), "More notes.\n");
-    await new Promise((resolve) => setTimeout(resolve, 500));
 
+    expect(await refreshed.promise).toMatchObject({
+      paths: [".nyte/plugins/README.md"],
+      reloaded: false,
+    });
     expect(before.split("\n").filter(Boolean)).toHaveLength(1);
     expect(reloaded.split("\n").filter(Boolean)).toHaveLength(2);
     expect(await readFile(log, "utf8")).toBe(reloaded);

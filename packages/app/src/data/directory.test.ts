@@ -20,25 +20,29 @@ function snapshot(ids: readonly string[], rows: readonly SessionInfo[]): Session
 test.each<{
   readonly name: string;
   readonly snapshot: SessionsSnapshot | null;
-  readonly shown: "waiting" | readonly string[];
+  readonly shown:
+    | { readonly kind: "waiting" }
+    | { readonly kind: "shown"; readonly ids: readonly string[] };
 }>([
-  { name: "no snapshot yet waits", snapshot: null, shown: "waiting" },
+  { name: "no snapshot yet waits", snapshot: null, shown: { kind: "waiting" } },
   {
     name: "the rows show in the window's order",
     snapshot: snapshot(["b", "a"], [a, b]),
-    shown: ["b", "a"],
+    shown: { kind: "shown", ids: ["b", "a"] },
   },
   {
     name: "an id without a row is skipped",
     snapshot: snapshot(["a", "gone", "b"], [a, b]),
-    shown: ["a", "b"],
+    shown: { kind: "shown", ids: ["a", "b"] },
   },
 ])("$name", (row) => {
   const shown = showSessions(row.snapshot);
 
-  expect(shown.kind === "shown" ? shown.value.map((info) => info.id) : shown.kind).toEqual(
-    row.shown,
-  );
+  expect(
+    shown.kind === "shown"
+      ? { kind: shown.kind, ids: shown.value.map((info) => info.id) }
+      : { kind: shown.kind },
+  ).toEqual(row.shown);
 });
 
 test.each<{

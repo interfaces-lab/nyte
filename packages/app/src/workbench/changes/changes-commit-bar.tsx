@@ -4,6 +4,7 @@ import type { ReactElement } from "react";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import type {
+  GitCommitFiles,
   GitHubAccountState,
   GitHubApi,
   GitHubPullRequestInput,
@@ -273,8 +274,8 @@ function actionFailureMessage(cause: unknown): CommitBarResult {
   return { tone: "error", text: "The action didn’t go through.", detail: errorMessage(cause) };
 }
 
-function commitTargetFor(scope: WorkbenchChangesScope): "staged" | "all" {
-  return scope.kind === "staged" ? "staged" : "all";
+function commitTargetFor(scope: WorkbenchChangesScope): GitCommitFiles {
+  return scope.kind === "staged" ? { kind: "staged" } : { kind: "all" };
 }
 
 function pullRequestInput(message: string): GitHubPullRequestInput {

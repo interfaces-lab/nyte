@@ -1,17 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
 import { lstat, mkdir, open, readFile, readlink, rename, rm, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, posix, resolve } from "node:path";
 import { asId, SdkError } from "@nyte-ai/schema";
-import type {
-  ChangeSet,
-  DiffOptions,
-  LineStat,
-  PatchEntry,
-  RunId,
-  SnapshotId,
-} from "@nyte-ai/schema";
+import type { ChangeSet, DiffOptions, LineStat, PatchEntry, SnapshotId } from "@nyte-ai/schema";
 import { dev } from "@nyte-ai/core";
-import type { ExecutionEnv, SnapshotsApi } from "@nyte-ai/core";
+import type { SnapshotScope, SnapshotsApi } from "@nyte-ai/core";
 import { sha256 } from "../../hash.ts";
 import { run } from "../process/command.ts";
 import type { Ran } from "../process/command.ts";
@@ -27,11 +20,29 @@ import type { Changed } from "../git/patch.ts";
 import { snapshotIndex } from "./snapshot-index.ts";
 import type { Repository } from "./snapshot-index.ts";
 import { decodeText } from "../text.ts";
-import { WALK_LIMIT, walkTree } from "../files/tree.ts";
+import { walkTree } from "../files/tree.ts";
+import { readErrorCode } from "../../fs-errors.ts";
+import { openJournal } from "./journal.ts";
+import type { Change } from "./journal.ts";
 
 type Manifest = Readonly<Record<string, string>>;
 
 type Tree = { readonly files: Manifest; readonly incomplete: boolean };
+
+type Seen = { readonly stamp: string; readonly hash: string };
+
+type Discovery =
+  | { readonly kind: "unwalked" }
+  | { readonly kind: "walked"; readonly files: ReadonlySet<string> }
+  | { readonly kind: "over-limit" };
+
+type FileEntry = {
+  readonly path: string;
+  readonly kind: "file" | "symlink";
+  readonly size: number;
+  readonly mtimeMs: number;
+  readonly ino: number;
+};
 
 type Kept = {
   readonly id: string;
@@ -65,8 +76,6 @@ const DIFF = [
   "-M",
 ];
 
-const BEFORE_KEPT = 1_000;
-
 const KEPT_REF = "refs/nyte/kept";
 
 const LEGACY_REFS = "refs/nyte/snapshots/";
@@ -79,13 +88,19 @@ const STORE_CONCURRENCY = 32;
 
 const CHUNK = 64 * 1024;
 
+const JOURNAL = "journal:";
+
+const DISCOVERY_LIMIT = 5_000;
+
 export function localSnapshots(
-  env: ExecutionEnv,
+  root: string,
   options: { readonly store: string; readonly git?: string; readonly limit?: number },
 ): SnapshotsApi {
   const binary = options.git ?? "git";
-  const befores = new Map<RunId, Promise<SnapshotId>>();
-  const stamps = new Map<string, { readonly stamp: string; readonly hash: string }>();
+  const journal = openJournal(join(options.store, "journals", `${sha256(root)}.ndjson`));
+  const known = new Map<string, Seen | null>();
+  let discovery: Discovery = { kind: "unwalked" };
+  let observing: Promise<unknown> = Promise.resolve();
   const fresh: string[] = [];
   let repositoryLookup: Promise<Repository | null> | undefined;
   let emptyTree: Promise<string> | undefined;
@@ -110,7 +125,7 @@ export function localSnapshots(
     });
 
   const findRepository = async (): Promise<Repository | null> => {
-    const ran = await git(env.cwd, [
+    const ran = await git(root, [
       "rev-parse",
       "--show-toplevel",
       "--absolute-git-dir",
@@ -119,14 +134,14 @@ export function localSnapshots(
     ]).catch(() => null);
 
     if (ran === null || ran.code !== 0) return null;
-    const [root, gitDir, commonDir, prefix = ""] = ran.stdout.toString("utf8").split("\n");
+    const [top, gitDir, commonDir, prefix = ""] = ran.stdout.toString("utf8").split("\n");
 
-    return root === undefined || gitDir === undefined || commonDir === undefined
+    return top === undefined || gitDir === undefined || commonDir === undefined
       ? null
       : {
-          root: resolve(root),
+          root: resolve(top),
           gitDir: resolve(gitDir),
-          commonDir: resolve(env.cwd, commonDir),
+          commonDir: resolve(root, commonDir),
           prefix,
         };
   };
@@ -137,7 +152,7 @@ export function localSnapshots(
     return repositoryLookup;
   };
 
-  const index = snapshotIndex(env.cwd, options.store, git);
+  const index = snapshotIndex(root, options.store, git);
 
   const checked = async (ran: Ran): Promise<string> => {
     if (ran.code !== 0) throw new SdkError("unavailable", ran.stderr.trim() || "git failed");
@@ -314,48 +329,109 @@ export function localSnapshots(
     return { id, root, last: { name: last.name, number: last.number, trees } };
   };
 
-  const walkSnapshot = async (): Promise<SnapshotId> => {
-    const manifest: Record<string, string> = {};
-    let incomplete = false;
+  const note = (path: string, seen: Seen | null, prior: Seen | null | undefined): Change[] => {
+    known.set(path, seen);
+    const now = seen?.hash ?? null;
+    const was = prior === undefined ? now : (prior?.hash ?? null);
 
-    for await (const frame of walkTree(env.cwd, {
+    return was === now ? [] : [[path, was, now]];
+  };
+
+  const discover = async (): Promise<readonly Change[]> => {
+    if (discovery.kind === "over-limit") return [];
+    const files: FileEntry[] = [];
+
+    for await (const frame of walkTree(root, {
       ignored: "exclude",
-      limit: options.limit ?? WALK_LIMIT,
+      limit: options.limit ?? DISCOVERY_LIMIT,
     })) {
-      if (frame.kind === "incomplete") incomplete = true;
+      if (frame.kind === "incomplete") {
+        discovery = { kind: "over-limit" };
 
-      if (frame.kind !== "entries") continue;
+        return [];
+      }
 
-      const files = frame.entries.flatMap((entry) => (entry.kind === "directory" ? [] : [entry]));
-
-      for (let start = 0; start < files.length; start += STORE_CONCURRENCY)
-        await Promise.all(
-          files.slice(start, start + STORE_CONCURRENCY).map(async (entry) => {
-            const hash = await storeEntry(options.store, env.cwd, entry, stamps).catch(() => null);
-
-            if (hash !== null) manifest[entry.path] = hash;
-          }),
+      if (frame.kind === "entries")
+        files.push(
+          ...frame.entries.flatMap((entry) => (entry.kind === "directory" ? [] : [entry])),
         );
     }
 
-    const text = JSON.stringify({
-      incomplete,
-      files: Object.fromEntries(
-        Object.entries(manifest).sort(([left], [right]) => (left < right ? -1 : 1)),
-      ),
-    });
+    const previous = discovery.kind === "walked" ? discovery.files : null;
+    const changes: Change[] = [];
 
-    const id = sha256(text);
-    await keep(join(options.store, "trees", `${id}.json`), text);
+    for (let start = 0; start < files.length; start += STORE_CONCURRENCY)
+      await Promise.all(
+        files.slice(start, start + STORE_CONCURRENCY).map(async (entry) => {
+          const prior = known.has(entry.path)
+            ? known.get(entry.path)
+            : previous === null
+              ? undefined
+              : null;
 
-    return asId<"snapshot">(`tree:${id}`);
+          const seen = await storeEntry(options.store, root, entry, prior).catch(() => null);
+
+          if (seen !== null) changes.push(...note(entry.path, seen, prior));
+        }),
+      );
+
+    const present = new Set(files.map((entry) => entry.path));
+    discovery = { kind: "walked", files: present };
+
+    return [
+      ...changes,
+      ...[...(previous ?? [])]
+        .filter((path) => !present.has(path))
+        .flatMap((path) => note(path, null, known.get(path))),
+    ];
   };
 
-  const take = async (): Promise<SnapshotId> => {
+  const observePaths = async (paths: readonly string[]): Promise<readonly Change[]> => {
+    const inside = [...new Set(paths.flatMap((path) => insidePath(path)))];
+
+    const observed = await Promise.all(
+      inside.map(async (path): Promise<readonly Change[]> => {
+        const entry = await readEntry(root, path);
+        const prior = known.get(path);
+
+        if (entry === null) return note(path, null, prior);
+        const seen = await storeEntry(options.store, root, entry, prior).catch(() => null);
+
+        return seen === null ? [] : note(path, seen, prior);
+      }),
+    );
+
+    return observed.flat();
+  };
+
+  const observe = async (scope: SnapshotScope): Promise<SnapshotId> => {
+    const changes = scope.kind === "workspace" ? await discover() : await observePaths(scope.paths);
+    const id = changes.length === 0 ? await journal.head() : await journal.append(changes);
+
+    return asId<"snapshot">(`${JOURNAL}${id}`);
+  };
+
+  const capture = async (scope: SnapshotScope): Promise<SnapshotId> => {
     const started = Date.now();
     const repo = await repository();
-    const id = await (repo === null ? walkSnapshot() : gitSnapshot(repo));
-    dev("snapshots", "take", { kind: repo === null ? "tree" : "git", ms: Date.now() - started });
+
+    if (repo !== null) {
+      const id = await gitSnapshot(repo);
+      dev("snapshots", "capture", { kind: "git", ms: Date.now() - started });
+
+      return id;
+    }
+
+    const next = observing.then(() => observe(scope));
+    observing = next.catch(() => undefined);
+    const id = await next;
+
+    dev("snapshots", "capture", {
+      kind: "journal",
+      scope: scope.kind === "workspace" ? scope.kind : scope.paths.length,
+      discovery: discovery.kind,
+      ms: Date.now() - started,
+    });
 
     return id;
   };
@@ -372,6 +448,19 @@ export function localSnapshots(
       }
     | { readonly kind: "tree"; readonly from: Tree; readonly to: Tree }
   > => {
+    if (to.startsWith(JOURNAL)) {
+      const range = await journal.range(
+        from.startsWith(JOURNAL) ? from.slice(JOURNAL.length) : null,
+        to.slice(JOURNAL.length),
+      );
+
+      return {
+        kind: "tree",
+        from: { files: range.before, incomplete: false },
+        to: { files: range.after, incomplete: false },
+      };
+    }
+
     const kinds = new Set([from, to].flatMap((id) => (id === "" ? [] : id.split(":", 1))));
 
     if (kinds.size > 1)
@@ -386,7 +475,7 @@ export function localSnapshots(
     const repo = await repository();
 
     if (repo === null)
-      throw new SdkError("unavailable", `${env.cwd} is no longer in a git repository.`);
+      throw new SdkError("unavailable", `${root} is no longer in a git repository.`);
 
     const empty =
       from === "" || to === ""
@@ -450,22 +539,7 @@ export function localSnapshots(
   };
 
   return {
-    before(run) {
-      const known = befores.get(run);
-
-      if (known !== undefined) return known;
-      const taken = take();
-      befores.set(run, taken);
-      taken.catch(() => befores.delete(run));
-
-      for (const old of befores.keys()) {
-        if (befores.size <= BEFORE_KEPT) break;
-        befores.delete(old);
-      }
-
-      return taken;
-    },
-    after: () => take(),
+    capture,
     async diff(from, to): Promise<ChangeSet> {
       const started = Date.now();
       const files = await changed(from, to);
@@ -528,46 +602,62 @@ export function localSnapshots(
   };
 }
 
+function insidePath(path: string): readonly string[] {
+  const normalized = posix.normalize(path.replaceAll("\\", "/")).replace(/\/+$/, "");
+
+  return isAbsolute(normalized) ||
+    normalized === "." ||
+    normalized === ".." ||
+    normalized.startsWith("../")
+    ? []
+    : [normalized];
+}
+
+async function readEntry(root: string, path: string): Promise<FileEntry | null> {
+  const stats = await lstat(join(root, path)).catch((error: unknown) => {
+    const code = readErrorCode(error);
+
+    if (code === "ENOENT" || code === "ENOTDIR") return null;
+    throw error;
+  });
+
+  if (stats === null || (!stats.isFile() && !stats.isSymbolicLink())) return null;
+
+  return {
+    path,
+    kind: stats.isSymbolicLink() ? "symlink" : "file",
+    size: stats.size,
+    mtimeMs: stats.mtimeMs,
+    ino: stats.ino,
+  };
+}
+
 async function storeEntry(
   store: string,
   root: string,
-  entry: {
-    readonly path: string;
-    readonly kind: "file" | "symlink";
-    readonly size: number;
-    readonly mtimeMs: number;
-    readonly ino: number;
-  },
-  stamps: Map<string, { readonly stamp: string; readonly hash: string }>,
-): Promise<string> {
+  entry: FileEntry,
+  prior: Seen | null | undefined,
+): Promise<Seen> {
   const path = join(root, entry.path);
   const stamp = `${entry.kind}:${entry.size}:${entry.mtimeMs}:${entry.ino}`;
-  const known = stamps.get(path);
 
-  if (known?.stamp === stamp) return known.hash;
+  if (prior?.stamp === stamp) return prior;
 
   if (entry.kind === "symlink") {
     const target = new TextEncoder().encode(await readlink(path));
     const hash = sha256(target);
     await keep(join(store, "objects", hash), target);
-    stamps.set(path, { stamp, hash });
 
-    return hash;
+    return { stamp, hash };
   }
 
-  if (entry.size > PATCH_LIMIT) {
-    const hash = await hashFile(path);
-    stamps.set(path, { stamp, hash });
-
-    return hash;
-  }
+  if (entry.size > PATCH_LIMIT) return { stamp, hash: await hashFile(path) };
 
   const bytes = await readFile(path);
   const hash = sha256(bytes);
   await keep(join(store, "objects", hash), bytes);
-  stamps.set(path, { stamp, hash });
 
-  return hash;
+  return { stamp, hash };
 }
 
 async function hashFile(path: string): Promise<string> {

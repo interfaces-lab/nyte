@@ -265,7 +265,16 @@ export function useComposerSuggestions({
   );
 
   const suggestions = kind === "argument" ? argumentSuggestions : listed;
-  const open = menu !== undefined && (menu.kind !== "argument" || suggestions.length > 0);
+
+  const typedInFull = listed.some(
+    (suggestion) =>
+      suggestion.kind === "plugin-command" &&
+      !suggestion.command.takesText &&
+      suggestion.label.toLocaleLowerCase() === deferredQuery.trim().toLocaleLowerCase(),
+  );
+
+  const open =
+    menu !== undefined && !typedInFull && (menu.kind !== "argument" || suggestions.length > 0);
 
   const activeIndex = Math.min(menuState.index, Math.max(0, suggestions.length - 1));
   const activeSuggestion = menu === undefined ? undefined : suggestions[activeIndex];

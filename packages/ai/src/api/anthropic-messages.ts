@@ -189,12 +189,8 @@ export interface AnthropicOptions extends StreamOptions {
    * Default: true.
    */
   interleavedThinking?: boolean;
-  /**
-   * Anthropic tool choice behavior. String values map to Anthropic's built-in
-   * choices; `{ type: "tool", name }` forces a specific tool.
-   * Default: omitted (Anthropic default behavior, currently equivalent to auto).
-   */
-  toolChoice?: "auto" | "any" | "none" | { type: "tool"; name: string };
+  /** Anthropic's own `tool_choice`; omitted leaves Anthropic's default, which is `auto`. */
+  toolChoice?: MessageCreateParamsStreaming["tool_choice"];
   /**
    * Pre-built Anthropic client instance. When provided, skips internal client
    * construction entirely. Use this to inject alternative SDK clients such as
@@ -649,7 +645,10 @@ export const streamSimple: StreamFunction<"anthropic-messages", SimpleStreamOpti
     assertRequestAuth(model.provider, options?.apiKey, options?.headers);
   }
 
-  const base: AnthropicOptions = buildBaseOptions(model, context, options);
+  const base: AnthropicOptions = {
+    ...buildBaseOptions(model, context, options),
+    toolChoice: options?.toolChoice === undefined ? undefined : { type: options.toolChoice },
+  };
 
   if (!options?.reasoning) {
     return stream(model, context, {
@@ -848,19 +847,7 @@ function buildParams(
     params.metadata = { user_id: metadata.user_id };
   }
 
-  const toolChoice = options?.toolChoice;
-
-  switch (toolChoice) {
-    case undefined:
-      break;
-    case "auto":
-    case "any":
-    case "none":
-      params.tool_choice = { type: toolChoice };
-      break;
-    default:
-      params.tool_choice = toolChoice;
-  }
+  if (options?.toolChoice !== undefined) params.tool_choice = options.toolChoice;
 
   const allowedFallbackModels = model.compat?.allowedFallbackModels;
 

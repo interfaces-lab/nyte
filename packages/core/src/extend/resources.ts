@@ -504,15 +504,18 @@ async function refreshRoot(
 
   if (key === HOME && plugins.length === paths.length) return;
 
-  for (const session of watch.sessions) await refresh(kernel, session);
+  for (const session of watch.sessions) {
+    const reloaded = await refresh(kernel, session);
+    dev("resources", "refreshed", { session, paths, reloaded });
+  }
 }
 
-async function refresh(kernel: Kernel, session: SessionId): Promise<void> {
+async function refresh(kernel: Kernel, session: SessionId): Promise<boolean> {
   const before = kernel.workspaceState.scans.get(session);
   dropScans(kernel, (key) => key === session);
   const runtime = kernel.plugins.runtimes().get(session);
 
-  if (runtime === undefined || kernel.workspaceState.closed) return;
+  if (runtime === undefined || kernel.workspaceState.closed) return false;
   const release = runtime.hold();
 
   try {
@@ -532,8 +535,10 @@ async function refresh(kernel: Kernel, session: SessionId): Promise<void> {
       plugins !== null &&
       samePlugins(runtime.requested(), plugins);
 
-    if (unchanged || kernel.workspaceState.closed) return;
+    if (unchanged || kernel.workspaceState.closed) return false;
     await kernel.plugins.reload(session);
+
+    return true;
   } finally {
     release();
   }

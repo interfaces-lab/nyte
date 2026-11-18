@@ -181,7 +181,7 @@ first provider with working credentials, or `null`.
                 "reasoning",
                 "thinking",
                 "defaultThinking",
-                "fast",
+                "variants",
                 "contextWindow",
                 "compactAt",
                 "maxOutput",
@@ -217,24 +217,32 @@ first provider with working credentials, or `null`.
                 "defaultThinking": {
                   "enum": ["off", "minimal", "low", "medium", "high", "xhigh", "max"]
                 },
-                "fast": {
-                  "anyOf": [
-                    {
-                      "type": "object",
-                      "required": ["provider", "id"],
-                      "properties": {
-                        "provider": {
-                          "type": "string"
-                        },
-                        "id": {
-                          "type": "string"
+                "variants": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["modes", "ref"],
+                    "properties": {
+                      "modes": {
+                        "type": "array",
+                        "items": {
+                          "enum": ["fast", "daybreak"]
+                        }
+                      },
+                      "ref": {
+                        "type": "object",
+                        "required": ["provider", "id"],
+                        "properties": {
+                          "provider": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          }
                         }
                       }
-                    },
-                    {
-                      "type": "null"
                     }
-                  ]
+                  }
                 },
                 "contextWindow": {
                   "type": "number"

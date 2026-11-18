@@ -576,40 +576,31 @@ export function FilesExplorer({
       <div {...props(styles.header)}>
         <ExplorerFolderMenu viewKey={viewKey} chatFolder={chatFolder} browsed={browsed} />
         {browsed.kind === "ready" && (
-          <ToggleGroup
-            aria-label="Show"
-            value={[scope]}
-            onValueChange={(value) => {
-              const next = value[0];
-
-              if (next === "all" || next === "changed") setSelection({ ...listing, scope: next });
-            }}
-          >
-            <Toggle value="all" size="2xs">
-              All
-            </Toggle>
-            <Toggle value="changed" size="2xs">
-              Changed {changes.length}
-            </Toggle>
-          </ToggleGroup>
-        )}
-        {browsed.kind === "ready" && (
           <div {...props(styles.actions)}>
             <Button
               iconOnly
+              size="sm"
               icon="file-add"
               aria-label="New File"
               onClick={() => startNaming("file", "")}
             />
             <Button
               iconOnly
+              size="sm"
               icon="folder-add"
               aria-label="New Folder"
               onClick={() => startNaming("folder", "")}
             />
-            <Button iconOnly icon="refresh" aria-label="Refresh Explorer" onClick={refresh} />
             <Button
               iconOnly
+              size="sm"
+              icon="refresh"
+              aria-label="Refresh Explorer"
+              onClick={refresh}
+            />
+            <Button
+              iconOnly
+              size="sm"
               icon="collapse"
               aria-label="Collapse Folders"
               onClick={collapseFolders}
@@ -622,7 +613,7 @@ export function FilesExplorer({
       )}
       {browsed.kind === "ready" && (
         <div {...props(styles.filter)}>
-          <InputGroup>
+          <InputGroup xstyle={styles.filterField}>
             <Icon name="search" size="sm" />
             <Input
               aria-label="Filter files"
@@ -642,6 +633,23 @@ export function FilesExplorer({
               }}
             />
           </InputGroup>
+          <ToggleGroup
+            aria-label="Show"
+            xstyle={styles.scope}
+            value={[scope]}
+            onValueChange={(value) => {
+              const next = value[0];
+
+              if (next === "all" || next === "changed") setSelection({ ...listing, scope: next });
+            }}
+          >
+            <Toggle value="all" size="sm" xstyle={styles.scopeOption}>
+              All
+            </Toggle>
+            <Toggle value="changed" size="sm" xstyle={styles.scopeOption}>
+              Changed <span {...props(styles.count)}>{changes.length}</span>
+            </Toggle>
+          </ToggleGroup>
         </div>
       )}
       {browsed.kind === "ready" && files.error !== null && (
@@ -778,16 +786,26 @@ const styles = create({
   explorer: { display: "flex", flexDirection: "column", flex: 1, minWidth: 0, minHeight: 0 },
   header: {
     display: "flex",
-    flexWrap: "wrap",
     alignItems: "center",
     gap: space.s2,
-    rowGap: space.s1,
     flexShrink: 0,
     paddingBlock: space.s1_5,
     paddingInline: space.s2_5,
   },
   actions: { display: "flex", gap: space.px, marginInlineStart: "auto" },
-  filter: { flexShrink: 0, paddingInline: space.s2, paddingBlockEnd: space.s1_5 },
+  filter: {
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: space.s1_5,
+    flexShrink: 0,
+    paddingInline: space.s2,
+    paddingBlockEnd: space.s1_5,
+  },
+  filterField: { flexGrow: 999, flexBasis: "8rem", minWidth: 0 },
+  scope: { flexGrow: 1 },
+  scopeOption: { flexGrow: 1 },
+  count: { fontVariantNumeric: "tabular-nums" },
   empty: {
     padding: space.s5,
     color: role.contentSecondary,
@@ -801,6 +819,7 @@ const styles = create({
     flex: 1,
     width: "100%",
     minHeight: 0,
+    paddingBlockStart: space.s1,
     "--trees-border-radius-override": radius.indicator,
     "--trees-item-margin-x-override": "0px",
     "--trees-item-padding-x-override": "5px",

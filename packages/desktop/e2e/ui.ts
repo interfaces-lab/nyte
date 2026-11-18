@@ -38,7 +38,6 @@ export async function setTheme(
   theme: "light" | "dark",
 ): Promise<void> {
   const page = desktop.page;
-  await page.emulateMedia({ colorScheme: theme });
 
   await page.evaluate((value) => {
     const key = "nyte:appearance:v1";
@@ -98,7 +97,11 @@ export async function openNewChat(page: Page): Promise<void> {
     .getByRole("button", { name: `New Chat ${primaryKey} N` })
     .click();
   await expect(chatTab(page, "New chat")).toHaveAttribute("aria-selected", "true");
-  await expect(composer(page)).toHaveAttribute("data-placeholder", /^Ask Nyte/u);
+  await expect(
+    composer(page)
+      .and(page.locator('[data-placeholder^="Ask Nyte"]'))
+      .or(chatPane(page).locator("[data-composer-chip]")),
+  ).toBeVisible();
 }
 
 export function settingsNav(page: Page): Locator {

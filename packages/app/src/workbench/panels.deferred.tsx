@@ -1,5 +1,6 @@
 import { publishDeferred } from "../lib/deferred.tsx";
 import { ChangesPanel } from "./changes/changes-panel.tsx";
+import { DesignTab } from "./design-tab.tsx";
 import { EditorPanel } from "./editor/editor-panel.tsx";
 import { TerminalPanel } from "./terminal/terminal-panel.tsx";
 import {
@@ -12,6 +13,7 @@ import {
 export const workbenchRuntime = {
   EditorPanel,
   ChangesPanel,
+  DesignTab,
   TerminalPanel,
   addTerminalToChat,
   clearTerminal,

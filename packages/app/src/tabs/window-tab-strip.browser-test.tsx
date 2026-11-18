@@ -171,7 +171,7 @@ export async function run(): Promise<string> {
       preview.getAttribute("aria-label") === "Previewed, preview",
       "A preview does not say so in its name",
     );
-    check(titleStyle(preview) === "italic", "A preview title is upright");
+    check(titleStyle(preview) === "normal", "A preview tab is italic; only file previews are");
     check(titleStyle(lasting) === "normal", "A lasting tab's title is italic");
     preview.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
     check(calls.at(-1) === "keep p", "Double-click did not keep the preview");

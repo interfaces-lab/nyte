@@ -127,7 +127,7 @@ The guides cover these in use:
 | `replace`   | A message id. Sends this content in its place, as an edit                                                                                                           |
 | `expect`    | A revision. The edit settles `stale` if the head moved since                                                                                                        |
 | `running`   | `"stop"` (default) stops a live run before an edit lands; `"refuse"` settles `busy`                                                                                 |
-| `abandoned` | `"keep"`, or `{ summarize: { instructions? } }` to summarize the replaced messages                                                                                  |
+| `abandoned` | `{ kind: "keep" }`, or `{ kind: "summarize", instructions? }` to summarize the replaced messages                                                                    |
 | `position`  | With `replace` on a queued message: `{ kind: "last" }` moves it to the end of the queue, `{ kind: "before", message }` ahead of another. Absent, it keeps its place |
 
 `move` takes `running`, `abandoned` and `expect` with the same meanings, but its `running` default

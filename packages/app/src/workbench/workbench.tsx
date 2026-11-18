@@ -6,8 +6,7 @@ import { clientCapabilities } from "../contract/client-actions.ts";
 import type { ClientCapabilities } from "../contract/client-actions.ts";
 import { nyte } from "../contract/nyte.ts";
 import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
-import { Icon, PanelToggleIcon } from "@nyte-ai/ui/icon";
-import { Row } from "@nyte-ai/ui/row";
+import { PanelToggleIcon } from "@nyte-ai/ui/icon";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import type { SelectedWorkspace } from "../contract/bridge.ts";
 import { useHostState } from "../data/host.ts";
@@ -22,15 +21,7 @@ import {
   workbenchSeparatorValue,
   workbenchWidthBounds,
 } from "./width.ts";
-import {
-  browserSurface,
-  DEFAULT_VIEW,
-  EDITOR_SLOT,
-  tabSlot,
-  WORKBENCH_KINDS,
-  workbenchLaunchers,
-  workbenchShowsChat,
-} from "./model.ts";
+import { browserSurface, DEFAULT_VIEW, EDITOR_SLOT, tabSlot, workbenchShowsChat } from "./model.ts";
 import type {
   WorkbenchBrowse,
   WorkbenchScope,
@@ -39,13 +30,13 @@ import type {
   WorkbenchViewState,
 } from "./model.ts";
 import { workbenchScope, workbenchViewKey, workspacePathForView } from "./paths.ts";
-import { shownWorkbenchTab, visibleTabs } from "./selectors.ts";
+import { railModel, shownWorkbenchTab, visibleTabs } from "./selectors.ts";
 import { useWorkbenchSnapshot, workbench } from "./store.ts";
 import type { ChangesTabPatch } from "./view-reducer.ts";
 import { launch, openUrl } from "./commands.ts";
 import { WorkbenchWorkspaceContext } from "./workbench-workspace.tsx";
 import type { WorkbenchWorkspace } from "./workbench-workspace.tsx";
-import { CompactRail, Rail } from "./rail.tsx";
+import { CompactRail, Rail, RailRow } from "./rail.tsx";
 import { BrowserPanel } from "./browser/browser-panel";
 import { CanvasPanel } from "../canvas/canvas-panel.tsx";
 import { Deferred, loadDeferred } from "../lib/deferred.tsx";
@@ -204,6 +195,8 @@ function PanelContent({
           }
         />
       );
+    case "design":
+      return <Deferred entry="workbench">{({ DesignTab }) => <DesignTab />}</Deferred>;
     case "terminal":
       return (
         <Deferred entry="workbench">
@@ -441,18 +434,16 @@ function WorkbenchViewHost({
           {panelTabs.map((tab) => renderSlot(tab, shownTab?.id === tab.id))}
           {panelShown && shownTab === null && (
             <div {...props(workbenchStyles.launcher)}>
-              {workbenchLaunchers(scope, capabilities).map((kind) => (
-                <div key={kind} {...props(workbenchStyles.launcherFrame)}>
-                  <Row
-                    variant="nav"
-                    xstyle={workbenchStyles.launcherCard}
-                    onClick={() => launch(viewKey, kind)}
-                  >
-                    <Icon name={WORKBENCH_KINDS[kind].icon} size="lg" />
-                    {WORKBENCH_KINDS[kind].label}
-                  </Row>
-                </div>
-              ))}
+              {railModel({ view, scope, capabilities, repository: false }).launchers.map(
+                (launcher) => (
+                  <RailRow
+                    key={launcher.kind}
+                    icon={launcher.icon}
+                    label={launcher.label}
+                    onClick={() => launch(viewKey, launcher.kind)}
+                  />
+                ),
+              )}
             </div>
           )}
         </div>
@@ -507,14 +498,20 @@ export function Workbench({
     const update = (): void => {
       const width = Math.floor(stage.getBoundingClientRect().width);
 
-      if (width > 0) setStageWidth(width);
+      if (width === 0) return;
+      setStageWidth(width);
+      workbench.dispatch(viewKey, { kind: "fit", narrow: workbenchWidthBounds(width).narrow });
     };
 
     update();
     const observer = new ResizeObserver(update);
     observer.observe(stage);
+    const leave = workbench.subscribe(update);
 
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      leave();
+    };
   };
 
   return (

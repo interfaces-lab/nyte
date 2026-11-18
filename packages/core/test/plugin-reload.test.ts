@@ -371,16 +371,24 @@ describe("plugin reload (D4)", () => {
       content: "Hi.",
     });
     await until(() => (counts.length === 2 ? true : undefined));
+    const observed = Promise.withResolvers<void>();
 
-    const report = await fixture.host.plugins.replace([{ id: "retained" }, { id: "retained" }], {
-      session: session.id,
-    });
+    const last: Plugin<"core"> = {
+      id: "last",
+      hooks: { session_activated: { order: 1, run: () => observed.resolve() } },
+    };
+
+    const report = await fixture.host.plugins.replace(
+      [{ id: "retained" }, { id: "retained" }, last],
+      { session: session.id },
+    );
 
     expect(report.plugins.map((outcome) => outcome.kind)).toEqual([
       "kept-previous",
       "kept-previous",
+      "activated",
     ]);
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await observed.promise;
     expect(counts).toEqual(["activate", "session_activated"]);
 
     const runtime = fixture.kernel.plugins.runtime(session.id);

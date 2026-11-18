@@ -27,6 +27,14 @@ export function useHomeWorkspace(): WorkspaceId | null | undefined {
     : live;
 }
 
+/** What every surface calls a folder: the host's own folder, or none, is Home. */
+export function folderName(
+  workspace: Pick<SelectedWorkspace, "id" | "name"> | undefined,
+  home: WorkspaceId | null | undefined,
+): string {
+  return workspace === undefined || workspace.id === home ? "Home" : workspace.name;
+}
+
 export interface RailWorkspace extends SelectedWorkspace {
   readonly available: boolean;
   readonly worktree: { readonly source: WorkspaceId; readonly branch: string } | null;

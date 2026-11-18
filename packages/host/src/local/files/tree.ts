@@ -2,6 +2,7 @@ import { watch } from "node:fs";
 import type { FSWatcher } from "node:fs";
 import { lstat, readFile, readdir } from "node:fs/promises";
 import { basename, dirname, join, sep } from "node:path";
+import { dev } from "@nyte-ai/core";
 import type { Disposer } from "@nyte-ai/schema";
 import ignore from "ignore";
 import { readErrorCode } from "../../fs-errors.ts";
@@ -320,6 +321,7 @@ export function watchPath(
 
       watcher.on("error", () => note("", true));
       watchers.push(watcher);
+      dev("files", "watching", { path: at, recursive });
     } catch {}
   };
 

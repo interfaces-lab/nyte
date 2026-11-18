@@ -19,8 +19,7 @@ function treeSnapshots(tree: Map<string, string>): SnapshotsApi {
   };
 
   return {
-    before: take,
-    after: take,
+    capture: take,
     diff: async (from, to) => {
       const before = trees.get(from) ?? new Map<string, string>();
       const after = trees.get(to) ?? new Map<string, string>();
@@ -172,7 +171,7 @@ describe("tool changes", () => {
 
     await call(kernel, { session: session.id, run, call: "e1", name: "edit", args: { text: "x" } });
 
-    expect(taken).toEqual(["after", "after"]);
+    expect(taken).toEqual(["a.ts", "a.ts"]);
     expect((await toolPart(session, "e1")).state).toMatchObject({
       changes: { added: 3, removed: 1, paths: ["a.ts"] },
     });
@@ -196,7 +195,7 @@ describe("tool changes", () => {
       args: { text: "y" },
     });
 
-    expect(taken).toEqual(["after", "after", "after", "after"]);
+    expect(taken).toEqual(["a.ts", "a.ts", "a.ts", "a.ts"]);
     expect((await toolPart(session, "e2")).state).toMatchObject({
       changes: { added: 0, removed: 0, paths: [] },
     });

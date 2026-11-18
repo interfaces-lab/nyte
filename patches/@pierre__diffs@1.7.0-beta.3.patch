@@ -171,6 +171,18 @@ index 6ee5032aee523b4c3e10f70202874f141f28ff10..9028c1ba9f488b3aa64d457b483ad4b0
  		return true;
  	}
  	getMaxScrollTopForHeight(scrollHeight) {
+diff --git a/dist/components/File.js b/dist/components/File.js
+index d9cb6288c73254b3c2fbc2d2903713a9b40bad69..dc5afd6efcee4be2128e73869ecaa65f61984337 100644
+--- a/dist/components/File.js
++++ b/dist/components/File.js
+@@ -818,6 +818,7 @@ var File = class {
+ 	async primeHighlightCache(file = this.getInputFile()) {
+ 		const { workerManager } = this;
+ 		if (file == null || workerManager == null || !workerManager.isWorkingPool() || file.cacheKey == null || isFilePlainText(file)) return;
++		if (this.fileRenderer.editSessionActive) return;
+ 		const tokenizeMaxLength = this.options.tokenizeMaxLength ?? 1e5;
+ 		if (this.fileRenderer.getLineCount(file) > tokenizeMaxLength) return;
+ 		await workerManager.primeFileHighlightCache(file).catch((error) => {
 diff --git a/dist/components/FileDiff.js b/dist/components/FileDiff.js
 index 734ff9862cdfe65b8082599c6c221c4886436e01..051e0e685776b989b895081a987630594725c136 100644
 --- a/dist/components/FileDiff.js
@@ -240,19 +252,222 @@ index 984f049ff3694dd353fa6637b0f09fc7dce74992..8f659c06b70ba603f725cccdcaebe89c
  		this.pendingRender = {
  			workingDiff,
  			diff: pendingRenderDiff
+diff --git a/dist/editor/command.d.ts b/dist/editor/command.d.ts
+index 7f0b4b365348ab6c80ae75617fec0d30cef3d1fb..b00ba75568fcfd377a069a20d31aa5611648d1b4 100644
+--- a/dist/editor/command.d.ts
++++ b/dist/editor/command.d.ts
+@@ -1,5 +1,5 @@
+ //#region src/editor/command.d.ts
+-type EditorCommand = 'indent' | 'outdent' | 'indentLess' | 'indentMore' | 'undo' | 'redo' | 'selectAll' | 'findNextMatch' | 'openSearchPanel' | 'openSearchReplacePanel' | 'moveLineUp' | 'moveLineDown' | 'copyLineUp' | 'copyLineDown' | 'simplifySelection' | 'insertBlankLine' | 'deleteHardLineForward' | 'toggleComment' | 'toggleBlockComment' | 'moveCursorToDocStart' | 'moveCursorToDocEnd' | 'expandSelectionDocStart' | 'expandSelectionDocEnd';
++type EditorCommand = 'indent' | 'outdent' | 'indentLess' | 'indentMore' | 'undo' | 'redo' | 'selectAll' | 'findNextMatch' | 'openSearchPanel' | 'openSearchReplacePanel' | 'moveLineUp' | 'moveLineDown' | 'copyLineUp' | 'copyLineDown' | 'simplifySelection' | 'insertBlankLine' | 'deleteHardLineForward' | 'toggleComment' | 'toggleBlockComment' | 'moveCursorToDocStart' | 'moveCursorToDocEnd' | 'expandSelectionDocStart' | 'expandSelectionDocEnd' | 'none' | 'duplicateLines' | 'deleteLines' | 'joinLines' | 'toggleCase' | 'startNewLine' | 'startNewLineBefore' | 'splitLine' | 'commentLineAndMoveDown' | 'selectNextOccurrence' | 'unselectOccurrence' | 'selectAllOccurrences' | 'addCaretPerSelectedLine' | 'cloneCaretAbove' | 'cloneCaretBelow' | 'extendSelection' | 'shrinkSelection';
+ type KeyboardKey = 'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'h' | 'i' | 'j' | 'k' | 'l' | 'm' | 'n' | 'o' | 'p' | 'q' | 'r' | 's' | 't' | 'u' | 'v' | 'w' | 'x' | 'y' | 'z' | '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | '`' | '-' | '=' | ',' | '.' | '/' | ';' | "'" | '[' | ']' | '\\' | 'Space' | 'Tab' | 'Enter' | 'Escape' | 'Backspace' | 'Delete' | 'ArrowUp' | 'ArrowDown' | 'ArrowLeft' | 'ArrowRight' | 'Home' | 'End' | 'PageUp' | 'PageDown' | 'F1' | 'F2' | 'F3' | 'F4' | 'F5' | 'F6' | 'F7' | 'F8' | 'F9' | 'F10' | 'F11' | 'F12';
+ type KeyboardModifier = 'cmdOrCtrl' | 'shift' | 'alt' | 'ctrl' | 'cmd';
+ type EditorShortcut = KeyboardKey | `${KeyboardModifier}+${KeyboardKey}` | `${KeyboardModifier}+${KeyboardModifier}+${KeyboardKey}`;
+diff --git a/dist/editor/editor.d.ts b/dist/editor/editor.d.ts
+index 30c476c7b7e559644fd8e190f570d25cc5c94eea..ed3d08dd406c3eae09de0ac3927c736501fc02d5 100644
+--- a/dist/editor/editor.d.ts
++++ b/dist/editor/editor.d.ts
+@@ -2,7 +2,7 @@ import { MatchRange, SearchParams } from "../search/index.js";
+ import { DiffsHighlighter } from "../highlighter/DiffsHighlighter.js";
+ import { DiffLineAnnotation, FileContents, FileDiffMetadata, HighlightedToken, LineAnnotation, RenderRange } from "../types.js";
+ import { RetainedDiffSessionSnapshot } from "../model/types.js";
+-import { EditState, EditorCaret, EditorChangeEvent, EditorColumns, EditorEditCompleteEvent, EditorInitialState, EditorLineAnnotation, EditorType, EditorViewState, Range, TextEdit } from "./types.js";
++import { EditState, EditorCaret, EditorChangeEvent, EditorColumns, EditorEditCompleteEvent, EditorInitialState, EditorLineAnnotation, EditorSelection, EditorType, EditorViewState, Range, TextEdit } from "./types.js";
+ import { File } from "../components/File.js";
+ import { FileDiff } from "../components/FileDiff.js";
+ import { EditorKeymap } from "./command.js";
+@@ -59,6 +59,12 @@ interface EditorOptions<EType extends EditorType, LAnnotation, Caret> {
+    * Default is `"default"` (both quotes and brackets).
+    */
+   autoSurround?: AutoSurround;
++  /**
++   * Pairs brackets and quotes as they are typed, the way an IDE's smart keys
++   * do: an opener gains its closer, a closer typed before the same character
++   * steps over it, and Backspace in an empty pair takes both. Off by default.
++   */
++  autoClosePairs?: boolean;
+   /** Per-language comment tokens used by the comment commands. */
+   languageCommentConfig?: LanguageConfigMap;
+   /**
+@@ -134,6 +140,28 @@ interface EditorOptions<EType extends EditorType, LAnnotation, Caret> {
+    * missing. There is no way to accept or reject from this API.
+    */
+   onComplete?: (event: EditorEditCompleteEvent<EType, LAnnotation, Caret>) => void;
++  /**
++   * Called after the selections change, from any source: a click, a key, an
++   * edit, `setSelections` or `setViewState`. The primary selection is last.
++   */
++  onSelectionChange?: (selections: EditorSelection[]) => void;
++  /**
++   * What one level of indent is, such as a tab or four spaces. Enter adds one
++   * after an opening bracket. Without it, the indent of the line decides.
++   */
++  indentUnit?: string;
++  /**
++   * Which click adds a caret. `'primary-click'` (the default) is cmd-click on
++   * macOS and ctrl-click elsewhere. `'alt-shift-click'` adds one with
++   * alt+shift and leaves the primary click to the host, without moving the
++   * caret, so it can bind the gesture to something else.
++   */
++  addCaretGesture?: 'primary-click' | 'alt-shift-click';
++  /**
++   * Keep the caret, selection, search and copy, and take no typing, IME,
++   * paste, cut or editing command. `applyEdits` still changes the document.
++   */
++  readOnly?: boolean;
+   /** Callback when the editor gains focus. */
+   onFocus?: () => void;
+   /** Callback when the editor loses focus. */
+@@ -205,6 +233,10 @@ declare class Editor<EType extends EditorType = EditorType, LAnnotation = undefi
+   setSelections(selections: (Range & {
+     direction: 'none' | 'backward' | 'forward';
+   })[]): void;
++  /** The client rectangle of a range on one line, or undefined while that line isn't drawn. */
++  getRangeRect(range: Range): DOMRect | undefined;
++  /** The text of one line of the document, without its line break, or undefined before the editor attaches. */
++  getLineText(line: number): string | undefined;
+   setMarkers(markers: Marker[]): void;
+   focus(options?: EditorFocusOptions): void;
+   blur(): void;
 diff --git a/dist/editor/editor.js b/dist/editor/editor.js
-index a9905d43382de2ca03d6111ba9ab3725d8cb6981..0c80b409e4a658ab9b5ad8f9ce649fac5beebf6a 100644
+index a9905d43382de2ca03d6111ba9ab3725d8cb6981..9737e98e4a6bba0dda2258bf4289cff3c8d07d0a 100644
 --- a/dist/editor/editor.js
 +++ b/dist/editor/editor.js
-@@ -134,6 +134,7 @@ var Editor = class {
+@@ -3,7 +3,7 @@ import { isMoveCursorShortcut, isPrimaryModifier } from "./platform.js";
+ import { resolveEditorCommandFromKeyboardEvent, resolveFindAgainShortcut } from "./command.js";
+ import { applyDocumentChangeToLineAnnotations } from "./lineAnnotations.js";
+ import { addEventListener, clampDomOffset, extend, getLineNumberAttr, h, lookupScrollContainer, round } from "./utils.js";
+-import { applyDeleteCharacterToSelections, applyDeleteHardLineForwardToSelections, applyDeleteSoftLineBackwardToSelections, applyDeleteWordBackwardToSelections, applyTextChangeToSelections, applyTextReplaceToSelections, applyTransposeToSelections, comparePosition, convertSelection, createSelectionFrom, expandCollapsedSelectionToWord, extendSelection, extendSelections, findNextMatch, getAutoSurroundReplacementTexts, getCaretPosition, getDocumentBoundarySelection, getDocumentFullSelection, getSearchQueryFromSelection, getSelectedLineBlocks, getSelectionAnchor, getSelectionClipboardTexts, getSelectionText, isCollapsedSelection, isLineEditable, mapCursorMove, mapSelectionShift, mergeOverlappingSelections, remapOffsetThroughEdits, remapSelectionsAfterEdits, resolveIndentEdits, resolveSelectionCut, selectionIntersects, shiftSelectionLines, snapCharacterToGraphemeBoundary } from "./selection.js";
++import { addCaretPerSelectedLine, applyDeleteLinesToSelections, applyDuplicateLinesToSelections, applyJoinLinesToSelections, applyLineCommentEditsAndMoveDown, applyLinePasteToSelections, applySplitLineToSelections, applyStartNewLineToSelections, applyToggleCaseToSelections, cloneCarets, resolveSelectionLadderStep, selectAllOccurrences, selectNextOccurrence, unselectOccurrence, isDeletablePairAt, resolveTypedPair, resolveIndentBackspace, applyDeleteCharacterToSelections, applyDeleteHardLineForwardToSelections, applyDeleteSoftLineBackwardToSelections, applyDeleteWordBackwardToSelections, applyTextChangeToSelections, applyTextReplaceToSelections, applyTransposeToSelections, comparePosition, convertSelection, createSelectionFrom, expandCollapsedSelectionToWord, extendSelection, extendSelections, findNextMatch, getAutoSurroundReplacementTexts, getCaretPosition, getDocumentBoundarySelection, getDocumentFullSelection, getSearchQueryFromSelection, getSelectedLineBlocks, getSelectionAnchor, getSelectionClipboardTexts, getSelectionText, isCollapsedSelection, isLineEditable, mapCursorMove, mapSelectionShift, mergeOverlappingSelections, remapOffsetThroughEdits, remapSelectionsAfterEdits, resolveIndentEdits, resolveSelectionCut, selectionIntersects, shiftSelectionLines, snapCharacterToGraphemeBoundary } from "./selection.js";
+ import { dequeueRender, queueRender } from "../managers/UniversalRenderingManager.js";
+ import { buildSearchReplacementText } from "../search/index.js";
+ import { revealMatchHorizontally } from "../search/revealMatchHorizontally.js";
+@@ -72,8 +72,38 @@ const MAX_EDIT_PREDICTION_RESPONSE_BYTES = 131072;
+ const editPredictionTextEncoder = new TextEncoder();
+ const SELECTION_ACTION_POPOVER_PLACEMENT_KEY = "selection-action";
+ const MULTI_SELECTION_CLIPBOARD_TYPE = "application/vnd.pierre.diffs-selections+json";
++/** Marks clipboard text copied or cut from bare carets as whole lines, so a paste lands above the caret line. */
++const LINE_CLIPBOARD_TYPE = "application/x-pierre-line";
++const EDITING_COMMANDS = new Set([
++	"duplicateLines",
++	"deleteLines",
++	"joinLines",
++	"toggleCase",
++	"startNewLine",
++	"startNewLineBefore",
++	"splitLine",
++	"commentLineAndMoveDown",
++	"moveLineUp",
++	"moveLineDown",
++	"copyLineUp",
++	"copyLineDown",
++	"insertBlankLine",
++	"deleteHardLineForward",
++	"toggleComment",
++	"toggleBlockComment",
++	"indent",
++	"outdent",
++	"indentLess",
++	"indentMore",
++	"undo",
++	"redo"
++]);
+ var Editor = class {
+ 	type;
++	#occurrenceChain;
++	#selectionLadder;
++	#altTapAt;
++	#cloneCaretGesture = false;
+ 	#options;
+ 	#initialState;
+ 	#editSession;
+@@ -134,6 +164,9 @@ var Editor = class {
  	#isGutterMouseDown = false;
  	#isContentMouseDown = false;
  	#altColumnDrag;
 +	#dragPointer;
++	#nativeSelectionSeen = false;
++	#verticalGoal;
  	#shiftKeyPressed = false;
  	#selectionStart;
  	#deletedSelectionText = "";
-@@ -850,7 +851,10 @@ var Editor = class {
+@@ -200,6 +233,7 @@ var Editor = class {
+ 			this.#caretElements = void 0;
+ 			this.#renderCarets();
+ 		}
++		this.#applyReadOnly();
+ 		if (previousEditPrediction !== this.#options.editPrediction) {
+ 			this.#cancelEditPrediction(true);
+ 			this.#editPredictionHistory = [];
+@@ -454,6 +488,7 @@ var Editor = class {
+ 		if (!this.#isRendering || this.#fileInstance === void 0 || this.#editSession?.document === void 0) throw new Error("Editor.setViewState: Editor is not attached");
+ 		this.#canMountSelectionAction = false;
+ 		this.#updateSelections(selections ?? []);
++		this.#syncWindowSelection();
+ 		if (view != null) {
+ 			this.#fileInstance.setCodeScrollLeft(view.scrollLeft);
+ 			const viewport = this.#getOwnedVerticalViewport();
+@@ -465,6 +500,12 @@ var Editor = class {
+ 		} else if (this.#ownsVerticalViewport) this.#scrollToPrimaryCaret();
+ 		this.#checkpointEditSessionState();
+ 	}
++	/** The text of one line of the document, without its line break, or undefined before the editor attaches. */
++	getLineText(line) {
++		const textDocument = this.#editSession?.document;
++		if (textDocument === void 0 || line < 0 || line >= textDocument.lineCount) return;
++		return textDocument.getLineText(line);
++	}
+ 	setSelections(selections) {
+ 		const editSession = this.#editSession;
+ 		if (editSession?.document == null) throw new Error("Editor.setSelections: Text document is not initialized");
+@@ -485,6 +526,7 @@ var Editor = class {
+ 		});
+ 		this.#canMountSelectionAction = false;
+ 		this.#updateSelections(resolvedSelections);
++		this.#syncWindowSelection();
+ 		if (!this.#isRendering) editSession.editor = cloneEditorViewState({
+ 			...editSession.editor,
+ 			selections: this.#selections
+@@ -493,6 +535,20 @@ var Editor = class {
+ 		if (primarySelection !== void 0) this.#revealLineIfCollapsed(getCaretPosition(primarySelection).line);
+ 		this.#scrollToPrimaryCaret();
+ 	}
++	/** The client rectangle of a range on one line, or undefined while that line isn't drawn. */
++	getRangeRect(range) {
++		const { start, end } = comparePosition(range.start, range.end) > 0 ? {
++			start: range.end,
++			end: range.start
++		} : range;
++		const lineElement = this.#getLineElement(start.line);
++		if (lineElement === void 0 || !this.#isLineVisible(end.line)) return;
++		const [left, wrapLine] = this.#getCharX(start.line, start.character);
++		const [right, endWrapLine] = start.line === end.line ? this.#getCharX(end.line, end.character) : [left, wrapLine];
++		const box = lineElement.getBoundingClientRect();
++		const origin = box.left - lineElement.offsetLeft - this.#getGutterWidth();
++		return new DOMRect(origin + left, box.top + wrapLine * this.#metrics.lineHeight, endWrapLine === wrapLine ? Math.max(0, right - left) : 0, this.#metrics.lineHeight);
++	}
+ 	setMarkers(markers) {
+ 		const textDocument = this.#editSession?.document;
+ 		if (textDocument === void 0) throw new Error("Editor.setMarkers: Text document is not initialized");
+@@ -777,8 +833,8 @@ var Editor = class {
+ 			if (this.#spriteElement !== void 0) shadowRoot.prepend(this.#spriteElement);
+ 		}
+ 		const languageId = fileOrDiff.lang ?? getFiletypeFromFileName(fileOrDiff.name);
+-		const contents = "contents" in fileOrDiff ? fileOrDiff.contents : fileOrDiff.additionLines.join("");
+ 		if (editSession.document == null || editSession.fileInfo == null) {
++			const contents = "contents" in fileOrDiff ? fileOrDiff.contents : fileOrDiff.additionLines.join("");
+ 			this.#cancelEditPrediction(true);
+ 			this.#editPredictionHistory = [];
+ 			this.#invalidateOnAttach();
+@@ -825,6 +881,7 @@ var Editor = class {
+ 				spellcheck: false,
+ 				translate: false
+ 			});
++			this.#applyReadOnly();
+ 			if (this.#overlayElement !== void 0) contentEl.after(this.#overlayElement);
+ 			this.#metrics.init(contentEl);
+ 			this.#remeasureMetricsOnFontLoad();
+@@ -850,7 +907,10 @@ var Editor = class {
  				this.#initSelections = void 0;
  				this.#scrollToPrimaryCaret(false, "center");
  			} else if (this.#scrollingToLine !== void 0) this.#scrollToLine(this.#scrollingToLine, this.#scrollingToLineChar, this.#scrollingToLineNoFocus);
@@ -264,34 +479,121 @@ index a9905d43382de2ca03d6111ba9ab3725d8cb6981..0c80b409e4a658ab9b5ad8f9ce649fac
  			else if (this.#selections !== void 0 && this.#selections.length > 0 && this.#contentHasFocus && !this.#retainSearchPanelFocus) this.focus({ preventScroll: true });
  			if (this.#retainSearchPanelFocus) this.#searchPanel?.focus();
  			if (restoreEditorStateOnSync) {
-@@ -1107,6 +1111,7 @@ var Editor = class {
+@@ -1045,7 +1105,17 @@ var Editor = class {
+ 		const finishMouseSelection = (event) => {
+ 			if (event.pointerType !== "mouse") return;
+ 			const refocusEditor = this.#isGutterMouseDown;
++			const click = this.#dragPointer;
++			const clickLanded = click !== void 0 && !click.owned && !this.#nativeSelectionSeen && event.type === "pointerup" && Math.abs(event.clientX - click.x) < 4 && Math.abs(event.clientY - click.y) < 4;
+ 			this.#resetSelectionGesture();
++			if (clickLanded) {
++				this.#updateSelections([{
++					start: click.anchor,
++					end: click.anchor,
++					direction: 0
++				}]);
++				this.#syncWindowSelection();
++			}
+ 			if (refocusEditor) this.#focus();
+ 			if (this.#options.enabledSelectionAction === true && this.#selections !== void 0 && this.#selections.length > 0 && !isCollapsedSelection(this.#selections.at(-1))) this.#updateSelections(this.#selections);
+ 		};
+@@ -1074,6 +1144,7 @@ var Editor = class {
+ 				if (composedRange === void 0 || !this.#rangeBelongsToEditor(composedRange)) return;
+ 				const selection = convertSelection(composedRange, 0);
+ 				if (selection === void 0) return;
++				if (this.#isContentMouseDown) this.#nativeSelectionSeen = true;
+ 				if (this.#isContentMouseDown && this.#shiftKeyPressed && this.#selections !== void 0 && this.#selections.length > 0) {
+ 					const primarySelection = this.#selections.at(-1);
+ 					this.#updateSelections([extendSelection(primarySelection, selection)]);
+@@ -1107,6 +1178,8 @@ var Editor = class {
  		];
  	}
  	#resetSelectionGesture() {
 +		this.#dragPointer = void 0;
++		this.#nativeSelectionSeen = false;
  		this.#selectEventDisposes?.forEach((dispose) => dispose());
  		this.#selectEventDisposes = void 0;
  		this.#isPointerOverAnnotation = false;
-@@ -1128,7 +1133,7 @@ var Editor = class {
+@@ -1127,8 +1200,42 @@ var Editor = class {
+ 	#preserveEditorSelectionsForGutterGesture() {
  		this.#suppressNativeSelectionSync = this.#selections !== void 0;
  	}
++	/**
++	* Selects the word under a double-click and the line under a triple-click
++	* as the press lands, instead of waiting for the browser's selectionchange,
++	* which can arrive after the release and lose to it. A drag from there still
++	* extends through the browser's own word and line selection.
++	*/
++	#selectByClickCount(e) {
++		const textDocument = this.#editSession?.document;
++		const at = this.#positionFromPoint(e.clientX, e.clientY);
++		if (textDocument === void 0 || at === void 0) return;
++		const lastLine = textDocument.lineCount - 1;
++		const selection = e.detail === 2 ? expandCollapsedSelectionToWord(textDocument, {
++			start: at,
++			end: at,
++			direction: 0
++		}) : {
++			start: {
++				line: at.line,
++				character: 0
++			},
++			end: at.line < lastLine ? {
++				line: at.line + 1,
++				character: 0
++			} : {
++				line: at.line,
++				character: textDocument.getLineText(at.line).length
++			},
++			direction: 1
++		};
++		this.#nativeSelectionSeen = true;
++		this.#selectionStart = selection;
++		this.#updateSelections([selection]);
++		this.#syncWindowSelection();
++	}
  	#canReadNativeSelection() {
 -		return !this.#isComposing && this.#focusRequest == null && !this.#isPointerOverAnnotation && !this.#suppressNativeSelectionSync && this.#contentHasFocus;
 +		return !this.#isComposing && this.#focusRequest == null && !this.#isPointerOverAnnotation && !this.#suppressNativeSelectionSync && this.#dragPointer?.owned !== true && this.#contentHasFocus;
  	}
  	#listenContentElement(contentEl, gutterEl) {
  		this.#setComposing(false);
-@@ -1150,6 +1155,7 @@ var Editor = class {
+@@ -1145,11 +1252,18 @@ var Editor = class {
+ 				if (!this.#isContentMouseDown && !this.#isComposing && this.#focusRequest == null && this.#selections !== void 0 && this.#selections.length > 0) this.#setWindowSelection(this.#selections.at(-1));
+ 			}, { passive: true }),
+ 			addEventListener(contentEl, "blur", () => {
++				this.#cloneCaretGesture = false;
++				this.#altTapAt = void 0;
+ 				if (this.#focusRequest?.restore?.target === contentEl) this.#cancelFocusRequest();
+ 				this.#contentHasFocus = false;
  				onBlur?.();
  			}, { passive: true }),
++			addEventListener(contentEl, "mousedown", (e) => {
++				if (this.#options.addCaretGesture === "alt-shift-click" && e.button === 0 && (isPrimaryModifier(e) || e.altKey && e.shiftKey)) e.preventDefault();
++				if (e.button === 0 && e.detail > 1 && !e.shiftKey && !e.altKey && !isPrimaryModifier(e)) this.#selectByClickCount(e);
++			}),
  			addEventListener(contentEl, "pointerdown", (e) => {
 +				if (!targetIsContentElement(e)) return;
  				this.#canMountSelectionAction = true;
  				if (this.#focusRequest?.restore != null) this.#cancelFocusRequest();
  				this.#suppressNativeSelectionSync = false;
-@@ -1194,6 +1200,27 @@ var Editor = class {
+@@ -1193,7 +1307,41 @@ var Editor = class {
+ 						capture: true,
  						passive: true
  					}));
++				} else if (this.#options.addCaretGesture === "alt-shift-click" && e.button === 0 && (isPrimaryModifier(e) || e.altKey && e.shiftKey)) {
++					this.#isContentMouseDown = false;
++					this.#replaceSelectEventListeners(selectEventDisposes);
++					if (!e.altKey) return;
++					const caret = this.#positionFromPoint(e.clientX, e.clientY);
++					if (caret === void 0) return;
++					this.#updateSelections([...this.#selections ?? [], {
++						start: caret,
++						end: caret,
++						direction: 0
++					}]);
++					this.#syncWindowSelection();
++					return;
  				} else if (e.button === 0 && isPrimaryModifier(e)) this.#reservedSelections = this.#selections?.map((selection) => ({ ...selection }));
 +				else if (e.button === 0 && !e.shiftKey) {
 +					const anchor = this.#positionFromPoint(e.clientX, e.clientY);
@@ -317,7 +619,391 @@ index a9905d43382de2ca03d6111ba9ab3725d8cb6981..0c80b409e4a658ab9b5ad8f9ce649fac
  				this.#replaceSelectEventListeners(selectEventDisposes);
  				if (e.shiftKey) {
  					const primarySelection = this.#selections?.at(-1);
-@@ -2333,6 +2360,41 @@ var Editor = class {
+@@ -1213,6 +1361,23 @@ var Editor = class {
+ 				this.#canMountSelectionAction = true;
+ 				this.#suppressNativeSelectionSync = false;
+ 				if (e.isComposing || e.keyCode === 229) return;
++				if (e.key === "Alt") {
++					if (!e.repeat && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
++						const now = performance.now();
++						if (this.#altTapAt !== void 0 && now - this.#altTapAt <= 350) {
++							this.#cloneCaretGesture = true;
++							this.#altTapAt = void 0;
++						} else this.#altTapAt = now;
++					}
++					return;
++				}
++				this.#altTapAt = void 0;
++				if (this.#cloneCaretGesture && e.altKey && !e.shiftKey && !e.ctrlKey && !e.metaKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
++					e.preventDefault();
++					this.#runCommand(e.key === "ArrowUp" ? "cloneCaretAbove" : "cloneCaretBelow");
++					return;
++				}
++				if (!e.altKey) this.#cloneCaretGesture = false;
+ 				if (e.key === "Tab" && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.isComposing && !this.#isComposing && (!e.altKey || this.#options.editPrediction?.mode === "subtle") && this.#editPrediction?.rendered === true) {
+ 					this.#acceptEditPrediction();
+ 					e.preventDefault();
+@@ -1244,8 +1409,42 @@ var Editor = class {
+ 						getSoftLineOffsets: this.#isWrap ? (line) => this.#wrapLineTextOrWholeLine(line) : void 0,
+ 						resolveRenderableLine: this.#resolveRenderableLine
+ 					};
+-					if (e.shiftKey) this.#updateSelections(mapSelectionShift(textDocument, this.#selections, mvShortcut, cursorMoveOptions));
+-					else this.#updateSelections(mapCursorMove(textDocument, this.#selections, mvShortcut, cursorMoveOptions));
++					const vertical = mvShortcut === "up" || mvShortcut === "down";
++					const kept = this.#verticalGoal;
++					const same = kept !== void 0 && kept.carets.length === this.#selections.length && this.#selections.every((selection, index) => comparePosition(getCaretPosition(selection), kept.carets[index]) === 0);
++					const goals = vertical && same ? kept.goals : this.#selections.map((selection) => getCaretPosition(selection).character);
++					const moved = e.shiftKey ? mapSelectionShift(textDocument, this.#selections, mvShortcut, cursorMoveOptions) : mapCursorMove(textDocument, this.#selections, mvShortcut, cursorMoveOptions);
++					const unwrapped = (line) => !this.#isWrap || this.#wrapLineTextOrWholeLine(line).length <= 2;
++					const placed = (vertical || mvShortcut === "end") && moved.length === goals.length ? moved.map((selection, index) => {
++						const caret = getCaretPosition(selection);
++						const from = getCaretPosition(this.#selections[index] ?? selection);
++						if (!unwrapped(caret.line) || !unwrapped(from.line)) return selection;
++						const lineText = textDocument.getLineText(caret.line);
++						const trimmedEnd = lineText.trimEnd().length;
++						if (vertical && caret.line === from.line) return selection;
++						const goal = vertical ? goals[index] ?? caret.character : from.line === caret.line && from.character < trimmedEnd && trimmedEnd < lineText.length ? trimmedEnd : caret.character;
++						const character = Math.min(goal, lineText.length);
++						if (character === caret.character) return selection;
++						const position = {
++							line: caret.line,
++							character
++						};
++						if (isCollapsedSelection(selection)) return {
++							start: position,
++							end: position,
++							direction: 0
++						};
++						return createSelectionFrom(getSelectionAnchor(selection), {
++							start: position,
++							end: position,
++							direction: 0
++						});
++					}) : moved;
++					this.#updateSelections(placed);
++					this.#verticalGoal = vertical ? {
++						goals,
++						carets: placed.map((selection) => getCaretPosition(selection))
++					} : void 0;
+ 					this.#scrollToPrimaryCaret();
+ 					e.preventDefault();
+ 					return;
+@@ -1274,20 +1473,26 @@ var Editor = class {
+ 				if (!targetIsContentElement(e)) return;
+ 				e.preventDefault();
+ 				if (this.#isDeletedTextSelectionActive()) e.clipboardData?.setData("text", this.#deletedTextForClipboard());
+-				else this.#writeSelectionClipboardData(e.clipboardData, this.#getSelectionText(), this.#getSelectionClipboardTexts());
++				else this.#writeSelectionClipboardData(e.clipboardData, this.#getSelectionText(), this.#getSelectionClipboardTexts(), this.#selections?.every(isCollapsedSelection) === true);
+ 			}),
++			addEventListener(contentEl, "keyup", (e) => {
++				if (e.key === "Alt") this.#cloneCaretGesture = false;
++			}, { passive: true }),
+ 			addEventListener(contentEl, "cut", (e) => {
+ 				if (!targetIsContentElement(e)) return;
+ 				e.preventDefault();
+ 				if (this.#isDeletedTextSelectionActive()) e.clipboardData?.setData("text", this.#deletedTextForClipboard());
++				else if (this.#options.readOnly === true) this.#writeSelectionClipboardData(e.clipboardData, this.#getSelectionText(), this.#getSelectionClipboardTexts(), this.#selections?.every(isCollapsedSelection) === true);
+ 				else {
++					const wholeLines = this.#selections?.every(isCollapsedSelection) === true;
+ 					const selectionTexts = this.#getSelectionClipboardTexts();
+-					this.#writeSelectionClipboardData(e.clipboardData, this.#cutSelectionText(), selectionTexts);
++					this.#writeSelectionClipboardData(e.clipboardData, this.#cutSelectionText(), selectionTexts, wholeLines);
+ 				}
+ 			}),
+ 			addEventListener(contentEl, "paste", (e) => {
+ 				if (!targetIsContentElement(e)) return;
+ 				e.preventDefault();
++				if (this.#options.readOnly === true) return;
+ 				const clipboardData = e.clipboardData;
+ 				const textDocument = this.#editSession?.document;
+ 				if (clipboardData === null || textDocument === void 0) return;
+@@ -1300,6 +1505,10 @@ var Editor = class {
+ 						if (Array.isArray(selectionTexts) && selectionTexts.length === selectionCount) text = selectionTexts;
+ 					} catch {}
+ 				}
++				if (clipboardData.getData(LINE_CLIPBOARD_TYPE) !== "" && this.#selections?.every(isCollapsedSelection) === true) {
++					this.#pasteWholeLines(text);
++					return;
++				}
+ 				this.#replaceSelectionText(Array.isArray(text) ? text.map((t) => textDocument.normalizeEol(t)) : textDocument.normalizeEol(text), void 0, true, "document");
+ 			}),
+ 			addEventListener(contentEl, "beforeinput", (e) => {
+@@ -1424,6 +1633,13 @@ var Editor = class {
+ 				} catch {}
+ 			}
+ 			const textDocument = this.#editSession?.document;
++			if (this.#selections?.every(isCollapsedSelection) === true) {
++				const lineMarker = await clipboard.readText(LINE_CLIPBOARD_TYPE);
++				if (typeof lineMarker === "string" && lineMarker !== "") {
++					this.#pasteWholeLines(text);
++					return;
++				}
++			}
+ 			if (textDocument != null) this.#replaceSelectionText(Array.isArray(text) ? text.map((t) => textDocument.normalizeEol(t)) : textDocument.normalizeEol(text), void 0, true, "document");
+ 		}
+ 	};
+@@ -1439,9 +1655,20 @@ var Editor = class {
+ 	get #activeContentOffset() {
+ 		if (this.#isDiff && this.#diffSyle === "split" && this.#isWrap) return this.#contentOffset;
+ 	}
++	/** A read-only editor keeps its caret, selection, search and copy, and takes no typing, IME, paste or editing command. */
++	#applyReadOnly() {
++		const contentElement = this.#contentElement;
++		if (contentElement === void 0) return;
++		const readOnly = this.#options.readOnly === true;
++		contentElement.contentEditable = readOnly ? "false" : "true";
++		contentElement.ariaReadOnly = readOnly ? "true" : null;
++		if (readOnly) contentElement.tabIndex = 0;
++		else contentElement.removeAttribute("tabindex");
++	}
+ 	#runCommand(command) {
+ 		const textDocument = this.#editSession?.document;
+ 		if (textDocument == null) return;
++		if (this.#options.readOnly === true && EDITING_COMMANDS.has(command)) return;
+ 		switch (command) {
+ 			case "openSearchPanel":
+ 				this.#openSearchPanel("find");
+@@ -1534,7 +1761,7 @@ var Editor = class {
+ 						const outdent = command === "outdent" || command === "indentLess";
+ 						const lineBased = command === "indentLess" || command === "indentMore";
+ 						if (startLine !== selection.end.line || outdent || lineBased) {
+-							const ret = resolveIndentEdits(textDocument, selection, this.#metrics.tabSize, outdent);
++							const ret = resolveIndentEdits(textDocument, selection, this.#metrics.tabSize, outdent, this.#options.indentUnit);
+ 							for (const edit of ret[0]) {
+ 								const line = edit.range.start.line;
+ 								if (!editedLines.has(line)) {
+@@ -1547,7 +1774,7 @@ var Editor = class {
+ 							const text = textDocument.charAt({
+ 								line: startLine,
+ 								character: 0
+-							}) === "	" ? "	" : " ".repeat(this.#metrics.tabSize);
++							}) === "	" ? "	" : this.#options.indentUnit ?? " ".repeat(this.#metrics.tabSize);
+ 							edits.push({
+ 								range: selection,
+ 								newText: text
+@@ -1634,10 +1861,117 @@ var Editor = class {
+ 					}
+ 				}
+ 				break;
++			case "none": break;
++			case "duplicateLines":
++				this.#runSelectionEdit((document, selections) => applyDuplicateLinesToSelections(document, selections, this.#lineAnnotations));
++				break;
++			case "deleteLines":
++				this.#runSelectionEdit((document, selections) => applyDeleteLinesToSelections(document, selections, this.#lineAnnotations));
++				break;
++			case "joinLines":
++				this.#runSelectionEdit((document, selections) => applyJoinLinesToSelections(document, selections, this.#lineAnnotations));
++				break;
++			case "toggleCase":
++				this.#runSelectionEdit((document, selections) => applyToggleCaseToSelections(document, selections, this.#lineAnnotations));
++				break;
++			case "startNewLine":
++			case "startNewLineBefore":
++				this.#runSelectionEdit((document, selections) => applyStartNewLineToSelections(document, selections, command === "startNewLineBefore", this.#options.indentUnit, this.#lineAnnotations));
++				break;
++			case "splitLine":
++				this.#runSelectionEdit((document, selections) => applySplitLineToSelections(document, selections, this.#options.indentUnit, this.#lineAnnotations));
++				break;
++			case "commentLineAndMoveDown": {
++				const { lineComment } = resolveCommentConfig(textDocument.languageId, this.#options.languageCommentConfig);
++				if (lineComment === null) {
++					this.#runCommand("toggleComment");
++					break;
++				}
++				this.#runSelectionEdit((document, selections) => applyLineCommentEditsAndMoveDown(document, selections, resolveLineCommentEdits(document, selections, lineComment), this.#lineAnnotations));
++				break;
++			}
++			case "selectNextOccurrence":
++			case "selectAllOccurrences": {
++				const selections = this.#selections;
++				if (selections === void 0) break;
++				const chain = this.#occurrenceChain?.key === this.#getSelectionsKey() ? this.#occurrenceChain.wholeWord : false;
++				const result = command === "selectNextOccurrence" ? selectNextOccurrence(textDocument, selections, chain) : selectAllOccurrences(textDocument, selections, chain);
++				if (result === void 0) break;
++				this.#setCommandSelections(result.selections);
++				this.#occurrenceChain = {
++					key: this.#getSelectionsKey(),
++					wholeWord: result.wholeWord
++				};
++				break;
++			}
++			case "unselectOccurrence": {
++				const selections = this.#selections;
++				if (selections === void 0) break;
++				const nextSelections = unselectOccurrence(selections);
++				if (nextSelections === void 0) break;
++				const wholeWord = this.#occurrenceChain?.key === this.#getSelectionsKey() ? this.#occurrenceChain.wholeWord : false;
++				this.#setCommandSelections(nextSelections);
++				this.#occurrenceChain = {
++					key: this.#getSelectionsKey(),
++					wholeWord
++				};
++				break;
++			}
++			case "addCaretPerSelectedLine":
++				if (this.#selections !== void 0) this.#setCommandSelections(addCaretPerSelectedLine(textDocument, this.#selections));
++				break;
++			case "cloneCaretAbove":
++			case "cloneCaretBelow": {
++				const nextSelections = this.#selections === void 0 ? void 0 : cloneCarets(textDocument, this.#selections, command === "cloneCaretAbove" ? -1 : 1);
++				if (nextSelections !== void 0) this.#setCommandSelections(nextSelections);
++				break;
++			}
++			case "extendSelection":
++			case "shrinkSelection": {
++				const selections = this.#selections;
++				if (selections === void 0) break;
++				const history = this.#selectionLadder?.key === this.#getSelectionsKey() ? this.#selectionLadder.history : [];
++				const step = resolveSelectionLadderStep(textDocument, selections, history, command === "shrinkSelection");
++				this.#setCommandSelections(step.selections);
++				this.#selectionLadder = {
++					key: this.#getSelectionsKey(),
++					history: step.history
++				};
++				break;
++			}
+ 			case "undo":
+ 			case "redo": this.#applyHistoryChange(command);
+ 		}
+ 	}
++	/** Runs one selection-wide edit command and applies what it returns. */
++	#runSelectionEdit(apply) {
++		const textDocument = this.#editSession?.document;
++		const selections = this.#selections;
++		if (textDocument === void 0 || selections === void 0 || selections.length === 0) return;
++		const { nextSelections, change } = apply(textDocument, selections);
++		if (change !== void 0) this.#applyChange(change, nextSelections, this.#applyChangeToLineAnnotations(change));
++		else this.#setCommandSelections(nextSelections);
++	}
++	/** Shows the selections a selection command produced and reveals the primary caret. */
++	#setCommandSelections(selections) {
++		this.#updateSelections(selections);
++		const primarySelection = this.#selections?.at(-1);
++		if (primarySelection === void 0) return;
++		this.#revealLineIfCollapsed(getCaretPosition(primarySelection).line);
++		this.#scrollToPrimaryCaret();
++	}
++	/** Identifies the current selections, so command state can tell when anything else moved them. */
++	#getSelectionsKey() {
++		return JSON.stringify(this.#selections ?? []);
++	}
++	/** Pastes text copied without a selection as whole lines above each caret's line. */
++	#pasteWholeLines(text) {
++		const textDocument = this.#editSession?.document;
++		const selections = this.#selections;
++		if (textDocument === void 0 || selections === void 0 || selections.length === 0) return;
++		const { nextSelections, change } = applyLinePasteToSelections(textDocument, selections, Array.isArray(text) ? text.map((t) => textDocument.normalizeEol(t)) : textDocument.normalizeEol(text), this.#lineAnnotations);
++		if (change !== void 0) this.#applyChange(change, nextSelections, this.#applyChangeToLineAnnotations(change));
++	}
+ 	#applyHistoryChange(command) {
+ 		const textDocument = this.#editSession?.document;
+ 		if (textDocument == null) return;
+@@ -1923,23 +2257,78 @@ var Editor = class {
+ 		if (typeof process !== "undefined" && process.env.NODE_ENV === "development" && this.#options.__debug === true) console.log(`[diffs/editor] re-render in: ${round(performance.now() - t2)}ms,`, `tokenize in: ${round(t2 - t)}ms (${dirtyLines?.size ?? 0} dirty lines)`);
+ 	}
+ 	#handleInput(inputType, data) {
++		if (this.#options.readOnly === true) return;
+ 		switch (inputType) {
+ 			case "insertText": {
+ 				const text = data ?? "";
+ 				const textDocument = this.#editSession?.document;
+ 				const selections = this.#selections;
+ 				const autoSurroundTexts = textDocument !== void 0 && selections !== void 0 ? getAutoSurroundReplacementTexts(textDocument, selections, text, this.#options.autoSurround) : void 0;
+-				this.#replaceSelectionText(autoSurroundTexts ?? text);
++				const paired = autoSurroundTexts === void 0 && this.#options.autoClosePairs === true && textDocument !== void 0 && selections !== void 0 ? resolveTypedPair(textDocument, selections, text) : void 0;
++				if (paired?.kind === "overtype" && selections !== void 0) {
++					this.#updateSelections(selections.map((selection) => {
++						const position = {
++							line: selection.start.line,
++							character: selection.start.character + 1
++						};
++						return {
++							start: position,
++							end: position,
++							direction: 0
++						};
++					}));
++					this.#scrollToPrimaryCaret();
++					break;
++				}
++				this.#replaceSelectionText(autoSurroundTexts ?? text, void 0, false, "selection", paired?.close);
+ 				break;
++
+ 			}
+ 			case "insertCompositionText": break;
+ 			case "insertLineBreak":
+ 			case "insertParagraph":
+ 				this.#replaceSelectionText("\n");
+ 				break;
+-			case "deleteContentBackward":
++			case "deleteContentBackward": {
++				const selections = this.#selections;
++				const textDocument = this.#editSession?.document;
++				const indentBackspace = this.#options.indentUnit !== void 0 && selections?.length === 1 && textDocument !== void 0 ? resolveIndentBackspace(textDocument, selections[0], this.#options.indentUnit, this.#metrics.tabSize) : void 0;
++				if (indentBackspace !== void 0 && textDocument !== void 0 && selections !== void 0) {
++					const change = textDocument.applyResolvedEdits([{
++						start: indentBackspace.start,
++						end: indentBackspace.end,
++						text: indentBackspace.text
++					}], true, selections, void 0, true);
++					if (change !== void 0) {
++						const caret = textDocument.positionAt(indentBackspace.caret);
++						const next = [{
++							start: caret,
++							end: caret,
++							direction: 0
++						}];
++						textDocument.setLastUndoSelectionsAfter(next);
++						this.#applyChange(change, next, this.#applyChangeToLineAnnotations(change));
++					}
++					break;
++				}
++				if (this.#options.autoClosePairs === true && selections !== void 0 && textDocument !== void 0 && isDeletablePairAt(textDocument, selections)) {
++					this.#replaceSelectionText("", selections.map((selection) => ({
++						start: {
++							line: selection.start.line,
++							character: selection.start.character - 1
++						},
++						end: {
++							line: selection.start.line,
++							character: selection.start.character + 1
++						},
++						direction: 0
++					})));
++					break;
++				}
+ 				this.#deleteSelectionText();
+ 				break;
++			}
++
+ 			case "deleteContentForward":
+ 				this.#deleteSelectionText(true);
+ 				break;
+@@ -1977,7 +2366,8 @@ var Editor = class {
+ 				}
+ 				request.restore = void 0;
+ 				this.#contentElement?.focus({ preventScroll });
+-				queueRender(() => this.#releaseFocusRequest(request));
++				this.#releaseFocusRequest(request);
++				this.#syncWindowSelection();
+ 			};
+ 			const request = {
+ 				frame,
+@@ -2083,6 +2473,12 @@ var Editor = class {
+ 		if (preventScroll) this.#focus(position, true);
+ 		else this.#scrollToPrimaryCaret();
+ 	}
++	/** Puts the DOM selection on the primary selection while the content has focus or is about to. */
++	#syncWindowSelection() {
++		const primarySelection = this.#selections?.at(-1);
++		if (primarySelection === void 0 || !this.#contentHasFocus && this.#focusRequest == null) return;
++		this.#setWindowSelection(primarySelection);
++	}
+ 	#setWindowSelection(selection) {
+ 		const winSelection = window.getSelection();
+ 		if (winSelection === null) return;
+@@ -2333,6 +2729,41 @@ var Editor = class {
  			if (this.#selections !== void 0 || this.#matches !== void 0 || this.#markerRenderer !== void 0) this.#updateSelections(this.#selections ?? []);
  		});
  	}
@@ -359,6 +1045,1333 @@ index a9905d43382de2ca03d6111ba9ab3725d8cb6981..0c80b409e4a658ab9b5ad8f9ce649fac
  	#updateAltColumnSelections() {
  		const drag = this.#altColumnDrag;
  		const selectionStart = this.#selectionStart;
+@@ -2829,7 +3260,10 @@ var Editor = class {
+ 			this.#overlayElements?.clear();
+ 			this.#selectionAction?.cleanup();
+ 			this.#selectionAction = void 0;
+-			if (selectionsChanged) this.#scheduleEditPrediction();
++			if (selectionsChanged) {
++				this.#scheduleEditPrediction();
++				this.#publishSelections();
++			}
+ 			return;
+ 		}
+ 		const fragment = document.createDocumentFragment();
+@@ -2860,7 +3294,23 @@ var Editor = class {
+ 		this.#overlayElements?.clear();
+ 		this.#overlayElements = renderCtx.elements;
+ 		this.#updateSelectionActionPopover();
+-		if (selectionsChanged) this.#scheduleEditPrediction();
++		if (selectionsChanged) {
++			this.#scheduleEditPrediction();
++			this.#publishSelections();
++		}
++	}
++	#publishSelections() {
++		const onSelectionChange = this.#options.onSelectionChange;
++		if (onSelectionChange === void 0) return;
++		try {
++			onSelectionChange((this.#selections ?? []).map((selection) => ({
++				...selection,
++				start: { ...selection.start },
++				end: { ...selection.end }
++			})));
++		} catch (error) {
++			console.error(error);
++		}
+ 	}
+ 	#renderCarets() {
+ 		const carets = this.#carets;
+@@ -3434,9 +3884,10 @@ var Editor = class {
+ 		return getSelectionClipboardTexts(textDocument, selections);
+ 	}
+ 	/** Writes both the portable text and the selection pairing metadata. */
+-	#writeSelectionClipboardData(clipboardData, text, selectionTexts) {
++	#writeSelectionClipboardData(clipboardData, text, selectionTexts, wholeLines = false) {
+ 		if (clipboardData === null) return;
+ 		clipboardData.setData("text", text);
++		if (wholeLines && text !== "") clipboardData.setData(LINE_CLIPBOARD_TYPE, "1");
+ 		if (selectionTexts.length > 1) clipboardData.setData(MULTI_SELECTION_CLIPBOARD_TYPE, JSON.stringify(selectionTexts));
+ 	}
+ 	#cutSelectionText() {
+@@ -3469,7 +3920,7 @@ var Editor = class {
+ 		textDocument.setLastUndoSelectionsAfter(nextSelections);
+ 		this.#applyChange(change, nextSelections, this.#applyChangeToLineAnnotations(change));
+ 	}
+-	#replaceSelectionText(text, selections = this.#selections, undoBoundary = false, textOrder = "selection") {
++	#replaceSelectionText(text, selections = this.#selections, undoBoundary = false, textOrder = "selection", closeText) {
+ 		if (selections === void 0) return;
+ 		const textDocument = this.#editSession?.document;
+ 		const primarySelection = selections.at(-1);
+@@ -3478,7 +3929,7 @@ var Editor = class {
+ 			start: textDocument.offsetAt(primarySelection.start),
+ 			end: textDocument.offsetAt(primarySelection.end),
+ 			text: Array.isArray(text) ? text.join("\n") : text
+-		}, this.#lineAnnotations, void 0, undoBoundary);
++		}, this.#lineAnnotations, void 0, undoBoundary, this.#options.indentUnit, closeText);
+ 		if (change !== void 0) this.#applyChange(change, nextSelections, this.#applyChangeToLineAnnotations(change));
+ 	}
+ 	#deleteSelectionText(forward = false) {
+diff --git a/dist/editor/editor2.js b/dist/editor/editor2.js
+index 186c843eca2bb3f2b4a7f78ddaf742aebc175a7b..3aa5ba8b6ceb16815158784a158e90636e53f5c3 100644
+--- a/dist/editor/editor2.js
++++ b/dist/editor/editor2.js
+@@ -1,5 +1,5 @@
+ //#region src/editor/editor.css?inline
+-var editor_default = "@layer base,theme,rendered,unsafe;::selection{background-color:#0000}[data-deleted-text-selection] [data-deletions] ::selection,[data-deleted-text-selection] [data-line-type=change-deletion] ::selection{background-color:var(--diffs-editor-selection-bg)}@keyframes blinking{0%{opacity:1}50%{opacity:0}to{opacity:1}}:host,[data-code],[data-content],[data-diff-type=split][data-overflow=wrap]{position:relative}[data-code]{container-type:inline-size}[data-content]{cursor:text;caret-color:var(--diffs-bg-caret);background-color:#0000;outline:none}[data-line]{cursor:text;background-color:#0000}[data-line]:after{content:\"\";z-index:-20;background-color:var(--diffs-line-bg);pointer-events:none;position:absolute;inset:0}[data-line][data-editor-active-line]:after{box-shadow:inset 0 0 0 1px var(--diffs-editor-line-highlight-border)}[data-editor-overlay]{display:contents}[data-caret],[data-edit-prediction],[data-selection-range],[data-bracket-match-range],[data-edit-prediction-deletion-range],[data-edit-prediction-insertion-range],[data-edit-prediction-replacement-range],[data-marker-range],[data-remote-caret],[data-caret-highlight-range]{height:1lh;line-height:var(--diffs-line-height);pointer-events:none;position:absolute;top:0;left:0}[data-edit-prediction]{z-index:1;user-select:none;width:max-content;height:auto;color:var(--diffs-editor-edit-prediction-fg,color-mix(in lab, var(--diffs-fg) 45%, transparent));overflow:visible}[data-edit-prediction-line]{box-sizing:border-box;white-space:pre;width:max-content;min-height:1lh;display:block}[data-edit-prediction][data-replacement] [data-edit-prediction-line],[data-edit-prediction-insertion-range],[data-edit-prediction-replacement-range]{background-color:var(--diffs-edit-prediction-bg,var(--diffs-bg))}[data-edit-prediction-suffix]{color:var(--diffs-fg)}[data-edit-prediction][data-wrap] [data-edit-prediction-line]{overflow-wrap:anywhere;white-space:pre-wrap;max-width:100%}[data-edit-prediction-line][data-empty]:after{content:\"↵\"}[data-edit-prediction-spacer]{margin-block-end:var(--diffs-edit-prediction-spacer-height)}[data-code][data-deletions] [data-edit-prediction-spacer]{box-sizing:content-box;margin-block-end:0;padding-block-end:var(--diffs-edit-prediction-spacer-height)}[data-edit-prediction-deletion-range]{--diffs-edit-prediction-deletion-color:var(--diffs-editor-edit-prediction-deletion-fg,color-mix(in lab, var(--diffs-deletion-base) 70%, transparent));z-index:1;background:linear-gradient(to bottom, transparent calc(50% - .5px), var(--diffs-edit-prediction-deletion-color) calc(50% - .5px), var(--diffs-edit-prediction-deletion-color) calc(50% + .5px), transparent calc(50% + .5px))}[data-edit-prediction-insertion-range]{z-index:0}[data-edit-prediction-replacement-range]{z-index:1}[data-caret]{z-index:2;background-color:var(--diffs-bg-caret-override,var(--diffs-editor-cursor-fg,light-dark(color-mix(in lab, var(--diffs-fg) 50%, var(--diffs-bg)),color-mix(in lab, var(--diffs-fg) 75%, var(--diffs-bg)))));visibility:hidden;width:2px}@media (prefers-reduced-motion:no-preference){[data-caret]{animation:1.2s .8s infinite blinking}}[data-selection-range]{z-index:-10;background-color:var(--diffs-editor-selection-bg)}[data-caret-highlight-range]{z-index:-10;background-color:var(--diffs-caret-highlight-bg,var(--diffs-editor-selection-bg))}[data-selection-corner]{background-color:var(--diffs-selection-corner-bg,var(--diffs-bg));width:100%;height:100%}[data-bracket-match-range]{z-index:-9;box-sizing:border-box;border-bottom:1px solid var(--diffs-editor-bracket-match-border,color-mix(in lab, var(--diffs-fg) 60%, transparent));background-color:var(--diffs-editor-bracket-match-bg,color-mix(in lab, var(--diffs-fg) 5%, transparent))}[data-rtl]{border-top-left-radius:3px}[data-rtr]{border-top-right-radius:3px}[data-rbl]{border-bottom-left-radius:3px}[data-rbr]{border-bottom-right-radius:3px}[data-marker-range]{z-index:1;background-color:var(--diffs-marker-bg);mask-image:url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2IiBoZWlnaHQ9IjMiPjxwYXRoIGQ9Im0wIDIuNSBsMiAtMS41IGwxIDAgbDIgMS41IGwxIDAiIHN0cm9rZT0iI2ZmZiIgZmlsbD0ibm9uZSIgc3Ryb2tlLXdpZHRoPSIxIi8+PC9zdmc+);mask-position:0 100%;mask-size:6px 3px;mask-repeat:repeat-x}[data-marker-error]{--diffs-marker-contrast:light-dark(#fff,#000);--diffs-marker-bg:var(--diffs-editor-error-fg,var(--diffs-deletion-base))}[data-marker-warning]{--diffs-marker-contrast:#000;--diffs-marker-bg:var(--diffs-editor-warning-fg,light-dark(var(--diffs-warning-light),var(--diffs-warning-dark)))}[data-marker-info]{--diffs-marker-contrast:#000;--diffs-marker-bg:var(--diffs-editor-info-fg,var(--diffs-modified-base))}[data-marker-hint]{--diffs-marker-contrast:light-dark(#fff,#000);--diffs-marker-bg:var(--diffs-editor-hint-fg,var(--diffs-fg-number))}@media (width>=480px){[data-content]{caret-color:#0000}[data-content][data-composing]{caret-color:auto}[data-content]:not([data-composing]):focus~[data-editor-overlay] [data-caret]{visibility:visible}}[data-editor-widget]{--diffs-widget-fg:var(--diffs-fg);--diffs-widget-bg:color-mix(in lab, var(--diffs-fg) 4%, var(--diffs-bg));--diffs-widget-border:color-mix(in lab, var(--diffs-fg) 20%, transparent);--diffs-widget-shadow:inset 0 0 0 1px var(--diffs-bg), 0 4px 8px #00000013, 0 6px 18px #00000013;z-index:100;width:fit-content;max-width:calc(100% - 24px);font:14px/20px var(--diffs-header-font-fallback);border:1px solid var(--diffs-widget-border);background-color:var(--diffs-widget-bg);box-shadow:var(--diffs-widget-shadow);background-clip:padding-box;border-radius:9px;position:absolute;top:0;left:0}[data-marker-popover],[data-selection-action-popover]{--popover-gap:var(--diffs-popover-gap,var(--diffs-gap-fallback,8px));--popover-viewport-left:0px;--popover-viewport-right:100cqw;--popover-viewport-top:-99999px;--popover-viewport-bottom:99999px;--popover-min-left:calc(var(--popover-viewport-left) + var(--gutter-width,0px) + var(--popover-gap));--popover-available-width:max(0px, calc(var(--popover-viewport-right) - var(--popover-min-left) - var(--popover-gap)));max-width:min(640px, var(--popover-available-width));translate:clamp(var(--popover-min-left), var(--popover-x,var(--popover-min-left)), calc(var(--popover-viewport-right) - var(--popover-gap) - 100%))  clamp(var(--popover-viewport-top), calc(var(--popover-y,0px) + var(--popover-y-shift,0px)), calc(var(--popover-viewport-bottom) - var(--popover-gap) - 100%))}[data-marker-popover]{--diffs-widget-bg:var(--diffs-marker-bg);--diffs-widget-shadow:0 4px 8px #00000026, 0 6px 18px #00000026;min-width:min(180px, var(--popover-available-width));overflow-wrap:anywhere;color:var(--diffs-marker-contrast);white-space:normal;pointer-events:auto;border:0;padding:8px 12px;@supports (color:contrast-color(red)){color:contrast-color(var(--diffs-marker-bg,var(--diffs-bg)))}& [data-marker-message]{white-space:normal;overflow-wrap:anywhere;& code{white-space:normal;color:inherit;background-color:#0000;display:inline}}}[data-selection-action-popover]{pointer-events:auto;flex-wrap:wrap;align-items:center;gap:4px;width:max-content;padding:4px;display:flex}\n";
++var editor_default = "@layer base,theme,rendered,unsafe;::selection{background-color:#0000}[data-deleted-text-selection] [data-deletions] ::selection,[data-deleted-text-selection] [data-line-type=change-deletion] ::selection{background-color:var(--diffs-editor-selection-bg)}@keyframes blinking{0%{opacity:1}50%{opacity:0}to{opacity:1}}:host,[data-code],[data-content],[data-diff-type=split][data-overflow=wrap]{position:relative}[data-code]{container-type:inline-size}[data-content]{cursor:text;caret-color:var(--diffs-bg-caret);background-color:#0000;outline:none}[data-line]{cursor:text;background-color:#0000}[data-line]:after{content:\"\";z-index:-20;background-color:var(--diffs-line-bg);pointer-events:none;position:absolute;inset:0}[data-line][data-editor-active-line]:after{box-shadow:inset 0 0 0 1px var(--diffs-editor-line-highlight-border)}[data-editor-overlay]{display:contents}[data-caret],[data-edit-prediction],[data-selection-range],[data-bracket-match-range],[data-edit-prediction-deletion-range],[data-edit-prediction-insertion-range],[data-edit-prediction-replacement-range],[data-marker-range],[data-remote-caret],[data-caret-highlight-range]{height:1lh;line-height:var(--diffs-line-height);pointer-events:none;position:absolute;top:0;left:0}[data-edit-prediction]{z-index:1;user-select:none;width:max-content;height:auto;color:var(--diffs-editor-edit-prediction-fg,color-mix(in lab, var(--diffs-fg) 45%, transparent));overflow:visible}[data-edit-prediction-line]{box-sizing:border-box;white-space:pre;width:max-content;min-height:1lh;display:block}[data-edit-prediction][data-replacement] [data-edit-prediction-line],[data-edit-prediction-insertion-range],[data-edit-prediction-replacement-range]{background-color:var(--diffs-edit-prediction-bg,var(--diffs-bg))}[data-edit-prediction-suffix]{color:var(--diffs-fg)}[data-edit-prediction][data-wrap] [data-edit-prediction-line]{overflow-wrap:anywhere;white-space:pre-wrap;max-width:100%}[data-edit-prediction-line][data-empty]:after{content:\"↵\"}[data-edit-prediction-spacer]{margin-block-end:var(--diffs-edit-prediction-spacer-height)}[data-code][data-deletions] [data-edit-prediction-spacer]{box-sizing:content-box;margin-block-end:0;padding-block-end:var(--diffs-edit-prediction-spacer-height)}[data-edit-prediction-deletion-range]{--diffs-edit-prediction-deletion-color:var(--diffs-editor-edit-prediction-deletion-fg,color-mix(in lab, var(--diffs-deletion-base) 70%, transparent));z-index:1;background:linear-gradient(to bottom, transparent calc(50% - .5px), var(--diffs-edit-prediction-deletion-color) calc(50% - .5px), var(--diffs-edit-prediction-deletion-color) calc(50% + .5px), transparent calc(50% + .5px))}[data-edit-prediction-insertion-range]{z-index:0}[data-edit-prediction-replacement-range]{z-index:1}[data-caret]{z-index:2;background-color:var(--diffs-bg-caret-override,var(--diffs-editor-cursor-fg,light-dark(color-mix(in lab, var(--diffs-fg) 50%, var(--diffs-bg)),color-mix(in lab, var(--diffs-fg) 75%, var(--diffs-bg)))));visibility:hidden;width:2px}@media (prefers-reduced-motion:no-preference){[data-caret]{animation:1.2s .8s infinite blinking}}[data-selection-range]{z-index:-10;background-color:var(--diffs-editor-selection-bg)}[data-caret-highlight-range]{z-index:-10;background-color:var(--diffs-caret-highlight-bg,var(--diffs-editor-selection-bg))}[data-selection-corner]{background-color:var(--diffs-selection-corner-bg,var(--diffs-bg));width:100%;height:100%}[data-bracket-match-range]{z-index:-9;box-sizing:border-box;border-bottom:1px solid var(--diffs-editor-bracket-match-border,color-mix(in lab, var(--diffs-fg) 60%, transparent));background-color:var(--diffs-editor-bracket-match-bg,color-mix(in lab, var(--diffs-fg) 5%, transparent))}[data-rtl]{border-top-left-radius:3px}[data-rtr]{border-top-right-radius:3px}[data-rbl]{border-bottom-left-radius:3px}[data-rbr]{border-bottom-right-radius:3px}[data-marker-range]{z-index:1;background-color:var(--diffs-marker-bg);mask-image:url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2IiBoZWlnaHQ9IjMiPjxwYXRoIGQ9Im0wIDIuNSBsMiAtMS41IGwxIDAgbDIgMS41IGwxIDAiIHN0cm9rZT0iI2ZmZiIgZmlsbD0ibm9uZSIgc3Ryb2tlLXdpZHRoPSIxIi8+PC9zdmc+);mask-position:0 100%;mask-size:6px 3px;mask-repeat:repeat-x}[data-marker-error]{--diffs-marker-contrast:light-dark(#fff,#000);--diffs-marker-bg:var(--diffs-editor-error-fg,var(--diffs-deletion-base))}[data-marker-warning]{--diffs-marker-contrast:#000;--diffs-marker-bg:var(--diffs-editor-warning-fg,light-dark(var(--diffs-warning-light),var(--diffs-warning-dark)))}[data-marker-info]{--diffs-marker-contrast:#000;--diffs-marker-bg:var(--diffs-editor-info-fg,var(--diffs-modified-base))}[data-marker-hint]{--diffs-marker-contrast:light-dark(#fff,#000);--diffs-marker-bg:var(--diffs-editor-hint-fg,var(--diffs-fg-number))}@media (width>=480px){[data-content]{caret-color:#0000}[data-content][data-composing]{caret-color:auto}[data-content]:not([data-composing]):focus~[data-editor-overlay] [data-caret]{visibility:visible}}[data-editor-widget]{--diffs-widget-fg:var(--diffs-fg);--diffs-widget-bg:color-mix(in lab, var(--diffs-fg) 4%, var(--diffs-bg));--diffs-widget-border:color-mix(in lab, var(--diffs-fg) 20%, transparent);--diffs-widget-shadow:inset 0 0 0 1px var(--diffs-bg), 0 4px 8px #00000013, 0 6px 18px #00000013;z-index:100;width:fit-content;max-width:calc(100% - 24px);font:14px/20px var(--diffs-header-font-fallback);border:1px solid var(--diffs-widget-border);background-color:var(--diffs-widget-bg);box-shadow:var(--diffs-widget-shadow);background-clip:padding-box;border-radius:9px;position:absolute;top:0;left:0}[data-marker-popover],[data-selection-action-popover]{--popover-gap:var(--diffs-popover-gap,var(--diffs-gap-fallback,8px));--popover-viewport-left:0px;--popover-viewport-right:100cqw;--popover-viewport-top:-99999px;--popover-viewport-bottom:99999px;--popover-min-left:calc(var(--popover-viewport-left) + var(--gutter-width,0px) + var(--popover-gap));--popover-available-width:max(0px, calc(var(--popover-viewport-right) - var(--popover-min-left) - var(--popover-gap)));max-width:min(640px, var(--popover-available-width));translate:clamp(var(--popover-min-left), var(--popover-x,var(--popover-min-left)), calc(var(--popover-viewport-right) - var(--popover-gap) - 100%))  clamp(var(--popover-viewport-top), calc(var(--popover-y,0px) + var(--popover-y-shift,0px)), calc(var(--popover-viewport-bottom) - var(--popover-gap) - 100%))}[data-marker-popover]{--diffs-widget-bg:var(--diffs-marker-bg);--diffs-widget-shadow:0 4px 8px #00000026, 0 6px 18px #00000026;min-width:min(180px, var(--popover-available-width));overflow-wrap:anywhere;color:var(--diffs-marker-contrast);white-space:normal;pointer-events:auto;border:0;padding:8px 12px;@supports (color:contrast-color(red)){color:contrast-color(var(--diffs-marker-bg,var(--diffs-bg)))}& [data-marker-message]{white-space:normal;overflow-wrap:anywhere;& code{white-space:normal;color:inherit;background-color:#0000;display:inline}}}[data-selection-action-popover]{pointer-events:auto;flex-wrap:wrap;align-items:center;gap:4px;width:max-content;padding:4px;display:flex}[data-line][data-editor-active-line]:not([data-selected-line]),[data-column-number][data-editor-active-line]:not([data-selected-line]){--diffs-computed-editor-active-line-bg:var(--diffs-editor-line-highlight-bg,color-mix(in lab, var(--diffs-computed-selected-line-bg) var(--diffs-editor-active-line-source-mix,100%), var(--diffs-selection-emphasis-mix-target)))}[data-column-number][data-editor-active-line]:not([data-selected-line]){color:var(--diffs-editor-line-number-active-fg,var(--diffs-selection-number-fg))}\n";
+ //#endregion
+ export { editor_default as default };
+ 
+diff --git a/dist/editor/selection.js b/dist/editor/selection.js
+index 79b7dd8e6cb55d098d43b251fc287a8fe67de782..e4dc5637a1736a8e901ceff775c8bfef4daeb9d2 100644
+--- a/dist/editor/selection.js
++++ b/dist/editor/selection.js
+@@ -40,7 +40,7 @@ function convertSelection(range, direction = 0) {
+ /**
+ * Resolves the indent edits for a selection.
+ */
+-function resolveIndentEdits(textDocument, selection, tabSize, outdent) {
++function resolveIndentEdits(textDocument, selection, tabSize, outdent, preferredUnit) {
+ 	if (textDocument === void 0) return [[], selection];
+ 	const { start, end } = selection;
+ 	const edits = [];
+@@ -52,7 +52,7 @@ function resolveIndentEdits(textDocument, selection, tabSize, outdent) {
+ 		const lineText = textDocument.getLineText(line);
+ 		if (lineText === void 0) continue;
+ 		if (blockIndent && lineText.trim().length === 0) continue;
+-		const indentUnit = lineText.startsWith("	") ? "	" : " ".repeat(tabSize);
++		const indentUnit = lineText.startsWith("	") ? "	" : lineText.startsWith(" ") || preferredUnit === void 0 ? " ".repeat(tabSize) : preferredUnit;
+ 		let deleteLength = 0;
+ 		let newText = indentUnit;
+ 		if (outdent) {
+@@ -267,7 +267,7 @@ function mapSelectionShift(textDocument, selections, shortcut, options = {}) {
+ /**
+ * Applies a text change to the given text document
+ */
+-function applyTextChangeToSelections(textDocument, selections, requested, lineAnnotations, tabSize = 2, undoBoundary = false) {
++function applyTextChangeToSelections(textDocument, selections, requested, lineAnnotations, tabSize = 2, undoBoundary = false, indentUnit, closeText = "") {
+ 	const edit = {
+ 		...requested,
+ 		text: textDocument.normalizeEol(requested.text)
+@@ -309,15 +309,17 @@ function applyTextChangeToSelections(textDocument, selections, requested, lineAn
+ 			end: mergedGroup.end,
+ 			text: adjustedChange.text
+ 		}, tabSize);
+-		const newText = expandSingleNewlineInsert(textDocument, perGroupChange.text, perGroupChange.start);
++		const resolved = resolveNewlineInsert(textDocument, perGroupChange.text, perGroupChange.start, perGroupChange.end, indentUnit, edits.at(-1)?.end ?? 0);
++		const newText = resolved.text + closeText;
+ 		edits.push({
+-			start: perGroupChange.start,
+-			end: perGroupChange.end,
++			start: resolved.start,
++			end: resolved.end,
+ 			text: newText
+ 		});
+-		const nextOffsets = [mergedGroup.start + offsetDelta + newText.length, mergedGroup.start + offsetDelta + newText.length];
++		const caretOffset = resolved.start + offsetDelta + resolved.caret;
++		const nextOffsets = [caretOffset, caretOffset];
+ 		for (const index of mergedGroup.indices) nextSelectionOffsets[index] = nextOffsets;
+-		offsetDelta += newText.length - (perGroupChange.end - perGroupChange.start);
++		offsetDelta += newText.length - (resolved.end - resolved.start);
+ 		mergedGroup = void 0;
+ 	};
+ 	for (const entry of ordered) {
+@@ -379,7 +381,7 @@ function getNextSelectionOffsetPairAfterReplace(textDocument, entry, offsetDelta
+ * Applies text replacements to multiple selections. Texts pair by selection
+ * index unless they are explicitly marked as document ordered.
+ */
+-function applyTextReplaceToSelections(textDocument, selections, texts, lineAnnotations, undoBoundary = false, textOrder = "selection") {
++function applyTextReplaceToSelections(textDocument, selections, texts, lineAnnotations, undoBoundary = false, textOrder = "selection", recordedSelections = selections) {
+ 	if (selections.length !== texts.length) throw new Error("Selection text replacements must match the selection count");
+ 	const selectionPositions = [];
+ 	for (const selection of selections) selectionPositions.push(selection.start, selection.end);
+@@ -460,7 +462,7 @@ function applyTextReplaceToSelections(textDocument, selections, texts, lineAnnot
+ 			offsetDelta += newText.length - (entry.end - entry.start);
+ 		}
+ 	}
+-	const change = textDocument.applyResolvedEdits(edits, true, selections, void 0, undoBoundary);
++	const change = textDocument.applyResolvedEdits(edits, true, recordedSelections, void 0, undoBoundary);
+ 	const nextSelections = createSelectionsFromOffsetPairs(textDocument, nextSelectionOffsetPairs.map((offsets) => {
+ 		if (offsets === void 0) throw new Error("Missing next selection offsets");
+ 		return offsets;
+@@ -475,6 +477,139 @@ function applyTextReplaceToSelections(textDocument, selections, texts, lineAnnot
+ 		change
+ 	};
+ }
++const PAIR_OPENERS = new Map([
++	["(", ")"],
++	["[", "]"],
++	["{", "}"]
++]);
++const PAIR_CLOSERS = new Map([
++	[")", "("],
++	["]", "["],
++	["}", "{"]
++]);
++const PAIR_QUOTES = new Set([
++	"\"",
++	"'",
++	"`"
++]);
++const PAIR_ALLOWED_BEFORE = /^(?:$|[\s;,)\]}{]|\/[/*])/;
++const IDENTIFIER_CHAR = /[\p{L}\p{N}_$]/u;
++/**
++* What a line's text up to `end` leaves open: the quote of an unclosed
++* literal, honouring backslash escapes except in backtick strings, and whether
++* a line comment has started.
++*/
++function scanLineLiterals(lineText, end) {
++	let quote;
++	for (let index = 0; index < end; index++) {
++		const char = lineText[index];
++		if (quote !== void 0) {
++			if (char === "\\" && quote !== "`") index++;
++			else if (char === quote) quote = void 0;
++			continue;
++		}
++		if (char === "/" && lineText[index + 1] === "/") return {
++			quote: void 0,
++			comment: true
++		};
++		if (PAIR_QUOTES.has(char)) quote = char;
++	}
++	return {
++		quote,
++		comment: false
++	};
++}
++/** How many of `open` minus how many of `close` a line holds outside its literals and comment. */
++function lineBracketBalance(lineText, open, close) {
++	let balance = 0;
++	let quote;
++	for (let index = 0; index < lineText.length; index++) {
++		const char = lineText[index];
++		if (quote !== void 0) {
++			if (char === "\\" && quote !== "`") index++;
++			else if (char === quote) quote = void 0;
++			continue;
++		}
++		if (char === "/" && lineText[index + 1] === "/") break;
++		if (PAIR_QUOTES.has(char)) quote = char;
++		else if (char === open) balance++;
++		else if (char === close) balance--;
++	}
++	return balance;
++}
++function resolveTypedCharAt(lineText, character, char) {
++	const literal = scanLineLiterals(lineText, character);
++	if (literal.comment) return;
++	const next = lineText[character];
++	if (PAIR_QUOTES.has(char)) {
++		if (literal.quote === char) return next === char ? { kind: "overtype" } : void 0;
++		if (literal.quote !== void 0) return;
++		if (next !== void 0 && IDENTIFIER_CHAR.test(next)) return;
++		return {
++			kind: "pair",
++			close: char
++		};
++	}
++	if (literal.quote !== void 0) return;
++	const close = PAIR_OPENERS.get(char);
++	if (close !== void 0) {
++		if (!PAIR_ALLOWED_BEFORE.test(lineText.slice(character))) return;
++		const typed = lineText.slice(0, character) + char + lineText.slice(character);
++		if (lineBracketBalance(typed, char, close) <= 0) return;
++		return {
++			kind: "pair",
++			close
++		};
++	}
++	const open = PAIR_CLOSERS.get(char);
++	if (open === void 0 || next !== char) return;
++	return lineBracketBalance(lineText, open, char) <= 0 ? { kind: "overtype" } : void 0;
++}
++/**
++* How typing `char` at every collapsed caret pairs or overtypes, the way an
++* IDE's smart keys do: an opening bracket gains its closer when it would be
++* unmatched and stands before whitespace, a line end, a closer, `;`, `,`, `{`
++* or a comment; a quote gains its partner unless it opens before an
++* identifier, or sits in another literal or a comment; a closing bracket or
++* quote typed before the same character steps over it when the line's
++* brackets balance. Returns undefined to type `char` as it is, which is also
++* the answer when the carets disagree.
++*/
++function resolveTypedPair(textDocument, selections, char) {
++	if (char.length !== 1 || selections.length === 0) return;
++	let first;
++	for (const selection of selections) {
++		if (!isCollapsedSelection(selection)) return;
++		const typed = resolveTypedCharAt(textDocument.getLineText(selection.start.line), selection.start.character, char);
++		if (typed === void 0) return;
++		if (first === void 0) first = typed;
++		else if (first.kind !== typed.kind) return;
++	}
++	return first;
++}
++/**
++* Whether Backspace at every collapsed caret should take an empty pair with
++* it: the caret sits between an opener and its closer on a line whose
++* brackets balance, or between the quotes of an empty literal.
++*/
++function isDeletablePairAt(textDocument, selections) {
++	if (selections.length === 0) return false;
++	for (const selection of selections) {
++		if (!isCollapsedSelection(selection)) return false;
++		const { line, character } = selection.start;
++		const lineText = textDocument.getLineText(line);
++		const before = lineText[character - 1];
++		const after = lineText[character];
++		if (before === void 0 || after === void 0) return false;
++		if (PAIR_QUOTES.has(before)) {
++			if (after !== before || scanLineLiterals(lineText, character - 1).quote !== void 0) return false;
++			continue;
++		}
++		if (PAIR_OPENERS.get(before) !== after || lineBracketBalance(lineText, before, after) !== 0) return false;
++		if (scanLineLiterals(lineText, character - 1).quote !== void 0) return false;
++	}
++	return true;
++}
+ function shouldAutoSurroundChar(autoSurround, char) {
+ 	if (autoSurround === "never") return false;
+ 	if (autoSurround === "brackets") return AUTO_SURROUND_BRACKET_CHARS.has(char);
+@@ -588,7 +723,7 @@ function applyDeleteHardLineForwardToSelections(textDocument, selections, lineAn
+ 			direction: 0
+ 		};
+ 	});
+-	return applyTextReplaceToSelections(textDocument, deleteSelections, deleteSelections.map(() => ""), lineAnnotations);
++	return applyTextReplaceToSelections(textDocument, deleteSelections, deleteSelections.map(() => ""), lineAnnotations, false, "selection", selections);
+ }
+ /**
+ * Deletes from each selection back to the start of its soft (visual) line.
+@@ -633,7 +768,7 @@ function applyDeleteSoftLineBackwardToSelections(textDocument, selections, getSo
+ 			direction: 0
+ 		};
+ 	});
+-	return applyTextReplaceToSelections(textDocument, deleteSelections, deleteSelections.map(() => ""), lineAnnotations);
++	return applyTextReplaceToSelections(textDocument, deleteSelections, deleteSelections.map(() => ""), lineAnnotations, false, "selection", selections);
+ }
+ /**
+ * Deletes the word or separator group immediately before each selection.
+@@ -648,7 +783,7 @@ function applyDeleteWordBackwardToSelections(textDocument, selections, lineAnnot
+ 			direction: 0
+ 		};
+ 	});
+-	return applyTextReplaceToSelections(textDocument, deleteSelections, deleteSelections.map(() => ""), lineAnnotations);
++	return applyTextReplaceToSelections(textDocument, deleteSelections, deleteSelections.map(() => ""), lineAnnotations, false, "selection", selections);
+ }
+ /**
+ * Resolves the document range deleted by Backspace or Delete at a collapsed
+@@ -718,7 +853,7 @@ function applyDeleteCharacterToSelections(textDocument, selections, forward, lin
+ 			direction: 0
+ 		};
+ 	});
+-	return applyTextReplaceToSelections(textDocument, deleteSelections, deleteSelections.map(() => ""), lineAnnotations);
++	return applyTextReplaceToSelections(textDocument, deleteSelections, deleteSelections.map(() => ""), lineAnnotations, false, "selection", selections);
+ }
+ /**
+ * Checks if a selection is collapsed.
+@@ -1420,11 +1555,156 @@ function resolveDeleteHardLineForwardRange(textDocument, selection) {
+ }
+ function expandSingleNewlineInsert(textDocument, insertText, insertStartOffset) {
+ 	if (insertText !== "\n" && insertText !== "\r" && insertText !== "\r\n") return insertText;
+-	const line = textDocument.positionAt(insertStartOffset).line;
++	const position = textDocument.positionAt(insertStartOffset);
++	const lineText = textDocument.getLineText(position.line);
++	return insertText + lineText.slice(0, Math.min(getLeadingSpaces(lineText), position.character));
++}
++const OPENING_BRACKETS = {
++	"{": "}",
++	"(": ")",
++	"[": "]"
++};
++/**
++* Resolves a line break typed over [start, end): the new line takes the indent
++* of the text before the break, one unit more after an opening bracket, and
++* the whitespace after the break goes. Typed inside a line's indent, the line
++* moves down whole and keeps its indent, leaving an empty line. Typed between a
++* bracket pair, the closer moves to a line of its own and the caret lands on
++* the indented line between. Returns the replaced range, its replacement and
++* where the caret lands, as an offset into the replacement.
++*/
++function resolveNewlineInsert(textDocument, insertText, start, end, indentUnit, earliestStart = 0) {
++	if (insertText !== "\n" && insertText !== "\r" && insertText !== "\r\n") return {
++		text: insertText,
++		start,
++		end,
++		caret: insertText.length
++	};
++	const startPosition = textDocument.positionAt(start);
++	const endPosition = textDocument.positionAt(end);
++	const lineText = textDocument.getLineText(startPosition.line);
++	const before = lineText.slice(0, startPosition.character);
++	const endLineText = endPosition.line === startPosition.line ? lineText : textDocument.getLineText(endPosition.line);
++	const after = endLineText.slice(endPosition.character);
++	const trailingSpace = getLeadingSpaces(after);
++	const rest = after.slice(trailingSpace);
++	const base = before.slice(0, getLeadingSpaces(before));
++	const unit = indentUnit ?? (base.includes("\t") || base === "" ? "\t" : base.slice(0, Math.min(base.length, 4)));
++	const opener = before.trimEnd().at(-1);
++	const closer = opener === void 0 ? void 0 : OPENING_BRACKETS[opener];
++	const replacedEnd = end + (rest === "" ? 0 : trailingSpace);
++	const literal = scanLineLiterals(before, before.length);
++	if (literal.quote === "`") return {
++		text: insertText,
++		start,
++		end,
++		caret: insertText.length
++	};
++	if (literal.quote === "\"" && rest.includes("\"")) {
++		const continued = "\" +" + insertText + base + unit + "\"";
++		return {
++			text: continued,
++			start,
++			end,
++			caret: continued.length
++		};
++	}
++	if (literal.comment && rest !== "") {
++		const commentAt = before.indexOf("//", base.length);
++		const marker = commentAt < 0 ? "" : before.slice(commentAt).match(/^\/\/+\s*/)?.[0] ?? "// ";
++		const continued = insertText + base + marker;
++		return {
++			text: continued,
++			start,
++			end: replacedEnd,
++			caret: continued.length
++		};
++	}
++	if (base.length === before.length && rest !== "" && start - before.length >= earliestStart) {
++		const indent = before + after.slice(0, trailingSpace);
++		return {
++			text: insertText + indent,
++			start: start - before.length,
++			end: replacedEnd,
++			caret: insertText.length + indent.length
++		};
++	}
++	if (closer === void 0) return {
++		text: insertText + base,
++		start,
++		end: replacedEnd,
++		caret: insertText.length + base.length
++	};
++	const inner = insertText + base + unit;
++	if (rest.startsWith(closer)) return {
++		text: inner + insertText + base,
++		start,
++		end: replacedEnd,
++		caret: inner.length
++	};
++	return {
++		text: inner,
++		start,
++		end: replacedEnd,
++		caret: inner.length
++	};
++}
++/** The width of leading whitespace in columns, a tab reaching the next multiple of `tabSize`. */
++function indentWidth(text, tabSize) {
++	let width = 0;
++	for (const char of text) width = char === "\t" ? width + tabSize - width % tabSize : width + 1;
++	return width;
++}
++/**
++* GoLand's Backspace inside a line's indentation ("to proper indent position"):
++* when only whitespace stands before a collapsed caret, the line's proper indent
++* is the previous non-blank line's, one unit deeper after an opener or a
++* `case`/`default` label and one shallower before a closer. A caret past it
++* snaps the indent back to it; a caret at or inside it joins the line onto the
++* previous one, dropping that line's trailing whitespace. Returns the edit as
++* offsets and where the caret lands, or undefined to delete one character.
++*/
++function resolveIndentBackspace(textDocument, selection, indentUnit, tabSize) {
++	if (!isCollapsedSelection(selection)) return;
++	const { line, character } = selection.start;
++	if (character === 0) return;
+ 	const lineText = textDocument.getLineText(line);
+-	const indentLen = getLeadingSpaces(lineText);
+-	if (indentLen === 0) return insertText;
+-	return insertText + lineText.slice(0, indentLen);
++	const before = lineText.slice(0, character);
++	if (/[^ \t]/.test(before)) return;
++	const lineStart = textDocument.offsetAt({
++		line,
++		character: 0
++	});
++	if (line === 0) return {
++		start: lineStart,
++		end: lineStart + character,
++		text: "",
++		caret: lineStart
++	};
++	let previous = line - 1;
++	while (previous > 0 && textDocument.getLineText(previous).trim() === "") previous--;
++	const previousText = textDocument.getLineText(previous);
++	let proper = previousText.slice(0, getLeadingSpaces(previousText));
++	const opened = previousText.replace(/\/\/.*$/, "").trimEnd();
++	if (/[{([]$/.test(opened) || /^\s*(case\b.*|default\s*):$/.test(opened)) proper += indentUnit;
++	if (/^[\s]*[)\]}]/.test(lineText.slice(character)) && proper.endsWith(indentUnit)) proper = proper.slice(0, -indentUnit.length);
++	if (indentWidth(before, tabSize) > indentWidth(proper, tabSize)) return {
++		start: lineStart,
++		end: lineStart + character,
++		text: proper,
++		caret: lineStart + proper.length
++	};
++	const above = textDocument.getLineText(line - 1);
++	const joinAt = textDocument.offsetAt({
++		line: line - 1,
++		character: above.trimEnd().length
++	});
++	return {
++		start: joinAt,
++		end: lineStart + character,
++		text: "",
++		caret: joinAt
++	};
+ }
+ function getLeadingSpaces(text) {
+ 	let indent = 0;
+@@ -1661,6 +1941,727 @@ function getTextOffset(text, offset) {
+ 	const lineBreakIndex = value.search(/[\r\n]/);
+ 	return Math.min(offset, lineBreakIndex === -1 ? value.length : lineBreakIndex);
+ }
++const OCCURRENCE_WORD_CHAR = /[\p{L}\p{N}_]/u;
++const LADDER_QUOTES = new Set([
++	"\"",
++	"'",
++	"`"
++]);
++const LADDER_CLOSERS = new Map([
++	[")", "("],
++	["]", "["],
++	["}", "{"]
++]);
++/**
++* The identifier word (letters, digits and `_`) under a caret at `character`,
++* or the word that ends at it. Undefined when the caret touches no word.
++*/
++function findOccurrenceWordAt(lineText, character) {
++	let start = character;
++	let end = character;
++	while (end < lineText.length && OCCURRENCE_WORD_CHAR.test(lineText[end])) end++;
++	while (start > 0 && OCCURRENCE_WORD_CHAR.test(lineText[start - 1])) start--;
++	if (start === end) return;
++	return {
++		start,
++		end
++	};
++}
++/**
++* Expands a collapsed selection to the identifier word at its caret, or
++* returns undefined when the caret touches no word.
++*/
++function expandCollapsedSelectionToOccurrenceWord(textDocument, selection) {
++	const { line, character } = selection.start;
++	const span = findOccurrenceWordAt(textDocument.getLineText(line), character);
++	if (span === void 0) return;
++	return {
++		start: {
++			line,
++			character: span.start
++		},
++		end: {
++			line,
++			character: span.end
++		},
++		direction: 1
++	};
++}
++function getDocumentLength(textDocument) {
++	const lastLine = textDocument.lineCount - 1;
++	return textDocument.offsetAt({
++		line: lastLine,
++		character: textDocument.getLineLength(lastLine)
++	});
++}
++function getLineEndOffset(textDocument, line) {
++	return textDocument.offsetAt({
++		line,
++		character: textDocument.getLineLength(line)
++	});
++}
++function getLineStartOffset(textDocument, line) {
++	return textDocument.offsetAt({
++		line,
++		character: 0
++	});
++}
++/** The offset after a line's break, or the document end on the last line. */
++function getFullLineEndOffset(textDocument, line) {
++	return line < textDocument.lineCount - 1 ? getLineStartOffset(textDocument, line + 1) : getLineEndOffset(textDocument, line);
++}
++/** The last line a selection covers; a selection ending at column 0 leaves that line out. */
++function getSelectionLastLine(selection) {
++	if (selection.end.line > selection.start.line && selection.end.character === 0) return selection.end.line - 1;
++	return selection.end.line;
++}
++function getSelectionOffsets(textDocument, selection) {
++	return [textDocument.offsetAt(selection.start), textDocument.offsetAt(selection.end)];
++}
++function createCollapsedSelection(position) {
++	return {
++		start: position,
++		end: position,
++		direction: 0
++	};
++}
++/**
++* Applies one command's resolved edits as a single undo step, then builds the
++* selections it lands on from the edited document.
++*/
++function applyCommandEditsToSelections(textDocument, selections, edits, resolveNextSelections, lineAnnotations) {
++	if (edits.length === 0) return { nextSelections: resolveNextSelections(textDocument) };
++	const change = textDocument.applyResolvedEdits(edits, true, selections, void 0, true);
++	const nextSelections = resolveNextSelections(textDocument);
++	textDocument.setLastUndoSelectionsAfter(nextSelections);
++	if (change !== void 0 && lineAnnotations !== void 0) {
++		const nextLineAnnotations = applyDocumentChangeToLineAnnotations(change, lineAnnotations);
++		if (nextLineAnnotations !== void 0) textDocument.setLastUndoLineAnnotations(lineAnnotations, nextLineAnnotations);
++	}
++	return {
++		nextSelections,
++		change
++	};
++}
++/**
++* Sorts insertion or replacement edits by start (then by their order of
++* creation) and records, for each, how far the edits before it shift the
++* document.
++*/
++function orderEditsWithDeltas(edits) {
++	const ordered = edits.map((edit, index) => ({
++		edit,
++		index
++	})).sort((a, b) => {
++		const startOrder = a.edit.start - b.edit.start;
++		return startOrder !== 0 ? startOrder : a.index - b.index;
++	});
++	let delta = 0;
++	for (const entry of ordered) {
++		entry.edit.delta = delta;
++		delta += entry.edit.text.length - (entry.edit.end - entry.edit.start);
++	}
++	return ordered.map((entry) => entry.edit);
++}
++function toResolvedEdits(edits) {
++	return edits.map((edit) => ({
++		start: edit.start,
++		end: edit.end,
++		text: edit.text
++	}));
++}
++/**
++* Duplicates per caret, the way GoLand's Duplicate Line or Selection does. A
++* collapsed caret copies its line below and moves into the copy at the same
++* column; on a last line without a line break the copy brings one. A selection
++* inserts its text right after itself and the copy becomes the selection.
++* Several carets on one line copy it once. One undo step.
++*/
++function applyDuplicateLinesToSelections(textDocument, selections, lineAnnotations) {
++	const edits = [];
++	const lineEdits = /* @__PURE__ */ new Map();
++	const targets = selections.map((selection) => {
++		if (isCollapsedSelection(selection)) {
++			const line = selection.start.line;
++			let edit = lineEdits.get(line);
++			if (edit === void 0) {
++				const at = getLineEndOffset(textDocument, line);
++				edit = {
++					start: at,
++					end: at,
++					text: "\n" + textDocument.getLineText(line)
++				};
++				lineEdits.set(line, edit);
++				edits.push(edit);
++			}
++			return {
++				edit,
++				character: selection.start.character
++			};
++		}
++		const [start, end] = getSelectionOffsets(textDocument, selection);
++		const edit = {
++			start: end,
++			end,
++			text: textDocument.getTextSlice(start, end)
++		};
++		edits.push(edit);
++		return {
++			edit,
++			direction: selection.direction
++		};
++	});
++	const ordered = orderEditsWithDeltas(edits);
++	const nextOffsetPairs = targets.map((target) => {
++		const start = target.edit.start + target.edit.delta;
++		if (target.character !== void 0) {
++			const caret = start + 1 + target.character;
++			return [caret, caret];
++		}
++		const end = start + target.edit.text.length;
++		return target.direction === -1 ? [end, start] : [start, end];
++	});
++	return applyCommandEditsToSelections(textDocument, selections, toResolvedEdits(ordered), (document) => createSelectionsFromOffsetPairs(document, nextOffsetPairs), lineAnnotations);
++}
++/**
++* Deletes every line a caret or selection touches, the way GoLand's Delete
++* Line does. A selection ending at column 0 keeps that line. The last line
++* takes the line break before it. Each caret keeps its column, clamped, on the
++* line that moves up into its place. One undo step.
++*/
++function applyDeleteLinesToSelections(textDocument, selections, lineAnnotations) {
++	const blocks = getSelectedLineBlocks(selections);
++	const lastLine = textDocument.lineCount - 1;
++	let removedLines = 0;
++	const edits = blocks.map((block) => {
++		const landing = block.endLine < lastLine ? {
++			line: block.startLine - removedLines,
++			sourceLine: block.endLine + 1
++		} : block.startLine > 0 ? {
++			line: block.startLine - 1 - removedLines,
++			sourceLine: block.startLine - 1
++		} : {
++			line: 0,
++			sourceLine: -1
++		};
++		const start = block.endLine < lastLine || block.startLine === 0 ? getLineStartOffset(textDocument, block.startLine) : getLineEndOffset(textDocument, block.startLine - 1);
++		const end = block.endLine < lastLine ? getLineStartOffset(textDocument, block.endLine + 1) : getLineEndOffset(textDocument, block.endLine);
++		removedLines += block.endLine - block.startLine + 1;
++		block.landing = landing;
++		return {
++			start,
++			end,
++			text: ""
++		};
++	});
++	const landingLengths = blocks.map((block) => block.landing.sourceLine < 0 ? 0 : textDocument.getLineLength(block.landing.sourceLine));
++	const targets = selections.map((selection) => {
++		const caret = getCaretPosition(selection);
++		const blockIndex = blocks.findIndex((block) => caret.line >= block.startLine && caret.line <= block.endLine);
++		const index = blockIndex < 0 ? blocks.findIndex((block) => selection.start.line >= block.startLine && selection.start.line <= block.endLine) : blockIndex;
++		return {
++			line: blocks[index].landing.line,
++			character: Math.min(caret.character, landingLengths[index])
++		};
++	});
++	return applyCommandEditsToSelections(textDocument, selections, edits.filter((edit) => edit.end > edit.start), () => targets.map(createCollapsedSelection), lineAnnotations);
++}
++/**
++* Joins lines the way GoLand's Join Lines does. A caret, or a selection on one
++* line, joins the next line onto its line; a longer selection joins all of its
++* lines. The joined line loses its indent and the line before it its trailing
++* whitespace, with one space between them, or none when the next line starts
++* with `)`, `]`, `}` or `.`, or the line ends with `(` or `[`. A caret lands
++* at the join; a selection keeps covering the same text. One undo step.
++*/
++function applyJoinLinesToSelections(textDocument, selections, lineAnnotations) {
++	const lastLine = textDocument.lineCount - 1;
++	const joins = /* @__PURE__ */ new Set();
++	for (const selection of selections) {
++		const startLine = selection.start.line;
++		let endLine = getSelectionLastLine(selection);
++		if (endLine === startLine) endLine = startLine + 1;
++		endLine = Math.min(endLine, lastLine);
++		for (let line = startLine; line < endLine; line++) joins.add(line);
++	}
++	const joinLines = [...joins].sort((a, b) => a - b);
++	const runs = [];
++	for (const line of joinLines) {
++		const previous = runs.at(-1);
++		if (previous !== void 0 && previous.lastLine === line) previous.lastLine = line + 1;
++		else runs.push({
++			firstLine: line,
++			lastLine: line + 1
++		});
++	}
++	const edits = runs.map((run) => {
++		let text = textDocument.getLineText(run.firstLine);
++		const lines = [{
++			base: 0,
++			lead: 0,
++			keep: Infinity
++		}];
++		const joints = [];
++		for (let line = run.firstLine + 1; line <= run.lastLine; line++) {
++			const left = text.replace(/[ \t]+$/, "");
++			const next = textDocument.getLineText(line);
++			const right = next.replace(/^[ \t]+/, "");
++			const separator = left === "" || right === "" || /^[)\]}.]/.test(right) || /[([]$/.test(left) ? "" : " ";
++			const previous = lines.at(-1);
++			previous.keep = Math.max(0, left.length - previous.base);
++			joints.push(left.length);
++			lines.push({
++				base: left.length + separator.length,
++				lead: next.length - right.length,
++				keep: Infinity
++			});
++			text = left + separator + right;
++		}
++		run.lines = lines;
++		run.joints = joints;
++		return {
++			start: getLineStartOffset(textDocument, run.firstLine),
++			end: getLineEndOffset(textDocument, run.lastLine),
++			text
++		};
++	});
++	orderEditsWithDeltas(edits);
++	const resolvedEdits = toResolvedEdits(edits);
++	const mapPosition = (position) => {
++		const runIndex = runs.findIndex((run) => position.line >= run.firstLine && position.line <= run.lastLine);
++		if (runIndex < 0) return remapOffsetThroughEdits(textDocument.offsetAt(position), resolvedEdits);
++		const run = runs[runIndex];
++		const edit = edits[runIndex];
++		const line = run.lines[position.line - run.firstLine];
++		return edit.start + edit.delta + line.base + Math.max(0, Math.min(position.character - line.lead, line.keep));
++	};
++	const nextOffsetPairs = selections.map((selection) => {
++		if (isCollapsedSelection(selection)) {
++			const runIndex = runs.findIndex((run) => selection.start.line >= run.firstLine && selection.start.line < run.lastLine);
++			if (runIndex >= 0) {
++				const run = runs[runIndex];
++				const caret = edits[runIndex].start + edits[runIndex].delta + run.joints[selection.start.line - run.firstLine];
++				return [caret, caret];
++			}
++			const caret = mapPosition(selection.start);
++			return [caret, caret];
++		}
++		const start = mapPosition(selection.start);
++		const end = mapPosition(selection.end);
++		return selection.direction === -1 ? [end, start] : [start, end];
++	});
++	return applyCommandEditsToSelections(textDocument, selections, resolvedEdits.filter((edit, index) => textDocument.getTextSlice(edit.start, edit.end) !== edits[index].text), (document) => createSelectionsFromOffsetPairs(document, nextOffsetPairs), lineAnnotations);
++}
++/**
++* Toggles case the way GoLand's Toggle Case does. A collapsed caret first
++* selects the identifier word under it. When any selected text has a lowercase
++* letter, every selection becomes uppercase; otherwise every one becomes
++* lowercase. The selections stay on the changed text. One undo step.
++*/
++function applyToggleCaseToSelections(textDocument, selections, lineAnnotations) {
++	const ranges = selections.map((selection) => isCollapsedSelection(selection) ? expandCollapsedSelectionToOccurrenceWord(textDocument, selection) ?? selection : selection);
++	const offsets = ranges.map((range) => getSelectionOffsets(textDocument, range));
++	const texts = offsets.map(([start, end]) => textDocument.getTextSlice(start, end));
++	const toUpper = texts.some((text) => text !== text.toUpperCase());
++	const editsByStart = /* @__PURE__ */ new Map();
++	offsets.forEach(([start, end], index) => {
++		if (start === end || editsByStart.has(start)) return;
++		const text = toUpper ? texts[index].toUpperCase() : texts[index].toLowerCase();
++		editsByStart.set(start, {
++			start,
++			end,
++			text
++		});
++	});
++	let previousEnd = -1;
++	for (const edit of [...editsByStart.values()].sort((a, b) => a.start - b.start)) {
++		if (edit.start < previousEnd) editsByStart.delete(edit.start);
++		else previousEnd = edit.end;
++	}
++	const edits = orderEditsWithDeltas([...editsByStart.values()]);
++	const nextOffsetPairs = ranges.map((range, index) => {
++		const [start, end] = offsets[index];
++		const edit = editsByStart.get(start);
++		const nextStart = edit === void 0 ? remapOffsetThroughEdits(start, edits) : start + edit.delta;
++		const nextEnd = edit === void 0 ? remapOffsetThroughEdits(end, edits) : nextStart + edit.text.length;
++		return range.direction === -1 ? [nextEnd, nextStart] : [nextStart, nextEnd];
++	});
++	return applyCommandEditsToSelections(textDocument, selections, toResolvedEdits(edits).filter((edit) => textDocument.getTextSlice(edit.start, edit.end) !== edit.text), (document) => createSelectionsFromOffsetPairs(document, nextOffsetPairs), lineAnnotations);
++}
++function resolveIndentUnitFor(base, indentUnit) {
++	return indentUnit ?? (base.includes("\t") || base === "" ? "\t" : base.slice(0, Math.min(base.length, 4)));
++}
++/**
++* Opens a line below (or, with `above`, above) each caret's line without
++* splitting it, the way GoLand's Start New Line and Start New Line Before do.
++* The new line takes the caret line's indent, one unit more below a line that
++* ends with `{`, `(` or `[`, and the caret moves onto it. One undo step.
++*/
++function applyStartNewLineToSelections(textDocument, selections, above = false, indentUnit, lineAnnotations) {
++	const caretLines = selections.map((selection) => getCaretPosition(selection).line);
++	const lines = [...new Set(caretLines)].sort((a, b) => a - b);
++	const indents = /* @__PURE__ */ new Map();
++	const edits = lines.map((line) => {
++		const lineText = textDocument.getLineText(line);
++		const base = lineText.slice(0, getLeadingSpaces(lineText));
++		const indent = !above && /[{([]$/.test(lineText.trimEnd()) ? base + resolveIndentUnitFor(base, indentUnit) : base;
++		indents.set(line, indent);
++		const at = above ? getLineStartOffset(textDocument, line) : getLineEndOffset(textDocument, line);
++		return {
++			start: at,
++			end: at,
++			text: above ? indent + "\n" : "\n" + indent
++		};
++	});
++	const targets = caretLines.map((line) => ({
++		line: line + lines.indexOf(line) + (above ? 0 : 1),
++		character: indents.get(line).length
++	}));
++	return applyCommandEditsToSelections(textDocument, selections, edits, () => targets.map(createCollapsedSelection), lineAnnotations);
++}
++/**
++* Splits each line at its caret the way GoLand's Split Line does: the text
++* after the caret moves to a new line with the caret line's indent, one unit
++* more after an opening bracket that is not closed right after the caret,
++* while the caret stays where it was. A selection is replaced. One undo step.
++*/
++function applySplitLineToSelections(textDocument, selections, indentUnit, lineAnnotations) {
++	const edits = selections.map((selection) => {
++		const lineText = textDocument.getLineText(selection.start.line);
++		const before = lineText.slice(0, selection.start.character);
++		const after = textDocument.getLineText(selection.end.line).slice(selection.end.character);
++		const trailingSpace = getLeadingSpaces(after);
++		const rest = after.slice(trailingSpace);
++		const base = before.slice(0, getLeadingSpaces(before));
++		const closer = OPENING_BRACKETS[before.trimEnd().at(-1) ?? ""];
++		const [start, end] = getSelectionOffsets(textDocument, selection);
++		return {
++			start,
++			end: end + (rest === "" ? 0 : trailingSpace),
++			text: "\n" + base + (closer !== void 0 && !rest.startsWith(closer) ? resolveIndentUnitFor(base, indentUnit) : "")
++		};
++	});
++	const ordered = orderEditsWithDeltas(edits);
++	const nextOffsetPairs = edits.map((edit) => [edit.start + edit.delta, edit.start + edit.delta]);
++	return applyCommandEditsToSelections(textDocument, selections, toResolvedEdits(ordered), (document) => createSelectionsFromOffsetPairs(document, nextOffsetPairs), lineAnnotations);
++}
++/**
++* Applies line-comment edits (from `resolveLineCommentEdits`) as one undo step
++* and, when every selection is a bare caret, moves each caret down one line at
++* its original column, the way GoLand's Comment with Line Comment does.
++*/
++function applyLineCommentEditsAndMoveDown(textDocument, selections, edits, lineAnnotations) {
++	const moveDown = selections.every(isCollapsedSelection);
++	const selectionOffsets = selections.map((selection) => getSelectionOffsets(textDocument, selection));
++	const resolvedEdits = edits.map((edit) => {
++		const start = textDocument.offsetAt(edit.range.start);
++		const end = textDocument.offsetAt(edit.range.end);
++		return {
++			start: Math.min(start, end),
++			end: Math.max(start, end),
++			text: edit.newText
++		};
++	}).sort((a, b) => a.start - b.start || a.end - b.end);
++	return applyCommandEditsToSelections(textDocument, selections, resolvedEdits, (document) => {
++		const remapped = remapSelectionsAfterEdits(document, selections, selectionOffsets, resolvedEdits);
++		if (!moveDown) return remapped;
++		return remapped.map((selection, index) => {
++			const line = Math.min(selection.start.line + 1, document.lineCount - 1);
++			if (line === selection.start.line) return selection;
++			return createCollapsedSelection({
++				line,
++				character: Math.min(selections[index].start.character, document.getLineLength(line))
++			});
++		});
++	}, lineAnnotations);
++}
++/**
++* Pastes whole lines above each caret's line, the way GoLand pastes a line
++* copied without a selection. `text` is one string for every caret or one per
++* caret in document order. Each caret keeps its column on its line, which
++* moves down. Carets sharing a line paste once. One undo step.
++*/
++function applyLinePasteToSelections(textDocument, selections, text, lineAnnotations) {
++	const lines = /* @__PURE__ */ new Set();
++	const edits = [];
++	const order = selections.map((selection, index) => [textDocument.offsetAt(getCaretPosition(selection)), index]).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
++	order.forEach(([, index], rank) => {
++		const line = getCaretPosition(selections[index]).line;
++		const lineText = Array.isArray(text) ? text[rank] ?? "" : text;
++		if (lines.has(line) || lineText === "") return;
++		lines.add(line);
++		const at = getLineStartOffset(textDocument, line);
++		edits.push({
++			start: at,
++			end: at,
++			text: lineText.endsWith("\n") ? lineText : lineText + "\n"
++		});
++	});
++	edits.sort((a, b) => a.start - b.start);
++	const nextOffsetPairs = selections.map((selection) => {
++		const caret = remapOffsetThroughEdits(textDocument.offsetAt(getCaretPosition(selection)), edits);
++		return [caret, caret];
++	});
++	return applyCommandEditsToSelections(textDocument, selections, edits, (document) => createSelectionsFromOffsetPairs(document, nextOffsetPairs), lineAnnotations);
++}
++function isOccurrenceWordBoundary(text, start, end) {
++	return (start === 0 || !OCCURRENCE_WORD_CHAR.test(text[start - 1])) && (end >= text.length || !OCCURRENCE_WORD_CHAR.test(text[end]));
++}
++function findOccurrence(text, needle, from, to, wholeWord, occupied) {
++	let index = text.indexOf(needle, from);
++	while (index >= 0 && index < to) {
++		const end = index + needle.length;
++		if ((!wholeWord || isOccurrenceWordBoundary(text, index, end)) && !occupied.some(([start, stop]) => index < stop && end > start)) return index;
++		index = text.indexOf(needle, index + 1);
++	}
++}
++/**
++* Selects the next occurrence the way GoLand's Select Next Occurrence does.
++* When the primary selection is a bare caret, every bare caret selects the
++* identifier word under it and the chain becomes whole-word. Otherwise the
++* next case-sensitive match of the primary selection's text after it, wrapping
++* to the document start, that overlaps no selection (whole-word when the chain
++* is) is added as the new primary selection. Returns the next selections and
++* whether the chain is whole-word, or undefined when nothing changes.
++*/
++function selectNextOccurrence(textDocument, selections, wholeWord = false) {
++	const primary = selections.at(-1);
++	if (primary === void 0) return;
++	if (isCollapsedSelection(primary)) {
++		const expanded = selections.map((selection) => isCollapsedSelection(selection) ? expandCollapsedSelectionToOccurrenceWord(textDocument, selection) ?? selection : selection);
++		if (expanded.every((selection, index) => selection === selections[index])) return;
++		return {
++			selections: expanded,
++			wholeWord: true
++		};
++	}
++	const text = textDocument.getTextSlice(0, getDocumentLength(textDocument));
++	const [start, end] = getSelectionOffsets(textDocument, primary);
++	const needle = text.slice(start, end);
++	const occupied = selections.map((selection) => getSelectionOffsets(textDocument, selection));
++	const match = findOccurrence(text, needle, end, text.length, wholeWord, occupied) ?? findOccurrence(text, needle, 0, text.length, wholeWord, occupied);
++	if (match === void 0) return;
++	const matchEnd = match + needle.length;
++	return {
++		selections: [...selections, createSelectionFromAnchorAndFocusOffsets(textDocument, primary.direction === -1 ? matchEnd : match, primary.direction === -1 ? match : matchEnd)],
++		wholeWord
++	};
++}
++/**
++* Undoes one Select Next Occurrence step the way GoLand's Unselect Occurrence
++* does: with several selections the primary (newest) one goes; a lone
++* selection collapses to its caret. Undefined when nothing changes.
++*/
++function unselectOccurrence(selections) {
++	if (selections.length > 1) return selections.slice(0, -1);
++	const primary = selections[0];
++	if (primary === void 0 || isCollapsedSelection(primary)) return;
++	return [createCollapsedSelection(getCaretPosition(primary))];
++}
++/**
++* Selects every occurrence of the primary selection's text, or of the
++* identifier word at a bare primary caret (then whole-word), the way GoLand's
++* Select All Occurrences does. The occurrence the primary selection covered
++* stays primary. Undefined when there is nothing to match.
++*/
++function selectAllOccurrences(textDocument, selections, wholeWord = false) {
++	const primary = selections.at(-1);
++	if (primary === void 0) return;
++	const range = isCollapsedSelection(primary) ? expandCollapsedSelectionToOccurrenceWord(textDocument, primary) : primary;
++	if (range === void 0) return;
++	const matchWholeWord = isCollapsedSelection(primary) || wholeWord;
++	const text = textDocument.getTextSlice(0, getDocumentLength(textDocument));
++	const [start, end] = getSelectionOffsets(textDocument, range);
++	const needle = text.slice(start, end);
++	const matches = [];
++	let index = findOccurrence(text, needle, 0, text.length, matchWholeWord, []);
++	while (index !== void 0) {
++		matches.push(index);
++		index = findOccurrence(text, needle, index + needle.length, text.length, matchWholeWord, []);
++	}
++	const ordered = [...matches.filter((match) => match !== start), ...matches.filter((match) => match === start)];
++	return {
++		selections: ordered.map((match) => createSelectionFromAnchorAndFocusOffsets(textDocument, match, match + needle.length)),
++		wholeWord: matchWholeWord
++	};
++}
++/**
++* Puts one caret at the end of every line each selection covers, the way
++* GoLand's Add Caret per Selected Line does. A selection ending at column 0
++* leaves that line out. The selections go.
++*/
++function addCaretPerSelectedLine(textDocument, selections) {
++	const lines = /* @__PURE__ */ new Set();
++	for (const selection of selections) for (let line = selection.start.line; line <= getSelectionLastLine(selection); line++) lines.add(line);
++	return [...lines].sort((a, b) => a - b).map((line) => createCollapsedSelection({
++		line,
++		character: textDocument.getLineLength(line)
++	}));
++}
++/**
++* Adds a caret on the line above (`direction` -1) or below (1) each caret, at
++* the same column clamped to that line's end. The clone furthest in the
++* direction becomes primary. Undefined when no caret has a line to clone to.
++*/
++function cloneCarets(textDocument, selections, direction) {
++	const clones = selections.map((selection) => getCaretPosition(selection)).filter((caret) => caret.line + direction >= 0 && caret.line + direction < textDocument.lineCount).map((caret) => ({
++		line: caret.line + direction,
++		character: Math.min(caret.character, textDocument.getLineLength(caret.line + direction))
++	})).sort((a, b) => (a.line - b.line) * direction);
++	if (clones.length === 0) return;
++	return [...selections, ...clones.map(createCollapsedSelection)];
++}
++/**
++* The brackets and quotes paired on one line, scanned left to right with
++* backslash escapes inside `"` and `'` strings; brackets inside strings and
++* anything after `//` are skipped.
++*/
++function findLinePairs(lineText) {
++	const pairs = [];
++	const stack = [];
++	for (let index = 0; index < lineText.length; index++) {
++		const char = lineText[index];
++		if (LADDER_QUOTES.has(char)) {
++			let close = index + 1;
++			while (close < lineText.length && lineText[close] !== char) close += lineText[close] === "\\" && char !== "`" ? 2 : 1;
++			if (close >= lineText.length) break;
++			pairs.push([index, close]);
++			index = close;
++			continue;
++		}
++		if (char === "/" && lineText[index + 1] === "/") break;
++		if (OPENING_BRACKETS[char] !== void 0) stack.push([char, index]);
++		else if (LADDER_CLOSERS.has(char)) {
++			const open = LADDER_CLOSERS.get(char);
++			const openIndex = stack.findLastIndex(([opener]) => opener === open);
++			if (openIndex < 0) continue;
++			pairs.push([stack[openIndex][1], index]);
++			stack.length = openIndex;
++		}
++	}
++	return pairs;
++}
++/**
++* The `{` `}` pairs of a document as offsets, skipping strings, runes and
++* comments. Raw backtick strings may span lines.
++*/
++function findDocumentBracePairs(text) {
++	const pairs = [];
++	const stack = [];
++	for (let index = 0; index < text.length; index++) {
++		const char = text[index];
++		if (char === "/" && text[index + 1] === "/") {
++			const lineEnd = text.indexOf("\n", index);
++			if (lineEnd < 0) break;
++			index = lineEnd;
++		} else if (char === "/" && text[index + 1] === "*") {
++			const commentEnd = text.indexOf("*/", index + 2);
++			if (commentEnd < 0) break;
++			index = commentEnd + 1;
++		} else if (LADDER_QUOTES.has(char)) {
++			let close = index + 1;
++			while (close < text.length && text[close] !== char && (char === "`" || text[close] !== "\n")) close += text[close] === "\\" && char !== "`" ? 2 : 1;
++			index = close;
++		} else if (char === "{") stack.push(index);
++		else if (char === "}" && stack.length > 0) pairs.push([stack.pop(), index]);
++	}
++	return pairs;
++}
++/**
++* The ranges the extend-selection ladder can step to from [start, end], each
++* containing it: the identifier word, the contents of each string or bracket
++* pair on the line and then the pair itself, the line without its indent, the
++* full line, each enclosing `{}` block's inner lines and then its lines with
++* the braces, and the whole document. `bracePairs` lets a caller scan the
++* document's braces once for many lookups.
++*/
++function getSelectionLadderRanges(textDocument, start, end, bracePairs = findDocumentBracePairs(textDocument.getTextSlice(0, getDocumentLength(textDocument)))) {
++	const startPosition = textDocument.positionAt(start);
++	const endPosition = textDocument.positionAt(end);
++	const firstLine = startPosition.line;
++	const lastLine = end > start && endPosition.character === 0 && endPosition.line > firstLine ? endPosition.line - 1 : endPosition.line;
++	const lineOffset = getLineStartOffset(textDocument, firstLine);
++	const lineText = textDocument.getLineText(firstLine);
++	const ranges = [];
++	const word = findOccurrenceWordAt(lineText, startPosition.character);
++	if (word !== void 0) ranges.push([lineOffset + word.start, lineOffset + word.end]);
++	for (const [open, close] of findLinePairs(lineText)) ranges.push([lineOffset + open + 1, lineOffset + close], [lineOffset + open, lineOffset + close + 1]);
++	const lastLineText = textDocument.getLineText(lastLine);
++	const indent = getLeadingSpaces(lineText);
++	const trimmedEnd = lastLineText.replace(/[ \t]+$/, "").length;
++	if (indent < lineText.length && trimmedEnd > 0) ranges.push([lineOffset + indent, getLineStartOffset(textDocument, lastLine) + trimmedEnd]);
++	ranges.push([lineOffset, getFullLineEndOffset(textDocument, lastLine)]);
++	const documentLength = getDocumentLength(textDocument);
++	for (const [open, close] of bracePairs) {
++		if (open >= start || close < end) continue;
++		const openLine = textDocument.positionAt(open).line;
++		const closeLine = textDocument.positionAt(close).line;
++		if (closeLine - openLine >= 2) ranges.push([getLineStartOffset(textDocument, openLine + 1), getLineStartOffset(textDocument, closeLine)]);
++		else ranges.push([open + 1, close]);
++		ranges.push([getLineStartOffset(textDocument, openLine), getFullLineEndOffset(textDocument, closeLine)]);
++	}
++	ranges.push([0, documentLength]);
++	return ranges.filter(([rangeStart, rangeEnd]) => rangeStart <= start && rangeEnd >= end);
++}
++/** The smallest ladder range that strictly contains [start, end]. */
++function findNextLadderRange(textDocument, start, end, bracePairs) {
++	let best;
++	for (const range of getSelectionLadderRanges(textDocument, start, end, bracePairs)) if (range[1] - range[0] > end - start && (best === void 0 || range[1] - range[0] < best[1] - best[0])) best = range;
++	return best;
++}
++/**
++* One step of the extend/shrink selection ladder that GoLand's Extend
++* Selection and Shrink Selection walk, without a syntax tree. Extending grows
++* each selection to the smallest range of `getSelectionLadderRanges` that
++* strictly contains it and pushes the previous selections onto `history`.
++* Shrinking pops `history`, so it walks back exactly; with no history it steps
++* each selection down to the largest ladder range, grown from a caret at or
++* just inside either edge, that it strictly contains, or to a caret. Returns
++* the next selections and history.
++*/
++function resolveSelectionLadderStep(textDocument, selections, history, shrink) {
++	if (shrink && history.length > 0) return {
++		selections: history.at(-1),
++		history: history.slice(0, -1)
++	};
++	const bracePairs = findDocumentBracePairs(textDocument.getTextSlice(0, getDocumentLength(textDocument)));
++	if (shrink) {
++		return {
++			selections: selections.map((selection) => {
++				if (isCollapsedSelection(selection)) return selection;
++				const [start, end] = getSelectionOffsets(textDocument, selection);
++				let best = [start, start];
++				for (const point of [start, start + 1, end - 1, end]) {
++					let current = [point, point];
++					let next = findNextLadderRange(textDocument, point, point, bracePairs);
++					while (next !== void 0 && next[0] >= start && next[1] <= end && next[1] - next[0] < end - start) {
++						current = next;
++						next = findNextLadderRange(textDocument, next[0], next[1], bracePairs);
++					}
++					if (current[1] - current[0] > best[1] - best[0]) best = current;
++				}
++				return createSelectionFromAnchorAndFocusOffsets(textDocument, best[0], best[1]);
++			}),
++			history
++		};
++	}
++	let changed = false;
++	const nextSelections = selections.map((selection) => {
++		const [start, end] = getSelectionOffsets(textDocument, selection);
++		const range = findNextLadderRange(textDocument, start, end, bracePairs);
++		if (range === void 0) return selection;
++		changed = true;
++		return createSelectionFromAnchorAndFocusOffsets(textDocument, range[0], range[1]);
++	});
++	if (!changed) return {
++		selections,
++		history
++	};
++	return {
++		selections: nextSelections,
++		history: [...history, selections]
++	};
++}
+ function fileText(textDocument, start, end) {
+ 	return textDocument.getText({
+ 		start: textDocument.positionAt(start),
+@@ -1668,6 +2669,6 @@ function fileText(textDocument, start, end) {
+ 	});
+ }
+ //#endregion
+-export { DirectionBackward, DirectionForward, DirectionNone, applyDeleteCharacterToSelections, applyDeleteHardLineForwardToSelections, applyDeleteSoftLineBackwardToSelections, applyDeleteWordBackwardToSelections, applyTextChangeToSelections, applyTextReplaceToSelections, applyTransposeToSelections, comparePosition, convertSelection, createSelectionFrom, createSelectionFromAnchorAndFocusOffsets, expandCollapsedSelectionToWord, extendSelection, extendSelections, findNextMatch, getAutoSurroundReplacementTexts, getCaretPosition, getDocumentBoundarySelection, getDocumentFullSelection, getSearchQueryFromSelection, getSelectedLineBlocks, getSelectionAnchor, getSelectionClipboardTexts, getSelectionText, isCollapsedSelection, isLineEditable, mapCursorMove, mapSelectionShift, mergeOverlappingSelections, remapOffsetThroughEdits, remapSelectionsAfterEdits, resolveDeleteCharacterRange, resolveIndentEdits, resolveSelectionCut, selectionIntersects, shiftSelectionLines, snapCharacterToGraphemeBoundary };
++export { resolveIndentBackspace, addCaretPerSelectedLine, applyDeleteLinesToSelections, applyDuplicateLinesToSelections, applyJoinLinesToSelections, applyLineCommentEditsAndMoveDown, applyLinePasteToSelections, applySplitLineToSelections, applyStartNewLineToSelections, applyToggleCaseToSelections, cloneCarets, getSelectionLadderRanges, resolveSelectionLadderStep, selectAllOccurrences, selectNextOccurrence, unselectOccurrence, isDeletablePairAt, resolveTypedPair, DirectionBackward, DirectionForward, DirectionNone, applyDeleteCharacterToSelections, applyDeleteHardLineForwardToSelections, applyDeleteSoftLineBackwardToSelections, applyDeleteWordBackwardToSelections, applyTextChangeToSelections, applyTextReplaceToSelections, applyTransposeToSelections, comparePosition, convertSelection, createSelectionFrom, createSelectionFromAnchorAndFocusOffsets, expandCollapsedSelectionToWord, extendSelection, extendSelections, findNextMatch, getAutoSurroundReplacementTexts, getCaretPosition, getDocumentBoundarySelection, getDocumentFullSelection, getSearchQueryFromSelection, getSelectedLineBlocks, getSelectionAnchor, getSelectionClipboardTexts, getSelectionText, isCollapsedSelection, isLineEditable, mapCursorMove, mapSelectionShift, mergeOverlappingSelections, remapOffsetThroughEdits, remapSelectionsAfterEdits, resolveDeleteCharacterRange, resolveIndentEdits, resolveSelectionCut, selectionIntersects, shiftSelectionLines, snapCharacterToGraphemeBoundary };
+ 
+ //# sourceMappingURL=selection.js.map
+\ No newline at end of file
+diff --git a/dist/editor/tokenizer.js b/dist/editor/tokenizer.js
+index 3f7c3a4c2cafe633bdabaffe49540f75e14457bf..b7e7042d4b9d8526ffde02122f52b57fe1116818 100644
+--- a/dist/editor/tokenizer.js
++++ b/dist/editor/tokenizer.js
+@@ -104,7 +104,12 @@ var EditorTokenizer = class {
+ 		const infoForeground = colors["editorInfo.foreground"];
+ 		const warningForeground = colors["editorWarning.foreground"];
+ 		const errorForeground = colors["editorError.foreground"];
+-		this.#style = `:host {
++		const lineNumberForeground = colors["editorLineNumber.foreground"];
++		const lineNumberActiveForeground = colors["editorLineNumber.activeForeground"];
++		this.#style = `:host {${lineNumberForeground == null ? "" : `
++      --diffs-fg-number: var(--diffs-fg-number-override, ${lineNumberForeground});`}
++      --diffs-editor-line-highlight-bg: ${lineHighlightBackground ?? "initial"};
++      --diffs-editor-line-number-active-fg: ${lineNumberActiveForeground ?? "initial"};
+       --diffs-editor-selection-bg: ${selectionBackground ?? "var(--diffs-line-bg)"};
+       --diffs-editor-line-highlight-border: ${lineHighlightBorder};
+       --diffs-editor-active-line-source-mix: ${activeLineSourceMix};
+diff --git a/dist/highlighter/shiki-editor.js b/dist/highlighter/shiki-editor.js
+index b86658e995815f76ddc99a5438f5f9d7bfc7fdef..4e060e4c806312909b20b5bc4b291bdeb56ffa93 100644
+--- a/dist/highlighter/shiki-editor.js
++++ b/dist/highlighter/shiki-editor.js
+@@ -4,6 +4,8 @@ import { EncodedTokenMetadata, INITIAL } from "shiki/textmate";
+ //#region src/highlighter/shiki-editor.ts
+ const TOKENIZE_TIME_LIMIT = 0;
+ const SLICE_BUDGET_MS = 1;
++const TYPING_IDLE_MS = 500;
++const TYPING_MARGIN_LINES = 200;
+ let nextTokenizerId = 0;
+ /**
+ * Colors an editable document with a TextMate grammar, a line at a time.
+@@ -36,6 +38,9 @@ var ShikiEditorTokenizer = class {
+ 	#dirty = [];
+ 	#coldTarget = -1;
+ 	#paused = false;
++	#window;
++	#editedAt = -Infinity;
++	#idleTimer;
+ 	#generation = 0;
+ 	#tokenizerId = ++nextTokenizerId;
+ 	#listening = false;
+@@ -83,6 +88,8 @@ var ShikiEditorTokenizer = class {
+ 		this.#moveDirtyLines(lineChanges);
+ 		this.#addDirty(change.changedLineRanges ?? [[change.startLine, change.endLine]]);
+ 		this.#paused = false;
++		this.#window = window;
++		this.#editedAt = performance.now();
+ 		const until = window == null ? this.#textDocument.lineCount : window[1];
+ 		const lines = this.advance(until, window == null ? void 0 : SLICE_BUDGET_MS);
+ 		this.#schedule();
+@@ -141,6 +148,7 @@ var ShikiEditorTokenizer = class {
+ 		this.#schedule();
+ 	}
+ 	dispose() {
++		clearTimeout(this.#idleTimer);
+ 		this.#disposed = true;
+ 		this.#generation++;
+ 		this.#dirty = [];
+@@ -190,11 +198,23 @@ var ShikiEditorTokenizer = class {
+ 		}
+ 		return lines;
+ 	}
++	/**
++	* How far background coloring may run now. While edits keep coming it stops
++	* a margin past the window, so an edit whose grammar state never settles
++	* (an unclosed bracket or comment) doesn't re-color the rest of a large file
++	* between keystrokes; the rest follows once typing pauses, and rows scrolled
++	* into view are colored before they render.
++	*/
++	#backgroundLimit() {
++		const lineCount = this.#textDocument.lineCount;
++		if (this.#window == null || performance.now() - this.#editedAt >= TYPING_IDLE_MS) return lineCount;
++		return Math.min(lineCount, this.#window[1] + TYPING_MARGIN_LINES);
++	}
+ 	#slice() {
+ 		if (this.#paused || this.#disposed) return;
+ 		this.#ensureActiveTheme();
+ 		const startedAt = performance.now();
+-		const lines = this.advance(this.#textDocument.lineCount, SLICE_BUDGET_MS);
++		const lines = this.advance(this.#backgroundLimit(), SLICE_BUDGET_MS);
+ 		if (lines.size > 0) this.#onDeferTokenize(lines);
+ 		if (this.#dirty.length === 0 && this.#coldTarget >= 0) {
+ 			const target = Math.min(this.#coldTarget, this.#textDocument.lineCount);
+@@ -211,10 +231,19 @@ var ShikiEditorTokenizer = class {
+ 		this.#schedule();
+ 	}
+ 	#schedule() {
++		clearTimeout(this.#idleTimer);
++		this.#idleTimer = void 0;
+ 		if (this.#paused || this.#disposed || this.#dirty.length === 0 && this.#coldTarget < 0 || isGrammarlessLanguage(this.#textDocument.languageId)) {
+ 			this.#stopListening();
+ 			return;
+ 		}
++		const waiting = this.#dirty.length > 0 && this.#dirty[0][0] >= this.#backgroundLimit();
++		if (waiting) {
++			this.#stopListening();
++			this.#generation++;
++			this.#idleTimer = setTimeout(() => this.#schedule(), Math.max(0, TYPING_IDLE_MS - (performance.now() - this.#editedAt)));
++			return;
++		}
+ 		const jobId = ++this.#generation;
+ 		if (!this.#listening) {
+ 			globalThis.addEventListener("message", this.#onMessage);
 diff --git a/dist/index.d.ts b/dist/index.d.ts
 index 757c5c21f4e58db7e8e4f854e5ca3ded90dd538b..977dc2609bd47ffb77ecd5f759b521fe6da8a4b6 100644
 --- a/dist/index.d.ts
@@ -377,6 +2390,127 @@ index 757c5c21f4e58db7e8e4f854e5ca3ded90dd538b..977dc2609bd47ffb77ecd5f759b521fe
 \ No newline at end of file
 +export { type CodeViewSearch, type CodeViewSearchQuery, type CodeViewSearchSnapshot, type AnnotationLineMap, type AnnotationSide, type AnnotationSpan, type AppliedThemeStyleCache, AttachedLanguages, type BaseCodeOptions, type BaseDiffOptions, type BaseDiffOptionsWithDefaults, CODE_VIEW_DIFF_OPTION_KEYS, CODE_VIEW_FILE_OPTION_KEYS, CODE_VIEW_FOOTER_ATTRIBUTE, CODE_VIEW_HEADER_ATTRIBUTE, COMMIT_METADATA_SPLIT, CORE_CSS_ATTRIBUTE, type CSSVariablesThemeOptions, CUSTOM_HEADER_SLOT_ID, type ChangeContent, type ChangeTypes, type CodeColumnType, CodeColumns, type CodeToHtmlOptions, CodeToTokenTransformStream, CodeToTokenTransformStreamOptions, type CodeToTokensOptions, CodeView, CodeViewCoordinator, CodeViewCreateEditorOptions, type CodeViewDiffItem, type CodeViewFileItem, type CodeViewItem, CodeViewItemEditCompleteEventMap, CodeViewItemEditCompleteHandler, type CodeViewItemScrollTarget, type CodeViewLayout, type CodeViewLineScrollTarget, CodeViewLineSelection, CodeViewMode, CodeViewModeItemMap, CodeViewOpenSearchOptions, CodeViewOptions, type CodeViewPositionScrollTarget, type CodeViewRangeScrollTarget, CodeViewRenderedDiffItem, CodeViewRenderedFileItem, CodeViewRenderedItem, type CodeViewScrollBehavior, CodeViewScrollListener, type CodeViewScrollTarget, CodeViewSearchOptions, CodeViewSearchScope, CodeViewSlotSnapshot, Column, ColumnReconciler, type ConflictResolverTypes, type ContextContent, CreateFileHeaderElementProps, type CreatePatchOptions, type CreatePatchOptionsNonabortable, type CustomPreProperties, type CustomThemeLoader, DEFAULT_CODE_VIEW_FILE_METRICS, DEFAULT_CODE_VIEW_LAYOUT, DEFAULT_COLLAPSED_CONTEXT_THRESHOLD, DEFAULT_EXPANDED_REGION, DEFAULT_HIGHLIGHTER, DEFAULT_LOCALE, DEFAULT_MESSAGES, DEFAULT_RENDER_RANGE, DEFAULT_SMOOTH_SCROLL_SETTINGS, DEFAULT_THEMES, DEFAULT_TOKENIZE_MAX_LENGTH, DEFAULT_VIRTUAL_FILE_METRICS, DIFFS_SCROLLBAR_GUTTER_MEASURED_PROPERTY, DIFFS_SCROLLBAR_MEASURE_ATTRIBUTE, DIFFS_TAG_NAME, type DecorationItem, type DiffAcceptRejectHunkConfig, type DiffAcceptRejectHunkType, type DiffFileInput, DiffHunksRenderer, DiffHunksRendererOptions, DiffHunksRendererOptionsWithDefaults, type DiffIndicators, DiffLayout, DiffLayoutInput, DiffLayoutOptions, DiffLayoutResult, type DiffLib, type DiffLineAnnotation, type DiffLineEventBaseProps, DiffModel, type DiffModelChange, type DiffSide, type DiffTokenEventBaseProps, type DiffsEditorTokenizer, type DiffsEditorTokenizerOptions, type DiffsHighlighter, type DiffsI18nConfig, type DiffsMessageKey, type DiffsMessages, type DiffsStreamTokenizer, type DiffsTheme, type DiffsThemeNames, type DocumentLineChange, type DocumentLineEdit, type DocumentLines, EMPTY_LINE_ANNOTATIONS, EMPTY_RENDER_RANGE, EXTENSION_TO_FILE_FORMAT, type ExpansionDirections, type ExtensionFormatMap, FILENAME_HEADER_REGEX, FILE_CONTEXT_BLOB, File, type FileContents, FileDiff, type FileDiffContentsLoader, FileDiffEditChangeHandler, type FileDiffEditCompleteEvent, FileDiffEditCompleteHandler, FileDiffHydrationProps, type FileDiffLoadedChangedFiles, type FileDiffLoadedFiles, type FileDiffLoadedPureRenamedFile, type FileDiffMetadata, FileDiffOptions, FileDiffRenderBaseProps, FileDiffRenderData, FileDiffRenderInput, FileDiffRenderProps, FileDiffType, FileEditChangeHandler, type FileEditCompleteEvent, FileEditCompleteHandler, type FileHeaderRenderMode, FileHydrateProps, FileLayout, FileLayoutInput, FileLayoutResult, FileModel, FileModelChange, FileOptions, FileRenderData, FileRenderInput, FileRenderProps, FileRenderResult, FileRenderer, FileRendererOptions, FileStream, FileStreamOptions, type ForceDiffPlainTextOptions, type ForceFilePlainTextOptions, GIT_DIFF_FILE_BREAK_REGEX, type GapSpan, GetHoveredLineResult, GetLineIndexUtility, HEADER_FILENAME_SUFFIX_SLOT_ID, HEADER_METADATA_SLOT_ID, HEADER_PREFIX_SLOT_ID, HUNK_HEADER, HighlightRows, type HighlightedToken, HighlighterDisposedError, HighlighterOptions, type HighlighterTypes, type Hunk, type HunkBlock, type HunkData, type HunkExpansionRegion, type HunkLineType, type HunkSeparators, HunksRenderResult, INDEX_LINE_METADATA, InjectedRow, InteractionManager, InteractionManagerBaseOptions, InteractionManagerMode, InteractionManagerOptions, LayoutColumns, type LineAnnotation, LineAnnotationPosition, LineDecoration, LineDiffRangeCache, type LineDiffTypes, LineEnding, type LineEventBaseProps, type LineInfo, LineKey, LineMap, type LinePosition, type LineSpans, type LineTypes, LogTypes, MAX_SEARCH_MATCHES, MERGE_CONFLICT_BASE_MARKER_REGEX, MERGE_CONFLICT_END_MARKER_REGEX, MERGE_CONFLICT_SEPARATOR_MARKER_REGEX, MERGE_CONFLICT_START_MARKER_REGEX, MatchRange, type MaybeDiffFileInput, type MergeConflictActionPayload, MergeConflictActionTarget, MergeConflictActionsTypeOption, type MergeConflictMarkerRow, type MergeConflictMarkerRowType, type MergeConflictRegion, type MergeConflictResolution, MessagesSubscriber, ModelSessionState, type NumericScrollLineAnchor, type ObservedAnnotationNodes, type ObservedGridNodes, OnDiffLineClickProps, OnDiffLineEnterLeaveProps, OnLineClickProps, OnLineEnterLeaveProps, OnTokenEventProps, type ParseDiffOptions, type ParsePatchOptions, ParsedLine, type ParsedPatch, type PendingCodeViewLayoutReset, type PostRenderPhase, type PrePropertiesConfig, type ProcessFileConflictData, type RecallToken, ReconcileResult, RegisteredCustomLanguages, type RenderDiffFilesResult, type RenderDiffOptions, type RenderDiffResult, type RenderFileMetadata, type RenderFileOptions, type RenderFileResult, type RenderHeaderFilenameSuffixCallback, type RenderHeaderMetadataCallback, type RenderHeaderPrefixCallback, RenderMergeConflictActions, type RenderRange, RenderTokenLinesOptions, type RenderWindow, type RenderedDiffASTCache, type RenderedFileASTCache, RenderedLineContext, ReplacementDocument, ResizeManager, ResizeManagerColumnVariableMode, ResizeManagerSetupOptions, ResolvedLanguages, ResolvingLanguages, type RetainedDiffSessionSnapshot, RowCells, RowKey, RowSource, RowSpec, SPLIT_WITH_NEWLINES, SVGSpriteNames, SVGSpriteSheet, type ScrollRequestResult, ScrollSyncManager, SearchMatchVisitor, SearchOptionDefaults, SearchPanelMode, SearchPanelState, SearchParams, SearchPosition, SearchableDocument, type SelectedLineRange, type SelectionPoint, type SelectionSide, SelectionWriteOptions, type SharedRenderState, type SmoothScrollSettings, SpanScrollRequest, SplitInjectedRow, SplitInjectedRowPlacement, SplitLineDecorationProps, StartSessionOptions, type StickySpecs, type SupportedLanguages, THEME_CSS_ATTRIBUTE, type ThemeTypes, type ThemedDiffResult, type ThemedFileResult, type ThemedToken, type ThemesType, type TokenEventBase, type TokensResult, UNIFIED_DIFF_FILE_BREAK_REGEX, UNSAFE_CSS_ATTRIBUTE, UnifiedInjectedRowPlacement, UnifiedLineDecorationProps, UnresolvedFile, UnresolvedFileHydrationProps, UnresolvedFileOptions, UnresolvedFileRenderData, UnresolvedFileRenderInput, UnresolvedFileRenderProps, VIRTUALIZED_FILE_DIFF_LAYOUT_CHECKPOINT_INTERVAL, type VirtualFileMetrics, type VirtualWindowSpecs, VirtualizedFile, VirtualizedFileDiff, Virtualizer, VirtualizerConfig, VirtualizerScrollOptions, areDiffLineAnnotationsEqual, areDiffRenderOptionsEqual, areDiffTargetsEqual, areFileRenderOptionsEqual, areFilesEqual, areGhostTextRowsEqual, areHunkDataEqual, areLanguagesAttached, areLineAnnotationsEqual, areObjectsEqual, areOptionsEqual, arePrePropertiesEqual, areRenderRangesEqual, areSelectionsEqual, areThemesAttached, areThemesEqual, areVirtualWindowSpecsEqual, areWorkerStatsEqual, attachResolvedLanguages, attachResolvedThemes, attributeFor, buildSearchReplacementText, canUseWASM, cleanLastNewline, cleanUpResolvedLanguages, cleanUpResolvedThemes, clearRenderQueue, cloneFileDiffMetadata, cloneHunks, columnCells, createAnnotationElement, createAnnotationWrapperNode, createCSSVariablesTheme, createColumn, createCoreStyleElement, createDiffSpanDecoration, createEmptyRowBuffer, createFileHeaderElement, createGutterGap, createGutterItem, createGutterUtilityContentNode, createGutterUtilityElement, createGutterWrapper, createHastElement, createHighlighter, createIconElement, createNoNewlineElement, createPlainRow, createPreElement, createPreWrapperProperties, createRowNodes, createSeparator, createSpanFromToken, createStyleElement, createTextNodeElement, createThemeStyleElement, createTokenRow, createUnsafeCSSStyleNode, createWindowFromScrollPosition, dequeueRender, detachString, diffAcceptRejectHunk, disposeHighlighter, findCodeElement, formatCSSVariablePrefix, getCustomExtensionsMap, getCustomExtensionsVersion, getFiletypeFromFileName, getHighlighterIfLoaded, getHighlighterOptions, getHighlighterThemeStyles, getHighlighterType, getHunkSeparatorSlotName, getIconForType, getLineAnnotationName, getLineAnnotationSource, getLineEndingType, getLineNodes, getOrCreateCodeNode, getResolvedLanguages, getResolvedOrResolveLanguage, getResolvedOrResolveTheme, getResolvedThemes, getSharedHighlighter, getSingularPatch, getThemes, getTotalLineCountFromHunks, getUnresolvedDiffHunksRendererOptions, hasResolvedLanguages, hasResolvedThemes, hastToHtml, hydratePartialDiff, i18n, isDefaultRenderRange, isDiffAnnotation, isDiffAnnotationCollection, isFileAnnotation, isFileAnnotationCollection, isHighlighterLoaded, isHighlighterLoading, isHighlighterNull, isLineKey, isWorkerContext, lineDiffRangesFor, lineEndingOf, markRow, normalizeLineBreaks, parseDiffFromFile, parseLineType, parsePatchFiles, patchScrollbarGutterSize, pluckInteractionOptions, prefersReducedMotion, preloadHighlighter, prerenderHTMLIfNecessary, processFile, processLine, processPatch, pushOrJoinSpan, pushRow, queueRender, readAllLines, readChangedLines, readOnly, recordLineAnnotationSource, registerCustomCSSVariableTheme, registerCustomLanguage, registerCustomTheme, releaseStringDetachBuffer, renderDiffWithHighlighter, renderFileWithHighlighter, renderTokenLines, replaceCustomExtensions, resolveConflict, resolveLanguage, resolveLanguages, resolveRegion, resolveTheme, resolveThemes, searchDocument, setCustomExtension, setLanguageOverride, setPreNodeProperties, tokenStyle, tokensToHtml, trimPatchContext, uniformLineEndings, wrapCoreCSS, wrapThemeCSS, wrapUnsafeCSS };
 \ No newline at end of file
+diff --git a/dist/model/FileModel.d.ts b/dist/model/FileModel.d.ts
+index 8b721efb490c0e9194ac5235afc61427594b51a1..832b410253ebbc065f6f7404619739af125e2f39 100644
+--- a/dist/model/FileModel.d.ts
++++ b/dist/model/FileModel.d.ts
+@@ -29,6 +29,8 @@ declare class FileModel {
+   /** Whether the file is being edited. */
+   get live(): boolean;
+   get lineCount(): number;
++  /** Whether the file has any text, without joining its lines. */
++  get hasContents(): boolean;
+   /** Every line with its line break, in order. */
+   get lines(): readonly string[];
+   /** The text of a line, with its line break. */
+diff --git a/dist/model/FileModel.js b/dist/model/FileModel.js
+index 8e20d232cecd3ce616d6944bc9719adc0f1bca96..32c6f849f5599167b44a1a9053dc61c36357bf8c 100644
+--- a/dist/model/FileModel.js
++++ b/dist/model/FileModel.js
+@@ -1,5 +1,6 @@
+ import { linesFromFileContents } from "../utils/computeFileOffsets.js";
+ import { uniformLineEndings } from "../utils/lineEndings.js";
++import { lineChangesOf, moveLineEntries } from "../utils/lineChanges.js";
+ import { readAllLines, readChangedLines } from "./documentLines.js";
+ import { LineMap } from "./LineMap.js";
+ //#region src/model/FileModel.ts
+@@ -32,10 +33,22 @@ var FileModel = class FileModel {
+ 	}
+ 	#lines;
+ 	#map;
++	#contents;
+ 	constructor(file, lines, map) {
+ 		this.file = file;
+ 		this.#lines = lines;
+ 		this.#map = map;
++		if (map == null) return;
++		this.#contents = file.contents;
++		Object.defineProperty(file, "contents", {
++			configurable: true,
++			enumerable: true,
++			get: () => this.#contents ??= this.#lines.join("")
++		});
++	}
++	/** Whether the file has any text, without joining its lines. */
++	get hasContents() {
++		return this.#lines.length > 1 || (this.#lines[0] ?? "").length > 0;
+ 	}
+ 	/** Whether the file is being edited. */
+ 	get live() {
+@@ -76,10 +89,14 @@ var FileModel = class FileModel {
+ 				changedLines.push(line);
+ 			}
+ 		} else {
+-			this.#lines = readAllLines(document).lines;
++			const moved = moveLineEntries(this.#lines, lineChangesOf(change), () => "").entries;
++			if (moved.length === document.lineCount) {
++				for (const [line, text] of readChangedLines(document, change)) moved[line] = text;
++				this.#lines = moved;
++			} else this.#lines = readAllLines(document).lines;
+ 			for (let line = change.startLine; line <= change.endLine; line++) changedLines.push(line);
+ 		}
+-		this.file.contents = this.#lines.join("");
++		this.#contents = void 0;
+ 		return {
+ 			changedLines,
+ 			removedLineIds,
+diff --git a/dist/renderers/FileRenderer.d.ts b/dist/renderers/FileRenderer.d.ts
+index e2669b6ff9fa536b79e531eadf78378cb11e1b7e..c4abc5b78d0527fd00cb36280bb6faf9effaef0f 100644
+--- a/dist/renderers/FileRenderer.d.ts
++++ b/dist/renderers/FileRenderer.d.ts
+@@ -113,6 +113,8 @@ declare class FileRenderer<LAnnotation = undefined> {
+    */
+   getFileForNextRender(file: FileContents): FileContents;
+   private canRenderFile;
++  /** Whether the file has any text; reads the edited file's lines instead of joining them. */
++  hasContents(file: FileContents): boolean;
+   /** The number of lines the file renders, counting an empty last line. */
+   getLineCount(file: FileContents): number;
+   private modelFor;
+diff --git a/dist/renderers/FileRenderer.js b/dist/renderers/FileRenderer.js
+index fdefc7836d342cd2493aabedab0bbeeee6fb0711..c9131d710cdf6caa247b71c843d68606ec1bac26 100644
+--- a/dist/renderers/FileRenderer.js
++++ b/dist/renderers/FileRenderer.js
+@@ -268,7 +268,7 @@ var FileRenderer = class {
+ 		const workerManager = this.getHighlightWorkerManager(file);
+ 		if (workerManager == null || file.cacheKey == null || workerManager.didHighlightFail(file)) return false;
+ 		const options = workerManager.getFileRenderOptions();
+-		return options.useTokenTransformer === true && file.contents.length > 0 && !isFilePlainText(file) && !isFileMassive(this.getLineCount(file), this.getTokenizeMaxLength()) && !this.hasHighlightedRenderCache(file, options) && this.getReadyRenderResult(file, options) == null;
++		return options.useTokenTransformer === true && this.hasContents(file) && !isFilePlainText(file) && !isFileMassive(this.getLineCount(file), this.getTokenizeMaxLength()) && !this.hasHighlightedRenderCache(file, options) && this.getReadyRenderResult(file, options) == null;
+ 	}
+ 	getHighlightWorkerManager(file) {
+ 		const { editSessionActive, workerManager } = this;
+@@ -330,7 +330,7 @@ var FileRenderer = class {
+ 		const { renderCache } = this;
+ 		if (renderCache == null) return file;
+ 		if (areFileTargetsEqual(renderCache.file, file)) return renderCache.file;
+-		const forcePlainText = file.contents.length === 0 || isFilePlainText(file) || isFileMassive(this.getLineCount(file), this.getTokenizeMaxLength());
++		const forcePlainText = !this.hasContents(file) || isFilePlainText(file) || isFileMassive(this.getLineCount(file), this.getTokenizeMaxLength());
+ 		return this.canRenderFile(file, options, forcePlainText) ? file : renderCache.file;
+ 	}
+ 	canRenderFile(file, options, forcePlainText) {
+@@ -341,6 +341,12 @@ var FileRenderer = class {
+ 		if (this.getHighlightWorkerManager(file) != null) return !renderCache.highlighted;
+ 		return getHighlighterIfLoaded({ theme: options.theme }) != null;
+ 	}
++	/** Whether the file has any text; reads the edited file's lines instead of joining them. */
++	hasContents(file) {
++		const { model } = this;
++		if (model != null && model.file === file && model.live) return model.hasContents;
++		return file.contents.length > 0;
++	}
+ 	/** The number of lines the file renders, counting an empty last line. */
+ 	getLineCount(file) {
+ 		const { model } = this;
+@@ -381,7 +387,7 @@ var FileRenderer = class {
+ 		const newContent = !areFileTargetsEqual(file, this.renderCache.file);
+ 		const cacheFile = newContent ? file : this.renderCache.file;
+ 		const model = this.modelFor(cacheFile);
+-		const hasContent = file.contents.length > 0;
++		const hasContent = this.hasContents(file);
+ 		const forcePlainText = !hasContent || isFilePlainText(file) || isFileMassive(model.lineCount, this.getTokenizeMaxLength());
+ 		const canRenderFile = this.canRenderFile(file, options, forcePlainText);
+ 		const newRenderRange = !areRenderRangesEqual(this.renderCache.renderRange, renderRange);
 diff --git a/dist/search/headlessSearch.d.ts b/dist/search/headlessSearch.d.ts
 new file mode 100644
 index 0000000000000000000000000000000000000000..a794c6c6a36f668b0788123a3dc005071ec0f823
@@ -601,3 +2735,14 @@ index 0000000000000000000000000000000000000000..8fdf2667be6082e3ba9b85cc9a4b765a
 +}
 +//#endregion
 +export { createHeadlessSearch };
+diff --git a/dist/utils/areFileTargetsEqual.js b/dist/utils/areFileTargetsEqual.js
+index c0369b2520bff163761dfc58182ebd81f459df75..e87a10ca101e3dad832db23bce2cf423a9aefe4a 100644
+--- a/dist/utils/areFileTargetsEqual.js
++++ b/dist/utils/areFileTargetsEqual.js
+@@ -1,5 +1,6 @@
+ //#region src/utils/areFileTargetsEqual.ts
+ function areFileTargetsEqual(fileA, fileB) {
++	if (fileA === fileB) return true;
+ 	return fileA?.cacheKey != null || fileB?.cacheKey != null ? fileA?.cacheKey === fileB?.cacheKey : fileA?.contents === fileB?.contents && fileA?.name === fileB?.name && fileA?.lang === fileB?.lang;
+ }
+ //#endregion

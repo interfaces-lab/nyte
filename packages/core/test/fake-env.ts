@@ -10,7 +10,6 @@ import type {
   OutputFrame,
   PageId,
   PatchEntry,
-  RunId,
   ScanFrame,
   SnapshotId,
   WorkspaceTarget,
@@ -138,7 +137,6 @@ export function fakeProvider(
 ): FakeProvider {
   const snapshots = new Map<SnapshotId, ReadonlyMap<string, string>>();
   const ids = new Map<string, SnapshotId>();
-  const befores = new Map<RunId, SnapshotId>();
   let reading = 0;
 
   const take = (root: string): SnapshotId => {
@@ -220,16 +218,7 @@ export function fakeProvider(
       return env(provider, readTargetPath(target), options?.confined === true, options?.boot);
     },
     snapshots: (attached) => ({
-      async before(run) {
-        const known = befores.get(run);
-
-        if (known !== undefined) return known;
-        const taken = take(attached.cwd);
-        befores.set(run, taken);
-
-        return taken;
-      },
-      after: async () => take(attached.cwd),
+      capture: async () => take(attached.cwd),
       async diff(from, to): Promise<ChangeSet> {
         return {
           revision: to,

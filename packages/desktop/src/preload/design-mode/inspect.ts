@@ -163,7 +163,6 @@ export function formatHex(color: Rgba): string {
   return color.a < 1 ? `#${hex} ${String(Math.round(color.a * 100))}%` : `#${hex}`;
 }
 
-/** WCAG 2.2: 4.5:1 for body text and 3:1 for large text (24 px, or 18.66 px bold) for AA; 7 and 4.5 for AAA. */
 function measureContrast(ink: Rgba, paper: Rgba, size: number, weight: number): Contrast {
   const lighter = Math.max(luminance(ink), luminance(paper));
   const darker = Math.min(luminance(ink), luminance(paper));
@@ -224,7 +223,6 @@ function parseColor(value: string): Rgba {
   return { r: pixel[0] ?? 0, g: pixel[1] ?? 0, b: pixel[2] ?? 0, a: (pixel[3] ?? 0) / 255 };
 }
 
-/** A cross-origin sheet throws on read. */
 function readRules(sheet: CSSStyleSheet): readonly CSSRule[] {
   try {
     return [...sheet.cssRules];

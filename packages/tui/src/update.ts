@@ -286,7 +286,6 @@ async function checkMatchingDocs(source: string, destination: string): Promise<v
   }
 }
 
-/** Stages a release's docs beside the binary under `share/nyte/<version>`. `mkdir` reserves the version exclusively before the rename, since a rename alone can replace an existing empty directory, one a concurrent publisher created included. */
 async function stageDocs(source: string, binaryPath: string, version: string) {
   const parent = resolve(dirname(binaryPath), "../share/nyte");
   const destination = join(parent, version);

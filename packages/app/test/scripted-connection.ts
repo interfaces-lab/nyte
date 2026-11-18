@@ -246,6 +246,7 @@ export function scriptedConnection(script: ConnectionScript = {}): {
         ? refuse
         : async () => ({ kind: "available" as const, api: github }),
     browser: refuse,
+    language: refuse,
   });
 
   const git: GitApi = {

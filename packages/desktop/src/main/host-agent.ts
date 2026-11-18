@@ -43,8 +43,7 @@ export interface HostAgentOptions {
 }
 
 export function hostAgent(options: HostAgentOptions): HostAgent {
-  if (process.platform !== "darwin" || options.build?.host === "detached")
-    return detachedHost(options);
+  if (process.platform !== "darwin") return detachedHost(options);
 
   return options.build === null ? developmentAgent(options) : loginItemAgent(options);
 }

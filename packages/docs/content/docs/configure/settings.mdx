@@ -27,6 +27,7 @@ These ship with Nyte. Plugins you add can declare more.
 | `skills.paths`           | `[]`     | More places to find skills. See [Skills](/docs/configure/skills#paths)                                                                          |
 | `continueInterrupted`    | `true`   | When a response is cut off, keep its text and ask the model to continue it                                                                      |
 | `web_search.provider`    | `"exa"`  | Where web searches go: `exa`, `tavily`, `firecrawl`, `parallel`, or `off`                                                                       |
+| `web_search.keys`        | `{}`     | API keys for the web search providers, sealed like secret variables. Without one, a provider's keyless route answers                            |
 | `worktrees.branchPrefix` | `""`     | Starts the name of each branch Nyte creates for a worktree chat, such as `nyte/`                                                                |
 | `worktrees.idleDays`     | `7`      | Clean a worktree once no chat has used it for this many days. `0` turns this off                                                                |
 | `worktrees.maxCount`     | `20`     | Clean the least recently used worktrees beyond this many. `0` turns this off                                                                    |
@@ -39,13 +40,14 @@ worktrees with a chat still running.
 
 In the desktop app, find them here:
 
-| Setting               | Where                                                                      |
-| --------------------- | -------------------------------------------------------------------------- |
-| `permissions`         | **Customize > Plugins > Permissions**                                      |
-| `web_search.provider` | **Customize > Plugins > Web**                                              |
-| `worktrees.*`         | **Settings > Source control**                                              |
-| `telemetry.endpoint`  | **Settings > Developer** with **Developer Mode** on, as **Trace endpoint** |
-| `variables.entries`   | **Settings > Environment variables**                                       |
+| Setting               | Where                                                                         |
+| --------------------- | ----------------------------------------------------------------------------- |
+| `permissions`         | **Customize > Plugins > Permissions**                                         |
+| `web_search.provider` | **Settings > Web search**, or **Customize > Plugins > Web**                   |
+| `web_search.keys`     | **Settings > Web search**. In the terminal, `/websearch-key <provider> <key>` |
+| `worktrees.*`         | **Settings > Source control**                                                 |
+| `telemetry.endpoint`  | **Settings > Developer** with **Developer Mode** on, as **Trace endpoint**    |
+| `variables.entries`   | **Settings > Environment variables**                                          |
 
 The desktop app adds settings of its own, named `desktop.*`, for notifications, sleep, its terminal
 and its browser. It shows them on its **Settings** pages.
@@ -69,6 +71,7 @@ don't change it. Use the file to set up a new machine, then change settings in t
 The file can seed the host settings above. It can't seed:
 
 - `variables.entries`, which holds secrets. Set those in **Settings > Environment variables**.
+- `web_search.keys`, which holds secrets. Set those in **Settings > Web search**.
 - A plugin's session settings. Set those on a chat.
 - Settings a plugin adds from `activate`, or that plugins in a folder's `.nyte/plugins` declare.
 

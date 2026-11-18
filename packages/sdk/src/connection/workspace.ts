@@ -26,6 +26,7 @@ import type {
 import { mapped } from "@nyte-ai/protocol";
 import type { OperationInput } from "@nyte-ai/protocol";
 import { resolveCapability } from "./capability.ts";
+import { languageApi } from "./language.ts";
 import { loginHandle } from "./login.ts";
 import { batchOutcome, receiptHandle } from "./receipts.ts";
 import type { Rows } from "./rows.ts";
@@ -83,6 +84,10 @@ export function workspaceHandle(rows: Rows, workspace: WorkspaceId): Workspace {
     browser: async () =>
       resolveCapability(await rows.call("workspace.browser", { workspace }), () =>
         browserApi(rows, workspace),
+      ),
+    language: async () =>
+      resolveCapability(await rows.call("workspace.language", { workspace }), () =>
+        languageApi(rows, workspace),
       ),
   };
 }
@@ -291,7 +296,6 @@ function patchSet(wire: PatchSetWire): PatchSet {
   return { revision: wire.revision, entries: new Map(Object.entries(wire.entries)) };
 }
 
-/** Browsers reject a streamed request body over HTTP/1.1, which local hosts speak, so an upload sends its bytes whole. */
 async function collectBytes(
   source: AsyncIterable<Uint8Array>,
   signal: AbortSignal,

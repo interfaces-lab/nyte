@@ -32,6 +32,40 @@ Each ui module sits on one engine. Find it before changing the module.
   version. Pin a patched Pierre package to an exact version when you upgrade it, then redo its patch
   with `pnpm patch` and check that every change in it still applies and is still needed.
 
+## Pierre surfaces
+
+These hold for every surface that renders through Pierre: the Editor, Changes, chat diffs, the
+declaration peek, the settings previews and the file trees.
+
+- One worker pool, `PierreWorkerProvider`. It highlights anything up to `mainThreadMaxCharacters`
+  (100,000) on the main thread, as Pierre's docs ask for the highlights backend; only larger files
+  and diffs start a worker. Never mount `WorkerPoolContextProvider` or a second pool.
+- No pool around an edited file. The `Editor` tokenizes on the main thread and drops pool output.
+  If a pool must serve an editable surface, give it `useTokenTransformer: true`.
+- One `CodeView` per scroll region that lists only files and diffs, such as Changes. A list that
+  mixes other content, such as the chat transcript, keeps its own virtualizer and renders each diff
+  with `FileDiff`.
+- Keep `options` equal between renders. The React `CodeView` and `FileDiff` compare them shallowly,
+  and any unequal value re-renders the whole viewer. Nested objects (`layout`, `searchOptions`,
+  `itemMetrics`) are module constants or cached per input; callbacks read the latest state through
+  a store or ref instead of closing over per-render data.
+- `onPostRender` runs for every item Pierre renders or recycles, so it never reads computed style
+  or layout. Colours that depend on the appearance go on the surface's root once per appearance
+  (`applyDiffScopes`); the shadow host inherits them.
+- `itemMetrics` matches what the CSS draws: the line height from the code font size, and the hunk
+  separator and header heights whenever `unsafeCSS` or a custom header changes them.
+- A `cacheKey` names the content, such as a digest or a revision, never only a path. An accepted
+  edit gets a fresh one.
+- Key annotation UI by a stable metadata ID, not a line number.
+- File trees create their model once with `useFileTree`, push path changes with `resetPaths` or
+  `batch`, and statuses with `setGitStatus`. The tree reads its options once, so callbacks read the
+  latest props through a ref.
+- Chat code blocks highlight with `@pierre/highlights` directly (`codeToTokens`, `StreamTokenizer`),
+  not through a diffs component.
+- Measure a change to any of these with the desktop `pierre-surfaces` bench
+  (`NYTE_PIERRE_SURFACES`): a long chat of diffs, a 40-file Changes stack, a 6-file review and the
+  explorer on golang.org/x/tools.
+
 ## Pierre in tests
 
 - Pierre renders into open shadow roots: `diffs-container` for the editor, code view and diff,

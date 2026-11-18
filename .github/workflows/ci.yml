@@ -2,6 +2,7 @@ name: CI
 
 on:
   pull_request:
+  merge_group:
   push:
     branches: [main, release/**]
   schedule:
@@ -44,7 +45,7 @@ jobs:
           REF: ${{ github.ref }}
         run: |
           filter="--affected"
-          if [ "$EVENT" = schedule ] || [ "$EVENT" = workflow_dispatch ]; then filter=""; fi
+          if [ "$EVENT" = schedule ] || [ "$EVENT" = workflow_dispatch ] || [ "$EVENT" = merge_group ]; then filter=""; fi
           echo "filter=$filter" >> "$GITHUB_OUTPUT"
           pnpm exec turbo ls $filter --output=json > "$RUNNER_TEMP/packages.json"
           node -e '

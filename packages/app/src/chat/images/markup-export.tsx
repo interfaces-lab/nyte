@@ -99,7 +99,6 @@ export function outputTransform(size: Size, edit: Edit): DOMMatrix {
     .multiply(orientation(size, edit));
 }
 
-/** An SVG drawn as an image loads nothing outside itself, so the photo goes in as a data URL. */
 async function embed(image: HTMLImageElement, size: Size): Promise<string> {
   const canvas = document.createElement("canvas");
 

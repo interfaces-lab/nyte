@@ -180,6 +180,37 @@ function surveyReply(request: Request): Reply | undefined {
   };
 }
 
+const WARM_PROMPT = "/warm";
+
+export const WARM_REPLY = "The accent is warm now, by day and by night.";
+
+function warmReply(request: Request): Reply | undefined {
+  if (lastUserText(request) !== WARM_PROMPT) return undefined;
+  const title = titleReply(request);
+
+  if (title !== null) return { content: [{ type: "text", text: title }] };
+
+  if (request.context.messages.at(-1)?.role === "toolResult")
+    return { content: [{ type: "text", text: WARM_REPLY }] };
+
+  return {
+    content: [
+      {
+        type: "toolCall",
+        id: "warm-edit",
+        name: "edit",
+        arguments: {
+          path: "design/tokens.css",
+          edits: [
+            { oldText: "--accent: #3f58a8;", newText: "--accent: #b4532a;" },
+            { oldText: "--accent: #c1d0f6;", newText: "--accent: #ffcf9a;" },
+          ],
+        },
+      },
+    ],
+  };
+}
+
 const BROWSE_PROMPT = "/browse ";
 
 function browseReply(request: Request): Reply | undefined {
@@ -286,7 +317,7 @@ export function e2eAnswers(input: E2eAnswerOptions): (request: Request) => Reply
   });
 
   return (request) => {
-    const rendering = renderReply(request) ?? browseReply(request);
+    const rendering = renderReply(request) ?? browseReply(request) ?? warmReply(request);
 
     if (rendering !== undefined) return rendering;
     const scripted = ci(request);

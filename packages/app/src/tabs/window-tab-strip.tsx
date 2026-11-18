@@ -146,6 +146,7 @@ function TabView({
 }): ReactElement {
   useCommitCount("render:window-tab");
   const unread = mark?.unread === true;
+  const marked = mark !== undefined && (mark.state !== "done" || unread);
   const digit = position < 9 ? String(position + 1) : undefined;
   const shortcut = (key: string): string => (strip.mac ? `⌘${key}` : `Ctrl+${key}`);
   const modifierHeld = strip.mac ? held.meta : held.ctrl;
@@ -174,7 +175,6 @@ function TabView({
               closable && stripStyles.tabClosable,
               active && stripStyles.tabActive,
               active && hairline.ring,
-              tab.preview && stripStyles.tabPreview,
             )}
             onMouseDown={(event) => {
               if (event.button === 1) event.preventDefault();
@@ -232,12 +232,10 @@ function TabView({
           }
         >
           <span aria-hidden {...props(stripStyles.glyph)}>
-            {mark === undefined ? (
-              tab.glyph === undefined ? undefined : (
-                <Icon name={tab.glyph} size="sm" />
-              )
-            ) : (
+            {marked ? (
               <TaskMark state={mark.state} unread={unread} />
+            ) : (
+              tab.glyph !== undefined && <Icon name={tab.glyph} size="sm" />
             )}
           </span>
           <span {...props(stripStyles.label, unread && stripStyles.labelUnread)}>{tab.title}</span>
@@ -364,7 +362,11 @@ function TabChatItems({
   );
 }
 
-function RevealSelected({ list }: { readonly list: RefObject<HTMLDivElement | null> }): null {
+export function RevealSelected({
+  list,
+}: {
+  readonly list: RefObject<HTMLDivElement | null>;
+}): null {
   useMountEffect(() => {
     list.current
       ?.querySelector('[role="tab"][aria-selected="true"]')
@@ -425,14 +427,14 @@ export function WindowTabStrip(strip: WindowTabStripProps): ReactElement {
                 <Button
                   iconOnly
                   icon="plus"
-                  aria-label="New tab"
+                  aria-label="New chat tab"
                   title={undefined}
                   onClick={strip.onNewTab}
                 />
               }
             />
             <TooltipContent shortcut={clientActionKeys(clientActions.newTab, mac)}>
-              New Tab
+              New Chat Tab
             </TooltipContent>
           </Tooltip>
         </span>

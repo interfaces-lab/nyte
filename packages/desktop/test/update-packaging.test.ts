@@ -38,7 +38,7 @@ function installerName(stdout: string): string {
   return names.productName;
 }
 
-test("production updates signed from GitHub releases, and the update test and bench builds keep separate identities", () => {
+test("production updates signed from GitHub releases, and the update test build keeps a separate identity", () => {
   const names = new Set<string>();
 
   for (const row of [
@@ -58,14 +58,6 @@ test("production updates signed from GitHub releases, and the update test and be
         mac: { notarize: false },
       },
     },
-    {
-      build: "Nyte Bench",
-      expected: {
-        appId: "ai.nyte.desktop.bench",
-        publish: { provider: "github", owner: "interfaces-lab", repo: "nyte" },
-        mac: { notarize: false },
-      },
-    },
   ]) {
     const result = packaging(row.build);
     expect(result.status, result.stderr).toBe(0);
@@ -75,5 +67,5 @@ test("production updates signed from GitHub releases, and the update test and be
     );
   }
 
-  expect(names.size).toBe(3);
+  expect(names.size).toBe(2);
 });

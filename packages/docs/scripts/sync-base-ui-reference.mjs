@@ -1,18 +1,4 @@
 #!/usr/bin/env node
-/**
- * Vendors Base UI's generated API tables into content/base-ui-reference.
- *
- * Every `@nyte-ai/ui` component built on Base UI gets one
- * markdown file per part and supporting type (MIT, (c) Material-UI SAS).
- * Correct upstream wording here, not in the generated files.
- * The hand-written pages under content/design/components pull the parts they
- * document in with `<include>`.
- *
- *   node scripts/sync-base-ui-reference.mjs           # rewrite the parts files
- *   node scripts/sync-base-ui-reference.mjs --check   # fail if they are stale
- *
- * Pin BASE_UI_REF to the tag matching packages/ui's @base-ui/react version.
- */
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

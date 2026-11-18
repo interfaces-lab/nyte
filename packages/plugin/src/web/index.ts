@@ -1,28 +1,48 @@
 import type { Command, SettingDefinition } from "@nyte-ai/core";
 import { standard } from "@nyte-ai/schema";
 import { Type } from "typebox";
-import type { Plugin } from "@nyte-ai/plugin/core";
+import { Value } from "typebox/value";
+import type { Plugin, PluginApi } from "@nyte-ai/plugin/core";
 import type { Fetch } from "./body.ts";
 import { webFetch } from "./fetch.ts";
-import { PROVIDERS, shippedProviders } from "./providers.ts";
+import { shippedProviders } from "./providers.ts";
+import {
+  PROVIDERS,
+  SEARCH_KEYS_SETTING,
+  SEARCH_OFF,
+  SEARCH_PROVIDER_SETTING,
+  SearchKeysType,
+} from "./schema.ts";
+import type { SearchKeys } from "./schema.ts";
 import { webSearch } from "./search.ts";
 
-export { adapters, PROVIDERS } from "./providers.ts";
+export { adapters } from "./providers.ts";
 
-export type { SearchInput, ShippedProvider } from "./providers.ts";
+export { PROVIDERS } from "./schema.ts";
 
-const OFF = { value: "off", label: "Off" } as const;
+export type { SearchInput } from "./providers.ts";
+
+export type { ShippedProvider } from "./schema.ts";
 
 const provider: SettingDefinition<string> = {
-  id: "web_search.provider",
+  id: SEARCH_PROVIDER_SETTING,
   label: "Web search provider",
   schema: standard(Type.String({ minLength: 1 })),
-  choices: [...PROVIDERS.map((known) => ({ value: known.id, label: known.name })), OFF],
+  choices: [...PROVIDERS.map((known) => ({ value: known.id, label: known.name })), SEARCH_OFF],
   default: "exa",
   scope: "host",
 };
 
-const keyCommand: Command = {
+const keys: SettingDefinition<SearchKeys> = {
+  id: SEARCH_KEYS_SETTING,
+  label: "Web search API keys",
+  schema: standard(SearchKeysType),
+  default: {},
+  scope: "host",
+  secret: true,
+};
+
+const keyCommand: Command<"core"> = {
   name: "websearch-key",
   title: "Set a web search key",
   description: "Store a web search provider's API key: <provider> <key>; no key removes it.",
@@ -43,8 +63,16 @@ const keyCommand: Command = {
     if (chosen === undefined)
       throw new Error(`Name a provider first: ${PROVIDERS.map((known) => known.id).join(", ")}.`);
 
-    if (key === "") await api.storage.secrets.delete(chosen.id);
-    else await api.storage.secrets.set(chosen.id, key);
+    const others = Object.fromEntries(
+      Object.entries(await readKeys(api)).filter((entry) => entry[0] !== chosen.id),
+    );
+
+    const outcome = await api.sdk.settings.apply(
+      keys.id,
+      key === "" ? others : { ...others, [chosen.id]: { secret: true, value: key } },
+    );
+
+    if (outcome.kind !== "applied") throw new Error(`The key for ${chosen.id} couldn't be saved.`);
 
     return `Key for ${chosen.id} ${key === "" ? "removed" : "saved"}.`;
   },
@@ -54,9 +82,10 @@ const keyCommand: Command = {
  * Returns the web plugin sending through `fetch`: `web_fetch`, and `web_search`
  * routed by the host setting `web_search.provider` to any provider in the
  * search registry. It adds Exa, Tavily, Firecrawl and Parallel there, each
- * keyed from the plugin's secrets under its id (set with `/websearch-key`) or
- * on its keyless route without one. The setting `off`, or an empty registry,
- * drops `web_search`.
+ * keyed from the sealed host setting `web_search.keys` under its id (set in
+ * Settings > Web search or with `/websearch-key`) or on its keyless route
+ * without one.
+ * The setting `off`, or an empty registry, drops `web_search`.
  *
  * @category plugins
  * @since 0.1.0
@@ -65,12 +94,15 @@ export function webPlugin(fetch: Fetch): Plugin {
   return {
     id: "web",
     contribute: {
-      settings: [provider],
+      settings: [provider, keys],
       commands: [keyCommand],
       tools: [webFetch(fetch)],
     },
     async activate(api) {
-      for (const shipped of shippedProviders(fetch, (id) => api.storage.secrets.get(id)))
+      const key = async (id: string): Promise<string | undefined> =>
+        (await readKeys(api))[id]?.value;
+
+      for (const shipped of shippedProviders(fetch, key))
         api.contribute.searchProviders.add(shipped);
 
       let selected = await api.contribute.settings.value(provider.id);
@@ -90,17 +122,23 @@ export function webPlugin(fetch: Fetch): Plugin {
             ...siblings.searchProviders
               .list()
               .map((known) => ({ value: known.id, label: known.name })),
-            OFF,
+            SEARCH_OFF,
           ],
         })),
       );
 
       api.contribute.tools.add((draft, siblings) => {
-        if (selected === OFF.value || siblings.searchProviders.list().length === 0) return;
+        if (selected === SEARCH_OFF.value || siblings.searchProviders.list().length === 0) return;
         draft.set("web_search", webSearch(api, provider.id));
       });
     },
   };
+}
+
+async function readKeys(api: PluginApi): Promise<SearchKeys> {
+  const stored = await api.contribute.settings.value(keys.id);
+
+  return Value.Check(SearchKeysType, stored) ? stored : {};
 }
 
 export default webPlugin((input, init) => globalThis.fetch(input, init));

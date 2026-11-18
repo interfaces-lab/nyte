@@ -27,7 +27,7 @@
 - Let errors propagate to the boundary that handles them instead of `try`/`catch`.
 - `map`, `filter` and `flatMap` with type-guard filters over loops that build arrays.
 - With several validation branches, the main function is the happy path and helpers sit below it.
-- Prefer deletion. Comment only non-obvious constraints. (lint: `nyte-code/declarative-comments`)
+- Prefer deletion.
 
 ## Testing
 
@@ -63,9 +63,10 @@
 
 - Package: `pnpm --dir packages/<package> test`.
 - Full check: `pnpm check` (format, lint, typecheck). Docs only: `pnpm exec turbo typecheck --filter=@nyte-ai/web`.
-- While iterating, typecheck only what you touched: `pnpm exec turbo typecheck --filter=<package>...`.
-- `tsc` is the source of truth for types. When the editor or the type-aware lint rules disagree with it, reproduce with the package's `typecheck` script.
+- `pnpm lint` checks types too: oxlint runs its type-aware rules and TypeScript's errors in one pass on `tsrs`, a Rust port of TypeScript 7. While iterating, check only what you touched: `pnpm exec oxlint --type-check <files>`.
+- `tsc` (TypeScript 7, each package's `typecheck` script) is the source of truth for types, and the merge queue runs it before anything reaches main. When `tsrs`, the editor or a type-aware lint rule disagrees with it, reproduce with the package's `typecheck` script; a `tsrs` disagreement is a `tsrs` bug, reported with a minimal repro.
 - After changing `@nyte-ai/schema` wire types or core's stored record types (`HeadRecord`, `SessionRecord` and the other `*Record` schemas), run `pnpm --dir packages/host check:store` and backfill what it reports.
 - After changing what a client receives over the wire, run `pnpm --dir packages/bench bench:wire:gate`.
+- After changing how a tool call snapshots its workspace (`SnapshotsApi`, `localSnapshots`), run `pnpm --dir packages/bench bench:snapshots:gate`.
 - Report failures in unrelated files; don't fix them.
 - Before changing Turborepo config, read the docs that ship inside the installed `turbo` package.

@@ -9,6 +9,8 @@ import { Uuid } from "@nyte-ai/connect";
 import type { CallInput, CallPath, CallRequest } from "./ipc.ts";
 import { DESIGN_PICK_CHARS } from "./browser-page.ts";
 import { BROWSER_DESIGN_VIEW_KEYS, TERMINAL_NOTICE_LIMITS } from "@nyte-ai/app/contract/bridge.ts";
+import { DESKTOP_APPS } from "@nyte-ai/app/contract/desktop-app.ts";
+import { ArrivalSubjectType, SelectedWorkspaceType } from "@nyte-ai/app/contract/desktop-window.ts";
 import type {
   BrowserBoundsMessage,
   BrowserFocusMessage,
@@ -246,6 +248,13 @@ export const CALL_INPUT_SCHEMAS: CallInputParsers = {
   "host.browser.history": compile(strict({ owner: Type.Union([nonEmpty, Type.Null()]) })),
   "host.browser.forgetHistory": compile(
     strict({ owner: Type.Union([nonEmpty, Type.Null()]), url: Type.String({ maxLength: 8192 }) }),
+  ),
+  "host.switchApp": compile(
+    strict({
+      to: Type.Enum([...DESKTOP_APPS, "last"]),
+      workspace: Type.Union([SelectedWorkspaceType, Type.Null()]),
+      subject: Type.Union([ArrivalSubjectType, Type.Null()]),
+    }),
   ),
 };
 

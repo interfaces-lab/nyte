@@ -18,7 +18,7 @@
     }
   },
   "scripts": {
-    "build": "vite build && vite build -c vite.libraries.config.ts && node scripts/inline.mjs",
+    "build": "vite build && vite build -c vite.board.config.ts && vite build -c vite.libraries.config.ts && node scripts/inline.mjs",
     "clean": "rm -rf node_modules .turbo dist",
     "libraries": "node scripts/library-exports.mjs",
     "test": "vitest --run",

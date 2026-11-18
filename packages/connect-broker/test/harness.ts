@@ -44,7 +44,7 @@ import {
   RELAY_OPERATIONS,
   bearerToken,
 } from "../src/relay-stub.ts";
-import { FakeClerkApi } from "./clerk-fake.ts";
+import { FakeClerkApi, SESSION_TOKEN_HEADER } from "./clerk-fake.ts";
 import { doSqlStub } from "./do-sql-stub.ts";
 
 export const ORIGIN = "https://connect.test.example";
@@ -580,7 +580,7 @@ export async function createHarness(): Promise<Harness> {
     for (const name of input.omit ?? []) delete claims[name];
 
     return new SignJWT(claims)
-      .setProtectedHeader({ alg: "RS256", kid: "ins_test", typ: "JWT" })
+      .setProtectedHeader(SESSION_TOKEN_HEADER)
       .sign(input.key ?? clerkKeys.privateKey);
   };
 

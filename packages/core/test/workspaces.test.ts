@@ -192,7 +192,7 @@ describe("workspaces", () => {
     const git = await invocation.workspace.git();
 
     assert(git.kind === "available");
-    await expect(git.api.commit({ message: "No.", files: "all" })).rejects.toMatchObject({
+    await expect(git.api.commit({ message: "No.", files: { kind: "all" } })).rejects.toMatchObject({
       code: "denied",
       message: "git.commit needs owner authority.",
     });
@@ -312,7 +312,7 @@ describe("workspaces", () => {
     const git = await handle.git();
 
     assert(git.kind === "available");
-    expect(await git.api.commit({ message: "Ship.", files: "all" })).toMatchObject({
+    expect(await git.api.commit({ message: "Ship.", files: { kind: "all" } })).toMatchObject({
       kind: "applied",
     });
     expect(await handle.browser()).toMatchObject({ kind: "unsupported" });
@@ -322,7 +322,9 @@ describe("workspaces", () => {
 
     assert(guarded.kind === "available");
     expect(await guarded.api.status()).toEqual({ kind: "none" });
-    await expect(guarded.api.commit({ message: "No.", files: "all" })).rejects.toMatchObject({
+    await expect(
+      guarded.api.commit({ message: "No.", files: { kind: "all" } }),
+    ).rejects.toMatchObject({
       code: "denied",
     });
 

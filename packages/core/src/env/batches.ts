@@ -58,7 +58,7 @@ export async function applyBatch(
     await writeReceipt(kernel, session, { id, kind: "batch", digest, outcome: null });
     table.set(id, controller);
 
-    void execute(kernel, scope, files, entries, id, controller.signal)
+    void execute(kernel, scope, files, entries, controller.signal)
       .then((outcome) => settleReceipt(kernel, session, id, { kind: "batch", outcome }))
       .finally(() => table.delete(id));
 
@@ -79,7 +79,7 @@ export async function applyBatch(
   const listeners = new Set<() => void>();
   table.set(id, controller);
 
-  void execute(kernel, scope, files, entries, id, controller.signal)
+  void execute(kernel, scope, files, entries, controller.signal)
     .then((settled) => {
       outcome = settled;
 
@@ -125,7 +125,6 @@ async function execute(
   scope: FileScope,
   files: FilesApi,
   entries: readonly BatchEntry[],
-  id: ReceiptId,
   signal: AbortSignal,
 ): Promise<BatchOutcome> {
   const stale: string[] = [];
@@ -163,7 +162,11 @@ async function execute(
 
   return {
     kind: "applied",
-    snapshot: await captureFileSnapshot(kernel, scope, id),
+    snapshot: await captureFileSnapshot(
+      kernel,
+      scope,
+      entries.flatMap((entry) => ("to" in entry ? [entry.path, entry.to] : [entry.path])),
+    ),
     paths: applied,
   };
 }
@@ -251,7 +254,7 @@ const INVALID_REASONS = {
 async function captureFileSnapshot(
   kernel: Kernel,
   scope: FileScope,
-  id: ReceiptId,
+  paths: readonly string[],
 ): Promise<SnapshotId> {
   try {
     const snapshots =
@@ -259,7 +262,7 @@ async function captureFileSnapshot(
         ? await kernel.environments.snapshots(scope.session)
         : await kernel.environments.workspaceSnapshots(scope.workspace);
 
-    return snapshots === null ? EMPTY_SNAPSHOT : await snapshots.after(asId<"run">(id));
+    return snapshots === null ? EMPTY_SNAPSHOT : await snapshots.capture({ kind: "paths", paths });
   } catch {
     return EMPTY_SNAPSHOT;
   }

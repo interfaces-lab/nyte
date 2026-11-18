@@ -25,8 +25,15 @@ import { Menu, MenuContent, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Loader } from "@nyte-ai/ui/loader";
 import { Spinner } from "@nyte-ai/ui/spinner";
 import { Button } from "@nyte-ai/ui/button";
-import { chatTitle, useChat } from "../chats/index.ts";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
+import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
+import { chatTitle, NEW_CHAT_TITLE, useChat } from "../chats/index.ts";
+import { fittingTabs, pixels, useTabRoom } from "../components/tab-fit.ts";
+import type { TabRoom } from "../components/tab-fit.ts";
+import { windowApp } from "../contract/nyte.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
+import { stripStyles } from "../tabs/window-tab-strip.stylex.ts";
+import { tab as tabSize } from "../theme/schema.stylex.ts";
 import { control, glyph, media, radius, space, target } from "@nyte-ai/ui/styles/schema.stylex";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
@@ -65,12 +72,11 @@ const styles = create({
     minWidth: 0,
     WebkitAppRegion: "drag",
   },
-  control: { WebkitAppRegion: "no-drag" },
+  control: { display: "inline-flex", flexShrink: 0, WebkitAppRegion: "no-drag" },
   tabs: {
     display: "flex",
     minWidth: 0,
-    overflowX: "auto",
-    scrollbarWidth: "none",
+    overflowX: "clip",
     WebkitAppRegion: "no-drag",
   },
   list: {
@@ -80,7 +86,9 @@ const styles = create({
     minWidth: 0,
     WebkitAppRegion: "initial",
   },
-  slot: { display: "flex", flexShrink: 0 },
+  slot: { display: "flex" },
+  kept: { flexShrink: 0 },
+  cap: (width: number) => ({ maxWidth: `min(200px, ${String(width)}px)` }),
   item: {
     "--_tab-close-opacity": {
       default: "0",
@@ -103,7 +111,8 @@ const styles = create({
     position: "relative",
     display: "flex",
     alignItems: "center",
-    flexShrink: 0,
+    flexGrow: 1,
+    minWidth: tabSize.minWidth,
     maxWidth: 200,
     height: control.heightSm,
     minHeight: target.min,
@@ -117,12 +126,13 @@ const styles = create({
       ":hover": { [media.hover]: role.contentPrimary },
     },
   },
-  active: { backgroundColor: role.fillSecondary, color: role.contentPrimary },
   withoutClose: { "--_tab-content-mask": "none" },
+  chatItem: { flexGrow: 0 },
   tab: {
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
+    flexGrow: 1,
     flexShrink: 1,
     minWidth: 0,
     height: "100%",
@@ -153,6 +163,14 @@ const styles = create({
     },
   },
   label: { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" },
+  chatTab: { paddingInlineEnd: space.s1 },
+  chatContent: {
+    display: "inline-flex",
+    alignItems: "center",
+    minWidth: glyph.md,
+    overflow: "hidden",
+  },
+  chatLabel: { marginInlineStart: space.s1_5, paddingInlineEnd: space.s0_5 },
   tabIcon: { display: "inline-flex" },
   running: {
     display: "inline-flex",
@@ -258,15 +276,46 @@ export function WorkbenchTabStrip({
   const terminals = useTerminalRuntime();
   const stripRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const [room, attachRoom, attachActive] = useTabRoom(measureStrip);
+
+  const attachStrip = (element: HTMLDivElement | null): (() => void) | undefined => {
+    stripRef.current = element;
+
+    return attachRoom(element);
+  };
+
   const terminalCloseRef = useRef<HTMLButtonElement>(null);
   const [terminalClose, setTerminalClose] = useState<TerminalCloseState>({ kind: "closed" });
 
-  const tabs = workbenchStripTabs(view, scope, capabilities);
+  const listed = workbenchStripTabs(view, scope, capabilities);
+
+  const tabs =
+    windowApp() === "code" && listed.length === 1 && listed[0]?.kind === "editor" ? [] : listed;
 
   const chatShowing = workbenchShowsChat(view.layout);
 
   const active = activeWorkbenchTab(view, scope, capabilities);
-  const activeValue = chatShowing ? WORKBENCH_CHAT_TAB : active === null ? null : tabSlot(active);
+
+  const activeValue = chatShowing
+    ? WORKBENCH_CHAT_TAB
+    : active === null || tabs.length === 0
+      ? null
+      : tabSlot(active);
+
+  const chatTab = view.layout.kind === "maximized";
+
+  const inactive = [...(chatTab ? [WORKBENCH_CHAT_TAB] : []), ...tabs.map((tab) => tab.id)].filter(
+    (id) => id !== activeValue,
+  );
+
+  const overflow = inactive.slice(fittingTabs(room, inactive.length));
+  const shownTabs = tabs.filter((tab) => !overflow.includes(tab.id));
+
+  const cap =
+    room === undefined ? undefined : styles.cap(room.width - (overflow.length > 0 ? room.more : 0));
+
+  const chatLabel =
+    sessionId === undefined ? NEW_CHAT_TITLE : <ChatTabLabel sessionId={sessionId} />;
 
   const activateTab = (id: WorkbenchTabId): void => {
     if (id === WORKBENCH_CHAT_TAB) {
@@ -317,37 +366,39 @@ export function WorkbenchTabStrip({
   };
 
   return (
-    <div ref={stripRef} {...props(styles.root)}>
+    <div ref={attachStrip} {...props(styles.root)}>
       <Tabs.Root ref={listRef} value={activeValue} xstyle={styles.tabs} onValueChange={activateTab}>
         <Tabs.List aria-label="Workbench tabs" xstyle={styles.list}>
-          {view.layout.kind === "maximized" && (
+          {chatTab && !overflow.includes(WORKBENCH_CHAT_TAB) && (
             <div
+              ref={chatShowing ? attachActive : undefined}
               role="presentation"
-              {...props(styles.item, styles.withoutClose, chatShowing && styles.active)}
+              data-strip-active={chatShowing ? "" : undefined}
+              {...props(
+                styles.item,
+                styles.chatItem,
+                styles.withoutClose,
+                chatShowing && [stripStyles.tabActive, hairline.ring, styles.kept, cap],
+              )}
             >
               <Tabs.Tab
                 variant="bare"
                 id={`${viewKey}-tab-${WORKBENCH_CHAT_TAB}`}
                 value={WORKBENCH_CHAT_TAB}
                 aria-controls={`${viewKey}-panel-${WORKBENCH_CHAT_TAB}`}
-                xstyle={styles.tab}
-                onFocus={(event) =>
-                  event.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest" })
-                }
+                xstyle={[styles.tab, styles.chatTab]}
               >
-                <span {...props(styles.content)}>
-                  <span {...props(styles.tabIcon)}>
-                    <Icon name="imac" size="md" />
+                <span {...props(styles.chatContent)}>
+                  <span aria-hidden {...props(stripStyles.glyph)}>
+                    <Icon name="new-chat" size="sm" />
                   </span>
-                  <span {...props(styles.label)}>
-                    {sessionId === undefined ? "New chat" : <ChatTabLabel sessionId={sessionId} />}
-                  </span>
+                  <span {...props(styles.label, styles.chatLabel)}>{chatLabel}</span>
                 </span>
               </Tabs.Tab>
             </div>
           )}
           <SortableList
-            ids={tabs.map((tab) => tab.id)}
+            ids={shownTabs.map((tab) => tab.id)}
             listRef={listRef}
             onPick={activateTab}
             onReorder={(order, id) => {
@@ -360,7 +411,8 @@ export function WorkbenchTabStrip({
               });
             }}
           >
-            {tabs.map((tab) => {
+            {shownTabs.map((tab) => {
+              const selected = activeValue === tab.id;
               const terminal = tab.kind === "terminal" ? terminals.get(tab.id) : undefined;
               const presentation = tabPresentation(tab, undefined, terminal);
               const label = presentation.label;
@@ -376,12 +428,14 @@ export function WorkbenchTabStrip({
 
               const trigger = (
                 <div
+                  ref={selected ? attachActive : undefined}
                   role="presentation"
+                  data-strip-active={selected ? "" : undefined}
                   {...props(
                     agentTerminal && surfaceTheme.purple,
                     styles.item,
                     agentTerminal && styles.agentTerminal,
-                    activeValue === tab.id && styles.active,
+                    selected && [stripStyles.tabActive, hairline.ring, cap],
                   )}
                   onAuxClick={(event) => {
                     if (event.button === 1) {
@@ -405,9 +459,6 @@ export function WorkbenchTabStrip({
                     aria-label={label}
                     aria-controls={`${viewKey}-panel-${tabSlot(tab)}`}
                     xstyle={styles.tab}
-                    onFocus={(event) =>
-                      event.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest" })
-                    }
                     aria-keyshortcuts={MOVE_SHORTCUTS}
                     onKeyDown={(event) => {
                       if (event.key === "Delete") {
@@ -460,14 +511,8 @@ export function WorkbenchTabStrip({
                       iconOnly
                       icon="x"
                       aria-label={`Close ${label} tab`}
-                      ref={
-                        activeValue !== tab.id
-                          ? undefined
-                          : tab.kind === "terminal"
-                            ? terminalCloseRef
-                            : undefined
-                      }
-                      tabIndex={activeValue === tab.id ? 0 : -1}
+                      ref={selected && tab.kind === "terminal" ? terminalCloseRef : undefined}
+                      tabIndex={selected ? 0 : -1}
                       onClick={(event) => {
                         if (tab.kind === "terminal") terminalCloseRef.current = event.currentTarget;
 
@@ -479,7 +524,11 @@ export function WorkbenchTabStrip({
               );
 
               return (
-                <SortableItem key={tab.id} id={tab.id} xstyle={styles.slot}>
+                <SortableItem
+                  key={tab.id}
+                  id={tab.id}
+                  xstyle={[styles.slot, selected && styles.kept]}
+                >
                   {terminal === undefined ? (
                     trigger
                   ) : (
@@ -531,22 +580,88 @@ export function WorkbenchTabStrip({
           </SortableList>
         </Tabs.List>
       </Tabs.Root>
-      <span {...props(styles.control)}>
-        <Menu>
-          <MenuTrigger render={<Button iconOnly icon="plus" aria-label="New workbench tab" />} />
-          <MenuContent>
-            {workbenchLaunchers(scope, capabilities).map((kind) => (
-              <MenuItem
-                key={kind}
-                icon={WORKBENCH_KINDS[kind].icon}
-                onClick={() => launch(viewKey, kind)}
-              >
-                {WORKBENCH_KINDS[kind].label}
-              </MenuItem>
-            ))}
-          </MenuContent>
-        </Menu>
-      </span>
+      {overflow.length > 0 && (
+        <span {...props(styles.control)}>
+          <Menu>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <MenuTrigger
+                    render={
+                      <Button
+                        iconOnly
+                        icon="chevron-down"
+                        aria-label="More tabs"
+                        title={undefined}
+                      />
+                    }
+                  />
+                }
+              />
+              <TooltipContent>More Tabs</TooltipContent>
+            </Tooltip>
+            <MenuContent>
+              {overflow.map((id) => {
+                const tab = tabs.find((entry) => entry.id === id);
+
+                return tab === undefined ? (
+                  <MenuItem key={id} icon="new-chat" onClick={() => activateTab(id)}>
+                    {chatLabel}
+                  </MenuItem>
+                ) : (
+                  <MenuItem
+                    key={id}
+                    icon={WORKBENCH_KINDS[tab.kind].icon}
+                    onClick={() => activateTab(id)}
+                  >
+                    {
+                      tabPresentation(
+                        tab,
+                        undefined,
+                        tab.kind === "terminal" ? terminals.get(tab.id) : undefined,
+                      ).label
+                    }
+                  </MenuItem>
+                );
+              })}
+            </MenuContent>
+          </Menu>
+        </span>
+      )}
+      {(chatTab || tabs.length > 0) && (
+        <span data-strip-plus="" {...props(styles.control)}>
+          <Menu>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <MenuTrigger
+                    render={
+                      <Button
+                        iconOnly
+                        icon="plus"
+                        aria-label="New workbench tab"
+                        title={undefined}
+                      />
+                    }
+                  />
+                }
+              />
+              <TooltipContent>New Workbench Tab</TooltipContent>
+            </Tooltip>
+            <MenuContent>
+              {workbenchLaunchers(scope, capabilities).map((kind) => (
+                <MenuItem
+                  key={kind}
+                  icon={WORKBENCH_KINDS[kind].icon}
+                  onClick={() => launch(viewKey, kind)}
+                >
+                  {WORKBENCH_KINDS[kind].label}
+                </MenuItem>
+              ))}
+            </MenuContent>
+          </Menu>
+        </span>
+      )}
       <ConfirmDialog
         open={terminalClose.kind !== "closed"}
         pending={terminalClose.kind === "closing"}
@@ -563,4 +678,20 @@ export function WorkbenchTabStrip({
       />
     </div>
   );
+}
+
+function measureStrip(strip: HTMLElement): TabRoom | undefined {
+  const plus = strip.querySelector<HTMLElement>("[data-strip-plus]");
+  const active = strip.querySelector<HTMLElement>("[data-strip-active]");
+  const list = strip.querySelector<HTMLElement>('[role="tablist"]');
+
+  if (plus === null || active === null || list === null) return undefined;
+  const gap = pixels(getComputedStyle(strip).columnGap);
+
+  return {
+    width: Math.floor(strip.clientWidth - plus.offsetWidth - gap),
+    active: active.offsetWidth,
+    tab: pixels(getComputedStyle(active).minWidth) + pixels(getComputedStyle(list).columnGap),
+    more: plus.offsetWidth + gap,
+  };
 }

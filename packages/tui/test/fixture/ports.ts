@@ -74,13 +74,15 @@ export interface FakeHost extends HostPort {
   folderCommandResult: WorkspaceCommandOutcome | null;
 }
 
+type Done = { readonly kind: "closed" } | { readonly kind: "failed"; readonly error: unknown };
+
 function queue<T>(): AsyncIterable<T> & {
   push(value: T): void;
   close(): void;
   fail(error: unknown): void;
 } {
   const values: T[] = [];
-  let done: { readonly error: unknown } | "closed" | null = null;
+  let done: Done | null = null;
   let waiting: (() => void) | null = null;
 
   const wake = (): void => {
@@ -95,11 +97,11 @@ function queue<T>(): AsyncIterable<T> & {
       wake();
     },
     close() {
-      done = "closed";
+      done = { kind: "closed" };
       wake();
     },
     fail(error) {
-      done = { error };
+      done = { kind: "failed", error };
       wake();
     },
     async *[Symbol.asyncIterator]() {
@@ -111,9 +113,9 @@ function queue<T>(): AsyncIterable<T> & {
           continue;
         }
 
-        if (done === "closed") return;
+        if (done?.kind === "closed") return;
 
-        if (done !== null) throw done.error;
+        if (done?.kind === "failed") throw done.error;
 
         await new Promise<void>((resolve) => {
           waiting = resolve;

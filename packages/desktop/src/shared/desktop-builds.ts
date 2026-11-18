@@ -4,21 +4,12 @@ export const PACKAGED_BUILDS = {
     appId: "ai.nyte.desktop",
     accountScheme: "nyte-desktop",
     homeInUserData: false,
-    host: "login-item",
   },
   updateTest: {
     name: "Nyte Update Test",
     appId: "ai.nyte.desktop.update-test",
     accountScheme: "nyte-desktop-test",
     homeInUserData: true,
-    host: "login-item",
-  },
-  bench: {
-    name: "Nyte Bench",
-    appId: "ai.nyte.desktop.bench",
-    accountScheme: "nyte-desktop-bench",
-    homeInUserData: false,
-    host: "detached",
   },
 } as const;
 

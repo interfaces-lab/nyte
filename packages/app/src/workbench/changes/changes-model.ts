@@ -6,6 +6,7 @@ import type {
   LineStat,
   SessionId,
 } from "@nyte-ai/sdk";
+import type { IconName } from "@nyte-ai/ui/icon";
 import type { createPatchLoader, PatchEntry } from "../../diff/changes-patches.ts";
 import { patchDigest } from "../../diff/changes-viewed.ts";
 import type { ViewedState } from "../../diff/changes-viewed.ts";
@@ -379,6 +380,7 @@ function queryError(error: Error | null): string | undefined {
 interface ChangesEmptyState {
   readonly text: string;
   readonly detail?: string;
+  readonly icon?: IconName;
 }
 
 export function changesEmptyState(input: {
@@ -399,8 +401,7 @@ export function changesEmptyState(input: {
   if (input.manifest.isError)
     return { text: "Couldn't read changes.", detail: queryError(input.manifest.error) };
 
-  if (input.snapshot?.kind === "none")
-    return { text: "Couldn't read changes. Check that this folder is a Git repository." };
+  if (input.snapshot?.kind === "none") return { text: "Not a Git repository", icon: "git-branch" };
 
   return {
     text:

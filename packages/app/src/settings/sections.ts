@@ -178,6 +178,13 @@ export const SETTINGS_SECTIONS = {
     needs: [],
     keywords: ["env", "environment", ".env", "secret", "api key", "token", "variables"],
   },
+  "web-search": {
+    icon: "search",
+    title: "Web search",
+    group: "tools",
+    needs: [],
+    keywords: ["api key", "exa", "tavily", "firecrawl", "parallel", "search provider"],
+  },
   "source-control": {
     icon: "git-branch",
     title: "Source control",

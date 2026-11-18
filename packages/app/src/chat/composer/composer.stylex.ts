@@ -1,4 +1,4 @@
-import { create, keyframes } from "@stylexjs/stylex";
+import { create, keyframes, when } from "@stylexjs/stylex";
 import {
   button,
   clipboardPreview,
@@ -331,6 +331,9 @@ export const composerStyles = create({
   attachmentErrorNewChat: { marginBlockStart: space.s2_5 },
   attachmentErrorInsetCompact: { marginInline: space.s0_5 },
   input: {
+    "--_selection-band": role.fillPrimary,
+    "--_selection-edge": role.strokeSecondary,
+    "--_selection-ink": role.contentPrimary,
     display: "block",
     boxSizing: "border-box",
     width: "100%",
@@ -444,10 +447,23 @@ export const composerStyles = create({
     alignItems: "baseline",
     verticalAlign: "baseline",
     gap: space.s0_5,
-    color: role.contentSecondary,
+    paddingInline: space.s1_5,
+    borderRadius: radius.pill,
+    backgroundColor: {
+      default: role.fillTertiary,
+      [when.ancestor("[data-composer-selected]")]: "var(--_selection-band)",
+    },
+    boxShadow: {
+      default: null,
+      [when.ancestor("[data-composer-selected]")]: "inset 0 0 0 1px var(--_selection-edge)",
+    },
+    color: {
+      default: role.contentSecondary,
+      [when.ancestor("[data-composer-selected]")]: "var(--_selection-ink)",
+    },
     fontSize: "inherit",
     fontWeight: type.weightRegular,
-    lineHeight: "inherit",
+    lineHeight: type.leadingBase,
     whiteSpace: "nowrap",
   },
   mentionChipLabel: {

@@ -34,6 +34,7 @@ import type {
 } from "@nyte-ai/plugin/canvas/protocol";
 import { kit } from "../kit/index.ts";
 import { SchemeContext } from "../kit/scheme.ts";
+import { installLayoutCheck } from "./layout-check.ts";
 
 type Failure = { readonly phase: "load" | "render"; readonly message: string };
 
@@ -115,7 +116,7 @@ Object.defineProperty(globalThis, CANVAS_GLOBAL, {
   value: {
     runtime: CANVAS_RUNTIME,
     react: React,
-    jsxRuntime,
+    jsxRuntime: installLayoutCheck(jsxRuntime, () => moduleCode),
     reactDom: ReactDom,
     kit,
     library,

@@ -70,9 +70,16 @@ export function FileOutline({
 const styles = create({
   root: { display: "flex", flexDirection: "column", flexShrink: 0, minHeight: 0 },
   open: { flexBasis: "34%" },
-  trigger: { flexShrink: 0, paddingInline: space.s2_5, color: role.contentSecondary },
+  trigger: {
+    flexShrink: 0,
+    paddingInline: space.s2_5,
+    color: role.contentSecondary,
+    fontWeight: type.weightMedium,
+  },
   filename: {
     marginInlineStart: "auto",
+    color: role.contentTertiary,
+    fontWeight: type.weightRegular,
     minWidth: 0,
     overflow: "hidden",
     textOverflow: "ellipsis",

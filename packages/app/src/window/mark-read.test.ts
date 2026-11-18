@@ -36,17 +36,22 @@ test("a chat that can't be marked read says so once, whoever marked it", async (
     expect(chatDirectory().get(unread.id)?.unreadTip).toEqual({ head: "main", commit: "reply" }),
   );
   const shown: unknown[] = [];
+  const toasted = Promise.withResolvers<void>();
 
   const unsubscribe = toast[" subscribe"]((event) => {
-    if (event.action === "add") shown.push(event.options);
+    if (event.action !== "add") return;
+    shown.push(event.options);
+    toasted.resolve();
   });
 
   chatWindow.markRead([unread.id]);
-  await vi.waitFor(() => expect(shown).toHaveLength(1));
-  expect(shown[0]).toMatchObject({
-    type: "error",
-    title: "Couldn't mark this chat as read. Try again.",
-  });
+  await toasted.promise;
+  expect(shown).toEqual([
+    expect.objectContaining({
+      type: "error",
+      title: "Couldn't mark this chat as read. Try again.",
+    }),
+  ]);
 
   unsubscribe();
   leave();

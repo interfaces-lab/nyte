@@ -17,10 +17,6 @@ import {
 import Animated from "react-native-reanimated";
 import { controls, useTheme } from "../theme.ts";
 
-/**
- * Before iOS 26, and on iOS 26 betas without `UIGlassEffect`, GlassView installs no effect and draws
- * nothing, so those devices get the blur fallback.
- */
 const HAS_GLASS = isLiquidGlassAvailable() && isGlassEffectAPIAvailable();
 
 const transparency = { reduced: false, listeners: new Set<() => void>() };

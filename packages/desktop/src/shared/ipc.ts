@@ -38,6 +38,10 @@ export const LAUNCH_WINDOWS_ARGUMENT = "--nyte-launch-windows";
 
 export const WINDOW_OPEN_ARGUMENT = "--nyte-open";
 
+export const WINDOW_APP_ARGUMENT = "--nyte-app";
+
+export const APP_SWITCH_ARGUMENT = "--nyte-app-switch";
+
 export const MAIN_OPERATION_PATHS = [
   "host.fonts",
   "host.pickWorkspace",
@@ -67,6 +71,7 @@ export const MAIN_OPERATION_PATHS = [
   "host.browser.login",
   "host.browser.history",
   "host.browser.forgetHistory",
+  "host.switchApp",
 ] as const;
 
 const HOST_PROCESS_PATHS = [
@@ -132,6 +137,7 @@ export type DesktopBridge = {
     | "confirmExternal"
     | "pathForFile"
     | "onEvent"
+    | "switchApp"
   > &
     Required<
       Pick<
@@ -160,7 +166,7 @@ type BridgeMethod<T, P extends string> = P extends `${infer Head}.${infer Rest}`
     ? BridgeMethod<T[Head], Rest>
     : never
   : P extends keyof T
-    ? T[P]
+    ? NonNullable<T[P]>
     : never;
 
 type CallMethodByPath = {

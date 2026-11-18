@@ -37,6 +37,25 @@ declare function isExternal(value: Entry): boolean;
 const open = entries.filter((isVisible) => isVisible);`,
   },
   {
+    rule: "nyte-code/no-sentinel-unions",
+    rejected: `type Scope = "workspace" | readonly string[];
+type Files = "staged" | "all" | string[];
+type Range = { start: number } | "unsatisfiable" | null;
+type Allow = Category[] | "host";
+type Choice = "keep" | Readonly<{ summarize: string }>;
+const Schema = Type.Union([Type.Literal("staged"), Type.Array(Type.String())]);
+const Moved = Type.Union([Type.Literal("keep"), Type.Object({ summarize: Type.String() })]);`,
+    rejectedLines: [1, 2, 3, 4, 5, 6, 7],
+    accepted: `type Scope = { kind: "workspace" } | { kind: "paths"; paths: readonly string[] };
+type Mode = "merged" | "protocol";
+type Step = -1 | 1 | "page-up";
+type Maybe = string | null;
+type Version = FileVersion | "absent";
+type Paths = readonly string[] | null;
+const Kind = Type.Union([Type.Literal("a"), Type.Literal("b")]);
+const Value = Type.Union([Type.String(), Type.Array(Type.String())]);`,
+  },
+  {
     rule: "unicorn/prefer-includes",
     rejected: `const present = list.indexOf(item) !== -1;
 const missing = text.indexOf(needle) === -1;

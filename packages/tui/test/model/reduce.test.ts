@@ -81,29 +81,33 @@ describe("queue operations", () => {
     const state = ready(queued);
     const revise = (to: Parameters<typeof reduce>[1]) => play(state, to).effects;
 
-    expect(revise({ kind: "reorder", message: asId("m3"), to: "earlier" })).toMatchObject([
-      {
-        kind: "revise",
-        message: "m3",
-        delivery: "queue",
-        position: { kind: "before", message: "m2" },
-      },
-    ]);
-    expect(revise({ kind: "reorder", message: asId("m2"), to: "later" })).toMatchObject([
+    expect(revise({ kind: "reorder", message: asId("m3"), to: { kind: "earlier" } })).toMatchObject(
+      [
+        {
+          kind: "revise",
+          message: "m3",
+          delivery: "queue",
+          position: { kind: "before", message: "m2" },
+        },
+      ],
+    );
+    expect(revise({ kind: "reorder", message: asId("m2"), to: { kind: "later" } })).toMatchObject([
       { kind: "revise", message: "m2", position: { kind: "before", message: "m5" } },
     ]);
-    expect(revise({ kind: "reorder", message: asId("m3"), to: "later" })).toMatchObject([
+    expect(revise({ kind: "reorder", message: asId("m3"), to: { kind: "later" } })).toMatchObject([
       { kind: "revise", message: "m3", position: { kind: "last" } },
     ]);
-    expect(revise({ kind: "reorder", message: asId("m2"), to: "earlier" })).toEqual([]);
+    expect(revise({ kind: "reorder", message: asId("m2"), to: { kind: "earlier" } })).toEqual([]);
     expect(
-      revise({ kind: "reorder", message: asId("m3"), to: { before: asId("m2") } }),
+      revise({ kind: "reorder", message: asId("m3"), to: { kind: "before", message: asId("m2") } }),
     ).toMatchObject([{ kind: "revise", position: { kind: "before", message: "m2" } }]);
-    expect(revise({ kind: "reorder", message: asId("m2"), to: { before: null } })).toMatchObject([
-      { kind: "revise", message: "m2", position: { kind: "last" } },
-    ]);
-    expect(revise({ kind: "reorder", message: asId("m5"), to: { before: null } })).toEqual([]);
-    expect(revise({ kind: "reorder", message: asId("m1"), to: "later" })).toEqual([]);
+    expect(
+      revise({ kind: "reorder", message: asId("m2"), to: { kind: "before", message: null } }),
+    ).toMatchObject([{ kind: "revise", message: "m2", position: { kind: "last" } }]);
+    expect(
+      revise({ kind: "reorder", message: asId("m5"), to: { kind: "before", message: null } }),
+    ).toEqual([]);
+    expect(revise({ kind: "reorder", message: asId("m1"), to: { kind: "later" } })).toEqual([]);
   });
 
   test("editing a queued message loads it, saving revises it with replace, the old draft comes back", () => {

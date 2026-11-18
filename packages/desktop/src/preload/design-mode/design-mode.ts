@@ -774,7 +774,6 @@ function viewportBox(host: HTMLElement): Box {
   return { x: 0, y: 0, ...viewportSize(host) };
 }
 
-/** An open modal dialog makes everything outside it inert, iframes included, so the host goes inside it. */
 function attach(host: HTMLElement, parent: Element): void {
   parent.append(host);
   show(host);
@@ -804,7 +803,6 @@ function boxEdges(box: Box, axis: Guide["axis"]): readonly number[] {
   return axis === "x" ? [box.x, box.x + box.width] : [box.y, box.y + box.height];
 }
 
-/** A right-to-left container's `scrollLeft` runs from minus its room up to 0. */
 function scrollAlong(start: Element | undefined, axis: "x" | "y", delta: number): void {
   if (delta === 0) return;
   const page = document.scrollingElement ?? document.documentElement;

@@ -12,5 +12,6 @@ export default defineConfig({
     "packages/ai/src/providers/snapshots/**",
     "**/*-snapshots/**",
     "**/.local/**",
+    "packages/host/test/fixtures/language/**",
   ],
 });

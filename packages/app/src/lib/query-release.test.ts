@@ -60,6 +60,7 @@ test("a cancelled read that lands last leaves the current object URL alone", asy
 test("each fetch releases what it made once, and only its own", async () => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const gates: (() => void)[] = [];
+  const started = [0, 1, 2].map(() => Promise.withResolvers<void>());
   const released: number[] = [];
 
   const observer = new QueryObserver(client, {
@@ -68,6 +69,7 @@ test("each fetch releases what it made once, and only its own", async () => {
       const made = gates.length;
       const gate = Promise.withResolvers<void>();
       gates.push(gate.resolve);
+      started[made].resolve();
       await gate.promise;
       releaseWithQuery(context, () => released.push(made));
 
@@ -76,17 +78,17 @@ test("each fetch releases what it made once, and only its own", async () => {
   });
 
   const unsubscribe = observer.subscribe(() => {});
-  await expect.poll(() => gates.length).toBe(1);
+  await started[0].promise;
 
   void client.resetQueries({ queryKey: ["resource"] });
-  await expect.poll(() => gates.length).toBe(2);
+  await started[1].promise;
   gates[1]();
   await expect.poll(() => observer.getCurrentResult().data).toBe(1);
   gates[0]();
   await expect.poll(() => released).toEqual([0]);
 
   void client.refetchQueries({ queryKey: ["resource"] });
-  await expect.poll(() => gates.length).toBe(3);
+  await started[2].promise;
   gates[2]();
   await expect.poll(() => observer.getCurrentResult().data).toBe(2);
   expect(released).toEqual([0, 1]);

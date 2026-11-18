@@ -62,6 +62,9 @@ export function chatTitle(chat: Chat | undefined): string {
   return chat?.title ?? "Chat";
 }
 
+/** The title of a chat not started yet: its tab and its sidebar row both read it. */
+export const NEW_CHAT_TITLE = "New chat";
+
 const NO_ITEMS: readonly BackgroundItem[] = [];
 
 export function useChatTasks(session: SessionId | undefined): readonly Task[] {

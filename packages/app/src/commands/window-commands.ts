@@ -1,25 +1,26 @@
 import type { Document } from "@nyte-ai/sdk";
 import type { RegisteredRouter } from "@tanstack/react-router";
 import type { AppMenuAction, HostState } from "../contract/bridge.ts";
-import type { DesktopWindowOpen } from "../contract/desktop-window.ts";
+import type { ArrivalSubject, DesktopWindowOpen } from "../contract/desktop-window.ts";
 import { focusWithin, keyOwner } from "../lib/focus-owner.ts";
 import { shellActions } from "../tabs/shell-state.ts";
 import { folderPicker } from "../panes/open-workspace.tsx";
 import { clientCapabilities } from "../contract/client-actions.ts";
 import { focusNextPane, splitPanes } from "../panes/pane-context.tsx";
-import { nyte } from "../contract/nyte.ts";
+import { nyte, windowApp } from "../contract/nyte.ts";
 import { keys, queryClient } from "../data/query-client.ts";
 import { commitHostWorkspace } from "../data/workspaces.ts";
 import { firstSettingsSection } from "../settings/sections.ts";
 import { closeSettings } from "../settings/return.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
-import { launch } from "../workbench/commands.ts";
+import { launch, openInApp } from "../workbench/commands.ts";
 import { fileActions } from "../workbench/editor/file-store.ts";
 import { opensAsMarkdown } from "../workbench/editor/markdown-parse.ts";
 import { activeEditorFile, EDITOR_SLOT, tabSlot, workbenchShowsChat } from "../workbench/model.ts";
 import { workbenchScope, workbenchViewKey } from "../workbench/paths.ts";
 import { activeWorkbenchTab, shownWorkbenchTab } from "../workbench/selectors.ts";
 import { workbench } from "../workbench/store.ts";
+import { landAt, switchApp } from "./apps.ts";
 
 const COMMANDS = [
   "new-chat",
@@ -39,6 +40,10 @@ const COMMANDS = [
   "markdown-source",
   "focus-pane",
   "reload-window",
+  "open-nyte",
+  "open-code",
+  "open-studio",
+  "flip-app",
 ] as const satisfies readonly AppMenuAction[];
 
 export function windowCommand(id: string): AppMenuAction | undefined {
@@ -118,8 +123,24 @@ export function openWindowInEditor(open: DesktopWindowOpen): void {
 }
 
 export function openFileInEditor(router: RegisteredRouter, path: string): void {
+  if (windowApp() === "studio") {
+    openInApp("code", { kind: "file", path });
+
+    return;
+  }
+
   uncoverPanes(router);
   fileActions.open(workbenchViewKey(currentWorkspacePath()), { path });
+}
+
+/** Shows the window a switch focused and lands it on the selection the switch carried; without one it stays as it was. */
+export function arriveInWindow(
+  router: RegisteredRouter,
+  subject: ArrivalSubject | undefined,
+): void {
+  if (subject === undefined || windowApp() === "nyte") return;
+  uncoverPanes(router);
+  void landAt(subject);
 }
 
 export function runWindowCommand(router: RegisteredRouter, command: AppMenuAction): boolean {
@@ -200,6 +221,14 @@ export function runWindowCommand(router: RegisteredRouter, command: AppMenuActio
       window.location.reload();
 
       return true;
+    case "open-nyte":
+      return switchApp("nyte");
+    case "open-code":
+      return switchApp("code");
+    case "open-studio":
+      return switchApp("studio");
+    case "flip-app":
+      return switchApp("last");
     default: {
       const _exhaustive: never = command;
 

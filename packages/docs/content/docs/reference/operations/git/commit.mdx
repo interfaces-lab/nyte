@@ -3,8 +3,8 @@ title: git.commit
 description: Commits staged files, all changes or the given files with a message.
 ---
 
-Commits with a message: the staged files, `all` changes to tracked files, or only the listed
-paths. It answers `applied` with the new revision, `unchanged` when there was nothing to commit,
+Commits with a message: the staged files (`{ kind: "staged" }`), all changes to tracked files
+(`{ kind: "all" }`), or only the listed paths (`{ kind: "paths", paths }`). It answers `applied` with the new revision, `unchanged` when there was nothing to commit,
 `stale`, `busy` or `rejected` with git's message, such as a failing hook.
 
 ## When to call it
@@ -22,7 +22,10 @@ Request body:
 ```json
 {
   "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
-  "input": { "message": "Read the time zone from the test environment", "files": "staged" }
+  "input": {
+    "message": "Read the time zone from the test environment",
+    "files": { "kind": "staged" }
+  }
 }
 ```
 
@@ -70,17 +73,39 @@ Response:
         "files": {
           "anyOf": [
             {
-              "type": "string",
-              "const": "staged"
+              "type": "object",
+              "required": ["kind"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "staged"
+                }
+              }
             },
             {
-              "type": "string",
-              "const": "all"
+              "type": "object",
+              "required": ["kind"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "all"
+                }
+              }
             },
             {
-              "type": "array",
-              "items": {
-                "type": "string"
+              "type": "object",
+              "required": ["kind", "paths"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "paths"
+                },
+                "paths": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
               }
             }
           ]

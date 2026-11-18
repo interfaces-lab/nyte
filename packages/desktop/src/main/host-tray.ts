@@ -25,7 +25,6 @@ const STATUS_COLORS = {
 
 const MAC_VERSION = process.getSystemVersion().split(".").map(Number);
 
-/** Menu item sublabels draw from macOS 14.4; before it, the status joins the label. */
 const SUBLABELS =
   (MAC_VERSION[0] ?? 0) > 14 || ((MAC_VERSION[0] ?? 0) === 14 && (MAC_VERSION[1] ?? 0) >= 4);
 

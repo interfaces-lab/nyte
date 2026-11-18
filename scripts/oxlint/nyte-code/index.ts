@@ -7,6 +7,7 @@ import { noIsHelperNamesRule } from "./rules/no-is-helper-names.ts";
 import { noLabImportsRule } from "./rules/no-lab-imports.ts";
 import { noOfLookupNamesRule } from "./rules/no-of-lookup-names.ts";
 import { noOneOffBooleanHelpersRule } from "./rules/no-one-off-boolean-helpers.ts";
+import { noSentinelUnionsRule } from "./rules/no-sentinel-unions.ts";
 import { requireSuppressionReasonRule } from "./rules/require-suppression-reason.ts";
 
 const nyteCodePlugin = eslintCompatPlugin({
@@ -19,6 +20,7 @@ const nyteCodePlugin = eslintCompatPlugin({
     "no-lab-imports": noLabImportsRule,
     "no-of-lookup-names": noOfLookupNamesRule,
     "no-one-off-boolean-helpers": noOneOffBooleanHelpersRule,
+    "no-sentinel-unions": noSentinelUnionsRule,
     "require-suppression-reason": requireSuppressionReasonRule,
   },
 });

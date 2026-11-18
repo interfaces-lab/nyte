@@ -84,6 +84,16 @@ export function applicationMenuTemplate(options: {
     action(clientActions.newBrowser),
   ] satisfies MenuItemConstructorOptions[];
 
+  const apps = options.developer
+    ? ([
+        { type: "separator" },
+        action(clientActions.openNyte),
+        action(clientActions.openCode),
+        action(clientActions.openStudio),
+        action(clientActions.flipApp),
+      ] satisfies MenuItemConstructorOptions[])
+    : [];
+
   const update = { id: "check-for-updates", label: "Check for Updates…" };
 
   const installCli = { id: "install-cli", label: "Install Command-Line Tool…", visible: false };
@@ -176,12 +186,22 @@ export function applicationMenuTemplate(options: {
       ],
     },
     options.platform === "darwin"
-      ? { role: "windowMenu" }
+      ? {
+          role: "windowMenu",
+          submenu: [
+            { role: "minimize" },
+            { role: "zoom" },
+            ...apps,
+            { type: "separator" },
+            { role: "front" },
+          ],
+        }
       : {
           role: "windowMenu",
           submenu: [
             { role: "minimize" },
             { role: "close", accelerator: "Shift+CommandOrControl+W" },
+            ...apps,
           ],
         },
     { role: "help", submenu: options.platform === "darwin" ? [] : [about, update] },

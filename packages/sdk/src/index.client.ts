@@ -41,4 +41,8 @@ export type { PartSnapshot, PartStore } from "./live/part.ts";
 
 export type { Freshness, Live } from "./live/store.ts";
 
+export { languageDocument } from "./view/language-document.ts";
+
+export type { LanguageDocument } from "./view/language-document.ts";
+
 export * from "./surface.ts";

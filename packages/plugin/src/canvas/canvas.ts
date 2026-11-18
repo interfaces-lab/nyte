@@ -13,8 +13,13 @@ import {
   REACT_DOM_EXPORTS,
 } from "./canvas-protocol.ts";
 import { compileCanvas } from "./canvas-compile.ts";
-import { CANVAS_PREVIEW_WIDTHS, describeCanvasPreview } from "./canvas-preview.ts";
+import {
+  CANVAS_PREVIEW_WIDTHS,
+  describeCanvasFindings,
+  describeCanvasPreview,
+} from "./canvas-preview.ts";
 import type {
+  CanvasPreviewFinding,
   CanvasPreviewOutcome,
   CanvasPreviewReport,
   CanvasPreviewRequest,
@@ -173,10 +178,12 @@ async function compile(
   return compiled;
 }
 
-type MeasuredPreview = {
-  readonly digest: string;
+type Measured = {
   readonly heights: NonNullable<CanvasState["heights"]>;
+  readonly findings: readonly CanvasPreviewFinding[];
 };
+
+type MeasuredPreview = Measured & { readonly digest: string };
 
 type Previews = Map<SessionId, MeasuredPreview>;
 
@@ -210,12 +217,12 @@ async function measureCanvas(
   measuring: Measuring | undefined,
   module: CanvasPreviewRequest["module"],
   invocation: ToolInvocation,
-): Promise<MeasuredPreview["heights"]> {
-  if (measuring === undefined) return [];
+): Promise<Measured> {
+  if (measuring === undefined) return { heights: [], findings: [] };
   const previewed = measuring.previews.get(invocation.session.id);
 
   if (previewed !== undefined && previewed.digest === (await digestCode(module.code)))
-    return previewed.heights;
+    return previewed;
 
   const outcome = await previewWithin(
     measuring.preview,
@@ -224,7 +231,9 @@ async function measureCanvas(
     MEASURE_TIMEOUT_MS,
   );
 
-  return outcome.kind === "rendered" ? previewHeights(outcome.report) : [];
+  return outcome.kind === "rendered"
+    ? { heights: previewHeights(outcome.report), findings: outcome.report.findings }
+    : { heights: [], findings: [] };
 }
 
 async function digestCode(code: string): Promise<string> {
@@ -234,7 +243,7 @@ async function digestCode(code: string): Promise<string> {
 }
 
 const PREVIEW_FIRST =
-  "Before rendering, call `canvas_preview` with the same `source` and `files`: it shows you the canvas and its errors, console and height without the user seeing it. Fix what it shows, then render once.";
+  "Before rendering, call `canvas_preview` with the same `source` and `files`: it shows you the canvas and its errors, layout findings, console and height without the user seeing it. Fix what it shows, then render once.";
 
 function renderTool(measuring: Measuring | undefined): ToolDefinition<Infer<typeof parameters>> {
   return {
@@ -252,16 +261,20 @@ function renderTool(measuring: Measuring | undefined): ToolDefinition<Infer<type
     async execute(args, invocation) {
       const compiled = await compile(args, invocation);
 
+      const measured = await measureCanvas(
+        measuring,
+        { runtime: compiled.runtime, code: compiled.code, title: args.title },
+        invocation,
+      );
+
       const drawn = {
         runtime: compiled.runtime,
         title: args.title,
         height: args.height ?? null,
-        heights: await measureCanvas(
-          measuring,
-          { runtime: compiled.runtime, code: compiled.code, title: args.title },
-          invocation,
-        ),
+        heights: measured.heights,
       };
+
+      const findings = describeCanvasFindings(measured.findings);
 
       const blob = await invocation.env.files.upload(
         (async function* () {
@@ -281,7 +294,12 @@ function renderTool(measuring: Measuring | undefined): ToolDefinition<Infer<type
         });
 
         return {
-          content: [{ kind: "text", text: `Rendered canvas ${part.id}: ${args.title}.` }],
+          content: [
+            {
+              kind: "text",
+              text: [`Rendered canvas ${part.id}: ${args.title}.`, ...findings].join("\n"),
+            },
+          ],
           parts: [part.id],
         };
       }
@@ -294,7 +312,12 @@ function renderTool(measuring: Measuring | undefined): ToolDefinition<Infer<type
         throw new Error(`Canvas ${args.canvas} was not replaced: ${outcome.kind}.`);
 
       return {
-        content: [{ kind: "text", text: `Replaced canvas ${args.canvas}: ${args.title}.` }],
+        content: [
+          {
+            kind: "text",
+            text: [`Replaced canvas ${args.canvas}: ${args.title}.`, ...findings].join("\n"),
+          },
+        ],
         parts: [asId(args.canvas)],
       };
     },
@@ -347,7 +370,7 @@ async function previewWithin(
 function previewTool(measuring: Measuring): ToolDefinition<Infer<typeof previewParameters>> {
   return {
     name: "canvas_preview",
-    description: `Render a canvas off-screen in the real canvas runtime and see it before the user does: a PNG at the chat column's width (${CANVAS_PREVIEW_WIDTHS.chat} px), its height there and at a phone's width (${CANVAS_PREVIEW_WIDTHS.phone} px), every load or render error with its file and line, and the canvas's console output. Takes the same \`source\` and \`files\` as canvas_render and compiles them the same way; nothing is added to the chat.`,
+    description: `Render a canvas off-screen in the real canvas runtime and see it before the user does: a PNG at the chat column's width (${CANVAS_PREVIEW_WIDTHS.chat} px), its height there and at a phone's width (${CANVAS_PREVIEW_WIDTHS.phone} px), every load or render error with its file and line, layout findings with their fix, and the canvas's console output. Takes the same \`source\` and \`files\` as canvas_render and compiles them the same way; nothing is added to the chat.`,
     parameters: previewParameters,
     class: () => ({ kind: "custom", label: "Previewing canvas" }),
     effects: "none",
@@ -382,6 +405,7 @@ function previewTool(measuring: Measuring): ToolDefinition<Infer<typeof previewP
         rememberPreview(measuring.previews, invocation.session.id, {
           digest: await digestCode(compiled.code),
           heights,
+          findings: outcome.report.findings,
         });
 
       return {

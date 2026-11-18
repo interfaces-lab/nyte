@@ -1,0 +1,11 @@
+/* The board layer comes first, so its !important declarations win over every design's, !important or not. */
+@layer board {
+  html,
+  body {
+    all: initial !important;
+    display: block !important;
+    width: 100% !important;
+    height: 100% !important;
+    overflow: hidden !important;
+  }
+}

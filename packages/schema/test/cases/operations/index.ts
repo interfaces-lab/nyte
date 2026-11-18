@@ -5,6 +5,7 @@ import { fileOperations } from "./files.ts";
 import { gitOperations } from "./git.ts";
 import { githubOperations } from "./github.ts";
 import { hostOperations, maintenanceOperations } from "./host.ts";
+import { languageOperations } from "./language.ts";
 import { sessionOperations } from "./session.ts";
 import { workspaceOperations } from "./workspace.ts";
 
@@ -17,6 +18,7 @@ export const operations = {
   ...documentOperations,
   ...gitOperations,
   ...githubOperations,
+  ...languageOperations,
   ...browserOperations,
   ...maintenanceOperations,
 };

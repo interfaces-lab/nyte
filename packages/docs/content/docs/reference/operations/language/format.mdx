@@ -1,0 +1,130 @@
+---
+title: language.format
+description: Computes the edits that format a document.
+---
+
+Computes the edits that format a whole document with the server's formatter, gofmt for Go and TypeScript's for TypeScript and JavaScript. Nothing is written. A file no server handles, or whose server is `missing` or `failed`, answers empty rather than failing; [`language.status`](/docs/reference/operations/language/status) says why.
+
+## When to call it
+
+For format document, or before saving.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `language` capability. Paths are relative to the workspace, or absolute; answers name files inside the workspace by their relative path and others, such as the standard library, by their absolute one. Lines are zero-based and columns count UTF-16 code units.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "path": "hub/hub.go",
+  "options": { "tabSize": 4, "insertSpaces": false }
+}
+```
+
+Response:
+
+```json
+[
+  {
+    "range": { "start": { "line": 41, "utf16Column": 0 }, "end": { "line": 41, "utf16Column": 6 } },
+    "text": "\t"
+  }
+]
+```
+
+## Errors
+
+- `unavailable` or `denied` when the workspace doesn't offer language intelligence.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `language`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "path", "options"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "path": {
+      "type": "string"
+    },
+    "options": {
+      "type": "object",
+      "required": ["tabSize", "insertSpaces"],
+      "properties": {
+        "tabSize": {
+          "type": "number"
+        },
+        "insertSpaces": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["range", "text"],
+    "properties": {
+      "range": {
+        "type": "object",
+        "required": ["start", "end"],
+        "properties": {
+          "start": {
+            "type": "object",
+            "required": ["line", "utf16Column"],
+            "properties": {
+              "line": {
+                "type": "number"
+              },
+              "utf16Column": {
+                "type": "number"
+              }
+            }
+          },
+          "end": {
+            "type": "object",
+            "required": ["line", "utf16Column"],
+            "properties": {
+              "line": {
+                "type": "number"
+              },
+              "utf16Column": {
+                "type": "number"
+              }
+            }
+          }
+        }
+      },
+      "text": {
+        "type": "string"
+      }
+    }
+  }
+}
+```
+
+{/* generated:end */}

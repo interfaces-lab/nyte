@@ -36,6 +36,8 @@ const MAX_CONTEXT_LENGTH = 8_000;
 
 const MAX_FIRST_MESSAGE_LENGTH = 2_000;
 
+const LEADING_COMMAND = /^\s*\/[a-z0-9][a-z0-9-]*(?=\s|$)/u;
+
 const messagePrompt = (value: string) =>
   `Here is the first message of the conversation:\n\n<message>\n${value}\n</message>\n\nReply with only the title.`;
 
@@ -121,6 +123,10 @@ async function generateTitle(api: PluginApi, signal: AbortSignal): Promise<strin
 
   if (model === undefined || first === undefined) return null;
   const followedUp = view.messages.some((message) => message.kind === "user" && message !== first);
+  const history = followedUp || before !== null;
+  const words = userWords(first.content);
+
+  if (!history && words === "") return null;
 
   const outcome = await api.request({
     model,
@@ -128,10 +134,7 @@ async function generateTitle(api: PluginApi, signal: AbortSignal): Promise<strin
     messages: [
       {
         role: "user",
-        content:
-          followedUp || before !== null
-            ? historyPrompt(first, view.messages)
-            : messagePrompt(userWords(first.content)),
+        content: history ? historyPrompt(first, view.messages) : messagePrompt(words),
         timestamp: Date.now(),
       },
     ],
@@ -182,7 +185,10 @@ function historyPrompt(first: UserMessage, messages: readonly Message[]): string
 }
 
 function userWords(content: UserMessage["content"]): string {
-  return typeof content === "string"
-    ? content
-    : content.flatMap((block) => (block.kind === "text" ? [block.text] : [])).join(" ");
+  const said =
+    typeof content === "string"
+      ? content
+      : content.flatMap((block) => (block.kind === "text" ? [block.text] : [])).join(" ");
+
+  return said.replace(LEADING_COMMAND, "").trim();
 }

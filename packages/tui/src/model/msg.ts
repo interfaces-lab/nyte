@@ -58,7 +58,10 @@ export type Intent =
   | {
       readonly kind: "reorder";
       readonly message: MessageId;
-      readonly to: "earlier" | "later" | { readonly before: MessageId | null };
+      readonly to:
+        | { readonly kind: "earlier" }
+        | { readonly kind: "later" }
+        | { readonly kind: "before"; readonly message: MessageId | null };
     }
   | { readonly kind: "stop-run" }
   | { readonly kind: "run-shell"; readonly command: string; readonly include: boolean }
@@ -123,7 +126,9 @@ export type Intent =
   | {
       readonly kind: "move-to";
       readonly commit: CommitId;
-      readonly abandoned: "keep" | { readonly summarize: { readonly instructions: string | null } };
+      readonly abandoned:
+        | { readonly kind: "keep" }
+        | { readonly kind: "summarize"; readonly instructions: string | null };
       readonly expect?: Revision;
     }
   | { readonly kind: "prefill"; readonly text: string }

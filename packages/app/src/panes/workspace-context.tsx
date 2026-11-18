@@ -14,7 +14,12 @@ import { folderPicker, handleOpenOutcome } from "./open-workspace.tsx";
 import { clientActions } from "../contract/client-actions.ts";
 import { nyte } from "../contract/nyte.ts";
 import { useHostState } from "../data/host.ts";
-import { commitHostWorkspace, useRecentWorkspaces } from "../data/workspaces.ts";
+import {
+  commitHostWorkspace,
+  folderName,
+  useHomeWorkspace,
+  useRecentWorkspaces,
+} from "../data/workspaces.ts";
 import { ContextSelector } from "./context-selector.tsx";
 import { contextStyles } from "./context-selector.stylex.ts";
 import { BranchSegment } from "./branch-segment.tsx";
@@ -25,18 +30,19 @@ const INLINE_FOLDERS = 5;
 export function WorkspaceContext({ active }: { readonly active: boolean }) {
   const host = useHostState();
   const workspace = host.data.workspace;
+  const home = useHomeWorkspace();
   const repository = useGitHubRepository(workspace?.id);
 
   const workspaceName =
-    workspace === undefined
-      ? "Home"
-      : repository === undefined
-        ? workspace.name
-        : `${repository.owner}/${repository.name}`;
+    repository === undefined
+      ? folderName(workspace, home)
+      : `${repository.owner}/${repository.name}`;
 
   const openFolder = folderPicker();
 
-  const folders = useRecentWorkspaces({ exclude: workspace?.path });
+  const folders = useRecentWorkspaces({ exclude: workspace?.path }).filter(
+    (folder) => folder.id !== home,
+  );
 
   const workspaceItems = folders.map((folder) => (
     <MenuRadioItem key={folder.path} value={folder.path} icon="folder" meta={folder.hint}>
@@ -59,7 +65,7 @@ export function WorkspaceContext({ active }: { readonly active: boolean }) {
         }
       >
         <MenuRadioGroup
-          value={workspace?.path ?? "home"}
+          value={workspace === undefined || workspace.id === home ? "home" : workspace.path}
           onValueChange={(value) => {
             if (value === "home") {
               if (workspace !== undefined) commitHostWorkspace(undefined);
@@ -72,9 +78,9 @@ export function WorkspaceContext({ active }: { readonly active: boolean }) {
           }}
         >
           <MenuRadioItem value="home" icon="folder">
-            Home
+            {folderName(undefined, home)}
           </MenuRadioItem>
-          {workspace !== undefined && (
+          {workspace !== undefined && workspace.id !== home && (
             <MenuRadioItem value={workspace.path} icon="folder">
               <span title={workspace.path}>{workspaceName}</span>
             </MenuRadioItem>

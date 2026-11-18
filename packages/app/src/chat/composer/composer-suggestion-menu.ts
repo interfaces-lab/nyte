@@ -254,7 +254,7 @@ export function suggestionEmptyText(
     case "error":
       return kind === "mention" ? "Couldn’t load workspace files" : `Couldn’t load ${slashSubject}`;
     case "ready":
-      return kind === "mention" ? "No Context Found" : "No Matches Found";
+      return kind === "mention" ? "No Context Found" : "No matches";
     default: {
       const _exhaustive: never = source;
 

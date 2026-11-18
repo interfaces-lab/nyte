@@ -132,6 +132,7 @@ export function createConnection(
       git: () => capability("git", () => handle.git()),
       github: () => capability("github", () => handle.github()),
       browser: () => capability("browser", () => handle.browser()),
+      language: () => capability("language", () => handle.language()),
     });
   };
 

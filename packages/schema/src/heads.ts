@@ -10,8 +10,8 @@ import type { Decoded, Schema } from "./schema.ts";
 import { nullable } from "./wire/nullable.ts";
 
 const ABANDONED = Type.Union([
-  Type.Literal("keep"),
-  Type.Object({ summarize: Type.Object({ instructions: Type.Optional(Type.String()) }) }),
+  Type.Object({ kind: Type.Literal("keep") }),
+  Type.Object({ kind: Type.Literal("summarize"), instructions: Type.Optional(Type.String()) }),
 ]);
 
 export const TreeNodeType = Type.Object({

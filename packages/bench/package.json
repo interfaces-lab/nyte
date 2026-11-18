@@ -9,6 +9,8 @@
   },
   "scripts": {
     "clean": "rm -rf node_modules .turbo",
+    "bench:snapshots": "node scripts/bench-snapshots.ts",
+    "bench:snapshots:gate": "node scripts/bench-snapshots.ts --gate",
     "bench:stream": "node scripts/bench-stream.ts",
     "bench:wire": "node scripts/bench-wire.ts",
     "bench:wire:gate": "node scripts/bench-wire.ts --idle-ms 2000 --gate",

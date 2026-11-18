@@ -119,7 +119,7 @@ test("the navigation journey", async ({ desktop }) => {
   await test.step("New tab adds a new chat, and closing it goes back to the chat before it", async () => {
     const tabs = page.getByRole("tablist", { name: "Tabs" }).getByRole("tab");
     const before = await tabs.count();
-    await page.getByRole("button", { name: "New tab" }).click();
+    await page.getByRole("button", { name: "New chat tab" }).click();
     await expect(tabs).toHaveCount(before + 1);
     await expect(chatTab(page, "New chat")).toHaveAttribute("aria-selected", "true");
     await chatTab(page, "New chat").click({ button: "middle" });

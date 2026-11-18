@@ -22,6 +22,7 @@ import type {
   FileScope,
   GitApi,
   GitHubApi,
+  LanguageService,
   PageHolder,
   SnapshotsApi,
 } from "../contract/workspace.ts";
@@ -48,6 +49,7 @@ interface Attachment {
   browser(): BrowserApi | undefined;
   git(): GitApi | undefined;
   github(): GitHubApi | undefined;
+  language(): LanguageService | undefined;
   snapshots(): SnapshotsApi | null;
 }
 
@@ -180,12 +182,13 @@ export function createEnvironmentRegistry(kernel: Kernel): EnvironmentRegistry {
     } catch (error) {
       const failure = classifyCapabilityFailure(error);
 
-      return { files: failure, git: failure, github: failure, browser: failure };
+      return { files: failure, git: failure, github: failure, browser: failure, language: failure };
     }
 
     const git = found.git();
     const github = found.github();
     const browser = found.browser();
+    const language = found.language();
 
     return {
       files:
@@ -207,6 +210,13 @@ export function createEnvironmentRegistry(kernel: Kernel): EnvironmentRegistry {
               reason: `The ${found.provider.kind} provider serves no browser.`,
             }
           : { kind: "available", api: wrapBrowser(kernel, browser, holder) },
+      language:
+        language === undefined
+          ? {
+              kind: "unsupported",
+              reason: `The ${found.provider.kind} provider serves no language intelligence.`,
+            }
+          : { kind: "available", api: language },
     };
   };
 
@@ -428,6 +438,7 @@ function attachment(
   let github: GitHubApi | undefined;
   let snapshots: SnapshotsApi | null | undefined;
   let own: BrowserApi | undefined;
+  let language: LanguageService | undefined;
 
   return {
     provider,
@@ -435,6 +446,7 @@ function attachment(
     async close() {
       if (closing) return;
       closing = true;
+      await language?.shutdown();
       await closeIdle();
     },
     browser() {
@@ -454,6 +466,12 @@ function attachment(
       github ??= provider.github?.(env);
 
       return github;
+    },
+    language() {
+      if (closing) return undefined;
+      language ??= provider.language?.(env);
+
+      return language;
     },
     snapshots() {
       snapshots ??= provider.snapshots?.(env) ?? null;

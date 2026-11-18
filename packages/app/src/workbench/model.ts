@@ -1,6 +1,8 @@
 import type { JobId, PartId, SessionId, TurnId, WorkspaceId } from "@nyte-ai/sdk";
 import type { IconName } from "@nyte-ai/ui/icon";
 import type { ClientCapabilities } from "../contract/client-actions.ts";
+import type { DesktopApp } from "../contract/desktop-app.ts";
+import { windowApp } from "../contract/nyte.ts";
 import { DEFAULT_WIDTH, type WorkbenchWidth } from "./width.ts";
 
 export type WorkbenchTabId = string;
@@ -45,6 +47,8 @@ interface TabFields {
     readonly pinned: number | null;
   };
   readonly editor: Readonly<Record<never, never>>;
+  /** Every design file of the workspace, drawn on one canvas. */
+  readonly design: Readonly<Record<never, never>>;
 }
 
 export type WorkbenchTabKind = keyof TabFields;
@@ -85,7 +89,7 @@ export type EditorTarget =
 
 export type WorkbenchScope = { readonly kind: "pathless" } | { readonly kind: "project" };
 
-export type LaunchKind = "editor" | "changes" | "browser" | "terminal";
+export type LaunchKind = "editor" | "changes" | "design" | "browser" | "terminal";
 
 interface KindDescriptor<Kind extends WorkbenchTabKind> {
   readonly label: string;
@@ -149,6 +153,13 @@ export const WORKBENCH_KINDS: WorkbenchKinds = {
     launch: undefined,
     identity: (tab) => `${tab.group}\n${tab.path}`,
   },
+  design: {
+    label: "Design",
+    icon: "bezier-pointer",
+    available: always,
+    launch: { policy: "singleton", input: { kind: "design" } },
+    identity: () => "design",
+  },
   canvas: {
     label: "Canvas",
     icon: "canvas-grid",
@@ -161,15 +172,26 @@ export const WORKBENCH_KINDS: WorkbenchKinds = {
 const LAUNCH_ORDER = Object.freeze([
   "editor",
   "changes",
+  "design",
   "browser",
   "terminal",
 ] satisfies LaunchKind[]);
+
+const APP_LAUNCHERS = {
+  nyte: LAUNCH_ORDER,
+  code: ["editor", "changes", "browser", "terminal"],
+  studio: ["design"],
+} as const satisfies { readonly [App in DesktopApp]: readonly LaunchKind[] };
 
 export function workbenchLaunchers(
   scope: WorkbenchScope,
   capabilities: ClientCapabilities,
 ): readonly LaunchKind[] {
-  return LAUNCH_ORDER.filter((kind) => WORKBENCH_KINDS[kind].available(scope, capabilities));
+  const offered: readonly LaunchKind[] = APP_LAUNCHERS[windowApp()];
+
+  return LAUNCH_ORDER.filter(
+    (kind) => offered.includes(kind) && WORKBENCH_KINDS[kind].available(scope, capabilities),
+  );
 }
 
 export function workbenchTabAvailable(
@@ -228,18 +250,25 @@ export function changesScopeValue(scope: WorkbenchChangesScope): string {
 
 export type WorkbenchLayout =
   | { readonly kind: "split" }
-  | { readonly kind: "maximized"; readonly showing: "workbench" | "chat" };
+  | {
+      readonly kind: "maximized";
+      readonly showing: "workbench" | "chat";
+      /** Maximized only because the stage can't hold two panes; it splits again once it can. */
+      readonly narrow: boolean;
+    };
 
 export const SPLIT_LAYOUT = Object.freeze({ kind: "split" }) satisfies WorkbenchLayout;
 
 export const MAXIMIZED_WORKBENCH_LAYOUT = Object.freeze({
   kind: "maximized",
   showing: "workbench",
+  narrow: false,
 }) satisfies WorkbenchLayout;
 
-export const MAXIMIZED_CHAT_LAYOUT = Object.freeze({
+export const NARROW_LAYOUT = Object.freeze({
   kind: "maximized",
-  showing: "chat",
+  showing: "workbench",
+  narrow: true,
 }) satisfies WorkbenchLayout;
 
 export const WORKBENCH_CHAT_TAB = "chat";
@@ -251,7 +280,13 @@ export function workbenchShowsChat(layout: WorkbenchLayout): boolean {
 }
 
 export function revealWorkbench(layout: WorkbenchLayout): WorkbenchLayout {
-  return workbenchShowsChat(layout) ? MAXIMIZED_WORKBENCH_LAYOUT : layout;
+  return layout.kind === "maximized" && layout.showing === "chat"
+    ? { ...layout, showing: "workbench" }
+    : layout;
+}
+
+export function workbenchNarrow(layout: WorkbenchLayout): boolean {
+  return layout.kind === "maximized" && layout.narrow;
 }
 
 export interface EditorGroup {

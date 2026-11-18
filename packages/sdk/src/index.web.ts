@@ -6,6 +6,10 @@ export { createSendJournal } from "./send/journal.ts";
 
 export type { JournalStorage } from "./send/journal.ts";
 
+export { languageDocument } from "./view/language-document.ts";
+
+export type { LanguageDocument } from "./view/language-document.ts";
+
 export * from "./surface.ts";
 
 export const sdk = {

@@ -107,10 +107,12 @@ function hostView(wire: HostViewWire, link: HostView["link"], operations: string
   };
 }
 
+type Ending = { readonly kind: "ended" } | { readonly kind: "failed"; readonly error: Error };
+
 export function pushed<T>(start: (sink: Sink<T>) => () => void): AsyncIterable<T> {
   return closable<T>(() => {
     let slot: { readonly value: T } | null = null;
-    let ending: { readonly error: Error } | "ended" | null = null;
+    let ending: Ending | null = null;
     let wake: (() => void) | null = null;
 
     const signal = (): void => {
@@ -126,11 +128,11 @@ export function pushed<T>(start: (sink: Sink<T>) => () => void): AsyncIterable<T
         signal();
       },
       end() {
-        ending ??= "ended";
+        ending ??= { kind: "ended" };
         signal();
       },
       fail(error) {
-        ending ??= { error };
+        ending ??= { kind: "failed", error };
         signal();
       },
     });
@@ -146,9 +148,9 @@ export function pushed<T>(start: (sink: Sink<T>) => () => void): AsyncIterable<T
             return { done: false, value: held.value };
           }
 
-          if (ending === "ended") return DONE;
+          if (ending?.kind === "ended") return DONE;
 
-          if (ending !== null) throw ending.error;
+          if (ending?.kind === "failed") throw ending.error;
           await new Promise<void>((resolve) => {
             wake = resolve;
           });

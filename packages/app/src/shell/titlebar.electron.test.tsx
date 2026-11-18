@@ -145,8 +145,10 @@ test("titlebar controls and workbench stay aligned at every zoom and on every di
   );
 
   for (const layout of ["split", "maximized"] as const) {
-    if (layout === "maximized")
+    if (layout === "maximized") {
+      await setZoom(1);
       await page.getByRole("button", { name: "Expand workbench", exact: true }).click();
+    }
 
     for (const display of displays) {
       await application.evaluate(({ BrowserWindow }, target) => {

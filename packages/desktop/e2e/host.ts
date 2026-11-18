@@ -12,6 +12,8 @@ import { PACKAGED_BUILDS } from "../src/shared/desktop-builds.ts";
 import { developmentHostAgentJob, hostAgentPlist } from "../src/shared/host-agent-job.ts";
 import type { HostAgentJob } from "../src/shared/host-agent-job.ts";
 import { e2eAnswers } from "../src/host/fixtures/e2e-models.ts";
+import { describePhases, timed } from "./phases.ts";
+import type { Phase, Phases } from "./phases.ts";
 import { POLISH_MODEL, polishModel, serveScriptedModel } from "./polish-fixture.ts";
 
 const execute = promisify(execFile);
@@ -39,6 +41,8 @@ export interface E2eHostOptions {
 export interface E2eHost {
   readonly label: string;
   readonly environment: Readonly<Record<string, string>>;
+  /** How long starting it took: the scripted catalog, signing in, and the launchd job until it serves. */
+  readonly phases: Phases;
   pid(): Promise<number | null>;
   hold(ms: number): Promise<void>;
   close(): Promise<void>;
@@ -47,14 +51,15 @@ export interface E2eHost {
 export async function startE2eHost(options: E2eHostOptions): Promise<E2eHost> {
   const nyteHome = join(options.home, ".nyte");
   const log = (line: string): number => options.output.push(`${line}\n`);
+  const phases: Phase[] = [];
 
-  const endpoint = await serveScriptedModel(
-    e2eAnswers({ home: options.home, places: options.places, log }),
+  const endpoint = await timed(phases, "scripted catalog", () =>
+    serveScriptedModel(e2eAnswers({ home: options.home, places: options.places, log })),
   );
 
   await using cleanup = new AsyncDisposableStack();
   cleanup.defer(() => endpoint.close());
-  await signIn(options.home, endpoint.origin);
+  await timed(phases, "sign in", () => signIn(options.home, endpoint.origin));
 
   const label = `${PACKAGED_BUILDS.production.appId}.e2e.${String(process.pid)}.${String(Date.now())}`;
 
@@ -68,7 +73,9 @@ export async function startE2eHost(options: E2eHostOptions): Promise<E2eHost> {
   const job = developmentHostAgentJob({
     label,
     executable: await realpath(await electronExecutable()),
-    entry: await realpath(join(DESKTOP_ROOT, "out-e2e", "main", "nyte-host.js")),
+    entry: await realpath(
+      join(process.env["NYTE_E2E_OUT"] ?? join(DESKTOP_ROOT, "out-e2e"), "main", "nyte-host.js"),
+    ),
     tailnet: join(options.parentDirectory, "tui", "dist", "nyte-tailnet"),
     home: options.home,
     nyteHome,
@@ -78,8 +85,11 @@ export async function startE2eHost(options: E2eHostOptions): Promise<E2eHost> {
   await ensureTuiLink(options.parentDirectory);
   await mkdir(join(nyteHome, "logs"), { recursive: true, mode: 0o700 });
   await writeFile(join(nyteHome, "logs", "host.log"), "", { flag: "a" });
+  const started = performance.now();
+
   const stop =
     process.platform === "darwin" ? await bootstrapJob(job, options.home) : await spawnJob(job);
+
   cleanup.defer(stop);
 
   const tail = spawn("tail", ["-n", "+1", "-F", join(nyteHome, "logs", "host.log")], {
@@ -92,11 +102,14 @@ export async function startE2eHost(options: E2eHostOptions): Promise<E2eHost> {
 
   const pid = (): Promise<number | null> => runningHost(nyteHome);
   await waitFor(async () => (await pid()) !== null, `the host for ${options.home} to answer`);
+  phases.push({ phase: "host serving", ms: Math.round(performance.now() - started) });
+  process.stdout.write(`e2e host: ${describePhases(phases)}\n`);
   const owned = cleanup.move();
 
   return {
     label,
     environment,
+    phases,
     pid,
     async hold(ms) {
       const held = await pid();

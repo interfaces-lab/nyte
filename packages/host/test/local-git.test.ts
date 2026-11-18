@@ -4,8 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { asId, readHunks } from "@nyte-ai/schema";
 import type { GitStatus, Hunk, PatchEntry, PatchSet } from "@nyte-ai/schema";
+import { dev } from "@nyte-ai/core";
 import type { ExecutionEnv, GitApi } from "@nyte-ai/core";
-import { afterEach, assert, describe, expect, it } from "vitest";
+import { afterEach, assert, describe, expect, it, onTestFinished } from "vitest";
 import { localExec, localFiles, localGit } from "../src/index.ts";
 import { findExecutable } from "../src/local/process/command.ts";
 
@@ -427,17 +428,21 @@ describe.skipIf(!hasGit)("localGit", () => {
     expect(discarded.untracked).toEqual([]);
     expect(discarded.unstaged).toEqual([]);
 
-    expect(await git.commit({ message: "staged a", files: "staged" })).toMatchObject({
+    expect(await git.commit({ message: "staged a", files: { kind: "staged" } })).toMatchObject({
       kind: "applied",
     });
-    expect(await git.commit({ message: "nothing", files: "staged" })).toEqual({
+    expect(await git.commit({ message: "nothing", files: { kind: "staged" } })).toEqual({
       kind: "unchanged",
     });
     await writeFile(join(root, "b.txt"), "bee two\n");
-    expect(await git.commit({ message: "all", files: "all" })).toMatchObject({ kind: "applied" });
+    expect(await git.commit({ message: "all", files: { kind: "all" } })).toMatchObject({
+      kind: "applied",
+    });
     await writeFile(join(root, "only.txt"), "only\n");
     await writeFile(join(root, "a.txt"), "left alone\n");
-    expect(await git.commit({ message: "listed", files: ["only.txt"] })).toMatchObject({
+    expect(
+      await git.commit({ message: "listed", files: { kind: "paths", paths: ["only.txt"] } }),
+    ).toMatchObject({
       kind: "applied",
     });
     const after = await repo(git);
@@ -476,7 +481,10 @@ describe.skipIf(!hasGit)("localGit", () => {
     await writeFile(join(root, ".git", "index.lock"), "");
     expect(await git.checkout({ name: "topic" })).toEqual({ kind: "busy", runs: [] });
     expect(await git.stage(["a.txt"])).toEqual({ kind: "busy", runs: [] });
-    expect(await git.commit({ message: "x", files: "all" })).toEqual({ kind: "busy", runs: [] });
+    expect(await git.commit({ message: "x", files: { kind: "all" } })).toEqual({
+      kind: "busy",
+      runs: [],
+    });
     expect(await git.branch({ name: "free", checkout: false })).toMatchObject({ kind: "applied" });
     await rm(join(root, ".git", "index.lock"));
   });
@@ -523,16 +531,27 @@ describe.skipIf(!hasGit)("localGit", () => {
     const git = localGit(localEnv(root), { git: wrapper });
     const runs = async (): Promise<readonly string[]> =>
       (await readFile(log, "utf8").catch(() => "")).split("\n").filter((line) => line !== "");
+
+    const outcomes: string[] = [];
+    const judged = Promise.withResolvers<void>();
+    dev.on((line) => {
+      const outcome = /^DEV:git watched .*"outcome":"(\w+)"/u.exec(line)?.[1];
+
+      if (outcome === undefined) return;
+      outcomes.push(outcome);
+      judged.resolve();
+    });
+    onTestFinished(() => dev.off());
     const statuses = git.watch()[Symbol.asyncIterator]();
     const initial = await statuses.next();
     assert(initial.done !== true && initial.value.kind === "repository");
-    await new Promise((resolve) => setTimeout(resolve, 500));
     const settled = (await runs()).length;
 
     await writeFile(join(root, "out", "built.js"), "x");
     sh(root, "update-ref", "refs/nyte/kept", "HEAD");
     sh(root, "hash-object", "-w", "--stdin");
-    await new Promise((resolve) => setTimeout(resolve, 800));
+    await judged.promise;
+    expect(outcomes).toEqual(["none"]);
     expect((await runs()).length).toBe(settled);
 
     await writeFile(join(root, "a.txt"), "moved\n");

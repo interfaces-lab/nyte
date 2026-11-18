@@ -210,6 +210,13 @@ export const WORKSPACE_OPERATIONS = {
     input: ON_WORKSPACE,
     output: CapabilityWireSchema,
   },
+  "workspace.language": {
+    ...PARTICIPANT,
+    summary: "Checks whether the workspace offers language intelligence.",
+    kind: "query",
+    input: ON_WORKSPACE,
+    output: CapabilityWireSchema,
+  },
   "jobs.start": {
     ...PARTICIPANT,
     summary: "Starts a job running a command or shell, optionally in a terminal of a given size.",

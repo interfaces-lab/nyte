@@ -5,6 +5,7 @@ import { text } from "@nyte-ai/ui/styles/text.stylex";
 import type { FileDiffMetadata, FileDiffOptions, PostRenderPhase } from "@nyte-ai/ui/diffs";
 import { parsePatchFiles } from "@nyte-ai/ui/diffs";
 import { FileDiff } from "@nyte-ai/ui/diffs/react";
+import { useLayoutEffect, useRef } from "react";
 import type { ReactElement } from "react";
 // oxlint-disable-next-line no-restricted-imports -- the compiler merges the patch parse into the theme/layout scope; keep it keyed on diff.patch alone
 import { useMemo } from "react";
@@ -14,7 +15,8 @@ import {
   PIERRE_TOKEN_CSS,
   PierreWorkerProvider,
 } from "@nyte-ai/ui/worker-pool";
-import { useAppearance } from "../theme/appearance-store.ts";
+import { appearance as appearanceStore, useAppearance } from "../theme/appearance-store.ts";
+import type { Appearance } from "../theme/appearance-store.ts";
 import { appearance, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { patchDigest } from "./changes-viewed.ts";
 import { diffStyles } from "./diff.stylex.ts";
@@ -23,9 +25,11 @@ import { ChangeStats } from "../components/change-stats.tsx";
 
 type DiffViewVariant = "inline" | "card" | "workbench" | "stack";
 
+export const DIFF_SEPARATOR_HEIGHT = `calc(${control.heightMd} + 16px)`;
+
 export const DIFF_SEPARATOR_CSS = `
 [data-separator="line-info"] {
-  height: calc(${control.heightMd} + 16px);
+  height: ${DIFF_SEPARATOR_HEIGHT};
   background-color: transparent;
 }
 
@@ -159,43 +163,60 @@ ${PIERRE_TOKEN_CSS}
 }
 ${DIFF_SEPARATOR_CSS}`;
 
-export function applyDiffScopes(node: HTMLElement): void {
+const DIFF_SCOPES = [
+  {
+    scope: surfaceTheme.green,
+    properties: [
+      ["--diffs-addition-color-override", role.strokeAccent],
+      ["--diffs-fg-number-addition-override", role.contentAccent],
+    ],
+  },
+  {
+    scope: surfaceTheme.red,
+    properties: [
+      ["--diffs-deletion-color-override", role.strokeAccent],
+      ["--diffs-fg-number-deletion-override", role.contentAccent],
+    ],
+  },
+  {
+    scope: surfaceTheme.blue,
+    properties: [["--diffs-modified-color-override", role.strokeAccent]],
+  },
+] as const;
+
+let resolvedScopes:
+  | { readonly appearance: Appearance; readonly values: readonly (readonly [string, string])[] }
+  | undefined;
+
+function diffScopeValues(): readonly (readonly [string, string])[] {
+  const shown = appearanceStore.get();
+
+  if (resolvedScopes?.appearance === shown) return resolvedScopes.values;
   const sample = document.createElement("span");
   sample.hidden = true;
-  node.after(sample);
+  document.body.append(sample);
 
-  for (const entry of [
-    {
-      scope: surfaceTheme.green,
-      properties: [
-        ["--diffs-addition-color-override", role.strokeAccent],
-        ["--diffs-fg-number-addition-override", role.contentAccent],
-      ],
-    },
-    {
-      scope: surfaceTheme.red,
-      properties: [
-        ["--diffs-deletion-color-override", role.strokeAccent],
-        ["--diffs-fg-number-deletion-override", role.contentAccent],
-      ],
-    },
-    {
-      scope: surfaceTheme.blue,
-      properties: [["--diffs-modified-color-override", role.strokeAccent]],
-    },
-  ] as const) {
+  const values = DIFF_SCOPES.flatMap((entry) => {
     sample.className = props(entry.scope).className ?? "";
     const computed = getComputedStyle(sample);
 
-    for (const [property, handle] of entry.properties) {
-      node.style.setProperty(property, computed.getPropertyValue(handle.slice(4, -1)));
-    }
-  }
+    return entry.properties.map(
+      (property) => [property[0], computed.getPropertyValue(property[1].slice(4, -1))] as const,
+    );
+  });
 
   sample.remove();
+  resolvedScopes = { appearance: shown, values };
+
+  return values;
 }
 
-function adaptDiffExpanders(node: HTMLElement): void {
+/** Gives `node` the change colours the diffs under it inherit, resolved once per appearance. */
+export function applyDiffScopes(node: HTMLElement): void {
+  for (const entry of diffScopeValues()) node.style.setProperty(entry[0], entry[1]);
+}
+
+export function adaptDiffExpanders(node: HTMLElement): void {
   const root = node.shadowRoot;
 
   if (root === null) return;
@@ -231,11 +252,6 @@ function adaptDiffExpanders(node: HTMLElement): void {
   }
 }
 
-export function adaptDiffRender(node: HTMLElement): void {
-  applyDiffScopes(node);
-  adaptDiffExpanders(node);
-}
-
 function onPostRender(...[node, , phase]: [HTMLElement, unknown, PostRenderPhase]): void {
   if (phase === "unmount") {
     node.shadowRoot?.querySelector("pre")?.remove();
@@ -243,7 +259,7 @@ function onPostRender(...[node, , phase]: [HTMLElement, unknown, PostRenderPhase
     return;
   }
 
-  adaptDiffRender(node);
+  adaptDiffExpanders(node);
 }
 
 const PATCH_OPTIONS = {
@@ -309,7 +325,9 @@ export function DiffView({
 }): ReactElement {
   const headed = variant === "workbench";
   const stacked = variant === "stack";
-  const theme = useAppearance().theme;
+  const shown = useAppearance();
+  const theme = shown.theme;
+  const root = useRef<HTMLDivElement>(null);
   const renderable = useMemo(() => renderablePatch(diff.patch), [diff.patch]);
   const wrapped = wordWrap ?? stacked;
   const expansion = expandContext ? loadDiffFiles : undefined;
@@ -323,8 +341,14 @@ export function DiffView({
     expansionLineCount: EXPANSION_LINE_COUNT,
   } satisfies FileDiffOptions<undefined, undefined>;
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- gives the diffs their change colours once per appearance on the root they inherit from, instead of on every render
+  useLayoutEffect(() => {
+    if (root.current !== null) applyDiffScopes(root.current);
+  }, [shown]);
+
   return (
     <div
+      ref={root}
       {...props(
         stacked ? diffStyles.stack : diffStyles.surface,
         stacked

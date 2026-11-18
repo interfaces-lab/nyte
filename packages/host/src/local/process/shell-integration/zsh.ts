@@ -1,6 +1,4 @@
-// Adapted from VS Code's zsh shell integration, Copyright (c) Microsoft Corporation, MIT License (see ./LICENSE).
-
-import { HEADER, REPORT } from "./bash.ts";
+import { REPORT } from "./bash.ts";
 
 const delegate = (
   name: string,
@@ -13,17 +11,17 @@ fi
 `;
 
 export const zshFiles = {
-  ".zshenv": `${HEADER}typeset __nyte_dir=$ZDOTDIR
+  ".zshenv": `typeset __nyte_dir=$ZDOTDIR
 typeset __nyte_user_dir=\${NYTE_USER_ZDOTDIR:-$HOME}
 builtin unset NYTE_USER_ZDOTDIR
 ${delegate(".zshenv")}`,
-  ".zprofile": HEADER + delegate(".zprofile"),
-  ".zshrc": `${HEADER}if [[ \${HISTFILE-} == "$__nyte_dir/.zsh_history" ]]; then HISTFILE=$__nyte_user_dir/.zsh_history; fi
+  ".zprofile": delegate(".zprofile"),
+  ".zshrc": `if [[ \${HISTFILE-} == "$__nyte_dir/.zsh_history" ]]; then HISTFILE=$__nyte_user_dir/.zsh_history; fi
 ${delegate(".zshrc")}`,
-  ".zlogin": `${HEADER}${delegate(".zlogin")}ZDOTDIR=$__nyte_user_dir
+  ".zlogin": `${delegate(".zlogin")}ZDOTDIR=$__nyte_user_dir
 builtin source $__nyte_dir/nyte.zsh
 `,
-  "nyte.zsh": `${HEADER}builtin autoload -Uz is-at-least
+  "nyte.zsh": `builtin autoload -Uz is-at-least
 if [[ \${NYTE_SHELL_INTEGRATION-} == 0 ]] || ! is-at-least 5.8 || ! builtin zmodload zsh/parameter 2>/dev/null; then builtin return 0; fi
 typeset -gi __nyte_off=0
 __nyte_emit() {

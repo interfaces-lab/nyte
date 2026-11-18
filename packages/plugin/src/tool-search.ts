@@ -85,7 +85,12 @@ export default {
         const found = namespaces();
 
         const withheld = (await readsOnly(invocation.session, invocation.sdk))
-          ? new Set(api.contribute.tools.list().filter(mayChange).map((tool) => tool.name))
+          ? new Set(
+              api.contribute.tools
+                .list()
+                .filter(mayChange)
+                .map((tool) => tool.name),
+            )
           : new Set<string>();
 
         const candidates = invocation.tools

@@ -203,7 +203,6 @@ export const typography = {
   section: { fontSize: 18, lineHeight: 24, fontWeight: 600 },
 } as const;
 
-// RSD interprets numeric line heights as ratios; native props require pixels.
 export const textStyles = css.create({
   body: {
     ...typography.body,

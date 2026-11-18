@@ -4,15 +4,11 @@ import { control, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import { diffStyles } from "../../diff/diff.stylex.ts";
-import { PierreWorkerProvider } from "@nyte-ai/ui/worker-pool";
 import { preferences, useSetting } from "../../preferences/index.ts";
 import { useAppearance } from "../../theme/appearance-store.ts";
 import { diffView } from "../../theme/schema.stylex.ts";
-import {
-  createEditor,
-  editorViewOptions,
-  styles as editorStyles,
-} from "../../workbench/editor/file-editor.tsx";
+import { createEditor } from "../../workbench/editor/file-code-view.tsx";
+import { editorViewOptions, styles as editorStyles } from "../../workbench/editor/file-editor.tsx";
 import { viewerStyles } from "../../workbench/editor/file-viewers.tsx";
 
 const PATH = "src/format-bytes.ts";
@@ -41,20 +37,18 @@ export function FileEditorPreview(): ReactElement {
   const lineNumbers = useSetting(preferences.fileLineNumbers);
   const wordWrap = useSetting(preferences.fileWordWrap);
   const gitBlame = useSetting(preferences.fileGitBlame);
+  const codeFontSize = useSetting(preferences.codeFontSize);
 
   return (
     <div {...props(styles.frame(wordWrap ? WRAPPED_LINES : LINES, gitBlame))}>
       <div {...props(viewerStyles.root)}>
-        <PierreWorkerProvider>
-          <EditProvider createEditor={createEditor}>
-            <CodeView
-              initialItems={ITEMS}
-              editorOptions={{ ownsVerticalViewport: true }}
-              options={editorViewOptions({ theme, lineNumbers, wordWrap })}
-              className={props(diffStyles.patch, editorStyles.code, styles.code).className}
-            />
-          </EditProvider>
-        </PierreWorkerProvider>
+        <EditProvider createEditor={createEditor}>
+          <CodeView
+            initialItems={ITEMS}
+            options={editorViewOptions({ theme, lineNumbers, wordWrap, codeFontSize })}
+            className={props(diffStyles.patch, editorStyles.code, styles.code).className}
+          />
+        </EditProvider>
         {gitBlame && (
           <div {...props(viewerStyles.status)}>
             <span>Line 1</span>

@@ -1,0 +1,171 @@
+---
+title: language.codeActions
+description: Lists the quick fixes and refactorings for a range, with the diagnostics on it.
+---
+
+Lists the server's quick fixes, refactorings and source actions for a range, sending it the diagnostics that overlap the range. Each action has a title, a kind, whether it is preferred, why it is disabled, and a token to resolve it with [`language.resolveCodeAction`](/docs/reference/operations/language/resolve-code-action). A later call makes the earlier tokens stale. A file no server handles, or whose server is `missing` or `failed`, answers empty rather than failing; [`language.status`](/docs/reference/operations/language/status) says why.
+
+## When to call it
+
+For a lightbulb or an intentions menu at the caret or selection.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `language` capability. Paths are relative to the workspace, or absolute; answers name files inside the workspace by their relative path and others, such as the standard library, by their absolute one. Lines are zero-based and columns count UTF-16 code units.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "path": "hub/hub.go",
+  "range": { "start": { "line": 76, "utf16Column": 34 }, "end": { "line": 76, "utf16Column": 34 } }
+}
+```
+
+Response:
+
+```json
+[
+  {
+    "title": "Remove unused parameter \"verbose\"",
+    "kind": "quickfix",
+    "preferred": true,
+    "disabled": null,
+    "token": {
+      "kind": "codeAction",
+      "server": "4f8c2a1e-0b6d-4e3f-9a7c-5d2e1f0a3b4c",
+      "answer": 7,
+      "item": 0
+    }
+  }
+]
+```
+
+## Errors
+
+- `unavailable` or `denied` when the workspace doesn't offer language intelligence.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `language`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "path", "range"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "path": {
+      "type": "string"
+    },
+    "range": {
+      "type": "object",
+      "required": ["start", "end"],
+      "properties": {
+        "start": {
+          "type": "object",
+          "required": ["line", "utf16Column"],
+          "properties": {
+            "line": {
+              "type": "number"
+            },
+            "utf16Column": {
+              "type": "number"
+            }
+          }
+        },
+        "end": {
+          "type": "object",
+          "required": ["line", "utf16Column"],
+          "properties": {
+            "line": {
+              "type": "number"
+            },
+            "utf16Column": {
+              "type": "number"
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["title", "kind", "preferred", "disabled", "token"],
+    "properties": {
+      "title": {
+        "type": "string"
+      },
+      "kind": {
+        "enum": [
+          "quickfix",
+          "refactor",
+          "refactor.extract",
+          "refactor.inline",
+          "refactor.rewrite",
+          "source",
+          "source.organizeImports",
+          "source.fixAll",
+          "other"
+        ]
+      },
+      "preferred": {
+        "type": "boolean"
+      },
+      "disabled": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "token": {
+        "type": "object",
+        "required": ["kind", "server", "answer", "item"],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "codeAction"
+          },
+          "server": {
+            "type": "string"
+          },
+          "answer": {
+            "type": "number"
+          },
+          "item": {
+            "type": "number"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+{/* generated:end */}

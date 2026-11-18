@@ -18,6 +18,7 @@ import { mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import {
+  APP_SWITCH_ARGUMENT,
   BROWSER_BOUNDS_CHANNEL,
   BROWSER_FOCUS_CHANNEL,
   CALL_CHANNEL,
@@ -31,6 +32,7 @@ import {
   THEME_PREFERENCE_CHANNEL,
   UNSAVED_EDITS_CHANNEL,
   VIEWING_CHANNEL,
+  WINDOW_APP_ARGUMENT,
   WINDOW_FULLSCREEN_CHANNEL,
   WINDOW_ID_ARGUMENT,
   WINDOW_OPEN_ARGUMENT,
@@ -87,8 +89,9 @@ import { DEFAULT_DESKTOP_SETTINGS } from "@nyte-ai/app/contract/desktop-settings
 import { LaunchStateStore, openingFrame, windowsAfterClose } from "./launch-state.ts";
 import { registerUpdates } from "./updates/updates.ts";
 import { createOpenWith } from "./open-with.ts";
+import type { DesktopApp } from "@nyte-ai/app/contract/desktop-app.ts";
 import type { DesktopWindowOpen } from "@nyte-ai/app/contract/desktop-window.ts";
-
+import { besideBounds, createAppSwitch, windowsAppDetails, windowTitle } from "./apps.ts";
 import {
   decodeBrowserBounds,
   decodeBrowserFocus,
@@ -101,6 +104,7 @@ import {
 import { createWindowWorkspaces } from "../shared/window-workspace.ts";
 
 interface NyteWindow {
+  readonly app: DesktopApp;
   readonly window: BrowserWindow;
   readonly menuCommands: ReturnType<typeof createMenuCommandDelivery>;
   readonly present: () => void;
@@ -257,8 +261,19 @@ const openWith = createOpenWith({
   windows: () => [...windows.keys()],
   workspace: (window) => windowWorkspaces.workspace(window),
   send: (window, path) => windows.get(window)?.menuCommands.dispatch({ kind: "open-file", path }),
-  open: (opening) => createWindow(undefined, opening),
+  open: (opening) => createWindow("nyte", { opening }),
   failed: (path, message) => dialog.showErrorBox(`Couldn't open ${basename(path)}`, message),
+});
+
+const switchApp = createAppSwitch({
+  windows: () => windows,
+  workspace: (window) => windowWorkspaces.workspace(window),
+  arrive: (entry, subject) => entry.menuCommands.dispatch({ kind: "arrive", subject }),
+  open: (app, opening, beside) => {
+    const bounds = beside.window.getBounds();
+    const workArea = screen.getDisplayMatching(bounds).workArea;
+    createWindow(app, { opening, bounds: besideBounds(bounds, workArea, MIN_WIDTH) });
+  },
 });
 
 let updates: Awaited<ReturnType<typeof registerUpdates>> | undefined;
@@ -383,6 +398,7 @@ const mainCalls: CallTable = {
   "host.browser.login": async (_window, input) => browserSurfaces.login(input),
   "host.browser.history": (_window, input) => browserSurfaces.history(input),
   "host.browser.forgetHistory": (_window, input) => browserSurfaces.forgetHistory(input),
+  "host.switchApp": async (window, input) => switchApp(window, input),
 } satisfies { readonly [P in MainCallPath]: CallHandler<P> };
 
 const mainRoute: CallRoute = (window, path, input) => callTable(mainCalls, window, path, input);
@@ -556,9 +572,11 @@ function registerIpc(): void {
   });
 
   ipcMain.on(WINDOW_WORKSPACE_CHANNEL, (event, path) => {
-    senderWindow(event);
+    const entry = senderWindow(event);
 
-    if (windowWorkspacePath.Check(path)) windowWorkspaces.shown(event.sender.id, path ?? undefined);
+    if (!windowWorkspacePath.Check(path)) return;
+    windowWorkspaces.shown(event.sender.id, path ?? undefined);
+    entry.window.setTitle(windowTitle(entry.app, path ?? undefined));
   });
 
   ipcMain.on(BROWSER_FOCUS_CHANNEL, (event, message) => {
@@ -599,7 +617,19 @@ function onScreen(bounds: Electron.Rectangle): boolean {
 
 const FIRST_FRAME_LIMIT_MS = 4_000;
 
-function createWindow(windowId: string = randomUUID(), opening?: DesktopWindowOpen): NyteWindow {
+const MIN_WIDTH = 500;
+
+function createWindow(
+  app: DesktopApp,
+  input: {
+    readonly windowId?: string;
+    readonly opening?: DesktopWindowOpen;
+    readonly bounds?: Electron.Rectangle;
+  } = {},
+): NyteWindow {
+  const windowId = input.windowId ?? randomUUID();
+  const opening = input.opening;
+
   const frame = openingFrame({
     own: launchState.frame(windowId),
     last: launchState.window(),
@@ -607,13 +637,13 @@ function createWindow(windowId: string = randomUUID(), opening?: DesktopWindowOp
     onScreen,
   });
 
-  const kept = launchState.windows();
-
-  if (!kept.includes(windowId)) launchState.setWindows([...kept, windowId]);
+  launchState.keepWindow(windowId, app, opening);
 
   const options: Electron.BrowserWindowConstructorOptions = {
     ...frame.bounds,
-    minWidth: 500,
+    ...input.bounds,
+    title: windowTitle(app, opening?.workspace?.path),
+    minWidth: MIN_WIDTH,
     minHeight: 520,
     show: false,
     backgroundColor: windowBackgroundColor(),
@@ -623,10 +653,12 @@ function createWindow(windowId: string = randomUUID(), opening?: DesktopWindowOp
         `${CANVAS_SHELL_ARGUMENT}=${canvasShell}`,
         `${MACHINE_NAME_ARGUMENT}=${machineName()}`,
         `${WINDOW_ID_ARGUMENT}=${windowId}`,
-        ...(windows.size === 0 && opening === undefined
+        `${WINDOW_APP_ARGUMENT}=${app}`,
+        ...(windows.size === 0 && (opening === undefined || opening.kind === "app")
           ? [`${LAUNCH_WINDOWS_ARGUMENT}=${launchState.windows().join(",")}`]
           : []),
         ...(opening === undefined ? [] : [`${WINDOW_OPEN_ARGUMENT}=${JSON.stringify(opening)}`]),
+        ...(build === null ? [APP_SWITCH_ARGUMENT] : []),
       ],
       contextIsolation: true,
       nodeIntegration: false,
@@ -638,7 +670,11 @@ function createWindow(windowId: string = randomUUID(), opening?: DesktopWindowOp
   const created = new BrowserWindow(options);
   const id = created.webContents.id;
 
+  if (process.platform === "win32")
+    created.setAppDetails(windowsAppDetails(app, build?.appId ?? "ai.nyte.dev", process.execPath));
+
   const entry: NyteWindow = {
+    app,
     window: created,
     menuCommands: createMenuCommandDelivery({
       openWindow: () => reveal(entry),
@@ -649,6 +685,8 @@ function createWindow(windowId: string = randomUUID(), opening?: DesktopWindowOp
 
       if (frame.maximized) created.maximize();
       created.show();
+
+      if (opening?.kind === "app") created.focus();
 
       if (frame.fullscreen) created.setFullScreen(true);
 
@@ -674,6 +712,7 @@ function createWindow(windowId: string = randomUUID(), opening?: DesktopWindowOp
   };
 
   created.webContents.on("render-process-gone", () => windowEnded("crashed"));
+  created.on("page-title-updated", (event) => event.preventDefault());
   const placeButtons = (): void => placeWindowButtons(created);
 
   const fullscreenChanged = (): void => {
@@ -761,12 +800,13 @@ function createWindow(windowId: string = randomUUID(), opening?: DesktopWindowOp
 }
 
 function restoreWindows(): NyteWindow {
-  const saved = launchState.windows();
-  const first = createWindow(saved[0]);
+  const opened = launchState.windows().map((windowId) => {
+    const kept = launchState.reopening(windowId);
 
-  for (const windowId of saved.slice(1)) createWindow(windowId);
+    return createWindow(kept.app, { windowId, opening: kept.opening });
+  });
 
-  return first;
+  return opened[0] ?? createWindow("nyte");
 }
 
 function showHostTray(): void {
@@ -871,7 +911,7 @@ if (!hasSingleInstanceLock) {
         platform: process.platform,
         name: app.getName(),
         dispatch: (command) => (currentWindow() ?? restoreWindows()).menuCommands.dispatch(command),
-        newWindow: () => createWindow(),
+        newWindow: () => createWindow("nyte"),
         developer: !app.isPackaged,
         view: (command, window) => {
           const host = [...windows].find(([, entry]) => entry.window === window)?.[0];

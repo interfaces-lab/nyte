@@ -206,7 +206,7 @@ describe("execution", () => {
     const store = await memoryStore().open();
     const admitting = await setup({ store, execution: { kind: "admit-only" } });
     const { session, receipt: first } = await admitting.host.sessions.start({ content: "Go." });
-    const { receipt: report } = await admitting.host.sessions.start({
+    const { session: child, receipt: report } = await admitting.host.sessions.start({
       parent: session.id,
       content: "Child.",
     });
@@ -227,22 +227,18 @@ describe("execution", () => {
 
     const coverage: ExecutionCoverage = { kind: "sessions", sessions: [session.id] };
 
-    const { kernel, script } = await setup({
+    const { kernel, host, script } = await setup({
       store: counted,
       execution: { kind: "run", coverage },
     });
 
     const driver = driveInProcess(kernel, coverage);
-    (await script.started(1)).finish();
-    (await script.started(2)).finish();
-    await new Promise((resolve) => setTimeout(resolve, 20));
 
-    expect(script.turns.map((turn) => turn.input.run.origin)).toEqual(
-      expect.arrayContaining([
-        { kind: "input", message: first.message },
-        { kind: "input", message: report.message },
-      ]),
-    );
+    for (const covered of [session.id, child.id])
+      (await until(() => script.turns.find((turn) => turn.input.session === covered))).finish();
+
+    expect(await host.session(session.id).receipt(first.id).settled()).toEqual(completed);
+    expect(await host.session(child.id).receipt(report.id).settled()).toEqual(completed);
     expect(script.turns.some((turn) => turn.input.session === other.id)).toBe(false);
     expect(listed.filter((prefix) => prefix.startsWith(sessionRef(other.id)))).toEqual([]);
 
@@ -257,12 +253,20 @@ describe("execution", () => {
       parent: session.id,
       content: "Child.",
     });
+
+    const { session: bystander, receipt: elsewhere } = await admitting.host.sessions.start({
+      content: "Elsewhere.",
+    });
+
     const coverage: ExecutionCoverage = { kind: "sessions", sessions: [] };
     const { kernel, host, script } = await setup({ store, execution: { kind: "run", coverage } });
     const driver = driveInProcess(kernel, coverage);
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    const watched = await host.execution.cover({ kind: "sessions", sessions: [bystander.id] });
 
-    expect(script.turns).toHaveLength(0);
+    (await until(() => script.turns.find((turn) => turn.input.session === bystander.id))).finish();
+
+    expect(await host.session(bystander.id).receipt(elsewhere.id).settled()).toEqual(completed);
+    expect(script.turns.map((turn) => turn.input.session)).toEqual([bystander.id]);
 
     const finishing = setInterval(() => {
       for (const turn of script.turns) turn.finish();
@@ -289,6 +293,7 @@ describe("execution", () => {
 
     clearInterval(finishing);
     await owned.close();
+    await watched.close();
     await driver.close();
   });
 

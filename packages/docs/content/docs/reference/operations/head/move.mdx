@@ -9,7 +9,7 @@ answers a receipt; the move's outcome comes from
 [`receipt.settled`](/docs/reference/operations/receipt/settled): `moved` with the new revision and
 position, or `stale`, `busy`, `pending-input`, `missing-target` or `summary-failed`.
 
-`running` decides whether a live run is stopped or the move refused, `abandoned: { summarize }`
+`running` decides whether a live run is stopped or the move refused, `abandoned: { kind: "summarize" }`
 leaves a summary of the commits left behind on the new path, and `expect` makes the move
 conditional on the head's revision.
 
@@ -112,20 +112,25 @@ Response:
         "abandoned": {
           "anyOf": [
             {
-              "type": "string",
-              "const": "keep"
+              "type": "object",
+              "required": ["kind"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "keep"
+                }
+              }
             },
             {
               "type": "object",
-              "required": ["summarize"],
+              "required": ["kind"],
               "properties": {
-                "summarize": {
-                  "type": "object",
-                  "properties": {
-                    "instructions": {
-                      "type": "string"
-                    }
-                  }
+                "kind": {
+                  "type": "string",
+                  "const": "summarize"
+                },
+                "instructions": {
+                  "type": "string"
                 }
               }
             }

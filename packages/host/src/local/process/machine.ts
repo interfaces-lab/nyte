@@ -137,7 +137,6 @@ function sameReading(left: string, right: string): boolean {
   return left.slice(0, left.indexOf(":")) === right.slice(0, right.indexOf(":"));
 }
 
-/** Whether a process (or, for a negative pid, a process group) exists: true when signalling it is merely forbidden, false only when the OS says there is none. */
 function exists(pid: number): boolean {
   try {
     process.kill(pid, 0);

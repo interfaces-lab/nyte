@@ -12,12 +12,13 @@ const ENTRIES = [
     source: "packages/app/src",
     layers: [
       ["contract"],
-      ["lib", "data"],
+      ["lib", "data", "light"],
       ["theme", "preferences", "components", "chats"],
       ["diff", "references"],
       [
         "chat",
         "canvas",
+        "studio",
         "workbench",
         "sidebar",
         "settings",

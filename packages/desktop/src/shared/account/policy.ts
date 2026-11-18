@@ -107,16 +107,25 @@ export function resolveRendererFile(
     return { kind: "refused", status: 400 };
   }
 
-  if (pathname === "/" || pathname === "/index.html") {
-    return { kind: "file", host, path: join(root, "index.html"), html: true };
+  const board = host === CANVAS_HOST && pathname.startsWith("/board/");
+  const base = board ? join(root, "..", "board") : root;
+  const rest = board ? pathname.slice("/board".length) : pathname;
+
+  if (board ? rest === "/board.html" : rest === "/" || rest === "/index.html") {
+    return {
+      kind: "file",
+      host,
+      path: join(base, board ? "board.html" : "index.html"),
+      html: true,
+    };
   }
 
-  const folder = /^\/(assets|libraries)\//u.exec(pathname)?.[1];
+  const folder = /^\/(assets|libraries)\//u.exec(rest)?.[1];
 
-  if (folder === undefined || (folder === "libraries" && host !== CANVAS_HOST))
+  if (folder === undefined || (folder === "libraries" && (host !== CANVAS_HOST || board)))
     return { kind: "refused", status: 404 };
-  const assets = join(root, folder);
-  const target = resolve(assets, `.${pathname.slice(folder.length + 1)}`);
+  const assets = join(base, folder);
+  const target = resolve(assets, `.${rest.slice(folder.length + 1)}`);
   const inside = relative(assets, target);
 
   if (inside === "" || inside.split(sep)[0] === ".." || isAbsolute(inside)) {

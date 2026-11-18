@@ -1,6 +1,6 @@
 import { create, props } from "@stylexjs/stylex";
 import { useRef, useState } from "react";
-import type { DragEvent, ReactElement } from "react";
+import type { DragEvent, ReactElement, ReactNode } from "react";
 import { Button } from "@nyte-ai/ui/button";
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "@nyte-ai/ui/context-menu";
 import { FileTypeIcon } from "@nyte-ai/ui/file-type-icon";
@@ -11,7 +11,10 @@ import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 import { control, media, radius, space, target } from "@nyte-ai/ui/styles/schema.stylex";
 import { appearance, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { MOVE_SHORTCUTS, readMoveStep } from "../../components/sortable-strip.tsx";
+import { fittingTabs, pixels, useTabRoom } from "../../components/tab-fit.ts";
+import type { TabRoom } from "../../components/tab-fit.ts";
 import { nyte } from "../../contract/nyte.ts";
+import { tab as tabSize } from "../../theme/schema.stylex.ts";
 import type { EditorGroupId, WorkbenchTabId, WorkbenchViewKey } from "../model.ts";
 import { workbench } from "../store.ts";
 import { carriesEditorDrop, FILE_TAB_DRAG, readEditorDrop } from "./editor-drop.ts";
@@ -27,30 +30,33 @@ export function EditorTabs(input: {
   readonly many: boolean;
   readonly onClose: (id: WorkbenchTabId) => void;
   readonly onCloseGroup: (group: EditorGroupId) => void;
+  readonly leading?: ReactNode;
+  /** Sits after the tabs and takes the room they leave. */
+  readonly path?: ReactNode;
+  /** Leads the group's actions, so the tabs leave it room instead of running under it. */
+  readonly view?: ReactNode;
+  readonly actions?: ReactNode;
 }): ReactElement {
   const track = useRef<HTMLDivElement>(null);
   const [insertion, setInsertion] = useState<{ readonly before: WorkbenchTabId | null }>();
   const group = input.group;
   const selected = group.active?.id;
+  const [room, attachStrip, watchSize] = useTabRoom(measureFiles);
+  const inactive = group.tabs.filter((file) => file.id !== selected).map((file) => file.id);
+  const overflow = inactive.slice(fittingTabs(room, inactive.length));
+  const cap = room === undefined ? undefined : styles.cap(room.width);
 
   const focusTab = (id: WorkbenchTabId): void => {
     workbench.dispatch(input.viewKey, { kind: "activate", id });
-    requestAnimationFrame(() => {
-      const tab = document.getElementById(`${input.viewKey}-file-tab-${id}`);
-      tab?.scrollIntoView({ block: "nearest", inline: "nearest" });
-      tab?.focus();
-    });
+    requestAnimationFrame(() =>
+      document.getElementById(`${input.viewKey}-file-tab-${id}`)?.focus(),
+    );
   };
 
   const beforeTab = (event: DragEvent<HTMLElement>): WorkbenchTabId | null => {
     const list = track.current;
 
     if (list === null) return null;
-    const rect = list.getBoundingClientRect();
-    const step = list.clientHeight;
-    list.scrollBy({
-      left: event.clientX < rect.left + step ? -step : event.clientX > rect.right - step ? step : 0,
-    });
     const rtl = getComputedStyle(list).direction === "rtl";
 
     for (const tab of list.querySelectorAll<HTMLElement>("[data-editor-file]")) {
@@ -66,6 +72,7 @@ export function EditorTabs(input: {
 
   return (
     <div
+      ref={attachStrip}
       id={`${input.viewKey}-file-tabs-${group.id}`}
       data-editor-tabs=""
       data-focused={input.focused ? "" : undefined}
@@ -108,7 +115,9 @@ export function EditorTabs(input: {
       }}
     >
       {input.many && input.focused && <span aria-hidden="true" {...props(styles.focused)} />}
+      {input.leading}
       <Tabs.Root
+        data-file-track=""
         value={selected ?? null}
         xstyle={styles.root}
         onValueChange={(id) => workbench.dispatch(input.viewKey, { kind: "activate", id })}
@@ -122,16 +131,20 @@ export function EditorTabs(input: {
             const name = file.displayPath.split(/[\\/]/).at(-1) ?? file.displayPath;
             const active = file.id === selected;
 
+            if (overflow.includes(file.id)) return null;
+
             return (
               <ContextMenu key={file.id}>
                 <ContextMenuTrigger
                   render={
                     <span
+                      ref={active ? watchSize : undefined}
                       role="presentation"
                       data-editor-file={file.id}
+                      data-file-active={active ? "" : undefined}
                       {...props(
                         styles.item,
-                        active && styles.selected,
+                        active && [styles.selected, styles.kept, cap],
                         insertion?.before === file.id && styles.insertBefore,
                       )}
                     >
@@ -155,12 +168,6 @@ export function EditorTabs(input: {
                           event.preventDefault();
                           input.onClose(file.id);
                         }}
-                        onFocus={(event) =>
-                          event.currentTarget.scrollIntoView({
-                            block: "nearest",
-                            inline: "nearest",
-                          })
-                        }
                         aria-keyshortcuts={MOVE_SHORTCUTS}
                         onKeyDown={(event) => {
                           if (event.key === "Delete") {
@@ -239,7 +246,9 @@ export function EditorTabs(input: {
           {insertion?.before === null && <span aria-hidden="true" {...props(styles.insertEnd)} />}
         </Tabs.List>
       </Tabs.Root>
-      <span {...props(styles.actions)}>
+      {input.path}
+      <span ref={watchSize} data-file-actions="" {...props(styles.actions)}>
+        {input.view}
         <Menu>
           <MenuTrigger
             render={
@@ -287,9 +296,34 @@ export function EditorTabs(input: {
             onClick={() => input.onCloseGroup(group.id)}
           />
         )}
+        {input.actions}
       </span>
     </div>
   );
+}
+
+function measureFiles(row: HTMLElement): TabRoom | undefined {
+  const track = row.querySelector<HTMLElement>("[data-file-track]");
+  const actions = row.querySelector<HTMLElement>("[data-file-actions]");
+  const active = row.querySelector<HTMLElement>("[data-file-active]");
+  const list = row.querySelector<HTMLElement>('[data-file-track] [role="tablist"]');
+
+  if (track === null || actions === null || active === null || list === null) return undefined;
+  const start = track.getBoundingClientRect();
+  const end = actions.getBoundingClientRect();
+  const gaps = track.nextElementSibling === actions ? 1 : 2;
+
+  return {
+    width: Math.floor(
+      (getComputedStyle(row).direction === "rtl"
+        ? start.right - end.right
+        : end.left - start.left) -
+        gaps * pixels(getComputedStyle(row).columnGap),
+    ),
+    active: active.offsetWidth,
+    tab: pixels(getComputedStyle(active).minWidth) + pixels(getComputedStyle(list).columnGap),
+    more: 0,
+  };
 }
 
 const styles = create({
@@ -312,14 +346,13 @@ const styles = create({
     backgroundColor: appearance.focusColor,
     pointerEvents: "none",
   },
-  root: { flex: 1, minWidth: 0 },
+  root: { flex: "0 1 auto", minWidth: 0 },
   tabs: {
     display: "flex",
     alignItems: "center",
     gap: space.px,
     minWidth: 0,
-    overflowX: "auto",
-    scrollbarWidth: "none",
+    overflowX: "clip",
   },
   item: {
     "--_file-close-opacity": {
@@ -337,7 +370,7 @@ const styles = create({
     position: "relative",
     display: "inline-flex",
     alignItems: "center",
-    flexShrink: 0,
+    minWidth: tabSize.minWidth,
     maxWidth: 200,
     height: control.heightSm,
     minHeight: target.min,
@@ -346,6 +379,8 @@ const styles = create({
     color: { default: role.contentSecondary, ":hover": { [media.hover]: role.contentPrimary } },
   },
   selected: { backgroundColor: role.fillSecondary, color: role.contentPrimary },
+  kept: { flexShrink: 0 },
+  cap: (width: number) => ({ maxWidth: `min(200px, ${String(width)}px)` }),
   tab: {
     backgroundColor: {
       default: "transparent",
@@ -386,7 +421,13 @@ const styles = create({
     opacity: "var(--_file-close-opacity)",
     pointerEvents: "var(--_file-close-events)",
   },
-  actions: { display: "flex", flexShrink: 0, gap: space.s0_5 },
+  actions: {
+    display: "flex",
+    alignItems: "center",
+    flexShrink: 0,
+    gap: space.s0_5,
+    marginInlineStart: "auto",
+  },
   path: { whiteSpace: "normal", overflowWrap: "anywhere" },
   insertBefore: {
     "::before": {

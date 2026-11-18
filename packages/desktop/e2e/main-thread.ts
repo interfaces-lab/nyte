@@ -142,7 +142,6 @@ function unionMs(intervals: readonly (readonly [number, number])[]): number {
   return total / 1_000;
 }
 
-/** Each instant of `span` counts once, under the highest rank covering it: layout over script over any other task. */
 function classify(events: readonly TraceEvent[], span: TraceSpan): ThreadTime {
   const ranked = events.flatMap((event) => {
     if (event.ph !== "X" || event.dur === undefined) return [];

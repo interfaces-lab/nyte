@@ -1,4 +1,3 @@
-// Generated from the @nyte-ai/ui colour tokens. Run pnpm --filter @nyte-ai/ui sync:tokens.
 export const platformColors = {
   light: {
     contentPrimary: "#2c2c2b",

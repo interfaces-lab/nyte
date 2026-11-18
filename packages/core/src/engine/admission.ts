@@ -554,13 +554,13 @@ async function editGated(
     if (located === undefined) return { kind: "failed", outcome: { kind: "missing-target" } };
     const { parent, since } = located;
 
-    if (typeof abandoned === "object")
+    if (abandoned?.kind === "summarize")
       return {
         kind: "summarize",
         tip: checked.tip,
         parent,
         since,
-        instructions: abandoned.summarize.instructions ?? null,
+        instructions: abandoned.instructions ?? null,
       };
     const fenced = checked.run === null ? null : await fence(kernel, session, checked.run);
     const stopped = fenced === null || fenced.kind === "ended" ? null : checked.run;

@@ -60,6 +60,7 @@ Rule numbers are stable ids that other skills and reviews cite. A removed rule l
 84. **Keep the pointer off the left edge.** Within `REVEAL_EDGE` of the window's left edge a hidden sidebar starts its floating reveal.
 85. **Wait only for document-timeline animations.** The tab strip's edge fade is scroll-driven and runs forever, so skip animations whose timeline isn't the `DocumentTimeline`.
 86. **Run a probe as a spec.** Run it through `packages/desktop/e2e/playwright.config.ts`; a separate script that imports Playwright loads it a second time and fails.
+93. **Capture the window, not the page.** On macOS the vibrancy sits behind the page, so `page.screenshot` and `page.screencast` come out black where the glass is. Use `captureWindow` and `recordWindow` from `packages/desktop/e2e/window-capture.ts`; they need Screen Recording for the app that runs the tests.
 
 ## TUI runner
 

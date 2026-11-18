@@ -1,0 +1,377 @@
+---
+title: language.completion
+description: Lists completions at a position, each with a token to resolve its details.
+---
+
+Lists the server's completions at a position. Each item has its label, kind, the parameters that follow the label (`tail`) and its type, and what to insert: the text with any snippet expanded, its tab stops in UTF-16 code units and the range it replaces. A callable row whose server left out its parameters gets them from a resolve, for as many rows as answer within a short budget. A newer completion in the workspace cancels one still waiting, which then answers an empty list. A file no server handles, or whose server is `missing` or `failed`, answers empty rather than failing; [`language.status`](/docs/reference/operations/language/status) says why.
+
+## When to call it
+
+As the user types a trigger character or asks for completions. Resolve the chosen item with [`language.resolveCompletion`](/docs/reference/operations/language/resolve-completion).
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `language` capability. Paths are relative to the workspace, or absolute; answers name files inside the workspace by their relative path and others, such as the standard library, by their absolute one. Lines are zero-based and columns count UTF-16 code units.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "path": "main.go",
+  "position": { "line": 32, "utf16Column": 7 },
+  "trigger": { "kind": "character", "character": "." }
+}
+```
+
+Response:
+
+```json
+{
+  "items": [
+    {
+      "label": "Names",
+      "kind": "method",
+      "tail": "()",
+      "type": "[]string",
+      "documentation": "",
+      "filter": "Names",
+      "sort": "00000",
+      "insert": {
+        "text": "Names",
+        "stops": [],
+        "replace": {
+          "start": { "line": 32, "utf16Column": 7 },
+          "end": { "line": 32, "utf16Column": 7 }
+        }
+      },
+      "additionalEdits": [],
+      "commitCharacters": [],
+      "preselect": false,
+      "deprecated": false,
+      "invocation": "withoutArguments",
+      "resolve": {
+        "kind": "completion",
+        "server": "4f8c2a1e-0b6d-4e3f-9a7c-5d2e1f0a3b4c",
+        "answer": 3,
+        "item": 0
+      }
+    }
+  ],
+  "incomplete": false
+}
+```
+
+## Errors
+
+- `unavailable` or `denied` when the workspace doesn't offer language intelligence.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `language`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "path", "position", "trigger"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "path": {
+      "type": "string"
+    },
+    "position": {
+      "type": "object",
+      "required": ["line", "utf16Column"],
+      "properties": {
+        "line": {
+          "type": "number"
+        },
+        "utf16Column": {
+          "type": "number"
+        }
+      }
+    },
+    "trigger": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "invoked"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "character"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "character"
+            },
+            "character": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "incomplete"
+            }
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "object",
+  "required": ["items", "incomplete"],
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "label",
+          "kind",
+          "tail",
+          "type",
+          "documentation",
+          "filter",
+          "sort",
+          "insert",
+          "additionalEdits",
+          "commitCharacters",
+          "preselect",
+          "deprecated",
+          "invocation",
+          "resolve"
+        ],
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "text",
+              "method",
+              "function",
+              "constructor",
+              "field",
+              "variable",
+              "class",
+              "interface",
+              "module",
+              "property",
+              "unit",
+              "value",
+              "enum",
+              "keyword",
+              "snippet",
+              "color",
+              "file",
+              "reference",
+              "folder",
+              "enumMember",
+              "constant",
+              "struct",
+              "event",
+              "operator",
+              "typeParameter"
+            ]
+          },
+          "tail": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "documentation": {
+            "type": "string"
+          },
+          "filter": {
+            "type": "string"
+          },
+          "sort": {
+            "type": "string"
+          },
+          "insert": {
+            "type": "object",
+            "required": ["text", "stops", "replace"],
+            "properties": {
+              "text": {
+                "type": "string"
+              },
+              "stops": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["utf16Start", "utf16Length"],
+                  "properties": {
+                    "utf16Start": {
+                      "type": "number"
+                    },
+                    "utf16Length": {
+                      "type": "number"
+                    }
+                  }
+                }
+              },
+              "replace": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "required": ["start", "end"],
+                    "properties": {
+                      "start": {
+                        "type": "object",
+                        "required": ["line", "utf16Column"],
+                        "properties": {
+                          "line": {
+                            "type": "number"
+                          },
+                          "utf16Column": {
+                            "type": "number"
+                          }
+                        }
+                      },
+                      "end": {
+                        "type": "object",
+                        "required": ["line", "utf16Column"],
+                        "properties": {
+                          "line": {
+                            "type": "number"
+                          },
+                          "utf16Column": {
+                            "type": "number"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          },
+          "additionalEdits": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["range", "text"],
+              "properties": {
+                "range": {
+                  "type": "object",
+                  "required": ["start", "end"],
+                  "properties": {
+                    "start": {
+                      "type": "object",
+                      "required": ["line", "utf16Column"],
+                      "properties": {
+                        "line": {
+                          "type": "number"
+                        },
+                        "utf16Column": {
+                          "type": "number"
+                        }
+                      }
+                    },
+                    "end": {
+                      "type": "object",
+                      "required": ["line", "utf16Column"],
+                      "properties": {
+                        "line": {
+                          "type": "number"
+                        },
+                        "utf16Column": {
+                          "type": "number"
+                        }
+                      }
+                    }
+                  }
+                },
+                "text": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "commitCharacters": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "preselect": {
+            "type": "boolean"
+          },
+          "deprecated": {
+            "type": "boolean"
+          },
+          "invocation": {
+            "enum": ["none", "withoutArguments", "withArguments"]
+          },
+          "resolve": {
+            "anyOf": [
+              {
+                "type": "object",
+                "required": ["kind", "server", "answer", "item"],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "completion"
+                  },
+                  "server": {
+                    "type": "string"
+                  },
+                  "answer": {
+                    "type": "number"
+                  },
+                  "item": {
+                    "type": "number"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "incomplete": {
+      "type": "boolean"
+    }
+  }
+}
+```
+
+{/* generated:end */}

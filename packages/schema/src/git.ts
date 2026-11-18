@@ -93,6 +93,14 @@ export const GitScopeType = Type.Union([
 
 export type GitScope = Decoded<typeof GitScopeType>;
 
+export const GitCommitFilesType = Type.Union([
+  Type.Object({ kind: Type.Literal("staged") }),
+  Type.Object({ kind: Type.Literal("all") }),
+  Type.Object({ kind: Type.Literal("paths"), paths: Type.Array(Type.String()) }),
+]);
+
+export type GitCommitFiles = Decoded<typeof GitCommitFilesType>;
+
 export const ChangeSourceType = Type.Union([
   Type.Object({ kind: Type.Literal("run"), run: idSchema<"run">() }),
   Type.Object({ kind: Type.Literal("session"), session: idSchema<"session">() }),

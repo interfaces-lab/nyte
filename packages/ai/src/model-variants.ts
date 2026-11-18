@@ -41,7 +41,6 @@ export function withModeVariants(models: readonly Model<Api>[]): readonly Model<
   ]);
 }
 
-/** Every non-empty subset of `modes`, each in `modes` order. */
 function modeCombinations(modes: readonly ModelMode[]): readonly (readonly ModelMode[])[] {
   return Array.from({ length: 2 ** modes.length - 1 }, (_, index) =>
     modes.filter((_, bit) => Math.floor((index + 1) / 2 ** bit) % 2 === 1),

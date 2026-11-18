@@ -217,12 +217,12 @@ async function decide(
       throw new SdkError("invalid", EMPTY_CHAT);
     const abandoned = options.abandoned;
 
-    if (typeof abandoned === "object" && plan.abandoned.length > 0)
+    if (abandoned?.kind === "summarize" && plan.abandoned.length > 0)
       return {
         kind: "summarize",
         tip: checked.tip,
         plan,
-        instructions: abandoned.summarize.instructions ?? null,
+        instructions: abandoned.instructions ?? null,
       };
 
     const fenced = checked.run === null ? null : await fence(kernel, session, checked.run);

@@ -24,7 +24,7 @@ import { draftPreviewText } from "../references/message-references.ts";
 import type { ChatDraft } from "../panes/session-view-state.ts";
 import { useSessionDraggable } from "../panes/session-dnd.tsx";
 import type { Chat } from "../chats/index.ts";
-import { chatDirectory, useChat } from "../chats/index.ts";
+import { chatDirectory, NEW_CHAT_TITLE, useChat } from "../chats/index.ts";
 import type { OpenIntent } from "../tabs/model.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
 import { useDebouncedValue } from "../lib/use-debounced-value.ts";
@@ -60,7 +60,7 @@ export function DraftRow({
 }): ReactElement {
   const onOpen = (): void => windowTabs.showDraft(draft.id);
   const onDelete = () => windowTabs.removeDraft(draft.id);
-  const title = draftPreviewText(useDebouncedValue(draft.composer.draft, 100));
+  const preview = draftPreviewText(useDebouncedValue(draft.composer.draft, 100));
   const starting = draft.status.kind === "starting";
 
   const row = (
@@ -76,7 +76,7 @@ export function DraftRow({
     >
       {selected && <Row.Backdrop xstyle={styles.sessionSelection} />}
       <Row.Primary
-        title={starting ? title : `Draft: ${title}`}
+        title={starting ? preview : `Draft: ${preview}`}
         aria-current={selected ? "page" : undefined}
         onClick={onOpen}
       >
@@ -87,7 +87,9 @@ export function DraftRow({
             <span role="img" aria-label="Draft" {...props(styles.draftDot)} />
           )}
         </Row.Leading>
-        <Row.Label xstyle={starting ? styles.sessionLabel : styles.draftLabel}>{title}</Row.Label>
+        <Row.Label xstyle={starting ? styles.sessionLabel : styles.draftLabel}>
+          {NEW_CHAT_TITLE}
+        </Row.Label>
         <Row.Meta xstyle={styles.rowMeta}>
           <TimeAgo timestamp={draft.updatedAt} />
         </Row.Meta>
@@ -101,7 +103,7 @@ export function DraftRow({
           size="sm"
           iconOnly
           icon="trash"
-          aria-label={`Delete Draft: ${title}`}
+          aria-label={`Delete Draft: ${preview}`}
           onClick={onDelete}
         />
       </Row.Actions>
@@ -111,7 +113,7 @@ export function DraftRow({
   return (
     <ContextMenu>
       <ContextMenuTrigger render={row} />
-      <ContextMenuContent aria-label={`Options for draft: ${title}`}>
+      <ContextMenuContent aria-label={`Options for draft: ${preview}`}>
         <MenuItem icon="trash" variant="danger" onClick={onDelete}>
           Delete Draft
         </MenuItem>

@@ -146,12 +146,33 @@ async function restart(row: Restart): Promise<void> {
   const host = await open();
   const session = await settledChat(host, await client(host));
   const stored = new Map<string, string>();
+  const changed = new Set<() => void>();
 
   const storage: JournalStorage = {
     read: () => [...stored],
-    write: (key, value) => void stored.set(key, value),
-    remove: (key) => void stored.delete(key),
+    write(key, value) {
+      stored.set(key, value);
+
+      for (const listener of changed) listener();
+    },
+    remove(key) {
+      stored.delete(key);
+
+      for (const listener of changed) listener();
+    },
   };
+
+  const holding = (entries: number) =>
+    new Promise<void>((resolve) => {
+      const check = () => {
+        if (stored.size !== entries) return;
+        changed.delete(check);
+        resolve();
+      };
+
+      changed.add(check);
+      check();
+    });
 
   await row.quit({ host, storage, stored, session });
   expect(stored.size).toBe(1);
@@ -206,11 +227,9 @@ async function restart(row: Restart): Promise<void> {
 
   expect(posts).toBe(row.sends);
   expect(users(await host.view(session.id))).toEqual(row.users);
-  await expect
-    .poll(() => stored.size)
-    .toBe(row.shown === "landed" || row.shown === "refused" ? 0 : 1);
+  await holding(row.shown === "landed" || row.shown === "refused" ? 0 : 1);
 
-  if (row.back === true) await comeBack(host, storage, stored, session);
+  if (row.back === true) await comeBack(host, storage, holding, session);
 
   if (row.shown !== "expired") return;
   const [window] = windows;
@@ -245,7 +264,7 @@ async function restart(row: Restart): Promise<void> {
 
   expect(posts).toBe(1);
   expect(users(await host.view(session.id))).toEqual([...row.users, "Stale."]);
-  await expect.poll(() => stored.size).toBe(0);
+  await holding(0);
 }
 
 async function quitSending(
@@ -276,7 +295,7 @@ async function quitSending(
 async function comeBack(
   host: Served,
   storage: JournalStorage,
-  stored: ReadonlyMap<string, string>,
+  holding: (entries: number) => Promise<void>,
   session: Session,
 ): Promise<void> {
   const posting = Promise.withResolvers<void>();
@@ -311,7 +330,7 @@ async function comeBack(
 
   expect(posts).toBe(1);
   expect(users(await host.view(session.id))).toEqual(["Hi.", "For the first host."]);
-  await expect.poll(() => stored.size).toBe(0);
+  await holding(0);
 }
 
 async function strand(storage: JournalStorage): Promise<void> {

@@ -187,8 +187,10 @@ export class SessionViewStateStore {
   }
 
   updateDraft(sessionId: SessionId, update: (draft: SessionDraft) => SessionDraft): SessionDraft {
-    return this.updateSession(sessionId, (current) => ({ ...current, draft: update(current.draft) }))
-      .draft;
+    return this.updateSession(sessionId, (current) => ({
+      ...current,
+      draft: update(current.draft),
+    })).draft;
   }
 
   readBlank(paneId: PaneId): ChatDraft {

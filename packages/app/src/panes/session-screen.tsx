@@ -16,6 +16,7 @@ import { renderPaneContent } from "./pane-views.tsx";
 import { useSessionDropTarget } from "./session-dnd.tsx";
 import { useHostState } from "../data/host.ts";
 import { nyte } from "../contract/nyte.ts";
+import { useNoDesigns } from "../studio/designs.ts";
 
 import { WORKBENCH_CHAT_TAB } from "../workbench/model.ts";
 import { activeWorkbenchTab } from "../workbench/selectors.ts";
@@ -58,12 +59,11 @@ export function SessionScreen(): ReactElement {
 
   const covered = useChatWindow((snapshot) => snapshot.covered);
   const store = usePaneLayoutStore();
+  const noDesigns = useNoDesigns();
+  const shown = activeWorkbenchTab(view, workbench.scope, clientCapabilities(nyte.host))?.kind;
 
   const paneFloatingMount =
-    covered &&
-    activeWorkbenchTab(view, workbench.scope, clientCapabilities(nyte.host))?.kind !== "browser"
-      ? floatingMount
-      : null;
+    covered && shown !== "browser" && !(shown === "design" && noDesigns) ? floatingMount : null;
 
   return (
     <div {...props(sessionScreenStyles.stage)}>

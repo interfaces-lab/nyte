@@ -304,7 +304,7 @@ export const sendOptions: SendOptions = {
   delivery: "queue",
   replace: message,
   running: "stop",
-  abandoned: { summarize: { instructions: "Short." } },
+  abandoned: { kind: "summarize", instructions: "Short." },
   expect: revision,
   position: { kind: "before", message },
   source: { kind: "user" },

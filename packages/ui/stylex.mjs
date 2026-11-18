@@ -6,10 +6,6 @@ const ATOMIC_PRIORITY = 1000;
 
 const APP_OFFSET = 10_000;
 
-/**
- * StyleX prices a `defineConsts` key as a property (3000) in each file's rules and swaps in the
- * at-rule's own price (200) only when it assembles the stylesheet.
- */
 const CONST_KEY_OVERPRICE = 3000 - 200;
 
 const CONST_WRAPPERS = /^(?:var\(--[\w-]+\)\{)*/;

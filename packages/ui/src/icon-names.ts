@@ -99,6 +99,7 @@ export const ICON_NAMES = [
   "model-openai",
   "model-qwen",
   "model-zai",
+  "moon",
   "more",
   "more-horizontal",
   "mouse-scroll-down",

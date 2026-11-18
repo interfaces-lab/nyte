@@ -1,3 +1,4 @@
+import type { EditorViewState } from "@nyte-ai/ui/diffs/edit";
 import { useSyncExternalStore } from "react";
 import type { MessageReference } from "../../references/message-references.ts";
 import type {
@@ -18,7 +19,7 @@ import type { FileBuffer, FileDocumentSnapshot } from "./file-document.ts";
 
 type FileLineRange = NonNullable<Extract<MessageReference, { readonly kind: "file" }>["lines"]>;
 
-type FileTarget =
+export type FileTarget =
   | { readonly kind: "position"; readonly line: number; readonly column?: number }
   | {
       readonly kind: "match";
@@ -26,14 +27,24 @@ type FileTarget =
       readonly column: number;
       readonly length: number;
     }
-  | { readonly kind: "lines"; readonly lines: FileLineRange };
+  | { readonly kind: "lines"; readonly lines: FileLineRange }
+  | {
+      readonly kind: "range";
+      readonly line: number;
+      readonly column: number;
+      readonly endLine: number;
+      readonly endColumn: number;
+    }
+  | { readonly kind: "view"; readonly view: EditorViewState };
 
 interface FileLocation {
   readonly path: string;
   readonly target?: FileTarget;
 }
 
-type FileDraft = Pick<FileDocumentSnapshot, "contents" | "savedContents" | "version">;
+type FileDraft = Pick<FileDocumentSnapshot, "savedContents" | "version"> & {
+  readonly contents: string;
+};
 
 interface FileNavigation {
   readonly target?: FileTarget;
@@ -42,6 +53,7 @@ interface FileNavigation {
 
 interface FileState {
   readonly showSource: boolean;
+  readonly readOnly: boolean;
   readonly saving: boolean;
   readonly draft: FileDraft | undefined;
 }
@@ -58,8 +70,8 @@ export interface FileTab extends FileNavigation, FileState {
 
 interface FileViewRuntime {
   readonly recent: readonly string[];
-  readonly history: readonly FileLocation[];
-  readonly historyIndex: number;
+  readonly back: readonly FileLocation[];
+  readonly forward: readonly FileLocation[];
   readonly closeQueue: readonly WorkbenchTabId[];
   readonly revealPath: string | null;
   readonly revealRevision: number;
@@ -86,59 +98,64 @@ interface FileTabs {
 
 const EMPTY_VIEW: FileViewRuntime = {
   recent: [],
-  history: [],
-  historyIndex: -1,
+  back: [],
+  forward: [],
   closeQueue: [],
   revealPath: null,
   revealRevision: 0,
 };
 
-const CLEAN: FileState = { showSource: false, saving: false, draft: undefined };
+const CLEAN: FileState = { showSource: false, readOnly: false, saving: false, draft: undefined };
 
-function visit(
-  current: FileViewRuntime,
-  location: FileLocation,
-): Pick<FileViewRuntime, "history" | "historyIndex"> {
-  const previous = current.history[current.historyIndex];
+const HISTORY_LIMIT = 150;
 
-  if (previous?.path === location.path && sameTarget(previous.target, location.target))
-    return { history: current.history, historyIndex: current.historyIndex };
+const MERGE_LINES = 4;
 
-  const history = [
-    ...current.history.slice(0, current.historyIndex + 1),
-    { path: location.path, target: location.target },
-  ];
+function targetLine(target: FileTarget | undefined): number {
+  if (target === undefined) return 1;
 
-  return { history, historyIndex: history.length - 1 };
+  switch (target.kind) {
+    case "lines":
+      return target.lines.start;
+    case "view": {
+      const primary = target.view.selections?.at(-1);
+
+      if (primary === undefined) return 1;
+
+      return (primary.direction === -1 ? primary.start.line : primary.end.line) + 1;
+    }
+    default:
+      return target.line;
+  }
 }
 
-function sameTarget(first: FileTarget | undefined, second: FileTarget | undefined): boolean {
-  if (first === undefined || second === undefined) return first === second;
+function samePlace(first: FileLocation, second: FileLocation): boolean {
+  if (first.path !== second.path) return false;
 
-  switch (first.kind) {
-    case "position":
-      return (
-        second.kind === "position" && first.line === second.line && first.column === second.column
-      );
-    case "match":
-      return (
-        second.kind === "match" &&
-        first.line === second.line &&
-        first.column === second.column &&
-        first.length === second.length
-      );
-    case "lines":
-      return (
-        second.kind === "lines" &&
-        first.lines.start === second.lines.start &&
-        first.lines.end === second.lines.end
-      );
-    default: {
-      const exhaustive: never = first;
+  if (first.target?.kind !== "view" || second.target?.kind !== "view")
+    return targetLine(first.target) === targetLine(second.target);
+  const one = first.target.view.selections?.at(-1);
+  const two = second.target.view.selections?.at(-1);
 
-      return exhaustive;
-    }
-  }
+  return (
+    one?.start.line === two?.start.line &&
+    one?.start.character === two?.start.character &&
+    one?.end.line === two?.end.line &&
+    one?.end.character === two?.end.character
+  );
+}
+
+function pushPlace(stack: readonly FileLocation[], place: FileLocation): readonly FileLocation[] {
+  const last = stack.at(-1);
+
+  const kept =
+    last !== undefined &&
+    last.path === place.path &&
+    Math.abs(targetLine(last.target) - targetLine(place.target)) < MERGE_LINES
+      ? stack.slice(0, -1)
+      : stack;
+
+  return [...kept, place].slice(-HISTORY_LIMIT);
 }
 
 function rekey<Value>(
@@ -166,6 +183,7 @@ export function createFileTabStore(store: WorkbenchStore = workbench) {
   const files = new Map<string, FileState>();
   const buffers = new Map<string, FileBuffer>();
   const views = new Map<WorkbenchViewKey, FileViewRuntime>();
+  const places = new Map<WorkbenchTabId, () => FileTarget | undefined>();
 
   const snapshots = new Map<
     WorkbenchViewKey,
@@ -247,8 +265,8 @@ export function createFileTabStore(store: WorkbenchStore = workbench) {
       pendingClose: current.closeQueue
         .map((id) => tabs.find((tab) => tab.id === id))
         .find((tab) => tab !== undefined),
-      canGoBack: current.historyIndex > 0,
-      canGoForward: current.historyIndex < current.history.length - 1,
+      canGoBack: current.back.length > 0,
+      canGoForward: current.forward.length > 0,
       revealPath: current.revealPath ?? undefined,
       revealRevision: current.revealRevision,
     };
@@ -270,6 +288,7 @@ export function createFileTabStore(store: WorkbenchStore = workbench) {
 
     if (
       next.showSource === current.showSource &&
+      next.readOnly === current.readOnly &&
       next.saving === current.saving &&
       next.draft?.contents === current.draft?.contents &&
       next.draft?.version === current.draft?.version &&
@@ -304,17 +323,9 @@ export function createFileTabStore(store: WorkbenchStore = workbench) {
       buffers.delete(fileKey(key, tab.path));
     }
 
-    const history = current.history.filter((location) => location.path !== tab.path);
-
-    const historyIndex =
-      current.history
-        .slice(0, current.historyIndex + 1)
-        .filter((location) => location.path !== tab.path).length - 1;
-
+    places.delete(id);
     views.set(key, {
       ...current,
-      history,
-      historyIndex,
       closeQueue: current.closeQueue.filter((pending) => pending !== id),
     });
     commit(key, { kind: "close", id });
@@ -352,7 +363,7 @@ export function createFileTabStore(store: WorkbenchStore = workbench) {
 
   const open = (
     key: WorkbenchViewKey,
-    location: FileLocation & { readonly preview?: boolean },
+    location: FileLocation & { readonly preview?: boolean; readonly readOnly?: boolean },
     next: (current: FileViewRuntime) => FileViewRuntime,
   ): void => {
     const preview = location.preview === true;
@@ -370,10 +381,11 @@ export function createFileTabStore(store: WorkbenchStore = workbench) {
     if (replace !== undefined) navigations.delete(replace);
     navigate(id, location);
 
-    if (location.target !== undefined)
+    if (location.target !== undefined || location.readOnly === true)
       files.set(fileKey(key, location.path), {
         ...fileState(key, location.path),
-        showSource: true,
+        showSource: location.target !== undefined || fileState(key, location.path).showSource,
+        readOnly: location.readOnly === true || fileState(key, location.path).readOnly,
       });
 
     views.set(key, next(getRuntimeView(key)));
@@ -384,11 +396,13 @@ export function createFileTabStore(store: WorkbenchStore = workbench) {
     });
   };
 
-  const historyStep = (key: WorkbenchViewKey, historyIndex: number): void => {
-    const location = getRuntimeView(key).history[historyIndex];
+  const currentPlace = (key: WorkbenchViewKey): FileLocation | undefined => {
+    const view = store.getView(key);
+    const active = activeEditorFile(view);
 
-    if (location === undefined) return;
-    open(key, location, (current) => ({ ...current, historyIndex }));
+    if (active === undefined) return undefined;
+
+    return { path: active.path, target: places.get(active.id)?.() ?? navigation(active.id).target };
   };
 
   const actions = {
@@ -402,8 +416,24 @@ export function createFileTabStore(store: WorkbenchStore = workbench) {
       });
       commit(key);
     },
-    open(key: WorkbenchViewKey, location: FileLocation & { readonly preview?: boolean }): void {
-      open(key, location, (current) => ({ ...current, ...visit(current, location) }));
+    open(
+      key: WorkbenchViewKey,
+      location: FileLocation & { readonly preview?: boolean; readonly readOnly?: boolean },
+    ): void {
+      const here = currentPlace(key);
+
+      open(key, location, (current) =>
+        here === undefined || samePlace(here, location)
+          ? current
+          : { ...current, back: pushPlace(current.back, here), forward: [] },
+      );
+    },
+    track(id: WorkbenchTabId, read: () => FileTarget | undefined): () => void {
+      places.set(id, read);
+
+      return () => {
+        if (places.get(id) === read) places.delete(id);
+      };
     },
     reveal(key: WorkbenchViewKey, displayPath: string): void {
       const current = getRuntimeView(key);
@@ -465,6 +495,29 @@ export function createFileTabStore(store: WorkbenchStore = workbench) {
       if (pending === undefined || pending.saving) return;
       remove(key, pending.id);
       advanceCloseQueue(key);
+    },
+    setReadOnly(key: WorkbenchViewKey, path: string, readOnly: boolean): void {
+      setFileState(key, path, { readOnly });
+    },
+    documents(
+      key: WorkbenchViewKey,
+    ): readonly (FileDocumentSnapshot & { readonly path: string; readonly contents: string })[] {
+      const prefix = fileKey(key, "");
+
+      return [...buffers].flatMap((entry) =>
+        entry[0].startsWith(prefix)
+          ? [
+              {
+                ...entry[1].getSnapshot(),
+                contents: entry[1].text(),
+                path: entry[0].slice(prefix.length),
+              },
+            ]
+          : [],
+      );
+    },
+    holds(key: WorkbenchViewKey, id: WorkbenchTabId): boolean {
+      return store.getView(key).tabs.some((tab) => tab.id === id);
     },
     setShowSource(key: WorkbenchViewKey, path: string, showSource: boolean): void {
       setFileState(key, path, { showSource });
@@ -570,7 +623,11 @@ export function createFileTabStore(store: WorkbenchStore = workbench) {
       views.set(key, {
         ...current,
         recent: [...new Set(current.recent.map((path) => target(path) ?? path))],
-        history: current.history.map((location) => ({
+        back: current.back.map((location) => ({
+          ...location,
+          path: target(location.path) ?? location.path,
+        })),
+        forward: current.forward.map((location) => ({
           ...location,
           path: target(location.path) ?? location.path,
         })),
@@ -594,10 +651,31 @@ export function createFileTabStore(store: WorkbenchStore = workbench) {
       commit(key);
     },
     back(key: WorkbenchViewKey): void {
-      historyStep(key, getRuntimeView(key).historyIndex - 1);
+      const location = getRuntimeView(key).back.at(-1);
+
+      if (location === undefined) return;
+      const here = currentPlace(key);
+
+      open(key, location, (current) => ({
+        ...current,
+        back: current.back.slice(0, -1),
+        forward: here === undefined ? current.forward : [...current.forward, here],
+      }));
     },
     forward(key: WorkbenchViewKey): void {
-      historyStep(key, getRuntimeView(key).historyIndex + 1);
+      const here = currentPlace(key);
+      const stack = getRuntimeView(key).forward;
+      const skipped = stack.findLastIndex(
+        (location) => here === undefined || !samePlace(here, location),
+      );
+      const location = stack[skipped];
+
+      if (location === undefined) return;
+      open(key, location, (current) => ({
+        ...current,
+        back: here === undefined ? current.back : pushPlace(current.back, here),
+        forward: current.forward.slice(0, skipped),
+      }));
     },
   };
 

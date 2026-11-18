@@ -364,7 +364,7 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
     operation: (
       repo: Repository,
       before: Repo,
-    ) => Promise<Ran | "unchanged" | { readonly rejected: string }>,
+    ) => Promise<Ran | Extract<GitOutcome, { readonly kind: "unchanged" | "rejected" }>>,
     moves: "revision" | "always" = "revision",
   ): Promise<GitOutcome> => {
     const repo = await required();
@@ -377,9 +377,7 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
       return { kind: "stale", revision: before.revision };
     const ran = await operation(repo, before);
 
-    if (ran === "unchanged") return { kind: "unchanged" };
-
-    if ("rejected" in ran) return { kind: "rejected", reason: ran.rejected };
+    if ("kind" in ran) return ran;
 
     if (ran.code !== 0) {
       const output = `${ran.stdout.toString("utf8")}\n${ran.stderr}`;
@@ -635,16 +633,17 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
         if (restored !== null && restored.code !== 0) return restored;
 
         return loose.length === 0
-          ? (restored ?? "unchanged")
+          ? (restored ?? { kind: "unchanged" })
           : git(repo.root, ["clean", "-f", "-q", "--", ...loose]);
       }),
     commit: (input, guard) =>
       write(true, guard?.expect, async (repo) => {
-        if (input.files === "staged") return git(repo.root, ["commit", "-q", "-m", input.message]);
+        if (input.files.kind === "staged")
+          return git(repo.root, ["commit", "-q", "-m", input.message]);
 
-        if (input.files === "all")
+        if (input.files.kind === "all")
           return git(repo.root, ["commit", "-q", "-a", "-m", input.message]);
-        const files = input.files.map((path) => into(repo, path));
+        const files = input.files.paths.map((path) => into(repo, path));
         const added = await git(repo.root, ["add", "-A", "--", ...files]);
 
         if (added.code !== 0) return added;
@@ -675,7 +674,7 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
         guard?.expect,
         async (repo, before) => {
           if (input?.setUpstream === true && before.branch === null)
-            return { rejected: "HEAD is detached; there is no branch to push." };
+            return { kind: "rejected", reason: "HEAD is detached; there is no branch to push." };
 
           const ran = await git(
             repo.root,
@@ -689,7 +688,7 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
           );
 
           return ran.code === 0 && flags.length > 0 && flags.every((flag) => flag === "=")
-            ? "unchanged"
+            ? { kind: "unchanged" }
             : ran;
         },
         "always",

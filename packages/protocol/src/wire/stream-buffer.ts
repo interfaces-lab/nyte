@@ -1,3 +1,5 @@
+import { dev } from "@nyte-ai/core/client";
+
 const MAX_BYTES = 8 * 1024 * 1024;
 
 const MAX_CHUNKS = 4096;
@@ -96,6 +98,7 @@ export function streamBuffer(cancel: () => void) {
           if (ending !== undefined || signal.aborted) return;
 
           if (push(part)) break;
+          dev("stream", "write waits", { buffered: bytes, waiting: part.byteLength });
           await new Promise<void>((resolve) => {
             const ready = (): void => {
               writers.delete(ready);

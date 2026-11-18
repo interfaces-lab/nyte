@@ -5,6 +5,9 @@ import type { Static } from "typebox";
 import { Compile } from "typebox/compile";
 import { Value } from "typebox/value";
 import { themeSource } from "../shared/ipc-inputs.ts";
+import { DesktopAppType, SelectedWorkspaceType } from "@nyte-ai/app/contract/desktop-window.ts";
+import type { DesktopWindowOpen } from "@nyte-ai/app/contract/desktop-window.ts";
+import type { DesktopApp } from "@nyte-ai/app/contract/desktop-app.ts";
 
 const rect = Type.Object({
   x: Type.Integer(),
@@ -19,11 +22,17 @@ const windowFrame = Type.Object({
   fullscreen: Type.Boolean(),
 });
 
+const windowKind = Type.Object({
+  app: DesktopAppType,
+  workspace: Type.Optional(SelectedWorkspaceType),
+});
+
 const stateSchema = Type.Object({
   theme: themeSource,
   window: Type.Optional(windowFrame),
   windows: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
   frames: Type.Optional(Type.Record(Type.String({ minLength: 1 }), windowFrame)),
+  apps: Type.Optional(Type.Record(Type.String({ minLength: 1 }), windowKind)),
 });
 
 const launchState = Compile(stateSchema);
@@ -33,6 +42,13 @@ type ThemeSource = Static<typeof themeSource>;
 type Rect = Static<typeof rect>;
 
 export type WindowFrame = Static<typeof windowFrame>;
+
+type WindowKind = Static<typeof windowKind>;
+
+export interface Reopening {
+  readonly app: DesktopApp;
+  readonly opening: DesktopWindowOpen | undefined;
+}
 
 type LaunchState = Static<typeof stateSchema>;
 
@@ -108,6 +124,17 @@ export class LaunchStateStore {
     return this.#state.frames?.[windowId];
   }
 
+  /** How a kept window reopens: as the same app, and Code or Studio on its project. A window from before kinds is Nyte. */
+  reopening(windowId: string): Reopening {
+    const kind: WindowKind = this.#state.apps?.[windowId] ?? { app: "nyte" };
+
+    return {
+      app: kind.app,
+      opening:
+        kind.workspace === undefined ? undefined : { kind: "app", workspace: kind.workspace },
+    };
+  }
+
   setTheme(theme: ThemeSource): void {
     this.#write({ ...this.#state, theme });
   }
@@ -125,7 +152,23 @@ export class LaunchStateStore {
       Object.entries(this.#state.frames ?? {}).filter(([windowId]) => windows.includes(windowId)),
     );
 
-    this.#write({ ...this.#state, windows: [...windows], frames });
+    const apps = Object.fromEntries(
+      Object.entries(this.#state.apps ?? {}).filter((entry) => windows.includes(entry[0])),
+    );
+
+    this.#write({ ...this.#state, windows: [...windows], frames, apps });
+  }
+
+  keepWindow(windowId: string, app: DesktopApp, opening: DesktopWindowOpen | undefined): void {
+    const windows = this.windows();
+    const workspace = app === "nyte" || opening?.kind !== "app" ? undefined : opening.workspace;
+    const kind = workspace === undefined ? { app } : { app, workspace };
+
+    this.#write({
+      ...this.#state,
+      windows: windows.includes(windowId) ? [...windows] : [...windows, windowId],
+      apps: { ...this.#state.apps, [windowId]: kind },
+    });
   }
 
   #write(next: LaunchState): void {

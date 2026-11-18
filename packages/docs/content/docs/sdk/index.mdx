@@ -86,15 +86,15 @@ from your own scheduler.
 
 ## Packages [#packages]
 
-| Import                    | What it has                                                                                         |
-| ------------------------- | --------------------------------------------------------------------------------------------------- |
-| `@nyte-ai/sdk`            | `sdk.open`, `sdk.connect`, `SdkError`, `createSendJournal`                                          |
-| `@nyte-ai/sdk/client`     | `connect`, its chats and stores, `createSendJournal`, `headView` and `SdkError`, never the host     |
-| `@nyte-ai/host`           | `sqliteStore`, `localProvider` and the deploy targets                                               |
-| `@nyte-ai/host/providers` | `chatOnlyProvider`, for a host with no folder                                                       |
-| `@nyte-ai/plugin/core`    | `isPart`, `definePart`, the built-in parts and the core `Plugin` type                               |
-| `@nyte-ai/plugin/client`  | The same part helpers, `defineRenderer` and the client `Plugin` type                                |
-| `@nyte-ai/schema`         | `asId` for typed ids, and `standard` to pass TypeBox schemas where one is expected                  |
+| Import                    | What it has                                                                                     |
+| ------------------------- | ----------------------------------------------------------------------------------------------- |
+| `@nyte-ai/sdk`            | `sdk.open`, `sdk.connect`, `SdkError`, `createSendJournal`                                      |
+| `@nyte-ai/sdk/client`     | `connect`, its chats and stores, `createSendJournal`, `headView` and `SdkError`, never the host |
+| `@nyte-ai/host`           | `sqliteStore`, `localProvider` and the deploy targets                                           |
+| `@nyte-ai/host/providers` | `chatOnlyProvider`, for a host with no folder                                                   |
+| `@nyte-ai/plugin/core`    | `isPart`, `definePart`, the built-in parts and the core `Plugin` type                           |
+| `@nyte-ai/plugin/client`  | The same part helpers, `defineRenderer` and the client `Plugin` type                            |
+| `@nyte-ai/schema`         | `asId` for typed ids, and `standard` to pass TypeBox schemas where one is expected              |
 
 In a browser or React Native bundle, `@nyte-ai/sdk` resolves to a build without the host. Its
 `sdk.open` rejects with `SdkError("unavailable")`. `connect`, its chats and its stores come only

@@ -1,7 +1,7 @@
 import type { IconName } from "@nyte-ai/ui/icon";
 import { taskLabel } from "@nyte-ai/plugin/client/presentation";
 import type { ProjectInfo } from "@nyte-ai/sdk";
-import { chatTitle } from "../chats/index.ts";
+import { chatTitle, NEW_CHAT_TITLE } from "../chats/index.ts";
 import type { ChatDirectory } from "../chats/index.ts";
 import { tabPlace, tabPlaces } from "./model.ts";
 import type { Place, Tab, WindowState } from "./model.ts";
@@ -10,9 +10,10 @@ import type { WindowTabItem } from "./window-tab-strip.tsx";
 
 const PLACE_ICONS = {
   blank: "new-chat",
+  session: "new-chat",
   customize: "customize",
   project: "layers",
-} satisfies Record<Exclude<Place["kind"], "session">, IconName>;
+} satisfies Record<Place["kind"], IconName>;
 
 export function windowTabItems(
   state: WindowState,
@@ -58,7 +59,7 @@ function tabItem(tab: Tab, chats: ChatDirectory, projects: readonly ProjectInfo[
     ),
     parent: chat?.parent ?? undefined,
     chat: place.kind === "session" ? place.sessionId : undefined,
-    glyph: place.kind === "session" ? undefined : PLACE_ICONS[place.kind],
+    glyph: PLACE_ICONS[place.kind],
     preview: view.kind === "preview",
     split:
       view.kind === "panes" && view.layout.root.kind === "split"
@@ -70,7 +71,7 @@ function tabItem(tab: Tab, chats: ChatDirectory, projects: readonly ProjectInfo[
 function placeTitle(place: Place, chats: ChatDirectory, projects: readonly ProjectInfo[]): string {
   switch (place.kind) {
     case "blank":
-      return "New chat";
+      return NEW_CHAT_TITLE;
     case "session":
       return chatTitle(chats.get(place.sessionId));
     case "customize":

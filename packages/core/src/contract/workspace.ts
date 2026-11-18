@@ -24,6 +24,7 @@ import type {
   ForgetOutcome,
   FormatOutcome,
   WorktreeCleanup,
+  GitCommitFiles,
   GitCommitId,
   GitCommitView,
   GitFileSides,
@@ -79,6 +80,27 @@ import type {
   TrashOutcome,
   TrashToken,
   RestoreOutcome,
+  CodeAction,
+  CodeActionOutcome,
+  CodeActionResolveToken,
+  CompletionItem,
+  CompletionList,
+  CompletionResolveToken,
+  CompletionTrigger,
+  DiagnosticsFrame,
+  DocumentSymbol,
+  FormatOptions,
+  Hover,
+  InlayHint,
+  LanguageLocation,
+  LanguageServerView,
+  RenameOutcome,
+  RenameTarget,
+  SignatureHelp,
+  TextChange,
+  TextEdit,
+  TextPosition,
+  TextRange,
 } from "@nyte-ai/schema";
 import type { Login, PluginStorage } from "./host.ts";
 import type { OsProcess } from "./records.ts";
@@ -111,7 +133,7 @@ export interface GitApi {
   unstage(paths: readonly string[], options?: GitWrite): Promise<GitOutcome>;
   discard(paths: readonly string[], options?: GitWrite): Promise<GitOutcome>;
   commit(
-    input: { readonly message: string; readonly files: "staged" | "all" | readonly string[] },
+    input: { readonly message: string; readonly files: GitCommitFiles },
     options?: GitWrite,
   ): Promise<GitOutcome>;
   /** With `checkout`, answers `busy` while any run in the workspace is live. */
@@ -131,6 +153,70 @@ export interface GitHubApi {
   state(): Promise<GitHubState>;
   /** Opens a pull request for the checked-out branch, which the caller has pushed; an open one for the branch answers `exists` and opens nothing. */
   createPullRequest(input: GitHubPullRequestInput): Promise<GitHubPullRequestOutcome>;
+}
+
+/**
+ * Language intelligence for a workspace's files, from a language server per language and project
+ * root. Paths are workspace-relative or absolute and come back workspace-relative inside the
+ * workspace. A client drives the text of the documents it opens: `open` with its version, then
+ * `change` with each newer version, one at a time and in order, then `close`. A file no client
+ * opened is read from disk for each request. Queries on a file no server handles, or whose
+ * server is missing or failed, answer empty; `status` says why.
+ */
+export interface LanguageApi {
+  status(): Promise<readonly LanguageServerView[]>;
+  watchStatus(): AsyncIterable<readonly LanguageServerView[]>;
+  /** The server that took the document, or null for a file no language handles. */
+  open(input: {
+    readonly path: string;
+    readonly text: string;
+    readonly version: number;
+  }): Promise<LanguageServerView | null>;
+  /** Throws `SdkError("unknown")` for a document no client opened and `SdkError("stale")` for a version no newer than the last; open the document again to start over. */
+  change(input: {
+    readonly path: string;
+    readonly version: number;
+    readonly changes: readonly TextChange[];
+  }): Promise<null>;
+  close(input: { readonly path: string }): Promise<null>;
+  /** Each frame holds the files whose list changed since the last; the first holds every file's known list. */
+  diagnostics(): AsyncIterable<readonly DiagnosticsFrame[]>;
+  completion(
+    input: LanguagePosition & { readonly trigger: CompletionTrigger },
+  ): Promise<CompletionList>;
+  resolveCompletion(input: {
+    readonly token: CompletionResolveToken;
+  }): Promise<CompletionItem | null>;
+  hover(input: LanguagePosition): Promise<Hover | null>;
+  definition(input: LanguagePosition): Promise<readonly LanguageLocation[]>;
+  typeDefinition(input: LanguagePosition): Promise<readonly LanguageLocation[]>;
+  references(
+    input: LanguagePosition & { readonly includeDeclaration: boolean },
+  ): Promise<readonly LanguageLocation[]>;
+  symbols(input: { readonly path: string }): Promise<readonly DocumentSymbol[]>;
+  prepareRename(input: LanguagePosition): Promise<RenameTarget | null>;
+  rename(input: LanguagePosition & { readonly name: string }): Promise<RenameOutcome>;
+  codeActions(input: {
+    readonly path: string;
+    readonly range: TextRange;
+  }): Promise<readonly CodeAction[]>;
+  resolveCodeAction(input: { readonly token: CodeActionResolveToken }): Promise<CodeActionOutcome>;
+  format(input: {
+    readonly path: string;
+    readonly options: FormatOptions;
+  }): Promise<readonly TextEdit[]>;
+  signatureHelp(input: LanguagePosition): Promise<SignatureHelp | null>;
+  inlayHints(input: {
+    readonly path: string;
+    readonly range: TextRange;
+  }): Promise<readonly InlayHint[]>;
+}
+
+export type LanguagePosition = { readonly path: string; readonly position: TextPosition };
+
+/** What a provider hands its attachment: the API, and `shutdown` to stop every server when the workspace detaches. */
+export interface LanguageService extends LanguageApi {
+  shutdown(): Promise<void>;
 }
 
 export interface GitHubAccountApi {
@@ -242,7 +328,6 @@ export interface ExecutionEnv {
       readonly env?: Readonly<Record<string, string>>;
       readonly signal?: AbortSignal;
       readonly pty?: { readonly columns: number; readonly rows: number };
-      /** `"protocol"` for a pipe a protocol runs over: `output()` yields every byte of stdout and never a `gap`, holding the process while its slowest open reader is behind, and stderr apart, as `bytes` frames with `stream: "stderr"`. Default `"merged"`: stdout and stderr interleaved, a reader that falls behind skipping to a `gap`. A provider that cannot keep them apart throws `SdkError("unavailable")`; `pty` ignores it. */
       readonly stdio?: "merged" | "protocol";
     },
   ): Promise<Job>;
@@ -253,9 +338,12 @@ export type EnvironmentWrap = (
   inner: ExecutionEnv,
 ) => ExecutionEnv & { readonly browser?: BrowserApi };
 
+export type SnapshotScope =
+  | { readonly kind: "workspace" }
+  | { readonly kind: "paths"; readonly paths: readonly string[] };
+
 export interface SnapshotsApi {
-  before(run: RunId): Promise<SnapshotId>;
-  after(run: RunId): Promise<SnapshotId>;
+  capture(scope: SnapshotScope): Promise<SnapshotId>;
   diff(from: SnapshotId, to: SnapshotId): Promise<ChangeSet>;
   patches(
     from: SnapshotId,
@@ -300,6 +388,7 @@ export interface EnvironmentProvider {
   readonly github?: (env: ExecutionEnv) => GitHubApi | undefined;
   readonly snapshots?: (env: ExecutionEnv) => SnapshotsApi | undefined;
   readonly browser?: (env: ExecutionEnv) => BrowserApi;
+  readonly language?: (env: ExecutionEnv) => LanguageService | undefined;
   readonly worktrees?: WorktreeProvider;
   /** The real path of `path` (absolute, or relative to `env.cwd`) on the machine `env` runs on: every symlink resolved and each name spelled as the disk stores it, so a case-insensitive disk answers `AGENTS.md` with the `AGENTS.MD` it holds; null where nothing resolves. Without it, context files are told apart by the paths they were read at and no worktree shadows its repository's. */
   readonly realpath?: (env: ExecutionEnv, path: string) => Promise<string | null>;
@@ -343,6 +432,7 @@ export type EnvironmentCapabilities = {
   readonly git: Capability<GitApi>;
   readonly github: Capability<GitHubApi>;
   readonly browser: Capability<BrowserApi>;
+  readonly language: Capability<LanguageApi>;
 };
 
 export interface EnvironmentRegistry {
@@ -630,6 +720,8 @@ export interface Workspace {
   github(): Promise<Capability<GitHubApi>>;
 
   browser(): Promise<Capability<BrowserApi>>;
+
+  language(): Promise<Capability<LanguageApi>>;
 }
 
 export type HeldEntry = PatchEntry & { readonly fresh: boolean };

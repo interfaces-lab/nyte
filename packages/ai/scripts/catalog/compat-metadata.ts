@@ -25,12 +25,6 @@ const OPENAI_TOOL_SEARCH_MODEL_IDS = new Set([
   "gpt-6.2-sol",
 ]);
 
-/**
- * Public OpenAI documents additional_tools for applications that load tools
- * outside the normal tool-search flow. Codex currently uses the input item for
- * its Responses Lite GPT-5.6 models.
- * https://developers.openai.com/api/docs/guides/tools-tool-search#add-tools-at-a-specific-point-in-the-input
- */
 const OPENAI_ADDITIONAL_TOOLS_MODEL_IDS = OPENAI_TOOL_SEARCH_MODEL_IDS;
 
 const OPENAI_MID_CONVO_SYSTEM_MESSAGE_MODEL_IDS = OPENAI_TOOL_SEARCH_MODEL_IDS;
@@ -473,12 +467,6 @@ export function applyOpenAIExplicitPromptCacheMetadata(model: Model<Api>): void 
   };
 }
 
-/**
- * Anthropic ephemeral entries have a hard five-minute lifetime; `ttl: "1h"`
- * extends it to one hour. Only direct Anthropic is annotated so cache warming
- * does not assume equivalent behavior through proxies.
- * https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching
- */
 const ANTHROPIC_PROMPT_CACHE: ModelPromptCache = { short: 300, long: 3600 };
 
 export function applyPromptCacheMetadata(model: Model<Api>): void {
@@ -487,10 +475,6 @@ export function applyPromptCacheMetadata(model: Model<Api>): void {
   }
 }
 
-/**
- * Mainline models that take Daybreak's `access_programs.cyber` on OpenAI's API and in Codex.
- * https://help.openai.com/en/articles/20001258-openai-daybreak-trusted-access-for-cyber-overview
- */
 const OPENAI_DAYBREAK_MODEL_IDS = new Set([
   "gpt-5.5",
   "gpt-5.6-sol",

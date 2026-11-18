@@ -2,7 +2,6 @@ packages:
   - packages/*
   - packages/examples/*
 catalog:
-  "@hona/strobe": 0.28.0
   typescript: 6.0.3
   "@typescript/native": npm:typescript@7.1.0-beta
 # The TUI bundle resolves @opentui/core's native module per libc, and a bundle

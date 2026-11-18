@@ -1,13 +1,8 @@
-// Adapted from VS Code's shellIntegration-bash.sh, Copyright (c) Microsoft Corporation, MIT License (see ./LICENSE).
-
-export const HEADER = `# Adapted from VS Code, Copyright (c) Microsoft Corporation, MIT License.
-`;
-
 export const REPORT = `IFS= builtin read -r __nyte_nonce 2>/dev/null <"$__nyte_dir/nonce"
 builtin printf '\\033]633;Nyte;1;%s;%s\\007' "$__nyte_nonce" "$1"
 `;
 
-export const bashScript = `${HEADER}__nyte_dir=\${BASH_SOURCE[0]%/*}
+export const bashScript = `__nyte_dir=\${BASH_SOURCE[0]%/*}
 if [ -r /etc/profile ]; then . /etc/profile; fi
 if [ -r ~/.bash_profile ]; then . ~/.bash_profile
 elif [ -r ~/.bash_login ]; then . ~/.bash_login

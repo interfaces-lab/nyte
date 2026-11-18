@@ -24,6 +24,8 @@ import { readPrintedSpans, readSpanFile, RESTAURANT_PROMPT } from "@nyte-ai/benc
 import { prepareHome } from "./baseline.ts";
 import { launchDesktop } from "./launch.ts";
 import { composer, messages } from "./ui.ts";
+import { captureWindow } from "./window-capture.ts";
+import type { ShownWindow } from "./window-capture.ts";
 
 const LAST_SETTLED = /button "Check the opening hours"/u;
 
@@ -64,8 +66,8 @@ test("scenario U: a random restaurant nearby, quit mid-answer, reopen and resume
   cleanup.defer(() => first.close());
   const { page } = first;
 
-  const shot = (name: string, target: Page) =>
-    target.screenshot({ path: test.info().outputPath(`${name}.png`) });
+  const shot = (name: string, target: ShownWindow) =>
+    captureWindow(target, test.info().outputPath(`${name}.png`));
 
   await test.step("the renderer records spans from its next load", async () => {
     await page.evaluate(() => localStorage.setItem("NYTE_TRACE", "1"));
@@ -135,7 +137,7 @@ test("scenario U: a random restaurant nearby, quit mid-answer, reopen and resume
     expect(read).toMatch(/NYTE_E2E_U \{"tool":"bash","text":"[^\n]*until 22:30/u);
     await expect(page.getByRole("button", { name: "Stop response" })).toBeVisible();
     before = await messages(page).ariaSnapshot();
-    await shot("transcript-before-quit", page);
+    await shot("transcript-before-quit", first);
   });
 
   const rendererBefore = await readRendererSpans(page);
@@ -170,7 +172,7 @@ test("scenario U: a random restaurant nearby, quit mid-answer, reopen and resume
         timeout: 10_000,
       })
       .toBe(settledFrames(before, LAST_SETTLED));
-    await shot("transcript-after-reopen", reopened);
+    await shot("transcript-after-reopen", second);
   });
 
   await test.step("the canvas, browser tab, terminal and places result come back", async () => {
@@ -185,7 +187,7 @@ test("scenario U: a random restaurant nearby, quit mid-answer, reopen and resume
       workbench(reopened).getByRole("textbox", { name: "Terminal input" }),
     ).toBeVisible();
     expect(await savedScrollback(reopened)).toContain(HOURS_DONE);
-    await shot("terminal-after-reopen", reopened);
+    await shot("terminal-after-reopen", second);
     await reopened.keyboard.press("Control+`");
     await tabTo(
       workbench(reopened)
@@ -221,7 +223,7 @@ test("scenario U: a random restaurant nearby, quit mid-answer, reopen and resume
     await expect(messages(reopened).getByText(/It is open until 22:30 tonight/u)).toBeVisible({
       timeout: 30_000,
     });
-    await shot("transcript-resumed", reopened);
+    await shot("transcript-resumed", second);
   });
 
   await test.step("each hop of the submit stays within its budget", async () => {

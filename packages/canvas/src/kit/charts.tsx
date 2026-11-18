@@ -5,7 +5,7 @@ import type { LineSeries, SliceTooltipProps } from "@nivo/line";
 import { ResponsivePie } from "@nivo/pie";
 import type { PieTooltipProps } from "@nivo/pie";
 import { create, props } from "@stylexjs/stylex";
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useState, useSyncExternalStore } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { platformScopes } from "@nyte-ai/ui/platform-colors";
 import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
@@ -143,16 +143,58 @@ export function useNivoTheme(): { readonly theme: typeof theme; readonly colors:
 
 type Measure = (label: string) => number;
 
+const SVG = "http://www.w3.org/2000/svg";
+
+const probing = create({
+  frame: {
+    position: "fixed",
+    insetBlockStart: 0,
+    insetInlineStart: 0,
+    width: 0,
+    height: 0,
+    overflow: "hidden",
+    visibility: "hidden",
+    pointerEvents: "none",
+  },
+  label: { fontFamily: type.fontSans, fontSize: type.fontXs, fontVariantNumeric: "tabular-nums" },
+});
+
+const probes = new Map<Document, SVGTextElement>();
+
+function labelProbe(): SVGTextElement {
+  const found = probes.get(document);
+
+  if (found?.isConnected === true) return found;
+  const frame = document.createElementNS(SVG, "svg");
+  const label = document.createElementNS(SVG, "text");
+  frame.setAttribute("aria-hidden", "true");
+  frame.setAttribute("class", props(probing.frame).className ?? "");
+  label.setAttribute("class", props(probing.label).className ?? "");
+  frame.append(label);
+  document.body.append(frame);
+  probes.set(document, label);
+
+  return label;
+}
+
 function labelMeasure(): Measure {
-  const style = getComputedStyle(document.documentElement);
-  const base = Number.parseFloat(style.getPropertyValue("--nyte-font-size-base"));
-  const size = ((Number.isFinite(base) ? base : 13) * 11) / 13;
-  const context = document.createElement("canvas").getContext("2d");
+  const label = labelProbe();
 
-  if (context === null) return (label) => label.length * size * 0.6;
-  context.font = `${String(size)}px ${style.getPropertyValue("--nyte-font-family-sans")}`;
+  return (text) => {
+    label.textContent = text;
 
-  return (label) => context.measureText(label).width;
+    return label.getComputedTextLength();
+  };
+}
+
+function subscribeFonts(change: () => void): () => void {
+  document.fonts.addEventListener("loadingdone", change);
+
+  return () => document.fonts.removeEventListener("loadingdone", change);
+}
+
+function useFontsSettled(): void {
+  useSyncExternalStore(subscribeFonts, () => document.fonts.status);
 }
 
 function widest(measure: Measure, labels: readonly string[]): number {
@@ -369,6 +411,7 @@ export function LineChart({
 }): ReactElement {
   const paint = usePaint();
   const [width, setWidth] = useState(0);
+  useFontsSettled();
   const ys = series.flatMap((serie) => serie.data.map((point) => point.y));
 
   if (ys.length === 0) return <Empty height={height} />;
@@ -388,9 +431,15 @@ export function LineChart({
 
   const xs = [...new Set(series.flatMap((serie) => serie.data.map((point) => point.x)))];
   const measure = labelMeasure();
-  const margin = { ...MARGIN, left: Math.max(MARGIN.left, valueAxisWidth(measure, ys, formatY)) };
-  const plotWidth = width - margin.left - margin.right;
   const widestX = widest(measure, xs.map(formatX));
+
+  const margin = {
+    ...MARGIN,
+    left: Math.max(MARGIN.left, valueAxisWidth(measure, ys, formatY)),
+    right: Math.max(MARGIN.right, Math.ceil(widestX / 2)),
+  };
+
+  const plotWidth = width - margin.left - margin.right;
   const lowest = Math.min(...ys);
 
   return (
@@ -502,6 +551,7 @@ export function BarChart({
 }): ReactElement {
   const paint = usePaint();
   const [width, setWidth] = useState(0);
+  useFontsSettled();
 
   if (data.length === 0 || keys.length === 0) return <Empty height={height} />;
 
@@ -531,7 +581,11 @@ export function BarChart({
   );
 
   const margin = horizontal
-    ? { ...MARGIN, left: Math.max(MARGIN.left, labelRoom) }
+    ? {
+        ...MARGIN,
+        left: Math.max(MARGIN.left, labelRoom),
+        right: Math.max(MARGIN.right, Math.ceil(widest(measure, totals.map(format)) / 2)),
+      }
     : { ...MARGIN, left: Math.max(MARGIN.left, valueAxisWidth(measure, totals, format)) };
 
   const plotWidth = width - margin.left - margin.right;

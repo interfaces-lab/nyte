@@ -17,4 +17,5 @@ export type {
   PostRenderPhase,
   SelectedLineRange,
   SupportedLanguages,
+  TokenEventBase,
 } from "@pierre/diffs";

@@ -213,7 +213,17 @@ test.each<{ readonly code: number; readonly sent: number }>([
 
 async function windowEnd() {
   const port = scriptedEnd();
-  const opened = hostPort(async () => port.end);
+  const both = Promise.withResolvers<void>();
+
+  const opened = hostPort(async () => ({
+    ...port.end,
+    post: (message) => {
+      port.end.post(message);
+
+      if (port.posted.length === 2) both.resolve();
+    },
+  }));
+
   const abort = new AbortController();
   const fetching = opened.fetch("http://127.0.0.1/v1/catalog", { signal: abort.signal });
   const answered = fetching.then((response) => `status ${response.status}`, String);
@@ -223,7 +233,7 @@ async function windowEnd() {
   socket.addEventListener("message", (event) => events.push(`message ${String(event.data)}`));
   socket.addEventListener("error", () => events.push("error"));
   socket.addEventListener("close", (event) => events.push(`close ${event.code} ${event.reason}`));
-  await vi.waitFor(() => expect(port.posted).toHaveLength(2));
+  await both.promise;
 
   const ids = {
     request: port.posted.find((message) => message.kind === "request")?.id ?? -1,

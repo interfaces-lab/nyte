@@ -1,18 +1,18 @@
 import { Buffer } from "node:buffer";
 import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import process from "node:process";
 import type { Locator, Page } from "@playwright/test";
 import { SWARM_AGENTS } from "../src/host/fixtures/e2e-models.ts";
 import { expect, test } from "./fixtures.ts";
 import { readInputTrace } from "./input-trace.ts";
 import { chatPane, composer, messages, openNewChat, send } from "./ui.ts";
+import { countWork, difference, overBudget, percentile, readCounts } from "./work-counts.ts";
+import type { Counts, WorkBudget } from "./work-counts.ts";
 
 test.use({ chapter: "subagent-load" });
 
 const output = process.env.NYTE_PERF_DIR;
-
-test.skip(output === undefined, "Set NYTE_PERF_DIR to record the subagent load workload.");
 
 const HISTORY = "/long 60";
 
@@ -37,6 +37,33 @@ const MIN_RENDER_SAMPLES = 100;
 const STREAMING_PUBLICATIONS = 10;
 
 const MARKS = { start: "nyte:typing:start", end: "nyte:typing:end" } as const;
+
+const STEP_WORK_BUDGETS = {
+  following: {
+    "render:conversation": 4,
+    "render:transcript-row": 2,
+    "render:agent-row": 10,
+    "render:agents-tray": 4,
+    "render:window-tab": 1,
+  },
+  detail: {
+    "render:conversation": 8,
+    "render:agent-row": 12,
+    "render:agents-tray": 4,
+    "render:window-tab": 1,
+  },
+  reading: {
+    "render:conversation": 4,
+    "render:transcript-row": 2,
+    "render:agent-row": 2,
+    "render:agents-tray": 4,
+    "render:window-tab": 1,
+  },
+} satisfies Record<string, WorkBudget>;
+
+const COMPOSER_EXTRA_COMMITS = 3;
+
+const NOTIFY_PER_PUBLICATION = 1.5;
 
 const RUNNING_OR_DONE = /Thinking|Writing a response|Reading|Planning next moves|Done/u;
 
@@ -71,26 +98,7 @@ interface Probe {
 declare global {
   interface Window {
     nyteProbe?: Probe;
-    nyteWorkCounts?: Record<string, number>;
   }
-}
-
-type Counts = Readonly<Record<string, number>>;
-
-function percentile(values: readonly number[], fraction: number): number {
-  const sorted = values.toSorted((first, second) => first - second);
-
-  return sorted[Math.max(0, Math.ceil(fraction * sorted.length) - 1)] ?? 0;
-}
-
-function difference(before: Counts, after: Counts): Counts {
-  return Object.fromEntries(
-    Object.entries(after).map(([name, count]) => [name, count - (before[name] ?? 0)]),
-  );
-}
-
-function readCounts(page: Page): Promise<Counts> {
-  return page.evaluate(() => ({ ...window.nyteWorkCounts }));
 }
 
 async function installProbe(log: Locator): Promise<void> {
@@ -191,26 +199,21 @@ function distanceFromEnd(log: Locator): Promise<number> {
 }
 
 test("typing stays responsive while five agents stream", async ({ desktop }, testInfo) => {
-  if (output === undefined) return;
   test.setTimeout(240_000);
   const { page } = desktop;
   const log = messages(page).first();
   const field = composer(page);
   const groupRow = log.locator("[data-row-key^='agents:']");
-  const pill = chatPane(page).getByRole("button", { name: /^Agents \d+$/u });
+  const pill = chatPane(page).getByRole("button", { name: /^Agents \d+\b/u });
   const allActive = `Agents, ${String(SWARM_AGENTS)} active`;
 
   const agents = Array.from({ length: SWARM_AGENTS }, (_, index) =>
     groupRow.getByRole("button", { name: new RegExp(`^Survey part ${String(index + 1)}\\b`, "u") }),
   );
 
-  await mkdir(output, { recursive: true });
   await using cleanup = new AsyncDisposableStack();
-  const tracePath = join(output, "trace.json");
-
-  await page.evaluate(() => localStorage.setItem("NYTE_TRACE", "1"));
-  await page.reload();
-  await page.locator("[data-nyte-shell]").waitFor({ state: "visible" });
+  const tracePath = output === undefined ? undefined : join(output, "trace.json");
+  await countWork(page);
 
   await openNewChat(page);
   await send(page, HISTORY);
@@ -222,8 +225,13 @@ test("typing stays responsive while five agents stream", async ({ desktop }, tes
   }
 
   await installProbe(log);
-  const stopTrace = await startTrace(page);
-  cleanup.defer(() => stopTrace(tracePath));
+
+  if (tracePath !== undefined) {
+    await mkdir(dirname(tracePath), { recursive: true });
+    const stopTrace = await startTrace(page);
+    cleanup.defer(() => stopTrace(tracePath));
+  }
+
   const start = await readCounts(page);
 
   await send(page, "/swarm");
@@ -440,8 +448,51 @@ test("typing stays responsive while five agents stream", async ({ desktop }, tes
   const probe = await page.evaluate(() => window.nyteProbe);
 
   if (probe === undefined) throw new Error("The probe was not installed");
-  const trace = await readInputTrace(tracePath, MARKS);
   const typed = FOLLOWING_DRAFT.length + DETAIL_DRAFT.length + READING_DRAFT.length;
+
+  const work = {
+    startup: desktop.startup,
+    keys: {
+      following: FOLLOWING_DRAFT.length,
+      detail: DETAIL_DRAFT.length,
+      reading: READING_DRAFT.length,
+    },
+    steps: { following: perStep(following), detail: perStep(detail), reading: perStep(reading) },
+    totals: perStep(totals),
+    rowMounts: probe.mounts,
+    rowResizes: probe.rowResizes,
+    scrollEvents: probe.scrolls,
+    childFrames: probe.detail,
+  };
+
+  await testInfo.attach("work", {
+    body: JSON.stringify(work, null, 2),
+    contentType: "application/json",
+  });
+
+  if (output !== undefined)
+    await writeFile(join(output, "work.json"), JSON.stringify(work, null, 2));
+
+  expect(
+    (["following", "detail", "reading"] as const).flatMap((step) => {
+      const counts = work.steps[step];
+      const publications = counts["publish:view"] ?? 0;
+      const notified = counts["notify"] ?? 0;
+
+      return [
+        ...overBudget(step, counts, {
+          ...STEP_WORK_BUDGETS[step],
+          "render:composer": work.keys[step] + COMPOSER_EXTRA_COMMITS,
+        }),
+        ...(notified > publications * NOTIFY_PER_PUBLICATION
+          ? [`${step} › notify: ${String(notified)} for ${String(publications)} publications`]
+          : []),
+      ];
+    }),
+  ).toEqual([]);
+
+  if (tracePath === undefined) return;
+  const trace = await readInputTrace(tracePath, MARKS);
 
   const summary = {
     keys: { typed, measured: trace.keydownMs.length },
@@ -466,14 +517,10 @@ test("typing stays responsive while five agents stream", async ({ desktop }, tes
     layouts: trace.layouts,
     forcedLayouts: trace.forcedLayouts,
     styleRecalcs: trace.styleRecalcs,
-    rowMounts: probe.mounts,
-    rowResizes: probe.rowResizes,
-    scrollEvents: probe.scrolls,
-    childFrames: probe.detail,
-    work: { following, detail, reading, totals },
+    work,
   };
 
-  await writeFile(join(output, "summary.json"), JSON.stringify(summary, null, 2));
+  await writeFile(join(output ?? "", "summary.json"), JSON.stringify(summary, null, 2));
   await testInfo.attach("summary", {
     body: JSON.stringify(summary, null, 2),
     contentType: "application/json",
@@ -494,3 +541,11 @@ test("typing stays responsive while five agents stream", async ({ desktop }, tes
     "No renderer task may take 50ms after typing starts, through all-agent completion",
   ).toEqual([]);
 });
+
+function perStep(counts: Counts): Counts {
+  const publications = Object.entries(counts)
+    .filter(([name]) => name.startsWith("publish:view:"))
+    .reduce((sum, [, count]) => sum + count, 0);
+
+  return { ...counts, "publish:view": publications };
+}

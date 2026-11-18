@@ -95,7 +95,6 @@ export const layout = defineVars({
     "@media (pointer: coarse)": "var(--nyte-target-min)",
   },
   "--nyte-workbench-file-list-width": "200px",
-  "--nyte-workbench-launcher-card-size": "112px",
   "--nyte-pane-sash-size": { default: "24px", "@media (pointer: coarse)": "44px" },
   "--nyte-pane-divider-gap": "5px",
   "--nyte-image-thumbnail-size": "80px",

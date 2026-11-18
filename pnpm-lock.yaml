@@ -173,9 +173,6 @@ settings:
 
 catalogs:
   default:
-    '@hona/strobe':
-      specifier: 0.28.0
-      version: 0.28.0
     '@typescript/native':
       specifier: npm:typescript@7.1.0-beta
       version: 7.1.0-beta
@@ -184,7 +181,7 @@ catalogs:
       version: 6.0.3
 
 patchedDependencies:
-  '@pierre/diffs@1.7.0-beta.3': cf52e308adb06d459240f29c4696f5714729b75df32cdf055d987f7007a4c9ab
+  '@pierre/diffs@1.7.0-beta.3': 73ca87593949859160059d891a1a6c8327f01c21e672102513918eca4572af9f
   '@pierre/trees@1.0.0': df798950b79a9843457f5bfb8fe3f325c50934622a4dcf8355d22ddcc5a45443
   app-builder-lib@26.18.0: 58647f4cf6f79dbc6654112d48911f1a0099059ab0eee3012a3f934acf204859
   prosemirror-view@^1.42.9: dc30e2659d623e2c72afea2da07678b0c0535b95067f5021d4f201ac4c26f740
@@ -224,9 +221,9 @@ importers:
       oxlint:
         specifier: ~1.94.0
         version: 1.94.0(oxlint-tsgolint@7.0.2007)
-      oxlint-tsgolint:
-        specifier: ^7.0.2007
-        version: 7.0.2007
+      tsrs:
+        specifier: ^0.25.0-ts7.1.0-beta
+        version: 0.25.0-ts7.1.0-beta
       turbo:
         specifier: ^2.11.11
         version: 2.11.11
@@ -351,6 +348,9 @@ importers:
       streamdown:
         specifier: ^2.7.1
         version: 2.7.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(supports-color@10.2.2)
+      sucrase:
+        specifier: ^3.35.1
+        version: 3.35.1
       torph:
         specifier: ^0.1.4
         version: 0.1.4(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -740,9 +740,6 @@ importers:
       '@fontsource-variable/jetbrains-mono':
         specifier: ^5.3.0
         version: 5.3.0
-      '@hona/strobe':
-        specifier: 'catalog:'
-        version: 0.28.0
       '@nyte-ai/ai':
         specifier: workspace:*
         version: link:../ai
@@ -935,7 +932,7 @@ importers:
         version: 6.3.0(@rolldown/plugin-babel@0.2.4(@babel/core@8.1.2)(@babel/runtime@7.29.14)(rolldown@1.2.19)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.21.0)(yaml@2.9.1)))(babel-plugin-react-compiler@1.0.0)(oxc-transform-react@0.156.0)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.21.0)(yaml@2.9.1))
       nitro:
         specifier: ^3.0.260610-beta
-        version: 3.0.260610-beta(@electric-sql/pglite@0.5.16)(@vercel/blob@2.8.0)(@vercel/functions@3.11.3(@aws-sdk/credential-provider-web-identity@3.972.88)(ws@8.22.1))(@vercel/queue@0.3.1)(chokidar@5.0.0)(dotenv@17.4.2)(giget@3.3.1)(jiti@2.7.0)(lru-cache@11.5.3)(rollup@4.63.4)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.21.0)(yaml@2.9.1))(wrangler@4.163.0(@cloudflare/workers-types@5.20261116.1)(@types/node@26.6.6))
+        version: 3.0.260610-beta(@electric-sql/pglite@0.5.16)(@vercel/blob@2.8.0)(@vercel/functions@3.11.3(@aws-sdk/credential-provider-web-identity@3.972.88)(ws@8.23.0))(@vercel/queue@0.3.1)(chokidar@5.0.0)(dotenv@17.4.2)(giget@3.3.1)(jiti@2.7.0)(lru-cache@11.5.3)(rollup@4.63.4)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.21.0)(yaml@2.9.1))(wrangler@4.163.0(@cloudflare/workers-types@5.20261116.1)(@types/node@26.6.6))
       oxc-transform-react:
         specifier: ^0.156.0
         version: 0.156.0
@@ -1031,7 +1028,7 @@ importers:
         version: 3.0.260903-beta
       workflow:
         specifier: ^5.5.0
-        version: 5.5.0(2541e88d34cf1b8a54a50599c5a48d48)
+        version: 5.5.0(01c60294f55545fbc3417f05bb9ff1e6)
     devDependencies:
       '@types/node':
         specifier: ^26.6.6
@@ -1147,7 +1144,7 @@ importers:
         version: link:../ui
       '@pierre/diffs':
         specifier: 1.7.0-beta.3
-        version: 1.7.0-beta.3(patch_hash=cf52e308adb06d459240f29c4696f5714729b75df32cdf055d987f7007a4c9ab)(@shikijs/themes@4.5.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+        version: 1.7.0-beta.3(patch_hash=73ca87593949859160059d891a1a6c8327f01c21e672102513918eca4572af9f)(@shikijs/themes@4.5.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@pierre/theme':
         specifier: 2.0.0
         version: 2.0.0
@@ -1598,30 +1595,6 @@ importers:
         specifier: ^5.1.0
         version: 5.1.0(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.21.0)(yaml@2.9.1))
 
-  packages/studio:
-    devDependencies:
-      '@fontsource-variable/inter':
-        specifier: ^5.3.0
-        version: 5.3.0
-      '@nyte-ai/ai':
-        specifier: workspace:*
-        version: link:../ai
-      '@nyte-ai/bench':
-        specifier: workspace:*
-        version: link:../bench
-      '@nyte-ai/host':
-        specifier: workspace:*
-        version: link:../host
-      '@nyte-ai/sdk':
-        specifier: workspace:*
-        version: link:../sdk
-      '@nyte-ai/ui':
-        specifier: workspace:*
-        version: link:../ui
-      '@types/node':
-        specifier: ^26.6.6
-        version: 26.6.6
-
   packages/tailnet: {}
 
   packages/tui:
@@ -1690,9 +1663,6 @@ importers:
       '@babel/preset-typescript':
         specifier: ^8.0.7
         version: 8.0.7(@babel/core@8.1.2)
-      '@hona/strobe':
-        specifier: 'catalog:'
-        version: 0.28.0
       '@nyte-ai/bench':
         specifier: workspace:*
         version: link:../bench
@@ -1737,10 +1707,13 @@ importers:
         version: 0.99.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@pierre/diffs':
         specifier: 1.7.0-beta.3
-        version: 1.7.0-beta.3(patch_hash=cf52e308adb06d459240f29c4696f5714729b75df32cdf055d987f7007a4c9ab)(@shikijs/themes@4.5.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+        version: 1.7.0-beta.3(patch_hash=73ca87593949859160059d891a1a6c8327f01c21e672102513918eca4572af9f)(@shikijs/themes@4.5.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@pierre/highlights':
         specifier: ^0.5.1
         version: 0.5.1
+      '@pierre/theme':
+        specifier: 2.0.0
+        version: 2.0.0
       '@pierre/trees':
         specifier: ^1.0.0
         version: 1.0.0(patch_hash=df798950b79a9843457f5bfb8fe3f325c50934622a4dcf8355d22ddcc5a45443)(@pierre/theme@2.0.0)(@shikijs/themes@4.5.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(shiki@4.6.0)
@@ -3682,40 +3655,6 @@ packages:
     peerDependenciesMeta:
       '@modelcontextprotocol/sdk':
         optional: true
-
-  '@hona/strobe-darwin-arm64@0.28.0':
-    resolution: {integrity: sha512-zv10Kv1eYtJC8aVxcqOFdwxkBNQ4JWbo95+7dHxboFhf+zR6h4foV2VEmaSpHb59vSPFn29/OTTpkQD8UVg9pA==}
-    cpu: [arm64]
-    os: [darwin]
-
-  '@hona/strobe-darwin-x64@0.28.0':
-    resolution: {integrity: sha512-8EsxZu6i/HfwUhfGqPdbyvPuK4PMHV23R6fVk0s60CB72VSsstl92PMY5REtEOE6nDysF1azsPs/myUVFzDlKw==}
-    cpu: [x64]
-    os: [darwin]
-
-  '@hona/strobe-linux-arm64@0.28.0':
-    resolution: {integrity: sha512-n/C0mRzvNcVUntBmCUes7j21N0Y25sGCgy/r53D/WZStysn/QVfOzCWtkkPjZ09TJ8MDY4bIOk7WPdV5s/fMgA==}
-    cpu: [arm64]
-    os: [linux]
-
-  '@hona/strobe-linux-x64@0.28.0':
-    resolution: {integrity: sha512-G+z9vgn0OwF/K3tKx3QGpAI+GML1O2XJUGjorIYLQ0wmgi6G6FnKCb8Zk/hcKTdUxp5VNsElibPsd7JEGfrQvA==}
-    cpu: [x64]
-    os: [linux]
-
-  '@hona/strobe-win32-arm64@0.28.0':
-    resolution: {integrity: sha512-rHPNY0+XO+3dTaZO9r0gKWoWPr4aHNhZC6KNX5kIvJbJ2/QuEUyEJmzFkvSlx68ixl5rbg3lBGB2tO7YNOvotg==}
-    cpu: [arm64]
-    os: [win32]
-
-  '@hona/strobe-win32-x64@0.28.0':
-    resolution: {integrity: sha512-kZJ9l/lZ7zneU2NVj7p1WmSifVrWwRQFzIOw3MfEjaC1TqGD2+w0JFCNuzYCp7j8irtRC/OM7W5/9fLjGy/kxQ==}
-    cpu: [x64]
-    os: [win32]
-
-  '@hona/strobe@0.28.0':
-    resolution: {integrity: sha512-5JzZqIMxeiLR5encQ1e+tCZl8zlkN+QGHAga/e+WOm2rk9m1Ep4bDy0oWUiPynhha45X9luOlJxoxs+8T5bJXg==}
-    hasBin: true
 
   '@hono/node-server@2.1.0':
     resolution: {integrity: sha512-XovyyCCnBzW+zKu+z/zq8hwNs4KOR5rEMAOxo2f40Q5xoOI37IMm6MIg2COOUtUApo0i6850MTBKH2u4QLGIqg==}
@@ -7152,6 +7091,58 @@ packages:
 
   '@tokenizer/token@0.3.0':
     resolution: {integrity: sha512-OvjF+z51L3ov0OyAU0duzsYuvO01PH7x4t6DJx+guahgTnBHkhJdG7soQeTSFLWN3efnHyibZ4Z8l2EuWwJN3A==}
+
+  '@tsrs/darwin-arm64@0.25.0-ts7.1.0-beta':
+    resolution: {integrity: sha512-+pYoQ+AqpdUolO4kJBQlQmwxJOoc5INuusw/2AZnR4frfnyVGza+gEn0br8Z0LOk7nklQuILuMKH93BU3hpHvA==}
+    engines: {node: '>=16.20.0'}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@tsrs/darwin-x64@0.25.0-ts7.1.0-beta':
+    resolution: {integrity: sha512-MnD5Bv48TdIcTpNavsg7PV6RUuwAKhozJ29CZDlKq6oZwGjGulcQLI3Sok6MvvCG7U6v4l9RONKO8BhNXCytvQ==}
+    engines: {node: '>=16.20.0'}
+    cpu: [x64]
+    os: [darwin]
+
+  '@tsrs/linux-arm64-gnu@0.25.0-ts7.1.0-beta':
+    resolution: {integrity: sha512-Mc/YuFQa7APDuX39UMr8NMQHKkCOmEx8SfUXVnew7eljJHKnUkpLHpoQFQA0aKnzIqDAxnNudXhIWB0DjZEX2A==}
+    engines: {node: '>=16.20.0'}
+    cpu: [arm64]
+    os: [linux]
+    libc: [glibc]
+
+  '@tsrs/linux-arm64-musl@0.25.0-ts7.1.0-beta':
+    resolution: {integrity: sha512-ZTZxIv/W4qiqDBCXcDlr8ma76JCO0DQHbUukuhpSpKHz3E2m5FCwLcra/NTqAVniyLU6/RjIOCIcDRpVQvq6cQ==}
+    engines: {node: '>=16.20.0'}
+    cpu: [arm64]
+    os: [linux]
+    libc: [musl]
+
+  '@tsrs/linux-x64-gnu@0.25.0-ts7.1.0-beta':
+    resolution: {integrity: sha512-dGRvubxWQXNP3aow+RLgFAbW3pR4oQ+UPfwrSgdggKCKKL9sAPr8nFGYM50JWAiqGQYSwRJl48AzIC7bHuQ2cQ==}
+    engines: {node: '>=16.20.0'}
+    cpu: [x64]
+    os: [linux]
+    libc: [glibc]
+
+  '@tsrs/linux-x64-musl@0.25.0-ts7.1.0-beta':
+    resolution: {integrity: sha512-zm89HYpXAv36XuXrEsfxAEmGTehY5K0L27+tFmJzxX2CqLwki0AX4FGA78Fy97x8Yk8kOR8FJO2xTvSW9vXBIg==}
+    engines: {node: '>=16.20.0'}
+    cpu: [x64]
+    os: [linux]
+    libc: [musl]
+
+  '@tsrs/win32-arm64@0.25.0-ts7.1.0-beta':
+    resolution: {integrity: sha512-fVqAnHvFD2vxIHxVJEeQq9W63QZUW6WLy1+qFVuMUdM5ViURhjzcuLgOx8EIGqp6qOqFDpuAlNPQmjUpTXYg2g==}
+    engines: {node: '>=16.20.0'}
+    cpu: [arm64]
+    os: [win32]
+
+  '@tsrs/win32-x64@0.25.0-ts7.1.0-beta':
+    resolution: {integrity: sha512-BfRCSI5E0LQ3kim43dBqX3Dq3dmRUI2aMWLGcgUxbTEkyvsESX01tM7u31flzRRajw3zVZwVB95kh5xvUeIOkA==}
+    engines: {node: '>=16.20.0'}
+    cpu: [x64]
+    os: [win32]
 
   '@turbo/darwin-64@2.11.11':
     resolution: {integrity: sha512-HMMeUIEAsmyIbSYn1ySvF/4gGMa0joiTMq4dQDuloIAnOpbtFT3JEiVsYnASdTWDXvplbRbZlqjU1EBeSR9G1A==}
@@ -13362,6 +13353,11 @@ packages:
   tslib@2.8.1:
     resolution: {integrity: sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w==}
 
+  tsrs@0.25.0-ts7.1.0-beta:
+    resolution: {integrity: sha512-J7eAkkriIwHExX2TzwTW6flJ/fmg3U+FDQwmTUkvaYmo02iva69YPmxFaCXGYIlsED3l1Aa62hSsEDJewBrIKA==}
+    engines: {node: '>=16.20.0'}
+    hasBin: true
+
   tsx@4.21.0:
     resolution: {integrity: sha512-5C1sg4USs1lfG0GFb2RLXsdpXqBSEhAaA/0kPL01wxzpMqLILNxIxIOKiILz+cdg/pLnOUxFYOR5yhHU666wbw==}
     engines: {node: '>=18.0.0'}
@@ -13953,18 +13949,6 @@ packages:
 
   ws@8.21.0:
     resolution: {integrity: sha512-Vsp28b7DRcimFQvrqu2Wek3z1iYxDCWqHYB8Qsnk/S4RfaCQzPGPyBNuVjJV3cd6UiKtUtp6sNM77gWvzcCH+g==}
-    engines: {node: '>=10.0.0'}
-    peerDependencies:
-      bufferutil: ^4.0.1
-      utf-8-validate: '>=5.0.2'
-    peerDependenciesMeta:
-      bufferutil:
-        optional: true
-      utf-8-validate:
-        optional: true
-
-  ws@8.22.1:
-    resolution: {integrity: sha512-oyL6OPYme/CmiFvNuGzeoxCJ4nOrZE2O1FwM9MWM1AsGri6nLXB2pg+lNA8aLeXMSav0J6eIVS1j6vUPzUtK9g==}
     engines: {node: '>=10.0.0'}
     peerDependencies:
       bufferutil: ^4.0.1
@@ -16090,7 +16074,7 @@ snapshots:
       '@expo/router-server': 58.0.22(@expo/metro-runtime@58.0.17)(expo-constants@58.0.16)(expo-font@58.0.12)(expo-router@58.0.31)(expo-server@58.1.0)(expo@58.0.25)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(supports-color@10.2.2)
       '@expo/schema-utils': 58.0.3
       '@expo/spawn-async': 1.8.0
-      '@expo/ws-tunnel': 2.0.1(ws@8.22.1)
+      '@expo/ws-tunnel': 2.0.1(ws@8.23.0)
       '@expo/xcpretty': 4.4.7
       '@react-native/asset-utils': 0.88.1
       '@react-native/dev-middleware': 0.88.1(supports-color@10.2.2)
@@ -16128,7 +16112,7 @@ snapshots:
       tinyglobby: 0.2.17
       toqr: 0.1.1
       wrap-ansi: 7.0.0
-      ws: 8.22.1
+      ws: 8.23.0
     optionalDependencies:
       expo-router: 58.0.31(5cc15cad39e0b30ca6a8fef2f988b93a)
       react-native: 0.88.1(@babel/core@7.29.13(supports-color@10.2.2))(@react-native/metro-config@0.87.1(@babel/core@7.29.13(supports-color@10.2.2))(supports-color@10.2.2))(@types/react@19.3.0)(react@19.3.0)(supports-color@10.2.2)
@@ -16479,9 +16463,9 @@ snapshots:
       react-dom: 19.3.0(react@19.3.0)
       react-native-worklets: 0.13.0(@babel/core@7.29.13(supports-color@10.2.2))(@react-native/metro-config@0.87.1(@babel/core@7.29.13(supports-color@10.2.2))(supports-color@10.2.2))(react-native@0.88.1(@babel/core@7.29.13(supports-color@10.2.2))(@react-native/metro-config@0.87.1(@babel/core@7.29.13(supports-color@10.2.2))(supports-color@10.2.2))(@types/react@19.3.0)(react@19.3.0)(supports-color@10.2.2))(react@19.3.0)(supports-color@10.2.2)
 
-  '@expo/ws-tunnel@2.0.1(ws@8.22.1)':
+  '@expo/ws-tunnel@2.0.1(ws@8.23.0)':
     dependencies:
-      ws: 8.22.1
+      ws: 8.23.0
 
   '@expo/xcpretty@4.4.7':
     dependencies:
@@ -16543,40 +16527,13 @@ snapshots:
       google-auth-library: 10.9.1(supports-color@10.2.2)
       p-retry: 4.6.2
       protobufjs: 7.6.6
-      ws: 8.22.1
+      ws: 8.23.0
     optionalDependencies:
       '@modelcontextprotocol/sdk': 1.30.0(@cfworker/json-schema@4.1.6)(supports-color@10.2.2)(zod@4.6.7)
     transitivePeerDependencies:
       - bufferutil
       - supports-color
       - utf-8-validate
-
-  '@hona/strobe-darwin-arm64@0.28.0':
-    optional: true
-
-  '@hona/strobe-darwin-x64@0.28.0':
-    optional: true
-
-  '@hona/strobe-linux-arm64@0.28.0':
-    optional: true
-
-  '@hona/strobe-linux-x64@0.28.0':
-    optional: true
-
-  '@hona/strobe-win32-arm64@0.28.0':
-    optional: true
-
-  '@hona/strobe-win32-x64@0.28.0':
-    optional: true
-
-  '@hona/strobe@0.28.0':
-    optionalDependencies:
-      '@hona/strobe-darwin-arm64': 0.28.0
-      '@hona/strobe-darwin-x64': 0.28.0
-      '@hona/strobe-linux-arm64': 0.28.0
-      '@hona/strobe-linux-x64': 0.28.0
-      '@hona/strobe-win32-arm64': 0.28.0
-      '@hona/strobe-win32-x64': 0.28.0
 
   '@hono/node-server@2.1.0(hono@4.13.1)':
     dependencies:
@@ -18240,7 +18197,7 @@ snapshots:
       tslib: 2.8.1
       webcrypto-core: 1.9.2
 
-  '@pierre/diffs@1.7.0-beta.3(patch_hash=cf52e308adb06d459240f29c4696f5714729b75df32cdf055d987f7007a4c9ab)(@shikijs/themes@4.5.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+  '@pierre/diffs@1.7.0-beta.3(patch_hash=73ca87593949859160059d891a1a6c8327f01c21e672102513918eca4572af9f)(@shikijs/themes@4.5.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
     dependencies:
       '@pierre/highlights': 0.5.0
       '@pierre/patches': 0.0.1
@@ -20417,6 +20374,30 @@ snapshots:
   '@tokenizer/token@0.3.0':
     optional: true
 
+  '@tsrs/darwin-arm64@0.25.0-ts7.1.0-beta':
+    optional: true
+
+  '@tsrs/darwin-x64@0.25.0-ts7.1.0-beta':
+    optional: true
+
+  '@tsrs/linux-arm64-gnu@0.25.0-ts7.1.0-beta':
+    optional: true
+
+  '@tsrs/linux-arm64-musl@0.25.0-ts7.1.0-beta':
+    optional: true
+
+  '@tsrs/linux-x64-gnu@0.25.0-ts7.1.0-beta':
+    optional: true
+
+  '@tsrs/linux-x64-musl@0.25.0-ts7.1.0-beta':
+    optional: true
+
+  '@tsrs/win32-arm64@0.25.0-ts7.1.0-beta':
+    optional: true
+
+  '@tsrs/win32-x64@0.25.0-ts7.1.0-beta':
+    optional: true
+
   '@turbo/darwin-64@2.11.11':
     optional: true
 
@@ -20816,12 +20797,12 @@ snapshots:
     dependencies:
       execa: 5.1.1
 
-  '@vercel/functions@3.11.3(@aws-sdk/credential-provider-web-identity@3.972.88)(ws@8.22.1)':
+  '@vercel/functions@3.11.3(@aws-sdk/credential-provider-web-identity@3.972.88)(ws@8.23.0)':
     dependencies:
       '@vercel/oidc': 4.0.9
     optionalDependencies:
       '@aws-sdk/credential-provider-web-identity': 3.972.88
-      ws: 8.22.1
+      ws: 8.23.0
 
   '@vercel/oidc@3.2.0': {}
 
@@ -20995,13 +20976,13 @@ snapshots:
       '@webassemblyjs/ast': 1.14.1
       '@xtuc/long': 4.2.2
 
-  '@workflow/astro@5.0.9(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(supports-color@8.1.1)(ws@8.22.1)':
+  '@workflow/astro@5.0.9(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(supports-color@8.1.1)(ws@8.23.0)':
     dependencies:
       '@swc/core': 1.15.3(@swc/helpers@0.5.23)
-      '@workflow/builders': 5.1.0(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(supports-color@8.1.1)(ws@8.22.1)
-      '@workflow/rollup': 5.0.9(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(supports-color@8.1.1)(ws@8.22.1)
+      '@workflow/builders': 5.1.0(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(supports-color@8.1.1)(ws@8.23.0)
+      '@workflow/rollup': 5.0.9(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(supports-color@8.1.1)(ws@8.23.0)
       '@workflow/swc-plugin': 5.0.1(@swc/core@1.15.3(@swc/helpers@0.5.23))
-      '@workflow/vite': 5.0.9(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(supports-color@8.1.1)(ws@8.22.1)
+      '@workflow/vite': 5.0.9(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(supports-color@8.1.1)(ws@8.23.0)
       exsolve: 1.2.0
       pathe: 2.0.3
     transitivePeerDependencies:
@@ -21012,10 +20993,10 @@ snapshots:
       - utf-8-validate
       - ws
 
-  '@workflow/builders@5.1.0(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(supports-color@8.1.1)(ws@8.22.1)':
+  '@workflow/builders@5.1.0(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(supports-color@8.1.1)(ws@8.23.0)':
     dependencies:
       '@swc/core': 1.15.3(@swc/helpers@0.5.23)
-      '@workflow/core': 5.5.0(@opentelemetry/api@1.10.0)(supports-color@8.1.1)(ws@8.22.1)
+      '@workflow/core': 5.5.0(@opentelemetry/api@1.10.0)(supports-color@8.1.1)(ws@8.23.0)
       '@workflow/errors': 5.1.1
       '@workflow/swc-plugin': 5.0.1(@swc/core@1.15.3(@swc/helpers@0.5.23))
       '@workflow/utils': 5.1.0
@@ -21035,14 +21016,14 @@ snapshots:
       - utf-8-validate
       - ws
 
-  '@workflow/cli@5.1.0(@aws-sdk/credential-provider-web-identity@3.972.88)(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(react@19.3.1)(supports-color@8.1.1)(ws@8.22.1)':
+  '@workflow/cli@5.1.0(@aws-sdk/credential-provider-web-identity@3.972.88)(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(react@19.3.1)(supports-color@8.1.1)(ws@8.23.0)':
     dependencies:
       '@oclif/core': 4.11.4
       '@oclif/plugin-help': 6.2.37
       '@swc/core': 1.15.3(@swc/helpers@0.5.23)
       '@vercel/cli-auth': 0.0.1
-      '@workflow/builders': 5.1.0(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(supports-color@8.1.1)(ws@8.22.1)
-      '@workflow/core': 5.5.0(@opentelemetry/api@1.10.0)(supports-color@8.1.1)(ws@8.22.1)
+      '@workflow/builders': 5.1.0(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(supports-color@8.1.1)(ws@8.23.0)
+      '@workflow/core': 5.5.0(@opentelemetry/api@1.10.0)(supports-color@8.1.1)(ws@8.23.0)
       '@workflow/errors': 5.1.1
       '@workflow/swc-plugin': 5.0.1(@swc/core@1.15.3(@swc/helpers@0.5.23))
       '@workflow/utils': 5.1.0
@@ -21077,13 +21058,13 @@ snapshots:
       - utf-8-validate
       - ws
 
-  '@workflow/core@5.5.0(@opentelemetry/api@1.10.0)(supports-color@8.1.1)(ws@8.22.1)':
+  '@workflow/core@5.5.0(@opentelemetry/api@1.10.0)(supports-color@8.1.1)(ws@8.23.0)':
     dependencies:
       '@aws-sdk/credential-provider-web-identity': 3.972.88
       '@jridgewell/trace-mapping': 0.3.31
       '@standard-schema/spec': 1.1.0
       '@types/ms': 2.1.0
-      '@vercel/functions': 3.11.3(@aws-sdk/credential-provider-web-identity@3.972.88)(ws@8.22.1)
+      '@vercel/functions': 3.11.3(@aws-sdk/credential-provider-web-identity@3.972.88)(ws@8.23.0)
       '@workflow/errors': 5.1.1
       '@workflow/serde': 5.0.0
       '@workflow/utils': 5.1.0
@@ -21113,10 +21094,10 @@ snapshots:
       '@workflow/world': 5.2.0
       ms: 2.1.3
 
-  '@workflow/nest@5.1.7(@nestjs/common@12.0.4(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@8.1.1))(@nestjs/core@12.0.4(@nestjs/common@12.0.4(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@8.1.1))(reflect-metadata@0.2.2)(rxjs@7.8.2))(@opentelemetry/api@1.10.0)(@swc/cli@0.8.1(@swc/core@1.15.3(@swc/helpers@0.5.23))(chokidar@5.0.0)(supports-color@8.1.1))(@swc/helpers@0.5.23)(supports-color@8.1.1)(ws@8.22.1)':
+  '@workflow/nest@5.1.7(@nestjs/common@12.0.4(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@8.1.1))(@nestjs/core@12.0.4(@nestjs/common@12.0.4(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@8.1.1))(reflect-metadata@0.2.2)(rxjs@7.8.2))(@opentelemetry/api@1.10.0)(@swc/cli@0.8.1(@swc/core@1.15.3(@swc/helpers@0.5.23))(chokidar@5.0.0)(supports-color@8.1.1))(@swc/helpers@0.5.23)(supports-color@8.1.1)(ws@8.23.0)':
     dependencies:
       '@swc/core': 1.15.3(@swc/helpers@0.5.23)
-      '@workflow/builders': 5.1.0(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(supports-color@8.1.1)(ws@8.22.1)
+      '@workflow/builders': 5.1.0(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(supports-color@8.1.1)(ws@8.23.0)
       '@workflow/swc-plugin': 5.0.1(@swc/core@1.15.3(@swc/helpers@0.5.23))
       '@workflow/utils': 5.1.0
       esbuild: 0.28.2
@@ -21133,11 +21114,11 @@ snapshots:
       - utf-8-validate
       - ws
 
-  '@workflow/next@5.1.0(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(next@16.4.0(@babel/core@8.1.2)(@opentelemetry/api@1.10.0)(@playwright/test@1.65.1)(@types/node@26.6.6)(babel-plugin-react-compiler@1.0.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(supports-color@8.1.1)(ws@8.22.1)':
+  '@workflow/next@5.1.0(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(next@16.4.0(@babel/core@8.1.2)(@opentelemetry/api@1.10.0)(@playwright/test@1.65.1)(@types/node@26.6.6)(babel-plugin-react-compiler@1.0.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(supports-color@8.1.1)(ws@8.23.0)':
     dependencies:
       '@swc/core': 1.15.3(@swc/helpers@0.5.23)
-      '@workflow/builders': 5.1.0(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(supports-color@8.1.1)(ws@8.22.1)
-      '@workflow/core': 5.5.0(@opentelemetry/api@1.10.0)(supports-color@8.1.1)(ws@8.22.1)
+      '@workflow/builders': 5.1.0(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(supports-color@8.1.1)(ws@8.23.0)
+      '@workflow/core': 5.5.0(@opentelemetry/api@1.10.0)(supports-color@8.1.1)(ws@8.23.0)
       '@workflow/swc-plugin': 5.0.1(@swc/core@1.15.3(@swc/helpers@0.5.23))
       ignore: 7.0.14
       semver: 7.8.6
@@ -21152,14 +21133,14 @@ snapshots:
       - utf-8-validate
       - ws
 
-  '@workflow/nitro@5.0.9(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(react@19.3.1)(supports-color@8.1.1)(ws@8.22.1)':
+  '@workflow/nitro@5.0.9(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(react@19.3.1)(supports-color@8.1.1)(ws@8.23.0)':
     dependencies:
       '@swc/core': 1.15.3(@swc/helpers@0.5.23)
-      '@workflow/builders': 5.1.0(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(supports-color@8.1.1)(ws@8.22.1)
-      '@workflow/core': 5.5.0(@opentelemetry/api@1.10.0)(supports-color@8.1.1)(ws@8.22.1)
-      '@workflow/rollup': 5.0.9(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(supports-color@8.1.1)(ws@8.22.1)
+      '@workflow/builders': 5.1.0(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(supports-color@8.1.1)(ws@8.23.0)
+      '@workflow/core': 5.5.0(@opentelemetry/api@1.10.0)(supports-color@8.1.1)(ws@8.23.0)
+      '@workflow/rollup': 5.0.9(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(supports-color@8.1.1)(ws@8.23.0)
       '@workflow/swc-plugin': 5.0.1(@swc/core@1.15.3(@swc/helpers@0.5.23))
-      '@workflow/vite': 5.0.9(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(supports-color@8.1.1)(ws@8.22.1)
+      '@workflow/vite': 5.0.9(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(supports-color@8.1.1)(ws@8.23.0)
       '@workflow/web': 5.1.0(@opentelemetry/api@1.10.0)(react@19.3.1)
       exsolve: 1.2.0
       pathe: 2.0.3
@@ -21172,10 +21153,10 @@ snapshots:
       - utf-8-validate
       - ws
 
-  '@workflow/nuxt@5.0.9(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(confbox@0.3.1)(dotenv@17.4.2)(giget@3.3.1)(jiti@2.7.0)(magic-string@1.4.5)(mlly@1.8.2)(oxc-parser@0.148.0)(react@19.3.1)(rolldown@1.2.19)(supports-color@8.1.1)(unplugin@3.7.0(@rspack/core@2.3.0(@swc/helpers@0.5.23))(esbuild@0.28.2)(rolldown@1.2.19)(rollup@4.63.4)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.21.0)(yaml@2.9.1))(webpack@5.105.0(@swc/core@1.15.3(@swc/helpers@0.5.23))(esbuild@0.28.2)(lightningcss@1.33.0)(postcss@8.5.33)))(ws@8.22.1)':
+  '@workflow/nuxt@5.0.9(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(confbox@0.3.1)(dotenv@17.4.2)(giget@3.3.1)(jiti@2.7.0)(magic-string@1.4.5)(mlly@1.8.2)(oxc-parser@0.148.0)(react@19.3.1)(rolldown@1.2.19)(supports-color@8.1.1)(unplugin@3.7.0(@rspack/core@2.3.0(@swc/helpers@0.5.23))(esbuild@0.28.2)(rolldown@1.2.19)(rollup@4.63.4)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.21.0)(yaml@2.9.1))(webpack@5.105.0(@swc/core@1.15.3(@swc/helpers@0.5.23))(esbuild@0.28.2)(lightningcss@1.33.0)(postcss@8.5.33)))(ws@8.23.0)':
     dependencies:
       '@nuxt/kit': 4.6.4(confbox@0.3.1)(dotenv@17.4.2)(giget@3.3.1)(jiti@2.7.0)(magic-string@1.4.5)(mlly@1.8.2)(oxc-parser@0.148.0)(rolldown@1.2.19)(unplugin@3.7.0(@rspack/core@2.3.0(@swc/helpers@0.5.23))(esbuild@0.28.2)(rolldown@1.2.19)(rollup@4.63.4)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.21.0)(yaml@2.9.1))(webpack@5.105.0(@swc/core@1.15.3(@swc/helpers@0.5.23))(esbuild@0.28.2)(lightningcss@1.33.0)(postcss@8.5.33)))
-      '@workflow/nitro': 5.0.9(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(react@19.3.1)(supports-color@8.1.1)(ws@8.22.1)
+      '@workflow/nitro': 5.0.9(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(react@19.3.1)(supports-color@8.1.1)(ws@8.23.0)
     transitivePeerDependencies:
       - '@nuxt/schema'
       - '@opentelemetry/api'
@@ -21195,10 +21176,10 @@ snapshots:
       - utf-8-validate
       - ws
 
-  '@workflow/rollup@5.0.9(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(supports-color@8.1.1)(ws@8.22.1)':
+  '@workflow/rollup@5.0.9(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(supports-color@8.1.1)(ws@8.23.0)':
     dependencies:
       '@swc/core': 1.15.3(@swc/helpers@0.5.23)
-      '@workflow/builders': 5.1.0(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(supports-color@8.1.1)(ws@8.22.1)
+      '@workflow/builders': 5.1.0(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(supports-color@8.1.1)(ws@8.23.0)
       '@workflow/swc-plugin': 5.0.1(@swc/core@1.15.3(@swc/helpers@0.5.23))
       exsolve: 1.2.0
     transitivePeerDependencies:
@@ -21211,14 +21192,14 @@ snapshots:
 
   '@workflow/serde@5.0.0': {}
 
-  '@workflow/sveltekit@5.0.9(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(supports-color@8.1.1)(ws@8.22.1)':
+  '@workflow/sveltekit@5.0.9(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(supports-color@8.1.1)(ws@8.23.0)':
     dependencies:
       '@sveltejs/load-config': 0.2.3
       '@swc/core': 1.15.3(@swc/helpers@0.5.23)
-      '@workflow/builders': 5.1.0(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(supports-color@8.1.1)(ws@8.22.1)
-      '@workflow/rollup': 5.0.9(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(supports-color@8.1.1)(ws@8.22.1)
+      '@workflow/builders': 5.1.0(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(supports-color@8.1.1)(ws@8.23.0)
+      '@workflow/rollup': 5.0.9(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(supports-color@8.1.1)(ws@8.23.0)
       '@workflow/swc-plugin': 5.0.1(@swc/core@1.15.3(@swc/helpers@0.5.23))
-      '@workflow/vite': 5.0.9(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(supports-color@8.1.1)(ws@8.22.1)
+      '@workflow/vite': 5.0.9(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(supports-color@8.1.1)(ws@8.23.0)
       exsolve: 1.2.0
       fs-extra: 11.4.1
       pathe: 2.0.3
@@ -21242,9 +21223,9 @@ snapshots:
     dependencies:
       ms: 2.1.3
 
-  '@workflow/vite@5.0.9(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(supports-color@8.1.1)(ws@8.22.1)':
+  '@workflow/vite@5.0.9(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(supports-color@8.1.1)(ws@8.23.0)':
     dependencies:
-      '@workflow/builders': 5.1.0(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(supports-color@8.1.1)(ws@8.22.1)
+      '@workflow/builders': 5.1.0(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(supports-color@8.1.1)(ws@8.23.0)
     transitivePeerDependencies:
       - '@opentelemetry/api'
       - '@swc/helpers'
@@ -21278,7 +21259,7 @@ snapshots:
 
   '@workflow/world-vercel@5.5.0(@aws-sdk/credential-provider-web-identity@3.972.88)(@opentelemetry/api@1.10.0)':
     dependencies:
-      '@vercel/functions': 3.11.3(@aws-sdk/credential-provider-web-identity@3.972.88)(ws@8.22.1)
+      '@vercel/functions': 3.11.3(@aws-sdk/credential-provider-web-identity@3.972.88)(ws@8.23.0)
       '@vercel/oidc': 3.2.0
       '@vercel/queue': 0.10.0(@opentelemetry/api@1.10.0)
       '@workflow/errors': 5.1.1
@@ -21287,7 +21268,7 @@ snapshots:
       cbor-x: 1.6.9
       ulid: 3.0.2
       undici: 7.30.2
-      ws: 8.22.1
+      ws: 8.23.0
       zod: 4.6.7
     optionalDependencies:
       '@opentelemetry/api': 1.10.0
@@ -25759,7 +25740,7 @@ snapshots:
 
   nitro-core@0.37.2: {}
 
-  nitro@3.0.260610-beta(@electric-sql/pglite@0.5.16)(@vercel/blob@2.8.0)(@vercel/functions@3.11.3(@aws-sdk/credential-provider-web-identity@3.972.88)(ws@8.22.1))(@vercel/queue@0.3.1)(chokidar@5.0.0)(dotenv@17.4.2)(giget@3.3.1)(jiti@2.7.0)(lru-cache@11.5.3)(rollup@4.63.4)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.21.0)(yaml@2.9.1))(wrangler@4.163.0(@cloudflare/workers-types@5.20261116.1)(@types/node@26.6.6)):
+  nitro@3.0.260610-beta(@electric-sql/pglite@0.5.16)(@vercel/blob@2.8.0)(@vercel/functions@3.11.3(@aws-sdk/credential-provider-web-identity@3.972.88)(ws@8.23.0))(@vercel/queue@0.3.1)(chokidar@5.0.0)(dotenv@17.4.2)(giget@3.3.1)(jiti@2.7.0)(lru-cache@11.5.3)(rollup@4.63.4)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.21.0)(yaml@2.9.1))(wrangler@4.163.0(@cloudflare/workers-types@5.20261116.1)(@types/node@26.6.6)):
     dependencies:
       consola: 3.4.2
       crossws: 0.4.12(srvx@0.11.22)
@@ -25774,7 +25755,7 @@ snapshots:
       rolldown: 1.2.15
       srvx: 0.11.22
       unenv: 2.0.0-rc.24
-      unstorage: 2.0.0-alpha.7(@vercel/blob@2.8.0)(@vercel/functions@3.11.3(@aws-sdk/credential-provider-web-identity@3.972.88)(ws@8.22.1))(chokidar@5.0.0)(db0@0.3.4(@electric-sql/pglite@0.5.16))(lru-cache@11.5.3)(ofetch@2.0.0-alpha.3)
+      unstorage: 2.0.0-alpha.7(@vercel/blob@2.8.0)(@vercel/functions@3.11.3(@aws-sdk/credential-provider-web-identity@3.972.88)(ws@8.23.0))(chokidar@5.0.0)(db0@0.3.4(@electric-sql/pglite@0.5.16))(lru-cache@11.5.3)(ofetch@2.0.0-alpha.3)
     optionalDependencies:
       '@vercel/queue': 0.3.1
       dotenv: 17.4.2
@@ -26172,6 +26153,7 @@ snapshots:
       '@oxlint-tsgolint/linux-x64': 7.0.2007
       '@oxlint-tsgolint/win32-arm64': 7.0.2007
       '@oxlint-tsgolint/win32-x64': 7.0.2007
+    optional: true
 
   oxlint@1.94.0(oxlint-tsgolint@7.0.2007):
     optionalDependencies:
@@ -28036,6 +28018,17 @@ snapshots:
 
   tslib@2.8.1: {}
 
+  tsrs@0.25.0-ts7.1.0-beta:
+    optionalDependencies:
+      '@tsrs/darwin-arm64': 0.25.0-ts7.1.0-beta
+      '@tsrs/darwin-x64': 0.25.0-ts7.1.0-beta
+      '@tsrs/linux-arm64-gnu': 0.25.0-ts7.1.0-beta
+      '@tsrs/linux-arm64-musl': 0.25.0-ts7.1.0-beta
+      '@tsrs/linux-x64-gnu': 0.25.0-ts7.1.0-beta
+      '@tsrs/linux-x64-musl': 0.25.0-ts7.1.0-beta
+      '@tsrs/win32-arm64': 0.25.0-ts7.1.0-beta
+      '@tsrs/win32-x64': 0.25.0-ts7.1.0-beta
+
   tsx@4.21.0:
     dependencies:
       esbuild: 0.27.0
@@ -28239,10 +28232,10 @@ snapshots:
 
   unstorage@2.0.0-alpha.10: {}
 
-  unstorage@2.0.0-alpha.7(@vercel/blob@2.8.0)(@vercel/functions@3.11.3(@aws-sdk/credential-provider-web-identity@3.972.88)(ws@8.22.1))(chokidar@5.0.0)(db0@0.3.4(@electric-sql/pglite@0.5.16))(lru-cache@11.5.3)(ofetch@2.0.0-alpha.3):
+  unstorage@2.0.0-alpha.7(@vercel/blob@2.8.0)(@vercel/functions@3.11.3(@aws-sdk/credential-provider-web-identity@3.972.88)(ws@8.23.0))(chokidar@5.0.0)(db0@0.3.4(@electric-sql/pglite@0.5.16))(lru-cache@11.5.3)(ofetch@2.0.0-alpha.3):
     optionalDependencies:
       '@vercel/blob': 2.8.0
-      '@vercel/functions': 3.11.3(@aws-sdk/credential-provider-web-identity@3.972.88)(ws@8.22.1)
+      '@vercel/functions': 3.11.3(@aws-sdk/credential-provider-web-identity@3.972.88)(ws@8.23.0)
       chokidar: 5.0.0
       db0: 0.3.4(@electric-sql/pglite@0.5.16)
       lru-cache: 11.5.3
@@ -28550,18 +28543,18 @@ snapshots:
       '@cloudflare/workerd-linux-arm64': 1.20261116.1
       '@cloudflare/workerd-windows-64': 1.20261116.1
 
-  workflow@5.5.0(2541e88d34cf1b8a54a50599c5a48d48):
+  workflow@5.5.0(01c60294f55545fbc3417f05bb9ff1e6):
     dependencies:
-      '@workflow/astro': 5.0.9(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(supports-color@8.1.1)(ws@8.22.1)
-      '@workflow/cli': 5.1.0(@aws-sdk/credential-provider-web-identity@3.972.88)(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(react@19.3.1)(supports-color@8.1.1)(ws@8.22.1)
-      '@workflow/core': 5.5.0(@opentelemetry/api@1.10.0)(supports-color@8.1.1)(ws@8.22.1)
+      '@workflow/astro': 5.0.9(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(supports-color@8.1.1)(ws@8.23.0)
+      '@workflow/cli': 5.1.0(@aws-sdk/credential-provider-web-identity@3.972.88)(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(react@19.3.1)(supports-color@8.1.1)(ws@8.23.0)
+      '@workflow/core': 5.5.0(@opentelemetry/api@1.10.0)(supports-color@8.1.1)(ws@8.23.0)
       '@workflow/errors': 5.1.1
-      '@workflow/nest': 5.1.7(@nestjs/common@12.0.4(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@8.1.1))(@nestjs/core@12.0.4(@nestjs/common@12.0.4(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@8.1.1))(reflect-metadata@0.2.2)(rxjs@7.8.2))(@opentelemetry/api@1.10.0)(@swc/cli@0.8.1(@swc/core@1.15.3(@swc/helpers@0.5.23))(chokidar@5.0.0)(supports-color@8.1.1))(@swc/helpers@0.5.23)(supports-color@8.1.1)(ws@8.22.1)
-      '@workflow/next': 5.1.0(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(next@16.4.0(@babel/core@8.1.2)(@opentelemetry/api@1.10.0)(@playwright/test@1.65.1)(@types/node@26.6.6)(babel-plugin-react-compiler@1.0.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(supports-color@8.1.1)(ws@8.22.1)
-      '@workflow/nitro': 5.0.9(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(react@19.3.1)(supports-color@8.1.1)(ws@8.22.1)
-      '@workflow/nuxt': 5.0.9(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(confbox@0.3.1)(dotenv@17.4.2)(giget@3.3.1)(jiti@2.7.0)(magic-string@1.4.5)(mlly@1.8.2)(oxc-parser@0.148.0)(react@19.3.1)(rolldown@1.2.19)(supports-color@8.1.1)(unplugin@3.7.0(@rspack/core@2.3.0(@swc/helpers@0.5.23))(esbuild@0.28.2)(rolldown@1.2.19)(rollup@4.63.4)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.21.0)(yaml@2.9.1))(webpack@5.105.0(@swc/core@1.15.3(@swc/helpers@0.5.23))(esbuild@0.28.2)(lightningcss@1.33.0)(postcss@8.5.33)))(ws@8.22.1)
-      '@workflow/rollup': 5.0.9(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(supports-color@8.1.1)(ws@8.22.1)
-      '@workflow/sveltekit': 5.0.9(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(supports-color@8.1.1)(ws@8.22.1)
+      '@workflow/nest': 5.1.7(@nestjs/common@12.0.4(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@8.1.1))(@nestjs/core@12.0.4(@nestjs/common@12.0.4(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@8.1.1))(reflect-metadata@0.2.2)(rxjs@7.8.2))(@opentelemetry/api@1.10.0)(@swc/cli@0.8.1(@swc/core@1.15.3(@swc/helpers@0.5.23))(chokidar@5.0.0)(supports-color@8.1.1))(@swc/helpers@0.5.23)(supports-color@8.1.1)(ws@8.23.0)
+      '@workflow/next': 5.1.0(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(next@16.4.0(@babel/core@8.1.2)(@opentelemetry/api@1.10.0)(@playwright/test@1.65.1)(@types/node@26.6.6)(babel-plugin-react-compiler@1.0.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(supports-color@8.1.1)(ws@8.23.0)
+      '@workflow/nitro': 5.0.9(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(react@19.3.1)(supports-color@8.1.1)(ws@8.23.0)
+      '@workflow/nuxt': 5.0.9(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(confbox@0.3.1)(dotenv@17.4.2)(giget@3.3.1)(jiti@2.7.0)(magic-string@1.4.5)(mlly@1.8.2)(oxc-parser@0.148.0)(react@19.3.1)(rolldown@1.2.19)(supports-color@8.1.1)(unplugin@3.7.0(@rspack/core@2.3.0(@swc/helpers@0.5.23))(esbuild@0.28.2)(rolldown@1.2.19)(rollup@4.63.4)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.21.0)(yaml@2.9.1))(webpack@5.105.0(@swc/core@1.15.3(@swc/helpers@0.5.23))(esbuild@0.28.2)(lightningcss@1.33.0)(postcss@8.5.33)))(ws@8.23.0)
+      '@workflow/rollup': 5.0.9(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(supports-color@8.1.1)(ws@8.23.0)
+      '@workflow/sveltekit': 5.0.9(@opentelemetry/api@1.10.0)(@swc/helpers@0.5.23)(supports-color@8.1.1)(ws@8.23.0)
       '@workflow/typescript-plugin': 5.0.0(typescript@6.0.3)
       '@workflow/utils': 5.1.0
       ms: 2.1.3
@@ -28634,8 +28627,6 @@ snapshots:
   ws@7.5.13: {}
 
   ws@8.21.0: {}
-
-  ws@8.22.1: {}
 
   ws@8.23.0: {}
 

@@ -415,6 +415,7 @@ export function workspaceHandle(
     },
     github: async () => (await capabilities()).github,
     browser: async () => (await capabilities()).browser,
+    language: async () => (await capabilities()).language,
   };
 }
 
@@ -676,20 +677,30 @@ async function changeRange(
     case "run": {
       const range = await runSnapshots(kernel.store, workspace, source.run);
 
+      if (range === null) {
+        const now = await snapshots.capture({ kind: "paths", paths: [] });
+
+        return { from: now, to: now, paths: new Set() };
+      }
+
+      const paths = await readRunPaths(kernel, range.session, source.run);
+
       return {
-        from: range?.from ?? (await snapshots.before(source.run)),
-        to: range?.to ?? (await snapshots.after(source.run)),
-        paths: range === null ? new Set() : await readRunPaths(kernel, range.session, source.run),
+        from: range.from,
+        to: range.to ?? (await snapshots.capture({ kind: "paths", paths: [...paths] })),
+        paths,
       };
     }
 
     case "session": {
-      const [range, paths] = await Promise.all([
-        sessionSnapshots(kernel.store, source.session, snapshots),
-        readAttributedPaths(kernel.store, source.session),
-      ]);
+      const paths = await readAttributedPaths(kernel.store, source.session);
 
-      return { ...range, paths };
+      return {
+        ...(await sessionSnapshots(kernel.store, source.session, () =>
+          snapshots.capture({ kind: "paths", paths: [...paths] }),
+        )),
+        paths,
+      };
     }
 
     default: {
@@ -703,7 +714,7 @@ async function changeRange(
 async function sessionSnapshots(
   store: StoreConnection,
   session: SessionId,
-  snapshots: SnapshotsApi,
+  capture: () => Promise<SnapshotId>,
 ): Promise<{ readonly from: SnapshotId; readonly to: SnapshotId }> {
   const [found, from] = await Promise.all([
     readSession(store, session),
@@ -718,7 +729,7 @@ async function sessionSnapshots(
 
   const [live] = await liveRuns(store, session);
 
-  if (live !== undefined) return { from, to: await snapshots.after(live.record.view.id) };
+  if (live !== undefined) return { from, to: await capture() };
 
   const [last] = found.record.heads
     .flatMap((head) => (head.lastRun === null ? [] : [head.lastRun]))
@@ -734,7 +745,7 @@ async function sessionSnapshots(
 
   return {
     from,
-    to: ended?.record.lastSnapshot ?? ended?.record.snapshot ?? (await snapshots.after(last.id)),
+    to: ended?.record.lastSnapshot ?? ended?.record.snapshot ?? (await capture()),
   };
 }
 

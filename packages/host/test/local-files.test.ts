@@ -14,9 +14,10 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { dev } from "@nyte-ai/core";
 import { asId } from "@nyte-ai/schema";
 import type { FileEvent, ScanFrame, SearchFrame, SearchInput } from "@nyte-ai/schema";
-import { afterEach, assert, describe, expect, it } from "vitest";
+import { afterEach, assert, describe, expect, it, onTestFinished } from "vitest";
 import { localFiles } from "../src/index.ts";
 import type { LocalFiles } from "../src/local/files/files.ts";
 import { sha256 } from "../src/hash.ts";
@@ -416,11 +417,14 @@ describe("localFiles", () => {
       }
     };
 
+    const probing = setInterval(() => void writeFile(join(root, "probe.txt"), "probe"), 50);
+    await until(() => seen.some((event) => event.path === "probe.txt"));
+    clearInterval(probing);
+
     const pending = until(() =>
       seen.some((event) => event.path === "fresh.txt" && event.kind === "created"),
     );
 
-    await new Promise((resolve) => setTimeout(resolve, 150));
     await writeFile(join(root, "out", "built.js"), "x");
     await writeFile(join(root, "fresh.txt"), "new");
     await pending;
@@ -444,13 +448,19 @@ describe("localFiles", () => {
 
   it("watches only the given paths, a missing one from when its directories appear", async () => {
     const root = await folder();
+    const watching = Promise.withResolvers<void>();
+    dev.on((line) => {
+      if (line === `DEV:files watching ${JSON.stringify({ path: root, recursive: false })}`)
+        watching.resolve();
+    });
+    onTestFinished(() => dev.off());
     const controller = new AbortController();
     const files = localFiles(root, { signal: controller.signal });
     const iterator = files.watch({ paths: [".agents/skills"] })[Symbol.asyncIterator]();
     const seen: FileEvent[] = [];
     const pending = iterator.next().then((next) => seen.push(...(next.value ?? [])));
 
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    await watching.promise;
     await writeFile(join(root, "outside.txt"), "x");
     await mkdir(join(root, ".agents", "skills", "fresh"), { recursive: true });
     await writeFile(join(root, ".agents", "skills", "fresh", "SKILL.md"), "fresh");

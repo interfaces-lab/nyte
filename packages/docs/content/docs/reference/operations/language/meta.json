@@ -1,0 +1,25 @@
+{
+  "title": "language",
+  "pages": [
+    "status",
+    "watch-status",
+    "open",
+    "change",
+    "close",
+    "diagnostics",
+    "completion",
+    "resolve-completion",
+    "hover",
+    "definition",
+    "type-definition",
+    "references",
+    "symbols",
+    "prepare-rename",
+    "rename",
+    "code-actions",
+    "resolve-code-action",
+    "format",
+    "signature-help",
+    "inlay-hints"
+  ]
+}

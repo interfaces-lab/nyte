@@ -21,10 +21,11 @@ import {
   MenuTrigger,
 } from "@nyte-ai/ui/menu";
 import { toast } from "@nyte-ai/ui/toast";
+import type { WorkspaceId } from "@nyte-ai/sdk";
 import type { SelectedWorkspace } from "../../contract/bridge.ts";
 import { nyte } from "../../contract/nyte.ts";
 import { keys, queryClient } from "../../data/query-client.ts";
-import { useRecentWorkspaces } from "../../data/workspaces.ts";
+import { folderName, useHomeWorkspace, useRecentWorkspaces } from "../../data/workspaces.ts";
 import { FOLLOW_BROWSE } from "../model.ts";
 import type { WorkbenchBrowse, WorkbenchViewKey } from "../model.ts";
 import { workbench } from "../store.ts";
@@ -46,11 +47,12 @@ export function ExplorerFolderMenu({
   const read = (): WorkbenchBrowse => workbench.getView(viewKey).browse;
   const browse = useSyncExternalStore(workbench.subscribe, read, read);
   const recents = useRecentWorkspaces({ exclude: chatFolder?.path });
+  const home = useHomeWorkspace();
   const pick = nyte.host.pickFolder;
 
   const items = recents.map((folder) => (
     <MenuRadioItem key={folder.path} value={folder.id} icon="folder" meta={folder.hint}>
-      <span title={folder.path}>{folder.name}</span>
+      <span title={folder.path}>{folderName(folder, home)}</span>
     </MenuRadioItem>
   ));
 
@@ -60,7 +62,7 @@ export function ExplorerFolderMenu({
         <MenuTrigger
           render={
             <Button size="sm">
-              <span {...props(styles.name)}>{folderLabel(browsed)}</span>
+              <span {...props(styles.name)}>{folderLabel(browsed, home)}</span>
               <span {...props(styles.chevron)}>
                 <Icon name="chevron-down" size="2xs" />
               </span>
@@ -83,7 +85,7 @@ export function ExplorerFolderMenu({
               <MenuGroup>
                 <MenuGroupLabel>Chat's Folder</MenuGroupLabel>
                 <MenuRadioItem value={CHAT_FOLDER} icon="folder">
-                  <span title={chatFolder.path}>{chatFolder.name}</span>
+                  <span title={chatFolder.path}>{folderName(chatFolder, home)}</span>
                 </MenuRadioItem>
               </MenuGroup>
             )}
@@ -180,10 +182,10 @@ export function ExplorerFolderState({
   }
 }
 
-function folderLabel(browsed: WorkbenchWorkspace): string {
+function folderLabel(browsed: WorkbenchWorkspace, home: WorkspaceId | null | undefined): string {
   switch (browsed.kind) {
     case "ready":
-      return browsed.workspace.name;
+      return folderName(browsed.workspace, home);
     case "none":
       return "No folder";
     case "loading":

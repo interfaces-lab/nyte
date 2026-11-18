@@ -1,4 +1,5 @@
 import { defineConfig } from "oxlint";
+import type { OxlintOverride } from "oxlint";
 
 const rendererCoreImports = [
   {
@@ -83,11 +84,13 @@ export default defineConfig({
     "output/**",
     ".agents/**",
     "scripts/oxlint/anti-slop/**",
+    "scripts/oxlint/landmines/**",
     "**/worker-configuration.d.ts",
     "**/routeTree.gen.ts",
     "**/*.gen.*",
     "**/models.generated*",
     "**/.local/**",
+    "packages/host/test/fixtures/language/**",
   ],
   plugins: ["react", "eslint", "typescript", "unicorn", "import", "oxc"],
   jsPlugins: [
@@ -95,6 +98,8 @@ export default defineConfig({
     "./packages/app/lint/interactions.js",
     "./packages/app/lint/restyle.js",
     "./scripts/oxlint/anti-slop/index.ts",
+    "./scripts/oxlint/landmines/style.ts",
+    "./scripts/oxlint/landmines/testing.ts",
     "./scripts/oxlint/nyte-code/index.ts",
   ],
   categories: {
@@ -118,6 +123,9 @@ export default defineConfig({
     "typescript/consistent-type-assertions": ["error", { assertionStyle: "never" }],
     "unicorn/prefer-includes": "error",
     "eslint/max-lines": ["error", { max: 1000, skipBlankLines: false, skipComments: false }],
+    "landmines-style/no-comments": "error",
+    "landmines-testing/no-fixed-sleep": "error",
+    "landmines-testing/no-unsignaled-poll": "error",
     "nyte-code/declarative-comments": "error",
     "nyte-code/no-cross-package-relative-imports": "error",
     "nyte-code/no-direct-effect": "error",
@@ -125,6 +133,7 @@ export default defineConfig({
     "nyte-code/no-lab-imports": "error",
     "nyte-code/no-of-lookup-names": "error",
     "nyte-code/no-one-off-boolean-helpers": "error",
+    "nyte-code/no-sentinel-unions": "error",
     "nyte-code/require-suppression-reason": "error",
   },
   options: {
@@ -195,10 +204,24 @@ export default defineConfig({
       },
     },
     {
-      // Playwright hands each fixture a `use` callback; it is not React's hook.
       files: ["packages/app/e2e/**", "packages/desktop/e2e/**"],
       rules: {
         "react/rules-of-hooks": "off",
+      },
+    },
+    {
+      files: ["packages/desktop/e2e/**"],
+      excludeFiles: ["packages/desktop/e2e/window-capture.ts"],
+      rules: {
+        "eslint/no-restricted-properties": [
+          "error",
+          ...["screenshot", "screencast"].map((property) => ({
+            object: "page",
+            property,
+            message:
+              "A page capture leaves the window's vibrancy black. Use captureWindow or recordWindow.",
+          })),
+        ],
       },
     },
     {
@@ -267,7 +290,6 @@ export default defineConfig({
       },
     },
     {
-      // node:test's test() returns a promise the runner already tracks.
       files: ["**/*.test.ts", "**/*.test.tsx"],
       rules: {
         "typescript/no-floating-promises": "off",
@@ -455,7 +477,7 @@ export default defineConfig({
       files: ["packages/lab/src/studio/films/**"],
       rules: { "nyte-design/no-raw-colors": "off" },
     },
-    ...desktopProcessFolders.map(({ folder, forbidden }) => ({
+    ...desktopProcessFolders.map(({ folder, forbidden }): OxlintOverride => ({
       files: [`packages/desktop/src/${folder}/**`],
       rules: {
         "eslint/no-restricted-imports": [

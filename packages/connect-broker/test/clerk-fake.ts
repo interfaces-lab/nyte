@@ -1,3 +1,11 @@
+/** The JWT header Clerk signs a session token with; `@clerk/backend` refuses a session token without the session category. */
+export const SESSION_TOKEN_HEADER = {
+  alg: "RS256",
+  kid: "ins_test",
+  typ: "JWT",
+  cat: "cl_B7d4PD111AAA",
+} as const;
+
 export interface FakeUser {
   banned: boolean;
   locked: boolean;

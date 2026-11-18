@@ -55,10 +55,10 @@ export const gitOperations = {
     OPERATIONS["git.commit"].input,
     {
       workspace,
-      input: { message: "Fix the parser.", files: ["a.ts"] },
+      input: { message: "Fix the parser.", files: { kind: "paths", paths: ["a.ts"] } },
       options: { expect: gitRevision },
     },
-    { workspace, input: { message: "Fix.", files: "some" } },
+    { workspace, input: { message: "Fix.", files: "staged" } },
   ),
   "git.branch input": operation(
     OPERATIONS["git.branch"].input,

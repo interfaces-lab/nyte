@@ -20,7 +20,9 @@ export function useHostEvents(): void {
     const showHostProcess = followHostProcess();
 
     if (nyte.host.hostProcess !== undefined)
-      void queryClient.fetchQuery(hostProcessQuery).then((state) => showHostProcess("reply", state));
+      void queryClient
+        .fetchQuery(hostProcessQuery)
+        .then((state) => showHostProcess("reply", state));
 
     const reconnect = (): void => {
       if (document.visibilityState !== "hidden") currentConnection()?.retry();

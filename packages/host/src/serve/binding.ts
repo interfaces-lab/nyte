@@ -25,6 +25,7 @@ import type {
   GitApi,
   GitHubApi,
   Job,
+  LanguageApi,
   Login,
   Page,
   Receipt,
@@ -123,6 +124,9 @@ export function bindConnection(connection: Connection, options: BindingOptions):
 
   const browser = async (id: WorkspaceId): Promise<BrowserApi> =>
     available(await workspace(id).browser(), "browser");
+
+  const language = async (id: WorkspaceId): Promise<LanguageApi> =>
+    available(await workspace(id).language(), "language");
 
   const tailnet = (): TailnetControl =>
     options.tailnet ?? fail("unavailable", "This host runs no tailnet node.");
@@ -473,6 +477,8 @@ export function bindConnection(connection: Connection, options: BindingOptions):
     "workspace.git": async ({ workspace: id }) => capabilityWire(await workspace(id).git()),
     "workspace.github": async ({ workspace: id }) => capabilityWire(await workspace(id).github()),
     "workspace.browser": async ({ workspace: id }) => capabilityWire(await workspace(id).browser()),
+    "workspace.language": async ({ workspace: id }) =>
+      capabilityWire(await workspace(id).language()),
 
     "jobs.start": async ({ workspace: id, command, session, title, pty, id: job }) =>
       startedJob(await workspace(id).jobs.start({ command, session, title, pty, id: job })),
@@ -556,6 +562,42 @@ export function bindConnection(connection: Connection, options: BindingOptions):
     "git.checkout": async ({ workspace: id, input, options }) =>
       (await git(id)).checkout(input, options),
     "git.push": async ({ workspace: id, input, options }) => (await git(id)).push(input, options),
+
+    "language.status": async ({ workspace: id }) => (await language(id)).status(),
+    "language.watchStatus": async ({ workspace: id }) => (await language(id)).watchStatus(),
+    "language.open": async ({ workspace: id, path, text, version }) =>
+      (await language(id)).open({ path, text, version }),
+    "language.change": async ({ workspace: id, path, version, changes }) =>
+      (await language(id)).change({ path, version, changes }),
+    "language.close": async ({ workspace: id, path }) => (await language(id)).close({ path }),
+    "language.diagnostics": async ({ workspace: id }) => (await language(id)).diagnostics(),
+    "language.completion": async ({ workspace: id, path, position, trigger }) =>
+      (await language(id)).completion({ path, position, trigger }),
+    "language.resolveCompletion": async ({ workspace: id, token }) =>
+      (await language(id)).resolveCompletion({ token }),
+    "language.hover": async ({ workspace: id, path, position }) =>
+      (await language(id)).hover({ path, position }),
+    "language.definition": async ({ workspace: id, path, position }) =>
+      (await language(id)).definition({ path, position }),
+    "language.typeDefinition": async ({ workspace: id, path, position }) =>
+      (await language(id)).typeDefinition({ path, position }),
+    "language.references": async ({ workspace: id, path, position, includeDeclaration }) =>
+      (await language(id)).references({ path, position, includeDeclaration }),
+    "language.symbols": async ({ workspace: id, path }) => (await language(id)).symbols({ path }),
+    "language.prepareRename": async ({ workspace: id, path, position }) =>
+      (await language(id)).prepareRename({ path, position }),
+    "language.rename": async ({ workspace: id, path, position, name }) =>
+      (await language(id)).rename({ path, position, name }),
+    "language.codeActions": async ({ workspace: id, path, range }) =>
+      (await language(id)).codeActions({ path, range }),
+    "language.resolveCodeAction": async ({ workspace: id, token }) =>
+      (await language(id)).resolveCodeAction({ token }),
+    "language.format": async ({ workspace: id, path, options }) =>
+      (await language(id)).format({ path, options }),
+    "language.signatureHelp": async ({ workspace: id, path, position }) =>
+      (await language(id)).signatureHelp({ path, position }),
+    "language.inlayHints": async ({ workspace: id, path, range }) =>
+      (await language(id)).inlayHints({ path, range }),
 
     "github.account": () => connection.github.account(),
     "github.signIn": () => connection.github.signIn(),

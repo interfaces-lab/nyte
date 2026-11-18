@@ -172,6 +172,21 @@ Three of these moved for a reason other than size work. The "before" S2 ran a co
 
 What is left, largest first: the host view's first frame, which crosses base64 inside SSE (7 KB of S3 and S4), session rows of about 870 bytes for a 40-character title (S4), and in S6 the welcome (249 bytes) and a resume's answer that names all nine tables when none changed (483).
 
+## Snapshot cost
+
+`pnpm --dir packages/bench bench:snapshots` measures what a tool call's workspace snapshots cost the host. It runs a real host with the local provider over two folders that aren't git repos: 200 files, and 100,000 files (`--files`) holding three nested repos and a `node_modules`. In each folder it makes `write` calls, which name their file, and `bash` calls, which don't. Each row is the host process's CPU, wall time and snapshot store growth for one call, from send to settled.
+
+`bench:snapshots:gate` (`--gate`) fails when a call in the large folder costs more than 3× the CPU of the same call in the small one, when it adds more than 64 KiB to the snapshot store, or when a change the host should have recorded is missing. The comparison is within one run, so the gate needs no saved baseline. In the large folder, `bash` changes aren't recorded: the folder is past the 5,000-entry limit for finding changes no tool named.
+
+| Folder | Tool | Before: CPU per call | Before: store per call | Now: CPU per call | Now: store per call |
+| --- | --- | ---: | ---: | ---: | ---: |
+| 200 files | write | 17.7 ms | 17,847 B | 10.7 ms | 171 B |
+| 200 files | bash | 19.2 ms | 18,698 B | 18.5 ms | 150 B |
+| 100,000 files | write | 1,419 ms | 5,180,829 B | 7.1 ms | 158 B |
+| 100,000 files | bash | 1,426 ms | 5,180,652 B | 7.4 ms | 0 B |
+
+Medians of 8 runs after 2 warmups. Before, every capture walked the folder up to 50,000 entries and wrote a full manifest.
+
 ## Streaming patches
 
 `pnpm --dir packages/bench bench:stream` measures host CPU per streamed text patch on `openHost` over `memoryStore()` and `fakeModels`, in a temp home: K sessions stream at once over H prior messages, with or without one socket client per session. `--profile <prefix>` writes a CPU profile and its measured windows per row.

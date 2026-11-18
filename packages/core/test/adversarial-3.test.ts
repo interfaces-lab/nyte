@@ -380,7 +380,7 @@ describe("ADV F-3", () => {
     const edit = await session.send("Edited.", {
       replace: original.message,
       expect: old?.revision,
-      abandoned: { summarize: {} },
+      abandoned: { kind: "summarize" },
     });
 
     await entered.promise;

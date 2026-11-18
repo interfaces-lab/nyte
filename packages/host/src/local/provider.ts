@@ -4,12 +4,13 @@ import { homedir } from "node:os";
 import { isAbsolute, join, relative, sep } from "node:path";
 import { asId, SdkError } from "@nyte-ai/schema";
 import type { WorkspaceTarget } from "@nyte-ai/schema";
-import type { EnvironmentProvider, ExecutionEnv } from "@nyte-ai/core";
+import type { EnvironmentProvider, ExecutionEnv, SnapshotsApi } from "@nyte-ai/core";
 import { sha256 } from "../hash.ts";
 import { pluginFilesIn } from "../plugins/loader.ts";
 import { localFiles } from "./files/files.ts";
 import { localGit } from "./git/git.ts";
 import { localGitHub } from "./git/github.ts";
+import { localLanguage } from "./language/manager.ts";
 import { folderIdentity } from "./identity.ts";
 import { localExec } from "./process/jobs.ts";
 import { localSnapshots } from "./snapshots/snapshots.ts";
@@ -23,11 +24,14 @@ export function localProvider(options?: {
   readonly gh?: string;
   readonly ripgrep?: string;
   readonly formatter?: string;
+  /** Language servers pinned by program name, such as `{ gopls: "/opt/go/bin/gopls" }`; the rest are found on PATH. */
+  readonly languageServers?: Readonly<Record<string, string>>;
   /** The login shell a pty job without a command runs, read at each start; null or absent is `$SHELL`. */
   readonly shell?: () => string | null;
 }): EnvironmentProvider {
   const home = options?.home ?? homedir();
   const store = join(home, ".nyte", "snapshots");
+  const shared = new Map<string, SnapshotsApi>();
   let state: string | undefined;
   const github = localGitHub({ gh: options?.gh, git: options?.git });
 
@@ -84,13 +88,22 @@ export function localProvider(options?: {
     },
     git: (env) => localGit(env, { git: options?.git }),
     github,
+    language: (env) => localLanguage(env, { servers: options?.languageServers }),
     snapshots(env) {
       state ??= join(realpathOrSelf(home), ".nyte");
 
-      return nests(env.cwd, state) ||
+      if (
+        nests(env.cwd, state) ||
         (nests(state, env.cwd) && !nests(join(state, "worktrees"), env.cwd))
-        ? undefined
-        : localSnapshots(env, { store, git: options?.git });
+      )
+        return undefined;
+      const known = shared.get(env.cwd);
+
+      if (known !== undefined) return known;
+      const snapshots = localSnapshots(env.cwd, { store, git: options?.git });
+      shared.set(env.cwd, snapshots);
+
+      return snapshots;
     },
     worktrees: localWorktrees({ home, git: options?.git }),
     realpath: (env, path) =>

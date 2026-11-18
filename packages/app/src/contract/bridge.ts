@@ -3,6 +3,8 @@ import type { SessionId, Usage, WorkspaceId } from "@nyte-ai/sdk";
 import type { OpenSocket } from "@nyte-ai/sdk/client";
 import type { ConnectionProblem, HostEndpoint } from "./connection.ts";
 import { clientActions } from "./client-actions.ts";
+import type { DesktopApp } from "./desktop-app.ts";
+import type { AppSwitch, ArrivalSubject } from "./desktop-window.ts";
 
 type Disposer = () => void;
 
@@ -120,7 +122,11 @@ export type AppMenuAction =
   | typeof clientActions.splitDown.id
   | typeof clientActions.markdownSource.id
   | typeof clientActions.focusPane.id
-  | typeof clientActions.reloadWindow.id;
+  | typeof clientActions.reloadWindow.id
+  | typeof clientActions.openNyte.id
+  | typeof clientActions.openCode.id
+  | typeof clientActions.openStudio.id
+  | typeof clientActions.flipApp.id;
 
 export interface AppInfo {
   readonly name: string;
@@ -134,7 +140,8 @@ export interface AppInfo {
 export type AppMenuCommand =
   | { readonly kind: "action"; readonly action: AppMenuAction }
   | { readonly kind: "about"; readonly info: AppInfo }
-  | { readonly kind: "open-file"; readonly path: string };
+  | { readonly kind: "open-file"; readonly path: string }
+  | { readonly kind: "arrive"; readonly subject: ArrivalSubject | undefined };
 
 export type ServerState =
   | { readonly kind: "none" }
@@ -571,10 +578,18 @@ export interface HostBridge {
   readonly attention?: AttentionBridge;
   readonly setWorkspacePath?: (path: string | null) => void;
   readonly setUnsavedEdits?: (held: boolean) => void;
+  /** Focuses the app's window on this workspace, or opens one beside this window, and lands it on the subject. */
+  readonly switchApp?: (input: {
+    readonly to: AppSwitch;
+    readonly workspace: SelectedWorkspace | null;
+    readonly subject: ArrivalSubject | null;
+  }) => Promise<void>;
   onEvent(listener: (event: HostEvent) => void): Disposer;
 }
 
 export interface NyteBridge {
+  /** Which of Nyte's apps this window is; a client without window kinds is Nyte. */
+  readonly app?: DesktopApp;
   readonly clientSurface: ClientSurface;
   readonly platform: NodeJS.Platform;
   readonly machineName: string | undefined;

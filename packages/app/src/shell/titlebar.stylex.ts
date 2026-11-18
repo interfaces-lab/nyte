@@ -29,6 +29,18 @@ export const titlebarStyles = create({
     transitionTimingFunction: sidebar.resizeEasing,
   },
   sidebarSlotHidden: { width: 0, transitionDelay: sidebar.resizeDelay },
+  appSlot: { display: "flex" },
+  /**
+   * Beside a docked sidebar, the app switcher takes the room the sidebar's width leaves and adds none to the slot,
+   * so the slot never outgrows the sidebar and the panes stay under their titlebar controls at every zoom.
+   */
+  appSlotDocked: {
+    flexGrow: 1,
+    flexBasis: 0,
+    minWidth: 0,
+    overflowX: "clip",
+    contain: "inline-size",
+  },
   contentArea: {
     display: "flex",
     alignItems: "center",
@@ -49,7 +61,7 @@ export const titlebarStyles = create({
   workbenchSlot: {
     display: "flex",
     alignItems: "center",
-    gap: space.s2,
+    gap: target.gap,
     minWidth: 0,
     height: "100%",
     flexShrink: 1,
@@ -68,20 +80,15 @@ export const titlebarStyles = create({
     borderInlineStartWidth: 0,
     boxShadow: "none",
   },
-  splitGroup: {
-    display: "flex",
-    alignItems: "center",
-    gap: target.gap,
-    paddingInlineEnd: target.gap,
-  },
+  splitGroup: { display: "flex", alignItems: "center", gap: target.gap },
   trailing: {
     display: "flex",
     alignItems: "center",
+    gap: target.gap,
     flexShrink: 0,
     height: "100%",
-    paddingInlineEnd: target.gap,
+    paddingInlineEnd: space.s2_5,
   },
-  trailingLast: { paddingInlineEnd: space.s2_5 },
   actionTrack: {
     display: "inline-flex",
     alignItems: "center",
@@ -92,6 +99,13 @@ export const titlebarStyles = create({
     WebkitAppRegion: "no-drag",
   },
   control: { display: "inline-flex", flexShrink: 0, WebkitAppRegion: "no-drag" },
+  /** Holds the place of a control that doesn't apply, so the controls after it stay put in every window kind. */
+  vacant: { width: control.heightMd, height: control.heightMd, flexShrink: 0 },
+  /** An inactive window's titlebar dims as the system's own controls do; tertiary is the lowest step text may take. */
+  windowInactive: {
+    "--nyte-content-primary": role.contentTertiary,
+    "--nyte-content-secondary": role.contentTertiary,
+  },
   titleSlot: {
     display: "flex",
     alignItems: "center",

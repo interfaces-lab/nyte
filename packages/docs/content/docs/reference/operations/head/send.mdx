@@ -281,20 +281,25 @@ command.`
         "abandoned": {
           "anyOf": [
             {
-              "type": "string",
-              "const": "keep"
+              "type": "object",
+              "required": ["kind"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "keep"
+                }
+              }
             },
             {
               "type": "object",
-              "required": ["summarize"],
+              "required": ["kind"],
               "properties": {
-                "summarize": {
-                  "type": "object",
-                  "properties": {
-                    "instructions": {
-                      "type": "string"
-                    }
-                  }
+                "kind": {
+                  "type": "string",
+                  "const": "summarize"
+                },
+                "instructions": {
+                  "type": "string"
                 }
               }
             }

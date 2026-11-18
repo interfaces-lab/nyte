@@ -9,13 +9,18 @@ import { Value } from "typebox/value";
 import { WINDOW_PAINTED_CHANNEL } from "../src/shared/ipc.ts";
 import { electronExecutable, startE2eHost } from "./host.ts";
 import type { E2eHost } from "./host.ts";
+import { describePhases, timed } from "./phases.ts";
+import type { Phase, Phases } from "./phases.ts";
 import { inspectProcessTree, survivors } from "./process-tree.ts";
 
 const DESKTOP_ROOT = resolve(import.meta.dirname, "..");
 
 const PACKAGES_ROOT = resolve(DESKTOP_ROOT, "..");
 
-const MAIN_ENTRY = resolve(DESKTOP_ROOT, "out-e2e/main/index.js");
+/** The e2e build to launch: `out-e2e`, or a copy of one at `NYTE_E2E_OUT`, so a bench can hold a build still while others rebuild. */
+export const E2E_OUT = process.env["NYTE_E2E_OUT"] ?? resolve(DESKTOP_ROOT, "out-e2e");
+
+const MAIN_ENTRY = resolve(E2E_OUT, "main/index.js");
 
 const REAP_MS = 5_000;
 
@@ -55,6 +60,11 @@ interface LaunchOptions {
   readonly typeAtFirstFrame?: string;
   /** Traces the first window from before it navigates; `globalThis.nyteStopTrace()` in the main process writes the events to `file` as JSON. */
   readonly trace?: { readonly categories: string; readonly file: string };
+  /**
+   * Keeps the app in the background for benches that run while someone uses the machine: no Dock icon, windows
+   * shown without activating, and no window or app focus requests. Pages then need CDP focus emulation to take keys.
+   */
+  readonly background?: boolean;
 }
 
 interface LaunchedDesktop {
@@ -63,6 +73,8 @@ interface LaunchedDesktop {
   readonly home: string;
   readonly host: E2eHost;
   readonly output: readonly string[];
+  /** Where this launch spent its time until the shell showed: the host's start when it started one, then Electron's. It prints Electron's. */
+  readonly phases: Phases;
   close(): Promise<void>;
 }
 
@@ -108,6 +120,7 @@ function launchEnvironment(options: LaunchOptions, host: E2eHost) {
   };
 }
 
+/** Launches without colour-scheme emulation: the window's vibrancy follows the native theme, so the page must too. */
 export async function launchDesktop(options: LaunchOptions): Promise<LaunchedDesktop> {
   await assertBuilt();
   const root = await mkdtemp(join(options.parentDirectory, "desktop-"));
@@ -136,9 +149,14 @@ export async function launchDesktop(options: LaunchOptions): Promise<LaunchedDes
       ? ""
       : `const traced = [];\nlet traceSession;\napp.on("web-contents-created", (_, contents) => {\n  if (traceSession !== undefined || contents.getType() !== "window") return;\n  traceSession = contents.debugger;\n  traceSession.attach("1.3");\n  traceSession.on("message", (_, method, params) => {\n    if (method === "Tracing.dataCollected") traced.push(...params.value);\n  });\n  void traceSession.sendCommand("Tracing.start", { categories: ${JSON.stringify(options.trace.categories)}, transferMode: "ReportEvents" });\n});\nglobalThis.nyteStopTrace = () => new Promise((resolve) => {\n  traceSession.on("message", (_, method) => {\n    if (method === "Tracing.tracingComplete") writeFile(${JSON.stringify(options.trace.file)}, JSON.stringify(traced)).then(resolve);\n  });\n  void traceSession.sendCommand("Tracing.end");\n});\n`;
 
+  const background =
+    options.background === true
+      ? `if (process.platform === "darwin") app.whenReady().then(() => app.setActivationPolicy("accessory"));\nBrowserWindow.prototype.show = function () { this.showInactive(); };\nBrowserWindow.prototype.focus = function () {};\nBrowserWindow.prototype.moveTop = function () {};\napp.focus = () => {};\n`
+      : "";
+
   await writeFile(
     join(root, "environment.mjs"),
-    `import { app, ipcMain } from "electron";\nimport { writeFile } from "node:fs/promises";\napp.setPath("appData", ${JSON.stringify(appData)});\napp.setPath("userData", ${JSON.stringify(join(appData, "user-data"))});\n${downloads}${typing}${tracing}`,
+    `import { app, BrowserWindow, ipcMain } from "electron";\nimport { writeFile } from "node:fs/promises";\napp.setPath("appData", ${JSON.stringify(appData)});\napp.setPath("userData", ${JSON.stringify(join(appData, "user-data"))});\n${downloads}${typing}${tracing}${background}`,
   );
   await writeFile(
     join(root, "entry.mjs"),
@@ -168,13 +186,15 @@ export async function launchDesktop(options: LaunchOptions): Promise<LaunchedDes
       output,
     }));
 
+  const phases: Phase[] = [];
+
   const stopHost = (): Promise<void> =>
     options.host === undefined ? host.close() : Promise.resolve();
 
   if (options.hostDelayMs !== undefined) await host.hold(options.hostDelayMs);
 
-  const application = await _electron
-    .launch({
+  const application = await timed(phases, "electron launch", async () =>
+    _electron.launch({
       executablePath: await electronExecutable(),
       args: [
         root,
@@ -183,15 +203,17 @@ export async function launchDesktop(options: LaunchOptions): Promise<LaunchedDes
         ...(process.env.NYTE_E2E_60FPS === "1"
           ? ["--enable-features=ThrottleMainFrameTo60Hz"]
           : []),
+        ...(process.env.NYTE_E2E_SWITCHES?.split(" ").filter((entry) => entry !== "") ?? []),
       ],
       cwd: DESKTOP_ROOT,
       env: launchEnvironment(options, host),
+      colorScheme: null,
       timeout: 30_000,
-    })
-    .catch(async (cause: unknown) => {
-      await stopHost();
-      throw cause;
-    });
+    }),
+  ).catch(async (cause: unknown) => {
+    await stopHost();
+    throw cause;
+  });
 
   const child = application.process();
 
@@ -218,10 +240,21 @@ export async function launchDesktop(options: LaunchOptions): Promise<LaunchedDes
   };
 
   try {
-    const page = await application.firstWindow();
-    await page.locator("[data-nyte-shell]").waitFor({ state: "visible", timeout: 30_000 });
+    const page = await timed(phases, "first window", () => application.firstWindow());
+    await timed(phases, "shell visible", () =>
+      page.locator("[data-nyte-shell]").waitFor({ state: "visible", timeout: 30_000 }),
+    );
+    process.stdout.write(`desktop launch: ${describePhases(phases)}\n`);
 
-    return { application, page, home: options.home, host, output, close };
+    return {
+      application,
+      page,
+      home: options.home,
+      host,
+      output,
+      phases: options.host === undefined ? [...host.phases, ...phases] : phases,
+      close,
+    };
   } catch (cause) {
     await quit();
     await stopHost();

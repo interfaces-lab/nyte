@@ -487,6 +487,7 @@ export interface PackagedDesktop {
   close(): Promise<void>;
 }
 
+/** Launches without colour-scheme emulation: the window's vibrancy follows the native theme, so the page must too. */
 export async function launchPackaged(input: {
   readonly executable: string;
   readonly home: string;
@@ -515,6 +516,7 @@ export async function launchPackaged(input: {
       USERPROFILE: input.home,
       NYTE_MODELS_URL: `${input.model}/catalog`,
     },
+    colorScheme: null,
     timeout: 30_000,
   });
 

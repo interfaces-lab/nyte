@@ -14,7 +14,7 @@ import { WORKSPACE_TRUST } from "../env/trust.ts";
 import { dropScans, readTrust, trustChanged } from "../env/workspaces.ts";
 import { commit } from "../watch/commit.ts";
 import { headRef, kvRef, sessionRef } from "../store/refs.ts";
-import { sealText } from "../store/secrets.ts";
+import { openText, sealText } from "../store/secrets.ts";
 import {
   attempt,
   EMPTY_REVISION,
@@ -58,7 +58,10 @@ export function settingHandle<T>(
   const { session, signal } = input;
   const { id } = definition;
 
-  const get = (): Promise<T> => readSetting(kernel.store, definition, session);
+  const get = (): Promise<T> =>
+    definition.secret === true
+      ? readOpenedSetting(kernel, definition)
+      : readSetting(kernel.store, definition, session);
 
   return {
     get,
@@ -156,6 +159,33 @@ async function storeHostValue(
     ...[...kernel.plugins.runtimes().keys()].map((session) => publishCatalog(kernel, session)),
     publishSettings(kernel),
   ]);
+}
+
+async function readOpenedSetting<T>(kernel: Kernel, definition: SettingDefinition<T>): Promise<T> {
+  const stored = await readKv(kernel.store, kvRef("host", "settings", definition.id));
+
+  if (stored === undefined) return definition.default;
+
+  const opened = isJsonObject(stored)
+    ? Object.fromEntries(
+        await Promise.all(
+          Object.entries(stored).map(
+            async (entry) => [entry[0], await openSecretEntry(kernel, entry[1])] as const,
+          ),
+        ),
+      )
+    : stored;
+
+  const checked = await check(definition.schema, opened);
+
+  return checked.kind === "valid" ? checked.value : definition.default;
+}
+
+async function openSecretEntry(kernel: Kernel, entry: Json): Promise<Json> {
+  if (!isJsonObject(entry) || entry.secret !== true) return entry;
+  const value = await openText(kernel, entry).catch(() => undefined);
+
+  return value === undefined ? { secret: true } : { secret: true, value };
 }
 
 async function sealSecretEntries(

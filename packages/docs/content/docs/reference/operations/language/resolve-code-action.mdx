@@ -1,0 +1,206 @@
+---
+title: language.resolveCodeAction
+description: Resolves a code action to its edit, running its server command if it has one, without applying the edit.
+---
+
+Resolves a code action to the edit it makes. When the action carries a server command, the host runs it and collects every edit the server asks to apply while it runs; nothing is written to disk. A token from an older answer or an earlier server run answers `stale`, a disabled action or a failing command `refused`.
+
+## When to call it
+
+When the user picks a code action, to preview and then apply its edit.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `language` capability. Paths are relative to the workspace, or absolute; answers name files inside the workspace by their relative path and others, such as the standard library, by their absolute one. Lines are zero-based and columns count UTF-16 code units.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "token": {
+    "kind": "codeAction",
+    "server": "4f8c2a1e-0b6d-4e3f-9a7c-5d2e1f0a3b4c",
+    "answer": 7,
+    "item": 0
+  }
+}
+```
+
+Response:
+
+```json
+{
+  "kind": "edit",
+  "edit": {
+    "files": [
+      {
+        "path": "hub/hub.go",
+        "edits": [
+          {
+            "range": {
+              "start": { "line": 76, "utf16Column": 31 },
+              "end": { "line": 76, "utf16Column": 45 }
+            },
+            "text": ""
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+## Errors
+
+- `unavailable` or `denied` when the workspace doesn't offer language intelligence.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `language`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "token"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "token": {
+      "type": "object",
+      "required": ["kind", "server", "answer", "item"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "codeAction"
+        },
+        "server": {
+          "type": "string"
+        },
+        "answer": {
+          "type": "number"
+        },
+        "item": {
+          "type": "number"
+        }
+      }
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind", "edit"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "edit"
+        },
+        "edit": {
+          "type": "object",
+          "required": ["files"],
+          "properties": {
+            "files": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["path", "edits"],
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  },
+                  "edits": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": ["range", "text"],
+                      "properties": {
+                        "range": {
+                          "type": "object",
+                          "required": ["start", "end"],
+                          "properties": {
+                            "start": {
+                              "type": "object",
+                              "required": ["line", "utf16Column"],
+                              "properties": {
+                                "line": {
+                                  "type": "number"
+                                },
+                                "utf16Column": {
+                                  "type": "number"
+                                }
+                              }
+                            },
+                            "end": {
+                              "type": "object",
+                              "required": ["line", "utf16Column"],
+                              "properties": {
+                                "line": {
+                                  "type": "number"
+                                },
+                                "utf16Column": {
+                                  "type": "number"
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "stale"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "reason"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "refused"
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

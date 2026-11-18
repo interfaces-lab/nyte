@@ -615,7 +615,6 @@ describe("waits as store facts", () => {
     await other.kernel.waits.tick(at);
     await until(async () => (resumed.length === 1 ? true : undefined));
     await holder.kernel.waits.refresh();
-    await new Promise((resolve) => setTimeout(resolve, 20));
 
     expect(resumed).toHaveLength(1);
     released.resolve();

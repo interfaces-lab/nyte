@@ -5,6 +5,17 @@ import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures.ts";
 import { markTimes, splitMainThread, startTrace, findThread } from "./main-thread.ts";
 import { chatPane, chatTab, revealChat } from "./ui.ts";
+import {
+  acrossSessions,
+  countWork,
+  difference,
+  overBudget,
+  readCounts,
+  settled,
+  stopCountingWork,
+  summarize,
+} from "./work-counts.ts";
+import type { Counts, WorkBudget } from "./work-counts.ts";
 
 const output = process.env.NYTE_PERF_DIR;
 
@@ -42,7 +53,30 @@ test.use({
   extraChats: Object.fromEntries(CHATS.map((name) => [name, transcript(name)])),
 });
 
-test.skip(output === undefined, "Set NYTE_PERF_DIR to record chat switching.");
+const SWITCH_WORK_BUDGETS = {
+  first: {
+    "render:conversation": 5,
+    "render:transcript-row": 21,
+    "render:composer": 5,
+    "render:agents-tray": 6,
+    "render:window-tab": 2,
+    "select:row": 34,
+    "select:activity": 2,
+    "publish:view": 3,
+    notify: 6,
+  },
+  again: {
+    "render:conversation": 3,
+    "render:transcript-row": 21,
+    "render:composer": 3,
+    "render:agents-tray": 4,
+    "render:window-tab": 2,
+    "select:row": 21,
+    "select:activity": 2,
+    "publish:view": 1,
+    notify: 2,
+  },
+} satisfies Record<string, WorkBudget>;
 
 interface AppMarks {
   readonly requestedMs: number | undefined;
@@ -179,7 +213,6 @@ async function switchTo(page: Page, chat: string): Promise<SwitchTiming> {
   };
 }
 
-/** The app's marks for the chat the switch opened: the one whose transcript painted its last message after the click. */
 async function readAppMarks(page: Page, since: number): Promise<AppMarks> {
   const handle = await page.waitForFunction((after) => {
     const marks = (name: string) =>
@@ -249,9 +282,62 @@ function hotFunctions(
     .slice(0, 12);
 }
 
+async function countedSwitch(page: Page, chat: string): Promise<Counts> {
+  const row = await revealChat(page, chat);
+  const before = await readCounts(page);
+  await row.click();
+  await expect(chatTab(page, chat)).toHaveAttribute("aria-selected", "true");
+  await expect(
+    chatPane(page)
+      .getByText(`Echo: ${lastWord(chat)}`, { exact: true })
+      .first(),
+  ).toBeVisible();
+  await settled(page);
+
+  return acrossSessions(difference(before, await readCounts(page)));
+}
+
+test("each switch between long chats renders and publishes within its budget", async ({
+  desktop,
+}, testInfo) => {
+  const { page } = desktop;
+  await countWork(page);
+  const first: Counts[] = [];
+  const again: Counts[] = [];
+
+  for (const chat of CHATS) first.push(await countedSwitch(page, chat));
+
+  for (const chat of CHATS) again.push(await countedSwitch(page, chat));
+
+  await stopCountingWork(page);
+
+  for (const sample of [...first, ...again])
+    expect(sample["render:conversation"], "the app counted no work").toBeGreaterThan(0);
+
+  const summaries = { first: summarize(first), again: summarize(again) };
+  const receipt = JSON.stringify(
+    { startup: desktop.startup, budgets: SWITCH_WORK_BUDGETS, summaries, first, again },
+    null,
+    2,
+  );
+  await testInfo.attach("work-per-switch", { body: receipt, contentType: "application/json" });
+
+  if (output !== undefined) {
+    await mkdir(output, { recursive: true });
+    await writeFile(join(output, "chat-switching-work.json"), receipt);
+  }
+
+  expect([
+    ...overBudget("first visit, median", summaries.first.median, SWITCH_WORK_BUDGETS.first),
+    ...overBudget("second visit, median", summaries.again.median, SWITCH_WORK_BUDGETS.again),
+  ]).toEqual([]);
+});
+
 test("measures how long switching between long chats takes to paint the last message", async ({
   desktop,
 }, testInfo) => {
+  test.skip(output === undefined, "Set NYTE_PERF_DIR to record chat switching.");
+
   if (output === undefined) return;
   test.setTimeout(600_000);
   const { page } = desktop;

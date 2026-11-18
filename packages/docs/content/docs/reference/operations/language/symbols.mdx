@@ -1,0 +1,206 @@
+---
+title: language.symbols
+description: Lists a document's symbols in document order with their depth.
+---
+
+Lists a document's outline as rows in document order: each symbol with its kind, detail, full range and name range, and its depth, 0 at the top level, with a child right after its parent. A file no server handles, or whose server is `missing` or `failed`, answers empty rather than failing; [`language.status`](/docs/reference/operations/language/status) says why.
+
+## When to call it
+
+For a structure panel, breadcrumbs or a file's symbol picker.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `language` capability. Paths are relative to the workspace, or absolute; answers name files inside the workspace by their relative path and others, such as the standard library, by their absolute one. Lines are zero-based and columns count UTF-16 code units.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "path": "hub/stats.go"
+}
+```
+
+Response:
+
+```json
+[
+  {
+    "name": "Counts",
+    "detail": "struct{...}",
+    "kind": "struct",
+    "range": { "start": { "line": 5, "utf16Column": 5 }, "end": { "line": 9, "utf16Column": 1 } },
+    "selection": {
+      "start": { "line": 5, "utf16Column": 5 },
+      "end": { "line": 5, "utf16Column": 11 }
+    },
+    "depth": 0,
+    "deprecated": false
+  },
+  {
+    "name": "Submitted",
+    "detail": "int",
+    "kind": "field",
+    "range": { "start": { "line": 6, "utf16Column": 1 }, "end": { "line": 6, "utf16Column": 14 } },
+    "selection": {
+      "start": { "line": 6, "utf16Column": 1 },
+      "end": { "line": 6, "utf16Column": 10 }
+    },
+    "depth": 1,
+    "deprecated": false
+  }
+]
+```
+
+## Errors
+
+- `unavailable` or `denied` when the workspace doesn't offer language intelligence.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `language`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "path"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "path": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["name", "detail", "kind", "range", "selection", "depth", "deprecated"],
+    "properties": {
+      "name": {
+        "type": "string"
+      },
+      "detail": {
+        "type": "string"
+      },
+      "kind": {
+        "enum": [
+          "file",
+          "module",
+          "namespace",
+          "package",
+          "class",
+          "method",
+          "property",
+          "field",
+          "constructor",
+          "enum",
+          "interface",
+          "function",
+          "variable",
+          "constant",
+          "string",
+          "number",
+          "boolean",
+          "array",
+          "object",
+          "key",
+          "null",
+          "enumMember",
+          "struct",
+          "event",
+          "operator",
+          "typeParameter"
+        ]
+      },
+      "range": {
+        "type": "object",
+        "required": ["start", "end"],
+        "properties": {
+          "start": {
+            "type": "object",
+            "required": ["line", "utf16Column"],
+            "properties": {
+              "line": {
+                "type": "number"
+              },
+              "utf16Column": {
+                "type": "number"
+              }
+            }
+          },
+          "end": {
+            "type": "object",
+            "required": ["line", "utf16Column"],
+            "properties": {
+              "line": {
+                "type": "number"
+              },
+              "utf16Column": {
+                "type": "number"
+              }
+            }
+          }
+        }
+      },
+      "selection": {
+        "type": "object",
+        "required": ["start", "end"],
+        "properties": {
+          "start": {
+            "type": "object",
+            "required": ["line", "utf16Column"],
+            "properties": {
+              "line": {
+                "type": "number"
+              },
+              "utf16Column": {
+                "type": "number"
+              }
+            }
+          },
+          "end": {
+            "type": "object",
+            "required": ["line", "utf16Column"],
+            "properties": {
+              "line": {
+                "type": "number"
+              },
+              "utf16Column": {
+                "type": "number"
+              }
+            }
+          }
+        }
+      },
+      "depth": {
+        "type": "number"
+      },
+      "deprecated": {
+        "type": "boolean"
+      }
+    }
+  }
+}
+```
+
+{/* generated:end */}

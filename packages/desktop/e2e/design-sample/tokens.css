@@ -1,0 +1,92 @@
+/* Tide, a quiet companion for the night sky. Every colour is a pair: its value by day, and under [data-theme="night"] by night. */
+:root {
+  --sky: #eef1fb;
+  --plate: #ffffff;
+  --plate-raised: #f5f6fc;
+  --ink: #1b2036;
+  --ink-soft: #5d6480;
+  --ink-faint: #9aa0b8;
+  --line: #1b203614;
+  --moon: #647fcb;
+  --moon-rim: #c1d0f6;
+  --moonlight: #fff9d8;
+  --accent: #3f58a8;
+  --on-accent: #ffffff;
+
+  --radius-card: 28px;
+  --radius-tile: 20px;
+  --radius-control: 14px;
+}
+
+[data-theme="night"] {
+  --sky: #0c1020;
+  --plate: #161b2e;
+  --plate-raised: #1e2540;
+  --ink: #f3f1e7;
+  --ink-soft: #a9b0cb;
+  --ink-faint: #6b7391;
+  --line: #ffffff1a;
+  --moon: #7a93d6;
+  --accent: #c1d0f6;
+  --on-accent: #0c1020;
+}
+
+[data-frame],
+[data-frame] * {
+  box-sizing: border-box;
+  margin: 0;
+}
+
+[data-frame] {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: var(--ink);
+  background: var(--sky);
+  font-family: Inter, system-ui;
+}
+
+.display {
+  font-size: 34px;
+  font-weight: 650;
+  line-height: 38px;
+  letter-spacing: -0.7px;
+}
+
+.title {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 26px;
+  letter-spacing: -0.3px;
+}
+
+.body {
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 22px;
+}
+
+.label {
+  font-size: 13px;
+  font-weight: 550;
+  line-height: 18px;
+}
+
+.caption {
+  font-size: 11px;
+  font-weight: 550;
+  line-height: 14px;
+  letter-spacing: 0.4px;
+}
+
+.ink {
+  color: var(--ink);
+}
+
+.ink-soft {
+  color: var(--ink-soft);
+}
+
+.ink-faint {
+  color: var(--ink-faint);
+}

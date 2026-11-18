@@ -42,7 +42,7 @@ import { markdownOrigin, serializeMarkdown } from "./markdown-serialize.ts";
 import { markdownStyles } from "./markdown.stylex.ts";
 
 interface MarkdownBuffer {
-  readonly getSnapshot: () => { readonly contents: string };
+  readonly text: () => string;
   readonly subscribe: (listener: () => void) => () => void;
   readonly edit: (contents: string) => void;
 }
@@ -105,10 +105,7 @@ const styles = create({
 export function MarkdownDocument(input: MarkdownDocumentProps): ReactElement {
   const [session] = useState(() => createMarkdownSession(input));
 
-  const contents = useSyncExternalStore(
-    input.buffer.subscribe,
-    () => input.buffer.getSnapshot().contents,
-  );
+  const contents = useSyncExternalStore(input.buffer.subscribe, () => input.buffer.text());
 
   const frontmatter = readFrontmatter(contents);
 
@@ -134,8 +131,8 @@ export function MarkdownDocument(input: MarkdownDocumentProps): ReactElement {
 }
 
 function createMarkdownSession(input: MarkdownDocumentProps) {
-  const parsed = parseMarkdown(input.buffer.getSnapshot().contents);
-  let written = input.buffer.getSnapshot().contents;
+  const parsed = parseMarkdown(input.buffer.text());
+  let written = input.buffer.text();
   const base = new URL("file:///");
   base.pathname = input.path;
 
@@ -159,7 +156,7 @@ function createMarkdownSession(input: MarkdownDocumentProps) {
   let origin = markdownOrigin(editor.state.doc, parsed.layout);
 
   const reload = (): void => {
-    const contents = input.buffer.getSnapshot().contents;
+    const contents = input.buffer.text();
 
     if (contents === written) return;
     written = contents;

@@ -96,7 +96,6 @@ export const bashProperties = {
   timeout: Type.Optional(
     Type.Integer({
       minimum: 0,
-      // AbortSignal.timeout fires at once above a 32-bit signed delay.
       maximum: 2_147_483_647,
       description: `Milliseconds before a foreground command is stopped; 0 for no limit. Default ${FOREGROUND_TIMEOUT_MS}. Background commands have no limit.`,
     }),

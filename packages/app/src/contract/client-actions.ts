@@ -215,6 +215,34 @@ export const clientActions = {
     chord: "none",
     scope: "workspace",
   },
+  openNyte: {
+    id: "open-nyte",
+    label: "Nyte",
+    key: "1",
+    chord: "control-shift",
+    scope: "window",
+  },
+  openCode: {
+    id: "open-code",
+    label: "Code",
+    key: "2",
+    chord: "control-shift",
+    scope: "window",
+  },
+  openStudio: {
+    id: "open-studio",
+    label: "Studio",
+    key: "3",
+    chord: "control-shift",
+    scope: "window",
+  },
+  flipApp: {
+    id: "flip-app",
+    label: "Switch to Last App",
+    key: "space",
+    chord: "control-shift",
+    scope: "window",
+  },
 } as const satisfies Record<string, ActionDefinition>;
 
 type ClientAction = (typeof clientActions)[keyof typeof clientActions];
@@ -252,7 +280,7 @@ export function resolveClientAction(
   capabilities: ClientCapabilities,
 ): ClientAction | undefined {
   if (event.isComposing) return undefined;
-  const key = event.code === "Period" ? "." : event.key.toLowerCase();
+  const key = pressedKey(event);
 
   return Object.values(clientActions).find((action) => {
     if (!("chord" in action) || !clientActionAvailable(action, stage, capabilities)) return false;
@@ -260,7 +288,7 @@ export function resolveClientAction(
 
     if (event.defaultPrevented && !terminal) return false;
 
-    if (terminal ? event.code !== "Backquote" : key !== action.key) return false;
+    if (key !== action.key) return false;
 
     if (terminal) {
       return (
@@ -279,6 +307,16 @@ export function resolveClientAction(
 
     return !event.altKey && event.shiftKey === (action.chord === "primary-shift");
   });
+}
+
+function pressedKey(event: Pick<KeyboardEvent, "key" | "code">): string {
+  if (event.code === "Period") return ".";
+
+  if (event.code === "Backquote") return "`";
+
+  if (event.code === "Space") return "space";
+
+  return /^Digit(\d)$/.exec(event.code)?.[1] ?? event.key.toLowerCase();
 }
 
 type TabShortcut =
@@ -311,7 +349,7 @@ export function clientActionKeys(action: ActionDefinition, mac: boolean): string
   if (action.chord === undefined) return [];
   const primary = mac ? "⌘" : "Ctrl";
   const shift = mac ? "⇧" : "Shift";
-  const key = action.key.toUpperCase();
+  const key = acceleratorKey(action.key);
 
   switch (action.chord) {
     case "none":
@@ -371,13 +409,17 @@ export function clientActionAriaShortcut(action: ActionDefinition, mac: boolean)
     .join("+");
 }
 
+function acceleratorKey(key: string): string {
+  return key === "space" ? "Space" : key.toUpperCase();
+}
+
 export function clientActionAccelerator(action: ActionDefinition): string {
   if (action.chord === undefined) return "";
 
-  if (action.chord === "none") return action.key.toUpperCase();
+  if (action.chord === "none") return acceleratorKey(action.key);
   const primary = action.chord.startsWith("primary") ? "CommandOrControl" : "Control";
   const shift = action.chord.endsWith("shift") ? "Shift+" : "";
   const alt = action.chord === "primary-alt" ? "Alt+" : "";
 
-  return `${shift}${alt}${primary}+${action.key.toUpperCase()}`;
+  return `${shift}${alt}${primary}+${acceleratorKey(action.key)}`;
 }

@@ -289,7 +289,7 @@ const noRestyle = {
         if (BYPASSES.has(attribute)) {
           const contract = restyleContracts[component];
 
-          if (contract?.allow === "host") return;
+          if (contract?.host === true) return;
 
           context.report({
             node,
@@ -315,7 +315,7 @@ const noRestyle = {
             restyleContracts[`${component}[variant=${variant.value}]`]) ||
           restyleContracts[component];
 
-        if (!contract || contract.allow === "host") return;
+        if (!contract || contract.host === true) return;
         uses.push({ node, component, contract });
       },
       "Program:exit"() {

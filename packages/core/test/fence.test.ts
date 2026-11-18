@@ -282,7 +282,7 @@ describe("move receipts and summary guards (ADV F-2)", () => {
 
     const receipt = await move(kernel, session.id, main, (await session.tree()).tip, {
       expect: tip?.revision,
-      abandoned: { summarize: {} },
+      abandoned: { kind: "summarize" },
     });
 
     await entered.promise;
@@ -378,7 +378,7 @@ describe("integration of round 2 (§61–§63)", () => {
       id,
       replace: original.message,
       expect: old?.revision,
-      abandoned: { summarize: {} },
+      abandoned: { kind: "summarize" },
     });
 
     const now = await memory.refs.get(headRef(session.id, main));

@@ -5,6 +5,7 @@ import type { AccountBridge, AccountCommand } from "../shared/account/protocol.t
 import { APP_MENU_COMMAND_CHANNEL, APP_MENU_READY_CHANNEL } from "../shared/app-menu.ts";
 import type { AppMenuCommand } from "@nyte-ai/app/contract/bridge.ts";
 import {
+  APP_SWITCH_ARGUMENT,
   BROWSER_BOUNDS_CHANNEL,
   BROWSER_FOCUS_CHANNEL,
   CALL_CHANNEL,
@@ -18,6 +19,7 @@ import {
   UNSAVED_EDITS_CHANNEL,
   VIEWING_CHANNEL,
   WINDOW_FULLSCREEN_CHANNEL,
+  WINDOW_APP_ARGUMENT,
   WINDOW_ID_ARGUMENT,
   WINDOW_OPEN_ARGUMENT,
   WINDOW_PAINTED_CHANNEL,
@@ -37,6 +39,7 @@ import type {
   HostEvent,
 } from "@nyte-ai/app/contract/bridge.ts";
 import { bridgeError } from "@nyte-ai/app/contract/errors.ts";
+import { parseDesktopApp } from "@nyte-ai/app/contract/desktop-app.ts";
 
 exposeClerkBridge();
 
@@ -105,6 +108,7 @@ const bridge = {
   machineName: argumentValue(MACHINE_NAME_ARGUMENT),
   window: {
     id: windowId,
+    app: parseDesktopApp(argumentValue(WINDOW_APP_ARGUMENT)),
     launch:
       launchWindows === undefined
         ? undefined
@@ -205,6 +209,7 @@ const bridge = {
     },
     setUnsavedEdits: (held) => ipcRenderer.send(UNSAVED_EDITS_CHANNEL, held),
     setWorkspacePath: (path) => ipcRenderer.send(WINDOW_WORKSPACE_CHANNEL, path),
+    switchApp: process.argv.includes(APP_SWITCH_ARGUMENT) ? object("host.switchApp") : undefined,
     onEvent(listener: (event: HostEvent) => void) {
       const wrapped = (_event: Electron.IpcRendererEvent, event: HostEvent): void => {
         listener(event);

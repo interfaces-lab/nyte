@@ -24,7 +24,7 @@ test("typing while saving keeps the newer text dirty and acknowledges the saved 
   buffer.edit("second edit");
   pending.resolve({ kind: "saved", version: v2 });
   await saving;
-  expect(buffer.getSnapshot()).toMatchObject({
+  expect({ ...buffer.getSnapshot(), contents: buffer.text() }).toMatchObject({
     contents: "second edit",
     savedContents: "first edit",
     version: "v2",
@@ -41,7 +41,10 @@ test("an external refetch does not advance a dirty file's conflict baseline", as
       return { kind: "stale", current: v2 };
     },
   });
-  expect(buffer.getSnapshot()).toMatchObject({ contents: "my edit", status: { kind: "conflict" } });
+  expect({ ...buffer.getSnapshot(), contents: buffer.text() }).toMatchObject({
+    contents: "my edit",
+    status: { kind: "conflict" },
+  });
 });
 
 test("formatting does not overwrite edits made while the formatter was running", async () => {
@@ -62,7 +65,7 @@ test("formatting does not overwrite edits made while the formatter was running",
   pending.resolve({ kind: "formatted", contents: "formatted old text" });
   await saving;
   expect(writes).toBe(0);
-  expect(buffer.getSnapshot()).toMatchObject({
+  expect({ ...buffer.getSnapshot(), contents: buffer.text() }).toMatchObject({
     contents: "new typing",
     savedContents: "original",
     status: { kind: "idle" },
@@ -81,7 +84,7 @@ test("formatter failure still saves the unformatted draft", async () => {
     },
   });
   expect(written).toEqual(["draft"]);
-  expect(buffer.getSnapshot()).toMatchObject({
+  expect({ ...buffer.getSnapshot(), contents: buffer.text() }).toMatchObject({
     contents: "draft",
     savedContents: "draft",
     status: { kind: "saved" },
@@ -96,7 +99,7 @@ test("failed writes retain formatted text and the old disk version for retry", a
       throw new Error("Read-only file");
     },
   });
-  expect(buffer.getSnapshot()).toMatchObject({
+  expect({ ...buffer.getSnapshot(), contents: buffer.text() }).toMatchObject({
     contents: "formatted",
     savedContents: "original",
     version: "v1",
@@ -109,7 +112,7 @@ test("failed writes retain formatted text and the old disk version for retry", a
       return { kind: "saved", version: v2 };
     },
   });
-  expect(buffer.getSnapshot()).toMatchObject({
+  expect({ ...buffer.getSnapshot(), contents: buffer.text() }).toMatchObject({
     contents: "formatted",
     savedContents: "formatted",
     version: "v2",
@@ -119,11 +122,11 @@ test("failed writes retain formatted text and the old disk version for retry", a
 test("discard adopts the latest disk text, while a clean refetch follows external changes", () => {
   const buffer = createFileDocument(document, "draft");
   buffer.discard({ ...document, contents: "latest", version: v2 });
-  expect(buffer.getSnapshot()).toMatchObject({
+  expect({ ...buffer.getSnapshot(), contents: buffer.text() }).toMatchObject({
     contents: "latest",
     savedContents: "latest",
     version: "v2",
   });
   buffer.observeDisk({ ...document, contents: "later", version: asId<"file-version">("v3") });
-  expect(buffer.getSnapshot().contents).toBe("later");
+  expect(buffer.text()).toBe("later");
 });

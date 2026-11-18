@@ -1,5 +1,5 @@
 import { intent } from "@nyte-ai/ui/surface-theme";
-import { props } from "@stylexjs/stylex";
+import { defaultMarker, props } from "@stylexjs/stylex";
 import { Editor, Extension } from "@tiptap/core";
 import { closeHistory } from "@tiptap/pm/history";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
@@ -117,6 +117,36 @@ function composerLinks(): Plugin {
   });
 }
 
+const SELECTED_MARKER = props(defaultMarker()).className ?? "";
+
+function selectedReferences(): Plugin {
+  return new Plugin({
+    props: {
+      decorations(state) {
+        const selection = state.selection;
+
+        if (selection.empty) return DecorationSet.empty;
+        const decorations: Decoration[] = [];
+        state.doc.nodesBetween(selection.from, selection.to, (node, pos) => {
+          if (
+            composerReference(node) !== undefined &&
+            pos >= selection.from &&
+            pos + node.nodeSize <= selection.to
+          )
+            decorations.push(
+              Decoration.node(pos, pos + node.nodeSize, {
+                "data-composer-selected": "",
+                class: SELECTED_MARKER,
+              }),
+            );
+        });
+
+        return DecorationSet.create(state.doc, decorations);
+      },
+    },
+  });
+}
+
 function composerLinkHandlers(opener: ReferenceOpener | undefined) {
   const intercept = (event: MouseEvent): void => {
     const target = event.target;
@@ -200,7 +230,11 @@ export function useComposerSurface({
           }),
           Extension.create({
             name: "composerPlugins",
-            addProseMirrorPlugins: () => [composerReferencesPlugin(files), composerLinks()],
+            addProseMirrorPlugins: () => [
+              composerReferencesPlugin(files),
+              composerLinks(),
+              selectedReferences(),
+            ],
           }),
           ComposerEditing,
         ],
@@ -267,7 +301,6 @@ function LinkedText({
   ]);
 }
 
-/** Draws a sent message the way the composer lays it out, without an editor: chips, links and line breaks match, and nothing here is editable. */
 function ReadOnlyMessage({ draft }: { readonly draft: string }): ReactElement {
   const opener = useReferenceOpener();
 

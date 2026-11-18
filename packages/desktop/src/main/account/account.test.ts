@@ -39,10 +39,8 @@ function sequence(): () => string {
 describe("account scheme", () => {
   test("each build registers its own callback scheme", () => {
     expect(
-      [null, ...["Nyte", "Nyte Update Test", "Nyte Bench"].map(findPackagedBuild)].map(
-        accountScheme,
-      ),
-    ).toEqual(["nyte-desktop-dev", "nyte-desktop", "nyte-desktop-test", "nyte-desktop-bench"]);
+      [null, ...["Nyte", "Nyte Update Test"].map(findPackagedBuild)].map(accountScheme),
+    ).toEqual(["nyte-desktop-dev", "nyte-desktop", "nyte-desktop-test"]);
   });
 });
 
@@ -140,6 +138,31 @@ describe("packaged renderer files", () => {
         },
       },
       {
+        roots: packaged,
+        url: "nyte-desktop://canvas/board/board.html",
+        expected: {
+          kind: "file",
+          host: "canvas",
+          path: join(root, "board", "board.html"),
+          html: true,
+        },
+      },
+      {
+        roots: packaged,
+        url: "nyte-desktop://canvas/board/assets/board-1.js",
+        expected: {
+          kind: "file",
+          host: "canvas",
+          path: join(root, "board", "assets", "board-1.js"),
+          html: false,
+        },
+      },
+      {
+        roots: packaged,
+        url: "nyte-desktop://canvas/board/libraries/three.js",
+        expected: { kind: "refused", status: 404 },
+      },
+      {
         roots: development,
         url: "nyte-desktop-dev://canvas/assets/main-1.js",
         expected: {
@@ -177,6 +200,11 @@ describe("packaged renderer files", () => {
       {
         roots: packaged,
         url: "nyte-desktop://account/account.html",
+        expected: { kind: "refused", status: 404 },
+      },
+      {
+        roots: packaged,
+        url: "nyte-desktop://account/board/board.html",
         expected: { kind: "refused", status: 404 },
       },
       {

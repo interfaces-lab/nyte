@@ -237,6 +237,8 @@ export function fileStructureLicenses(): Plugin {
 
 const SHELL_DIRECTORY = fileURLToPath(new URL("../canvas/dist/shell/", import.meta.url));
 
+const BOARD_DIRECTORY = fileURLToPath(new URL("../canvas/dist/board/", import.meta.url));
+
 const SHELL_MISSING =
   "packages/canvas/dist/shell is missing. Run `pnpm --dir packages/canvas build` first.";
 
@@ -262,9 +264,14 @@ export function canvasShell(): Plugin {
     configureServer(server) {
       server.middlewares.use("/canvas", (request, response, next) => {
         const pathname = request.url?.split("?", 1)[0] ?? "/";
-        const target = resolve(SHELL_DIRECTORY, `.${normalize(pathname)}`);
+        const board = pathname.startsWith("/board/");
+        const directory = board ? BOARD_DIRECTORY : SHELL_DIRECTORY;
+        const target = resolve(
+          directory,
+          `.${normalize(board ? pathname.slice("/board".length) : pathname)}`,
+        );
 
-        if (!target.startsWith(SHELL_DIRECTORY) || target.endsWith(sep)) {
+        if (!target.startsWith(directory) || target.endsWith(sep)) {
           next();
 
           return;
@@ -304,6 +311,7 @@ export function canvasShell(): Plugin {
       }
 
       await cp(SHELL_DIRECTORY, join(outDir, "canvas"), { recursive: true });
+      await cp(BOARD_DIRECTORY, join(outDir, "canvas", "board"), { recursive: true });
     },
   };
 }

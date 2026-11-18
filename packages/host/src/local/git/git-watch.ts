@@ -1,5 +1,6 @@
 import { lstat } from "node:fs/promises";
 import { isAbsolute, join, relative, sep } from "node:path";
+import { dev } from "@nyte-ai/core";
 import type { Disposer, GitStatus } from "@nyte-ai/schema";
 import type { FeedSink } from "../feed.ts";
 import { createIgnores, watchTree } from "../files/tree.ts";
@@ -132,6 +133,8 @@ export function createWatcher(
       disposers.push(
         watchTree(cwd, { delay: WATCH_DELAY_MS, poll: null, unwatched }, (paths) => {
           void moved(paths).then((outcome) => {
+            dev("git", "watched", { paths: paths.size, outcome });
+
             if (stopped) return;
 
             if (outcome === "repository") restart();

@@ -1,13 +1,13 @@
 import {
   activeEditorFile,
   changesScopeValue,
-  MAXIMIZED_CHAT_LAYOUT,
   MAXIMIZED_WORKBENCH_LAYOUT,
   matchingTab,
+  NARROW_LAYOUT,
   revealWorkbench,
   SPLIT_LAYOUT,
   tabSlot,
-  workbenchShowsChat,
+  workbenchNarrow,
 } from "./model.ts";
 import type {
   EditorGroupId,
@@ -63,6 +63,7 @@ export type WorkbenchViewAction =
   | { readonly kind: "toggle-maximized" }
   | { readonly kind: "maximize" }
   | { readonly kind: "show-chat" }
+  | { readonly kind: "fit"; readonly narrow: boolean }
   | { readonly kind: "set-width"; readonly pixels: number }
   | { readonly kind: "toggle-sidebar"; readonly slot: string }
   | {
@@ -175,17 +176,33 @@ export function reduceView(
     case "toggle-collapsed":
       return { ...state, collapsed: state.collapsed === "floating" ? "compact" : "floating" };
     case "toggle-maximized":
+      if (state.layout.kind === "split") return { ...state, layout: MAXIMIZED_WORKBENCH_LAYOUT };
+
+      if (!state.layout.narrow) return { ...state, layout: SPLIT_LAYOUT };
+
       return {
         ...state,
-        layout: state.layout.kind === "maximized" ? SPLIT_LAYOUT : MAXIMIZED_WORKBENCH_LAYOUT,
+        layout: {
+          ...state.layout,
+          showing: state.layout.showing === "chat" ? "workbench" : "chat",
+        },
       };
     case "maximize":
-      return state.layout.kind === "maximized" && !workbenchShowsChat(state.layout)
+      return state.layout.kind === "maximized" &&
+        state.layout.showing === "workbench" &&
+        !state.layout.narrow
         ? state
         : { ...state, layout: MAXIMIZED_WORKBENCH_LAYOUT };
     case "show-chat":
-      return state.layout.kind === "maximized" && !workbenchShowsChat(state.layout)
-        ? { ...state, layout: MAXIMIZED_CHAT_LAYOUT }
+      return state.layout.kind === "maximized" && state.layout.showing === "workbench"
+        ? { ...state, layout: { ...state.layout, showing: "chat" } }
+        : state;
+    case "fit":
+      if (action.narrow && state.layout.kind === "split")
+        return { ...state, layout: NARROW_LAYOUT };
+
+      return !action.narrow && workbenchNarrow(state.layout)
+        ? { ...state, layout: SPLIT_LAYOUT }
         : state;
     case "set-width": {
       const pixels = Math.round(action.pixels);

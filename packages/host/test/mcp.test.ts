@@ -333,7 +333,13 @@ it("waits for sign-in when the server needs OAuth, and refuses to sign in to a c
 
 it("stops a sign-in at once when its steps end, so the next one can start", async () => {
   let heard = Promise.withResolvers<void>();
-  const silent = createServer(() => heard.resolve());
+  const hungUp = Promise.withResolvers<void>();
+
+  const silent = createServer((_request, response) => {
+    response.once("close", () => hungUp.resolve());
+    heard.resolve();
+  });
+
   await new Promise<void>((resolve) => silent.listen(0, "127.0.0.1", resolve));
   const address = silent.address();
   assert(address !== null && typeof address === "object");
@@ -357,7 +363,7 @@ it("stops a sign-in at once when its steps end, so the next one can start", asyn
 
   expect(await pending).toEqual({ done: true, value: undefined });
   expect(Date.now() - started).toBeLessThan(500);
-  await new Promise((resolve) => setTimeout(resolve, 100));
+  await hungUp.promise;
 
   heard = Promise.withResolvers<void>();
   const second = hub.login(workspace, "slow").steps()[Symbol.asyncIterator]();

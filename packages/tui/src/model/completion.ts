@@ -222,48 +222,63 @@ function itemsFor(
   state: Extract<CompletionState, { kind: "open" }>,
   draft: Pick<Draft, "text" | "cursor">,
   sources: CompletionSources,
-): readonly CompletionItem[] | "loading" | null {
+):
+  | { readonly kind: "loading" }
+  | { readonly kind: "ready"; readonly items: readonly CompletionItem[] }
+  | null {
   switch (state.token.trigger) {
     case "/": {
       const slash = slashCompletion(draft.text, sources.commands, draft.cursor);
 
       if (slash === undefined || (slash.commands.length === 0 && !slash.leading)) return null;
 
-      return slash.commands.map((command) => ({
-        id: command.name,
-        label: slashCommandLabel(command),
-        detail: command.description,
-        kind: slashKind(command),
-      }));
+      return {
+        kind: "ready",
+        items: slash.commands.map((command) => ({
+          id: command.name,
+          label: slashCommandLabel(command),
+          detail: command.description,
+          kind: slashKind(command),
+        })),
+      };
     }
 
     case "@":
-      return mentionItems(state.token.query, state.explicit, sources.files).map((file) => ({
-        id: file.path,
-        label: file.label,
-        detail: file.display,
-        kind: file.path.endsWith("/") ? "directory" : "file",
-      }));
+      return {
+        kind: "ready",
+        items: mentionItems(state.token.query, state.explicit, sources.files).map((file) => ({
+          id: file.path,
+          label: file.label,
+          detail: file.display,
+          kind: file.path.endsWith("/") ? "directory" : "file",
+        })),
+      };
     case "cd":
       return state.directories === null
-        ? "loading"
-        : state.directories.entries.map((entry) => ({
-            id: entry,
-            label: entry,
-            detail: "",
-            kind: "directory",
-          }));
+        ? { kind: "loading" }
+        : {
+            kind: "ready",
+            items: state.directories.entries.map((entry) => ({
+              id: entry,
+              label: entry,
+              detail: "",
+              kind: "directory",
+            })),
+          };
     case "argument":
-      if (state.suggestions === null) return "loading";
+      if (state.suggestions === null) return { kind: "loading" };
 
       return state.suggestions.length === 0
         ? null
-        : state.suggestions.map((suggestion) => ({
-            id: suggestion.value,
-            label: suggestion.label,
-            detail: suggestion.description ?? "",
-            kind: "argument",
-          }));
+        : {
+            kind: "ready",
+            items: state.suggestions.map((suggestion) => ({
+              id: suggestion.value,
+              label: suggestion.label,
+              detail: suggestion.description ?? "",
+              kind: "argument",
+            })),
+          };
     default: {
       const _exhaustive: never = state.token;
 
@@ -281,13 +296,13 @@ export function completionModel(
   const found = itemsFor(state, draft, sources);
 
   if (found === null) return null;
-  const items = found === "loading" ? [] : found;
+  const items = found.kind === "loading" ? [] : found.items;
   const highlighted = Math.max(0, Math.min(items.length - 1, state.highlighted));
 
   return {
     token: state.token,
     items,
-    loading: found === "loading",
+    loading: found.kind === "loading",
     highlighted,
     ownsEnter: state.token.trigger !== "cd" && items.length > 0,
     queueable: items[highlighted]?.kind === "skill",

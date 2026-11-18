@@ -186,7 +186,6 @@ const PARSERS: readonly FiletypeParserOptions[] = [
   },
   {
     filetype: "nix",
-    // The official grammar publishes no wasm: https://github.com/nix-community/tree-sitter-nix/issues/66
     wasm: "https://github.com/ast-grep/ast-grep.github.io/raw/40b84530640aa83a0d34a20a2b0623d7b8e5ea97/website/public/parsers/tree-sitter-nix.wasm",
     queries: { highlights: nvim("nix") },
   },

@@ -61,11 +61,11 @@ test.each([
   },
 );
 
-test("the first items describe each tab, with a glyph for every place but a chat", () => {
+test("the first items describe each tab, with the new-chat glyph on a chat and a blank tab alike", () => {
   expect(
     windowTabItems(start, NO_CHATS, [], []).map((item) => [item.title, item.glyph, item.chat]),
   ).toEqual([
-    ["Chat", undefined, "a"],
+    ["Chat", "new-chat", "a"],
     ["New chat", "new-chat", undefined],
   ]);
 });

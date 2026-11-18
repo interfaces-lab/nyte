@@ -138,7 +138,7 @@ export const OperationDescriptionType = Type.Object({
   kind: Type.Enum(["query", "watch", "command", "receipt", "stream"]),
   authority: AuthorityType,
   scope: Type.Enum(["host", "session", "workspace"]),
-  capability: Type.Optional(Type.Enum(["files", "git", "github", "browser"])),
+  capability: Type.Optional(Type.Enum(["files", "git", "github", "browser", "language"])),
   local: Type.Optional(Type.Literal(true)),
   input: JsonType,
   output: JsonType,

@@ -71,7 +71,7 @@ export function createMediaLinks(): MediaLinks {
       const size = stats.size;
       const range = parseRange(header, size);
 
-      if (range === "unsatisfiable")
+      if (range?.kind === "unsatisfiable")
         return new Response(null, { status: 416, headers: { "Content-Range": `bytes */${size}` } });
       const start = range?.start ?? 0;
       const end = range?.end ?? size - 1;
@@ -103,7 +103,10 @@ export function createMediaLinks(): MediaLinks {
 function parseRange(
   header: string | null,
   size: number,
-): { readonly start: number; readonly end: number } | "unsatisfiable" | null {
+):
+  | { readonly kind: "range"; readonly start: number; readonly end: number }
+  | { readonly kind: "unsatisfiable" }
+  | null {
   const match = header === null ? null : /^bytes=(\d*)-(\d*)$/u.exec(header.trim());
 
   if (match === null || (match[1] === "" && match[2] === "")) return null;
@@ -112,16 +115,16 @@ function parseRange(
     const suffix = Number(match[2]);
 
     return suffix === 0 || size === 0
-      ? "unsatisfiable"
-      : { start: Math.max(0, size - suffix), end: size - 1 };
+      ? { kind: "unsatisfiable" }
+      : { kind: "range", start: Math.max(0, size - suffix), end: size - 1 };
   }
 
   const start = Number(match[1]);
   const end = match[2] === "" ? size - 1 : Math.min(Number(match[2]), size - 1);
 
-  if (start >= size) return "unsatisfiable";
+  if (start >= size) return { kind: "unsatisfiable" };
 
-  return end < start ? null : { start, end };
+  return end < start ? null : { kind: "range", start, end };
 }
 
 function readRange(path: string, start: number, end: number): ReadableStream<Uint8Array> {

@@ -494,7 +494,6 @@ export function Button({
 const picker = create({
   trigger: {
     maxWidth: 180,
-    /** Base UI's Select reads a pressed trigger's scale as zoom and opens the popup off the trigger. */
     scale: "1",
   },
   value: {

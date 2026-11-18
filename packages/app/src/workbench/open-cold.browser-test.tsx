@@ -9,6 +9,7 @@ import { createAppRouter } from "../shell/routes.tsx";
 import { runWindowCommand } from "../commands/window-commands.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { ChangesPanel } from "./changes/changes-panel.tsx";
+import { DesignTab } from "./design-tab.tsx";
 import { WORKBENCH_HOME_VIEW_KEY } from "./paths.ts";
 import { useWorkbenchSnapshot, workbench } from "./store.ts";
 import { EditorPanel } from "./editor/editor-panel.tsx";
@@ -67,6 +68,7 @@ export async function run(): Promise<string> {
     publishDeferred("workbench", {
       EditorPanel,
       ChangesPanel,
+      DesignTab,
       TerminalPanel,
       addTerminalToChat,
       clearTerminal,

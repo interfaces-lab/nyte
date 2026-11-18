@@ -3,6 +3,7 @@ import { BrowserWindow, net, session } from "electron";
 import type { Session } from "electron";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
+import { CanvasPreviewFindingType } from "@nyte-ai/plugin/core/canvas-preview";
 import type {
   CanvasPreviewOutcome,
   CanvasPreviewRequest,
@@ -36,6 +37,7 @@ const DriverOutcome = Type.Union([
         }),
       ),
       console: Type.Array(Type.Object({ level: Type.String(), text: Type.String() })),
+      findings: Type.Array(CanvasPreviewFindingType),
     }),
   }),
   Type.Object({ kind: Type.Literal("failed"), message: Type.String() }),

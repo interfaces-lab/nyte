@@ -106,14 +106,16 @@ export const restyleCategories = {
 
 type Category = keyof typeof restyleCategories;
 
-interface Contract {
-  readonly file: string;
-  readonly options: readonly string[];
-  readonly allow: readonly Category[] | "host";
-  readonly also?: readonly string[];
-}
+type Contract =
+  | { readonly file: string; readonly options: readonly string[]; readonly host: true }
+  | {
+      readonly file: string;
+      readonly options: readonly string[];
+      readonly allow: readonly Category[];
+      readonly also?: readonly string[];
+    };
 
-const host = (file: string) => ({ file, options: [], allow: "host" }) as const;
+const host = (file: string) => ({ file, options: [], host: true }) as const;
 
 const placed = (file: string, options: readonly string[] = []) =>
   ({ file, options, allow: ["layout"] }) as const;
@@ -363,8 +365,8 @@ export const restyleContracts = {
 type Contracts = typeof restyleContracts;
 
 type Allowed<Entry extends Contract> =
-  | (Entry["allow"] extends readonly Category[]
-      ? (typeof restyleCategories)[Entry["allow"][number]][number]
+  | (Entry extends { readonly allow: readonly (infer Allow extends Category)[] }
+      ? (typeof restyleCategories)[Allow][number]
       : never)
   | (Entry extends { readonly also: readonly (infer Property)[] } ? Property : never);
 
@@ -376,7 +378,7 @@ type Restyled<Property extends string> = Readonly<
   } & { readonly [pseudo: `:${string}`]: never }
 >;
 
-export type Restyle<Name extends keyof Contracts> = Contracts[Name]["allow"] extends "host"
+export type Restyle<Name extends keyof Contracts> = Contracts[Name] extends { readonly host: true }
   ? XStyle
   : StyleXArray<
       | null

@@ -2,7 +2,6 @@ import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { setTimeout } from "node:timers/promises";
 import { afterEach, expect, it, vi } from "vitest";
 import { sqliteWorkers } from "../src/store/sqlite-workers.ts";
 
@@ -29,7 +28,7 @@ it("runs a large read without blocking the event loop or a concurrent writer", a
   const { database, workers } = await setup();
 
   try {
-    expect(await workers.read("SELECT n FROM values_kept", [])).toEqual([{ n: 7 }]);
+    const ahead = workers.read("SELECT n FROM values_kept", []);
 
     const reading = workers.read(
       "WITH RECURSIVE numbers(n) AS (VALUES(1) UNION ALL SELECT n + 1 FROM numbers WHERE n < 1000000) SELECT sum(n) AS total FROM numbers",
@@ -40,7 +39,7 @@ it("runs a large read without blocking the event loop or a concurrent writer", a
     void reading.then(() => {
       finished = true;
     });
-    await setTimeout(0);
+    expect(await ahead).toEqual([{ n: 7 }]);
     database.exec("UPDATE values_kept SET n = 8");
 
     expect(finished).toBe(false);
@@ -95,7 +94,7 @@ it("rejects an in-flight read when closed and prevents further reads", async () 
   const { database, workers } = await setup();
 
   try {
-    expect(await workers.read("SELECT n FROM values_kept", [])).toEqual([{ n: 7 }]);
+    const ahead = workers.read("SELECT n FROM values_kept", []);
 
     const reading = workers.read(
       "WITH RECURSIVE numbers(n) AS (VALUES(1) UNION ALL SELECT n + 1 FROM numbers WHERE n < 1000000) SELECT sum(n) AS total FROM numbers",
@@ -103,7 +102,7 @@ it("rejects an in-flight read when closed and prevents further reads", async () 
     );
 
     const rejected = expect(reading).rejects.toThrow("closed");
-    await setTimeout(0);
+    expect(await ahead).toEqual([{ n: 7 }]);
     await workers.close();
     await rejected;
 

@@ -19,7 +19,8 @@ const disk = vi.hoisted(() => {
       | { readonly path: string; readonly reached: () => void; readonly release: Promise<void> }
       | undefined;
     readonly landed: string[];
-  } = { hold: undefined, landed: [] };
+    renaming: number;
+  } = { hold: undefined, landed: [], renaming: 0 };
 
   return state;
 });
@@ -32,16 +33,22 @@ vi.mock("node:fs/promises", async (importOriginal) => {
   return {
     ...actual,
     rename: async (from: string, to: string) => {
-      const hold = disk.hold;
+      disk.renaming += 1;
 
-      if (hold !== undefined && to === hold.path) {
-        disk.hold = undefined;
-        hold.reached();
-        await hold.release;
+      try {
+        const hold = disk.hold;
+
+        if (hold !== undefined && to === hold.path) {
+          disk.hold = undefined;
+          hold.reached();
+          await hold.release;
+        }
+
+        await actual.rename(from, to);
+        disk.landed.push(to);
+      } finally {
+        disk.renaming -= 1;
       }
-
-      await actual.rename(from, to);
-      disk.landed.push(to);
     },
   };
 });
@@ -118,6 +125,7 @@ async function fixture() {
   const views: ConnectView["kind"][] = [];
   const faults: Faults = { drop: [], block: [], held: undefined, sent: [] };
   let runtime: ConnectRuntime | undefined;
+  let requests = 0;
 
   const start = (
     authorizer?: LinkAuthorizer,
@@ -146,23 +154,29 @@ async function fixture() {
         }
 
         faults.sent.push(line);
-        const response = await workerd.fetch(input, init);
-        const held = faults.held;
+        requests += 1;
 
-        if (held !== undefined && line.startsWith(held.prefix)) {
-          faults.held = undefined;
+        try {
+          const response = await workerd.fetch(input, init);
+          const held = faults.held;
+
+          if (held !== undefined && line.startsWith(held.prefix)) {
+            faults.held = undefined;
+            await response.body?.cancel();
+            held.reached();
+            await held.release;
+            throw new TypeError(`answer lost: ${line}`);
+          }
+
+          const dropped = faults.drop.findIndex((prefix) => line.startsWith(prefix));
+
+          if (dropped === -1) return response;
+          faults.drop.splice(dropped, 1);
           await response.body?.cancel();
-          held.reached();
-          await held.release;
           throw new TypeError(`answer lost: ${line}`);
+        } finally {
+          requests -= 1;
         }
-
-        const dropped = faults.drop.findIndex((prefix) => line.startsWith(prefix));
-
-        if (dropped === -1) return response;
-        faults.drop.splice(dropped, 1);
-        await response.body?.cancel();
-        throw new TypeError(`answer lost: ${line}`);
       },
       timing: { linkPollMs: 50 },
     });
@@ -180,7 +194,17 @@ async function fixture() {
     return Object.assign(Object.create(null), parsed);
   };
 
-  return { root, storePath, opened, views, faults, start, file, runtime: () => runtime };
+  return {
+    root,
+    storePath,
+    opened,
+    views,
+    faults,
+    start,
+    file,
+    runtime: () => runtime,
+    requests: () => requests,
+  };
 }
 
 async function browser(input: {
@@ -434,7 +458,7 @@ test("a lost open answer replays the same operation and code instead of opening 
 });
 
 test("closing joins the attempt: nothing is written after close resolves, and the intent survives for the next run", async () => {
-  const { opened, start, file } = await fixture();
+  const { opened, start, file, requests } = await fixture();
   const runtime = start();
   let settled = false;
   const linking = runtime.link().then(() => {
@@ -443,11 +467,12 @@ test("closing joins the attempt: nothing is written after close resolves, and th
   await vi.waitFor(() => assert.equal(opened.length, 1), brokerWait);
   await runtime.close();
   assert.equal(settled, true);
-  await linking;
+  assert.equal(requests(), 0);
+  assert.equal(disk.renaming, 0);
   const snapshot = JSON.stringify(await file());
-  await new Promise((resolve) => setTimeout(resolve, 150));
-  assert.equal(JSON.stringify(await file()), snapshot);
+  await linking;
   assert.equal(row((await transactions())[0], "state"), "pending");
+  assert.equal(JSON.stringify(await file()), snapshot);
 });
 
 test("a link or pending intent made with another broker is unavailable here, never reinterpreted or overwritten", async () => {
@@ -509,7 +534,7 @@ function landedOn(path: string): number {
 }
 
 test("every close waits for one teardown that joins a cancellation still writing; nothing lands after it", async () => {
-  const { opened, start, file, storePath } = await fixture();
+  const { opened, start, file, storePath, requests } = await fixture();
   const runtime = start();
   const linking = runtime.link();
   await vi.waitFor(() => assert.equal(opened.length, 1), brokerWait);
@@ -522,17 +547,18 @@ test("every close waits for one teardown that joins a cancellation still writing
   assert.equal(await stillPending(second), true);
   write.release();
   await Promise.all([first, second, cancelling, linking]);
+  assert.equal(requests(), 0);
+  assert.equal(disk.renaming, 0);
   const landed = landedOn(storePath);
   const snapshot = JSON.stringify(await file());
-  await new Promise((resolve) => setTimeout(resolve, 150));
-  assert.equal(landedOn(storePath), landed);
-  assert.equal(JSON.stringify(await file()), snapshot);
   assert.equal((await file()).linkKey, null);
   assert.equal(row((await transactions())[0], "state"), "cancelled");
+  assert.equal(landedOn(storePath), landed);
+  assert.equal(JSON.stringify(await file()), snapshot);
 });
 
 test("close joins an unlink acknowledgement already being written", async () => {
-  const { opened, start, file, storePath } = await fixture();
+  const { opened, start, file, storePath, requests } = await fixture();
   const runtime = start();
   const linking = runtime.link();
   await vi.waitFor(() => assert.equal(opened.length, 1), brokerWait);
@@ -550,11 +576,12 @@ test("close joins an unlink acknowledgement already being written", async () => 
   assert.equal(await stillPending(second), true);
   acknowledged.release();
   await Promise.all([first, second, unlinking]);
+  assert.equal(requests(), 0);
+  assert.equal(disk.renaming, 0);
   const landed = landedOn(storePath);
   assert.deepEqual((await file()).unlinks, []);
-  await new Promise((resolve) => setTimeout(resolve, 150));
-  assert.equal(landedOn(storePath), landed);
   assert.deepEqual(await workerd.query("SELECT state FROM environments"), [{ state: "revoked" }]);
+  assert.equal(landedOn(storePath), landed);
 });
 
 test("a teardown that fails rejects every close caller with the same failure", async () => {

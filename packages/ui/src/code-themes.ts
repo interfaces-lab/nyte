@@ -1,7 +1,13 @@
 import type { Theme } from "@pierre/highlights";
 import pierreDark from "@pierre/highlights/themes/pierre-dark";
 import pierreLight from "@pierre/highlights/themes/pierre-light";
+import vscodeDark from "@pierre/theme/pierre-dark";
+import vscodeLight from "@pierre/theme/pierre-light";
 import { platformColors, platformScopes } from "./platform-colors.ts";
+
+type Mode = "light" | "dark";
+
+type VSCodeTheme = typeof vscodeLight;
 
 const TEXT_FLOOR = 4.5;
 
@@ -13,35 +19,84 @@ const TERTIARY_TOKENS = new Set([
   "predictive",
 ]);
 
+const CAPTURE_SCOPES = {
+  keyword: "keyword.control",
+  "keyword.import": "keyword.control.import",
+  namespace: "entity.name.namespace",
+  variable: "variable.other.readwrite",
+  "variable.parameter": "variable.parameter",
+  "variable.builtin": "variable.language",
+  "variable.member": "variable.other.property",
+  property: "variable.other.property",
+  function: "entity.name.function",
+  "function.call": "entity.name.function",
+  "function.method": "entity.name.function",
+  "function.method.call": "entity.name.function",
+  "function.builtin": "support.function",
+  type: "entity.name.type",
+  "type.builtin": "support.type.primitive",
+  constructor: "entity.name.type",
+  constant: "constant.other",
+  "constant.builtin": "constant.language",
+  boolean: "constant.language.boolean",
+  number: "constant.numeric",
+  string: "string",
+  "string.escape": "constant.character.escape",
+  comment: "comment",
+  "comment.doc": "comment",
+  label: "entity.name.label",
+} satisfies Record<string, string>;
+
+const EDITOR_COLORS = [
+  "editor.lineHighlightBackground",
+  "editor.selectionBackground",
+  "editorCursor.foreground",
+  "editorLineNumber.foreground",
+  "editorLineNumber.activeForeground",
+  "editorIndentGuide.background",
+  "editorIndentGuide.activeBackground",
+  "editorBracketMatch.background",
+  "editorBracketMatch.border",
+];
+
+/** Themes for diffs and chat, which keep text readable on the diff line and word tints. */
 export const codeThemes = {
-  light: meetTextFloor(pierreLight, "light"),
-  dark: meetTextFloor(pierreDark, "dark"),
-} satisfies Record<"light" | "dark", Theme>;
+  light: pierreTheme(pierreLight, vscodeLight, "light", diffSurfaces("light")),
+  dark: pierreTheme(pierreDark, vscodeDark, "dark", diffSurfaces("dark")),
+} satisfies Record<Mode, Theme>;
 
-function meetTextFloor(theme: Theme, mode: "light" | "dark"): Theme {
+/** Themes for the editor, which draws only its surface and the current line. */
+export const editorThemes = {
+  light: pierreTheme(pierreLight, vscodeLight, "light", editorSurfaces(vscodeLight, "light")),
+  dark: pierreTheme(pierreDark, vscodeDark, "dark", editorSurfaces(vscodeDark, "dark")),
+} satisfies Record<Mode, Theme>;
+
+function pierreTheme(
+  zed: Theme,
+  vscode: VSCodeTheme,
+  mode: Mode,
+  surfaces: readonly (readonly number[])[],
+): Theme {
   const light = mode === "light";
-  const palette = platformColors[mode];
-  const tint = light ? { line: 0.12, word: 0.15 } : { line: 0.2, word: 0.2 };
-
-  const surfaces = [palette.bgBase, palette.bgMuted].map(toChannels).flatMap((surface) => [
-    luminance(surface),
-    luminance(composite(palette.fillTertiary, surface)),
-    ...[platformScopes[mode].green, platformScopes[mode].red].flatMap((scope) => {
-      const line = blend(scope.strokeAccent, tint.line, surface);
-
-      return [luminance(line), luminance(blend(scope.strokeAccent, tint.word, line))];
-    }),
-  ]);
+  const luminances = surfaces.map(luminance);
 
   const floor = light
-    ? (Math.min(...surfaces) + 0.05) / TEXT_FLOOR - 0.05
-    : TEXT_FLOOR * (Math.max(...surfaces) + 0.05) - 0.05;
+    ? (Math.min(...luminances) + 0.05) / TEXT_FLOOR - 0.05
+    : TEXT_FLOOR * (Math.max(...luminances) + 0.05) - 0.05;
 
-  const tertiary = luminance(toChannels(palette.contentTertiary));
+  const tertiary = luminance(toChannels(platformColors[mode].contentTertiary));
   const tertiaryFloor = light ? Math.min(floor, tertiary) : Math.max(floor, tertiary);
 
+  const standard = Object.entries(CAPTURE_SCOPES).flatMap(([capture, scope]) => {
+    const color = scopeColor(vscode, scope);
+
+    return color === undefined ? [] : [[capture, color] as const];
+  });
+
+  const merged = { ...zed.style.syntax, ...Object.fromEntries(standard) };
+
   const syntax = Object.fromEntries(
-    Object.entries(theme.style.syntax ?? {}).map(([token, settings]) => {
+    Object.entries(merged).map(([token, settings]) => {
       const target = TERTIARY_TOKENS.has(token) ? tertiaryFloor : floor;
 
       if (typeof settings === "string") return [token, meetLuminance(settings, target, light)];
@@ -52,7 +107,54 @@ function meetTextFloor(theme: Theme, mode: "light" | "dark"): Theme {
     }),
   );
 
-  return { ...theme, style: { ...theme.style, syntax } };
+  const editor = Object.fromEntries(
+    EDITOR_COLORS.flatMap((key) => {
+      const color = vscode.colors[key];
+
+      return color === undefined ? [] : [[key, color] as const];
+    }),
+  );
+
+  return { ...zed, style: { ...zed.style, ...editor, syntax } };
+}
+
+function diffSurfaces(mode: Mode): readonly (readonly number[])[] {
+  const palette = platformColors[mode];
+  const tint = mode === "light" ? { line: 0.12, word: 0.15 } : { line: 0.2, word: 0.2 };
+
+  return [palette.bgBase, palette.bgMuted].map(toChannels).flatMap((surface) => [
+    surface,
+    composite(palette.fillTertiary, surface),
+    ...[platformScopes[mode].green, platformScopes[mode].red].flatMap((scope) => {
+      const line = blend(scope.strokeAccent, tint.line, surface);
+
+      return [line, blend(scope.strokeAccent, tint.word, line)];
+    }),
+  ]);
+}
+
+function editorSurfaces(vscode: VSCodeTheme, mode: Mode): readonly (readonly number[])[] {
+  const surface = toChannels(platformColors[mode].bgBase);
+  const currentLine = vscode.colors["editor.lineHighlightBackground"];
+
+  return currentLine === undefined ? [surface] : [surface, composite(currentLine, surface)];
+}
+
+function scopeColor(vscode: VSCodeTheme, scope: string): string | undefined {
+  const matches = vscode.tokenColors.flatMap((rule, order) => {
+    const color = rule.settings.foreground;
+
+    if (color === undefined) return [];
+
+    return [rule.scope ?? []]
+      .flat()
+      .flatMap((selector) => selector.split(","))
+      .map((selector) => selector.trim())
+      .filter((selector) => scope === selector || scope.startsWith(`${selector}.`))
+      .map((selector) => ({ depth: selector.split(".").length, order, color }));
+  });
+
+  return matches.toSorted((a, b) => b.depth - a.depth || b.order - a.order)[0]?.color;
 }
 
 function meetLuminance(color: string, target: number, light: boolean): string {

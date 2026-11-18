@@ -14,10 +14,8 @@ import {
 import type {
   Awaitable,
   CallId,
-  ChangeSet,
   Decision,
   DurableEvent,
-  FileChange,
   HeadName,
   Infer,
   Json,
@@ -25,9 +23,7 @@ import type {
   Placement,
   RefUpdate,
   RunId,
-  Seq,
   SessionId,
-  SnapshotId,
   ToolCall,
   ToolClass,
   ToolOutcome,
@@ -39,25 +35,25 @@ import type { ConnectionContext } from "../contract/host.ts";
 import type { Kernel, PluginRuntime, StepEnd } from "../contract/kernel.ts";
 import { definePart, tool } from "../contract/parts.ts";
 import type { ActionContext, ActionOutput, PartState } from "../contract/parts.ts";
-import { decodePartRecord, decodeRunRecord } from "../contract/records.ts";
+import { decodePartRecord } from "../contract/records.ts";
 import type { CallRecord, PartRecord } from "../contract/records.ts";
 import type { Durable, ToolDefinition, ToolInvocation } from "../contract/tools.ts";
 import type { ExecutionEnv } from "../contract/workspace.ts";
-import { anotherChatLive, ownedChanges, readAttributedPaths } from "../env/session-changes.ts";
+import { readAttributedPaths } from "../env/session-changes.ts";
 import { callPhase } from "../engine/call-phase.ts";
 import { signalsPark, parkStep, runStep } from "../engine/durable.ts";
 import { startJob } from "../engine/jobs.ts";
 import { publishPatch } from "../engine/runs.ts";
 import { hiddenOwners, missingCapabilities, onlyNyteAppHas } from "./capabilities.ts";
+import { baseline, nextBase, NO_CHANGES, toolChanges } from "./tool-snapshots.ts";
+import type { ToolBaseline, ToolChanges } from "./tool-snapshots.ts";
 import { loadedTools } from "./transcript.ts";
 import { toolSource } from "../extend/registry.ts";
-import { commit } from "../watch/commit.ts";
 import { changesEvents } from "../fold/changes.ts";
 import { withFold } from "../watch/reads.ts";
 import { settling } from "../store/parts.ts";
 import { partRef, runRef } from "../store/refs.ts";
 import {
-  attempt,
   load,
   put,
   readCall,
@@ -65,7 +61,6 @@ import {
   readRefExpectation,
   readTip,
   requireSession,
-  STALE,
 } from "../store/session.ts";
 import { CLIP_CHARS, clipText } from "../util/clip.ts";
 import { dev } from "../util/dev-log.ts";
@@ -107,21 +102,7 @@ type Plan = { readonly args: Json; readonly class: ToolClass } & (
   | { readonly kind: "settle"; readonly outcome: ToolOutcome }
 );
 
-export interface Settled {
-  readonly outcome: ToolOutcome;
-  readonly files: readonly FileChange[] | null;
-  readonly thread: readonly FileChange[] | null;
-
-  readonly snapshot: SnapshotId | null;
-  readonly path: string | null;
-  readonly unattributed: boolean;
-}
-
-type ToolBaseline = {
-  readonly snapshot: SnapshotId;
-  readonly seq: Seq;
-  readonly contended: boolean;
-};
+export type Settled = { readonly outcome: ToolOutcome } & ToolChanges;
 
 interface Where {
   readonly session: SessionId;
@@ -542,7 +523,9 @@ async function execute(
 
   try {
     if (snapshotted)
-      before = await durable.memo("nyte:snapshot", () => baseline(kernel, session, run));
+      before = await durable.memo("nyte:snapshot", () =>
+        baseline(kernel, session, run, planned.class),
+      );
 
     const [env, found, hidden] = await Promise.all([
       kernel.environments.attach(session),
@@ -628,40 +611,9 @@ async function conclude(
     ),
   );
 
-  const snapshots =
-    before !== null && ended.kind === "done" ? await kernel.environments.snapshots(session) : null;
-
-  if (snapshots === null || before === null)
-    return { outcome, files: null, thread: null, snapshot: null, path: null, unattributed: false };
-  const to = await snapshots.after(run);
-  const [changed, path] = await Promise.all([
-    snapshots.diff(before.snapshot, to).then(fileChanges),
-    editedPath(kernel, session, toolClass),
-  ]);
-
-  const unattributed =
-    path === null &&
-    changed.length > 0 &&
-    (before.contended || (await anotherChatLive(kernel, session)));
-
-  const files = unattributed
-    ? []
-    : changed.filter((file) => path === null || file.path === path || file.from === path);
-
-  const thread =
-    files.length === 0 && !unattributed
-      ? null
-      : fileChanges(
-          await ownedChanges(
-            kernel.store,
-            snapshots,
-            session,
-            to,
-            files.map((file) => file.path),
-          ),
-        );
-
-  return { outcome, files, thread, snapshot: to, path, unattributed };
+  return before === null || ended.kind !== "done"
+    ? { outcome, ...NO_CHANGES }
+    : { outcome, ...(await toolChanges(kernel, session, before, toolClass)) };
 }
 
 function clipOutcome(outcome: ToolOutcome): ToolOutcome {
@@ -690,34 +642,6 @@ function clipOutcome(outcome: ToolOutcome): ToolOutcome {
       ...outcome.content.filter((item) => item.kind !== "text"),
     ],
   };
-}
-
-async function editedPath(
-  kernel: Kernel,
-  session: SessionId,
-  toolClass: ToolClass,
-): Promise<string | null> {
-  if (toolClass.kind !== "edit") return null;
-
-  if (!/^(?:[\\/]|[A-Za-z]:)/.test(toolClass.path)) return toolClass.path.replace(/^\.\//, "");
-  const root = (await kernel.environments.attach(session)).cwd.replace(/[\\/]+$/, "");
-
-  return toolClass.path.startsWith(`${root}/`) || toolClass.path.startsWith(`${root}\\`)
-    ? toolClass.path.slice(root.length + 1).replaceAll("\\", "/")
-    : null;
-}
-
-function fileChanges(set: ChangeSet): readonly FileChange[] {
-  return set.files.map((file): FileChange => {
-    const change: FileChange = {
-      path: file.path,
-      status: file.status,
-      added: file.stat.kind === "text" ? file.stat.added : 0,
-      removed: file.stat.kind === "text" ? file.stat.removed : 0,
-    };
-
-    return file.from === undefined ? change : { ...change, from: file.from };
-  });
 }
 
 export async function settlement(
@@ -818,62 +742,6 @@ export async function settlement(
   });
 
   return [...landed.updates, ...based];
-}
-
-async function baseline(
-  kernel: Kernel,
-  session: SessionId,
-  run: RunId,
-): Promise<ToolBaseline | null> {
-  const snapshots = await kernel.environments.snapshots(session);
-
-  if (snapshots === null) return null;
-  const seq = await kernel.store.refs.tail(session);
-  const [before, contended] = await Promise.all([
-    snapshots.after(run),
-    anotherChatLive(kernel, session),
-  ]);
-
-  await attempt(`Recording run ${run}'s snapshot`, async () => {
-    const found = await load(
-      kernel.store,
-      await kernel.store.refs.get(runRef(session, run)),
-      decodeRunRecord,
-    );
-
-    if (found === null || found.record.snapshot !== null) return undefined;
-
-    const outcome = await commit(kernel, [
-      {
-        name: found.ref.name,
-        target: await put(kernel.store, "run", { ...found.record, snapshot: before }),
-        expect: found.ref.revision,
-      },
-    ]);
-
-    return outcome.kind === "set" ? undefined : STALE;
-  });
-
-  return { snapshot: before, seq, contended };
-}
-
-async function nextBase(
-  store: StoreConnection,
-  session: SessionId,
-  run: RunId,
-  to: SnapshotId,
-): Promise<readonly RefUpdate[]> {
-  const found = await load(store, await store.refs.get(runRef(session, run)), decodeRunRecord);
-
-  if (found === null || found.record.lastSnapshot === to) return [];
-
-  return [
-    {
-      name: found.ref.name,
-      target: await put(store, "run", { ...found.record, lastSnapshot: to }),
-      expect: found.ref.revision,
-    },
-  ];
 }
 
 function classifyToolCall(

@@ -158,11 +158,11 @@ test("the panel keeps its preferred pixel width as the stage changes", () => {
 
   expect(workbenchPanelWidth(store.getView(view).width, 1176)).toBe(588);
   expect(workbenchPanelWidth(store.getView(view).width, 1424)).toBe(588);
-  expect(workbenchPanelWidth(store.getView(view).width, 944)).toBe(520);
-  expect(workbenchPanelWidth(store.getView(view).width, 696)).toBe(384);
+  expect(workbenchPanelWidth(store.getView(view).width, 944)).toBe(584);
+  expect(workbenchPanelWidth(store.getView(view).width, 696)).toBe(360);
 
   store.dispatch(view, { kind: "set-width", pixels: 700 });
-  expect(workbenchPanelWidth(store.getView(view).width, 944)).toBe(520);
+  expect(workbenchPanelWidth(store.getView(view).width, 944)).toBe(584);
   expect(workbenchPanelWidth(store.getView(view).width, 2000)).toBe(700);
   expect(stored.at(-1)?.views).toMatchObject([{ key: view, width: 700 }]);
 
@@ -175,7 +175,7 @@ test("the panel keeps its preferred pixel width as the stage changes", () => {
 });
 
 test.each([
-  { name: "a wide stage", stage: 1176, expected: { min: 33, max: 64, now: 50 } },
+  { name: "a wide stage", stage: 1176, expected: { min: 31, max: 69, now: 50 } },
   { name: "a 720 px stage at zoom 2", stage: 360, expected: { min: 100, max: 100, now: 100 } },
   { name: "a 900 px stage at zoom 3", stage: 300, expected: { min: 100, max: 100, now: 100 } },
 ])("the resize separator reports within its range on $name", (row) => {

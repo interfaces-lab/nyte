@@ -4,9 +4,15 @@ import { Matches, useRouter } from "@tanstack/react-router";
 import { useEffectEvent, useRef, useState, useSyncExternalStore } from "react";
 import { AboutDialog } from "./about-dialog.tsx";
 import type { ReactElement } from "react";
+import { followLight } from "../commands/apps.ts";
 import { WorkspaceDialogHost } from "../panes/open-workspace.tsx";
 import { ProjectDialogHost } from "../projects/project-dialog.tsx";
-import { openFileInEditor, runWindowCommand, windowCommand } from "../commands/window-commands.ts";
+import {
+  arriveInWindow,
+  openFileInEditor,
+  runWindowCommand,
+  windowCommand,
+} from "../commands/window-commands.ts";
 import { shellActions, useOverlays, useStagePage } from "../tabs/shell-state.ts";
 import { SidebarPane } from "../sidebar/sidebar-pane.tsx";
 import { useSidebar } from "../sidebar/use-sidebar.ts";
@@ -25,8 +31,9 @@ import type { StartupProblem } from "../data/startup.ts";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { shell, sidebar } from "../theme/schema.stylex.ts";
-import { nyte } from "../contract/nyte.ts";
+import { nyte, windowApp } from "../contract/nyte.ts";
 import {
+  clientActions,
   clientCapabilities,
   resolveClientAction,
   resolveTabShortcut,
@@ -144,6 +151,13 @@ function ReleaseNotice(): ReactElement | null {
   );
 }
 
+const APP_SWITCHES: ReadonlySet<string> = new Set([
+  clientActions.openNyte.id,
+  clientActions.openCode.id,
+  clientActions.openStudio.id,
+  clientActions.flipApp.id,
+]);
+
 export function Shell({ appIcon }: { appIcon: string }): ReactElement {
   return (
     <TooltipProvider>
@@ -207,6 +221,26 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
     return () => window.removeEventListener("keydown", listener);
   });
 
+  const onSwitchKey = useEffectEvent((event: KeyboardEvent): void => {
+    const action = resolveClientAction(event, mac, "workspace", clientCapabilities(nyte.host));
+
+    const command =
+      action === undefined || !APP_SWITCHES.has(action.id) ? undefined : windowCommand(action.id);
+
+    if (command === undefined || !runWindowCommand(shellRouter, command)) return;
+    event.preventDefault();
+    event.stopPropagation();
+  });
+
+  useMountEffect(() => {
+    const listener = (event: KeyboardEvent): void => onSwitchKey(event);
+    window.addEventListener("keydown", listener, true);
+
+    return () => window.removeEventListener("keydown", listener, true);
+  });
+
+  useMountEffect(() => (windowApp() === "code" ? followLight() : undefined));
+
   useMountEffect(() =>
     nyte.host.onMenuCommand((command) => {
       shellActions.showAbout(command.kind === "about" ? command.info : undefined);
@@ -214,6 +248,8 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
       if (command.kind === "action") runWindowCommand(shellRouter, command.action);
 
       if (command.kind === "open-file") openFileInEditor(shellRouter, command.path);
+
+      if (command.kind === "arrive") arriveInWindow(shellRouter, command.subject);
     }),
   );
 

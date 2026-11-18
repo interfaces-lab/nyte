@@ -1,5 +1,6 @@
 import { expect, test } from "./fixtures.ts";
 import { chatPane, menuShortcut, messages, openNewChat, primaryKey, send } from "./ui.ts";
+import { captureWindow } from "./window-capture.ts";
 
 test.use({ chapter: "subagents" });
 
@@ -22,7 +23,7 @@ test("background agents share one block, report in one line each, and wake the p
   await expect(log.getByRole("button", { name: "Edit Message" })).toHaveCount(1);
   await expect(chatPane(page).getByText(/queued/u)).toHaveCount(0);
 
-  await page.screenshot({ path: testInfo.outputPath("agents.png") });
+  await captureWindow(desktop, testInfo.outputPath("agents.png"));
   await testInfo.attach("agents-accessibility", {
     body: await page.locator("body").ariaSnapshot(),
     contentType: "text/plain",
@@ -41,7 +42,7 @@ test("background agents share one block, report in one line each, and wake the p
   await expect(tabs.nth(1)).toHaveAccessibleName("Map the core, preview");
   await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "true");
   await expect(messages(page).getByText("Echo: Trace part 1.")).toBeVisible();
-  await page.screenshot({ path: testInfo.outputPath("agents-child.png") });
+  await captureWindow(desktop, testInfo.outputPath("agents-child.png"));
 
   await tabs.nth(0).click();
   await expect(log.getByText("2 agents done")).toBeVisible();

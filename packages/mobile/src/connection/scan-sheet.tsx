@@ -17,7 +17,6 @@ import { media, overCamera, radii, spacing, textStyles } from "../theme.ts";
 import { parseConnectionPayload, type Connection } from "./connection.ts";
 import { SHARE_LOCATION } from "./connect-copy.ts";
 
-/** Hoisted: `useObjectOutput` memoizes on this array, so an inline literal would rebuild the camera output on every render. */
 const SCANNED_TYPES: ScannedObjectType[] = ["qr"];
 
 type ScanSheetProps = {

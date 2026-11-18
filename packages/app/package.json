@@ -107,6 +107,7 @@
     "react-dom": "^19.3.1",
     "remend": "1.4.0",
     "streamdown": "^2.7.1",
+    "sucrase": "^3.35.1",
     "torph": "^0.1.4",
     "typebox": "^1.4.7",
     "use-sync-external-store": "^1.7.0",

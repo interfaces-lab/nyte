@@ -23,7 +23,13 @@ test(
           unread: false,
         },
         { state: "failed", row: "Failed", tab: "Failed", name: ", failed", unread: false },
-        { state: "failed-unread", row: "Failed", tab: "Failed", name: ", failed, unread", unread: true },
+        {
+          state: "failed-unread",
+          row: "Failed",
+          tab: "Failed",
+          name: ", failed, unread",
+          unread: true,
+        },
         {
           state: "waiting",
           row: "Needs attention",

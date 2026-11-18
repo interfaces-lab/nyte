@@ -32,7 +32,7 @@ import { Value } from "typebox/value";
 import { createTestHarness } from "wrangler";
 import type { TestHarness } from "wrangler";
 import type { D1Database, D1Value } from "../src/d1.ts";
-import { FakeClerkApi } from "./clerk-fake.ts";
+import { FakeClerkApi, SESSION_TOKEN_HEADER } from "./clerk-fake.ts";
 
 export const WORKERD_ORIGIN = "https://connect.test.example";
 export const WORKERD_ISSUER = "https://clerk.test.example";
@@ -444,7 +444,7 @@ export async function startWorkerdBroker(
         exp: iat + (input.lifetimeSeconds ?? 60),
         ...input.claims,
       })
-        .setProtectedHeader({ alg: "RS256", kid: "ins_test", typ: "JWT" })
+        .setProtectedHeader(SESSION_TOKEN_HEADER)
         .sign(clerkKeys.privateKey);
     },
 

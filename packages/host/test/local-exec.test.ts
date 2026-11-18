@@ -3,8 +3,9 @@ import { mkdtemp, readFile, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { OutputFrame } from "@nyte-ai/schema";
+import { dev } from "@nyte-ai/core";
 import type { Job, OsProcess } from "@nyte-ai/core";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { localExec } from "../src/index.ts";
 import { identifyProcess, localMachine } from "../src/local/process/machine.ts";
 
@@ -23,11 +24,7 @@ async function folder(): Promise<string> {
 
 const decoder = new TextDecoder();
 
-/**
- * A node grandchild, not `sh -c 'sleep & sleep'`: bash can swallow a signal that lands between its
- * fork and exec, which libuv's spawn can't. It says ready only once its handler is in place.
- */
-const PROCESS_TREE = `
+const SHELL_FREE_PROCESS_TREE = `
 const grandchild = \`
 process.on("SIGTERM", () => {
   require("node:fs").writeFileSync(process.argv[1], "SIGTERM");
@@ -113,7 +110,7 @@ describe("localExec over pipes", () => {
   it.skipIf(windows)("stops the process group with SIGTERM and reports terminated", async () => {
     const root = await folder();
     const received = join(root, "received");
-    const job = await localExec(root)([process.execPath, "-e", PROCESS_TREE, received]);
+    const job = await localExec(root)([process.execPath, "-e", SHELL_FREE_PROCESS_TREE, received]);
     await job.output()[Symbol.asyncIterator]().next();
 
     expect(await job.stop()).toEqual({
@@ -181,7 +178,13 @@ describe("localExec over pipes", () => {
     expect(frames.at(-1)).toEqual({ kind: "exit", code: 0 });
   });
 
-  it("keeps a protocol pipe whole for a slow reader, its stderr tagged apart", async () => {
+  it("keeps a protocol pipe whole for a reader that stalls until the job pauses it, its stderr tagged apart", async () => {
+    const paused = Promise.withResolvers<void>();
+    dev.on((line) => {
+      if (line.startsWith("DEV:jobs output paused ")) paused.resolve();
+    });
+    onTestFinished(() => dev.off());
+
     const job = await localExec(await folder())(
       [
         process.execPath,
@@ -203,7 +206,7 @@ describe("localExec over pipes", () => {
       if (frame.stream === "stderr") stderr += decoder.decode(frame.data);
       else {
         stdout += decoder.decode(frame.data);
-        await new Promise((resolve) => setTimeout(resolve, 1));
+        await paused.promise;
       }
     }
 

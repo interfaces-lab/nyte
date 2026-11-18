@@ -63,16 +63,39 @@ async function serve(fake: FakeModels = fakeModels()) {
 }
 
 function counting(open: (request: SocketRequest) => WebSocket = global) {
-  const opened: WebSocket[] = [];
+  const opened = recorder<WebSocket>();
 
   const socket: OpenSocket = (request) => {
     const made = open(request);
-    opened.push(made);
+    opened.record(made);
 
     return made;
   };
 
-  return { socket, opened };
+  return { socket, opened: opened.entries, dialed: opened.reached };
+}
+
+function recorder<T>() {
+  const entries: T[] = [];
+  const waiting = new Set<{ readonly count: number; readonly resolve: () => void }>();
+
+  return {
+    entries,
+    record(entry: T) {
+      entries.push(entry);
+
+      for (const waiter of waiting) {
+        if (entries.length < waiter.count) continue;
+        waiting.delete(waiter);
+        waiter.resolve();
+      }
+    },
+    reached: (count: number): Promise<void> => {
+      if (entries.length >= count) return Promise.resolve();
+
+      return new Promise((resolve) => waiting.add({ count, resolve }));
+    },
+  };
 }
 
 function global(request: SocketRequest): WebSocket {
@@ -148,7 +171,8 @@ describe("a connection's socket", () => {
     expect(transport.opened).toHaveLength(1);
 
     connection.retry();
-    await vi.waitFor(() => expect(transport.opened).toHaveLength(2));
+    await transport.dialed(2);
+    expect(transport.opened).toHaveLength(2);
     expect(await until(connection, "blocked")).toMatchObject({ reason: "version" });
   });
 });
@@ -352,17 +376,19 @@ describe("a reconnect", () => {
     cleanups.push(async () => {
       vi.useRealTimers();
     });
-    const waits: number[] = [];
+    const retries = recorder<number>();
+    const waits = retries.entries;
 
     connection.health.subscribe(() => {
       const health = connection.health.snapshot();
 
-      if (health.kind === "retrying") waits.push(health.at - Date.now());
+      if (health.kind === "retrying") retries.record(health.at - Date.now());
     });
     watched(connection, session);
 
     for (const close of [1, 2, 3]) {
-      await vi.waitFor(() => expect(waits).toHaveLength(close), { timeout: 10_000 });
+      await retries.reached(close);
+      expect(waits).toHaveLength(close);
       vi.advanceTimersByTime(waits.at(-1) ?? 0);
     }
 
@@ -385,7 +411,8 @@ describe("a reconnect", () => {
       if (connection.health.snapshot().kind === "retrying") connection.retry();
     });
     served.listener.disconnectClients();
-    await vi.waitFor(() => expect(transport.opened).toHaveLength(2));
+    await transport.dialed(2);
+    expect(transport.opened).toHaveLength(2);
     await until(connection, "open");
     await vi.advanceTimersByTimeAsync(30_000);
 
@@ -706,14 +733,14 @@ function operations() {
 }
 
 function slowStops() {
-  const held: PromiseWithResolvers<"answer" | "fail">[] = [];
+  const held = recorder<PromiseWithResolvers<"answer" | "fail">>();
 
   const send: typeof fetch = async (input, init) => {
     const request = new Request(input, init);
 
     if (new URL(request.url).pathname.endsWith("/run.stop")) {
       const gate = Promise.withResolvers<"answer" | "fail">();
-      held.push(gate);
+      held.record(gate);
 
       if ((await gate.promise) === "fail") throw new TypeError("fetch failed");
     }
@@ -721,7 +748,7 @@ function slowStops() {
     return fetch(request);
   };
 
-  return { fetch: send, held };
+  return { fetch: send, held: held.entries, reached: held.reached };
 }
 
 async function working(served: Served, session: SessionId): Promise<void> {
@@ -806,7 +833,8 @@ describe("a chat", () => {
     const stopping = chat.stop();
     expect(chat.snapshot().stopping).toBe("asked");
     await chat.stop();
-    await vi.waitFor(() => expect(stops.held).toHaveLength(1));
+    await stops.reached(1);
+    expect(stops.held).toHaveLength(1);
     stops.held[0]?.resolve("answer");
     await stopping;
 
@@ -844,7 +872,8 @@ describe("a chat", () => {
 
     const second = chat.stop();
     expect(chat.snapshot().stopping).toBe("asked");
-    await vi.waitFor(() => expect(stops.held).toHaveLength(2));
+    await stops.reached(2);
+    expect(stops.held).toHaveLength(2);
 
     stops.held[0]?.resolve("fail");
     await expect(first).resolves.toBeUndefined();

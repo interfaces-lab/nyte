@@ -83,8 +83,8 @@ export const settings = defineConsts({
 });
 
 export const workbench = defineConsts({
-  widthMin: 384,
-  centerWidthMin: 424,
+  widthMin: 360,
+  centerWidthMin: 360,
   widthDefault: 588,
   activeWidth: "var(--nyte-active-workbench-width)",
   railWidth: "var(--nyte-workbench-rail-width)",
@@ -99,7 +99,6 @@ export const workbench = defineConsts({
   iconRailWidth: "var(--nyte-workbench-icon-rail-width)",
   sashWidth: "var(--nyte-workbench-sash-width)",
   fileListWidth: "var(--nyte-workbench-file-list-width)",
-  launcherCardSize: "var(--nyte-workbench-launcher-card-size)",
 });
 
 export const pane = defineConsts({

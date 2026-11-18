@@ -5,7 +5,7 @@ import type { KeyboardEvent, PointerEvent, ReactElement, ReactNode } from "react
 import { shell, sidebar } from "../theme/schema.stylex.ts";
 import { floatingSurfaceStyles } from "@nyte-ai/ui/styles/floating-surface.stylex";
 import { layer, media } from "@nyte-ai/ui/styles/schema.stylex";
-import { motion as motionTokens, role } from "@nyte-ai/ui/styles/vars.stylex";
+import { motion as motionTokens, role, shadow } from "@nyte-ai/ui/styles/vars.stylex";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { preferences, SIDEBAR_WIDTH, useSetting } from "../preferences/index.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
@@ -71,6 +71,9 @@ const styles = create({
     zIndex: layer.chrome,
     insetInlineEnd: "auto",
     overflow: "clip",
+    backgroundColor: role.bgChrome,
+    backdropFilter: "none",
+    "--nyte-hairline-elevation": shadow.shadowXl,
     pointerEvents: "auto",
     transitionProperty: "visibility",
   },

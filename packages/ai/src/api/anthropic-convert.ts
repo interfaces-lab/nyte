@@ -324,10 +324,6 @@ export function convertMessages(
   return params;
 }
 
-/**
- * Keywords Anthropic strict tool use rejects with a 400 for the whole request.
- * https://platform.claude.com/docs/en/build-with-claude/structured-outputs#json-schema-limitations
- */
 const ANTHROPIC_STRICT_UNSUPPORTED_KEYWORDS = new Set([
   "minimum",
   "maximum",

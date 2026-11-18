@@ -21,6 +21,7 @@ import browserTools from "@nyte-ai/plugin/core/browser-tools";
 import canvas from "@nyte-ai/plugin/core/canvas";
 import { claudeCodeSdk } from "@nyte-ai/plugin/core/claude-code-sdk";
 import codemode from "@nyte-ai/plugin/core/codemode";
+import languageTools from "@nyte-ai/plugin/core/language-tools";
 import openaiAstraContext from "@nyte-ai/plugin/core/openai-astra-context";
 import { openaiCompaction } from "@nyte-ai/plugin/core/openai-compaction";
 import question from "@nyte-ai/plugin/core/question";
@@ -156,6 +157,7 @@ async function composeOpen(options: OpenHostOptions, opened: AsyncDisposableStac
     openaiAstraContext,
     telemetry,
     canvas,
+    languageTools,
     claudeCode.plugin,
     acp.plugin,
   ];

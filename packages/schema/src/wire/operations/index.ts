@@ -11,10 +11,11 @@ import { FILE_OPERATIONS } from "./files.ts";
 import { GIT_OPERATIONS } from "./git.ts";
 import { GITHUB_OPERATIONS } from "./github.ts";
 import { HOST_OPERATIONS, MAINTENANCE_OPERATIONS } from "./host.ts";
+import { LANGUAGE_OPERATIONS } from "./language.ts";
 import { SESSION_OPERATIONS } from "./session.ts";
 import { WORKSPACE_OPERATIONS } from "./workspace.ts";
 
-export const API_REVISION = 28;
+export const API_REVISION = 30;
 
 export const API_MIN_REVISION = 17;
 
@@ -27,6 +28,7 @@ export const OPERATIONS = {
   ...DOCUMENT_OPERATIONS,
   ...GIT_OPERATIONS,
   ...GITHUB_OPERATIONS,
+  ...LANGUAGE_OPERATIONS,
   ...BROWSER_OPERATIONS,
   ...MAINTENANCE_OPERATIONS,
 };

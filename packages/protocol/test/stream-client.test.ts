@@ -19,6 +19,7 @@ it("cancels a stream the client lets go of, never one the host ended", async () 
   const host = Promise.withResolvers<ReadableStreamDefaultController<Uint8Array>>();
   const streams = new Map<string, string | undefined>();
   const canceled: Json[] = [];
+  const firstCancel = Promise.withResolvers<void>();
 
   const open = createStreamClient(async (path, init) => {
     if (path === CHANNEL_PATH)
@@ -26,8 +27,10 @@ it("cancels a stream the client lets go of, never one the host ended", async () 
         headers: { [CHANNEL_HEADER]: "c1" },
       });
 
-    if (path === CANCEL_PATH) canceled.push(parseJson(await new Response(init.body).text()));
-    else streams.set(path, init.headers[STREAM_HEADER]);
+    if (path === CANCEL_PATH) {
+      canceled.push(parseJson(await new Response(init.body).text()));
+      firstCancel.resolve();
+    } else streams.set(path, init.headers[STREAM_HEADER]);
 
     return new Response(null);
   }, false);
@@ -47,7 +50,7 @@ it("cancels a stream the client lets go of, never one the host ended", async () 
   );
   expect(await new Response(ended).text()).toBe("");
   await released.cancel();
-  await vi.waitFor(() => expect(canceled.length).toBeGreaterThan(0));
+  await firstCancel.promise;
 
   expect(canceled).toEqual([{ channel: "c1", stream: streams.get("released") }]);
   await kept.cancel();

@@ -137,7 +137,7 @@ const first = view.messages.find((message) => message.kind === "user");
 if (first !== undefined && view.revision !== null) {
   await session.send("Start over with a smaller fix", {
     replace: first.id,
-    abandoned: { summarize: { instructions: "Keep the failing test names" } },
+    abandoned: { kind: "summarize", instructions: "Keep the failing test names" },
     expect: view.revision,
   });
 }

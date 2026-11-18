@@ -47,7 +47,6 @@ const PortMessageType = Type.Union([
 
 export type PortMessage = Static<typeof PortMessageType>;
 
-/** In the renderer, whose policy blocks `eval`, TypeBox interprets the schema instead of compiling it. */
 const portMessages = Compile(PortMessageType);
 
 export interface PortEnd {

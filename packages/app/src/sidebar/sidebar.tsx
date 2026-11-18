@@ -21,6 +21,7 @@ import { activeSelection, sameSelection } from "../panes/pane-layout.ts";
 import { nyte } from "../contract/nyte.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
 import {
+  folderName,
   useForgetWorkspace,
   useHomeWorkspace,
   useWorkspaces,
@@ -353,7 +354,7 @@ export function Sidebar(): ReactElement {
         ? undefined
         : outsideProjects(localSessions(workspaceGroups, place.workspace));
 
-    const name = entry.kind === "home" ? "Home" : entry.name;
+    const name = folderName(entry.kind === "home" ? undefined : entry, home);
     const expanded = !folded.includes(place.workspace);
 
     const kept =
@@ -371,7 +372,7 @@ export function Sidebar(): ReactElement {
       <WorkspaceRow
         key={entry.kind === "home" ? "home" : entry.id}
         name={name}
-        path={entry.kind === "home" ? "Home" : entry.path}
+        path={entry.kind === "home" ? name : entry.path}
         available={entry.kind === "home" || entry.available !== false}
         active={place.workspace === openPlace}
         expanded={expanded}

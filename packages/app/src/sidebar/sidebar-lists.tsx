@@ -14,7 +14,7 @@ import type { ReactElement, ReactNode } from "react";
 import type { ProjectId, ProjectInfo } from "@nyte-ai/schema";
 import type { ChatDirectory } from "../chats/index.ts";
 import { TaskMark } from "../components/task-mark.tsx";
-import { usePaneActions, usePaneLayout, usePaneViewStateStore } from "../panes/pane-context.tsx";
+import { usePaneLayout, usePaneViewStateStore } from "../panes/pane-context.tsx";
 import { activeSelection } from "../panes/pane-layout.ts";
 import type { ChatDraft } from "../panes/session-view-state.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
@@ -93,7 +93,6 @@ export function useDrafts(): OpenDrafts {
   };
 }
 
-/** A draft keeps its row while it starts the chat of the same id, so the host's row for that chat waits until the draft is gone. */
 function withoutDrafted<T>(
   rows: readonly T[],
   drafts: readonly ChatDraft[],
@@ -249,14 +248,11 @@ export function ChatsList({
 }): ReactElement | null {
   const { view, reveal } = context;
   const { drafts: openDrafts, activeDraftId } = useDrafts();
-  const panes = usePaneActions();
   const [openShelves, setOpenShelves] = useState<ReadonlySet<SessionShelf>>(() => new Set());
   const drafts = context.showDrafts ? openDrafts : [];
 
   if (listed === undefined && drafts.length === 0) return null;
   const rows = withoutDrafted(listed ?? [], drafts, (row) => row.session.id);
-
-  const newChat = <AddRow label="New Chat" onClick={() => panes.newChat()} />;
 
   const lead = (
     <>
@@ -338,7 +334,6 @@ export function ChatsList({
         {shelfPanel("working", "Working", <TaskMark state="working" />, false)}
         {shelfPanel("done", "Done", <Icon name="inbox-checked" size="sm" />, true)}
         {shelfPanel("archived", "Archived", <Icon name="archive" size="sm" />, true)}
-        {newChat}
       </div>
     );
   }
@@ -367,7 +362,6 @@ export function ChatsList({
           }
         />
       )}
-      {newChat}
     </div>
   );
 }

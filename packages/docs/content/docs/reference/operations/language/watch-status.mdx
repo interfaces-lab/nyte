@@ -1,0 +1,194 @@
+---
+title: language.watchStatus
+description: Streams the workspace's language servers each time one changes state.
+---
+
+Streams the same rows as [`language.status`](/docs/reference/operations/language/status): first the rows as they are, then all of them again each time one server changes state. A reader that falls behind gets the latest rows, not every step.
+
+## When to call it
+
+To keep a status bar or a server panel current, such as a `missing` server's install hint.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `language` capability. Paths are relative to the workspace, or absolute; answers name files inside the workspace by their relative path and others, such as the standard library, by their absolute one. Lines are zero-based and columns count UTF-16 code units.
+
+## Example
+
+Request body:
+
+```json
+{ "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0" }
+```
+
+A frame:
+
+```json
+[
+  {
+    "language": "typescript",
+    "server": "typescript-language-server",
+    "root": "web",
+    "state": { "kind": "busy", "title": "Initializing", "percent": null },
+    "version": "TypeScript 6.0.3",
+    "executable": "/usr/local/bin/typescript-language-server"
+  }
+]
+```
+
+## Errors
+
+- `unavailable` or `denied` when the workspace doesn't offer language intelligence.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `watch`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `language`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["language", "server", "root", "state", "version", "executable"],
+    "properties": {
+      "language": {
+        "enum": ["go", "typescript"]
+      },
+      "server": {
+        "type": "string"
+      },
+      "root": {
+        "type": "string"
+      },
+      "state": {
+        "anyOf": [
+          {
+            "type": "object",
+            "required": ["kind"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "starting"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["kind"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "ready"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["kind", "title", "percent"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "busy"
+              },
+              "title": {
+                "type": "string"
+              },
+              "percent": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["kind", "hint"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "missing"
+              },
+              "hint": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["kind", "reason"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "failed"
+              },
+              "reason": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["kind"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "idle"
+              }
+            }
+          }
+        ]
+      },
+      "version": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "executable": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    }
+  }
+}
+```
+
+{/* generated:end */}

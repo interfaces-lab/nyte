@@ -1,0 +1,192 @@
+---
+title: language.rename
+description: Computes the edits that rename the symbol at a position, without applying them.
+---
+
+Computes the edits that rename the symbol at a position, per file, against the text the server has: a client's open documents and the disk's for the rest. Nothing is written; the client applies the edits. An edit that would create, rename or delete a file is `refused`, as is a rename the server refuses, with its reason.
+
+## When to call it
+
+When the user confirms a rename, to preview and then apply its edits.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `language` capability. Paths are relative to the workspace, or absolute; answers name files inside the workspace by their relative path and others, such as the standard library, by their absolute one. Lines are zero-based and columns count UTF-16 code units.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "path": "hub/stats.go",
+  "position": { "line": 5, "utf16Column": 5 },
+  "name": "Totals"
+}
+```
+
+Response:
+
+```json
+{
+  "kind": "edit",
+  "edit": {
+    "files": [
+      {
+        "path": "hub/stats.go",
+        "edits": [
+          {
+            "range": {
+              "start": { "line": 5, "utf16Column": 5 },
+              "end": { "line": 5, "utf16Column": 11 }
+            },
+            "text": "Totals"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+## Errors
+
+- `unavailable` or `denied` when the workspace doesn't offer language intelligence.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `language`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "path", "position", "name"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "path": {
+      "type": "string"
+    },
+    "position": {
+      "type": "object",
+      "required": ["line", "utf16Column"],
+      "properties": {
+        "line": {
+          "type": "number"
+        },
+        "utf16Column": {
+          "type": "number"
+        }
+      }
+    },
+    "name": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind", "edit"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "edit"
+        },
+        "edit": {
+          "type": "object",
+          "required": ["files"],
+          "properties": {
+            "files": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["path", "edits"],
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  },
+                  "edits": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": ["range", "text"],
+                      "properties": {
+                        "range": {
+                          "type": "object",
+                          "required": ["start", "end"],
+                          "properties": {
+                            "start": {
+                              "type": "object",
+                              "required": ["line", "utf16Column"],
+                              "properties": {
+                                "line": {
+                                  "type": "number"
+                                },
+                                "utf16Column": {
+                                  "type": "number"
+                                }
+                              }
+                            },
+                            "end": {
+                              "type": "object",
+                              "required": ["line", "utf16Column"],
+                              "properties": {
+                                "line": {
+                                  "type": "number"
+                                },
+                                "utf16Column": {
+                                  "type": "number"
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "reason"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "refused"
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}
