@@ -39,6 +39,10 @@ const INDEX_IDLE_MS = 5 * 60_000;
 
 const SEED_TRIES = 3;
 
+const ADD_TRIES = 5;
+
+const VANISHED = /^fatal: unable to stat '/m;
+
 const HOST = sha256(hostname()).slice(0, 8);
 
 const INDEX_NAME = /^([0-9a-f]{8})-(\d+)-[0-9a-f-]{36}(?:\.lock)?$/;
@@ -63,15 +67,24 @@ export function snapshotIndex(cwd: string, store: string, git: Git): SnapshotInd
       { env: { GIT_INDEX_FILE: index } },
     );
 
-  const addAll = (index: string): Promise<Ran> =>
-    git(cwd, ["add", "-A", "--verbose", "--", "."], { env: { GIT_INDEX_FILE: index } });
+  const add = async (index: string, flags: readonly string[]): Promise<Ran> => {
+    for (let tries = 1; ; tries += 1) {
+      const added = await git(cwd, ["add", "-A", ...flags, "--", "."], {
+        env: { GIT_INDEX_FILE: index },
+      });
+
+      if (added.code === 0 || tries === ADD_TRIES || !VANISHED.test(added.stderr)) return added;
+    }
+  };
+
+  const addAll = (index: string): Promise<Ran> => add(index, ["--verbose"]);
 
   const temporaryWrite = async (repo: Repository, seeded: boolean): Promise<Ran> => {
     const index = join(tmpdir(), `nyte-index-${randomUUID()}`);
 
     try {
       if (seeded) await copyFile(join(repo.gitDir, "index"), index).catch(() => undefined);
-      const added = await git(cwd, ["add", "-A", "--", "."], { env: { GIT_INDEX_FILE: index } });
+      const added = await add(index, []);
 
       if (added.code !== 0) throw new SdkError("unavailable", added.stderr.trim() || "git failed");
 
