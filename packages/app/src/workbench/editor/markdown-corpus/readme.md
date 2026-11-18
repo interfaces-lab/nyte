@@ -25,7 +25,7 @@ mise install && pnpm install
 pnpm format && pnpm lint && pnpm typecheck
 ```
 
-- [Build an agent app](packages/docs/content/docs/build/composition.mdx)
+- [Build an agent app](services/web/content/docs/build/composition.mdx)
 - [CONTRIBUTING.md](CONTRIBUTING.md): package map, checks, commits
 - [PACKAGES.md](PACKAGES.md): package distribution and npm publishing
 - [AGENTS.md](AGENTS.md): agent instructions

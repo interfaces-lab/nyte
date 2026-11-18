@@ -44,7 +44,7 @@ const workspaces = [
   folder("desktop", "/u/dev/nyte/packages/desktop"),
   folder("stale-nyte", "/u/dev/nyte", gone),
   folder("tmp", "/private/tmp/nyte-cwd-Oohl", gone),
-  folder("docs", "/u/dev/nyte/packages/docs"),
+  folder("docs", "/u/dev/nyte/services/web"),
   folder("legacy-nyte", "/u/dev/nyte"),
   folder("demo-tui", "/u/dev/nyte/packages/demo/tui"),
   folder("lazy", "/u/dev/lazy"),

@@ -44,7 +44,7 @@
     "packages/connect": {
       "ignoreIssues": { "src/schemas.ts": ["duplicates"] },
     },
-    "packages/connect-broker": {
+    "services/connect-broker": {
       "ignoreDependencies": ["cloudflare"],
     },
     "packages/desktop": {
@@ -59,7 +59,7 @@
       ],
       "ignoreDependencies": ["@anthropic-ai/claude-agent-sdk", "@lydell/node-pty", "sucrase"],
     },
-    "packages/docs": {
+    "services/web": {
       "ignoreDependencies": ["use-sync-external-store"],
     },
     "packages/host": {
@@ -71,7 +71,7 @@
     "packages/lab": {
       "entry": ["src/devtools.ts", "video/src/index.ts"],
     },
-    "packages/mobile": {
+    "packages/ios": {
       "entry": ["plugins/*.cjs"],
       "ignoreBinaries": ["eas", "build"],
     },

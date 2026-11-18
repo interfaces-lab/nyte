@@ -14,7 +14,7 @@ export type DocsSource =
   | { readonly kind: "files"; readonly files: DocsFiles };
 
 export function checkoutDocsPath(): string {
-  return fileURLToPath(new URL("../../docs/content/docs", import.meta.url));
+  return fileURLToPath(new URL("../../../services/web/content/docs", import.meta.url));
 }
 
 export function readCheckoutDocs(): DocsFiles {

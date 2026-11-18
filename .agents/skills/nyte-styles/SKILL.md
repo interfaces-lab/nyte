@@ -185,7 +185,7 @@ Take these steps in order.
 37. **Typecheck mobile after renaming or deleting a role.**
 
     ```sh
-    pnpm --dir packages/mobile exec tsc --noEmit
+    pnpm --dir packages/ios exec tsc --noEmit
     ```
 
 ## Verify

@@ -548,7 +548,7 @@ text ships alongside each package as `LICENSE`.
 
 - Repository: https://github.com/fuma-nama/fumadocs
 - What: the docs site's Mermaid MDX component
-  (`packages/docs/src/components/mdx/mermaid.tsx`) is ported from the Fumadocs
+  (`services/web/src/components/mdx/mermaid.tsx`) is ported from the Fumadocs
   docs app, adapted to render through `beautiful-mermaid` and to follow the
   active light or dark theme without a client-side re-render.
 

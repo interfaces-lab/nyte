@@ -2,7 +2,7 @@
 
 The Nyte Connect broker, a Cloudflare Worker over D1. It links desktops to Clerk accounts, signs the short leases that decide which phones a desktop serves, and relays phone requests to each desktop over a WebSocket the desktop opened. Desktops need no inbound port and no tunnel.
 
-Each linked desktop gets one relay Durable Object, which holds that environment's devices, policy and proofs in its own SQLite. The wire contract lives in [`@nyte-ai/connect`](../connect/README.md), and `packages/connect/src/relay.ts` describes the relay protocol: frames, flow control, close codes and limits. This package implements the broker side.
+Each linked desktop gets one relay Durable Object, which holds that environment's devices, policy and proofs in its own SQLite. The wire contract lives in [`@nyte-ai/connect`](../../packages/connect/README.md), and `packages/connect/src/relay.ts` describes the relay protocol: frames, flow control, close codes and limits. This package implements the broker side.
 
 The broker is served at `https://nyte-connect.daniel-fu90.workers.dev` through `workers_dev`, with no custom domain. Every step under [Operator setup](#operator-setup) is manual.
 
@@ -65,7 +65,7 @@ Only these route and method pairs get CORS and unauthenticated OPTIONS preflight
 
 Desktop linking, leases, relay socket upgrades, machine-key releases, the webhook and JWKS publication get no CORS. The broker refuses browser requests that carry `nyte-proof` without CORS, even on the shared DELETE paths. Before frames reach the desktop, the relay strips `Origin`, cookies, `Referer`, `Sec-Fetch` headers and forwarding headers. Only the request headers listed under [Routes](#routes) remain. The desktop still applies its own Origin, host and bearer checks.
 
-The browser token risks, the required strict CSP and the browser client API are in the [`@nyte-ai/connect` README](../connect/README.md#browser-client). Cloudflare and the broker see all relayed traffic, browser traffic included.
+The browser token risks, the required strict CSP and the browser client API are in the [`@nyte-ai/connect` README](../../packages/connect/README.md#browser-client). Cloudflare and the broker see all relayed traffic, browser traffic included.
 
 ## How it works
 
@@ -184,9 +184,9 @@ Hosts store the published key set from `/.well-known/jwks.json` when they link, 
 
 ## Operator setup
 
-Run these steps from `packages/connect-broker`. `wrangler` is a dev dependency of this package, so run it through `pnpm exec`.
+Run these steps from `services/connect-broker`. `wrangler` is a dev dependency of this package, so run it through `pnpm exec`.
 
-1. Configure the Clerk instance and its webhook as the [`@nyte-ai/connect` README](../connect/README.md#clerk) describes. Every origin you allow in Clerk must also be in `CLERK_AUTHORIZED_PARTIES` in `wrangler.jsonc`.
+1. Configure the Clerk instance and its webhook as the [`@nyte-ai/connect` README](../../packages/connect/README.md#clerk) describes. Every origin you allow in Clerk must also be in `CLERK_AUTHORIZED_PARTIES` in `wrangler.jsonc`.
 2. Check `wrangler.jsonc` before you deploy. It already names the account, the D1 database, the relay Durable Object and the vars. For a new account, create the database and put its id in `wrangler.jsonc`:
 
    ```sh
@@ -209,8 +209,8 @@ For `wrangler dev`, copy `.dev.vars.example` to `.dev.vars`, which git ignores, 
 ## Development
 
 ```sh
-pnpm --dir packages/connect-broker test
-pnpm --dir packages/connect-broker typecheck
+pnpm --dir services/connect-broker test
+pnpm --dir services/connect-broker typecheck
 ```
 
 The tests use real signatures everywhere. Only Clerk's Backend API is fake, and no test reads `.dev.vars`. There are two kinds:

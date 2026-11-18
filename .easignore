@@ -46,11 +46,11 @@ __pycache__/
 
 # Nested .gitignore files
 /.agents/skills/pnpm-*
-/packages/mobile/.expo/
-/packages/mobile/.voltra/
-/packages/mobile/ios/
-/packages/mobile/android/
-/packages/mobile/build/
+/packages/ios/.expo/
+/packages/ios/.voltra/
+/packages/ios/ios/
+/packages/ios/android/
+/packages/ios/build/
 
 # With this file present EAS copies files instead of running `git archive`,
 # which would sweep in .git.

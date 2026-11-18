@@ -4,7 +4,7 @@ Nyte's iOS app. It controls a running Nyte host, either the desktop app or `nyte
 another computer linked with `nyte account`. The host owns sessions, folders, model
 credentials, and tool execution, and keeps working after the app closes.
 
-The [remote access guide](../docs/content/docs/remote-access.mdx) has the steps for
+The [remote access guide](../../services/web/content/docs/remote-access.mdx) has the steps for
 users. This README covers how the app works, how to build it, and how to publish it.
 
 ## Quick start
@@ -20,16 +20,16 @@ From the repository root, generate the native project and install Pods:
 
 ```sh
 pnpm install
-pnpm --dir packages/mobile prebuild:dev --clean
-pod install --project-directory=packages/mobile/ios
+pnpm --dir packages/ios prebuild:dev --clean
+pod install --project-directory=packages/ios/ios
 ```
 
 Start Metro in one terminal, then build and launch from another terminal with the
 same `DEVELOPER_DIR`:
 
 ```sh
-pnpm --dir packages/mobile dev
-pnpm --dir packages/mobile ios
+pnpm --dir packages/ios dev
+pnpm --dir packages/ios ios
 ```
 
 Connect a host from the welcome screen. For a connected iPhone, see
@@ -140,12 +140,12 @@ Account sign-in needs two public values, inlined at build time:
 | `EXPO_PUBLIC_NYTE_CONNECT_ORIGIN` | unset | Broker and relay origin, a canonical `https://host[:port]`. |
 
 [`src/account/account-config.ts`](src/account/account-config.ts) turns the account
-off unless both parse. Local Expo commands read them from `packages/mobile/.env.local`,
+off unless both parse. Local Expo commands read them from `packages/ios/.env.local`,
 which Git ignores. EAS builds read the project's environment variables on expo.dev
 instead. Set both as plain-text project variables for `development`, `preview`, and
 `production`. `eas.json` selects the matching environment for each build profile, and
 EAS Update takes `--environment development|preview|production`. Use the same Clerk
-instance as the broker and desktop. The [connect broker README](../connect-broker/README.md)
+instance as the broker and desktop. The [connect broker README](../../services/connect-broker/README.md)
 has the deployed origin.
 
 The phone reaches every account host through the broker's relay at
@@ -276,17 +276,17 @@ because a dev client loads local bundles anyway.
 Inspect a resolved config before you build:
 
 ```sh
-APP_VARIANT=preview pnpm --dir packages/mobile exec expo config --json
+APP_VARIANT=preview pnpm --dir packages/ios exec expo config --json
 ```
 
 EAS profiles live in [`eas.json`](eas.json). Each sets `APP_VARIANT`, its EAS
 environment, and the update channel of the same name:
 
 ```sh
-pnpm --dir packages/mobile build:dev         # simulator dev client, internal
-pnpm --dir packages/mobile build:preview     # internal distribution
-pnpm --dir packages/mobile build:production  # App Store and TestFlight, build number auto-increments
-pnpm --dir packages/mobile submit            # upload the production build
+pnpm --dir packages/ios build:dev         # simulator dev client, internal
+pnpm --dir packages/ios build:preview     # internal distribution
+pnpm --dir packages/ios build:production  # App Store and TestFlight, build number auto-increments
+pnpm --dir packages/ios submit            # upload the production build
 ```
 
 The EAS project is `@nameisdaniel/nyte-ios`, id `5f78a9e7-057f-490e-ae2a-1dcdb12827d9`,
@@ -508,9 +508,9 @@ with Reanimated's Metro config for clearer error stacks.
 ## Development
 
 ```sh
-pnpm --dir packages/mobile typecheck
-pnpm --dir packages/mobile test
-pnpm --dir packages/mobile bundle
+pnpm --dir packages/ios typecheck
+pnpm --dir packages/ios test
+pnpm --dir packages/ios bundle
 ```
 
 `test` runs without native modules. It covers address and pairing-code policy,
@@ -534,7 +534,7 @@ variants are installed.
 To run on a connected iPhone, enable Developer Mode on the phone, then run:
 
 ```sh
-pnpm --dir packages/mobile ios --device
+pnpm --dir packages/ios ios --device
 ```
 
 Pick your Apple team when Xcode asks. Real-device signing needs your own Apple team.
@@ -543,8 +543,8 @@ For a local production build, regenerate the project for production and install 
 again:
 
 ```sh
-APP_VARIANT=production pnpm --dir packages/mobile prebuild --clean
-pod install --project-directory=packages/mobile/ios
+APP_VARIANT=production pnpm --dir packages/ios prebuild --clean
+pod install --project-directory=packages/ios/ios
 ```
 
 Then use `ios:release` or `ios:build`. `ios:release` builds and launches a Release
@@ -567,7 +567,7 @@ If CocoaPods picks an SDK from mismatched Command Line Tools, use the selected
 Xcode's SDK:
 
 ```sh
-SDKROOT="$(xcrun --sdk macosx --show-sdk-path)" pod install --project-directory=packages/mobile/ios
+SDKROOT="$(xcrun --sdk macosx --show-sdk-path)" pod install --project-directory=packages/ios/ios
 ```
 
 ### Native notes

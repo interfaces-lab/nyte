@@ -16,7 +16,7 @@ You can run it again at any time. It skips the steps that are done and continues
 npx nyte-ai init --check
 ```
 
-Without `CENTRAL_LICENSE_KEY`, Central Icons don't install and the apps draw Lucide icons instead. See [Icons](packages/docs/content/design/foundations/icons.mdx).
+Without `CENTRAL_LICENSE_KEY`, Central Icons don't install and the apps draw Lucide icons instead. See [Icons](services/web/content/design/foundations/icons.mdx).
 
 Runtime versions live in [mise.toml](mise.toml), and [package.json](package.json) pins the pnpm version. Use pnpm for workspace commands.
 
@@ -27,7 +27,7 @@ pnpm dev:tui
 pnpm dev:desktop
 ```
 
-To start the documentation site, run `pnpm --dir packages/docs dev`. Agents leave dev servers to the user.
+To start the documentation site, run `pnpm --dir services/web dev`. Agents leave dev servers to the user.
 
 ## Packages
 
@@ -47,13 +47,13 @@ To start the documentation site, run `pnpm --dir packages/docs dev`. Agents leav
 | [app](packages/app/README.md) | React interface for the desktop and web clients |
 | [canvas](packages/canvas) | Inline canvases: the `nyte/canvas` kit and the runtime every client loads it in |
 | [vt](packages/vt/README.md) | Terminal emulation over Ghostty's libghostty-vt WebAssembly build |
-| [mobile](packages/mobile/README.md) | Native iOS companion for a remote host |
+| [mobile](packages/ios/README.md) | Native iOS companion for a remote host |
 | [connect](packages/connect/README.md) | The Nyte Connect contract for account-based remote access |
-| [connect-broker](packages/connect-broker/README.md) | The Nyte Connect broker, a Cloudflare Worker |
+| [connect-broker](services/connect-broker/README.md) | The Nyte Connect broker, a Cloudflare Worker |
 | [tailnet](packages/tailnet/README.md) | `nyte-tailnet`, the host's embedded Tailscale node |
 | [ui](packages/ui/README.md) | Shared UI components and design tokens |
 | [bench](packages/bench/README.md) | Test fixtures: scripted models, cassettes, scenarios and a host simulation |
-| [docs](packages/docs/README.md) | Documentation website and design system reference |
+| [docs](services/web/README.md) | Documentation website and design system reference |
 | [examples](packages/examples) | Small programs built on the SDK |
 
 Read the affected package's README for details. Before you edit, read the root `AGENTS.md` and every `AGENTS.md` above the files you change. `pnpm guidance` lists those files and the skills that apply to your change.
@@ -101,7 +101,7 @@ Select `nyte-app`, `nyte-labs` or `nyte-web` in the project picker. Don't link a
 | --- | --- | --- |
 | `nyte-app` | `packages/app` | Vite |
 | `nyte-labs` | `packages/lab` | Vite |
-| `nyte-web` | `packages/docs` | TanStack Start |
+| `nyte-web` | `services/web` | TanStack Start |
 
 All three projects read source files outside their root directory. Each needs the shared `CENTRAL_LICENSE_KEY` to install Central Icons. Without it, the deployment draws Lucide icons. `.vercelignore` excludes local artifacts, secrets and unrelated demos and keeps the shared workspace dependencies. Vercel detects pnpm and the workspace build graph.
 

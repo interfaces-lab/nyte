@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import { defaultClientConditions, defaultServerConditions, defineConfig } from "vite";
 
 const uiIcons = readFileSync(
-  new URL("../ui/src/glyphs/selected.generated.ts", import.meta.url),
+  new URL("../../packages/ui/src/glyphs/selected.generated.ts", import.meta.url),
   "utf8",
 ).includes('"./central')
   ? ["@nyte-ai/ui > central-icons", "@nyte-ai/ui > central-icons-filled"]

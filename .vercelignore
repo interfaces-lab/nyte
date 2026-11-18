@@ -44,9 +44,9 @@ __pycache__/
 /.github
 /.nyte
 
-# Expo's native output; packages/mobile/.gitignore has the same
-/packages/mobile/.expo
-/packages/mobile/.voltra
-/packages/mobile/ios
-/packages/mobile/android
-/packages/mobile/build
+# Expo's native output; packages/ios/.gitignore has the same
+/packages/ios/.expo
+/packages/ios/.voltra
+/packages/ios/ios
+/packages/ios/android
+/packages/ios/build

@@ -1,12 +1,12 @@
 ---
 name: component-docs
 description: >
-  Write, review, or answer questions from the @nyte-ai/ui pages in packages/docs/content/design
+  Write, review, or answer questions from the @nyte-ai/ui pages in services/web/content/design
   (design.nyte.sh). Also use when a change in packages/ui adds a component subpath, or adds,
   removes, or renames a prop, part, or union member. Not for marketing pages under src/routes, or
   ui changes that leave every exported type as it was.
 paths:
-  - "packages/docs/content/design/**"
+  - "services/web/content/design/**"
   - "packages/ui/package.json"
 ---
 
@@ -54,15 +54,15 @@ Rule numbers are stable ids that other skills and reviews cite. A removed rule l
 28. **Include Base UI's tables, never its pages.** Never copy Base UI's prose, and never introduce an example that the page does not show.
 29. **Leave the internals out.** Leave out repo paths, generator commands, implementation history and the roadmap, but keep any limit the caller hits.
 30. **Follow the house style.** Use sentence-case headings and straight quotes, no em dashes, and no colon joining two clauses. Cut any sentence that could appear unchanged in another project's docs.
-31. **Use only registered MDX components.** Use only the components registered in `packages/docs/src/components/mdx.tsx`.
+31. **Use only registered MDX components.** Use only the components registered in `services/web/src/components/mdx.tsx`.
 
 ## Before reporting done
 
-32. **Check snippets by hand.** `pnpm --dir packages/docs typecheck` skips MDX and passes with a broken snippet. Check by hand that every imported name is exported by its subpath, that every union in a props table is complete, and that every `<include>` resolves from its page.
+32. **Check snippets by hand.** `pnpm --dir services/web typecheck` skips MDX and passes with a broken snippet. Check by hand that every imported name is exported by its subpath, that every union in a props table is complete, and that every `<include>` resolves from its page.
 33. **Run the typecheck and the format check.**
 
     ```sh
-    pnpm --dir packages/docs typecheck
+    pnpm --dir services/web typecheck
     pnpm format
     ```
 

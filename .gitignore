@@ -46,8 +46,8 @@ __pycache__/
 /output/brand/
 
 # The Good Nyte pages stay on your machine
-/packages/docs/src/components/good-nyte/
-/packages/docs/src/lib/visitor.ts
-/packages/docs/src/routes/good-nyte.tsx
-/packages/docs/src/routes/_site/_landing/good-nyte-3.tsx
-/packages/docs/src/styles/good-nyte.css
+/services/web/src/components/good-nyte/
+/services/web/src/lib/visitor.ts
+/services/web/src/routes/good-nyte.tsx
+/services/web/src/routes/_site/_landing/good-nyte-3.tsx
+/services/web/src/styles/good-nyte.css

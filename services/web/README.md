@@ -5,7 +5,7 @@ One TanStack Start app serves Nyte's documentation at nyte.sh and its design-sys
 ## Run it
 
 ```sh
-pnpm --dir packages/docs dev
+pnpm --dir services/web dev
 ```
 
 `src/lib/hosts.ts` maps the design host onto the `/design` routes. Locally, `design.localhost` on the dev server's port plays design.nyte.sh. Hosts without a design subdomain, such as Vercel previews, serve the design site at `/design`.
@@ -33,12 +33,12 @@ When `VITE_ALGOLIA_APP_ID` and `VITE_ALGOLIA_SEARCH_KEY` are set at build time, 
 After each deploy, replace the Algolia index with the deployed pages. The script reads them from the site's `/api/search-records` and writes to the index that `ALGOLIA_INDEX` names, `docs` by default:
 
 ```sh
-ALGOLIA_APP_ID=… ALGOLIA_WRITE_KEY=… pnpm --dir packages/docs sync:algolia https://nyte.sh
+ALGOLIA_APP_ID=… ALGOLIA_WRITE_KEY=… pnpm --dir services/web sync:algolia https://nyte.sh
 ```
 
 ## MCP server
 
-The site serves its docs as an MCP server at `/mcp`, built on the official MCP SDK in `src/lib/docs-mcp.ts`. It has three read-only tools: `list_docs`, `search_docs` and `read_doc`. It deploys with the site, needs no environment variables, and also runs under `pnpm --dir packages/docs dev`. It answers clients on MCP protocol 2026-07-28 and on the 2025 versions.
+The site serves its docs as an MCP server at `/mcp`, built on the official MCP SDK in `src/lib/docs-mcp.ts`. It has three read-only tools: `list_docs`, `search_docs` and `read_doc`. It deploys with the site, needs no environment variables, and also runs under `pnpm --dir services/web dev`. It answers clients on MCP protocol 2026-07-28 and on the 2025 versions.
 
 The examples below use `$DOCS`. Set it to the address the dev server prints:
 
@@ -72,9 +72,9 @@ Links in its answers use the address the request came in on, so a local or previ
 
 ```sh
 pnpm exec turbo typecheck --filter=@nyte-ai/web
-pnpm --dir packages/docs check:base-ui
+pnpm --dir services/web check:base-ui
 ```
 
-`check:base-ui` fails when the vendored Base UI reference pages are stale. Run `pnpm --dir packages/docs sync:base-ui` to update them. The generator's `BASE_UI_REF` must match the installed `@base-ui/react` release. Keep wording corrections in the generator so a sync preserves them.
+`check:base-ui` fails when the vendored Base UI reference pages are stale. Run `pnpm --dir services/web sync:base-ui` to update them. The generator's `BASE_UI_REF` must match the installed `@base-ui/react` release. Keep wording corrections in the generator so a sync preserves them.
 
 Read [AGENTS.md](AGENTS.md) before changing the site.

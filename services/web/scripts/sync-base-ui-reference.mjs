@@ -128,7 +128,7 @@ async function main() {
   }
 
   if (check && stale > 0) {
-    console.error("Run pnpm --dir packages/docs sync:base-ui to refresh these references.");
+    console.error("Run pnpm --dir services/web sync:base-ui to refresh these references.");
     process.exitCode = 1;
   }
 }

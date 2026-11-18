@@ -12,7 +12,15 @@ const RULES = new Set(
   ),
 );
 
-const PATH_ROOTS = ["packages/", "scripts/", "docs/", ".github/", ".agents/", ".nyte/"];
+const PATH_ROOTS = [
+  "packages/",
+  "services/",
+  "scripts/",
+  "docs/",
+  ".github/",
+  ".agents/",
+  ".nyte/",
+];
 
 const PNPM_COMMANDS = new Set([
   "add",

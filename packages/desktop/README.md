@@ -64,7 +64,7 @@ Cloud chats use the server's provider credentials and models. Local provider set
 
 ## Remote access
 
-Settings › Server lets phones and browsers reach this Mac. The [remote access guide](../docs/content/docs/remote-access.mdx) has the user steps. There are three ways in.
+Settings › Server lets phones and browsers reach this Mac. The [remote access guide](../../services/web/content/docs/remote-access.mdx) has the user steps. There are three ways in.
 
 ### Tailscale
 

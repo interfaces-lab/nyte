@@ -6,10 +6,10 @@ import { ICON_CONSUMERS, iconSet } from "./icons.mjs";
 /* oxlint-disable nyte-code/no-cross-package-relative-imports -- this test covers the Lucide sets of three packages; none of them is a package export */
 import * as uiNames from "../packages/ui/src/icon-names.ts";
 import * as uiLucide from "../packages/ui/src/glyphs/lucide.ts";
-import * as docsNames from "../packages/docs/src/lib/icon-set/names.ts";
-import * as docsLucide from "../packages/docs/src/lib/icon-set/lucide.ts";
-import { MOBILE_GLYPH_NAMES } from "../packages/mobile/scripts/icon-set/names.mjs";
-import * as mobileLucide from "../packages/mobile/scripts/icon-set/lucide.mjs";
+import * as docsNames from "../services/web/src/lib/icon-set/names.ts";
+import * as docsLucide from "../services/web/src/lib/icon-set/lucide.ts";
+import { MOBILE_GLYPH_NAMES } from "../packages/ios/scripts/icon-set/names.mjs";
+import * as mobileLucide from "../packages/ios/scripts/icon-set/lucide.mjs";
 /* oxlint-enable nyte-code/no-cross-package-relative-imports */
 
 const require = createRequire(new URL("../packages/ui/package.json", import.meta.url));

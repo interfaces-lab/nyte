@@ -156,7 +156,7 @@ docs/
 ```
 
 The npm `files` list includes the same `docs` directory, so the package needs no prepack step.
-The npm launcher extracts the native archive in its versioned cache. `packages/docs/public/install`
+The npm launcher extracts the native archive in its versioned cache. `services/web/public/install`
 copies the docs into `<install-directory>/../share/nyte/<version>/docs`. Releases without docs
 still install the binary.
 

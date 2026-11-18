@@ -146,7 +146,7 @@ export default defineConfig({
   },
   overrides: [
     {
-      files: ["packages/docs/**"],
+      files: ["services/web/**"],
       jsPlugins: ["@shadcn/lint"],
       rules: {
         "shadcn/no-unknown-classes": [
@@ -161,10 +161,7 @@ export default defineConfig({
       },
     },
     {
-      files: [
-        "packages/docs/src/routes/opengraph-image[.]png.tsx",
-        "packages/docs/src/routes/og/**",
-      ],
+      files: ["services/web/src/routes/opengraph-image[.]png.tsx", "services/web/src/routes/og/**"],
       rules: { "shadcn/no-inline-styles": "off" },
     },
     {
@@ -175,7 +172,7 @@ export default defineConfig({
       },
     },
     {
-      files: ["packages/**", "scripts/**"],
+      files: ["packages/**", "services/**", "scripts/**"],
       excludeFiles: ["scripts/oxlint/**", "packages/ai/**"],
       rules: {
         "anti-slop/no-array-filter-map": "warn",
@@ -397,12 +394,12 @@ export default defineConfig({
         "packages/app/**/*.{ts,tsx}",
         "packages/ui/**/*.{ts,tsx}",
         "packages/lab/**/*.{ts,tsx}",
-        "packages/mobile/**/*.{ts,tsx}",
+        "packages/ios/**/*.{ts,tsx}",
       ],
       rules: { "nyte-interactions/named-stylex-imports": "error" },
     },
     {
-      files: ["packages/mobile/src/**/*.{ts,tsx}"],
+      files: ["packages/ios/src/**/*.{ts,tsx}"],
       rules: {
         "nyte-interactions/accessible-pressable": "error",
         "nyte-interactions/specific-confirm-label": "error",
