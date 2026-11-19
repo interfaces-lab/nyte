@@ -224,6 +224,13 @@ async function pipe(
   let killed = false;
   child.on("close", (code) => finish(killed ? null : code));
   child.on("exit", (code) => {
+    const group = child.pid;
+
+    if (!windows && group !== undefined)
+      try {
+        process.kill(-group, "SIGTERM");
+      } catch {}
+
     setTimeout(() => {
       child.stdout?.destroy();
       child.stderr?.destroy();
