@@ -82,6 +82,8 @@ const LEGACY_REFS = "refs/nyte/snapshots/";
 
 const GENERATION = 1_000;
 
+const KEPT_GENERATIONS = 10;
+
 const KEEP_TRIES = 3;
 
 const STORE_CONCURRENCY = 32;
@@ -239,13 +241,15 @@ export function localSnapshots(
       }),
     );
 
-    const root = [
+    const grown = [
       ...known.root.filter((entry) => entry.name !== open?.name),
       ...generations.map((generation) => ({
         tree: generation.tree,
         name: generationName(generation.number),
       })),
     ];
+
+    const root = grown.slice(-KEPT_GENERATIONS);
 
     const next = await mktree(repo, root);
 
@@ -279,6 +283,8 @@ export function localSnapshots(
             },
     };
 
+    if (root.length < grown.length) keptTrees.clear();
+
     for (const tree of filled) keptTrees.add(tree);
 
     return true;
@@ -310,6 +316,7 @@ export function localSnapshots(
 
   const readKept = async (repo: Repository, id: string): Promise<Kept> => {
     if (kept?.id === id) return kept;
+    keptTrees.clear();
     const root = await readTree(repo, id);
 
     const last = root

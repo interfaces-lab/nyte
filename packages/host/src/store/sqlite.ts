@@ -87,6 +87,8 @@ export function sqliteStore(
         timeout: BUSY_TIMEOUT_MS,
       });
 
+      created.exec("PRAGMA auto_vacuum = INCREMENTAL");
+
       if ("path" in input) created.exec("PRAGMA journal_mode = WAL");
       created.exec("PRAGMA synchronous = NORMAL");
       created.exec("PRAGMA checkpoint_fullfsync = ON");
