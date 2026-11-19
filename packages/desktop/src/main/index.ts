@@ -139,7 +139,7 @@ app.setPath(
     join(app.getPath("appData"), build?.name ?? "Nyte Dev"),
 );
 
-if (build?.homeInUserData === true)
+if (build === null ? process.env["NYTE_HOME"] === undefined : build.homeInUserData)
   process.env["NYTE_HOME"] = join(app.getPath("userData"), "nyte");
 
 const launchState = new LaunchStateStore(join(app.getPath("userData"), "launch-state.json"));

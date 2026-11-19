@@ -68,6 +68,7 @@ export async function startE2eHost(options: E2eHostOptions): Promise<E2eHost> {
     NYTE_MODELS_URL: `${endpoint.origin}/catalog`,
     NYTE_SKIP_VERSION_CHECK: "1",
     NYTE_DESKTOP_HOST_LABEL: label,
+    NYTE_HOME: nyteHome,
   };
 
   const job = developmentHostAgentJob({
@@ -88,7 +89,7 @@ export async function startE2eHost(options: E2eHostOptions): Promise<E2eHost> {
   const started = performance.now();
 
   const stop =
-    process.platform === "darwin" ? await bootstrapJob(job, options.home) : await spawnJob(job);
+    process.platform === "darwin" ? await bootstrapJob(job, nyteHome) : await spawnJob(job);
 
   cleanup.defer(stop);
 
@@ -199,10 +200,9 @@ async function runningHost(nyteHome: string): Promise<number | null> {
   return socket && Value.Check(RunningHostType, parsed) && alive(parsed.pid) ? parsed.pid : null;
 }
 
-async function bootstrapJob(job: HostAgentJob, home: string): Promise<() => Promise<void>> {
-  const agents = join(home, "Library", "LaunchAgents");
-  const plist = join(agents, `${job.label}.plist`);
-  await mkdir(agents, { recursive: true });
+async function bootstrapJob(job: HostAgentJob, nyteHome: string): Promise<() => Promise<void>> {
+  const plist = join(nyteHome, `${job.label}.plist`);
+  await mkdir(nyteHome, { recursive: true, mode: 0o700 });
   await writeFile(plist, hostAgentPlist(job));
   await execute("launchctl", ["bootstrap", domain(), plist]);
 

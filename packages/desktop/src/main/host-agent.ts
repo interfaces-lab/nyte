@@ -87,7 +87,7 @@ function loginItemAgent(options: HostAgentOptions): HostAgent {
 
 function developmentAgent(options: HostAgentOptions): HostAgent {
   const label = options.label ?? `${appId(options)}.dev.host`;
-  const path = join(options.home, "Library", "LaunchAgents", `${label}.plist`);
+  const path = join(options.nyteHome, `${label}.plist`);
 
   const job = developmentHostAgentJob({
     label,
@@ -110,7 +110,6 @@ function developmentAgent(options: HostAgentOptions): HostAgent {
     const written = await readFile(path, "utf8").catch(() => null);
 
     if (written === plist && (await loaded())) return "enabled";
-    await mkdir(join(options.home, "Library", "LaunchAgents"), { recursive: true });
     await mkdir(join(options.nyteHome, "logs"), { recursive: true, mode: 0o700 });
     await writeFile(path, plist);
     await execute("launchctl", ["bootout", target(label)]).catch(() => undefined);

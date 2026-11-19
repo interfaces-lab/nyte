@@ -27,6 +27,7 @@ export function bundledHostAgentJob(input: {
 }
 
 const DEVELOPMENT_HOST_VARIABLES = [
+  "NYTE_DB",
   "NYTE_MODELS_URL",
   "NYTE_TRACE",
   "NYTE_DEV",

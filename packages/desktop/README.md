@@ -19,9 +19,9 @@ The desktop's host is `serveHost` from `@nyte-ai/service`, the same host `nyte h
 - The app's own executable runs `out/main/nyte-host.js` with `ELECTRON_RUN_AS_NODE=1`. This lets terminals open through the `@lydell/node-pty` the app ships. The Bun-compiled `nyte host` can't load it and answers a terminal start with `unavailable`.
 - The host starts in your home folder, its default workspace, and runs the bundled `nyte-tailnet` sidecar.
 - On macOS the host is a launchd login agent. The packaged app registers `Contents/Library/LaunchAgents/ai.nyte.desktop.host.plist` through SMAppService.
-- A macOS development build writes and bootstraps `~/Library/LaunchAgents/ai.nyte.desktop.dev.host.plist`. It points at the development Electron and entry, with `packages/tui/dist/nyte-tailnet` as the sidecar.
+- A macOS development build writes `$NYTE_HOME/ai.nyte.desktop.dev.host.plist` and bootstraps it. It points at the development Electron and entry, with `packages/tui/dist/nyte-tailnet` as the sidecar. The plist sits outside `~/Library/LaunchAgents`, so launchd forgets the job at logout and never starts it at login.
 - On Linux the app starts the host as a detached process. On Windows the app doesn't start a host.
-- The host serves `$NYTE_HOME/host.sock`, where `NYTE_HOME` defaults to `~/.nyte`. Main connects there.
+- The host serves `$NYTE_HOME/host.sock`. Main connects there.
 
 To find the running host:
 
@@ -37,7 +37,7 @@ Main is also a client on the host's event channel. It offers the agents' browser
 
 | Variable | Default | What it does |
 | --- | --- | --- |
-| `NYTE_HOME` | `~/.nyte` | Folder for the host socket, store and credentials |
+| `NYTE_HOME` | `~/.nyte`; a development build uses `~/Library/Application Support/Nyte Dev/nyte` | Folder for the host's socket, lock and logs, so a development build's host never competes with the installed app's. The store follows `NYTE_DB`, which `pnpm dev:desktop` sets to `~/.nyte/nyte-dev.db` |
 | `NYTE_DESKTOP_HOST_LABEL` | `ai.nyte.desktop.dev.host` | launchd label for a development build's host. Packaged builds ignore it |
 | `MAIN_VITE_NYTE_CONNECT_ORIGIN` | unset | Build-time Nyte Connect broker origin, a canonical HTTPS origin |
 | `MAIN_VITE_NYTE_CLERK_PUBLISHABLE_KEY` | unset | Build-time Clerk publishable key |
