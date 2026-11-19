@@ -1,7 +1,11 @@
+import { mentionFile } from "../../data/files.ts";
 import type { MentionFile } from "../../data/files.ts";
-import { createFileRanking } from "../../lib/file-ranking.ts";
 
 const MAX_FILE_SUGGESTIONS = 20;
+
+const MAX_FOLDER_CHILDREN = 200;
+
+const FILE_ID = "file:";
 
 export interface MentionSuggestion {
   readonly kind: "mention";
@@ -21,6 +25,35 @@ export interface FileSuggestion {
   readonly recent?: true;
 }
 
+export interface MentionRecency {
+  readonly accepted: readonly string[];
+  readonly opened: readonly string[];
+}
+
+export interface MentionRanking {
+  readonly rank: (
+    rawQuery: string,
+    hasConversationContext: boolean,
+    recency: MentionRecency,
+    folder: MentionFile | undefined,
+  ) => readonly (FileSuggestion | MentionSuggestion)[];
+  readonly parentFolder: (folder: MentionFile) => MentionFile | undefined;
+}
+
+interface Entry {
+  readonly file: MentionFile;
+  readonly name: string;
+  readonly path: string;
+  readonly order: number;
+}
+
+interface Scored {
+  readonly entry: Entry;
+  readonly tier: number;
+  readonly accepted: number;
+  readonly opened: number;
+}
+
 const CONVERSATION_SUGGESTION: MentionSuggestion = {
   kind: "mention",
   id: "current-conversation",
@@ -29,63 +62,181 @@ const CONVERSATION_SUGGESTION: MentionSuggestion = {
   icon: "more",
 };
 
-function fileId(file: MentionFile): string {
-  return `file:${file.path}`;
+export function fuzzyMatch(query: string, text: string): boolean {
+  let matched = 0;
+
+  for (let index = 0; index < text.length && matched < query.length; index += 1) {
+    if (text[index] === query[matched]) matched += 1;
+  }
+
+  return matched === query.length;
 }
 
-function fileSuggestion(file: MentionFile): FileSuggestion {
-  return {
+function fileTier(query: string, entry: Entry): number | undefined {
+  if (query === "" || entry.name === query) return 0;
+
+  if (entry.name.startsWith(query)) return 1;
+
+  if (fuzzyMatch(query, entry.name)) return 2;
+
+  if (entry.path.includes(query)) return 3;
+
+  return fuzzyMatch(query, entry.path) ? 4 : undefined;
+}
+
+function compareScored(left: Scored, right: Scored): number {
+  return (
+    left.tier - right.tier ||
+    left.accepted - right.accepted ||
+    left.opened - right.opened ||
+    left.entry.path.length - right.entry.path.length ||
+    left.entry.order - right.entry.order
+  );
+}
+
+function keepBest(best: Scored[], next: Scored, limit: number): void {
+  const last = best.at(-1);
+
+  if (best.length === limit && last !== undefined && compareScored(next, last) >= 0) return;
+  const at = best.findIndex((held) => compareScored(next, held) < 0);
+  best.splice(at === -1 ? best.length : at, 0, next);
+
+  if (best.length > limit) best.pop();
+}
+
+function parentPath(path: string): string {
+  const trimmed = path.replace(/\/$/u, "");
+
+  return trimmed.slice(0, trimmed.lastIndexOf("/") + 1);
+}
+
+function fileSuggestion(scored: Scored, marksRecent: boolean): FileSuggestion {
+  const file = scored.entry.file;
+
+  const suggestion: FileSuggestion = {
     kind: "file",
-    id: fileId(file),
+    id: `${FILE_ID}${file.path}`,
     label: file.label,
     description: file.displayPath,
     icon: file.kind,
     file,
   };
+
+  return marksRecent && (Number.isFinite(scored.accepted) || Number.isFinite(scored.opened))
+    ? { ...suggestion, recent: true }
+    : suggestion;
 }
 
-export function createMentionSuggestionRanking(files: readonly MentionFile[]) {
-  const rankFiles = createFileRanking(files, MAX_FILE_SUGGESTIONS);
-  let byId: ReadonlyMap<string, MentionFile> | undefined;
+export function knownMentionFiles(root: string, recency: MentionRecency): readonly MentionFile[] {
+  const prefix = `${root.replace(/\/$/u, "")}/`;
 
-  return (
-    rawQuery: string,
-    hasConversationContext: boolean,
-    recent: readonly string[],
-  ): readonly (FileSuggestion | MentionSuggestion)[] => {
-    const query = rawQuery.trim().toLocaleLowerCase();
-    const results: (FileSuggestion | MentionSuggestion)[] = [];
+  const paths = new Set([
+    ...recency.accepted.flatMap((id) => (id.startsWith(FILE_ID) ? [id.slice(FILE_ID.length)] : [])),
+    ...recency.opened,
+  ]);
 
-    if (
-      hasConversationContext &&
-      (CONVERSATION_SUGGESTION.label.toLocaleLowerCase().includes(query) ||
-        CONVERSATION_SUGGESTION.description.toLocaleLowerCase().includes(query))
-    ) {
-      results.push(CONVERSATION_SUGGESTION);
+  return [...paths].flatMap((path) =>
+    path.startsWith(prefix) && path.length > prefix.length
+      ? [
+          mentionFile(root, {
+            path: path.slice(prefix.length).replace(/\/$/u, ""),
+            kind: path.endsWith("/") ? "directory" : "file",
+          }),
+        ]
+      : [],
+  );
+}
+
+export function createMentionSuggestionRanking(files: readonly MentionFile[]): MentionRanking {
+  let entries: readonly Entry[] | undefined;
+  let children: ReadonlyMap<string, readonly Entry[]> | undefined;
+
+  const indexed = (): readonly Entry[] =>
+    (entries ??= files.map((file, order) => ({
+      file,
+      name: file.label.replace(/\/$/u, "").toLocaleLowerCase(),
+      path: file.displayPath.toLocaleLowerCase(),
+      order,
+    })));
+
+  const listChildren = (folder: MentionFile): readonly Entry[] => {
+    children ??= Map.groupBy(indexed(), (entry) => parentPath(entry.file.path));
+
+    return children.get(folder.path) ?? [];
+  };
+
+  const rankEntries = (
+    query: string,
+    candidates: readonly Entry[],
+    recency: MentionRecency,
+    limit: number,
+  ): readonly Scored[] => {
+    const accepted = new Map(recency.accepted.map((id, position) => [id, position]));
+    const opened = new Map(recency.opened.map((path, position) => [path, position]));
+    const best: Scored[] = [];
+
+    for (const entry of candidates) {
+      const tier = fileTier(query, entry);
+
+      if (tier !== undefined)
+        keepBest(
+          best,
+          {
+            entry,
+            tier,
+            accepted: accepted.get(`${FILE_ID}${entry.file.path}`) ?? Infinity,
+            opened: opened.get(entry.file.path) ?? Infinity,
+          },
+          limit,
+        );
     }
 
-    byId ??= new Map(files.map((file) => [fileId(file), file]));
-    const known = byId;
+    return best;
+  };
 
-    const used = recent
-      .flatMap((id) => {
-        const file = known.get(id);
+  return {
+    rank: (rawQuery, hasConversationContext, recency, folder) => {
+      const query = rawQuery.trim().toLocaleLowerCase();
 
-        return file?.label.toLocaleLowerCase().includes(query) === true ? [file] : [];
-      })
-      .slice(0, MAX_FILE_SUGGESTIONS);
+      if (folder !== undefined) {
+        const inside = listChildren(folder);
 
-    const usedPaths = new Set(used.map((file) => file.path));
-    const matches = query === "" ? files.slice(0, MAX_FILE_SUGGESTIONS) : rankFiles(query);
+        if (query !== "")
+          return rankEntries(query, inside, recency, MAX_FOLDER_CHILDREN).map((scored) =>
+            fileSuggestion(scored, false),
+          );
 
-    const rest = matches
-      .filter((file) => !usedPaths.has(file.path))
-      .slice(0, MAX_FILE_SUGGESTIONS - used.length);
+        return inside
+          .toSorted(
+            (left, right) =>
+              Number(right.file.kind === "folder") - Number(left.file.kind === "folder") ||
+              left.name.localeCompare(right.name),
+          )
+          .slice(0, MAX_FOLDER_CHILDREN)
+          .map((entry) =>
+            fileSuggestion({ entry, tier: 0, accepted: Infinity, opened: Infinity }, false),
+          );
+      }
 
-    return [
-      ...results,
-      ...used.map((file): FileSuggestion => ({ ...fileSuggestion(file), recent: true })),
-      ...rest.map(fileSuggestion),
-    ];
+      const conversation =
+        hasConversationContext &&
+        (CONVERSATION_SUGGESTION.label.toLocaleLowerCase().includes(query) ||
+          CONVERSATION_SUGGESTION.description.toLocaleLowerCase().includes(query))
+          ? [CONVERSATION_SUGGESTION]
+          : [];
+
+      return [
+        ...conversation,
+        ...rankEntries(query, indexed(), recency, MAX_FILE_SUGGESTIONS).map((scored) =>
+          fileSuggestion(scored, query === ""),
+        ),
+      ];
+    },
+    parentFolder: (folder) => {
+      const path = parentPath(folder.path);
+
+      return indexed().find((entry) => entry.file.kind === "folder" && entry.file.path === path)
+        ?.file;
+    },
   };
 }

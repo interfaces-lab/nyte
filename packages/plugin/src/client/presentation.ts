@@ -569,12 +569,27 @@ export function completionTrigger(
   while (start > 0 && (value[start - 1] ?? "").trim() !== "") start -= 1;
   const kind = value[start];
 
-  if (start === caret || (kind !== "@" && kind !== "/")) return undefined;
-  let end = caret;
+  if (start === caret) return undefined;
 
-  while (end < value.length && (value[end] ?? "").trim() !== "") end += 1;
+  if (kind === "@" || kind === "/")
+    return {
+      kind,
+      start,
+      end: tokenEnd(value, caret, false),
+      query: value.slice(start + 1, caret),
+    };
+  const opener = value.lastIndexOf("(@", caret - 2);
+  const query = value.slice(opener + 2, caret);
 
-  return { kind, start, end, query: value.slice(start + 1, caret) };
+  if (opener < start || opener + 2 > caret || query.includes(")")) return undefined;
+
+  return { kind: "@", start: opener + 1, end: tokenEnd(value, caret, true), query };
+}
+
+function tokenEnd(value: string, caret: number, parenthesized: boolean): number {
+  const stop = value.slice(caret).search(parenthesized ? /[\s)]/u : /\s/u);
+
+  return stop === -1 ? value.length : caret + stop;
 }
 
 export type ToolVerbs = Readonly<Record<Exclude<ToolTense, "none">, string>>;

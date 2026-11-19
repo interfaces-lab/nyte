@@ -1,10 +1,14 @@
 import { completionTrigger, findCommandArgument } from "@nyte-ai/plugin/client/presentation";
 import type { CommandInfo, SkillInfo } from "@nyte-ai/sdk";
+import type { MentionFile } from "../../data/files.ts";
 import type { ComposerDocumentState } from "./composer-document.ts";
 import { composerEnterAction } from "./composer-keys.ts";
+import type { SuggestionFrecency } from "./composer-recent.ts";
+import { fuzzyMatch } from "./composer-suggestion-ranking.ts";
 import type {
-  createMentionSuggestionRanking,
   FileSuggestion,
+  MentionRanking,
+  MentionRecency,
   MentionSuggestion,
 } from "./composer-suggestion-ranking.ts";
 import { CONVERSATION_MENTION } from "../../references/message-references.ts";
@@ -39,16 +43,25 @@ export interface ArgumentSuggestion {
   readonly value: string;
 }
 
+interface BackSuggestion {
+  readonly kind: "back";
+  readonly id: "browse:back";
+  readonly label: "Back";
+  readonly description: string;
+  readonly icon: "arrow-left";
+}
+
 export type ComposerSuggestion =
   | ArgumentSuggestion
   | PluginCommandSuggestion
   | SkillSuggestion
   | MentionSuggestion
-  | FileSuggestion;
+  | FileSuggestion
+  | BackSuggestion;
 
 export type ChipSuggestion = Exclude<
   ComposerSuggestion,
-  PluginCommandSuggestion | ArgumentSuggestion
+  PluginCommandSuggestion | ArgumentSuggestion | BackSuggestion
 >;
 
 export type SuggestionToken =
@@ -103,20 +116,19 @@ export function liveToken(
       : undefined;
   }
 
-  const token = completionTrigger(
-    document.text.slice(menu.start),
-    document.selectionStart - menu.start,
-  );
+  const opener = menu.kind === "mention" && document.text[menu.start - 1] === "(" ? 1 : 0;
+  const from = menu.start - opener;
+  const token = completionTrigger(document.text.slice(from), document.selectionStart - from);
 
   if (
-    token?.start !== 0 ||
+    token?.start !== opener ||
     document.selectionStart !== document.selectionEnd ||
     token.kind !== (menu.kind === "mention" ? "@" : "/") ||
     (token.kind === "@" && token.query.startsWith("file://"))
   )
     return undefined;
 
-  return { kind: menu.kind, start: menu.start, end: menu.start + token.end, query: token.query };
+  return { kind: menu.kind, start: menu.start, end: from + token.end, query: token.query };
 }
 
 export type ComposerSource<T> =
@@ -131,58 +143,90 @@ type SlashSuggestion = PluginCommandSuggestion | SkillSuggestion;
 interface RankedSuggestion {
   readonly suggestion: SlashSuggestion;
   readonly order: number;
-  readonly rank: number;
+  readonly tier: number;
+  readonly weight: number;
+}
+
+function slashTier(query: string, label: string, description: string): number | undefined {
+  if (query === "" || label === query) return 0;
+
+  if (label.startsWith(query)) return 1;
+
+  if (label.includes(query)) return 2;
+
+  if (fuzzyMatch(query, label)) return 3;
+
+  return description.includes(query) ? 4 : undefined;
 }
 
 function rankSuggestions(
   suggestions: readonly SlashSuggestion[],
   query: string,
-  recent: readonly string[],
+  frecency: SuggestionFrecency,
 ): readonly ComposerSuggestion[] {
-  const recency = new Map(recent.map((id, position) => [id, position]));
-
   return suggestions
-    .flatMap((suggestion, index): RankedSuggestion[] => {
-      const label = suggestion.label.toLocaleLowerCase();
-      const description = suggestion.description.toLocaleLowerCase();
+    .flatMap((suggestion, order): RankedSuggestion[] => {
+      const tier = slashTier(
+        query,
+        suggestion.label.toLocaleLowerCase(),
+        suggestion.description.toLocaleLowerCase(),
+      );
 
-      const rank = label.startsWith(query)
-        ? 0
-        : label.includes(query)
-          ? 1
-          : description.includes(query)
-            ? 2
-            : undefined;
-
-      if (rank === undefined) return [];
-      const used = rank < 2 ? recency.get(suggestion.id) : undefined;
-
-      return used === undefined
-        ? [{ suggestion, order: index, rank }]
-        : [{ suggestion: { ...suggestion, recent: true }, order: used, rank: -1 }];
+      return tier === undefined
+        ? []
+        : [{ suggestion, order, tier, weight: frecency[suggestion.id] ?? -Infinity }];
     })
-    .sort((left, right) => left.rank - right.rank || left.order - right.order)
-    .map(({ suggestion }) => suggestion);
+    .sort(
+      (left, right) =>
+        left.tier - right.tier || right.weight - left.weight || left.order - right.order,
+    )
+    .map((ranked) =>
+      query === "" && Number.isFinite(ranked.weight)
+        ? { ...ranked.suggestion, recent: true }
+        : ranked.suggestion,
+    );
+}
+
+export interface SuggestionSources {
+  readonly commands: readonly CommandInfo[];
+  readonly skills: readonly SkillInfo[];
+  readonly mentions: MentionRanking;
+  readonly hasConversationContext: boolean;
+  readonly recency: MentionRecency;
+  readonly frecency: SuggestionFrecency;
+  readonly folder: MentionFile | undefined;
 }
 
 export function suggestionsFor(
   kind: Exclude<SuggestionToken["kind"], "argument">,
   rawQuery: string,
-  commands: readonly CommandInfo[],
-  skills: readonly SkillInfo[],
-  rankMentions: ReturnType<typeof createMentionSuggestionRanking>,
-  hasConversationContext: boolean,
-  recent: readonly string[],
+  sources: SuggestionSources,
 ): readonly ComposerSuggestion[] {
   if (kind === "mention") {
-    return rankMentions(rawQuery, hasConversationContext, recent);
-  }
+    const rows = sources.mentions.rank(
+      rawQuery,
+      sources.hasConversationContext,
+      sources.recency,
+      sources.folder,
+    );
 
-  const query = rawQuery.trim().toLocaleLowerCase();
+    if (sources.folder === undefined) return rows;
+
+    return [
+      {
+        kind: "back",
+        id: "browse:back",
+        label: "Back",
+        description: sources.mentions.parentFolder(sources.folder)?.displayPath ?? "All files",
+        icon: "arrow-left",
+      },
+      ...rows,
+    ];
+  }
 
   return rankSuggestions(
     [
-      ...commands.map((command): SlashSuggestion => ({
+      ...sources.commands.map((command): SlashSuggestion => ({
         kind: "plugin-command",
         id: `plugin-command:${command.name}`,
         label: command.name,
@@ -190,7 +234,7 @@ export function suggestionsFor(
         icon: "command",
         command,
       })),
-      ...skills.map((skill): SlashSuggestion => ({
+      ...sources.skills.map((skill): SlashSuggestion => ({
         kind: "skill",
         id: `skill:${skill.name}`,
         label: skill.name,
@@ -199,15 +243,17 @@ export function suggestionsFor(
         skill,
       })),
     ],
-    query,
-    recent,
+    rawQuery.trim().toLocaleLowerCase(),
+    sources.frecency,
   );
 }
 
-type SuggestionGroup = "context" | "recent" | "files" | "commands" | "skills";
+type SuggestionGroup = "navigation" | "context" | "recent" | "files" | "commands" | "skills";
 
 export function suggestionGroup(suggestion: ComposerSuggestion): SuggestionGroup {
   switch (suggestion.kind) {
+    case "back":
+      return "navigation";
     case "mention":
       return "context";
     case "file":
@@ -247,6 +293,7 @@ export function suggestionAttribution(suggestion: ComposerSuggestion): string | 
     case "mention":
     case "argument":
     case "file":
+    case "back":
       return undefined;
     default: {
       const _exhaustive: never = suggestion;
@@ -315,44 +362,82 @@ export function suggestionReference(suggestion: ChipSuggestion): MessageReferenc
   }
 }
 
-export interface MenuState {
-  readonly token: SuggestionToken | undefined;
-  readonly index: number;
-  readonly highlighted: boolean;
+export function browsableFolder(
+  suggestion: ComposerSuggestion | undefined,
+): MentionFile | undefined {
+  return suggestion?.kind === "file" && suggestion.file.kind === "folder"
+    ? suggestion.file
+    : undefined;
 }
 
-export const CLOSED_MENU: MenuState = { token: undefined, index: 0, highlighted: false };
+export function defaultRow(rows: readonly ComposerSuggestion[]): ComposerSuggestion | undefined {
+  return rows.find((row) => row.kind !== "back") ?? rows[0];
+}
+
+interface TriggerMark {
+  readonly kind: SuggestionToken["kind"];
+  readonly start: number;
+}
+
+export interface MenuState {
+  readonly token: SuggestionToken | undefined;
+  readonly active: string | undefined;
+  readonly highlighted: boolean;
+  readonly dismissed: TriggerMark | undefined;
+  readonly folder: MentionFile | undefined;
+}
+
+export const CLOSED_MENU: MenuState = {
+  token: undefined,
+  active: undefined,
+  highlighted: false,
+  dismissed: undefined,
+  folder: undefined,
+};
 
 export type MenuEvent =
   | { readonly kind: "token"; readonly token: SuggestionToken | undefined }
-  | { readonly kind: "move"; readonly to: number; readonly count: number }
-  | { readonly kind: "point"; readonly index: number; readonly count: number };
+  | { readonly kind: "dismiss" }
+  | { readonly kind: "select"; readonly id: string }
+  | { readonly kind: "rows"; readonly ids: readonly string[] }
+  | { readonly kind: "browse"; readonly folder: MentionFile | undefined };
 
 export function nextMenu(menu: MenuState, event: MenuEvent): MenuState {
   switch (event.kind) {
-    case "token":
-      return menu.token !== undefined &&
-        event.token !== undefined &&
-        menu.token.kind === event.token.kind &&
-        menu.token.start === event.token.start
-        ? { ...menu, token: event.token }
-        : unchanged(menu, { token: event.token, index: 0, highlighted: false });
-    case "move":
-      if (event.count === 0) return menu;
+    case "token": {
+      const token = event.token;
 
+      if (token === undefined) return unchanged(menu, CLOSED_MENU);
+
+      if (menu.dismissed?.kind === token.kind && menu.dismissed.start === token.start)
+        return unchanged(menu, { ...CLOSED_MENU, dismissed: menu.dismissed });
+
+      if (menu.token?.kind === token.kind && menu.token.start === token.start)
+        return { ...menu, token };
+
+      return unchanged(menu, { ...CLOSED_MENU, token });
+    }
+
+    case "dismiss":
       return unchanged(menu, {
-        token: menu.token,
-        index: Math.max(0, Math.min(event.count - 1, event.to)),
-        highlighted: true,
+        ...CLOSED_MENU,
+        dismissed:
+          menu.token === undefined
+            ? menu.dismissed
+            : { kind: menu.token.kind, start: menu.token.start },
       });
-    case "point":
+    case "select":
+      return unchanged(menu, { ...menu, active: event.id, highlighted: true });
+    case "rows":
+      return menu.active === undefined || event.ids.includes(menu.active)
+        ? menu
+        : { ...menu, active: undefined };
+    case "browse":
       return unchanged(menu, {
-        token: menu.token,
-        index:
-          Math.min(menu.index, Math.max(0, event.count - 1)) === event.index
-            ? menu.index
-            : event.index,
-        highlighted: true,
+        ...menu,
+        folder: event.folder,
+        active: undefined,
+        highlighted: false,
       });
     default: {
       const _exhaustive: never = event;
@@ -362,50 +447,96 @@ export function nextMenu(menu: MenuState, event: MenuEvent): MenuState {
   }
 }
 
+export interface MenuPosition {
+  readonly index: number;
+  readonly count: number;
+  readonly folder: boolean;
+  readonly browsing: boolean;
+  readonly queryEmpty: boolean;
+}
+
 export type MenuKey =
   | { readonly kind: "move"; readonly to: number }
   | { readonly kind: "pick" }
+  | { readonly kind: "hold" }
   | { readonly kind: "close" }
+  | { readonly kind: "browse" }
+  | { readonly kind: "parent" }
   | { readonly kind: "pass" };
 
+const PAGE_ROWS = 8;
+
 export function menuKey(
-  key: Pick<KeyboardEvent, "key" | "ctrlKey" | "shiftKey" | "metaKey" | "isComposing">,
-  active: number,
-  count: number,
+  key: Pick<
+    KeyboardEvent,
+    "key" | "keyCode" | "ctrlKey" | "shiftKey" | "altKey" | "metaKey" | "isComposing"
+  >,
+  position: MenuPosition,
 ): MenuKey {
-  if (key.key === "Escape") return { kind: "close" };
+  if (key.key === "Escape") return { kind: position.browsing ? "parent" : "close" };
 
   const down = key.key === "ArrowDown" || (key.ctrlKey && (key.key === "n" || key.key === "j"));
   const up = key.key === "ArrowUp" || (key.ctrlKey && (key.key === "p" || key.key === "k"));
+  const count = Math.max(1, position.count);
 
-  if (down || up) return { kind: "move", to: active + (down ? 1 : -1) };
+  if (down || up) return { kind: "move", to: (position.index + (down ? 1 : -1) + count) % count };
 
   if (key.key === "Home" || key.key === "End")
     return { kind: "move", to: key.key === "Home" ? 0 : count - 1 };
 
   if (key.key === "PageDown" || key.key === "PageUp")
-    return { kind: "move", to: active + (key.key === "PageDown" ? 9 : -9) };
+    return {
+      kind: "move",
+      to: Math.max(
+        0,
+        Math.min(count - 1, position.index + (key.key === "PageDown" ? PAGE_ROWS : -PAGE_ROWS)),
+      ),
+    };
+  const plain = !key.ctrlKey && !key.shiftKey && !key.altKey && !key.metaKey;
 
-  if (composerEnterAction(key) === "submit" || (key.key === "Tab" && !key.shiftKey))
-    return { kind: "pick" };
+  if (plain && key.key === "ArrowRight" && position.folder) return { kind: "browse" };
 
-  return { kind: "pass" };
+  if (
+    plain &&
+    position.browsing &&
+    (key.key === "ArrowLeft" || (key.key === "Backspace" && position.queryEmpty))
+  )
+    return { kind: "parent" };
+  const enter = composerEnterAction(key);
+
+  if (enter === "submit" || (key.key === "Tab" && !key.shiftKey)) return { kind: "pick" };
+
+  return enter === "submit-alternate" ? { kind: "hold" } : { kind: "pass" };
 }
 
+export type MenuPick =
+  | { readonly kind: "accept"; readonly suggestion: ComposerSuggestion }
+  | { readonly kind: "select"; readonly id: string }
+  | { readonly kind: "hold" };
+
 export function pickFor(
-  token: SuggestionToken,
-  deferredQuery: string,
+  fresh: boolean,
   shown: readonly ComposerSuggestion[],
+  active: string | undefined,
   live: () => readonly ComposerSuggestion[],
-  index: number,
-): ComposerSuggestion | undefined {
-  return token.query === deferredQuery ? shown[index] : live()[0];
+): MenuPick {
+  const rows = fresh ? shown : live();
+  const suggestion = rows.find((row) => row.id === active);
+
+  if (suggestion !== undefined) return { kind: "accept", suggestion };
+
+  const first = defaultRow(rows);
+
+  return fresh || first === undefined ? { kind: "hold" } : { kind: "select", id: first.id };
 }
 
 function unchanged(menu: MenuState, next: MenuState): MenuState {
   return menu.token === next.token &&
-    menu.index === next.index &&
-    menu.highlighted === next.highlighted
+    menu.active === next.active &&
+    menu.highlighted === next.highlighted &&
+    menu.dismissed?.kind === next.dismissed?.kind &&
+    menu.dismissed?.start === next.dismissed?.start &&
+    menu.folder === next.folder
     ? menu
     : next;
 }

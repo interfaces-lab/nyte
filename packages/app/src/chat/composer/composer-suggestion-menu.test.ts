@@ -4,9 +4,12 @@ import type {
   ComposerSuggestion,
   MenuEvent,
   MenuKey,
+  MenuPick,
+  MenuPosition,
   MenuState,
   SuggestionToken,
 } from "./composer-suggestion-menu.ts";
+import { mentionFileAt } from "../../data/files.ts";
 
 const slash = (query: string, start = 0): SuggestionToken => ({
   kind: "slash",
@@ -17,7 +20,11 @@ const slash = (query: string, start = 0): SuggestionToken => ({
 
 const SLASH = slash("");
 
-const OPEN: MenuState = { token: SLASH, index: 3, highlighted: true };
+const SRC = mentionFileAt("/work/src", "folder");
+
+const OPEN: MenuState = { ...CLOSED_MENU, token: SLASH, active: "delta", highlighted: true };
+
+const DISMISSED: MenuState = { ...CLOSED_MENU, dismissed: { kind: "slash", start: 0 } };
 
 test.each<{
   readonly name: string;
@@ -29,19 +36,19 @@ test.each<{
     name: "a token that continues the open one keeps its row",
     menu: OPEN,
     event: { kind: "token", token: slash("de") },
-    next: { token: slash("de"), index: 3, highlighted: true },
+    next: { ...OPEN, token: slash("de") },
   },
   {
     name: "a token at another start starts over unhighlighted",
     menu: OPEN,
     event: { kind: "token", token: slash("", 4) },
-    next: { token: slash("", 4), index: 0, highlighted: false },
+    next: { ...CLOSED_MENU, token: slash("", 4) },
   },
   {
     name: "a token of another kind starts over",
     menu: OPEN,
     event: { kind: "token", token: { kind: "mention", start: 0, end: 1, query: "" } },
-    next: { token: { kind: "mention", start: 0, end: 1, query: "" }, index: 0, highlighted: false },
+    next: { ...CLOSED_MENU, token: { kind: "mention", start: 0, end: 1, query: "" } },
   },
   {
     name: "closing forgets the row",
@@ -56,46 +63,58 @@ test.each<{
     next: "same",
   },
   {
-    name: "a move past the last row stops on it",
-    menu: { token: SLASH, index: 0, highlighted: false },
-    event: { kind: "move", to: 20, count: 5 },
-    next: { token: SLASH, index: 4, highlighted: true },
-  },
-  {
-    name: "a move before the first row stops on it",
+    name: "Escape closes and remembers the trigger",
     menu: OPEN,
-    event: { kind: "move", to: -6, count: 17 },
-    next: { token: SLASH, index: 0, highlighted: true },
+    event: { kind: "dismiss" },
+    next: DISMISSED,
   },
   {
-    name: "a move with no rows changes nothing",
-    menu: { token: SLASH, index: 0, highlighted: false },
-    event: { kind: "move", to: 1, count: 0 },
+    name: "typing into a dismissed trigger keeps it closed",
+    menu: DISMISSED,
+    event: { kind: "token", token: slash("de") },
     next: "same",
   },
   {
-    name: "a move onto the active row changes nothing",
+    name: "a new trigger after a dismissed one opens",
+    menu: DISMISSED,
+    event: { kind: "token", token: slash("", 4) },
+    next: { ...CLOSED_MENU, token: slash("", 4) },
+  },
+  {
+    name: "leaving a dismissed trigger forgets it",
+    menu: DISMISSED,
+    event: { kind: "token", token: undefined },
+    next: CLOSED_MENU,
+  },
+  {
+    name: "selecting a row highlights it",
+    menu: { ...CLOSED_MENU, token: SLASH },
+    event: { kind: "select", id: "echo" },
+    next: { ...CLOSED_MENU, token: SLASH, active: "echo", highlighted: true },
+  },
+  {
+    name: "selecting the highlighted row changes nothing",
     menu: OPEN,
-    event: { kind: "move", to: 3, count: 17 },
+    event: { kind: "select", id: "delta" },
     next: "same",
   },
   {
-    name: "the pointer on another row moves there",
-    menu: { token: SLASH, index: 3, highlighted: false },
-    event: { kind: "point", index: 1, count: 17 },
-    next: { token: SLASH, index: 1, highlighted: true },
-  },
-  {
-    name: "the pointer on the active row only highlights it, keeping a row past the end",
-    menu: { token: SLASH, index: 7, highlighted: false },
-    event: { kind: "point", index: 2, count: 3 },
-    next: { token: SLASH, index: 7, highlighted: true },
-  },
-  {
-    name: "the pointer on the highlighted row changes nothing",
+    name: "rows that keep the active one change nothing",
     menu: OPEN,
-    event: { kind: "point", index: 3, count: 17 },
+    event: { kind: "rows", ids: ["echo", "delta"] },
     next: "same",
+  },
+  {
+    name: "rows without the active one fall back to the first",
+    menu: OPEN,
+    event: { kind: "rows", ids: ["echo"] },
+    next: { ...OPEN, active: undefined },
+  },
+  {
+    name: "browsing a folder starts at its first row",
+    menu: OPEN,
+    event: { kind: "browse", folder: SRC },
+    next: { ...OPEN, folder: SRC, active: undefined, highlighted: false },
   },
 ])("the menu: $name", (row) => {
   const next = nextMenu(row.menu, row.event);
@@ -104,34 +123,66 @@ test.each<{
   else expect(next).toEqual(row.next);
 });
 
-const KEY = { key: "Enter", ctrlKey: false, shiftKey: false, metaKey: false, isComposing: false };
+const KEY = {
+  key: "Enter",
+  keyCode: 13,
+  ctrlKey: false,
+  shiftKey: false,
+  altKey: false,
+  metaKey: false,
+  isComposing: false,
+};
+
+const ROOT: MenuPosition = {
+  index: 3,
+  count: 17,
+  folder: false,
+  browsing: false,
+  queryEmpty: true,
+};
 
 test.each<{
-  readonly key: Partial<typeof KEY> & { readonly altKey?: boolean };
+  readonly key: Partial<typeof KEY>;
+  readonly position?: Partial<MenuPosition>;
   readonly action: MenuKey;
 }>([
   { key: { key: "Escape" }, action: { kind: "close" } },
+  { key: { key: "Escape" }, position: { browsing: true }, action: { kind: "parent" } },
   { key: { key: "ArrowDown" }, action: { kind: "move", to: 4 } },
+  { key: { key: "ArrowDown" }, position: { index: 16 }, action: { kind: "move", to: 0 } },
   { key: { key: "n", ctrlKey: true }, action: { kind: "move", to: 4 } },
   { key: { key: "j", ctrlKey: true }, action: { kind: "move", to: 4 } },
   { key: { key: "ArrowUp" }, action: { kind: "move", to: 2 } },
+  { key: { key: "ArrowUp" }, position: { index: 0 }, action: { kind: "move", to: 16 } },
   { key: { key: "p", ctrlKey: true }, action: { kind: "move", to: 2 } },
   { key: { key: "k", ctrlKey: true }, action: { kind: "move", to: 2 } },
   { key: { key: "ArrowUp", ctrlKey: true, altKey: true }, action: { kind: "move", to: 2 } },
   { key: { key: "Home" }, action: { kind: "move", to: 0 } },
   { key: { key: "End" }, action: { kind: "move", to: 16 } },
-  { key: { key: "PageDown" }, action: { kind: "move", to: 12 } },
-  { key: { key: "PageUp" }, action: { kind: "move", to: -6 } },
+  { key: { key: "PageDown" }, action: { kind: "move", to: 11 } },
+  { key: { key: "PageDown" }, position: { index: 12 }, action: { kind: "move", to: 16 } },
+  { key: { key: "PageUp" }, action: { kind: "move", to: 0 } },
+  { key: { key: "ArrowRight" }, position: { folder: true }, action: { kind: "browse" } },
+  { key: { key: "ArrowRight" }, action: { kind: "pass" } },
+  { key: { key: "ArrowLeft" }, position: { browsing: true }, action: { kind: "parent" } },
+  { key: { key: "ArrowLeft" }, action: { kind: "pass" } },
+  { key: { key: "Backspace" }, position: { browsing: true }, action: { kind: "parent" } },
+  {
+    key: { key: "Backspace" },
+    position: { browsing: true, queryEmpty: false },
+    action: { kind: "pass" },
+  },
   { key: {}, action: { kind: "pick" } },
   { key: { key: "Tab" }, action: { kind: "pick" } },
   { key: { key: "Tab", shiftKey: true }, action: { kind: "pass" } },
   { key: { shiftKey: true }, action: { kind: "pass" } },
-  { key: { metaKey: true }, action: { kind: "pass" } },
-  { key: { ctrlKey: true }, action: { kind: "pass" } },
+  { key: { metaKey: true }, action: { kind: "hold" } },
+  { key: { ctrlKey: true }, action: { kind: "hold" } },
   { key: { isComposing: true }, action: { kind: "pass" } },
+  { key: { keyCode: 229 }, action: { kind: "pass" } },
   { key: { key: "n" }, action: { kind: "pass" } },
 ])("an open menu reads $key as $action.kind", (row) => {
-  expect(menuKey({ ...KEY, ...row.key }, 3, 17)).toEqual(row.action);
+  expect(menuKey({ ...KEY, ...row.key }, { ...ROOT, ...row.position })).toEqual(row.action);
 });
 
 const suggestion = (id: string): ComposerSuggestion => ({
@@ -147,27 +198,39 @@ const SHOWN = [suggestion("delta"), suggestion("echo")];
 
 test.each<{
   readonly name: string;
-  readonly query: string;
+  readonly fresh: boolean;
   readonly live: readonly ComposerSuggestion[];
-  readonly index: number;
-  readonly pick: ComposerSuggestion | undefined;
+  readonly active: string;
+  readonly pick: MenuPick;
 }>([
-  { name: "the active shown row", query: "e", live: [], index: 1, pick: suggestion("echo") },
   {
-    name: "the first live match while the shown rows lag",
-    query: "ec",
-    live: [suggestion("echo")],
-    index: 0,
-    pick: suggestion("echo"),
+    name: "the active shown row",
+    fresh: true,
+    live: [],
+    active: "echo",
+    pick: { kind: "accept", suggestion: suggestion("echo") },
+  },
+  {
+    name: "the active row while the shown rows lag, if the live rows hold it",
+    fresh: false,
+    live: [suggestion("foxtrot"), suggestion("echo")],
+    active: "echo",
+    pick: { kind: "accept", suggestion: suggestion("echo") },
+  },
+  {
+    name: "nothing, selecting the first live row, when the live rows lost the active one",
+    fresh: false,
+    live: [suggestion("foxtrot")],
+    active: "echo",
+    pick: { kind: "select", id: "foxtrot" },
   },
   {
     name: "nothing when the typed query matches nothing",
-    query: "zz",
+    fresh: false,
     live: [],
-    index: 0,
-    pick: undefined,
+    active: "echo",
+    pick: { kind: "hold" },
   },
-  { name: "nothing past the shown rows", query: "e", live: [], index: 2, pick: undefined },
 ])("Enter picks $name", (row) => {
-  expect(pickFor(slash(row.query), "e", SHOWN, () => row.live, row.index)).toEqual(row.pick);
+  expect(pickFor(row.fresh, SHOWN, row.active, () => row.live)).toEqual(row.pick);
 });
