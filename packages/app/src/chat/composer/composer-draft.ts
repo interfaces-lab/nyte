@@ -35,12 +35,41 @@ export interface SessionDraft {
   readonly composer: ComposerViewState;
   readonly edit: QueuedEdit | null;
   readonly notice: ComposerNotice | null;
+  readonly sending: Restore | null;
 }
+
+export const UNSENT_NOTICE = "Nyte closed before this message was sent.";
 
 export function restorable(draft: SessionDraft): ComposerNotice | null {
   const notice = draft.notice;
+  const restore = notice?.restore ?? null;
+  const sending = draft.sending;
 
-  return notice === null || notice.restore === null ? null : notice;
+  if (sending === null) return notice === null || restore === null ? null : notice;
+
+  if (notice === null || restore === null)
+    return { kind: "error", message: UNSENT_NOTICE, restore: sending };
+
+  return {
+    ...notice,
+    restore: {
+      text: `${restore.text}\n${sending.text}`,
+      attachments: [...restore.attachments, ...sending.attachments],
+    },
+  };
+}
+
+export function movedDraft(draft: SessionDraft): SessionDraft {
+  if (draft.edit !== null) return draft;
+
+  return {
+    ...draft,
+    composer: { ...draft.composer, draft: "", attachments: [], selectionStart: 0, selectionEnd: 0 },
+  };
+}
+
+export function handedOff(draft: SessionDraft): SessionDraft {
+  return draft.sending === null ? draft : { ...draft, sending: null };
 }
 
 export function shownDraft(draft: SessionDraft): ComposerViewState {
@@ -112,7 +141,7 @@ export function foldEdit(draft: SessionDraft, edit: "folded" | "kept"): SessionD
 
   if (edit === "kept") return notice === draft.notice ? draft : { ...draft, notice };
 
-  return { composer: persistedDraft(draft), edit: null, notice };
+  return { ...draft, composer: persistedDraft(draft), edit: null, notice };
 }
 
 export function leftDraft(
@@ -129,17 +158,40 @@ export function leftDraft(
       composer.draft === sent.text
         ? { ...composer, draft: "", attachments: kept, selectionStart: 0, selectionEnd: 0 }
         : { ...composer, attachments: kept },
+    sending: { text: sent.text, attachments },
   };
 }
 
 export function refusedDraft(draft: SessionDraft, message: string, sent: Restore): SessionDraft {
   if (draft.composer.draft !== "")
-    return { ...draft, notice: { kind: "error", message, restore: sent } };
+    return { ...draft, notice: { kind: "error", message, restore: sent }, sending: null };
 
   return {
     ...draft,
     composer: draftWith(draft.composer, sent),
     notice: errorNotice(message),
+    sending: null,
+  };
+}
+
+export function attachRefused(
+  draft: SessionDraft,
+  images: readonly ComposerImageAttachment[],
+): SessionDraft {
+  const restore = draft.notice?.restore;
+
+  if (draft.notice !== null && restore !== null && restore !== undefined)
+    return {
+      ...draft,
+      notice: {
+        ...draft.notice,
+        restore: { ...restore, attachments: [...restore.attachments, ...images] },
+      },
+    };
+
+  return {
+    ...draft,
+    composer: { ...draft.composer, attachments: [...draft.composer.attachments, ...images] },
   };
 }
 

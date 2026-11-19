@@ -4,7 +4,9 @@ import type { ComposerImageAttachment, ComposerViewState } from "../../panes/ses
 import type { ComposerDocumentState, ComposerSubmission } from "./composer-document.ts";
 import {
   errorNotice,
+  handedOff,
   leftDraft,
+  movedDraft,
   foldEdit,
   lostEdit,
   openedEdit,
@@ -111,6 +113,8 @@ export type ComposerSessionEvent =
   | { readonly kind: "detached"; readonly id: string }
   | { readonly kind: "notice"; readonly notice: ComposerNotice | null }
   | { readonly kind: "restored" }
+  | { readonly kind: "handed-off" }
+  | { readonly kind: "moved" }
   | { readonly kind: "submit" }
   | { readonly kind: "files" };
 
@@ -239,6 +243,13 @@ function transition(
       return noticed(state, draft, event.notice);
     case "restored":
       return step(state, restoredDraft(draft));
+    case "handed-off":
+      return step(state, handedOff(draft));
+    case "moved":
+      return step(
+        { ...state, recall: null, intake: nextIntake(state.intake, { kind: "cleared" }) },
+        movedDraft(draft),
+      );
     case "submit":
       return step(state, draft, [], state.intake.reads === 0);
     case "files":

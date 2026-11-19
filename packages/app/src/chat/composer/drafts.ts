@@ -128,7 +128,8 @@ type StoredValue =
   | StoredDraft
   | StoredSession
   | readonly ComposerImageAttachment[]
-  | StoredSteps;
+  | StoredSteps
+  | number;
 
 function composerView(
   composer: PersistedComposer,
@@ -141,6 +142,17 @@ function composerView(
     attachments,
     selectionStart: Math.min(composer.selectionStart, length),
     selectionEnd: Math.min(composer.selectionEnd, length),
+  };
+}
+
+function omittedNotice(count: number): ComposerNotice {
+  return {
+    kind: "status",
+    message:
+      count === 1
+        ? "An image was too large to keep with the draft. Attach it again."
+        : `${String(count)} images were too large to keep with the draft. Attach them again.`,
+    restore: null,
   };
 }
 
@@ -327,8 +339,14 @@ export class WindowDrafts {
       const key = `${persistence.storageKey}:${owner}`;
       this.#pending.set(key, record);
 
-      if (previous.attachments !== next.attachments)
-        this.#pending.set(`${key}:images`, storedImages(next.attachments));
+      if (previous.attachments !== next.attachments) {
+        const stored = storedImages(next.attachments);
+        const omitted = next.attachments.length - (stored?.length ?? 0);
+        this.#pending.set(`${key}:images`, stored);
+
+        if (owner.startsWith("session:"))
+          this.#pending.set(`${key}:images:omitted`, omitted === 0 ? undefined : omitted);
+      }
     }
 
     this.#schedule();
@@ -437,15 +455,29 @@ export class WindowDrafts {
               },
             };
 
+      const omittedKey = `${persistence.storageKey}:session:${id}:images:omitted`;
+
+      const omitted = readStored(
+        persistence.storage,
+        omittedKey,
+        Type.Integer({ minimum: 1 }),
+        undefined,
+      );
+
+      if (omitted !== undefined) this.#pending.set(omittedKey, undefined);
+
       const draft = {
         composer: composerView(stored.record, stored.attachments),
         edit: null,
-        notice,
+        notice: notice ?? (omitted === undefined ? null : omittedNotice(omitted)),
+        sending: null,
       };
 
-      if (!draftKept(draft) && stepGroups.size === 0) continue;
+      if (!draftKept(draft) && stepGroups.size === 0 && omitted === undefined) continue;
       this.sessions.set(asId<"session">(id), { ...DEFAULT_SESSION_VIEW_STATE, draft, stepGroups });
     }
+
+    if (this.#pending.size > 0) this.#schedule();
   }
 
   #flush(): void {

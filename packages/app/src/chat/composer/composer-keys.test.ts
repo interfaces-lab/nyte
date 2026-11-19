@@ -81,6 +81,8 @@ const KEY = {
   ctrlKey: false,
   altKey: false,
   isComposing: false,
+  keyCode: 13,
+  repeat: false,
   defaultPrevented: false,
 };
 

@@ -385,6 +385,7 @@ export function ComposerEditor({
         const selection = root.ownerDocument.getSelection();
 
         const visible =
+          root.ownerDocument.hasFocus() &&
           root.ownerDocument.activeElement === root &&
           !editor.view.composing &&
           selection !== null &&
@@ -431,6 +432,9 @@ export function ComposerEditor({
     };
 
     const ownerDocument = root.ownerDocument;
+    const ownerWindow = ownerDocument.defaultView;
+    ownerWindow?.addEventListener("focus", draw);
+    ownerWindow?.addEventListener("blur", draw);
     ownerDocument.addEventListener("selectionchange", draw);
     root.addEventListener("focus", draw);
     root.addEventListener("blur", draw);
@@ -450,6 +454,8 @@ export function ComposerEditor({
 
     return () => {
       cancelAnimationFrame(frame);
+      ownerWindow?.removeEventListener("focus", draw);
+      ownerWindow?.removeEventListener("blur", draw);
       editor.off("transaction", draw);
       observer.disconnect();
       typographyObserver.disconnect();

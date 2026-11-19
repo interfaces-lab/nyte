@@ -51,6 +51,7 @@ export interface BlankViewState {
 export interface DraftStart {
   readonly project?: ProjectId;
   readonly folder?: string | null;
+  readonly composer?: ComposerViewState;
 }
 
 export type DraftStatus =
@@ -82,7 +83,7 @@ export const DEFAULT_COMPOSER_VIEW_STATE: ComposerViewState = {
 };
 
 export const DEFAULT_SESSION_VIEW_STATE: SessionViewState = {
-  draft: { composer: DEFAULT_COMPOSER_VIEW_STATE, edit: null, notice: null },
+  draft: { composer: DEFAULT_COMPOSER_VIEW_STATE, edit: null, notice: null, sending: null },
   scroll: {},
   stepGroups: new Map(),
 };
@@ -241,10 +242,24 @@ export class SessionViewStateStore {
     const base = kept ? current : this.#window.createDraft();
     const folder = start.folder === undefined ? base.folder : start.folder;
 
-    if (kept && current.project === start.project && current.folder === folder) return;
+    if (
+      kept &&
+      current.project === start.project &&
+      current.folder === folder &&
+      start.composer === undefined
+    )
+      return;
 
     if (!kept) drafts.parked.set(current.id, current);
-    drafts.active = { ...base, project: start.project, folder };
+    const next = {
+      ...base,
+      project: start.project,
+      folder,
+      composer: start.composer ?? base.composer,
+    };
+    drafts.active = next;
+
+    if (start.composer !== undefined) this.#window.saveDraft(base, next);
     this.#window.emit();
   }
 

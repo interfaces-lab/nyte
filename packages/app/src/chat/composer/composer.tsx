@@ -282,6 +282,7 @@ export function Composer({
     windowTabs.dispatch({ kind: "keep-tab", tabId: submittingTab });
     dispatch({ kind: "sent", document, attachments: sentAttachments });
     const sending = await deliver(live, chat, plan, receipt);
+    dispatch({ kind: "handed-off" });
 
     void sending.ended.then((end) => {
       viewStore.updateDraft(sessionId, (current) =>
@@ -295,6 +296,23 @@ export function Composer({
 
       if (steer === undefined) transcript.end();
     });
+  };
+
+  const moveToNewChat = (): void => {
+    const moved = composer.editor()?.readDocument();
+
+    if (moved === undefined) return;
+
+    windowTabs.newChat({
+      folder: cwd,
+      composer: {
+        draft: moved.text,
+        attachments,
+        selectionStart: moved.selectionStart,
+        selectionEnd: moved.selectionEnd,
+      },
+    });
+    dispatch({ kind: "moved" });
   };
 
   const abort = (): void => {
@@ -573,6 +591,7 @@ export function Composer({
               ) : undefined
             }
             inputRef={attachInput}
+            onMoveToNewChat={questions === undefined && target === null ? moveToNewChat : undefined}
             editing={
               questions !== undefined || target === null
                 ? undefined

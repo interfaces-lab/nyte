@@ -53,6 +53,8 @@ const SKILL_LINK_PATTERN = /\[\$(?<name>[^\]\r\n]+)\]\((?<path>[^)\r\n]*)\)/gu;
 
 const FILE_URL_PATTERN = /@file:\/\/[^\s<>"]+/gu;
 
+const LINE_FRAGMENT = /#L([0-9]+)-([0-9]+)$/u;
+
 const DRAFT_TOKEN_PATTERN = new RegExp(
   [
     FILE_URL_PATTERN.source,
@@ -125,7 +127,9 @@ export function clipboardReferenceFromPaste(text: string): ClipboardReference | 
 export function referenceText(reference: MessageReference): string {
   switch (reference.kind) {
     case "file":
-      return `@${reference.file.url}`;
+      return reference.lines === undefined
+        ? `@${reference.file.url}`
+        : `@${reference.file.url}#L${String(reference.lines.start)}-${String(reference.lines.end)}`;
     case "skill":
       return `[$${reference.name}](${reference.path})`;
     case "mention":
@@ -370,10 +374,15 @@ function draftReference(
   const groups = match.groups ?? {};
 
   if (token.startsWith("@file://")) {
-    const url = token.slice(1);
+    const range = LINE_FRAGMENT.exec(token);
+    const url = token.slice(1, range?.index);
     const file = options.files?.get(url) ?? fileFromUrl(url);
 
-    return file === undefined ? undefined : { kind: "file", file };
+    if (file === undefined) return undefined;
+
+    if (range === null) return { kind: "file", file };
+
+    return { kind: "file", file, lines: { start: Number(range[1]), end: Number(range[2]) } };
   }
 
   if (groups["name"] !== undefined) {

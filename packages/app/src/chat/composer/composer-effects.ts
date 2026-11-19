@@ -6,7 +6,11 @@ import { windowTabs } from "../../tabs/window-tabs.ts";
 import type { SessionViewStateStore } from "../../panes/session-view-state.ts";
 import type { ComposerSubmission } from "./composer-document.ts";
 import type { ComposerEditorHandle } from "./composer-editor.tsx";
-import { replayedDraft, shownDraft } from "./composer-draft.ts";
+import type { RefusedSend } from "@nyte-ai/sdk/client";
+import type { ComposerImageAttachment } from "../../panes/session-view-state.ts";
+import { messageFiles } from "../transcript/message-content.tsx";
+import type { MessageFile } from "../transcript/message-content.tsx";
+import { attachRefused, replayedDraft, shownDraft } from "./composer-draft.ts";
 import { readPrompts } from "./composer-history.ts";
 import { deliverEdit } from "./composer-send.ts";
 import { CLOSED_SESSION, EDIT_ENDED_NOTICES, stepSession } from "./composer-session.ts";
@@ -35,8 +39,37 @@ function giveBackRefused(): void {
     windowTabs
       .panes()
       .viewState.updateDraft(refused.session, (draft) => replayedDraft(draft, refused));
+    void giveBackImages(refused);
     currentConnection()?.refused.take(refused.id);
   }
+}
+
+async function giveBackImages(refused: RefusedSend): Promise<void> {
+  const files = messageFiles(refused.content).filter((file) => file.mime.startsWith("image/"));
+
+  if (files.length === 0) return;
+  const read = await Promise.allSettled(files.map(readImage));
+
+  const images = read.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []));
+
+  if (images.length === 0) return;
+  windowTabs
+    .panes()
+    .viewState.updateDraft(refused.session, (draft) => attachRefused(draft, images));
+}
+
+async function readImage(file: MessageFile): Promise<ComposerImageAttachment> {
+  await using reader = await connection().blob(file.blob);
+  const chunks: Uint8Array<ArrayBuffer>[] = [];
+
+  for await (const chunk of reader.chunks()) chunks.push(new Uint8Array(chunk));
+  const bytes = new Uint8Array(await new Blob(chunks).arrayBuffer());
+
+  return {
+    id: crypto.randomUUID(),
+    name: file.name,
+    content: { type: "image", data: bytes.toBase64(), mimeType: file.mime },
+  };
 }
 
 refusedSends.subscribe(giveBackRefused);

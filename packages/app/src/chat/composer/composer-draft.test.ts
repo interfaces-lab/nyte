@@ -57,6 +57,7 @@ function draft(
     composer: view(text),
     edit: options.edit === undefined ? null : { message: QUEUED, view: view(options.edit) },
     notice: options.notice ?? null,
+    sending: null,
   };
 }
 

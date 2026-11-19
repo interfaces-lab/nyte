@@ -92,6 +92,7 @@ interface ComposerFrameProps {
   editing?: ComposerEditing;
   runningMessagePreference?: RunningMessagePreference;
   answering?: boolean;
+  onMoveToNewChat?: () => void;
 }
 
 export function ComposerFrame({
@@ -124,6 +125,7 @@ export function ComposerFrame({
   editing,
   runningMessagePreference = "steer",
   answering = false,
+  onMoveToNewChat,
 }: ComposerFrameProps): ReactElement {
   const frameRef = useRef<HTMLFormElement>(null);
   const areaRef = useRef<ComposerEditorHandle>(null);
@@ -134,6 +136,7 @@ export function ComposerFrame({
   const [focused, setFocused] = useState(false);
   const [references, setReferences] = useState<readonly MessageReference[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const claimed = useRef(false);
 
   const [picker] = useState(() => ({
     keyShortcuts: clientActionAriaShortcut(clientActions.selectModel, nyte.platform === "darwin"),
@@ -253,7 +256,7 @@ export function ComposerFrame({
   const submit = async (action: SubmitAction): Promise<void> => {
     const area = areaRef.current;
 
-    if (disabled || submitting || attachmentBusy || area === null) return;
+    if (disabled || claimed.current || attachmentBusy || area === null) return;
     const submission = area.read();
 
     if (!holdsSubmission(submission.text, submission.references)) return;
@@ -263,11 +266,15 @@ export function ComposerFrame({
       area.focus({ preventScroll: true });
     }
 
+    claimed.current = true;
     setSubmitting(true);
 
     return Promise.resolve(
       onSubmit(submission, submissionDelivery(action, send.delivery), currentDocument),
-    ).finally(() => setSubmitting(false));
+    ).finally(() => {
+      claimed.current = false;
+      setSubmitting(false);
+    });
   };
 
   const keySituation = (from: KeySituation["from"]): KeySituation => {
@@ -653,6 +660,14 @@ export function ComposerFrame({
                       <MenuSeparator />
                       <MenuItem icon="paperclip" onClick={() => fileInputRef.current?.click()}>
                         Attach Files…
+                      </MenuItem>
+                    </>
+                  )}
+                  {onMoveToNewChat !== undefined && hasSubmission && (
+                    <>
+                      <MenuSeparator />
+                      <MenuItem icon="new-chat" onClick={onMoveToNewChat}>
+                        Move to New Chat
                       </MenuItem>
                     </>
                   )}

@@ -13,6 +13,7 @@ export const deliveryChoices: DeliveryChoices = { steer: "steer", queue: "queue"
 
 interface EnterKeyState {
   readonly key: string;
+  readonly keyCode: number;
   readonly shiftKey: boolean;
   readonly metaKey: boolean;
   readonly ctrlKey: boolean;
@@ -36,6 +37,7 @@ export interface KeySituation {
 
 type KeyState = EnterKeyState & {
   readonly altKey: boolean;
+  readonly repeat: boolean;
   readonly defaultPrevented: boolean;
 };
 
@@ -51,6 +53,8 @@ export type KeyAction =
 
 const PASS: KeyAction = { kind: "pass" };
 
+const IME_KEY_CODE = 229;
+
 export function composerKey(situation: KeySituation, key: KeyState): KeyAction {
   if (situation.from === "form") return formKey(situation, key);
   const recall = recallDirection(key);
@@ -58,6 +62,9 @@ export function composerKey(situation: KeySituation, key: KeyState): KeyAction {
   if (recall !== undefined)
     return situation.canRecall ? { kind: "recall", direction: recall } : PASS;
   const enter = composerEnterAction(key);
+
+  if ((enter === "submit" || enter === "submit-alternate") && key.repeat)
+    return { kind: "swallow" };
 
   if (enter === "submit-alternate") return { kind: "submit", action: enter };
 
@@ -102,7 +109,7 @@ function formKey(situation: KeySituation, key: KeyState): KeyAction {
 type ComposerEnterAction = SubmitAction | "newline" | "none";
 
 export function composerEnterAction(event: EnterKeyState): ComposerEnterAction {
-  if (event.key !== "Enter" || event.isComposing) return "none";
+  if (event.key !== "Enter" || event.isComposing || event.keyCode === IME_KEY_CODE) return "none";
 
   if (event.shiftKey) return "newline";
 
