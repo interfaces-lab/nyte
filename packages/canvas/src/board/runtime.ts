@@ -1,6 +1,7 @@
 import { Component } from "react";
 import type { ElementType, Key, ReactElement, ReactNode } from "react";
 import { Fragment, jsx as reactJsx, jsxs as reactJsxs } from "react/jsx-runtime";
+import { DESIGN_ATTRIBUTE } from "@nyte-ai/plugin/design/board-protocol";
 
 type Props = Readonly<Record<string, unknown>>;
 
@@ -59,9 +60,13 @@ function stamp(
   key: Key | undefined,
 ): ReactElement {
   if (typeof type === "string")
-    return make(type, chain.length === 0 ? props : { ...props, "data-via": remember(chain) }, key);
-  const src = props["data-src"];
-  const own = typeof src === "string" ? without(props, "data-src") : props;
+    return make(
+      type,
+      chain.length === 0 ? props : { ...props, [DESIGN_ATTRIBUTE.via]: remember(chain) },
+      key,
+    );
+  const src = props[DESIGN_ATTRIBUTE.source];
+  const own = typeof src === "string" ? without(props, DESIGN_ATTRIBUTE.source) : props;
 
   if (!rendersAsFunction(type)) return make(type, own, key);
 
@@ -82,5 +87,5 @@ export const boardJsxRuntime = {
 
 /** The instance chain a host node was drawn in, outermost first. */
 export function readVia(node: Element): readonly string[] {
-  return chains.get(node.getAttribute("data-via") ?? "[]") ?? [];
+  return chains.get(node.getAttribute(DESIGN_ATTRIBUTE.via) ?? "[]") ?? [];
 }

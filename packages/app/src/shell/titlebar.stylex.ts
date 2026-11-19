@@ -99,8 +99,6 @@ export const titlebarStyles = create({
     WebkitAppRegion: "no-drag",
   },
   control: { display: "inline-flex", flexShrink: 0, WebkitAppRegion: "no-drag" },
-  /** Holds the place of a control that doesn't apply, so the controls after it stay put in every window kind. */
-  vacant: { width: control.heightMd, height: control.heightMd, flexShrink: 0 },
   /** An inactive window's titlebar dims as the system's own controls do; tertiary is the lowest step text may take. */
   windowInactive: {
     "--nyte-content-primary": role.contentTertiary,

@@ -1,5 +1,6 @@
 import { stat } from "node:fs/promises";
 import { sep } from "node:path";
+import type { SelectedWorkspace } from "@nyte-ai/app/contract/bridge.ts";
 import type { DesktopWindowOpen } from "@nyte-ai/app/contract/desktop-window.ts";
 import type { DesktopHost } from "../host/desktop-host.ts";
 import type { HostWindow } from "../shared/host-window.ts";
@@ -13,8 +14,10 @@ export type OpenRoute =
   | { readonly kind: "window"; readonly window: HostWindow }
   | { readonly kind: "new-window" };
 
-const BATCH_MS = 100;
-
+/**
+ * Opens what the OS hands the app. A file opens from the projects the host listed last, so a busy host can't hold its
+ * window back; only a file outside all of them waits for the host's current list.
+ */
 export function createOpenWith(options: {
   host: () => DesktopHost;
   windows: () => readonly HostWindow[];
@@ -26,7 +29,14 @@ export function createOpenWith(options: {
   const pending: string[] = [];
   let ready = false;
   let reachable = false;
-  let batch: ReturnType<typeof setTimeout> | undefined;
+  let opening = Promise.resolve();
+  let known: readonly SelectedWorkspace[] = [];
+
+  const learn = async (): Promise<readonly SelectedWorkspace[]> => {
+    known = await options.host().localWorkspaces();
+
+    return known;
+  };
 
   const openPath = async (path: string): Promise<void> => {
     const stats = await stat(path);
@@ -42,7 +52,8 @@ export function createOpenWith(options: {
 
     if (route.kind === "window") options.send(route.window, path);
     else if (stats.isDirectory()) await openFolder(host, path);
-    else await openFile(host, path);
+    else await openFile(path);
+    void learn().catch(() => undefined);
   };
 
   const openFolder = async (host: DesktopHost, path: string): Promise<void> => {
@@ -52,34 +63,20 @@ export function createOpenWith(options: {
     else options.open({ kind: "folder", workspace: registered.workspace });
   };
 
-  const openFile = async (host: DesktopHost, path: string): Promise<void> => {
-    const known = (await host.localWorkspaces()).map((workspace) => ({
-      workspace,
-      root: workspace.path,
-    }));
-
-    const workspace = deepestRoot(path, known)?.workspace;
+  const openFile = async (path: string): Promise<void> => {
+    const workspace = owningWorkspace(path, known) ?? owningWorkspace(path, await learn());
     options.open({ kind: "file", path, workspace });
   };
 
   const openSoon = (): void => {
-    if (!ready || !reachable || pending.length === 0) return;
-    clearTimeout(batch);
-    batch = setTimeout(() => {
-      if (!reachable) return;
+    if (!ready || !reachable) return;
 
-      void pending
-        .splice(0)
-        .reduce(
-          (opened, path) =>
-            opened.then(() =>
-              openPath(path).catch((cause: unknown) =>
-                options.failed(path, cause instanceof Error ? cause.message : String(cause)),
-              ),
-            ),
-          Promise.resolve(),
-        );
-    }, BATCH_MS);
+    for (const path of pending.splice(0))
+      opening = opening.then(() =>
+        openPath(path).catch((cause: unknown) =>
+          options.failed(path, cause instanceof Error ? cause.message : String(cause)),
+        ),
+      );
   };
 
   return {
@@ -93,6 +90,8 @@ export function createOpenWith(options: {
     },
     reachable(connected: boolean): void {
       reachable = connected;
+
+      if (connected) void learn().catch(() => undefined);
       openSoon();
     },
   };
@@ -106,6 +105,16 @@ export function routeOpenedPath(
   const owner = deepestRoot(opened.path, windows);
 
   return owner === undefined ? { kind: "new-window" } : { kind: "window", window: owner.window };
+}
+
+function owningWorkspace(
+  path: string,
+  workspaces: readonly SelectedWorkspace[],
+): SelectedWorkspace | undefined {
+  return deepestRoot(
+    path,
+    workspaces.map((workspace) => ({ workspace, root: workspace.path })),
+  )?.workspace;
 }
 
 function deepestRoot<Candidate extends { readonly root: string }>(

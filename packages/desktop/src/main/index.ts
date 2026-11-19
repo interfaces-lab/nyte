@@ -18,9 +18,9 @@ import { mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import {
-  APP_SWITCH_ARGUMENT,
-  BROWSER_BOUNDS_CHANNEL,
+  APPS_ARGUMENT,
   BROWSER_FOCUS_CHANNEL,
+  BROWSER_SHOWN_CHANNEL,
   CALL_CHANNEL,
   HOST_PORT_CHANNEL,
   CANVAS_SHELL_ARGUMENT,
@@ -93,8 +93,8 @@ import type { DesktopApp } from "@nyte-ai/app/contract/desktop-app.ts";
 import type { DesktopWindowOpen } from "@nyte-ai/app/contract/desktop-window.ts";
 import { besideBounds, createAppSwitch, windowsAppDetails, windowTitle } from "./apps.ts";
 import {
-  decodeBrowserBounds,
-  decodeBrowserFocus,
+  browserFocus,
+  browserShown,
   terminalNotice,
   themePreference,
   unsavedEditsHeld,
@@ -258,10 +258,10 @@ const windowWorkspaces = createWindowWorkspaces();
 
 const openWith = createOpenWith({
   host: startedHost,
-  windows: () => [...windows.keys()],
+  windows: () => [...windows].flatMap(([id, entry]) => (entry.app === "code" ? [id] : [])),
   workspace: (window) => windowWorkspaces.workspace(window),
   send: (window, path) => windows.get(window)?.menuCommands.dispatch({ kind: "open-file", path }),
-  open: (opening) => createWindow("nyte", { opening }),
+  open: (opening) => createWindow(opening.kind === "file" ? "code" : "nyte", { opening }),
   failed: (path, message) => dialog.showErrorBox(`Couldn't open ${basename(path)}`, message),
 });
 
@@ -398,6 +398,9 @@ const mainCalls: CallTable = {
   "host.browser.login": async (_window, input) => browserSurfaces.login(input),
   "host.browser.history": (_window, input) => browserSurfaces.history(input),
   "host.browser.forgetHistory": (_window, input) => browserSurfaces.forgetHistory(input),
+  "host.browser.guests": async (window) => browserSurfaces.guests(window),
+  "host.browser.attach": async (window, input) => browserSurfaces.attach(input, window),
+  "host.browser.setEntered": async (window, input) => browserSurfaces.setEntered(input, window),
   "host.switchApp": async (window, input) => switchApp(window, input),
 } satisfies { readonly [P in MainCallPath]: CallHandler<P> };
 
@@ -543,14 +546,10 @@ function registerIpc(): void {
     launchState.setTheme(value);
   });
 
-  ipcMain.on(BROWSER_BOUNDS_CHANNEL, (event, message) => {
+  ipcMain.on(BROWSER_SHOWN_CHANNEL, (event, message) => {
     senderWindow(event);
 
-    try {
-      browserSurfaces.setBounds(decodeBrowserBounds(message), event.sender.id);
-    } catch {
-      return;
-    }
+    if (browserShown.Check(message)) browserSurfaces.setShown(message, event.sender.id);
   });
 
   ipcMain.on(VIEWING_CHANNEL, (event, viewed) => {
@@ -582,11 +581,7 @@ function registerIpc(): void {
   ipcMain.on(BROWSER_FOCUS_CHANNEL, (event, message) => {
     senderWindow(event);
 
-    try {
-      browserSurfaces.setFocus(decodeBrowserFocus(message), event.sender.id);
-    } catch {
-      return;
-    }
+    if (browserFocus.Check(message)) browserSurfaces.setFocus(message, event.sender.id);
   });
 
   ipcMain.on(HOST_PORT_CHANNEL, (event, nonce: unknown) => {
@@ -658,11 +653,12 @@ function createWindow(
           ? [`${LAUNCH_WINDOWS_ARGUMENT}=${launchState.windows().join(",")}`]
           : []),
         ...(opening === undefined ? [] : [`${WINDOW_OPEN_ARGUMENT}=${JSON.stringify(opening)}`]),
-        ...(build === null ? [APP_SWITCH_ARGUMENT] : []),
+        `${APPS_ARGUMENT}=${build === null ? "nyte,code,studio" : "nyte,code"}`,
       ],
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      webviewTag: true,
     },
   };
 
@@ -704,7 +700,7 @@ function createWindow(
   });
 
   const windowEnded = (end: WindowEnd): void => {
-    if (end === "closed") browserSurfaces.releaseWindow(id);
+    browserSurfaces.releaseWindow(id);
     windowWorkspaces.windowEnded(id, end);
     alerts.windowEnded(id, end);
     unsavedEdits.windowEnded(id);
@@ -748,7 +744,7 @@ function createWindow(
     return { action: "deny" };
   });
   created.webContents.on("context-menu", (_event, params) => showEditableMenu(created, params));
-  created.webContents.on("will-attach-webview", (event) => event.preventDefault());
+  browserSurfaces.hostGuests(created);
   created.webContents.on("will-navigate", (event, url) => {
     if (url !== created.webContents.getURL()) event.preventDefault();
   });

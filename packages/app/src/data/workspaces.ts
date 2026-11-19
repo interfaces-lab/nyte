@@ -19,6 +19,14 @@ export function selectedWorkspaceId(): WorkspaceId | undefined {
   return queryClient.getQueryData<HostState>(keys.host)?.workspace?.id;
 }
 
+export function homeWorkspaceId(): WorkspaceId | null | undefined {
+  const live = hostWatch("host").getState().value?.defaultWorkspace;
+
+  return live === undefined
+    ? queryClient.getQueryData<WorkspaceId | null>(keys.firstFrameHome)
+    : live;
+}
+
 export function useHomeWorkspace(): WorkspaceId | null | undefined {
   const live = useWatchSelect(hostWatch("host"), (state) => state.value?.defaultWorkspace);
 

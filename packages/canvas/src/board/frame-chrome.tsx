@@ -1,5 +1,6 @@
 import { props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
+import type { AppMessage, PageState, SheetError } from "@nyte-ai/plugin/design/board-protocol";
 import { mergeStyleProps } from "@nyte-ai/ui/style";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
@@ -18,13 +19,28 @@ export interface Point {
   readonly y: number;
 }
 
+export type Refusal = Extract<AppMessage, { kind: "refused" }>["reason"] | "too-long";
+
+const REFUSALS: Readonly<Record<Refusal, string>> = {
+  changed: "File changed, try again",
+  "not-editable": "Can't edit this here",
+  "too-long": "Too long to save",
+};
+
+export function describeSheetError(error: SheetError): string {
+  const place = [error.path, error.line, error.column].filter((part) => part !== null).join(":");
+
+  return place === "" ? error.message : `${error.message} (${place})`;
+}
+
 /** The ring the board draws around what the pointer is on, what is selected, or the words being typed into. */
 export function Ring(input: {
   readonly rect: WorldRect;
   readonly kind: "you" | "edit" | "hover";
-  readonly readOnly: boolean;
+  readonly tag: "read-only" | Refusal | null;
 }): ReactElement {
   const rect = input.rect;
+  const tag = input.tag;
 
   return (
     <div
@@ -37,22 +53,24 @@ export function Ring(input: {
         height: rect.height,
       }}
     >
-      {input.readOnly && (
+      {tag === "read-only" && (
         <div {...props(boardStyles.tag)} data-read-only>
           <span {...props(text.xs, boardStyles.tagText, boardStyles.readOnly)}>Read-only</span>
+        </div>
+      )}
+      {tag !== null && tag !== "read-only" && (
+        <div {...props(intent.danger, boardStyles.tag)} data-refused={tag} role="status">
+          <span {...props(text.xs, boardStyles.tagText)}>{REFUSALS[tag]}</span>
         </div>
       )}
     </div>
   );
 }
 
-/**
- * What the board draws over a frame: its edge, its name, where it is while carried, and an agent's change to it. A name
- * that ends in a variant, `Tonight · night`, shortens its name before its variant.
- */
 export function FrameChrome(input: {
   readonly sheet: string;
   readonly frame: FrameBox;
+  readonly page: PageState | null;
   readonly at: Point;
   /** Where the person is carrying the frame: it lifts over the others, and says where it is. */
   readonly held: Point | null;
@@ -62,8 +80,10 @@ export function FrameChrome(input: {
   /** The pointer is on the frame: with its label hidden, its name shows above it. */
   readonly pointed: boolean;
   readonly glowing: boolean;
+  readonly error: SheetError | null;
 }): ReactElement {
   const frame = input.frame;
+  const error = input.error === null ? null : describeSheetError(input.error);
   const place = input.held ?? frame;
   const corners = getComputedStyle(frame.node).borderRadius;
   const variant = frame.name.lastIndexOf(" · ");
@@ -87,7 +107,15 @@ export function FrameChrome(input: {
       )}
       data-frame-box={frame.key}
       data-sheet={input.sheet}
+      data-page-state={input.page ?? undefined}
     >
+      {input.page !== null && (
+        <div {...props(boardStyles.page)} data-page-cover>
+          <span {...props(text.sm, boardStyles.address)}>
+            {frame.page?.replace(/^https?:\/\//u, "")}
+          </span>
+        </div>
+      )}
       <div
         {...props(
           text.sm,
@@ -104,6 +132,11 @@ export function FrameChrome(input: {
         </span>
         {variant !== -1 && (
           <span {...props(boardStyles.labelVariant)}>{frame.name.slice(variant)}</span>
+        )}
+        {error !== null && (
+          <span {...props(intent.danger, boardStyles.labelError)} title={error} data-error>
+            {error}
+          </span>
         )}
       </div>
       {input.pointed && (

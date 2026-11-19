@@ -336,7 +336,7 @@ test.each<[string, (controller: TabPanes) => void, Omit<ReturnType<typeof shown>
   [
     "a new chat in a project with a model picked before typing",
     (controller) => {
-      controller.window.newChat(controller.tabId, project);
+      controller.window.newChat(controller.tabId, { project });
       choose(controller, { model, thinking: "high" });
       writeDraft(controller, "Plan it");
     },

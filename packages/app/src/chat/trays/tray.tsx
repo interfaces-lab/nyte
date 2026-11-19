@@ -12,7 +12,6 @@ import type { Task } from "../../chats/index.ts";
 import { tray } from "../../theme/schema.stylex.ts";
 import { trayStyles } from "../../theme/tray.stylex.ts";
 import { TaskGlyph } from "./task-list.tsx";
-import { occludes } from "../../components/overlay-occlusion.ts";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 
@@ -205,7 +204,6 @@ export function Tray({
     <AnimatePresence key={generation} initial={false} mode="popLayout" anchorY="bottom">
       {open && (
         <motion.section
-          ref={occludes}
           key="surface"
           data-slot="tray"
           id={id}

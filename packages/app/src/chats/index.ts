@@ -187,9 +187,9 @@ export function useChatWorkspace(id: SessionId): SelectedWorkspace | undefined {
 export function chatFolderPath(id: SessionId): string | null | undefined {
   const location = chatDirectory().get(id)?.location;
 
-  if (location === undefined || location.kind === "loading") return undefined;
+  if (location === undefined || location.kind !== "folder") return undefined;
 
-  return location.kind === "folder" && location.available ? location.path : null;
+  return location.available ? location.path : null;
 }
 
 const LOADING: ChatResult = { kind: "loading" };

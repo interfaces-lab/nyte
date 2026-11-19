@@ -46,10 +46,12 @@ const styles = create({
   },
 });
 
+export const tooltipTiming = { delay: 300, closeDelay: 100, timeout: 200 } as const;
+
 export function TooltipProvider({
-  delay = 300,
-  closeDelay = 100,
-  timeout = 200,
+  delay = tooltipTiming.delay,
+  closeDelay = tooltipTiming.closeDelay,
+  timeout = tooltipTiming.timeout,
   ...rest
 }: TooltipPrimitive.Provider.Props): ReactElement {
   return (
@@ -64,6 +66,7 @@ export function TooltipTrigger(props: TooltipPrimitive.Trigger.Props): ReactElem
 }
 
 export function TooltipContent({
+  anchor,
   side = "bottom",
   align,
   sideOffset = 6,
@@ -76,7 +79,10 @@ export function TooltipContent({
   style,
   ...rest
 }: StyledProps<TooltipPrimitive.Popup.Props, Restyle<"TooltipContent">> &
-  Pick<TooltipPrimitive.Positioner.Props, "side" | "align" | "sideOffset" | "alignOffset"> & {
+  Pick<
+    TooltipPrimitive.Positioner.Props,
+    "anchor" | "side" | "align" | "sideOffset" | "alignOffset"
+  > & {
     readonly tint?: Tint;
     readonly shortcut?: readonly string[];
   }): ReactElement {
@@ -84,6 +90,7 @@ export function TooltipContent({
     <TooltipPrimitive.Portal>
       <TooltipPrimitive.Positioner
         positionMethod="fixed"
+        anchor={anchor}
         side={side}
         align={align}
         sideOffset={sideOffset}

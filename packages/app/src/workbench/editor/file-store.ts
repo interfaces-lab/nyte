@@ -42,6 +42,13 @@ interface FileLocation {
   readonly target?: FileTarget;
 }
 
+export type DocumentHolder = `tab:${WorkbenchTabId}` | "design";
+
+interface HeldDocument {
+  readonly buffer: FileBuffer;
+  readonly holders: Set<DocumentHolder>;
+}
+
 type FileDraft = Pick<FileDocumentSnapshot, "savedContents" | "version"> & {
   readonly contents: string;
 };
@@ -181,7 +188,7 @@ function fileKey(key: WorkbenchViewKey, path: string): string {
 export function createFileTabStore(store: WorkbenchStore = workbench) {
   const navigations = new Map<WorkbenchTabId, FileNavigation>();
   const files = new Map<string, FileState>();
-  const buffers = new Map<string, FileBuffer>();
+  const buffers = new Map<string, HeldDocument>();
   const views = new Map<WorkbenchViewKey, FileViewRuntime>();
   const places = new Map<WorkbenchTabId, () => FileTarget | undefined>();
 
@@ -311,17 +318,45 @@ export function createFileTabStore(store: WorkbenchStore = workbench) {
     );
   };
 
+  const release = (entry: HeldDocument, holder: DocumentHolder): void => {
+    entry.holders.delete(holder);
+
+    if (entry.holders.size > 0) return;
+
+    for (const [held, other] of buffers) if (other === entry) buffers.delete(held);
+  };
+
+  const releaseTab = (key: WorkbenchViewKey, id: WorkbenchTabId, path: string): void => {
+    const entry = buffers.get(fileKey(key, path));
+
+    if (entry !== undefined) release(entry, `tab:${id}`);
+  };
+
+  const holdDocument = (input: {
+    readonly view: WorkbenchViewKey;
+    readonly path: string;
+    readonly holder: DocumentHolder;
+    readonly create: () => FileBuffer;
+  }) => {
+    const key = fileKey(input.view, input.path);
+    const entry = buffers.get(key) ?? { buffer: input.create(), holders: new Set() };
+
+    buffers.set(key, entry);
+    entry.holders.add(input.holder);
+
+    return { buffer: entry.buffer, release: () => release(entry, input.holder) };
+  };
+
   const remove = (key: WorkbenchViewKey, id: WorkbenchTabId): void => {
     const current = getRuntimeView(key);
     const tab = fileTabs(key).find((candidate) => candidate.id === id);
 
     if (tab === undefined) return;
     navigations.delete(id);
+    releaseTab(key, id, tab.path);
 
-    if (!fileTabs(key).some((other) => other.id !== id && other.path === tab.path)) {
+    if (!fileTabs(key).some((other) => other.id !== id && other.path === tab.path))
       files.delete(fileKey(key, tab.path));
-      buffers.delete(fileKey(key, tab.path));
-    }
 
     places.delete(id);
     views.set(key, {
@@ -378,7 +413,13 @@ export function createFileTabStore(store: WorkbenchStore = workbench) {
           )?.id
         : undefined;
 
-    if (replace !== undefined) navigations.delete(replace);
+    const replaced = fileTabs(key).find((tab) => tab.id === replace);
+
+    if (replaced !== undefined) {
+      navigations.delete(replaced.id);
+      releaseTab(key, replaced.id, replaced.path);
+    }
+
     navigate(id, location);
 
     if (location.target !== undefined || location.readOnly === true)
@@ -508,8 +549,8 @@ export function createFileTabStore(store: WorkbenchStore = workbench) {
         entry[0].startsWith(prefix)
           ? [
               {
-                ...entry[1].getSnapshot(),
-                contents: entry[1].text(),
+                ...entry[1].buffer.getSnapshot(),
+                contents: entry[1].buffer.text(),
                 path: entry[0].slice(prefix.length),
               },
             ]
@@ -532,15 +573,6 @@ export function createFileTabStore(store: WorkbenchStore = workbench) {
     setDraft(key: WorkbenchViewKey, path: string, draft: FileDraft | undefined): void {
       setFileState(key, path, { draft });
       advanceCloseQueue(key);
-    },
-    buffer(key: WorkbenchViewKey, path: string, create: () => FileBuffer): FileBuffer {
-      const held = buffers.get(fileKey(key, path));
-
-      if (held !== undefined) return held;
-      const made = create();
-      buffers.set(fileKey(key, path), made);
-
-      return made;
     },
     pin(key: WorkbenchViewKey, id: WorkbenchTabId): void {
       const tab = fileTabs(key).find((candidate) => candidate.id === id);
@@ -633,6 +665,14 @@ export function createFileTabStore(store: WorkbenchStore = workbench) {
         })),
       });
 
+      const prefix = fileKey(key, "");
+
+      for (const [held, entry] of buffers) {
+        const path = held.startsWith(prefix) ? target(held.slice(prefix.length)) : undefined;
+
+        if (path !== undefined) entry.buffer.move(path);
+      }
+
       rekey(files, key, target);
       rekey(buffers, key, target);
 
@@ -640,7 +680,6 @@ export function createFileTabStore(store: WorkbenchStore = workbench) {
         const path = target(tab.path);
 
         if (path === undefined) continue;
-        buffers.get(fileKey(key, path))?.move(path);
         store.dispatch(key, {
           kind: "patch",
           id: tab.id,
@@ -682,6 +721,7 @@ export function createFileTabStore(store: WorkbenchStore = workbench) {
   return {
     getView,
     unsaved: (): boolean => [...files.values()].some((file) => file.draft !== undefined),
+    holdDocument,
     subscribe: (listener: () => void): (() => void) => {
       listeners.add(listener);
 
@@ -699,6 +739,42 @@ export function createFileTabStore(store: WorkbenchStore = workbench) {
 const fileStore = createFileTabStore();
 
 export const fileActions = fileStore.actions;
+
+export const holdDocument = fileStore.holdDocument;
+
+export function scheduleSave(
+  buffer: FileBuffer,
+  save: () => Promise<void>,
+  delayMs: number,
+): () => void {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  const schedule = (): void => {
+    clearTimeout(timer);
+    timer = undefined;
+    const current = buffer.getSnapshot();
+
+    if (
+      !current.dirty ||
+      current.remote ||
+      (current.status.kind !== "idle" && current.status.kind !== "saved")
+    )
+      return;
+
+    timer = setTimeout(() => {
+      timer = undefined;
+      void save();
+    }, delayMs);
+  };
+
+  schedule();
+  const unsubscribe = buffer.subscribe(schedule);
+
+  return () => {
+    unsubscribe();
+    clearTimeout(timer);
+  };
+}
 
 export function watchUnsavedEdits(report: (held: boolean) => void): () => void {
   let held = false;

@@ -35,6 +35,7 @@ const state = {
 const resolved = () => Promise.resolve(undefined);
 window.nyte = new Proxy(
   {
+    app: "nyte",
     host: {
       openExternal: resolved,
       setThemePreference() {},
@@ -54,8 +55,10 @@ window.nyte = new Proxy(
         login: resolved,
         history: () => Promise.resolve([]),
         forgetHistory: resolved,
-        setBounds: () => {},
         setFocus: () => {},
+        guests: () => Promise.resolve([]),
+        attach: resolved,
+        setShown: () => {},
       },
     },
     onEvent: () => () => {},

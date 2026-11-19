@@ -7,8 +7,9 @@ import { applyDisplayMode, applyTint } from "@nyte-ai/ui/appearance";
 import { BOARD_GLOBAL, readAppMessage } from "@nyte-ai/plugin/design/board-protocol";
 import { Board } from "./board.tsx";
 import { command, post, setView } from "./bridge.ts";
+import { define, importStyle } from "./modules.ts";
 import { boardJsxRuntime } from "./runtime.ts";
-import { define, importStyle, mountSheets, receive, setNight } from "./sheets.ts";
+import { catchErrors, mountSheets, receive, setNight } from "./sheets.ts";
 
 const HOST_RULES = [
   ":host { all: initial !important; display: block !important; position: fixed !important; inset: 0 !important; overflow: hidden !important; }",
@@ -50,6 +51,8 @@ chrome.replaceSync(
 shadow.adoptedStyleSheets = [chrome];
 
 mountSheets(host);
+
+catchErrors();
 
 createRoot(mount).render(<Board host={host} />);
 

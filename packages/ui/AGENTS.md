@@ -13,6 +13,7 @@ Each ui module sits on one engine. Find it before changing the module.
 | Pierre `@pierre/trees`      | File tree (`FileTree`, `useFileTree`), file-type icons (`FileTypeIcon`)                                                               |
 | Pierre `@pierre/highlights` | Syntax tokens (`codeToTokens`), themes (`codeThemes`)                                                                                 |
 | Base UI                     | The controls: buttons, menus, dialogs, popovers, selects, tabs, tooltips and the rest                                                 |
+| TanStack Table              | Table (`Table`, `TableHead`, `TableResizer` and the other parts), column sizing and resizing                                          |
 | StyleX                      | Every style, through the tokens and roles the nyte-styles skill describes                                                             |
 
 ## Pierre
@@ -31,6 +32,17 @@ Each ui module sits on one engine. Find it before changing the module.
 - Pierre is patched through the workspace's `patchedDependencies`, which key each patch on an exact
   version. Pin a patched Pierre package to an exact version when you upgrade it, then redo its patch
   with `pnpm patch` and check that every change in it still applies and is still needed.
+
+## TanStack Table
+
+- TanStack Table v9 is a dependency of `@nyte-ai/ui` only. Other packages import its names from
+  `@nyte-ai/ui/table`, which re-exports them unchanged beside the styled parts;
+  `no-restricted-imports` rejects `@tanstack/react-table` outside ui. Add a name there before using
+  it.
+- TanStack ships its agent skills in the package. List them with `npx @tanstack/intent@latest list`
+  from the ui package and load one with
+  `npx @tanstack/intent@latest load @tanstack/react-table#getting-started`. Load
+  `@tanstack/table-core#table-features` before adding a feature.
 
 ## Pierre surfaces
 

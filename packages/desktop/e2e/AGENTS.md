@@ -9,3 +9,4 @@ Playwright tests for the Electron app. Read `README.md` for how to run them. The
 - The page and the window's vibrancy both follow the native theme. Change the theme with `setTheme`; never emulate `colorScheme`, or the page and the material behind it disagree.
 - Collect errors on any page a test opens itself with `collectErrors` from `@nyte-ai/app/e2e/errors`, and assert them.
 - A chapter over Nyte, Code and Studio together takes its windows from the `desk` fixture, one launch per test. A window the others cover stops drawing, so a change that must show live in several windows needs `desk.tile()` first.
+- A test that fails on `main` for a reason outside the change at hand gets `@quarantine` in its title. CI skips it and runs it nightly without failing. Fix or delete it within 14 days, and remove the tag in the same change as the fix. Never quarantine a test your own change broke.

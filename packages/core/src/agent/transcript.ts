@@ -44,9 +44,9 @@ import { check } from "../util/json-schema.ts";
 import type { StoreConnection } from "../contract/store.ts";
 import { scanResources } from "../extend/resources.ts";
 import { projectSections } from "./project-prompt.ts";
-import { settleSystemPrompt, systemSections } from "./prompt-sections.ts";
+import { resolveSections, settleSystemPrompt, systemSections } from "./prompt-sections.ts";
 import { hiddenOwners } from "./capabilities.ts";
-import { toolSource } from "../extend/registry.ts";
+import { offeredTools, toolSource } from "../extend/registry.ts";
 
 interface Step {
   readonly commit: CommitId;
@@ -137,25 +137,25 @@ export async function requestBody(
   const loads = await readLoads(steps, source);
   const loaded = new Set([...loads.values()].flat());
 
-  const tools = source
-    .list()
-    .filter(
-      (info) =>
-        (info.exposure === "model" ||
-          info.exposure === "model-only" ||
-          (info.exposure !== "hidden" && loaded.has(info.name))) &&
-        (named === undefined || named.includes(info.name)) &&
-        (info.owner === null || !hidden.has(info.owner)),
-    );
+  const tools = await offeredTools(
+    runtime,
+    source
+      .list()
+      .filter(
+        (info) =>
+          (info.exposure === "model" ||
+            info.exposure === "model-only" ||
+            (info.exposure !== "hidden" && loaded.has(info.name))) &&
+          (named === undefined || named.includes(info.name)) &&
+          (info.owner === null || !hidden.has(info.owner)),
+      ),
+    where,
+  );
 
   const declared = new Set(tools.map((info) => info.name));
 
   return {
-    transcript: await runtime.hooks.transform(
-      "transform_transcript",
-      { messages: messages.map((message) => markLoads(message, loads, declared)), tools },
-      where,
-    ),
+    transcript: { messages: messages.map((message) => markLoads(message, loads, declared)), tools },
     source,
   };
 }
@@ -259,7 +259,9 @@ async function buildContext(
     head: input.head,
     run: input.run,
     sections: systemSections(found.record.prompt, input.agent, resources.prompt, [
-      ...runtime.registries.prompt.list(),
+      ...(await resolveSections(runtime.registries.prompt.entries(), {
+        model: configuration.model,
+      })),
       ...(await projectSections(kernel, found.record, resources)),
     ]),
     commits: input.steps.map((step) => step.commit),
@@ -930,6 +932,11 @@ function excerptAttributes(source: ExcerptSource): string {
     }
     case "chat":
       return `source="side chat" ${attribute("title", source.title)}`;
+    case "design": {
+      const file = `source="design" ${attribute("path", source.path)}`;
+
+      return source.frame === null ? file : `${file} ${attribute("frame", source.frame)}`;
+    }
   }
 }
 

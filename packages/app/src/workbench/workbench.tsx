@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import type { KeyboardEvent, PointerEvent, ReactElement } from "react";
 import { clientCapabilities } from "../contract/client-actions.ts";
 import type { ClientCapabilities } from "../contract/client-actions.ts";
-import { nyte } from "../contract/nyte.ts";
+import { nyte, windowApp } from "../contract/nyte.ts";
 import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 import { PanelToggleIcon } from "@nyte-ai/ui/icon";
 import { Toggle } from "@nyte-ai/ui/toggle";
@@ -314,6 +314,7 @@ function WorkbenchViewHost({
     setWidth(clampWorkbenchWidthToBounds(width, bounds));
   };
 
+  const code = windowApp() === "code";
   const panelVisible = current && view.expanded;
   const panelShown = panelVisible && !chatShowing;
   const panelHidden = !current || (panelVisible && chatShowing);
@@ -383,13 +384,14 @@ function WorkbenchViewHost({
         inert={panelHidden ? true : undefined}
         {...props(
           workbenchStyles.panel,
-          panelVisible && hairline.inlineStart,
+          panelVisible && (code ? workbenchStyles.panelEndRule : hairline.inlineStartAfter),
           panelVisible && [
-            workbenchStyles.panelOpen,
+            code ? workbenchStyles.panelOpenCode : workbenchStyles.panelOpen,
             workbenchStyles.panelWidth(view.width.pixels),
           ],
           !panelVisible && (compact ? workbenchStyles.railHostCompact : workbenchStyles.railHost),
           panelVisible && maximized && workbenchStyles.panelOverlay,
+          panelVisible && maximized && code && workbenchStyles.panelOverlayStart,
           panelHidden && workbenchStyles.panelHidden,
         )}
       >
@@ -414,14 +416,18 @@ function WorkbenchViewHost({
             <div
               role="separator"
               tabIndex={0}
-              aria-label="Resize workbench"
+              aria-label={code ? "Resize chat panel" : "Resize workbench"}
               aria-orientation="vertical"
               aria-valuemin={separator.min}
               aria-valuemax={separator.max}
               aria-valuenow={separator.now}
               aria-valuetext={`${String(separator.now)}%`}
               title="Drag to resize. Double-click to reset."
-              {...props(workbenchStyles.sash, resizing && workbenchStyles.sashActive)}
+              {...props(
+                workbenchStyles.sash,
+                code && workbenchStyles.sashEnd,
+                resizing && workbenchStyles.sashActive,
+              )}
               onKeyDown={resizeWithKeyboard}
               onPointerDown={beginResize}
               onPointerMove={moveResize}

@@ -74,7 +74,6 @@ const styles = create({
     minWidth: 0,
     minHeight: 0,
     overflow: "auto",
-    backgroundColor: role.bgBase,
   },
   headerRow: {
     display: "flex",

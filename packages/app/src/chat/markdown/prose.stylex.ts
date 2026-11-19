@@ -163,6 +163,10 @@ export const proseStyles = create({
     borderStyle: "none",
     backgroundColor: role.strokeQuaternary,
   },
+  tableHost: {
+    marginBlockStart: { default: space.s3, ":first-child": 0 },
+    marginBlockEnd: { default: space.s4, ":last-child": 0 },
+  },
   tableWrap: {
     marginBlockStart: { default: space.s3, ":first-child": 0 },
     marginBlockEnd: { default: space.s4, ":last-child": 0 },
@@ -246,6 +250,11 @@ export const codeBlockStyles = create({
       ":focus-within": 1,
       ":has([data-copied])": 1,
     },
+  },
+  slot: {
+    marginBlockStart: { default: space.s2, ":first-child": 0 },
+    marginBlockEnd: { default: space.s2, ":last-child": 0 },
+    marginInline: 0,
   },
   scroll: { maxWidth: "100%", overflowX: "auto", overflowY: "hidden" },
   pre: {

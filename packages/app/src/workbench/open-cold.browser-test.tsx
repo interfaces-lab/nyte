@@ -7,6 +7,7 @@ import { Deferred, publishDeferred, readDeferred } from "../lib/deferred.tsx";
 import deferredUrls from "../lib/deferred-urls.ts";
 import { createAppRouter } from "../shell/routes.tsx";
 import { runWindowCommand } from "../commands/window-commands.ts";
+import { parsePatchFiles } from "@nyte-ai/ui/diffs";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { ChangesPanel } from "./changes/changes-panel.tsx";
 import { DesignTab } from "./design-tab.tsx";
@@ -74,6 +75,7 @@ export async function run(): Promise<string> {
       clearTerminal,
       copyTerminal,
       focusTerminal,
+      parsePatchFiles,
     });
   Object.assign(deferredUrls, { workbench: window.workbenchModuleUrl });
 

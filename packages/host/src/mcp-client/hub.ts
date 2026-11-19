@@ -312,7 +312,11 @@ function hub(input: {
         description: link.entry.description,
         instructions: listed?.instructions ?? null,
         exposures: [
-          ...new Set([link.entry.exposure, ...link.entry.toolExposure.map((pair) => pair[1])]),
+          ...new Set(
+            listed === null
+              ? [link.entry.exposure, ...link.entry.toolExposure.map((pair) => pair[1])]
+              : listed.tools.map((tool) => toolExposure(link.entry, tool.name)),
+          ),
         ],
         unavailable:
           listed === null && (state.kind === "failed" || state.kind === "needs-sign-in")

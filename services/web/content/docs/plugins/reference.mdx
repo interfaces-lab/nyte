@@ -176,8 +176,13 @@ See [Give the agent a tool](/docs/plugins/tools) for a walkthrough.
 | Field   | What it is                                                        |
 | ------- | ----------------------------------------------------------------- |
 | `id`    | Name of the section. A later section with the same id replaces it |
-| `text`  | Text added to the system prompt                                   |
+| `text`  | Text added to the system prompt, or `({ model }) => text \| null` |
 | `order` | Sort position, lowest first. Default `100`                        |
+
+Core calls a `text` function each time it builds a request; `null` leaves the section out. When the
+text changes, the model gets the change as an update after the conversation so far, so the cached
+start of the conversation stays the same. Use one for anything that changes during a chat, such as
+the models the user enabled or a setting.
 
 A `SYSTEM.md` prompt file replaces every section.
 

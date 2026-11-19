@@ -11,6 +11,7 @@ import {
 } from "@nyte-ai/ui/menu";
 import { useGitHubRepository } from "../data/github.ts";
 import { folderPicker, handleOpenOutcome } from "./open-workspace.tsx";
+import type { OpenWorkspaceOutcome } from "../contract/bridge.ts";
 import { clientActions } from "../contract/client-actions.ts";
 import { nyte } from "../contract/nyte.ts";
 import { useHostState } from "../data/host.ts";
@@ -27,7 +28,13 @@ import { EnvironmentMenu } from "./environment-menu.tsx";
 
 const INLINE_FOLDERS = 5;
 
-export function WorkspaceContext({ active }: { readonly active: boolean }) {
+export function WorkspaceContext({
+  active,
+  onChoose,
+}: {
+  readonly active: boolean;
+  readonly onChoose: (folder: string | null) => void;
+}) {
   const host = useHostState();
   const workspace = host.data.workspace;
   const home = useHomeWorkspace();
@@ -38,7 +45,13 @@ export function WorkspaceContext({ active }: { readonly active: boolean }) {
       ? folderName(workspace, home)
       : `${repository.owner}/${repository.name}`;
 
-  const openFolder = folderPicker();
+  const open = (outcome: OpenWorkspaceOutcome): void => {
+    handleOpenOutcome(outcome);
+
+    if (outcome.kind === "opened") onChoose(outcome.workspace.path);
+  };
+
+  const openFolder = folderPicker(open);
 
   const folders = useRecentWorkspaces({ exclude: workspace?.path }).filter(
     (folder) => folder.id !== home,
@@ -69,12 +82,12 @@ export function WorkspaceContext({ active }: { readonly active: boolean }) {
           onValueChange={(value) => {
             if (value === "home") {
               if (workspace !== undefined) commitHostWorkspace(undefined);
+              onChoose(null);
 
               return;
             }
 
-            if (value !== workspace?.path)
-              void nyte.host.openWorkspace({ path: value }).then(handleOpenOutcome);
+            if (value !== workspace?.path) void nyte.host.openWorkspace({ path: value }).then(open);
           }}
         >
           <MenuRadioItem value="home" icon="folder">

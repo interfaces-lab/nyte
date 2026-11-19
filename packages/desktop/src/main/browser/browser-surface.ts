@@ -1,21 +1,23 @@
-import type { BrowserWindow, Session, WebContents, WebContentsView } from "electron";
+import type { BrowserWindow, Session, WebContents } from "electron";
 import type {
-  BrowserBoundsMessage,
   BrowserDesign,
   BrowserFindResult,
+  BrowserGuest,
   BrowserKey,
   BrowserSurfaceState,
   HostEvent,
 } from "@nyte-ai/app/contract/bridge.ts";
 import type { DesktopSettings } from "@nyte-ai/app/contract/desktop-settings.ts";
 import type { BrowserHistoryStore } from "./browser-history.ts";
-import type { BrowserHolder, BrowserOwner, BrowserRect } from "../../shared/browser-agent.ts";
+import { holderKey } from "../../shared/browser-agent.ts";
+import type { BrowserHolder, BrowserOwner } from "../../shared/browser-agent.ts";
 import { surfaceSecurity } from "./browser-policy.ts";
 import type { SurfaceRuntime } from "./browser-runtime.ts";
 import type { HostWindow } from "../../shared/host-window.ts";
 
 export interface GuestSession {
   readonly session: Session;
+  readonly partition: string;
   readonly plainHosts: Set<string>;
   readonly upgrades: Map<number, string>;
   readonly trustedCertificateHosts: Set<string>;
@@ -40,26 +42,33 @@ export interface BrowserSurfacesDependencies {
   }) => void;
 }
 
+export interface HostingWindow {
+  readonly id: HostWindow;
+  readonly window: BrowserWindow;
+}
+
 export interface Surface {
   readonly id: string;
-  readonly view: WebContentsView;
-  readonly holders: Set<BrowserHolder>;
-  lastBounds: BrowserRect;
+  readonly holders: Map<string, BrowserHolder>;
   readonly runtime: SurfaceRuntime;
   readonly guestSession: GuestSession;
-  bounds: BrowserBoundsMessage["bounds"];
+  guest: WebContents | undefined;
+  readonly waiting: Set<(guest: WebContents | undefined) => void>;
+  generation: number;
+  address: string | undefined;
+  zoom: number;
   visible: boolean;
   home: HostWindow | undefined;
-  attachedTo: BrowserWindow | undefined;
+  host: HostingWindow | undefined;
   destroyed: boolean;
   operations: number;
+  captures: number;
   lastUse: number;
   blocked: number;
   error: BrowserSurfaceState["error"];
   owner: BrowserOwner;
   fullscreen: boolean;
   windowWasWindowed: boolean;
-  onWindowResize: (() => void) | undefined;
   find:
     | { readonly request: number; readonly resolve: (result: BrowserFindResult) => void }
     | undefined;
@@ -73,6 +82,7 @@ export interface Surface {
   paused: boolean;
   readonly pressed: BrowserKey[];
   design: BrowserDesign;
+  entered: boolean;
   published:
     | { readonly state: BrowserSurfaceState; readonly window: HostWindow | undefined }
     | undefined;
@@ -82,7 +92,6 @@ export interface SurfaceRegistry {
   readonly dependencies: BrowserSurfacesDependencies;
   blocking(url: string): BrowserSurfaceState["blocking"];
   blockedStyles(url: string): string;
-  place(surface: Surface): void;
   publish(surface: Surface): void;
   notify(surface: Surface, event: HostEvent): void;
   load(surface: Surface, url: string): void;
@@ -91,21 +100,24 @@ export interface SurfaceRegistry {
   forwardKey(surface: Surface, contents: WebContents, key: BrowserKey): void;
 }
 
-export const DEFAULT_BOUNDS: BrowserRect = { x: 0, y: 0, width: 1280, height: 800 };
+export function countHolders(
+  surface: Pick<Surface, "holders">,
+  kind: BrowserHolder["kind"],
+): number {
+  let count = 0;
 
-export function hasViewHolder(surface: Surface): boolean {
-  for (const holder of surface.holders) {
-    if (holder.startsWith("view:")) return true;
+  for (const holder of surface.holders.values()) {
+    if (holder.kind === kind) count += 1;
   }
 
-  return false;
+  return count;
+}
+
+export function followsTabPolicy(surface: Pick<Surface, "holders">): boolean {
+  return countHolders(surface, "tab") > 0 && countHolders(surface, "board") === 0;
 }
 
 type HeldPage = Pick<Surface, "holders" | "home" | "visible">;
-
-export function viewHolder(window: HostWindow): BrowserHolder {
-  return `view:${window}`;
-}
 
 export function reportVisibility(
   page: HeldPage,
@@ -126,7 +138,21 @@ export function reportVisibility(
 }
 
 export function dropHolder(page: HeldPage, holder: BrowserHolder): "absent" | "held" | "unheld" {
-  if (!page.holders.delete(holder)) return "absent";
+  if (!page.holders.delete(holderKey(holder))) return "absent";
+
+  return page.holders.size === 0 ? "unheld" : "held";
+}
+
+export function dropWindowHolders(
+  page: HeldPage,
+  window: HostWindow,
+): ReturnType<typeof dropHolder> {
+  const dropped = [
+    page.holders.delete(holderKey({ kind: "tab", window })),
+    page.holders.delete(holderKey({ kind: "board", window })),
+  ];
+
+  if (!dropped.includes(true)) return "absent";
 
   return page.holders.size === 0 ? "unheld" : "held";
 }
@@ -137,40 +163,38 @@ export function leaveWindow(page: HeldPage, window: HostWindow): ReturnType<type
     page.visible = false;
   }
 
-  return dropHolder(page, viewHolder(window));
+  return dropWindowHolders(page, window);
 }
 
-export function countSessionHolders(surface: Surface): number {
-  let count = 0;
+export function pageAddress(surface: Surface): string | undefined {
+  const contents = surface.guest;
 
-  for (const holder of surface.holders) {
-    if (holder.startsWith("session:")) count += 1;
-  }
-
-  return count;
+  return contents === undefined || contents.isDestroyed() ? surface.address : contents.getURL();
 }
 
 export function surfaceState(
   surface: Surface,
   blocking: (url: string) => BrowserSurfaceState["blocking"],
 ): BrowserSurfaceState {
-  const contents = surface.view.webContents;
-  const agentHolders = countSessionHolders(surface);
+  const contents = surface.guest;
+  const agentHolders = countHolders(surface, "session");
 
-  if (contents.isDestroyed()) {
+  if (contents === undefined || contents.isDestroyed()) {
+    const url = surface.address ?? "";
+
     return {
-      url: "",
+      url,
       title: "",
-      loading: false,
+      loading: url !== "" && surface.error === undefined,
       canGoBack: false,
       canGoForward: false,
-      secure: "none",
-      blocking: "off",
+      secure: surfaceSecurity(url),
+      blocking: blocking(url),
       blocked: surface.blocked,
       error: surface.error,
       agentHolders,
       fullscreen: false,
-      deniedPermissions: [],
+      deniedPermissions: [...surface.deniedPermissions],
       design: surface.design,
     };
   }
@@ -194,54 +218,11 @@ export function surfaceState(
   };
 }
 
-function hide(surface: Surface, window: BrowserWindow): void {
-  const contents = surface.view.webContents;
-  const held = !contents.isDestroyed() && contents.isFocused();
-  surface.view.setVisible(false);
-
-  if (held) window.webContents.focus();
-}
-
-function show(surface: Surface, focus: boolean): void {
-  surface.view.setVisible(true);
-
-  if (focus) surface.view.webContents.focus();
-}
-
-export function placeSurface(surface: Surface, window: BrowserWindow, focus: boolean): void {
-  if (surface.attachedTo !== window) {
-    if (surface.attachedTo !== undefined && !surface.attachedTo.isDestroyed()) {
-      surface.attachedTo.contentView.removeChildView(surface.view);
-    }
-
-    window.contentView.addChildView(surface.view);
-    surface.attachedTo = window;
-  }
-
-  const placed = hasViewHolder(surface) && surface.bounds.width > 0 && surface.bounds.height > 0;
-
-  if (surface.fullscreen && placed) {
-    const { width, height } = window.getContentBounds();
-    surface.view.setBounds({ x: 0, y: 0, width, height });
-    show(surface, focus);
-
-    return;
-  }
-
-  if (!placed) {
-    surface.view.setBounds({
-      x: 0,
-      y: 0,
-      width: surface.lastBounds.width > 0 ? surface.lastBounds.width : DEFAULT_BOUNDS.width,
-      height: surface.lastBounds.height > 0 ? surface.lastBounds.height : DEFAULT_BOUNDS.height,
-    });
-    hide(surface, window);
-
-    return;
-  }
-
-  surface.view.setBounds(surface.bounds);
-
-  if (surface.visible && surface.error === undefined) show(surface, focus);
-  else hide(surface, window);
+export function surfaceGuest(surface: Surface): BrowserGuest {
+  return {
+    surface: surface.id,
+    partition: surface.guestSession.partition,
+    generation: surface.generation,
+    painting: surface.operations > 0 || surface.captures > 0,
+  };
 }

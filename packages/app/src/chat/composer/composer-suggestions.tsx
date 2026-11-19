@@ -14,6 +14,7 @@ import { Icon } from "@nyte-ai/ui/icon";
 import { FileTypeIcon } from "@nyte-ai/ui/file-type-icon";
 import type { ComposerCompletion, ComposerDocumentState } from "./composer-document.ts";
 import type { ComposerComboboxState, ComposerEditorHandle } from "./composer-editor.tsx";
+import { rememberSuggestion, useRecentSuggestions } from "./composer-recent.ts";
 import { createMentionSuggestionRanking } from "./composer-suggestion-ranking.ts";
 import {
   argumentToken,
@@ -212,6 +213,7 @@ export function useComposerSuggestions({
   const skills = suggestionCatalog.status === "ready" ? suggestionCatalog.data.skills : NONE;
   const files = mentionFiles.status === "ready" ? mentionFiles.data : NONE;
   const rankMentions = useMemo(() => createMentionSuggestionRanking(files), [files]);
+  const recent = useRecentSuggestions();
   const kind = menu?.kind;
   const argument = menu?.kind === "argument" ? menu : undefined;
 
@@ -260,8 +262,9 @@ export function useComposerSuggestions({
             skills,
             rankMentions,
             hasConversationContext,
+            recent,
           ),
-    [kind, deferredQuery, commands, skills, rankMentions, hasConversationContext],
+    [kind, deferredQuery, commands, skills, rankMentions, hasConversationContext, recent],
   );
 
   const suggestions = kind === "argument" ? argumentSuggestions : listed;
@@ -317,6 +320,7 @@ export function useComposerSuggestions({
       addReference(suggestionReference(suggestion), token.start, token.end);
     }
 
+    if (suggestion.kind !== "argument") rememberSuggestion(suggestion.id);
     show(undefined);
   };
 
@@ -330,6 +334,7 @@ export function useComposerSuggestions({
           skills,
           rankMentions,
           hasConversationContext,
+          recent,
         );
 
   const click = (suggestion: ComposerSuggestion): void => {

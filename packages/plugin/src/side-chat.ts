@@ -12,9 +12,9 @@ export async function readsOnly(
   return info.parent === null ? false : readsOnly(sdk.session(info.parent), sdk);
 }
 
-export function withheldInSideChats(name: string): HookHandler<"transform_transcript"> {
-  return async (transcript, context) =>
+export function withheldInSideChats(name: string): HookHandler<"offer_tools"> {
+  return async (tools, context) =>
     (await readsOnly(context.api.session, context.api.sdk))
-      ? { ...transcript, tools: transcript.tools.filter((info) => info.name !== name) }
-      : transcript;
+      ? tools.filter((info) => info.name !== name)
+      : tools;
 }

@@ -84,15 +84,13 @@ export function applicationMenuTemplate(options: {
     action(clientActions.newBrowser),
   ] satisfies MenuItemConstructorOptions[];
 
-  const apps = options.developer
-    ? ([
-        { type: "separator" },
-        action(clientActions.openNyte),
-        action(clientActions.openCode),
-        action(clientActions.openStudio),
-        action(clientActions.flipApp),
-      ] satisfies MenuItemConstructorOptions[])
-    : [];
+  const apps = [
+    { type: "separator" },
+    action(clientActions.openNyte),
+    action(clientActions.openCode),
+    ...(options.developer ? [action(clientActions.openStudio)] : []),
+    action(clientActions.flipApp),
+  ] satisfies MenuItemConstructorOptions[];
 
   const update = { id: "check-for-updates", label: "Check for Updates…" };
 

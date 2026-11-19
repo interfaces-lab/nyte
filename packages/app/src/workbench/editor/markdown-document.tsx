@@ -27,6 +27,7 @@ import { codeBlockStyles, proseStyles } from "../../chat/markdown/prose.stylex.t
 import { documentsApi } from "../../data/documents.ts";
 import { loadDeferred } from "../../lib/deferred.tsx";
 import { useBlobUrl } from "../../lib/use-blob-url.ts";
+import { droppedWorkbenchFiles } from "../../references/composer-file-drop.ts";
 import { fileFromUrl } from "../../references/message-references.ts";
 import { conversation } from "../../theme/schema.stylex.ts";
 import { workbenchReferenceOpener } from "../commands.ts";
@@ -38,6 +39,7 @@ import {
   MarkdownLink,
   markdownExtensions,
 } from "./markdown-schema.ts";
+import { FILE_TAB_DRAG } from "./editor-drop.ts";
 import { markdownOrigin, serializeMarkdown } from "./markdown-serialize.ts";
 import { markdownStyles } from "./markdown.stylex.ts";
 
@@ -146,6 +148,9 @@ function createMarkdownSession(input: MarkdownDocumentProps) {
         "aria-multiline": "true",
         class: props(proseStyles.root, styles.editor).className ?? "",
       },
+      handleDrop: (_view, event) =>
+        event.dataTransfer?.types.includes(FILE_TAB_DRAG) === true ||
+        droppedWorkbenchFiles(event).length > 0,
     },
     onUpdate: ({ editor: current }) => {
       written = serializeMarkdown(current.state.doc, origin);

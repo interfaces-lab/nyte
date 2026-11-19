@@ -32,7 +32,7 @@ import type { SelectedWorkspace } from "../../contract/bridge.ts";
 import { PIERRE_TREE_CSS } from "@nyte-ai/ui/worker-pool";
 import { fuzzyScore } from "../../lib/fuzzy-match.ts";
 import { addFileToChat } from "../../references/add-to-chat.ts";
-import { setTreeDrag } from "../../references/composer-file-drop.ts";
+import { setWorkbenchDrag } from "../../references/composer-file-drop.ts";
 import type { WorkbenchViewKey } from "../model.ts";
 import { workbenchStyles } from "../workbench.stylex.ts";
 import { fileActions, useFileTabs } from "./file-store.ts";
@@ -160,7 +160,7 @@ export function FilesExplorer({
           dragged.has(file.displayPath),
         );
 
-        setTreeDrag(entries);
+        setWorkbenchDrag(entries);
 
         return entries.length > 0;
       },
@@ -669,7 +669,7 @@ export function FilesExplorer({
       )}
       <FileTree
         model={model}
-        onDragEnd={() => setTreeDrag([])}
+        onDragEnd={() => setWorkbenchDrag([])}
         onClick={(event) => {
           if (!(event.metaKey || event.ctrlKey || event.shiftKey))
             openFromTree(event.nativeEvent, true);

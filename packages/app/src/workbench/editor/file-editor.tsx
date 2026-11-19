@@ -34,6 +34,7 @@ import {
 } from "./editor-selection.ts";
 import { ChangePeek, useLineChanges } from "./change-peek.tsx";
 import { DeclarationPopups } from "./declaration-popups.tsx";
+import { shareDocument } from "./document-channel.ts";
 import { mirrorDraft } from "./draft-mirror.ts";
 import { languageDocuments } from "./language-documents.ts";
 import { caretPosition, editorRange, textChanges } from "./pierre-language.ts";
@@ -54,7 +55,7 @@ import { changeBarCss, revertEdit } from "./line-changes.ts";
 import type { LineChange } from "./line-changes.ts";
 import { PIERRE_EDITOR_HIGHLIGHTER_OPTIONS, PIERRE_TOKEN_CSS } from "@nyte-ai/ui/worker-pool";
 import { keys } from "../../data/query-client.ts";
-import { loadDeferred, readDeferred } from "../../lib/deferred.tsx";
+import { loadDeferred, useDeferred } from "../../lib/deferred.tsx";
 import type { DeferredRuntimes } from "../../lib/deferred-entries.ts";
 import { documentsApi, useDocument, useSaveDocument } from "../../data/documents.ts";
 import { filesFor } from "../../data/files.ts";
@@ -77,11 +78,11 @@ import {
   sameBufferState,
   settledContents,
 } from "./file-document.ts";
-import type { DocumentEditor } from "./file-document.ts";
+import type { DocumentEditor, FileBuffer } from "./file-document.ts";
 import { TAB_COLUMNS, visualColumn } from "./indentation.ts";
 import { FileImage, FileMessage, FileVideo, RevealButton, viewerStyles } from "./file-viewers.tsx";
 import type { SizedFile } from "./file-viewers.tsx";
-import { fileActions } from "./file-store.ts";
+import { fileActions, holdDocument } from "./file-store.ts";
 import { MarkdownDocument } from "./markdown-document.tsx";
 import { opensAsMarkdown } from "./markdown-parse.ts";
 import { pdfQuery } from "./pdf-query.ts";
@@ -262,7 +263,7 @@ function FileView(
     case "large":
       return (
         <FileMessage active={input.active} title="This file is too large to open here.">
-          <span>{formatBytes(document.size)}. The editor opens text files up to 1 MB.</span>
+          <span>{formatBytes(document.size)}. The editor opens text files up to 64 MB.</span>
           {reveal}
         </FileMessage>
       );
@@ -289,13 +290,10 @@ function FileView(
 }
 
 function FilePdf(input: { readonly active: boolean; readonly document: SizedFile }): ReactElement {
-  const [runtime, setRuntime] = useState<DeferredRuntimes["pdf"] | "failed" | undefined>(() =>
-    readDeferred("pdf"),
-  );
+  const runtime = useDeferred("pdf");
 
   useMountEffect(() => {
-    if (runtime === undefined)
-      void loadDeferred("pdf").then(setRuntime, () => setRuntime("failed"));
+    void loadDeferred("pdf").catch(() => undefined);
   });
 
   if (runtime === "failed")
@@ -379,9 +377,12 @@ export function TextFileEditor({
 }): ReactElement {
   const { navigationRevision } = file;
 
-  const [buffer] = useState(() =>
-    fileActions.buffer(viewKey, file.path, () => createFileDocument(document)),
-  );
+  const [buffer] = useState(() => {
+    const create = (): FileBuffer => createFileDocument(document);
+
+    return holdDocument({ view: viewKey, path: file.path, holder: `tab:${file.id}`, create })
+      .buffer;
+  });
 
   const snapshot = useSyncExternalStoreWithSelector(
     buffer.subscribe,
@@ -584,6 +585,9 @@ export function TextFileEditor({
       mirrorDraft({ buffer, viewKey, path: file.path, autoSave, save: () => latestSave.current() }),
     [autoSave, buffer, file.path, viewKey],
   );
+
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- shares the buffer with the other windows that have this file open
+  useLayoutEffect(() => shareDocument(file.path, buffer), [buffer, file.path]);
 
   // oxlint-disable-next-line nyte-code/no-direct-effect -- hands the disk document to the buffer to detect outside edits
   useLayoutEffect(() => {

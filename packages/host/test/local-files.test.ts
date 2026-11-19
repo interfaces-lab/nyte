@@ -19,6 +19,7 @@ import { asId } from "@nyte-ai/schema";
 import type { FileEvent, ScanFrame, SearchFrame, SearchInput } from "@nyte-ai/schema";
 import { afterEach, assert, describe, expect, it, onTestFinished } from "vitest";
 import { localFiles } from "../src/index.ts";
+import { TEXT_LIMIT } from "../src/local/files/files.ts";
 import type { LocalFiles } from "../src/local/files/files.ts";
 import { sha256 } from "../src/hash.ts";
 import { WALK_LIMIT, walkTree } from "../src/local/files/tree.ts";
@@ -55,7 +56,7 @@ describe("localFiles", () => {
     const root = await folder();
     await writeFile(join(root, "a.txt"), "hello\n");
     await writeFile(join(root, "b.bin"), new Uint8Array([0, 1, 2]));
-    await writeFile(join(root, "big.txt"), "x".repeat(1024 * 1024 + 1));
+    await writeFile(join(root, "big.txt"), "x".repeat(TEXT_LIMIT + 1));
     const files = localFiles(root);
 
     expect(await files.read("a.txt")).toEqual({
@@ -69,8 +70,8 @@ describe("localFiles", () => {
     expect(await files.read("b.bin")).toMatchObject({ kind: "binary", size: 3 });
     expect(await files.read("big.txt")).toMatchObject({
       kind: "large",
-      size: 1024 * 1024 + 1,
-      version: sha256("x".repeat(1024 * 1024 + 1)),
+      size: TEXT_LIMIT + 1,
+      version: sha256("x".repeat(TEXT_LIMIT + 1)),
     });
     expect(await files.read("nope.txt")).toEqual({ kind: "missing", path: "nope.txt" });
     const outside = await folder();

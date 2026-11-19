@@ -3,7 +3,26 @@ import type { ComponentType, ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import type { Root } from "react-dom/client";
-import type { AppMessage, FrameFact } from "@nyte-ai/plugin/design/board-protocol";
+import { DESIGN_ATTRIBUTE, readPageAddress } from "@nyte-ai/plugin/design/board-protocol";
+import type {
+  AppMessage,
+  BoardSheet,
+  Digest,
+  FrameFact,
+  SheetError,
+} from "@nyte-ai/plugin/design/board-protocol";
+import { post } from "./bridge.ts";
+import type { Point } from "./frame-chrome.tsx";
+import {
+  catchEvaluation,
+  locate,
+  locateEvent,
+  readDigests,
+  readRevision,
+  readSheet,
+  readSheetError,
+  registerModules,
+} from "./modules.ts";
 
 export type Load = Extract<AppMessage, { kind: "load" }>;
 
@@ -17,12 +36,13 @@ export interface FrameBox {
   readonly height: number;
   readonly node: HTMLElement;
   readonly movable: boolean;
+  readonly page: string | null;
 }
 
 export interface SheetBox {
   readonly path: string;
   readonly reads: readonly string[];
-  readonly error: string | null;
+  readonly error: SheetError | null;
   readonly frames: readonly FrameBox[];
 }
 
@@ -33,21 +53,28 @@ export interface Drawn {
   readonly version: number;
 }
 
-type Require = (name: string) => unknown;
+interface Shown {
+  readonly Sheet: ComponentType;
+  readonly digests: ReadonlyMap<string, Digest>;
+  readonly styles: ReadonlySet<string>;
+}
 
 interface Mounted {
   readonly container: HTMLElement;
   readonly root: Root;
-  error: string | null;
+  reads: readonly string[];
+  signature: string;
+  error: SheetError | null;
+  shown: Shown | null;
 }
+
+const FRAME = `[${DESIGN_ATTRIBUTE.frame}]`;
 
 const mounted = new Map<string, Mounted>();
 
-const defined = new Map<Element, (require: Require) => void>();
-
 const listeners = new Set<() => void>();
 
-const active = new Set<string>();
+const moved = new WeakMap<HTMLElement, Point>();
 
 const resized = new ResizeObserver(() => measure());
 
@@ -68,13 +95,21 @@ let drawn: Drawn = { sheets: [], texts: new Set(), version: 0 };
 let draws = 0;
 
 class Boundary extends Component<
-  { readonly children?: ReactNode; readonly onError: (error: unknown) => void },
+  {
+    readonly children?: ReactNode;
+    readonly onError: (error: unknown) => void;
+    readonly onDrawn: () => void;
+  },
   { readonly failed: boolean }
 > {
   override state = { failed: false };
 
   static getDerivedStateFromError(): { readonly failed: boolean } {
     return { failed: true };
+  }
+
+  override componentDidMount(): void {
+    if (!this.state.failed) this.props.onDrawn();
   }
 
   override componentDidCatch(error: unknown): void {
@@ -91,16 +126,16 @@ export function mountSheets(into: HTMLElement): void {
   host = into;
 }
 
-/** Called by the designs' bundle as it runs, with the bundle's module loader. */
-export function define(require: Require): void {
-  const script = document.currentScript;
+export function catchErrors(): void {
+  window.addEventListener("error", (event) => {
+    if (catchEvaluation(event)) return;
+    fail(readSheetError(event.error ?? event.message, locateEvent(event)));
+  });
+  window.addEventListener("unhandledrejection", (event) => {
+    const reason: unknown = event.reason;
 
-  if (script !== null) defined.get(script)?.(require);
-}
-
-/** Called by a design module that imports a stylesheet. */
-export function importStyle(path: string): void {
-  active.add(path);
+    fail(readSheetError(reason, locate(reason)));
+  });
 }
 
 /** Draws `load`, or keeps it for later while the person types in a design or carries a frame. */
@@ -137,6 +172,19 @@ export function currentDrawn(): Drawn {
   return drawn;
 }
 
+export function findBase(node: Node, path: string): Digest | undefined {
+  return [...mounted.values()]
+    .find((place) => place.container.contains(node))
+    ?.shown?.digests.get(path);
+}
+
+export function placeFrame(node: HTMLElement, at: Point | null): void {
+  if (at === null) moved.delete(node);
+  else moved.set(node, at);
+  placeNode(node);
+  measure();
+}
+
 export function useDrawn(): Drawn {
   return useSyncExternalStore(
     (listener) => {
@@ -165,49 +213,23 @@ async function show(load: Load): Promise<void> {
 }
 
 async function draw(load: Load): Promise<void> {
-  const require = await evaluate(load.code).catch((error: unknown): Require => () => {
-    throw error;
-  });
-
+  await registerModules(load.modules);
   current = load;
-  draws += 1;
-  active.clear();
 
-  const read = load.sheets.map((sheet) => ({
-    path: sheet.path,
-    outcome: readSheet(require, sheet.path),
-  }));
-
-  syncStyles(load);
-
-  for (const path of mounted.keys()) {
-    if (load.sheets.some((sheet) => sheet.path === path)) continue;
-    mounted.get(path)?.root.unmount();
-    mounted.get(path)?.container.remove();
-    mounted.delete(path);
+  for (const entry of mounted) {
+    if (load.sheets.some((sheet) => sheet.path === entry[0])) continue;
+    entry[1].root.unmount();
+    entry[1].container.remove();
+    mounted.delete(entry[0]);
   }
 
-  for (const sheet of read) {
-    const place = mount(sheet.path);
-    const outcome = sheet.outcome;
-    place.error = outcome.kind === "failed" ? outcome.message : null;
+  for (const sheet of load.sheets) {
+    const place = mount(sheet);
+    const signature = JSON.stringify(sheet.reads.map((path) => [path, readRevision(path)]));
 
-    flushSync(() =>
-      place.root.render(
-        outcome.kind === "failed"
-          ? null
-          : createElement(
-              Boundary,
-              {
-                key: String(draws),
-                onError: (error: unknown) => {
-                  place.error = describe(error);
-                },
-              },
-              createElement(outcome.Sheet),
-            ),
-      ),
-    );
+    if (place.signature === signature) continue;
+    place.signature = signature;
+    drawSheet(place, readSheet(sheet.path));
   }
 
   resized.disconnect();
@@ -215,80 +237,133 @@ async function draw(load: Load): Promise<void> {
   for (const place of mounted.values())
     for (const node of frameNodes(place.container)) {
       node.style.position = "absolute";
-      node.style.left = `${String(readNumber(node, "data-x"))}px`;
-      node.style.top = `${String(readNumber(node, "data-y"))}px`;
+      placeNode(node);
       resized.observe(node);
     }
 
+  syncStyles(load);
   applyNight();
   measure();
+  report();
 }
 
-function evaluate(code: string): Promise<Require> {
-  const url = URL.createObjectURL(new Blob([code], { type: "text/javascript" }));
-  const script = document.createElement("script");
-  const done = Promise.withResolvers<Require>();
-  defined.set(script, done.resolve);
-  script.addEventListener("load", () => done.reject(new Error("The designs did not load.")));
-  script.addEventListener("error", () => done.reject(new Error("The designs did not load.")));
-  script.src = url;
-  document.head.append(script);
+function drawSheet(place: Mounted, outcome: ReturnType<typeof readSheet>): void {
+  if (outcome.kind === "failed") {
+    place.error = outcome.error;
 
-  return done.promise.finally(() => {
-    defined.delete(script);
-    script.remove();
-    URL.revokeObjectURL(url);
+    return;
+  }
+
+  const last = place.shown;
+  place.error = null;
+  render(place, {
+    Sheet: outcome.Sheet,
+    digests: readDigests(place.reads),
+    styles: outcome.styles,
+  });
+
+  if (place.error === null || last === null) return;
+  const error = place.error;
+  render(place, last);
+  place.error = error;
+}
+
+function render(place: Mounted, shown: Shown): void {
+  draws += 1;
+  flushSync(() =>
+    place.root.render(
+      createElement(
+        Boundary,
+        {
+          key: String(draws),
+          onError: (error: unknown) => {
+            place.error = readSheetError(error, locate(error));
+
+            if (drawing) return;
+            measure();
+            report();
+          },
+          onDrawn: () => {
+            place.shown = shown;
+          },
+        },
+        createElement(shown.Sheet),
+      ),
+    ),
+  );
+}
+
+function fail(error: SheetError): void {
+  const path = error.path;
+
+  if (path === null) return;
+  const failed = [...mounted.values()].filter((place) => place.reads.includes(path));
+
+  if (failed.length === 0) return;
+
+  for (const place of failed) place.error = error;
+  measure();
+  report();
+}
+
+function report(): void {
+  const load = current;
+
+  if (load === null) return;
+  post({
+    kind: "drawn",
+    build: load.build,
+    sheets: load.sheets
+      .slice(0, 4096)
+      .map((sheet) => ({ path: sheet.path, error: mounted.get(sheet.path)?.error ?? null })),
   });
 }
 
-// oxlint-disable-next-line nyte-code/no-one-off-boolean-helpers -- typeof narrows a default export only to Function, not to a component
-function drawsSheet(value: unknown): value is ComponentType {
-  return typeof value === "function";
-}
+function mount(sheet: BoardSheet): Mounted {
+  const known = mounted.get(sheet.path);
 
-function readSheet(
-  require: Require,
-  path: string,
-):
-  | { readonly kind: "drawn"; readonly Sheet: ComponentType }
-  | { readonly kind: "failed"; readonly message: string } {
-  try {
-    const exports = require(path);
+  if (known !== undefined) {
+    known.reads = sheet.reads;
 
-    const Sheet =
-      typeof exports === "object" && exports !== null && "default" in exports
-        ? exports.default
-        : undefined;
-
-    return drawsSheet(Sheet)
-      ? { kind: "drawn", Sheet }
-      : { kind: "failed", message: `${path} has no default export that draws its frames.` };
-  } catch (error) {
-    return { kind: "failed", message: describe(error) };
+    return known;
   }
-}
 
-function describe(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function mount(path: string): Mounted {
-  const known = mounted.get(path);
-
-  if (known !== undefined) return known;
   const container = document.createElement("div");
-  container.slot = path;
-  container.dataset["sheet"] = path;
+  container.slot = sheet.path;
+  container.dataset["sheet"] = sheet.path;
   container.style.position = "relative";
   host?.append(container);
-  const place = { container, root: createRoot(container), error: null };
-  mounted.set(path, place);
+
+  const place: Mounted = {
+    container,
+    root: createRoot(container),
+    reads: sheet.reads,
+    signature: "",
+    error: null,
+    shown: null,
+  };
+
+  mounted.set(sheet.path, place);
 
   return place;
 }
 
+function placeNode(node: HTMLElement): void {
+  const at = moved.get(node) ?? {
+    x: readNumber(node, DESIGN_ATTRIBUTE.x),
+    y: readNumber(node, DESIGN_ATTRIBUTE.y),
+  };
+
+  node.style.left = `${String(at.x)}px`;
+  node.style.top = `${String(at.y)}px`;
+}
+
 function syncStyles(load: Load): void {
   const texts = new Map(load.styles.map((sheet) => [sheet.path, sheet.text]));
+
+  const active = new Set(
+    [...mounted.values()].flatMap((place) => [...(place.shown?.styles ?? [])]),
+  );
 
   const shown = new Map(
     [...document.head.querySelectorAll("style[data-design]")].map((node) => [
@@ -310,9 +385,14 @@ function syncStyles(load: Load): void {
 }
 
 function frameNodes(container: HTMLElement): readonly HTMLElement[] {
-  return [...container.children].filter(
-    (node): node is HTMLElement => node instanceof HTMLElement && node.hasAttribute("data-frame"),
-  );
+  return [...container.querySelectorAll(FRAME)].filter((node): node is HTMLElement => {
+    const outer = node.parentElement?.closest(FRAME);
+
+    return (
+      node instanceof HTMLElement &&
+      (outer === null || outer === undefined || !container.contains(outer))
+    );
+  });
 }
 
 function readNumber(node: Element, name: string): number {
@@ -328,8 +408,8 @@ function findFact(key: string): FrameFact | undefined {
 function applyNight(): void {
   for (const place of mounted.values())
     for (const node of frameNodes(place.container))
-      if (findFact(node.getAttribute("data-src") ?? "")?.pinned !== true)
-        node.setAttribute("data-theme", night ? "night" : "day");
+      if (findFact(node.getAttribute(DESIGN_ATTRIBUTE.source) ?? "")?.pinned !== true)
+        node.setAttribute(DESIGN_ATTRIBUTE.theme, night ? "night" : "day");
 }
 
 function measure(): void {
@@ -349,17 +429,19 @@ function measure(): void {
           place === undefined
             ? []
             : frameNodes(place.container).map((node) => {
-                const key = node.getAttribute("data-src") ?? "";
+                const key = node.getAttribute(DESIGN_ATTRIBUTE.source) ?? "";
+                const at = moved.get(node);
 
                 return {
                   key,
-                  name: node.getAttribute("data-frame") ?? "",
-                  x: readNumber(node, "data-x"),
-                  y: readNumber(node, "data-y"),
+                  name: node.getAttribute(DESIGN_ATTRIBUTE.frame) ?? "",
+                  x: at?.x ?? readNumber(node, DESIGN_ATTRIBUTE.x),
+                  y: at?.y ?? readNumber(node, DESIGN_ATTRIBUTE.y),
                   width: node.offsetWidth,
                   height: node.offsetHeight,
                   node,
                   movable: findFact(key)?.movable === true,
+                  page: readPageAddress(node.getAttribute(DESIGN_ATTRIBUTE.page)) ?? null,
                 };
               }),
       };

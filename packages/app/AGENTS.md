@@ -51,6 +51,8 @@ These rules hold in every package.
   is the only drag owner on file tabs; never wrap them in the strip's `SortableList`.
 - The focused group's marker reads `appearance.focusColor`, not `focusRing`, which pointer modality
   clears.
+- Lists that grow with a file or a workspace render a window of rows: the outline through
+  `useVirtualizer`, Quick Open through `MATCH_LIMIT`.
 
 ## Renderer tests
 

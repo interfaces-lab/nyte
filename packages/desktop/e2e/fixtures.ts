@@ -113,10 +113,6 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
           failedResponses.length > 0;
 
         if (failed) {
-          await testInfo.attach(
-            "window",
-            await captureWindow(desktop, testInfo.outputPath("window.png")),
-          );
           const path = testInfo.outputPath("trace.zip");
           await tracing.stopChunk({ path });
           await testInfo.attach("trace", { path, contentType: "application/zip" });
@@ -124,6 +120,10 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
             body: desktop.output.slice(outputStart).join(""),
             contentType: "text/plain",
           });
+          await testInfo.attach(
+            "window",
+            await captureWindow(desktop, testInfo.outputPath("window.png")),
+          );
         } else await tracing.stopChunk();
       }
 

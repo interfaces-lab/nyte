@@ -127,6 +127,11 @@ export const row = defineConsts({
   radius: "var(--nyte-row-radius)",
 });
 
+export const table = defineConsts({
+  rowHeight: "var(--nyte-table-row-height)",
+  wrapWidth: "var(--nyte-table-wrap-width)",
+});
+
 export const command = defineConsts({
   barHeight: "var(--nyte-command-bar-height)",
 });
@@ -160,6 +165,8 @@ export const dialog = defineConsts({
 export const layer = defineConsts({
   stickyContent: 10,
   workbench: 20,
+  page: 22,
+  floatingContent: 25,
   chrome: 30,
   sash: 31,
   dialogBackdrop: 50,
@@ -171,6 +178,7 @@ export const layer = defineConsts({
   commandBackdrop: 80,
   command: 81,
   dragPreview: 1000,
+  fullscreenPage: 10001,
 });
 
 export const radius = defineConsts({

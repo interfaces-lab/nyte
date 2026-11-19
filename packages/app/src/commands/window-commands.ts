@@ -13,7 +13,7 @@ import { commitHostWorkspace } from "../data/workspaces.ts";
 import { firstSettingsSection } from "../settings/sections.ts";
 import { closeSettings } from "../settings/return.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
-import { launch, openInApp } from "../workbench/commands.ts";
+import { launch, toggleExplorer } from "../workbench/commands.ts";
 import { fileActions } from "../workbench/editor/file-store.ts";
 import { opensAsMarkdown } from "../workbench/editor/markdown-parse.ts";
 import { activeEditorFile, EDITOR_SLOT, tabSlot, workbenchShowsChat } from "../workbench/model.ts";
@@ -123,12 +123,6 @@ export function openWindowInEditor(open: DesktopWindowOpen): void {
 }
 
 export function openFileInEditor(router: RegisteredRouter, path: string): void {
-  if (windowApp() === "studio") {
-    openInApp("code", { kind: "file", path });
-
-    return;
-  }
-
   uncoverPanes(router);
   fileActions.open(workbenchViewKey(currentWorkspacePath()), { path });
 }
@@ -184,12 +178,15 @@ export function runWindowCommand(router: RegisteredRouter, command: AppMenuActio
 
       return true;
     case "sidebar":
-      shellActions.toggleSidebar();
+      if (windowApp() === "code") toggleExplorer(workbenchViewKey(currentWorkspacePath()));
+      else shellActions.toggleSidebar();
 
       return true;
     case "workbench":
       uncoverPanes(router);
-      workbench.dispatch(workbenchViewKey(currentWorkspacePath()), { kind: "toggle" });
+      workbench.dispatch(workbenchViewKey(currentWorkspacePath()), {
+        kind: windowApp() === "code" ? "toggle-maximized" : "toggle",
+      });
 
       return true;
     case "terminal":

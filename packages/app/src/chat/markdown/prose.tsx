@@ -1,78 +1,42 @@
-import { intent } from "@nyte-ai/ui/surface-theme";
-import { Type } from "typebox";
-import { Value } from "typebox/value";
-import { props } from "@stylexjs/stylex";
-import {
-  Children,
-  createContext,
-  Fragment,
-  isValidElement,
-  use,
-  useSyncExternalStore,
-} from "react";
-import type { ComponentProps, ReactElement, ReactNode } from "react";
-import remend from "remend";
-import {
-  defaultUrlTransform,
-  parseMarkdownIntoBlocks,
-  Streamdown,
-  useIsCodeFenceIncomplete,
-} from "streamdown";
-import type { Components, ExtraProps, StreamdownProps, UrlTransform } from "streamdown";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
-import { openConversationLink } from "./external-link.ts";
-import { useQuery } from "@tanstack/react-query";
-import { filesFor, mentionFilesOptions } from "../../data/files.ts";
-import { blobUrlQuery } from "../../lib/use-blob-url.ts";
-import { useChatFolder } from "../chat-folder.ts";
-import { CodeBlock } from "./code-block.tsx";
-import { MermaidDiagram } from "./mermaid-diagram.tsx";
-import { Icon } from "@nyte-ai/ui/icon";
-import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
+import "@nyte-ai/ui/words/styles.css";
+import { asId } from "@nyte-ai/schema";
+import type { ByteReader, WorkspaceId } from "@nyte-ai/sdk";
 import { FileTypeIcon } from "@nyte-ai/ui/file-type-icon";
+import { Icon } from "@nyte-ai/ui/icon";
+import { intent } from "@nyte-ai/ui/surface-theme";
+import { Tooltip, TooltipContent, tooltipTiming } from "@nyte-ai/ui/tooltip";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
+import { defaultUrlTransform, Markdown } from "@nyte-ai/ui/words/react";
+import type { Components } from "@nyte-ai/ui/words/react";
+import { props } from "@stylexjs/stylex";
+import { useQuery } from "@tanstack/react-query";
+import { useRef, useState } from "react";
+import type { ReactElement, ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { filesFor, mentionFilesOptions } from "../../data/files.ts";
+import type { MentionFile } from "../../data/files.ts";
+import { blobUrlQuery } from "../../lib/use-blob-url.ts";
 import {
   fileFromUrl,
   inlineCodeReference,
   referenceTitle,
 } from "../../references/message-references.ts";
 import type { MessageReference } from "../../references/message-references.ts";
-import type { MentionFile } from "../../data/files.ts";
-import { asId } from "@nyte-ai/schema";
-import type { ByteReader, WorkspaceId } from "@nyte-ai/sdk";
 import { useReferenceOpener } from "../../references/reference-opener.tsx";
-import { proseStyles } from "./prose.stylex.ts";
+import type { ReferenceOpener } from "../../references/reference-opener.tsx";
+import { useChatFolder } from "../chat-folder.ts";
 import { ImageViewer } from "../images/image-viewer.tsx";
 import { SubagentCitation } from "../tools/subagent-call.tsx";
-import {
-  FadeEnd,
-  FadeSpan,
-  FadingBlock,
-  findStreamingTail,
-  ReducedMotion,
-  StreamingTail,
-} from "../transcript/chunk-fade.tsx";
-
-const textNode = Type.Union([Type.String(), Type.Number(), Type.BigInt()]);
-
-function nodeText(node: ReactNode): string {
-  if (Value.Check(textNode, node)) return String(node);
-
-  if (Array.isArray(node)) return node.map(nodeText).join("");
-
-  if (isValidElement<{ children?: ReactNode }>(node)) return nodeText(node.props.children);
-
-  return "";
-}
+import { openConversationLink } from "./external-link.ts";
+import { CodeBlock } from "./code-block.tsx";
+import { MarkdownTable } from "./markdown-table.tsx";
+import type { MarkdownCell, MarkdownRow } from "./markdown-table.tsx";
+import { MermaidDiagram } from "./mermaid-diagram.tsx";
+import { codeBlockStyles, proseStyles } from "./prose.stylex.ts";
 
 const AGENT_LINK = "agent:";
 
-const URL_SCHEME = /^[a-z][a-z\d+.-]*:/iu;
-
-const InsideLink = createContext(false);
-
 const NO_FILES: readonly MentionFile[] = [];
-
-const CitableFiles = createContext(NO_FILES);
 
 export function useCitableFiles(enabled: boolean) {
   return useQuery({
@@ -80,87 +44,6 @@ export function useCitableFiles(enabled: boolean) {
     refetchOnMount: false,
     refetchOnWindowFocus: false,
   });
-}
-
-function FileCitation({
-  reference,
-  open,
-  label,
-  code,
-  ...elementProps
-}: Omit<ComponentProps<"a">, "href" | "onClick" | "children"> & {
-  readonly reference: Extract<MessageReference, { kind: "file" }>;
-  readonly open: () => void;
-  readonly label: string;
-  readonly code: boolean;
-}): ReactElement {
-  const [lead = "", ...segments] = label.split(/(?<=\/)(?=.)/u);
-
-  const text = (content: ReactNode): ReactNode =>
-    code ? <code {...props(proseStyles.inlineCode)}>{content}</code> : content;
-
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <a
-            {...elementProps}
-            href={reference.file.url}
-            data-citation={reference.file.kind}
-            {...props(intent.primary, proseStyles.link)}
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              open();
-            }}
-          >
-            <span {...props(proseStyles.linkLead)}>
-              <span aria-hidden="true" {...props(proseStyles.linkIcon)}>
-                {reference.file.kind === "folder" ? (
-                  <Icon name="folder" size="xs" />
-                ) : (
-                  <FileTypeIcon path={reference.file.path} />
-                )}
-              </span>
-              {text(lead)}
-            </span>
-            {segments.length > 0 &&
-              text(
-                segments.map((segment, index) => (
-                  <Fragment key={index}>
-                    <wbr />
-                    {segment}
-                  </Fragment>
-                )),
-              )}
-          </a>
-        }
-      />
-      <TooltipContent side="top">{referenceTitle(reference)}</TooltipContent>
-    </Tooltip>
-  );
-}
-
-function MarkdownCode({
-  node: _node,
-  className: _className,
-  ...elementProps
-}: ComponentProps<"code"> & ExtraProps): ReactElement {
-  const insideLink = use(InsideLink);
-  const referenceOpener = useReferenceOpener();
-  const opener = insideLink ? undefined : referenceOpener;
-  const files = use(CitableFiles);
-
-  const text = nodeText(elementProps.children);
-  const reference = opener === undefined ? undefined : inlineCodeReference(text, files);
-
-  const open = reference === undefined ? undefined : opener?.(reference);
-
-  if (reference?.kind !== "file" || open === undefined) {
-    return <code {...elementProps} {...props(proseStyles.inlineCode)} />;
-  }
-
-  return <FileCitation reference={reference} open={open} label={text} code />;
 }
 
 export function linkReference(
@@ -194,150 +77,216 @@ function safeDecode(text: string): string {
   }
 }
 
-function MarkdownLink({
-  node,
-  className: _className,
-  onClick: _onClick,
-  title: _title,
-  href,
-  children,
-  ...elementProps
-}: ComponentProps<"a"> & ExtraProps): ReactElement {
+function styled(tag: string, style: { readonly className?: string }): (html: string) => string {
+  const attribute = ` class="${style.className ?? ""}"`;
+
+  return (html) => `<${tag}${attribute}${html.slice(tag.length + 1)}`;
+}
+
+const tableHostClass = props(proseStyles.tableHost).className ?? "";
+
+const slotClass = props(codeBlockStyles.slot).className ?? "";
+
+const citedCodeClasses = (props(intent.primary, proseStyles.link).className ?? "")
+  .split(" ")
+  .filter((name) => name !== "");
+
+const iconClass = props(proseStyles.linkIcon).className ?? "";
+
+const CODE_BLOCK = '<div data-markdown="code-block"';
+
+const ISLAND = "[data-nyte-island]";
+
+const OPAQUE_ISLAND = '[data-nyte-island]:not([data-nyte-island="table"])';
+
+const URL_SCHEME = /^[a-z][a-z\d+.-]*:/iu;
+
+const components = {
+  p: styled("p", props(proseStyles.paragraph)),
+  h1: styled("h1", props(proseStyles.heading, proseStyles.h1)),
+  h2: styled("h2", props(proseStyles.heading, proseStyles.h2)),
+  h3: styled("h3", props(proseStyles.heading, proseStyles.h3)),
+  h4: styled("h4", props(proseStyles.heading, proseStyles.h4)),
+  h5: styled("h5", props(proseStyles.heading, proseStyles.h5)),
+  h6: styled("h6", props(proseStyles.heading, proseStyles.h6)),
+  strong: styled("strong", props(proseStyles.strong)),
+  inlineCode: styled("code", props(proseStyles.inlineCode)),
+  a: agentIsland,
+  ul: styled("ul", props(proseStyles.list)),
+  ol: styled("ol", props(proseStyles.list)),
+  li: styled("li", props(proseStyles.listItem)),
+  input: styled("input", props(proseStyles.taskCheckbox)),
+  blockquote: styled("blockquote", props(proseStyles.blockquote)),
+  hr: styled("hr", props(proseStyles.rule)),
+  div: codeBlockIsland,
+  img: imageIsland,
+  // WARNING: keep `table` last. Words applies components in order, so its cells arrive styled.
+  table: tableIsland,
+} satisfies Components;
+
+const webLink = styled("a", props(intent.primary, proseStyles.link, proseStyles.webLink));
+
+const urlTransform = (url: string): string | null | undefined =>
+  url.startsWith(AGENT_LINK)
+    ? `#${url}`
+    : defaultUrlTransform(url.startsWith("file:") ? filePath(url) : url);
+
+function filePath(url: string): string {
+  const parsed = URL.parse(url);
+
+  return parsed === null ? "" : `${parsed.pathname}${parsed.hash}`;
+}
+
+export function Prose({
+  markdown,
+  streaming = false,
+}: {
+  markdown: string;
+  streaming?: boolean;
+}): ReactElement {
   const opener = useReferenceOpener();
-  const files = use(CitableFiles);
+  const files = useCitableFiles(opener !== undefined).data ?? NO_FILES;
+  const [islands, setIslands] = useState<readonly MountedIsland[]>([]);
+  const [watcher] = useState(() => watchIslands(setIslands));
+  const [tip, setTip] = useState<Tip>();
+  const timer = useRef<number | undefined>(undefined);
+  const closedAt = useRef(0);
 
-  if (href?.startsWith(AGENT_LINK) === true) {
-    const agent = href.slice(AGENT_LINK.length);
+  useMountEffect(() => () => window.clearTimeout(timer.current));
 
-    return agent === "" ? (
-      <>{children}</>
-    ) : (
-      <SubagentCitation session={asId<"session">(agent)} label={nodeText(children)} />
-    );
-  }
+  const schedule = (next: Tip | undefined, delay: number): void => {
+    window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => {
+      if (next === undefined) closedAt.current = performance.now();
+      setTip(next);
+    }, delay);
+  };
 
-  const linkedImage =
-    node?.children.some(function image(child): boolean {
-      return child.type === "element" && (child.tagName === "img" || child.children.some(image));
-    }) === true;
+  const enter = (target: EventTarget): void => {
+    const next = tipFor(target);
 
-  const reference =
-    opener === undefined || href === undefined ? undefined : linkReference(href, files);
+    if (next === undefined || next.anchor === tip?.anchor) return;
 
-  const open = reference === undefined ? undefined : opener?.(reference);
+    const recent =
+      tip !== undefined || performance.now() - closedAt.current < tooltipTiming.timeout;
 
-  if (!linkedImage && reference?.kind === "file" && open !== undefined) {
-    return (
-      <FileCitation
-        {...elementProps}
-        reference={reference}
-        open={open}
-        label={nodeText(children)}
-        code={Children.toArray(children).every(
-          (child) => isValidElement(child) && child.type === MarkdownCode,
-        )}
-      />
-    );
-  }
+    schedule(next, recent ? 0 : tooltipTiming.delay);
+  };
 
-  return (
-    <>
-      {linkedImage && children}
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <a
-              {...elementProps}
-              href={href}
-              {...props(intent.primary, proseStyles.link, proseStyles.webLink)}
-              onClick={(event) => {
-                if (href === undefined) return;
-                event.preventDefault();
+  const leave = (target: EventTarget, related: EventTarget | null): void => {
+    const anchor = tipFor(target)?.anchor;
 
-                if (open !== undefined) return open();
-                openConversationLink(href, opener);
-              }}
-            >
-              <InsideLink value>{linkedImage ? "Open linked page" : children}</InsideLink>
-            </a>
-          }
-        />
-        <TooltipContent>{href}</TooltipContent>
-      </Tooltip>
-    </>
-  );
-}
-
-function MarkdownPre({
-  children,
-  className: _className,
-  node: _node,
-  ...elementProps
-}: ComponentProps<"pre"> & ExtraProps): ReactElement {
-  const open = useIsCodeFenceIncomplete();
-  const child = Children.toArray(children)[0];
-
-  if (Children.count(children) === 1 && isValidElement<ComponentProps<"code">>(child)) {
-    const raw = nodeText(child.props.children);
-    const code = raw.endsWith("\n") ? raw.slice(0, -1) : raw;
-
-    const language =
-      child.props.className
-        ?.split(/\s+/u)
-        .find((name) => name.startsWith("language-"))
-        ?.slice("language-".length) ?? "";
-
-    if (!open && language.toLocaleLowerCase() === "mermaid")
-      return <MermaidDiagram source={code} />;
-
-    return <CodeBlock code={code} lang={language} streaming={open} />;
-  }
+    if (anchor === undefined || (related instanceof Node && anchor.contains(related))) return;
+    schedule(undefined, tooltipTiming.closeDelay);
+  };
 
   return (
-    <pre {...elementProps} data-nyte-scrollport {...props(proseStyles.fallbackPre)}>
-      {children}
-    </pre>
-  );
-}
+    // oxlint-disable-next-line nyte-interactions/no-clickable-non-control -- delegates clicks from the native links and file paths that Words renders inside
+    <div
+      ref={(element) => (element === null ? undefined : watcher.attach(element, files))}
+      {...props(proseStyles.root)}
+      onClick={(event) => {
+        const action = clickAction(event.target, opener, files);
 
-function MarkdownRule({
-  node,
-  className: _className,
-  ...elementProps
-}: ComponentProps<"hr"> & ExtraProps): ReactElement {
-  const settle = use(FadeEnd);
-
-  return (
-    <hr
-      {...elementProps}
-      onAnimationEnd={() => settle?.(node)}
-      {...props(
-        proseStyles.rule,
-        node?.properties["data-sd-animate"] === true && proseStyles.chunk,
-      )}
-    />
-  );
-}
-
-function MarkdownImage({
-  node,
-  alt,
-  src,
-  style,
-}: ComponentProps<"img"> & ExtraProps): ReactElement {
-  const fades = node?.properties["data-sd-animate"] === true;
-  const settle = use(FadeEnd);
-  const folder = useChatFolder();
-  const label = alt ?? "image";
-
-  return (
-    <span
-      data-sd-animate={fades || undefined}
-      style={style}
-      onAnimationEnd={() => settle?.(node)}
-      {...props(proseStyles.imageLabel, fades && proseStyles.chunk)}
+        if (action === undefined) return;
+        event.preventDefault();
+        action();
+      }}
+      onPointerOver={(event) => enter(event.target)}
+      onPointerOut={(event) => leave(event.target, event.relatedTarget)}
+      onFocus={(event) => enter(event.target)}
+      onBlur={(event) => leave(event.target, event.relatedTarget)}
     >
-      {folder === undefined || src === undefined || src === "" || URL_SCHEME.test(src) ? (
+      <Markdown
+        isAnimating={streaming}
+        animated
+        components={components}
+        controls={false}
+        lineNumbers={false}
+        urlTransform={urlTransform}
+      >
+        {markdown}
+      </Markdown>
+      {islands.map((mounted) =>
+        createPortal(<IslandContent island={mounted.island} />, mounted.container, mounted.key),
+      )}
+      <Tooltip
+        open={tip !== undefined}
+        onOpenChange={(open, details) => {
+          if (!open && details.reason === "escape-key") setTip(undefined);
+        }}
+      >
+        {tip !== undefined && (
+          <TooltipContent anchor={tip.anchor} side={tip.side}>
+            {tip.text}
+          </TooltipContent>
+        )}
+      </Tooltip>
+    </div>
+  );
+}
+
+type FileReference = Extract<MessageReference, { kind: "file" }>;
+
+type Island =
+  | {
+      readonly kind: "code";
+      readonly code: string;
+      readonly language: string;
+      readonly open: boolean;
+    }
+  | { readonly kind: "agent"; readonly session: string; readonly label: string }
+  | { readonly kind: "image"; readonly src: string; readonly alt: string }
+  | {
+      readonly kind: "table";
+      readonly head: MarkdownRow;
+      readonly rows: readonly MarkdownRow[];
+    }
+  | { readonly kind: "citation"; readonly reference: FileReference };
+
+interface MountedIsland {
+  readonly key: string;
+  readonly container: HTMLElement;
+  readonly island: Island;
+  readonly signature: string;
+}
+
+interface Tip {
+  readonly anchor: HTMLElement;
+  readonly text: string;
+  readonly side: "top" | "bottom";
+}
+
+function IslandContent({ island }: { readonly island: Island }): ReactNode {
+  switch (island.kind) {
+    case "code":
+      return !island.open && island.language === "mermaid" ? (
+        <MermaidDiagram source={island.code} />
+      ) : (
+        <CodeBlock code={island.code} lang={island.language} streaming={island.open} />
+      );
+    case "agent":
+      return <SubagentCitation session={asId<"session">(island.session)} label={island.label} />;
+    case "image":
+      return <MarkdownImage src={island.src} alt={island.alt} />;
+    case "table":
+      return <MarkdownTable head={island.head} rows={island.rows} />;
+    case "citation":
+      return island.reference.file.kind === "folder" ? (
+        <Icon name="folder" size="xs" />
+      ) : (
+        <FileTypeIcon path={island.reference.file.path} />
+      );
+  }
+}
+
+function MarkdownImage({ src, alt }: { readonly src: string; readonly alt: string }): ReactNode {
+  const folder = useChatFolder();
+  const label = alt === "" ? "image" : alt;
+
+  return (
+    <span {...props(proseStyles.imageLabel)}>
+      {folder === undefined || src === "" || URL_SCHEME.test(src) ? (
         label
       ) : (
         <FileImage workspace={folder.id} path={safeDecode(src)} label={label} />
@@ -379,176 +328,239 @@ async function readImage(workspace: WorkspaceId, path: string): Promise<ByteRead
   throw new Error(`${path} is not an image.`);
 }
 
-const markdownComponents = {
-  p: ({ node: _node, className: _className, ...elementProps }) => (
-    <p {...elementProps} {...props(proseStyles.paragraph)} />
-  ),
-  h1: ({ node: _node, className: _className, ...elementProps }) => (
-    <h1 {...elementProps} {...props(proseStyles.heading, proseStyles.h1)} />
-  ),
-  h2: ({ node: _node, className: _className, ...elementProps }) => (
-    <h2 {...elementProps} {...props(proseStyles.heading, proseStyles.h2)} />
-  ),
-  h3: ({ node: _node, className: _className, ...elementProps }) => (
-    <h3 {...elementProps} {...props(proseStyles.heading, proseStyles.h3)} />
-  ),
-  h4: ({ node: _node, className: _className, ...elementProps }) => (
-    <h4 {...elementProps} {...props(proseStyles.heading, proseStyles.h4)} />
-  ),
-  h5: ({ node: _node, className: _className, ...elementProps }) => (
-    <h5 {...elementProps} {...props(proseStyles.heading, proseStyles.h5)} />
-  ),
-  h6: ({ node: _node, className: _className, ...elementProps }) => (
-    <h6 {...elementProps} {...props(proseStyles.heading, proseStyles.h6)} />
-  ),
-  strong: ({ node: _node, className: _className, ...elementProps }) => (
-    <strong {...elementProps} {...props(proseStyles.strong)} />
-  ),
-  code: MarkdownCode,
-  a: MarkdownLink,
-  ul: ({ node: _node, className: _className, ...elementProps }) => (
-    <ul {...elementProps} {...props(proseStyles.list)} />
-  ),
-  ol: ({ node: _node, className: _className, ...elementProps }) => (
-    <ol {...elementProps} {...props(proseStyles.list)} />
-  ),
-  li: ({ node: _node, className: _className, ...elementProps }) => (
-    <li {...elementProps} {...props(proseStyles.listItem)} />
-  ),
-  input: ({ node: _node, className: _className, ...elementProps }) => (
-    <input {...elementProps} {...props(proseStyles.taskCheckbox)} />
-  ),
-  blockquote: ({ node: _node, className: _className, ...elementProps }) => (
-    <blockquote {...elementProps} {...props(proseStyles.blockquote)} />
-  ),
-  hr: MarkdownRule,
-  pre: MarkdownPre,
-  table: ({ node: _node, className: _className, ...elementProps }) => (
-    <div data-nyte-scrollport data-prose-table {...props(proseStyles.tableWrap, hairline.ring)}>
-      <table {...elementProps} {...props(proseStyles.table)} />
-    </div>
-  ),
-  th: ({ node: _node, className: _className, ...elementProps }) => (
-    <th
-      {...elementProps}
-      {...props(proseStyles.cell, hairline.tableCell, proseStyles.headerCell)}
-    />
-  ),
-  td: ({ node: _node, className: _className, ...elementProps }) => (
-    <td {...elementProps} {...props(proseStyles.cell, hairline.tableCell)} />
-  ),
-  img: MarkdownImage,
-  span: FadeSpan,
-} satisfies Components;
+function tipFor(target: EventTarget): Tip | undefined {
+  if (!(target instanceof Element) || target.closest(OPAQUE_ISLAND) !== null) return undefined;
+  const anchor = target.closest<HTMLElement>("[data-citation], a[href]");
+  const cited = anchor?.dataset["tip"];
 
-const rehypePlugins: NonNullable<StreamdownProps["rehypePlugins"]> = [];
+  if (anchor === null || anchor === undefined) return undefined;
 
-const urlTransform: UrlTransform = (url, key, node) =>
-  url.startsWith(AGENT_LINK) ? url : defaultUrlTransform(url, key, node);
+  if (cited !== undefined) return { anchor, text: cited, side: "top" };
+  const href = anchor.getAttribute("href") ?? "";
 
-const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
-
-const REFERENCE_DEFINITION = /^ {0,3}\[[^\]]+\]:/mu;
-
-const RECENT_SPLITS = 8;
-
-const recentSplits: { readonly input: string; readonly blocks: readonly string[] }[] = [];
-
-function splitMarkdown(markdown: string): string[] {
-  const source = markdown.includes("\r") ? markdown.replaceAll(/\r\n?/gu, "\n") : markdown;
-  const blocks = splitBlocks(source);
-
-  if (blocks.length === 0) return [];
-
-  const settled = blocks.slice(0, -1);
-
-  return [
-    ...settled,
-    remend(source.slice(settled.reduce((length, block) => length + block.length, 0))),
-  ];
+  return href === "" || href.startsWith("#") ? undefined : { anchor, text: href, side: "bottom" };
 }
 
-function splitBlocks(source: string): readonly string[] {
-  if (REFERENCE_DEFINITION.test(source)) return parseMarkdownIntoBlocks(source);
+function watchIslands(
+  publish: (update: (islands: readonly MountedIsland[]) => readonly MountedIsland[]) => void,
+) {
+  const owned = new WeakMap<HTMLElement, Pick<MountedIsland, "key" | "container">>();
+  let created = 0;
 
-  const index = recentSplits.findLastIndex((split) => source.startsWith(split.input));
-  const previous = recentSplits[index];
+  const adopt = (host: HTMLElement, island: Island): Pick<MountedIsland, "key" | "container"> => {
+    const known = owned.get(host);
 
-  if (previous?.input === source) return previous.blocks;
+    if (known !== undefined) return known;
+    created += 1;
 
-  const kept =
-    previous?.blocks.slice(
-      0,
-      previous.blocks.slice(0, -2).findLastIndex((block) => block.endsWith("\n\n")) + 1,
-    ) ?? [];
+    const container = document.createElement(
+      island.kind === "code" || island.kind === "table" ? "div" : "span",
+    );
 
-  const rest = source.slice(kept.reduce((length, block) => length + block.length, 0));
-  const withoutFootnoteMarkers = rest.replaceAll("[^", "[\u2060");
-  let start = 0;
+    if (island.kind === "citation") container.className = iconClass;
+    const fresh = { key: String(created), container };
+    owned.set(host, fresh);
 
-  const blocks = [
-    ...kept,
-    ...parseMarkdownIntoBlocks(withoutFootnoteMarkers).map((block) => {
-      const end = start + block.length;
-      const piece = rest.slice(start, end);
-      start = end;
+    return fresh;
+  };
 
-      return piece;
-    }),
-  ];
+  const mount = (host: HTMLElement, island: Island, first: boolean): MountedIsland => {
+    const slot = adopt(host, island);
 
-  if (index !== -1) recentSplits.splice(index, 1);
-  recentSplits.push({ input: source, blocks });
+    if (first ? host.firstChild !== slot.container : slot.container.parentNode !== host)
+      host.insertBefore(slot.container, first ? host.firstChild : null);
 
-  if (recentSplits.length > RECENT_SPLITS) recentSplits.shift();
+    return { ...slot, island, signature: JSON.stringify(island) };
+  };
 
-  return blocks;
+  return {
+    attach(element: HTMLDivElement, files: readonly MentionFile[]): () => void {
+      const sync = (): void => {
+        const placed = [...element.querySelectorAll<HTMLElement>(ISLAND)].flatMap((host) => {
+          const island = readIsland(host);
+
+          return island === undefined ? [] : [mount(host, island, false)];
+        });
+
+        const cited = citationHosts(element, files).map((citation) =>
+          mount(citation.host, { kind: "citation", reference: citation.reference }, true),
+        );
+
+        const next = [...placed, ...cited];
+
+        publish((current) =>
+          next.length === current.length &&
+          next.every(
+            (island, index) =>
+              island.key === current[index]?.key && island.signature === current[index]?.signature,
+          )
+            ? current
+            : next,
+        );
+      };
+
+      const observer = new MutationObserver(sync);
+
+      observer.observe(element, {
+        subtree: true,
+        childList: true,
+        attributeFilter: [
+          "data-code",
+          "data-language",
+          "data-open",
+          "data-src",
+          "data-session",
+          "data-table",
+        ],
+      });
+      sync();
+
+      return () => observer.disconnect();
+    },
+  };
 }
 
-function subscribeReducedMotion(onChange: () => void): () => void {
-  reducedMotionQuery.addEventListener("change", onChange);
+function citationHosts(
+  element: HTMLElement,
+  files: readonly MentionFile[],
+): readonly { readonly host: HTMLElement; readonly reference: FileReference }[] {
+  return [...element.querySelectorAll<HTMLElement>("a[href], code")].flatMap((host) => {
+    const code = host.localName === "code";
 
-  return () => reducedMotionQuery.removeEventListener("change", onChange);
+    if (host.closest(OPAQUE_ISLAND) !== null || (code && host.closest("a, pre") !== null))
+      return [];
+
+    const reference = code
+      ? inlineCodeReference(host.textContent ?? "", files)
+      : linkReference(host.getAttribute("href") ?? "", files);
+
+    if (reference?.kind !== "file") return [];
+
+    if (host.dataset["citation"] !== reference.file.kind)
+      host.dataset["citation"] = reference.file.kind;
+    const title = referenceTitle(reference) ?? "";
+
+    if (host.dataset["tip"] !== title) host.dataset["tip"] = title;
+
+    if (code && !citedCodeClasses.every((name) => host.classList.contains(name)))
+      host.classList.add(...citedCodeClasses);
+
+    return [{ host, reference }];
+  });
 }
 
-export function Prose({
-  markdown,
-  streaming = false,
-}: {
-  markdown: string;
-  streaming?: boolean;
-}): ReactElement {
-  const reducedMotion = useSyncExternalStore(
-    subscribeReducedMotion,
-    () => reducedMotionQuery.matches,
-    () => true,
+function readIsland(host: HTMLElement): Island | undefined {
+  const data = host.dataset;
+
+  switch (data["nyteIsland"]) {
+    case "code": {
+      const code = data["code"] ?? "";
+
+      return {
+        kind: "code",
+        code: code.endsWith("\n") ? code.slice(0, -1) : code,
+        language: data["language"] ?? "",
+        open: data["open"] !== undefined,
+      };
+    }
+
+    case "agent":
+      return { kind: "agent", session: data["session"] ?? "", label: data["label"] ?? "" };
+    case "image":
+      return { kind: "image", src: data["src"] ?? "", alt: data["alt"] ?? "" };
+    case "table":
+      return readTable(data["table"] ?? "");
+    default:
+      return undefined;
+  }
+}
+
+function readTable(html: string): Island {
+  const template = document.createElement("template");
+  template.innerHTML = html;
+
+  const rows = (selector: string): readonly MarkdownRow[] =>
+    [...template.content.querySelectorAll<HTMLTableRowElement>(selector)].map((row) =>
+      [...row.cells].map((cell) => ({ html: cell.innerHTML, align: cellAlign(cell) })),
+    );
+
+  return { kind: "table", head: rows("thead > tr").at(-1) ?? [], rows: rows("tbody > tr") };
+}
+
+function cellAlign(cell: HTMLTableCellElement): MarkdownCell["align"] {
+  const align = cell.style.textAlign;
+
+  return align === "center" ? "center" : align === "right" ? "end" : "start";
+}
+
+function tableIsland(html: string): string {
+  const escaped = html
+    .replaceAll("&", "&amp;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+
+  return `<div data-nyte-island="table" data-prose-table class="${tableHostClass}" data-table="${escaped}"></div>`;
+}
+
+function attribute(tag: string, name: string): string {
+  return new RegExp(`\\s${name}="([^"]*)"`, "u").exec(tag)?.[1] ?? "";
+}
+
+function codeBlockIsland(html: string): string {
+  if (!html.startsWith(CODE_BLOCK)) return html;
+  const tag = html.slice(0, html.indexOf(">"));
+
+  const code = html.slice(
+    html.indexOf(">", html.indexOf("<code")) + 1,
+    html.lastIndexOf("</code>"),
   );
 
-  const files = useCitableFiles(useReferenceOpener() !== undefined);
-  const blocks = splitMarkdown(markdown);
+  return `<figure data-nyte-island="code" role="none" class="${slotClass}" data-language="${attribute(tag, "data-language")}"${tag.includes(" data-incomplete=") ? " data-open" : ""} data-code="${code.replaceAll(/<[^>]*>/gu, "")}"></figure>`;
+}
+
+function agentIsland(html: string): string {
+  const tag = html.slice(0, html.indexOf(">"));
+  const href = attribute(tag, "href");
+
+  if (!href.startsWith(`#${AGENT_LINK}`)) return webLink(html);
+  const inner = html.slice(tag.length + 1, html.lastIndexOf("</a>"));
+  const session = href.slice(AGENT_LINK.length + 1);
+
+  if (session === "") return inner;
+
+  return `<span data-nyte-island="agent" data-session="${session}" data-label="${inner.replaceAll(/<[^>]*>/gu, "").replaceAll('"', "&quot;")}"></span>`;
+}
+
+function imageIsland(html: string): string {
+  return `<span data-nyte-island="image" data-src="${attribute(html, "src")}" data-alt="${attribute(html, "alt")}"></span>`;
+}
+
+function clickAction(
+  target: EventTarget,
+  opener: ReferenceOpener | undefined,
+  files: readonly MentionFile[],
+): (() => void) | undefined {
+  if (!(target instanceof Element) || target.closest(OPAQUE_ISLAND) !== null) return undefined;
+  const href = target.closest("a[href]")?.getAttribute("href");
+
+  if (href === undefined || href === null) {
+    const code = target.closest("code");
+
+    if (code === null || code.closest("pre") !== null || opener === undefined) return undefined;
+    const reference = inlineCodeReference(code.textContent ?? "", files);
+
+    return reference === undefined ? undefined : opener(reference);
+  }
+
+  if (href.startsWith("#"))
+    return () =>
+      target.ownerDocument.getElementById(href.slice(1))?.scrollIntoView({ block: "center" });
+
+  const reference = opener === undefined ? undefined : linkReference(href, files);
 
   return (
-    <div {...props(proseStyles.root)}>
-      <ReducedMotion value={reducedMotion}>
-        <StreamingTail value={streaming ? findStreamingTail(markdown, blocks) : -1}>
-          <CitableFiles value={files.data ?? NO_FILES}>
-            <Streamdown
-              isAnimating={streaming}
-              parseIncompleteMarkdown={false}
-              parseMarkdownIntoBlocksFn={(source) =>
-                source === markdown ? blocks : splitMarkdown(source)
-              }
-              BlockComponent={FadingBlock}
-              components={markdownComponents}
-              rehypePlugins={rehypePlugins}
-              urlTransform={urlTransform}
-              skipHtml
-            >
-              {markdown}
-            </Streamdown>
-          </CitableFiles>
-        </StreamingTail>
-      </ReducedMotion>
-    </div>
+    (reference === undefined ? undefined : opener?.(reference)) ??
+    (() => openConversationLink(href, opener))
   );
 }

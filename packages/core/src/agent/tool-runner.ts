@@ -48,7 +48,7 @@ import { hiddenOwners, missingCapabilities, onlyNyteAppHas } from "./capabilitie
 import { baseline, nextBase, NO_CHANGES, toolChanges } from "./tool-snapshots.ts";
 import type { ToolBaseline, ToolChanges } from "./tool-snapshots.ts";
 import { loadedTools } from "./transcript.ts";
-import { toolSource } from "../extend/registry.ts";
+import { offeredTools, toolSource } from "../extend/registry.ts";
 import { changesEvents } from "../fold/changes.ts";
 import { withFold } from "../watch/reads.ts";
 import { settling } from "../store/parts.ts";
@@ -855,7 +855,13 @@ export function createInvocation(
 
         return outcome.kind === "parked" ? parkStep(durable) : outcome;
       },
-      list: () => source.list().filter((info) => input.hidden?.has(info.owner) !== true),
+      list: () =>
+        offeredTools(
+          input.runtime,
+          source.list().filter((info) => input.hidden?.has(info.owner) !== true),
+          { session, head, run, principal: input.context.principal },
+          signal,
+        ),
       loaded: () => loadedTools(kernel, source, { session, head, run }),
     },
     wait: (target) => durable.wait(target),

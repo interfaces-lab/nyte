@@ -129,10 +129,14 @@ installConnection(connection);
 function sink() {
   const decoder = new TextDecoder();
   let contents = "";
+  let disposed = false;
 
   return {
     get contents() {
       return contents;
+    },
+    get disposed() {
+      return disposed;
     },
     reset() {
       contents = "";
@@ -142,8 +146,10 @@ function sink() {
     },
     update(_tab: Parameters<TerminalOutput["update"]>[0]) {},
     visible: () => false,
-    dispose() {},
-  } satisfies TerminalOutput & { readonly contents: string };
+    dispose() {
+      disposed = true;
+    },
+  } satisfies TerminalOutput & { readonly contents: string; readonly disposed: boolean };
 }
 
 function command(id: string, change: Partial<JobView> = {}): JobView {
@@ -307,6 +313,27 @@ describe("shell terminals", () => {
     expect(started).toHaveLength(2);
     assert.equal(old.stopped, 1);
     assert.equal(getTerminal(id)?.state.kind, "running");
+    await terminalActions.close(id);
+  });
+
+  test("a restarted shell draws into the renderer the tab already has", async () => {
+    next = fakeJob("lost");
+    const old = next;
+    const id = tabId();
+    await terminalActions.create({ id, workspacePath: "/workspace" });
+    const output = sink();
+    attachTerminalOutput(id, output);
+    old.print("old shell");
+    old.exit(1);
+    await vi.waitFor(() => assert.equal(getTerminal(id)?.state.kind, "exited"));
+
+    const restarted = fakeJob("new");
+    next = restarted;
+    await terminalActions.restart({ id, workspacePath: "/workspace" });
+    restarted.print("new shell");
+
+    await vi.waitFor(() => assert.equal(output.contents, "new shell"));
+    assert.equal(output.disposed, false);
     await terminalActions.close(id);
   });
 

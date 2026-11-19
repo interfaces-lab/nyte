@@ -9,12 +9,15 @@ import { handleOpenOutcome } from "../panes/open-workspace.tsx";
 import type { HostState } from "../contract/nyte.ts";
 import { useProjects } from "../data/projects.ts";
 import { keys, queryClient } from "../data/query-client.ts";
+import { homeWorkspaceId } from "../data/workspaces.ts";
+import { focusedChat } from "../panes/pane-layout.ts";
+import { preferences } from "../preferences/index.ts";
 import { sessionRows, subscribeSessionRow, subscribeSessionRows } from "../data/session-rows.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 
 import { goneChats, watchedChats } from "./gone-chats.ts";
-import { activeTab, tabPlace } from "./model.ts";
-import type { WindowState } from "./model.ts";
+import { activeTab, tabLayout, tabPlace } from "./model.ts";
+import type { Tab, WindowState } from "./model.ts";
 import { locationPlace, navigateTo } from "./places.ts";
 import {
   adoptLocation,
@@ -24,7 +27,7 @@ import {
   routeFor,
   unreadableFolder,
 } from "./route-sync.ts";
-import type { FolderFollow, ShownFolder } from "./route-sync.ts";
+import type { FolderFollow, ShownDraft, ShownFolder } from "./route-sync.ts";
 import { windowTabItems } from "./tab-items.ts";
 import type { WindowTabItem } from "./window-tab-strip.tsx";
 import { windowTabs } from "./window-tabs.ts";
@@ -68,15 +71,25 @@ export function useWindowTabsSync(): void {
       const place = routeFor(state, locationPlace(router));
 
       if (place !== undefined) navigateTo(router, place);
-      const followed = followFolder(follow, activeTab(state), chatFolderPath);
+
+      const followed = followFolder(follow, activeTab(state), {
+        chat: chatFolderPath,
+        draft: shownDraft,
+      });
+
       follow = followed.next;
 
       if (followed.step.kind === "none") return;
       const folder = followed.step.folder;
       switching = switching
-        .then(() => (follow.wanted === folder ? activateWorkspace(folder) : undefined))
+        .then(() => (follow.wanted === folder ? activateWorkspace(folder) : true))
         .then(
-          () => undefined,
+          (opened) => {
+            if (!opened && preferences.draftFolder.get() === folder)
+              preferences.draftFolder.set(null);
+
+            return undefined;
+          },
           () => undefined,
         );
     };
@@ -103,6 +116,19 @@ export function useWindowTabsSync(): void {
       unsubscribeFolder();
     };
   });
+}
+
+function shownDraft(tab: Tab): ShownDraft | undefined {
+  const pane = focusedChat(tabLayout(tab));
+
+  if (pane?.selection.kind !== "blank") return undefined;
+  const draft = windowTabs.store.viewState(tab.id).readBlank(pane.pane);
+
+  if (draft.folder !== undefined) return { id: draft.id, folder: draft.folder };
+  const shown = shownFolder().workspace;
+  const home = shown === undefined || shown.id === homeWorkspaceId();
+
+  return { id: draft.id, folder: home ? preferences.draftFolder.get() : undefined };
 }
 
 function checkShownFolder(): () => void {

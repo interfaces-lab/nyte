@@ -10,7 +10,6 @@ export interface View {
   readonly lights: Omit<LightsMessage, "kind">;
 }
 
-/** What the app asks once: a camera move, its answer to an edit, or a light to follow. */
 export type Command = Extract<
   AppMessage,
   | { kind: "camera" }
@@ -18,6 +17,9 @@ export type Command = Extract<
   | { kind: "applied" }
   | { kind: "refused" }
   | { kind: "lights" }
+  | { kind: "leave" }
+  | { kind: "enter" }
+  | { kind: "wheel" }
 >;
 
 const listeners = new Set<() => void>();

@@ -1,9 +1,9 @@
 import type { ModelMode } from "@nyte-ai/schema/model";
 import type { ModelCatalogView, ModelInfo, ModelRef, Thinking } from "@nyte-ai/sdk";
 import {
-  availableModels,
   availableModes,
   clampThinking,
+  enabledModels,
   modelId,
   modelWithModes,
   selectedModes,
@@ -48,7 +48,7 @@ interface RowDraft {
 const PAGE = 9;
 
 export function modelList(catalog: ModelCatalogView): ModelList {
-  const rows = availableModels(catalog).map((info) => ({ ref: info.ref, info }));
+  const rows = enabledModels(catalog).map((info) => ({ ref: info.ref, info }));
 
   return {
     rows,

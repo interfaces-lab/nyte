@@ -161,7 +161,7 @@ export class LaunchStateStore {
 
   keepWindow(windowId: string, app: DesktopApp, opening: DesktopWindowOpen | undefined): void {
     const windows = this.windows();
-    const workspace = app === "nyte" || opening?.kind !== "app" ? undefined : opening.workspace;
+    const workspace = app === "nyte" ? undefined : opening?.workspace;
     const kind = workspace === undefined ? { app } : { app, workspace };
 
     this.#write({

@@ -15,7 +15,7 @@ import type { PaneContent } from "./pane-kinds.ts";
 import { renderPaneContent } from "./pane-views.tsx";
 import { useSessionDropTarget } from "./session-dnd.tsx";
 import { useHostState } from "../data/host.ts";
-import { nyte } from "../contract/nyte.ts";
+import { nyte, windowApp } from "../contract/nyte.ts";
 import { useNoDesigns } from "../studio/designs.ts";
 
 import { WORKBENCH_CHAT_TAB } from "../workbench/model.ts";
@@ -59,7 +59,7 @@ export function SessionScreen(): ReactElement {
 
   const covered = useChatWindow((snapshot) => snapshot.covered);
   const store = usePaneLayoutStore();
-  const noDesigns = useNoDesigns();
+  const noDesigns = useNoDesigns(host.data.workspace);
   const shown = activeWorkbenchTab(view, workbench.scope, clientCapabilities(nyte.host))?.kind;
 
   const paneFloatingMount =
@@ -73,7 +73,11 @@ export function SessionScreen(): ReactElement {
         role={maximized ? "tabpanel" : undefined}
         aria-labelledby={maximized ? `${viewKey}-tab-${WORKBENCH_CHAT_TAB}` : undefined}
         inert={covered ? true : undefined}
-        {...props(sessionScreenStyles.panes, covered && sessionScreenStyles.panesCovered)}
+        {...props(
+          sessionScreenStyles.panes,
+          covered && sessionScreenStyles.panesCovered,
+          windowApp() === "code" && sessionScreenStyles.panesTrailing,
+        )}
       >
         <PaneFloatingMount value={paneFloatingMount}>
           <LayoutView store={store} renderTab={renderPaneContent}>

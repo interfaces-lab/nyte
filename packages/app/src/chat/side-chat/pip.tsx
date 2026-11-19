@@ -6,7 +6,6 @@ import { flushSync } from "react-dom";
 import type { KeyboardEvent, PointerEvent, ReactElement, ReactNode } from "react";
 import { floatingSurfaceStyles } from "@nyte-ai/ui/styles/floating-surface.stylex";
 import { layer, space } from "@nyte-ai/ui/styles/schema.stylex";
-import { occludes } from "../../components/overlay-occlusion.ts";
 import { conversation, tray } from "../../theme/schema.stylex.ts";
 
 export type Corner = `${"top" | "bottom"}-${"start" | "end"}`;
@@ -169,11 +168,7 @@ export function Pip({
   return (
     <div {...props(styles.layer)}>
       <motion.div
-        ref={(element: HTMLDivElement | null) => {
-          card.current = element;
-
-          return occludes(element);
-        }}
+        ref={card}
         role="dialog"
         aria-label={label}
         className={look.className}

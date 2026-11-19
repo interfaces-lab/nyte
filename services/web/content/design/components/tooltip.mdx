@@ -80,14 +80,15 @@ Unstyled, without `xstyle`. Clears `title`. `className` and `style` accept state
 
 Only the positioning props in this table are accepted. `ref`, `className`, and `style` target the popup.
 
-| Prop          | Type                                                                       | Default    |
-| ------------- | -------------------------------------------------------------------------- | ---------- |
-| `side`        | `"top" \| "bottom" \| "left" \| "right" \| "inline-start" \| "inline-end"` | `"bottom"` |
-| `align`       | `"start" \| "center" \| "end"`                                             | `"center"` |
-| `sideOffset`  | `number \| OffsetFunction`                                                 | `6`        |
-| `alignOffset` | `number \| OffsetFunction`                                                 | `0`        |
-| `tint`        | `Tint`                                                                     |            |
-| `shortcut`    | `readonly string[]`                                                        | `[]`       |
+| Prop          | Type                                                                                                           | Default     |
+| ------------- | -------------------------------------------------------------------------------------------------------------- | ----------- |
+| `anchor`      | `Element \| VirtualElement \| RefObject<Element \| null> \| (() => Element \| VirtualElement \| null) \| null` | the trigger |
+| `side`        | `"top" \| "bottom" \| "left" \| "right" \| "inline-start" \| "inline-end"`                                     | `"bottom"`  |
+| `align`       | `"start" \| "center" \| "end"`                                                                                 | `"center"`  |
+| `sideOffset`  | `number \| OffsetFunction`                                                                                     | `6`         |
+| `alignOffset` | `number \| OffsetFunction`                                                                                     | `0`         |
+| `tint`        | `Tint`                                                                                                         |             |
+| `shortcut`    | `readonly string[]`                                                                                            | `[]`        |
 
 #### Positioner
 

@@ -17,7 +17,7 @@ export async function startProjectChat(project: ProjectInfo, goal: string): Prom
   const first = goal.trim();
 
   if (first === "") {
-    windowTabs.newChat(project.id);
+    windowTabs.newChat({ project: project.id, folder: path });
 
     return;
   }

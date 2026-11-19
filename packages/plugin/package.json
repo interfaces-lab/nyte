@@ -27,6 +27,7 @@
     "./core/canvas-preview": "./src/canvas/canvas-preview.ts",
     "./core/claude-code-sdk": "./src/claude-code-sdk/index.ts",
     "./core/codemode": "./src/codemode.ts",
+    "./core/design-guide": "./src/design/design-guide.ts",
     "./core/desktop-settings": "./src/desktop-settings/desktop-settings.ts",
     "./core/codemode-runtime": "./src/codemode-runtime.ts",
     "./core/codemode-worker": "./src/codemode-worker.ts",
@@ -37,6 +38,7 @@
     "./core/rename": "./src/rename.ts",
     "./core/secret": "./src/secret/secret.ts",
     "./core/subagents": "./src/subagents.ts",
+    "./core/threads": "./src/threads.ts",
     "./core/telemetry": "./src/telemetry.ts",
     "./core/tool-search": "./src/tool-search.ts",
     "./core/web": "./src/web/index.ts",
@@ -117,6 +119,10 @@
         "types": "./dist/src/codemode-worker.d.ts",
         "import": "./dist/src/codemode-worker.js"
       },
+      "./core/design-guide": {
+        "types": "./dist/src/design/design-guide.d.ts",
+        "import": "./dist/src/design/design-guide.js"
+      },
       "./core/desktop-settings": {
         "types": "./dist/src/desktop-settings/desktop-settings.d.ts",
         "import": "./dist/src/desktop-settings/desktop-settings.js"
@@ -148,6 +154,10 @@
       "./core/subagents": {
         "types": "./dist/src/subagents.d.ts",
         "import": "./dist/src/subagents.js"
+      },
+      "./core/threads": {
+        "types": "./dist/src/threads.d.ts",
+        "import": "./dist/src/threads.js"
       },
       "./core/telemetry": {
         "types": "./dist/src/telemetry.d.ts",

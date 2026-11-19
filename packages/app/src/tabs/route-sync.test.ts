@@ -13,7 +13,7 @@ import {
   routeFor,
   unreadableFolder,
 } from "./route-sync.ts";
-import type { FolderFollow, ShownFolder } from "./route-sync.ts";
+import type { FolderFollow, FolderSources, ShownDraft, ShownFolder } from "./route-sync.ts";
 
 let lastId = 0;
 
@@ -121,9 +121,21 @@ const FOLDERS = new Map<string, string | null>([
   ["home", null],
 ]);
 
-const folder = (id: SessionId): string | null | undefined => FOLDERS.get(id);
-
 const chatTab = activeTab(showing(chat("a")));
+
+const draftTab = activeTab(showing());
+
+const unpickedTab = activeTab(showing());
+
+const DRAFTS = new Map<Tab, ShownDraft>([
+  [draftTab, { id: "d", folder: "/d" }],
+  [unpickedTab, { id: "u", folder: undefined }],
+]);
+
+const sources: FolderSources = {
+  chat: (id: SessionId) => FOLDERS.get(id),
+  draft: (tab) => DRAFTS.get(tab),
+};
 
 test.each([
   [
@@ -169,6 +181,27 @@ test.each([
     { kind: "none" },
   ],
   [
+    "a draft with a folder",
+    { followed: "other:a", wanted: "/a" },
+    draftTab,
+    { followed: `${draftTab.id}:draft:d`, wanted: "/d" },
+    { kind: "activate", folder: "/d" },
+  ],
+  [
+    "the same draft again",
+    { followed: `${draftTab.id}:draft:d`, wanted: "/d" },
+    draftTab,
+    { followed: `${draftTab.id}:draft:d`, wanted: "/d" },
+    { kind: "none" },
+  ],
+  [
+    "a draft with no folder",
+    { followed: "other:a", wanted: "/a" },
+    unpickedTab,
+    { followed: `${unpickedTab.id}:draft:u`, wanted: "/a" },
+    { kind: "none" },
+  ],
+  [
     "a page",
     { followed: "other:a", wanted: "/a" },
     activeTab(showing(customize("skills"))),
@@ -182,7 +215,7 @@ test.each([
   FolderFollow | undefined,
   { readonly kind: "none" } | { readonly kind: "activate"; readonly folder: string | null },
 ])[])("follow: %s", (_name, previous, tab, next, step) => {
-  const followed = followFolder(previous, tab, folder);
+  const followed = followFolder(previous, tab, sources);
 
   expect(followed.step).toEqual(step);
 
@@ -195,8 +228,8 @@ test("follow: a page or blank tab is remembered without touching the wanted fold
   const previous = { followed: "other:a", wanted: "/a" };
 
   expect([
-    followFolder(previous, blank, folder).next,
-    followFolder(previous, page, folder).next,
+    followFolder(previous, blank, sources).next,
+    followFolder(previous, page, sources).next,
   ]).toEqual([
     { followed: `${blank.id}:blank`, wanted: "/a" },
     { followed: `${page.id}:customize`, wanted: "/a" },
@@ -211,7 +244,7 @@ test("follow: switching A, B, then A again leaves A as the folder wanted last", 
     readonly asked: readonly (string | null)[];
   }>(
     (run, tab) => {
-      const followed = followFolder(run.follow, tab, folder);
+      const followed = followFolder(run.follow, tab, sources);
 
       return {
         follow: followed.next,
@@ -283,7 +316,7 @@ test.each<{
 
 test("launch: the host skips an untrusted folder the window remembered, then following the chat opens it", () => {
   const restored = restoredFolder(remembered, remembered, undefined);
-  const followed = followFolder(START, chatTab, folder);
+  const followed = followFolder(START, chatTab, sources);
 
   expect([restored, followed.step]).toEqual([
     { workspace: undefined },

@@ -30,6 +30,13 @@ export const ExcerptSourceType = Type.Union([
     ),
   }),
   Type.Object({ kind: Type.Literal("chat"), session: idSchema<"session">(), title: Type.String() }),
+  Type.Object({
+    kind: Type.Literal("design"),
+    path: Type.String(),
+    frame: Type.Union([Type.String(), Type.Null()]),
+    start: Type.Integer({ minimum: 0 }),
+    end: Type.Integer({ minimum: 0 }),
+  }),
 ]);
 
 /**

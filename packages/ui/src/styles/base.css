@@ -71,7 +71,6 @@
   pre {
     font-family: var(--nyte-font-family-mono);
     font-size: 1em;
-    text-wrap: wrap;
   }
 
   input,

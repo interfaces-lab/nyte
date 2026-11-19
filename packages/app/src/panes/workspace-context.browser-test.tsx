@@ -110,7 +110,7 @@ async function checkMenu(): Promise<string> {
     root.render(
       <QueryClientProvider client={queryClient}>
         <TooltipProvider delay={0} closeDelay={0} timeout={0}>
-          <WorkspaceContext active />
+          <WorkspaceContext active onChoose={() => undefined} />
         </TooltipProvider>
       </QueryClientProvider>,
     ),
@@ -329,7 +329,7 @@ async function checkBranches(): Promise<string> {
       root.render(
         <QueryClientProvider client={queryClient}>
           <TooltipProvider delay={0} closeDelay={0} timeout={0}>
-            <WorkspaceContext active />
+            <WorkspaceContext active onChoose={() => undefined} />
             {commits && <History />}
             <FileList />
           </TooltipProvider>

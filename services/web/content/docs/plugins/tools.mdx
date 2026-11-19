@@ -53,7 +53,10 @@ Schema](https://standardschema.dev) that also produces JSON Schema. `standard()`
 it before `execute` runs, and a call with bad arguments fails without running.
 
 Write `description` and each field's `description` for the model. They are all it knows about the
-tool.
+tool, so keep them the same for the whole chat: the provider caches the start of the conversation,
+and changed tool text sends it again uncached. For choices that change during a chat, such as the
+models the user enabled, list them in a [prompt section](/docs/plugins/reference#prompt-section)
+whose `text` is a function.
 
 ## What the call returns [#result]
 

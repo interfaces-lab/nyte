@@ -9,7 +9,6 @@ import { motion as motionTokens, role, shadow } from "@nyte-ai/ui/styles/vars.st
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { preferences, SIDEBAR_WIDTH, useSetting } from "../preferences/index.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
-import { occludes } from "../components/overlay-occlusion.ts";
 import {
   applySidebarWidth,
   attachSidebarWidth,
@@ -168,12 +167,10 @@ export function SidebarPane({ children }: { readonly children: ReactNode }): Rea
 
     window.addEventListener("pointermove", follow);
     root.addEventListener("pointerleave", follow);
-    const release = occludes(rail.current);
 
     return () => {
       window.removeEventListener("pointermove", follow);
       root.removeEventListener("pointerleave", follow);
-      release?.();
     };
   });
 

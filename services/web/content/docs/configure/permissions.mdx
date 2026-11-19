@@ -21,6 +21,8 @@ Some calls never ask, at any level:
 
 - Reading files and listing folders.
 - Handing work to a subagent. The subagent's own calls ask in its chat.
+- Starting, listing, reading, messaging, waiting on or stopping another chat. That chat's own calls
+  ask in that chat.
 - Tools that change nothing you'd guard, such as asking you a question, drawing a canvas, searching
   the web or reading a page.
 

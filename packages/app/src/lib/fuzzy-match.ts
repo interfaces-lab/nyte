@@ -31,7 +31,7 @@ export function fuzzyScore(target: string, query: string): number | undefined {
       previous = cursor;
     }
 
-    if (cursor < 0) continue;
+    if (cursor < 0) break;
 
     if (start === 0 && text.startsWith(needle)) score += 200;
     score -= target.length / 100;

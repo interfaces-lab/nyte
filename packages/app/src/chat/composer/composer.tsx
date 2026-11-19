@@ -11,7 +11,7 @@ import { errorMessage } from "../../contract/errors.ts";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
 import { useCatalog } from "../../data/catalog.ts";
-import { useHostHealth } from "../../data/host.ts";
+import { useHostHealth, useHostProcess } from "../../data/host.ts";
 import { useMentionFiles } from "../../data/files.ts";
 import { SIDECHAT_COMMAND, usePluginCatalog } from "../../data/plugins.ts";
 import { sessionActions } from "../../data/session-rows.ts";
@@ -57,10 +57,13 @@ import {
 } from "../transcript/transcript.tsx";
 import { QuestionDockContext, useQuestionDock } from "../trays/questions-state.ts";
 import { useCommitCount } from "../../lib/work-counts.ts";
+import { useDebouncedValue } from "../../lib/use-debounced-value.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { useChatFolder } from "../chat-folder.ts";
 
 const FOLLOW_UP_PLACEHOLDER = "Add a follow-up";
+
+const OUTAGE_GRACE_MS = 1_500;
 
 function messageReceipt(sessionId: SessionId, message: UserMessage) {
   return connection().session(sessionId).receipt(asId<"receipt">(message.id));
@@ -148,6 +151,12 @@ export function Composer({
   const staleSince = useWatchSelect(chatStore(sessionId), (store) =>
     store.value?.freshness.kind === "stale" ? store.value.freshness.since : undefined,
   );
+
+  const restarting = useHostProcess().data?.kind === "restarting";
+  const lost = !restarting && health !== undefined && health.kind !== "open";
+  const lostAWhile = useDebouncedValue(lost, OUTAGE_GRACE_MS);
+  const stale = !restarting && staleSince !== undefined;
+  const staleAWhile = useDebouncedValue(stale, OUTAGE_GRACE_MS);
 
   const questions = useQuestionDock(sessionId);
   const pluginCatalog = usePluginCatalog(sessionId);
@@ -410,7 +419,7 @@ export function Composer({
                   />
                 </div>
               )}
-              {health !== undefined && health.kind !== "open" && (
+              {lost && lostAWhile && (
                 <div
                   role={health.kind === "blocked" ? "alert" : "status"}
                   {...props(composerStyles.queued)}
@@ -423,7 +432,7 @@ export function Composer({
                   </span>
                 </div>
               )}
-              {staleSince !== undefined && (
+              {stale && staleAWhile && (
                 <div role="status" {...props(composerStyles.queued)}>
                   <Icon name="clock" />
                   <span {...props(composerStyles.queuedText)}>

@@ -60,7 +60,7 @@ Rule numbers are stable ids that other skills and reviews cite. A removed rule l
 84. **Keep the pointer off the left edge.** Within `REVEAL_EDGE` of the window's left edge a hidden sidebar starts its floating reveal.
 85. **Wait only for document-timeline animations.** The tab strip's edge fade is scroll-driven and runs forever, so skip animations whose timeline isn't the `DocumentTimeline`.
 86. **Run a probe as a spec.** Run it through `packages/desktop/e2e/playwright.config.ts`; a separate script that imports Playwright loads it a second time and fails.
-93. **Capture the window, not the page.** On macOS the vibrancy sits behind the page, so `page.screenshot` and `page.screencast` come out black where the glass is. Use `captureWindow` and `recordWindow` from `packages/desktop/e2e/window-capture.ts`; they need Screen Recording for the app that runs the tests.
+93. **Capture the window, not the page.** On macOS the vibrancy sits behind the page, so `page.screenshot` and `page.screencast` come out black where the glass is. Use `captureWindow` and `recordWindow` from `packages/desktop/e2e/window-capture.ts`; they need Screen Recording for the app that runs the tests, and fail without it. For what the renderer draws, browser pages included, `captureComposited` in `packages/desktop/e2e/ui.ts` saves the window's `capturePage()`, which needs no permission and leaves the glass clear.
 
 ## TUI runner
 
@@ -165,9 +165,9 @@ Rule numbers are stable ids that other skills and reviews cite. A removed rule l
 
 ## Browser panel
 
-55. **Read the integrated-browser skill first.** Desktop shows web pages as native `WebContentsView`s above the app's DOM. The Testing section of the integrated-browser skill says which test proves an overlay or occlusion change.
+55. **Read the integrated-browser skill first.** Desktop shows web pages as `<webview>` guests that the app's renderer places in its DOM. The Testing section of the integrated-browser skill says which test proves a placement, layering or pointer change, and that no renderer test can host a guest.
 56. **Use the browser journey.** `packages/desktop/e2e/browser.spec.ts` › "the integrated browser journey" serves a local HTTP fixture and walks the panel in named steps, checking the guest's URL, title and loading state through Electron.
-57. **Capture the window, not the DOM.** DOM screenshots miss native views.
+57. **Capture the window, not the DOM.** A page's content lives in its guest's own web contents, so the app's DOM never holds it. Use `captureComposited` for a page's pixels, or `colorAt` for one point; both read the app window's `capturePage()`, which includes guests and needs no Screen Recording.
 58. **Do not claim the skipped blocking step.** The step "pause and restore blocking for this host" is `test.step.skip`, and the rest of the journey does not exercise it.
 59. **Do not claim pixels from guest state.** Guest-state assertions do not prove the composited page pixels.
 

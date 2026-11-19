@@ -115,8 +115,8 @@ test("the workbench journey", async ({ desktop }) => {
       "Editor",
       "Changes",
       "Design",
-      "New Browser",
-      "New Terminal",
+      "Browser",
+      "Terminal",
     ]);
     await page.getByRole("button", { name: "Open workbench panel" }).click();
     await expect(page.getByRole("button", { name: "Close workbench panel" })).toHaveAttribute(
@@ -135,8 +135,8 @@ test("the workbench journey", async ({ desktop }) => {
       "Editor",
       "Changes",
       "Design",
-      "New Browser",
-      "New Terminal",
+      "Browser",
+      "Terminal",
     ]);
   });
 
@@ -312,11 +312,16 @@ test("the workbench journey", async ({ desktop }) => {
       .getByRole("navigation", { name: "Workbench navigation" })
       .getByRole("button");
 
-    for (const label of ["Editor", "Changes", "Browser", "New Browser", "New Terminal"]) {
-      await expect(rows.filter({ hasText: new RegExp(`^${label}$`, "u") })).toHaveCount(1);
+    for (const [label, count] of [
+      ["Editor", 1],
+      ["Changes", 1],
+      ["Browser", 2],
+      ["Terminal", 1],
+    ] as const) {
+      await expect(rows.filter({ hasText: new RegExp(`^${label}$`, "u") })).toHaveCount(count);
     }
 
-    await rows.filter({ hasText: /^New Terminal$/u }).click();
+    await rows.filter({ hasText: /^Terminal$/u }).click();
     await expect(workbenchTabs(page).getByRole("tab")).toHaveCount(5);
 
     const terminal = workbench(page)

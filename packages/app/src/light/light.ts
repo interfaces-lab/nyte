@@ -1,16 +1,13 @@
 import { useSyncExternalStore } from "react";
+import { SpanType } from "@nyte-ai/plugin/design/board-protocol";
+import { idSchema } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Value } from "typebox/value";
 
 const SubjectType = Type.Union([
   Type.Object({ kind: Type.Literal("file"), path: Type.String() }),
-  Type.Object({
-    kind: Type.Literal("span"),
-    path: Type.String(),
-    start: Type.Number(),
-    end: Type.Number(),
-  }),
+  Type.Object({ kind: Type.Literal("span"), ...SpanType.properties }),
 ]);
 
 /** What a light is on: a file, or a range of one. Paths are absolute, so every window means the same file. */
@@ -25,16 +22,30 @@ const LightType = Type.Object({
 
 export type Light = Static<typeof LightType>;
 
-const LightsType = Type.Object({
-  you: Type.Union([LightType, Type.Null()]),
-  agents: Type.Array(LightType),
+const ActorType = Type.Object({
+  kind: Type.Literal("agent"),
+  session: idSchema<"session">(),
 });
 
+export type Actor = Static<typeof ActorType>;
+
+const AgentLightType = Type.Object({
+  subject: SubjectType,
+  actor: ActorType,
+  at: Type.Number(),
+});
+
+export type AgentLight = Static<typeof AgentLightType>;
+
 /** The one selection every window shows, and what agents changed in the last moments. */
-export type Lights = Static<typeof LightsType>;
+export interface Lights {
+  readonly you: Light | null;
+  readonly agents: readonly AgentLight[];
+}
 
 const MessageType = Type.Union([
-  Type.Object({ kind: Type.Literal("lights"), lights: LightsType }),
+  Type.Object({ kind: Type.Literal("you"), you: Type.Union([LightType, Type.Null()]) }),
+  Type.Object({ kind: Type.Literal("agents"), agents: Type.Array(AgentLightType) }),
   Type.Object({ kind: Type.Literal("ask") }),
 ]);
 
@@ -49,12 +60,39 @@ const listeners = new Set<() => void>();
 
 let lights: Lights = { you: null, agents: [] };
 
-function show(next: Lights, tell: boolean): void {
+function show(next: Lights): void {
   lights = next;
 
-  if (tell) channel.postMessage({ kind: "lights", lights });
-
   for (const listener of listeners) listener();
+}
+
+function showYou(you: Light | null): void {
+  show({ you, agents: lights.agents });
+  channel.postMessage({ kind: "you", you });
+}
+
+function addAgents(incoming: readonly AgentLight[]): readonly AgentLight[] {
+  const now = Date.now();
+
+  const fresh = incoming.filter(
+    (light, index) =>
+      light.at + AGENT_MS > now &&
+      ![...lights.agents, ...incoming.slice(0, index)].some(
+        (known) =>
+          Value.Equal(known.subject, light.subject) && Value.Equal(known.actor, light.actor),
+      ),
+  );
+
+  if (fresh.length === 0) return fresh;
+  show({ you: lights.you, agents: [...lights.agents, ...fresh] });
+
+  for (const light of fresh)
+    setTimeout(
+      () => show({ you: lights.you, agents: lights.agents.filter((other) => other !== light) }),
+      light.at + AGENT_MS - now,
+    );
+
+  return fresh;
 }
 
 channel.addEventListener("message", (event: MessageEvent<unknown>) => {
@@ -62,14 +100,27 @@ channel.addEventListener("message", (event: MessageEvent<unknown>) => {
 
   if (!Value.Check(MessageType, message)) return;
 
-  if (message.kind === "ask") {
-    if (lights.you !== null || lights.agents.length > 0)
-      channel.postMessage({ kind: "lights", lights });
+  switch (message.kind) {
+    case "ask":
+      if (lights.you !== null) channel.postMessage({ kind: "you", you: lights.you });
 
-    return;
+      if (lights.agents.length > 0) channel.postMessage({ kind: "agents", agents: lights.agents });
+
+      return;
+    case "you":
+      show({ you: message.you, agents: lights.agents });
+
+      return;
+    case "agents":
+      addAgents(message.agents);
+
+      return;
+    default: {
+      const exhaustive: never = message;
+
+      return exhaustive;
+    }
   }
-
-  show(message.lights, false);
 });
 
 channel.postMessage({ kind: "ask" });
@@ -91,27 +142,14 @@ export function useLights<Shown>(select: (lights: Lights) => Shown): Shown {
 
 /** Moves the person's light, from the surface named, in every window; `null` puts it out. */
 export function shine(subject: Subject | null, from: string): void {
-  show(
-    {
-      you: subject === null ? null : { subject, window: HERE, from, at: Date.now() },
-      agents: lights.agents,
-    },
-    true,
-  );
+  showYou(subject === null ? null : { subject, window: HERE, from, at: Date.now() });
 }
 
 /** Lights what an agent changed, for a moment, in every window. A second report of the same change, from another window that saw it, is the same light. */
-export function shineAgent(subject: Subject): void {
-  const known = lights.agents.some((light) => Value.Equal(light.subject, subject));
+export function shineAgent(subject: Subject, actor: Actor): void {
+  const added = addAgents([{ subject, actor, at: Date.now() }]);
 
-  if (known) return;
-  const light: Light = { subject, window: HERE, from: "agent", at: Date.now() };
-
-  show({ you: lights.you, agents: [...lights.agents, light] }, true);
-  setTimeout(
-    () => show({ you: lights.you, agents: lights.agents.filter((other) => other !== light) }, true),
-    AGENT_MS,
-  );
+  if (added.length > 0) channel.postMessage({ kind: "agents", agents: added });
 }
 
 /**
@@ -119,29 +157,39 @@ export function shineAgent(subject: Subject): void {
  * board, or moving a frame, changes the length of the very element the light is on, and a light left at the old
  * offsets would be on half of that element and the start of the next.
  */
-export function carryLight(path: string, start: number, end: number, inserted: number): void {
+export function carryLight(
+  path: string,
+  change: { readonly start: number; readonly end: number; readonly text: string },
+): void {
   const you = lights.you;
 
-  if (you === null || you.subject.kind !== "span" || you.subject.path !== path) return;
-  const grown = inserted - (end - start);
-  const from = you.subject.start;
-  const to = you.subject.end;
+  if (
+    you === null ||
+    you.window !== HERE ||
+    you.subject.kind !== "span" ||
+    you.subject.path !== path
+  )
+    return;
+  const span = you.subject;
+  const grown = change.text.length - (change.end - change.start);
 
-  if (to <= start || grown === 0) return;
+  if (change.start >= span.end) return;
 
-  show(
-    {
-      you: {
+  if (change.end <= span.start) {
+    if (grown !== 0)
+      showYou({
         ...you,
-        subject: {
-          kind: "span",
-          path,
-          start: from >= end ? from + grown : Math.min(from, start),
-          end: to >= end ? to + grown : start + inserted,
-        },
-      },
-      agents: lights.agents,
-    },
-    true,
-  );
+        subject: { ...span, start: span.start + grown, end: span.end + grown },
+      });
+
+    return;
+  }
+
+  if (change.start < span.start || change.end > span.end) {
+    showYou(null);
+
+    return;
+  }
+
+  if (grown !== 0) showYou({ ...you, subject: { ...span, end: span.end + grown } });
 }

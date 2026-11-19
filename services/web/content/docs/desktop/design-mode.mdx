@@ -1,10 +1,11 @@
 ---
 title: Design Mode
-description: Point at a page in the desktop browser and send the element or area to the chat, with tools to measure and check it.
+description: Point at a page in the desktop browser or on the Design board and send the element or area to the chat, with tools to measure and check it.
 ---
 
-Design Mode works on any page in a **Browser** tab. Click **Design Mode** in the browser's toolbar,
-or press `⇧⌘L`. Shortcuts below are for macOS; use `Ctrl` for `⌘` on Linux.
+Design Mode works on any page in a **Browser** tab, and on a [live page on the Design board](#board).
+In a Browser tab, click **Design Mode** in the browser's toolbar, or press `⇧⌘L`. Shortcuts below
+are for macOS; use `Ctrl` for `⌘` on Linux.
 
 While it's on, the page doesn't react to the pointer: links don't open and buttons don't press.
 The wheel still scrolls.
@@ -15,9 +16,12 @@ Hover to see what you're pointing at. The card under it shows the element's font
 its text and background colours with the page's own colour variables, and the contrast between them.
 
 Click to send the element to the chat. Drag to send an area instead. Each one lands in the message
-you're writing, with a screenshot of the spot. Write what to change there, then send. The agent gets
-the page address, a selector for the element, its text and attributes, and the screenshot. An area
-also carries its size and position on the page.
+you're writing, with a screenshot of the spot, and the message takes the keyboard. Write what to
+change there, then send. The agent gets the page address, a selector for the element, its text and
+attributes, and the screenshot. An area also carries its size and position on the page.
+
+The keys below work while the page has the keyboard. After you send something to the chat, click
+the [views bar](#views) to give the page the keyboard back.
 
 | Key   | What it does                                           |
 | ----- | ------------------------------------------------------ |
@@ -48,3 +52,30 @@ element that's a pixel off shows straight away.
 
 Press a guide's number on its ruler, or drag the guide out of the page, to remove it. Guides last
 until you leave Design Mode or the page reloads.
+
+## On the Design board [#board]
+
+A design can hold a live web page in a frame that has a `data-page` address written as a plain
+string, such as `data-page="http://localhost:3000/checkout"`. The frame's width and height are the
+page's viewport. Live pages need the desktop app; in a browser or the iOS app the frame shows the
+page's address.
+
+A page frame shows only its address until you select it once. Selecting it loads the page and shows
+it in the frame. After that, the frame shows a picture of the page while it isn't selected.
+
+Select the frame, then click **Design Mode** in the Design tab's toolbar. The page takes the
+pointer and the keyboard, and the bar with the views opens under the toolbar. Everything above
+works the same way, and what you send lands in the chat. `⇧⌘L` works only in a Browser tab.
+
+While you're in the page, the wheel scrolls the page. Pinch, or scroll with `⌃` held, to zoom the
+board. On a Mac, scroll with `⌘` held to move the board.
+
+| Key   | What it does                                                              |
+| ----- | ------------------------------------------------------------------------- |
+| `Esc` | Cancel a drag, then leave Design Mode, then give the pointer to the board |
+
+Clicking the board outside the page also gives the board the pointer. Deselecting the frame, or
+moving the board until the page is out of view, turns Design Mode off.
+
+To use the page itself, double-click its frame, or press `Enter` while it's selected. Going into the
+page doesn't give it the keyboard, so click in the page before you type.

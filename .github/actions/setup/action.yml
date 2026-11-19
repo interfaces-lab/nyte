@@ -1,13 +1,19 @@
 name: Set up Nyte
-description: Install Node, pnpm, Go and the workspace, with optional Bun and test dependencies.
+description: Install Node, pnpm and the workspace, with optional Go, Bun, test dependencies and Playwright browsers.
 
 inputs:
+  go:
+    description: Install Go, for jobs that build or check the tailnet
+    default: "true"
   bun:
     description: Install Bun
     default: "false"
   test-dependencies:
     description: Install ripgrep, a git identity, and on Linux Xvfb and Chromium's system libraries
     default: "false"
+  browsers:
+    description: Playwright browsers to install from a cache keyed by the Playwright version, such as "chromium"
+    default: ""
 
 runs:
   using: composite
@@ -16,8 +22,17 @@ runs:
     - uses: actions/setup-node@v7
       with:
         node-version: 26
-        cache: pnpm
-    - uses: actions/setup-go@v7
+    - id: store
+      shell: bash
+      run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+    - id: store-cache
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ steps.store.outputs.path }}
+        key: ${{ runner.os }}-${{ runner.arch }}-pnpm-store-${{ hashFiles('pnpm-lock.yaml', 'patches/**') }}
+        restore-keys: ${{ runner.os }}-${{ runner.arch }}-pnpm-store-
+    - if: inputs.go == 'true'
+      uses: actions/setup-go@v7
       with:
         go-version-file: packages/tailnet/go.mod
         cache-dependency-path: packages/tailnet/go.sum
@@ -35,6 +50,11 @@ runs:
         bun-version: ${{ steps.bun.outputs.version }}
     - shell: bash
       run: pnpm install --frozen-lockfile
+    - if: steps.store-cache.outputs.cache-hit != 'true' && github.event_name != 'pull_request'
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ steps.store.outputs.path }}
+        key: ${{ steps.store-cache.outputs.cache-primary-key }}
     - if: inputs.test-dependencies == 'true' && runner.os == 'Linux'
       shell: bash
       run: |
@@ -52,3 +72,20 @@ runs:
       run: |
         git config --global user.email "ci@nyte.sh"
         git config --global user.name "nyte-ci"
+    - id: playwright
+      if: inputs.browsers != ''
+      shell: bash
+      run: |
+        echo "PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/nyte-playwright" >> "$GITHUB_ENV"
+        echo "version=$(pnpm --dir packages/app exec playwright --version | tr -d '\n')" >> "$GITHUB_OUTPUT"
+    - id: browser-cache
+      if: inputs.browsers != ''
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/nyte-playwright
+        key: ${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}-${{ inputs.browsers }}
+    - if: inputs.browsers != '' && steps.browser-cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        BROWSERS: ${{ inputs.browsers }}
+      run: pnpm --dir packages/app exec playwright install $BROWSERS

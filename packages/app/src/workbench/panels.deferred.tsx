@@ -1,3 +1,4 @@
+import { parsePatchFiles } from "@nyte-ai/ui/diffs";
 import { publishDeferred } from "../lib/deferred.tsx";
 import { ChangesPanel } from "./changes/changes-panel.tsx";
 import { DesignTab } from "./design-tab.tsx";
@@ -19,6 +20,7 @@ export const workbenchRuntime = {
   clearTerminal,
   copyTerminal,
   focusTerminal,
+  parsePatchFiles,
 };
 
 publishDeferred("workbench", workbenchRuntime);

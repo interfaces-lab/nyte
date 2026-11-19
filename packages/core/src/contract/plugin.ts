@@ -23,8 +23,8 @@ import type {
   Thinking,
   ToolCall,
   ToolClass,
+  ToolInfo,
   ToolOutcome,
-  Transcript,
   Usage,
   UserContent,
   ValidationIssue,
@@ -139,7 +139,8 @@ export interface Agent {
 
 export interface PromptSection {
   readonly id: string;
-  readonly text: string;
+  /** The text, or a function core calls as it builds each request, for text that follows live state. A changed result reaches the model as an update after the conversation so far, so the cached start of the conversation stays as it was. `null` leaves the section out. */
+  readonly text: string | ((context: { readonly model: ModelRef }) => Awaitable<string | null>);
   readonly order?: number;
 }
 
@@ -330,7 +331,8 @@ export type HookTable = {
 
   run_started: Observe<RunView, "core">;
 
-  transform_transcript: Transform<Transcript, "core">;
+  /** The session's tools a request may declare and a script may call. Return the list without the ones to withhold; added or edited entries are ignored. */
+  offer_tools: Transform<readonly ToolInfo[], "core">;
 
   before_compaction: Transform<CompactionPlan, "core">;
 

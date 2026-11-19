@@ -37,12 +37,8 @@ test("a paired browser reads, edits, blames, searches, and mentions workspace fi
     const workbench = page.getByRole("navigation", { name: "Workbench navigation" });
     const editorAction = workbench.getByRole("button", { name: "Editor", exact: true });
     await expect(editorAction).toBeVisible();
-    await expect(
-      workbench.getByRole("button", { name: "New Terminal", exact: true }),
-    ).toBeVisible();
-    await expect(workbench.getByRole("button", { name: "New Browser", exact: true })).toHaveCount(
-      0,
-    );
+    await expect(workbench.getByRole("button", { name: "Terminal", exact: true })).toBeVisible();
+    await expect(workbench.getByRole("button", { name: "Browser", exact: true })).toHaveCount(0);
     await editorAction.click();
     await expect(page.getByRole("tab", { name: "Editor", exact: true })).toBeVisible();
     await expect(editorPanel).toBeVisible();

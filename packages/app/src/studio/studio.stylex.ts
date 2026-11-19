@@ -7,13 +7,25 @@ const NARROW = "@container (width < 760px)";
 
 /** Styles of the design panel: its toolbar, the frame the board runs in, and the list of designs. */
 export const studioStyles = create({
+  boardBox: { position: "relative", flex: 1, minWidth: 0, minHeight: 0 },
   board: {
+    position: "absolute",
+    inset: 0,
     display: "block",
-    flex: 1,
-    minWidth: 0,
-    minHeight: 0,
+    width: "100%",
+    height: "100%",
     borderWidth: 0,
     backgroundColor: role.bgBase,
+  },
+  stills: { position: "absolute", inset: 0, overflow: "clip", pointerEvents: "none" },
+  still: {
+    position: "absolute",
+    // oxlint-disable-next-line nyte-design/logical-properties -- the board reports physical viewport coordinates
+    left: 0,
+    top: 0,
+    objectFit: "cover",
+    objectPosition: "0 0",
+    transformOrigin: "0 0",
   },
   panel: {
     display: "flex",

@@ -244,8 +244,8 @@ export default {
   contribute: { parts: [approval], settings: [permissions] },
   approve: approveRuntimeCall,
   hooks: {
-    transform_transcript: async (transcript, context) => {
-      if (!(await readsOnly(context.api.session, context.api.sdk))) return transcript;
+    offer_tools: async (tools, context) => {
+      if (!(await readsOnly(context.api.session, context.api.sdk))) return tools;
 
       const changing = new Set(
         context.api.contribute.tools
@@ -254,7 +254,7 @@ export default {
           .map((definition) => definition.name),
       );
 
-      return { ...transcript, tools: transcript.tools.filter((info) => !changing.has(info.name)) };
+      return tools.filter((info) => !changing.has(info.name));
     },
     before_tool: async (call, context) => {
       const { api } = context;

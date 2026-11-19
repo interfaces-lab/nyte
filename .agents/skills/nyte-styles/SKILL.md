@@ -83,7 +83,7 @@ A rule here that names no lint or test is not enforced.
 14. **Put a raised box's shadow in `--nyte-hairline-elevation`.** That variable is registered in
     base.css and not inherited, and the shadow-drawn styles paint it before their edge.
 15. **Leave `::after` free for the ring styles.** `ringAfter`, `controlRing`, `startsAfter`,
-    `endsAfter` and `pressedRing` draw on `::after`, so the box must be positioned and leave
+    `endsAfter`, `inlineStartAfter` and `pressedRing` draw on `::after`, so the box must be positioned and leave
     `::after` free.
 16. **Let CSS own what CSS can resolve.** Read the StyleX capability block in
     `packages/ui/AGENTS.md` before reaching for React state, effects, observers or

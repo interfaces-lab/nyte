@@ -1,3 +1,4 @@
+import { SpanType } from "@nyte-ai/plugin/design/board-protocol";
 import { idSchema } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import type { Static } from "typebox";
@@ -26,12 +27,7 @@ export const ArrivalSubjectType = Type.Union([
     { additionalProperties: false },
   ),
   Type.Object(
-    {
-      kind: Type.Literal("span"),
-      path: Type.String({ minLength: 1 }),
-      start: Type.Integer({ minimum: 0 }),
-      end: Type.Integer({ minimum: 0 }),
-    },
+    { kind: Type.Literal("span"), ...SpanType.properties, path: Type.String({ minLength: 1 }) },
     { additionalProperties: false },
   ),
 ]);

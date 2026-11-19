@@ -7,6 +7,7 @@ import type {
 import { BROWSER_PAGE_DESIGN_CHANNEL } from "../../shared/browser-page.ts";
 import type { DesignMainMessage } from "../../shared/browser-page.ts";
 import { decodeDesignPageMessage } from "../../shared/ipc-inputs.ts";
+import { capturePageRetrying } from "./browser-runtime.ts";
 import type { DesignPageMessage } from "../../shared/ipc-inputs.ts";
 import type { Surface, SurfaceRegistry } from "./browser-surface.ts";
 
@@ -86,9 +87,10 @@ function changed(design: BrowserDesign, change: BrowserDesignChange): BrowserDes
 }
 
 function send(surface: Surface, message: DesignMainMessage): void {
-  const contents = surface.view.webContents;
+  const contents = surface.guest;
 
-  if (!contents.isDestroyed()) contents.send(BROWSER_PAGE_DESIGN_CHANNEL, message);
+  if (contents !== undefined && !contents.isDestroyed())
+    contents.send(BROWSER_PAGE_DESIGN_CHANNEL, message);
 }
 
 async function designPick(contents: WebContents, pick: PagePick): Promise<BrowserDesignPick> {
@@ -113,19 +115,14 @@ async function capture(contents: WebContents, crop: PagePick["crop"]): Promise<s
   const height = Math.ceil((crop.y + crop.height) * zoom) - y;
 
   if (width < 1 || height < 1) return undefined;
+  const image = await capturePageRetrying(contents, { x, y, width, height });
 
-  try {
-    const image = await contents.capturePage({ x, y, width, height }, { stayHidden: true });
+  if (image === undefined) return undefined;
 
-    if (image.isEmpty()) return undefined;
+  const kept =
+    image.getSize().width > CROP_WIDTH
+      ? image.resize({ width: CROP_WIDTH, quality: "good" })
+      : image;
 
-    const kept =
-      image.getSize().width > CROP_WIDTH
-        ? image.resize({ width: CROP_WIDTH, quality: "good" })
-        : image;
-
-    return kept.toDataURL();
-  } catch {
-    return undefined;
-  }
+  return kept.toDataURL();
 }

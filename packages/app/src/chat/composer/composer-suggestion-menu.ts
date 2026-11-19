@@ -17,6 +17,7 @@ interface SkillSuggestion {
   readonly description: string;
   readonly icon: "skills";
   readonly skill: SkillInfo;
+  readonly recent?: true;
 }
 
 interface PluginCommandSuggestion {
@@ -26,6 +27,7 @@ interface PluginCommandSuggestion {
   readonly description: string;
   readonly icon: "command";
   readonly command: CommandInfo;
+  readonly recent?: true;
 }
 
 export interface ArgumentSuggestion {
@@ -124,17 +126,20 @@ export type ComposerSource<T> =
 
 const NYTE_COMMAND_OWNERS = new Set(["", "rename", "web"]);
 
+type SlashSuggestion = PluginCommandSuggestion | SkillSuggestion;
+
 interface RankedSuggestion {
-  readonly suggestion: ComposerSuggestion;
-  readonly index: number;
+  readonly suggestion: SlashSuggestion;
+  readonly order: number;
   readonly rank: number;
 }
 
 function rankSuggestions(
-  suggestions: readonly ComposerSuggestion[],
+  suggestions: readonly SlashSuggestion[],
   query: string,
+  recent: readonly string[],
 ): readonly ComposerSuggestion[] {
-  if (query === "") return suggestions;
+  const recency = new Map(recent.map((id, position) => [id, position]));
 
   return suggestions
     .flatMap((suggestion, index): RankedSuggestion[] => {
@@ -149,9 +154,14 @@ function rankSuggestions(
             ? 2
             : undefined;
 
-      return rank === undefined ? [] : [{ suggestion, index, rank }];
+      if (rank === undefined) return [];
+      const used = rank < 2 ? recency.get(suggestion.id) : undefined;
+
+      return used === undefined
+        ? [{ suggestion, order: index, rank }]
+        : [{ suggestion: { ...suggestion, recent: true }, order: used, rank: -1 }];
     })
-    .sort((left, right) => left.rank - right.rank || left.index - right.index)
+    .sort((left, right) => left.rank - right.rank || left.order - right.order)
     .map(({ suggestion }) => suggestion);
 }
 
@@ -162,16 +172,17 @@ export function suggestionsFor(
   skills: readonly SkillInfo[],
   rankMentions: ReturnType<typeof createMentionSuggestionRanking>,
   hasConversationContext: boolean,
+  recent: readonly string[],
 ): readonly ComposerSuggestion[] {
   if (kind === "mention") {
-    return rankMentions(rawQuery, hasConversationContext);
+    return rankMentions(rawQuery, hasConversationContext, recent);
   }
 
   const query = rawQuery.trim().toLocaleLowerCase();
 
   return rankSuggestions(
     [
-      ...commands.map((command): ComposerSuggestion => ({
+      ...commands.map((command): SlashSuggestion => ({
         kind: "plugin-command",
         id: `plugin-command:${command.name}`,
         label: command.name,
@@ -179,7 +190,7 @@ export function suggestionsFor(
         icon: "command",
         command,
       })),
-      ...skills.map((skill): ComposerSuggestion => ({
+      ...skills.map((skill): SlashSuggestion => ({
         kind: "skill",
         id: `skill:${skill.name}`,
         label: skill.name,
@@ -189,22 +200,24 @@ export function suggestionsFor(
       })),
     ],
     query,
+    recent,
   );
 }
 
-type SuggestionGroup = "context" | "files" | "commands" | "skills";
+type SuggestionGroup = "context" | "recent" | "files" | "commands" | "skills";
 
 export function suggestionGroup(suggestion: ComposerSuggestion): SuggestionGroup {
   switch (suggestion.kind) {
     case "mention":
       return "context";
     case "file":
-      return "files";
+      return suggestion.recent === true ? "recent" : "files";
     case "plugin-command":
+      return suggestion.recent === true ? "recent" : "commands";
     case "argument":
       return "commands";
     case "skill":
-      return "skills";
+      return suggestion.recent === true ? "recent" : "skills";
     default: {
       const _exhaustive: never = suggestion;
 

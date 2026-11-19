@@ -10,6 +10,7 @@ import type {
   SessionCatalogView,
   SessionId,
   SkillInfo,
+  ToolInfo,
   ValidationIssue,
 } from "@nyte-ai/schema";
 import { CORE_CONTEXT } from "../contract/host.ts";
@@ -18,6 +19,7 @@ import { decodeCatalogRecord } from "../contract/records.ts";
 import type {
   CoreRegistries,
   CoreRegistry,
+  HookContext,
   Kernel,
   PluginRuntime,
   RegistrySet,
@@ -479,6 +481,19 @@ export function toolSource(runtime: PluginRuntime): ToolSource {
       });
     },
   };
+}
+
+export async function offeredTools(
+  runtime: PluginRuntime,
+  tools: readonly ToolInfo[],
+  context: HookContext,
+  signal?: AbortSignal,
+): Promise<readonly ToolInfo[]> {
+  const kept = new Set(
+    (await runtime.hooks.transform("offer_tools", tools, context, signal)).map((info) => info.name),
+  );
+
+  return tools.filter((info) => kept.has(info.name));
 }
 
 function converted(schema: Schema<unknown>, direction: "input" | "output"): JsonSchema | undefined {

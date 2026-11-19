@@ -4,7 +4,7 @@ import { Fragment, useRef, useState } from "react";
 import type { ReactElement, RefObject } from "react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { Button } from "@nyte-ai/ui/button";
-import { loadDeferred, readDeferred } from "../../lib/deferred.tsx";
+import { loadDeferred, useDeferred } from "../../lib/deferred.tsx";
 import type { DeferredRuntimes } from "../../lib/deferred-entries.ts";
 import type { CodeStream } from "./highlight-code.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
@@ -161,7 +161,8 @@ export function CodeBlock({
   const language = lang.trim().toLowerCase().split(/\s+/u)[0] ?? "";
   const figure = useRef<HTMLElement>(null);
   const [nearViewport, setNearViewport] = useState(false);
-  const [runtime, setRuntime] = useState(() => readDeferred("highlight"));
+  const highlight = useDeferred("highlight");
+  const runtime = highlight === "failed" ? undefined : highlight;
   const confirmation = useCopyConfirmation();
   const copied = confirmation.copied;
 
@@ -176,7 +177,7 @@ export function CodeBlock({
         setNearViewport(true);
         observer.disconnect();
 
-        if (language !== "") void loadDeferred("highlight").then(setRuntime, () => undefined);
+        if (language !== "") void loadDeferred("highlight").catch(() => undefined);
       },
       { rootMargin: "300px" },
     );

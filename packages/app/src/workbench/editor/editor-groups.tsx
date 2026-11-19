@@ -4,6 +4,7 @@ import type { DragEvent, ReactElement, ReactNode } from "react";
 import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 import { radius } from "@nyte-ai/ui/styles/schema.stylex";
 import { appearance, role } from "@nyte-ai/ui/styles/vars.stylex";
+import { setWorkbenchDrag } from "../../references/composer-file-drop.ts";
 import type { WorkbenchViewKey } from "../model.ts";
 import { workbench } from "../store.ts";
 import { carriesEditorDrop, readEditorDrop } from "./editor-drop.ts";
@@ -54,6 +55,7 @@ export function EditorGroupView(input: {
         if (source === undefined) return;
         event.preventDefault();
         event.stopPropagation();
+        setWorkbenchDrag([]);
         fileActions.place(input.viewKey, source, {
           kind: "body",
           group: input.group.id,

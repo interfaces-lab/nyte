@@ -45,10 +45,10 @@ export function useLineChanges(input: {
     staleTime: Infinity,
   });
 
-  const patches = useChatChanges(
-    status?.kind === "none" ? workspace : undefined,
-    (edits) =>
-      edits?.find((edit) => edit.path === input.relative || edit.path === input.path)?.patches,
+  const patches = useChatChanges(status?.kind === "none" ? workspace : undefined, (edits) =>
+    edits
+      ?.find((edit) => edit.path === input.relative || edit.path === input.path)
+      ?.patches.map((made) => made.patch),
   );
 
   const committedSide = committed.data?.old;

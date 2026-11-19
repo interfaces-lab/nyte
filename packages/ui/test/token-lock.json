@@ -677,6 +677,8 @@
       "--nyte-switch-knob-md",
       "--nyte-switch-padding-md",
       "--nyte-switch-width-md",
+      "--nyte-table-row-height",
+      "--nyte-table-wrap-width",
       "--nyte-target-gap",
       "--nyte-target-min",
       "--nyte-toast-min-width",
@@ -996,7 +998,10 @@
       "dialog",
       "dialogBackdrop",
       "dragPreview",
+      "floatingContent",
+      "fullscreenPage",
       "menu",
+      "page",
       "sash",
       "stickyContent",
       "submenu",
@@ -1042,6 +1047,7 @@
       "s8"
     ],
     "ui/src/styles/schema.stylex.ts switchControl": ["heightMd", "knobMd", "paddingMd", "widthMd"],
+    "ui/src/styles/schema.stylex.ts table": ["rowHeight", "wrapWidth"],
     "ui/src/styles/schema.stylex.ts target": ["gap", "min"],
     "ui/src/styles/schema.stylex.ts toast": ["minWidth", "width"],
     "app/src/theme/schema.stylex.ts conversation": [

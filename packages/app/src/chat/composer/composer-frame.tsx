@@ -21,8 +21,8 @@ import { useComposerSuggestions } from "./composer-suggestions.tsx";
 import type { ComposerMentionFiles, ComposerSuggestionCatalog } from "./composer-suggestions.tsx";
 import {
   carriesFiles,
-  carriesTreeFiles,
-  droppedTreeFiles,
+  carriesWorkbenchFiles,
+  droppedWorkbenchFiles,
   transferredFiles,
 } from "../../references/composer-file-drop.ts";
 import type { ComposerImageAttachment } from "../../panes/session-view-state.ts";
@@ -164,7 +164,7 @@ export function ComposerFrame({
 
     if (canAttach && carriesFiles(event)) return "files";
 
-    return carriesTreeFiles(event) ? "mention" : undefined;
+    return carriesWorkbenchFiles(event) ? "mention" : undefined;
   };
 
   const holdsSubmission = (text: string, held: readonly MessageReference[]): boolean =>
@@ -512,7 +512,7 @@ export function ComposerFrame({
           return;
         }
 
-        const files = droppedTreeFiles(event);
+        const files = droppedWorkbenchFiles(event);
 
         if (files.length > 0)
           areaRef.current?.dropReferences(

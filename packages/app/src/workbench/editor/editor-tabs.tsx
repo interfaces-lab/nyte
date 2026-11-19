@@ -14,6 +14,8 @@ import { MOVE_SHORTCUTS, readMoveStep } from "../../components/sortable-strip.ts
 import { fittingTabs, pixels, useTabRoom } from "../../components/tab-fit.ts";
 import type { TabRoom } from "../../components/tab-fit.ts";
 import { nyte } from "../../contract/nyte.ts";
+import { mentionFileAt } from "../../data/files.ts";
+import { setWorkbenchDrag } from "../../references/composer-file-drop.ts";
 import { tab as tabSize } from "../../theme/schema.stylex.ts";
 import type { EditorGroupId, WorkbenchTabId, WorkbenchViewKey } from "../model.ts";
 import { workbench } from "../store.ts";
@@ -104,6 +106,7 @@ export function EditorTabs(input: {
         if (source === undefined) return;
         event.preventDefault();
         event.stopPropagation();
+        setWorkbenchDrag([]);
         fileActions.place(input.viewKey, source, {
           kind: "tabs",
           group: group.id,
@@ -159,9 +162,16 @@ export function EditorTabs(input: {
                         xstyle={styles.tab}
                         onDragStart={(event) => {
                           event.dataTransfer.setData(FILE_TAB_DRAG, file.id);
+                          event.dataTransfer.setData("text/plain", file.displayPath);
                           event.dataTransfer.effectAllowed = "move";
+                          setWorkbenchDrag([
+                            { ...mentionFileAt(file.path, "file"), displayPath: file.displayPath },
+                          ]);
                         }}
-                        onDragEnd={() => setInsertion(undefined)}
+                        onDragEnd={() => {
+                          setInsertion(undefined);
+                          setWorkbenchDrag([]);
+                        }}
                         onDoubleClick={() => fileActions.pin(input.viewKey, file.id)}
                         onAuxClick={(event) => {
                           if (event.button !== 1) return;

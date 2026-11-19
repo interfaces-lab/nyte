@@ -18,6 +18,11 @@ export function windowApp(): DesktopApp {
   return installed?.app ?? "nyte";
 }
 
+/** The apps this window can switch between: none where the client has one app. */
+export function offeredApps(): readonly DesktopApp[] {
+  return installed?.apps ?? [];
+}
+
 export const nyte: NyteBridge = {
   get clientSurface() {
     return bridge().clientSurface;

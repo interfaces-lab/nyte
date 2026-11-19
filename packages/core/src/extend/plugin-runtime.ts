@@ -42,7 +42,7 @@ import { convertJsonSchema } from "../util/json-schema.ts";
 import { activateSession } from "./activation.ts";
 import { publishViews } from "./part-views.ts";
 import { loadPlugins } from "./plugin-folders.ts";
-import { createHookDispatch, namesCoreHook } from "./hooks.ts";
+import { createHookDispatch, namesCoreHook, skipUnknownHook } from "./hooks.ts";
 import { build, corePluginApi } from "./plugin-api.ts";
 import { bumpGeneration, createRegistrySet, publishCatalog } from "./registry.ts";
 import { publishSettings, settingHandle } from "./settings.ts";
@@ -798,6 +798,7 @@ function install(plugin: Plugin<"core">, api: PluginApi<"core">): void {
 
   for (const name of Object.keys(plugin.hooks ?? {}))
     if (namesCoreHook(name)) installHook(api, plugin.hooks, name);
+    else skipUnknownHook(api, name);
 }
 
 function installHook<N extends HookName<"core">>(
@@ -935,7 +936,9 @@ function createInstance(
     handle: kernel.handles.activationSession(CORE_CONTEXT, session),
     signal: controller.signal,
     hook: (name, entry) =>
-      register((to, signal) => untilAborted(signal, to.hooks.register(owner, api, name, entry))),
+      namesCoreHook(name)
+        ? register((to, signal) => untilAborted(signal, to.hooks.register(owner, api, name, entry)))
+        : skipUnknownHook(api, name),
     report: (issue) =>
       home?.report(owner, { ...issue, source: { ...issue.source, plugin: owner } }),
     reload() {

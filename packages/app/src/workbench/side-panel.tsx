@@ -56,7 +56,6 @@ const styles = create({
     borderInlineStartWidth: 1,
     borderInlineStartStyle: "solid",
     borderInlineStartColor: role.strokeQuaternary,
-    backgroundColor: role.bgBase,
   },
   sash: {
     insetInlineEnd: "auto",

@@ -1,6 +1,7 @@
 import type { IpcMainEvent, WebContents } from "electron";
 import type { BrowserKey } from "@nyte-ai/app/contract/bridge.ts";
-import { BROWSER_PAGE_KEY_CHANNEL } from "../../shared/browser-page.ts";
+import { BROWSER_PAGE_BOARD_CHANNEL, BROWSER_PAGE_KEY_CHANNEL } from "../../shared/browser-page.ts";
+import type { BoardMainMessage } from "../../shared/browser-page.ts";
 import {
   crashRetryDelay,
   onLocalNetwork,
@@ -11,19 +12,26 @@ import {
 } from "./browser-policy.ts";
 import { wireDesign } from "./browser-design.ts";
 import { attachConsoleCapture } from "./browser-runtime.ts";
-import { hasViewHolder } from "./browser-surface.ts";
+import { countHolders, followsTabPolicy } from "./browser-surface.ts";
 import type { Surface, SurfaceRegistry } from "./browser-surface.ts";
-import { decodeBrowserKey } from "../../shared/ipc-inputs.ts";
+import { decodeBrowserKey, pageWheel } from "../../shared/ipc-inputs.ts";
 
 const ABORTED = -3;
+
+export function guardGuest(contents: WebContents): void {
+  contents.setWindowOpenHandler(() => ({ action: "deny" }));
+  contents.on("will-navigate", (event, url) => {
+    if (webUrl(url) === undefined) event.preventDefault();
+  });
+}
 
 function wirePopups(registry: SurfaceRegistry, surface: Surface, contents: WebContents): void {
   contents.setWindowOpenHandler(({ url, disposition }) => {
     const target = webUrl(url);
 
-    if (target === undefined) return { action: "deny" };
+    if (target === undefined || countHolders(surface, "board") > 0) return { action: "deny" };
 
-    const held = hasViewHolder(surface);
+    const held = followsTabPolicy(surface);
     const wantsTab = disposition === "foreground-tab" || disposition === "background-tab";
 
     if (wantsTab && held) {
@@ -38,7 +46,7 @@ function wirePopups(registry: SurfaceRegistry, surface: Surface, contents: WebCo
     }
 
     if (disposition === "new-window" && held && surface.popup === undefined) {
-      const parent = surface.attachedTo;
+      const parent = surface.host?.window;
 
       return {
         action: "allow",
@@ -52,6 +60,9 @@ function wirePopups(registry: SurfaceRegistry, surface: Surface, contents: WebCo
             sandbox: true,
             contextIsolation: true,
             nodeIntegration: false,
+            nodeIntegrationInSubFrames: false,
+            webSecurity: true,
+            webviewTag: false,
             devTools: false,
           },
         },
@@ -78,7 +89,7 @@ function wirePopups(registry: SurfaceRegistry, surface: Surface, contents: WebCo
 
 function wireTrust(registry: SurfaceRegistry, surface: Surface, contents: WebContents): void {
   contents.on("login", (event, _details, authInfo, callback) => {
-    if (authInfo.isProxy || !hasViewHolder(surface)) return;
+    if (authInfo.isProxy || !followsTabPolicy(surface)) return;
     event.preventDefault();
     surface.login?.();
     surface.login = callback;
@@ -175,7 +186,7 @@ function wireKeys(registry: SurfaceRegistry, surface: Surface, contents: WebCont
       repeat: input.isAutoRepeat,
     };
 
-    if (surface.view.getVisible() && !contents.isCrashed() && !surface.paused) {
+    if (surface.visible && !contents.isCrashed() && !surface.paused) {
       rememberPressedKey(surface.pressed, key);
 
       return;
@@ -197,35 +208,78 @@ function wireKeys(registry: SurfaceRegistry, surface: Surface, contents: WebCont
   });
 }
 
+export function enterBoard(surface: Surface, entered: boolean): void {
+  if (surface.entered === entered) return;
+  surface.entered = entered;
+  const contents = surface.guest;
+
+  if (contents !== undefined && !contents.isDestroyed())
+    contents.send(BROWSER_PAGE_BOARD_CHANNEL, { entered } satisfies BoardMainMessage);
+}
+
+function wireBoard(registry: SurfaceRegistry, surface: Surface, contents: WebContents): void {
+  contents.ipc.on(BROWSER_PAGE_BOARD_CHANNEL, (event, wheel: unknown) => {
+    if (event.senderFrame !== contents.mainFrame || !surface.entered || !surface.visible) return;
+
+    if (!pageWheel.Check(wheel)) return;
+    const zoom = contents.getZoomFactor();
+
+    registry.notify(surface, {
+      kind: "browser_board_wheel",
+      surface: surface.id,
+      wheel: {
+        x: wheel.x * zoom,
+        y: wheel.y * zoom,
+        deltaX: wheel.deltaX * zoom,
+        deltaY: wheel.deltaY * zoom,
+        zoom: wheel.zoom,
+      },
+    });
+  });
+  contents.on("before-input-event", (event, input) => {
+    if (
+      !surface.entered ||
+      surface.design.on ||
+      input.type !== "keyDown" ||
+      input.key !== "Escape" ||
+      input.shift ||
+      input.control ||
+      input.alt ||
+      input.meta
+    )
+      return;
+    event.preventDefault();
+
+    if (!input.isAutoRepeat)
+      registry.notify(surface, { kind: "browser_board_leave", surface: surface.id });
+  });
+  contents.on("dom-ready", () => {
+    if (surface.entered)
+      contents.send(BROWSER_PAGE_BOARD_CHANNEL, { entered: true } satisfies BoardMainMessage);
+  });
+}
+
 function wireFullscreen(registry: SurfaceRegistry, surface: Surface, contents: WebContents): void {
   contents.on("enter-html-full-screen", () => {
-    const window = surface.attachedTo;
+    const window = surface.host?.window;
 
     if (window === undefined || window.isDestroyed()) return;
     surface.fullscreen = true;
-    surface.onWindowResize = () => registry.place(surface);
-    window.on("resize", surface.onWindowResize);
 
     if (!window.isFullScreen()) {
       surface.windowWasWindowed = true;
       window.setFullScreen(true);
     }
 
-    registry.place(surface);
     registry.publish(surface);
   });
   contents.on("leave-html-full-screen", () => {
-    const window = surface.attachedTo;
+    const window = surface.host?.window;
     surface.fullscreen = false;
-
-    if (surface.onWindowResize !== undefined && window !== undefined && !window.isDestroyed())
-      window.off("resize", surface.onWindowResize);
-    surface.onWindowResize = undefined;
 
     if (surface.windowWasWindowed && window !== undefined && !window.isDestroyed())
       window.setFullScreen(false);
     surface.windowWasWindowed = false;
-    registry.place(surface);
     registry.publish(surface);
   });
 }
@@ -248,7 +302,6 @@ function wireNavigation(registry: SurfaceRegistry, surface: Surface, contents: W
   });
   contents.on("did-start-loading", () => {
     surface.error = undefined;
-    registry.place(surface);
     registry.publish(surface);
   });
   contents.on("did-stop-loading", () => {
@@ -256,6 +309,7 @@ function wireNavigation(registry: SurfaceRegistry, surface: Surface, contents: W
     registry.reclaimIdle();
   });
   contents.on("did-navigate", (_event, url) => {
+    surface.address = url;
     guestSession.upgrades.delete(contents.id);
     registry.remember(surface, url);
     registry.publish(surface);
@@ -269,6 +323,7 @@ function wireNavigation(registry: SurfaceRegistry, surface: Surface, contents: W
   });
   contents.on("did-navigate-in-page", (_event, url, isMainFrame) => {
     if (!isMainFrame) return;
+    surface.address = url;
     const previous = surface.visited?.split("#", 1)[0];
 
     if (previous !== url.split("#", 1)[0]) registry.remember(surface, url);
@@ -277,7 +332,7 @@ function wireNavigation(registry: SurfaceRegistry, surface: Surface, contents: W
   contents.on("page-title-updated", (_event, title, explicitSet) => {
     const page = webUrl(contents.getURL());
 
-    if (explicitSet && page !== undefined && !surface.destroyed && hasViewHolder(surface))
+    if (explicitSet && page !== undefined && !surface.destroyed && followsTabPolicy(surface))
       void registry.dependencies.history.retitle(surface.owner, { url: page, title });
 
     registry.publish(surface);
@@ -308,7 +363,6 @@ function wireFailures(registry: SurfaceRegistry, surface: Surface, contents: Web
             description: errorDescription,
             untrustedHost: surface.untrustedHost,
           };
-    registry.place(surface);
     registry.publish(surface);
   });
   contents.on("render-process-gone", (_event, details) => {
@@ -324,26 +378,28 @@ function wireFailures(registry: SurfaceRegistry, surface: Surface, contents: Web
           : `The page stopped (${details.reason}). Reloading…`,
     };
     surface.runtime.error = surface.error;
-    registry.place(surface);
     registry.publish(surface);
 
     if (delay === undefined) return;
 
     setTimeout(() => {
-      if (surface.destroyed || contents.isDestroyed()) return;
+      if (surface.destroyed || surface.guest !== contents || contents.isDestroyed()) return;
       surface.error = undefined;
       contents.reload();
     }, delay);
   });
 }
 
-export function wireSurface(registry: SurfaceRegistry, surface: Surface): void {
-  const contents = surface.view.webContents;
-
+export function wireSurface(
+  registry: SurfaceRegistry,
+  surface: Surface,
+  contents: WebContents,
+): void {
   wirePopups(registry, surface, contents);
   wireTrust(registry, surface, contents);
   wireKeys(registry, surface, contents);
   wireDesign(registry, surface, contents);
+  wireBoard(registry, surface, contents);
   wireFullscreen(registry, surface, contents);
   wireNavigation(registry, surface, contents);
   wireFailures(registry, surface, contents);

@@ -1,29 +1,21 @@
-import { toast } from "@nyte-ai/ui/toast";
-import type { HostProcess } from "../contract/bridge.ts";
 import { keys, queryClient } from "../data/query-client.ts";
 import { currentConnection } from "../data/connection.ts";
-import { hostProcessQuery } from "../data/host.ts";
 import { nyte } from "../contract/nyte.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import {
   applyBrowserEvent,
   applyBrowserAgentOpened,
+  applyBrowserBoard,
   applyBrowserKey,
   applyBrowserPick,
 } from "../workbench/browser/browser-surfaces.ts";
 import { applyBrowserHistory } from "../workbench/browser/browser-history.ts";
+import { applyBrowserGuests } from "../workbench/browser/browser-guests.tsx";
 import { workbench } from "../workbench/store.ts";
 import { showNotifiedChat } from "../settings/return.ts";
 
 export function useHostEvents(): void {
   useMountEffect(() => {
-    const showHostProcess = followHostProcess();
-
-    if (nyte.host.hostProcess !== undefined)
-      void queryClient
-        .fetchQuery(hostProcessQuery)
-        .then((state) => showHostProcess("reply", state));
-
     const reconnect = (): void => {
       if (document.visibilityState !== "hidden") currentConnection()?.retry();
     };
@@ -44,7 +36,6 @@ export function useHostEvents(): void {
           return;
         case "host_process_changed":
           queryClient.setQueryData(keys.hostProcess, event.state);
-          showHostProcess("event", event.state);
 
           if (event.state.kind === "current" || event.state.kind === "stale")
             currentConnection()?.retry();
@@ -85,6 +76,15 @@ export function useHostEvents(): void {
           applyBrowserAgentOpened(workbench, event);
 
           return;
+        case "browser_guests":
+          applyBrowserGuests(event);
+
+          return;
+        case "browser_board_leave":
+        case "browser_board_wheel":
+          applyBrowserBoard(event);
+
+          return;
         default: {
           const _exhaustive: never = event;
 
@@ -100,92 +100,4 @@ export function useHostEvents(): void {
       document.removeEventListener("visibilitychange", reconnect);
     };
   });
-}
-
-const HOST_RESTART = "host-restart";
-
-export type HostToast = "loading" | "restarted" | "close" | "none";
-
-export interface HostToastState {
-  readonly restarting: boolean;
-  readonly heard: boolean;
-}
-
-export interface HostToastStep extends HostToastState {
-  readonly toast: HostToast;
-}
-
-export function hostToast(
-  previous: HostToastState,
-  source: "reply" | "event",
-  state: HostProcess,
-): HostToastStep {
-  const restarting = previous.restarting;
-
-  if (source === "reply" && previous.heard) return { ...previous, toast: "none" };
-
-  switch (state.kind) {
-    case "restarting":
-      return { restarting: true, heard: true, toast: "loading" };
-    case "stale":
-      return { restarting: false, heard: true, toast: "close" };
-    case "offline":
-      return { restarting, heard: true, toast: restarting ? "none" : "close" };
-    case "current":
-      return { restarting: false, heard: true, toast: restarting ? "restarted" : "close" };
-    default: {
-      const _exhaustive: never = state;
-
-      return _exhaustive;
-    }
-  }
-}
-
-function followHostProcess(): (source: "reply" | "event", state: HostProcess) => void {
-  let current: HostToastState = { restarting: false, heard: false };
-
-  return (source, state) => {
-    const next = hostToast(current, source, state);
-
-    current = next;
-    showHostToast(next.toast);
-  };
-}
-
-function showHostToast(shown: HostToast): void {
-  switch (shown) {
-    case "loading":
-      toast.add({
-        id: HOST_RESTART,
-        type: "loading",
-        timeout: 0,
-        title: "Restarting Nyte Host…",
-        description: undefined,
-        actionProps: undefined,
-      });
-
-      return;
-    case "restarted":
-      toast.add({
-        id: HOST_RESTART,
-        type: "success",
-        timeout: 4000,
-        title: "Nyte Host restarted",
-        description: undefined,
-        actionProps: undefined,
-      });
-
-      return;
-    case "close":
-      toast.close(HOST_RESTART);
-
-      return;
-    case "none":
-      return;
-    default: {
-      const _exhaustive: never = shown;
-
-      return _exhaustive;
-    }
-  }
 }

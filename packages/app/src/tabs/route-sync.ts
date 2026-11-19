@@ -18,6 +18,16 @@ export interface FolderFollowed {
   readonly step: FollowStep;
 }
 
+export interface ShownDraft {
+  readonly id: string;
+  readonly folder: string | null | undefined;
+}
+
+export interface FolderSources {
+  readonly chat: (id: SessionId) => string | null | undefined;
+  readonly draft: (tab: Tab) => ShownDraft | undefined;
+}
+
 export interface ShownFolder {
   readonly workspace: SelectedWorkspace | undefined;
   readonly chosen: boolean;
@@ -83,17 +93,28 @@ export function adoptLocation(
 export function followFolder(
   previous: FolderFollow,
   tab: Tab,
-  folder: (id: SessionId) => string | null | undefined,
+  sources: FolderSources,
 ): FolderFollowed {
   const place = tabPlace(tab);
-  const followed = `${tab.id}:${place.kind === "session" ? place.sessionId : place.kind}`;
+  const draft = place.kind === "blank" ? sources.draft(tab) : undefined;
+  const shown = draft === undefined ? place.kind : `draft:${draft.id}`;
+  const followed = `${tab.id}:${place.kind === "session" ? place.sessionId : shown}`;
 
   if (followed === previous.followed) return { next: previous, step: { kind: "none" } };
 
-  if (place.kind !== "session") return { next: { ...previous, followed }, step: { kind: "none" } };
-  const wanted = folder(place.sessionId);
+  if (place.kind === "session") {
+    const wanted = sources.chat(place.sessionId);
 
-  if (wanted === undefined) return { next: previous, step: { kind: "none" } };
+    if (wanted === undefined) return { next: previous, step: { kind: "none" } };
 
-  return { next: { followed, wanted }, step: { kind: "activate", folder: wanted } };
+    return { next: { followed, wanted }, step: { kind: "activate", folder: wanted } };
+  }
+
+  if (draft?.folder === undefined)
+    return { next: { ...previous, followed }, step: { kind: "none" } };
+
+  return {
+    next: { followed, wanted: draft.folder },
+    step: { kind: "activate", folder: draft.folder },
+  };
 }

@@ -22,12 +22,6 @@ const flash = keyframes({
   "100%": { opacity: 0 },
 });
 
-/**
- * The board's own chrome. It lives in the board's shadow root, where no design's stylesheet can select it; the
- * board writes its zoom into --zoom, and labels, rings and tags divide by it to stay one size on screen. Selection,
- * typing and an agent's change share one ring, in the app's accent or the agent's orange; zoomed far out, an agent's
- * change is a dot in the frame's corner, under its label.
- */
 export const boardStyles = create({
   stage: {
     position: "absolute",
@@ -55,7 +49,7 @@ export const boardStyles = create({
     insetBlockEnd: "100%",
     insetInlineStart: 0,
     display: "grid",
-    gridTemplateColumns: "minmax(0, auto) auto",
+    gridTemplateColumns: "minmax(0, auto) auto minmax(0, auto)",
     minWidth: "min-content",
     maxWidth: `calc(100% * ${ZOOM})`,
     maxHeight: LABEL_FITS,
@@ -71,6 +65,12 @@ export const boardStyles = create({
   labelName: { overflow: "hidden", textOverflow: "ellipsis" },
   labelVariant: { whiteSpace: "pre" },
   labelFixed: { cursor: "default" },
+  labelError: {
+    marginInlineStart: space.s2,
+    overflow: "hidden",
+    color: role.contentAccent,
+    textOverflow: "ellipsis",
+  },
   labelLit: { color: role.contentAccent },
   name: {
     position: "absolute",
@@ -120,6 +120,26 @@ export const boardStyles = create({
     opacity: `clamp(0, (${RINGED_FROM} - ${ZOOM}) * 1000000, 1)`,
     borderRadius: radius.pill,
     backgroundColor: role.strokeAccent,
+  },
+  page: {
+    position: "absolute",
+    inset: 0,
+    display: "grid",
+    placeItems: "center",
+    overflow: "hidden",
+    borderRadius: "inherit",
+    backgroundColor: role.bgMuted,
+  },
+  address: {
+    boxSizing: "border-box",
+    maxWidth: `calc(100% * ${ZOOM})`,
+    paddingInline: space.s3,
+    overflow: "hidden",
+    color: role.contentTertiary,
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    maxHeight: `clamp(0px, calc((${ZOOM} - ${NAMED_FROM}) * 1000000px), 100000px)`,
+    transform: `scale(calc(1 / ${ZOOM}))`,
   },
   held: { position: "absolute", inset: 0, pointerEvents: "none", boxShadow: shadow.shadowXl },
   raised: { zIndex: 1 },

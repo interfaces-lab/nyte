@@ -23,6 +23,10 @@ const uiLibraryImports = [
     message: "Import the styled component from @nyte-ai/ui. Base UI stays inside packages/ui.",
   },
   {
+    group: ["@tanstack/react-table", "@tanstack/table-core"],
+    message: "Import TanStack Table and the styled table parts from @nyte-ai/ui/table.",
+  },
+  {
     group: ["@pierre/**"],
     message:
       "Import Pierre through @nyte-ai/ui/<same subpath without @pierre/>, e.g. @nyte-ai/ui/diffs/react.",

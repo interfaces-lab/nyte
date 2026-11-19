@@ -5,6 +5,7 @@ import { requestRetire } from "@nyte-ai/service/outdated-host";
 import type { RetireRequest } from "@nyte-ai/service/outdated-host";
 import { dialog } from "electron";
 import type { BrowserWindow, MessageBoxOptions } from "electron";
+import { ExpectedHostError } from "../shared/errors.ts";
 import { runningWork } from "../shared/update-activity.ts";
 import type { DesktopUpdateActivity } from "../shared/update-activity.ts";
 import { processStarted } from "./host-agent.ts";
@@ -119,6 +120,11 @@ async function replaced(
     if (serving !== null && serving.pid !== before && options.link().kind === "connected") return;
     await sleep(RESTART_POLL_MS);
   }
+
+  throw new ExpectedHostError({
+    code: "timeout",
+    message: "It didn't come back. Start it in Settings › Server.",
+  });
 }
 
 const CONFIRMATIONS = {

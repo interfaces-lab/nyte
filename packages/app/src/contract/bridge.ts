@@ -369,23 +369,38 @@ export type ContextMenuTemplateItem =
       readonly enabled?: boolean;
     };
 
-export interface BrowserBounds {
-  readonly x: number;
-  readonly y: number;
-  readonly width: number;
-  readonly height: number;
-}
-
-export interface BrowserBoundsMessage {
-  readonly surface: string;
-  readonly bounds: BrowserBounds;
-  readonly visible: boolean;
-  readonly focus: boolean;
-}
-
 export interface BrowserFocusMessage {
   readonly surface: string;
   readonly focused: boolean;
+}
+
+/** The channel a page's preload tells its embedding window on that a person pressed inside the page. */
+export const BROWSER_PAGE_PRESS_CHANNEL = "nyte:browser-page-press";
+
+export interface BrowserShownMessage {
+  readonly surface: string;
+  readonly visible: boolean;
+}
+
+/** A wheel an entered page handed back to the board: where and how far, in the page's CSS px at zoom 1. */
+export interface BrowserWheel {
+  readonly x: number;
+  readonly y: number;
+  readonly deltaX: number;
+  readonly deltaY: number;
+  /** A Ctrl-wheel or pinch zooms the board; a ⌘-wheel without Ctrl pans it. */
+  readonly zoom: boolean;
+}
+
+/** A page this window's renderer hosts in a `<webview>`. Main decides the list; the renderer mounts it. */
+export interface BrowserGuest {
+  readonly surface: string;
+  /** The session partition the element attaches with. */
+  readonly partition: string;
+  /** Changes when main needs a fresh guest for the same surface, so the element remounts. */
+  readonly generation: number;
+  /** Whether the guest keeps painting while no slot shows it, because an agent drives it or a capture is due. */
+  readonly painting: boolean;
 }
 
 export type UpdateChannel = "stable" | "nightly";
@@ -420,12 +435,15 @@ export type HostEvent =
   | { kind: "server_changed" }
   | { kind: "open_session"; session: SessionId }
   | { kind: "remote_access_changed" }
+  | { kind: "browser_guests"; guests: readonly BrowserGuest[] }
   | { kind: "browser_changed"; surface: string; state: BrowserSurfaceState }
   | { kind: "browser_download"; surface: string; download: BrowserDownload }
   | { kind: "browser_open_tab"; surface: string; url: string; background: boolean }
   | { kind: "browser_key"; surface: string; key: BrowserKey }
   | { kind: "browser_design_pick"; surface: string; pick: BrowserDesignPick }
   | { kind: "browser_login_requested"; surface: string; host: string; realm: string }
+  | { kind: "browser_board_leave"; surface: string }
+  | { kind: "browser_board_wheel"; surface: string; wheel: BrowserWheel }
   | {
       kind: "browser_history_changed";
       owner: string | null;
@@ -473,11 +491,20 @@ export interface BrowserDesignPick {
   readonly image: string | undefined;
 }
 
+export interface BrowserCapture {
+  readonly src: string;
+  readonly generation: number;
+  readonly url: string;
+  readonly width: number;
+  readonly height: number;
+}
+
 export interface BrowserBridge {
   open(input: {
     surface: string;
     url: string;
     owner?: { kind: "home" } | { kind: "project"; path: string };
+    holder: "tab" | "board";
   }): Promise<BrowserSurfaceState>;
   navigate(input: { surface: string; action: BrowserNavigationAction }): Promise<void>;
   menu(input: {
@@ -489,7 +516,7 @@ export interface BrowserBridge {
   }): Promise<BrowserMenuAction | undefined>;
   perform(input: { surface: string; action: BrowserAction; owner: string | null }): Promise<void>;
   close(input: { surface: string }): Promise<void>;
-  captureFrame(input: { surface: string }): Promise<string | undefined>;
+  captureFrame(input: { surface: string }): Promise<BrowserCapture | undefined>;
   design(input: { surface: string; change: BrowserDesignChange }): Promise<void>;
   find(input: {
     surface: string;
@@ -503,8 +530,12 @@ export interface BrowserBridge {
   }): Promise<void>;
   history(input: { owner: string | null }): Promise<readonly BrowserHistoryEntry[]>;
   forgetHistory(input: { owner: string | null; url: string }): Promise<void>;
-  setBounds(message: BrowserBoundsMessage): void;
   setFocus(message: BrowserFocusMessage): void;
+  guests(): Promise<readonly BrowserGuest[]>;
+  attach(input: { surface: string; webContentsId: number; generation: number }): Promise<void>;
+  setShown(message: BrowserShownMessage): void;
+  /** Whether a page is entered on the Design board, where it hands Esc and zoom gestures back to the board. */
+  setEntered(input: { surface: string; entered: boolean }): Promise<void>;
 }
 
 export const TERMINAL_NOTICE_LIMITS = { title: 256, body: 1024 } as const;
@@ -590,6 +621,8 @@ export interface HostBridge {
 export interface NyteBridge {
   /** Which of Nyte's apps this window is; a client without window kinds is Nyte. */
   readonly app?: DesktopApp;
+  /** The apps this build offers, in switcher order; a client without window kinds has none to switch between. */
+  readonly apps?: readonly DesktopApp[];
   readonly clientSurface: ClientSurface;
   readonly platform: NodeJS.Platform;
   readonly machineName: string | undefined;

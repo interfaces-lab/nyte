@@ -155,10 +155,12 @@ function grantTrust(
   });
 }
 
-export function folderPicker(): (() => void) | undefined {
+export function folderPicker(
+  handle: (outcome: OpenWorkspaceOutcome) => void = handleOpenOutcome,
+): (() => void) | undefined {
   const pick = nyte.host.pickWorkspace;
 
-  return pick === undefined ? undefined : () => void pick().then(handleOpenOutcome);
+  return pick === undefined ? undefined : () => void pick().then(handle);
 }
 
 export function WorkspaceDialogHost(): ReactElement | null {

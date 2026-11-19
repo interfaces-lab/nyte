@@ -1,20 +1,24 @@
 import { props } from "@stylexjs/stylex";
 import { useEffect, useEffectEvent, useImperativeHandle, useLayoutEffect, useRef } from "react";
 import type { ReactElement, Ref } from "react";
-import { readBoardMessage } from "@nyte-ai/plugin/design/board-protocol";
+import { readBoardMessage, textDigest } from "@nyte-ai/plugin/design/board-protocol";
 import type { AppMessage, BoardMessage, Span } from "@nyte-ai/plugin/design/board-protocol";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { canvasTheme } from "../canvas/canvas-theme.ts";
 import { nyte } from "../contract/nyte.ts";
 import { currentLights, HERE, watchLights } from "../light/light.ts";
+import type { Subject } from "../light/light.ts";
 import { useAppearance } from "../theme/appearance-store.ts";
 import type { Appearance } from "../theme/appearance-store.ts";
-import { buildBoard } from "./design-compile.ts";
+import { boardPages } from "./board-pages.ts";
+import type { ActivePage, BoardPages } from "./board-pages.ts";
+import { buildBoard, readPageAddresses } from "./design-compile.ts";
 import type { BoardLoad } from "./design-compile.ts";
-import { parseDesign } from "./design-source.ts";
-import type { Range } from "./design-source.ts";
-import { designLights, edit, readDesign, shineDesign, SURFACE } from "./designs.ts";
-import type { Designs } from "./designs.ts";
+import { clearDrawn, recordDrawn } from "./design-diagnostics.ts";
+import { parseDesign, smallestChange } from "./design-source.ts";
+import type { Change, DesignSource } from "./design-source.ts";
+import { SURFACE } from "./designs.ts";
+import type { DesignStore, Designs } from "./designs.ts";
 import { studioStyles } from "./studio.stylex.ts";
 
 export type BoardCamera = Extract<AppMessage, { kind: "camera" }>["to"];
@@ -24,6 +28,7 @@ export interface BoardHandle {
   reveal(path: string): void;
   /** Fits every frame, shows the board at 100%, or frames the selection. */
   camera(to: BoardCamera): void;
+  enter(page: ActivePage): void;
 }
 
 type Edited = Extract<BoardMessage, { kind: "text" } | { kind: "move" }>;
@@ -36,19 +41,27 @@ const DEFAULT_SHELL = "/canvas/index.html";
  * does there into the light and into edits of literal text and frame places.
  */
 export function Board(input: {
+  readonly store: DesignStore;
   readonly designs: Designs;
   readonly night: boolean;
   readonly following: boolean;
   readonly onZoom: (zoom: number) => void;
+  readonly workspacePath: string | undefined;
+  readonly onPage: (page: ActivePage | null) => void;
   readonly handle: Ref<BoardHandle>;
 }): ReactElement {
   const frame = useRef<HTMLIFrameElement>(null);
+  const pages = useRef<BoardPages | undefined>(undefined);
 
-  const shell = useRef<{ ready: boolean; load: BoardLoad | null; built: number }>({
-    ready: false,
-    load: null,
-    built: 0,
-  });
+  const shell = useRef<{
+    ready: boolean;
+    load: BoardLoad | null;
+    built: number;
+    addresses: ReadonlyMap<string, string>;
+    accepted: ReadonlyMap<string, string>;
+  }>({ ready: false, load: null, built: 0, addresses: new Map(), accepted: new Map() });
+
+  const stills = useRef<HTMLDivElement>(null);
 
   const shown = useAppearance();
   const designs = input.designs;
@@ -59,13 +72,23 @@ export function Board(input: {
 
   const follows = useEffectEvent((): boolean => input.following);
   const zoomed = useEffectEvent((zoom: number) => input.onZoom(zoom));
+  const paged = useEffectEvent((page: ActivePage | null) => input.onPage(page));
+  const shone = useEffectEvent((subject: Subject | null) => input.store.shine(subject));
+  const edited = useEffectEvent((message: Edited) => applyEdit(input.store, message));
+  const lit = useEffectEvent((follow: "you" | "agents" | null) =>
+    lightsMessage(input.store, follow),
+  );
 
   const greet = useEffectEvent((): void => {
     shell.current.ready = true;
+    pages.current?.ready();
     send(chromeMessage(shown));
     send({ kind: "theme", night: input.night });
     send(
-      lightsMessage(input.following && designLights(currentLights()).you !== null ? "you" : null),
+      lightsMessage(
+        input.store,
+        input.following && input.store.lights(currentLights()).you !== null ? "you" : null,
+      ),
     );
 
     if (shell.current.load !== null) send(shell.current.load);
@@ -74,6 +97,11 @@ export function Board(input: {
   useImperativeHandle(input.handle, () => ({
     reveal: (path) => send({ kind: "reveal", path }),
     camera: (to) => send({ kind: "camera", to }),
+    enter: (page) => {
+      pages.current?.focus(page.surface);
+
+      if (!page.entered) send({ kind: "enter", key: page.key });
+    },
   }));
 
   // oxlint-disable-next-line nyte-code/no-direct-effect -- compiles the designs for the sandbox whenever the store publishes new text
@@ -81,12 +109,16 @@ export function Board(input: {
     shell.current.built += 1;
     const mine = shell.current.built;
 
-    void buildBoard(designs).then((load) => {
+    void Promise.all([buildBoard(designs), readPageAddresses(designs)]).then((built) => {
+      const load = built[0];
+
       if (shell.current.built !== mine) return;
       const last = shell.current.load;
       shell.current.load = load;
+      shell.current.accepted = new Map([...shell.current.addresses, ...built[1]]);
+      shell.current.addresses = built[1];
 
-      if (last === null || JSON.stringify(last) !== JSON.stringify(load)) send(load);
+      if (last?.build !== load.build) send(load);
     });
   }, [designs]);
 
@@ -98,6 +130,31 @@ export function Board(input: {
 
   useMountEffect(() => {
     let seen = 0;
+    const browser = nyte.host.browser;
+    const workspace = input.workspacePath;
+
+    const live =
+      browser === undefined || workspace === undefined
+        ? undefined
+        : boardPages({
+            browser,
+            owner: { kind: "project", path: workspace },
+            addresses: () => shell.current.accepted,
+            frame: () => frame.current,
+            stills: () => stills.current,
+            send,
+            onActive: (page) => paged(page),
+          });
+
+    pages.current = live;
+    const place = (): void => live?.measure();
+    const moved = new ResizeObserver(place);
+
+    if (live !== undefined)
+      for (let node: Element | null = frame.current; node !== null; node = node.parentElement)
+        moved.observe(node);
+    window.addEventListener("resize", place);
+    place();
 
     const receive = (event: MessageEvent<unknown>): void => {
       const message = readBoardMessage(event.data);
@@ -114,12 +171,20 @@ export function Board(input: {
 
           return;
         case "select":
-          shineDesign(message.span === null ? null : { kind: "span", ...message.span });
+          shone(message.span === null ? null : { kind: "span", ...message.span });
 
           return;
         case "text":
         case "move":
-          void applyEdit(message).then(send);
+          void edited(message).then(send);
+
+          return;
+        case "pages":
+          live?.read(message.pages);
+
+          return;
+        case "drawn":
+          recordDrawn(message);
       }
     };
 
@@ -135,29 +200,37 @@ export function Board(input: {
       if (fresh) seen = at;
       const yours = you !== null && you.at === at;
       const own = yours && you.window === HERE && you.from === SURFACE;
-      send(lightsMessage(!fresh || own ? null : yours ? "you" : "agents"));
+      send(lit(!fresh || own ? null : yours ? "you" : "agents"));
     });
 
     return () => {
       stop();
       window.removeEventListener("message", receive);
+      moved.disconnect();
+      window.removeEventListener("resize", place);
+      pages.current = undefined;
+      live?.close();
+      clearDrawn();
     };
   });
 
   return (
-    <iframe
-      ref={frame}
-      src={
-        new URL(
-          "board/board.html",
-          new URL(nyte.canvasShell ?? DEFAULT_SHELL, window.location.href),
-        ).href
-      }
-      title="Design board"
-      sandbox="allow-scripts"
-      referrerPolicy="no-referrer"
-      {...props(studioStyles.board)}
-    />
+    <div {...props(studioStyles.boardBox)}>
+      <iframe
+        ref={frame}
+        src={
+          new URL(
+            "board/board.html",
+            new URL(nyte.canvasShell ?? DEFAULT_SHELL, window.location.href),
+          ).href
+        }
+        title="Design board"
+        sandbox="allow-scripts"
+        referrerPolicy="no-referrer"
+        {...props(studioStyles.board)}
+      />
+      <div ref={stills} aria-hidden {...props(studioStyles.stills)} />
+    </div>
   );
 }
 
@@ -167,8 +240,8 @@ function chromeMessage(appearance: Appearance): AppMessage {
   return { kind: "chrome", theme: theme.theme, variables: theme.styles?.variables ?? {} };
 }
 
-function lightsMessage(follow: "you" | "agents" | null): AppMessage {
-  const now = designLights(currentLights());
+function lightsMessage(store: DesignStore, follow: "you" | "agents" | null): AppMessage {
+  const now = store.lights(currentLights());
 
   return {
     kind: "lights",
@@ -178,43 +251,28 @@ function lightsMessage(follow: "you" | "agents" | null): AppMessage {
   };
 }
 
-async function applyEdit(message: Edited): Promise<AppMessage> {
+async function applyEdit(store: DesignStore, message: Edited): Promise<AppMessage> {
   const key = message.key;
-  const refused: AppMessage = { kind: "refused", from: key };
-  const text = readDesign(key.path);
+  const text = store.read(key.path);
 
-  if (
-    text === undefined ||
-    !key.path.startsWith("design/") ||
-    !key.path.endsWith(".jsx") ||
-    key.path.split("/").some((part) => part === ".." || part === "." || part === "")
-  )
-    return refused;
+  if (text === undefined || textDigest(text) !== message.base)
+    return { kind: "refused", from: key, reason: "changed" };
+
+  if (!key.path.endsWith(".jsx")) return { kind: "refused", from: key, reason: "not-editable" };
   const source = await parseDesign(key.path, text);
 
-  const element = source.elements.find(
-    (found) => found.start === key.start && found.end === key.end,
-  );
-
-  if (element === undefined || readDesign(key.path) !== text) return refused;
+  if (store.read(key.path) !== text) return { kind: "refused", from: key, reason: "changed" };
 
   const changes =
     message.kind === "text"
-      ? element.host && element.words !== null
-        ? [smallestPatch(text, element.words, encodeWords(message.value))]
-        : null
-      : element.x !== null && element.y !== null
-        ? [
-            { ...element.y, text: String(message.y) },
-            { ...element.x, text: String(message.x) },
-          ].toSorted((left, right) => right.start - left.start)
-        : null;
+      ? readWordsChange({ text, source, key, value: message.value })
+      : readPlaceChange({ source, key, x: message.x, y: message.y });
 
-  if (changes === null) return refused;
+  if (changes === undefined) return { kind: "refused", from: key, reason: "not-editable" };
 
   for (const change of changes)
     if (text.slice(change.start, change.end) !== change.text)
-      edit(key.path, change.start, change.end, change.text);
+      store.edit(key.path, change.start, change.end, change.text);
 
   const grown = changes.reduce(
     (sum, change) => sum + change.text.length - (change.end - change.start),
@@ -226,6 +284,41 @@ async function applyEdit(message: Edited): Promise<AppMessage> {
   return { kind: "applied", from: key, to };
 }
 
+function readWordsChange(input: {
+  readonly text: string;
+  readonly source: DesignSource;
+  readonly key: Span;
+  readonly value: string;
+}): Change[] | undefined {
+  const element = input.source.elements.find(
+    (found) => found.start === input.key.start && found.end === input.key.end,
+  );
+
+  if (element === undefined || !element.host || element.words === null) return undefined;
+  const words = element.words;
+  const change = smallestChange(input.text.slice(words.start, words.end), encodeWords(input.value));
+
+  return [{ start: words.start + change.start, end: words.start + change.end, text: change.text }];
+}
+
+function readPlaceChange(input: {
+  readonly source: DesignSource;
+  readonly key: Span;
+  readonly x: number;
+  readonly y: number;
+}): Change[] | undefined {
+  const frame = input.source.frames.find(
+    (found) => found.element.start === input.key.start && found.element.end === input.key.end,
+  );
+
+  if (frame === undefined || frame.x === null || frame.y === null) return undefined;
+
+  return [
+    { ...frame.y, text: String(input.y) },
+    { ...frame.x, text: String(input.x) },
+  ].toSorted((left, right) => right.start - left.start);
+}
+
 function encodeWords(value: string): string {
   return value
     .replaceAll("&", "&amp;")
@@ -233,29 +326,4 @@ function encodeWords(value: string): string {
     .replaceAll(">", "&gt;")
     .replaceAll("{", "&#123;")
     .replaceAll("}", "&#125;");
-}
-
-function smallestPatch(
-  text: string,
-  range: Range,
-  next: string,
-): Range & { readonly text: string } {
-  const before = text.slice(range.start, range.end);
-  let head = 0;
-
-  while (head < before.length && head < next.length && before[head] === next[head]) head += 1;
-  let tail = 0;
-
-  while (
-    tail < before.length - head &&
-    tail < next.length - head &&
-    before[before.length - 1 - tail] === next[next.length - 1 - tail]
-  )
-    tail += 1;
-
-  return {
-    start: range.start + head,
-    end: range.end - tail,
-    text: next.slice(head, next.length - tail),
-  };
 }

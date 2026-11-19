@@ -8,7 +8,7 @@ export const HOST_EVENT_CHANNEL = "nyte:host-event";
 
 export const THEME_PREFERENCE_CHANNEL = "nyte:theme-preference";
 
-export const BROWSER_BOUNDS_CHANNEL = "nyte:browser-bounds";
+export const BROWSER_SHOWN_CHANNEL = "nyte:browser-shown";
 
 export const BROWSER_FOCUS_CHANNEL = "nyte:browser-focus";
 
@@ -40,7 +40,7 @@ export const WINDOW_OPEN_ARGUMENT = "--nyte-open";
 
 export const WINDOW_APP_ARGUMENT = "--nyte-app";
 
-export const APP_SWITCH_ARGUMENT = "--nyte-app-switch";
+export const APPS_ARGUMENT = "--nyte-apps";
 
 export const MAIN_OPERATION_PATHS = [
   "host.fonts",
@@ -71,6 +71,9 @@ export const MAIN_OPERATION_PATHS = [
   "host.browser.login",
   "host.browser.history",
   "host.browser.forgetHistory",
+  "host.browser.guests",
+  "host.browser.attach",
+  "host.browser.setEntered",
   "host.switchApp",
 ] as const;
 
@@ -120,6 +123,7 @@ export type DesktopBridge = {
   readonly window: DesktopWindow;
   windowPainted(): void;
   readonly canvasShell?: NyteBridge["canvasShell"];
+  readonly apps: NonNullable<NyteBridge["apps"]>;
   readonly host: {
     openPort(nonce: string): void;
   } & Pick<

@@ -20,7 +20,6 @@ const styles = create({
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
     borderBottomColor: role.strokeQuaternary,
-    backgroundColor: role.bgBase,
   },
   field: { width: 260, maxWidth: "60%" },
   count: {

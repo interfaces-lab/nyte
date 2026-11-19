@@ -3,6 +3,7 @@ import { useEffectEvent, useRef, useState, type RefObject } from "react";
 import { flushSync } from "react-dom";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { sidebarMotion } from "../theme/tokens.stylex.ts";
+import { windowApp } from "../contract/nyte.ts";
 import { useSidebar } from "./use-sidebar.ts";
 
 const THRESHOLD = 16;
@@ -96,7 +97,7 @@ export function useSidebarSwipe(root: RefObject<HTMLElement | null>): boolean {
   useMountEffect(() => {
     const element = root.current;
 
-    if (element === null) return;
+    if (element === null || windowApp() === "code") return;
     const listener = (event: WheelEvent): void => onWheel(event);
     element.addEventListener("wheel", listener, { passive: true });
 

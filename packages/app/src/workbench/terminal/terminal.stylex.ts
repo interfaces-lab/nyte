@@ -9,7 +9,6 @@ export const terminalStyles = create({
     flex: 1,
     minWidth: 0,
     minHeight: 0,
-    backgroundColor: role.bgBase,
   },
   body: { position: "relative", flex: 1, minHeight: 0, minWidth: 0 },
   panel: {
@@ -20,7 +19,6 @@ export const terminalStyles = create({
     minHeight: 0,
     minWidth: 0,
     outlineStyle: "none",
-    backgroundColor: role.bgBase,
   },
   canvas: { flex: 1, minHeight: 0, minWidth: 0, overflow: "clip" },
   screen: {

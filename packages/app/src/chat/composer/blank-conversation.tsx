@@ -30,6 +30,8 @@ import { useCatalog } from "../../data/catalog.ts";
 import { useHostState } from "../../data/host.ts";
 import { useMentionFiles } from "../../data/files.ts";
 import { useProjects } from "../../data/projects.ts";
+import { useHomeWorkspace } from "../../data/workspaces.ts";
+import { preferences } from "../../preferences/index.ts";
 import { useWorkspaceCatalog } from "../../data/plugins.ts";
 import { draftModel, modelRefFor, selectedModelOption } from "./model-picker-state.ts";
 import { useChatFolder } from "../chat-folder.ts";
@@ -82,7 +84,9 @@ function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement
   const focused = usePaneFocused(paneId);
   const workspace = useChatFolder();
   const catalog = useCatalog();
-  const mentions = useMentionFiles(workspace, workspace !== undefined);
+  const home = useHomeWorkspace();
+  const scansFiles = workspace !== undefined && workspace.id !== home;
+  const mentions = useMentionFiles(workspace, scansFiles);
   const workspaceCatalog = useWorkspaceCatalog(workspace?.id);
   const actions = usePaneActions();
   const viewStore = usePaneViewStateStore();
@@ -175,7 +179,13 @@ function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement
         }}
       >
         <div {...props(sessionScreenStyles.blankColumn)}>
-          <WorkspaceContext active={focused} />
+          <WorkspaceContext
+            active={focused}
+            onChoose={(folder) => {
+              updateViewState((state) => ({ ...state, folder }));
+              preferences.draftFolder.set(folder);
+            }}
+          />
           {project !== undefined && (
             <div {...props(sessionScreenStyles.blankHint)}>
               {`${project.name}: tell the coordinator what to work on.`}
@@ -208,9 +218,9 @@ function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement
                 : composerSource(workspaceCatalog.data, workspaceCatalog.isError)
             }
             mentionFiles={
-              workspace === undefined
-                ? { status: "ready", data: [] }
-                : composerSource(mentions.data, mentions.isError)
+              scansFiles
+                ? composerSource(mentions.data, mentions.isError)
+                : { status: "ready", data: [] }
             }
             attachments={attachments}
             attachmentBusy={intake.reads !== 0}

@@ -89,7 +89,6 @@ const styles = create({
     flexShrink: 0,
     paddingBlock: space.s1,
     paddingInline: space.s1_5,
-    backgroundColor: role.bgBase,
   },
   hint: {
     flex: 1,

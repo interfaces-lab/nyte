@@ -8,7 +8,7 @@ import { documentsApi } from "../data/documents.ts";
 import { keys, queryClient } from "../data/query-client.ts";
 import type { ReferenceOpener } from "../references/reference-opener.tsx";
 import { fileActions } from "./editor/file-store.ts";
-import { EDITOR_SLOT, FOLLOW_BROWSE, matchingTab, WORKBENCH_KINDS } from "./model.ts";
+import { EDITOR_SLOT, FOLLOW_BROWSE, matchingTab, tabSlot, WORKBENCH_KINDS } from "./model.ts";
 import type {
   KindInput,
   LaunchKind,
@@ -17,6 +17,7 @@ import type {
   WorkbenchViewKey,
 } from "./model.ts";
 import { workbenchScope, workspacePathForView } from "./paths.ts";
+import { shownWorkbenchTab } from "./selectors.ts";
 import { workbench } from "./store.ts";
 import { getTerminal, terminalActions } from "./terminal/terminal-store.ts";
 
@@ -36,6 +37,37 @@ export function launch(view: WorkbenchViewKey, kind: LaunchKind): void {
 
   if (tab.kind === "terminal")
     void terminalActions.create({ id: tab.id, workspacePath: workspacePath ?? null });
+}
+
+/** Shows or hides a Code window's explorer. Another tab covering the Editor gives way to it with the explorer open. */
+export function toggleExplorer(view: WorkbenchViewKey): void {
+  const state = workbench.getView(view);
+
+  const shown = shownWorkbenchTab(
+    state,
+    workbenchScope(workspacePathForView(view)),
+    clientCapabilities(nyte.host),
+  );
+
+  const open = state.sidebars.includes(EDITOR_SLOT);
+
+  if (shown !== null && tabSlot(shown) === EDITOR_SLOT) {
+    workbench.dispatch(view, { kind: "toggle-sidebar", slot: EDITOR_SLOT });
+
+    return;
+  }
+
+  launch(view, "editor");
+
+  if (!open) workbench.dispatch(view, { kind: "toggle-sidebar", slot: EDITOR_SLOT });
+}
+
+/** Shows a Code window's chat panel: beside the editor, or in its place where the window is too narrow for both. */
+export function revealChatPanel(view: WorkbenchViewKey): void {
+  const layout = workbench.getView(view).layout;
+
+  if (layout.kind === "maximized")
+    workbench.dispatch(view, { kind: layout.narrow ? "show-chat" : "toggle-maximized" });
 }
 
 export function openUrl(view: WorkbenchViewKey, url: string, activate = true): void {

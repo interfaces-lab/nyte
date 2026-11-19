@@ -1,18 +1,14 @@
-import type { ModelCatalogView, ModelInfo, ModelRef, Thinking } from "@nyte-ai/sdk";
+import type { ModelInfo, ModelRef, Thinking } from "@nyte-ai/sdk";
 import { selectedModes } from "@nyte-ai/schema";
 import { THINKING_LEVELS } from "./constants.ts";
 
-export { availableModes, modelWithModes, selectedModes } from "@nyte-ai/schema";
-
-export function availableModels(catalog: ModelCatalogView): readonly ModelInfo[] {
-  return catalog.providers.flatMap((provider) =>
-    provider.credential === "configured" ||
-    provider.credential === "verified" ||
-    provider.credential === "unknown"
-      ? provider.models
-      : [],
-  );
-}
+export {
+  availableModels,
+  availableModes,
+  enabledModels,
+  modelWithModes,
+  selectedModes,
+} from "@nyte-ai/schema";
 
 export function findModel(models: readonly ModelInfo[], ref: ModelRef): ModelInfo | undefined {
   return models.find((model) => selectedModes(model, ref) !== null);

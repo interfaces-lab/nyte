@@ -346,7 +346,7 @@ export default {
     commands: [save, remove],
     settings: [savedSetting],
   },
-  hooks: { transform_transcript: withheldInSideChats(SECRET_TOOL) },
+  hooks: { offer_tools: withheldInSideChats(SECRET_TOOL) },
   activate(api) {
     const run = (): void => void sweep(api).catch(() => undefined);
     const timer = setInterval(run, SWEEP_MS);

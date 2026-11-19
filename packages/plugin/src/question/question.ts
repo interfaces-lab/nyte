@@ -225,5 +225,5 @@ async function stopWaiting(part: Part<typeof question>, head: HeadName): Promise
 export default {
   id: "question",
   contribute: { parts: [question], tools: [ask] },
-  hooks: { transform_transcript: withheldInSideChats(QUESTION_TOOL) },
+  hooks: { offer_tools: withheldInSideChats(QUESTION_TOOL) },
 } satisfies Plugin;

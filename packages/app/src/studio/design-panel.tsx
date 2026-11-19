@@ -9,11 +9,17 @@ import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { ToggleGroup } from "@nyte-ai/ui/toggle-group";
 import type { SelectedWorkspace } from "../contract/bridge.ts";
+import { nyte } from "../contract/nyte.ts";
 import { useLights } from "../light/light.ts";
 import { Board } from "./board.tsx";
 import type { BoardHandle } from "./board.tsx";
+import { DesignModeToggle, PageDesignBar } from "./board-design.tsx";
+import type { ActivePage } from "./board-pages.ts";
 import { DesignList } from "./design-list.tsx";
-import { designLights, shineDesign, useDesigns } from "./designs.ts";
+import { AddDesignToChat } from "./design-reference.tsx";
+import { DesignStatus } from "./design-status.tsx";
+import { useDesignStore } from "./designs.ts";
+import type { DesignStore } from "./designs.ts";
 import { studioStyles } from "./studio.stylex.ts";
 
 function watchDisplayMode(listener: () => void): () => void {
@@ -36,8 +42,21 @@ export function DesignPanel(input: {
   /** Shows this window's chat and puts the cursor in its composer. */
   readonly onAsk: () => void;
 }): ReactElement {
-  const designs = useDesigns(input.workspace);
-  const selected = useLights((lights) => designLights(lights).you?.subject.kind === "span");
+  const store = useDesignStore(input.workspace);
+
+  if (store === undefined) return <NoDesigns onAsk={input.onAsk} />;
+
+  return <DesignBoard store={store} workspace={input.workspace} onAsk={input.onAsk} />;
+}
+
+function DesignBoard(input: {
+  readonly store: DesignStore;
+  readonly workspace: SelectedWorkspace | undefined;
+  readonly onAsk: () => void;
+}): ReactElement {
+  const store = input.store;
+  const designs = store.useDesigns();
+  const selected = useLights((lights) => store.lights(lights).you?.subject.kind === "span");
 
   const dark = useSyncExternalStore(
     watchDisplayMode,
@@ -47,30 +66,20 @@ export function DesignPanel(input: {
   const [chosen, setChosen] = useState<boolean | null>(null);
   const [zoom, setZoom] = useState(60);
   const [listOpen, setListOpen] = useState(false);
+  const [page, setPage] = useState<ActivePage | null>(null);
   const board = useRef<BoardHandle>(null);
   const night = chosen ?? dark;
 
-  if (designs.paths.length === 0)
-    return (
-      <div {...props(text.sm, studioStyles.empty)}>
-        <Icon name="bezier-pointer" size="lg" />
-        <p {...props(text.base, studioStyles.emptyTitle)}>No designs yet</p>
-        <p {...props(studioStyles.emptyBody)}>
-          Ask Nyte for a screen, or add a JSX file to the design folder.
-        </p>
-        <Button variant="outline" xstyle={studioStyles.emptyAction} onClick={input.onAsk}>
-          Ask Nyte
-        </Button>
-      </div>
-    );
+  if (designs.paths.length === 0) return <NoDesigns onAsk={input.onAsk} />;
 
   return (
     <div {...props(studioStyles.panel)}>
       <DesignList
+        store={store}
         designs={designs}
         open={listOpen}
         onReveal={(path) => {
-          shineDesign({ kind: "file", path });
+          store.shine({ kind: "file", path });
           board.current?.reveal(path);
         }}
       />
@@ -88,6 +97,10 @@ export function DesignPanel(input: {
               <PanelToggleIcon side="left" visible={listOpen} />
             </Toggle>
           </span>
+          <AddDesignToChat store={store} />
+          {nyte.host.browser !== undefined && (
+            <DesignModeToggle page={page} onEnter={(entered) => board.current?.enter(entered)} />
+          )}
           <ToggleGroup
             aria-label="Board Appearance"
             value={[night ? "night" : "day"]}
@@ -123,9 +136,15 @@ export function DesignPanel(input: {
             </MenuContent>
           </Menu>
         </div>
+        <DesignStatus store={store} />
+        {page !== null && <PageDesignBar surface={page.surface} />}
         <Board
+          key={input.workspace?.path}
+          store={store}
           designs={designs}
           handle={board}
+          workspacePath={input.workspace?.path}
+          onPage={setPage}
           night={night}
           following
           onZoom={(value) => {
@@ -135,6 +154,21 @@ export function DesignPanel(input: {
           }}
         />
       </div>
+    </div>
+  );
+}
+
+function NoDesigns(input: { readonly onAsk: () => void }): ReactElement {
+  return (
+    <div {...props(text.sm, studioStyles.empty)}>
+      <Icon name="bezier-pointer" size="lg" />
+      <p {...props(text.base, studioStyles.emptyTitle)}>No designs yet</p>
+      <p {...props(studioStyles.emptyBody)}>
+        Ask Nyte for a screen, or add a JSX file to the design folder.
+      </p>
+      <Button variant="outline" xstyle={studioStyles.emptyAction} onClick={input.onAsk}>
+        Ask Nyte
+      </Button>
     </div>
   );
 }

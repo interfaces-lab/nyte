@@ -177,6 +177,59 @@ export const ModelCatalogViewType = Type.Object({
 
 export type ModelCatalogView = Decoded<typeof ModelCatalogViewType>;
 
+export function availableModels(catalog: ModelCatalogView): readonly ModelInfo[] {
+  return catalog.providers.flatMap((provider) => (signedIn(provider) ? provider.models : []));
+}
+
+export function enabledModels(catalog: ModelCatalogView): readonly ModelInfo[] {
+  return catalog.providers.flatMap((provider) =>
+    signedIn(provider)
+      ? provider.models.filter((model) => provider.listings[model.ref.id] !== "hidden")
+      : [],
+  );
+}
+
+/** The models and variants `name` can mean: an exact provider/id, else an exact id, else the ones that hold all its words with the fewest extra. */
+export function matchModels(models: readonly ModelInfo[], name: string): readonly ModelRef[] {
+  const refs = models.flatMap((info) => [info.ref, ...info.variants.map((variant) => variant.ref)]);
+  const exact = refs.filter((ref) => `${ref.provider}/${ref.id}` === name);
+
+  if (exact.length > 0) return exact;
+  const ids = refs.filter((ref) => ref.id === name);
+
+  return ids.length > 0 ? ids : closestModels(refs, name);
+}
+
+function signedIn(provider: ModelCatalogView["providers"][number]): boolean {
+  return provider.credential !== "missing" && provider.credential !== "failed";
+}
+
+function closestModels(refs: readonly ModelRef[], name: string): readonly ModelRef[] {
+  const wanted = modelWords(name);
+
+  if (!wanted.some((word) => /[a-z]/u.test(word))) return [];
+
+  const held = refs.flatMap((ref) => {
+    const words = modelWords(`${ref.provider}/${ref.id}`);
+
+    return wanted.every((word) => countWord(words, word) >= countWord(wanted, word))
+      ? [{ ref, extra: modelWords(ref.id).length }]
+      : [];
+  });
+
+  const fewest = Math.min(...held.map((entry) => entry.extra));
+
+  return held.flatMap((entry) => (entry.extra === fewest ? [entry.ref] : []));
+}
+
+function modelWords(source: string): readonly string[] {
+  return source.toLowerCase().match(/[a-z]+|\d+/gu) ?? [];
+}
+
+function countWord(words: readonly string[], word: string): number {
+  return words.filter((entry) => entry === word).length;
+}
+
 export const ModelRefSchema: Schema<ModelRef> = standard(ModelRefType);
 
 export const ThinkingSchema: Schema<Thinking> = standard(ThinkingType);

@@ -7,6 +7,7 @@ import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Popover } from "@nyte-ai/ui/popover";
+import { menu } from "@nyte-ai/ui/styles/schema.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import type { MentionFile } from "../../data/files.ts";
 import { PIERRE_TREE_CSS } from "@nyte-ai/ui/worker-pool";
@@ -36,7 +37,18 @@ const styles = create({
   separator: { display: "inline-flex", flexShrink: 0, color: role.contentQuaternary },
   menu: { maxWidth: "min(320px, var(--available-width))" },
   popup: { width: "min(320px, var(--available-width))", padding: 0 },
-  tree: { display: "block", height: "min(320px, var(--available-height))", width: "100%" },
+  tree: {
+    display: "block",
+    boxSizing: "border-box",
+    height: "min(320px, var(--available-height))",
+    width: "100%",
+    paddingBlock: menu.padding,
+    "--trees-bg-override": "transparent",
+    "--trees-border-radius-override": menu.itemRadius,
+    "--trees-item-margin-x-override": "0px",
+    "--trees-item-padding-x-override": menu.itemPaddingInline,
+    "--trees-padding-inline-override": menu.padding,
+  },
 });
 
 /**
@@ -282,7 +294,7 @@ function BreadcrumbTree({
   const prefix = directory === "" ? "" : `${directory}/`;
 
   const paths = (files ?? [])
-    .filter((file) => file.displayPath.startsWith(prefix))
+    .filter((file) => file.displayPath.startsWith(prefix) && file.displayPath !== prefix)
     .map((file) => file.displayPath.slice(prefix.length));
 
   const [itemHeight] = useState(treeItemHeight);

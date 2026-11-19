@@ -28,7 +28,7 @@ import {
   clientActionKeys,
   clientActions,
 } from "../../contract/client-actions.ts";
-import { nyte } from "../../contract/nyte.ts";
+import { nyte, windowApp } from "../../contract/nyte.ts";
 import { preferences, useSetting, type Preference } from "../../preferences/index.ts";
 import { useVcsSnapshot } from "../../data/vcs.ts";
 import { useDocument } from "../../data/documents.ts";
@@ -147,6 +147,7 @@ export function EditorPanel({
   const browsed = useWorkbenchWorkspace();
   const workspace = browsed.kind === "ready" ? browsed.workspace : undefined;
   const files = useMentionFiles(workspace, shown && workspace !== undefined);
+
   const vcs = useVcsSnapshot(workspace?.id, shown);
 
   const chatFiles = useChatChanges(vcs.data?.kind === "none" ? workspace?.id : undefined, (edits) =>
@@ -163,7 +164,9 @@ export function EditorPanel({
 
   const tabs = useFileTabs(viewKey);
   const autoSave = useSetting(preferences.fileAutoSave);
-  const sidePanel = useSetting(preferences.editorSidePanel);
+  const code = windowApp() === "code";
+  const chosenSide = useSetting(preferences.editorSidePanel);
+  const sidePanel = code ? "start" : chosenSide;
 
   const [sidebarSelection, setSidebarSelection] = useState<{
     readonly revision: number;
@@ -189,7 +192,7 @@ export function EditorPanel({
   const cramped = useCramped(bodyRef);
   const [choice, setChoice] = useState({ shown: false, revision: tabs.revealRevision });
   const insisted = choice.shown || choice.revision !== tabs.revealRevision;
-  const explorerShown = sidebarVisible && (!cramped || insisted);
+  const explorerShown = sidebarVisible && (code || !cramped || insisted);
   const closeOrigin = useRef<WorkbenchTabId | undefined>(undefined);
   const activeDocument = useDocument(activeFile?.path).data;
 
@@ -501,12 +504,16 @@ export function EditorPanel({
           {FILE_TOGGLES.map(([label, setting]) => (
             <FilePreferenceItem key={label} label={label} setting={setting} />
           ))}
-          <MenuItem
-            layout="plain"
-            onClick={() => preferences.editorSidePanel.set(sidePanel === "start" ? "end" : "start")}
-          >
-            {sidePanel === "start" ? "Move Side Panel Right" : "Move Side Panel Left"}
-          </MenuItem>
+          {!code && (
+            <MenuItem
+              layout="plain"
+              onClick={() =>
+                preferences.editorSidePanel.set(sidePanel === "start" ? "end" : "start")
+              }
+            >
+              {sidePanel === "start" ? "Move Side Panel Right" : "Move Side Panel Left"}
+            </MenuItem>
+          )}
           <MenuSeparator inset />
           <MenuItem
             layout="plain"
@@ -533,16 +540,21 @@ export function EditorPanel({
             : setSidebarSelection({ revision: tabs.revealRevision, tab: "explorer" })
         }
       />
-      <Toggle
-        size="sm"
-        iconOnly
-        indicator="glyph"
-        aria-label={`${WORKBENCH_KINDS.editor.label} Sidebar`}
-        pressed={explorerShown}
-        onPressedChange={toggleSidebar}
-      >
-        <PanelToggleIcon side={sidePanel === "start" ? "left" : "right"} visible={explorerShown} />
-      </Toggle>
+      {!code && (
+        <Toggle
+          size="sm"
+          iconOnly
+          indicator="glyph"
+          aria-label={`${WORKBENCH_KINDS.editor.label} Sidebar`}
+          pressed={explorerShown}
+          onPressedChange={toggleSidebar}
+        >
+          <PanelToggleIcon
+            side={sidePanel === "start" ? "left" : "right"}
+            visible={explorerShown}
+          />
+        </Toggle>
+      )}
     </>
   );
 
@@ -737,7 +749,7 @@ export function EditorPanel({
         active={
           activeFile === undefined || activeContents === undefined
             ? undefined
-            : { path: activeFile.path, lines: activeContents.split("\n").length, symbols }
+            : { path: activeFile.path, contents: activeContents, symbols }
         }
         onQueryChange={setPalette}
         onClose={() => setPalette(undefined)}

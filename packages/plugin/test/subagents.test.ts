@@ -287,7 +287,7 @@ describe("subagents", () => {
     );
   });
 
-  it("fails a call naming a session that is not its child", async () => {
+  it("reads a chat that is not its child", async () => {
     const fake = fakeModels();
     await using host = await open(fake, [subagents]);
     fake.reply({ content: [{ type: "text", text: "Hello." }] });
@@ -305,16 +305,18 @@ describe("subagents", () => {
           },
         ],
       },
-      { content: [{ type: "text", text: "Could not." }] },
+      { content: [{ type: "text", text: "Read it." }] },
     );
 
     const { session: parent, receipt: read } = await host.sessions.start({ content: "Read it." });
     await read.settled();
     const state = settledCall((await parent.view()).messages, "call-read");
 
-    expect(state.outcome).toEqual({
-      kind: "failed",
-      message: `Session ${stranger.id} is not a subagent of this session.`,
+    expect(state.outcome).toMatchObject({
+      kind: "ok",
+      content: [
+        { kind: "text", text: `User: Hi.\n\nAssistant: Hello.\n\nChat ${stranger.id} is idle.` },
+      ],
     });
   });
 

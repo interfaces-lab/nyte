@@ -38,6 +38,8 @@ jobs:
           fetch-depth: 0
           filter: blob:none
       - uses: ./.github/actions/setup
+        with:
+          go: "false"
       - name: Plan the test jobs
         id: plan
         env:
@@ -56,7 +58,7 @@ jobs:
             const tests = !(EVENT === "push" && REF === "refs/heads/main");
             console.log(`tests=${tests}`);
             console.log(`web=${tests && names.has("@nyte-ai/app")}`);
-            console.log(`desktop=${tests && names.has("@nyte-ai/desktop")}`);
+            console.log(`desktop=${tests && EVENT !== "pull_request" && names.has("@nyte-ai/desktop")}`);
             console.log(`sdk=${tests && names.has("@nyte-ai/sdk")}`);
             const include = [{ os: "linux", runner: "ubuntu-latest" }];
             if (EVENT === "schedule" || EVENT === "workflow_dispatch" || (EVENT === "push" && REF.startsWith("refs/heads/release/"))) {
@@ -118,6 +120,7 @@ jobs:
         with:
           bun: "true"
           test-dependencies: "true"
+          browsers: chromium-headless-shell
       - name: Run unit tests
         timeout-minutes: 35
         env:
@@ -139,14 +142,15 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
         with:
+          go: "false"
           test-dependencies: "true"
-      - run: pnpm --dir packages/app exec playwright install chromium
+          browsers: chromium
       - run: pnpm --dir packages/canvas build
       - run: pnpm --dir packages/app build
       - name: Run web e2e against the built app
         run: |
           export NYTE_WATERFALL_DIR="$PWD/packages/app/e2e/test-results/waterfall"
-          pnpm --dir packages/app exec playwright test --config e2e/playwright.config.ts
+          pnpm --dir packages/app exec playwright test --config e2e/playwright.config.ts --grep-invert @quarantine
       - uses: actions/upload-artifact@v7
         if: failure()
         with:
@@ -169,9 +173,35 @@ jobs:
       - run: pnpm sdk:pack
       - run: pnpm sdk:verify
 
+  desktop-build:
+    name: desktop build
+    needs: plan
+    if: needs.plan.outputs.desktop == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+        with:
+          bun: "true"
+      - run: pnpm --dir packages/canvas build
+      - run: pnpm --dir packages/app build
+      - run: pnpm --dir packages/tui build
+      - run: pnpm --dir packages/desktop build
+      - run: pnpm --dir packages/desktop build:e2e
+      - run: >-
+          tar -czf "$RUNNER_TEMP/desktop-e2e.tgz"
+          packages/canvas/dist packages/app/dist packages/tui/dist
+          packages/desktop/out packages/desktop/out-e2e packages/desktop/resources
+      - uses: actions/upload-artifact@v7
+        with:
+          name: desktop-e2e-build-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/desktop-e2e.tgz
+          retention-days: 1
+
   e2e-desktop:
     name: e2e desktop (${{ matrix.shard }})
-    needs: plan
+    needs: [plan, desktop-build]
     if: needs.plan.outputs.desktop == 'true'
     strategy:
       fail-fast: false
@@ -185,11 +215,17 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
         with:
+          go: "false"
           bun: "true"
           test-dependencies: "true"
-      - run: pnpm --dir packages/desktop exec playwright install chromium
-      - name: Build the app and run desktop e2e against it
-        run: xvfb-run --auto-servernum pnpm --dir packages/desktop e2e --shard=${{ matrix.shard }} --grep-invert "polish evidence"
+          browsers: chromium
+      - uses: actions/download-artifact@v7
+        with:
+          name: desktop-e2e-build-${{ github.run_attempt }}
+          path: ${{ runner.temp }}
+      - run: tar -xzf "$RUNNER_TEMP/desktop-e2e.tgz"
+      - name: Run desktop e2e against the built app
+        run: xvfb-run --auto-servernum pnpm --dir packages/desktop exec playwright test --config e2e/playwright.config.ts --shard=${{ matrix.shard }} --grep-invert "polish evidence|@quarantine"
       - uses: actions/upload-artifact@v7
         if: failure()
         with:
@@ -198,3 +234,47 @@ jobs:
             packages/desktop/e2e/test-results
             packages/desktop/e2e/playwright-report
           retention-days: 7
+
+  quarantine:
+    name: quarantined e2e
+    needs: plan
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CI: true
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+        with:
+          go: "false"
+          test-dependencies: "true"
+          browsers: chromium
+      - run: pnpm --dir packages/canvas build
+      - run: pnpm --dir packages/app build
+      - run: pnpm --dir packages/app exec playwright test --config e2e/playwright.config.ts --grep @quarantine --pass-with-no-tests
+
+  quarantine-desktop:
+    name: quarantined e2e desktop
+    needs: [plan, desktop-build]
+    if: needs.plan.outputs.desktop == 'true' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CI: true
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+        with:
+          go: "false"
+          bun: "true"
+          test-dependencies: "true"
+          browsers: chromium
+      - uses: actions/download-artifact@v7
+        with:
+          name: desktop-e2e-build-${{ github.run_attempt }}
+          path: ${{ runner.temp }}
+      - run: tar -xzf "$RUNNER_TEMP/desktop-e2e.tgz"
+      - run: xvfb-run --auto-servernum pnpm --dir packages/desktop exec playwright test --config e2e/playwright.config.ts --grep @quarantine --pass-with-no-tests

@@ -1,18 +1,14 @@
 import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 import { control, row, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, keyframes, props } from "@stylexjs/stylex";
-import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
-import { flushSync } from "react-dom";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { MouseEvent, ReactElement, ReactNode, RefObject } from "react";
 import type {
-  BrowserBoundsMessage,
   BrowserBridge,
   BrowserDesignChange,
-  BrowserDesignPick,
   BrowserNavigationAction,
 } from "../../contract/bridge.ts";
 import { NO_DESIGN } from "../../contract/bridge.ts";
-import { addToChat, NO_CHAT } from "../../references/add-to-chat.ts";
 import { errorMessage } from "../../contract/errors.ts";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Button, ButtonLink } from "@nyte-ai/ui/button";
@@ -28,11 +24,8 @@ import { displayAddress, parseWebUrl } from "./browser-address.ts";
 import { AddressField } from "./browser-address-field.tsx";
 import type { AddressFieldHandle } from "./browser-address-field.tsx";
 import { useBrowserHistory } from "./browser-history.ts";
-import { createPageCover } from "./browser-cover.ts";
-import type { PageStill } from "./browser-cover.ts";
-import { keyOwner } from "../../lib/focus-owner.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
-import { overlayCovers, subscribeOverlayRects } from "../../components/overlay-occlusion.ts";
+import { focusGuest, placeGuest } from "./browser-guests.tsx";
 import {
   applyBrowserEvent,
   claimBrowserSurface,
@@ -43,6 +36,7 @@ import {
   useBrowserSurface,
 } from "./browser-surfaces.ts";
 import { DesignBar } from "./browser-design-bar.tsx";
+import { addPickToChat } from "./browser-pick.ts";
 import { DownloadsBar } from "./browser-downloads.tsx";
 import { FindBar } from "./browser-find.tsx";
 import type { FindBarHandle } from "./browser-find.tsx";
@@ -158,7 +152,6 @@ const styles = create({
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
     borderBottomColor: role.strokeQuaternary,
-    backgroundColor: role.bgBase,
     color: role.contentSecondary,
     fontSize: type.fontSm,
     lineHeight: type.leadingSm,
@@ -179,15 +172,6 @@ const styles = create({
     color: role.contentSecondary,
     fontSize: type.fontSm,
     lineHeight: type.leadingSm,
-  },
-  still: {
-    position: "absolute",
-    inset: 0,
-    width: "100%",
-    height: "100%",
-    objectFit: "contain",
-    objectPosition: "top",
-    pointerEvents: "none",
   },
 });
 
@@ -212,31 +196,20 @@ function releaseSurface(surface: string): void {
     .catch(() => undefined);
 }
 
-interface SurfacePlacement {
-  readonly still: string | undefined;
+interface PagePlacement {
   readonly focus: () => void;
   readonly cancelFocus: () => void;
 }
 
-function useSurfacePlacement(
+function usePagePlacement(
   slot: RefObject<HTMLDivElement | null>,
   surface: string,
-  url: string,
   visible: boolean,
-): SurfacePlacement {
-  const [still, setStill] = useState<PageStill | undefined>(undefined);
-  const lastRef = useRef<BrowserBoundsMessage | undefined>(undefined);
+): PagePlacement {
   const pageFocus = useRef(false);
   const placeRef = useRef<() => void>(() => undefined);
 
-  const capture = useEffectEvent(async (): Promise<PageStill | undefined> => {
-    const at = url;
-    const src = await browserBridge().captureFrame({ surface });
-
-    return src === undefined ? undefined : { url: at, src };
-  });
-
-  // oxlint-disable-next-line nyte-code/no-direct-effect -- keeps the native view's bounds on the slot, measured before paint
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- keeps the page's guest on the slot, measured before paint
   useLayoutEffect(() => {
     const element = slot.current;
 
@@ -247,45 +220,24 @@ function useSurfacePlacement(
       if (frame !== undefined) cancelAnimationFrame(frame);
       frame = undefined;
       const rect = element.getBoundingClientRect();
-      const placed = visible && rect.width > 0 && rect.height > 0;
+      const shown = visible && rect.width > 0 && rect.height > 0;
 
-      cover.update(
-        placed &&
-          overlayCovers({ left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom }),
-      );
-      const shown = placed && !cover.hidden();
-      const focus = shown && pageFocus.current && keyOwner() === undefined;
-
-      if (shown) pageFocus.current = false;
-
-      const message: BrowserBoundsMessage = {
+      placeGuest(
         surface,
-        bounds: { x: rect.left, y: rect.top, width: rect.width, height: rect.height },
-        visible: shown,
-        focus,
-      };
+        shown
+          ? {
+              rect: { x: rect.left, y: rect.top, width: rect.width, height: rect.height },
+              scale: 1,
+              clip: null,
+              interactive: true,
+            }
+          : null,
+      );
 
-      const last = lastRef.current;
-
-      const unchanged =
-        last !== undefined &&
-        last.visible === message.visible &&
-        last.bounds.x === message.bounds.x &&
-        last.bounds.y === message.bounds.y &&
-        last.bounds.width === message.bounds.width &&
-        last.bounds.height === message.bounds.height;
-
-      if (unchanged && !focus) return;
-      lastRef.current = message;
-      browserBridge().setBounds(message);
+      if (!shown || !pageFocus.current) return;
+      pageFocus.current = false;
+      focusGuest(surface);
     };
-
-    const cover = createPageCover({
-      capture,
-      show: (next) => flushSync(() => setStill(next)),
-      drop: () => setStill(undefined),
-      hide: measure,
-    });
 
     const schedule = (): void => {
       if (frame === undefined) frame = requestAnimationFrame(measure);
@@ -295,7 +247,7 @@ function useSurfacePlacement(
       if (event.target instanceof Node && event.target.contains(element)) schedule();
     };
 
-    const observer = new ResizeObserver(schedule);
+    const observer = new ResizeObserver(measure);
 
     for (let node: Element | null = element; node !== null; node = node.parentElement) {
       observer.observe(node);
@@ -303,30 +255,21 @@ function useSurfacePlacement(
 
     window.addEventListener("resize", schedule);
     document.addEventListener("scroll", scrolled, { capture: true, passive: true });
-    const unsubscribe = visible ? subscribeOverlayRects(schedule) : () => undefined;
     placeRef.current = schedule;
     measure();
 
     return () => {
       placeRef.current = () => undefined;
       observer.disconnect();
-      unsubscribe();
-      cover.dispose();
       window.removeEventListener("resize", schedule);
       document.removeEventListener("scroll", scrolled, { capture: true });
 
       if (frame !== undefined) cancelAnimationFrame(frame);
-      const last = lastRef.current;
-
-      if (last !== undefined && last.visible) {
-        lastRef.current = { ...last, visible: false, focus: false };
-        browserBridge().setBounds(lastRef.current);
-      }
+      placeGuest(surface, null);
     };
   }, [slot, surface, visible]);
 
   return {
-    still: still?.url === url ? still.src : undefined,
     focus: () => {
       pageFocus.current = true;
       placeRef.current();
@@ -356,8 +299,6 @@ function blockedPermissionsLabel(permissions: readonly string[]): string {
   return `Blocked by Nyte: ${names.join(", ")}`;
 }
 
-const PNG_DATA_URL = "data:image/png;base64,";
-
 function FocusAddressNextFrame({
   address,
 }: {
@@ -370,24 +311,6 @@ function FocusAddressNextFrame({
   });
 
   return null;
-}
-
-async function addPickToChat(pick: BrowserDesignPick): Promise<void> {
-  const name = pick.source.region === undefined ? "element.png" : "area.png";
-
-  const image =
-    pick.image?.startsWith(PNG_DATA_URL) === true
-      ? new File([Uint8Array.fromBase64(pick.image.slice(PNG_DATA_URL.length))], name, {
-          type: "image/png",
-        })
-      : undefined;
-
-  const added = await addToChat({
-    reference: { kind: "excerpt", source: pick.source, text: pick.text },
-    image,
-  });
-
-  if (added === false) throw new Error(NO_CHAT);
 }
 
 interface BrowserPanelProps {
@@ -427,7 +350,7 @@ export function BrowserPanel({
   const design = state?.design ?? NO_DESIGN;
   const showSurface = visible && hasPage && state.error === undefined;
 
-  const page = useSurfacePlacement(slotRef, surface, hasPage ? state.url : "", showSurface);
+  const page = usePagePlacement(slotRef, surface, showSurface);
 
   const holdRef = useRef<SurfaceHold | undefined>(undefined);
 
@@ -466,7 +389,7 @@ export function BrowserPanel({
 
     claimBrowserSurface(surface);
     void browserBridge()
-      .open({ surface, url, owner })
+      .open({ surface, url, owner, holder: "tab" })
       .then(
         (openState) => {
           if (hold.released || superseded) return;
@@ -526,6 +449,8 @@ export function BrowserPanel({
     void browserBridge()
       .design({ surface, change })
       .catch((cause: unknown) => setFailure(errorMessage(cause)));
+
+    if (change.kind === "on") focusGuest(surface);
   };
 
   const runShortcut = (shortcut: BrowserShortcut): boolean => {
@@ -832,9 +757,6 @@ export function BrowserPanel({
       )}
       <div {...props(styles.body)}>
         <div ref={slotRef} {...props(styles.slot)}>
-          {page.still !== undefined && (
-            <img src={page.still} alt="" aria-hidden="true" {...props(styles.still)} />
-          )}
           {!hasPage && failure === undefined && (
             <div {...props(styles.message)}>
               <span {...props(styles.messageTitle)}>Type an address or a search</span>

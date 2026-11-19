@@ -1,4 +1,3 @@
-import type { ProjectId } from "@nyte-ai/schema";
 import type { SessionId } from "@nyte-ai/sdk";
 import type { WindowDrafts } from "../chat/composer/drafts.ts";
 import type { PaneId } from "../panes/layout.ts";
@@ -7,7 +6,7 @@ import type { PaneCommand, PaneFocus } from "../panes/pane-commands.ts";
 import { chatPanes } from "../panes/pane-layout.ts";
 import type { ChatPane, PaneSelection } from "../panes/pane-layout.ts";
 import { SessionViewStateStore } from "../panes/session-view-state.ts";
-import type { ComposerViewState } from "../panes/session-view-state.ts";
+import type { ComposerViewState, DraftStart } from "../panes/session-view-state.ts";
 import { focusRequests, reduce, shownLayout } from "./model.ts";
 import type { WindowAction, WindowState } from "./model.ts";
 
@@ -109,8 +108,8 @@ export class WindowStore {
     return panes;
   }
 
-  newChat(tabId: string, project?: ProjectId): void {
-    this.viewState(tabId).startNewDraft(shownLayout(this.#state, tabId).focus[0], project);
+  newChat(tabId: string, start: DraftStart = {}): void {
+    this.viewState(tabId).startNewDraft(shownLayout(this.#state, tabId).focus[0], start);
     this.run(tabId, { kind: "show", selection: BLANK }, "always");
   }
 

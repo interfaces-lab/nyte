@@ -276,6 +276,8 @@ export const components = defineVars({
   "--nyte-menu-item-padding-block":
     "calc((var(--nyte-row-height-md) - var(--nyte-line-height-base)) / 2)",
   "--nyte-menu-width": "200px",
+  "--nyte-table-row-height": "28px",
+  "--nyte-table-wrap-width": "12em",
   "--nyte-model-menu-width": "230px",
   "--nyte-parameter-menu-width": "220px",
   "--nyte-menu-max-height": "min(320px, calc(100vh - 32px))",

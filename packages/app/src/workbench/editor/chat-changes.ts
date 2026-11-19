@@ -14,14 +14,18 @@ import { turnChangeOptions } from "../changes/change-scopes.ts";
 export interface ChatEdit {
   readonly path: string;
   readonly status: FileStatus;
-  readonly patches: readonly string[];
+  readonly patches: readonly ChatPatch[];
 }
 
-interface DatedPatch {
-  readonly path: string;
+export interface ChatPatch {
   readonly patch: string;
-  readonly created: boolean;
+  readonly session: SessionId;
   readonly at: number;
+}
+
+interface DatedPatch extends ChatPatch {
+  readonly path: string;
+  readonly created: boolean;
 }
 
 interface ChatEdits {
@@ -52,13 +56,15 @@ export function useChatChanges<T>(
 function readChats(workspace: WorkspaceId | undefined): readonly ChatEdit[] | undefined {
   if (workspace === undefined) return undefined;
 
-  const views = workspaceChats(workspace).flatMap((session) => {
+  const chats = workspaceChats(workspace).flatMap((session) => {
     const view = chatStore(session.id).getState().value;
 
-    return view === undefined ? [] : [view];
+    return view === undefined ? [] : [{ session: session.id, view }];
   });
 
-  const edits = views.map(readChat);
+  const views = chats.map((chat) => chat.view);
+
+  const edits = chats.map((chat) => readChat(chat.session, chat.view));
 
   const patched = edits
     .flatMap((chat) => chat.patched)
@@ -80,12 +86,12 @@ function readChats(workspace: WorkspaceId | undefined): readonly ChatEdit[] | un
     return {
       path,
       status: statuses.get(path) ?? (made.at(-1)?.created === true ? "added" : "modified"),
-      patches: made.map((edit) => edit.patch),
+      patches: made.map((edit) => ({ patch: edit.patch, session: edit.session, at: edit.at })),
     };
   });
 }
 
-function readChat(view: ChatView): ChatEdits {
+function readChat(session: SessionId, view: ChatView): ChatEdits {
   const known = chatEdits.get(view);
 
   if (known !== undefined) return known;
@@ -97,7 +103,15 @@ function readChat(view: ChatView): ChatEdits {
 
         return edit === undefined
           ? []
-          : [{ path: edit.path, patch: edit.patch, created: edit.created, at: message.at }];
+          : [
+              {
+                path: edit.path,
+                patch: edit.patch,
+                created: edit.created,
+                at: message.at,
+                session,
+              },
+            ];
       })
       .toReversed(),
     charged: turnChangeOptions(conversationTurns(view)).flatMap((turn) => turn.files),

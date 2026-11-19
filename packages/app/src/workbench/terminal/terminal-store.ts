@@ -8,13 +8,14 @@ import type {
   SessionId,
   WorkspaceId,
 } from "@nyte-ai/sdk";
+import { SdkError } from "@nyte-ai/sdk";
 import { toast } from "@nyte-ai/ui/toast";
 import { Type } from "typebox";
 import { useSyncExternalStore } from "react";
 import { TERMINAL_NOTICE_LIMITS } from "../../contract/bridge.ts";
 import { errorMessage } from "../../contract/errors.ts";
 import { nyte } from "../../contract/nyte.ts";
-import { connected } from "../../data/connection.ts";
+import { connected, onLinkReopened } from "../../data/connection.ts";
 import { hostWatch } from "../../data/watches.ts";
 import { workspacePath as pathOfWorkspace } from "../../data/workspaces.ts";
 import type { WorkbenchTabId } from "../model.ts";
@@ -26,6 +27,7 @@ import type { ProgramRecord } from "./terminal-program-status.ts";
 type ShellTerminalState =
   | { readonly kind: "starting" }
   | { readonly kind: "running" }
+  | { readonly kind: "lost" }
   | { readonly kind: "exited"; readonly exitCode: number | null }
   | { readonly kind: "failed"; readonly message: string };
 
@@ -253,9 +255,35 @@ async function follow(id: WorkbenchTabId, feed: Feed): Promise<void> {
     const message = errorMessage(cause);
 
     if (shellTab(id) === undefined) updateStream(id, { kind: "failed", message });
+    else if (lostLink(cause)) resume(id);
     else updateShell(id, { kind: "failed", message });
   }
 }
+
+function lostLink(cause: unknown): boolean {
+  return cause instanceof SdkError && cause.code === "unavailable";
+}
+
+function resume(id: WorkbenchTabId): void {
+  const tab = shellTab(id);
+
+  if (tab === undefined || creating.has(id)) return;
+  const feed = feeds.get(id);
+
+  void startShell(
+    id,
+    tab.cwd === "" ? null : tab.cwd,
+    feed === undefined || feed.job.key === null
+      ? null
+      : { workspace: feed.workspace, key: feed.job.key },
+    terminalPrinted(id),
+  );
+}
+
+onLinkReopened(() => {
+  for (const tab of snapshot.tabs.values())
+    if (tab.kind === "shell" && tab.state.kind === "lost") resume(tab.id);
+});
 
 function postNotices(id: WorkbenchTabId, notices: readonly OscNotice[]): void {
   if (notices.length === 0) return;
@@ -414,6 +442,8 @@ function startShell(
     }
 
     feeds.set(id, feed);
+    queued.delete(id);
+    output.get(id)?.reset();
 
     if (reattached === null && printed !== "") {
       const restored = `${printed}\r\n\u001b[2m[restored, new shell]\u001b[0m\r\n`;
@@ -437,6 +467,13 @@ function startShell(
   })()
     .catch((cause: unknown) => {
       typedAhead.delete(id);
+
+      if (lostLink(cause)) {
+        updateShell(id, { kind: "lost" });
+
+        return;
+      }
+
       const message = errorMessage(cause);
       updateShell(id, { kind: "failed", message });
       toast.add({ type: "error", title: "Couldn't start terminal", description: message });
@@ -752,7 +789,7 @@ export const terminalActions = {
     }
 
     if (shellTab(id)?.state.kind !== "starting") return;
-    remove(id);
+    forgetSaved(id);
 
     return startShell(id, workspacePath, null, "");
   },

@@ -235,7 +235,7 @@ export function Sidebar(): ReactElement {
   const newWorkspaceChat = async (place: SessionPlace): Promise<void> => {
     if (!(await activateWorkspace(place.path))) return;
     setExpanded(place.workspace, true);
-    panes.newChat();
+    windowTabs.newChat({ folder: place.path });
   };
 
   const showDrafts =

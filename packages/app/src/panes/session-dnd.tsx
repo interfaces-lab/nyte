@@ -32,7 +32,6 @@ import type { LayoutStore } from "./layout-store.ts";
 import { dropTarget } from "./pane-commands.ts";
 import type { SessionDropTarget } from "./pane-commands.ts";
 import { chatPanes } from "./pane-layout.ts";
-import { occludes } from "../components/overlay-occlusion.ts";
 import type { DropPlacement } from "./pane-layout.ts";
 import { SESSION_DRAG_ACTIVATION_DISTANCE } from "./session-dnd-geometry.ts";
 import type { SessionDragPoint } from "./session-dnd-geometry.ts";
@@ -172,7 +171,7 @@ function SessionDragSurface({ children }: { readonly children: ReactNode }): Rea
       </div>
       <DragOverlay dropAnimation={null} zIndex={10_000}>
         {dragged === undefined ? null : (
-          <div ref={occludes} data-slot="drag-overlay" {...props(text.base, styles.overlay)}>
+          <div data-slot="drag-overlay" {...props(text.base, styles.overlay)}>
             <span {...props(styles.overlayTitle)}>{dragged.title}</span>
           </div>
         )}

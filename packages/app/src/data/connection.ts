@@ -198,13 +198,25 @@ const health = installedLive((current) => current.health);
 
 let lastHealth = health.read();
 
+const reopenListeners = new Set<() => void>();
+
+export function onLinkReopened(listener: () => void): () => void {
+  reopenListeners.add(listener);
+
+  return () => reopenListeners.delete(listener);
+}
+
 health.subscribe(() => {
   const next = health.read();
 
-  if (linkReopened(lastHealth, next))
+  if (linkReopened(lastHealth, next)) {
     void queryClient.refetchQueries({
       type: "active",
       predicate: (query) => readsHost(query) && query.state.status === "error",
     });
+
+    for (const listener of reopenListeners) listener();
+  }
+
   lastHealth = next;
 });

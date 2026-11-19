@@ -1,13 +1,7 @@
-import { spawn } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
-import electronBinary from "electron";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { build } from "vite";
-import { expect, onTestFinished, test } from "vitest";
+import { expect, test } from "vitest";
+import { runBrowserHarness } from "./fixtures/browser-harness.ts";
 
 const PAGE = `<!doctype html><meta charset="utf-8"><title>design</title>
 <body style="font:16px system-ui;margin:0">
@@ -26,61 +20,24 @@ const PAGE = `<!doctype html><meta charset="utf-8"><title>design</title>
 </script>
 `;
 
-const HARNESS = `const { app, BrowserWindow, nativeImage } = require("electron");
-process.stdin.on("close", () => app.exit(1));
-process.stdin.resume();
-const http = require("node:http");
-const fs = require("node:fs");
-const { BrowserSurfaces } = require("./browser.cjs");
-
-const dir = __dirname;
-const profile = dir + "/profile";
-fs.mkdirSync(profile);
-app.setPath("userData", profile);
-app.setPath("sessionData", profile);
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-app.whenReady().then(async () => {
-  const page = fs.readFileSync(dir + "/page.html");
-  const server = http.createServer((req, res) => {
-    res.writeHead(200, { "content-type": "text/html" });
-    res.end(page);
-  });
-  await new Promise((r) => server.listen(0, "127.0.0.1", r));
-  const url = "http://127.0.0.1:" + server.address().port + "/";
-  const window = new BrowserWindow({ show: true, width: 600, height: 400 });
-  const id = window.webContents.id;
-  const events = [];
-  const surfaces = new BrowserSurfaces({
-    window: () => window,
-    emit: (event) => events.push(event),
-    filterListPath: dir + "/missing.bin",
-    windowShown: () => true,
-    settings: () => ({ blockAds: false, adblockAllowedHosts: [], upgradeToHttps: false }),
-    history: {
-      listen() {},
-      record: async () => {},
-      retitle: async () => {},
-      entries: async () => [],
-      clear: async () => {},
-      remove: async () => [],
-    },
-    pagePreload: dir + "/preload.js",
-    forwardKey: () => {},
-  });
+const SCRIPT = `
+  const pages = await serve(() => fs.readFileSync(dir + "/page.html"));
+  const url = pages.url + "/";
+  const context = browser();
+  const host = await context.guestWindow({ show: true, width: 600, height: 400 });
+  await focusWindow(host.window);
   const surface = "design";
-  surfaces.open({ surface, url }, id);
-  surfaces.setBounds({ surface, bounds: { x: 0, y: 0, width: 600, height: 400 }, visible: true, focus: true }, id);
-  const wc = surfaces.surface(surface).view.webContents;
-  if (wc.isLoading() || wc.getURL() === "") await new Promise((r) => wc.once("did-stop-loading", r));
+  context.surfaces.open({ surface, url, holder: "tab" }, host.id);
+  await host.show(surface, { x: 0, y: 0, width: 600, height: 400 });
+  await host.focus(surface);
+  const wc = await context.attached(surface);
+  await until(() => !wc.isLoading() && wc.getURL() === url);
   const children = () => wc.executeJavaScript("document.documentElement.children.length");
   const before = await children();
 
-  const picks = () => events.filter((event) => event.kind === "browser_design_pick");
-  const designs = () => events.filter((event) => event.kind === "browser_changed").map((event) => event.state.design);
-  const until = async (check) => {
-    for (let tries = 0; tries < 100 && !(await check()); tries++) await sleep(30);
-  };
+  const posted = () => context.events.map(({ event }) => event);
+  const picks = () => posted().filter((event) => event.kind === "browser_design_pick");
+  const designs = () => posted().filter((event) => event.kind === "browser_changed").map((event) => event.state.design);
   const click = (x, y) => {
     wc.sendInputEvent({ type: "mouseMove", x, y });
     wc.sendInputEvent({ type: "mouseDown", x, y, button: "left", clickCount: 1 });
@@ -102,7 +59,7 @@ app.whenReady().then(async () => {
   };
 
   await wc.executeJavaScript('document.querySelector("#field").focus(); true');
-  surfaces.design({ surface, change: { kind: "on" } });
+  context.surfaces.design({ surface, change: { kind: "on" } });
   await until(async () => (await children()) > before);
   const during = await children();
 
@@ -144,7 +101,7 @@ app.whenReady().then(async () => {
   const confirm = await wc.executeJavaScript(
     'JSON.parse(JSON.stringify(document.querySelector("#confirm").getBoundingClientRect()))',
   );
-  surfaces.design({ surface, change: { kind: "on" } });
+  context.surfaces.design({ surface, change: { kind: "on" } });
   await until(async () => (await children()) > before);
   click(confirm.x + 20, confirm.y + 10);
   await until(() => picks().length === 3);
@@ -163,7 +120,7 @@ app.whenReady().then(async () => {
   await until(() => designs().length > views);
   const inner = await wc.executeJavaScript('document.querySelector("#inner").value');
 
-  console.log("DESIGN_E2E " + JSON.stringify({
+  report({
     before,
     during,
     after,
@@ -182,54 +139,16 @@ app.whenReady().then(async () => {
     designs: designs(),
     seen,
     seenAfter: seenAfter.filter((entry) => entry.startsWith("key")),
-  }));
-  server.close();
-  app.exit(0);
-}).catch((e) => { console.log("DESIGN_E2E_FATAL " + e.stack); app.exit(1); });
-`;
-
-const cjs = async (entry: string, file: string, dir: string): Promise<void> => {
-  await build({
-    logLevel: "silent",
-    configFile: false,
-    ssr: { noExternal: true },
-    build: {
-      ssr: fileURLToPath(new URL(entry, import.meta.url)),
-      outDir: dir,
-      emptyOutDir: false,
-      minify: false,
-      rollupOptions: { external: ["electron"], output: { format: "cjs", entryFileNames: file } },
-    },
   });
-};
+  pages.close();
+`;
 
 test.runIf(process.env["NYTE_DESKTOP_BROWSER_E2E"] === "1")(
   "Design Mode picks an element and an area with their crops, takes its keys, and keeps the page from seeing any of it",
   async () => {
-    const dir = await mkdtemp(join(tmpdir(), "nyte-design-e2e-"));
-    onTestFinished(() => rm(dir, { recursive: true, force: true }));
-
-    await cjs("./browser.ts", "browser.cjs", dir);
-    await cjs("../../preload/browser-page.ts", "preload.js", dir);
-    await writeFile(join(dir, "page.html"), PAGE);
-    await writeFile(join(dir, "harness.js"), HARNESS);
-
-    const output = await new Promise<string>((resolve, reject) => {
-      const child = spawn(
-        Value.Parse(Type.String(), electronBinary),
-        [join(dir, "harness.js"), "--use-mock-keychain", "--password-store=basic"],
-        { stdio: ["pipe", "pipe", "ignore"] },
-      );
-
-      let stdout = "";
-      child.stdout.on("data", (chunk: Buffer) => (stdout += chunk.toString()));
-      child.on("error", reject);
-      child.on("close", () => resolve(stdout));
-    });
-
-    const line = output.split("\n").find((entry) => entry.startsWith("DESIGN_E2E "));
-    expect(line, output).toBeDefined();
-    const report: unknown = JSON.parse((line ?? "").slice("DESIGN_E2E ".length));
+    const report: unknown = JSON.parse(
+      await runBrowserHarness({ script: SCRIPT, files: { "page.html": PAGE } }),
+    );
 
     expect(report).toMatchObject({
       during: 3,

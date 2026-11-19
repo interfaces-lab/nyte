@@ -1,12 +1,11 @@
 import { Value } from "typebox/value";
 import type { HostState } from "../contract/bridge.ts";
 import type { AppSwitch, ArrivalSubject, DesktopWindowOpen } from "../contract/desktop-window.ts";
-import { nyte, windowApp } from "../contract/nyte.ts";
+import { nyte, offeredApps, windowApp } from "../contract/nyte.ts";
 import { documentsApi } from "../data/documents.ts";
 import { keys, queryClient } from "../data/query-client.ts";
 import { commitHostWorkspace } from "../data/workspaces.ts";
 import { currentLights, HERE, watchLights } from "../light/light.ts";
-import type { Light } from "../light/light.ts";
 import { launch } from "../workbench/commands.ts";
 import { EDITOR_SLOT } from "../workbench/model.ts";
 import { spanTarget } from "../workbench/editor/editor-selection.ts";
@@ -15,11 +14,14 @@ import type { FileTarget } from "../workbench/editor/file-store.ts";
 import { workbenchViewKey } from "../workbench/paths.ts";
 import { workbench } from "../workbench/store.ts";
 
-/** Opens or focuses an app on this window's workspace, carrying the person's light. False where the client has one app. */
+/**
+ * Opens or focuses an app on this window's workspace, carrying the person's light. False where the client has one app,
+ * or doesn't offer that one.
+ */
 export function switchApp(to: AppSwitch): boolean {
   const open = nyte.host.switchApp;
 
-  if (open === undefined) return false;
+  if (open === undefined || (to !== "last" && !offeredApps().includes(to))) return false;
 
   if (to === windowApp()) return true;
 
@@ -33,9 +35,9 @@ export function switchApp(to: AppSwitch): boolean {
 }
 
 /**
- * Opens a window on the project a switch or a relaunch named. The first time an app shows a project, Code opens
- * maximized on the Editor with its explorer and Studio maximized on Design; after that each app restores its own last
- * arrangement.
+ * Opens a window on the project a switch or a relaunch named. The first time an app shows a project, Code opens the
+ * Editor with its explorer and the chat panel beside it, and Studio opens maximized on Design; after that each app
+ * restores its own last arrangement.
  */
 export function openAppWindow(open: Extract<DesktopWindowOpen, { kind: "app" }>): void {
   if (open.workspace !== undefined) commitHostWorkspace(open.workspace);
@@ -46,13 +48,43 @@ export function openAppWindow(open: Extract<DesktopWindowOpen, { kind: "app" }>)
   if (fresh && app === "code") {
     launch(view, "editor");
     workbench.dispatch(view, { kind: "toggle-sidebar", slot: EDITOR_SLOT });
+    workbench.dispatch(view, { kind: "set-width", pixels: CODE_CHAT_WIDTH });
   }
 
-  if (fresh && app === "studio") launch(view, "design");
-
-  if (fresh && app !== "nyte") workbench.dispatch(view, { kind: "maximize" });
+  if (fresh && app === "studio") {
+    launch(view, "design");
+    workbench.dispatch(view, { kind: "maximize" });
+  }
 
   if (open.subject !== undefined) void landAt(open.subject);
+}
+
+const CODE_CHAT_WIDTH = 440;
+
+/**
+ * Keeps a Code window's workbench as its main area: whatever project the window shows, the workbench stays open with
+ * an Editor in it, so the window never falls back to Nyte's chat-first layout. Closing the last other tab shows the
+ * Editor again.
+ */
+export function keepCodeWorkbench(): () => void {
+  const keep = (): void => {
+    const view = workbenchViewKey(queryClient.getQueryData<HostState>(keys.host)?.workspace?.path);
+    const state = workbench.getView(view);
+
+    if (!state.expanded || !state.tabs.some((tab) => tab.kind === "editor")) launch(view, "editor");
+  };
+
+  keep();
+  const leaveWorkbench = workbench.subscribe(keep);
+
+  const leaveHost = queryClient.getQueryCache().subscribe((event) => {
+    if (event.query.queryKey[0] === keys.host[0]) keep();
+  });
+
+  return () => {
+    leaveWorkbench();
+    leaveHost();
+  };
 }
 
 /**
@@ -84,14 +116,14 @@ export function followLight(): () => void {
   return watchLights(() => {
     const now = currentLights();
 
-    const latest = [now.you, ...now.agents]
-      .filter((light): light is Light => light !== null)
-      .toSorted((left, right) => right.at - left.at)[0];
+    const latest = [...(now.you === null ? [] : [now.you]), ...now.agents].toSorted(
+      (left, right) => right.at - left.at,
+    )[0];
 
     if (latest === undefined || latest.at <= seen) return;
     seen = latest.at;
 
-    if (latest.window === HERE || (latest !== now.you && document.hasFocus())) return;
+    if ("window" in latest && latest.window === HERE) return;
     void landAt(latest.subject);
   });
 }

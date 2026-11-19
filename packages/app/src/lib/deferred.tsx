@@ -1,11 +1,16 @@
-import { Suspense, use } from "react";
-import type { ReactElement, ReactNode } from "react";
+import { useSyncExternalStore } from "react";
+import type { ReactNode } from "react";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import type { DeferredRuntimes } from "./deferred-entries.ts";
 import deferredUrls from "./deferred-urls.ts";
 
 type DeferredName = keyof DeferredRuntimes;
 
 const published: { [Name in DeferredName]?: DeferredRuntimes[Name] } = {};
+
+const failed = new Set<DeferredName>();
+
+const listeners = new Set<() => void>();
 
 const loading = new Map<DeferredName, Promise<void>>();
 
@@ -18,6 +23,8 @@ export function publishDeferred<Name extends DeferredName>(
   runtime: DeferredRuntimes[Name],
 ): void {
   published[name] = runtime;
+  failed.delete(name);
+  notify();
 }
 
 export function readDeferred<Name extends DeferredName>(
@@ -29,17 +36,20 @@ export function readDeferred<Name extends DeferredName>(
 export function loadDeferred<Name extends DeferredName>(
   name: Name,
 ): Promise<DeferredRuntimes[Name]> {
-  const ready = published[name];
+  const ready = readDeferred(name);
 
   if (ready !== undefined) return Promise.resolve(ready);
 
   return loadEntry(name).then(() => requirePublished(name));
 }
 
-function useDeferred<Name extends DeferredName>(name: Name): DeferredRuntimes[Name] {
-  if (published[name] === undefined) use(loadEntry(name));
-
-  return requirePublished(name);
+export function useDeferred<Name extends DeferredName>(
+  name: Name,
+): DeferredRuntimes[Name] | "failed" | undefined {
+  return useSyncExternalStore(
+    subscribe,
+    () => published[name] ?? (failed.has(name) ? "failed" : undefined),
+  );
 }
 
 export function Deferred<Name extends DeferredName>({
@@ -50,26 +60,28 @@ export function Deferred<Name extends DeferredName>({
   readonly entry: Name;
   readonly fallback?: ReactNode;
   readonly children: (runtime: DeferredRuntimes[Name]) => ReactNode;
-}): ReactElement {
-  return (
-    <Suspense fallback={fallback}>
-      <DeferredContent entry={entry}>{children}</DeferredContent>
-    </Suspense>
-  );
+}): ReactNode {
+  const runtime = useDeferred(entry);
+
+  useMountEffect(() => {
+    void loadDeferred(entry).catch(() => undefined);
+  });
+
+  return runtime === undefined || runtime === "failed" ? fallback : children(runtime);
 }
 
-function DeferredContent<Name extends DeferredName>({
-  entry,
-  children,
-}: {
-  readonly entry: Name;
-  readonly children: (runtime: DeferredRuntimes[Name]) => ReactNode;
-}): ReactNode {
-  return children(useDeferred(entry));
+function subscribe(listener: () => void): () => void {
+  listeners.add(listener);
+
+  return () => listeners.delete(listener);
+}
+
+function notify(): void {
+  for (const listener of listeners) listener();
 }
 
 function requirePublished<Name extends DeferredName>(name: Name): DeferredRuntimes[Name] {
-  const runtime = published[name];
+  const runtime = readDeferred(name);
 
   if (runtime === undefined) throw new Error(`The ${name} chunk has not published its runtime`);
 
@@ -81,6 +93,7 @@ function loadEntry(name: DeferredName): Promise<void> {
 
   if (started !== undefined) return started;
 
+  if (failed.delete(name)) notify();
   const pending = injectEntry(name);
 
   loading.set(name, pending);
@@ -109,6 +122,8 @@ function injectEntry(name: DeferredName): Promise<void> {
     const fail = (): void => {
       loading.delete(name);
       script.remove();
+      failed.add(name);
+      notify();
       reject(new Error(`The ${name} chunk did not load`));
     };
 
@@ -117,7 +132,7 @@ function injectEntry(name: DeferredName): Promise<void> {
     script.onload = () => {
       window.clearTimeout(timeout);
 
-      if (published[name] === undefined) fail();
+      if (readDeferred(name) === undefined) fail();
       else resolve();
     };
 

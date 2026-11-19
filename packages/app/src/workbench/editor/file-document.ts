@@ -10,6 +10,11 @@ interface FileSaveInput {
   readonly version: FileVersion;
 }
 
+interface FileSaveOperations {
+  readonly write: (input: FileSaveInput) => Promise<WriteOutcome>;
+  readonly format?: (input: FileSaveInput) => Promise<FormatOutcome>;
+}
+
 type FileSaveState =
   | { readonly kind: "idle" }
   | { readonly kind: "saving" }
@@ -17,14 +22,23 @@ type FileSaveState =
   | { readonly kind: "conflict" }
   | { readonly kind: "error"; readonly message: string };
 
-/** What the document knows besides the text: what disk holds, whether the text differs from it, and how saving is going. */
 export interface FileDocumentSnapshot {
   readonly savedContents: string;
   readonly version: FileVersion;
   readonly dirty: boolean;
+  readonly remote: boolean;
   readonly revision: number;
   readonly status: FileSaveState;
 }
+
+export type DocumentNews =
+  | {
+      readonly kind: "changes";
+      readonly changes: readonly EditorChange[];
+      readonly length: number;
+    }
+  | { readonly kind: "text"; readonly contents: string }
+  | { readonly kind: "saved"; readonly contents: string; readonly version: FileVersion };
 
 /**
  * An editor that shows the document. While one is attached it owns the text: the document reads it from there only
@@ -50,6 +64,9 @@ export function createFileDocument(document: TextFile, draft?: string) {
   let savedLength = flatLength(document.contents);
   const editors: DocumentEditor[] = [];
   let writing: { readonly editor: DocumentEditor; readonly reported: boolean } | undefined;
+  let saving: Promise<void> | undefined;
+  let again: { operations: FileSaveOperations; readonly done: Promise<void> } | undefined;
+  let arrived: TextFile | undefined;
 
   const reader = (): DocumentEditor | undefined => editors.find((editor) => editor.alive());
 
@@ -61,11 +78,17 @@ export function createFileDocument(document: TextFile, draft?: string) {
     savedContents: document.contents,
     version: document.version,
     dirty: held !== document.contents,
+    remote: false,
     revision: 0,
     status: { kind: "idle" },
   };
 
   const listeners = new Set<() => void>();
+  const watchers = new Set<(news: DocumentNews) => void>();
+
+  const tell = (news: DocumentNews): void => {
+    for (const watcher of watchers) watcher(news);
+  };
 
   const publish = (next: FileDocumentSnapshot): void => {
     snapshot = next;
@@ -76,10 +99,11 @@ export function createFileDocument(document: TextFile, draft?: string) {
   const differs = (saved: string, savedFlat: number): boolean =>
     length() !== savedFlat || text() !== saved;
 
-  const typed = (): void =>
+  const typed = (remote: boolean): void =>
     publish({
       ...snapshot,
       dirty: differs(snapshot.savedContents, savedLength),
+      remote,
       revision: snapshot.revision + 1,
       status:
         snapshot.status.kind === "saved" || snapshot.status.kind === "error"
@@ -117,9 +141,114 @@ export function createFileDocument(document: TextFile, draft?: string) {
       savedContents: next.contents,
       version: next.version,
       dirty: false,
+      remote: false,
       revision: snapshot.revision + 1,
       status: { kind: "idle" },
     });
+  };
+
+  const observeDisk = (next: TextFile): void => {
+    if (saving !== undefined) {
+      arrived = next;
+
+      return;
+    }
+
+    if (snapshot.status.kind === "saving" || snapshot.dirty) return;
+
+    if (snapshot.version === next.version) return;
+    reload(next);
+  };
+
+  const saveOnce = async (operations: FileSaveOperations): Promise<void> => {
+    const captured = snapshot;
+    const unformatted = text();
+    publish({ ...snapshot, status: { kind: "saving" } });
+
+    try {
+      const input = { path, contents: unformatted, version: captured.version };
+
+      const formatted = await operations.format?.(input);
+
+      if (snapshot.revision !== captured.revision) {
+        publish({ ...snapshot, status: { kind: "idle" } });
+
+        return;
+      }
+
+      const contents = formatted?.kind === "formatted" ? formatted.contents : unformatted;
+
+      if (setText(contents)) {
+        publish({ ...snapshot, revision: snapshot.revision + 1 });
+        tell({ kind: "text", contents });
+      }
+
+      const outcome = await operations.write({ ...input, contents });
+
+      if (outcome.kind === "stale") {
+        publish({ ...snapshot, status: { kind: "conflict" } });
+
+        return;
+      }
+
+      if (outcome.kind === "missing-parent") {
+        publish({
+          ...snapshot,
+          status: { kind: "error", message: "The file's folder is gone." },
+        });
+
+        return;
+      }
+
+      savedLength = flatLength(contents);
+      publish({
+        ...snapshot,
+        savedContents: contents,
+        version: outcome.version,
+        dirty: differs(contents, savedLength),
+        status: { kind: "saved" },
+      });
+      tell({ kind: "saved", contents, version: outcome.version });
+    } catch (cause: unknown) {
+      publish({
+        ...snapshot,
+        status: {
+          kind: "error",
+          message: errorMessage(cause),
+        },
+      });
+    } finally {
+      saving = undefined;
+      const late = arrived;
+      arrived = undefined;
+
+      if (late !== undefined && late.version !== captured.version) observeDisk(late);
+    }
+  };
+
+  const save = (operations: FileSaveOperations): Promise<void> => {
+    if (saving === undefined) {
+      saving = saveOnce(operations);
+
+      return saving;
+    }
+
+    if (again !== undefined) {
+      again.operations = operations;
+
+      return again.done;
+    }
+
+    const done = saving.then(async () => {
+      const next = again;
+      again = undefined;
+
+      if (next !== undefined && snapshot.dirty) await save(next.operations);
+    });
+
+    again = { operations, done };
+
+    return done;
   };
 
   return {
@@ -136,7 +265,46 @@ export function createFileDocument(document: TextFile, draft?: string) {
       path = nextPath;
     },
     edit(contents: string): void {
-      if (setText(contents)) typed();
+      if (!setText(contents)) return;
+      typed(false);
+      tell({ kind: "text", contents });
+    },
+    watch(watcher: (news: DocumentNews) => void): () => void {
+      watchers.add(watcher);
+
+      return () => {
+        watchers.delete(watcher);
+      };
+    },
+    receive(news: DocumentNews): boolean {
+      if (news.kind === "saved") {
+        savedLength = flatLength(news.contents);
+        publish({
+          ...snapshot,
+          savedContents: news.contents,
+          version: news.version,
+          dirty: differs(news.contents, savedLength),
+        });
+
+        return true;
+      }
+
+      if (news.kind === "text") {
+        if (setText(news.contents)) typed(true);
+
+        return true;
+      }
+
+      const live = editors.filter((editor) => editor.alive());
+
+      if (live.length === 0) return false;
+
+      for (const editor of live)
+        write(editor, editor === live[0], () => editor.apply(news.changes));
+
+      typed(true);
+
+      return length() === news.length;
     },
     attach(editor: DocumentEditor): void {
       const current = text();
@@ -162,79 +330,19 @@ export function createFileDocument(document: TextFile, draft?: string) {
       for (const other of editors)
         if (other !== editor && other.alive()) write(other, false, () => other.apply(changes));
 
-      typed();
+      typed(false);
+      tell({ kind: "changes", changes, length: length() });
 
       return true;
     },
-    observeDisk(next: TextFile): void {
-      if (snapshot.status.kind === "saving" || snapshot.dirty) return;
-
-      if (snapshot.version === next.version) return;
-      reload(next);
-    },
+    observeDisk,
     discard(next: TextFile): void {
       if (snapshot.status.kind === "saving") return;
       reload(next);
+      tell({ kind: "text", contents: next.contents });
+      tell({ kind: "saved", contents: next.contents, version: next.version });
     },
-    async save(operations: {
-      readonly write: (input: FileSaveInput) => Promise<WriteOutcome>;
-      readonly format?: (input: FileSaveInput) => Promise<FormatOutcome>;
-    }): Promise<void> {
-      if (snapshot.status.kind === "saving") return;
-      const captured = snapshot;
-      const unformatted = text();
-      publish({ ...snapshot, status: { kind: "saving" } });
-
-      try {
-        const input = { path, contents: unformatted, version: captured.version };
-
-        const formatted = await operations.format?.(input);
-
-        if (snapshot.revision !== captured.revision) {
-          publish({ ...snapshot, status: { kind: "idle" } });
-
-          return;
-        }
-
-        const contents = formatted?.kind === "formatted" ? formatted.contents : unformatted;
-
-        if (setText(contents)) publish({ ...snapshot, revision: snapshot.revision + 1 });
-
-        const outcome = await operations.write({ ...input, contents });
-
-        if (outcome.kind === "stale") {
-          publish({ ...snapshot, status: { kind: "conflict" } });
-
-          return;
-        }
-
-        if (outcome.kind === "missing-parent") {
-          publish({
-            ...snapshot,
-            status: { kind: "error", message: "The file's folder is gone." },
-          });
-
-          return;
-        }
-
-        savedLength = flatLength(contents);
-        publish({
-          ...snapshot,
-          savedContents: contents,
-          version: outcome.version,
-          dirty: differs(contents, savedLength),
-          status: { kind: "saved" },
-        });
-      } catch (cause: unknown) {
-        publish({
-          ...snapshot,
-          status: {
-            kind: "error",
-            message: errorMessage(cause),
-          },
-        });
-      }
-    },
+    save,
   };
 }
 

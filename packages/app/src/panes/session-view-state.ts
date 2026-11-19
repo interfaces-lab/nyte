@@ -44,6 +44,13 @@ export interface BlankViewState {
   readonly composer: ComposerViewState;
   readonly choice: DraftChoice | undefined;
   readonly project?: ProjectId;
+  /** The folder picked for this draft, or null for Home. */
+  readonly folder?: string | null;
+}
+
+export interface DraftStart {
+  readonly project?: ProjectId;
+  readonly folder?: string | null;
 }
 
 export type DraftStatus =
@@ -217,7 +224,8 @@ export class SessionViewStateStore {
     if (
       storedChanged(current.composer, next.composer) ||
       current.choice !== next.choice ||
-      current.project !== next.project
+      current.project !== next.project ||
+      current.folder !== next.folder
     )
       this.#window.saveDraft(current, next);
   }
@@ -226,15 +234,17 @@ export class SessionViewStateStore {
     return this.#window.drafts();
   }
 
-  startNewDraft(paneId: PaneId, project?: ProjectId): void {
+  startNewDraft(paneId: PaneId, start: DraftStart): void {
     const drafts = this.#window.pane(this.#tabId, paneId);
     const current = drafts.active;
     const kept = !draftHasContent(current);
+    const base = kept ? current : this.#window.createDraft();
+    const folder = start.folder === undefined ? base.folder : start.folder;
 
-    if (kept && current.project === project) return;
+    if (kept && current.project === start.project && current.folder === folder) return;
 
     if (!kept) drafts.parked.set(current.id, current);
-    drafts.active = { ...(kept ? current : this.#window.createDraft()), project };
+    drafts.active = { ...base, project: start.project, folder };
     this.#window.emit();
   }
 

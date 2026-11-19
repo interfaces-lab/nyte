@@ -42,6 +42,7 @@ import {
   WORKBENCH_CHAT_TAB,
   WORKBENCH_KINDS,
   workbenchLaunchers,
+  workbenchNarrow,
   workbenchShowsChat,
 } from "./model.ts";
 import type {
@@ -302,7 +303,8 @@ export function WorkbenchTabStrip({
       ? null
       : tabSlot(active);
 
-  const chatTab = view.layout.kind === "maximized";
+  const chatTab =
+    view.layout.kind === "maximized" && (windowApp() !== "code" || workbenchNarrow(view.layout));
 
   const inactive = [...(chatTab ? [WORKBENCH_CHAT_TAB] : []), ...tabs.map((tab) => tab.id)].filter(
     (id) => id !== activeValue,
@@ -628,7 +630,7 @@ export function WorkbenchTabStrip({
           </Menu>
         </span>
       )}
-      {(chatTab || tabs.length > 0) && (
+      {(chatTab || tabs.length > 0 || windowApp() === "code") && (
         <span data-strip-plus="" {...props(styles.control)}>
           <Menu>
             <Tooltip>

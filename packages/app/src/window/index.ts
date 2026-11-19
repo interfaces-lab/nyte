@@ -76,10 +76,17 @@ const sources = {
       return view.expanded && view.layout.kind === "maximized" && !workbenchShowsChat(view.layout);
     },
     subscribe(notice: () => void) {
+      let path = readHost()?.workspace?.path;
+
       const leave = [
         workbench.subscribe(notice),
         queryClient.getQueryCache().subscribe((event) => {
-          if (event.query.queryKey[0] === keys.host[0]) notice();
+          if (event.query.queryKey[0] !== keys.host[0]) return;
+          const next = readHost()?.workspace?.path;
+
+          if (next === path) return;
+          path = next;
+          notice();
         }),
       ];
 

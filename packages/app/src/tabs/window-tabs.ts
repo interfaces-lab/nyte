@@ -1,4 +1,3 @@
-import type { ProjectId } from "@nyte-ai/schema";
 import type { SessionId } from "@nyte-ai/sdk";
 import { chatPanes } from "../panes/pane-layout.ts";
 import { WindowDrafts } from "../chat/composer/drafts.ts";
@@ -9,6 +8,9 @@ import { parseStrip, storeStrip } from "./stored-strip.ts";
 import { WindowStore } from "./window-store.ts";
 import type { TabPanes } from "./window-store.ts";
 import type { DesktopWindow } from "../contract/desktop-window.ts";
+import type { DraftStart } from "../panes/session-view-state.ts";
+import { preferences } from "../preferences/index.ts";
+import { windowApp } from "../contract/nyte.ts";
 import { localArea, readStored, removeStored, writeStored } from "../lib/storage.ts";
 
 const WINDOW_KEY_PREFIX = "nyte.window.v1:";
@@ -39,7 +41,7 @@ function forgetWindows(windowIds: readonly string[]): void {
 }
 
 class WindowTabs {
-  #strip = false;
+  #stored = false;
   #windowKey = `${WINDOW_KEY_PREFIX}web`;
   #startupDestination = true;
   #drafts: WindowDrafts | undefined;
@@ -51,7 +53,7 @@ class WindowTabs {
   }
 
   get strip(): boolean {
-    return this.#strip;
+    return this.#stored && windowApp() !== "code";
   }
 
   get startupDestination(): boolean {
@@ -59,7 +61,7 @@ class WindowTabs {
   }
 
   start(desktopWindow: Pick<DesktopWindow, "id" | "launch">): void {
-    this.#strip = true;
+    this.#stored = true;
     this.#windowKey = `${WINDOW_KEY_PREFIX}${desktopWindow.id}`;
 
     if (desktopWindow.launch !== undefined) forgetWindows(desktopWindow.launch.windowIds);
@@ -80,7 +82,7 @@ class WindowTabs {
 
   dispatch(action: WindowAction): void {
     this.store.dispatch(
-      action.kind === "open" && !this.#strip ? { ...action, target: "here" } : action,
+      action.kind === "open" && !this.strip ? { ...action, target: "here" } : action,
     );
   }
 
@@ -88,9 +90,10 @@ class WindowTabs {
     this.dispatch({ kind: "open", place: { kind: "session", sessionId }, target: intent });
   }
 
-  newChat(project?: ProjectId): void {
-    this.dispatch(this.#strip ? { kind: "new-tab" } : { kind: "leave-page" });
-    this.store.newChat(this.paneTabId(), project);
+  newChat(start: DraftStart = {}): void {
+    if (start.folder !== undefined) preferences.draftFolder.set(start.folder);
+    this.dispatch(this.strip ? { kind: "new-tab" } : { kind: "leave-page" });
+    this.store.newChat(this.paneTabId(), start);
   }
 
   showDraft(draftId: string): void {
@@ -108,7 +111,7 @@ class WindowTabs {
         : undefined;
 
     if (owner !== undefined) this.dispatch({ kind: "activate-tab", tabId: owner.id });
-    else if (this.#strip) this.dispatch({ kind: "new-tab" });
+    else if (this.strip) this.dispatch({ kind: "new-tab" });
     else this.dispatch({ kind: "leave-page" });
     this.store.selectDraft(this.paneTabId(), draftId);
   }
@@ -134,7 +137,7 @@ class WindowTabs {
   }
 
   #save(): void {
-    if (!this.#strip) return;
+    if (!this.#stored) return;
     this.#saveTimer ??= setTimeout(this.#flush, SAVE_DELAY_MS);
   }
 

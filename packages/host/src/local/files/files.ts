@@ -49,7 +49,9 @@ export type LocalFiles = Omit<FilesApi, "bytes"> & {
   bytes(path: string): Promise<VersionedReader>;
 };
 
-export const TEXT_LIMIT = 1024 * 1024;
+export const TEXT_LIMIT = 64 * 1024 * 1024;
+
+const SEARCH_TEXT_LIMIT = 1024 * 1024;
 
 const CHUNK = 64 * 1024;
 
@@ -779,7 +781,7 @@ async function* scanText(
 }
 
 async function readSearchable(path: string, size: number | null): Promise<string | null> {
-  if ((size ?? 0) > TEXT_LIMIT) return null;
+  if ((size ?? 0) > SEARCH_TEXT_LIMIT) return null;
   const bytes = await readFile(path).catch(() => null);
 
   return bytes === null ? null : decodeText(bytes);

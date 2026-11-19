@@ -14,7 +14,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { ToggleGroup } from "@nyte-ai/ui/toggle-group";
 import { switchApp } from "../commands/apps.ts";
-import { DESKTOP_APPS } from "../contract/desktop-app.ts";
 import type { DesktopApp } from "../contract/desktop-app.ts";
 import { DESKTOP_APP_LABELS } from "../contract/desktop-window.ts";
 import {
@@ -24,12 +23,15 @@ import {
   usePaneLayout,
 } from "../panes/pane-context.tsx";
 import { activeSelection, chatPanes, sameSelection } from "../panes/pane-layout.ts";
-import { nyte, windowApp } from "../contract/nyte.ts";
+import { nyte, offeredApps, windowApp } from "../contract/nyte.ts";
 import { chatDirectory, chatTitle, useChat } from "../chats/index.ts";
 import { useHostState } from "../data/host.ts";
 import { sessionActions } from "../data/session-rows.ts";
 import { useWorkbenchView, workbench } from "../workbench/store.ts";
-import { workbenchNarrow } from "../workbench/model.ts";
+import { EDITOR_SLOT, tabSlot, workbenchNarrow, workbenchShowsChat } from "../workbench/model.ts";
+import { shownWorkbenchTab } from "../workbench/selectors.ts";
+import { toggleExplorer } from "../workbench/commands.ts";
+import { ChatHistory } from "./chat-history.tsx";
 import { attachSidebarWidth, shellActions, useStagePage } from "../tabs/shell-state.ts";
 import { attachActiveWorkbenchWidth } from "../workbench/width.ts";
 import { sessionIsRunning } from "../sidebar/sidebar-view.ts";
@@ -191,11 +193,22 @@ export function Titlebar(): ReactElement {
   const strip = windowTabs.strip;
   const tabs = useWindowTabsState();
   const focused = useSyncExternalStore(watchWindowFocus, () => document.hasFocus());
+  const code = windowApp() === "code";
+  const shownTab = shownWorkbenchTab(view, scope, capabilities);
+
+  const explorerOpen =
+    shownTab !== null && tabSlot(shownTab) === EDITOR_SLOT && view.sidebars.includes(EDITOR_SLOT);
+
+  const leftOpen = code ? explorerOpen : sidebarVisible;
+  const leftLabel = code ? "Explorer" : "Sidebar";
 
   const sidebarSlot = (
     <span
       ref={attachSidebarWidth}
-      {...props(titlebarStyles.sidebarSlot, !sidebarVisible && titlebarStyles.sidebarSlotHidden)}
+      {...props(
+        titlebarStyles.sidebarSlot,
+        (code || !sidebarVisible) && titlebarStyles.sidebarSlotHidden,
+      )}
     >
       <span {...props(titlebarStyles.actionTrack)}>
         <Tooltip>
@@ -204,34 +217,39 @@ export function Titlebar(): ReactElement {
               <Toggle
                 iconOnly
                 indicator="glyph"
-                aria-label={sidebarVisible ? "Hide sidebar" : "Show sidebar"}
-                pressed={sidebarVisible}
+                aria-label={`${leftOpen ? "Hide" : "Show"} ${leftLabel.toLowerCase()}`}
+                pressed={leftOpen}
                 aria-keyshortcuts={clientActionAriaShortcut(clientActions.sidebar, mac)}
-                onPressedChange={sidebarControl.toggleSidebar}
+                onPressedChange={
+                  code ? () => toggleExplorer(viewKey) : sidebarControl.toggleSidebar
+                }
                 title={undefined}
               >
-                <PanelToggleIcon side="left" visible={sidebarVisible} />
+                <PanelToggleIcon side="left" visible={leftOpen} />
               </Toggle>
             }
           />
           <TooltipContent shortcut={clientActionKeys(clientActions.sidebar, mac)}>
-            {sidebarVisible ? "Hide Sidebar" : "Show Sidebar"}
+            {`${leftOpen ? "Hide" : "Show"} ${leftLabel}`}
           </TooltipContent>
         </Tooltip>
       </span>
       {nyte.host.switchApp !== undefined && (
-        <span {...props(titlebarStyles.appSlot, sidebarVisible && titlebarStyles.appSlotDocked)}>
+        <span
+          {...props(
+            titlebarStyles.appSlot,
+            sidebarVisible && !code && titlebarStyles.appSlotDocked,
+          )}
+        >
           <AppSwitcher mac={mac} />
         </span>
       )}
     </span>
   );
 
-  const vacant = <span aria-hidden {...props(titlebarStyles.vacant)} />;
-
   const trailing = (
     <>
-      {(workspaceVisible || (strip && !settingsOpen)) && onePane && !workbenchCovers ? (
+      {(workspaceVisible || (strip && !settingsOpen)) && onePane && !workbenchCovers && (
         <span role="group" aria-label="Split Chat" {...props(titlebarStyles.splitGroup)}>
           {(["right", "down"] as const).map((side) => (
             <SplitChatButton
@@ -243,13 +261,8 @@ export function Titlebar(): ReactElement {
             />
           ))}
         </span>
-      ) : (
-        <span aria-hidden {...props(titlebarStyles.splitGroup)}>
-          {vacant}
-          {vacant}
-        </span>
       )}
-      {workbenchOpen && !workbenchNarrow(view.layout) ? (
+      {workbenchOpen && !workbenchNarrow(view.layout) && (
         <span {...props(titlebarStyles.control)}>
           <Tooltip>
             <TooltipTrigger
@@ -268,10 +281,8 @@ export function Titlebar(): ReactElement {
             <TooltipContent>{maximized ? "Restore Split View" : "Expand Workbench"}</TooltipContent>
           </Tooltip>
         </span>
-      ) : (
-        vacant
       )}
-      {workspaceVisible ? (
+      {workspaceVisible && (
         <span {...props(titlebarStyles.control)}>
           <Tooltip>
             <TooltipTrigger
@@ -295,14 +306,73 @@ export function Titlebar(): ReactElement {
             </TooltipContent>
           </Tooltip>
         </span>
-      ) : (
-        vacant
       )}
       <span {...props(titlebarStyles.control)}>
         <NeedsYou />
       </span>
     </>
   );
+
+  if (code) {
+    const chatOpen = view.layout.kind === "split" || workbenchShowsChat(view.layout);
+
+    return (
+      <header {...props(titlebarStyles.bar, !focused && titlebarStyles.windowInactive)}>
+        {sidebarSlot}
+        <div {...props(titlebarStyles.contentArea)}>
+          <span {...props(titlebarStyles.center)}>
+            {workspaceVisible && (
+              <WorkbenchTabStrip
+                key={viewKey}
+                viewKey={viewKey}
+                view={view}
+                scope={scope}
+                capabilities={capabilities}
+                sessionId={selection.kind === "session" ? selection.sessionId : undefined}
+              />
+            )}
+          </span>
+          <span {...props(titlebarStyles.trailing)}>
+            {workspaceVisible && (
+              <>
+                <span {...props(titlebarStyles.control)}>
+                  <ChatHistory mac={mac} />
+                </span>
+                <span {...props(titlebarStyles.control)}>
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <Toggle
+                          iconOnly
+                          indicator="glyph"
+                          id="workbench-toggle"
+                          aria-label={chatOpen ? "Hide chat" : "Show chat"}
+                          pressed={chatOpen}
+                          aria-keyshortcuts={clientActionAriaShortcut(clientActions.workbench, mac)}
+                          onPressedChange={() =>
+                            workbench.dispatch(viewKey, { kind: "toggle-maximized" })
+                          }
+                          title={undefined}
+                        >
+                          <PanelToggleIcon side="right" visible={chatOpen} />
+                        </Toggle>
+                      }
+                    />
+                    <TooltipContent shortcut={clientActionKeys(clientActions.workbench, mac)}>
+                      {chatOpen ? "Hide Chat" : "Show Chat"}
+                    </TooltipContent>
+                  </Tooltip>
+                </span>
+              </>
+            )}
+            <span {...props(titlebarStyles.control)}>
+              <NeedsYou />
+            </span>
+          </span>
+        </div>
+      </header>
+    );
+  }
 
   return (
     <header {...props(titlebarStyles.bar, !focused && titlebarStyles.windowInactive)}>
@@ -376,12 +446,12 @@ function AppSwitcher(input: { readonly mac: boolean }): ReactElement {
         aria-label="Apps"
         value={[windowApp()]}
         onValueChange={(value) => {
-          const next = DESKTOP_APPS.find((app) => app === value[0]);
+          const next = offeredApps().find((app) => app === value[0]);
 
           if (next !== undefined) switchApp(next);
         }}
       >
-        {DESKTOP_APPS.map((app) => (
+        {offeredApps().map((app) => (
           <Tooltip key={app}>
             <TooltipTrigger
               render={

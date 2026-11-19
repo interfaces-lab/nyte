@@ -1,10 +1,19 @@
-import { useEffect, useSyncExternalStore } from "react";
-import type { FileVersion } from "@nyte-ai/sdk";
+import { useEffect, useEffectEvent, useSyncExternalStore } from "react";
+import type { FileEvent, WorkspaceId } from "@nyte-ai/sdk";
 import type { SelectedWorkspace } from "../contract/bridge.ts";
 import { connected } from "../data/connection.ts";
-import { useMentionFiles } from "../data/files.ts";
-import { carryLight, shine, shineAgent } from "../light/light.ts";
+import { writeDocument } from "../data/documents.ts";
+import { filesFor } from "../data/files.ts";
+import { carryLight, shine } from "../light/light.ts";
 import type { Lights, Subject } from "../light/light.ts";
+import { useChatChanges } from "../workbench/editor/chat-changes.ts";
+import { shareDocument } from "../workbench/editor/document-channel.ts";
+import { createFileDocument } from "../workbench/editor/file-document.ts";
+import type { FileBuffer, FileDocumentSnapshot } from "../workbench/editor/file-document.ts";
+import { holdDocument, scheduleSave } from "../workbench/editor/file-store.ts";
+import { workbenchViewKey } from "../workbench/paths.ts";
+import { followAgentLights, designFile } from "./agent-lights.ts";
+import { smallestChange } from "./design-source.ts";
 
 /**
  * The workspace's designs, named by path from the workspace root, as the board stamps them on what it draws. The rest
@@ -17,11 +26,36 @@ export interface Designs {
   readonly texts: ReadonlyMap<string, string>;
 }
 
+export interface DesignTrouble {
+  readonly path: string;
+  readonly status: Extract<FileDocumentSnapshot["status"], { readonly kind: "conflict" | "error" }>;
+}
+
+export interface DesignStore {
+  useDesigns(): Designs;
+  useTroubles(): readonly DesignTrouble[];
+  read(design: string): string | undefined;
+  edit(design: string, start: number, end: number, text: string): void;
+  overwrite(design: string): Promise<void>;
+  reload(design: string): Promise<void>;
+  save(design: string): Promise<void>;
+  shine(subject: Subject | null): void;
+  lights(lights: Lights): Lights;
+  release(): void;
+}
+
 interface Held {
-  text: string;
-  version: FileVersion | null;
-  dirty: boolean;
-  save: ReturnType<typeof setTimeout> | undefined;
+  readonly buffer: FileBuffer;
+  readonly unsubscribe: () => void;
+  readonly release: () => void;
+  scheduled: (() => void) | undefined;
+}
+
+interface Opened {
+  readonly store: DesignStore;
+  readonly designs: () => Designs;
+  readonly close: () => void;
+  holders: number;
 }
 
 const SAVE_MS = 150;
@@ -31,201 +65,412 @@ export const SURFACE = "design";
 
 const EMPTY: Designs = { paths: [], texts: new Map() };
 
-const held = new Map<string, Held>();
+const NO_TROUBLES: readonly DesignTrouble[] = [];
 
-const listeners = new Set<() => void>();
+const stores = new Map<WorkspaceId, Opened>();
 
-let root = "";
+const watchers = new Set<() => void>();
 
-let tracked: readonly string[] = [];
-
-let watching: AsyncIterator<unknown> | undefined;
-
-let designs = EMPTY;
-
-function publish(): void {
-  designs = {
-    paths: tracked.map(fromRoot),
-    texts: new Map(
-      tracked.flatMap((path) => {
-        const file = held.get(path);
-
-        return file === undefined ? [] : [[fromRoot(path), file.text] as const];
-      }),
-    ),
-  };
-
-  for (const listener of listeners) listener();
+function announce(): void {
+  for (const watcher of watchers) watcher();
 }
 
-const fromRoot = (path: string): string => path.slice(root.length + 1);
+function watchStores(watcher: () => void): () => void {
+  watchers.add(watcher);
 
-const onDisk = (path: string): string => `${root}/${path}`;
-
-interface Range {
-  readonly start: number;
-  readonly end: number;
+  return () => watchers.delete(watcher);
 }
 
-function changedRange(before: string, next: string): Range {
-  let start = 0;
+export function openDesignStore(workspace: SelectedWorkspace): DesignStore {
+  const open = stores.get(workspace.id);
 
-  while (start < before.length && start < next.length && before[start] === next[start]) start += 1;
-  let tail = 0;
+  if (open !== undefined) {
+    open.holders += 1;
 
-  while (
-    tail < before.length - start &&
-    tail < next.length - start &&
-    before[before.length - 1 - tail] === next[next.length - 1 - tail]
-  )
-    tail += 1;
-
-  return { start, end: Math.max(start + 1, next.length - tail) };
-}
-
-async function load(path: string, lit: boolean): Promise<void> {
-  const document = await (await connected()).documents.read(path, { as: "document" });
-  const file = held.get(path);
-
-  if (document.kind !== "text" || !tracked.includes(path) || file?.dirty === true) return;
-
-  if (file !== undefined && file.version === document.version) return;
-
-  if (file !== undefined && lit && file.text !== document.contents)
-    shineAgent({ kind: "span", path, ...changedRange(file.text, document.contents) });
-  held.set(path, {
-    text: document.contents,
-    version: document.version,
-    dirty: false,
-    save: undefined,
-  });
-  publish();
-}
-
-async function watch(paths: readonly string[]): Promise<void> {
-  const events = (await connected()).documents.watch(paths)[Symbol.asyncIterator]();
-
-  await watching?.return?.();
-  watching = events;
-
-  for (let next = await events.next(); next.done !== true; next = await events.next())
-    for (const event of next.value)
-      if (held.get(event.path)?.version !== event.version) void load(event.path, true);
-}
-
-function track(folder: string, paths: readonly string[]): void {
-  if (
-    folder === root &&
-    paths.length === tracked.length &&
-    paths.every((path, index) => path === tracked[index])
-  )
-    return;
-  root = folder;
-  tracked = paths;
-
-  for (const path of held.keys()) if (!paths.includes(path)) held.delete(path);
-
-  for (const path of paths) if (!held.has(path)) void load(path, false);
-  void watch(paths);
-  publish();
-}
-
-async function save(path: string): Promise<void> {
-  const file = held.get(path);
-
-  if (file === undefined || !file.dirty) return;
-  const sent = file.text;
-
-  const outcome = await (
-    await connected()
-  ).documents.write(path, sent, {
-    expect: file.version ?? "absent",
-  });
-
-  if (outcome.kind === "saved") {
-    file.version = outcome.version;
-    file.dirty = file.text !== sent;
-
-    if (file.dirty) file.save = setTimeout(() => void save(path), SAVE_MS);
-
-    return;
+    return open.store;
   }
 
-  file.dirty = false;
-  await load(path, false);
+  const created = createDesignStore(workspace);
+  stores.set(workspace.id, { ...created, holders: 1 });
+  announce();
+
+  return created.store;
 }
 
-/** Replaces a range of a design's text, here at once and on disk a moment later; the person's light moves with the text. */
-export function edit(design: string, start: number, end: number, text: string): void {
-  const path = onDisk(design);
-  const file = held.get(path);
+function releaseStore(workspace: WorkspaceId, store: DesignStore): void {
+  const open = stores.get(workspace);
 
-  if (file === undefined) return;
-  file.text = `${file.text.slice(0, start)}${text}${file.text.slice(end)}`;
-  file.dirty = true;
-  clearTimeout(file.save);
-  file.save = setTimeout(() => void save(path), SAVE_MS);
-  carryLight(path, start, end, text.length);
-  publish();
+  if (open?.store !== store) return;
+  open.holders -= 1;
+
+  if (open.holders > 0) return;
+  stores.delete(workspace);
+  open.close();
+  announce();
 }
 
-/** The text of a design as this window has it now, unsaved edits included. */
-export function readDesign(design: string): string | undefined {
-  return held.get(onDisk(design))?.text;
-}
+function createDesignStore(workspace: SelectedWorkspace): Omit<Opened, "holders"> {
+  const root = workspace.path.replace(/\/$/u, "");
+  const view = workbenchViewKey(workspace.path);
+  const since = Date.now();
+  const listed = new Set<string>();
+  const held = new Map<string, Held>();
+  const listeners = new Set<() => void>();
+  let designs = EMPTY;
+  let troubles = NO_TROUBLES;
+  let released = false;
+  let watching: AsyncIterator<unknown> | undefined;
 
-/** Moves the person's light to a design, or a range of one, from the board; `null` puts it out. */
-export function shineDesign(subject: Subject | null): void {
-  shine(subject === null ? null : { ...subject, path: onDisk(subject.path) }, SURFACE);
-}
+  const fromRoot = (path: string): string => path.slice(root.length + 1);
 
-/** The lights that are on this workspace's designs, named as the designs are. */
-export function designLights(lights: Lights): Lights {
-  const here = lights.agents.filter((light) => light.subject.path.startsWith(`${root}/`));
-  const you = lights.you;
+  const onDisk = (path: string): string => `${root}/${path}`;
 
-  return {
-    you:
-      you !== null && you.subject.path.startsWith(`${root}/`)
-        ? { ...you, subject: { ...you.subject, path: fromRoot(you.subject.path) } }
-        : null,
-    agents: here.map((light) => ({
-      ...light,
-      subject: { ...light.subject, path: fromRoot(light.subject.path) },
-    })),
+  const relative = (path: string): string => (path.startsWith(`${root}/`) ? fromRoot(path) : path);
+
+  const agents = followAgentLights({
+    folder: root,
+    readText: (path) => held.get(path)?.buffer.text(),
+    since,
+  });
+
+  const publish = (): void => {
+    const paths = [...listed].map(fromRoot).toSorted();
+
+    const texts = new Map(
+      paths.flatMap((design) => {
+        const file = held.get(onDisk(design));
+
+        return file === undefined ? [] : [[design, file.buffer.text()] as const];
+      }),
+    );
+
+    const next = paths.flatMap((design): DesignTrouble[] => {
+      const status = held.get(onDisk(design))?.buffer.getSnapshot().status;
+
+      return status?.kind === "conflict" || status?.kind === "error"
+        ? [{ path: design, status }]
+        : [];
+    });
+
+    const same =
+      paths.length === designs.paths.length &&
+      paths.every((path, index) => path === designs.paths[index]) &&
+      texts.size === designs.texts.size &&
+      [...texts].every((entry) => designs.texts.get(entry[0]) === entry[1]);
+
+    const calm =
+      next.length === troubles.length &&
+      next.every(
+        (trouble, index) =>
+          trouble.path === troubles[index]?.path && trouble.status === troubles[index]?.status,
+      );
+
+    if (same && calm) return;
+
+    if (!same) designs = paths.length === 0 ? EMPTY : { paths, texts };
+
+    if (!calm) troubles = next.length === 0 ? NO_TROUBLES : next;
+
+    for (const listener of listeners) listener();
+    announce();
   };
-}
 
-function subscribe(listener: () => void): () => void {
-  listeners.add(listener);
+  const subscribe = (listener: () => void): (() => void) => {
+    listeners.add(listener);
 
-  return () => listeners.delete(listener);
-}
+    return () => listeners.delete(listener);
+  };
 
-/** Whether the Design tab found no design files, so it shows only its empty state. */
-export function useNoDesigns(): boolean {
-  return useSyncExternalStore(subscribe, () => designs.paths.length === 0);
-}
+  const save = (file: Held): Promise<void> =>
+    file.buffer.save({
+      write: (input) =>
+        writeDocument({ path: input.path, contents: input.contents, expect: input.version }),
+    });
 
-/** The workspace's design files and their text. One store serves the window, so the list and the board agree. */
-export function useDesigns(workspace: SelectedWorkspace | undefined): Designs {
-  const files = useMentionFiles(workspace, workspace !== undefined);
+  const follow = async (): Promise<void> => {
+    const events = (await connected()).documents.watch([onDisk("design")])[Symbol.asyncIterator]();
 
-  const folder = workspace?.path.replace(/\/$/u, "") ?? "";
+    if (released) {
+      void events.return?.();
 
-  const listed = (files.data ?? [])
-    .filter(
-      (file) =>
-        file.kind === "file" &&
-        file.path.startsWith(`${folder}/design/`) &&
-        (file.path.endsWith(".jsx") || file.path.endsWith(".css")),
+      return;
+    }
+
+    watching = events;
+    void scan();
+
+    for (
+      let next = await events.next();
+      next.done !== true && !released;
+      next = await events.next()
     )
-    .map((file) => file.path)
-    .toSorted()
-    .join("\n");
+      for (const event of next.value) heard(event);
+  };
 
-  // oxlint-disable-next-line nyte-code/no-direct-effect -- points the module's file watch at the workspace's design files
-  useEffect(() => track(folder, listed === "" ? [] : listed.split("\n")), [folder, listed]);
+  const scan = async (): Promise<void> => {
+    const files = await filesFor(workspace.id);
 
-  return useSyncExternalStore(subscribe, () => designs);
+    for await (const frame of files.scan({ directory: "design", ignored: "include" })) {
+      if (released) return;
+
+      if (frame.kind === "entries")
+        for (const entry of frame.entries) if (entry.kind === "file") list(onDisk(entry.path));
+    }
+  };
+
+  const heard = (event: FileEvent): void => {
+    if (event.kind === "removed") {
+      unlist(event.path);
+
+      return;
+    }
+
+    const file = held.get(event.path);
+
+    if (file === undefined) {
+      list(event.path);
+
+      return;
+    }
+
+    if (file.buffer.getSnapshot().version !== event.version) void refresh(file, event.path);
+  };
+
+  const list = (path: string): void => {
+    if (released || !path.startsWith(`${root}/`) || !designFile(fromRoot(path)) || listed.has(path))
+      return;
+    listed.add(path);
+    publish();
+    void open(path);
+  };
+
+  const unlist = (path: string): void => {
+    if (!listed.delete(path)) return;
+    stop(path);
+    publish();
+  };
+
+  const open = async (path: string): Promise<void> => {
+    const document = await (await connected()).documents.read(path, { as: "document" });
+
+    if (released || !listed.has(path) || held.has(path)) return;
+
+    if (document.kind === "missing") {
+      unlist(path);
+
+      return;
+    }
+
+    if (document.kind !== "text") return;
+
+    const hold = holdDocument({
+      view,
+      path,
+      holder: "design",
+      create: () => createFileDocument(document),
+    });
+
+    hold.buffer.observeDisk(document);
+    const unshare = shareDocument(path, hold.buffer);
+
+    held.set(path, {
+      buffer: hold.buffer,
+      unsubscribe: hold.buffer.subscribe(() => changed(path)),
+      release: () => {
+        unshare();
+        hold.release();
+      },
+      scheduled: undefined,
+    });
+    publish();
+    agents.place();
+  };
+
+  const stop = (path: string): void => {
+    const file = held.get(path);
+
+    if (file === undefined) return;
+    held.delete(path);
+    file.unsubscribe();
+    const scheduled = file.scheduled;
+    file.scheduled = undefined;
+    scheduled?.();
+    const snapshot = file.buffer.getSnapshot();
+
+    const due =
+      scheduled !== undefined &&
+      snapshot.dirty &&
+      !snapshot.remote &&
+      snapshot.status.kind !== "conflict" &&
+      snapshot.status.kind !== "error";
+
+    if (!due) {
+      file.release();
+
+      return;
+    }
+
+    void save(file).finally(file.release);
+  };
+
+  const changed = (path: string): void => {
+    const file = held.get(path);
+    const before = designs.texts.get(fromRoot(path));
+
+    if (file === undefined) return;
+    const after = file.buffer.text();
+
+    if (before !== undefined && before !== after) carryLight(path, smallestChange(before, after));
+    publish();
+    agents.place();
+  };
+
+  const refresh = async (file: Held, path: string): Promise<void> => {
+    const document = await (await connected()).documents.read(path, { as: "document" });
+
+    if (released || held.get(path) !== file) return;
+
+    if (document.kind === "text") file.buffer.observeDisk(document);
+  };
+
+  const close = (): void => {
+    released = true;
+
+    for (const path of held.keys()) stop(path);
+    listed.clear();
+    void watching?.return?.();
+    watching = undefined;
+    agents.dispose();
+  };
+
+  const store: DesignStore = {
+    useDesigns() {
+      const made = useChatChanges(workspace.id, (edits) =>
+        edits?.filter((edit) => designFile(relative(edit.path))),
+      );
+
+      // oxlint-disable-next-line nyte-code/no-direct-effect -- lights what the workspace's chats just changed in its designs
+      useEffect(() => {
+        agents.notice(made);
+
+        for (const edit of made ?? [])
+          if (edit.patches.some((patch) => patch.at >= since)) list(onDisk(relative(edit.path)));
+      }, [made]);
+
+      return useSyncExternalStore(subscribe, () => designs);
+    },
+    useTroubles() {
+      return useSyncExternalStore(subscribe, () => troubles);
+    },
+    read(design) {
+      return held.get(onDisk(design))?.buffer.text();
+    },
+    edit(design, start, end, text) {
+      const file = held.get(onDisk(design));
+
+      if (file === undefined) return;
+      const before = file.buffer.text();
+
+      file.buffer.edit(`${before.slice(0, start)}${text}${before.slice(end)}`);
+
+      if (file.scheduled !== undefined) return;
+
+      file.scheduled = scheduleSave(
+        file.buffer,
+        () => {
+          file.scheduled?.();
+          file.scheduled = undefined;
+
+          return save(file);
+        },
+        SAVE_MS,
+      );
+    },
+    async overwrite(design) {
+      const path = onDisk(design);
+      const file = held.get(path);
+
+      if (file === undefined) return;
+      const document = await (await connected()).documents.read(path, { as: "document" });
+
+      if (document.kind !== "text" || held.get(path) !== file) return;
+      file.buffer.receive({
+        kind: "saved",
+        contents: document.contents,
+        version: document.version,
+      });
+      await save(file);
+    },
+    async reload(design) {
+      const path = onDisk(design);
+      const file = held.get(path);
+
+      if (file === undefined) return;
+
+      if (file.buffer.getSnapshot().status.kind === "saving")
+        throw new Error("Wait for the current save to finish.");
+      const document = await (await connected()).documents.read(path, { as: "document" });
+
+      if (document.kind !== "text") throw new Error("The file can no longer be read as text.");
+      file.buffer.discard(document);
+    },
+    async save(design) {
+      const file = held.get(onDisk(design));
+
+      if (file !== undefined) await save(file);
+    },
+    shine(subject) {
+      shine(subject === null ? null : { ...subject, path: onDisk(subject.path) }, SURFACE);
+    },
+    lights(lights) {
+      const here = lights.agents.filter((light) => light.subject.path.startsWith(`${root}/`));
+      const you = lights.you;
+
+      return {
+        you:
+          you !== null && you.subject.path.startsWith(`${root}/`)
+            ? { ...you, subject: { ...you.subject, path: fromRoot(you.subject.path) } }
+            : null,
+        agents: here.map((light) => ({
+          ...light,
+          subject: { ...light.subject, path: fromRoot(light.subject.path) },
+        })),
+      };
+    },
+    release() {
+      releaseStore(workspace.id, store);
+    },
+  };
+
+  void follow();
+
+  return { store, designs: () => designs, close };
+}
+
+export function useDesignStore(workspace: SelectedWorkspace | undefined): DesignStore | undefined {
+  const id = workspace?.id;
+  const path = workspace?.path;
+  const opened = useEffectEvent(() =>
+    workspace === undefined ? undefined : openDesignStore(workspace),
+  );
+
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- holds the workspace's design store, and its watch of the design folder, while the component is mounted
+  useEffect(() => {
+    const store = opened();
+
+    return () => store?.release();
+  }, [id, path]);
+
+  return useSyncExternalStore(watchStores, () =>
+    id === undefined ? undefined : stores.get(id)?.store,
+  );
+}
+
+export function useNoDesigns(workspace: SelectedWorkspace | undefined): boolean {
+  const id = workspace?.id;
+
+  return useSyncExternalStore(
+    watchStores,
+    () => (id === undefined ? 0 : (stores.get(id)?.designs().paths.length ?? 0)) === 0,
+  );
 }

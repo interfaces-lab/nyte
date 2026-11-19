@@ -167,13 +167,16 @@ test("Nyte, Code and Studio open on one project, flip with the selection, and co
 
       problems.push(collectErrors(code));
 
-      await test.step("Code opens maximized on the Editor and offers only its tools", async () => {
+      await test.step("Code opens on the Editor with its explorer and chat beside it, and offers only its tools", async () => {
         await expect.poll(() => title(application, code)).toBe("Nyte Code — home");
         await expect(apps(code).getByRole("button", { name: "Code" })).toHaveAttribute(
           "aria-pressed",
           "true",
         );
-        await expect(code.getByRole("button", { name: "Restore split view" })).toBeVisible();
+        await expect(
+          code.getByRole("button", { name: "Hide explorer", pressed: true }),
+        ).toBeVisible();
+        await expect(code.getByRole("button", { name: "Hide chat", pressed: true })).toBeVisible();
         await expect(editor(code)).toBeVisible();
         await expect(
           code
@@ -185,9 +188,6 @@ test("Nyte, Code and Studio open on one project, flip with the selection, and co
       });
 
       await test.step("a selection in Code survives a flip to Nyte and back", async () => {
-        await expect(
-          editor(code).getByRole("button", { name: "Editor Sidebar", pressed: true }),
-        ).toBeVisible();
         await editor(code)
           .getByRole("treeitem", { name: /apps\.ts/u })
           .click();
@@ -378,7 +378,7 @@ test("Nyte, Code and Studio open on one project, flip with the selection, and co
         await capture(testInfo, application, kind.page, `relaunched-${kind.label.toLowerCase()}`);
       }
 
-      await expect(code.getByRole("button", { name: "Restore split view" })).toBeVisible();
+      await expect(code.getByRole("button", { name: "Hide chat", pressed: true })).toBeVisible();
       await expect(editor(code)).toBeVisible();
       await expect(
         code.getByRole("tablist", { name: "Workbench tabs" }).getByRole("tab", { name: "Editor" }),

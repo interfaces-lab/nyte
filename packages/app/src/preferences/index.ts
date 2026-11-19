@@ -33,6 +33,11 @@ export const preferences = {
     Type.Enum(["new-chat", "last-session"]),
     "new-chat",
   ),
+  draftFolder: definePreference(
+    { key: "nyte:draft-folder:v1" },
+    Type.Union([Type.String(), Type.Null()]),
+    null,
+  ),
   modelSettings: definePreference(
     { key: "nyte:model-settings:v1" },
     Type.Record(

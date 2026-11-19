@@ -61,24 +61,26 @@ client, the first decision other than `continue` ends the chain.
 
 Core hooks run on the host, inside a chat.
 
-| Hook                   | Phase     | Receives                                                                                                                        |
-| ---------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `session_activated`    | Observe   | `{ session }` each time the chat's plugins finish loading                                                                       |
-| `before_send`          | Decide    | The message about to join the chat: `content`, `source`, `delivery`, `replace`                                                  |
-| `run_started`          | Observe   | The run: `id`, `head`, `startedAt`, `attempt`, and `origin`, a user message or a continuation                                   |
-| `transform_transcript` | Transform | What the model will see: `messages` and `tools`                                                                                 |
-| `before_compaction`    | Transform | The compaction plan: `model`, `reason`, `instructions`, `tokensBefore`, the messages to `summarise` and to `keep`, and `result` |
-| `before_request`       | Transform | The model request: `model`, `thinking`, `step`, `attempt`, and `options` with `sampling` and `headers`                          |
-| `before_tool`          | Decide    | The tool call: `call`, `name`, `args`, `class`                                                                                  |
-| `after_tool`           | Transform | The tool's outcome: `ok` with `content`, `output` and `parts`, or `failed`, `interrupted`, `rejected`, `stopped`                |
-| `after_request`        | Observe   | `model`, `thinking`, `usage`, `durationMs` and `step` for each finished model request                                           |
-| `run_ended`            | Observe   | How the run ended: `completed` with `usage`, `stopped`, or `failed` with `failure`                                              |
+| Hook                | Phase     | Receives                                                                                                                        |
+| ------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `session_activated` | Observe   | `{ session }` each time the chat's plugins finish loading                                                                       |
+| `before_send`       | Decide    | The message about to join the chat: `content`, `source`, `delivery`, `replace`                                                  |
+| `run_started`       | Observe   | The run: `id`, `head`, `startedAt`, `attempt`, and `origin`, a user message or a continuation                                   |
+| `offer_tools`       | Transform | The chat's tools a request may declare and a script may call                                                                    |
+| `before_compaction` | Transform | The compaction plan: `model`, `reason`, `instructions`, `tokensBefore`, the messages to `summarise` and to `keep`, and `result` |
+| `before_request`    | Transform | The model request: `model`, `thinking`, `step`, `attempt`, and `options` with `sampling` and `headers`                          |
+| `before_tool`       | Decide    | The tool call: `call`, `name`, `args`, `class`                                                                                  |
+| `after_tool`        | Transform | The tool's outcome: `ok` with `content`, `output` and `parts`, or `failed`, `interrupted`, `rejected`, `stopped`                |
+| `after_request`     | Observe   | `model`, `thinking`, `usage`, `durationMs` and `step` for each finished model request                                           |
+| `run_ended`         | Observe   | How the run ended: `completed` with `usage`, `stopped`, or `failed` with `failure`                                              |
 
 A few of these need more detail:
 
 - `before_send` rejecting the first message of a chat removes the new chat, and `sessions.start`
   throws.
 - `before_tool` with `modify` changes only the call's `args`.
+- `offer_tools` withholds tools: return the list without them. Core ignores entries a handler adds or
+  edits.
 - `before_compaction` can set `result` to `{ kind: "summary", text }` to write the summary itself.
 
 ## Client hooks [#client]

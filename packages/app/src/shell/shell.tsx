@@ -4,7 +4,7 @@ import { Matches, useRouter } from "@tanstack/react-router";
 import { useEffectEvent, useRef, useState, useSyncExternalStore } from "react";
 import { AboutDialog } from "./about-dialog.tsx";
 import type { ReactElement } from "react";
-import { followLight } from "../commands/apps.ts";
+import { followLight, keepCodeWorkbench } from "../commands/apps.ts";
 import { WorkspaceDialogHost } from "../panes/open-workspace.tsx";
 import { ProjectDialogHost } from "../projects/project-dialog.tsx";
 import {
@@ -43,6 +43,7 @@ import { windowTabs } from "../tabs/window-tabs.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { closeSettings } from "../settings/index.ts";
 import { settingsRoute } from "./routes.tsx";
+import { BrowserGuestHost } from "../workbench/browser/browser-guests.tsx";
 
 const styles = create({
   shell: {
@@ -176,6 +177,7 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
   const { about } = useOverlays();
   const root = useRef<HTMLDivElement | null>(null);
   const pushing = useSidebarSwipe(root);
+  const code = windowApp() === "code";
   const sidebarCollapsed = useSidebar().state === "collapsed";
   const mac = nyte.platform === "darwin";
   const strip = windowTabs.strip;
@@ -239,7 +241,16 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
     return () => window.removeEventListener("keydown", listener, true);
   });
 
-  useMountEffect(() => (windowApp() === "code" ? followLight() : undefined));
+  useMountEffect(() => {
+    if (windowApp() !== "code") return undefined;
+    const leaveLight = followLight();
+    const leaveWorkbench = keepCodeWorkbench();
+
+    return () => {
+      leaveLight();
+      leaveWorkbench();
+    };
+  });
 
   useMountEffect(() =>
     nyte.host.onMenuCommand((command) => {
@@ -258,9 +269,11 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
       <Titlebar />
       <div {...props(styles.stage)}>
         <SessionDndProvider>
-          <SidebarPane>
-            <Sidebar />
-          </SidebarPane>
+          {!code && (
+            <SidebarPane>
+              <Sidebar />
+            </SidebarPane>
+          )}
           <main
             {...props(
               styles.surface,
@@ -283,6 +296,7 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
           onClose={() => shellActions.showAbout(undefined)}
         />
       )}
+      {nyte.host.browser !== undefined && <BrowserGuestHost browser={nyte.host.browser} />}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { useMutation, useMutationState, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { MutationState } from "@tanstack/react-query";
 import { toast } from "@nyte-ai/ui/toast";
+import { enabledModels } from "@nyte-ai/schema";
 import type {
   ModelCatalogView,
   ModelInfo,
@@ -68,6 +69,7 @@ export interface DesktopCatalog {
 }
 
 export function toDesktopCatalog(view: ModelCatalogView): DesktopCatalog {
+  const enabled = new Set(enabledModels(view));
   const models = view.providers.flatMap((provider) =>
     provider.models.map((model): DesktopModelOption => {
       const listing = provider.listings[model.ref.id] ?? "shown";
@@ -85,7 +87,7 @@ export function toDesktopCatalog(view: ModelCatalogView): DesktopCatalog {
         input: model.input,
         capabilities: model.capabilities,
         listing,
-        listed: provider.credential !== "missing" && listing !== "hidden",
+        listed: enabled.has(model),
       };
     }),
   );

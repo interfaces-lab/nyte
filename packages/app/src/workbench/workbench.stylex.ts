@@ -32,6 +32,21 @@ export const workbenchStyles = create({
     width: `min(100cqi, clamp(${workbench.widthMin}px, var(--_workbench-width), max(${workbench.widthMin}px, calc(100cqi - ${workbench.centerWidthMin}px))))`,
   },
   panelWidth: (pixels: number) => ({ "--_workbench-width": `${pixels}px` }),
+  /** In a Code window the stored width is the chat panel's, and the workbench takes the rest of the stage. */
+  panelOpenCode: {
+    minWidth: 0,
+    width: `calc(100cqi - min(100cqi, clamp(${workbench.widthMin}px, var(--_workbench-width), max(${workbench.widthMin}px, calc(100cqi - ${workbench.centerWidthMin}px)))))`,
+  },
+  panelEndRule: {
+    "::after": {
+      content: '""',
+      position: "absolute",
+      inset: 0,
+      borderInlineEndWidth: 1,
+      borderColor: { default: role.strokeQuaternary, [media.forcedColors]: "CanvasText" },
+      pointerEvents: "none",
+    },
+  },
   railHost: { width: workbench.railWidth, minWidth: workbench.railWidth },
   railHostCompact: { width: workbench.iconRailWidth, minWidth: workbench.iconRailWidth },
   panelOverlay: {
@@ -44,6 +59,7 @@ export const workbenchStyles = create({
     maxWidth: "100cqi",
     "--nyte-hairline-elevation": shadow.shadowWorkbench,
   },
+  panelOverlayStart: { insetInlineEnd: "auto", insetInlineStart: 0 },
   panelHidden: { display: "none" },
   panelBody: { display: "flex", flex: 1, minWidth: 0, minHeight: 0, flexDirection: "column" },
   rail: {
@@ -182,6 +198,7 @@ export const workbenchStyles = create({
     touchAction: "none",
     WebkitAppRegion: "no-drag",
   },
+  sashEnd: { insetInlineEnd: `calc(${workbench.sashWidth} / -2)` },
   sashActive: { "--_sash-rule": role.strokeSecondary, "--_sash-delay": "0s" },
   treeTheme: {
     "--trees-bg-override": role.bgBase,

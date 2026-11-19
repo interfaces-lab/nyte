@@ -253,7 +253,8 @@ const SHELL_TYPES = new Map([
   [".map", "application/json"],
 ]);
 
-export function canvasShell(): Plugin {
+export function canvasShell(input: { readonly board?: string } = {}): Plugin {
+  const boardDirectory = input.board === undefined ? BOARD_DIRECTORY : join(input.board, sep);
   let outDir = "dist";
 
   return {
@@ -265,7 +266,7 @@ export function canvasShell(): Plugin {
       server.middlewares.use("/canvas", (request, response, next) => {
         const pathname = request.url?.split("?", 1)[0] ?? "/";
         const board = pathname.startsWith("/board/");
-        const directory = board ? BOARD_DIRECTORY : SHELL_DIRECTORY;
+        const directory = board ? boardDirectory : SHELL_DIRECTORY;
         const target = resolve(
           directory,
           `.${normalize(board ? pathname.slice("/board".length) : pathname)}`,
@@ -311,7 +312,7 @@ export function canvasShell(): Plugin {
       }
 
       await cp(SHELL_DIRECTORY, join(outDir, "canvas"), { recursive: true });
-      await cp(BOARD_DIRECTORY, join(outDir, "canvas", "board"), { recursive: true });
+      await cp(boardDirectory, join(outDir, "canvas", "board"), { recursive: true });
     },
   };
 }

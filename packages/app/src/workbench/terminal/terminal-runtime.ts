@@ -282,6 +282,7 @@ async function buildView(id: string): Promise<TerminalView | undefined> {
   views.set(id, view);
   attachTerminalOutput(id, {
     reset() {
+      lastSize = "";
       terminal.reset();
       terminal.clearSelection();
       disposeMarks();

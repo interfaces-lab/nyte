@@ -156,6 +156,10 @@ function lineCount(text: string): string {
   return `${String(lines)} ${lines === 1 ? "line" : "lines"}`;
 }
 
+function fileName(path: string): string {
+  return path.split("/").at(-1) ?? path;
+}
+
 function selectorTail(selector: string): string {
   return selector.split(/\s*>\s*|\s+/u).at(-1) ?? selector;
 }
@@ -169,13 +173,15 @@ function excerptLabel(reference: ExcerptReference): string {
 
   switch (source.kind) {
     case "diff":
-      return `${source.path.split("/").at(-1) ?? source.path}${linesSuffix(source)}`;
+      return `${fileName(source.path)}${linesSuffix(source)}`;
     case "terminal":
       return source.command ?? `Terminal (${lineCount(reference.text)})`;
     case "browser":
       return source.region === undefined ? selectorTail(source.selector) : areaLabel(source.region);
     case "chat":
       return source.title;
+    case "design":
+      return source.frame ?? fileName(source.path);
     default: {
       const exhaustive: never = source;
 
@@ -198,6 +204,8 @@ function excerptTitle(reference: ExcerptReference): string {
         : `${areaLabel(source.region)} at ${source.selector} on ${source.url}`;
     case "chat":
       return `Side chat: ${source.title}`;
+    case "design":
+      return source.frame === null ? source.path : `${source.frame} in ${source.path}`;
     default: {
       const exhaustive: never = source;
 

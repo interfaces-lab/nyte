@@ -81,6 +81,7 @@ const storedDraftSchema = Type.Object(
     updatedAt: Type.Number(),
     composer: composerSchema,
     project: Type.Optional(projectId),
+    folder: Type.Optional(Type.Union([Type.String(), Type.Null()])),
     choice: Type.Optional(
       Type.Object({ model: ModelRefType, thinking: Type.Optional(ThinkingType) }, strict),
     ),
@@ -269,6 +270,7 @@ export class WindowDrafts {
             updatedAt: next.updatedAt,
             composer: persistableComposer(next.composer),
             project: next.project,
+            folder: next.folder,
             choice: next.choice,
           }
         : undefined,
@@ -371,6 +373,7 @@ export class WindowDrafts {
             thinking: stored.record.choice.thinking,
           },
           project: stored.record.project,
+          folder: stored.record.folder,
           status: EDITING,
         }
       );

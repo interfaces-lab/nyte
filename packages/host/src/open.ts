@@ -21,6 +21,7 @@ import browserTools from "@nyte-ai/plugin/core/browser-tools";
 import canvas from "@nyte-ai/plugin/core/canvas";
 import { claudeCodeSdk } from "@nyte-ai/plugin/core/claude-code-sdk";
 import codemode from "@nyte-ai/plugin/core/codemode";
+import designGuide from "@nyte-ai/plugin/core/design-guide";
 import languageTools from "@nyte-ai/plugin/core/language-tools";
 import openaiAstraContext from "@nyte-ai/plugin/core/openai-astra-context";
 import { openaiCompaction } from "@nyte-ai/plugin/core/openai-compaction";
@@ -29,6 +30,7 @@ import rename from "@nyte-ai/plugin/core/rename";
 import secretRequests from "@nyte-ai/plugin/core/secret";
 import subagents from "@nyte-ai/plugin/core/subagents";
 import telemetry from "@nyte-ai/plugin/core/telemetry";
+import threads from "@nyte-ai/plugin/core/threads";
 import toolSearch from "@nyte-ai/plugin/core/tool-search";
 import web from "@nyte-ai/plugin/core/web";
 import manifest from "../package.json" with { type: "json" };
@@ -149,6 +151,7 @@ async function composeOpen(options: OpenHostOptions, opened: AsyncDisposableStac
     secretRequests,
     rename,
     subagents,
+    threads,
     bashDescription,
     web,
     codemode,
@@ -157,6 +160,7 @@ async function composeOpen(options: OpenHostOptions, opened: AsyncDisposableStac
     openaiAstraContext,
     telemetry,
     canvas,
+    designGuide,
     languageTools,
     claudeCode.plugin,
     acp.plugin,

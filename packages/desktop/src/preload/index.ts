@@ -5,9 +5,9 @@ import type { AccountBridge, AccountCommand } from "../shared/account/protocol.t
 import { APP_MENU_COMMAND_CHANNEL, APP_MENU_READY_CHANNEL } from "../shared/app-menu.ts";
 import type { AppMenuCommand } from "@nyte-ai/app/contract/bridge.ts";
 import {
-  APP_SWITCH_ARGUMENT,
-  BROWSER_BOUNDS_CHANNEL,
+  APPS_ARGUMENT,
   BROWSER_FOCUS_CHANNEL,
+  BROWSER_SHOWN_CHANNEL,
   CALL_CHANNEL,
   CANVAS_SHELL_ARGUMENT,
   HOST_EVENT_CHANNEL,
@@ -34,12 +34,12 @@ import type {
   DesktopBridge,
 } from "../shared/ipc.ts";
 import type {
-  BrowserBoundsMessage,
   BrowserFocusMessage,
+  BrowserShownMessage,
   HostEvent,
 } from "@nyte-ai/app/contract/bridge.ts";
 import { bridgeError } from "@nyte-ai/app/contract/errors.ts";
-import { parseDesktopApp } from "@nyte-ai/app/contract/desktop-app.ts";
+import { DESKTOP_APPS, parseDesktopApp } from "@nyte-ai/app/contract/desktop-app.ts";
 
 exposeClerkBridge();
 
@@ -102,8 +102,11 @@ if (windowId === undefined) throw new Error("The main process names every window
 
 const launchWindows = argumentValue(LAUNCH_WINDOWS_ARGUMENT);
 
+const offered = argumentValue(APPS_ARGUMENT)?.split(",") ?? [];
+
 const bridge = {
   clientSurface: "desktop",
+  apps: DESKTOP_APPS.filter((app) => offered.includes(app)),
   platform: process.platform,
   machineName: argumentValue(MACHINE_NAME_ARGUMENT),
   window: {
@@ -199,9 +202,11 @@ const bridge = {
       login: object("host.browser.login"),
       history: object("host.browser.history"),
       forgetHistory: object("host.browser.forgetHistory"),
-      setBounds: (message: BrowserBoundsMessage) =>
-        ipcRenderer.send(BROWSER_BOUNDS_CHANNEL, message),
       setFocus: (message: BrowserFocusMessage) => ipcRenderer.send(BROWSER_FOCUS_CHANNEL, message),
+      guests: none("host.browser.guests"),
+      attach: object("host.browser.attach"),
+      setShown: (message: BrowserShownMessage) => ipcRenderer.send(BROWSER_SHOWN_CHANNEL, message),
+      setEntered: object("host.browser.setEntered"),
     },
     attention: {
       viewing: (session) => ipcRenderer.send(VIEWING_CHANNEL, session),
@@ -209,7 +214,7 @@ const bridge = {
     },
     setUnsavedEdits: (held) => ipcRenderer.send(UNSAVED_EDITS_CHANNEL, held),
     setWorkspacePath: (path) => ipcRenderer.send(WINDOW_WORKSPACE_CHANNEL, path),
-    switchApp: process.argv.includes(APP_SWITCH_ARGUMENT) ? object("host.switchApp") : undefined,
+    switchApp: object("host.switchApp"),
     onEvent(listener: (event: HostEvent) => void) {
       const wrapped = (_event: Electron.IpcRendererEvent, event: HostEvent): void => {
         listener(event);

@@ -7,15 +7,11 @@ import { ParseError } from "typebox/value";
 import { ExpectedHostError } from "./errors.ts";
 import { Uuid } from "@nyte-ai/connect";
 import type { CallInput, CallPath, CallRequest } from "./ipc.ts";
-import { DESIGN_PICK_CHARS } from "./browser-page.ts";
+import { DESIGN_PICK_CHARS, WHEEL_DELTA_LIMIT } from "./browser-page.ts";
 import { BROWSER_DESIGN_VIEW_KEYS, TERMINAL_NOTICE_LIMITS } from "@nyte-ai/app/contract/bridge.ts";
 import { DESKTOP_APPS } from "@nyte-ai/app/contract/desktop-app.ts";
 import { ArrivalSubjectType, SelectedWorkspaceType } from "@nyte-ai/app/contract/desktop-window.ts";
-import type {
-  BrowserBoundsMessage,
-  BrowserFocusMessage,
-  BrowserKey,
-} from "@nyte-ai/app/contract/bridge.ts";
+import type { BrowserKey } from "@nyte-ai/app/contract/bridge.ts";
 
 type Parser<T> = Pick<Validator<TProperties, TSchema, T>, "Parse">;
 
@@ -176,6 +172,7 @@ export const CALL_INPUT_SCHEMAS: CallInputParsers = {
           strict({ kind: Type.Literal("project"), path: nonEmpty }),
         ]),
       ),
+      holder: Type.Enum(["tab", "board"]),
     }),
   ),
   "host.browser.navigate": compile(
@@ -249,6 +246,15 @@ export const CALL_INPUT_SCHEMAS: CallInputParsers = {
   "host.browser.forgetHistory": compile(
     strict({ owner: Type.Union([nonEmpty, Type.Null()]), url: Type.String({ maxLength: 8192 }) }),
   ),
+  "host.browser.guests": compile(noInput),
+  "host.browser.attach": compile(
+    strict({
+      surface: nonEmpty,
+      webContentsId: Type.Integer({ minimum: 1 }),
+      generation: Type.Integer({ minimum: 0 }),
+    }),
+  ),
+  "host.browser.setEntered": compile(strict({ surface: nonEmpty, entered: Type.Boolean() })),
   "host.switchApp": compile(
     strict({
       to: Type.Enum([...DESKTOP_APPS, "last"]),
@@ -265,24 +271,11 @@ const callRequest = compile(
   }),
 );
 
-const size = Type.Number({ minimum: 0 });
-
-const browserBounds = compile(
-  strict({
-    surface: nonEmpty,
-    bounds: strict({ x: Type.Number(), y: Type.Number(), width: size, height: size }),
-    visible: Type.Boolean(),
-    focus: Type.Boolean(),
-  }),
-);
-
 function checked<T>(validator: Parser<unknown>, value: T): T {
   validator.Parse(value);
 
   return value;
 }
-
-const browserFocus = compile(strict({ surface: nonEmpty, focused: Type.Boolean() }));
 
 const keyName = Type.String({ maxLength: 32 });
 
@@ -307,14 +300,6 @@ export function decodeCallInput<P extends CallPath>(
   input: CallRequest["input"],
 ): CallInput<P> {
   return CALL_INPUT_SCHEMAS[path].Parse(input);
-}
-
-export function decodeBrowserBounds(input: BrowserBoundsMessage): BrowserBoundsMessage {
-  return checked(browserBounds, input);
-}
-
-export function decodeBrowserFocus(input: BrowserFocusMessage): BrowserFocusMessage {
-  return checked(browserFocus, input);
 }
 
 export function decodeBrowserKey(input: BrowserKey): BrowserKey {
@@ -349,7 +334,26 @@ export function decodeDesignPageMessage(input: unknown): DesignPageMessage {
   return designPageMessageParser.Parse(input);
 }
 
+const pagePoint = Type.Number({ minimum: -100_000, maximum: 100_000 });
+
+const wheelDelta = Type.Number({ minimum: -WHEEL_DELTA_LIMIT, maximum: WHEEL_DELTA_LIMIT });
+
+/** A wheel the entered page hands back, bounded to what one wheel event can move. */
+export const pageWheel = Compile(
+  strict({
+    x: pagePoint,
+    y: pagePoint,
+    deltaX: wheelDelta,
+    deltaY: wheelDelta,
+    zoom: Type.Boolean(),
+  }),
+);
+
 export const themePreference = Compile(themeSource);
+
+export const browserShown = Compile(strict({ surface: nonEmpty, visible: Type.Boolean() }));
+
+export const browserFocus = Compile(strict({ surface: nonEmpty, focused: Type.Boolean() }));
 
 export const viewedChat = Compile(
   Type.Union([Type.String({ minLength: 1, maxLength: 256 }), Type.Null()]),

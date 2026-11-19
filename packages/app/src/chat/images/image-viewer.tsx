@@ -13,7 +13,7 @@ import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { create, props } from "@stylexjs/stylex";
 import { useId, useRef, useState } from "react";
 import type { KeyboardEvent, ReactElement } from "react";
-import { loadDeferred, readDeferred } from "../../lib/deferred.tsx";
+import { loadDeferred, useDeferred } from "../../lib/deferred.tsx";
 import { imageViewerStyles } from "./image-viewer.stylex.ts";
 import type { Mark } from "./markup.ts";
 
@@ -48,7 +48,8 @@ export function ImageViewer(input: {
   const sequence = useRef(0);
   const current = useRef<AbortController | undefined>(undefined);
   const [open, setOpen] = useState(false);
-  const [runtime, setRuntime] = useState(() => readDeferred("images"));
+  const images = useDeferred("images");
+  const runtime = images === "failed" ? undefined : images;
   const [error, setError] = useState(false);
   const [marking, setMarking] = useState(false);
   const [draft, setDraft] = useState<Mark | undefined>(undefined);
@@ -106,13 +107,9 @@ export function ImageViewer(input: {
         setAway(false);
         setError(false);
         setOpen(true);
-        void loadDeferred("images")
-          .then((loaded) => {
-            if (current.current === controller && !controller.signal.aborted) setRuntime(loaded);
-          })
-          .catch(() => {
-            if (current.current === controller && !controller.signal.aborted) setError(true);
-          });
+        void loadDeferred("images").catch(() => {
+          if (current.current === controller && !controller.signal.aborted) setError(true);
+        });
       }}
       onOpenChangeComplete={(next) => {
         if (next || current.current?.signal.aborted !== true) return;

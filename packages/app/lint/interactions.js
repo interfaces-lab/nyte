@@ -60,6 +60,7 @@ const unfilledVariants = new Set(["plain", "quiet", "text", "inline", "outline",
 
 const dragHandles = new Map([
   ["packages/ui/src/slider.tsx", new Set(["control"])],
+  ["packages/ui/src/table.tsx", new Set(["resizer"])],
   ["packages/app/src/chat/composer/reasoning-steps.tsx", new Set(["steps"])],
   ["packages/app/src/sidebar/sidebar-pane.tsx", new Set(["handle"])],
   ["packages/app/src/chat/side-chat/side-chat-window.tsx", new Set(["header", "pill"])],

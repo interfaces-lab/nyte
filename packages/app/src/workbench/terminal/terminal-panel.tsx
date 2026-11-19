@@ -125,6 +125,7 @@ function TerminalStatus({
   switch (tab.state.kind) {
     case "starting":
     case "running":
+    case "lost":
       return null;
     case "failed":
       return (

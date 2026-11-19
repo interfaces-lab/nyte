@@ -46,16 +46,13 @@ export function codemodePlugin(
     async activate(api) {
       const reading = await readsOnly(api.session, api.sdk);
       const offered = (definition: ToolDefinition): boolean => !reading || !mayChange(definition);
-      api.contribute.tools.add(codemode(api, runtime, offered));
-      api.hook("transform_transcript", (transcript) =>
+      api.contribute.tools.add(codemode(api, runtime));
+      api.hook("offer_tools", (tools) =>
         api.contribute.tools
           .list()
           .some((definition) => definition.exposure === "code" && offered(definition))
-          ? transcript
-          : {
-              ...transcript,
-              tools: transcript.tools.filter((info) => info.name !== CODEMODE_TOOL),
-            },
+          ? tools
+          : tools.filter((info) => info.name !== CODEMODE_TOOL),
       );
       api.contribute.prompt.add((draft, siblings) => {
         const text = listTools(siblings.tools.list().filter(offered));
@@ -173,7 +170,6 @@ function toJsonSchema(
 function codemode(
   api: PluginApi,
   runtime: Pick<CodemodeSandboxOptions, "workerUrl" | "wasm">,
-  offered: (definition: ToolDefinition) => boolean,
 ): ToolDefinition<{ code: string }> {
   return {
     name: CODEMODE_TOOL,
@@ -187,21 +183,9 @@ function codemode(
     replay: "never",
     async execute(args, invocation) {
       const { code, options } = parseCodemodeSource(args.code);
-      const withheld = new Set(
-        api.contribute.tools
-          .list()
-          .filter((definition) => !offered(definition))
-          .map((definition) => definition.name),
+      const callable = (await invocation.tools.list()).filter(
+        (info) => info.exposure !== "model-only" && info.exposure !== "hidden",
       );
-
-      const callable = invocation.tools
-        .list()
-        .filter(
-          (info) =>
-            info.exposure !== "model-only" &&
-            info.exposure !== "hidden" &&
-            !withheld.has(info.name),
-        );
       const stored = await api.storage.get("store");
 
       if (stored !== undefined && !isJsonObject(stored))

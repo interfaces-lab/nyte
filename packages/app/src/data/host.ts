@@ -13,10 +13,9 @@ import { queryClient } from "./query-client.ts";
 const OPENING_HOST_STATE: HostState = { workspace: undefined };
 
 export function useHostState() {
-  const { data } = useQuery({
+  const { data } = useQuery<HostState>({
     queryKey: keys.host,
     queryFn: skipToken,
-    initialData: OPENING_HOST_STATE,
   });
 
   return { data: data ?? OPENING_HOST_STATE };

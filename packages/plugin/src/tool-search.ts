@@ -3,8 +3,6 @@ import { isJsonObject, standard } from "@nyte-ai/schema";
 import type { Json, ToolInfo } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import type { Plugin } from "@nyte-ai/plugin/core";
-import { mayChange } from "./approvals/approvals.ts";
-import { readsOnly } from "./side-chat.ts";
 
 export const DEFAULT_SEARCH_LIMIT = 8;
 
@@ -84,23 +82,10 @@ export default {
         const loaded = new Set(await invocation.tools.loaded());
         const found = namespaces();
 
-        const withheld = (await readsOnly(invocation.session, invocation.sdk))
-          ? new Set(
-              api.contribute.tools
-                .list()
-                .filter(mayChange)
-                .map((tool) => tool.name),
-            )
-          : new Set<string>();
-
-        const candidates = invocation.tools
-          .list()
-          .filter(
-            (info) =>
-              (info.exposure === "code" || info.exposure === "deferred") &&
-              !loaded.has(info.name) &&
-              !withheld.has(info.name),
-          );
+        const candidates = (await invocation.tools.list()).filter(
+          (info) =>
+            (info.exposure === "code" || info.exposure === "deferred") && !loaded.has(info.name),
+        );
 
         const names = rankTools(
           args.query,
@@ -132,15 +117,13 @@ export default {
     };
 
     api.contribute.tools.add(search);
-    api.hook("transform_transcript", (transcript) => {
-      const declared = new Set(transcript.tools.map((info) => info.name));
+    api.hook("offer_tools", (tools) => {
+      const declared = new Set(tools.map((info) => info.name));
       const pending = api.contribute.tools
         .list()
         .some((definition) => definition.exposure === "deferred" && !declared.has(definition.name));
 
-      return pending
-        ? transcript
-        : { ...transcript, tools: transcript.tools.filter((info) => info.name !== search.name) };
+      return pending ? tools : tools.filter((info) => info.name !== search.name);
     });
   },
 } satisfies Plugin;

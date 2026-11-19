@@ -1,11 +1,15 @@
 import { props } from "@stylexjs/stylex";
+import { skipToken, useQuery } from "@tanstack/react-query";
 import type { ReactElement } from "react";
+import { textDigest } from "@nyte-ai/plugin/design/board-protocol";
+import type { SheetError } from "@nyte-ai/plugin/design/board-protocol";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Row } from "@nyte-ai/ui/row";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { useLights } from "../light/light.ts";
-import { designLights } from "./designs.ts";
-import type { Designs } from "./designs.ts";
+import { useDesignDiagnostics } from "./design-diagnostics.ts";
+import { parseDesign } from "./design-source.ts";
+import type { DesignStore, Designs } from "./designs.ts";
 import { studioStyles } from "./studio.stylex.ts";
 
 const KINDS = [
@@ -13,8 +17,6 @@ const KINDS = [
   { folder: "blocks", icon: "layers" },
   { folder: "controls", icon: "cube" },
 ] as const;
-
-const FRAME_NAME = /\sdata-frame=(?<quote>["'])(?<name>.+?)\k<quote>/u;
 
 function belongs(path: string, folder: string): boolean {
   return path.includes(`/${folder}/`) || path.includes(`/${folder}.`);
@@ -26,12 +28,14 @@ function belongs(path: string, folder: string): boolean {
  * board labels it, or by its file's when it names no frame.
  */
 export function DesignList(input: {
+  readonly store: DesignStore;
   readonly designs: Designs;
   /** Shown even where the panel is too narrow to keep it open. */
   readonly open: boolean;
   readonly onReveal: (path: string) => void;
 }): ReactElement {
-  const lit = useLights((lights) => designLights(lights).you?.subject.path);
+  const lit = useLights((lights) => input.store.lights(lights).you?.subject.path);
+  const errors = useDesignDiagnostics();
   const sheets = input.designs.paths.filter((path) => path.endsWith(".jsx"));
 
   const rows = [
@@ -52,23 +56,56 @@ export function DesignList(input: {
       data-nyte-scrollport
     >
       <h2 {...props(text.sm, studioStyles.heading)}>Designs</h2>
-      {rows.map((row) => (
-        <Row
-          key={row.path}
-          variant="nav"
-          selected={row.path === lit}
-          aria-current={row.path === lit}
-          onClick={() => input.onReveal(row.path)}
-        >
-          <Row.Leading>
-            <Icon name={row.icon} size="sm" />
-          </Row.Leading>
-          <Row.Label>
-            {FRAME_NAME.exec(input.designs.texts.get(row.path) ?? "")?.groups?.["name"] ??
-              (row.path.split("/").at(-1) ?? row.path).replace(/\.jsx$/u, "")}
-          </Row.Label>
-        </Row>
-      ))}
+      {rows.map((row) => {
+        const error = errors.get(row.path);
+
+        return (
+          <Row
+            key={row.path}
+            variant="nav"
+            selected={row.path === lit}
+            aria-current={row.path === lit}
+            onClick={() => input.onReveal(row.path)}
+          >
+            <Row.Leading>
+              <Icon name={row.icon} size="sm" />
+            </Row.Leading>
+            <DesignName path={row.path} text={input.designs.texts.get(row.path)} />
+            {error !== undefined && (
+              <Row.Meta title={describeError(error)}>
+                <Icon name="warning" size="sm" label={describeError(error)} />
+              </Row.Meta>
+            )}
+          </Row>
+        );
+      })}
     </nav>
   );
+}
+
+function DesignName(input: {
+  readonly path: string;
+  readonly text: string | undefined;
+}): ReactElement {
+  const text = input.text;
+
+  const source = useQuery({
+    queryKey: ["studio", "design-source", input.path, text === undefined ? null : textDigest(text)],
+    queryFn: text === undefined ? skipToken : () => parseDesign(input.path, text),
+    gcTime: 0,
+    placeholderData: (previous) => previous,
+  });
+
+  return (
+    <Row.Label>
+      {source.data?.frames[0]?.name ??
+        (input.path.split("/").at(-1) ?? input.path).replace(/\.jsx$/u, "")}
+    </Row.Label>
+  );
+}
+
+function describeError(error: SheetError): string {
+  const at = error.line === null ? "" : `:${String(error.line)}:${String(error.column ?? 1)}`;
+
+  return error.path === null ? error.message : `${error.path}${at}: ${error.message}`;
 }
