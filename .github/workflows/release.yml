@@ -370,7 +370,7 @@ jobs:
         shell: bash
         env:
           BUDGETS: ${{ inputs.skip_verify && '--warn-budgets' || '' }}
-        run: node packages/desktop/scripts/build.mjs --assets "$RUNNER_TEMP/desktop-assets" --package --publish never $BUDGETS
+        run: node packages/desktop/scripts/build.mjs --assets "$RUNNER_TEMP/desktop-assets" $BUDGETS --package --publish never
       - uses: actions/upload-artifact@v7
         with:
           name: desktop-${{ matrix.target }}
