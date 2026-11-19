@@ -368,7 +368,9 @@ jobs:
           path: ${{ runner.temp }}/desktop-assets
       - name: Package desktop with portable assets
         shell: bash
-        run: node packages/desktop/scripts/build.mjs --assets "$RUNNER_TEMP/desktop-assets" --package --publish never
+        env:
+          BUDGETS: ${{ inputs.skip_verify && '--warn-budgets' || '' }}
+        run: node packages/desktop/scripts/build.mjs --assets "$RUNNER_TEMP/desktop-assets" --package --publish never $BUDGETS
       - uses: actions/upload-artifact@v7
         with:
           name: desktop-${{ matrix.target }}
