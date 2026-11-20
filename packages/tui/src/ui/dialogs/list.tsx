@@ -1,7 +1,7 @@
 import { TextAttributes } from "@opentui/core";
 import type { ScrollBoxRenderable } from "@opentui/core";
 import type { JSX } from "@opentui/solid";
-import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js";
 import type { Accessor } from "solid-js";
 import { useApp } from "../../app/context.tsx";
 import { GLYPHS, keycap } from "../../lib/constants.ts";
@@ -288,9 +288,7 @@ export function ListView(props: { readonly dialog: ListDialog }): JSX.Element {
         <scrollbox
           ref={(box) => {
             scroll = box;
-            const reveal = () => revealRow(box, props.dialog.highlighted);
-            box.viewport.on("resize", reveal);
-            onCleanup(() => box.viewport.off("resize", reveal));
+            box.viewport.on("resize", () => revealRow(box, props.dialog.highlighted));
           }}
           height={Math.min(rows().length, choiceRows())}
           scrollX={false}

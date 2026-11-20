@@ -79,9 +79,21 @@ export const factHandlers = {
   "session-info": followedOnly<MsgOf<"session-info">>((state, session, msg) => {
     const next = withFacts(state, { chat: { ...session, info: msg.info } });
 
-    return session.view === null || unreadTip(msg.info) === unreadTip(session.info)
-      ? stay(next)
-      : see(next);
+    const shown =
+      session.view === null || unreadTip(msg.info) === unreadTip(session.info)
+        ? stay(next)
+        : see(next);
+
+    const { workspace } = msg.info;
+
+    if (workspace === session.info.workspace) return shown;
+
+    return andThen(shown, (current) =>
+      andThen(trustOnEntry(state, current, workspace), (trusting) => ({
+        state: trusting,
+        effects: [{ kind: "chat-moved", session: session.id, workspace }],
+      })),
+    );
   }),
   selection: (state, msg) => {
     const { chat } = state.facts;
@@ -562,12 +574,7 @@ function draftChanged(
 export function completionLookup(before: State["local"]["completion"], next: State): Step {
   const after = next.local.completion;
 
-  if (
-    after.kind !== "open" ||
-    after.directories !== null ||
-    after.explicit !== null ||
-    after.suggestions !== null
-  )
+  if (after.kind !== "open" || after.explicit !== null || after.suggestions !== null)
     return stay(next);
 
   if (
@@ -577,9 +584,6 @@ export function completionLookup(before: State["local"]["completion"], next: Sta
   )
     return stay(next);
   const { cwd } = next.facts.workspace;
-
-  if (after.token.trigger === "cd")
-    return { state: next, effects: [{ kind: "list-directory", path: after.token.query, cwd }] };
 
   if (after.token.trigger === "argument" && next.facts.chat !== null)
     return {

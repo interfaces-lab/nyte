@@ -428,35 +428,6 @@ describe("completion", () => {
     expect(step.state.local.draft.text).toBe("/settings ");
   });
 
-  test("accepting /cd completes it and starts listing directories", () => {
-    const step = play(ready(idle), typed("/c"), {
-      kind: "completion",
-      action: { kind: "move", by: 1 },
-    });
-
-    const cd =
-      deriveScreen(step.state, null).completion?.items.findIndex((item) => item.id === "cd") ?? -1;
-
-    const picked = play(
-      step.state,
-      { kind: "completion", action: { kind: "pick", index: cd } },
-      typed("/cd "),
-    );
-
-    expect(picked.effects).toContainEqual({ kind: "list-directory", path: "", cwd: "/w" });
-
-    const listed = play(picked.state, {
-      kind: "directory-listed",
-      path: "",
-      entries: ["src/", "test/"],
-    });
-
-    expect(deriveScreen(listed.state, null).completion).toMatchObject({
-      ownsEnter: false,
-      items: [{ id: "src/" }, { id: "test/" }],
-    });
-  });
-
   test("an @ mention becomes a file marker with its part", () => {
     const state = play(
       ready(idle),
@@ -813,13 +784,7 @@ describe("session and view intents", () => {
     expect(model.state.local.notice?.text).toBe("Model: test/other · off");
   });
 
-  test("/cd waits for the run and for the queue; switching to the current chat says so", () => {
-    expect(
-      play(ready(queued), { kind: "change-directory", path: "/x" }).state.local.notice?.text,
-    ).toBe("Wait for the current run before changing directories");
-    expect(play(ready(idle), { kind: "change-directory", path: "/x" }).effects).toEqual([
-      { kind: "change-directory", session: S1, path: "/x" },
-    ]);
+  test("switching to the current chat says so", () => {
     expect(
       play(ready(idle), { kind: "switch-session", session: S1, announce: true }).state.local.notice
         ?.text,
@@ -970,17 +935,5 @@ describe("session and view intents", () => {
     expect(play(state, { kind: "stop-task", task: "j1" }).state.local.notice?.text).toBe(
       "This task has already finished. /tasks opens its output.",
     );
-  });
-});
-
-describe("refusals", () => {
-  test("/cd without a path says one is required", () => {
-    const step = play(ready(idle), typed("/cd "), { kind: "send", delivery: "queue" });
-
-    expect(step.state.local.notice).toMatchObject({
-      tone: "error",
-      text: "error: Directory is required. Use /cd <path>.",
-    });
-    expect(step.state.local.draft.text).toBe("/cd ");
   });
 });

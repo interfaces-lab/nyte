@@ -240,7 +240,11 @@ test("--no-context-files starts the run's sessions without the folder's AGENTS.m
 
   const probe: Plugin<"core"> = {
     id: "probe",
-    activate: (api) => void seen.set(api.session.id, api.inputs.contextFiles),
+    activate(api) {
+      seen.set(api.session.id, api.project.contextFiles);
+
+      return {};
+    },
   };
 
   try {

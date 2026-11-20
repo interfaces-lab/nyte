@@ -243,15 +243,16 @@ saved conversation.
 
 ## Working directory
 
-`/cd <path>` changes the current chat's working directory and keeps its history. Relative paths
-start from the chat's current directory. Absolute paths, `~`, `~/…` and paths with spaces work.
-Nyte reads paths literally, not as shell expressions.
+`/cd <path>` changes the current chat's working directory and keeps its history. The host runs
+`cd <path>` in your login shell, from the chat's directory, so the shell decides where it lands:
+`~`, `..`, `$VARS`, quotes and a `cd` you've replaced, such as zoxide's, all work as they do in
+your terminal. Quote a path with spaces, as in `/cd 'My Folder'`.
 
-Selecting `/cd` fills the composer. Directory suggestions appear as you type, and Tab completes a
-path so you can browse deeper. The host registers the destination as a workspace and the chat moves
-there.
+Selecting `/cd` fills the composer. Folder suggestions appear as you type, Tab completes one so
+you can browse deeper, and Enter runs what you typed. The host registers the destination as a
+workspace and the chat moves there.
 
-Finish active runs, jobs and queued messages before you switch. Tools, skills, project plugins, file
+Finish the active run before you switch. Tools, skills, project plugins, file
 mentions and the status bar follow the new directory. Other chats keep their directories, and new
 chats start in the current one.
 

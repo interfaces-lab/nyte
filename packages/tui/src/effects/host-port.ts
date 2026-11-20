@@ -461,31 +461,6 @@ function sessionPort(
 
       return outcome.kind === "missing" ? "missing" : "stopped";
     },
-    async changeDirectory(path) {
-      const seen = await host.workspaces.inspect({ kind: "local", path });
-
-      const added = await host.workspaces.add(seen.target, {
-        expect: { identity: seen.identity },
-      });
-
-      if (added.kind === "stale")
-        return { kind: "refused", reason: `${path} changed while it was opened; try again.` };
-
-      if (added.kind === "unavailable")
-        return { kind: "refused", reason: `Couldn't open ${path}: ${added.reason}` };
-      const outcome = await session.update({ workspace: added.workspace });
-
-      if (outcome.kind === "busy")
-        return {
-          kind: "refused",
-          reason: "Wait for active runs and jobs to finish before changing directories.",
-        };
-
-      if (outcome.kind !== "updated")
-        return { kind: "refused", reason: `Couldn't open ${path} for this session.` };
-
-      return { kind: "changed", cwd: path };
-    },
     async reload() {
       const info = await session.info();
       const outcome = await host.workspace(info.workspace).reload();

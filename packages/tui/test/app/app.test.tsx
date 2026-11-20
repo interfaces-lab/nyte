@@ -268,7 +268,7 @@ test("Ctrl+O shows a long tool result whole, read from its part past the row's e
     description: "Print many lines.",
     parameters: standard(Type.Object({})),
     class: () => ({ kind: "custom", label: "Printing" }),
-    replay: "safe",
+    rerun: "safe",
     execute: async () => ({ content: [{ kind: "text", text: lines.join("\n") }] }),
   } satisfies ToolDefinition<object>;
 

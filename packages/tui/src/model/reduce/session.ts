@@ -1,10 +1,8 @@
 import type { WorkspaceId } from "@nyte-ai/sdk";
 import { availableModels, clampThinking, findModel, modelId } from "../../lib/catalog.ts";
 import { shortId } from "../../lib/format.ts";
-import { promptMessages } from "../../lib/view-helpers.ts";
 import type { AuthDialog } from "../dialogs/auth.ts";
 import { snapshot } from "../draft.ts";
-import { queueRows } from "../queue.ts";
 import { chatFolder, followedSession } from "../state.ts";
 import type { PendingOp, Selection, State } from "../state.ts";
 import {
@@ -26,7 +24,6 @@ import { restoreDraft } from "./facts.ts";
 
 const HELD_BY_EFFECT: ReadonlyMap<string, PendingOp["kind"]> = new Map([
   ["follow", "switch"],
-  ["change-directory", "cd"],
   ["login", "auth"],
   ["logout", "auth"],
   ["reload", "reload"],
@@ -38,7 +35,7 @@ export const sessionHandlers = {
     const followed = state.facts.chat;
     const { pending } = state.local;
 
-    if (pending.some((op) => op.kind === "switch" || op.kind === "cd"))
+    if (pending.some((op) => op.kind === "switch"))
       return refuse(state, "A chat switch is already in progress", now);
 
     if (followed !== null && msg.session === followed.id)
@@ -78,33 +75,6 @@ export const sessionHandlers = {
       state: current,
       effects: [{ kind: "follow", target: msg.session, announce: msg.announce }],
     }));
-  },
-  "change-directory": (state, msg, now) => {
-    const followed = state.facts.chat;
-    const { pending } = state.local;
-
-    if (followed === null) return stay(state);
-
-    if (busy(state))
-      return refuse(state, "Wait for the current run before changing directories", now);
-    const session = followedSession(state);
-    const view = session?.view ?? null;
-
-    if (queueRows(session, null).length > 0 || (view !== null && promptMessages(view).length > 0))
-      return refuse(
-        state,
-        "error: Wait for queued messages before changing directories.",
-        now,
-        "error",
-      );
-
-    if (pending.some((op) => op.kind === "switch" || op.kind === "cd"))
-      return refuse(state, "Wait for the workspace switch to finish.", now);
-
-    return {
-      state: withLocal(state, { pending: [...pending, { kind: "cd", path: msg.path }] }),
-      effects: [{ kind: "change-directory", session: followed.id, path: msg.path }],
-    };
   },
   reload: (state, _msg, now) => {
     const { pending } = state.local;

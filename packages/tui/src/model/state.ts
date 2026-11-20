@@ -227,7 +227,6 @@ export interface FailureReport {
 
 export type PendingOp =
   | { readonly kind: "switch"; readonly session: SessionId | "new"; readonly announce: boolean }
-  | { readonly kind: "cd"; readonly path: string }
   | { readonly kind: "auth"; readonly provider: string; readonly link: string | null }
   | { readonly kind: "reload" }
   | { readonly kind: "editor" };

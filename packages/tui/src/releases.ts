@@ -150,7 +150,3 @@ export async function findUpdate(signal?: AbortSignal): Promise<ReleaseInfo | un
 
   return supersedes(latest.version, VERSION) ? latest : undefined;
 }
-
-export async function checkForUpdate(): Promise<ReleaseInfo | undefined> {
-  return findUpdate().catch(() => undefined);
-}

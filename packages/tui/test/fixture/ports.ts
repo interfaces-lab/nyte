@@ -255,7 +255,6 @@ function fakeSession(id: string): FakeSession {
 
       return "stopped";
     },
-    changeDirectory: async (path) => ({ kind: "changed", cwd: path }),
     reload: async () => "updated",
     upload: async () => asId("blob-1"),
     mentions: async () => [],
@@ -484,7 +483,6 @@ export function fakePorts(host: FakeHost): FakePorts {
 
       return files.pasteResult.kind === "text" ? { kind: "text", text } : files.pasteResult;
     },
-    listDirectory: async () => [],
     resolveMention: async () => null,
     readText: async (path) => files.texts.get(path) ?? null,
     editor: async () => files.editorResult,

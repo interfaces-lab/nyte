@@ -173,8 +173,6 @@ const CHOOSERS: Choosers = {
     if (choice === "shortcuts")
       return openDialog(closed, { kind: "text", content: "shortcuts" }, now, reduce);
 
-    if (choice === "cmd:cd") return reduce(closed, { kind: "prefill", text: "/cd " }, now);
-
     if (choice.startsWith("cmd:"))
       return reduce(
         closed,

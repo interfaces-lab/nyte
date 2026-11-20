@@ -3,7 +3,7 @@ import type { ModelCatalogView, SessionId, Thinking } from "@nyte-ai/sdk";
 import { availableModels, findModel } from "../lib/catalog.ts";
 import type { BlankChat, Selection } from "../model/state.ts";
 import { describeUpdateOutcome, selfUpdate } from "../update.ts";
-import { checkForUpdate } from "../releases.ts";
+import { findUpdate } from "../releases.ts";
 import { configure } from "./commands.ts";
 import type { HandlerContext } from "./scope.ts";
 import {
@@ -187,7 +187,7 @@ function flagSelection(
 }
 
 async function checkUpdate(autoUpdate: boolean, context: HandlerContext): Promise<void> {
-  const release = await checkForUpdate();
+  const release = await findUpdate(context.signal).catch(() => undefined);
 
   if (release === undefined || context.signal.aborted) return;
 
@@ -201,7 +201,7 @@ async function checkUpdate(autoUpdate: boolean, context: HandlerContext): Promis
     return;
   }
 
-  const outcome = await selfUpdate({ target: release.version });
+  const outcome = await selfUpdate({ target: release.version, signal: context.signal });
 
   if (context.signal.aborted) return;
 

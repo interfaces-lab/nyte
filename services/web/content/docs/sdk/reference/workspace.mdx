@@ -68,7 +68,8 @@ follows it, and live chats reload with the change. [Trust](/docs/configure/trust
 loads.
 
 `command` answers `ran` with the command's `output`, `prompt` with the first message of the chat it
-asks you to start, `unknown`, or `failed` with a `message`.
+asks you to start, `moved` with the `workspace` that chat starts in and an `output` to show,
+`unknown`, or `failed` with a `message`.
 
 `source` for `changes` and `patches` is `{ kind: "run", run }` or `{ kind: "session", session }`.
 `options` is `{ ignoreWhitespace? }`.

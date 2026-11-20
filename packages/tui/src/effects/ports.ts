@@ -171,12 +171,6 @@ export interface SessionPort {
       | { readonly kind: "agent"; readonly session: SessionId }
       | { readonly kind: "job"; readonly job: string },
   ): Promise<"stopped" | "missing">;
-  changeDirectory(
-    path: string,
-  ): Promise<
-    | { readonly kind: "changed"; readonly cwd: string }
-    | { readonly kind: "refused"; readonly reason: string }
-  >;
   reload(): Promise<"updated" | "missing">;
   upload(bytes: Uint8Array): Promise<BlobId>;
   mentions(signal: AbortSignal): Promise<readonly string[]>;
@@ -236,7 +230,6 @@ export interface ShellPort {
 
 export interface FilesPort {
   resolvePaste(text: string, bytes: Uint8Array | null, cwd: string): Promise<DraftInsert>;
-  listDirectory(path: string, cwd: string): Promise<readonly string[]>;
   resolveMention(query: string, cwd: string): Promise<MentionFile | null>;
   readText(path: string): Promise<string | null>;
   editor(text: string, command: string | null): Promise<string | null>;

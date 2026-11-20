@@ -97,7 +97,6 @@ export type Intent =
       readonly session: SessionId | "new";
       readonly announce: boolean;
     }
-  | { readonly kind: "change-directory"; readonly path: string }
   | { readonly kind: "reload" }
   | { readonly kind: "compact"; readonly instructions: string | null }
   | { readonly kind: "update"; readonly target: string | null }
@@ -120,7 +119,7 @@ export type Intent =
       readonly kind: "apply-setting";
       readonly id: string;
       readonly label: string;
-      readonly scope: "host" | "session";
+      readonly scope: "host" | "chat";
       readonly value: Json;
     }
   | {
@@ -282,11 +281,6 @@ export type Outcome =
       readonly marker: string;
       readonly path: string;
       readonly body: string | null;
-    }
-  | {
-      readonly kind: "directory-listed";
-      readonly path: string;
-      readonly entries: readonly string[];
     }
   | {
       readonly kind: "command-completed";

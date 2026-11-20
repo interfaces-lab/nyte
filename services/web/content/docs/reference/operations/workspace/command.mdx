@@ -7,7 +7,9 @@ Runs a command from [`workspace.catalog`](/docs/reference/operations/workspace/c
 chat, with the text typed after it (`""` for none). A command that returns text answers `ran`. A
 command that answers with a prompt runs nothing more: the `prompt` outcome carries the first
 message of the chat it asks to start, which the client passes to
-[`sessions.start`](/docs/reference/operations/sessions/start).
+[`sessions.start`](/docs/reference/operations/sessions/start). A command that answers with a
+workspace, such as `/cd`, answers `moved`: the chat that hasn't started now starts in that
+workspace, and `output` is the text to show.
 
 ## When to call it
 
@@ -273,6 +275,37 @@ threw.
                                 "type": "string"
                               }
                             }
+                          },
+                          {
+                            "type": "object",
+                            "required": ["kind", "path", "frame", "start", "end"],
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "design"
+                              },
+                              "path": {
+                                "type": "string"
+                              },
+                              "frame": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "start": {
+                                "type": "integer",
+                                "minimum": 0
+                              },
+                              "end": {
+                                "type": "integer",
+                                "minimum": 0
+                              }
+                            }
                           }
                         ]
                       },
@@ -283,6 +316,29 @@ threw.
                   }
                 ]
               }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "workspace", "output"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "moved"
+        },
+        "workspace": {
+          "type": "string"
+        },
+        "output": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
             }
           ]
         }

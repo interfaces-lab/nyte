@@ -173,6 +173,7 @@ describe("workspaces", () => {
     const invocation = createInvocation(kernel, {
       session: session.id,
       runtime: kernel.plugins.runtime(session.id),
+      owner: "core",
       head: main,
       run: asId("r1"),
       call: asId("c1"),
@@ -263,6 +264,8 @@ describe("workspaces", () => {
         } catch {
           seen.push("none");
         }
+
+        return {};
       },
     };
 
@@ -692,6 +695,8 @@ describe("activation (§37j–m)", () => {
       async activate(api) {
         await api.session.send("Hello from activate.", { delivery: "attach" });
         await api.session.command("nudge", "");
+
+        return {};
       },
     };
 
@@ -725,66 +730,21 @@ describe("activation (§37j–m)", () => {
     ).toContain("/work/other");
   });
 
-  it("reloads the full list: a plugin a failed activation rejected is retried, and a session's own list is kept", async () => {
-    let broken = true;
-    const starts: string[] = [];
-
-    const flaky: Plugin<"core"> = {
-      id: "flaky",
-      activate() {
-        starts.push("flaky");
-
-        if (broken) throw new Error("Not yet.");
-      },
-    };
-
-    const builtin: Plugin<"core"> = {
-      id: "builtin",
-      activate() {
-        starts.push("builtin");
-      },
-    };
-
-    const { kernel, host, workspace } = await world({ plugins: [flaky], builtins: [builtin] });
-    const { session } = await host.sessions.start({ workspace, content: "Hi." });
-    const first = kernel.plugins.runtime(session.id);
-
-    expect(first.plugins().map((plugin) => plugin.id)).toEqual(["builtin", "fake-environment"]);
-
-    broken = false;
-    await host.workspace(workspace).reload();
-
-    expect(first.plugins()).toEqual([]);
-    expect(
-      kernel.plugins
-        .runtime(session.id)
-        .plugins()
-        .map((plugin) => plugin.id),
-    ).toEqual(["builtin", "fake-environment", "flaky"]);
-
-    const own: Plugin<"core"> = { id: "own" };
-    await host.plugins.replace([own], { session: session.id });
-    await host.workspace(workspace).reload();
-    const runtime = kernel.plugins.runtime(session.id);
-
-    expect(runtime.assigned()).toEqual([own]);
-    expect(runtime.plugins().map((plugin) => plugin.id)).toEqual(["builtin", "own"]);
-    expect(starts.filter((id) => id === "builtin")).toHaveLength(4);
-  });
-
   it("loads an uncovered session's plugins but attaches nothing: env and inputs unavailable, activation inactive", async () => {
     const seen: unknown[] = [];
 
     const probe: Plugin<"core"> = {
       id: "probe",
       activate(api) {
-        for (const read of [() => api.env, () => api.inputs]) {
+        for (const read of [() => api.env, () => api.project]) {
           try {
             read();
           } catch (error) {
             seen.push(error instanceof SdkError ? error.code : error);
           }
         }
+
+        return {};
       },
     };
 

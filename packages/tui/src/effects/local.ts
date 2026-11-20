@@ -4,7 +4,6 @@ import { usageCard, usageLines } from "../lib/usage.ts";
 import { pluginCommands } from "../model/commands.ts";
 import type { DialogData } from "../model/dialogs/dialog.ts";
 import { mcpActionChoices, mcpDetailLines, mcpServerChoices } from "../model/mcp.ts";
-import type { Choice } from "../model/dialogs/list.ts";
 import type { ModelRow } from "../model/dialogs/model-picker.ts";
 import { gitHubLines } from "../lib/pull-request.ts";
 import type { Effect } from "../model/effect.ts";
@@ -203,25 +202,6 @@ async function loaded(effect: Of<"load">, context: HandlerContext): Promise<Dial
       };
     }
 
-    case "directory": {
-      const entries = await ports.files.listDirectory(request.path, read().facts.workspace.cwd);
-
-      return {
-        kind: "list",
-        choices: {
-          kind: "ready",
-          items: entries.map((path): Choice => ({
-            id: path,
-            label: path,
-            description: "",
-            timing: null,
-            status: null,
-            mark: null,
-          })),
-        },
-      };
-    }
-
     case "plugins": {
       const rows = await ports.host.hostPlugins();
 
@@ -288,14 +268,6 @@ async function mcpServer(
   if (found === undefined) throw new Error(`No MCP server is named ${name}.`);
 
   return found;
-}
-
-export async function listDirectory(
-  effect: Of<"list-directory">,
-  context: LocalHandlerContext,
-): Promise<void> {
-  const entries = await context.ports.files.listDirectory(effect.path, effect.cwd);
-  context.dispatch({ kind: "directory-listed", path: effect.path, entries });
 }
 
 export async function resolveMention(

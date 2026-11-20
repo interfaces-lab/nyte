@@ -21,6 +21,7 @@ import {
   skillInfos,
 } from "./registry.ts";
 import { scanWorkspaceResources } from "./resources.ts";
+import { readSettingValues } from "./setting-definitions.ts";
 import { settingHandle } from "./settings.ts";
 
 export function readWorkspaceCatalog(
@@ -53,11 +54,21 @@ export function runWorkspaceCommand(
     if (invoked.kind !== "returned") return invoked;
     const { result } = invoked;
 
-    if (typeof result === "string") return { kind: "ran", output: result };
+    switch (result.kind) {
+      case "text":
+        return { kind: "ran", output: result.output };
+      case "prompt":
+        return { kind: "prompt", content: result.content };
+      case "move":
+        return (await readWorkspace(kernel.store, result.workspace)) === null
+          ? { kind: "failed", message: "That folder isn't registered on this host." }
+          : { kind: "moved", workspace: result.workspace, output: result.output };
+      default: {
+        const _exhaustive: never = result;
 
-    if (result === undefined) return { kind: "ran", output: null };
-
-    return { kind: "prompt", content: result.prompt };
+        return _exhaustive;
+      }
+    }
   });
 }
 
@@ -90,7 +101,10 @@ async function withNewChatPlugins<T>(
   const session = asId<"session">(crypto.randomUUID());
   const ended = new AbortController();
 
+  let settings: Readonly<Record<string, unknown>> = {};
+
   const registries = createRegistrySet({
+    chat: () => ({ parent: null, settings }),
     onChange: () => {},
     setting: (definition, owner) =>
       settingHandle(kernel, definition, { owner, session: null, signal: ended.signal }),
@@ -107,6 +121,13 @@ async function withNewChatPlugins<T>(
   const activated = await activateApart(kernel, session, host, plugins, inputs, env);
 
   try {
+    registries.settings.materialize(registries);
+
+    settings = await readSettingValues(
+      kernel,
+      null,
+      registries.settings.drafted().map((entry) => entry.item),
+    );
     await registries.materialize();
 
     return await work({ session, registries, api: activated.api, inputs });

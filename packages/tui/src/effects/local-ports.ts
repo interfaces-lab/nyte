@@ -4,7 +4,6 @@ import { basename, extname, join, relative, resolve } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { imageInfo } from "@opentui/core";
-import { directorySuggestions } from "../lib/directory-completion.ts";
 import type { MentionFile } from "../model/completion.ts";
 import type { DraftInsert, DraftPart } from "../model/draft.ts";
 import { editInExternalEditor, resolveExternalEditor } from "../services/external-editor.ts";
@@ -84,7 +83,6 @@ function shellEnd(end: Awaited<ShellProcess["done"]>): ShellEnd {
 export function filesPort(): FilesPort {
   return {
     resolvePaste,
-    listDirectory: (path, cwd) => directorySuggestions({ path, cwd }),
     resolveMention,
     readText: readAttachmentText,
     async editor(text, command) {

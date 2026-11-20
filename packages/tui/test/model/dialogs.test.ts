@@ -602,7 +602,7 @@ describe("accepting a row", () => {
     ).toBe(opened);
   });
 
-  test("the palette runs a command, prefills /cd, and dispatches a key action", () => {
+  test("the palette runs a command and dispatches a key action", () => {
     const palette = play(ready(idle), {
       kind: "open",
       dialog: { kind: "list", purpose: { kind: "palette" } },
@@ -617,9 +617,6 @@ describe("accepting a row", () => {
 
     expect(pick("cmd:usage").effects).toEqual([
       { kind: "load", dialog: "dialog-2", request: { kind: "usage", session: S1 } },
-    ]);
-    expect(pick("cmd:cd").effects).toEqual([
-      { kind: "composer", op: { kind: "insert", text: "/cd ", at: "start" } },
     ]);
     expect(pick("action:chat.thinking.cycle").effects).toMatchObject([
       { kind: "configure", selection: { effort: "high" } },

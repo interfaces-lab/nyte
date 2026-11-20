@@ -2,7 +2,6 @@ import fuzzysort from "fuzzysort";
 import type { Prepared } from "fuzzysort";
 import type { CommandCompletion } from "@nyte-ai/sdk";
 import { completionTrigger, findCommandArgument } from "@nyte-ai/plugin/client/presentation";
-import { directoryCompletionQuery } from "../lib/directory-completion.ts";
 import { acceptSlashCommand, slashCommandLabel, slashCompletion } from "../lib/slash.ts";
 import type { SlashCommand, SlashIndex } from "../lib/slash.ts";
 import type { Draft } from "./state.ts";
@@ -13,7 +12,6 @@ export type CompletionState =
       readonly kind: "open";
       readonly token: CompletionToken;
       readonly highlighted: number;
-      readonly directories: { readonly path: string; readonly entries: readonly string[] } | null;
       readonly explicit: MentionFile | null;
       readonly suggestions: readonly CommandCompletion[] | null;
     };
@@ -30,7 +28,7 @@ export interface IndexedMention extends MentionFile {
 
 export type CompletionToken =
   | {
-      readonly trigger: "/" | "@" | "cd";
+      readonly trigger: "/" | "@";
       readonly query: string;
       readonly from: number;
       readonly to: number;
@@ -110,10 +108,6 @@ export function completionToken(
   draft: Pick<Draft, "text" | "cursor">,
   completing: ReadonlySet<string>,
 ): CompletionToken | null {
-  const directory = directoryCompletionQuery(draft.text, draft.cursor);
-
-  if (directory !== undefined)
-    return { trigger: "cd", query: directory.path, from: directory.start, to: directory.end };
   const argument = findCommandArgument(draft.text, draft.cursor);
 
   if (argument !== undefined && completing.has(argument.command))
@@ -144,7 +138,6 @@ export function nextCompletion(
     kind: "open",
     token,
     highlighted: 0,
-    directories: null,
     explicit: null,
     suggestions: null,
   };
@@ -253,18 +246,6 @@ function itemsFor(
           kind: file.path.endsWith("/") ? "directory" : "file",
         })),
       };
-    case "cd":
-      return state.directories === null
-        ? { kind: "loading" }
-        : {
-            kind: "ready",
-            items: state.directories.entries.map((entry) => ({
-              id: entry,
-              label: entry,
-              detail: "",
-              kind: "directory",
-            })),
-          };
     case "argument":
       if (state.suggestions === null) return { kind: "loading" };
 
@@ -304,7 +285,7 @@ export function completionModel(
     items,
     loading: found.kind === "loading",
     highlighted,
-    ownsEnter: state.token.trigger !== "cd" && items.length > 0,
+    ownsEnter: state.token.trigger !== "argument" && items.length > 0,
     queueable: items[highlighted]?.kind === "skill",
   };
 }
@@ -341,13 +322,11 @@ export function completionEdit(
   if (model.token.trigger === "@")
     return { kind: "file", from, to, path: item.id, directory: item.id.endsWith("/") };
 
-  if (model.token.trigger === "cd" || model.token.trigger === "argument")
-    return { kind: "replace", from, to, text: item.id };
+  if (model.token.trigger === "argument") return { kind: "replace", from, to, text: item.id };
   const command = sources.commands.find((candidate) => candidate.name === item.id);
 
   if (command === undefined) return null;
 
-  if (command.name === "cd") return { kind: "replace", from, to, text: "/cd " };
   const leading = draft.text.slice(0, from).trim() === "";
   const acceptance = acceptSlashCommand(command, via, leading ? draft.text.slice(to).trim() : "");
 

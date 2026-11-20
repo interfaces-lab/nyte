@@ -48,7 +48,7 @@ function waitingOnAsk(info: SessionInfo): SessionInfo {
 }
 
 describe("blocked", () => {
-  test("one ordered rule: switching, no session, directory, authentication, editor", () => {
+  test("one ordered rule: switching, no session, authentication, editor", () => {
     expect(blockedBy(blank())).toEqual({ kind: "no-session" });
 
     const state = ready(idle);
@@ -58,9 +58,6 @@ describe("blocked", () => {
       blockedBy(play(state, { kind: "switch-session", session: "new", announce: false }).state),
     ).toEqual({
       kind: "switching",
-    });
-    expect(blockedBy(play(state, { kind: "change-directory", path: "/x" }).state)).toEqual({
-      kind: "changing-directory",
     });
     expect(blockedBy(play(state, { kind: "open-editor" }).state)).toEqual({ kind: "editor" });
     expect(

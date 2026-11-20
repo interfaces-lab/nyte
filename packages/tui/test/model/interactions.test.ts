@@ -89,8 +89,8 @@ const CASES: readonly (readonly [string, TableSpec, ChatCommand, Check])[] = [
     }),
   ],
   [
-    "completion: Enter on /cd passes, so the typed path runs",
-    { completion: "cd", draft: "/cd sr" },
+    "completion: Enter on an argument suggestion passes, so the typed text runs",
+    { completion: "argument", draft: "/cd sr" },
     ENTER,
     does({ kind: "send", delivery: "queue" }),
   ],
@@ -107,8 +107,8 @@ const CASES: readonly (readonly [string, TableSpec, ChatCommand, Check])[] = [
     does({ kind: "noop" }),
   ],
   [
-    "completion: Ctrl+Enter on /cd passes, so the typed path runs",
-    { completion: "cd", draft: "/cd sr", run: "working" },
+    "completion: Ctrl+Enter on an argument suggestion passes, so the typed text runs",
+    { completion: "argument", draft: "/cd sr", run: "working" },
     CTRL_ENTER,
     does({ kind: "send", delivery: "queue" }),
   ],
@@ -494,8 +494,8 @@ const CASES: readonly (readonly [string, TableSpec, ChatCommand, Check])[] = [
     does({ kind: "completion", action: { kind: "move", by: 1 } }),
   ],
   [
-    "completion accept is off for /cd",
-    { completion: "cd", draft: "/cd sr" },
+    "completion accept is off for argument suggestions, so Tab fills them",
+    { completion: "argument", draft: "/cd sr" },
     "completion.accept",
     does(null),
   ],
@@ -555,7 +555,7 @@ const EDITING = [undefined, "queue"] as const;
 
 const SHELL = [false, true] as const;
 
-const COMPLETION = [undefined, "slash", "skill", "cd"] as const;
+const COMPLETION = [undefined, "slash", "skill", "argument"] as const;
 
 const BLOCKED = [undefined, "switching", "authenticating"] as const;
 

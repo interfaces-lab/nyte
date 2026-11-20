@@ -17,7 +17,7 @@ const deploy = {
   description: "Run a deploy command.",
   parameters: standard(Type.Object({ command: Type.String() })),
   class: (args) => ({ kind: "shell", command: args.command }),
-  replay: "never",
+  rerun: "never",
   execute: async (args) => {
     ran.push(args.command);
 
