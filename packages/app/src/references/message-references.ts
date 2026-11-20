@@ -51,7 +51,7 @@ const LENGTH_TOKEN_HEADER = /@(clipboard|excerpt)\/([0-9]+):/gu;
 
 const SKILL_LINK_PATTERN = /\[\$(?<name>[^\]\r\n]+)\]\((?<path>[^)\r\n]*)\)/gu;
 
-const FILE_URL_PATTERN = /@file:\/\/[^\s<>"]+/gu;
+const FILE_URL_PATTERN = /@file:\/\/(?:[^\s<>"()]|\([^\s<>"()]*\)?)+/gu;
 
 const LINE_FRAGMENT = /#L([0-9]+)-([0-9]+)$/u;
 
@@ -59,7 +59,7 @@ const DRAFT_TOKEN_PATTERN = new RegExp(
   [
     FILE_URL_PATTERN.source,
     SKILL_LINK_PATTERN.source,
-    `(?<=^|\\s)${CONVERSATION_MENTION_TEXT}(?=\\s|$)`,
+    `(?<=^|[\\s(])${CONVERSATION_MENTION_TEXT}(?=[\\s)]|$)`,
   ].join("|"),
   "gu",
 );

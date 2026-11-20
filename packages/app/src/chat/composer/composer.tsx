@@ -38,7 +38,7 @@ import { loadedPrompts } from "./composer-history.ts";
 import { deliveryChoices, draftEmpty, nextToSteer } from "./composer-keys.ts";
 import { deliver, draftCommands } from "./composer-send.ts";
 import { planSubmission } from "./composer-plan.ts";
-import { endedDraft, errorNotice, shownDraft } from "./composer-draft.ts";
+import { endedDraft, errorNotice, handedOff, shownDraft, shownNotice } from "./composer-draft.ts";
 import type { ComposerNotice } from "./composer-draft.ts";
 import { editBlock, FILES_WHILE_SAVING, saving } from "./composer-session.ts";
 import type { PendingRowAction } from "./composer-session.ts";
@@ -135,7 +135,7 @@ export function Composer({
   const dispatch = composer.dispatch;
   const shownView = shownDraft(draft);
   const attachments = shownView.attachments;
-  const feedback = draft.notice;
+  const feedback = shownNotice(draft);
   const liveRun = "run" in status ? status.run : undefined;
   const mark = useChats((chats) => chats.get(sessionId)?.mark) ?? runMark(status);
   const target = draft.edit;
@@ -280,14 +280,20 @@ export function Composer({
 
     const live = await connected();
     windowTabs.dispatch({ kind: "keep-tab", tabId: submittingTab });
-    dispatch({ kind: "sent", document, attachments: sentAttachments });
+    dispatch({ kind: "sent", document, attachments: sentAttachments, receipt });
     const sending = await deliver(live, chat, plan, receipt);
-    dispatch({ kind: "handed-off" });
+
+    if (sending.journaled) dispatch({ kind: "handed-off", receipt });
 
     void sending.ended.then((end) => {
       viewStore.updateDraft(sessionId, (current) =>
-        endedDraft(current, end, { text: document.text, attachments: sentAttachments }),
+        endedDraft(handedOff(current, receipt), end, {
+          text: document.text,
+          attachments: sentAttachments,
+        }),
       );
+
+      if (end.kind === "refused") viewStore.persist();
 
       if (end.kind !== "sent") return;
 
@@ -361,6 +367,24 @@ export function Composer({
             kind: "failed",
             message: `Couldn't steer: ${errorMessage(cause)}`,
           }),
+      );
+  };
+
+  const movePending = (item: UserMessage, after: MessageId | null): void => {
+    setRowAction(item.id, { kind: "sending" });
+
+    const failed = (reason: string): void =>
+      setRowAction(item.id, { kind: "failed", message: `Couldn't move the message: ${reason}` });
+
+    connection()
+      .session(sessionId)
+      .reorder(item.id, { after })
+      .then(
+        (outcome) => {
+          if (outcome.kind === "moved") setRowAction(item.id, null);
+          else if (outcome.kind === "stale") failed("the queue changed.");
+        },
+        (cause: unknown) => failed(errorMessage(cause)),
       );
   };
 
@@ -475,6 +499,7 @@ export function Composer({
                   dispatch({ kind: "edit", message, asking: questions !== undefined })
                 }
                 onSteer={steerPending}
+                onMove={movePending}
                 onCancel={cancelPending}
                 onRemoveUnsent={removeOutboxRow}
                 onResend={resendOutboxRow}

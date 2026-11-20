@@ -753,7 +753,8 @@ export async function replayRefused(): Promise<readonly string[]> {
       composer: { draft: typed, attachments: [], selectionStart: 0, selectionEnd: 0 },
       edit: null,
       notice: null,
-      sending: null,
+      sending: [],
+      omitted: 0,
     }));
     refusals.push([
       {

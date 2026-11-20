@@ -663,14 +663,17 @@ export function ComposerFrame({
                       </MenuItem>
                     </>
                   )}
-                  {onMoveToNewChat !== undefined && hasSubmission && (
-                    <>
-                      <MenuSeparator />
-                      <MenuItem icon="new-chat" onClick={onMoveToNewChat}>
-                        Move to New Chat
-                      </MenuItem>
-                    </>
-                  )}
+                  {onMoveToNewChat !== undefined &&
+                    hasSubmission &&
+                    !submitting &&
+                    !attachmentBusy && (
+                      <>
+                        <MenuSeparator />
+                        <MenuItem icon="new-chat" onClick={onMoveToNewChat}>
+                          Move to New Chat
+                        </MenuItem>
+                      </>
+                    )}
                 </MenuContent>
               </Menu>
               <span

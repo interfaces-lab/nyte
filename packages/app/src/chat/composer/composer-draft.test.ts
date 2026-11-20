@@ -57,7 +57,8 @@ function draft(
     composer: view(text),
     edit: options.edit === undefined ? null : { message: QUEUED, view: view(options.edit) },
     notice: options.notice ?? null,
-    sending: null,
+    sending: [],
+    omitted: 0,
   };
 }
 
@@ -264,12 +265,13 @@ const ROWS: readonly {
       { ...draft("hello"), composer: view("hello", [SENT_IMAGE, IMAGE]) },
       typed("hello"),
       [SENT_IMAGE],
+      asId<"receipt">("sent"),
     ),
     expected: { shown: "", kept: "", composer: "", images: "image", editing: false, notice: null },
   },
   {
     name: "a send leaves after the text changed: the new text stays",
-    result: leftDraft(draft("hello again"), typed("hello"), []),
+    result: leftDraft(draft("hello again"), typed("hello"), [], asId<"receipt">("sent")),
     expected: {
       shown: "hello again",
       kept: "hello again",
@@ -368,7 +370,7 @@ const ROWS: readonly {
   },
   {
     name: "a replayed send the host refused gives its text back to an empty draft",
-    result: replayedDraft(draft(""), REPLAYED),
+    result: replayedDraft(draft(""), REPLAYED, [], []),
     expected: {
       shown: "hello",
       kept: "hello",
@@ -380,7 +382,7 @@ const ROWS: readonly {
   },
   {
     name: "a replayed send the host refused offers Restore Draft over the person's text",
-    result: replayedDraft(draft("mine"), REPLAYED),
+    result: replayedDraft(draft("mine"), REPLAYED, [], []),
     expected: {
       shown: "mine",
       kept: "mine",

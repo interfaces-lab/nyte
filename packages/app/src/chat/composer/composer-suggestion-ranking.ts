@@ -3,8 +3,6 @@ import type { MentionFile } from "../../data/files.ts";
 
 const MAX_FILE_SUGGESTIONS = 20;
 
-const MAX_FOLDER_CHILDREN = 200;
-
 const FILE_ID = "file:";
 
 export interface MentionSuggestion {
@@ -35,9 +33,7 @@ export interface MentionRanking {
     rawQuery: string,
     hasConversationContext: boolean,
     recency: MentionRecency,
-    folder: MentionFile | undefined,
   ) => readonly (FileSuggestion | MentionSuggestion)[];
-  readonly parentFolder: (folder: MentionFile) => MentionFile | undefined;
 }
 
 interface Entry {
@@ -89,7 +85,8 @@ function compareScored(left: Scored, right: Scored): number {
     left.tier - right.tier ||
     left.accepted - right.accepted ||
     left.opened - right.opened ||
-    left.entry.path.length - right.entry.path.length ||
+    left.entry.name.localeCompare(right.entry.name) ||
+    left.entry.path.localeCompare(right.entry.path) ||
     left.entry.order - right.entry.order
   );
 }
@@ -104,20 +101,17 @@ function keepBest(best: Scored[], next: Scored, limit: number): void {
   if (best.length > limit) best.pop();
 }
 
-function parentPath(path: string): string {
-  const trimmed = path.replace(/\/$/u, "");
-
-  return trimmed.slice(0, trimmed.lastIndexOf("/") + 1);
-}
-
 function fileSuggestion(scored: Scored, marksRecent: boolean): FileSuggestion {
   const file = scored.entry.file;
+
+  const shown = file.displayPath.replace(/\/$/u, "");
 
   const suggestion: FileSuggestion = {
     kind: "file",
     id: `${FILE_ID}${file.path}`,
-    label: file.label,
-    description: file.displayPath,
+    label: file.label.replace(/\/$/u, ""),
+    description:
+      file.kind === "folder" ? shown : shown.slice(0, Math.max(0, shown.lastIndexOf("/"))),
     icon: file.kind,
     file,
   };
@@ -149,7 +143,6 @@ export function knownMentionFiles(root: string, recency: MentionRecency): readon
 
 export function createMentionSuggestionRanking(files: readonly MentionFile[]): MentionRanking {
   let entries: readonly Entry[] | undefined;
-  let children: ReadonlyMap<string, readonly Entry[]> | undefined;
 
   const indexed = (): readonly Entry[] =>
     (entries ??= files.map((file, order) => ({
@@ -158,12 +151,6 @@ export function createMentionSuggestionRanking(files: readonly MentionFile[]): M
       path: file.displayPath.toLocaleLowerCase(),
       order,
     })));
-
-  const listChildren = (folder: MentionFile): readonly Entry[] => {
-    children ??= Map.groupBy(indexed(), (entry) => parentPath(entry.file.path));
-
-    return children.get(folder.path) ?? [];
-  };
 
   const rankEntries = (
     query: string,
@@ -195,28 +182,8 @@ export function createMentionSuggestionRanking(files: readonly MentionFile[]): M
   };
 
   return {
-    rank: (rawQuery, hasConversationContext, recency, folder) => {
+    rank: (rawQuery, hasConversationContext, recency) => {
       const query = rawQuery.trim().toLocaleLowerCase();
-
-      if (folder !== undefined) {
-        const inside = listChildren(folder);
-
-        if (query !== "")
-          return rankEntries(query, inside, recency, MAX_FOLDER_CHILDREN).map((scored) =>
-            fileSuggestion(scored, false),
-          );
-
-        return inside
-          .toSorted(
-            (left, right) =>
-              Number(right.file.kind === "folder") - Number(left.file.kind === "folder") ||
-              left.name.localeCompare(right.name),
-          )
-          .slice(0, MAX_FOLDER_CHILDREN)
-          .map((entry) =>
-            fileSuggestion({ entry, tier: 0, accepted: Infinity, opened: Infinity }, false),
-          );
-      }
 
       const conversation =
         hasConversationContext &&
@@ -231,12 +198,6 @@ export function createMentionSuggestionRanking(files: readonly MentionFile[]): M
           fileSuggestion(scored, query === ""),
         ),
       ];
-    },
-    parentFolder: (folder) => {
-      const path = parentPath(folder.path);
-
-      return indexed().find((entry) => entry.file.kind === "folder" && entry.file.path === path)
-        ?.file;
     },
   };
 }

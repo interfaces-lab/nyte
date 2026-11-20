@@ -1,4 +1,4 @@
-import type { Delivery, HeldMessage, MessageId, ReviseOutcome } from "@nyte-ai/sdk";
+import type { Delivery, HeldMessage, MessageId, ReceiptId, ReviseOutcome } from "@nyte-ai/sdk";
 import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import type { ComposerImageAttachment, ComposerViewState } from "../../panes/session-view-state.ts";
 import type { ComposerDocumentState, ComposerSubmission } from "./composer-document.ts";
@@ -9,6 +9,7 @@ import {
   movedDraft,
   foldEdit,
   lostEdit,
+  omissionShown,
   openedEdit,
   restoredDraft,
   shownDraft,
@@ -101,6 +102,7 @@ export type ComposerSessionEvent =
       readonly kind: "sent";
       readonly document: ComposerDocumentState;
       readonly attachments: readonly ComposerImageAttachment[];
+      readonly receipt: ReceiptId;
     }
   | {
       readonly kind: "row";
@@ -113,7 +115,7 @@ export type ComposerSessionEvent =
   | { readonly kind: "detached"; readonly id: string }
   | { readonly kind: "notice"; readonly notice: ComposerNotice | null }
   | { readonly kind: "restored" }
-  | { readonly kind: "handed-off" }
+  | { readonly kind: "handed-off"; readonly receipt: ReceiptId }
   | { readonly kind: "moved" }
   | { readonly kind: "submit" }
   | { readonly kind: "files" };
@@ -171,10 +173,10 @@ function transition(
         : askHold({ ...state, open: true }, draft, draft.edit.message.id);
     case "closed":
       return saving(state)
-        ? step({ ...state, open: false, reading: null }, foldEdit(draft, "kept"))
+        ? step({ ...state, open: false, reading: null }, omissionShown(foldEdit(draft, "kept")))
         : step(
             { ...state, open: false, hold: null, reading: null },
-            foldEdit(draft, "folded"),
+            omissionShown(foldEdit(draft, "folded")),
             releasing(state.hold),
           );
     case "draft-changed":
@@ -213,8 +215,8 @@ function transition(
           reading: null,
           intake: nextIntake(state.intake, { kind: "cleared" }),
         },
-        leftDraft(draft, event.document, event.attachments),
-        null,
+        leftDraft(draft, event.document, event.attachments, event.receipt),
+        draft.notice?.restore === null ? null : draft.notice,
       );
     case "row":
       return step(
@@ -244,7 +246,7 @@ function transition(
     case "restored":
       return step(state, restoredDraft(draft));
     case "handed-off":
-      return step(state, handedOff(draft));
+      return step(state, handedOff(draft, event.receipt));
     case "moved":
       return step(
         { ...state, recall: null, intake: nextIntake(state.intake, { kind: "cleared" }) },
@@ -287,7 +289,7 @@ function noticed(
   notice: ComposerNotice | null,
   effects: readonly ComposerSessionEffect[] = [],
 ): SessionStep {
-  return step(state, state.open ? { ...draft, notice } : draft, effects);
+  return step(state, state.open ? { ...draft, notice, omitted: 0 } : draft, effects);
 }
 
 function releaseLeftHold(next: SessionStep): SessionStep {

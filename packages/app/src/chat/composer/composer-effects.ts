@@ -1,5 +1,5 @@
 import { flushSync } from "react-dom";
-import type { Delivery, HeldMessage, MessageId, SessionId } from "@nyte-ai/sdk";
+import type { Delivery, HeldMessage, MessageId, ReceiptId, SessionId } from "@nyte-ai/sdk";
 import { errorMessage } from "../../contract/errors.ts";
 import { connection, currentConnection, installedLive } from "../../data/connection.ts";
 import { windowTabs } from "../../tabs/window-tabs.ts";
@@ -10,7 +10,8 @@ import type { RefusedSend } from "@nyte-ai/sdk/client";
 import type { ComposerImageAttachment } from "../../panes/session-view-state.ts";
 import { messageFiles } from "../transcript/message-content.tsx";
 import type { MessageFile } from "../transcript/message-content.tsx";
-import { attachRefused, replayedDraft, shownDraft } from "./composer-draft.ts";
+import { handedOff, keptSending, replayedDraft, shownDraft } from "./composer-draft.ts";
+import { contentDraftText } from "../../references/message-references.ts";
 import { readPrompts } from "./composer-history.ts";
 import { deliverEdit } from "./composer-send.ts";
 import { CLOSED_SESSION, EDIT_ENDED_NOTICES, stepSession } from "./composer-session.ts";
@@ -31,31 +32,40 @@ type SaveEffect = Extract<ComposerSessionEffect, { readonly kind: "save" }>;
 
 const refusedSends = installedLive((current) => current.refused);
 
-function giveBackRefused(): void {
-  for (;;) {
-    const refused = refusedSends.read()?.[0];
+const recovering = new Set<ReceiptId>();
 
-    if (refused === undefined) return;
-    windowTabs
-      .panes()
-      .viewState.updateDraft(refused.session, (draft) => replayedDraft(draft, refused));
-    void giveBackImages(refused);
-    currentConnection()?.refused.take(refused.id);
+function giveBackRefused(): void {
+  for (const refused of refusedSends.read() ?? []) {
+    if (recovering.has(refused.id)) continue;
+    recovering.add(refused.id);
+    void giveBack(refused);
   }
 }
 
-async function giveBackImages(refused: RefusedSend): Promise<void> {
+async function giveBack(refused: RefusedSend): Promise<void> {
+  const drafts = windowTabs.panes().viewState;
+
+  drafts.updateDraft(refused.session, (draft) =>
+    keptSending(draft, {
+      receipt: refused.id,
+      text: contentDraftText(refused.content),
+      attachments: [],
+    }),
+  );
+
   const files = messageFiles(refused.content).filter((file) => file.mime.startsWith("image/"));
-
-  if (files.length === 0) return;
   const read = await Promise.allSettled(files.map(readImage));
-
   const images = read.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []));
 
-  if (images.length === 0) return;
-  windowTabs
-    .panes()
-    .viewState.updateDraft(refused.session, (draft) => attachRefused(draft, images));
+  const lost = files.flatMap((file, index) =>
+    read[index]?.status === "rejected" ? [file.name] : [],
+  );
+
+  drafts.updateDraft(refused.session, (draft) =>
+    replayedDraft(handedOff(draft, refused.id), refused, images, lost),
+  );
+  drafts.persist();
+  currentConnection()?.refused.take(refused.id);
 }
 
 async function readImage(file: MessageFile): Promise<ComposerImageAttachment> {

@@ -9,7 +9,6 @@ import type {
   MenuState,
   SuggestionToken,
 } from "./composer-suggestion-menu.ts";
-import { mentionFileAt } from "../../data/files.ts";
 
 const slash = (query: string, start = 0): SuggestionToken => ({
   kind: "slash",
@@ -19,8 +18,6 @@ const slash = (query: string, start = 0): SuggestionToken => ({
 });
 
 const SLASH = slash("");
-
-const SRC = mentionFileAt("/work/src", "folder");
 
 const OPEN: MenuState = { ...CLOSED_MENU, token: SLASH, active: "delta", highlighted: true };
 
@@ -110,12 +107,6 @@ test.each<{
     event: { kind: "rows", ids: ["echo"] },
     next: { ...OPEN, active: undefined },
   },
-  {
-    name: "browsing a folder starts at its first row",
-    menu: OPEN,
-    event: { kind: "browse", folder: SRC },
-    next: { ...OPEN, folder: SRC, active: undefined, highlighted: false },
-  },
 ])("the menu: $name", (row) => {
   const next = nextMenu(row.menu, row.event);
 
@@ -131,14 +122,12 @@ const KEY = {
   altKey: false,
   metaKey: false,
   isComposing: false,
+  repeat: false,
 };
 
 const ROOT: MenuPosition = {
   index: 3,
   count: 17,
-  folder: false,
-  browsing: false,
-  queryEmpty: true,
 };
 
 test.each<{
@@ -147,7 +136,6 @@ test.each<{
   readonly action: MenuKey;
 }>([
   { key: { key: "Escape" }, action: { kind: "close" } },
-  { key: { key: "Escape" }, position: { browsing: true }, action: { kind: "parent" } },
   { key: { key: "ArrowDown" }, action: { kind: "move", to: 4 } },
   { key: { key: "ArrowDown" }, position: { index: 16 }, action: { kind: "move", to: 0 } },
   { key: { key: "n", ctrlKey: true }, action: { kind: "move", to: 4 } },
@@ -162,16 +150,9 @@ test.each<{
   { key: { key: "PageDown" }, action: { kind: "move", to: 11 } },
   { key: { key: "PageDown" }, position: { index: 12 }, action: { kind: "move", to: 16 } },
   { key: { key: "PageUp" }, action: { kind: "move", to: 0 } },
-  { key: { key: "ArrowRight" }, position: { folder: true }, action: { kind: "browse" } },
   { key: { key: "ArrowRight" }, action: { kind: "pass" } },
-  { key: { key: "ArrowLeft" }, position: { browsing: true }, action: { kind: "parent" } },
   { key: { key: "ArrowLeft" }, action: { kind: "pass" } },
-  { key: { key: "Backspace" }, position: { browsing: true }, action: { kind: "parent" } },
-  {
-    key: { key: "Backspace" },
-    position: { browsing: true, queryEmpty: false },
-    action: { kind: "pass" },
-  },
+  { key: { key: "Backspace" }, action: { kind: "pass" } },
   { key: {}, action: { kind: "pick" } },
   { key: { key: "Tab" }, action: { kind: "pick" } },
   { key: { key: "Tab", shiftKey: true }, action: { kind: "pass" } },

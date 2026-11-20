@@ -148,21 +148,21 @@ export async function deliver(
   session: SessionId,
   plan: Extract<SubmissionPlan, { readonly kind: "command" | "message" }>,
   receipt: ReceiptId,
-): Promise<{ readonly ended: Promise<SendEnd> }> {
+): Promise<{ readonly journaled: boolean; readonly ended: Promise<SendEnd> }> {
   if (plan.kind === "command") {
     const ran = await runCommand(connection.session(session), plan.command).catch(
       (cause: unknown): SendEnd => ({ kind: "refused", message: errorMessage(cause) }),
     );
 
-    return { ended: Promise.resolve(ran) };
+    return { journaled: false, ended: Promise.resolve(ran) };
   }
 
   try {
     const sending = await journalComposerMessage(connection.chat(session), session, plan, receipt);
 
-    return { ended: sending.delivered.then(sendEnd, refusedSend) };
+    return { journaled: true, ended: sending.delivered.then(sendEnd, refusedSend) };
   } catch (cause: unknown) {
-    return { ended: Promise.resolve(refusedSend(cause)) };
+    return { journaled: false, ended: Promise.resolve(refusedSend(cause)) };
   }
 }
 

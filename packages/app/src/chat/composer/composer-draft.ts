@@ -1,4 +1,5 @@
 import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
+import type { ReceiptId } from "@nyte-ai/sdk";
 import type { RefusedSend } from "@nyte-ai/sdk/client";
 import { errorMessage } from "../../contract/errors.ts";
 import type { ComposerImageAttachment, ComposerViewState } from "../../panes/session-view-state.ts";
@@ -9,6 +10,12 @@ export interface Restore {
   readonly text: string;
   readonly attachments: readonly ComposerImageAttachment[];
 }
+
+export interface Sending extends Restore {
+  readonly receipt: ReceiptId;
+}
+
+export const NO_SENDING: readonly Sending[] = [];
 
 export interface ComposerNotice {
   readonly kind: "status" | "command" | "error";
@@ -35,28 +42,58 @@ export interface SessionDraft {
   readonly composer: ComposerViewState;
   readonly edit: QueuedEdit | null;
   readonly notice: ComposerNotice | null;
-  readonly sending: Restore | null;
+  readonly sending: readonly Sending[];
+  readonly omitted: number;
 }
 
 export const UNSENT_NOTICE = "Nyte closed before this message was sent.";
 
 export function restorable(draft: SessionDraft): ComposerNotice | null {
   const notice = draft.notice;
-  const restore = notice?.restore ?? null;
-  const sending = draft.sending;
 
-  if (sending === null) return notice === null || restore === null ? null : notice;
+  return notice === null || notice.restore === null ? null : notice;
+}
+
+export function unsentNotice(
+  notice: ComposerNotice | null,
+  unsent: readonly Restore[],
+): ComposerNotice | null {
+  if (unsent.length === 0) return notice;
+  const restore = notice?.restore ?? null;
+  const restored = joinedRestore(restore === null ? unsent : [restore, ...unsent]);
 
   if (notice === null || restore === null)
-    return { kind: "error", message: UNSENT_NOTICE, restore: sending };
+    return { kind: "error", message: UNSENT_NOTICE, restore: restored };
 
+  return { ...notice, restore: restored };
+}
+
+function joinedRestore(restores: readonly Restore[]): Restore {
   return {
-    ...notice,
-    restore: {
-      text: `${restore.text}\n${sending.text}`,
-      attachments: [...restore.attachments, ...sending.attachments],
-    },
+    text: restores.map((restore) => restore.text).join("\n"),
+    attachments: restores.flatMap((restore) => restore.attachments),
   };
+}
+
+export function omittedMessage(count: number): string {
+  return count === 1
+    ? "An image was too large to keep with the draft. Attach it again."
+    : `${String(count)} images were too large to keep with the draft. Attach them again.`;
+}
+
+export function shownNotice(draft: SessionDraft): ComposerNotice | null {
+  const notice = draft.notice;
+
+  if (draft.omitted === 0) return notice;
+  const omission = omittedMessage(draft.omitted);
+
+  if (notice === null) return { kind: "status", message: omission, restore: null };
+
+  return { ...notice, message: `${notice.message} ${omission}` };
+}
+
+export function omissionShown(draft: SessionDraft): SessionDraft {
+  return draft.omitted === 0 ? draft : { ...draft, omitted: 0 };
 }
 
 export function movedDraft(draft: SessionDraft): SessionDraft {
@@ -68,8 +105,10 @@ export function movedDraft(draft: SessionDraft): SessionDraft {
   };
 }
 
-export function handedOff(draft: SessionDraft): SessionDraft {
-  return draft.sending === null ? draft : { ...draft, sending: null };
+export function handedOff(draft: SessionDraft, receipt: ReceiptId): SessionDraft {
+  const sending = draft.sending.filter((sent) => sent.receipt !== receipt);
+
+  return sending.length === draft.sending.length ? draft : { ...draft, sending };
 }
 
 export function shownDraft(draft: SessionDraft): ComposerViewState {
@@ -148,6 +187,7 @@ export function leftDraft(
   draft: SessionDraft,
   sent: ComposerDocumentState,
   attachments: readonly ComposerImageAttachment[],
+  receipt: ReceiptId,
 ): SessionDraft {
   const composer = draft.composer;
   const kept = composer.attachments.filter((attachment) => !attachments.includes(attachment));
@@ -158,40 +198,33 @@ export function leftDraft(
       composer.draft === sent.text
         ? { ...composer, draft: "", attachments: kept, selectionStart: 0, selectionEnd: 0 }
         : { ...composer, attachments: kept },
-    sending: { text: sent.text, attachments },
+    sending: [...draft.sending, { receipt, text: sent.text, attachments }],
   };
+}
+
+export function keptSending(draft: SessionDraft, sent: Sending): SessionDraft {
+  if (draft.sending.some((kept) => kept.receipt === sent.receipt)) return draft;
+
+  return { ...draft, sending: [...draft.sending, sent] };
 }
 
 export function refusedDraft(draft: SessionDraft, message: string, sent: Restore): SessionDraft {
+  const offered = draft.notice?.restore ?? null;
+
   if (draft.composer.draft !== "")
-    return { ...draft, notice: { kind: "error", message, restore: sent }, sending: null };
-
-  return {
-    ...draft,
-    composer: draftWith(draft.composer, sent),
-    notice: errorNotice(message),
-    sending: null,
-  };
-}
-
-export function attachRefused(
-  draft: SessionDraft,
-  images: readonly ComposerImageAttachment[],
-): SessionDraft {
-  const restore = draft.notice?.restore;
-
-  if (draft.notice !== null && restore !== null && restore !== undefined)
     return {
       ...draft,
       notice: {
-        ...draft.notice,
-        restore: { ...restore, attachments: [...restore.attachments, ...images] },
+        kind: "error",
+        message,
+        restore: offered === null ? sent : joinedRestore([offered, sent]),
       },
     };
 
   return {
     ...draft,
-    composer: { ...draft.composer, attachments: [...draft.composer.attachments, ...images] },
+    composer: draftWith(draft.composer, sent),
+    notice: { kind: "error", message, restore: offered },
   };
 }
 
@@ -199,11 +232,21 @@ export function endedDraft(draft: SessionDraft, end: SendEnd, sent: Restore): Se
   return end.kind === "refused" ? refusedDraft(draft, end.message, sent) : draft;
 }
 
-export function replayedDraft(draft: SessionDraft, refused: RefusedSend): SessionDraft {
-  return refusedDraft(draft, refusalMessage(refused.error), {
-    text: contentDraftText(refused.content),
-    attachments: [],
-  });
+export function replayedDraft(
+  draft: SessionDraft,
+  refused: RefusedSend,
+  images: readonly ComposerImageAttachment[],
+  lost: readonly string[],
+): SessionDraft {
+  const message = refusalMessage(refused.error);
+
+  return refusedDraft(
+    draft,
+    lost.length === 0
+      ? message
+      : `${message} Couldn't restore ${new Intl.ListFormat("en").format(lost)}.`,
+    { text: contentDraftText(refused.content), attachments: images },
+  );
 }
 
 export function refusalMessage(cause: unknown): string {

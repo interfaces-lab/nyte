@@ -1,6 +1,5 @@
 import { completionTrigger, findCommandArgument } from "@nyte-ai/plugin/client/presentation";
 import type { CommandInfo, SkillInfo } from "@nyte-ai/sdk";
-import type { MentionFile } from "../../data/files.ts";
 import type { ComposerDocumentState } from "./composer-document.ts";
 import { composerEnterAction } from "./composer-keys.ts";
 import type { SuggestionFrecency } from "./composer-recent.ts";
@@ -43,25 +42,16 @@ export interface ArgumentSuggestion {
   readonly value: string;
 }
 
-interface BackSuggestion {
-  readonly kind: "back";
-  readonly id: "browse:back";
-  readonly label: "Back";
-  readonly description: string;
-  readonly icon: "arrow-left";
-}
-
 export type ComposerSuggestion =
   | ArgumentSuggestion
   | PluginCommandSuggestion
   | SkillSuggestion
   | MentionSuggestion
-  | FileSuggestion
-  | BackSuggestion;
+  | FileSuggestion;
 
 export type ChipSuggestion = Exclude<
   ComposerSuggestion,
-  PluginCommandSuggestion | ArgumentSuggestion | BackSuggestion
+  PluginCommandSuggestion | ArgumentSuggestion
 >;
 
 export type SuggestionToken =
@@ -194,7 +184,6 @@ export interface SuggestionSources {
   readonly hasConversationContext: boolean;
   readonly recency: MentionRecency;
   readonly frecency: SuggestionFrecency;
-  readonly folder: MentionFile | undefined;
 }
 
 export function suggestionsFor(
@@ -202,27 +191,8 @@ export function suggestionsFor(
   rawQuery: string,
   sources: SuggestionSources,
 ): readonly ComposerSuggestion[] {
-  if (kind === "mention") {
-    const rows = sources.mentions.rank(
-      rawQuery,
-      sources.hasConversationContext,
-      sources.recency,
-      sources.folder,
-    );
-
-    if (sources.folder === undefined) return rows;
-
-    return [
-      {
-        kind: "back",
-        id: "browse:back",
-        label: "Back",
-        description: sources.mentions.parentFolder(sources.folder)?.displayPath ?? "All files",
-        icon: "arrow-left",
-      },
-      ...rows,
-    ];
-  }
+  if (kind === "mention")
+    return sources.mentions.rank(rawQuery, sources.hasConversationContext, sources.recency);
 
   return rankSuggestions(
     [
@@ -248,12 +218,10 @@ export function suggestionsFor(
   );
 }
 
-type SuggestionGroup = "navigation" | "context" | "recent" | "files" | "commands" | "skills";
+type SuggestionGroup = "context" | "recent" | "files" | "commands" | "skills";
 
 export function suggestionGroup(suggestion: ComposerSuggestion): SuggestionGroup {
   switch (suggestion.kind) {
-    case "back":
-      return "navigation";
     case "mention":
       return "context";
     case "file":
@@ -293,7 +261,6 @@ export function suggestionAttribution(suggestion: ComposerSuggestion): string | 
     case "mention":
     case "argument":
     case "file":
-    case "back":
       return undefined;
     default: {
       const _exhaustive: never = suggestion;
@@ -362,18 +329,6 @@ export function suggestionReference(suggestion: ChipSuggestion): MessageReferenc
   }
 }
 
-export function browsableFolder(
-  suggestion: ComposerSuggestion | undefined,
-): MentionFile | undefined {
-  return suggestion?.kind === "file" && suggestion.file.kind === "folder"
-    ? suggestion.file
-    : undefined;
-}
-
-export function defaultRow(rows: readonly ComposerSuggestion[]): ComposerSuggestion | undefined {
-  return rows.find((row) => row.kind !== "back") ?? rows[0];
-}
-
 interface TriggerMark {
   readonly kind: SuggestionToken["kind"];
   readonly start: number;
@@ -384,7 +339,6 @@ export interface MenuState {
   readonly active: string | undefined;
   readonly highlighted: boolean;
   readonly dismissed: TriggerMark | undefined;
-  readonly folder: MentionFile | undefined;
 }
 
 export const CLOSED_MENU: MenuState = {
@@ -392,15 +346,13 @@ export const CLOSED_MENU: MenuState = {
   active: undefined,
   highlighted: false,
   dismissed: undefined,
-  folder: undefined,
 };
 
 export type MenuEvent =
   | { readonly kind: "token"; readonly token: SuggestionToken | undefined }
   | { readonly kind: "dismiss" }
   | { readonly kind: "select"; readonly id: string }
-  | { readonly kind: "rows"; readonly ids: readonly string[] }
-  | { readonly kind: "browse"; readonly folder: MentionFile | undefined };
+  | { readonly kind: "rows"; readonly ids: readonly string[] };
 
 export function nextMenu(menu: MenuState, event: MenuEvent): MenuState {
   switch (event.kind) {
@@ -432,13 +384,6 @@ export function nextMenu(menu: MenuState, event: MenuEvent): MenuState {
       return menu.active === undefined || event.ids.includes(menu.active)
         ? menu
         : { ...menu, active: undefined };
-    case "browse":
-      return unchanged(menu, {
-        ...menu,
-        folder: event.folder,
-        active: undefined,
-        highlighted: false,
-      });
     default: {
       const _exhaustive: never = event;
 
@@ -450,9 +395,6 @@ export function nextMenu(menu: MenuState, event: MenuEvent): MenuState {
 export interface MenuPosition {
   readonly index: number;
   readonly count: number;
-  readonly folder: boolean;
-  readonly browsing: boolean;
-  readonly queryEmpty: boolean;
 }
 
 export type MenuKey =
@@ -460,8 +402,6 @@ export type MenuKey =
   | { readonly kind: "pick" }
   | { readonly kind: "hold" }
   | { readonly kind: "close" }
-  | { readonly kind: "browse" }
-  | { readonly kind: "parent" }
   | { readonly kind: "pass" };
 
 const PAGE_ROWS = 8;
@@ -469,11 +409,11 @@ const PAGE_ROWS = 8;
 export function menuKey(
   key: Pick<
     KeyboardEvent,
-    "key" | "keyCode" | "ctrlKey" | "shiftKey" | "altKey" | "metaKey" | "isComposing"
+    "key" | "keyCode" | "ctrlKey" | "shiftKey" | "altKey" | "metaKey" | "isComposing" | "repeat"
   >,
   position: MenuPosition,
 ): MenuKey {
-  if (key.key === "Escape") return { kind: position.browsing ? "parent" : "close" };
+  if (key.key === "Escape") return { kind: "close" };
 
   const down = key.key === "ArrowDown" || (key.ctrlKey && (key.key === "n" || key.key === "j"));
   const up = key.key === "ArrowUp" || (key.ctrlKey && (key.key === "p" || key.key === "k"));
@@ -492,19 +432,10 @@ export function menuKey(
         Math.min(count - 1, position.index + (key.key === "PageDown" ? PAGE_ROWS : -PAGE_ROWS)),
       ),
     };
-  const plain = !key.ctrlKey && !key.shiftKey && !key.altKey && !key.metaKey;
-
-  if (plain && key.key === "ArrowRight" && position.folder) return { kind: "browse" };
-
-  if (
-    plain &&
-    position.browsing &&
-    (key.key === "ArrowLeft" || (key.key === "Backspace" && position.queryEmpty))
-  )
-    return { kind: "parent" };
   const enter = composerEnterAction(key);
 
-  if (enter === "submit" || (key.key === "Tab" && !key.shiftKey)) return { kind: "pick" };
+  if (enter === "submit" || (key.key === "Tab" && !key.shiftKey))
+    return { kind: key.repeat ? "hold" : "pick" };
 
   return enter === "submit-alternate" ? { kind: "hold" } : { kind: "pass" };
 }
@@ -525,7 +456,7 @@ export function pickFor(
 
   if (suggestion !== undefined) return { kind: "accept", suggestion };
 
-  const first = defaultRow(rows);
+  const first = rows[0];
 
   return fresh || first === undefined ? { kind: "hold" } : { kind: "select", id: first.id };
 }
@@ -535,8 +466,7 @@ function unchanged(menu: MenuState, next: MenuState): MenuState {
     menu.active === next.active &&
     menu.highlighted === next.highlighted &&
     menu.dismissed?.kind === next.dismissed?.kind &&
-    menu.dismissed?.start === next.dismissed?.start &&
-    menu.folder === next.folder
+    menu.dismissed?.start === next.dismissed?.start
     ? menu
     : next;
 }

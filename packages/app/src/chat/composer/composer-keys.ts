@@ -53,7 +53,7 @@ export type KeyAction =
 
 const PASS: KeyAction = { kind: "pass" };
 
-const IME_KEY_CODE = 229;
+export const IME_KEY_CODE = 229;
 
 export function composerKey(situation: KeySituation, key: KeyState): KeyAction {
   if (situation.from === "form") return formKey(situation, key);

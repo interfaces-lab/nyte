@@ -12,7 +12,6 @@ import {
   DEFAULT_COMPOSER_VIEW_STATE,
   EDITING,
   type SessionViewState,
-  composerHasContent,
   contentChanged,
   DEFAULT_SESSION_VIEW_STATE,
   draftHasContent,
@@ -23,8 +22,9 @@ import type { SessionId } from "@nyte-ai/sdk";
 import { ModelRefType, ThinkingType, asId } from "@nyte-ai/schema";
 import { projectId } from "../../data/schemas.ts";
 import { readStored, removeStored, type StorageArea, writeStored } from "../../lib/storage.ts";
-import { persistedDraft, restorable } from "./composer-draft.ts";
-import type { ComposerNotice, SessionDraft } from "./composer-draft.ts";
+import { journaledReceipts } from "../../data/send-journal.ts";
+import { NO_SENDING, persistedDraft, restorable, unsentNotice } from "./composer-draft.ts";
+import type { ComposerNotice, Restore, Sending, SessionDraft } from "./composer-draft.ts";
 
 const FLUSH_DEBOUNCE_MS = 200;
 
@@ -76,6 +76,8 @@ interface Persistence {
   readonly storageKey: string;
 }
 
+const omittedSchema = Type.Integer({ minimum: 1 });
+
 const storedDraftSchema = Type.Object(
   {
     updatedAt: Type.Number(),
@@ -85,6 +87,7 @@ const storedDraftSchema = Type.Object(
     choice: Type.Optional(
       Type.Object({ model: ModelRefType, thinking: Type.Optional(ThinkingType) }, strict),
     ),
+    omitted: Type.Optional(omittedSchema),
   },
   strict,
 );
@@ -93,6 +96,7 @@ const sessionDraftSchema = Type.Object(
   {
     ...composerSchema.properties,
     refused: Type.Optional(Type.Object({ message: Type.String(), text: Type.String() }, strict)),
+    omitted: Type.Optional(omittedSchema),
   },
   strict,
 );
@@ -115,6 +119,18 @@ const attachmentsSchema = Type.Array(
   ),
 );
 
+const sendingSchema = Type.Array(
+  Type.Object(
+    {
+      receipt: Type.String({ minLength: 1 }),
+      text: Type.String(),
+      attachments: attachmentsSchema,
+      omitted: Type.Integer({ minimum: 0 }),
+    },
+    strict,
+  ),
+);
+
 type StoredDraft = Static<typeof storedDraftSchema>;
 
 type StoredIndex = Static<typeof indexSchema>;
@@ -129,7 +145,13 @@ type StoredValue =
   | StoredSession
   | readonly ComposerImageAttachment[]
   | StoredSteps
+  | readonly StoredSending[]
   | number;
+
+interface StoredSending extends Restore {
+  readonly receipt: string;
+  readonly omitted: number;
+}
 
 function composerView(
   composer: PersistedComposer,
@@ -145,23 +167,29 @@ function composerView(
   };
 }
 
-function omittedNotice(count: number): ComposerNotice {
-  return {
-    kind: "status",
-    message:
-      count === 1
-        ? "An image was too large to keep with the draft. Attach it again."
-        : `${String(count)} images were too large to keep with the draft. Attach them again.`,
-    restore: null,
-  };
-}
-
 function storedImages(
   attachments: readonly ComposerImageAttachment[],
-): readonly ComposerImageAttachment[] | undefined {
-  const stored = attachments.filter((image) => image.content.data.length <= STORED_IMAGE_LIMIT);
+): readonly ComposerImageAttachment[] {
+  return attachments.filter((image) => image.content.data.length <= STORED_IMAGE_LIMIT);
+}
 
-  return stored.length > 0 ? stored : undefined;
+function storedSending(sending: readonly Sending[]): readonly StoredSending[] | undefined {
+  if (sending.length === 0) return undefined;
+
+  return sending.map((sent) => {
+    const attachments = storedImages(sent.attachments);
+
+    return {
+      receipt: sent.receipt,
+      text: sent.text,
+      attachments,
+      omitted: sent.attachments.length - attachments.length,
+    };
+  });
+}
+
+function readOmitted(storage: StorageArea, images: string): number {
+  return readStored(storage, `${images}:omitted`, omittedSchema, 0);
 }
 
 function readOwner<Schema extends TSchema>(
@@ -269,6 +297,7 @@ export class WindowDrafts {
       id: crypto.randomUUID(),
       updatedAt: Date.now(),
       status: EDITING,
+      omitted: 0,
     };
   }
 
@@ -277,13 +306,14 @@ export class WindowDrafts {
       `draft:${next.id}`,
       previous.composer,
       next.composer,
-      composerHasContent(next.composer)
+      draftHasContent(next)
         ? {
             updatedAt: next.updatedAt,
             composer: persistableComposer(next.composer),
             project: next.project,
             folder: next.folder,
             choice: next.choice,
+            omitted: next.omitted === 0 ? undefined : next.omitted,
           }
         : undefined,
     );
@@ -303,6 +333,7 @@ export class WindowDrafts {
           ...(notice === null || notice.restore === null
             ? {}
             : { refused: { message: notice.message, text: notice.restore.text } }),
+          omitted: next.omitted === 0 ? undefined : next.omitted,
         }
       : undefined;
 
@@ -311,8 +342,14 @@ export class WindowDrafts {
     const kept = notice?.restore?.attachments ?? NO_IMAGES;
     const persistence = this.#persistence;
 
-    if (persistence === undefined || before === kept) return;
-    this.#pending.set(`${persistence.storageKey}:session:${sessionId}:refused`, storedImages(kept));
+    if (persistence === undefined) return;
+    const key = `${persistence.storageKey}:session:${sessionId}`;
+
+    if (before !== kept) this.#saveImages(`${key}:refused`, kept);
+
+    if (previous.sending === next.sending) return;
+    this.#pending.set(`${key}:sending`, storedSending(next.sending));
+    this.#store();
   }
 
   saveSteps(sessionId: SessionId, stepGroups: ReadonlyMap<string, boolean>): void {
@@ -339,17 +376,18 @@ export class WindowDrafts {
       const key = `${persistence.storageKey}:${owner}`;
       this.#pending.set(key, record);
 
-      if (previous.attachments !== next.attachments) {
-        const stored = storedImages(next.attachments);
-        const omitted = next.attachments.length - (stored?.length ?? 0);
-        this.#pending.set(`${key}:images`, stored);
-
-        if (owner.startsWith("session:"))
-          this.#pending.set(`${key}:images:omitted`, omitted === 0 ? undefined : omitted);
-      }
+      if (previous.attachments !== next.attachments)
+        this.#saveImages(`${key}:images`, next.attachments);
     }
 
     this.#schedule();
+  }
+
+  #saveImages(key: string, attachments: readonly ComposerImageAttachment[]): void {
+    const stored = storedImages(attachments);
+    const omitted = attachments.length - stored.length;
+    this.#pending.set(key, stored.length === 0 ? undefined : stored);
+    this.#pending.set(`${key}:omitted`, omitted === 0 ? undefined : omitted);
   }
 
   #schedule(): void {
@@ -359,6 +397,10 @@ export class WindowDrafts {
     if (globalThis.window === undefined) return;
     window.addEventListener("pagehide", this.#store);
     document.addEventListener("visibilitychange", this.#store);
+  }
+
+  persist(): void {
+    this.#store();
   }
 
   readonly emit = (): void => {
@@ -381,20 +423,30 @@ export class WindowDrafts {
     const readDraft = (id: string): ChatDraft | undefined => {
       const stored = readOwner(persistence, `draft:${id}`, storedDraftSchema);
 
-      return (
-        stored && {
-          id,
-          updatedAt: stored.record.updatedAt,
-          composer: composerView(stored.record.composer, stored.attachments),
-          choice: stored.record.choice && {
-            model: stored.record.choice.model,
-            thinking: stored.record.choice.thinking,
-          },
-          project: stored.record.project,
-          folder: stored.record.folder,
-          status: EDITING,
-        }
+      if (stored === undefined) return undefined;
+
+      const dropped = readOmitted(
+        persistence.storage,
+        `${persistence.storageKey}:draft:${id}:images`,
       );
+
+      const draft: ChatDraft = {
+        id,
+        updatedAt: stored.record.updatedAt,
+        composer: composerView(stored.record.composer, stored.attachments),
+        choice: stored.record.choice && {
+          model: stored.record.choice.model,
+          thinking: stored.record.choice.thinking,
+        },
+        project: stored.record.project,
+        folder: stored.record.folder,
+        status: EDITING,
+        omitted: (stored.record.omitted ?? 0) + dropped,
+      };
+
+      if (dropped > 0) this.saveDraft({ ...draft, composer: DEFAULT_COMPOSER_VIEW_STATE }, draft);
+
+      return draft;
     };
 
     for (const [tabId, panes] of Object.entries(index.tabs)) {
@@ -418,7 +470,10 @@ export class WindowDrafts {
       }
     }
 
+    const journaled = journaledReceipts();
+
     for (const id of index.sessions) {
+      const key = `${persistence.storageKey}:session:${id}`;
       const stored = readOwner(persistence, `session:${id}`, sessionDraftSchema);
 
       const stepGroups = new Map(
@@ -448,32 +503,35 @@ export class WindowDrafts {
                 text: refused.text,
                 attachments: readStored(
                   persistence.storage,
-                  `${persistence.storageKey}:session:${id}:refused`,
+                  `${key}:refused`,
                   attachmentsSchema,
                   [],
                 ),
               },
             };
 
-      const omittedKey = `${persistence.storageKey}:session:${id}:images:omitted`;
+      const sending = readStored(persistence.storage, `${key}:sending`, sendingSchema, []);
+      const unsent = sending.filter((sent) => !journaled.has(sent.receipt));
 
-      const omitted = readStored(
-        persistence.storage,
-        omittedKey,
-        Type.Integer({ minimum: 1 }),
-        undefined,
-      );
+      const dropped =
+        readOmitted(persistence.storage, `${key}:images`) +
+        (refused === undefined ? 0 : readOmitted(persistence.storage, `${key}:refused`)) +
+        unsent.reduce((count, sent) => count + sent.omitted, 0);
 
-      if (omitted !== undefined) this.#pending.set(omittedKey, undefined);
-
-      const draft = {
+      const draft: SessionDraft = {
         composer: composerView(stored.record, stored.attachments),
         edit: null,
-        notice: notice ?? (omitted === undefined ? null : omittedNotice(omitted)),
-        sending: null,
+        notice: unsentNotice(notice, unsent),
+        sending: NO_SENDING,
+        omitted: (stored.record.omitted ?? 0) + dropped,
       };
 
-      if (!draftKept(draft) && stepGroups.size === 0 && omitted === undefined) continue;
+      if (dropped > 0 || sending.length > 0) {
+        this.saveSession(asId<"session">(id), DEFAULT_SESSION_VIEW_STATE.draft, draft);
+        this.#pending.set(`${key}:sending`, undefined);
+      }
+
+      if (!draftKept(draft) && stepGroups.size === 0) continue;
       this.sessions.set(asId<"session">(id), { ...DEFAULT_SESSION_VIEW_STATE, draft, stepGroups });
     }
 

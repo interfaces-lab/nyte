@@ -1,7 +1,9 @@
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { props } from "@stylexjs/stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
+import { hairline } from "@nyte-ai/ui/styles/hairline.stylex";
 import { Popover } from "@nyte-ai/ui/popover";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { PreviewCard, PreviewCardContent } from "@nyte-ai/ui/preview-card";
 import {
   useDeferredValue,
@@ -17,7 +19,6 @@ import type { ReactElement, RefObject } from "react";
 import type { MentionFile } from "../../data/files.ts";
 import type { CommandCompletion } from "@nyte-ai/sdk";
 import type { SessionCatalogView } from "@nyte-ai/sdk";
-import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
 import { FileTypeIcon } from "@nyte-ai/ui/file-type-icon";
 import type { ComposerCompletion, ComposerDocumentState } from "./composer-document.ts";
@@ -33,9 +34,7 @@ import {
 } from "./composer-suggestion-ranking.ts";
 import {
   argumentToken,
-  browsableFolder,
   CLOSED_MENU,
-  defaultRow,
   descriptionExcerpt,
   findQuery,
   liveToken,
@@ -133,19 +132,23 @@ function MentionPathPreview({ file }: { readonly file: MentionFile }): ReactElem
         <div
           key={`${String(depth)}:${row.label}`}
           {...props(
-            text.sm,
+            text.base,
             composerStyles.suggestionPreviewPathRow,
-            composerStyles.suggestionPreviewPathIndent(depth),
             depth === rows.length - 1 && composerStyles.suggestionPreviewPathLeaf,
           )}
         >
-          {row.kind === "file" ? (
-            <FileTypeIcon path={row.label} />
-          ) : (
-            <span aria-hidden="true" {...props(composerStyles.suggestionPreviewPathIcon)}>
-              <Icon name="folder" size="xs" />
+          {Array.from({ length: depth }, (_, level) => (
+            <span key={level} aria-hidden="true" {...props(composerStyles.suggestionPreviewGuide)}>
+              <span {...props(composerStyles.suggestionPreviewGuideLine, hairline.inlineStart)} />
             </span>
-          )}
+          ))}
+          <span aria-hidden="true" {...props(composerStyles.suggestionPreviewPathIcon)}>
+            {row.kind === "file" ? (
+              <FileTypeIcon path={row.label} />
+            ) : (
+              <Icon name="folder" size="xs" />
+            )}
+          </span>
           <span {...props(composerStyles.suggestionPreviewPathLabel)}>{row.label}</span>
         </div>
       ))}
@@ -158,6 +161,7 @@ function SuggestionPreview({
 }: {
   readonly suggestion: ComposerSuggestion;
 }): ReactElement {
+  if (suggestion.kind === "file") return <MentionPathPreview file={suggestion.file} />;
   const attribution = suggestionAttribution(suggestion);
 
   return (
@@ -173,14 +177,10 @@ function SuggestionPreview({
           {attribution}
         </div>
       )}
-      {suggestion.kind === "file" ? (
-        <MentionPathPreview file={suggestion.file} />
-      ) : (
-        suggestion.kind !== "mention" && (
-          <div {...props(text.base, composerStyles.suggestionPreviewDescription)}>
-            {suggestion.description}
-          </div>
-        )
+      {suggestion.kind !== "mention" && (
+        <div {...props(text.base, composerStyles.suggestionPreviewDescription)}>
+          {suggestion.description}
+        </div>
       )}
     </>
   );
@@ -239,7 +239,6 @@ export function useComposerSuggestions({
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const menu = menuState.token;
   const highlighted = menuState.highlighted;
-  const browsing = menuState.folder;
   const popupId = useId();
   const deferredQuery = useDeferredValue(menu?.query ?? "");
   const root = useChatFolder()?.path;
@@ -294,9 +293,8 @@ export function useComposerSuggestions({
       hasConversationContext,
       recency,
       frecency,
-      folder: browsing,
     }),
-    [commands, skills, rankMentions, hasConversationContext, recency, frecency, browsing],
+    [commands, skills, rankMentions, hasConversationContext, recency, frecency],
   );
 
   const kind = menu?.kind;
@@ -341,7 +339,7 @@ export function useComposerSuggestions({
     (menu.kind !== "argument" || completeCommand !== undefined);
 
   const activeSuggestion =
-    suggestions.find((suggestion) => suggestion.id === menuState.active) ?? defaultRow(suggestions);
+    suggestions.find((suggestion) => suggestion.id === menuState.active) ?? suggestions[0];
 
   const activeIndex = activeSuggestion === undefined ? -1 : suggestions.indexOf(activeSuggestion);
 
@@ -400,9 +398,14 @@ export function useComposerSuggestions({
     }, ARGUMENT_DELAY_MS);
   };
 
+  useMountEffect(() => () => {
+    generation.current += 1;
+    clearTimeout(timer.current);
+  });
+
   const show = (token: SuggestionToken | undefined): void => {
     dispatch({ kind: "token", token });
-    requestArguments(token);
+    requestArguments(nextMenu(menuState, { kind: "token", token }).token);
   };
 
   const readToken = (): LiveToken | undefined => {
@@ -416,21 +419,6 @@ export function useComposerSuggestions({
     return token === undefined || document === undefined
       ? undefined
       : { token, text: document.text };
-  };
-
-  const browse = (folder: MentionFile): void => {
-    const live = readToken();
-
-    if (live === undefined) return;
-    dispatch({ kind: "browse", folder });
-
-    if (live.token.end > live.token.start + 1)
-      editorRef.current?.replaceText(live.token.start + 1, live.token.end, "");
-  };
-
-  const leaveFolder = (): void => {
-    if (browsing !== undefined)
-      dispatch({ kind: "browse", folder: rankMentions.parentFolder(browsing) });
   };
 
   const addReference = (reference: MessageReference, start: number, end: number): void => {
@@ -447,12 +435,6 @@ export function useComposerSuggestions({
   };
 
   const select = (suggestion: ComposerSuggestion, token: SuggestionToken, text: string): void => {
-    if (suggestion.kind === "back") {
-      leaveFolder();
-
-      return;
-    }
-
     if (suggestion.kind === "argument") {
       editorRef.current?.replaceText(token.start, token.end, suggestion.value);
     } else if (suggestion.kind === "plugin-command") {
@@ -483,17 +465,21 @@ export function useComposerSuggestions({
   const showsLive = (token: SuggestionToken): boolean =>
     token.kind === "argument" ? answerFor(token) !== undefined : token.query === deferredQuery;
 
-  const click = (suggestion: ComposerSuggestion): void => {
+  const offered = (suggestion: ComposerSuggestion): LiveToken | undefined => {
     const live = readToken();
 
-    if (live === undefined) return;
+    if (live === undefined) return undefined;
 
-    if (
-      !showsLive(live.token) &&
-      !rankLive(live.token).some((candidate) => candidate.id === suggestion.id)
-    )
-      return;
-    select(suggestion, live.token, live.text);
+    return showsLive(live.token) ||
+      rankLive(live.token).some((candidate) => candidate.id === suggestion.id)
+      ? live
+      : undefined;
+  };
+
+  const click = (suggestion: ComposerSuggestion): void => {
+    const live = offered(suggestion);
+
+    if (live !== undefined) select(suggestion, live.token, live.text);
   };
 
   const insertTrigger = (trigger: "@" | "/"): void => {
@@ -526,24 +512,15 @@ export function useComposerSuggestions({
 
   const onKeyDown = (event: KeyboardEvent): boolean => {
     if (menu === undefined || !open) return false;
-    const target = browsableFolder(activeSuggestion);
-
-    const key = menuKey(event, {
-      index: Math.max(0, activeIndex),
-      count: suggestions.length,
-      folder: target !== undefined,
-      browsing: browsing !== undefined,
-      queryEmpty: menu.query === "",
-    });
+    const key = menuKey(event, { index: Math.max(0, activeIndex), count: suggestions.length });
 
     if (key.kind === "pass") return false;
     event.preventDefault();
 
-    if (key.kind === "close") dispatch({ kind: "dismiss" });
-
-    if (key.kind === "parent") leaveFolder();
-
-    if (key.kind === "browse" && target !== undefined) browse(target);
+    if (key.kind === "close") {
+      dispatch({ kind: "dismiss" });
+      requestArguments(undefined);
+    }
 
     const moved = key.kind === "move" ? suggestions[key.to] : undefined;
 
@@ -622,9 +599,7 @@ export function useComposerSuggestions({
               }
               aria-label={
                 menu?.kind === "mention"
-                  ? browsing === undefined
-                    ? "Mention files and context"
-                    : `Files in ${browsing.displayPath}`
+                  ? "Mention files and context"
                   : menu?.kind === "argument"
                     ? `/${menu.command} suggestions`
                     : onCommand === undefined
@@ -635,11 +610,6 @@ export function useComposerSuggestions({
               xstyle={composerStyles.suggestionMenu}
             >
               <div ref={listRef} {...props(composerStyles.suggestionList)}>
-                {menu?.kind === "mention" && browsing !== undefined && (
-                  <div role="presentation" {...props(text.base, composerStyles.suggestionEmpty)}>
-                    {browsing.displayPath}
-                  </div>
-                )}
                 {suggestions.map((suggestion, optionIndex) => {
                   const previous = suggestions[optionIndex - 1];
 
@@ -649,8 +619,11 @@ export function useComposerSuggestions({
 
                   const optionId = `${popupId}-${String(optionIndex)}`;
                   const selected = activeIndex === optionIndex;
-                  const description = descriptionExcerpt(suggestion.description, deferredQuery);
-                  const folder = browsableFolder(suggestion);
+
+                  const description =
+                    suggestion.kind === "file"
+                      ? suggestion.description
+                      : descriptionExcerpt(suggestion.description, deferredQuery);
 
                   return (
                     <div
@@ -671,7 +644,11 @@ export function useComposerSuggestions({
                       onClick={() => click(suggestion)}
                     >
                       <span aria-hidden="true" {...props(composerStyles.suggestionIcon)}>
-                        <Icon name={suggestion.icon} size="xs" />
+                        {suggestion.kind === "file" && suggestion.file.kind === "file" ? (
+                          <FileTypeIcon path={suggestion.file.path} />
+                        ) : (
+                          <Icon name={suggestion.icon} size="xs" />
+                        )}
                       </span>
                       <span {...props(composerStyles.suggestionText)}>
                         <span {...props(composerStyles.suggestionLabel)}>
@@ -681,23 +658,13 @@ export function useComposerSuggestions({
                           />
                         </span>
                         <span {...props(text.base, composerStyles.suggestionDescription)}>
-                          <HighlightedSuggestionText text={description} query={deferredQuery} />
+                          {suggestion.kind === "file" ? (
+                            description
+                          ) : (
+                            <HighlightedSuggestionText text={description} query={deferredQuery} />
+                          )}
                         </span>
                       </span>
-                      {folder !== undefined && (
-                        <Button
-                          variant="ghost"
-                          size="2xs"
-                          iconOnly
-                          icon="chevron-right"
-                          aria-label={`Browse ${folder.label}`}
-                          tabIndex={-1}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            browse(folder);
-                          }}
-                        />
-                      )}
                     </div>
                   );
                 })}
@@ -716,19 +683,18 @@ export function useComposerSuggestions({
           highlighted &&
           activeSuggestion !== undefined &&
           activeSuggestion.kind !== "argument" &&
-          activeSuggestion.kind !== "back" &&
           activeOption !== null
         }
       >
         {activeSuggestion === undefined ||
         activeSuggestion.kind === "argument" ||
-        activeSuggestion.kind === "back" ||
         activeOption === null ? null : (
           <PreviewCardContent
-            anchor={activeOption}
+            anchor={listRef}
             side="right"
-            align="end"
-            sideOffset={6}
+            align="start"
+            sideOffset={-12}
+            alignOffset={-8}
             collisionAvoidance={{ side: "flip", align: "shift", fallbackAxisSide: "end" }}
             aria-label={`Details for ${activeSuggestion.label}`}
             xstyle={composerStyles.suggestionPreview}

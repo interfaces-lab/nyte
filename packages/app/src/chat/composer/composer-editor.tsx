@@ -34,6 +34,7 @@ import {
 import { clipboardReferenceFromPaste } from "../../references/message-references.ts";
 import type { MessageReference } from "../../references/message-references.ts";
 import { composerStyles } from "./composer.stylex.ts";
+import { IME_KEY_CODE } from "./composer-keys.ts";
 import { transferredFiles } from "../../references/composer-file-drop.ts";
 import type { ComposerFile } from "../../references/composer-file-drop.ts";
 
@@ -278,6 +279,9 @@ export function ComposerEditor({
                 "data-empty": String(state.doc.firstChild?.childCount === 0),
               }).filter((entry): entry is [string, string] => entry[1] !== undefined),
             ),
+          handleDOMEvents: {
+            keydown: (_view, event) => event.key === "Enter" && event.keyCode === IME_KEY_CODE,
+          },
           handleKeyDown: (view, event) => {
             if (event.isComposing || view.composing) return false;
             keyDown(event);

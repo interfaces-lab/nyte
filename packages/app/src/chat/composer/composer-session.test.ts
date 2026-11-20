@@ -34,7 +34,13 @@ function view(text: string): ComposerViewState {
   return { draft: text, attachments: [], selectionStart: text.length, selectionEnd: text.length };
 }
 
-const DRAFT: SessionDraft = { composer: view("mine"), edit: null, notice: null, sending: null };
+const DRAFT: SessionDraft = {
+  composer: view("mine"),
+  edit: null,
+  notice: null,
+  sending: [],
+  omitted: 0,
+};
 
 const typed = (text: string): ComposerSessionEvent => ({
   kind: "typed",

@@ -15,6 +15,7 @@ import { bindComposerFileDrop } from "../../references/composer-file-drop.ts";
 import type { ComposerDocumentState, ComposerSubmission } from "./composer-document.ts";
 import type { ComposerEditorHandle } from "./composer-editor.tsx";
 import { composerSendPlan } from "./composer-plan.ts";
+import { omittedMessage } from "./composer-draft.ts";
 import { startDraft } from "./draft-start.ts";
 import { ModelPicker } from "./model-picker.tsx";
 import { WorkspaceContext } from "../../panes/workspace-context.tsx";
@@ -224,7 +225,10 @@ function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement
             }
             attachments={attachments}
             attachmentBusy={intake.reads !== 0}
-            attachmentError={intake.error}
+            attachmentError={
+              intake.error ??
+              (viewState.omitted === 0 ? undefined : omittedMessage(viewState.omitted))
+            }
             onFilesSelected={addFiles}
             onAttachmentRemove={(id) => {
               updateViewState((state) => ({

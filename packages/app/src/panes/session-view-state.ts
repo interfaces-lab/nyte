@@ -5,7 +5,7 @@ import type { Static } from "typebox";
 import { Type } from "typebox";
 import type { PaneId } from "./layout.ts";
 import type { WindowDrafts } from "../chat/composer/drafts.ts";
-import { persistedDraft, restorable } from "../chat/composer/composer-draft.ts";
+import { NO_SENDING, persistedDraft, restorable } from "../chat/composer/composer-draft.ts";
 import type { SessionDraft } from "../chat/composer/composer-draft.ts";
 
 const KEPT_SESSION_VIEWS = 64;
@@ -71,6 +71,7 @@ export interface ChatDraft extends BlankViewState {
   readonly id: string;
   readonly updatedAt: number;
   readonly status: DraftStatus;
+  readonly omitted: number;
 }
 
 export const EDITING: DraftStatus = { kind: "editing" };
@@ -83,7 +84,13 @@ export const DEFAULT_COMPOSER_VIEW_STATE: ComposerViewState = {
 };
 
 export const DEFAULT_SESSION_VIEW_STATE: SessionViewState = {
-  draft: { composer: DEFAULT_COMPOSER_VIEW_STATE, edit: null, notice: null, sending: null },
+  draft: {
+    composer: DEFAULT_COMPOSER_VIEW_STATE,
+    edit: null,
+    notice: null,
+    sending: NO_SENDING,
+    omitted: 0,
+  },
   scroll: {},
   stepGroups: new Map(),
 };
@@ -93,11 +100,16 @@ export function composerHasContent(composer: ComposerViewState): boolean {
 }
 
 export function draftKept(draft: SessionDraft): boolean {
-  return composerHasContent(persistedDraft(draft)) || restorable(draft) !== null;
+  return (
+    composerHasContent(persistedDraft(draft)) ||
+    restorable(draft) !== null ||
+    draft.sending.length > 0 ||
+    draft.omitted > 0
+  );
 }
 
-export function draftHasContent(draft: BlankViewState): boolean {
-  return composerHasContent(draft.composer);
+export function draftHasContent(draft: ChatDraft): boolean {
+  return composerHasContent(draft.composer) || draft.omitted > 0;
 }
 
 export const composerSchema = Type.Object(
@@ -148,6 +160,10 @@ export class SessionViewStateStore {
     return this.#window.subscribeKey(`session:${sessionId}`, listener);
   }
 
+  persist(): void {
+    this.#window.persist();
+  }
+
   readSession(sessionId: SessionId): SessionViewState {
     return this.#window.sessions.get(sessionId) ?? DEFAULT_SESSION_VIEW_STATE;
   }
@@ -178,7 +194,12 @@ export class SessionViewStateStore {
     const before = persistedDraft(previous);
     const after = persistedDraft(state.draft);
 
-    if (storedChanged(before, after) || restorable(previous) !== restorable(state.draft))
+    if (
+      storedChanged(before, after) ||
+      restorable(previous) !== restorable(state.draft) ||
+      previous.sending !== state.draft.sending ||
+      previous.omitted !== state.draft.omitted
+    )
       this.#window.saveSession(sessionId, previous, state.draft);
 
     this.#window.notify(`session:${sessionId}`);
@@ -218,6 +239,7 @@ export class SessionViewStateStore {
       id: current.id,
       updatedAt: changed ? Date.now() : current.updatedAt,
       status: current.status,
+      omitted: changed ? 0 : current.omitted,
     };
 
     drafts.active = next;
@@ -251,12 +273,15 @@ export class SessionViewStateStore {
       return;
 
     if (!kept) drafts.parked.set(current.id, current);
+
     const next = {
       ...base,
       project: start.project,
       folder,
       composer: start.composer ?? base.composer,
+      omitted: start.composer === undefined ? base.omitted : 0,
     };
+
     drafts.active = next;
 
     if (start.composer !== undefined) this.#window.saveDraft(base, next);

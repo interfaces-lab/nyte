@@ -380,7 +380,9 @@ function guestLook(input: {
         styles.box,
         styles.behind,
         styles.size(place.width, place.height),
-        input.painting ? [styles.at(0, 0), styles.parkedByOpacity] : styles.at(PARKED_OFFSET, PARKED_OFFSET),
+        input.painting
+          ? [styles.at(0, 0), styles.parkedByOpacity]
+          : styles.at(PARKED_OFFSET, PARKED_OFFSET),
       ],
       frame: styles.frame,
       page: styles.size(place.width, place.height),

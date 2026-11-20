@@ -472,7 +472,7 @@ export function refreshComposerReferences(
     const file = files.get(reference.file.url);
 
     if (file !== undefined && file !== reference.file)
-      tr.setNodeMarkup(pos, undefined, { reference: { kind: "file", file } });
+      tr.setNodeMarkup(pos, undefined, { reference: { ...reference, file } });
   });
 
   return referenceTokens(tr, [{ from: 0, to: tr.doc.content.size }], {
