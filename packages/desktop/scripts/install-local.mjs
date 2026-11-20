@@ -18,8 +18,6 @@ const root = join(desktop, "..", "..");
 
 const application = "/Applications/Nyte.app";
 
-const BUILD_ATTEMPTS = 3;
-
 const support = join(homedir(), "Library", "Application Support", "Nyte");
 
 const updateLog = join(support, "updates.log");
@@ -178,30 +176,22 @@ async function until(label, timeout, done) {
 }
 
 function packageBuild() {
-  for (let attempt = 1; ; attempt += 1) {
-    const status = spawnSync(
-      "node",
-      [
-        "scripts/build.mjs",
-        ...process.argv.slice(2).filter((argument) => argument === "--warn-budgets"),
-        "--package",
-        "--publish",
-        "never",
-        "--mac",
-        "zip",
-        "--arm64",
-      ],
-      { cwd: desktop, env: { ...process.env, NYTE_RELEASE_VERSION: version }, stdio: "inherit" },
-    ).status;
+  const status = spawnSync(
+    "node",
+    [
+      "scripts/build.mjs",
+      ...process.argv.slice(2).filter((argument) => argument === "--warn-budgets"),
+      "--package",
+      "--publish",
+      "never",
+      "--mac",
+      "zip",
+      "--arm64",
+    ],
+    { cwd: desktop, env: { ...process.env, NYTE_RELEASE_VERSION: version }, stdio: "inherit" },
+  ).status;
 
-    if (status === 0) return;
-
-    if (attempt === BUILD_ATTEMPTS) {
-      throw new Error(`The build failed ${BUILD_ATTEMPTS} times. Nyte ${installed} is unchanged.`);
-    }
-
-    console.log(`The build failed (attempt ${attempt} of ${BUILD_ATTEMPTS}). Building again.`);
-  }
+  if (status !== 0) throw new Error(`The build failed. Nyte ${installed} is unchanged.`);
 }
 
 function run(command, args, env = {}) {

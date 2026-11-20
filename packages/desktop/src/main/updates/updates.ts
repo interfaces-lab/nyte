@@ -90,7 +90,7 @@ export async function registerUpdates({
   const applyChannel = (): void => {
     autoUpdater.channel = channel === "nightly" ? "nightly" : "latest";
     autoUpdater.allowPrerelease = channel === "nightly";
-    autoUpdater.allowDowngrade = channel === "stable" && app.getVersion().includes("-nightly.");
+    autoUpdater.allowDowngrade = true;
   };
 
   applyChannel();

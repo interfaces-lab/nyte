@@ -49,7 +49,7 @@ test.each<{ readonly end: WindowEnd; readonly survives: readonly string[] }>([
   menu.windowEnded();
 
   unsaved.mayClose(1);
-  menu.dispatch({ kind: "action", action: "new-chat" });
+  menu.dispatch({ kind: "action", action: "chat.new", input: {} });
 
   const held = {
     selection: workspaces.workspace(1) !== undefined,
