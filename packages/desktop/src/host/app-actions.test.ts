@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import process from "node:process";
-import { afterEach, vi } from "vitest";
+import { afterEach, test, vi } from "vitest";
+import { asId, SdkError } from "@nyte-ai/schema";
 import { PERMISSIONS } from "@nyte-ai/plugin/approvals/schema";
 import { isPart, tool } from "@nyte-ai/plugin/core";
 import { clientBrowserPlugins } from "@nyte-ai/plugin/core/browser-client";
@@ -10,6 +11,7 @@ import { clientCanvasPreview } from "@nyte-ai/plugin/core/canvas-client";
 import type { CanvasPreviewer } from "@nyte-ai/plugin/core/canvas-preview";
 import { KIT_SPECIFIER } from "@nyte-ai/plugin/canvas/protocol";
 import type { SessionView } from "@nyte-ai/sdk";
+import type { ActionHandler } from "@nyte-ai/sdk/client";
 import type {
   BrowserActionResult,
   BrowserAgent,
@@ -287,3 +289,94 @@ socketTest(
     );
   },
 );
+
+socketTest(
+  "the host's own connection lists a connected client and asks it to act, as the host for its principal",
+  async () => {
+    const made = await desktop();
+
+    made.client.offer(
+      { name: "echo", summary: "Answers what it was asked.", input: {} },
+      (input, requester) => ({
+        input,
+        requester,
+      }),
+    );
+
+    const row = await vi.waitFor(
+      async () => {
+        const found = (await made.served.clients.read()).find((client) =>
+          client.actions.some((action) => action.name === "echo"),
+        );
+
+        assert.ok(found);
+
+        return found;
+      },
+      { timeout: 5_000 },
+    );
+
+    assert.deepEqual(await made.served.client(row.id).perform("echo", { n: 1 }), {
+      input: { n: 1 },
+      requester: { client: "host", principal: "local" },
+    });
+  },
+);
+
+const OWN = asId<"principal">("token");
+
+test.each([
+  {
+    asks: "the host itself, as an agent's tool does",
+    client: "host",
+    principal: "local",
+    runs: true,
+  },
+  {
+    asks: "another client of the app's own principal",
+    client: "cli",
+    principal: "token",
+    runs: true,
+  },
+  { asks: "a client of another principal", client: "phone", principal: "device", runs: false },
+])("the desktop process answers $asks", async (row) => {
+  const handlers = new Map<string, ActionHandler>();
+  const opened: string[] = [];
+
+  offerAppActions(
+    {
+      principal: OWN,
+      offer(action, handler) {
+        handlers.set(action.name, handler);
+
+        return () => handlers.delete(action.name);
+      },
+    },
+    {
+      agent: recordingAgent().agent,
+      preview: chromium,
+      signal: () => new AbortController().signal,
+      openChat: (session) => opened.push(session),
+    },
+  );
+
+  const open = handlers.get("open");
+  assert.ok(open);
+
+  const answer = await Promise.resolve()
+    .then(() =>
+      open(
+        { session: "s1" },
+        { client: asId<"client">(row.client), principal: asId<"principal">(row.principal) },
+      ),
+    )
+    .then(
+      () => "ran",
+      (error: unknown) => (error instanceof SdkError ? error.code : String(error)),
+    );
+
+  assert.deepEqual(
+    { answer, opened },
+    row.runs ? { answer: "ran", opened: ["s1"] } : { answer: "denied", opened: [] },
+  );
+});

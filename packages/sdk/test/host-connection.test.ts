@@ -693,7 +693,7 @@ describe("offer", () => {
       address: `${served.listener.address ?? ""}/`,
     });
 
-    const clients = asker.clients();
+    const clients = asker.clients.open();
     cleanups.push(async () => clients.close());
 
     await vi.waitFor(() =>
@@ -705,10 +705,39 @@ describe("offer", () => {
     const target = [...clients.snapshot().values()].find((row) => row.name === "offerer");
     const self = [...clients.snapshot().values()].find((row) => row.name === "asker");
 
-    expect(await asker.perform(target?.id ?? asId("none"), "open", { n: 1 })).toEqual({
+    expect(await asker.client(target?.id ?? asId("none")).perform("open", { n: 1 })).toEqual({
       opened: { n: 1 },
       by: self?.id,
     });
+  });
+
+  it("declares every action offered as soon as connect resolves in its first hello", async () => {
+    const served = await serve();
+    let dialed = 0;
+
+    const offerer = await attach(
+      served.listener,
+      (request) => {
+        dialed += 1;
+
+        return global(request);
+      },
+      { name: "offerer" },
+    );
+
+    for (const name of ["one", "two", "three"])
+      offerer.offer({ name, summary: "", input: {} }, () => null);
+
+    const asker = await attach(served.listener, global, { name: "asker" });
+
+    await vi.waitFor(async () =>
+      expect(
+        (await asker.clients.read())
+          .find((row) => row.name === "offerer")
+          ?.actions.map((action) => action.name),
+      ).toEqual(["one", "two", "three"]),
+    );
+    expect(dialed).toBe(1);
   });
 });
 

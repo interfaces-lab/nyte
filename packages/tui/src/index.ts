@@ -119,6 +119,24 @@ const HANDLERS: Record<CommandName, Handler> = {
       }),
     };
   },
+  action: async (args, context) => {
+    const command = await import("./action-command.ts");
+    const socket = await import("./host-socket.ts");
+
+    return {
+      kind: "exit",
+      code: await command.actionCommand({
+        args,
+        connect: (hostUrl) =>
+          socket.connectHostSocket({
+            source: hostUrl === undefined ? { kind: "local" } : attachedSource(hostUrl),
+            name: "nyte action",
+          }),
+        output: context.output,
+        width: process.stdout.columns ?? 80,
+      }),
+    };
+  },
   api: async (args, context) => {
     const command = await import("./api-command.ts");
     const socket = await import("./host-socket.ts");

@@ -1,5 +1,5 @@
 import { compile, idSchema, isJson, SdkError, SOCKET_LIMITS } from "@nyte-ai/schema";
-import type { ActionDeclaration, Disposer, Json } from "@nyte-ai/schema";
+import type { ActionDeclaration, Awaitable, Disposer, Json } from "@nyte-ai/schema";
 import type { SessionId } from "@nyte-ai/sdk";
 import type { ClientConnection, OpenSocket } from "@nyte-ai/sdk/client";
 import { BROWSER_ACTION, BrowserCallType } from "@nyte-ai/plugin/core/browser-client";
@@ -36,8 +36,13 @@ export function appSocket(socket: string): OpenSocket {
     });
 }
 
+/**
+ * Declares what the desktop process does for its host and answers requests for it. A request runs
+ * when the host itself made it, as an agent's tool does, or when it comes from the principal this
+ * app connected as. Any other is refused with `denied`.
+ */
 export function offerAppActions(
-  connection: Pick<ClientConnection, "offer">,
+  connection: Pick<ClientConnection, "offer" | "principal">,
   app: {
     readonly agent: BrowserAgent;
     readonly preview: CanvasPreviewer;
@@ -45,21 +50,29 @@ export function offerAppActions(
     openChat(session: SessionId): void;
   },
 ): Disposer {
+  const offer = (action: ActionDeclaration, answer: (input: Json) => Awaitable<Json>): Disposer =>
+    connection.offer(action, (input, requester) => {
+      if (requester.client !== "host" && requester.principal !== connection.principal)
+        throw new SdkError("denied", "This app runs requests from its host and its own user only.");
+
+      return answer(input);
+    });
+
   const stops = [
-    connection.offer(OPEN_ACTION, async (input) => {
+    offer(OPEN_ACTION, async (input) => {
       if (!openCalls.Check(input))
         throw new SdkError("invalid", "Name the chat to open as session.");
       app.openChat(input.session);
 
       return { opened: true };
     }),
-    connection.offer(BROWSER_ACTION, async (input) => {
+    offer(BROWSER_ACTION, async (input) => {
       if (!browserCalls.Check(input))
         throw new SdkError("invalid", "The host asked the browser for something unreadable.");
 
       return answerBrowser(app.agent, input);
     }),
-    connection.offer(CANVAS_PREVIEW_ACTION, async (input) => {
+    offer(CANVAS_PREVIEW_ACTION, async (input) => {
       if (!previewCalls.Check(input))
         throw new SdkError("invalid", "The host asked for a canvas preview it did not describe.");
 

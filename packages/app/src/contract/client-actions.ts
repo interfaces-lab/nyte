@@ -1,3 +1,89 @@
+import type { Json } from "@nyte-ai/sdk";
+import { Type } from "typebox";
+import type { TSchema } from "typebox";
+
+/**
+ * Every action the app runs by name. A key, a menu item, the command palette, the CLI and a plugin
+ * all name one of these; `APP_ACTIONS` says what each takes.
+ */
+export type AppAction =
+  | "chat.new"
+  | "tab.new"
+  | "tab.close"
+  | "tab.reopen"
+  | "folder.open"
+  | "home.open"
+  | "settings.open"
+  | "customize.open"
+  | "search.toggle"
+  | "sidebar.toggle"
+  | "workbench.toggle"
+  | "terminal.toggle"
+  | "terminal.new"
+  | "browser.new"
+  | "pane.split"
+  | "pane.focus.next"
+  | "markdown.source.toggle"
+  | "window.reload"
+  | "app.open";
+
+const NOTHING = Type.Object({}, { additionalProperties: false });
+
+/** What each action does and the input it takes, as a caller outside the app reads it. */
+export const APP_ACTIONS = {
+  "chat.new": { summary: "Starts a new chat.", input: NOTHING },
+  "tab.new": { summary: "Opens a new tab.", input: NOTHING },
+  "tab.close": { summary: "Closes the active tab, or Settings when it is open.", input: NOTHING },
+  "tab.reopen": { summary: "Reopens the tab closed last.", input: NOTHING },
+  "folder.open": { summary: "Shows the folder picker.", input: NOTHING },
+  "home.open": { summary: "Switches to Home, the chats outside any folder.", input: NOTHING },
+  "settings.open": {
+    summary: "Opens Settings, on `page` when given: one of its pages or a page plugins named.",
+    input: Type.Object({ page: Type.Optional(Type.String()) }, { additionalProperties: false }),
+  },
+  "customize.open": { summary: "Opens Customize.", input: NOTHING },
+  "search.toggle": { summary: "Shows or hides search.", input: NOTHING },
+  "sidebar.toggle": { summary: "Shows or hides the sidebar.", input: NOTHING },
+  "workbench.toggle": { summary: "Shows or hides the workbench.", input: NOTHING },
+  "terminal.toggle": {
+    summary: "Shows the terminal, or hides it when it is in front.",
+    input: NOTHING,
+  },
+  "terminal.new": { summary: "Opens a new terminal.", input: NOTHING },
+  "browser.new": { summary: "Opens a new browser tab.", input: NOTHING },
+  "pane.split": {
+    summary: "Splits the focused pane to the right or down.",
+    input: Type.Object(
+      { direction: Type.Union([Type.Literal("right"), Type.Literal("down")]) },
+      { additionalProperties: false },
+    ),
+  },
+  "pane.focus.next": { summary: "Moves focus to the next pane.", input: NOTHING },
+  "markdown.source.toggle": {
+    summary: "Switches the focused Markdown file between its source and its rendering.",
+    input: NOTHING,
+  },
+  "window.reload": { summary: "Reloads the window.", input: NOTHING },
+  "app.open": {
+    summary: "Switches to Nyte, Code or Studio, or back to the app used last.",
+    input: Type.Object(
+      {
+        app: Type.Union([
+          Type.Literal("nyte"),
+          Type.Literal("code"),
+          Type.Literal("studio"),
+          Type.Literal("last"),
+        ]),
+      },
+      { additionalProperties: false },
+    ),
+  },
+} satisfies Record<AppAction, { readonly summary: string; readonly input: TSchema }>;
+
+export function namesAppAction(name: string): name is AppAction {
+  return Object.hasOwn(APP_ACTIONS, name);
+}
+
 type ActionChord =
   | "primary"
   | "primary-shift"
@@ -19,6 +105,9 @@ export function clientCapabilities(host: { readonly browser?: unknown }): Client
 interface ActionDetails {
   readonly id: string;
   readonly label: string;
+  /** The action this entry runs, with `input`. An entry without one is run by the control that shows it. */
+  readonly action?: AppAction;
+  readonly input?: Json;
   readonly scope: "window" | "workspace" | "outside-settings";
   readonly capability?: keyof ClientCapabilities;
   readonly palette?: {
@@ -36,6 +125,7 @@ type ActionDefinition = ActionDetails &
 export const clientActions = {
   newChat: {
     id: "new-chat",
+    action: "chat.new",
     label: "New Chat",
     key: "n",
     chord: "primary",
@@ -44,6 +134,7 @@ export const clientActions = {
   },
   newTab: {
     id: "new-tab",
+    action: "tab.new",
     label: "New Tab",
     key: "t",
     chord: "primary",
@@ -51,6 +142,7 @@ export const clientActions = {
   },
   closeTab: {
     id: "close-tab",
+    action: "tab.close",
     label: "Close Tab",
     key: "w",
     chord: "primary",
@@ -58,6 +150,7 @@ export const clientActions = {
   },
   reopenTab: {
     id: "reopen-tab",
+    action: "tab.reopen",
     label: "Reopen Closed Tab",
     key: "t",
     chord: "primary-shift",
@@ -86,6 +179,7 @@ export const clientActions = {
   },
   openFolder: {
     id: "open-folder",
+    action: "folder.open",
     label: "Open Folder…",
     key: "o",
     chord: "primary",
@@ -97,24 +191,31 @@ export const clientActions = {
   },
   openHome: {
     id: "open-home",
+    action: "home.open",
     label: "Open Home",
     scope: "window",
     palette: { keywords: "workspace projectless activate", group: "actions" },
   },
   generalSettings: {
     id: "general-settings",
+    action: "settings.open",
+    input: { page: "general" },
     label: "General Settings",
     scope: "window",
     palette: { keywords: "preferences configuration", group: "settings" },
   },
   appearanceSettings: {
     id: "appearance-settings",
+    action: "settings.open",
+    input: { page: "appearance" },
     label: "Appearance",
     scope: "window",
     palette: { keywords: "theme color interface", group: "settings" },
   },
   modelSettings: {
     id: "model-settings",
+    action: "settings.open",
+    input: { page: "providers" },
     label: "Providers",
     scope: "window",
     palette: {
@@ -124,6 +225,8 @@ export const clientActions = {
   },
   profileSettings: {
     id: "profile-settings",
+    action: "settings.open",
+    input: { page: "profile" },
     label: "Profile",
     scope: "window",
     palette: {
@@ -133,21 +236,31 @@ export const clientActions = {
   },
   customize: {
     id: "customize-settings",
+    action: "customize.open",
     label: "Customize",
     scope: "window",
     palette: { keywords: "agents skills rules mcp", group: "settings" },
   },
   reloadWindow: {
     id: "reload-window",
+    action: "window.reload",
     label: "Reload Window",
     key: "r",
     chord: "primary-shift",
     scope: "window",
     palette: { keywords: "refresh restart", group: "actions" },
   },
-  search: { id: "search", label: "Search", key: "k", chord: "primary", scope: "window" },
+  search: {
+    id: "search",
+    action: "search.toggle",
+    label: "Search",
+    key: "k",
+    chord: "primary",
+    scope: "window",
+  },
   settings: {
     id: "settings",
+    action: "settings.open",
     label: "Settings…",
     key: ",",
     chord: "primary",
@@ -155,6 +268,7 @@ export const clientActions = {
   },
   sidebar: {
     id: "sidebar",
+    action: "sidebar.toggle",
     label: "Toggle Sidebar",
     key: "b",
     chord: "primary",
@@ -162,6 +276,8 @@ export const clientActions = {
   },
   splitRight: {
     id: "split-right",
+    action: "pane.split",
+    input: { direction: "right" },
     label: "Split Right",
     key: "d",
     chord: "primary",
@@ -169,6 +285,8 @@ export const clientActions = {
   },
   splitDown: {
     id: "split-down",
+    action: "pane.split",
+    input: { direction: "down" },
     label: "Split Down",
     key: "d",
     chord: "primary-shift",
@@ -176,6 +294,7 @@ export const clientActions = {
   },
   workbench: {
     id: "workbench",
+    action: "workbench.toggle",
     label: "Toggle Workbench",
     key: "b",
     chord: "primary-alt",
@@ -183,6 +302,7 @@ export const clientActions = {
   },
   terminal: {
     id: "terminal",
+    action: "terminal.toggle",
     label: "Toggle Terminal",
     key: "`",
     chord: "control",
@@ -190,6 +310,7 @@ export const clientActions = {
   },
   newTerminal: {
     id: "new-terminal",
+    action: "terminal.new",
     label: "New Terminal",
     key: "`",
     chord: "control-shift",
@@ -197,12 +318,14 @@ export const clientActions = {
   },
   newBrowser: {
     id: "new-browser",
+    action: "browser.new",
     label: "New Browser",
     scope: "workspace",
     capability: "browser",
   },
   markdownSource: {
     id: "markdown-source",
+    action: "markdown.source.toggle",
     label: "Toggle Markdown Source",
     key: "v",
     chord: "primary-shift",
@@ -210,6 +333,7 @@ export const clientActions = {
   },
   focusPane: {
     id: "focus-pane",
+    action: "pane.focus.next",
     label: "Focus Next Pane",
     key: "f6",
     chord: "none",
@@ -217,6 +341,8 @@ export const clientActions = {
   },
   openNyte: {
     id: "open-nyte",
+    action: "app.open",
+    input: { app: "nyte" },
     label: "Nyte",
     key: "1",
     chord: "control-shift",
@@ -224,6 +350,8 @@ export const clientActions = {
   },
   openCode: {
     id: "open-code",
+    action: "app.open",
+    input: { app: "code" },
     label: "Code",
     key: "2",
     chord: "control-shift",
@@ -231,6 +359,8 @@ export const clientActions = {
   },
   openStudio: {
     id: "open-studio",
+    action: "app.open",
+    input: { app: "studio" },
     label: "Studio",
     key: "3",
     chord: "control-shift",
@@ -238,6 +368,8 @@ export const clientActions = {
   },
   flipApp: {
     id: "flip-app",
+    action: "app.open",
+    input: { app: "last" },
     label: "Switch to Last App",
     key: "space",
     chord: "control-shift",
@@ -245,7 +377,8 @@ export const clientActions = {
   },
 } as const satisfies Record<string, ActionDefinition>;
 
-type ClientAction = (typeof clientActions)[keyof typeof clientActions];
+/** An entry that runs a named action, as a menu item or a key does. */
+export type RunnableAction = ActionDefinition & { readonly action: AppAction };
 
 export function clientActionAvailable(
   action: ActionDefinition,
@@ -278,12 +411,14 @@ export function resolveClientAction(
   mac: boolean,
   stage: ClientStage,
   capabilities: ClientCapabilities,
-): ClientAction | undefined {
+): ActionDefinition | undefined {
   if (event.isComposing) return undefined;
   const key = pressedKey(event);
+  const entries: readonly ActionDefinition[] = Object.values(clientActions);
 
-  return Object.values(clientActions).find((action) => {
-    if (!("chord" in action) || !clientActionAvailable(action, stage, capabilities)) return false;
+  return entries.find((action) => {
+    if (action.chord === undefined || !clientActionAvailable(action, stage, capabilities))
+      return false;
     const terminal = action.chord === "control" || action.chord === "control-shift";
 
     if (event.defaultPrevented && !terminal) return false;

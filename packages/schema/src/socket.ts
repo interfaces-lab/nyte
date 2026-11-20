@@ -10,7 +10,8 @@ export const SOCKET_PATH = "/.nyte/ws";
 
 export const TICKET_PATH = "/.nyte/ws/ticket";
 
-export const HELLO_MAX_BYTES = 4096;
+/** The most a hello frame holds: a client's name and every action it declares, each with its input schema. */
+export const HELLO_MAX_BYTES = 65_536;
 
 export const SOCKET_LIMITS = { backlogBytes: 8_388_608, maxFrameBytes: 1_048_576 } as const;
 

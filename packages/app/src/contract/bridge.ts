@@ -1,8 +1,8 @@
 import type { ExcerptSource, TailnetStatus } from "@nyte-ai/schema";
-import type { SessionId, Usage, WorkspaceId } from "@nyte-ai/sdk";
+import type { Json, SessionId, Usage, WorkspaceId } from "@nyte-ai/sdk";
 import type { OpenSocket } from "@nyte-ai/sdk/client";
 import type { ConnectionProblem, HostEndpoint } from "./connection.ts";
-import { clientActions } from "./client-actions.ts";
+import type { AppAction } from "./client-actions.ts";
 import type { DesktopApp } from "./desktop-app.ts";
 import type { AppSwitch, ArrivalSubject } from "./desktop-window.ts";
 
@@ -105,29 +105,6 @@ export type ThemePreference = "system" | "light" | "dark";
 
 export type ClientSurface = "desktop" | "web";
 
-export type AppMenuAction =
-  | typeof clientActions.newChat.id
-  | typeof clientActions.newTab.id
-  | typeof clientActions.closeTab.id
-  | typeof clientActions.reopenTab.id
-  | typeof clientActions.openFolder.id
-  | typeof clientActions.newTerminal.id
-  | typeof clientActions.newBrowser.id
-  | typeof clientActions.settings.id
-  | typeof clientActions.search.id
-  | typeof clientActions.sidebar.id
-  | typeof clientActions.workbench.id
-  | typeof clientActions.terminal.id
-  | typeof clientActions.splitRight.id
-  | typeof clientActions.splitDown.id
-  | typeof clientActions.markdownSource.id
-  | typeof clientActions.focusPane.id
-  | typeof clientActions.reloadWindow.id
-  | typeof clientActions.openNyte.id
-  | typeof clientActions.openCode.id
-  | typeof clientActions.openStudio.id
-  | typeof clientActions.flipApp.id;
-
 export interface AppInfo {
   readonly name: string;
   readonly version: string;
@@ -138,7 +115,7 @@ export interface AppInfo {
 }
 
 export type AppMenuCommand =
-  | { readonly kind: "action"; readonly action: AppMenuAction }
+  | { readonly kind: "action"; readonly action: AppAction; readonly input: Json }
   | { readonly kind: "about"; readonly info: AppInfo }
   | { readonly kind: "open-file"; readonly path: string }
   | { readonly kind: "arrive"; readonly subject: ArrivalSubject | undefined };

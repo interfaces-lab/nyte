@@ -89,27 +89,27 @@ Ctrl+K lists every command and the shortcuts that work right now. The common one
 
 Type `/` to see them all, with skills and plugin commands mixed in.
 
-| Command                                   | What it does                                    |
-| ----------------------------------------- | ----------------------------------------------- |
-| `/new`                                    | Start a new chat                                |
-| `/resume` (also `/sessions`, `/continue`) | Pick a chat to resume                           |
-| `/tree`                                   | Move to another branch of this chat             |
-| `/edit`                                   | Edit a message you sent                         |
-| `/compact`                                | Summarize the chat to free up context           |
-| `/cd`                                     | Change this chat's working folder               |
-| `/usage`                                  | Show token usage and cost                       |
-| `/tasks`                                  | Inspect subagents and background commands       |
-| `/login`, `/logout`                       | Sign in to or out of a model provider           |
-| `/accounts`                               | Choose a saved account                          |
-| `/settings`                               | Change settings                                 |
-| `/trust`                                  | Choose whether this folder's project files load |
-| `/mcp`                                    | Show MCP servers and their connections          |
-| `/skills`, `/plugins`                     | Browse skills, or list loaded plugins           |
-| `/reload`                                 | Reload plugins and skills                       |
-| `/pr`                                     | Show this branch's pull request and its checks  |
-| `/update`                                 | Update `nyte`, or switch to stable or nightly   |
-| `/help`                                   | Browse commands                                 |
-| `/quit`                                   | Quit                                            |
+| Command                                   | What it does                                     |
+| ----------------------------------------- | ------------------------------------------------ |
+| `/new`                                    | Start a new chat                                 |
+| `/resume` (also `/sessions`, `/continue`) | Pick a chat to resume                            |
+| `/tree`                                   | Move to another branch of this chat              |
+| `/edit`                                   | Edit a message you sent                          |
+| `/compact`                                | Summarize the chat to free up context            |
+| `/cd`                                     | Change this chat's folder with your shell's `cd` |
+| `/usage`                                  | Show token usage and cost                        |
+| `/tasks`                                  | Inspect subagents and background commands        |
+| `/login`, `/logout`                       | Sign in to or out of a model provider            |
+| `/accounts`                               | Choose a saved account                           |
+| `/settings`                               | Change settings                                  |
+| `/trust`                                  | Choose whether this folder's project files load  |
+| `/mcp`                                    | Show MCP servers and their connections           |
+| `/skills`, `/plugins`                     | Browse skills, or list loaded plugins            |
+| `/reload`                                 | Reload plugins and skills                        |
+| `/pr`                                     | Show this branch's pull request and its checks   |
+| `/update`                                 | Update `nyte`, or switch to stable or nightly    |
+| `/help`                                   | Browse commands                                  |
+| `/quit`                                   | Quit                                             |
 
 ## Trust [#trust]
 
@@ -321,6 +321,78 @@ nyte events --scope host --scope session/<session-id>
 
 `call` and `events` reach the running host over its local socket when it has one. They don't start
 a host, so they fail when none runs.
+
+## Run an app's actions: `nyte action` [#nyte-action]
+
+Every app connected to the host declares the actions it runs by name. `nyte action list` prints
+them, and `nyte action run` asks an app to run one:
+
+```sh
+nyte action list
+nyte action run chat.new
+nyte action run setting.theme value=dark
+nyte action run setting.theme
+```
+
+- Each `KEY=VALUE` is one field of the action's input. The value is read as JSON, and as text when
+  it isn't JSON: `value=13` is a number and `value=dark` is text.
+- What the action answers goes to stdout as JSON. An action that answers nothing prints nothing
+  there.
+- Without `--client`, the one app that offers the action runs it. When several offer it, such as
+  two open windows, nothing runs: the command lists them and exits with 2. Pass `--client <ID>`
+  with an id from `nyte action list`.
+- `nyte action` needs a running host and never starts one.
+
+The Nyte app declares these:
+
+| Action                   | Input                                     | What it does                                        |
+| ------------------------ | ----------------------------------------- | --------------------------------------------------- |
+| `chat.new`               |                                           | Starts a new chat                                   |
+| `tab.new`                |                                           | Opens a new tab                                     |
+| `tab.close`              |                                           | Closes the active tab, or Settings when it is open  |
+| `tab.reopen`             |                                           | Reopens the tab closed last                         |
+| `folder.open`            |                                           | Shows the folder picker                             |
+| `home.open`              |                                           | Switches to Home, the chats outside any folder      |
+| `settings.open`          | `page`: a Settings page, or left out      | Opens Settings, on that page when given             |
+| `customize.open`         |                                           | Opens Customize                                     |
+| `search.toggle`          |                                           | Shows or hides search                               |
+| `sidebar.toggle`         |                                           | Shows or hides the sidebar                          |
+| `workbench.toggle`       |                                           | Shows or hides the workbench                        |
+| `terminal.toggle`        |                                           | Shows the terminal, or hides it when it is in front |
+| `terminal.new`           |                                           | Opens a new terminal                                |
+| `browser.new`            |                                           | Opens a new browser tab                             |
+| `pane.split`             | `direction`: `right` or `down`            | Splits the focused pane                             |
+| `pane.focus.next`        |                                           | Moves focus to the next pane                        |
+| `markdown.source.toggle` |                                           | Switches a Markdown file between source and preview |
+| `window.reload`          |                                           | Reloads the window                                  |
+| `app.open`               | `app`: `nyte`, `code`, `studio` or `last` | Switches to that app, or back to the one used last  |
+
+An action that has nothing to act on fails with `unavailable`: `tab.close` in a window without
+tabs, for example.
+
+Each of these reads one of the app's preferences with no input, and sets it with `value`. Both
+answer `{ "value": … }` with the value now. A value the preference doesn't take fails with
+`invalid` and changes nothing.
+
+| Group      | Actions                                                                                                                                                                               |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| General    | `setting.startup`, `setting.running.message`                                                                                                                                          |
+| Appearance | `setting.theme`, `setting.themes`, `setting.tint.hue`, `setting.tint.intensity`, `setting.pointer.cursors`, `setting.transparency.reduce`, `setting.tool.calls`, `setting.chat.width` |
+| Fonts      | `setting.font.ui`, `setting.font.ui.size`, `setting.font.code`, `setting.font.code.size`, `setting.font.smoothing`, `setting.code.wrap`                                               |
+| Terminal   | `setting.terminal.scrollback`, `setting.terminal.cursor.style`, `setting.terminal.cursor.blink`                                                                                       |
+| Editor     | `setting.editor.line.numbers`, `setting.editor.wrap`, `setting.editor.blame`, `setting.editor.autosave`, `setting.editor.format`, `setting.editor.outline`, `setting.editor.panel`    |
+| Changes    | `setting.changes.layout`, `setting.changes.whitespace`, `setting.changes.wrap`                                                                                                        |
+
+`nyte action list --json` prints each action's input as a JSON Schema, with the values a setting
+takes.
+
+### Who an app obeys [#remote-control]
+
+An app runs a request made for its own user: `nyte action` on the same machine, and plugins on
+your own host. It refuses a request from any other paired device with `denied`.
+
+To let your other devices drive the app, turn on **Remote control** in **Settings > Server**. No
+action turns that switch on, and none changes the app's link, developer or trust settings.
 
 ## Files [#files]
 

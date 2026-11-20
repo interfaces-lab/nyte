@@ -11,6 +11,22 @@ Each source folder owns one concept and sits in a layer; a folder never imports 
 Stability, then simplicity, then performance. A faster path that can break, or that adds a second
 way to do the same thing, loses to the plain one.
 
+## Actions
+
+- Everything the app does by name is an `AppAction`: a row in `APP_ACTIONS` and a case in
+  `runAction`. A key, a menu item and the palette name one through a `clientActions` entry (`action`
+  and `input`). `nyte action run` and plugins reach the same case through `offerActions`. Never add
+  a second dispatcher.
+- A preference a script reads or sets gets a `setting.<name>` row in `SETTING_ACTIONS`. Leave out
+  what the app remembers about its own layout, and every switch that guards links, developer tools
+  or remote control (`remoteControl`, `developerMode`, `trustedLinkHosts`, `confirmExternalLinks`,
+  `linkTarget`).
+- The declared list never changes while the app runs: a changed list reconnects the socket. An
+  action that can't run now answers `unavailable`. The whole list fits one hello
+  (`HELLO_MAX_BYTES`).
+- `offerActions` runs a request from the connection's own principal, and any other only while
+  `preferences.remoteControl` is on.
+
 ## Fonts
 
 These rules hold for the app, `@nyte-ai/ui`, the canvas, and the desktop.

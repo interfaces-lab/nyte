@@ -19,6 +19,8 @@ logins, hangs off it.
 | `workspace(id)` | `Workspace`               | A handle to one workspace, without I/O                                                              |
 | `projects`      | `Projects`                | Create projects. See [projects](#projects)                                                          |
 | `project(id)`   | `Project`                 | A handle to one project, without I/O                                                                |
+| `clients`       | `Clients`                 | List the clients on the host's WebSocket. See [clients](#clients)                                   |
+| `client(id)`    | `Client`                  | A handle to one connected client, without I/O. See [clients](#clients)                              |
 | `catalogs`      | `CatalogsApi`             | Read a chat's catalog by id. See [catalogs](#catalogs)                                              |
 | `models`        | `ModelsApi`               | The model catalog, provider logins and usage. See [models](#models)                                 |
 | `settings`      | `SettingsApi`             | Change host settings. See [settings](#settings)                                                     |
@@ -149,6 +151,40 @@ Each returns a `GitHubAccountState`: `ready` with the `account`, `signing_in` wi
 `deviceCode`, `signed_out`, `cli_missing` or `error`. A host without a GitHub login to serve throws
 `SdkError("unavailable")`.
 
+## clients [#clients]
+
+The clients connected to the host's WebSocket, such as the desktop app's windows, and the actions
+each one declared. A client declares actions with
+[`offer`](/docs/sdk/reference/entry-points#connect).
+
+| Method                                       | Authority   | What it does                                                    |
+| -------------------------------------------- | ----------- | --------------------------------------------------------------- |
+| `clients.read()`                             | participant | Every connected client as a `ClientRow`, with its `actions`     |
+| `client(id).perform(action, input, options)` | participant | Asks that client to run `action` and resolves with what it said |
+
+A client runs one request at a time, in the order they arrive. `options.timeoutMs` is how long it
+has to answer: 10 seconds when left out, and never more than 30.
+
+`perform` throws `SdkError`:
+
+| Code            | When                                                         |
+| --------------- | ------------------------------------------------------------ |
+| `unknown`       | No client with that id is connected                          |
+| `not_supported` | The client declared no such action                           |
+| `unavailable`   | 16 requests already wait on the client, or it left           |
+| `timeout`       | The client did not answer in time. It may still run          |
+| `denied`        | The client refused whoever asked. See below                  |
+| Any other       | What the client's handler threw, such as `invalid` for input |
+
+The client is told who asked: the asking client's id and its principal. The Nyte app runs a request
+from its own principal and refuses any other with `denied`, until its user turns on **Remote
+control** in **Settings > Server**. See [the app's actions](/docs/cli#nyte-action).
+
+- On a `Host`, and on the `api.host` a plugin gets, the asking client is `host`.
+- `perform` needs the WebSocket. A connection made with `sdk.connect` throws `invalid`; use
+  [`connect`](/docs/sdk/reference/entry-points#connect).
+- A host that serves no WebSocket throws `not_supported` from both methods.
+
 ## operations [#operations]
 
 | Method             | Authority   | What it does                                                                |
@@ -192,7 +228,7 @@ host, so it matches that host's version.
 | `defaultWorkspace`            | The workspace a chat starts in when `sessions.start` names none, or `null`                      |
 | `projects`                    | Every project on the host, archived ones included, oldest first                                 |
 | `catalog`                     | Changes whenever the model catalog does. Call `models.list()` when it does                      |
-| `settings`                    | Each setting with its `id`, `label`, `schema`, `choices`, `value` and where the value came from |
+| `settings`                    | Each setting with its `id`, `title`, `schema`, `choices`, `value` and where the value came from |
 | `plugins`                     | Each loaded plugin with its `id`, `source`, `path` and `issues`                                 |
 | `views`                       | The part renderers plugins ship to clients                                                      |
 | `operations`                  | A digest of the host's operations, or `null`. It changes when the HTTP API does                 |

@@ -534,7 +534,7 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
     const value = Buffer.byteLength(data) > HELLO_MAX_BYTES ? undefined : readJson(data);
 
     if (!hellos.Check(value)) {
-      close(1008, "The first frame must be a hello of at most 4 KB.");
+      close(1008, "The first frame must be a hello of at most 64 KB.");
 
       return;
     }

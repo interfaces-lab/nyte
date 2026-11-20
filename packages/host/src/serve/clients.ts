@@ -288,6 +288,20 @@ function openClients(): Clients {
   };
 }
 
+/** Asks a connected client to act for `principal`, naming the host itself as the client that asked. */
+export function performFor(
+  server: ServerHost,
+  principal: PrincipalId,
+  request: {
+    readonly client: ClientId;
+    readonly action: string;
+    readonly input: Json;
+    readonly timeoutMs?: number;
+  },
+): Promise<Json> {
+  return sharedClients(server).perform({ client: HOST_REQUESTER.client, principal }, request);
+}
+
 export function performOffered(
   server: ServerHost,
   request: { readonly action: string; readonly input: Json; readonly timeoutMs: number },

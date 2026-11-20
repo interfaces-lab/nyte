@@ -2,6 +2,7 @@ import { describeOperations, SdkError } from "@nyte-ai/schema";
 import type { Capability, CredentialSource, WorkspaceId } from "@nyte-ai/schema";
 import { ALL_AUTHORITY, LOCAL } from "../contract/host.ts";
 import type {
+  ClientsApi,
   Connection,
   ConnectionContext,
   DocumentsApi,
@@ -37,6 +38,15 @@ const NO_GITHUB: GitHubAccountApi = {
 
 function unavailableGitHub(): never {
   throw new SdkError("unavailable", "This host has no GitHub CLI login to serve.");
+}
+
+const NO_CLIENTS: ClientsApi = {
+  rows: () => unsupportedClients(),
+  perform: async () => unsupportedClients(),
+};
+
+function unsupportedClients(): never {
+  throw new SdkError("not_supported", "This host serves no socket for a client to connect to.");
 }
 
 const NO_DOCUMENTS: DocumentsApi = {
@@ -137,6 +147,7 @@ export function createConnection(
   };
 
   const documents = kernel.documents ?? NO_DOCUMENTS;
+  const clients = kernel.clients ?? NO_CLIENTS;
 
   const close = async (): Promise<void> => {
     for (const stop of streams) stop();
@@ -155,8 +166,23 @@ export function createConnection(
     },
     workspaces: gated("workspaces", createWorkspaces(kernel, context), authority),
     projects: gated("projects", createProjects(kernel), authority),
+    clients: gated("clients", { read: async () => clients.rows() }, authority),
     session: (id) => sessionHandle(kernel, context, id),
     project: (id) => gated("project", projectHandle(kernel, id), authority),
+    client: (id) =>
+      gated(
+        "client",
+        {
+          perform: (action, input, options) =>
+            clients.perform(context.principal, {
+              client: id,
+              action,
+              input,
+              timeoutMs: options?.timeoutMs,
+            }),
+        },
+        authority,
+      ),
     workspace,
     watch: () =>
       track(watchHost(kernel, { principal: context.principal, authority: context.authority })),

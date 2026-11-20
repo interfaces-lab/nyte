@@ -1,5 +1,5 @@
 import { asId, OPERATIONS, SdkError } from "@nyte-ai/schema";
-import type { Authority, PrincipalId } from "@nyte-ai/schema";
+import type { Authority, ClientRow, PrincipalId } from "@nyte-ai/schema";
 import { assert, describe, expect, it } from "vitest";
 import { createInvocation } from "../src/agent/tool-runner.ts";
 import { createHost } from "../src/api/connection.ts";
@@ -119,6 +119,7 @@ describe("connection gate (§52 rule 5)", () => {
     const invocation = createInvocation(kernel, {
       session: session.id,
       runtime: kernel.plugins.runtime(session.id),
+      owner: "core",
       head: main,
       run: asId("r1"),
       call: asId("c1"),
@@ -131,7 +132,7 @@ describe("connection gate (§52 rule 5)", () => {
     });
 
     expect(await elevatedRows(participant, participant.workspace(at))).toEqual(denied);
-    expect(await elevatedRows(invocation.sdk, invocation.workspace)).toEqual(denied);
+    expect(await elevatedRows(invocation.host, invocation.workspace)).toEqual(denied);
     expect(() => participant.models.login({ provider: "p", method: { kind: "key" } })).toThrow(
       "models.login needs owner authority.",
     );
@@ -206,6 +207,49 @@ describe("connection gate (§52 rule 5)", () => {
       code: "unavailable",
     });
     expect(kernel.plugins.host).toBe(before);
+  });
+
+  it("asks the clients its host supplies as the caller's principal, and answers not_supported on a host that supplies none", async () => {
+    const asked: unknown[] = [];
+
+    const row: ClientRow = {
+      id: asId("window"),
+      principal: asId("local"),
+      kind: "app",
+      name: "Nyte",
+      version: "1",
+      actions: [{ name: "chat.new", summary: "Starts a new chat.", input: {} }],
+      since: 1,
+    };
+
+    const supplied = await setup({
+      clients: {
+        rows: () => [row],
+        async perform(principal, request) {
+          asked.push({ principal, request });
+
+          return { ran: request.action };
+        },
+      },
+    });
+
+    const served = connectionAs(supplied.kernel, PARTICIPANT_AUTHORITY);
+    const bare = connectionAs((await setup()).kernel, PARTICIPANT_AUTHORITY);
+
+    expect(await served.clients.read()).toEqual([row]);
+    expect(await served.client(row.id).perform("chat.new", {}, { timeoutMs: 5 })).toEqual({
+      ran: "chat.new",
+    });
+    expect(asked).toEqual([
+      {
+        principal: "caller",
+        request: { client: "window", action: "chat.new", input: {}, timeoutMs: 5 },
+      },
+    ]);
+    await expect(bare.clients.read()).rejects.toMatchObject({ code: "not_supported" });
+    await expect(bare.client(row.id).perform("chat.new", {})).rejects.toMatchObject({
+      code: "not_supported",
+    });
   });
 });
 

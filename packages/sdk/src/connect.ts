@@ -1,16 +1,14 @@
 import { asId } from "@nyte-ai/schema";
 import type {
   ActionDeclaration,
-  ClientId,
   ClientInfo,
   CredentialSource,
   Disposer,
   HeadName,
-  Json,
   PartId,
   SessionId,
 } from "@nyte-ai/schema";
-import type { ConnectOptions, Connection, RequestJournal, Sessions } from "@nyte-ai/core";
+import type { Clients, ConnectOptions, Connection, RequestJournal, Sessions } from "@nyte-ai/core";
 import type { CallName, OperationInput, OperationOutput } from "@nyte-ai/protocol";
 import { dial } from "./connection/connect.ts";
 import type { HostCredentials } from "./connection/connect.ts";
@@ -59,14 +57,11 @@ export interface ClientConnection extends Connection {
   head(session: SessionId, head: HeadName, options: { readonly tail: number }): HeadStore;
   part(session: SessionId, part: PartId): PartStore;
   text(listener: (update: TextUpdate) => void): Disposer;
-  clients(): ClientsStore;
+  readonly clients: Clients & {
+    /** The connected clients, kept current. Close it when done. */
+    open(): ClientsStore;
+  };
   call<N extends CallName>(name: N, input: OperationInput<N>): Promise<OperationOutput<N>>;
-  perform(
-    client: ClientId,
-    action: string,
-    input: Json,
-    options?: { readonly timeoutMs?: number },
-  ): Promise<Json>;
   offer(action: ActionDeclaration, handler: ActionHandler): Disposer;
   /** The sends the journal replayed, at connect or on `resend`, that the host refused, kept until `take` so the client can give each one's text back. */
   readonly refused: RefusedSends;
@@ -108,6 +103,10 @@ export async function connect(options: ClientConnectOptions): Promise<ClientConn
     credential: dialed.credential,
     refused: dialed.journal.refused,
     sessions: { ...http.sessions, open: (window) => link.sessions(window) },
+    clients: { ...http.clients, open: () => link.clients() },
+    client: (id) => ({
+      perform: (action, input, options) => link.perform(id, action, input, options),
+    }),
     chat(session, chat) {
       const head = chat?.head ?? MAIN;
       const tail = chat?.tail ?? TAIL;

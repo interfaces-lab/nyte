@@ -18,6 +18,7 @@ import { createKernel } from "./compose.ts";
 import { begin, newRun } from "./engine/runs.ts";
 import { publishSet } from "./watch/watch.ts";
 import { envelope, leaseRef, memoryStore, partRef, trustRef, workspaceRef } from "./store.ts";
+import type { ClientsApi } from "./contract/host.ts";
 import type { Kernel, TurnDriver } from "./contract/kernel.ts";
 import type {
   EnvironmentProvider,
@@ -148,6 +149,7 @@ export async function setup(
     readonly plugins?: readonly Plugin<"core">[];
     readonly poll?: number;
     readonly snapshots?: SnapshotsApi;
+    readonly clients?: ClientsApi;
   },
 ): Promise<{
   readonly kernel: Kernel;
@@ -175,6 +177,7 @@ export async function setup(
     summarize: options?.summarize ?? (async () => ({ kind: "ok", markdown: "Summary.", usage })),
     execution: options?.execution,
     secrets: options?.secrets,
+    clients: options?.clients,
     builtins: [
       { id: "test-environment", environment: provider(options?.snapshots) },
       ...(options?.plugins ?? []),
